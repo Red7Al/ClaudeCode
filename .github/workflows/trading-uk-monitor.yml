@@ -19,8 +19,8 @@ jobs:
       SLACK_TRADES:          ${{ secrets.SLACK_TRADES }}
       SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.5.0
         with:
           python-version: '3.12'
           cache: 'pip'
