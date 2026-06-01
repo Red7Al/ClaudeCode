@@ -52,7 +52,7 @@ NITTER_INSTANCES = [
 TRACKED_ACCOUNTS = [
     {"handle": "leopoldasch",     "name": "Leopold Aschenbrenner", "source": "X/@leopoldasch"},
     {"handle": "LeopoldATracker", "name": "LeopoldATracker",       "source": "X/@LeopoldATracker"},
-    {"handle": "Asklivermoe",     "name": "Asklivermoe",           "source": "X/@Asklivermoe"},
+    {"handle": "Asklivermore",     "name": "Asklivermore",           "source": "X/@Asklivermore"},
 ]
 
 # Known non-ticker uppercase words to ignore
