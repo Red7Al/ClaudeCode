@@ -21,3 +21,4 @@ jobs:
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
