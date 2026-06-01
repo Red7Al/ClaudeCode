@@ -1,8 +1,8 @@
-name: Position Monitor (30 min)
+name: Position Monitor (10 min)
 
 on:
   schedule:
-    - cron: '*/30 0-3,8-22 * * 1-5'  # Every 30 min during market hours UTC
+    - cron: '*/10 0-3,8-22 * * 1-5'  # Every 10 min during market hours UTC
   workflow_dispatch:
 
 jobs:
