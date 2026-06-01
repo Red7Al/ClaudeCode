@@ -105,6 +105,13 @@ def run_session_open(session_name: str):
                          stop_dist, limit_dist, session_name, signal_str)
             trades_placed += 1
 
+    # Scan social feeds for new picks at each session open
+    try:
+        from social_monitor import scan_social_feeds
+        scan_social_feeds(max_age_hours=8)   # picks since last session
+    except Exception as e:
+        log.warning(f"Social feed scan failed: {e}")
+
     log.info(f"{session_name} complete. Trades placed: {trades_placed}")
 
 
