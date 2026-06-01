@@ -1,0 +1,27 @@
+# Credentials — never commit these
+.env
+*.env
+set_env_vars.ps1
+secrets.py
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# Data files
+*.json
+*.csv
+*.sqlite
+*.db
+data/
+LOGS/
+
+# OS
+.DS_Store
+Thumbs.db
