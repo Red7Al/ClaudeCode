@@ -10,8 +10,24 @@ conn = pg8000.native.Connection(
     ssl_context=True
 )
 
-conn.run("drop table if exists users cascade")
-print("Dropped: users (or did not exist)")
+import datetime
+today = datetime.date.today().isoformat()
+
+# Check what's in signal_log for today
+rows = conn.run(
+    "select ticker, session, options_bias, bb_breakout_dir, trade_triggered "
+    "from signal_log where date(session_time) = :d order by session, ticker",
+    d=today
+)
+print(f"\n## signal_log for {today} ({len(rows)} rows)")
+for r in rows:
+    print(f"  {r[1]:<12} {r[0]:<10} options={r[2]:<10} bb={str(r[3]):<10} traded={r[4]}")
+
+if not rows:
+    print("  (empty — no scans logged today)")
+
+conn.close()
+raise SystemExit(0)
 
 # Show ALL tables with ALL columns
 tables = conn.run("""
