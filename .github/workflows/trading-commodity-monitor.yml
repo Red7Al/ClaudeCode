@@ -1,4 +1,4 @@
-﻿name: Commodity Monitor XAU/XAG/CL (30 min gaps)
+name: Commodity Monitor XAU/XAG/CL (30 min gaps)
 
 on:
   schedule:
@@ -7,11 +7,12 @@ on:
     - cron: '*/30 21-23 * * 1-5'  # 21:00-23:59 UTC gap (after US close, before AUS open)
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   run:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 8
     env:
       IG_API_KEY:            ${{ secrets.IG_API_KEY }}

@@ -1,15 +1,16 @@
-﻿name: AUS/Asia Open
+name: AUS/Asia Open
 
 on:
   schedule:
     - cron: '0 0 * * 1-5'   # 00:00 UTC Monday-Friday (Asia open)
   workflow_dispatch:          # Allow manual trigger
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   run:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4.2.2
