@@ -316,6 +316,16 @@ SESSION_INSTRUMENTS = {
         # Jensen Huang
         "PLTR",     # Palantir
         "CRWD",     # CrowdStrike
+        # LeopoldATracker picks
+        "HIVE",     # HIVE Blockchain (breakout confirmed)
+        "KEEL",     # Keel Infrastructure (strongest PA score)
+        "WYFI",     # Whitefiber Inc
+        # Additional Aschenbrenner / LeopoldATracker overlap
+        "IREN",     # Iris Energy
+        "APLD",     # Applied Digital
+        "BTDR",     # Bitdeer Technologies
+        "SEI",      # SEI Investments
+        "NOK",      # Nokia
     ],
 
     "SESSION_CLOSE": [],  # Review + close decisions only — no new instrument scan
