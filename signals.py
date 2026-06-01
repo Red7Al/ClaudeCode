@@ -902,21 +902,24 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         db = get_db()
         db.run(
             """insert into signal_log
-               (session, ticker, macro_gate_pass, options_bias, iv_rank,
+               (session, ticker, macro_gate_pass, options_bias, call_put_ratio, iv_rank,
                 gex_bias, vwap_position, cot_bias, bb_squeeze, bb_breakout_dir,
                 director_signal, activist_signal, senate_signal, senate_senator,
-                notable_investor, social_mention, confirmation_count, trade_triggered)
-               values (:s,:t,:mgp,:ob,:ir,:gb,:vp,:cb,:bbs,:bbd,
-                       :ds,:as2,:ss,:ssn,:ni,:sm,:cc,:tt)""",
+                notable_investor, social_mention, primary_count, confirmation_count,
+                direction, pa_verdict, trade_triggered)
+               values (:s,:t,:mgp,:ob,:cpr,:ir,:gb,:vp,:cb,:bbs,:bbd,
+                       :ds,:as2,:ss,:ssn,:ni,:sm,:pc,:cc,:dir,:pav,:tt)""",
             s=session_name, t=ticker,
             mgp=macro.get("macro_gate_pass"), ob=options.get("options_bias"),
-            ir=options.get("iv_rank"), gb=gex.get("gex_bias"),
-            vp=vwap.get("vwap_position"), cb=cot.get("bias"),
-            bbs=squeeze.get("bb_squeeze"), bbd=squeeze.get("bb_breakout_dir"),
+            cpr=options.get("call_put_ratio"), ir=options.get("iv_rank"),
+            gb=gex.get("gex_bias"), vp=vwap.get("vwap_position"),
+            cb=cot.get("bias"), bbs=squeeze.get("bb_squeeze"),
+            bbd=squeeze.get("bb_breakout_dir"),
             ds=directors.get("director_signal"), as2=activist.get("activist_signal"),
             ss=senate.get("senate_signal"), ssn=senate.get("senate_senator"),
             ni=superinv.get("notable_investor"), sm=social.get("social_mention"),
-            cc=conf_count, tt=trade_signal
+            pc=primary_count, cc=conf_count, dir=direction,
+            pav=price_act.get("verdict"), tt=trade_signal
         )
         db.close()
     except Exception as e:
