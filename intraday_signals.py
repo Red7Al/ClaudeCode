@@ -361,17 +361,24 @@ def scan_intraday(ticker: str) -> dict:
 
 def run_us_monitor(notify_slack: bool = True) -> list:
     """
-    Mid-session US Monitor.
-    Scans all open positions and flags any requiring attention.
-    Sends Slack alert for any position with hold_flag=False.
+    Mid-session US Monitor — runs every 15 minutes during the US session.
+
+    Two jobs:
+    1. Watch all OPEN POSITIONS — flag deterioration (RSI, MACD, VWAP, volume).
+    2. Re-scan ALL SESSION INSTRUMENTS for NEW entries — signals can fire at
+       any point in the session, not just at the open. If IBM's BB breakout
+       happens at 14:45, this catches it and places a trade.
     """
     import os
     import requests
     import pg8000.native
+    from signals import scan_instrument, get_macro_gate
+    from ig_shim import open_trade, get_account_balance
+    from config import SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION
 
     results = []
 
-    # Get open positions from Supabase
+    # ── DB connection ─────────────────────────────────────────────────────────
     try:
         conn = pg8000.native.Connection(
             host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
@@ -381,16 +388,24 @@ def run_us_monitor(notify_slack: bool = True) -> list:
         pos_rows = conn.run(
             "select ticker, direction, open_price, stop_loss, deal_id from positions"
         )
+        # How many trades already placed today
+        today_count = conn.run(
+            "select count(*) from trade_log where date(opened_at) = current_date"
+        )
         conn.close()
     except Exception as e:
         log.error(f"Could not fetch positions: {e}")
         return results
 
-    if not pos_rows:
-        log.info("US Monitor: no open positions to review")
-        return results
+    open_tickers    = {r[0] for r in pos_rows}
+    trades_today    = int(today_count[0][0]) if today_count else 0
+    slots_remaining = max(0, MAX_TRADES_PER_SESSION - trades_today)
 
-    alerts = []
+    # ── Part 1: Monitor existing positions ────────────────────────────────────
+    if not pos_rows:
+        log.info("US Monitor: no open positions — skipping position review")
+
+    position_alerts = []
     for row in pos_rows:
         ticker, direction, open_price, stop_loss, deal_id = row
         log.info(f"Scanning intraday: {ticker}")
@@ -404,14 +419,68 @@ def run_us_monitor(notify_slack: bool = True) -> list:
 
         # Flag positions that may need attention
         if not scan["hold_flag"] and scan["alert"]:
-            alerts.append(scan)
+            position_alerts.append(scan)
+
+    # ── Part 2: Re-scan session instruments for NEW entries ───────────────────
+    new_trades_placed = 0
+    if slots_remaining > 0:
+        log.info(f"US Monitor: scanning for new entries ({slots_remaining} slot(s) remaining today)")
+        try:
+            macro = get_macro_gate("US_MONITOR")
+            if macro.get("macro_gate_pass"):
+                candidates = [t for t in SESSION_INSTRUMENTS.get("US_OPEN", [])
+                              if t not in open_tickers]
+                for ticker in candidates:
+                    if new_trades_placed >= slots_remaining:
+                        break
+                    try:
+                        sig = scan_instrument(ticker, "US_MONITOR", macro)
+                        if sig.get("trade_signal"):
+                            stop_dist  = sig.get("stop_distance", 0)
+                            limit_dist = round(stop_dist * 2, 4)
+                            try:
+                                bal         = get_account_balance()
+                                risk_amount = bal["available"] * 0.02
+                                size        = round(risk_amount / stop_dist, 1) if stop_dist > 0 else 0.5
+                                size        = max(0.5, min(size, 10.0))
+                            except Exception:
+                                size = 0.5
+                            signal_str = (
+                                f"Options:{sig.get('options_bias','—')} "
+                                f"BB:{sig.get('bb_breakout_dir','—')} "
+                                f"COT:{sig.get('cot_bias','—')} "
+                                f"PA:{sig.get('pa_verdict','—')} "
+                                f"Confs:{sig.get('confirmation_count',0)} "
+                                f"[intraday rescan]"
+                            )
+                            deal_id = open_trade(
+                                user_id="00000000-0000-0000-0000-000000000001",
+                                ticker=ticker,
+                                direction=sig["direction"],
+                                size=size,
+                                stop_distance=stop_dist,
+                                limit_distance=limit_dist,
+                                session_name="US_MONITOR",
+                                signal_summary=signal_str
+                            )
+                            if deal_id:
+                                log.info(f"US Monitor NEW TRADE: {ticker} {sig['direction']}")
+                                new_trades_placed += 1
+                    except Exception as e:
+                        log.warning(f"Monitor scan failed for {ticker}: {e}")
+            else:
+                log.info(f"US Monitor: macro gate closed — {macro.get('gate_reason')} — no new entries")
+        except Exception as e:
+            log.error(f"US Monitor new-entry scan failed: {e}")
+    else:
+        log.info("US Monitor: daily trade limit reached — no new entries scanned")
 
     # Send Slack alert for flagged positions
-    if alerts and notify_slack:
+    if position_alerts and notify_slack:
         slack_url = os.environ.get("SLACK_ALERTS", "")
         if slack_url:
             lines = ""
-            for s in alerts:
+            for s in position_alerts:
                 rsi_str  = f"RSI:{s['rsi']}" if s.get("rsi") else ""
                 macd_str = f"MACD:{s['macd'].get('momentum','')}" if s.get("macd") else ""
                 vwap_str = f"VWAP:{s['vwap'].get('position','')}" if s.get("vwap") else ""
