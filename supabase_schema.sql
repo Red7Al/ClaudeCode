@@ -13,7 +13,7 @@
 -- ALTER TABLE ... ADD COLUMN IF NOT EXISTS.
 --
 -- Table inventory:
---   users              Per-user risk profiles and credentials reference
+--   user_profiles      Per-user risk profiles (id, daily_loss_limit, max_open_pos, paper_trade)
 --   epic_lookup        IG epic codes by ticker (self-populating cache)
 --   positions          Currently open CFD positions
 --   trade_log          Full history of every trade opened and closed
@@ -28,33 +28,16 @@
 
 
 -- ---------------------------------------------------------------------------
--- 1. USERS — per-user risk profiles
+-- 1. USER_PROFILES — per-user risk profiles
 -- ---------------------------------------------------------------------------
+-- Column names match ig_shim.py exactly: id, daily_loss_limit, max_open_pos, paper_trade
+-- This table was created in the previous session — do not rename or alter columns.
 create table if not exists user_profiles (
-    user_id             uuid primary key default gen_random_uuid(),
-    username            text not null unique,           -- 'owner', 'wife', 'son'
-    display_name        text,
-    risk_per_trade_pct  numeric(5,2) not null default 2.0,
-    daily_loss_limit_pct numeric(5,2) not null default 3.0,
-    max_open_positions  int not null default 5,
-    paper_trade         boolean not null default false,
-    allowed_sessions    text[] default array['AUS_OPEN','UK_OPEN','US_OPEN'],
-    active              boolean not null default true,
-    created_at          timestamptz not null default now()
+    id                  uuid primary key default gen_random_uuid(),
+    daily_loss_limit    numeric(5,2) not null default 3.0,
+    max_open_pos        int not null default 5,
+    paper_trade         boolean not null default false
 );
-
--- Seed the three family accounts
-insert into user_profiles (user_id, username, display_name, risk_per_trade_pct, daily_loss_limit_pct, max_open_positions, paper_trade, allowed_sessions)
-values
-    ('00000000-0000-0000-0000-000000000001', 'owner', 'Alex Hind',
-     2.0, 3.0, 5, false, array['AUS_OPEN','UK_OPEN','US_OPEN']),
-    ('00000000-0000-0000-0000-000000000002', 'wife', 'K. Hind',
-     1.0, 2.0, 5, false, array['UK_OPEN','US_OPEN']),
-    ('00000000-0000-0000-0000-000000000003', 'son', 'E. Hind',
-     2.0, 3.0, 5, true,  array['AUS_OPEN','UK_OPEN','US_OPEN'])
-on conflict (user_id) do nothing;
-
--- Note: table is named user_profiles (not users) — matches ig_shim.py and the previous session schema.
 
 
 -- ---------------------------------------------------------------------------
