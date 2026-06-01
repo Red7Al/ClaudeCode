@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install pg8000
-      - run: python run_fix_users_table.py >> $GITHUB_STEP_SUMMARY
+      - run: python run_fix_users_table.py | tee $GITHUB_STEP_SUMMARY
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
