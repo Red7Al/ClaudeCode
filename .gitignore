@@ -4,6 +4,18 @@
 set_env_vars.ps1
 secrets.py
 
+# Node
+node_modules/
+package-lock.json
+*.js
+*.ts
+generate_*.js
+extract_*.py
+aa_text*.txt
+aa_images/
+aa_unpacked/
+TradingSystem*.docx
+
 # Python
 __pycache__/
 *.pyc
