@@ -326,6 +326,15 @@ SESSION_INSTRUMENTS = {
         "BTDR",     # Bitdeer Technologies
         "SEI",      # SEI Investments
         "NOK",      # Nokia
+        # Multi-source CONFIRM LONG picks (LeopoldATracker + Asklivermore)
+        "MU",       # Micron Technology — +75 confirmed by both sources
+        "USAR",     # USA Rare Earth — +75 AI infrastructure theme
+        "PATH",     # UiPath — +65 AI workflow automation
+        "ONDS",     # Ondas Holdings — +45 strong uptrend
+        "OUST",     # Ouster — +45 strong uptrend
+        "ASX",      # ASX — +45 strong uptrend
+        "CRM",      # Salesforce — Asklivermore CONFIRM LONG
+        "AMD",      # AMD — multi-source confirmed
     ],
 
     "SESSION_CLOSE": [],  # Review + close decisions only — no new instrument scan
