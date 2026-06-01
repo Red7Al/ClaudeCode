@@ -1,0 +1,30 @@
+name: Commodity Monitor XAU/XAG/CL (30 min gaps)
+
+on:
+  schedule:
+    # Covers gaps between session monitors — Gold, Silver, Oil trade 24/5
+    - cron: '*/30 4-7 * * 1-5'    # 04:00-07:59 UTC gap (between AUS close and UK open)
+    - cron: '*/30 21-23 * * 1-5'  # 21:00-23:59 UTC gap (after US close, before AUS open)
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      IG_API_KEY:            ${{ secrets.IG_API_KEY }}
+      IG_USERNAME:           ${{ secrets.IG_USERNAME }}
+      IG_PASSWORD:           ${{ secrets.IG_PASSWORD }}
+      IG_ACCOUNT_ID:         ${{ secrets.IG_ACCOUNT_ID }}
+      SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SLACK_TRADES:          ${{ secrets.SLACK_TRADES }}
+      SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_commodity_monitor.py
