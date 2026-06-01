@@ -321,6 +321,9 @@ if __name__ == "__main__":
         run_session_open(session)
     elif session in ("AUS_MONITOR", "UK_MONITOR", "POSITION_MONITOR"):
         run_monitor()
+    elif session == "US_MONITOR":
+        from intraday_signals import run_us_monitor
+        run_us_monitor(notify_slack=True)
     elif session == "SESSION_CLOSE":
         run_session_close()
     elif session == "WEEKEND_REVIEW":

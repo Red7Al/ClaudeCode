@@ -1,8 +1,8 @@
-name: UK Monitor (15 min)
+name: US Monitor (15 min)
 
 on:
   schedule:
-    - cron: '*/15 8-16 * * 1-5'   # Every 15 min, 08:00-16:59 UTC (UK session)
+    - cron: '*/15 14-20 * * 1-5'  # Every 15 min, 14:00-20:59 UTC (US session)
   workflow_dispatch:
 
 jobs:
@@ -17,6 +17,7 @@ jobs:
       SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
       SLACK_TRADES:          ${{ secrets.SLACK_TRADES }}
+      SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
       SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
     steps:
       - uses: actions/checkout@v4
@@ -25,4 +26,4 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -r requirements.txt
-      - run: python run_session.py UK_MONITOR
+      - run: python run_session.py US_MONITOR
