@@ -17,8 +17,7 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install pg8000
-      - run: python run_check.py
+      - run: python run_check.py >> $GITHUB_STEP_SUMMARY
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}

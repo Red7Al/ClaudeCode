@@ -1,4 +1,4 @@
-import os, requests, pg8000.native
+import os, pg8000.native
 
 conn = pg8000.native.Connection(
     host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
@@ -26,14 +26,10 @@ rows = conn.run("""
 """)
 conn.close()
 
-lines = ["*Supabase Table Check*", f"{'Table':<30} {'OID':>10} {'Rows':>8} {'Size':>10}", "─" * 62]
+# Markdown for GitHub Actions step summary
+print("## Supabase Table Check\n")
+print(f"| Table | OID | Rows | Size |")
+print(f"|-------|-----|------|------|")
 for r in rows:
-    lines.append(f"`{r[0]:<30}` {r[1]:>10} {str(r[4] or 0):>8} {r[2]:>10}")
-lines.append(f"\n_{len(rows)} tables in public schema. Lower OID = created earlier._")
-
-msg = "\n".join(lines)
-print(msg)
-
-slack = os.environ.get("SLACK_ALERTS", "")
-if slack:
-    requests.post(slack, json={"text": msg}, timeout=10)
+    print(f"| `{r[0]}` | {r[1]} | {r[4] or 0} | {r[2]} |")
+print(f"\n_{len(rows)} tables in public schema — lower OID = created earlier_")
