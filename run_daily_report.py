@@ -192,7 +192,10 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
 
 def get_intraday_moves(tickers: list[str]) -> dict[str, float]:
     """
-    Fetch intraday open-to-close % move for each ticker via Yahoo Finance.
+    Fetch the maximum intraday move from open for each ticker via Yahoo Finance.
+    Uses High vs Open (up move) or Low vs Open (down move), whichever is larger.
+    This catches instruments that moved significantly intraday but gave back gains
+    before close — e.g. IBM up 10% intraday that closed up only 2%.
     Returns {ticker: pct_move} — positive = up, negative = down.
     """
     moves = {}
@@ -203,8 +206,14 @@ def get_intraday_moves(tickers: list[str]) -> dict[str, float]:
             hist = t.history(period="1d", interval="1d")
             if hist.empty:
                 continue
-            row   = hist.iloc[-1]
-            pct   = (row["Close"] - row["Open"]) / row["Open"]
+            row      = hist.iloc[-1]
+            open_    = row["Open"]
+            if not open_:
+                continue
+            pct_up   = (row["High"]  - open_) / open_   # best upside intraday
+            pct_down = (row["Low"]   - open_) / open_   # worst downside intraday
+            # Use whichever was the bigger move (by absolute value)
+            pct = pct_up if abs(pct_up) >= abs(pct_down) else pct_down
             moves[ticker] = round(pct, 4)
         except Exception:
             pass
