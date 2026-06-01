@@ -164,17 +164,26 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
            order by session, ticker""",
         d=today_str
     )
-    return [
-        {
-            "ticker": r[0], "session": r[1], "options_bias": r[2],
-            "bb_breakout_dir": r[3], "cot_bias": r[4],
-            "primary_count": 0, "confirmation_count": int(r[5] or 0),
+    result = []
+    for r in (rows or []):
+        options_bias    = r[2]
+        bb_breakout_dir = r[3]
+        # Derive primary count from available columns (primary_count not yet in DB)
+        pc = 0
+        if options_bias in ("BULLISH", "BEARISH"):
+            pc += 1
+        if bb_breakout_dir in ("BULLISH", "BEARISH"):
+            pc += 1
+        result.append({
+            "ticker": r[0], "session": r[1],
+            "options_bias": options_bias, "bb_breakout_dir": bb_breakout_dir,
+            "cot_bias": r[4],
+            "primary_count": pc, "confirmation_count": int(r[5] or 0),
             "director_signal": r[6], "senate_signal": r[7],
             "notable_investor": r[8], "social_mention": r[9],
             "trade_triggered": r[10],
-        }
-        for r in (rows or [])
-    ]
+        })
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -207,46 +216,57 @@ def get_intraday_moves(tickers: list[str]) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 
 def explain_why_not_traded(sig: dict, pct_move: float) -> str:
-    """
-    Produce a one-sentence explanation of why the signal stack did not trigger
-    for an instrument that had a notable price move.
-    """
-    reasons = []
-
-    if not sig.get("macro_gate_pass", True):
-        return "Macro gate was closed at session open — no instruments evaluated."
-
-    pc = sig.get("primary_count", 0)
-    cc = sig.get("confirmation_count", 0)
+    """Plain-English explanation of why a notable mover was not traded."""
+    ticker  = sig["ticker"]
+    session = sig.get("session", "session open")
+    pc      = sig.get("primary_count", 0)
+    cc      = sig.get("confirmation_count", 0)
     options = sig.get("options_bias", "NEUTRAL")
     bb      = sig.get("bb_breakout_dir")
-    pa      = sig.get("pa_verdict", "WAIT")
-    cpr     = sig.get("call_put_ratio")
-
-    if pc < 2:
-        missing = []
-        if options == "NEUTRAL":
-            cpr_str = f"call/put ratio {cpr:.2f}" if cpr else "data unavailable"
-            missing.append(f"options flow neutral ({cpr_str}; threshold: >1.2 bull / <0.8 bear)")
-        if not bb:
-            missing.append("no Bollinger Band breakout from squeeze")
-        reasons.append(f"only {pc}/2 primary signals fired — {' and '.join(missing)}")
-
-    if pc >= 2 and cc < 1:
-        reasons.append(f"no confirmation signals present (director buys, senate, superinvestor, COT all neutral)")
-
-    if pc >= 2 and cc >= 1 and pa == "WAIT":
-        reasons.append("price action verdict was WAIT — no confirmed trend structure or range breakout at session open")
-
-    if not reasons:
-        reasons.append(f"signals ({pc} primaries, {cc} confirmations) did not meet the 2+1 threshold at session open")
 
     direction_word = "up" if pct_move > 0 else "down"
     pct_str = f"+{pct_move*100:.1f}%" if pct_move > 0 else f"{pct_move*100:.1f}%"
+    move_clause = f"{ticker} moved {pct_str} {direction_word} today."
+
+    # Gate failure
+    if not sig.get("macro_gate_pass", True):
+        return f"{move_clause} Not evaluated — macro gate was closed at {session} (VIX or yield curve breached threshold), blocking all trades."
+
+    # Build plain-English signal breakdown
+    options_str = {
+        "BULLISH": "options flow was bullish (heavy call buying)",
+        "BEARISH": "options flow was bearish (heavy put buying)",
+        "NEUTRAL": "options flow was neutral — no clear institutional directional conviction in the options market",
+    }.get(options, "options flow data was unavailable")
+
+    bb_str = (
+        f"price broke out of a volatility squeeze ({bb.lower()} direction)"
+        if bb else
+        "price showed no Bollinger Band breakout — volatility was compressed but had not yet expanded into a directional move"
+    )
+
+    if pc < 2:
+        # The most common case — explain what was seen and what was missing
+        if pc == 0:
+            why = f"At {session} scan, neither required primary signal had fired: {options_str}, and {bb_str}. The system requires both to align before considering a trade."
+        else:  # pc == 1
+            fired   = options_str if options != "NEUTRAL" else bb_str
+            missing = bb_str if options != "NEUTRAL" else options_str
+            why = f"At {session} scan, one of two required primary signals was present ({fired}), but the second had not fired ({missing}). Both must agree before the system acts."
+        return f"{move_clause} {why}"
+
+    if cc < 1:
+        return (
+            f"{move_clause} Both primary signals aligned at {session} scan, but no confirmation signals were present "
+            f"(no director cluster buys, senate trades, superinvestor positions, or COT bias). "
+            f"At least one confirmation is required to size and place a trade."
+        )
+
     return (
-        f"IBM moved {pct_str} {direction_word} intraday. "
-        f"At {sig['session']} scan: {'; '.join(reasons)}."
-    ).replace("IBM", sig["ticker"])
+        f"{move_clause} Signals at {session} scan: {pc} primaries and {cc} confirmations present, "
+        f"but the combined score did not meet the entry threshold at that moment. "
+        f"The move may have developed after the scan window closed."
+    )
 
 
 # ---------------------------------------------------------------------------
