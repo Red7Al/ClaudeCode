@@ -155,7 +155,7 @@ def fetch_macro_snapshot(db, today_str: str) -> dict:
 def fetch_signal_log(db, today_str: str) -> list[dict]:
     """All instruments scanned today — including those that did NOT trigger a trade."""
     rows = db.run(
-        """select ticker, session, options_bias, bb_breakout_dir,
+        """select ticker, session, options_bias, bb_breakout_dir, bb_squeeze,
                   cot_bias, confirmation_count,
                   director_signal, senate_signal, notable_investor, social_mention,
                   trade_triggered
@@ -168,7 +168,7 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
     for r in (rows or []):
         options_bias    = r[2]
         bb_breakout_dir = r[3]
-        # Derive primary count from available columns (primary_count not yet in DB)
+        bb_squeeze      = r[4]
         pc = 0
         if options_bias in ("BULLISH", "BEARISH"):
             pc += 1
@@ -177,11 +177,12 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
         result.append({
             "ticker": r[0], "session": r[1],
             "options_bias": options_bias, "bb_breakout_dir": bb_breakout_dir,
-            "cot_bias": r[4],
-            "primary_count": pc, "confirmation_count": int(r[5] or 0),
-            "director_signal": r[6], "senate_signal": r[7],
-            "notable_investor": r[8], "social_mention": r[9],
-            "trade_triggered": r[10],
+            "bb_squeeze": bb_squeeze,
+            "cot_bias": r[5],
+            "primary_count": pc, "confirmation_count": int(r[6] or 0),
+            "director_signal": r[7], "senate_signal": r[8],
+            "notable_investor": r[9], "social_mention": r[10],
+            "trade_triggered": r[11],
         })
     return result
 
@@ -269,57 +270,77 @@ def get_intraday_moves(tickers: list[str]) -> dict[str, float]:
 # Signal gap explanation
 # ---------------------------------------------------------------------------
 
-def explain_why_not_traded(sig: dict, pct_move: float) -> str:
-    """Plain-English explanation of why a notable mover was not traded."""
-    ticker  = sig["ticker"]
-    session = sig.get("session", "session open")
-    pc      = sig.get("primary_count", 0)
-    cc      = sig.get("confirmation_count", 0)
-    options = sig.get("options_bias", "NEUTRAL")
-    bb      = sig.get("bb_breakout_dir")
+def group_summary(category: str, sample_sig: dict) -> str:
+    """
+    Produce ONE shared plain-English explanation for a group of instruments
+    that all share the same reason for not being traded. Called once per group.
+    Also explains how close the signals were to qualifying.
+    """
+    session = sample_sig.get("session", "US_OPEN scan")
+    pc      = sample_sig.get("primary_count", 0)
+    cc      = sample_sig.get("confirmation_count", 0)
+    options = sample_sig.get("options_bias", "NEUTRAL")
+    bb      = sample_sig.get("bb_breakout_dir")
+    squeeze = sample_sig.get("bb_squeeze", False)
 
-    direction_word = "up" if pct_move > 0 else "down"
-    pct_str = f"+{pct_move*100:.1f}%" if pct_move > 0 else f"{pct_move*100:.1f}%"
-    move_clause = f"{ticker} moved {pct_str} {direction_word} today."
-
-    # Gate failure
-    if not sig.get("macro_gate_pass", True):
-        return f"{move_clause} Not evaluated — macro gate was closed at {session} (VIX or yield curve breached threshold), blocking all trades."
-
-    # Build plain-English signal breakdown
     options_str = {
-        "BULLISH": "options flow was bullish (heavy call buying)",
-        "BEARISH": "options flow was bearish (heavy put buying)",
-        "NEUTRAL": "options flow was neutral — no clear institutional directional conviction in the options market",
+        "BULLISH": "options flow was bullish — institutional call buying was above the 1.2× threshold, indicating directional conviction",
+        "BEARISH": "options flow was bearish — put buying was dominant, indicating downside conviction",
+        "NEUTRAL": "options flow was neutral — call and put volumes were balanced, with no clear institutional directional bias",
     }.get(options, "options flow data was unavailable")
 
-    bb_str = (
-        f"price broke out of a volatility squeeze ({bb.lower()} direction)"
-        if bb else
-        "price showed no Bollinger Band breakout — volatility was compressed but had not yet expanded into a directional move"
-    )
+    if bb:
+        bb_str = f"price had broken out of a volatility squeeze ({bb.lower()} direction) — this signal fired"
+    elif squeeze:
+        bb_str = (
+            "price was in a Bollinger Band squeeze (volatility compressed, bands at their narrowest) "
+            "but the breakout had not yet fired — this is the signal closest to triggering. "
+            "A squeeze is the setup; the breakout is the signal. Both must be present."
+        )
+    else:
+        bb_str = (
+            "there was no Bollinger Band squeeze or breakout — volatility was not sufficiently compressed "
+            "to suggest an imminent directional move"
+        )
 
-    if pc < 2:
-        # The most common case — explain what was seen and what was missing
-        if pc == 0:
-            why = f"At {session} scan, neither required primary signal had fired: {options_str}, and {bb_str}. The system requires both to align before considering a trade."
-        else:  # pc == 1
-            fired   = options_str if options != "NEUTRAL" else bb_str
-            missing = bb_str if options != "NEUTRAL" else options_str
-            why = f"At {session} scan, one of two required primary signals was present ({fired}), but the second had not fired ({missing}). Both must agree before the system acts."
-        return f"{move_clause} {why}"
+    if not sample_sig.get("macro_gate_pass", True):
+        return f"Not evaluated — macro gate was closed at {session} (VIX or yield curve threshold breached), blocking all instruments."
 
-    if cc < 1:
+    if pc == 0:
+        proximity = "Neither required signal had fired."
         return (
-            f"{move_clause} Both primary signals aligned at {session} scan, but no confirmation signals were present "
-            f"(no director cluster buys, senate trades, superinvestor positions, or COT bias). "
-            f"At least one confirmation is required to size and place a trade."
+            f"At {session}: {options_str}, and {bb_str}. "
+            f"{proximity} The system requires both to align before placing any trade."
+        )
+
+    if pc == 1:
+        if options != "NEUTRAL" and not bb:
+            fired   = options_str
+            missing = bb_str
+        else:
+            fired   = bb_str
+            missing = options_str
+        proximity = (
+            "One signal short of the required two. "
+            + ("The volatility squeeze was in place — the breakout was the only missing piece." if squeeze and not bb
+               else "")
+        )
+        return (
+            f"At {session}: {fired}. However, {missing}. "
+            f"{proximity} Both primary signals must agree before the system acts."
+        )
+
+    if pc >= 2 and cc < 1:
+        return (
+            f"At {session}: both primary signals were present, but no confirmation signals fired "
+            f"(no director cluster buys, senate purchases, superinvestor activity, or COT bias aligned). "
+            f"At least one confirmation is required. These instruments were the closest to triggering a trade today."
         )
 
     return (
-        f"{move_clause} Signals at {session} scan: {pc} primaries and {cc} confirmations present, "
-        f"but the combined score did not meet the entry threshold at that moment. "
-        f"The move may have developed after the scan window closed."
+        f"At {session}: {pc} primary and {cc} confirmation signal(s) were present, "
+        f"but the combined threshold was not met at the scan window. "
+        f"The move may have developed after all 15-minute scan windows had closed."
     )
 
 
@@ -515,29 +536,25 @@ def build_report(
     lines.append(f"*Notable Moves Not Traded — {len(notable_gaps)}*")
     if grouped:
         for category, items in grouped.items():
-            # Category header with plain-English explanation
-            lines.append(f"\n  _{category}_")
+            lines.append("")
+            # Instruments first — move size + volume
             for ticker, pct, move_data, sig in items:
-                pct_str  = f"+{pct*100:.1f}%" if pct > 0 else f"{pct*100:.1f}%"
+                pct_str    = f"+{pct*100:.1f}%" if pct > 0 else f"{pct*100:.1f}%"
                 vol_ratio  = move_data.get("volume_ratio")
                 vol_signal = move_data.get("volume_signal", "NORMAL")
                 if vol_ratio is not None:
-                    vol_str = f"  Volume {vol_ratio:.1f}× avg"
-                    if vol_signal == "HIGH":
-                        vol_str += " ⬆ (above-average conviction)"
-                    elif vol_signal == "LOW":
-                        vol_str += " ⬇ (weak conviction — move may lack follow-through)"
+                    vol_tag = (
+                        f"  vol {vol_ratio:.1f}× avg ⬆" if vol_signal == "HIGH" else
+                        f"  vol {vol_ratio:.1f}× avg ⬇" if vol_signal == "LOW" else
+                        f"  vol {vol_ratio:.1f}× avg"
+                    )
                 else:
-                    vol_str = ""
-                lines.append(f"  *{ticker}* {pct_str}{vol_str}")
-
-        # One shared explanation per group at the end
-        lines.append("")
-        lines.append(
-            "  _Note: signals are evaluated at session open and again every 15 minutes "
-            "by the US Monitor. If a move developed after all scan windows, it will not "
-            "have been caught regardless of its size._"
-        )
+                    vol_tag = ""
+                lines.append(f"  *{ticker}* {pct_str}{vol_tag}")
+            # One shared explanation for all instruments in this group
+            sample_sig = items[0][3]
+            summary = group_summary(category, sample_sig)
+            lines.append(f"  _{summary}_")
     else:
         lines.append("  No scanned instruments had notable moves outside traded positions.")
     lines.append("")
