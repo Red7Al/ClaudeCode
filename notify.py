@@ -38,6 +38,7 @@
 import os
 import logging
 import requests
+import pg8000.native
 from datetime import datetime, timezone
 
 
@@ -87,6 +88,33 @@ def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC")
 
 
+def _instrument_name(ticker: str) -> str:
+    """
+    Look up the human-readable instrument name from Supabase epic_lookup.
+    Returns the description if found, or just the ticker if not.
+    e.g. 'IBM' -> 'IBM Corp (24 Hours)'
+         'NBIS' -> 'Nebius Group NV (24 Hours)'
+    """
+    try:
+        conn = pg8000.native.Connection(
+            host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+            database="postgres",
+            user=os.environ["SUPABASE_USER"],
+            password=os.environ["SUPABASE_DB_PASSWORD"],
+            ssl_context=True
+        )
+        rows = conn.run(
+            "select description from epic_lookup where ticker = :t limit 1",
+            t=ticker
+        )
+        conn.close()
+        if rows and rows[0][0]:
+            return rows[0][0]
+    except Exception:
+        pass
+    return ticker
+
+
 # =============================================================================
 # Trade Notifications → #claude-trading-trades
 # Fired when a trade is opened or closed.
@@ -104,13 +132,15 @@ def trade_opened(
     user:           str = "Owner"
 ):
     """Send a trade opened notification to #claude-trading-trades."""
-    emoji   = "🟢" if direction == "BUY" else "🔴"
-    rr      = round(abs(target - entry) / max(abs(entry - stop), 0.0001), 2)
+    emoji      = "🟢" if direction == "BUY" else "🔴"
+    rr         = round(abs(target - entry) / max(abs(entry - stop), 0.0001), 2)
+    inst_name  = _instrument_name(ticker)
+    title      = f"{ticker} — {inst_name}" if inst_name != ticker else ticker
 
     blocks = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"{emoji} Trade Opened — {ticker}"}
+            "text": {"type": "plain_text", "text": f"{emoji} Trade Opened — {title}"}
         },
         {
             "type": "section",
@@ -148,7 +178,9 @@ def trade_closed(
 ):
     """Send a trade closed notification to #claude-trading-trades."""
 
-    pnl_emoji = "✅" if pnl >= 0 else "❌"
+    pnl_emoji  = "✅" if pnl >= 0 else "❌"
+    inst_name  = _instrument_name(ticker)
+    title      = f"{ticker} — {inst_name}" if inst_name != ticker else ticker
 
     # Human-readable labels for each close reason code
     reason_labels = {
@@ -164,7 +196,7 @@ def trade_closed(
     blocks = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"{pnl_emoji} Trade Closed — {ticker}"}
+            "text": {"type": "plain_text", "text": f"{pnl_emoji} Trade Closed — {title}"}
         },
         {
             "type": "section",
@@ -246,6 +278,8 @@ def signal_detail(ticker: str, signal: dict):
     Send a full signal breakdown for a specific instrument.
     Useful for understanding exactly which signals fired on a candidate trade.
     """
+    inst_name = _instrument_name(ticker)
+    title     = f"{ticker} — {inst_name}" if inst_name != ticker else ticker
     checks = {
         "Options flow":   signal.get("options_bias", "—"),
         "BB squeeze":     "Yes" if signal.get("bb_squeeze") else "No",
@@ -264,7 +298,7 @@ def signal_detail(ticker: str, signal: dict):
     blocks = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"🔍 Signal Detail — {ticker}"}
+            "text": {"type": "plain_text", "text": f"🔍 Signal Detail — {title}"}
         },
         {
             "type": "section",
