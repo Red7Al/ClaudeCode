@@ -202,6 +202,9 @@ YAHOO_MAP = {
     "USDJPY":  "USDJPY=X",
     "EURUSD":  "EURUSD=X",
 
+    # China
+    "CN50":    "^FTXIN9",    # FTSE China A50 Index
+
     # Macro
     "VIX":     "^VIX",
     "DXY":     "DX-Y.NYB",
@@ -276,7 +279,8 @@ SESSION_INSTRUMENTS = {
 
     "AUS_OPEN": [
         "JPN225",   # Nikkei 225
-        "HK50",     # Hang Seng
+        "HK50",     # Hang Seng (China H-shares exposure)
+        "CN50",     # China A50 — Shanghai/Shenzhen top 50, opens 01:30 UTC
         "XAUUSD",   # Gold (trades 24hrs — always evaluated)
         "AUDUSD",   # AUD/USD
         "USDJPY",   # USD/JPY
