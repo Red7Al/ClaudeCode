@@ -193,7 +193,9 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
 
 def get_intraday_move_and_volume(tickers: list[str]) -> dict[str, dict]:
     """
-    Fetch intraday max move and volume vs 20-day average for each ticker.
+    Fetch today's day return (vs previous close) and volume vs 20-day average.
+    Uses previous close as base — correctly handles gap-up/gap-down opens.
+    e.g. IBM opens +8% on news, drifts to +7.5% — correctly shows +7.5% not -0.5%.
     Returns {ticker: {pct_move, volume_ratio, volume_signal}}.
     """
     data = {}
@@ -201,30 +203,30 @@ def get_intraday_move_and_volume(tickers: list[str]) -> dict[str, dict]:
         yticker = YAHOO_MAP.get(ticker, ticker)
         try:
             t    = yf.Ticker(yticker)
-            hist = t.history(period="1d", interval="1d")
-            if hist.empty:
+            # Fetch 2 days so we have yesterday's close as the base
+            hist = t.history(period="5d", interval="1d")
+            if len(hist) < 2:
                 continue
-            row    = hist.iloc[-1]
-            open_  = row["Open"]
-            if not open_:
-                continue
-            pct_up   = (row["High"] - open_) / open_
-            pct_down = (row["Low"]  - open_) / open_
-            pct      = pct_up if abs(pct_up) >= abs(pct_down) else pct_down
 
-            # Volume vs 20-day average
-            hist20 = t.history(period="25d", interval="1d")
-            vol_ratio = None
+            prev_close  = float(hist["Close"].iloc[-2])
+            today_close = float(hist["Close"].iloc[-1])
+            today_vol   = float(hist["Volume"].iloc[-1])
+
+            if not prev_close:
+                continue
+
+            pct = (today_close - prev_close) / prev_close
+
+            # Volume vs 20-day average (excluding today)
+            avg_vol    = float(hist["Volume"].iloc[:-1].mean())
+            vol_ratio  = None
             vol_signal = "NORMAL"
-            if not hist20.empty and len(hist20) > 1:
-                avg_vol = float(hist20["Volume"].iloc[:-1].mean())
-                today_vol = float(row["Volume"])
-                if avg_vol > 0:
-                    vol_ratio = round(today_vol / avg_vol, 2)
-                    if vol_ratio >= 1.5:
-                        vol_signal = "HIGH"
-                    elif vol_ratio < 0.5:
-                        vol_signal = "LOW"
+            if avg_vol > 0:
+                vol_ratio = round(today_vol / avg_vol, 2)
+                if vol_ratio >= 1.5:
+                    vol_signal = "HIGH"
+                elif vol_ratio < 0.5:
+                    vol_signal = "LOW"
 
             data[ticker] = {
                 "pct_move":     round(pct, 4),
@@ -237,33 +239,8 @@ def get_intraday_move_and_volume(tickers: list[str]) -> dict[str, dict]:
 
 
 def get_intraday_moves(tickers: list[str]) -> dict[str, float]:
-    """
-    Fetch the maximum intraday move from open for each ticker via Yahoo Finance.
-    Uses High vs Open (up move) or Low vs Open (down move), whichever is larger.
-    This catches instruments that moved significantly intraday but gave back gains
-    before close — e.g. IBM up 10% intraday that closed up only 2%.
-    Returns {ticker: pct_move} — positive = up, negative = down.
-    """
-    moves = {}
-    for ticker in tickers:
-        yticker = YAHOO_MAP.get(ticker, ticker)
-        try:
-            t    = yf.Ticker(yticker)
-            hist = t.history(period="1d", interval="1d")
-            if hist.empty:
-                continue
-            row      = hist.iloc[-1]
-            open_    = row["Open"]
-            if not open_:
-                continue
-            pct_up   = (row["High"]  - open_) / open_   # best upside intraday
-            pct_down = (row["Low"]   - open_) / open_   # worst downside intraday
-            # Use whichever was the bigger move (by absolute value)
-            pct = pct_up if abs(pct_up) >= abs(pct_down) else pct_down
-            moves[ticker] = round(pct, 4)
-        except Exception:
-            pass
-    return moves
+    """Thin wrapper — returns just pct_move from get_intraday_move_and_volume."""
+    return {k: v["pct_move"] for k, v in get_intraday_move_and_volume(tickers).items()}
 
 
 # ---------------------------------------------------------------------------
