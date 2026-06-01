@@ -1,4 +1,4 @@
-﻿name: Social Feed Monitor (2 hourly)
+name: Social Feed Monitor (2 hourly)
 
 on:
   schedule:
@@ -6,11 +6,12 @@ on:
     - cron: '3 10,14,18 * * 0,6' # 3x on weekends (Sat/Sun)
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   run:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 10
     env:
       IG_API_KEY:            ${{ secrets.IG_API_KEY }}

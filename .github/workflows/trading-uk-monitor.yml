@@ -1,15 +1,16 @@
-﻿name: UK Monitor (15 min)
+name: UK Monitor (15 min)
 
 on:
   schedule:
     - cron: '*/20 8-16 * * 1-5'   # Every 20 min, 08:00-16:59 UTC (UK session)
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   run:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 8
     env:
       IG_API_KEY:            ${{ secrets.IG_API_KEY }}
