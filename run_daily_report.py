@@ -60,8 +60,8 @@ def get_db():
 def fetch_todays_trades(db, today_str: str) -> list[dict]:
     """All trades opened today, with signal summary."""
     rows = db.run(
-        """select ticker, direction, open_price, stop_loss, limit_level,
-                  size, session, signal_summary, opened_at, deal_id
+        """select ticker, direction, open_price, stop_loss,
+                  size, session, signal_summary, opened_at
            from trade_log
            where date(opened_at) = :d
            order by opened_at""",
@@ -70,9 +70,8 @@ def fetch_todays_trades(db, today_str: str) -> list[dict]:
     return [
         {
             "ticker": r[0], "direction": r[1], "open_price": r[2],
-            "stop_loss": r[3], "limit_level": r[4], "size": r[5],
-            "session": r[6], "signal_summary": r[7],
-            "opened_at": r[8], "deal_id": r[9],
+            "stop_loss": r[3], "size": r[4],
+            "session": r[5], "signal_summary": r[6], "opened_at": r[7],
         }
         for r in (rows or [])
     ]
@@ -116,11 +115,13 @@ def fetch_open_positions(db) -> list[dict]:
 
 
 def fetch_daily_pnl(db, today_str: str) -> list[dict]:
-    """Daily P&L per user."""
+    """Daily P&L per user, joined to user_profiles for the name."""
     rows = db.run(
-        """select user_id, total_pnl, trade_count, win_count, loss_count, daily_loss_hit
-           from daily_pnl
-           where trade_date = :d""",
+        """select coalesce(up.name, dp.user_id::text),
+                  dp.total_pnl, dp.trade_count, dp.win_count, dp.loss_count, dp.daily_loss_hit
+           from daily_pnl dp
+           left join user_profiles up on up.id = dp.user_id
+           where dp.trade_date = :d""",
         d=today_str
     )
     return [
@@ -154,24 +155,23 @@ def fetch_macro_snapshot(db, today_str: str) -> dict:
 def fetch_signal_log(db, today_str: str) -> list[dict]:
     """All instruments scanned today — including those that did NOT trigger a trade."""
     rows = db.run(
-        """select ticker, session, options_bias, call_put_ratio, bb_breakout_dir,
-                  cot_bias, pa_verdict, primary_count, confirmation_count,
+        """select ticker, session, options_bias, bb_breakout_dir,
+                  cot_bias, confirmation_count,
                   director_signal, senate_signal, notable_investor, social_mention,
-                  trade_triggered, direction
+                  trade_triggered
            from signal_log
-           where date(scanned_at) = :d
+           where date(session_time) = :d
            order by session, ticker""",
         d=today_str
     )
     return [
         {
             "ticker": r[0], "session": r[1], "options_bias": r[2],
-            "call_put_ratio": float(r[3]) if r[3] else None,
-            "bb_breakout_dir": r[4], "cot_bias": r[5], "pa_verdict": r[6],
-            "primary_count": int(r[7] or 0), "confirmation_count": int(r[8] or 0),
-            "director_signal": r[9], "senate_signal": r[10],
-            "notable_investor": r[11], "social_mention": r[12],
-            "trade_triggered": r[13], "direction": r[14],
+            "bb_breakout_dir": r[3], "cot_bias": r[4],
+            "primary_count": 0, "confirmation_count": int(r[5] or 0),
+            "director_signal": r[6], "senate_signal": r[7],
+            "notable_investor": r[8], "social_mention": r[9],
+            "trade_triggered": r[10],
         }
         for r in (rows or [])
     ]
@@ -303,11 +303,7 @@ def _hold_duration(opened_at) -> str:
         return ""
 
 
-USER_LABELS = {
-    "00000000-0000-0000-0000-000000000001": "Owner",
-    "00000000-0000-0000-0000-000000000002": "Wife",
-    "00000000-0000-0000-0000-000000000003": "Son (paper)",
-}
+USER_LABELS = {}  # name comes directly from user_profiles.name via join
 
 
 # ---------------------------------------------------------------------------
@@ -347,19 +343,10 @@ def build_report(
     lines.append(f"*Trades Opened Today — {len(trades_opened)}*")
     if trades_opened:
         for t in trades_opened:
-            rr = ""
-            try:
-                ep = float(t["open_price"] or 0)
-                sl = float(t["stop_loss"] or 0)
-                lm = float(t["limit_level"] or 0)
-                if ep and sl and lm:
-                    rr = f"  R:R {round(abs(lm-ep)/max(abs(ep-sl),0.0001),1)}:1"
-            except Exception:
-                pass
             lines.append(
                 f"  {_direction_arrow(t['direction'])}  *{t['ticker']}*  "
                 f"Entry {t['open_price']}  Stop {t['stop_loss']}  "
-                f"Target {t['limit_level']}  Size {t['size']}{rr}  [{t['session']}]"
+                f"Size {t['size']}  [{t['session']}]"
             )
             if t.get("signal_summary"):
                 lines.append(f"  _Signals: {t['signal_summary']}_")
@@ -439,7 +426,7 @@ def build_report(
     if daily_pnl:
         total = sum(u["total_pnl"] for u in daily_pnl)
         for u in daily_pnl:
-            label    = USER_LABELS.get(u["user_id"], u["user_id"])
+            label    = u["user_id"]  # name comes from user_profiles join
             loss_flag = "  ⚠ LIMIT HIT" if u.get("daily_loss_hit") else ""
             win_rate  = (
                 f"{u['win_count']}/{u['trade_count']} wins"
