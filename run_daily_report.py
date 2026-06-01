@@ -190,6 +190,51 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
 # Market move detection
 # ---------------------------------------------------------------------------
 
+def get_intraday_move_and_volume(tickers: list[str]) -> dict[str, dict]:
+    """
+    Fetch intraday max move and volume vs 20-day average for each ticker.
+    Returns {ticker: {pct_move, volume_ratio, volume_signal}}.
+    """
+    data = {}
+    for ticker in tickers:
+        yticker = YAHOO_MAP.get(ticker, ticker)
+        try:
+            t    = yf.Ticker(yticker)
+            hist = t.history(period="1d", interval="1d")
+            if hist.empty:
+                continue
+            row    = hist.iloc[-1]
+            open_  = row["Open"]
+            if not open_:
+                continue
+            pct_up   = (row["High"] - open_) / open_
+            pct_down = (row["Low"]  - open_) / open_
+            pct      = pct_up if abs(pct_up) >= abs(pct_down) else pct_down
+
+            # Volume vs 20-day average
+            hist20 = t.history(period="25d", interval="1d")
+            vol_ratio = None
+            vol_signal = "NORMAL"
+            if not hist20.empty and len(hist20) > 1:
+                avg_vol = float(hist20["Volume"].iloc[:-1].mean())
+                today_vol = float(row["Volume"])
+                if avg_vol > 0:
+                    vol_ratio = round(today_vol / avg_vol, 2)
+                    if vol_ratio >= 1.5:
+                        vol_signal = "HIGH"
+                    elif vol_ratio < 0.5:
+                        vol_signal = "LOW"
+
+            data[ticker] = {
+                "pct_move":     round(pct, 4),
+                "volume_ratio": vol_ratio,
+                "volume_signal": vol_signal,
+            }
+        except Exception:
+            pass
+    return data
+
+
 def get_intraday_moves(tickers: list[str]) -> dict[str, float]:
     """
     Fetch the maximum intraday move from open for each ticker via Yahoo Finance.
@@ -428,24 +473,71 @@ def build_report(
     all_scanned_tickers = {s["ticker"] for s in signal_log}
     traded_tickers      = {t["ticker"] for t in trades_opened}
 
+    # Build list of (ticker, move_data, reason_category, explanation)
     notable_gaps = []
-    for ticker, pct in market_moves.items():
-        if abs(pct) >= NOTABLE_MOVE_THRESHOLD and ticker in all_scanned_tickers and ticker not in traded_tickers:
-            sig_entries = [s for s in signal_log if s["ticker"] == ticker]
-            sig = sig_entries[-1] if sig_entries else {}
-            explanation = explain_why_not_traded(sig, pct) if sig else (
-                f"{ticker} moved {pct*100:+.1f}% but was not in today's scan list."
-            )
-            notable_gaps.append((ticker, pct, explanation))
+    for ticker, move_data in market_moves.items():
+        pct = move_data["pct_move"]
+        if abs(pct) < NOTABLE_MOVE_THRESHOLD or ticker in traded_tickers:
+            continue
+        if ticker not in all_scanned_tickers:
+            continue
+        sig_entries = [s for s in signal_log if s["ticker"] == ticker]
+        sig = sig_entries[-1] if sig_entries else {}
+        pc  = sig.get("primary_count", 0)
+        cc  = sig.get("confirmation_count", 0)
+        # Assign a reason category for grouping
+        if not sig.get("macro_gate_pass", True):
+            category = "Macro gate closed"
+        elif pc == 0:
+            category = "No primary signals at scan time (options neutral + no BB breakout)"
+        elif pc == 1:
+            if sig.get("options_bias") in ("BULLISH", "BEARISH") and not sig.get("bb_breakout_dir"):
+                category = "Options bullish but no BB breakout at scan time"
+            elif sig.get("bb_breakout_dir") and sig.get("options_bias") == "NEUTRAL":
+                category = "BB breakout but options flow neutral at scan time"
+            else:
+                category = "One of two primary signals fired at scan time"
+        elif pc >= 2 and cc == 0:
+            category = "Both primaries fired but no confirmation signals"
+        else:
+            category = "Signals present but threshold not met at scan time"
 
-    # Also flag instruments in the scan list that moved significantly even if not in YAHOO_MAP moves
+        notable_gaps.append((ticker, pct, move_data, category, sig))
+
     notable_gaps.sort(key=lambda x: abs(x[1]), reverse=True)
 
+    # Group by reason category
+    from collections import defaultdict
+    grouped = defaultdict(list)
+    for ticker, pct, move_data, category, sig in notable_gaps:
+        grouped[category].append((ticker, pct, move_data, sig))
+
     lines.append(f"*Notable Moves Not Traded — {len(notable_gaps)}*")
-    if notable_gaps:
-        for ticker, pct, explanation in notable_gaps:
-            pct_str = f"+{pct*100:.1f}%" if pct > 0 else f"{pct*100:.1f}%"
-            lines.append(f"  *{ticker}* {pct_str}  —  {explanation}")
+    if grouped:
+        for category, items in grouped.items():
+            # Category header with plain-English explanation
+            lines.append(f"\n  _{category}_")
+            for ticker, pct, move_data, sig in items:
+                pct_str  = f"+{pct*100:.1f}%" if pct > 0 else f"{pct*100:.1f}%"
+                vol_ratio  = move_data.get("volume_ratio")
+                vol_signal = move_data.get("volume_signal", "NORMAL")
+                if vol_ratio is not None:
+                    vol_str = f"  Volume {vol_ratio:.1f}× avg"
+                    if vol_signal == "HIGH":
+                        vol_str += " ⬆ (above-average conviction)"
+                    elif vol_signal == "LOW":
+                        vol_str += " ⬇ (weak conviction — move may lack follow-through)"
+                else:
+                    vol_str = ""
+                lines.append(f"  *{ticker}* {pct_str}{vol_str}")
+
+        # One shared explanation per group at the end
+        lines.append("")
+        lines.append(
+            "  _Note: signals are evaluated at session open and again every 15 minutes "
+            "by the US Monitor. If a move developed after all scan windows, it will not "
+            "have been caught regardless of its size._"
+        )
     else:
         lines.append("  No scanned instruments had notable moves outside traded positions.")
     lines.append("")
@@ -512,7 +604,7 @@ def main():
     } | {
         p["ticker"] for p in open_positions
     })
-    market_moves    = get_intraday_moves(all_tickers)
+    market_moves    = get_intraday_move_and_volume(all_tickers)
     tomorrow_events = get_tomorrows_events()
 
     report = build_report(
