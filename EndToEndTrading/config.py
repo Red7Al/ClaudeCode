@@ -1,0 +1,347 @@
+# =============================================================================
+# File:         config.py
+# Author:       Alex Hind
+# Created:      2026-05-30
+#
+# Description:
+# -----------------------------------------------------------------------------
+# Central configuration for the EndToEndTrading system.
+# All instrument definitions, epic codes, ATR multipliers, session instrument
+# lists, and system constants live here.
+#
+# This is the file to edit when:
+#   - Adding a new instrument to trade
+#   - Adjusting ATR stop multipliers
+#   - Changing session instrument lists
+#   - Updating Yahoo Finance ticker mappings
+#   - Modifying trade/risk constants
+#
+# Epic codes are verified CFD epics from IG UK (account HTIRV).
+# Format reference:
+#   CS.D.*    Spot / cash CFDs (FX, metals)
+#   CC.D.*    Commodity futures CFDs
+#   IX.D.*    Index CFDs
+#   UA.D.*    US equity CFDs (24hr)
+#   UB.D.*    US equity CFDs (24hr, alternate prefix)
+#   UD.D.*    US equity CFDs (24hr, alternate prefix)
+#   KA.D.*    UK equity CFDs
+#   SE.D.*    Extended hours US equity CFDs
+#
+# Version History:
+# -----------------------------------------------------------------------------
+# 1.0.0   2026-05-30  Alex Hind   Initial build. Epics verified against live
+#                                 IG account HTIRV. Seeded into Supabase
+#                                 epic_lookup table on 2026-05-30.
+# =============================================================================
+
+
+# =============================================================================
+# IG Epic Codes — Verified CFD Epics
+# Maps our ticker names to the exact IG API epic identifiers.
+# Expiry: DFB (Daily Funded Bet) for all rolling CFD contracts.
+# =============================================================================
+
+EPIC_MAP = {
+
+    # -------------------------------------------------------------------------
+    # Forex — Spot Cash CFDs (TODAY contracts)
+    # -------------------------------------------------------------------------
+    "GBPUSD":  "CS.D.GBPUSD.TODAY.IP",     # British Pound / US Dollar
+    "AUDUSD":  "CS.D.AUDUSD.TODAY.IP",     # Australian Dollar / US Dollar
+    "USDJPY":  "CS.D.USDJPY.TODAY.IP",     # US Dollar / Japanese Yen
+    "EURUSD":  "CS.D.EURUSD.TODAY.IP",     # Euro / US Dollar
+    "USDCAD":  "CS.D.USDCAD.TODAY.IP",     # US Dollar / Canadian Dollar
+    "USDCHF":  "CS.D.USDCHF.TODAY.IP",     # US Dollar / Swiss Franc
+    "NZDUSD":  "CS.D.NZDUSD.TODAY.IP",     # New Zealand Dollar / US Dollar
+
+    # -------------------------------------------------------------------------
+    # Commodities — Precious Metals (Spot Cash CFDs)
+    # -------------------------------------------------------------------------
+    "XAUUSD":    "CS.D.USCGC.TODAY.IP",    # Spot Gold
+    "GOLD":      "CS.D.USCGC.TODAY.IP",    # Spot Gold (alias)
+    "SPOTGOLD":  "CS.D.USCGC.TODAY.IP",    # Spot Gold (alias)
+    "XAGUSD":    "CS.D.USCSI.TODAY.IP",    # Spot Silver
+    "SILVER":    "CS.D.USCSI.TODAY.IP",    # Spot Silver (alias)
+    "PLATINUM":  "CS.D.PLAT.TODAY.IP",     # Platinum
+    "PALLADIUM": "CS.D.PALL.TODAY.IP",     # Palladium
+    "COPPER":    "CS.D.COPPER.TODAY.IP",   # Copper
+    "ZINC":      "CS.D.ZINC.TODAY.IP",     # Zinc
+    "NICKEL":    "CS.D.NICKEL.TODAY.IP",   # Nickel
+    "LEAD":      "CS.D.LEAD.TODAY.IP",     # Lead
+    "ALUMINIUM": "CS.D.ALUMINIUM.TODAY.IP",# Aluminium
+
+    # -------------------------------------------------------------------------
+    # Commodities — Energy (Futures CFDs)
+    # -------------------------------------------------------------------------
+    "OIL":    "CC.D.CL.USS.IP",            # US Crude Oil (WTI)
+    "USOIL":  "CC.D.CL.USS.IP",            # US Crude Oil (alias)
+    "CL":     "CC.D.CL.USS.IP",            # US Crude Oil (alias)
+
+    # -------------------------------------------------------------------------
+    # Indices — Major Markets (CFDs)
+    # -------------------------------------------------------------------------
+    # S&P 500
+    "SPX500": "IX.D.SPTR500.IFD.IP",       # S&P 500
+    "SPX":    "IX.D.SPTR500.IFD.IP",       # S&P 500 (alias)
+    "US500":  "IX.D.SPTR500.IFD.IP",       # S&P 500 (alias)
+    "SP500":  "IX.D.SPTR500.IFD.IP",       # S&P 500 (alias)
+
+    # NASDAQ 100
+    "NASDAQ": "IX.D.NASDAQ.IFD.IP",        # NASDAQ 100
+    "NAS100": "IX.D.NASDAQ.IFD.IP",        # NASDAQ 100 (alias)
+    "NDX":    "IX.D.NASDAQ.IFD.IP",        # NASDAQ 100 (alias)
+    "USTEC":  "IX.D.NASDAQ.IFD.IP",        # NASDAQ 100 (alias)
+    "US100":  "IX.D.NASDAQ.IFD.IP",        # NASDAQ 100 (alias)
+
+    # Dow Jones 30
+    "DOW":    "IX.D.DOW.IFD.IP",           # Dow Jones 30 (verify epic)
+    "US30":   "IX.D.DOW.IFD.IP",           # Dow Jones 30 (alias)
+    "WALL":   "IX.D.DOW.IFD.IP",           # Dow Jones 30 (alias)
+
+    # UK / Europe / Asia
+    "UK100":   "IX.D.FTSE.IFD.IP",         # FTSE 100
+    "FTSE100": "IX.D.FTSE.IFD.IP",         # FTSE 100 (alias)
+    "JPN225":  "IX.D.NIKKEI.IFD.IP",       # Nikkei 225
+    "HK50":    "IX.D.HSIF.IFD.IP",         # Hang Seng
+    "DAX":     "IX.D.DAX.IFD.IP",          # DAX 40
+
+    # -------------------------------------------------------------------------
+    # US Equities — Large Cap Tech (24-hour CFDs)
+    # -------------------------------------------------------------------------
+    "AAPL":  "UA.D.AAPL.DAILY.IP",         # Apple Inc
+    "MSFT":  "UA.D.MSFT.DAILY.IP",         # Microsoft Corp
+    "NVDA":  "UA.D.NVDA.DAILY.IP",         # NVIDIA Corp
+    "AMZN":  "UA.D.AMZN.DAILY.IP",         # Amazon.com Inc
+    "GOOGL": "UB.D.GOOGL.DAILY.IP",        # Alphabet Inc Class A
+    "GOOG":  "UB.D.GOOGUS.DAILY.IP",       # Alphabet Inc Class C
+    "META":  "UB.D.FB.DAILY.IP",           # Meta Platforms (NOTE: IG uses old FB epic)
+    "AMD":   "UA.D.AMD.DAILY.IP",          # Advanced Micro Devices
+    "AVGO":  "UA.D.AVGO.DAILY.IP",         # Broadcom Inc
+    "TSLA":  "UD.D.TSLA.DAILY.IP",         # Tesla Inc
+    "PLTR":  "SE.D.PLTRUS.DAILY.IP",       # Palantir Technologies
+
+    # -------------------------------------------------------------------------
+    # US Equities — Semiconductors
+    # -------------------------------------------------------------------------
+    "INTC":  "UB.D.INTC.DAILY.IP",         # Intel Corp
+    "QCOM":  "UA.D.QCOM.DAILY.IP",         # Qualcomm
+    "MU":    "UA.D.MU.DAILY.IP",           # Micron Technology
+    "AMAT":  "UA.D.AMAT.DAILY.IP",         # Applied Materials
+    "KLAC":  "UA.D.KLAC.DAILY.IP",         # KLA Corp
+    "ASML":  "EG.D.ASML.DAILY.IP",         # ASML Holding NV (European listed)
+
+    # -------------------------------------------------------------------------
+    # UK Equities
+    # -------------------------------------------------------------------------
+    "BP":    "KA.D.BP.DAILY.IP",           # BP PLC
+    "LLOY":  "KA.D.LLOY.DAILY.IP",         # Lloyds Banking Group
+    "BARC":  "KA.D.BARC.DAILY.IP",         # Barclays PLC
+    "AZN":   "KA.D.AZN.DAILY.IP",          # AstraZeneca PLC
+    "RIO":   "KA.D.RIO.DAILY.IP",          # Rio Tinto PLC
+    "GSK":   "KA.D.GSK.DAILY.IP",          # GSK PLC
+    "VOD":   "KA.D.VOD.DAILY.IP",          # Vodafone Group PLC
+    "RR":    "KA.D.RR.DAILY.IP",           # Rolls-Royce Holdings PLC
+
+    # -------------------------------------------------------------------------
+    # Crypto CFDs
+    # -------------------------------------------------------------------------
+    "BTCUSD":  "CS.D.BITCOIN.TODAY.IP",    # Bitcoin / USD
+    "BITCOIN": "CS.D.BITCOIN.TODAY.IP",    # Bitcoin (alias)
+    "ETHUSD":  "CS.D.ETHUSD.TODAY.IP",     # Ethereum / USD
+
+}
+
+
+# =============================================================================
+# Yahoo Finance Ticker Mapping
+# Maps our internal ticker names to Yahoo Finance symbols for price/options data.
+# =============================================================================
+
+YAHOO_MAP = {
+
+    # Indices
+    "SPX500":  "^GSPC",
+    "NASDAQ":  "^IXIC",
+    "UK100":   "^FTSE",
+    "JPN225":  "^N225",
+    "HK50":    "^HSI",
+    "DAX":     "^GDAXI",
+
+    # Commodities
+    "XAUUSD":  "GC=F",         # Gold futures (closest proxy for spot)
+    "XAGUSD":  "SI=F",         # Silver futures
+    "OIL":     "CL=F",         # WTI Crude futures
+
+    # FX
+    "GBPUSD":  "GBPUSD=X",
+    "AUDUSD":  "AUDUSD=X",
+    "USDJPY":  "USDJPY=X",
+    "EURUSD":  "EURUSD=X",
+
+    # Macro
+    "VIX":     "^VIX",
+    "DXY":     "DX-Y.NYB",
+
+    # US Equities — use ticker directly (Yahoo matches)
+    "NVDA":    "NVDA",
+    "AAPL":    "AAPL",
+    "MSFT":    "MSFT",
+    "META":    "META",
+    "AMZN":    "AMZN",
+    "GOOGL":   "GOOGL",
+    "TSLA":    "TSLA",
+    "AMD":     "AMD",
+    "PLTR":    "PLTR",
+    "AVGO":    "AVGO",
+
+}
+
+
+# =============================================================================
+# ATR Stop Loss Multipliers
+# Applied to the 14-period ATR to compute the stop distance for each instrument.
+# Wider multiplier = more breathing room = less likely to be stopped out by noise.
+# =============================================================================
+
+ATR_MULTIPLIERS = {
+
+    # Equities and indices — standard
+    "NVDA":    1.5,
+    "AAPL":    1.5,
+    "MSFT":    1.5,
+    "META":    1.5,
+    "AMZN":    1.5,
+    "GOOGL":   1.5,
+    "TSLA":    1.5,
+    "AMD":     1.5,
+    "PLTR":    1.5,
+    "SPX500":  1.5,
+    "NASDAQ":  1.5,
+    "UK100":   1.5,
+    "JPN225":  1.5,
+    "HK50":    1.5,
+    "DAX":     1.5,
+
+    # Gold — standard (strong trending instrument)
+    "XAUUSD":  1.5,
+    "XAGUSD":  1.5,
+
+    # Oil — wider (high volatility, news-driven spikes)
+    "OIL":     2.0,
+    "USOIL":   2.0,
+
+    # FX — tighter (lower volatility per point)
+    "GBPUSD":  1.2,
+    "AUDUSD":  1.2,
+    "USDJPY":  1.2,
+    "EURUSD":  1.2,
+
+}
+
+# Default ATR multiplier for any instrument not listed above
+ATR_MULTIPLIER_DEFAULT = 1.5
+
+
+# =============================================================================
+# Session Instrument Lists
+# Defines which instruments are evaluated at each session open.
+# AUS200 excluded — not traded.
+# =============================================================================
+
+SESSION_INSTRUMENTS = {
+
+    "AUS_OPEN": [
+        "JPN225",   # Nikkei 225
+        "HK50",     # Hang Seng
+        "XAUUSD",   # Gold (trades 24hrs — always evaluated)
+        "AUDUSD",   # AUD/USD
+        "USDJPY",   # USD/JPY
+    ],
+
+    "AUS_MONITOR": [],   # Monitor only — no new instrument scan
+
+    "UK_OPEN": [
+        "UK100",    # FTSE 100
+        "GBPUSD",   # GBP/USD
+        "XAUUSD",   # Gold
+    ],
+
+    "UK_MONITOR": [],    # Monitor only — no new instrument scan
+
+    "US_OPEN": [
+        "SPX500",   # S&P 500
+        "NVDA",     # NVIDIA
+        "META",     # Meta Platforms
+        "MSFT",     # Microsoft
+        "AAPL",     # Apple
+        "XAUUSD",   # Gold
+        "OIL",      # US Crude Oil
+    ],
+
+    "SESSION_CLOSE": [],  # Review + close decisions only — no new instrument scan
+
+    "WEEKEND_REVIEW": [], # No instrument scan — scoring and digest only
+
+}
+
+
+# =============================================================================
+# CFTC Contract Codes for COT Data
+# Used to query the CFTC Commitment of Traders API.
+# =============================================================================
+
+CFTC_CODES = {
+    "XAUUSD":  "084691",   # Gold
+    "XAGUSD":  "084691",   # Silver (uses same group)
+    "OIL":     "067651",   # Crude Oil WTI
+    "GBPUSD":  "096742",   # British Pound
+    "AUDUSD":  "232741",   # Australian Dollar
+    "USDJPY":  "097741",   # Japanese Yen
+    "EURUSD":  "099741",   # Euro
+    "SPX500":  "13874+",   # S&P 500
+    "NASDAQ":  "20974+",   # NASDAQ 100
+}
+
+
+# =============================================================================
+# Risk & Trade Constants
+# =============================================================================
+
+# Minimum risk/reward ratio — trades below this are not placed
+MIN_RISK_REWARD = 2.0
+
+# Spread width limit — trades blocked if spread exceeds this % of mid price
+MAX_SPREAD_PCT = 0.005      # 0.5%
+
+# Session token TTL — IG sessions expire after 6 hours
+# Refresh at 5.5 hours to avoid mid-session expiry
+IG_SESSION_TTL_SECONDS = 5.5 * 3600
+
+# Maximum trades per session (across all users)
+MAX_TRADES_PER_SESSION = 3
+
+# Economic calendar block window — no new trades within this many minutes
+# of a high-impact event
+CALENDAR_BLOCK_MINUTES = 30
+
+# Macro gate thresholds
+VIX_GATE_THRESHOLD          = 35.0   # VIX above this = gate fails
+YIELD_SPREAD_GATE_THRESHOLD = -1.0   # Yield spread below this = gate fails
+
+# Signal thresholds
+MIN_PRIMARY_SIGNALS       = 2   # Minimum primary signals required to trade
+MIN_CONFIRMATION_SIGNALS  = 1   # Minimum confirmation signals required to trade
+MIN_CALL_PUT_RATIO_BULL   = 1.2 # Call/put ratio above this = bullish options signal
+MAX_CALL_PUT_RATIO_BEAR   = 0.8 # Call/put ratio below this = bearish options signal
+
+# Senator scoring
+MIN_SENATOR_TRADES = 5          # Minimum trades for a senator to qualify
+
+# Superinvestor lookback window (days)
+SUPERINVESTOR_LOOKBACK_DAYS = 90
+
+# Director buy minimum cluster size
+MIN_DIRECTOR_CLUSTER = 2        # 2+ Form 4 filings = cluster signal
+
+# Social mention lookback (hours)
+SOCIAL_MENTION_LOOKBACK_HOURS = 24
