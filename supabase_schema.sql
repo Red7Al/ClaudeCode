@@ -30,7 +30,7 @@
 -- ---------------------------------------------------------------------------
 -- 1. USERS — per-user risk profiles
 -- ---------------------------------------------------------------------------
-create table if not exists users (
+create table if not exists user_profiles (
     user_id             uuid primary key default gen_random_uuid(),
     username            text not null unique,           -- 'owner', 'wife', 'son'
     display_name        text,
@@ -44,7 +44,7 @@ create table if not exists users (
 );
 
 -- Seed the three family accounts
-insert into users (user_id, username, display_name, risk_per_trade_pct, daily_loss_limit_pct, max_open_positions, paper_trade, allowed_sessions)
+insert into user_profiles (user_id, username, display_name, risk_per_trade_pct, daily_loss_limit_pct, max_open_positions, paper_trade, allowed_sessions)
 values
     ('00000000-0000-0000-0000-000000000001', 'owner', 'Alex Hind',
      2.0, 3.0, 5, false, array['AUS_OPEN','UK_OPEN','US_OPEN']),
@@ -53,6 +53,8 @@ values
     ('00000000-0000-0000-0000-000000000003', 'son', 'E. Hind',
      2.0, 3.0, 5, true,  array['AUS_OPEN','UK_OPEN','US_OPEN'])
 on conflict (user_id) do nothing;
+
+-- Note: table is named user_profiles (not users) — matches ig_shim.py and the previous session schema.
 
 
 -- ---------------------------------------------------------------------------
