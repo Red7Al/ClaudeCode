@@ -1,4 +1,4 @@
-name: AUS/Asia Open
+﻿name: AUS/Asia Open
 
 on:
   schedule:
@@ -8,6 +8,8 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4.2.2
