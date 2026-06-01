@@ -11,12 +11,21 @@ conn = pg8000.native.Connection(
 )
 
 conn.run("drop table if exists users cascade")
-print("Dropped: users")
+print("Dropped: users (or did not exist)")
 
-# Confirm user_profiles is intact
-rows = conn.run("select username, display_name, risk_per_trade_pct, paper_trade from user_profiles order by username")
-print(f"\nuser_profiles ({len(rows)} rows):")
-for r in rows:
-    print(f"  {r[0]:<10} {r[1]:<20} risk={r[2]}%  paper={r[3]}")
+# Show actual columns in user_profiles
+cols = conn.run("""
+    select column_name, data_type
+    from information_schema.columns
+    where table_schema = 'public' and table_name = 'user_profiles'
+    order by ordinal_position
+""")
+print(f"\nuser_profiles columns:")
+for c in cols:
+    print(f"  {c[0]} ({c[1]})")
+
+# Show row count
+count = conn.run("select count(*) from user_profiles")
+print(f"\nuser_profiles row count: {count[0][0]}")
 
 conn.close()
