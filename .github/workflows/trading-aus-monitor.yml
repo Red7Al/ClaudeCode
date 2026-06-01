@@ -2,7 +2,7 @@ name: AUS/Asia Monitor (15 min)
 
 on:
   schedule:
-    - cron: '*/20 0-3 * * 1-5'   # Every 20 min, 00:00-03:59 UTC (AUS session)
+    - cron: '*/30 0-3 * * 1-5'   # Every 30 min, 00:00-03:59 UTC (AUS/Asia — commodities 24/5)
   workflow_dispatch:
 
 jobs:
