@@ -760,7 +760,137 @@ def get_commodity_macro_score(ticker: str, yield_spread: float = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 15. VOLUME SIGNAL — today vs 20-day average
+# 15. ADX — trend strength filter
+# ---------------------------------------------------------------------------
+def get_adx(ticker: str, period: int = 14) -> dict:
+    """
+    Average Directional Index — measures trend STRENGTH, not direction.
+    ADX > 25 = strong trend (breakouts and momentum trades more reliable).
+    ADX < 15 = ranging/choppy market (avoid breakout trades).
+    Also returns +DI / -DI to indicate direction of dominant trend.
+    """
+    result = {"adx": None, "adx_signal": "NEUTRAL", "di_plus": None, "di_minus": None}
+    yticker = YAHOO_MAP.get(ticker, ticker)
+    try:
+        t    = yf.Ticker(yticker)
+        hist = t.history(period="60d", interval="1d")
+        if len(hist) < period * 2:
+            return result
+
+        high  = hist["High"]
+        low   = hist["Low"]
+        close = hist["Close"]
+
+        # True Range
+        tr = pd.concat([
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low  - close.shift(1)).abs(),
+        ], axis=1).max(axis=1)
+
+        # Directional Movement
+        up_move   = high.diff()
+        down_move = -low.diff()
+        dm_plus  = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+        dm_minus = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+        # Smoothed (Wilder's EMA = span = 2*period - 1)
+        span     = 2 * period - 1
+        atr_s    = tr.ewm(span=span,     adjust=False).mean()
+        dm_plus_s  = dm_plus.ewm(span=span,  adjust=False).mean()
+        dm_minus_s = dm_minus.ewm(span=span, adjust=False).mean()
+
+        di_plus  = 100 * dm_plus_s  / atr_s.replace(0, np.nan)
+        di_minus = 100 * dm_minus_s / atr_s.replace(0, np.nan)
+        dx       = 100 * (di_plus - di_minus).abs() / (di_plus + di_minus).replace(0, np.nan)
+        adx      = dx.ewm(span=span, adjust=False).mean()
+
+        adx_val      = round(float(adx.iloc[-1]),  1)
+        di_plus_val  = round(float(di_plus.iloc[-1]),  1)
+        di_minus_val = round(float(di_minus.iloc[-1]), 1)
+
+        result["adx"]      = adx_val
+        result["di_plus"]  = di_plus_val
+        result["di_minus"] = di_minus_val
+
+        if adx_val >= 25:
+            result["adx_signal"] = "STRONG_TREND"
+        elif adx_val <= 15:
+            result["adx_signal"] = "WEAK_TREND"
+        else:
+            result["adx_signal"] = "NEUTRAL"
+
+    except Exception as e:
+        log.warning(f"ADX failed for {ticker}: {e}")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 16. OBV — On-Balance Volume divergence
+# ---------------------------------------------------------------------------
+def get_obv_signal(ticker: str, period: int = 20) -> dict:
+    """
+    On-Balance Volume trend vs price trend over the last {period} days.
+    Divergence = smart money moving opposite to price = leading signal.
+
+    BULLISH_DIVERGENCE:  OBV trending up while price is flat/down
+                         (institutions accumulating quietly — price will follow)
+    BEARISH_DIVERGENCE:  OBV trending down while price is up
+                         (institutions distributing — price likely to fall)
+    CONFIRMING_BULLISH:  Both OBV and price trending up (strong uptrend)
+    CONFIRMING_BEARISH:  Both trending down (strong downtrend)
+    NEUTRAL:             No clear divergence or confirmation
+    """
+    result = {"obv_signal": "NEUTRAL", "obv_trend": None, "price_trend": None}
+    yticker = YAHOO_MAP.get(ticker, ticker)
+    try:
+        t    = yf.Ticker(yticker)
+        hist = t.history(period=f"{period + 10}d", interval="1d")
+        if len(hist) < period:
+            return result
+
+        hist = hist.tail(period)
+        close = hist["Close"]
+        vol   = hist["Volume"]
+
+        # OBV = cumulative sum of signed volume
+        direction = close.diff().apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+        obv = (direction * vol).cumsum()
+
+        # Linear regression slopes to measure trend direction
+        x = np.arange(len(obv))
+        obv_slope   = float(np.polyfit(x, obv.values,   1)[0])
+        price_slope = float(np.polyfit(x, close.values, 1)[0])
+
+        # Normalise by mean to make comparable
+        obv_norm   = obv_slope   / (abs(obv.mean())   + 1e-10)
+        price_norm = price_slope / (abs(close.mean()) + 1e-10)
+
+        result["obv_trend"]   = "UP" if obv_norm > 0 else "DOWN"
+        result["price_trend"] = "UP" if price_norm > 0 else "DOWN"
+
+        THRESHOLD = 0.0005   # meaningful slope vs noise
+        obv_up    = obv_norm   >  THRESHOLD
+        obv_down  = obv_norm   < -THRESHOLD
+        price_up  = price_norm >  THRESHOLD
+        price_down = price_norm < -THRESHOLD
+
+        if obv_up and price_down:
+            result["obv_signal"] = "BULLISH_DIVERGENCE"
+        elif obv_down and price_up:
+            result["obv_signal"] = "BEARISH_DIVERGENCE"
+        elif obv_up and price_up:
+            result["obv_signal"] = "CONFIRMING_BULLISH"
+        elif obv_down and price_down:
+            result["obv_signal"] = "CONFIRMING_BEARISH"
+
+    except Exception as e:
+        log.warning(f"OBV signal failed for {ticker}: {e}")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 17. VOLUME SIGNAL — today vs 20-day average
 # ---------------------------------------------------------------------------
 def get_volume_signal(ticker: str) -> dict:
     """
@@ -801,6 +931,8 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     options   = get_options_signal(ticker)
     squeeze   = get_bb_squeeze(ticker)
     volume    = get_volume_signal(ticker)
+    adx       = get_adx(ticker)
+    obv       = get_obv_signal(ticker)
     gex       = get_gex_bias(ticker)
     vwap      = get_vwap_position(ticker)
     cot       = get_cot_bias(ticker)
@@ -848,6 +980,9 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     if superinv.get("superinvestor_signal"): conf_count += 1
     if social.get("social_signal"):       conf_count += 1
     if cot.get("bias") in ("BULLISH","BEARISH"): conf_count += 1
+    if adx.get("adx_signal") == "STRONG_TREND":  conf_count += 1
+    if obv.get("obv_signal") in ("BULLISH_DIVERGENCE","CONFIRMING_BULLISH") and direction == "BUY":  conf_count += 1
+    if obv.get("obv_signal") in ("BEARISH_DIVERGENCE","CONFIRMING_BEARISH") and direction == "SELL": conf_count += 1
 
     # Direction consensus
     direction = None
@@ -892,6 +1027,12 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "bb_breakout_dir":   squeeze.get("bb_breakout_dir"),
         "volume_signal":     volume.get("volume_signal"),
         "volume_ratio":      volume.get("volume_ratio"),
+        "adx":               adx.get("adx"),
+        "adx_signal":        adx.get("adx_signal"),
+        "di_plus":           adx.get("di_plus"),
+        "di_minus":          adx.get("di_minus"),
+        "obv_signal":        obv.get("obv_signal"),
+        "obv_trend":         obv.get("obv_trend"),
 
         # Confirmation signals
         "gex_bias":          gex.get("gex_bias"),
