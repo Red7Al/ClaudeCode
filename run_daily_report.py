@@ -135,7 +135,7 @@ def fetch_daily_pnl(db, today_str: str) -> list[dict]:
 
 
 def fetch_macro_snapshot(db, today_str: str) -> dict:
-    """Most recent macro snapshot for today."""
+    """Most recent macro snapshot for today, plus yesterday's for direction."""
     rows = db.run(
         """select vix, dxy, yield_spread, macro_gate_pass, gate_reason, session
            from macro_snapshot
@@ -143,13 +143,26 @@ def fetch_macro_snapshot(db, today_str: str) -> dict:
            order by snapshot_time desc limit 1""",
         d=today_str
     )
-    if rows:
-        return {
-            "vix": float(rows[0][0] or 0), "dxy": float(rows[0][1] or 0),
-            "yield_spread": float(rows[0][2] or 0), "macro_gate_pass": rows[0][3],
-            "gate_reason": rows[0][4], "session": rows[0][5],
-        }
-    return {}
+    if not rows:
+        return {}
+    result = {
+        "vix": float(rows[0][0] or 0), "dxy": float(rows[0][1] or 0),
+        "yield_spread": float(rows[0][2] or 0), "macro_gate_pass": rows[0][3],
+        "gate_reason": rows[0][4], "session": rows[0][5],
+        "prev_vix": None, "prev_dxy": None, "prev_spread": None,
+    }
+    # Yesterday's snapshot for direction arrows
+    prev = db.run(
+        """select vix, dxy, yield_spread from macro_snapshot
+           where date(snapshot_time) = :d - interval '1 day'
+           order by snapshot_time desc limit 1""",
+        d=today_str
+    )
+    if prev:
+        result["prev_vix"]    = float(prev[0][0] or 0)
+        result["prev_dxy"]    = float(prev[0][1] or 0)
+        result["prev_spread"] = float(prev[0][2] or 0)
+    return result
 
 
 def fetch_signal_log(db, today_str: str) -> list[dict]:
@@ -401,14 +414,69 @@ def build_report(
     lines.append("─" * 48)
 
     # ── Macro ─────────────────────────────────────────────────────────────────
-    gate_word = "OPEN" if macro.get("macro_gate_pass") else "CLOSED"
-    lines.append(f"*Macro Environment*")
-    lines.append(
-        f"VIX {macro.get('vix','—')}  |  DXY {macro.get('dxy','—')}  |  "
-        f"Yield spread {macro.get('yield_spread','—')}% (2Y–10Y)  |  Gate: {gate_word}"
+    def _arrow(current, prev):
+        if prev is None or current is None: return ""
+        diff = current - prev
+        if abs(diff) < 0.01: return " →"
+        return f" ▲{abs(diff):.2f}" if diff > 0 else f" ▼{abs(diff):.2f}"
+
+    vix    = macro.get("vix", 0)
+    dxy    = macro.get("dxy", 0)
+    spread = macro.get("yield_spread", 0)
+
+    # VIX label
+    if vix < 15:
+        vix_label = "very calm"
+    elif vix < 20:
+        vix_label = "calm"
+    elif vix < 25:
+        vix_label = "slightly elevated"
+    elif vix < 35:
+        vix_label = "elevated — caution"
+    else:
+        vix_label = "CRISIS level — gate closed"
+
+    # DXY label
+    dxy_label = (
+        "strong dollar — headwind for gold and commodities" if dxy > 103 else
+        "weak dollar — tailwind for gold and commodities"   if dxy < 100 else
+        "neutral dollar"
     )
+
+    # Yield spread label
+    if spread >= 0.5:
+        spread_label = "upward sloping — normal, growth expected"
+    elif spread >= 0:
+        spread_label = "flat — slowing growth signal"
+    elif spread >= -0.5:
+        spread_label = "mildly inverted — mild recession risk"
+    else:
+        spread_label = "deeply inverted — recession warning"
+
+    # Risk regime summary
+    if vix < 20 and spread >= 0 and dxy < 103:
+        regime = "RISK-ON — low volatility, normal curve, neutral/weak dollar. Favours equities, commodities, growth."
+    elif vix > 25 or spread < -0.5:
+        regime = "RISK-OFF — elevated volatility or inverted curve. Favours gold, defensives. Reduce size."
+    else:
+        regime = "MIXED — some risk-on, some caution signals. Normal position sizing."
+
+    gate_word = "✅ OPEN" if macro.get("macro_gate_pass") else "🚫 CLOSED"
+
+    lines.append("*Macro Environment*")
+    lines.append(
+        f"  VIX {vix}{_arrow(vix, macro.get('prev_vix'))}  —  {vix_label}  _(gate closes above 35)_"
+    )
+    lines.append(
+        f"  DXY {dxy}{_arrow(dxy, macro.get('prev_dxy'))}  —  {dxy_label}"
+    )
+    lines.append(
+        f"  Yield spread {spread:+.2f}%{_arrow(spread, macro.get('prev_spread'))} (10Y–2Y)  —  {spread_label}  _(gate closes below -1.0%)_"
+    )
+    lines.append(f"  Gate: {gate_word}")
+    lines.append(f"  _Regime: {regime}_")
     if not macro.get("macro_gate_pass"):
-        lines.append(f"⚠ Gate closed: {macro.get('gate_reason','')}")
+        lines.append(f"  ⚠ *Reason: {macro.get('gate_reason','')}*")
     lines.append("")
 
     # ── Trades Opened ─────────────────────────────────────────────────────────
