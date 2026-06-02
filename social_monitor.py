@@ -16,6 +16,9 @@
 #   @LeopoldATracker  — Profitable trading account, AI/crypto/energy picks
 #   @Asklivermoe      — Strong equity picker (handle to verify)
 #   @realDonaldTrump  — Trump stock mentions (when available)
+#   @Hedgeye          — Macro/risk research firm, sector and equity calls
+#   @pelositracker    — Nancy Pelosi STOCK Act disclosure aggregator
+#   @KobeissiLetter   — Market commentary, macro narrative, breakout signals
 #
 # Nitter instances (tried in order until one works):
 #   nitter.net, nitter.poast.org, nitter.cz
@@ -52,7 +55,10 @@ NITTER_INSTANCES = [
 TRACKED_ACCOUNTS = [
     {"handle": "leopoldasch",     "name": "Leopold Aschenbrenner", "source": "X/@leopoldasch"},
     {"handle": "LeopoldATracker", "name": "LeopoldATracker",       "source": "X/@LeopoldATracker"},
-    {"handle": "Asklivermore",     "name": "Asklivermore",           "source": "X/@Asklivermore"},
+    {"handle": "Asklivermore",    "name": "Asklivermore",          "source": "X/@Asklivermore"},
+    {"handle": "Hedgeye",         "name": "Hedgeye",               "source": "X/@Hedgeye"},
+    {"handle": "pelositracker",   "name": "PelosiTracker",         "source": "X/@pelositracker"},
+    {"handle": "KobeissiLetter",  "name": "KobeissiLetter",        "source": "X/@KobeissiLetter"},
 ]
 
 # Known non-ticker uppercase words to ignore
