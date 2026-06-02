@@ -137,6 +137,50 @@ def main():
         if not gate_pass:
             print(f"    Reason: {reason}")
 
+    # ── Today's signal log — sorted by signal strength ───────────────────────
+    rows = conn.run(
+        """select ticker, session, primary_count, confirmation_count,
+                  direction, trade_triggered, pa_verdict,
+                  options_bias, bb_breakout_dir, cot_bias,
+                  director_signal, senate_signal, notable_investor,
+                  social_mention, session_time
+           from   signal_log
+           where  date(session_time at time zone 'UTC') = :d
+           order  by primary_count desc nulls last,
+                     confirmation_count desc nulls last,
+                     session_time desc""",
+        d=today
+    )
+    print(f"\nTODAY'S SIGNAL LOG — {len(rows)} scans (sorted by signal strength)")
+    print("-" * 60)
+    if rows:
+        for r in rows:
+            (ticker, session, primaries, confs, direction, triggered,
+             pa_verdict, options_bias, bb_dir, cot_bias,
+             director, senate, notable_inv, social, scan_time) = r
+
+            primaries = primaries or 0
+            confs     = confs or 0
+            fired     = "🟢 TRADE" if triggered else ("🟡 CLOSE" if primaries >= 2 else "⚪")
+            dir_str   = f" → {direction}" if direction else ""
+            pa_str    = f" PA:{pa_verdict}" if pa_verdict else ""
+
+            print(f"  {fired} {ticker:<8} [{session}]{dir_str}  "
+                  f"primaries={primaries}  confs={confs}{pa_str}")
+
+            signals = []
+            if options_bias and options_bias != "NEUTRAL": signals.append(f"Options:{options_bias}")
+            if bb_dir:        signals.append(f"BB:{bb_dir}")
+            if cot_bias and cot_bias not in ("NEUTRAL", None): signals.append(f"COT:{cot_bias}")
+            if director:      signals.append("DirectorBuy")
+            if senate:        signals.append("SenateBuy")
+            if notable_inv:   signals.append(f"Investor:{notable_inv[:20]}")
+            if social:        signals.append(f"Social:{social[:20]}")
+            if signals:
+                print(f"           {' | '.join(signals)}")
+    else:
+        print("  (no signal records for today)")
+
     print(f"\n{'='*60}\n")
     conn.close()
 
