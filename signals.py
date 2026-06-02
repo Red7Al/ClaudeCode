@@ -921,6 +921,51 @@ def get_volume_signal(ticker: str) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# 18. MACD DAILY — momentum crossover on daily bars
+# ---------------------------------------------------------------------------
+def get_macd_daily(ticker: str) -> dict:
+    """
+    MACD crossover computed on daily bars — available at session open from
+    historical data. A bullish crossover (MACD line crossing above signal line)
+    signals momentum turning positive.
+
+    Returns:
+        macd_crossover:  BULLISH / BEARISH / NONE
+        macd_momentum:   BULLISH / BEARISH (current histogram sign)
+        histogram:       float (positive = bullish momentum)
+    """
+    result = {"macd_crossover": "NONE", "macd_momentum": "NEUTRAL", "macd_histogram": None}
+    yticker = YAHOO_MAP.get(ticker, ticker)
+    try:
+        t    = yf.Ticker(yticker)
+        hist = t.history(period="90d", interval="1d")
+        if len(hist) < 35:
+            return result
+
+        close    = hist["Close"]
+        ema12    = close.ewm(span=12, adjust=False).mean()
+        ema26    = close.ewm(span=26, adjust=False).mean()
+        macd     = ema12 - ema26
+        signal   = macd.ewm(span=9, adjust=False).mean()
+        histo    = macd - signal
+
+        curr_h = float(histo.iloc[-1])
+        prev_h = float(histo.iloc[-2])
+
+        result["macd_histogram"] = round(curr_h, 6)
+        result["macd_momentum"]  = "BULLISH" if curr_h > 0 else "BEARISH"
+
+        if prev_h <= 0 and curr_h > 0:
+            result["macd_crossover"] = "BULLISH"
+        elif prev_h >= 0 and curr_h < 0:
+            result["macd_crossover"] = "BEARISH"
+
+    except Exception as e:
+        log.warning(f"MACD daily failed for {ticker}: {e}")
+    return result
+
+
 def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     """
     Run the full signal stack for one instrument.
@@ -933,6 +978,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     volume    = get_volume_signal(ticker)
     adx       = get_adx(ticker)
     obv       = get_obv_signal(ticker)
+    macd_d    = get_macd_daily(ticker)
     gex       = get_gex_bias(ticker)
     vwap      = get_vwap_position(ticker)
     cot       = get_cot_bias(ticker)
@@ -947,30 +993,65 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     social    = get_social_mentions(ticker)
     atr_data  = get_atr(ticker)
 
-    # Count primary signals aligned
-    # Primary 1: options flow (call/put imbalance)
-    # Primary 2a: BB breakout from squeeze (original)
-    # Primary 2b: HIGH volume (≥1.5× avg) substitutes for BB breakout when
-    #             options has already fired — institutional volume alongside
-    #             directional options flow is a valid entry signal
+    # ── Primary signals — need 2 of 6 to fire ────────────────────────────────
+    #
+    # 1. Options flow (call/put imbalance) — institutional positioning
+    # 2. BB breakout from volatility squeeze — price expansion signal
+    # 3. High volume ≥1.5× average — institutional conviction (mid-session)
+    # 4. MACD daily crossover — momentum turning, computed from daily history
+    # 5. ADX directional (+DI > -DI, ADX > 20) — trend pressure confirmed
+    # 6. Strong daily candlestick — engulfing/marubozu = institutional action
+    #
+    # Having 6 routes to "2 primaries" means the session open scan (where volume
+    # is low and BB may not have broken) can still fire via MACD + options, or
+    # ADX directional + candlestick, etc.
+    # ─────────────────────────────────────────────────────────────────────────
     primary_count = 0
     primary_dir   = []
-    options_dir   = options.get("options_bias")
-    bb_dir        = squeeze.get("bb_breakout_dir")
-    high_volume   = volume.get("volume_signal") == "HIGH_VOLUME"
 
+    options_dir  = options.get("options_bias")
+    bb_dir       = squeeze.get("bb_breakout_dir")
+    high_volume  = volume.get("volume_signal") == "HIGH_VOLUME"
+    macd_cross   = macd_d.get("macd_crossover")
+    di_plus_val  = adx.get("di_plus") or 0
+    di_minus_val = adx.get("di_minus") or 0
+    adx_val      = adx.get("adx") or 0
+    candle_dir   = price_act.get("candlestick_dir")   # BULLISH / BEARISH / None
+    candle_pat   = price_act.get("candlestick")       # BULLISH_ENGULFING / HAMMER / etc.
+    strong_candle_pats = {"BULLISH_ENGULFING", "BEARISH_ENGULFING", "MARUBOZU_BULL", "MARUBOZU_BEAR"}
+
+    def _add_primary(direction: str, reason: str):
+        nonlocal primary_count
+        primary_count += 1
+        primary_dir.append(direction)
+        log.info(f"{ticker}: primary signal — {reason}")
+
+    # 1. Options flow
     if options_dir in ("BULLISH", "BEARISH"):
-        primary_count += 1
-        primary_dir.append(options_dir)
+        _add_primary(options_dir, f"options {options_dir}")
 
+    # 2. BB breakout
     if bb_dir in ("BULLISH", "BEARISH"):
-        primary_count += 1
-        primary_dir.append(bb_dir)
+        _add_primary(bb_dir, f"BB breakout {bb_dir}")
+
+    # 3. High volume (only if options also fired — volume alone is not directional)
     elif high_volume and options_dir in ("BULLISH", "BEARISH"):
-        # High volume substitutes for BB breakout — same direction as options
-        primary_count += 1
-        primary_dir.append(options_dir)
-        log.info(f"{ticker}: HIGH volume ({volume.get('volume_ratio')}x) substituting for BB breakout")
+        _add_primary(options_dir, f"HIGH volume {volume.get('volume_ratio')}× (substitutes for BB)")
+
+    # 4. MACD daily crossover
+    if macd_cross in ("BULLISH", "BEARISH"):
+        _add_primary(macd_cross, f"MACD daily {macd_cross} crossover")
+
+    # 5. ADX directional — +DI clearly above -DI with meaningful trend strength
+    if adx_val >= 20:
+        if di_plus_val > di_minus_val + 5:
+            _add_primary("BULLISH", f"ADX directional +DI({di_plus_val:.1f}) > -DI({di_minus_val:.1f})")
+        elif di_minus_val > di_plus_val + 5:
+            _add_primary("BEARISH", f"ADX directional -DI({di_minus_val:.1f}) > +DI({di_plus_val:.1f})")
+
+    # 6. Strong daily candlestick (engulfing or marubozu only — high conviction patterns)
+    if candle_pat in strong_candle_pats and candle_dir in ("BULLISH", "BEARISH"):
+        _add_primary(candle_dir, f"candlestick {candle_pat}")
 
     # Count confirmation signals
     conf_count = 0
@@ -1027,6 +1108,9 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "bb_breakout_dir":   squeeze.get("bb_breakout_dir"),
         "volume_signal":     volume.get("volume_signal"),
         "volume_ratio":      volume.get("volume_ratio"),
+        "macd_crossover":    macd_d.get("macd_crossover"),
+        "macd_momentum":     macd_d.get("macd_momentum"),
+        "macd_histogram":    macd_d.get("macd_histogram"),
         "adx":               adx.get("adx"),
         "adx_signal":        adx.get("adx_signal"),
         "di_plus":           adx.get("di_plus"),
