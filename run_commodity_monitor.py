@@ -145,10 +145,10 @@ def run():
             direction  = row[2]
             open_price = float(row[3])
             size       = float(row[5])
-            close_reason = get_close_reason(deal_id)
-            _log_trade_close_to_db(deal_id, open_price, close_reason)
-            trade_closed(ticker, direction, open_price, open_price, 0.0, close_reason)
-            log.info(f"Commodity position closed: {ticker} {deal_id} — {close_reason}")
+            close_reason, close_price = get_close_reason(deal_id)
+            _log_trade_close_to_db(deal_id, close_price or open_price, close_reason)
+            trade_closed(ticker, direction, open_price, close_price or open_price, 0.0, close_reason)
+            log.info(f"Commodity position closed: {ticker} {deal_id} — {close_reason} @ {close_price}")
 
     log.info("Commodity monitor complete")
 

@@ -72,7 +72,7 @@ from config import (
 
 log = logging.getLogger("signals")
 
-FRED_API_KEY  = os.environ["FRED_API_KEY"]
+FRED_API_KEY  = os.environ.get("FRED_API_KEY", "")
 SUPABASE_HOST = "aws-0-eu-west-1.pooler.supabase.com"
 SUPABASE_USER = os.environ["SUPABASE_USER"]
 SUPABASE_PASS = os.environ["SUPABASE_DB_PASSWORD"]
@@ -633,12 +633,6 @@ def get_upcoming_events(minutes_ahead: int = 30) -> dict:
 # ---------------------------------------------------------------------------
 # 12. ATR COMPUTATION (for position sizing)
 # ---------------------------------------------------------------------------
-ATR_MULTIPLIERS = {
-    "NVDA":   1.5, "XAUUSD": 1.5, "SPX500": 1.5,
-    "OIL":    2.0,
-    "GBPUSD": 1.2, "AUDUSD": 1.2, "USDJPY": 1.2,
-}
-DEFAULT_ATR_MULT = 1.5
 
 def get_atr(ticker: str, period: int = 14) -> dict:
     """Compute 14-period ATR and stop distance from current price."""
@@ -972,6 +966,16 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         primary_dir.append(options_dir)
         log.info(f"{ticker}: HIGH volume ({volume.get('volume_ratio')}x) substituting for BB breakout")
 
+    # Direction consensus — must be computed before OBV conf checks below
+    direction = None
+    if primary_dir:
+        bullish = primary_dir.count("BULLISH")
+        bearish = primary_dir.count("BEARISH")
+        if bullish > bearish:
+            direction = "BUY"
+        elif bearish > bullish:
+            direction = "SELL"
+
     # Count confirmation signals
     conf_count = 0
     if directors.get("director_signal"):  conf_count += 1
@@ -983,16 +987,6 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     if adx.get("adx_signal") == "STRONG_TREND":  conf_count += 1
     if obv.get("obv_signal") in ("BULLISH_DIVERGENCE","CONFIRMING_BULLISH") and direction == "BUY":  conf_count += 1
     if obv.get("obv_signal") in ("BEARISH_DIVERGENCE","CONFIRMING_BEARISH") and direction == "SELL": conf_count += 1
-
-    # Direction consensus
-    direction = None
-    if primary_dir:
-        bullish = primary_dir.count("BULLISH")
-        bearish = primary_dir.count("BEARISH")
-        if bullish > bearish:
-            direction = "BUY"
-        elif bearish > bullish:
-            direction = "SELL"
 
     # Trade fires when: macro gate passes + 2 primaries + 1 confirmation
     # Price action must confirm direction — prevents catching falling knives

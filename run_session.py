@@ -193,12 +193,12 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
 
     for deal_id, row in our_deals.items():
         if deal_id not in ig_deal_ids and not deal_id.startswith("PAPER-"):
-            close_reason = get_close_reason(deal_id)
+            close_reason, close_price = get_close_reason(deal_id)
             ticker, direction, open_price, size = row[1], row[2], float(row[3]), float(row[4])
             open_tickers.add(ticker)
-            _log_trade_close_to_db(deal_id, open_price, close_reason)
-            trade_closed(ticker, direction, open_price, open_price, 0.0, close_reason)
-            log.info(f"Detected closure: {ticker} {deal_id} — {close_reason}")
+            _log_trade_close_to_db(deal_id, close_price or open_price, close_reason)
+            trade_closed(ticker, direction, open_price, close_price or open_price, 0.0, close_reason)
+            log.info(f"Detected closure: {ticker} {deal_id} — {close_reason} @ {close_price}")
 
     # ── Part 2: scan for new entries ─────────────────────────────────────────
     try:

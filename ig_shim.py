@@ -332,16 +332,13 @@ def get_position_by_deal(deal_id: str) -> Optional[dict]:
     return None
 
 
-def get_close_reason(deal_id: str) -> str:
+def get_close_reason(deal_id: str) -> tuple[str, float]:
     """
     Query the IG activity history to determine why a position was closed.
 
-    Returns one of:
-        STOP_HIT    — stop loss was triggered by the broker
-        TARGET_HIT  — take profit / limit was reached
-        MANUAL      — closed manually via the platform or API
-        SYSTEM      — closed by IG (e.g. margin call, market halt)
-        UNKNOWN     — reason could not be determined
+    Returns (reason, close_level) where:
+        reason:      STOP_HIT | TARGET_HIT | MANUAL | SYSTEM | UNKNOWN
+        close_level: actual closing price from IG activity (0.0 if not found)
     """
     try:
         data = session.get(
@@ -352,28 +349,29 @@ def get_close_reason(deal_id: str) -> str:
         activities = data.get("activities", [])
 
         for act in activities:
-            channel  = act.get("channel", "").upper()
-            act_type = act.get("type", "").upper()
-            actions  = act.get("details", {}).get("actions", [])
+            channel     = act.get("channel", "").upper()
+            act_type    = act.get("type", "").upper()
+            close_level = float(act.get("level", 0) or 0)
+            actions     = act.get("details", {}).get("actions", [])
 
             # Check action types for stop/limit triggers
             for action in actions:
                 action_type = action.get("actionType", "").upper()
                 if "STOP" in action_type:
-                    return "STOP_HIT"
+                    return "STOP_HIT", close_level
                 if "LIMIT" in action_type or "PROFIT" in action_type:
-                    return "TARGET_HIT"
+                    return "TARGET_HIT", close_level
 
             # Fall back to channel / type
             if channel in ("DEALER", "SYSTEM", "CLOSE"):
-                return "SYSTEM"
+                return "SYSTEM", close_level
             if act_type == "CLOSE":
-                return "MANUAL"
+                return "MANUAL", close_level
 
     except Exception as e:
         log.warning(f"Could not determine close reason for {deal_id}: {e}")
 
-    return "UNKNOWN"
+    return "UNKNOWN", 0.0
 
 
 # =============================================================================
@@ -612,7 +610,7 @@ def close_trade(deal_id: str, reason: str = "MANUAL") -> bool:
             return False
 
         close_price  = confirm.get("level", 0)
-        close_reason = get_close_reason(deal_id) if reason == "MANUAL" else reason
+        close_reason = get_close_reason(deal_id)[0] if reason == "MANUAL" else reason
         log.info(f"Position {deal_id} closed at {close_price} — reason: {close_reason}")
 
         # Log closure to Supabase
