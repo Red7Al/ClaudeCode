@@ -173,7 +173,7 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
         """select ticker, session, options_bias, bb_breakout_dir, bb_squeeze,
                   cot_bias, confirmation_count,
                   director_signal, senate_signal, notable_investor, social_mention,
-                  trade_triggered
+                  trade_triggered, adx_signal, obv_signal, volume_signal, volume_ratio
            from signal_log
            where date(session_time) = :d
            order by session, ticker""",
@@ -184,11 +184,14 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
         options_bias    = r[2]
         bb_breakout_dir = r[3]
         bb_squeeze      = r[4]
+        volume_signal   = r[14] if len(r) > 14 else None
         pc = 0
         if options_bias in ("BULLISH", "BEARISH"):
             pc += 1
         if bb_breakout_dir in ("BULLISH", "BEARISH"):
             pc += 1
+        elif volume_signal == "HIGH_VOLUME" and options_bias in ("BULLISH", "BEARISH"):
+            pc += 1  # volume substituted for BB
         result.append({
             "ticker": r[0], "session": r[1],
             "options_bias": options_bias, "bb_breakout_dir": bb_breakout_dir,
@@ -198,6 +201,10 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
             "director_signal": r[7], "senate_signal": r[8],
             "notable_investor": r[9], "social_mention": r[10],
             "trade_triggered": r[11],
+            "adx_signal":    r[12] if len(r) > 12 else None,
+            "obv_signal":    r[13] if len(r) > 13 else None,
+            "volume_signal": volume_signal,
+            "volume_ratio":  float(r[15]) if len(r) > 15 and r[15] else None,
         })
     return result
 
@@ -264,9 +271,8 @@ def get_intraday_moves(tickers: list[str]) -> dict[str, float]:
 
 def group_summary(category: str, sample_sig: dict) -> str:
     """
-    Produce ONE shared plain-English explanation for a group of instruments
-    that all share the same reason for not being traded. Called once per group.
-    Also explains how close the signals were to qualifying.
+    Produce ONE shared plain-English explanation for a group of instruments.
+    Includes ADX, OBV, and volume context where available.
     """
     session = sample_sig.get("session", "US_OPEN scan")
     pc      = sample_sig.get("primary_count", 0)
@@ -274,65 +280,82 @@ def group_summary(category: str, sample_sig: dict) -> str:
     options = sample_sig.get("options_bias", "NEUTRAL")
     bb      = sample_sig.get("bb_breakout_dir")
     squeeze = sample_sig.get("bb_squeeze", False)
+    adx     = sample_sig.get("adx_signal")
+    obv     = sample_sig.get("obv_signal")
+    vol     = sample_sig.get("volume_signal")
 
     options_str = {
-        "BULLISH": "options flow was bullish — institutional call buying was above the 1.2× threshold, indicating directional conviction",
-        "BEARISH": "options flow was bearish — put buying was dominant, indicating downside conviction",
-        "NEUTRAL": "options flow was neutral — call and put volumes were balanced, with no clear institutional directional bias",
-    }.get(options, "options flow data was unavailable")
+        "BULLISH": "options flow was bullish — institutional call buying above the 1.2× threshold",
+        "BEARISH": "options flow was bearish — put buying dominant",
+        "NEUTRAL": "options flow was neutral — no clear institutional directional bias",
+    }.get(options, "options flow unavailable")
 
     if bb:
-        bb_str = f"price had broken out of a volatility squeeze ({bb.lower()} direction) — this signal fired"
+        bb_str = f"price broke out of its volatility squeeze ({bb.lower()} direction)"
     elif squeeze:
         bb_str = (
-            "price was in a Bollinger Band squeeze (volatility compressed, bands at their narrowest) "
-            "but the breakout had not yet fired — this is the signal closest to triggering. "
-            "A squeeze is the setup; the breakout is the signal. Both must be present."
+            "price was in a Bollinger Band squeeze (compressed volatility) "
+            "but the breakout had not yet fired — the setup was there, the signal was not"
         )
     else:
-        bb_str = (
-            "there was no Bollinger Band squeeze or breakout — volatility was not sufficiently compressed "
-            "to suggest an imminent directional move"
-        )
+        bb_str = "no Bollinger Band squeeze or breakout — no imminent directional move detected"
+
+    vol_str = ""
+    if vol == "HIGH_VOLUME":
+        vol_str = " Volume was above average (institutional conviction present)."
+    elif vol == "LOW_VOLUME":
+        vol_str = " Volume was below average — weak conviction behind the move."
+
+    adx_str = ""
+    if adx == "STRONG_TREND":
+        adx_str = " ADX confirmed a strong trend was in place."
+    elif adx == "WEAK_TREND":
+        adx_str = " ADX indicated a weak/ranging market — lower confidence in breakout signals."
+
+    obv_str = ""
+    if obv == "BULLISH_DIVERGENCE":
+        obv_str = " OBV was diverging bullishly (volume accumulation ahead of price) — a leading signal."
+    elif obv == "CONFIRMING_BULLISH":
+        obv_str = " OBV confirmed the upward move with rising volume participation."
+    elif obv == "BEARISH_DIVERGENCE":
+        obv_str = " OBV was diverging bearishly (distribution ahead of price decline)."
 
     if not sample_sig.get("macro_gate_pass", True):
         return f"Not evaluated — macro gate was closed at {session} (VIX or yield curve threshold breached), blocking all instruments."
 
     if pc == 0:
-        proximity = "Neither required signal had fired."
         return (
             f"At {session}: {options_str}, and {bb_str}. "
-            f"{proximity} The system requires both to align before placing any trade."
+            f"Neither of the two required primary signals had fired.{vol_str}{adx_str}{obv_str} "
+            f"The system requires both to align before placing any trade."
         )
 
     if pc == 1:
         if options != "NEUTRAL" and not bb:
-            fired   = options_str
-            missing = bb_str
+            fired, missing = options_str, bb_str
         else:
-            fired   = bb_str
-            missing = options_str
+            fired, missing = bb_str, options_str
         proximity = (
-            "One signal short of the required two. "
-            + ("The volatility squeeze was in place — the breakout was the only missing piece." if squeeze and not bb
-               else "")
+            " The volatility squeeze was in place — the breakout was the only missing piece."
+            if squeeze and not bb else ""
         )
         return (
-            f"At {session}: {fired}. However, {missing}. "
-            f"{proximity} Both primary signals must agree before the system acts."
+            f"At {session}: {fired}. However, {missing}.{proximity}{vol_str}{adx_str}{obv_str} "
+            f"One signal short of the required two — both must agree before the system acts."
         )
 
     if pc >= 2 and cc < 1:
         return (
-            f"At {session}: both primary signals were present, but no confirmation signals fired "
-            f"(no director cluster buys, senate purchases, superinvestor activity, or COT bias aligned). "
-            f"At least one confirmation is required. These instruments were the closest to triggering a trade today."
+            f"At {session}: both primary signals were present.{vol_str}{adx_str}{obv_str} "
+            f"However, no confirmation signals fired (no director buys, senate trades, "
+            f"superinvestor activity, COT bias, strong ADX, or OBV confirmation). "
+            f"At least one confirmation is required. These were the closest to triggering a trade today."
         )
 
     return (
-        f"At {session}: {pc} primary and {cc} confirmation signal(s) were present, "
-        f"but the combined threshold was not met at the scan window. "
-        f"The move may have developed after all 15-minute scan windows had closed."
+        f"At {session}: {pc} primary and {cc} confirmation signal(s) present.{vol_str}{adx_str}{obv_str} "
+        f"The combined threshold was not met at the scan window. "
+        f"The move may have developed after all 15-minute rescan windows closed."
     )
 
 
