@@ -1115,6 +1115,8 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         db.close()
     except Exception as e:
         log.warning(f"Failed to log signal for {ticker}: {e}")
+        signal["_log_failed"] = True
+        signal["_log_error"]  = str(e)
 
     return signal
 
@@ -1144,6 +1146,7 @@ def run_session_scan(session_name: str) -> dict:
     candidates = get_candidate_instruments(session_name)
 
     instrument_signals = []
+    scan_errors = []
     for ticker in candidates:
         try:
             sig = scan_instrument(ticker, session_name, macro)
@@ -1151,6 +1154,40 @@ def run_session_scan(session_name: str) -> dict:
             time.sleep(0.5)   # be polite to Yahoo Finance
         except Exception as e:
             log.error(f"Scan failed for {ticker}: {e}")
+            scan_errors.append(f"{ticker}: {e}")
+
+    # Alert on DB logging failures or complete scan failures
+    try:
+        from notify import alert_system_error
+        log_failures = [
+            (s["ticker"], s.get("_log_error", ""))
+            for s in instrument_signals if s.get("_log_failed")
+        ]
+        if log_failures:
+            tickers_str = ", ".join(t for t, _ in log_failures[:10])
+            first_error = log_failures[0][1]
+            alert_system_error(
+                session=session_name,
+                component="signal_log INSERT",
+                summary=f"{len(log_failures)}/{len(instrument_signals)} instruments failed to write to signal_log",
+                detail=f"Tickers: {tickers_str}\nError: {first_error}"
+            )
+        if scan_errors and len(scan_errors) >= max(3, len(candidates) // 2):
+            alert_system_error(
+                session=session_name,
+                component="scan_instrument",
+                summary=f"{len(scan_errors)}/{len(candidates)} instrument scans failed",
+                detail="\n".join(scan_errors[:10])
+            )
+        if candidates and not instrument_signals:
+            alert_system_error(
+                session=session_name,
+                component="run_session_scan",
+                summary=f"0 instruments scanned from {len(candidates)} candidates — session produced no data",
+                detail="\n".join(scan_errors[:10])
+            )
+    except Exception as e:
+        log.warning(f"Failed to send system error alert: {e}")
 
     trade_candidates = [s for s in instrument_signals if s.get("trade_signal")]
 

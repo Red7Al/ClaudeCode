@@ -400,6 +400,38 @@ def alert_macro_gate_failed(reason: str, vix: float, yield_spread: float, sessio
     _send("alerts", blocks)
 
 
+def alert_system_error(session: str, component: str, summary: str, detail: str = ""):
+    """
+    Notify that a system-level error occurred during a session.
+    Used for DB failures, scan errors, and unexpected zero-result scans.
+    Posts to #claude-trading-alerts.
+    """
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "🔧 System Error — Action Required"}
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Session:*\n{session}"},
+                {"type": "mrkdwn", "text": f"*Component:*\n{component}"},
+                {"type": "mrkdwn", "text": f"*Summary:*\n{summary}"},
+            ]
+        },
+    ]
+    if detail:
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*Detail:*\n```{detail[:500]}```"}
+        })
+    blocks.append({
+        "type": "context",
+        "elements": [{"type": "mrkdwn", "text": _ts()}]
+    })
+    _send("alerts", blocks)
+
+
 def alert_calendar_block(event: str, session: str):
     """Notify that trading has been paused due to an imminent high-impact economic event."""
     blocks = [
