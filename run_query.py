@@ -137,6 +137,30 @@ def main():
         if not gate_pass:
             print(f"    Reason: {reason}")
 
+    # ── signal_log column check ───────────────────────────────────────────────
+    col_rows = conn.run(
+        """select column_name from information_schema.columns
+           where table_name = 'signal_log'
+             and column_name in ('call_put_ratio','primary_count','direction','pa_verdict')
+           order by column_name"""
+    )
+    found = [r[0] for r in col_rows]
+    print(f"\nSIGNAL_LOG SCHEMA CHECK — new columns present: {found}")
+
+    # ── signal_log row counts by session/date ─────────────────────────────────
+    count_rows = conn.run(
+        """select date(session_time at time zone 'UTC') as day,
+                  session, count(*) as n
+           from   signal_log
+           group  by 1, 2
+           order  by 1 desc, 3 desc
+           limit  10"""
+    )
+    print(f"\nSIGNAL_LOG RECENT ROW COUNTS")
+    print("-" * 60)
+    for r in count_rows:
+        print(f"  {r[0]}  {str(r[1]).ljust(20)}  {r[2]} rows")
+
     # ── Today's signal log — sorted by signal strength ───────────────────────
     rows = conn.run(
         """select ticker, session, primary_count, confirmation_count,
