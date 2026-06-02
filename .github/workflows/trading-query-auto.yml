@@ -1,0 +1,33 @@
+name: Query - Auto (writes output to repo)
+
+on:
+  push:
+    paths:
+      - 'query_trigger.txt'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install pg8000
+      - name: Run query and write output
+        run: python run_query.py > query_output.txt 2>&1
+        env:
+          SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - name: Commit output back to repo
+        run: |
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git add query_output.txt
+          git diff --staged --quiet || git commit -m "query output [skip ci]"
+          git push
