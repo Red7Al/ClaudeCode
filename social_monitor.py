@@ -311,7 +311,7 @@ def alert_new_picks(new_picks: list):
         ticker   = pick["ticker"]
         investor = pick["investor_name"]
         company  = get_company_name(ticker)
-        display  = f"{ticker} — {company}" if company else ticker
+        name_str = f"  _({company})_" if company else ""
 
         # Quick price action check
         try:
@@ -325,7 +325,7 @@ def alert_new_picks(new_picks: list):
         except Exception:
             pa_str = "⚪ PA unavailable"
 
-        lines += f"• *{display}* via @{investor} — {pa_str}\n"
+        lines += f"• *{ticker}* via @{investor} — {pa_str}{name_str}\n"
 
     blocks = [
         {

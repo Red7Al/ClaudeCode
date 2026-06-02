@@ -460,9 +460,13 @@ def build_report(
     company_names = company_names or {}
 
     def _display(ticker: str) -> str:
-        """Return 'MRVL — Marvell Technology' or just 'MRVL' if name unknown."""
+        """Return 'MRVL' — company name goes at end of line separately via _name()."""
+        return ticker
+
+    def _name(ticker: str) -> str:
+        """Return '  _(Marvell Technology)_' or '' if name unknown."""
         name = company_names.get(ticker, "")
-        return f"{ticker} — {name}" if name else ticker
+        return f"  _({name})_" if name else ""
 
     lines = []
 
@@ -541,9 +545,9 @@ def build_report(
     if trades_opened:
         for t in trades_opened:
             lines.append(
-                f"  {_direction_arrow(t['direction'])}  *{_display(t['ticker'])}*  "
+                f"  {_direction_arrow(t['direction'])}  *{t['ticker']}*  "
                 f"Entry {t['open_price']}  Stop {t['stop_loss']}  "
-                f"Size {t['size']}  [{t['session']}]"
+                f"Size {t['size']}  [{t['session']}]{_name(t['ticker'])}"
             )
             if t.get("signal_summary"):
                 lines.append(f"  _Signals: {t['signal_summary']}_")
@@ -567,8 +571,8 @@ def build_report(
             }
             reason_str = reason_map.get(t["close_reason"], t["close_reason"])
             lines.append(
-                f"  {_direction_arrow(t['direction'])}  *{_display(t['ticker'])}*  "
-                f"{t['open_price']} → {t['close_price']}  *{pnl_str}*  — {reason_str}"
+                f"  {_direction_arrow(t['direction'])}  *{t['ticker']}*  "
+                f"{t['open_price']} → {t['close_price']}  *{pnl_str}*  — {reason_str}{_name(t['ticker'])}"
             )
     else:
         lines.append("  No trades closed today.")
@@ -584,9 +588,9 @@ def build_report(
                 move_str = f"+{current*100:.1f}%" if current > 0 else f"{current*100:.1f}%"
                 unreal   = f"  (today's move: {move_str})"
             lines.append(
-                f"  {_direction_arrow(p['direction'])}  *{_display(p['ticker'])}*  "
+                f"  {_direction_arrow(p['direction'])}  *{p['ticker']}*  "
                 f"Entry {p['open_price']}  Stop {p['stop_loss']}"
-                f"  Held {_hold_duration(p['opened_at'])}{unreal}"
+                f"  Held {_hold_duration(p['opened_at'])}{unreal}{_name(p['ticker'])}"
             )
     else:
         lines.append("  No open positions. Fully flat overnight.")
@@ -652,7 +656,7 @@ def build_report(
                     )
                 else:
                     vol_tag = ""
-                lines.append(f"  *{_display(ticker)}* {pct_str}{vol_tag}")
+                lines.append(f"  *{ticker}* {pct_str}{vol_tag}{_name(ticker)}")
             # One shared explanation for all instruments in this group
             sample_sig = items[0][3]
             summary = group_summary(category, sample_sig)
