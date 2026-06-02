@@ -115,14 +115,27 @@ def run_session_open(session_name: str):
     log.info(f"{session_name} complete. Trades placed: {trades_placed}")
 
 
-def run_monitor():
-    """Check open positions and update trailing stops."""
+def run_monitor(session_name: str = "AUS_MONITOR"):
+    """
+    Check open positions and update trailing stops.
+    Also scans session instruments for new trade entries — signals can fire
+    at any point in the session, not just at the open.
+    """
     from ig_shim import (get_open_positions, get_snapshot, update_stop,
-                         get_close_reason, _log_trade_close_to_db, health_check)
+                         get_close_reason, _log_trade_close_to_db, health_check,
+                         open_trade, get_account_balance)
     from notify import trade_closed, alert_circuit_breaker
-    from config import ATR_MULTIPLIERS, ATR_MULTIPLIER_DEFAULT
+    from signals import scan_instrument, get_macro_gate
+    from config import ATR_MULTIPLIERS, ATR_MULTIPLIER_DEFAULT, SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION
     import pg8000.native
     from datetime import datetime, timezone
+
+    # Map monitor session to the open session's instrument list
+    SESSION_MAP = {
+        "AUS_MONITOR":      "AUS_OPEN",
+        "UK_MONITOR":       "UK_OPEN",
+        "POSITION_MONITOR": "US_OPEN",
+    }
 
     hc = health_check()
     if hc["status"] != "OK":
@@ -131,14 +144,16 @@ def run_monitor():
         return
 
     ig_positions = get_open_positions()
-    if not ig_positions:
-        log.info("No open positions — monitor complete")
-        return
+    open_tickers = set()
 
-    log.info(f"Monitoring {len(ig_positions)} position(s)")
+    if ig_positions:
+        log.info(f"Monitoring {len(ig_positions)} position(s)")
+    else:
+        log.info(f"{session_name}: no open positions — skipping stop review")
 
-    # Check trailing stops
+    # ── Part 1: trailing stops ────────────────────────────────────────────────
     for pos in ig_positions:
+        open_tickers.add(pos["market"].get("instrumentName", ""))
         epic      = pos["market"]["epic"]
         deal_id   = pos["position"]["dealId"]
         direction = pos["position"]["direction"]
@@ -180,9 +195,84 @@ def run_monitor():
         if deal_id not in ig_deal_ids and not deal_id.startswith("PAPER-"):
             close_reason = get_close_reason(deal_id)
             ticker, direction, open_price, size = row[1], row[2], float(row[3]), float(row[4])
+            open_tickers.add(ticker)
             _log_trade_close_to_db(deal_id, open_price, close_reason)
             trade_closed(ticker, direction, open_price, open_price, 0.0, close_reason)
             log.info(f"Detected closure: {ticker} {deal_id} — {close_reason}")
+
+    # ── Part 2: scan for new entries ─────────────────────────────────────────
+    try:
+        conn2 = pg8000.native.Connection(
+            host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+            database="postgres", user=os.environ["SUPABASE_USER"],
+            password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
+        )
+        today_count = conn2.run(
+            "select count(*) from trade_log where date(opened_at) = current_date"
+        )
+        db_tickers = {r[0] for r in conn2.run("select ticker from positions")}
+        conn2.close()
+        open_tickers |= db_tickers
+        trades_today    = int(today_count[0][0]) if today_count else 0
+        slots_remaining = max(0, MAX_TRADES_PER_SESSION - trades_today)
+    except Exception as e:
+        log.error(f"Could not check trade count: {e}")
+        slots_remaining = 0
+
+    if slots_remaining > 0:
+        open_session = SESSION_MAP.get(session_name, "US_OPEN")
+        candidates   = [t for t in SESSION_INSTRUMENTS.get(open_session, [])
+                        if t not in open_tickers]
+        log.info(f"{session_name}: scanning {len(candidates)} instruments for new entries "
+                 f"({slots_remaining} slot(s) remaining)")
+        try:
+            macro = get_macro_gate(session_name)
+            if macro.get("macro_gate_pass"):
+                new_trades = 0
+                for ticker in candidates:
+                    if new_trades >= slots_remaining:
+                        break
+                    try:
+                        sig = scan_instrument(ticker, session_name, macro)
+                        if sig.get("trade_signal"):
+                            stop_dist  = sig.get("stop_distance", 0)
+                            limit_dist = round(stop_dist * 2, 4)
+                            try:
+                                bal         = get_account_balance()
+                                risk_amount = bal["available"] * 0.02
+                                size        = round(risk_amount / stop_dist, 1) if stop_dist > 0 else 0.5
+                                size        = max(0.5, min(size, 10.0))
+                            except Exception:
+                                size = 0.5
+                            signal_str = (
+                                f"Options:{sig.get('options_bias','—')} "
+                                f"BB:{sig.get('bb_breakout_dir','—')} "
+                                f"Vol:{sig.get('volume_signal','—')} "
+                                f"COT:{sig.get('cot_bias','—')} "
+                                f"Confs:{sig.get('confirmation_count',0)} "
+                                f"[{session_name} rescan]"
+                            )
+                            deal_id = open_trade(
+                                user_id="00000000-0000-0000-0000-000000000001",
+                                ticker=ticker,
+                                direction=sig["direction"],
+                                size=size,
+                                stop_distance=stop_dist,
+                                limit_distance=limit_dist,
+                                session_name=session_name,
+                                signal_summary=signal_str
+                            )
+                            if deal_id:
+                                log.info(f"{session_name} NEW TRADE: {ticker} {sig['direction']}")
+                                new_trades += 1
+                    except Exception as e:
+                        log.warning(f"Monitor scan failed for {ticker}: {e}")
+            else:
+                log.info(f"{session_name}: macro gate closed — {macro.get('gate_reason')}")
+        except Exception as e:
+            log.error(f"{session_name} new-entry scan failed: {e}")
+    else:
+        log.info(f"{session_name}: daily trade limit reached — no new entries scanned")
 
 
 def run_session_close():
@@ -320,7 +410,7 @@ if __name__ == "__main__":
     if session in ("AUS_OPEN", "UK_OPEN", "US_OPEN"):
         run_session_open(session)
     elif session in ("AUS_MONITOR", "UK_MONITOR", "POSITION_MONITOR"):
-        run_monitor()
+        run_monitor(session)
     elif session == "US_MONITOR":
         from intraday_signals import run_us_monitor
         run_us_monitor(notify_slack=True)
