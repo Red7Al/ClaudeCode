@@ -254,6 +254,46 @@ def save_new_pick(ticker: str, investor_name: str, source: str, post_url: str):
 # Run price action on new picks and alert Slack
 # =============================================================================
 
+def get_company_name(ticker: str) -> str:
+    """
+    Look up the full company name for a ticker.
+    1. Tries epic_lookup.description (IG name, stripped of suffix)
+    2. Falls back to Yahoo Finance shortName
+    Returns empty string if both fail.
+    """
+    # Try epic_lookup first
+    try:
+        conn = pg8000.native.Connection(
+            host=SUPABASE_HOST, port=6543, database="postgres",
+            user=SUPABASE_USER, password=SUPABASE_PASS, ssl_context=True
+        )
+        rows = conn.run(
+            "select description from epic_lookup where ticker = :t limit 1", t=ticker
+        )
+        conn.close()
+        if rows and rows[0][0]:
+            name = rows[0][0]
+            # Strip IG suffix patterns like "(24 Hours)", "(Daily)", etc.
+            import re
+            name = re.sub(r'\s*\(.*?(Hours|Daily|DFB|Spot).*?\)\s*$', '', name, flags=re.IGNORECASE).strip()
+            if name and name != ticker:
+                return name
+    except Exception:
+        pass
+
+    # Fallback: Yahoo Finance
+    try:
+        import yfinance as yf
+        info = yf.Ticker(ticker).info
+        name = info.get("shortName") or info.get("longName", "")
+        if name and name != ticker:
+            return name
+    except Exception:
+        pass
+
+    return ""
+
+
 def alert_new_picks(new_picks: list):
     """
     Run price action on newly discovered tickers and send Slack alert.
@@ -270,6 +310,8 @@ def alert_new_picks(new_picks: list):
     for pick in new_picks:
         ticker   = pick["ticker"]
         investor = pick["investor_name"]
+        company  = get_company_name(ticker)
+        display  = f"{ticker} — {company}" if company else ticker
 
         # Quick price action check
         try:
@@ -283,7 +325,7 @@ def alert_new_picks(new_picks: list):
         except Exception:
             pa_str = "⚪ PA unavailable"
 
-        lines += f"• *{ticker}* via @{investor} — {pa_str}\n"
+        lines += f"• *{display}* via @{investor} — {pa_str}\n"
 
     blocks = [
         {
