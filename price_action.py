@@ -383,7 +383,121 @@ def get_ma_alignment(ticker: str) -> dict:
 
 
 # =============================================================================
-# Signal 5 & 6 — Failed Breakdown (Bullish) / Failed Breakout (Bearish)
+# Signal 5 — Candlestick Patterns (daily bars)
+# =============================================================================
+
+def get_candlestick_pattern(ticker: str) -> dict:
+    """
+    Detect high-conviction single and two-bar candlestick patterns on daily bars.
+
+    Patterns detected:
+      BULLISH_ENGULFING  Today's bull candle fully engulfs yesterday's bear candle.
+                         Strong reversal — institutional buying absorbed all sellers.
+      BEARISH_ENGULFING  Today's bear candle fully engulfs yesterday's bull candle.
+      HAMMER             Long lower wick (≥2× body), close near high.
+                         Rejection of lower prices — buyers stepped in.
+      SHOOTING_STAR      Long upper wick (≥2× body), close near low.
+                         Rejection of higher prices — sellers stepped in.
+      MARUBOZU_BULL      Near-bodyless candle, close at/near high, high volume.
+                         Pure conviction — no wick = no hesitation.
+      MARUBOZU_BEAR      Close at/near low, high volume.
+      NONE               No significant pattern.
+    """
+    result = {"pattern": "NONE", "pattern_direction": None, "description": ""}
+    hist = _get_daily(ticker, days=5)
+    if len(hist) < 2:
+        return result
+
+    today = hist.iloc[-1]
+    prev  = hist.iloc[-2]
+
+    t_open  = float(today["Open"])
+    t_close = float(today["Close"])
+    t_high  = float(today["High"])
+    t_low   = float(today["Low"])
+    p_open  = float(prev["Open"])
+    p_close = float(prev["Close"])
+
+    t_body  = abs(t_close - t_open)
+    t_range = t_high - t_low
+    if t_range == 0:
+        return result
+
+    t_bull = t_close > t_open
+    t_bear = t_close < t_open
+    p_bull = p_close > p_open
+    p_bear = p_close < p_open
+
+    lower_wick = (min(t_open, t_close) - t_low)
+    upper_wick = (t_high - max(t_open, t_close))
+
+    # ── Bullish engulfing ─────────────────────────────────────────────────
+    if t_bull and p_bear and t_open < p_close and t_close > p_open:
+        result["pattern"]           = "BULLISH_ENGULFING"
+        result["pattern_direction"] = "BULLISH"
+        result["description"]       = (
+            "Bullish engulfing — today's buying completely absorbed yesterday's selling. "
+            "High-conviction reversal signal."
+        )
+        return result
+
+    # ── Bearish engulfing ─────────────────────────────────────────────────
+    if t_bear and p_bull and t_open > p_close and t_close < p_open:
+        result["pattern"]           = "BEARISH_ENGULFING"
+        result["pattern_direction"] = "BEARISH"
+        result["description"]       = (
+            "Bearish engulfing — today's selling completely absorbed yesterday's buying. "
+            "High-conviction reversal signal."
+        )
+        return result
+
+    # ── Hammer (bullish) ──────────────────────────────────────────────────
+    if (lower_wick >= 2 * t_body and
+            upper_wick <= 0.3 * t_body and
+            t_body > 0):
+        result["pattern"]           = "HAMMER"
+        result["pattern_direction"] = "BULLISH"
+        result["description"]       = (
+            f"Hammer — lower wick {lower_wick/t_body:.1f}× body. "
+            "Buyers rejected lower prices; sellers exhausted."
+        )
+        return result
+
+    # ── Shooting star (bearish) ────────────────────────────────────────────
+    if (upper_wick >= 2 * t_body and
+            lower_wick <= 0.3 * t_body and
+            t_body > 0):
+        result["pattern"]           = "SHOOTING_STAR"
+        result["pattern_direction"] = "BEARISH"
+        result["description"]       = (
+            f"Shooting star — upper wick {upper_wick/t_body:.1f}× body. "
+            "Sellers rejected higher prices; buyers exhausted."
+        )
+        return result
+
+    # ── Marubozu bull (full conviction) ───────────────────────────────────
+    if (t_bull and
+            lower_wick <= 0.05 * t_range and
+            upper_wick <= 0.05 * t_range):
+        result["pattern"]           = "MARUBOZU_BULL"
+        result["pattern_direction"] = "BULLISH"
+        result["description"]       = "Bullish Marubozu — no wicks, pure buying conviction."
+        return result
+
+    # ── Marubozu bear ─────────────────────────────────────────────────────
+    if (t_bear and
+            lower_wick <= 0.05 * t_range and
+            upper_wick <= 0.05 * t_range):
+        result["pattern"]           = "MARUBOZU_BEAR"
+        result["pattern_direction"] = "BEARISH"
+        result["description"]       = "Bearish Marubozu — no wicks, pure selling conviction."
+        return result
+
+    return result
+
+
+# =============================================================================
+# Signal 6 & 7 — Failed Breakdown (Bullish) / Failed Breakout (Bearish)
 # =============================================================================
 
 def get_failed_break(ticker: str) -> dict:
@@ -466,6 +580,7 @@ def compute_price_action_score(
     atr_compression: dict,
     ma_alignment:    dict,
     failed_break:    dict,
+    candlestick:     dict = None,
 ) -> tuple[float, str]:
     """
     Combine all price action signals into a composite score (-100 to +100)
@@ -532,6 +647,19 @@ def compute_price_action_score(
     elif atr_compression.get("compressed"):
         score += 5      # Still coiling — slight timing bonus
 
+    # ── Candlestick pattern ───────────────────────────────────────────────
+    if candlestick:
+        candle_scores = {
+            "BULLISH_ENGULFING": +15,
+            "BEARISH_ENGULFING": -15,
+            "HAMMER":            +10,
+            "SHOOTING_STAR":     -10,
+            "MARUBOZU_BULL":     +12,
+            "MARUBOZU_BEAR":     -12,
+            "NONE":                0,
+        }
+        score += candle_scores.get(candlestick.get("pattern", "NONE"), 0)
+
     score = round(max(-100, min(100, score)), 1)
 
     if score >= CONFIRM_LONG_THRESHOLD:
@@ -562,13 +690,14 @@ def analyse_price_action(ticker: str) -> dict:
     """
     log.info(f"Running price action analysis: {ticker}")
 
-    range_bo  = get_range_breakout(ticker)
-    trend     = get_trend_structure(ticker)
-    atr_comp  = get_atr_compression(ticker)
-    ma_align  = get_ma_alignment(ticker)
-    failed    = get_failed_break(ticker)
+    range_bo   = get_range_breakout(ticker)
+    trend      = get_trend_structure(ticker)
+    atr_comp   = get_atr_compression(ticker)
+    ma_align   = get_ma_alignment(ticker)
+    failed     = get_failed_break(ticker)
+    candlestick = get_candlestick_pattern(ticker)
 
-    score, verdict = compute_price_action_score(range_bo, trend, atr_comp, ma_align, failed)
+    score, verdict = compute_price_action_score(range_bo, trend, atr_comp, ma_align, failed, candlestick)
 
     result = {
         "ticker":           ticker,
@@ -596,14 +725,19 @@ def analyse_price_action(ticker: str) -> dict:
         "golden_cross":     ma_align.get("golden_cross"),
         "death_cross":      ma_align.get("death_cross"),
 
-        "failed_break":     failed.get("signal"),
+        "failed_break":      failed.get("signal"),
         "failed_break_desc": failed.get("description"),
+
+        "candlestick":       candlestick.get("pattern"),
+        "candlestick_dir":   candlestick.get("pattern_direction"),
+        "candlestick_desc":  candlestick.get("description"),
     }
 
     log.info(
         f"Price action {ticker}: verdict={verdict} score={score:+.1f} | "
         f"breakout={range_bo.get('signal')} trend={trend.get('signal')} "
-        f"MA={ma_align.get('signal')} failed={failed.get('signal')}"
+        f"MA={ma_align.get('signal')} failed={failed.get('signal')} "
+        f"candle={candlestick.get('pattern')}"
     )
 
     return result
