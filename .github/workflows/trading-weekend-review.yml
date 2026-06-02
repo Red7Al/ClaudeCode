@@ -33,3 +33,4 @@ jobs:
           SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
           SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
           SLACK_WEEKLY:          ${{ secrets.SLACK_WEEKLY }}
+          QUIVER_QUANT_API_KEY:  ${{ secrets.QUIVER_QUANT_API_KEY }}

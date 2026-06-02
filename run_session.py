@@ -321,6 +321,131 @@ def run_session_close():
     log.info(f"Session close: closed={closed} held={held}")
 
 
+def refresh_senator_scores():
+    """
+    Score US senators by their equity trading performance vs SPX.
+    Data source: Quiver Quant API (free tier — senate trades only).
+    Formula: score = win_rate × avg_excess_return
+    Requires: QUIVER_QUANT_API_KEY environment variable.
+
+    For each senator trade (purchase only):
+      - Fetch stock price at disclosure date and 30 days later (Yahoo Finance)
+      - Compare to SPX return over same window
+      - excess_return = stock_30d_return - spx_30d_return
+      - Tally win_rate (% where excess_return > 0) and avg_excess_return
+    """
+    import requests as req
+    import pg8000.native
+    import yfinance as yf
+    import numpy as np
+    from datetime import datetime, timedelta
+
+    api_key = os.environ.get("QUIVER_QUANT_API_KEY", "")
+    if not api_key:
+        log.warning("QUIVER_QUANT_API_KEY not set — skipping senator scoring")
+        return
+
+    log.info("Fetching congress trades from Quiver Quant...")
+    try:
+        resp = req.get(
+            "https://api.quiverquant.com/beta/historical/congress",
+            headers={"Authorization": f"Token {api_key}"},
+            timeout=30
+        )
+        resp.raise_for_status()
+        trades = resp.json()
+    except Exception as e:
+        log.error(f"Quiver Quant fetch failed: {e}")
+        return
+
+    # Filter: Senate purchases only, last 2 years
+    cutoff = datetime.now() - timedelta(days=730)
+    senate_trades = []
+    for t in trades:
+        if t.get("Chamber", "").lower() != "senate":
+            continue
+        if t.get("Transaction", "").lower() not in ("purchase", "buy"):
+            continue
+        try:
+            trade_date = datetime.strptime(t["Date"][:10], "%Y-%m-%d")
+        except Exception:
+            continue
+        if trade_date < cutoff:
+            continue
+        senate_trades.append({
+            "senator":  t.get("Representative", ""),
+            "ticker":   t.get("Ticker", "").upper(),
+            "date":     trade_date,
+            "amount":   t.get("Amount", ""),
+        })
+
+    log.info(f"Scoring {len(senate_trades)} senate purchase records...")
+
+    # Score each trade: 30-day return vs SPX
+    scored = {}   # {senator: [excess_returns]}
+    spy    = yf.Ticker("SPY")
+
+    for trade in senate_trades:
+        ticker = trade["ticker"]
+        date   = trade["date"]
+        end    = date + timedelta(days=35)
+        if end > datetime.now():
+            continue   # not enough history yet
+        try:
+            stock = yf.Ticker(ticker)
+            s_hist = stock.history(start=date.strftime("%Y-%m-%d"),
+                                   end=end.strftime("%Y-%m-%d"))
+            m_hist = spy.history(start=date.strftime("%Y-%m-%d"),
+                                 end=end.strftime("%Y-%m-%d"))
+            if len(s_hist) < 5 or len(m_hist) < 5:
+                continue
+            stock_ret = (float(s_hist["Close"].iloc[-1]) - float(s_hist["Close"].iloc[0])) \
+                        / float(s_hist["Close"].iloc[0])
+            spx_ret   = (float(m_hist["Close"].iloc[-1]) - float(m_hist["Close"].iloc[0])) \
+                        / float(m_hist["Close"].iloc[0])
+            excess    = round(stock_ret - spx_ret, 4)
+            senator   = trade["senator"]
+            if senator not in scored:
+                scored[senator] = []
+            scored[senator].append(excess)
+        except Exception:
+            continue
+
+    # Build senator_scores records
+    conn = pg8000.native.Connection(
+        host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+        database="postgres", user=os.environ["SUPABASE_USER"],
+        password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
+    )
+
+    updated = 0
+    for senator, returns in scored.items():
+        if len(returns) < 5:
+            continue   # minimum 5 trades to qualify
+        win_rate         = round(sum(1 for r in returns if r > 0) / len(returns), 4)
+        avg_excess       = round(float(np.mean(returns)), 4)
+        score            = round(win_rate * avg_excess, 6)
+        qualified        = score > 0 and len(returns) >= 5
+        try:
+            conn.run(
+                """insert into senator_scores
+                   (senator_name, trade_count, win_rate, avg_excess_return, score, qualified, last_updated)
+                   values (:n, :tc, :wr, :ae, :sc, :q, now())
+                   on conflict (senator_name) do update
+                   set trade_count=:tc, win_rate=:wr, avg_excess_return=:ae,
+                       score=:sc, qualified=:q, last_updated=now()""",
+                n=senator, tc=len(returns), wr=win_rate,
+                ae=avg_excess, sc=score, q=qualified
+            )
+            updated += 1
+        except Exception as e:
+            log.warning(f"Failed to upsert senator {senator}: {e}")
+
+    conn.close()
+    log.info(f"Senator scores updated: {updated} senators, "
+             f"{sum(1 for r in scored.values() if len(r)>=5 and sum(1 for x in r if x>0)/len(r)*sum(1 for x in r if x>0)/len(r)>0)} qualified")
+
+
 def run_weekend_review():
     """COT refresh, senator scoring, weekly digest."""
     import requests as req
@@ -333,6 +458,10 @@ def run_weekend_review():
     # Refresh COT
     log.info("Refreshing COT data...")
     refresh_all_cot()
+
+    # Refresh senator scores from Quiver Quant
+    log.info("Refreshing senator scores...")
+    refresh_senator_scores()
 
     # Weekly P&L
     conn = pg8000.native.Connection(
