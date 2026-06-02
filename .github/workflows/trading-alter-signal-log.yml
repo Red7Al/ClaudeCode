@@ -1,4 +1,4 @@
-name: Check Tables (one-shot)
+name: Alter signal_log (one-shot)
 
 on:
   workflow_dispatch:
@@ -15,9 +15,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-          cache: 'pip'
       - run: pip install pg8000
-      - run: python run_check.py >> $GITHUB_STEP_SUMMARY
+      - run: python run_alter_signal_log.py | tee $GITHUB_STEP_SUMMARY
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
