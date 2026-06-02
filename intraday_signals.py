@@ -494,13 +494,13 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                  "text": {"type": "plain_text", "text": "⚠️ US Monitor — Position Alert"}},
                 {"type": "section",
                  "text": {"type": "mrkdwn",
-                          "text": f"*{len(alerts)} position(s) flagged for review:*\n{lines}"}},
+                          "text": f"*{len(position_alerts)} position(s) flagged for review:*\n{lines}"}},
                 {"type": "context",
                  "elements": [{"type": "mrkdwn",
                                 "text": datetime.now(timezone.utc).strftime("%d %b %H:%M UTC")}]}
             ]
             requests.post(slack_url, json={"blocks": blocks}, timeout=10)
-            log.info(f"US Monitor alert sent for {len(alerts)} positions")
+            log.info(f"US Monitor alert sent for {len(position_alerts)} positions")
 
     # Always send session summary to signals channel
     if notify_slack:

@@ -463,6 +463,10 @@ def run_weekend_review():
     log.info("Refreshing senator scores...")
     refresh_senator_scores()
 
+    # Refresh superinvestor holdings from Dataroma
+    log.info("Refreshing superinvestor holdings from Dataroma...")
+    refresh_superinvestors()
+
     # Weekly P&L
     conn = pg8000.native.Connection(
         host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
@@ -515,11 +519,118 @@ def run_weekend_review():
     log.info("Weekend review complete")
 
 
-def run_premarket_brief():
-    """Sunday pre-market brief to Slack."""
-    import importlib.util, subprocess
-    # Re-use the Sunday brief logic inline
-    exec(open("run_session.py").read())   # noqa — entry point handles this via main
+def refresh_superinvestors():
+    """
+    Scrape Dataroma holdings pages for tracked superinvestors.
+    Inserts new BUY / ADD / NEW rows into notable_investors.
+    Idempotent — ON CONFLICT DO NOTHING prevents duplicates across weekly runs.
+    """
+    import requests as req
+    import pg8000.native
+    import re
+    import time as _time
+    from html.parser import HTMLParser
+    from datetime import date
+
+    MANAGERS = [
+        ("Warren Buffett",  "BRK"),
+        ("Bill Ackman",     "PS"),
+        ("Michael Burry",   "MSB"),
+        ("David Tepper",    "DAV"),
+        ("Carl Icahn",      "ICA"),
+        ("Seth Klarman",    "BAU"),
+        ("Chase Coleman",   "CHA"),
+        ("Terry Smith",     "TER"),
+        ("Nelson Peltz",    "NEL"),
+        ("George Soros",    "SFM"),
+    ]
+
+    class DataromaParser(HTMLParser):
+        """Extract (ticker, activity) pairs from a Dataroma holdings page."""
+
+        def __init__(self):
+            super().__init__()
+            self.rows = []           # list of completed rows
+            self._row = []           # cells in current row
+            self._cell = ""          # text accumulating in current cell
+            self._ticker = None      # ticker found in href of current row
+            self._in_td = False
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "tr":
+                self._row = []
+                self._ticker = None
+            elif tag == "td":
+                self._in_td = True
+                self._cell = ""
+            elif tag == "a":
+                href = dict(attrs).get("href", "")
+                m = re.search(r"stock=([A-Z]{1,6})", href)
+                if m:
+                    self._ticker = m.group(1)
+
+        def handle_endtag(self, tag):
+            if tag == "td":
+                self._row.append(self._cell.strip())
+                self._in_td = False
+            elif tag == "tr":
+                if self._ticker and len(self._row) >= 3:
+                    self.rows.append((self._ticker, self._row[2]))  # col 2 = activity
+
+        def handle_data(self, data):
+            if self._in_td:
+                self._cell += data
+
+    conn = pg8000.native.Connection(
+        host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+        database="postgres", user=os.environ["SUPABASE_USER"],
+        password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
+    )
+
+    inserted = 0
+    today    = date.today().isoformat()
+    BUY_ACTIONS = {"buy", "add", "new"}
+
+    for name, code in MANAGERS:
+        try:
+            resp = req.get(
+                f"https://www.dataroma.com/m/holdings.php?m={code}",
+                headers={"User-Agent": "Mozilla/5.0 (compatible; EndToEndTrading/1.0)"},
+                timeout=15
+            )
+            if resp.status_code != 200:
+                log.warning(f"Dataroma {name} ({code}): HTTP {resp.status_code}")
+                continue
+
+            parser = DataromaParser()
+            parser.feed(resp.text)
+
+            for ticker, activity in parser.rows:
+                if activity.lower().strip() not in BUY_ACTIONS:
+                    continue
+                action = activity.upper().strip()
+                try:
+                    conn.run(
+                        """insert into notable_investors
+                           (investor_name, ticker, action, source, disclosed_at, notes)
+                           values (:n, :t, :a, 'Dataroma', :d, :notes)
+                           on conflict do nothing""",
+                        n=name, t=ticker, a=action, d=today,
+                        notes=f"Dataroma 13F — {action}"
+                    )
+                    inserted += 1
+                except Exception as e:
+                    log.warning(f"Insert failed {name}/{ticker}: {e}")
+
+            buys = sum(1 for _, act in parser.rows if act.lower().strip() in BUY_ACTIONS)
+            log.info(f"Dataroma {name} ({code}): {len(parser.rows)} holdings, {buys} buys/adds")
+            _time.sleep(1)  # polite crawl delay
+
+        except Exception as e:
+            log.warning(f"Dataroma fetch failed for {name} ({code}): {e}")
+
+    conn.close()
+    log.info(f"Superinvestor refresh complete: {inserted} new entries inserted")
 
 
 # =============================================================================
