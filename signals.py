@@ -759,6 +759,38 @@ def get_commodity_macro_score(ticker: str, yield_spread: float = None) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# 15. VOLUME SIGNAL — today vs 20-day average
+# ---------------------------------------------------------------------------
+def get_volume_signal(ticker: str) -> dict:
+    """
+    Compare today's volume to the 20-day average daily volume.
+    HIGH_VOLUME (≥1.5×) alongside a directional options signal substitutes
+    for a BB breakout as the second primary signal — institutional conviction
+    expressed through both options activity AND unusual volume is actionable
+    even without a price breakout from compression.
+    """
+    result = {"volume_signal": "NORMAL", "volume_ratio": None}
+    yticker = YAHOO_MAP.get(ticker, ticker)
+    try:
+        t = yf.Ticker(yticker)
+        hist = t.history(period="25d", interval="1d")
+        if len(hist) < 2:
+            return result
+        avg_vol   = float(hist["Volume"].iloc[:-1].mean())
+        today_vol = float(hist["Volume"].iloc[-1])
+        if avg_vol > 0:
+            ratio = round(today_vol / avg_vol, 2)
+            result["volume_ratio"] = ratio
+            if ratio >= 1.5:
+                result["volume_signal"] = "HIGH_VOLUME"
+            elif ratio < 0.5:
+                result["volume_signal"] = "LOW_VOLUME"
+    except Exception as e:
+        log.warning(f"Volume signal failed for {ticker}: {e}")
+    return result
+
+
 def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     """
     Run the full signal stack for one instrument.
@@ -768,6 +800,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
 
     options   = get_options_signal(ticker)
     squeeze   = get_bb_squeeze(ticker)
+    volume    = get_volume_signal(ticker)
     gex       = get_gex_bias(ticker)
     vwap      = get_vwap_position(ticker)
     cot       = get_cot_bias(ticker)
@@ -783,14 +816,29 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     atr_data  = get_atr(ticker)
 
     # Count primary signals aligned
+    # Primary 1: options flow (call/put imbalance)
+    # Primary 2a: BB breakout from squeeze (original)
+    # Primary 2b: HIGH volume (≥1.5× avg) substitutes for BB breakout when
+    #             options has already fired — institutional volume alongside
+    #             directional options flow is a valid entry signal
     primary_count = 0
     primary_dir   = []
-    if options.get("options_bias") in ("BULLISH","BEARISH"):
+    options_dir   = options.get("options_bias")
+    bb_dir        = squeeze.get("bb_breakout_dir")
+    high_volume   = volume.get("volume_signal") == "HIGH_VOLUME"
+
+    if options_dir in ("BULLISH", "BEARISH"):
         primary_count += 1
-        primary_dir.append(options["options_bias"])
-    if squeeze.get("bb_breakout_dir") in ("BULLISH","BEARISH"):
+        primary_dir.append(options_dir)
+
+    if bb_dir in ("BULLISH", "BEARISH"):
         primary_count += 1
-        primary_dir.append(squeeze["bb_breakout_dir"])
+        primary_dir.append(bb_dir)
+    elif high_volume and options_dir in ("BULLISH", "BEARISH"):
+        # High volume substitutes for BB breakout — same direction as options
+        primary_count += 1
+        primary_dir.append(options_dir)
+        log.info(f"{ticker}: HIGH volume ({volume.get('volume_ratio')}x) substituting for BB breakout")
 
     # Count confirmation signals
     conf_count = 0
@@ -842,6 +890,8 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "iv_rank":           options.get("iv_rank"),
         "bb_squeeze":        squeeze.get("bb_squeeze"),
         "bb_breakout_dir":   squeeze.get("bb_breakout_dir"),
+        "volume_signal":     volume.get("volume_signal"),
+        "volume_ratio":      volume.get("volume_ratio"),
 
         # Confirmation signals
         "gex_bias":          gex.get("gex_bias"),
