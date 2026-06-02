@@ -5,6 +5,9 @@ on:
     paths:
       - 'query_trigger.txt'
 
+permissions:
+  contents: write
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
