@@ -152,11 +152,13 @@ def fetch_macro_snapshot(db, today_str: str) -> dict:
         "prev_vix": None, "prev_dxy": None, "prev_spread": None,
     }
     # Yesterday's snapshot for direction arrows
+    from datetime import datetime as _dt, timedelta as _td
+    yesterday = (_dt.strptime(today_str, "%Y-%m-%d") - _td(days=1)).strftime("%Y-%m-%d")
     prev = db.run(
         """select vix, dxy, yield_spread from macro_snapshot
-           where date(snapshot_time) = :d - interval '1 day'
+           where date(snapshot_time) = :d
            order by snapshot_time desc limit 1""",
-        d=today_str
+        d=yesterday
     )
     if prev:
         result["prev_vix"]    = float(prev[0][0] or 0)
