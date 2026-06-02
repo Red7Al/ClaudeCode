@@ -1,0 +1,40 @@
+# Gitleaks configuration for EndToEndTrading
+# Scans for secrets before they reach the repository.
+# Docs: https://github.com/gitleaks/gitleaks
+
+[extend]
+# Use gitleaks default ruleset as the base (catches 100+ secret types)
+useDefault = true
+
+# ── Custom rules specific to this project ────────────────────────────────────
+
+[[rules]]
+id          = "slack-webhook"
+description = "Slack Incoming Webhook URL"
+regex       = '''hooks\.slack\.com/services/[A-Z0-9]+/[A-Z0-9]+/[A-Za-z0-9]+'''
+tags        = ["slack", "webhook"]
+
+[[rules]]
+id          = "ig-api-key"
+description = "IG API Key (alphanumeric, typically 65+ chars)"
+regex       = '''[Ii][Gg][_-]?[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]\s*[=:]\s*["\']?[A-Za-z0-9]{20,}'''
+tags        = ["ig", "broker"]
+
+[[rules]]
+id          = "supabase-key"
+description = "Supabase service role or anon key (JWT)"
+regex       = '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'''
+tags        = ["supabase", "jwt"]
+
+# ── Allowlist — known safe patterns ──────────────────────────────────────────
+
+[allowlist]
+description = "Safe patterns — not real secrets"
+regexes     = [
+    # Placeholder values in comments or docs
+    '''PLACEHOLDER_''',
+    # Example/test values
+    '''example\.com''',
+    # Our Supabase hostname is not a secret
+    '''aws-0-eu-west-1\.pooler\.supabase\.com''',
+]

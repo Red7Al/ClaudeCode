@@ -213,6 +213,31 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
 # Market move detection
 # ---------------------------------------------------------------------------
 
+def fetch_company_names(db, tickers: list[str]) -> dict[str, str]:
+    """
+    Batch-fetch company names from epic_lookup for a list of tickers.
+    Returns {ticker: company_name}. Strips IG suffix e.g. '(24 Hours)'.
+    """
+    if not tickers:
+        return {}
+    import re
+    placeholders = ", ".join(f"'{t}'" for t in set(tickers))
+    try:
+        rows = db.run(
+            f"select ticker, description from epic_lookup where ticker in ({placeholders})"
+        )
+        result = {}
+        for ticker, desc in (rows or []):
+            if desc:
+                name = re.sub(r'\s*\(.*?(Hours|Daily|DFB|Spot).*?\)\s*$', '', desc,
+                              flags=re.IGNORECASE).strip()
+                if name and name != ticker:
+                    result[ticker] = name
+        return result
+    except Exception:
+        return {}
+
+
 def get_intraday_move_and_volume(tickers: list[str]) -> dict[str, dict]:
     """
     Fetch today's day return (vs previous close) and volume vs 20-day average.
@@ -430,7 +455,18 @@ def build_report(
     signal_log: list,
     market_moves: dict,
     tomorrow_events: list,
+    company_names: dict = None,
 ) -> str:
+    company_names = company_names or {}
+
+    def _display(ticker: str) -> str:
+        """Return 'MRVL' — company name goes at end of line separately via _name()."""
+        return ticker
+
+    def _name(ticker: str) -> str:
+        """Return '  _(Marvell Technology)_' or '' if name unknown."""
+        name = company_names.get(ticker, "")
+        return f"  _({name})_" if name else ""
 
     lines = []
 
@@ -511,7 +547,7 @@ def build_report(
             lines.append(
                 f"  {_direction_arrow(t['direction'])}  *{t['ticker']}*  "
                 f"Entry {t['open_price']}  Stop {t['stop_loss']}  "
-                f"Size {t['size']}  [{t['session']}]"
+                f"Size {t['size']}  [{t['session']}]{_name(t['ticker'])}"
             )
             if t.get("signal_summary"):
                 lines.append(f"  _Signals: {t['signal_summary']}_")
@@ -536,7 +572,7 @@ def build_report(
             reason_str = reason_map.get(t["close_reason"], t["close_reason"])
             lines.append(
                 f"  {_direction_arrow(t['direction'])}  *{t['ticker']}*  "
-                f"{t['open_price']} → {t['close_price']}  *{pnl_str}*  — {reason_str}"
+                f"{t['open_price']} → {t['close_price']}  *{pnl_str}*  — {reason_str}{_name(t['ticker'])}"
             )
     else:
         lines.append("  No trades closed today.")
@@ -554,7 +590,7 @@ def build_report(
             lines.append(
                 f"  {_direction_arrow(p['direction'])}  *{p['ticker']}*  "
                 f"Entry {p['open_price']}  Stop {p['stop_loss']}"
-                f"  Held {_hold_duration(p['opened_at'])}{unreal}"
+                f"  Held {_hold_duration(p['opened_at'])}{unreal}{_name(p['ticker'])}"
             )
     else:
         lines.append("  No open positions. Fully flat overnight.")
@@ -620,7 +656,7 @@ def build_report(
                     )
                 else:
                     vol_tag = ""
-                lines.append(f"  *{ticker}* {pct_str}{vol_tag}")
+                lines.append(f"  *{ticker}* {pct_str}{vol_tag}{_name(ticker)}")
             # One shared explanation for all instruments in this group
             sample_sig = items[0][3]
             summary = group_summary(category, sample_sig)
@@ -690,13 +726,23 @@ def main():
         s["ticker"] for s in signal_log
     } | {
         p["ticker"] for p in open_positions
+    } | {
+        t["ticker"] for t in trades_opened
+    } | {
+        t["ticker"] for t in trades_closed
     })
     market_moves    = get_intraday_move_and_volume(all_tickers)
     tomorrow_events = get_tomorrows_events()
 
+    # Batch-fetch company names for all tickers appearing in the report
+    db2 = get_db()
+    company_names = fetch_company_names(db2, all_tickers)
+    db2.close()
+
     report = build_report(
         today_str, macro, trades_opened, trades_closed,
-        open_positions, daily_pnl, signal_log, market_moves, tomorrow_events
+        open_positions, daily_pnl, signal_log, market_moves,
+        tomorrow_events, company_names
     )
 
     log.info("Report built. Posting to Slack...")
