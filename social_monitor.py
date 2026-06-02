@@ -363,8 +363,7 @@ if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-    os.environ.setdefault("SLACK_SIGNALS",
-        "SLACK_SIGNALS_WEBHOOK_REMOVED")
+    # SLACK_SIGNALS must be set as an environment variable — never hardcode webhook URLs
 
     print("Scanning X accounts for new picks...")
     picks = scan_social_feeds(max_age_hours=48)
