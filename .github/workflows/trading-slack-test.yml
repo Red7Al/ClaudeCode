@@ -1,0 +1,24 @@
+name: Slack Webhook Test
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - run: python run_slack_test.py
+        env:
+          SLACK_TRADES:   ${{ secrets.SLACK_TRADES }}
+          SLACK_SIGNALS:  ${{ secrets.SLACK_SIGNALS }}
+          SLACK_ALERTS:   ${{ secrets.SLACK_ALERTS }}
+          SLACK_WEEKLY:   ${{ secrets.SLACK_WEEKLY }}
