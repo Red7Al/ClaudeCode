@@ -938,6 +938,58 @@ def _log_trade_close_to_db(deal_id: str, close_price: float, close_reason: str):
                   else (open_price - close_price) * size
         pnl_pct = ((close_price - open_price) / open_price * 100) if open_price else 0
 
+        # ── Stop slippage detection ───────────────────────────────────────────
+        # Was the position closed significantly worse than the stop level?
+        # If so, override the close_reason and alert — this is actionable information.
+        stop_loss = float(pos["stop_loss"]) if pos["stop_loss"] else None
+        if stop_loss and stop_loss > 0:
+            stop_dist = abs(open_price - stop_loss)
+            if direction == "BUY" and close_price < stop_loss and stop_dist > 0:
+                # Closed below where the stop was set
+                slippage_pts   = stop_loss - close_price
+                slippage_ratio = slippage_pts / stop_dist
+                if slippage_ratio > 1.5:   # actual close > 1.5× further from entry than stop
+                    expected_loss = round(stop_dist * size, 2)
+                    log.warning(
+                        f"Stop slippage on {deal_id}: closed at {close_price} "
+                        f"vs stop {stop_loss} — {slippage_ratio:.1f}× stop distance. "
+                        f"Expected loss £{expected_loss:.2f}, actual £{abs(pnl):.2f}"
+                    )
+                    close_reason = f"STOP_SLIPPAGE_{slippage_ratio:.1f}x"
+                    try:
+                        from notify import alert_stop_slippage
+                        alert_stop_slippage(
+                            ticker=pos["ticker"], direction=direction,
+                            open_price=open_price, stop_level=stop_loss,
+                            close_price=close_price, size=size,
+                            expected_loss=expected_loss, actual_loss=round(abs(pnl), 2),
+                            slippage_ratio=slippage_ratio, original_reason=close_reason
+                        )
+                    except Exception as ae:
+                        log.warning(f"Could not send slippage alert: {ae}")
+            elif direction == "SELL" and close_price > stop_loss and stop_dist > 0:
+                slippage_pts   = close_price - stop_loss
+                slippage_ratio = slippage_pts / stop_dist
+                if slippage_ratio > 1.5:
+                    expected_loss = round(stop_dist * size, 2)
+                    log.warning(
+                        f"Stop slippage on {deal_id}: closed at {close_price} "
+                        f"vs stop {stop_loss} — {slippage_ratio:.1f}× stop distance. "
+                        f"Expected loss £{expected_loss:.2f}, actual £{abs(pnl):.2f}"
+                    )
+                    close_reason = f"STOP_SLIPPAGE_{slippage_ratio:.1f}x"
+                    try:
+                        from notify import alert_stop_slippage
+                        alert_stop_slippage(
+                            ticker=pos["ticker"], direction=direction,
+                            open_price=open_price, stop_level=stop_loss,
+                            close_price=close_price, size=size,
+                            expected_loss=expected_loss, actual_loss=round(abs(pnl), 2),
+                            slippage_ratio=slippage_ratio, original_reason=close_reason
+                        )
+                    except Exception as ae:
+                        log.warning(f"Could not send slippage alert: {ae}")
+
         db.run(
             """insert into trade_log
                (user_id, epic, ticker, direction, size, open_price, close_price,

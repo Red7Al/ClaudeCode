@@ -327,6 +327,70 @@ def signal_detail(ticker: str, signal: dict):
 # Fired for risk events, system blocks, and conditions requiring attention.
 # =============================================================================
 
+def alert_stop_slippage(
+    ticker:          str,
+    direction:       str,
+    open_price:      float,
+    stop_level:      float,
+    close_price:     float,
+    size:            float,
+    expected_loss:   float,
+    actual_loss:     float,
+    slippage_ratio:  float,
+    original_reason: str,
+):
+    """
+    Alert when a position closes significantly worse than its stop level.
+
+    Stop slippage happens when IG cannot fill the stop at the set price —
+    usually because price gapped through it (pre-market hours, news event,
+    thin liquidity) or because IG closed the position for system reasons.
+
+    Example: IBM stop at 32362, closed at 32258 = 4.8× the stop distance.
+    Expected loss £4.37, actual loss £21.12.
+
+    Posted to #claude-trading-alerts — this is actionable: review whether
+    the instrument should be traded at that time of day / market conditions.
+    """
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text",
+                     "text": f"⚠️ Stop Slippage — {ticker} {direction}"}
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Entry:*\n{open_price}"},
+                {"type": "mrkdwn", "text": f"*Stop set at:*\n{stop_level}"},
+                {"type": "mrkdwn", "text": f"*Actual close:*\n{close_price}"},
+                {"type": "mrkdwn", "text": f"*Size:*\n{size}"},
+                {"type": "mrkdwn",
+                 "text": f"*Expected loss:*\n£{expected_loss:.2f}"},
+                {"type": "mrkdwn",
+                 "text": f"*Actual loss:*\n£{actual_loss:.2f}  ({slippage_ratio:.1f}× stop distance)"},
+            ]
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"*IG close reason:* `{original_reason}`\n"
+                    f"The position closed {slippage_ratio:.1f}× further from entry than the stop was set. "
+                    f"Likely cause: price gapped through the stop (pre-market / thin liquidity / news). "
+                    f"Review whether {ticker} should be traded outside regular market hours."
+                )
+            }
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": _ts()}]
+        },
+    ]
+    _send("alerts", blocks)
+
+
 def alert_circuit_breaker(user: str, ticker: str, reason: str):
     """Notify that a circuit breaker has blocked a trade."""
     blocks = [
