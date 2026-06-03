@@ -1,8 +1,8 @@
-name: Session Watchdog (every 2h)
+name: Session Watchdog (every 30min)
 
 on:
   schedule:
-    - cron: '0 */2 * * 1-5'   # Every 2 hours, Mon-Fri
+    - cron: '*/30 0-21 * * 1-5'   # Every 30 min during trading hours Mon-Fri
   workflow_dispatch:
 
 env:
@@ -23,3 +23,4 @@ jobs:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
+          GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}

@@ -345,6 +345,11 @@ def get_gex_bias(ticker: str) -> dict:
             chain = t.option_chain(exp)
             for df, sign in [(chain.calls, 1), (chain.puts, -1)]:
                 df = df.copy()
+                # Yahoo Finance options chains do not always include greeks.
+                # Gracefully skip this expiry if 'gamma' column is absent.
+                if "gamma" not in df.columns:
+                    log.debug(f"GEX: 'gamma' column missing from options chain for {ticker} — skipping")
+                    continue
                 df["oi"]    = df["openInterest"].fillna(0)
                 df["gamma"] = df["gamma"].fillna(0)
                 # GEX = gamma × OI × spot² × 0.01 (per 1% move)
@@ -1084,6 +1089,8 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     }
 
     # Log to Supabase
+    # NOTE: use positional $1..$N params (pg8000.native named-param parser is
+    # unreliable with >1 parameter — positional is the safe choice here).
     try:
         db = get_db()
         db.run(
@@ -1094,22 +1101,22 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                 notable_investor, social_mention, primary_count, confirmation_count,
                 direction, pa_verdict, trade_triggered,
                 adx_signal, obv_signal, volume_signal, volume_ratio)
-               values (:s,:t,:mgp,:ob,:cpr,:ir,:gb,:vp,:cb,:bbs,:bbd,
-                       :ds,:as2,:ss,:ssn,:ni,:sm,:pc,:cc,:dir,:pav,:tt,
-                       :adx,:obv,:vs,:vr)""",
-            s=session_name, t=ticker,
-            mgp=macro.get("macro_gate_pass"), ob=options.get("options_bias"),
-            cpr=options.get("call_put_ratio"), ir=options.get("iv_rank"),
-            gb=gex.get("gex_bias"), vp=vwap.get("vwap_position"),
-            cb=cot.get("bias"), bbs=squeeze.get("bb_squeeze"),
-            bbd=squeeze.get("bb_breakout_dir"),
-            ds=directors.get("director_signal"), as2=activist.get("activist_signal"),
-            ss=senate.get("senate_signal"), ssn=senate.get("senate_senator"),
-            ni=superinv.get("notable_investor"), sm=social.get("social_mention"),
-            pc=primary_count, cc=conf_count, dir=direction,
-            pav=price_act.get("verdict"), tt=trade_signal,
-            adx=adx.get("adx_signal"), obv=obv.get("obv_signal"),
-            vs=volume.get("volume_signal"), vr=volume.get("volume_ratio")
+               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+                       $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
+                       $23,$24,$25,$26)""",
+            [session_name, ticker,
+             macro.get("macro_gate_pass"), options.get("options_bias"),
+             options.get("call_put_ratio"), options.get("iv_rank"),
+             gex.get("gex_bias"), vwap.get("vwap_position"),
+             cot.get("bias"), squeeze.get("bb_squeeze"),
+             squeeze.get("bb_breakout_dir"),
+             directors.get("director_signal"), activist.get("activist_signal"),
+             senate.get("senate_signal"), senate.get("senate_senator"),
+             superinv.get("notable_investor"), social.get("social_mention"),
+             primary_count, conf_count, direction,
+             price_act.get("verdict"), trade_signal,
+             adx.get("adx_signal"), obv.get("obv_signal"),
+             volume.get("volume_signal"), volume.get("volume_ratio")]
         )
         db.close()
     except Exception as e:

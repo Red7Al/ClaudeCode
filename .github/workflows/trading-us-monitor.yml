@@ -19,6 +19,9 @@ jobs:
       IG_ACCOUNT_ID:         ${{ secrets.IG_ACCOUNT_ID }}
       SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+      FRED_API_KEY:          ${{ secrets.FRED_API_KEY }}
+      EIA_API_KEY:           ${{ secrets.EIA_API_KEY }}
+      QUIVER_QUANT_API_KEY:  ${{ secrets.QUIVER_QUANT_API_KEY }}
       SLACK_TRADES:          ${{ secrets.SLACK_TRADES }}
       SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
       SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}

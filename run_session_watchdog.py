@@ -56,6 +56,50 @@ def alert(session: str, problem: str, detail: str = ""):
                       timeout=10)
 
 
+# GitHub API — used to re-trigger a missed workflow via repository_dispatch
+GITHUB_REPO    = "Red7Al/ClaudeCode"
+GITHUB_TOKEN   = os.environ.get("GITHUB_TOKEN", "")
+
+# Map session name → workflow filename (for auto-trigger on miss)
+SESSION_WORKFLOW = {
+    "AUS_OPEN": "trading-aus-open.yml",
+    "UK_OPEN":  "trading-uk-open.yml",
+    "US_OPEN":  "trading-us-open.yml",
+}
+
+
+def trigger_workflow(workflow_file: str, session_name: str):
+    """
+    Trigger a GitHub Actions workflow via the REST API.
+    Requires GITHUB_TOKEN secret in the watchdog workflow env.
+    Called when a session is found to be missing — fires the session instead
+    of just alerting, so trading resumes automatically.
+    """
+    if not GITHUB_TOKEN:
+        log.warning(f"GITHUB_TOKEN not set — cannot auto-trigger {workflow_file}")
+        return False
+    try:
+        resp = requests.post(
+            f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{workflow_file}/dispatches",
+            headers={
+                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Accept":        "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            json={"ref": "main"},
+            timeout=15
+        )
+        if resp.status_code == 204:
+            log.info(f"Auto-triggered {workflow_file} for missed {session_name}")
+            return True
+        else:
+            log.warning(f"Auto-trigger failed: {resp.status_code} {resp.text[:200]}")
+            return False
+    except Exception as e:
+        log.warning(f"Auto-trigger request failed: {e}")
+        return False
+
+
 def check_session(conn, session_name: str, open_hour_utc: int,
                   grace_minutes: int, today: str) -> bool:
     """
@@ -64,6 +108,7 @@ def check_session(conn, session_name: str, open_hour_utc: int,
     Checks:
     1. If it's past the grace window for this session today, check for a
        macro_snapshot — if missing, the workflow didn't start at all.
+       → Auto-triggers the session workflow to recover.
     2. If macro_snapshot exists but no signal_log rows, the scan ran but
        logged nothing (likely a DB schema issue or total scan failure).
     """
@@ -77,34 +122,43 @@ def check_session(conn, session_name: str, open_hour_utc: int,
         log.info(f"{session_name}: not yet due (deadline {deadline.strftime('%H:%M')} UTC)")
         return True
 
-    # Check macro_snapshot
+    # Check macro_snapshot (positional params — see signal_log INSERT note)
     macro_rows = conn.run(
         """select count(*) from macro_snapshot
-           where session = :s
-             and date(snapshot_time at time zone 'UTC') = :d""",
-        s=session_name, d=today
+           where session = $1
+             and date(snapshot_time at time zone 'UTC') = $2""",
+        [session_name, today]
     )
     macro_count = int(macro_rows[0][0]) if macro_rows else 0
 
     if macro_count == 0:
         alert(
             session_name,
-            f"No macro_snapshot recorded today — GitHub Actions workflow may have failed to start.",
-            f"Expected after {open_hour_utc:02d}:00 UTC. Check Actions tab: github.com/Red7Al/ClaudeCode/actions"
+            f"No macro_snapshot recorded today — GitHub Actions cron missed. "
+            f"Auto-triggering {session_name} now...",
+            f"Expected after {open_hour_utc:02d}:00 UTC + {grace_minutes}min grace. "
+            f"Actual time: {now_utc.strftime('%H:%M')} UTC"
         )
+        # Auto-trigger the missed session instead of just alerting
+        wf = SESSION_WORKFLOW.get(session_name)
+        if wf:
+            triggered = trigger_workflow(wf, session_name)
+            if triggered:
+                log.info(f"✅ {session_name} auto-triggered successfully")
+            else:
+                log.warning(f"⚠ {session_name} auto-trigger failed — manual intervention needed")
         return False
 
     # macro ran — check signal_log
     sig_rows = conn.run(
         """select count(*) from signal_log
-           where session = :s
-             and date(session_time at time zone 'UTC') = :d""",
-        s=session_name, d=today
+           where session = $1
+             and date(session_time at time zone 'UTC') = $2""",
+        [session_name, today]
     )
     sig_count = int(sig_rows[0][0]) if sig_rows else 0
 
     if sig_count == 0:
-        # Get first error from any recent signal_log to give a hint
         hint = "signal_log INSERT failing — check schema or DB connection"
         alert(
             session_name,
@@ -127,10 +181,13 @@ def main():
     conn = get_db()
 
     # (session_name, open_hour_utc, grace_minutes)
+    # Grace window = 30 min after scheduled open — catch misses quickly.
+    # GitHub cron can run slightly late; 30 min gives it time to fire naturally
+    # before the watchdog triggers a manual re-run.
     SESSIONS = [
-        ("AUS_OPEN", 0,  90),   # 00:00 UTC open, alert if no data by 01:30
-        ("UK_OPEN",  8,  90),   # 08:00 UTC open, alert if no data by 09:30
-        ("US_OPEN",  14, 90),   # 14:30 UTC open, alert if no data by 16:00
+        ("AUS_OPEN", 0,  30),   # 00:00 UTC open → alert + auto-trigger if no data by 00:30
+        ("UK_OPEN",  8,  30),   # 08:00 UTC open → alert + auto-trigger if no data by 08:30
+        ("US_OPEN",  14, 30),   # 14:30 UTC open → alert + auto-trigger if no data by 15:00
     ]
 
     problems = 0
@@ -144,7 +201,7 @@ def main():
     if problems == 0:
         log.info("All sessions healthy.")
     else:
-        log.warning(f"{problems} session problem(s) detected — alerts sent to Slack.")
+        log.warning(f"{problems} session problem(s) detected — alerts sent, auto-triggers attempted.")
 
 
 if __name__ == "__main__":

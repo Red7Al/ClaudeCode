@@ -334,9 +334,11 @@ def get_oil_curve_signal() -> dict:
         except Exception:
             pass
 
-        # Try deferred WTI contracts (Yahoo naming varies by expiry)
+        # Try deferred WTI contracts — update these tickers when front-month rolls.
+        # Format: CL{Month}{Year}.NYM  e.g. CLQ26 = Aug 2026, CLZ26 = Dec 2026
+        # Using 6-month and 12-month deferred as proxies for curve shape.
         back_price = None
-        for deferred_ticker in ["CLX25.NYM", "CLZ25.NYM", "CLF26.NYM"]:
+        for deferred_ticker in ["CLQ26.NYM", "CLZ26.NYM", "CLH27.NYM"]:
             try:
                 back = yf.Ticker(deferred_ticker)
                 bp   = back.fast_info.get("lastPrice") or back.fast_info.get("regularMarketPrice")
