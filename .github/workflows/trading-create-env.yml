@@ -11,26 +11,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
+      - uses: actions/checkout@v6
       - name: Write .env file
         run: |
-          echo "SUPABASE_USER=${{ secrets.SUPABASE_USER }}"          >> .env
-          echo "SUPABASE_DB_PASSWORD=${{ secrets.SUPABASE_DB_PASSWORD }}" >> .env
-          echo "FRED_API_KEY=${{ secrets.FRED_API_KEY }}"            >> .env
-          echo "EIA_API_KEY=${{ secrets.EIA_API_KEY }}"              >> .env
-          echo "IG_API_KEY=${{ secrets.IG_API_KEY }}"                >> .env
-          echo "IG_USERNAME=${{ secrets.IG_USERNAME }}"              >> .env
-          echo "IG_PASSWORD=${{ secrets.IG_PASSWORD }}"              >> .env
-          echo "IG_ACCOUNT_ID=${{ secrets.IG_ACCOUNT_ID }}"          >> .env
-          echo "SLACK_TRADES=${{ secrets.SLACK_TRADES }}"            >> .env
-          echo "SLACK_SIGNALS=${{ secrets.SLACK_SIGNALS }}"          >> .env
-          echo "SLACK_ALERTS=${{ secrets.SLACK_ALERTS }}"            >> .env
-          echo "SLACK_WEEKLY=${{ secrets.SLACK_WEEKLY }}"            >> .env
-          echo "SLACK_DAILY=${{ secrets.SLACK_DAILY }}"              >> .env
-          echo "QUIVER_QUANT_API_KEY=${{ secrets.QUIVER_QUANT_API_KEY }}" >> .env
-          echo ".env written ($(wc -l < .env) lines)"
+          echo "SUPABASE_USER=${{ secrets.SUPABASE_USER }}"               > $GITHUB_WORKSPACE/.env
+          echo "SUPABASE_DB_PASSWORD=${{ secrets.SUPABASE_DB_PASSWORD }}" >> $GITHUB_WORKSPACE/.env
+          echo "FRED_API_KEY=${{ secrets.FRED_API_KEY }}"                 >> $GITHUB_WORKSPACE/.env
+          echo "EIA_API_KEY=${{ secrets.EIA_API_KEY }}"                   >> $GITHUB_WORKSPACE/.env
+          echo "IG_API_KEY=${{ secrets.IG_API_KEY }}"                     >> $GITHUB_WORKSPACE/.env
+          echo "IG_USERNAME=${{ secrets.IG_USERNAME }}"                   >> $GITHUB_WORKSPACE/.env
+          echo "IG_PASSWORD=${{ secrets.IG_PASSWORD }}"                   >> $GITHUB_WORKSPACE/.env
+          echo "IG_ACCOUNT_ID=${{ secrets.IG_ACCOUNT_ID }}"               >> $GITHUB_WORKSPACE/.env
+          echo "SLACK_TRADES=${{ secrets.SLACK_TRADES }}"                 >> $GITHUB_WORKSPACE/.env
+          echo "SLACK_SIGNALS=${{ secrets.SLACK_SIGNALS }}"               >> $GITHUB_WORKSPACE/.env
+          echo "SLACK_ALERTS=${{ secrets.SLACK_ALERTS }}"                 >> $GITHUB_WORKSPACE/.env
+          echo "SLACK_WEEKLY=${{ secrets.SLACK_WEEKLY }}"                 >> $GITHUB_WORKSPACE/.env
+          echo "SLACK_DAILY=${{ secrets.SLACK_DAILY }}"                   >> $GITHUB_WORKSPACE/.env
+          echo "QUIVER_QUANT_API_KEY=${{ secrets.QUIVER_QUANT_API_KEY }}" >> $GITHUB_WORKSPACE/.env
+          echo "Lines written: $(wc -l < $GITHUB_WORKSPACE/.env)"
+          ls -la $GITHUB_WORKSPACE/.env
       - name: Upload as artifact
         uses: actions/upload-artifact@v4
         with:
           name: env-file
-          path: .env
+          path: ${{ github.workspace }}/.env
           retention-days: 1
