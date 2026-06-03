@@ -34,12 +34,57 @@ logging.basicConfig(
 log = logging.getLogger("run_session")
 
 
+OWNER_USER_ID = "770a76b5-0e84-460b-b575-186c724dabdd"
+
+
+def get_user_profile(user_id: str = OWNER_USER_ID) -> dict:
+    """
+    Fetch the user profile from Supabase.
+    Returns risk_per_trade (as a decimal, e.g. 0.02), paper_trade flag,
+    daily_loss_limit, max_open_pos, and name.
+    """
+    import pg8000.native
+    try:
+        conn = pg8000.native.Connection(
+            host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+            database="postgres", user=os.environ["SUPABASE_USER"],
+            password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
+        )
+        rows = conn.run(
+            """select name, risk_per_trade, daily_loss_limit,
+                      max_open_pos, paper_trade
+               from   user_profiles where id = :uid""",
+            uid=user_id
+        )
+        conn.close()
+        if rows:
+            return {
+                "user_id":         user_id,
+                "name":            rows[0][0],
+                "risk_per_trade":  float(rows[0][1]) / 100.0,  # e.g. 2.0 → 0.02
+                "daily_loss_limit": float(rows[0][2]),
+                "max_open_pos":    int(rows[0][3]),
+                "paper_trade":     bool(rows[0][4]),
+            }
+    except Exception as e:
+        log.warning(f"Could not fetch user profile: {e}")
+    # Safe defaults if DB unavailable
+    return {"user_id": user_id, "name": "Owner", "risk_per_trade": 0.02,
+            "daily_loss_limit": 3.0, "max_open_pos": 5, "paper_trade": False}
+
+
 def run_session_open(session_name: str):
     """Run a session open scan and execute trades."""
     from signals import run_session_scan
     from notify import (session_summary, alert_macro_gate_failed,
                         alert_calendar_block, trade_opened, alert_circuit_breaker)
     from ig_shim import open_trade, get_account_balance, health_check, calculate_position_size, get_epic
+
+    # Load user profile — risk %, paper trade flag, limits
+    profile = get_user_profile()
+    log.info(f"Trading as: {profile['name']} | "
+             f"risk={profile['risk_per_trade']*100:.1f}% | "
+             f"paper={profile['paper_trade']}")
 
     # Health check
     hc = health_check()
@@ -85,10 +130,10 @@ def run_session_open(session_name: str):
             f"Confs:{sig.get('confirmation_count',0)}"
         )
 
-        # Size: margin-aware — satisfies both 2% risk rule and IG margin constraint
+        # Size: margin-aware, uses risk_per_trade from user profile
         try:
             bal         = get_account_balance()
-            risk_amount = bal["available"] * 0.02
+            risk_amount = bal["available"] * profile["risk_per_trade"]
             epic        = get_epic(ticker)
             if epic:
                 size, stop_dist = calculate_position_size(epic, stop_dist, risk_amount)
@@ -104,10 +149,11 @@ def run_session_open(session_name: str):
             continue
 
         deal_id = open_trade(
-            user_id="770a76b5-0e84-460b-b575-186c724dabdd",
+            user_id=profile["user_id"],
             ticker=ticker, direction=direction, size=size,
             stop_distance=stop_dist, limit_distance=limit_dist,
-            session_name=session_name, signal_summary=signal_str
+            session_name=session_name, signal_summary=signal_str,
+            paper_trade=profile["paper_trade"]
         )
 
         if deal_id:
