@@ -634,6 +634,59 @@ def refresh_superinvestors():
 
 
 # =============================================================================
+# Schema self-heal
+# Runs at the top of every session. ADD COLUMN IF NOT EXISTS is a no-op when
+# the column already exists — safe to run every time, no manual trigger needed.
+# =============================================================================
+
+REQUIRED_SCHEMA = [
+    # signal_log — batch 1 (added 2026-06-02)
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS call_put_ratio  numeric",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS primary_count   integer",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS direction        text",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS pa_verdict       text",
+    # signal_log — batch 2 (added 2026-06-03)
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS adx_signal      text",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS obv_signal      text",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS volume_signal   text",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS volume_ratio    numeric",
+]
+
+
+def ensure_schema():
+    """
+    Idempotently apply any outstanding schema changes.
+    Called once at the start of every session — takes <1 second when
+    all columns already exist (Postgres short-circuits IF NOT EXISTS).
+    Logs a warning to Slack if any statement fails.
+    """
+    import pg8000.native
+    try:
+        conn = pg8000.native.Connection(
+            host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+            database="postgres",
+            user=os.environ["SUPABASE_USER"],
+            password=os.environ["SUPABASE_DB_PASSWORD"],
+            ssl_context=True
+        )
+        for sql in REQUIRED_SCHEMA:
+            try:
+                conn.run(sql)
+            except Exception as e:
+                log.warning(f"Schema statement failed: {sql[:60]} — {e}")
+        conn.close()
+        log.info("Schema self-heal: OK")
+    except Exception as e:
+        log.error(f"Schema self-heal could not connect: {e}")
+        try:
+            from notify import alert_system_error
+            alert_system_error("STARTUP", "ensure_schema",
+                               "Schema self-heal failed — DB unreachable", str(e))
+        except Exception:
+            pass
+
+
+# =============================================================================
 # Main
 # =============================================================================
 
@@ -646,6 +699,7 @@ if __name__ == "__main__":
 
     session = sys.argv[1].upper()
     log.info(f"Starting session: {session}")
+    ensure_schema()
 
     if session in ("AUS_OPEN", "UK_OPEN", "US_OPEN"):
         run_session_open(session)
