@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: '30 14 * * 1-5'  # 14:30 UTC Monday-Friday (NYSE open)
   workflow_dispatch:
+  push:
+    paths:
+      - 'us_open_trigger.txt'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
