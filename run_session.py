@@ -39,7 +39,7 @@ def run_session_open(session_name: str):
     from signals import run_session_scan
     from notify import (session_summary, alert_macro_gate_failed,
                         alert_calendar_block, trade_opened, alert_circuit_breaker)
-    from ig_shim import open_trade, get_account_balance, health_check
+    from ig_shim import open_trade, get_account_balance, health_check, calculate_position_size, get_epic
 
     # Health check
     hc = health_check()
@@ -85,14 +85,23 @@ def run_session_open(session_name: str):
             f"Confs:{sig.get('confirmation_count',0)}"
         )
 
-        # Size: 2% risk of available balance
+        # Size: margin-aware — satisfies both 2% risk rule and IG margin constraint
         try:
             bal         = get_account_balance()
             risk_amount = bal["available"] * 0.02
-            size        = round(risk_amount / stop_dist, 1) if stop_dist > 0 else 0.5
-            size        = max(0.5, min(size, 10.0))
-        except Exception:
-            size = 0.5
+            epic        = get_epic(ticker)
+            if epic:
+                size, stop_dist = calculate_position_size(epic, stop_dist, risk_amount)
+                limit_dist      = round(stop_dist * 2, 4)
+            else:
+                size = 0.0
+        except Exception as e:
+            log.warning(f"Size calculation failed: {e}")
+            size = 0.0
+
+        if size <= 0:
+            log.info(f"Skipping {ticker} — position size is zero (account too small for margin)")
+            continue
 
         deal_id = open_trade(
             user_id="770a76b5-0e84-460b-b575-186c724dabdd",

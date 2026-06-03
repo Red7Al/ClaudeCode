@@ -233,6 +233,63 @@ session = IGSession()
 # Account
 # =============================================================================
 
+def calculate_position_size(epic: str, stop_distance: float,
+                            risk_amount: float) -> tuple[float, float]:
+    """
+    Calculate position size that satisfies BOTH risk management AND IG margin.
+
+    Returns (size, adjusted_stop_distance).
+
+    Two constraints:
+      1. Risk constraint:  size × stop_distance = risk_amount  (2% rule)
+      2. Margin constraint: size × price × margin_factor ≤ available_funds
+
+    Uses the tighter of the two. If the resulting size is below IG's
+    minimum deal size the function returns (0.0, stop_distance) — caller
+    should skip the trade.
+    """
+    try:
+        mkt      = session.get(f"/markets/{epic}", version="3")
+        snap     = mkt.get("snapshot", {})
+        inst     = mkt.get("instrument", {})
+        rules    = mkt.get("dealingRules", {})
+
+        price    = float(snap.get("offer", 0) or snap.get("bid", 0) or 1)
+        margin_factor = float(inst.get("marginFactor", 20)) / 100.0
+        min_size = float((rules.get("minDealSize") or {}).get("value", 0.04))
+        min_stop = float((rules.get("minNormalStopOrLimitDistance") or {}).get("value", 0))
+
+        # Enforce minimum stop distance
+        if min_stop > 0 and stop_distance < min_stop:
+            stop_distance = round(min_stop * 1.05, 4)
+
+        # Risk-based size
+        risk_size = risk_amount / stop_distance if stop_distance > 0 else 0
+
+        # Margin-based size: how much stake can we afford given available funds?
+        try:
+            available = get_account_balance()["available"]
+        except Exception:
+            available = 0
+        margin_size = (available * 0.9) / (price * margin_factor) if price > 0 else 0
+
+        # Use the smaller of the two
+        size = min(risk_size, margin_size)
+        size = round(max(size, min_size), 2)
+
+        if size < min_size:
+            log.warning(f"{epic}: calculated size {size:.4f} below IG minimum {min_size} — skipping")
+            return 0.0, stop_distance
+
+        log.info(f"{epic}: size={size} (risk={risk_size:.3f} margin={margin_size:.3f}) "
+                 f"stop={stop_distance} margin_factor={margin_factor*100:.0f}%")
+        return size, stop_distance
+
+    except Exception as e:
+        log.warning(f"Position size calculation failed for {epic}: {e}")
+        return 0.5, stop_distance   # safe fallback
+
+
 def get_account_balance() -> dict:
     """
     Return balance details for the configured IG account.
