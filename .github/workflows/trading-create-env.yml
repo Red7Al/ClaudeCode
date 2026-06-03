@@ -1,4 +1,4 @@
-name: Create .env file (2026-06-03)
+name: Create .env file (2026-06-03b)
 
 on:
   workflow_dispatch:
@@ -12,26 +12,49 @@ jobs:
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@v6
-      - name: Write .env file
+      - name: Write .env file via Python
+        env:
+          V_SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+          V_SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          V_FRED_API_KEY:         ${{ secrets.FRED_API_KEY }}
+          V_EIA_API_KEY:          ${{ secrets.EIA_API_KEY }}
+          V_IG_API_KEY:           ${{ secrets.IG_API_KEY }}
+          V_IG_USERNAME:          ${{ secrets.IG_USERNAME }}
+          V_IG_PASSWORD:          ${{ secrets.IG_PASSWORD }}
+          V_IG_ACCOUNT_ID:        ${{ secrets.IG_ACCOUNT_ID }}
+          V_SLACK_TRADES:         ${{ secrets.SLACK_TRADES }}
+          V_SLACK_SIGNALS:        ${{ secrets.SLACK_SIGNALS }}
+          V_SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
+          V_SLACK_WEEKLY:         ${{ secrets.SLACK_WEEKLY }}
+          V_SLACK_DAILY:          ${{ secrets.SLACK_DAILY }}
+          V_QUIVER_QUANT_API_KEY: ${{ secrets.QUIVER_QUANT_API_KEY }}
         run: |
-          echo "SUPABASE_USER=${{ secrets.SUPABASE_USER }}"               > $GITHUB_WORKSPACE/.env
-          echo "SUPABASE_DB_PASSWORD=${{ secrets.SUPABASE_DB_PASSWORD }}" >> $GITHUB_WORKSPACE/.env
-          echo "FRED_API_KEY=${{ secrets.FRED_API_KEY }}"                 >> $GITHUB_WORKSPACE/.env
-          echo "EIA_API_KEY=${{ secrets.EIA_API_KEY }}"                   >> $GITHUB_WORKSPACE/.env
-          echo "IG_API_KEY=${{ secrets.IG_API_KEY }}"                     >> $GITHUB_WORKSPACE/.env
-          echo "IG_USERNAME=${{ secrets.IG_USERNAME }}"                   >> $GITHUB_WORKSPACE/.env
-          echo "IG_PASSWORD=${{ secrets.IG_PASSWORD }}"                   >> $GITHUB_WORKSPACE/.env
-          echo "IG_ACCOUNT_ID=${{ secrets.IG_ACCOUNT_ID }}"               >> $GITHUB_WORKSPACE/.env
-          echo "SLACK_TRADES=${{ secrets.SLACK_TRADES }}"                 >> $GITHUB_WORKSPACE/.env
-          echo "SLACK_SIGNALS=${{ secrets.SLACK_SIGNALS }}"               >> $GITHUB_WORKSPACE/.env
-          echo "SLACK_ALERTS=${{ secrets.SLACK_ALERTS }}"                 >> $GITHUB_WORKSPACE/.env
-          echo "SLACK_WEEKLY=${{ secrets.SLACK_WEEKLY }}"                 >> $GITHUB_WORKSPACE/.env
-          echo "SLACK_DAILY=${{ secrets.SLACK_DAILY }}"                   >> $GITHUB_WORKSPACE/.env
-          echo "QUIVER_QUANT_API_KEY=${{ secrets.QUIVER_QUANT_API_KEY }}" >> $GITHUB_WORKSPACE/.env
-          echo "Lines written: $(wc -l < $GITHUB_WORKSPACE/.env)"
-          ls -la $GITHUB_WORKSPACE/.env
-      - name: Upload as artifact
-        uses: actions/upload-artifact@v4
+          python3 - <<'PYEOF'
+          import os
+          keys = [
+            ("SUPABASE_USER",        "V_SUPABASE_USER"),
+            ("SUPABASE_DB_PASSWORD", "V_SUPABASE_DB_PASSWORD"),
+            ("FRED_API_KEY",         "V_FRED_API_KEY"),
+            ("EIA_API_KEY",          "V_EIA_API_KEY"),
+            ("IG_API_KEY",           "V_IG_API_KEY"),
+            ("IG_USERNAME",          "V_IG_USERNAME"),
+            ("IG_PASSWORD",          "V_IG_PASSWORD"),
+            ("IG_ACCOUNT_ID",        "V_IG_ACCOUNT_ID"),
+            ("SLACK_TRADES",         "V_SLACK_TRADES"),
+            ("SLACK_SIGNALS",        "V_SLACK_SIGNALS"),
+            ("SLACK_ALERTS",         "V_SLACK_ALERTS"),
+            ("SLACK_WEEKLY",         "V_SLACK_WEEKLY"),
+            ("SLACK_DAILY",          "V_SLACK_DAILY"),
+            ("QUIVER_QUANT_API_KEY", "V_QUIVER_QUANT_API_KEY"),
+          ]
+          path = os.path.join(os.environ["GITHUB_WORKSPACE"], ".env")
+          with open(path, "w") as f:
+            for name, env_var in keys:
+              f.write(f"{name}={os.environ.get(env_var, '')}\n")
+          print(f"Written {len(keys)} lines to {path}")
+          PYEOF
+      - name: Verify and upload
+        uses: actions/upload-artifact@v5
         with:
           name: env-file
           path: ${{ github.workspace }}/.env
