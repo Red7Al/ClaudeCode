@@ -1,10 +1,9 @@
-name: Run Schema (one-shot)
+name: Session Watchdog (every 2h)
 
 on:
+  schedule:
+    - cron: '0 */2 * * 1-5'   # Every 2 hours, Mon-Fri
   workflow_dispatch:
-  push:
-    paths:
-      - 'schema_trigger.txt'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -18,9 +17,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-          cache: 'pip'
-      - run: pip install pg8000
-      - run: python run_schema.py
+      - run: pip install requests pg8000
+      - run: python run_session_watchdog.py
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
