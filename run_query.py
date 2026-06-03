@@ -213,8 +213,8 @@ def main():
 
         sig_rows = conn.run(
             """select session, primary_count, confirmation_count, direction,
-                      options_bias, bb_breakout_dir, adx_signal, obv_signal,
-                      cot_bias, trade_triggered, pa_verdict, session_time
+                      options_bias, bb_breakout_dir, cot_bias,
+                      trade_triggered, pa_verdict, session_time
                from   signal_log
                where  ticker = :t
                order  by session_time desc
@@ -223,9 +223,9 @@ def main():
         )
         print(f"  Recent signal_log entries ({len(sig_rows)}):")
         for r in sig_rows:
-            fired = "🟢 TRADE" if r[9] else ("🟡" if (r[1] or 0) >= 2 else "⚪")
-            print(f"  {fired} {r[12]}  {r[0]}  P:{r[1]} C:{r[2]} dir:{r[3]} "
-                  f"opts:{r[4]} bb:{r[5]} adx:{r[6]} cot:{r[8]} pa:{r[10]}")
+            fired = "🟢 TRADE" if r[7] else ("🟡" if (r[1] or 0) >= 2 else "⚪")
+            print(f"  {fired} {r[9]}  {r[0]}  P:{r[1]} C:{r[2]} dir:{r[3]} "
+                  f"opts:{r[4]} bb:{r[5]} cot:{r[6]} pa:{r[8]}")
 
         ni_rows = conn.run(
             """select investor_name, action, disclosed_at, source, notes
