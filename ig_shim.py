@@ -506,7 +506,20 @@ def open_trade(
         )
         return f"PAPER-{int(time.time())}"
 
-    # Step 4 — Live trade: build and submit order
+    # Step 4 — Enforce IG minimum stop distance
+    try:
+        mkt     = session.get(f"/markets/{epic}", version="3")
+        rules   = mkt.get("dealingRules", {})
+        min_obj = rules.get("minNormalStopOrLimitDistance", {})
+        min_stop = float(min_obj.get("value", 0) or 0)
+        if min_stop > 0 and stop_distance < min_stop:
+            log.info(f"Stop distance {stop_distance} below IG minimum {min_stop} — adjusting")
+            stop_distance  = round(min_stop * 1.05, 4)   # 5% above minimum
+            limit_distance = round(stop_distance * 2, 4)
+    except Exception as e:
+        log.warning(f"Could not check min stop distance: {e}")
+
+    # Step 5 — Live trade: build and submit order
     body = {
         "epic":           epic,
         "direction":      direction,
@@ -544,7 +557,18 @@ def open_trade(
         limit_level = confirm.get("limitLevel", 0)
 
         if status != "ACCEPTED":
-            log.error(f"Deal rejected: {status} — {confirm.get('reason', 'UNKNOWN')}")
+            reason_code = confirm.get("reason", "UNKNOWN")
+            log.error(f"Deal rejected: {status} — {reason_code}")
+            try:
+                from notify import alert_system_error
+                alert_system_error(
+                    session="IG_ORDER",
+                    component="open_trade",
+                    summary=f"Deal rejected for {ticker} {direction} — {reason_code}",
+                    detail=f"epic={epic}  size={size}  stop={stop_distance}  limit={limit_distance}"
+                )
+            except Exception as e:
+                log.warning(f"Could not send deal rejection alert: {e}")
             return None
 
         log.info(f"Deal confirmed: {deal_id} at level {level}")
