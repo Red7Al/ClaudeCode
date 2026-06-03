@@ -173,7 +173,8 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
         """select ticker, session, options_bias, bb_breakout_dir, bb_squeeze,
                   cot_bias, confirmation_count,
                   director_signal, senate_signal, notable_investor, social_mention,
-                  trade_triggered, adx_signal, obv_signal, volume_signal, volume_ratio
+                  trade_triggered, adx_signal, obv_signal, volume_signal, volume_ratio,
+                  primary_count, direction, macro_gate_pass
            from signal_log
            where date(session_time) = :d
            order by session, ticker""",
@@ -181,30 +182,26 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
     )
     result = []
     for r in (rows or []):
-        options_bias    = r[2]
-        bb_breakout_dir = r[3]
-        bb_squeeze      = r[4]
-        volume_signal   = r[14] if len(r) > 14 else None
-        pc = 0
-        if options_bias in ("BULLISH", "BEARISH"):
-            pc += 1
-        if bb_breakout_dir in ("BULLISH", "BEARISH"):
-            pc += 1
-        elif volume_signal == "HIGH_VOLUME" and options_bias in ("BULLISH", "BEARISH"):
-            pc += 1  # volume substituted for BB
         result.append({
-            "ticker": r[0], "session": r[1],
-            "options_bias": options_bias, "bb_breakout_dir": bb_breakout_dir,
-            "bb_squeeze": bb_squeeze,
-            "cot_bias": r[5],
-            "primary_count": pc, "confirmation_count": int(r[6] or 0),
-            "director_signal": r[7], "senate_signal": r[8],
-            "notable_investor": r[9], "social_mention": r[10],
-            "trade_triggered": r[11],
-            "adx_signal":    r[12] if len(r) > 12 else None,
-            "obv_signal":    r[13] if len(r) > 13 else None,
-            "volume_signal": volume_signal,
-            "volume_ratio":  float(r[15]) if len(r) > 15 and r[15] else None,
+            "ticker":             r[0],
+            "session":            r[1],
+            "options_bias":       r[2],
+            "bb_breakout_dir":    r[3],
+            "bb_squeeze":         r[4],
+            "cot_bias":           r[5],
+            "confirmation_count": int(r[6] or 0),
+            "director_signal":    r[7],
+            "senate_signal":      r[8],
+            "notable_investor":   r[9],
+            "social_mention":     r[10],
+            "trade_triggered":    r[11],
+            "adx_signal":         r[12],
+            "obv_signal":         r[13],
+            "volume_signal":      r[14],
+            "volume_ratio":       float(r[15]) if r[15] else None,
+            "primary_count":      int(r[16] or 0),   # stored value, not recalculated
+            "direction":          r[17],
+            "macro_gate_pass":    r[18],
         })
     return result
 
