@@ -19,6 +19,11 @@
 #   @Hedgeye          — Macro/risk research firm, sector and equity calls
 #   @pelositracker    — Nancy Pelosi STOCK Act disclosure aggregator
 #   @KobeissiLetter   — Market commentary, macro narrative, breakout signals
+#   @TheProfInvestor  — Equity picks and trade ideas
+#   @theaiportfolios  — AI-sector portfolio picks
+#   @BlackPantherCapital — Equity tips and trade setups
+#   @pdicarlotrader   — Active trader, equity and options picks
+#   @polymarketmoney  — Prediction market signals, event-driven equity tips
 #
 # Nitter instances (tried in order until one works):
 #   nitter.net, nitter.poast.org, nitter.cz
@@ -56,9 +61,14 @@ TRACKED_ACCOUNTS = [
     {"handle": "leopoldasch",     "name": "Leopold Aschenbrenner", "source": "X/@leopoldasch"},
     {"handle": "LeopoldATracker", "name": "LeopoldATracker",       "source": "X/@LeopoldATracker"},
     {"handle": "Asklivermore",    "name": "Asklivermore",          "source": "X/@Asklivermore"},
-    {"handle": "Hedgeye",         "name": "Hedgeye",               "source": "X/@Hedgeye"},
-    {"handle": "pelositracker",   "name": "PelosiTracker",         "source": "X/@pelositracker"},
-    {"handle": "KobeissiLetter",  "name": "KobeissiLetter",        "source": "X/@KobeissiLetter"},
+    {"handle": "Hedgeye",           "name": "Hedgeye",             "source": "X/@Hedgeye"},
+    {"handle": "pelositracker",     "name": "PelosiTracker",       "source": "X/@pelositracker"},
+    {"handle": "KobeissiLetter",    "name": "KobeissiLetter",      "source": "X/@KobeissiLetter"},
+    {"handle": "TheProfInvestor",   "name": "TheProfInvestor",     "source": "X/@TheProfInvestor"},
+    {"handle": "theaiportfolios",   "name": "TheAIPortfolios",     "source": "X/@theaiportfolios"},
+    {"handle": "BlackPantherCapital","name": "BlackPantherCapital","source": "X/@BlackPantherCapital"},
+    {"handle": "pdicarlotrader",    "name": "PDiCarloTrader",      "source": "X/@pdicarlotrader"},
+    {"handle": "polymarketmoney",   "name": "PolymarketMoney",     "source": "X/@polymarketmoney"},
 ]
 
 # Known non-ticker uppercase words to ignore
