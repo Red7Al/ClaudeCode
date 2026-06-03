@@ -177,6 +177,35 @@ EPIC_MAP = {
 
 
 # =============================================================================
+# Options Proxy Map
+# Indices and commodities don't have options chains on Yahoo Finance
+# (^GSPC, ^FTSE, GC=F etc. return empty option chains).
+# Map them to liquid ETF proxies for options/GEX signals ONLY.
+# Price data continues to use YAHOO_MAP (correct scale for ATR/stop calcs).
+# =============================================================================
+
+OPTIONS_PROXY_MAP = {
+    # US indices — ETF proxies have the world's most liquid options markets
+    "SPX500":  "SPY",    # S&P 500  → SPDR S&P 500 ETF (most liquid options globally)
+    "NASDAQ":  "QQQ",    # Nasdaq   → Invesco QQQ Trust
+    "DOW":     "DIA",    # Dow 30   → SPDR Dow Jones Industrial Average ETF
+
+    # International indices — less liquid but better than nothing
+    "UK100":   "EWU",    # FTSE 100 → iShares MSCI United Kingdom ETF
+    "JPN225":  "EWJ",    # Nikkei   → iShares MSCI Japan ETF
+    "HK50":    "EWH",    # Hang Seng → iShares MSCI Hong Kong ETF
+    "DAX":     "EWG",    # DAX      → iShares MSCI Germany ETF
+
+    # Commodities — ETF options reflect institutional sentiment well
+    "XAUUSD":  "GLD",    # Gold     → SPDR Gold Shares (most liquid gold options)
+    "XAGUSD":  "SLV",    # Silver   → iShares Silver Trust
+    "OIL":     "USO",    # Oil      → United States Oil Fund
+    "USOIL":   "USO",    # Oil alias
+    "COPPER":  "COPX",   # Copper   → Global X Copper Miners ETF (proxy)
+}
+
+
+# =============================================================================
 # Yahoo Finance Ticker Mapping
 # Maps our internal ticker names to Yahoo Finance symbols for price/options data.
 # =============================================================================
@@ -414,7 +443,9 @@ SPX_STRESS_PCT      = -1.0   # SPX down 1–2.5% → STRESS mode (position sizes
 INTRADAY_GUARD_ATR_MULTIPLIER = 2.0
 
 # Signal thresholds
-MIN_PRIMARY_SIGNALS       = 2   # Minimum primary signals required to trade
+# Design decision: "trade fires when gate passes + 1 primary + 1 confirmation"
+# Original code had 2 — that requires options AND BB simultaneously which almost never aligns.
+MIN_PRIMARY_SIGNALS       = 1   # 1 primary sufficient (options OR BB breakout)
 MIN_CONFIRMATION_SIGNALS  = 1   # Minimum confirmation signals required to trade
 MIN_CALL_PUT_RATIO_BULL   = 1.2 # Call/put ratio above this = bullish options signal
 MAX_CALL_PUT_RATIO_BEAR   = 0.8 # Call/put ratio below this = bearish options signal

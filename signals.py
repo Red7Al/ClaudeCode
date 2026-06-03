@@ -55,6 +55,7 @@ import pg8000.native
 
 from config import (
     YAHOO_MAP,
+    OPTIONS_PROXY_MAP,
     CFTC_CODES        as CFTC_MAP,
     ATR_MULTIPLIERS,
     ATR_MULTIPLIER_DEFAULT,
@@ -319,9 +320,14 @@ def get_options_signal(ticker: str) -> dict:
     """
     Compute options bias from Yahoo Finance chain snapshot.
     Returns call/put volume ratio, IV rank (0-100), and bias label.
+
+    Uses OPTIONS_PROXY_MAP for instruments that don't have options chains
+    directly (indices like ^GSPC, commodities like GC=F).
+    e.g. SPX500 → SPY options, XAUUSD → GLD options, UK100 → EWU options.
     """
     result = {"call_put_ratio": None, "iv_rank": None, "options_bias": "NEUTRAL"}
-    yticker = YAHOO_MAP.get(ticker, ticker)
+    # Use ETF proxy if available, otherwise fall back to YAHOO_MAP / direct ticker
+    yticker = OPTIONS_PROXY_MAP.get(ticker) or YAHOO_MAP.get(ticker, ticker)
     try:
         t = yf.Ticker(yticker)
         expirations = t.options
@@ -416,9 +422,13 @@ def get_gex_bias(ticker: str) -> dict:
     Estimate net gamma exposure from options chain.
     Positive GEX = dealers long gamma = price pinned (mean reversion).
     Negative GEX = dealers short gamma = price trending (momentum).
+
+    Uses OPTIONS_PROXY_MAP for instruments without direct options chains.
+    Gamma column may be absent or differently-cased depending on Yahoo Finance
+    version — check case-insensitively and skip gracefully if unavailable.
     """
     result = {"gex": None, "gex_bias": "NEUTRAL"}
-    yticker = YAHOO_MAP.get(ticker, ticker)
+    yticker = OPTIONS_PROXY_MAP.get(ticker) or YAHOO_MAP.get(ticker, ticker)
     try:
         t = yf.Ticker(yticker)
         expirations = t.options
@@ -433,13 +443,17 @@ def get_gex_bias(ticker: str) -> dict:
             chain = t.option_chain(exp)
             for df, sign in [(chain.calls, 1), (chain.puts, -1)]:
                 df = df.copy()
-                # Yahoo Finance options chains do not always include greeks.
-                # Gracefully skip this expiry if 'gamma' column is absent.
-                if "gamma" not in df.columns:
-                    log.debug(f"GEX: 'gamma' column missing from options chain for {ticker} — skipping")
+                # Yahoo Finance options chains may not include greeks, or may
+                # return the column with different capitalisation ("Gamma" vs "gamma").
+                # Find the gamma column case-insensitively; skip if absent.
+                gamma_col = next(
+                    (c for c in df.columns if c.lower() == "gamma"), None
+                )
+                if gamma_col is None:
+                    log.debug(f"GEX: no gamma column in {yticker} options chain — skipping")
                     continue
                 df["oi"]    = df["openInterest"].fillna(0)
-                df["gamma"] = df["gamma"].fillna(0)
+                df["gamma"] = df[gamma_col].fillna(0)
                 # GEX = gamma × OI × spot² × 0.01 (per 1% move)
                 df["gex"]   = df["gamma"] * df["oi"] * spot * spot * 0.01 * sign
                 total_gex  += df["gex"].sum()
