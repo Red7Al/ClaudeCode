@@ -1,6 +1,6 @@
 
 ============================================================
-  EndToEndTrading — Diagnostic Query  (2026-06-02 UTC)
+  EndToEndTrading — Diagnostic Query  (2026-06-03 UTC)
 ============================================================
 
 OPEN POSITIONS (0)
@@ -21,29 +21,54 @@ DAILY P&L SUMMARY
 
 LAST MACRO SNAPSHOTS
 ------------------------------------------------------------
-  US_OPEN 2026-06-02 18:14:19.354951+00:00  VIX:15.96  DXY:99.277  Spread:0.47  Gate:✅ PASS
-  US_OPEN 2026-06-02 14:35:04.036455+00:00  VIX:16.0  DXY:99.178  Spread:0.47  Gate:✅ PASS
-  UK_OPEN 2026-06-02 12:11:09.495637+00:00  VIX:16.16  DXY:99.079  Spread:0.47  Gate:✅ PASS
+  AUS_OPEN 2026-06-03 04:44:17.805123+00:00  VIX:15.77  DXY:99.266  Spread:0.42  Gate:✅ PASS
+  AUS_MONITOR 2026-06-03 04:06:23.064379+00:00  VIX:15.77  DXY:99.249  Spread:None  Gate:✅ PASS
+  US_MONITOR 2026-06-02 21:25:53.314916+00:00  VIX:15.77  DXY:99.203  Spread:None  Gate:✅ PASS
 
 SIGNAL_LOG SCHEMA CHECK — new columns present: ['call_put_ratio', 'direction', 'pa_verdict', 'primary_count']
 
 SIGNAL_LOG RECENT ROW COUNTS
 ------------------------------------------------------------
+  2026-06-03  AUS_OPEN              15 rows
+  2026-06-03  AUS_MONITOR           6 rows
+  2026-06-02  US_MONITOR            35 rows
   2026-06-02  UK_OPEN               6 rows
   2026-06-01  US_OPEN               15 rows
 
-TODAY'S SIGNAL LOG — 6 scans (sorted by signal strength)
+TODAY'S SIGNAL LOG — 21 scans (sorted by signal strength)
 ------------------------------------------------------------
-  ⚪ CVX      [UK_OPEN] → BUY  primaries=1  confs=0 PA:WAIT
+  🟡 CLOSE GOOGL    [AUS_OPEN] → BUY  primaries=2  confs=1 PA:WAIT
            Options:BULLISH
-  ⚪ XOM      [UK_OPEN] → BUY  primaries=1  confs=0 PA:WAIT
+  ⚪ AMD      [AUS_OPEN] → BUY  primaries=1  confs=3 PA:CONFIRM_LONG
+           Options:BULLISH | Investor:Asklivermore, Leopol
+  ⚪ SOFI     [AUS_OPEN] → BUY  primaries=1  confs=2 PA:WAIT
+           Options:BULLISH | Investor:Asklivermore
+  ⚪ PLTR     [AUS_OPEN] → BUY  primaries=1  confs=2 PA:WAIT
+           Options:BULLISH | Investor:Jensen Huang
+  ⚪ RIVN     [AUS_OPEN] → BUY  primaries=1  confs=1 PA:WAIT
            Options:BULLISH
-  ⚪ CVX      [UK_OPEN] → BUY  primaries=1  confs=0 PA:WAIT
+  ⚪ AMZN     [AUS_OPEN] → BUY  primaries=1  confs=1 PA:WAIT
            Options:BULLISH
-  ⚪ XOM      [UK_OPEN] → BUY  primaries=1  confs=0 PA:WAIT
+  ⚪ TSLA     [AUS_OPEN] → BUY  primaries=1  confs=1 PA:WAIT
            Options:BULLISH
-  ⚪ GBPUSD   [UK_OPEN]  primaries=0  confs=0 PA:CONFIRM_LONG
-  ⚪ GBPUSD   [UK_OPEN]  primaries=0  confs=0 PA:CONFIRM_LONG
+  ⚪ JPM      [AUS_OPEN] → BUY  primaries=1  confs=0 PA:WAIT
+           Options:BULLISH
+  ⚪ BAC      [AUS_OPEN] → BUY  primaries=1  confs=0 PA:CONFIRM_LONG
+           Options:BULLISH
+  ⚪ USDJPY   [AUS_OPEN]  primaries=0  confs=1 PA:CONFIRM_LONG
+           COT:BULLISH
+  ⚪ XAUUSD   [AUS_OPEN]  primaries=0  confs=1 PA:WAIT
+  ⚪ JPN225   [AUS_OPEN]  primaries=0  confs=1 PA:CONFIRM_LONG
+  ⚪ USDJPY   [AUS_MONITOR]  primaries=0  confs=1 PA:CONFIRM_LONG
+           COT:BULLISH
+  ⚪ XAUUSD   [AUS_MONITOR]  primaries=0  confs=1 PA:WAIT
+  ⚪ JPN225   [AUS_MONITOR]  primaries=0  confs=1 PA:CONFIRM_LONG
+  ⚪ AUDUSD   [AUS_OPEN]  primaries=0  confs=0 PA:WAIT
+  ⚪ CN50     [AUS_OPEN]  primaries=0  confs=0 PA:WAIT
+  ⚪ HK50     [AUS_OPEN]  primaries=0  confs=0 PA:WAIT
+  ⚪ AUDUSD   [AUS_MONITOR]  primaries=0  confs=0 PA:WAIT
+  ⚪ CN50     [AUS_MONITOR]  primaries=0  confs=0 PA:WAIT
+  ⚪ HK50     [AUS_MONITOR]  primaries=0  confs=0 PA:WAIT
 
 ============================================================
 
