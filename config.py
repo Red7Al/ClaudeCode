@@ -381,6 +381,12 @@ MAX_SPREAD_PCT = 0.005      # 0.5%
 # If spread costs more than 50% of the stop, the trade is negative expectancy
 MAX_SPREAD_TO_STOP_RATIO = 0.5
 
+# Spread retry — when market is open but spread is temporarily wide,
+# retry this many times with this many seconds between checks
+# before giving up. Pre-market/closed markets are never retried.
+SPREAD_RETRY_ATTEMPTS  = 3
+SPREAD_RETRY_WAIT_SECS = 30
+
 # Session token TTL — IG sessions expire after 6 hours
 # Refresh at 5.5 hours to avoid mid-session expiry
 IG_SESSION_TTL_SECONDS = 5.5 * 3600

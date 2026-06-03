@@ -61,6 +61,8 @@ from config import (
     ATR_MULTIPLIER_DEFAULT,
     MAX_SPREAD_PCT,
     MAX_SPREAD_TO_STOP_RATIO,
+    SPREAD_RETRY_ATTEMPTS,
+    SPREAD_RETRY_WAIT_SECS,
     IG_SESSION_TTL_SECONDS,
     MIN_RISK_REWARD,
 )
@@ -613,25 +615,66 @@ def open_trade(
             stop_distance  = round(min_stop * 1.05, 4)
             limit_distance = round(stop_distance * 2, 4)
 
-        # 4c — Spread-to-stop ratio: spread must be < 50% of stop distance
-        # If the spread costs more than half the stop, the trade is negative expectancy
+        # 4c — Spread-to-stop ratio with retry
+        # Spread must be < 50% of stop distance (negative expectancy otherwise).
+        # If the market IS open but spread is temporarily wide (e.g. at the bell,
+        # around news) retry up to SPREAD_RETRY_ATTEMPTS times before giving up.
+        # Pre-market / closed markets are never retried — the monitor rescan
+        # will re-evaluate the signal when the exchange opens.
         bid    = float(snap.get("bid",   0) or 0)
         offer  = float(snap.get("offer", 0) or 0)
         spread = offer - bid
+        market_is_open = (mkt_status == "TRADEABLE")
+
         if spread > 0 and stop_distance > 0:
             ratio = spread / stop_distance
             if ratio > MAX_SPREAD_TO_STOP_RATIO:
-                reason = (
-                    f"Spread ({spread:.1f}) is {ratio:.1f}x the stop ({stop_distance:.1f}) — "
-                    f"trade is negative expectancy (max ratio: {MAX_SPREAD_TO_STOP_RATIO}x)"
-                )
-                log.warning(reason)
-                try:
-                    from notify import alert_circuit_breaker
-                    alert_circuit_breaker("Owner", ticker, reason)
-                except Exception:
-                    pass
-                return None
+                if market_is_open:
+                    # Market is open — spread may narrow; retry a few times
+                    for attempt in range(1, SPREAD_RETRY_ATTEMPTS + 1):
+                        log.info(
+                            f"{ticker}: spread {spread:.1f} is {ratio:.1f}x stop "
+                            f"({stop_distance:.1f}) — waiting {SPREAD_RETRY_WAIT_SECS}s "
+                            f"for spread to narrow (attempt {attempt}/{SPREAD_RETRY_ATTEMPTS})"
+                        )
+                        time.sleep(SPREAD_RETRY_WAIT_SECS)
+                        snap2  = session.get(f"/markets/{epic}", version="3").get("snapshot", {})
+                        bid    = float(snap2.get("bid",   0) or 0)
+                        offer  = float(snap2.get("offer", 0) or 0)
+                        spread = offer - bid
+                        ratio  = spread / stop_distance if stop_distance > 0 else 999
+                        log.info(f"{ticker}: spread now {spread:.1f} (ratio {ratio:.2f}x)")
+                        if ratio <= MAX_SPREAD_TO_STOP_RATIO:
+                            log.info(f"{ticker}: spread acceptable after {attempt} attempt(s) — proceeding")
+                            break
+                    else:
+                        # All retries exhausted — spread still too wide
+                        reason = (
+                            f"Spread ({spread:.1f}) still {ratio:.1f}x stop ({stop_distance:.1f}) "
+                            f"after {SPREAD_RETRY_ATTEMPTS} retries × {SPREAD_RETRY_WAIT_SECS}s — "
+                            f"signal remains valid; monitor will re-evaluate"
+                        )
+                        log.warning(reason)
+                        try:
+                            from notify import alert_circuit_breaker
+                            alert_circuit_breaker("Owner", ticker, reason)
+                        except Exception:
+                            pass
+                        return None
+                else:
+                    # Market closed / pre-market — no point retrying
+                    reason = (
+                        f"Spread ({spread:.1f}) is {ratio:.1f}x stop ({stop_distance:.1f}) "
+                        f"and market is {mkt_status} — not retrying; "
+                        f"monitor will re-evaluate when market opens"
+                    )
+                    log.warning(reason)
+                    try:
+                        from notify import alert_circuit_breaker
+                        alert_circuit_breaker("Owner", ticker, reason)
+                    except Exception:
+                        pass
+                    return None
 
     except Exception as e:
         log.warning(f"Market pre-checks failed for {ticker}: {e}")
