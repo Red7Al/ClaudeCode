@@ -1,0 +1,50 @@
+name: Deployment Diagnostics
+
+# Run this after every deployment to verify the signal stack is working.
+# Never places trades — safe to run at any time.
+#
+# Trigger from GitHub Actions tab → "Deployment Diagnostics" → Run workflow
+# Optionally set tickers (default: NVDA,SPX500,XAUUSD)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: 'Comma-separated tickers to test (default: NVDA,SPX500,XAUUSD)'
+        required: false
+        default: 'NVDA,SPX500,XAUUSD'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - run: pip install -r requirements.txt
+
+      - name: Run diagnostics
+        run: python run_diagnostics.py
+        env:
+          DIAG_TICKERS:          ${{ github.event.inputs.tickers || 'NVDA,SPX500,XAUUSD' }}
+          IG_API_KEY:            ${{ secrets.IG_API_KEY }}
+          IG_USERNAME:           ${{ secrets.IG_USERNAME }}
+          IG_PASSWORD:           ${{ secrets.IG_PASSWORD }}
+          IG_ACCOUNT_ID:         ${{ secrets.IG_ACCOUNT_ID }}
+          SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          FRED_API_KEY:          ${{ secrets.FRED_API_KEY }}
+          EIA_API_KEY:           ${{ secrets.EIA_API_KEY }}
+          QUIVER_QUANT_API_KEY:  ${{ secrets.QUIVER_QUANT_API_KEY }}
+          SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
+          SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
+          SLACK_TRADES:          ${{ secrets.SLACK_TRADES }}
+          SLACK_WEEKLY:          ${{ secrets.SLACK_WEEKLY }}
