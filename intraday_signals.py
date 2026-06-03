@@ -26,6 +26,8 @@
 # 1.0.0   2026-06-01  Alex Hind   Initial build.
 # =============================================================================
 
+import os
+from dotenv import load_dotenv; load_dotenv()
 import logging
 import numpy as np
 import pandas as pd

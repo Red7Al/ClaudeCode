@@ -35,6 +35,7 @@
 # =============================================================================
 
 import os
+from dotenv import load_dotenv; load_dotenv()
 import re
 import logging
 import requests

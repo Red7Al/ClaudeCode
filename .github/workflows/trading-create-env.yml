@@ -1,0 +1,34 @@
+name: Create .env file (download once)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create-env:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Write .env file
+        run: |
+          cat > .env << 'EOF'
+          SUPABASE_USER=${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD=${{ secrets.SUPABASE_DB_PASSWORD }}
+          FRED_API_KEY=${{ secrets.FRED_API_KEY }}
+          EIA_API_KEY=${{ secrets.EIA_API_KEY }}
+          IG_API_KEY=${{ secrets.IG_API_KEY }}
+          IG_USERNAME=${{ secrets.IG_USERNAME }}
+          IG_PASSWORD=${{ secrets.IG_PASSWORD }}
+          IG_ACCOUNT_ID=${{ secrets.IG_ACCOUNT_ID }}
+          SLACK_TRADES=${{ secrets.SLACK_TRADES }}
+          SLACK_SIGNALS=${{ secrets.SLACK_SIGNALS }}
+          SLACK_ALERTS=${{ secrets.SLACK_ALERTS }}
+          SLACK_WEEKLY=${{ secrets.SLACK_WEEKLY }}
+          SLACK_DAILY=${{ secrets.SLACK_DAILY }}
+          QUIVER_QUANT_API_KEY=${{ secrets.QUIVER_QUANT_API_KEY }}
+          EOF
+      - name: Upload as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: env-file
+          path: .env
+          retention-days: 1

@@ -36,6 +36,7 @@
 # =============================================================================
 
 import os
+from dotenv import load_dotenv; load_dotenv()
 import logging
 import requests
 import pg8000.native
