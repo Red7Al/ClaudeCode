@@ -60,13 +60,30 @@ def post_slack(blocks: list):
 
 
 def main():
-    now      = datetime.now(timezone.utc)
-    since    = now - timedelta(hours=WINDOW_HOURS)
-    today    = now.strftime("%Y-%m-%d")
-    since_ts = since.strftime("%Y-%m-%d %H:%M:%S")
-    day_name = now.strftime("%A %d %b")
+    now = datetime.now(timezone.utc)
 
-    log.info(f"Building UK morning brief for {day_name} (window: last {WINDOW_HOURS}h)")
+    # Allow a fixed window via env vars — e.g. for replaying a past session
+    # BRIEF_START_UTC = "2026-06-03 07:00:00"
+    # BRIEF_END_UTC   = "2026-06-03 11:00:00"
+    start_env = os.environ.get("BRIEF_START_UTC", "")
+    end_env   = os.environ.get("BRIEF_END_UTC",   "")
+
+    if start_env and end_env:
+        since    = datetime.strptime(start_env, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        until    = datetime.strptime(end_env,   "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        since_ts = start_env
+        until_ts = end_env
+        today    = since.strftime("%Y-%m-%d")
+        day_name = since.strftime("%A %d %b") + f" ({start_env[11:16]}–{end_env[11:16]} UTC)"
+        log.info(f"Building UK brief for fixed window: {start_env} → {end_env}")
+    else:
+        since    = now - timedelta(hours=WINDOW_HOURS)
+        until    = now
+        since_ts = since.strftime("%Y-%m-%d %H:%M:%S")
+        until_ts = now.strftime("%Y-%m-%d %H:%M:%S")
+        today    = now.strftime("%Y-%m-%d")
+        day_name = now.strftime("%A %d %b")
+        log.info(f"Building UK morning brief for {day_name} (window: last {WINDOW_HOURS}h)")
 
     db = get_db()
 
@@ -75,10 +92,11 @@ def main():
         """select vix, dxy, yield_spread, macro_gate_pass, gate_reason, snapshot_time
            from   macro_snapshot
            where  session in ('UK_OPEN', 'UK_MONITOR')
-             and  date(snapshot_time at time zone 'UTC') = :d
+             and  snapshot_time >= :s
+             and  snapshot_time <= :u
            order  by snapshot_time desc
            limit  1""",
-        d=today
+        s=since_ts, u=until_ts
     )
     macro = {}
     if macro_rows:
@@ -91,7 +109,7 @@ def main():
             "snapshot_time": macro_rows[0][5],
         }
 
-    # ── Signal log for last 2 hours ───────────────────────────────────────────
+    # ── Signal log for window ─────────────────────────────────────────────────
     signal_rows = db.run(
         """select ticker, session, primary_count, confirmation_count,
                   direction, trade_triggered, pa_verdict,
@@ -100,10 +118,11 @@ def main():
                   session_time
            from   signal_log
            where  session_time >= :s
+             and  session_time <= :u
            order  by primary_count desc nulls last,
                      confirmation_count desc nulls last,
                      session_time""",
-        s=since_ts
+        s=since_ts, u=until_ts
     )
 
     # ── Trades opened in window ───────────────────────────────────────────────
@@ -111,8 +130,9 @@ def main():
         """select ticker, direction, size, open_price, stop_loss, session, signal_summary, opened_at
            from   positions
            where  opened_at >= :s
+             and  opened_at <= :u
            order  by opened_at""",
-        s=since_ts
+        s=since_ts, u=until_ts
     )
 
     # ── All open positions ────────────────────────────────────────────────────

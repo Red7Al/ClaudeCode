@@ -20,6 +20,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+      - name: Parse window from trigger file
+        run: |
+          if grep -q "BRIEF_START_UTC=" uk_brief_trigger.txt 2>/dev/null; then
+            grep "BRIEF_START_UTC=" uk_brief_trigger.txt | sed 's/BRIEF_START_UTC=//' >> $GITHUB_ENV || true
+            grep "BRIEF_END_UTC="   uk_brief_trigger.txt | sed 's/BRIEF_END_UTC=//'   >> $GITHUB_ENV || true
+          fi
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -30,3 +36,5 @@ jobs:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SLACK_DAILY:          ${{ secrets.SLACK_DAILY }}
+          BRIEF_START_UTC:      ${{ env.BRIEF_START_UTC }}
+          BRIEF_END_UTC:        ${{ env.BRIEF_END_UTC }}
