@@ -10,7 +10,7 @@
 # if a session ran (macro_snapshot exists) but no signal_log rows were written,
 # or if a session is overdue entirely.
 #
-# Runs every 2 hours via GitHub Actions cron.
+# Runs every 30 minutes during trading hours (00:00–21:59 UTC) Mon–Fri.
 #
 # Sessions and their expected signal windows (UTC):
 #   AUS_OPEN    00:00   — signal_log expected by 01:00
@@ -145,6 +145,13 @@ def check_session(conn, session_name: str, open_hour_utc: int,
             triggered = trigger_workflow(wf, session_name)
             if triggered:
                 log.info(f"✅ {session_name} auto-triggered successfully")
+                # Notify Slack so user knows recovery is in progress
+                try:
+                    from notify import alert_watchdog_trigger
+                    late_mins = int((now_utc - deadline).total_seconds() / 60) + grace_minutes
+                    alert_watchdog_trigger(session_name, wf, late_mins)
+                except Exception:
+                    pass
             else:
                 log.warning(f"⚠ {session_name} auto-trigger failed — manual intervention needed")
         return False

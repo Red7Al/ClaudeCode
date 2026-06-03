@@ -77,7 +77,8 @@ def run_session_open(session_name: str):
     """Run a session open scan and execute trades."""
     from signals import run_session_scan
     from notify import (session_summary, alert_macro_gate_failed,
-                        alert_calendar_block, trade_opened, alert_circuit_breaker)
+                        alert_calendar_block, trade_opened, alert_circuit_breaker,
+                        session_heartbeat)
     from ig_shim import open_trade, get_account_balance, health_check, calculate_position_size, get_epic
 
     # Load user profile — risk %, paper trade flag, limits
@@ -107,12 +108,14 @@ def run_session_open(session_name: str):
             macro["yield_spread"], session_name)
         return
 
+    instruments_scanned = result["instruments_scanned"]
     session_summary(session_name, macro,
-                    result["instruments_scanned"],
+                    instruments_scanned,
                     result["trade_candidates"])
 
     # Execute trades (max 3 per session)
     trades_placed = 0
+    stress_mult   = macro.get("stress_size_multiplier", 1.0)
     for sig in result["trade_candidates"][:3]:
         if trades_placed >= 3:
             break
@@ -130,10 +133,11 @@ def run_session_open(session_name: str):
             f"Confs:{sig.get('confirmation_count',0)}"
         )
 
-        # Size: margin-aware, uses risk_per_trade from user profile
+        # Size: margin-aware, uses risk_per_trade from user profile.
+        # Apply stress multiplier if SPX is in a down day (1.0–2.5% drop).
         try:
             bal         = get_account_balance()
-            risk_amount = bal["available"] * profile["risk_per_trade"]
+            risk_amount = bal["available"] * profile["risk_per_trade"] * stress_mult
             epic        = get_epic(ticker)
             if epic:
                 size, stop_dist = calculate_position_size(epic, stop_dist, risk_amount)
@@ -143,12 +147,14 @@ def run_session_open(session_name: str):
         except Exception as e:
             log.warning(f"Size calculation failed: {e}")
             size = 0.0
+        if stress_mult < 1.0:
+            log.info(f"Stress mode: size reduced {int((1-stress_mult)*100)}% for {ticker}")
 
         if size <= 0:
             log.info(f"Skipping {ticker} — position size is zero (account too small for margin)")
             continue
 
-        result = open_trade(
+        trade_result = open_trade(
             user_id=profile["user_id"],
             ticker=ticker, direction=direction, size=size,
             stop_distance=stop_dist, limit_distance=limit_dist,
@@ -156,10 +162,10 @@ def run_session_open(session_name: str):
             paper_trade=profile["paper_trade"]
         )
 
-        if result:
+        if trade_result:
             trade_opened(ticker, direction, size,
-                         result["level"], result["stop_level"],
-                         result["limit_level"], session_name, signal_str,
+                         trade_result["level"], trade_result["stop_level"],
+                         trade_result["limit_level"], session_name, signal_str,
                          user=profile["name"])
             trades_placed += 1
 
@@ -171,6 +177,25 @@ def run_session_open(session_name: str):
         log.warning(f"Social feed scan failed: {e}")
 
     log.info(f"{session_name} complete. Trades placed: {trades_placed}")
+
+    # ── Heartbeat — always post so you know the session ran ───────────────────
+    SCHEDULED = {"AUS_OPEN": "00:00", "UK_OPEN": "08:00", "US_OPEN": "14:30"}
+    try:
+        from datetime import datetime, timezone
+        actual_utc = datetime.now(timezone.utc).strftime("%H:%M")
+        session_heartbeat(
+            session_name        = session_name,
+            scheduled_utc       = SCHEDULED.get(session_name, "??:??"),
+            actual_utc          = actual_utc,
+            instruments_scanned = instruments_scanned,
+            trades_placed       = trades_placed,
+            gate_pass           = macro.get("macro_gate_pass", True),
+            gate_reason         = macro.get("gate_reason", "—"),
+            market_stress       = macro.get("market_stress", "NORMAL"),
+            spx_change_pct      = macro.get("spx_change_pct"),
+        )
+    except Exception as e:
+        log.debug(f"Heartbeat post failed (non-critical): {e}")
 
 
 def run_monitor(session_name: str = "AUS_MONITOR"):

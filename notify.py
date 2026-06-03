@@ -433,6 +433,99 @@ def alert_system_error(session: str, component: str, summary: str, detail: str =
     _send("alerts", blocks)
 
 
+def session_heartbeat(
+    session_name:       str,
+    scheduled_utc:      str,       # e.g. "14:30"
+    actual_utc:         str,       # e.g. "18:34"  (when the workflow actually ran)
+    instruments_scanned: int,
+    trades_placed:      int,
+    gate_pass:          bool,
+    gate_reason:        str,
+    market_stress:      str = "NORMAL",     # NORMAL / STRESS / HIGH_STRESS
+    spx_change_pct:     float = None,
+):
+    """
+    Heartbeat posted to #claude-trading-signals at the END of every session,
+    regardless of whether trades were placed.
+
+    Purpose: gives you positive confirmation the session DID run, the exact
+    time it ran (vs scheduled), and a one-line health status. Silence in Slack
+    means the watchdog is already re-triggering — not that the system is stuck.
+    """
+    late_mins = None
+    try:
+        from datetime import datetime, timezone
+        sch_h, sch_m  = int(scheduled_utc.split(":")[0]), int(scheduled_utc.split(":")[1])
+        act_h, act_m  = int(actual_utc.split(":")[0]),   int(actual_utc.split(":")[1])
+        sch_total = sch_h * 60 + sch_m
+        act_total = act_h * 60 + act_m
+        late_mins = act_total - sch_total
+        if late_mins < 0:
+            late_mins += 1440   # rolled midnight
+    except Exception:
+        pass
+
+    timing_str = actual_utc
+    if late_mins is not None and late_mins > 5:
+        timing_str = f"{actual_utc} ⚠ {late_mins}min late"
+    elif late_mins is not None:
+        timing_str = f"{actual_utc} ✓ on time"
+
+    stress_emoji = {"NORMAL": "🟢", "STRESS": "🟡", "HIGH_STRESS": "🔴"}.get(market_stress, "⚪")
+    stress_str   = f"{stress_emoji} {market_stress}"
+    if spx_change_pct is not None:
+        stress_str += f" (SPX {spx_change_pct:+.2f}%)"
+
+    gate_emoji = "✅" if gate_pass else "🚫"
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"*⏱ {session_name} heartbeat*  |  {timing_str}\n"
+                    f"{gate_emoji} Gate: {gate_reason[:80]}  |  "
+                    f"Market: {stress_str}  |  "
+                    f"Scanned: {instruments_scanned}  |  "
+                    f"Trades: {trades_placed}"
+                )
+            }
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": _ts()}]
+        },
+    ]
+    _send("signals", blocks)
+
+
+def alert_watchdog_trigger(session_name: str, workflow: str, late_minutes: int):
+    """Alert that watchdog auto-triggered a missed session."""
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"🔁 Watchdog Auto-Triggered — {session_name}"}
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"GitHub Actions cron missed {session_name} by ~{late_minutes} min.\n"
+                    f"Watchdog fired `{workflow}` automatically.\n"
+                    f"_No action needed — session is recovering now._"
+                )
+            }
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": _ts()}]
+        },
+    ]
+    _send("alerts", blocks)
+
+
 def alert_calendar_block(event: str, session: str):
     """Notify that trading has been paused due to an imminent high-impact economic event."""
     blocks = [

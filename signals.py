@@ -173,14 +173,86 @@ def get_cot_bias(instrument: str) -> dict:
         log.warning(f"COT fetch failed for {instrument}: {e}")
     return result
 
+def get_market_stress() -> dict:
+    """
+    Detect intraday market stress — the gap the VIX threshold misses.
+
+    VIX > 35 catches systemic crises (COVID, 2008). It does NOT catch:
+    - A single large-cap dropping 10% at open (falling knife risk)
+    - SPX down 1.5-2.5% from yesterday (elevated stress, not crisis)
+    - A "normal" day where VIX is 18 but everything is selling off
+
+    This check adds an intraday SPX drawdown gate:
+        NORMAL      SPX down <1.0% from yesterday close  — no impact
+        STRESS      SPX down 1.0-2.5%                    — halve position sizes
+        HIGH_STRESS SPX down >2.5%                       — gate FAILS, no new entries
+
+    Returns:
+        stress_level:   NORMAL / STRESS / HIGH_STRESS
+        spx_change_pct: % change from yesterday's close (negative = down)
+        gate_pass:      False if HIGH_STRESS
+    """
+    result = {
+        "stress_level":   "NORMAL",
+        "spx_change_pct": None,
+        "gate_pass":      True,
+        "stress_reason":  "",
+    }
+    try:
+        t    = yf.Ticker("^GSPC")
+        hist = t.history(period="3d", interval="1d")
+        if len(hist) < 2:
+            return result
+
+        prev_close  = float(hist["Close"].iloc[-2])
+        today_close = float(hist["Close"].iloc[-1])   # last available bar
+        pct         = round((today_close - prev_close) / prev_close * 100, 2)
+        result["spx_change_pct"] = pct
+
+        if pct < -2.5:
+            result["stress_level"] = "HIGH_STRESS"
+            result["gate_pass"]    = False
+            result["stress_reason"] = (
+                f"SPX down {abs(pct):.1f}% from yesterday — HIGH_STRESS: no new entries. "
+                f"Wait for intraday stabilisation before re-entering."
+            )
+        elif pct < -1.0:
+            result["stress_level"] = "STRESS"
+            # Gate still passes but run_session_open / run_monitor will see this
+            # and halve position sizes (handled in caller)
+            result["stress_reason"] = (
+                f"SPX down {abs(pct):.1f}% from yesterday — STRESS mode: "
+                f"position sizes halved, confirmation threshold raised."
+            )
+        else:
+            result["stress_reason"] = f"SPX {pct:+.2f}% from yesterday — market normal"
+
+    except Exception as e:
+        log.warning(f"Market stress check failed: {e}")
+
+    return result
+
+
 def get_macro_gate(session_name: str) -> dict:
     """
     Evaluate macro gate. Returns gate_pass=True if conditions are safe to trade.
-    Gate fails if: VIX > 35, yield curve deeply inverted (< -1.0), DXY extreme move.
+
+    Gate fails if ANY of:
+      - VIX > 35                      (systemic crisis — 2008/COVID territory)
+      - yield curve < -1.0%           (deeply inverted — severe recession risk)
+      - SPX down > 2.5% intraday      (intraday stress — falling knife risk)
+
+    STRESS mode (gate passes but position sizes halved):
+      - SPX down 1.0-2.5% intraday
+
+    Note: VIX 16 on a day where one stock crashes $200B is expected — VIX
+    measures S&P 500 implied vol. A concentrated single-stock event barely
+    moves VIX. The SPX drawdown check catches broad market sell-offs.
     """
     vix    = get_vix()
     dxy    = get_dxy()
     yields = get_yield_curve()
+    stress = get_market_stress()
 
     gate_pass = True
     reasons = []
@@ -194,17 +266,30 @@ def get_macro_gate(session_name: str) -> dict:
         gate_pass = False
         reasons.append(f"Yield curve deeply inverted: {spread}")
 
+    # Intraday stress check — catches what VIX threshold misses
+    if not stress.get("gate_pass"):
+        gate_pass = False
+        reasons.append(stress["stress_reason"])
+
     gate_reason = " | ".join(reasons) if reasons else "All macro conditions normal"
 
+    # Append stress annotation even when gate passes — visible in Slack summary
+    if stress["stress_level"] == "STRESS" and gate_pass:
+        gate_reason += f" ⚠ {stress['stress_reason']}"
+
     result = {
-        "vix":            vix,
-        "dxy":            dxy,
-        "us2y":           yields.get("us2y"),
-        "us10y":          yields.get("us10y"),
-        "yield_spread":   spread,
+        "vix":             vix,
+        "dxy":             dxy,
+        "us2y":            yields.get("us2y"),
+        "us10y":           yields.get("us10y"),
+        "yield_spread":    spread,
         "macro_gate_pass": gate_pass,
-        "gate_reason":    gate_reason,
-        "session":        session_name,
+        "gate_reason":     gate_reason,
+        "session":         session_name,
+        # Stress fields — used by run_session to adjust position sizing
+        "market_stress":   stress["stress_level"],          # NORMAL / STRESS / HIGH_STRESS
+        "spx_change_pct":  stress.get("spx_change_pct"),
+        "stress_size_multiplier": 0.5 if stress["stress_level"] == "STRESS" else 1.0,
     }
 
     # Persist to Supabase
@@ -213,10 +298,10 @@ def get_macro_gate(session_name: str) -> dict:
         db.run(
             """insert into macro_snapshot
                (session, vix, dxy, us2y, us10y, yield_spread, macro_gate_pass, gate_reason)
-               values (:s,:v,:d,:u2,:u10,:ys,:gp,:gr)""",
-            s=session_name, v=vix, d=dxy,
-            u2=yields.get("us2y"), u10=yields.get("us10y"),
-            ys=spread, gp=gate_pass, gr=gate_reason
+               values ($1, $2, $3, $4, $5, $6, $7, $8)""",
+            [session_name, vix, dxy,
+             yields.get("us2y"), yields.get("us10y"),
+             spread, gate_pass, gate_reason]
         )
         db.close()
     except Exception as e:
@@ -921,12 +1006,108 @@ def get_volume_signal(ticker: str) -> dict:
     return result
 
 
+def get_intraday_guard(ticker: str) -> dict:
+    """
+    Falling-knife guard — check whether this instrument has already made a
+    violent intraday move that makes entry dangerous.
+
+    Logic:
+        atr_intraday = today's (high - low) as a % of today's open
+        atr_daily    = 14-day ATR / yesterday's close  (% normalised)
+
+        If |today's move| > 1.5 × daily ATR:
+            → instrument already in a violent move, skip this bar
+            → wait for next session when the candle has settled
+
+    This catches: NVDA -8% at the open, a gap-up on earnings,
+    a commodity spike on news — anything where price action has already
+    moved far enough that ATR-based stops would be set incorrectly.
+
+    Returns:
+        block:       True if the instrument should be skipped this bar
+        reason:      human-readable explanation
+        move_pct:    today's open-to-current move %
+        atr_pct:     14-day ATR as % of price (the benchmark)
+    """
+    result = {"block": False, "reason": "", "move_pct": None, "atr_pct": None}
+    yticker = YAHOO_MAP.get(ticker, ticker)
+    try:
+        t    = yf.Ticker(yticker)
+        hist = t.history(period="20d", interval="1d")
+        if len(hist) < 5:
+            return result
+
+        # Today's intraday range
+        today     = hist.iloc[-1]
+        open_p    = float(today["Open"])
+        close_p   = float(today["Close"])
+        high_p    = float(today["High"])
+        low_p     = float(today["Low"])
+        if open_p <= 0:
+            return result
+
+        move_pct = abs(close_p - open_p) / open_p * 100
+
+        # 14-day ATR as % of price (normalised so we can compare across instruments)
+        high  = hist["High"]
+        low   = hist["Low"]
+        close = hist["Close"]
+        tr = pd.concat([
+            high - low,
+            (high - close.shift()).abs(),
+            (low  - close.shift()).abs()
+        ], axis=1).max(axis=1)
+        atr      = float(tr.rolling(14).mean().iloc[-2])  # use yesterday's ATR (today not closed)
+        atr_pct  = (atr / float(close.iloc[-2])) * 100
+
+        result["move_pct"] = round(move_pct, 2)
+        result["atr_pct"]  = round(atr_pct, 2)
+
+        MULTIPLIER = 1.5
+        if move_pct > MULTIPLIER * atr_pct:
+            result["block"]  = True
+            direction_word   = "down" if close_p < open_p else "up"
+            result["reason"] = (
+                f"Intraday move {move_pct:.1f}% ({direction_word}) exceeds "
+                f"{MULTIPLIER}× ATR ({atr_pct:.1f}%) — violent intraday move, "
+                f"entry deferred to next session."
+            )
+            log.info(f"Intraday guard blocked {ticker}: {result['reason']}")
+
+    except Exception as e:
+        log.debug(f"Intraday guard failed for {ticker}: {e}")
+    return result
+
+
 def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     """
     Run the full signal stack for one instrument.
     Returns a complete signal dict ready for Claude to evaluate.
     """
     log.info(f"Scanning {ticker}...")
+
+    # ── Intraday guard ────────────────────────────────────────────────────────
+    # Skip instruments that have already made a violent intraday move.
+    # A stock down 8% at the open is a falling knife — our ATR-based stop will
+    # be set incorrectly and the PA signals (which use daily closes) won't
+    # reflect today's damage until end of day.
+    guard = get_intraday_guard(ticker)
+    if guard.get("block"):
+        # Return a minimal WAIT signal — no point running the full stack
+        return {
+            "ticker":          ticker,
+            "session":         session_name,
+            "timestamp":       datetime.now(timezone.utc).isoformat(),
+            "macro_gate_pass": macro.get("macro_gate_pass"),
+            "trade_signal":    False,
+            "direction":       None,
+            "primary_count":   0,
+            "confirmation_count": 0,
+            "intraday_blocked": True,
+            "intraday_reason": guard["reason"],
+            "move_pct":        guard["move_pct"],
+            "atr_pct":         guard["atr_pct"],
+        }
 
     options   = get_options_signal(ticker)
     squeeze   = get_bb_squeeze(ticker)
