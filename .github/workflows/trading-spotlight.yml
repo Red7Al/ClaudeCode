@@ -1,0 +1,39 @@
+name: Spotlight - Ticker Lookup
+
+on:
+  push:
+    paths:
+      - 'spotlight_trigger.txt'
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: 'Comma-separated tickers (e.g. PLTR,DELL,NBIS)'
+        required: true
+        default: 'PLTR'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set tickers from trigger file or input
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "SPOTLIGHT_TICKER=$(cat spotlight_trigger.txt | tr -d '[:space:]')" >> $GITHUB_ENV
+          else
+            echo "SPOTLIGHT_TICKER=${{ github.event.inputs.tickers }}" >> $GITHUB_ENV
+          fi
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install requests pg8000
+      - run: python run_spotlight.py
+        env:
+          SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_SIGNALS:        ${{ secrets.SLACK_SIGNALS }}
+          SPOTLIGHT_TICKER:     ${{ env.SPOTLIGHT_TICKER }}
