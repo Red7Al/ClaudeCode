@@ -1,4 +1,4 @@
-name: Create .env file (2026-06-03b)
+name: Create .env file (2026-06-03c)
 
 on:
   workflow_dispatch:
@@ -47,15 +47,20 @@ jobs:
             ("SLACK_DAILY",          "V_SLACK_DAILY"),
             ("QUIVER_QUANT_API_KEY", "V_QUIVER_QUANT_API_KEY"),
           ]
-          path = os.path.join(os.environ["GITHUB_WORKSPACE"], ".env")
+          import pathlib
+          ws   = os.environ["GITHUB_WORKSPACE"]
+          path = os.path.join(ws, "trading_config.txt")
           with open(path, "w") as f:
             for name, env_var in keys:
               f.write(f"{name}={os.environ.get(env_var, '')}\n")
-          print(f"Written {len(keys)} lines to {path}")
+          size = pathlib.Path(path).stat().st_size
+          print(f"Written {len(keys)} lines, {size} bytes to {path}")
           PYEOF
-      - name: Verify and upload
+      - name: Verify file exists
+        run: ls -la ${{ github.workspace }}/trading_config.txt
+      - name: Upload as artifact
         uses: actions/upload-artifact@v5
         with:
           name: env-file
-          path: ${{ github.workspace }}/.env
+          path: ${{ github.workspace }}/trading_config.txt
           retention-days: 1
