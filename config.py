@@ -402,6 +402,17 @@ CALENDAR_BLOCK_MINUTES = 30
 VIX_GATE_THRESHOLD          = 35.0   # VIX above this = gate fails
 YIELD_SPREAD_GATE_THRESHOLD = -1.0   # Yield spread below this = gate fails
 
+# Intraday stress gate thresholds (SPX % change from yesterday close)
+SPX_HIGH_STRESS_PCT = -2.5   # SPX down >2.5% → gate FAILS (no new entries)
+SPX_STRESS_PCT      = -1.0   # SPX down 1–2.5% → STRESS mode (position sizes halved)
+
+# Intraday guard — falling-knife protection
+# Blocks a trade if an instrument has already moved more than N × its 14-day ATR
+# from today's open. 2.0× = genuinely violent/news-driven move.
+# 1.5× was too sensitive (fires on normal strong trending days).
+# 2.5× is too loose (NVDA -8% would still pass).
+INTRADAY_GUARD_ATR_MULTIPLIER = 2.0
+
 # Signal thresholds
 MIN_PRIMARY_SIGNALS       = 2   # Minimum primary signals required to trade
 MIN_CONFIRMATION_SIGNALS  = 1   # Minimum confirmation signals required to trade

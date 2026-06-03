@@ -65,6 +65,9 @@ from config import (
     MAX_CALL_PUT_RATIO_BEAR,
     VIX_GATE_THRESHOLD,
     YIELD_SPREAD_GATE_THRESHOLD,
+    SPX_HIGH_STRESS_PCT,
+    SPX_STRESS_PCT,
+    INTRADAY_GUARD_ATR_MULTIPLIER,
     CALENDAR_BLOCK_MINUTES,
     MIN_DIRECTOR_CLUSTER,
     SUPERINVESTOR_LOOKBACK_DAYS,
@@ -209,14 +212,14 @@ def get_market_stress() -> dict:
         pct         = round((today_close - prev_close) / prev_close * 100, 2)
         result["spx_change_pct"] = pct
 
-        if pct < -2.5:
+        if pct < SPX_HIGH_STRESS_PCT:
             result["stress_level"] = "HIGH_STRESS"
             result["gate_pass"]    = False
             result["stress_reason"] = (
                 f"SPX down {abs(pct):.1f}% from yesterday — HIGH_STRESS: no new entries. "
                 f"Wait for intraday stabilisation before re-entering."
             )
-        elif pct < -1.0:
+        elif pct < SPX_STRESS_PCT:
             result["stress_level"] = "STRESS"
             # Gate still passes but run_session_open / run_monitor will see this
             # and halve position sizes (handled in caller)
@@ -1063,13 +1066,13 @@ def get_intraday_guard(ticker: str) -> dict:
         result["move_pct"] = round(move_pct, 2)
         result["atr_pct"]  = round(atr_pct, 2)
 
-        MULTIPLIER = 1.5
+        MULTIPLIER = INTRADAY_GUARD_ATR_MULTIPLIER   # from config.py — 2.0
         if move_pct > MULTIPLIER * atr_pct:
             result["block"]  = True
             direction_word   = "down" if close_p < open_p else "up"
             result["reason"] = (
                 f"Intraday move {move_pct:.1f}% ({direction_word}) exceeds "
-                f"{MULTIPLIER}× ATR ({atr_pct:.1f}%) — violent intraday move, "
+                f"{MULTIPLIER:.1f}× ATR ({atr_pct:.1f}%) — violent intraday move, "
                 f"entry deferred to next session."
             )
             log.info(f"Intraday guard blocked {ticker}: {result['reason']}")
