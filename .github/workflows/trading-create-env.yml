@@ -1,4 +1,4 @@
-name: Create .env file (download once)
+name: Create .env file (2026-06-03)
 
 on:
   workflow_dispatch:
