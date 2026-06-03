@@ -35,6 +35,6 @@ jobs:
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SLACK_DAILY:          ${{ secrets.SLACK_SIGNALS }}
+          SLACK_DAILY:          ${{ secrets.SLACK_DAILY }}
           BRIEF_START_UTC:      ${{ env.BRIEF_START_UTC }}
           BRIEF_END_UTC:        ${{ env.BRIEF_END_UTC }}
