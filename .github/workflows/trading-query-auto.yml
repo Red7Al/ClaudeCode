@@ -17,6 +17,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
+      - name: Parse trigger file for options
+        run: |
+          if grep -q "SPOTLIGHT_TICKER=" query_trigger.txt 2>/dev/null; then
+            echo "SPOTLIGHT_TICKER=$(grep SPOTLIGHT_TICKER= query_trigger.txt | cut -d= -f2 | tr -d '[:space:]')" >> $GITHUB_ENV
+          fi
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -24,9 +29,9 @@ jobs:
       - name: Run query and write output
         run: python run_query.py > query_output.txt 2>&1
         env:
-          SUPABASE_USER:          ${{ secrets.SUPABASE_USER }}
-          SUPABASE_DB_PASSWORD:   ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SPOTLIGHT_TICKER:       ${{ env.SPOTLIGHT_TICKER }}
+          SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SPOTLIGHT_TICKER:     ${{ env.SPOTLIGHT_TICKER }}
       - name: Commit output back to repo
         run: |
           git config user.email "github-actions@github.com"
