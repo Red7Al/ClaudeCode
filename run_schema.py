@@ -58,6 +58,28 @@ MIGRATIONS = [
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS pa_verdict text"
     ),
 
+    # ── signal_log: columns read by run_daily_report.py but missing from table ──
+    #
+    # Daily report's fetch_signal_log() queries these columns for the
+    # "Notable Moves Not Traded" section. Without them the nightly report crashes.
+
+    (
+        "signal_log: add adx_signal",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS adx_signal text"
+    ),
+    (
+        "signal_log: add obv_signal",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS obv_signal text"
+    ),
+    (
+        "signal_log: add volume_signal",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS volume_signal text"
+    ),
+    (
+        "signal_log: add volume_ratio",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS volume_ratio numeric"
+    ),
+
 ]
 
 

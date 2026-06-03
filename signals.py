@@ -1091,9 +1091,11 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                 gex_bias, vwap_position, cot_bias, bb_squeeze, bb_breakout_dir,
                 director_signal, activist_signal, senate_signal, senate_senator,
                 notable_investor, social_mention, primary_count, confirmation_count,
-                direction, pa_verdict, trade_triggered)
+                direction, pa_verdict, trade_triggered,
+                adx_signal, obv_signal, volume_signal, volume_ratio)
                values (:s,:t,:mgp,:ob,:cpr,:ir,:gb,:vp,:cb,:bbs,:bbd,
-                       :ds,:as2,:ss,:ssn,:ni,:sm,:pc,:cc,:dir,:pav,:tt)""",
+                       :ds,:as2,:ss,:ssn,:ni,:sm,:pc,:cc,:dir,:pav,:tt,
+                       :adx,:obv,:vs,:vr)""",
             s=session_name, t=ticker,
             mgp=macro.get("macro_gate_pass"), ob=options.get("options_bias"),
             cpr=options.get("call_put_ratio"), ir=options.get("iv_rank"),
@@ -1104,7 +1106,9 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
             ss=senate.get("senate_signal"), ssn=senate.get("senate_senator"),
             ni=superinv.get("notable_investor"), sm=social.get("social_mention"),
             pc=primary_count, cc=conf_count, dir=direction,
-            pav=price_act.get("verdict"), tt=trade_signal
+            pav=price_act.get("verdict"), tt=trade_signal,
+            adx=adx.get("adx_signal"), obv=obv.get("obv_signal"),
+            vs=volume.get("volume_signal"), vr=volume.get("volume_ratio")
         )
         db.close()
     except Exception as e:

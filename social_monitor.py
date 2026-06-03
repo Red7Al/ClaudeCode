@@ -411,8 +411,7 @@ if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-    os.environ.setdefault("SLACK_SIGNALS",
-        "https://hooks.slack.com/services/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")
+    # SLACK_SIGNALS must be set as an environment variable — never hardcode webhook URLs
 
     print("Scanning X accounts for new picks...")
     picks = scan_social_feeds(max_age_hours=48)
