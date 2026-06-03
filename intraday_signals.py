@@ -455,17 +455,20 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                                 f"Confs:{sig.get('confirmation_count',0)} "
                                 f"[intraday rescan]"
                             )
-                            deal_id = open_trade(
-                                user_id="770a76b5-0e84-460b-b575-186c724dabdd",
+                            from run_session import get_user_profile
+                            profile = get_user_profile()
+                            result = open_trade(
+                                user_id=profile["user_id"],
                                 ticker=ticker,
                                 direction=sig["direction"],
                                 size=size,
                                 stop_distance=stop_dist,
                                 limit_distance=limit_dist,
                                 session_name="US_MONITOR",
-                                signal_summary=signal_str
+                                signal_summary=signal_str,
+                                paper_trade=profile["paper_trade"]
                             )
-                            if deal_id:
+                            if result:
                                 log.info(f"US Monitor NEW TRADE: {ticker} {sig['direction']}")
                                 new_trades_placed += 1
                     except Exception as e:

@@ -628,17 +628,22 @@ def open_trade(
                 log.warning(f"Could not send deal rejection alert: {e}")
             return None
 
-        log.info(f"Deal confirmed: {deal_id} at level {level}")
+        log.info(f"Deal confirmed: {deal_id} at level {level}  stop={stop_level}  limit={limit_level}")
 
         # Log confirmed position to Supabase
         _log_position_to_db(
             user_id=user_id, epic=epic, ticker=ticker,
             direction=direction, size=size,
             open_price=level, stop_loss=stop_level, take_profit=limit_level,
-            deal_id=deal_id, paper_trade=False,
+            deal_id=deal_id, paper_trade=paper_trade,
             session_name=session_name, signal_summary=signal_summary
         )
-        return deal_id
+        return {
+            "deal_id":     deal_id,
+            "level":       float(level      or 0),
+            "stop_level":  float(stop_level  or 0),
+            "limit_level": float(limit_level or 0),
+        }
 
     except requests.HTTPError as e:
         log.error(f"IG API error opening trade: {e.response.status_code} — {e.response.text}")

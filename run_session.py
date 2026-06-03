@@ -148,7 +148,7 @@ def run_session_open(session_name: str):
             log.info(f"Skipping {ticker} — position size is zero (account too small for margin)")
             continue
 
-        deal_id = open_trade(
+        result = open_trade(
             user_id=profile["user_id"],
             ticker=ticker, direction=direction, size=size,
             stop_distance=stop_dist, limit_distance=limit_dist,
@@ -156,9 +156,11 @@ def run_session_open(session_name: str):
             paper_trade=profile["paper_trade"]
         )
 
-        if deal_id:
-            trade_opened(ticker, direction, size, 0,
-                         stop_dist, limit_dist, session_name, signal_str)
+        if result:
+            trade_opened(ticker, direction, size,
+                         result["level"], result["stop_level"],
+                         result["limit_level"], session_name, signal_str,
+                         user=profile["name"])
             trades_placed += 1
 
     # Scan social feeds for new picks at each session open
@@ -308,17 +310,19 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                                 f"Confs:{sig.get('confirmation_count',0)} "
                                 f"[{session_name} rescan]"
                             )
-                            deal_id = open_trade(
-                                user_id="770a76b5-0e84-460b-b575-186c724dabdd",
+                            profile = get_user_profile()
+                            result = open_trade(
+                                user_id=profile["user_id"],
                                 ticker=ticker,
                                 direction=sig["direction"],
                                 size=size,
                                 stop_distance=stop_dist,
                                 limit_distance=limit_dist,
                                 session_name=session_name,
-                                signal_summary=signal_str
+                                signal_summary=signal_str,
+                                paper_trade=profile["paper_trade"]
                             )
-                            if deal_id:
+                            if result:
                                 log.info(f"{session_name} NEW TRADE: {ticker} {sig['direction']}")
                                 new_trades += 1
                     except Exception as e:
