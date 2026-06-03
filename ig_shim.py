@@ -575,6 +575,26 @@ def open_trade(
         log.error(f"Cannot trade {ticker} — no epic found")
         return None
 
+    # Step 2b — Market hours guard for US equities
+    # US equity CFDs (UA/UB/UC/UD/SE/SD/SB/SA/SG/SF prefix) only trade during
+    # NYSE hours: 14:30–21:00 UTC. Do not enter pre-market or after-hours —
+    # spreads are wider and stops are prone to gap-slippage (proven: IBM today).
+    US_EQUITY_PREFIXES = (
+        "UA.D.", "UB.D.", "UC.D.", "UD.D.",   # standard US equity CFDs
+        "SE.D.", "SD.D.", "SB.D.", "SA.D.",    # extended-hours / alternate prefix
+        "SG.D.", "SF.D.", "SC.D.",
+    )
+    if epic.startswith(US_EQUITY_PREFIXES):
+        now_utc      = datetime.now(timezone.utc)
+        market_open  = now_utc.replace(hour=14, minute=30, second=0, microsecond=0)
+        market_close = now_utc.replace(hour=21, minute=0,  second=0, microsecond=0)
+        if not (market_open <= now_utc <= market_close):
+            log.info(
+                f"Trade blocked — {ticker} ({epic}) is a US equity and the NYSE is closed "
+                f"(current: {now_utc.strftime('%H:%M')} UTC, window: 14:30–21:00 UTC)"
+            )
+            return None
+
     # Step 3 — Paper trade: log only, skip IG
     if paper_trade:
         log.info(f"[PAPER] {direction} {size} x {ticker} (epic={epic})")
