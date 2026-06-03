@@ -3,6 +3,9 @@ name: Create .env file (download once)
 on:
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   create-env:
     runs-on: ubuntu-latest
@@ -10,22 +13,21 @@ jobs:
     steps:
       - name: Write .env file
         run: |
-          cat > .env << 'EOF'
-          SUPABASE_USER=${{ secrets.SUPABASE_USER }}
-          SUPABASE_DB_PASSWORD=${{ secrets.SUPABASE_DB_PASSWORD }}
-          FRED_API_KEY=${{ secrets.FRED_API_KEY }}
-          EIA_API_KEY=${{ secrets.EIA_API_KEY }}
-          IG_API_KEY=${{ secrets.IG_API_KEY }}
-          IG_USERNAME=${{ secrets.IG_USERNAME }}
-          IG_PASSWORD=${{ secrets.IG_PASSWORD }}
-          IG_ACCOUNT_ID=${{ secrets.IG_ACCOUNT_ID }}
-          SLACK_TRADES=${{ secrets.SLACK_TRADES }}
-          SLACK_SIGNALS=${{ secrets.SLACK_SIGNALS }}
-          SLACK_ALERTS=${{ secrets.SLACK_ALERTS }}
-          SLACK_WEEKLY=${{ secrets.SLACK_WEEKLY }}
-          SLACK_DAILY=${{ secrets.SLACK_DAILY }}
-          QUIVER_QUANT_API_KEY=${{ secrets.QUIVER_QUANT_API_KEY }}
-          EOF
+          echo "SUPABASE_USER=${{ secrets.SUPABASE_USER }}"          >> .env
+          echo "SUPABASE_DB_PASSWORD=${{ secrets.SUPABASE_DB_PASSWORD }}" >> .env
+          echo "FRED_API_KEY=${{ secrets.FRED_API_KEY }}"            >> .env
+          echo "EIA_API_KEY=${{ secrets.EIA_API_KEY }}"              >> .env
+          echo "IG_API_KEY=${{ secrets.IG_API_KEY }}"                >> .env
+          echo "IG_USERNAME=${{ secrets.IG_USERNAME }}"              >> .env
+          echo "IG_PASSWORD=${{ secrets.IG_PASSWORD }}"              >> .env
+          echo "IG_ACCOUNT_ID=${{ secrets.IG_ACCOUNT_ID }}"          >> .env
+          echo "SLACK_TRADES=${{ secrets.SLACK_TRADES }}"            >> .env
+          echo "SLACK_SIGNALS=${{ secrets.SLACK_SIGNALS }}"          >> .env
+          echo "SLACK_ALERTS=${{ secrets.SLACK_ALERTS }}"            >> .env
+          echo "SLACK_WEEKLY=${{ secrets.SLACK_WEEKLY }}"            >> .env
+          echo "SLACK_DAILY=${{ secrets.SLACK_DAILY }}"              >> .env
+          echo "QUIVER_QUANT_API_KEY=${{ secrets.QUIVER_QUANT_API_KEY }}" >> .env
+          echo ".env written ($(wc -l < .env) lines)"
       - name: Upload as artifact
         uses: actions/upload-artifact@v4
         with:
