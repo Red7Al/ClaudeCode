@@ -30,11 +30,11 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
-      - run: pip install requests pg8000
+      - run: pip install requests pg8000 python-dotenv
       - run: python run_uk_morning_brief.py
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SLACK_DAILY:          ${{ secrets.SLACK_DAILY }}
+          SLACK_DAILY:          ${{ secrets.SLACK_SIGNALS }}
           BRIEF_START_UTC:      ${{ env.BRIEF_START_UTC }}
           BRIEF_END_UTC:        ${{ env.BRIEF_END_UTC }}
