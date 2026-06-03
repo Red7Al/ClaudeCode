@@ -10,7 +10,7 @@
 # =============================================================================
 
 import os
-from dotenv import load_dotenv; load_dotenv()
+from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
 from datetime import datetime, timezone
 

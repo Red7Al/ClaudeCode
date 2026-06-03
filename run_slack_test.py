@@ -10,7 +10,7 @@
 # =============================================================================
 
 import os
-from dotenv import load_dotenv; load_dotenv()
+from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
 import requests
 from datetime import datetime, timezone
@@ -71,7 +71,7 @@ for secret_name, url in WEBHOOKS.items():
 print("\n=== Slack Webhook Test Results ===")
 all_ok = True
 for name, result in results.items():
-    status = "✅" if result == "OK" else "❌"
+    status = "OK  " if result == "OK" else "FAIL"
     print(f"  {status}  {name:<20}  {CHANNEL_NAMES[name]:<30}  {result}")
     if result != "OK":
         all_ok = False

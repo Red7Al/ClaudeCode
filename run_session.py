@@ -24,7 +24,7 @@
 
 import sys
 import os
-from dotenv import load_dotenv; load_dotenv()
+from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
 
 logging.basicConfig(
