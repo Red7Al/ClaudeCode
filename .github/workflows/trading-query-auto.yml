@@ -37,6 +37,7 @@ jobs:
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git pull --rebase
           git add query_output.txt
           git diff --staged --quiet || git commit -m "query output [skip ci]"
           git push

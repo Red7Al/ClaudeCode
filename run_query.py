@@ -205,9 +205,11 @@ def main():
     else:
         print("  (no signal records for today)")
 
-    # ── Ticker spotlight ──────────────────────────────────────────────────────
-    spotlight = os.environ.get("SPOTLIGHT_TICKER", "")
-    if spotlight:
+    # ── Ticker spotlight (comma-separated list supported) ─────────────────────
+    spotlight_env = os.environ.get("SPOTLIGHT_TICKER", "")
+    spotlights    = [t.strip().upper() for t in spotlight_env.split(",") if t.strip()]
+
+    for spotlight in spotlights:
         print(f"\nSPOTLIGHT: {spotlight}")
         print("-" * 60)
 
@@ -221,11 +223,14 @@ def main():
                limit  10""",
             t=spotlight
         )
-        print(f"  Recent signal_log entries ({len(sig_rows)}):")
-        for r in sig_rows:
-            fired = "🟢 TRADE" if r[7] else ("🟡" if (r[1] or 0) >= 2 else "⚪")
-            print(f"  {fired} {r[9]}  {r[0]}  P:{r[1]} C:{r[2]} dir:{r[3]} "
-                  f"opts:{r[4]} bb:{r[5]} cot:{r[6]} pa:{r[8]}")
+        print(f"  Signal log ({len(sig_rows)} recent scans):")
+        if sig_rows:
+            for r in sig_rows:
+                fired = "🟢 TRADE" if r[7] else ("🟡" if (r[1] or 0) >= 2 else "⚪")
+                print(f"  {fired} {str(r[9])[:19]}  [{r[0]}]  P:{r[1]} C:{r[2]} "
+                      f"dir:{r[3]} opts:{r[4]} bb:{r[5]} cot:{r[6]} pa:{r[8]}")
+        else:
+            print("  (no signal log entries — not yet scanned or log predates schema fix)")
 
         ni_rows = conn.run(
             """select investor_name, action, disclosed_at, source, notes
@@ -236,21 +241,27 @@ def main():
             t=spotlight
         )
         print(f"\n  Notable investor entries ({len(ni_rows)}):")
-        for r in ni_rows:
-            print(f"  {r[2]}  {r[0]}  {r[1]}  [{r[3]}]  {r[4] or ''}")
+        if ni_rows:
+            for r in ni_rows:
+                print(f"  {r[2]}  {r[0]}  {r[1]}  [{r[3]}]  {str(r[4] or '')[:60]}")
+        else:
+            print("  (none)")
 
         sm_rows = conn.run(
             """select author, platform, sentiment, post_time, post_text
                from   social_mentions
                where  :t = any(tickers_found)
                order  by post_time desc
-               limit  10""",
+               limit  5""",
             t=spotlight
         )
         print(f"\n  Social mentions ({len(sm_rows)}):")
-        for r in sm_rows:
-            print(f"  {r[3]}  @{r[0]} ({r[1]})  sentiment:{r[2]}")
-            print(f"    {str(r[4])[:100]}")
+        if sm_rows:
+            for r in sm_rows:
+                print(f"  {r[3]}  @{r[0]} ({r[1]})  {r[2]}")
+                print(f"    {str(r[4])[:100]}")
+        else:
+            print("  (none in social_mentions table)")
 
     print(f"\n{'='*60}\n")
     conn.close()
