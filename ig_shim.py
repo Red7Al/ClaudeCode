@@ -355,10 +355,10 @@ def get_epic(ticker: str) -> Optional[str]:
     try:
         db.run(
             """insert into epic_lookup (ticker, epic, description, market_type)
-               values ($1, $2, $3, $4)
+               values (:v_ticker, :v_epic, :v_desc, :v_mtype)
                on conflict (ticker) do update
                set epic=excluded.epic, last_seen=now()""",
-            [ticker, epic, description, market_type]
+            v_ticker=ticker, v_epic=epic, v_desc=description, v_mtype=market_type
         )
         log.info(f"Epic cached: {ticker} → {epic}")
     finally:
@@ -892,16 +892,15 @@ def _log_position_to_db(
     """Insert a new open position record into the Supabase positions table."""
     db = get_db()
     try:
-        # Use positional $N params — pg8000.native named params are unreliable
-        # with multiple parameters in a single statement.
         db.run(
             """insert into positions
                (user_id, epic, ticker, direction, size, open_price,
                 stop_loss, take_profit, deal_id, paper_trade, session, signal_summary)
-               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)""",
-            [user_id, epic, ticker, direction, size,
-             open_price, stop_loss, take_profit,
-             deal_id, paper_trade, session_name, signal_summary]
+               values (:v_uid, :v_epic, :v_ticker, :v_dir, :v_size, :v_open,
+                       :v_stop, :v_tp, :v_deal, :v_paper, :v_session, :v_signal)""",
+            v_uid=user_id, v_epic=epic, v_ticker=ticker, v_dir=direction, v_size=size,
+            v_open=open_price, v_stop=stop_loss, v_tp=take_profit,
+            v_deal=deal_id, v_paper=paper_trade, v_session=session_name, v_signal=signal_summary
         )
         log.info(f"Position logged to Supabase: {deal_id}")
     except Exception as ex:
@@ -939,21 +938,20 @@ def _log_trade_close_to_db(deal_id: str, close_price: float, close_reason: str):
                   else (open_price - close_price) * size
         pnl_pct = ((close_price - open_price) / open_price * 100) if open_price else 0
 
-        # Insert into trade_log (positional $N params — see positions insert note)
         db.run(
             """insert into trade_log
                (user_id, epic, ticker, direction, size, open_price, close_price,
                 stop_loss, pnl, pnl_pct, paper_trade, opened_at, closed_at,
                 session, close_reason, signal_summary)
                values
-               ($1, $2, $3, $4, $5, $6, $7,
-                $8, $9, $10, $11, $12, now(),
-                $13, $14, $15)""",
-            [pos["user_id"], pos["epic"], pos["ticker"],
-             direction, size, open_price, close_price,
-             pos["stop_loss"], round(pnl, 2), round(pnl_pct, 4),
-             pos["paper_trade"], pos["opened_at"],
-             pos["session"], close_reason, pos["signal_summary"]]
+               (:v_uid, :v_epic, :v_ticker, :v_dir, :v_size, :v_open, :v_close,
+                :v_stop, :v_pnl, :v_pnl_pct, :v_paper, :v_opened, now(),
+                :v_session, :v_reason, :v_signal)""",
+            v_uid=pos["user_id"], v_epic=pos["epic"], v_ticker=pos["ticker"],
+            v_dir=direction, v_size=size, v_open=open_price, v_close=close_price,
+            v_stop=pos["stop_loss"], v_pnl=round(pnl, 2), v_pnl_pct=round(pnl_pct, 4),
+            v_paper=pos["paper_trade"], v_opened=pos["opened_at"],
+            v_session=pos["session"], v_reason=close_reason, v_signal=pos["signal_summary"]
         )
 
         # Remove from open positions
@@ -966,13 +964,13 @@ def _log_trade_close_to_db(deal_id: str, close_price: float, close_reason: str):
         db.run(
             """insert into daily_pnl
                (user_id, trade_date, total_pnl, trade_count, win_count, loss_count)
-               values ($1, current_date, $2, 1, $3, $4)
+               values (:v_uid, current_date, :v_pnl, 1, :v_win, :v_loss)
                on conflict (user_id, trade_date) do update
                set total_pnl   = daily_pnl.total_pnl   + excluded.total_pnl,
                    trade_count = daily_pnl.trade_count  + 1,
                    win_count   = daily_pnl.win_count    + excluded.win_count,
                    loss_count  = daily_pnl.loss_count   + excluded.loss_count""",
-            [pos["user_id"], round(pnl, 2), win, loss]
+            v_uid=pos["user_id"], v_pnl=round(pnl, 2), v_win=win, v_loss=loss
         )
 
     except Exception as ex:

@@ -302,10 +302,11 @@ def get_macro_gate(session_name: str) -> dict:
         db.run(
             """insert into macro_snapshot
                (session, vix, dxy, us2y, us10y, yield_spread, macro_gate_pass, gate_reason)
-               values ($1, $2, $3, $4, $5, $6, $7, $8)""",
-            [session_name, vix, dxy,
-             yields.get("us2y"), yields.get("us10y"),
-             spread, gate_pass, gate_reason]
+               values (:v_session, :v_vix, :v_dxy, :v_us2y, :v_us10y,
+                       :v_spread, :v_gate_pass, :v_gate_reason)""",
+            v_session=session_name, v_vix=vix, v_dxy=dxy,
+            v_us2y=yields.get("us2y"), v_us10y=yields.get("us10y"),
+            v_spread=spread, v_gate_pass=gate_pass, v_gate_reason=gate_reason
         )
         db.close()
     except Exception as e:
@@ -1287,8 +1288,9 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     }
 
     # Log to Supabase
-    # NOTE: use positional $1..$N params (pg8000.native named-param parser is
-    # unreliable with >1 parameter — positional is the safe choice here).
+    # pg8000.native uses :param_name style. $N positional style fails with
+    # "list index out of range" because pg8000 accesses args[N] not args[N-1].
+    # Using verbose v_ prefixed names ensures the parser finds all placeholders.
     try:
         db = get_db()
         db.run(
@@ -1299,22 +1301,25 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                 notable_investor, social_mention, primary_count, confirmation_count,
                 direction, pa_verdict, trade_triggered,
                 adx_signal, obv_signal, volume_signal, volume_ratio)
-               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-                       $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-                       $23,$24,$25,$26)""",
-            [session_name, ticker,
-             macro.get("macro_gate_pass"), options.get("options_bias"),
-             options.get("call_put_ratio"), options.get("iv_rank"),
-             gex.get("gex_bias"), vwap.get("vwap_position"),
-             cot.get("bias"), squeeze.get("bb_squeeze"),
-             squeeze.get("bb_breakout_dir"),
-             directors.get("director_signal"), activist.get("activist_signal"),
-             senate.get("senate_signal"), senate.get("senate_senator"),
-             superinv.get("notable_investor"), social.get("social_mention"),
-             primary_count, conf_count, direction,
-             price_act.get("verdict"), trade_signal,
-             adx.get("adx_signal"), obv.get("obv_signal"),
-             volume.get("volume_signal"), volume.get("volume_ratio")]
+               values (:v_session, :v_ticker, :v_mgp, :v_opts_bias, :v_call_put, :v_ivr,
+                       :v_gex_bias, :v_vwap_pos, :v_cot_bias, :v_bb_squeeze, :v_bb_breakout,
+                       :v_director, :v_activist, :v_senate, :v_senator_name,
+                       :v_notable, :v_social, :v_primaries, :v_confirms, :v_direction,
+                       :v_pa_verdict, :v_triggered,
+                       :v_adx, :v_obv, :v_vol_sig, :v_vol_ratio)""",
+            v_session=session_name, v_ticker=ticker,
+            v_mgp=macro.get("macro_gate_pass"), v_opts_bias=options.get("options_bias"),
+            v_call_put=options.get("call_put_ratio"), v_ivr=options.get("iv_rank"),
+            v_gex_bias=gex.get("gex_bias"), v_vwap_pos=vwap.get("vwap_position"),
+            v_cot_bias=cot.get("bias"), v_bb_squeeze=squeeze.get("bb_squeeze"),
+            v_bb_breakout=squeeze.get("bb_breakout_dir"),
+            v_director=directors.get("director_signal"), v_activist=activist.get("activist_signal"),
+            v_senate=senate.get("senate_signal"), v_senator_name=senate.get("senate_senator"),
+            v_notable=superinv.get("notable_investor"), v_social=social.get("social_mention"),
+            v_primaries=primary_count, v_confirms=conf_count, v_direction=direction,
+            v_pa_verdict=price_act.get("verdict"), v_triggered=trade_signal,
+            v_adx=adx.get("adx_signal"), v_obv=obv.get("obv_signal"),
+            v_vol_sig=volume.get("volume_signal"), v_vol_ratio=volume.get("volume_ratio")
         )
         db.close()
     except Exception as e:

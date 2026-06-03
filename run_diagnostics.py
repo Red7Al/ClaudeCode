@@ -213,7 +213,7 @@ def test_signal_log_insert() -> dict:
             database="postgres", user=os.environ["SUPABASE_USER"],
             password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
         )
-        # INSERT a diagnostics row
+        # INSERT a diagnostics row (v_ prefixed named params — pg8000.native style)
         conn.run(
             """insert into signal_log
                (session, ticker, macro_gate_pass, options_bias, call_put_ratio, iv_rank,
@@ -222,15 +222,18 @@ def test_signal_log_insert() -> dict:
                 notable_investor, social_mention, primary_count, confirmation_count,
                 direction, pa_verdict, trade_triggered,
                 adx_signal, obv_signal, volume_signal, volume_ratio)
-               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-                       $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-                       $23,$24,$25,$26)""",
-            ["DIAG", "_TEST_", True, "NEUTRAL", None, None,
-             "NEUTRAL", None, "NEUTRAL", False, None,
-             False, False, False, None,
-             None, None, 0, 0,
-             None, "WAIT", False,
-             "NEUTRAL", "NEUTRAL", "NORMAL", None]
+               values (:v_sess, :v_tick, :v_mgp, :v_opts, :v_cpr, :v_ivr,
+                       :v_gex, :v_vwap, :v_cot, :v_bbs, :v_bbd,
+                       :v_dir, :v_act, :v_sen, :v_senn,
+                       :v_ni, :v_sm, :v_pc, :v_cc,
+                       :v_dirn, :v_pav, :v_tt,
+                       :v_adx, :v_obv, :v_vs, :v_vr)""",
+            v_sess="DIAG", v_tick="_TEST_", v_mgp=True, v_opts="NEUTRAL", v_cpr=None, v_ivr=None,
+            v_gex="NEUTRAL", v_vwap=None, v_cot="NEUTRAL", v_bbs=False, v_bbd=None,
+            v_dir=False, v_act=False, v_sen=False, v_senn=None,
+            v_ni=None, v_sm=None, v_pc=0, v_cc=0,
+            v_dirn=None, v_pav="WAIT", v_tt=False,
+            v_adx="NEUTRAL", v_obv="NEUTRAL", v_vs="NORMAL", v_vr=None
         )
         # Clean up immediately
         conn.run("delete from signal_log where ticker = '_TEST_' and session = 'DIAG'")
@@ -257,10 +260,12 @@ def test_positions_insert() -> dict:
             """insert into positions
                (user_id, epic, ticker, direction, size, open_price,
                 stop_loss, take_profit, deal_id, paper_trade, session, signal_summary)
-               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)""",
-            [uid, "DIAG.TEST", "_TEST_", "BUY", 0.0,
-             0.0, 0.0, 0.0,
-             "DIAG-TEST-DELETE-ME", True, "DIAG", "diagnostics test row"]
+               values (:v_uid, :v_epic, :v_ticker, :v_dir, :v_size, :v_open,
+                       :v_stop, :v_tp, :v_deal, :v_paper, :v_session, :v_signal)""",
+            v_uid=uid, v_epic="DIAG.TEST", v_ticker="_TEST_", v_dir="BUY", v_size=0.0,
+            v_open=0.0, v_stop=0.0, v_tp=0.0,
+            v_deal="DIAG-TEST-DELETE-ME", v_paper=True, v_session="DIAG",
+            v_signal="diagnostics test row"
         )
         conn.run("delete from positions where deal_id = 'DIAG-TEST-DELETE-ME'")
         conn.close()

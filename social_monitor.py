@@ -209,8 +209,8 @@ def is_new_ticker(ticker: str, investor_name: str) -> bool:
     db = get_db()
     try:
         rows = db.run(
-            "select id from notable_investors where ticker=$1 and investor_name=$2 limit 1",
-            [ticker, investor_name]
+            "select id from notable_investors where ticker=:v_ticker and investor_name=:v_investor limit 1",
+            v_ticker=ticker, v_investor=investor_name
         )
         return len(rows) == 0
     finally:
@@ -228,10 +228,10 @@ def save_new_pick(ticker: str, investor_name: str, source: str, post_url: str):
         db.run(
             """insert into notable_investors
                (investor_name, ticker, action, source, disclosed_at, notes)
-               values ($1, $2, 'NEW', $3, current_date, $4)
+               values (:v_investor, :v_ticker, 'NEW', :v_source, current_date, :v_notes)
                on conflict do nothing""",
-            [investor_name, ticker, source,
-             f"Discovered via RSS monitoring | {post_url}"]
+            v_investor=investor_name, v_ticker=ticker, v_source=source,
+            v_notes=f"Discovered via RSS monitoring | {post_url}"
         )
         log.info(f"New pick saved: {ticker} from {investor_name}")
     finally:
@@ -256,9 +256,9 @@ def save_new_pick(ticker: str, investor_name: str, source: str, post_url: str):
                 db = get_db()
                 db.run(
                     """insert into epic_lookup (ticker, epic, description, currency, market_type)
-                       values ($1, $2, $3, 'USD', 'SHARES')
+                       values (:v_ticker, :v_epic, :v_name, 'USD', 'SHARES')
                        on conflict (ticker) do update set epic=excluded.epic, last_seen=now()""",
-                    [ticker, epic, name]
+                    v_ticker=ticker, v_epic=epic, v_name=name
                 )
                 db.close()
                 log.info(f"Epic found: {ticker} -> {epic} ({name})")
