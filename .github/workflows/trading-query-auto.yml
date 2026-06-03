@@ -24,8 +24,9 @@ jobs:
       - name: Run query and write output
         run: python run_query.py > query_output.txt 2>&1
         env:
-          SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_USER:          ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:   ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SPOTLIGHT_TICKER:       ${{ env.SPOTLIGHT_TICKER }}
       - name: Commit output back to repo
         run: |
           git config user.email "github-actions@github.com"

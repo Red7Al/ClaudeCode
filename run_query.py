@@ -205,6 +205,53 @@ def main():
     else:
         print("  (no signal records for today)")
 
+    # ── Ticker spotlight ──────────────────────────────────────────────────────
+    spotlight = os.environ.get("SPOTLIGHT_TICKER", "")
+    if spotlight:
+        print(f"\nSPOTLIGHT: {spotlight}")
+        print("-" * 60)
+
+        sig_rows = conn.run(
+            """select session, primary_count, confirmation_count, direction,
+                      options_bias, bb_breakout_dir, adx_signal, obv_signal,
+                      cot_bias, trade_triggered, pa_verdict, session_time
+               from   signal_log
+               where  ticker = :t
+               order  by session_time desc
+               limit  10""",
+            t=spotlight
+        )
+        print(f"  Recent signal_log entries ({len(sig_rows)}):")
+        for r in sig_rows:
+            fired = "🟢 TRADE" if r[9] else ("🟡" if (r[1] or 0) >= 2 else "⚪")
+            print(f"  {fired} {r[12]}  {r[0]}  P:{r[1]} C:{r[2]} dir:{r[3]} "
+                  f"opts:{r[4]} bb:{r[5]} adx:{r[6]} cot:{r[8]} pa:{r[10]}")
+
+        ni_rows = conn.run(
+            """select investor_name, action, disclosed_at, source, notes
+               from   notable_investors
+               where  ticker = :t
+               order  by disclosed_at desc
+               limit  10""",
+            t=spotlight
+        )
+        print(f"\n  Notable investor entries ({len(ni_rows)}):")
+        for r in ni_rows:
+            print(f"  {r[2]}  {r[0]}  {r[1]}  [{r[3]}]  {r[4] or ''}")
+
+        sm_rows = conn.run(
+            """select author, platform, sentiment, post_time, post_text
+               from   social_mentions
+               where  :t = any(tickers_found)
+               order  by post_time desc
+               limit  10""",
+            t=spotlight
+        )
+        print(f"\n  Social mentions ({len(sm_rows)}):")
+        for r in sm_rows:
+            print(f"  {r[3]}  @{r[0]} ({r[1]})  sentiment:{r[2]}")
+            print(f"    {str(r[4])[:100]}")
+
     print(f"\n{'='*60}\n")
     conn.close()
 
