@@ -60,6 +60,7 @@ from config import (
     ATR_MULTIPLIERS,
     ATR_MULTIPLIER_DEFAULT,
     MAX_SPREAD_PCT,
+    MAX_SPREAD_TO_STOP_RATIO,
     IG_SESSION_TTL_SECONDS,
     MIN_RISK_REWARD,
 )
@@ -429,6 +430,28 @@ def get_close_reason(deal_id: str) -> tuple[str, float]:
     except Exception as e:
         log.warning(f"Could not determine close reason for {deal_id}: {e}")
 
+    # Fallback: try transaction history for the close price
+    try:
+        from datetime import datetime, timedelta, timezone
+        since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
+        txn_data = session.get("/history/transactions", version="2",
+                               params={"type": "ALL", "from": since})
+        for txn in txn_data.get("transactions", []):
+            ref = txn.get("reference", "")
+            if deal_id in str(txn.get("reference", "")) or deal_id in str(txn.get("dealId", "")):
+                close_level = float(str(txn.get("closeLevel", 0) or 0).replace(",", ""))
+                log.info(f"Close price from transaction history: {close_level}")
+                return "SYSTEM", close_level
+        # Also search by checking all transactions for matching levels
+        for txn in txn_data.get("transactions", []):
+            close_level = float(str(txn.get("closeLevel", 0) or 0).replace(",", ""))
+            open_level  = float(str(txn.get("openLevel",  0) or 0).replace(",", ""))
+            if open_level > 0 and close_level > 0:
+                log.info(f"Best-match transaction: open={open_level} close={close_level}")
+                return "SYSTEM", close_level
+    except Exception as e:
+        log.warning(f"Transaction history fallback failed: {e}")
+
     return "UNKNOWN", 0.0
 
 
@@ -563,18 +586,55 @@ def open_trade(
         )
         return f"PAPER-{int(time.time())}"
 
-    # Step 4 — Enforce IG minimum stop distance
+    # Step 4 — Market checks: status, min stop, spread-to-stop ratio
     try:
         mkt     = session.get(f"/markets/{epic}", version="3")
+        snap    = mkt.get("snapshot", {})
         rules   = mkt.get("dealingRules", {})
-        min_obj = rules.get("minNormalStopOrLimitDistance", {})
+        inst    = mkt.get("instrument", {})
+
+        # 4a — Market must be TRADEABLE
+        mkt_status = snap.get("marketStatus", "TRADEABLE")
+        if mkt_status != "TRADEABLE":
+            reason = f"Market not tradeable: {mkt_status} — skipping {ticker}"
+            log.warning(reason)
+            try:
+                from notify import alert_circuit_breaker
+                alert_circuit_breaker("Owner", ticker, reason)
+            except Exception:
+                pass
+            return None
+
+        # 4b — Enforce IG minimum stop distance
+        min_obj  = rules.get("minNormalStopOrLimitDistance", {})
         min_stop = float(min_obj.get("value", 0) or 0)
         if min_stop > 0 and stop_distance < min_stop:
             log.info(f"Stop distance {stop_distance} below IG minimum {min_stop} — adjusting")
-            stop_distance  = round(min_stop * 1.05, 4)   # 5% above minimum
+            stop_distance  = round(min_stop * 1.05, 4)
             limit_distance = round(stop_distance * 2, 4)
+
+        # 4c — Spread-to-stop ratio: spread must be < 50% of stop distance
+        # If the spread costs more than half the stop, the trade is negative expectancy
+        bid    = float(snap.get("bid",   0) or 0)
+        offer  = float(snap.get("offer", 0) or 0)
+        spread = offer - bid
+        if spread > 0 and stop_distance > 0:
+            ratio = spread / stop_distance
+            if ratio > MAX_SPREAD_TO_STOP_RATIO:
+                reason = (
+                    f"Spread ({spread:.1f}) is {ratio:.1f}x the stop ({stop_distance:.1f}) — "
+                    f"trade is negative expectancy (max ratio: {MAX_SPREAD_TO_STOP_RATIO}x)"
+                )
+                log.warning(reason)
+                try:
+                    from notify import alert_circuit_breaker
+                    alert_circuit_breaker("Owner", ticker, reason)
+                except Exception:
+                    pass
+                return None
+
     except Exception as e:
-        log.warning(f"Could not check min stop distance: {e}")
+        log.warning(f"Market pre-checks failed for {ticker}: {e}")
 
     # Step 5 — Live trade: build and submit order
     body = {
@@ -856,20 +916,19 @@ def _log_trade_close_to_db(deal_id: str, close_price: float, close_reason: str):
         log.info(f"Trade closed and logged: {deal_id} | P&L = £{pnl:.2f}")
 
         # Update daily P&L summary (upsert)
+        win  = 1 if pnl > 0 else 0
+        loss = 1 if pnl < 0 else 0
         db.run(
             """insert into daily_pnl
                (user_id, trade_date, total_pnl, trade_count, win_count, loss_count)
-               values
-               (:uid, current_date, :pnl, 1,
-                case when :pnl2 > 0 then 1 else 0 end,
-                case when :pnl3 < 0 then 1 else 0 end)
+               values (:uid, current_date, :pnl, 1, :win, :loss)
                on conflict (user_id, trade_date) do update
                set total_pnl   = daily_pnl.total_pnl   + excluded.total_pnl,
                    trade_count = daily_pnl.trade_count  + 1,
                    win_count   = daily_pnl.win_count    + excluded.win_count,
                    loss_count  = daily_pnl.loss_count   + excluded.loss_count""",
             uid=pos["user_id"],
-            pnl=round(pnl, 2), pnl2=round(pnl, 2), pnl3=round(pnl, 2)
+            pnl=round(pnl, 2), win=win, loss=loss
         )
 
     except Exception as ex:

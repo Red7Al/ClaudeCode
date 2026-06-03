@@ -376,6 +376,11 @@ MIN_RISK_REWARD = 2.0
 # Spread width limit — trades blocked if spread exceeds this % of mid price
 MAX_SPREAD_PCT = 0.005      # 0.5%
 
+# Spread-to-stop ratio — trades blocked if spread > this multiple of stop distance
+# IBM example: spread=65, stop=27.3 → ratio=2.38 (way above 0.5 threshold)
+# If spread costs more than 50% of the stop, the trade is negative expectancy
+MAX_SPREAD_TO_STOP_RATIO = 0.5
+
 # Session token TTL — IG sessions expire after 6 hours
 # Refresh at 5.5 hours to avoid mid-session expiry
 IG_SESSION_TTL_SECONDS = 5.5 * 3600
