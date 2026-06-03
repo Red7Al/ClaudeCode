@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '30 14 * * 1-5'  # 14:30 UTC Monday-Friday (NYSE open)
   workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Set to true to bypass the once-per-day guard (re-scan even if already ran today)'
+        required: false
+        default: 'false'
   push:
     paths:
       - 'us_open_trigger.txt'
@@ -36,3 +41,4 @@ jobs:
           SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
           SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
           SLACK_WEEKLY:          ${{ secrets.SLACK_WEEKLY }}
+          FORCE_RUN:             ${{ github.event.inputs.force_run || 'false' }}

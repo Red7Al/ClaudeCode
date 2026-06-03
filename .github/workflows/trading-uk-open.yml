@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 8 * * 1-5'   # 08:00 UTC Monday-Friday (London open)
   workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Set to true to bypass the once-per-day guard'
+        required: false
+        default: 'false'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -33,3 +38,4 @@ jobs:
           SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
           SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
           SLACK_WEEKLY:          ${{ secrets.SLACK_WEEKLY }}
+          FORCE_RUN:             ${{ github.event.inputs.force_run || 'false' }}

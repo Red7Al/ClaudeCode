@@ -37,6 +37,45 @@ log = logging.getLogger("run_session")
 OWNER_USER_ID = "770a76b5-0e84-460b-b575-186c724dabdd"
 
 
+def already_ran_today(session_name: str) -> bool:
+    """
+    Return True if this session already produced a macro_snapshot today.
+
+    Used to prevent duplicate runs when GitHub Actions cron fires late and
+    overlaps with a watchdog-triggered manual run, or when the same workflow
+    is dispatched more than once in a day.
+
+    Override by setting FORCE_RUN=true in the workflow environment — useful
+    when you deliberately want to re-scan mid-session after a code change.
+    """
+    if os.environ.get("FORCE_RUN", "").lower() in ("true", "1", "yes"):
+        log.info(f"FORCE_RUN=true — skipping duplicate-run guard for {session_name}")
+        return False
+    import pg8000.native
+    try:
+        conn = pg8000.native.Connection(
+            host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+            database="postgres", user=os.environ["SUPABASE_USER"],
+            password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
+        )
+        rows = conn.run(
+            """select count(*) from macro_snapshot
+               where  session = :v_sess
+                 and  date(snapshot_time at time zone 'UTC') = current_date""",
+            v_sess=session_name
+        )
+        conn.close()
+        count = int(rows[0][0]) if rows else 0
+        if count > 0:
+            log.info(f"{session_name} already ran today ({count} macro snapshot(s)) — skipping. "
+                     f"Set FORCE_RUN=true to override.")
+            return True
+        return False
+    except Exception as e:
+        log.warning(f"Could not check duplicate-run guard: {e} — proceeding with run")
+        return False  # If the check itself fails, proceed rather than silently skip
+
+
 def get_user_profile(user_id: str = OWNER_USER_ID) -> dict:
     """
     Fetch the user profile from Supabase.
@@ -80,6 +119,12 @@ def run_session_open(session_name: str):
                         alert_calendar_block, trade_opened, alert_circuit_breaker,
                         session_heartbeat)
     from ig_shim import open_trade, get_account_balance, health_check, calculate_position_size, get_epic
+
+    # Guard: skip if this session already ran today.
+    # Prevents duplicate signal_log noise from delayed cron + watchdog + manual triggers.
+    # Set FORCE_RUN=true in the workflow env to bypass when a re-scan is intentional.
+    if already_ran_today(session_name):
+        return
 
     # Load user profile — risk %, paper trade flag, limits
     profile = get_user_profile()
