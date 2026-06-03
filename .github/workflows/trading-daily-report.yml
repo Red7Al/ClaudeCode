@@ -23,4 +23,4 @@ jobs:
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SLACK_TRADES:         ${{ secrets.SLACK_TRADES }}
+          SLACK_DAILY:          ${{ secrets.SLACK_DAILY }}

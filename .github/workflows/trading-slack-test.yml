@@ -22,3 +22,4 @@ jobs:
           SLACK_SIGNALS:  ${{ secrets.SLACK_SIGNALS }}
           SLACK_ALERTS:   ${{ secrets.SLACK_ALERTS }}
           SLACK_WEEKLY:   ${{ secrets.SLACK_WEEKLY }}
+          SLACK_DAILY:    ${{ secrets.SLACK_DAILY }}

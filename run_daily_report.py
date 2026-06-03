@@ -39,7 +39,7 @@ log = logging.getLogger("daily_report")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 SUPABASE_HOST = "aws-0-eu-west-1.pooler.supabase.com"
-SLACK_URL     = os.environ.get("SLACK_TRADES", "")
+SLACK_URL     = os.environ.get("SLACK_DAILY", "")
 
 NOTABLE_MOVE_THRESHOLD = 0.03   # 3% — flag instruments that moved this much intraday
 

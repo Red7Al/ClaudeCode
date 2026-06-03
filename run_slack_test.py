@@ -22,6 +22,7 @@ WEBHOOKS = {
     "SLACK_SIGNALS": os.environ.get("SLACK_SIGNALS", ""),
     "SLACK_ALERTS":  os.environ.get("SLACK_ALERTS",  ""),
     "SLACK_WEEKLY":  os.environ.get("SLACK_WEEKLY",  ""),
+    "SLACK_DAILY":   os.environ.get("SLACK_DAILY",   ""),
 }
 
 CHANNEL_NAMES = {
@@ -29,6 +30,7 @@ CHANNEL_NAMES = {
     "SLACK_SIGNALS": "#claude-trading-signals",
     "SLACK_ALERTS":  "#claude-trading-alerts",
     "SLACK_WEEKLY":  "#claude-trading-weekly",
+    "SLACK_DAILY":   "#claude-trading-daily",
 }
 
 ts = datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC")

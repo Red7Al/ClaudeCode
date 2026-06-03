@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("uk_morning_brief")
 
 SUPABASE_HOST = "aws-0-eu-west-1.pooler.supabase.com"
-SLACK_URL     = os.environ.get("SLACK_SIGNALS", "")
+SLACK_URL     = os.environ.get("SLACK_DAILY", "")
 WINDOW_HOURS  = 2      # look back 2 hours from now
 
 
