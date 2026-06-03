@@ -456,7 +456,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                                 f"[intraday rescan]"
                             )
                             deal_id = open_trade(
-                                user_id="00000000-0000-0000-0000-000000000001",
+                                user_id="770a76b5-0e84-460b-b575-186c724dabdd",
                                 ticker=ticker,
                                 direction=sig["direction"],
                                 size=size,

@@ -480,6 +480,11 @@ def open_trade(
     ok, reason = check_circuit_breakers(user_id, ticker)
     if not ok:
         log.warning(f"Trade blocked — circuit breaker: {reason}")
+        try:
+            from notify import alert_circuit_breaker
+            alert_circuit_breaker("Owner", ticker, reason)
+        except Exception as e:
+            log.warning(f"Could not send circuit breaker alert: {e}")
         return None
 
     # Step 2 — Resolve epic

@@ -95,7 +95,7 @@ def run_session_open(session_name: str):
             size = 0.5
 
         deal_id = open_trade(
-            user_id="00000000-0000-0000-0000-000000000001",
+            user_id="770a76b5-0e84-460b-b575-186c724dabdd",
             ticker=ticker, direction=direction, size=size,
             stop_distance=stop_dist, limit_distance=limit_dist,
             session_name=session_name, signal_summary=signal_str
@@ -254,7 +254,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                                 f"[{session_name} rescan]"
                             )
                             deal_id = open_trade(
-                                user_id="00000000-0000-0000-0000-000000000001",
+                                user_id="770a76b5-0e84-460b-b575-186c724dabdd",
                                 ticker=ticker,
                                 direction=sig["direction"],
                                 size=size,
