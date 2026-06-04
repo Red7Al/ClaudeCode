@@ -1147,16 +1147,21 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     atr_data  = get_atr(ticker)
 
     # Count primary signals aligned
-    # Primary 1: options flow (call/put imbalance)
-    # Primary 2a: BB breakout from squeeze (original)
-    # Primary 2b: HIGH volume (≥1.5× avg) substitutes for BB breakout when
-    #             options has already fired — institutional volume alongside
-    #             directional options flow is a valid entry signal
+    # Primary 1: Options flow (call/put imbalance via Yahoo Finance / ETF proxies)
+    # Primary 2: BB breakout from squeeze (volatility compression breakout)
+    # Primary 2 substitute: HIGH volume + options (institutional conviction proxy)
+    # Primary 3: HVF — Hunt Volatility Funnel (highest-conviction continuation
+    #             breakout: prior trend + 3-point funnel + pending order at H3/L3)
     primary_count = 0
     primary_dir   = []
     options_dir   = options.get("options_bias")
     bb_dir        = squeeze.get("bb_breakout_dir")
     high_volume   = volume.get("volume_signal") == "HIGH_VOLUME"
+
+    # HVF: extract from price action result (computed once in _get_price_action)
+    hvf_type      = price_act.get("hvf_type")        # "BULLISH" | "BEARISH" | None
+    hvf_sig       = price_act.get("hvf_signal")       # "READY" | "TRIGGERED" | None
+    hvf_fired     = hvf_type is not None and hvf_sig in ("READY", "TRIGGERED")
 
     if options_dir in ("BULLISH", "BEARISH"):
         primary_count += 1
@@ -1170,6 +1175,15 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         primary_count += 1
         primary_dir.append(options_dir)
         log.info(f"{ticker}: HIGH volume ({volume.get('volume_ratio')}x) substituting for BB breakout")
+
+    if hvf_fired:
+        primary_count += 1
+        primary_dir.append(hvf_type)
+        log.info(f"{ticker}: HVF {hvf_type} {hvf_sig} "
+                 f"(quality={price_act.get('hvf_quality')} "
+                 f"H3={price_act.get('hvf_h3_level')} "
+                 f"target={price_act.get('hvf_target')} "
+                 f"R:R={price_act.get('hvf_risk_reward')})")
 
     # Direction consensus — must be computed before OBV conf checks below
     direction = None
@@ -1259,6 +1273,15 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "pa_atr_compressed":        price_act.get("atr_compressed"),
         "pa_atr_expanding":         price_act.get("atr_expanding"),
 
+        # Hunt Volatility Funnel (primary signal + pending-order entry levels)
+        "hvf_type":          price_act.get("hvf_type"),       # BULLISH / BEARISH / None
+        "hvf_signal":        price_act.get("hvf_signal"),     # READY / TRIGGERED / None
+        "hvf_h3_level":      price_act.get("hvf_h3_level"),   # pending entry price
+        "hvf_stop_level":    price_act.get("hvf_stop_level"), # exact stop price
+        "hvf_target":        price_act.get("hvf_target"),     # H1-L1 range target
+        "hvf_risk_reward":   price_act.get("hvf_risk_reward"),
+        "hvf_quality":       price_act.get("hvf_quality"),    # 0-100 pattern quality
+
         # Analyst / broker signals
         "analyst_signal":           analyst.get("signal"),
         "analyst_upside_pct":       analyst.get("upside_pct"),
@@ -1300,13 +1323,17 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                 director_signal, activist_signal, senate_signal, senate_senator,
                 notable_investor, social_mention, primary_count, confirmation_count,
                 direction, pa_verdict, trade_triggered,
-                adx_signal, obv_signal, volume_signal, volume_ratio)
+                adx_signal, obv_signal, volume_signal, volume_ratio,
+                hvf_type, hvf_signal, hvf_h3_level, hvf_stop_level,
+                hvf_target, hvf_risk_reward, hvf_quality)
                values (:v_session, :v_ticker, :v_mgp, :v_opts_bias, :v_call_put, :v_ivr,
                        :v_gex_bias, :v_vwap_pos, :v_cot_bias, :v_bb_squeeze, :v_bb_breakout,
                        :v_director, :v_activist, :v_senate, :v_senator_name,
                        :v_notable, :v_social, :v_primaries, :v_confirms, :v_direction,
                        :v_pa_verdict, :v_triggered,
-                       :v_adx, :v_obv, :v_vol_sig, :v_vol_ratio)""",
+                       :v_adx, :v_obv, :v_vol_sig, :v_vol_ratio,
+                       :v_hvf_type, :v_hvf_sig, :v_hvf_h3, :v_hvf_stop,
+                       :v_hvf_target, :v_hvf_rr, :v_hvf_quality)""",
             v_session=session_name, v_ticker=ticker,
             v_mgp=macro.get("macro_gate_pass"), v_opts_bias=options.get("options_bias"),
             v_call_put=options.get("call_put_ratio"), v_ivr=options.get("iv_rank"),
@@ -1319,7 +1346,11 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
             v_primaries=primary_count, v_confirms=conf_count, v_direction=direction,
             v_pa_verdict=price_act.get("verdict"), v_triggered=trade_signal,
             v_adx=adx.get("adx_signal"), v_obv=obv.get("obv_signal"),
-            v_vol_sig=volume.get("volume_signal"), v_vol_ratio=volume.get("volume_ratio")
+            v_vol_sig=volume.get("volume_signal"), v_vol_ratio=volume.get("volume_ratio"),
+            v_hvf_type=price_act.get("hvf_type"),    v_hvf_sig=price_act.get("hvf_signal"),
+            v_hvf_h3=price_act.get("hvf_h3_level"),  v_hvf_stop=price_act.get("hvf_stop_level"),
+            v_hvf_target=price_act.get("hvf_target"), v_hvf_rr=price_act.get("hvf_risk_reward"),
+            v_hvf_quality=price_act.get("hvf_quality")
         )
         db.close()
     except Exception as e:

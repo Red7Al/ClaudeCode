@@ -673,6 +673,296 @@ def compute_price_action_score(
 
 
 # =============================================================================
+# Signal 8 — Hunt Volatility Funnel (HVF)
+#
+# The HVF is a continuation breakout pattern developed by Francis Hunt
+# (TheMarketSniper). It is significantly more rigorous than a standard
+# BB squeeze because it requires:
+#
+#   1. A clear prior trend (continuation, not reversal)
+#   2. Exactly 3 alternating inflection points:
+#        Lower Highs: H1 > H2 > H3
+#        Higher Lows: L1 < L2 < L3
+#      Volatility contracts into a funnel shape.
+#   3. All levels are horizontal (pivot highs/lows), not trendline-based.
+#   4. Entry: pending buy-stop at H3 (bullish) or sell-stop at L3 (bearish)
+#   5. Stop: horizontal level just below L3 (bullish) or above H3 (bearish)
+#   6. Target: H1-L1 distance measured from the midpoint of H3/L3
+#      (often gives 3-5× R:R on quality setups — much better than 2× ATR)
+#
+# This replaces / upgrades our existing BB squeeze primary signal.
+# =============================================================================
+
+def _find_swing_highs_lows(hist: pd.DataFrame, n: int = 5) -> tuple:
+    """
+    Find significant swing highs and lows using a lookback window of N bars.
+
+    A swing high: the High at bar i is the maximum in the window [i-n, i+n]
+                  AND it is higher than the immediate neighbours.
+    A swing low:  the Low  at bar i is the minimum in the same window
+                  AND it is lower than the immediate neighbours.
+
+    N=5 on daily data gives 11-bar pivots — filters out minor noise while
+    capturing the significant turns that form HVF inflection points.
+
+    Returns:
+        swing_highs: list of (bar_index, price) tuples, oldest first
+        swing_lows:  list of (bar_index, price) tuples, oldest first
+    """
+    swing_highs = []
+    swing_lows  = []
+
+    highs = hist["High"].values
+    lows  = hist["Low"].values
+    n_bars = len(hist)
+
+    for i in range(n, n_bars - n):
+        window_hi = highs[i - n : i + n + 1]
+        window_lo = lows[i  - n : i + n + 1]
+
+        if (highs[i] == window_hi.max()
+                and highs[i] > highs[i - 1]
+                and highs[i] > highs[i + 1]):
+            swing_highs.append((i, float(highs[i])))
+
+        if (lows[i] == window_lo.min()
+                and lows[i] < lows[i - 1]
+                and lows[i] < lows[i + 1]):
+            swing_lows.append((i, float(lows[i])))
+
+    return swing_highs, swing_lows
+
+
+def get_hvf_signal(ticker: str, lookback_days: int = 220,
+                   trend_hint: dict = None) -> dict:
+    """
+    Detect a Hunt Volatility Funnel (HVF) continuation pattern.
+
+    The algorithm:
+      1. Fetch daily candles (lookback_days).
+      2. Confirm a prior trend (uptrend → look for bullish HVF; downtrend → bearish).
+      3. Find swing highs/lows (N=5 lookback).
+      4. Search for the best valid triplet:
+           H1 > H2 > H3   (lower highs — volatility contracting from above)
+           L1 < L2 < L3   (higher lows — volatility contracting from below)
+         with the pairs interleaving correctly in time and the funnel converging
+         by at least 30% from H1-L1 to H3-L3.
+      5. Calculate:
+           Entry  = H3 (bullish pending buy-stop) or L3 (bearish sell-stop)
+           Stop   = L3 − 0.2% (bullish) or H3 + 0.2% (bearish)
+           Target = midpoint(H3, L3) ± (H1 − L1)
+
+    Args:
+        ticker:       instrument ticker
+        lookback_days: bars of history to scan
+        trend_hint:   pre-computed trend dict (from get_trend_structure) to
+                      avoid a duplicate Yahoo Finance call when called from
+                      analyse_price_action()
+
+    Returns dict with keys:
+        hvf_type:        "BULLISH" | "BEARISH" | None
+        hvf_signal:      "TRIGGERED" (price past H3/L3) | "READY" | None
+        h3_level:        pending-order entry price
+        l3_level:        the third low (used for stop calculation)
+        stop_level:      exact stop price
+        target:          calculated price target
+        risk_reward:     R:R at current price
+        h1_level:        first high (for context)
+        l1_level:        first low (for context)
+        pattern_range:   H1-L1 distance
+        bars_since_h3:   how recently H3 formed (freshness)
+        pattern_quality: 0-100 composite quality score
+        convergence:     current funnel width / initial funnel width (lower = tighter)
+    """
+    result = {
+        "hvf_type": None, "hvf_signal": None,
+        "h3_level": None, "l3_level": None, "stop_level": None,
+        "target": None,   "risk_reward": None,
+        "h1_level": None, "l1_level": None, "pattern_range": None,
+        "bars_since_h3": None, "pattern_quality": 0, "convergence": None,
+    }
+
+    try:
+        hist = _get_daily(ticker, days=lookback_days)
+        if len(hist) < 60:
+            return result
+
+        current_price = float(hist["Close"].iloc[-1])
+
+        # Prior trend — use hint if supplied (avoids double API call)
+        if trend_hint:
+            trend_signal = trend_hint.get("signal", "SIDEWAYS")
+        else:
+            trend = get_trend_structure(ticker)
+            trend_signal = trend.get("signal", "SIDEWAYS")
+
+        # HVF only valid when there is a clear directional trend to continue
+        if trend_signal not in ("STRONG_UPTREND", "UPTREND",
+                                "STRONG_DOWNTREND", "DOWNTREND"):
+            return result
+
+        bullish = trend_signal in ("STRONG_UPTREND", "UPTREND")
+
+        # Find swing highs and lows
+        swing_highs, swing_lows = _find_swing_highs_lows(hist, n=5)
+
+        if len(swing_highs) < 3 or len(swing_lows) < 3:
+            return result
+
+        # Use the most recent 10 swings of each type for the search
+        recent_highs = swing_highs[-10:]
+        recent_lows  = swing_lows[-10:]
+
+        best_pattern = None
+        best_quality  = 0
+
+        # ── Search for valid H1 > H2 > H3 with interleaved L1 < L2 < L3 ────────
+        for hi in range(len(recent_highs)):
+            for hj in range(hi + 1, len(recent_highs)):
+                for hk in range(hj + 1, len(recent_highs)):
+                    h1, h2, h3 = recent_highs[hi], recent_highs[hj], recent_highs[hk]
+
+                    # Condition 1: lower highs
+                    if not (h1[1] > h2[1] > h3[1]):
+                        continue
+
+                    # Condition 2: H3 must be recent (within 60 daily bars)
+                    bars_since_h3 = len(hist) - 1 - h3[0]
+                    if bars_since_h3 > 60:
+                        continue
+
+                    # Condition 3: Pattern must span at least 15 bars (H1 → H3)
+                    if h3[0] - h1[0] < 15:
+                        continue
+
+                    # Find the most significant low between each pair of highs
+                    lows_h1_h2 = [l for l in recent_lows if h1[0] < l[0] < h2[0]]
+                    lows_h2_h3 = [l for l in recent_lows if h2[0] < l[0] < h3[0]]
+                    lows_after_h3 = [l for l in recent_lows if l[0] > h3[0]]
+
+                    if not lows_h1_h2 or not lows_h2_h3:
+                        continue
+
+                    # L1 = lowest low between H1 and H2
+                    # L2 = lowest low between H2 and H3
+                    l1 = min(lows_h1_h2, key=lambda x: x[1])
+                    l2 = min(lows_h2_h3, key=lambda x: x[1])
+
+                    # Condition 4: higher lows — L2 must be above L1
+                    if l2[1] <= l1[1]:
+                        continue
+
+                    # L3: lowest low after H3 (may not yet be confirmed)
+                    if lows_after_h3:
+                        l3 = min(lows_after_h3, key=lambda x: x[1])
+                        # L3 must be higher than L2 (funnel still contracting)
+                        if l3[1] <= l2[1]:
+                            continue
+                    else:
+                        # L3 not yet confirmed — use current price as proxy
+                        l3 = (len(hist) - 1, current_price)
+                        if l3[1] <= l2[1]:
+                            l3 = (len(hist) - 1, l2[1] * 1.001)  # minimal valid L3
+
+                    # Condition 5: funnel must be converging
+                    # Current funnel width (H3 - L3) must be < initial width (H1 - L1)
+                    initial_range  = h1[1] - l1[1]
+                    current_range  = h3[1] - l3[1]
+                    if initial_range <= 0 or current_range <= 0:
+                        continue
+                    convergence = current_range / initial_range
+                    if convergence >= 0.70:  # must have contracted by ≥30%
+                        continue
+
+                    # ── Quality scoring ─────────────────────────────────────
+                    quality = 0
+                    quality += int((1.0 - convergence) * 50)          # 0-50: tighter funnel = better
+                    quality += max(0, 30 - bars_since_h3)             # 0-30: more recent = better
+                    quality += 20 if trend_signal.startswith("STRONG") else 10  # trend conviction
+                    # Symmetry bonus: H1-H2 and H2-H3 bar distances should be similar
+                    span_h1_h2 = h2[0] - h1[0]
+                    span_h2_h3 = h3[0] - h2[0]
+                    if span_h1_h2 > 0:
+                        symmetry = min(span_h1_h2, span_h2_h3) / max(span_h1_h2, span_h2_h3)
+                        quality += int(symmetry * 10)                  # 0-10: symmetric = better
+                    quality = min(100, quality)
+
+                    if quality > best_quality:
+                        best_quality = quality
+                        best_pattern = {
+                            "h1": h1, "h2": h2, "h3": h3,
+                            "l1": l1, "l2": l2, "l3": l3,
+                            "convergence": convergence,
+                            "bars_since_h3": bars_since_h3,
+                            "initial_range": initial_range,
+                        }
+
+        if best_pattern is None:
+            return result
+
+        # ── Unpack best pattern ───────────────────────────────────────────────
+        h1 = best_pattern["h1"]
+        h3 = best_pattern["h3"]
+        l1 = best_pattern["l1"]
+        l3 = best_pattern["l3"]
+        initial_range = best_pattern["initial_range"]
+
+        # ── Entry, stop, and target ───────────────────────────────────────────
+        # Target = midpoint(H3, L3) ± (H1 - L1)  [Hunt's formula]
+        midpoint_h3_l3 = (h3[1] + l3[1]) / 2.0
+
+        if bullish:
+            hvf_type    = "BULLISH"
+            entry_level = round(h3[1], 6)                        # buy-stop pending at H3
+            stop_price  = round(l3[1] * 0.998, 6)               # 0.2% below L3
+            target      = round(midpoint_h3_l3 + initial_range, 6)
+        else:
+            hvf_type    = "BEARISH"
+            entry_level = round(l3[1], 6)                        # sell-stop pending at L3
+            stop_price  = round(h3[1] * 1.002, 6)               # 0.2% above H3
+            target      = round(midpoint_h3_l3 - initial_range, 6)
+
+        # Has price already triggered? (broken above H3 for bullish)
+        if bullish:
+            triggered = current_price > h3[1]
+        else:
+            triggered = current_price < l3[1]
+        hvf_signal_str = "TRIGGERED" if triggered else "READY"
+
+        # Risk/reward from current price
+        risk   = abs(current_price - stop_price)
+        reward = abs(target - current_price)
+        rr     = round(reward / risk, 2) if risk > 0 else 0.0
+
+        result.update({
+            "hvf_type":        hvf_type,
+            "hvf_signal":      hvf_signal_str,
+            "h3_level":        entry_level,
+            "l3_level":        round(l3[1], 6),
+            "stop_level":      stop_price,
+            "target":          target,
+            "risk_reward":     rr,
+            "h1_level":        round(h1[1], 6),
+            "l1_level":        round(l1[1], 6),
+            "pattern_range":   round(initial_range, 6),
+            "bars_since_h3":   best_pattern["bars_since_h3"],
+            "pattern_quality": best_quality,
+            "convergence":     round(best_pattern["convergence"], 3),
+        })
+
+        log.info(
+            f"HVF {ticker}: {hvf_type} {hvf_signal_str} | "
+            f"quality={best_quality} convergence={best_pattern['convergence']:.2f} | "
+            f"H3={entry_level} stop={stop_price} target={target} R:R={rr}"
+        )
+
+    except Exception as e:
+        log.warning(f"HVF detection failed for {ticker}: {e}")
+
+    return result
+
+
+# =============================================================================
 # Master function — full price action analysis for one instrument
 # =============================================================================
 
@@ -690,12 +980,14 @@ def analyse_price_action(ticker: str) -> dict:
     """
     log.info(f"Running price action analysis: {ticker}")
 
-    range_bo   = get_range_breakout(ticker)
-    trend      = get_trend_structure(ticker)
-    atr_comp   = get_atr_compression(ticker)
-    ma_align   = get_ma_alignment(ticker)
-    failed     = get_failed_break(ticker)
+    range_bo    = get_range_breakout(ticker)
+    trend       = get_trend_structure(ticker)
+    atr_comp    = get_atr_compression(ticker)
+    ma_align    = get_ma_alignment(ticker)
+    failed      = get_failed_break(ticker)
     candlestick = get_candlestick_pattern(ticker)
+    # HVF: pass pre-computed trend to avoid a second Yahoo Finance call
+    hvf         = get_hvf_signal(ticker, trend_hint=trend)
 
     score, verdict = compute_price_action_score(range_bo, trend, atr_comp, ma_align, failed, candlestick)
 
@@ -731,13 +1023,26 @@ def analyse_price_action(ticker: str) -> dict:
         "candlestick":       candlestick.get("pattern"),
         "candlestick_dir":   candlestick.get("pattern_direction"),
         "candlestick_desc":  candlestick.get("description"),
+
+        # Hunt Volatility Funnel
+        "hvf_type":          hvf.get("hvf_type"),          # BULLISH / BEARISH / None
+        "hvf_signal":        hvf.get("hvf_signal"),        # READY / TRIGGERED / None
+        "hvf_h3_level":      hvf.get("h3_level"),          # pending entry level
+        "hvf_l3_level":      hvf.get("l3_level"),          # third low (stop reference)
+        "hvf_stop_level":    hvf.get("stop_level"),        # exact stop price
+        "hvf_target":        hvf.get("target"),            # H1-L1 range target
+        "hvf_risk_reward":   hvf.get("risk_reward"),       # pre-calculated R:R
+        "hvf_quality":       hvf.get("pattern_quality"),   # 0-100
+        "hvf_convergence":   hvf.get("convergence"),       # funnel tightness
+        "hvf_bars_since_h3": hvf.get("bars_since_h3"),    # freshness
     }
 
     log.info(
         f"Price action {ticker}: verdict={verdict} score={score:+.1f} | "
         f"breakout={range_bo.get('signal')} trend={trend.get('signal')} "
         f"MA={ma_align.get('signal')} failed={failed.get('signal')} "
-        f"candle={candlestick.get('pattern')}"
+        f"candle={candlestick.get('pattern')} "
+        f"HVF={hvf.get('hvf_type')}({hvf.get('hvf_signal')})"
     )
 
     return result

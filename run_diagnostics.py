@@ -162,9 +162,16 @@ def test_price_action(ticker: str) -> dict:
         r = analyse_price_action(ticker)
         verdict = r.get("verdict", "?")
         score   = r.get("pa_score", 0)
+        hvf_str = ""
+        if r.get("hvf_type"):
+            hvf_str = (f" | HVF:{r['hvf_type']}({r.get('hvf_signal')}) "
+                       f"H3={r.get('hvf_h3_level')} "
+                       f"target={r.get('hvf_target')} "
+                       f"R:R={r.get('hvf_risk_reward')} "
+                       f"quality={r.get('hvf_quality')}")
         status  = "ok" if verdict in ("CONFIRM_LONG", "CONFIRM_SHORT", "WAIT") else "fail"
         return {"name": f"PA {ticker}", "status": status,
-                "value": f"{verdict} {score:+.0f}",
+                "value": f"{verdict} {score:+.0f}{hvf_str}",
                 "detail": f"breakout={r.get('range_breakout')} trend={r.get('trend_structure')} MA={r.get('ma_signal')}"}
     except Exception as e:
         return fail(f"PA {ticker}", str(e))
@@ -221,19 +228,25 @@ def test_signal_log_insert() -> dict:
                 director_signal, activist_signal, senate_signal, senate_senator,
                 notable_investor, social_mention, primary_count, confirmation_count,
                 direction, pa_verdict, trade_triggered,
-                adx_signal, obv_signal, volume_signal, volume_ratio)
+                adx_signal, obv_signal, volume_signal, volume_ratio,
+                hvf_type, hvf_signal, hvf_h3_level, hvf_stop_level,
+                hvf_target, hvf_risk_reward, hvf_quality)
                values (:v_sess, :v_tick, :v_mgp, :v_opts, :v_cpr, :v_ivr,
                        :v_gex, :v_vwap, :v_cot, :v_bbs, :v_bbd,
                        :v_dir, :v_act, :v_sen, :v_senn,
                        :v_ni, :v_sm, :v_pc, :v_cc,
                        :v_dirn, :v_pav, :v_tt,
-                       :v_adx, :v_obv, :v_vs, :v_vr)""",
+                       :v_adx, :v_obv, :v_vs, :v_vr,
+                       :v_hvf_type, :v_hvf_sig, :v_hvf_h3, :v_hvf_stop,
+                       :v_hvf_target, :v_hvf_rr, :v_hvf_quality)""",
             v_sess="DIAG", v_tick="_TEST_", v_mgp=True, v_opts="NEUTRAL", v_cpr=None, v_ivr=None,
             v_gex="NEUTRAL", v_vwap=None, v_cot="NEUTRAL", v_bbs=False, v_bbd=None,
             v_dir=False, v_act=False, v_sen=False, v_senn=None,
             v_ni=None, v_sm=None, v_pc=0, v_cc=0,
             v_dirn=None, v_pav="WAIT", v_tt=False,
-            v_adx="NEUTRAL", v_obv="NEUTRAL", v_vs="NORMAL", v_vr=None
+            v_adx="NEUTRAL", v_obv="NEUTRAL", v_vs="NORMAL", v_vr=None,
+            v_hvf_type=None, v_hvf_sig=None, v_hvf_h3=None, v_hvf_stop=None,
+            v_hvf_target=None, v_hvf_rr=None, v_hvf_quality=None
         )
         # Clean up immediately
         conn.run("delete from signal_log where ticker = '_TEST_' and session = 'DIAG'")

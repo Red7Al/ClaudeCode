@@ -170,9 +170,32 @@ def run_session_open(session_name: str):
         stop_dist  = sig.get("stop_distance", 0)
         limit_dist = round(stop_dist * 2, 4)
 
+        # If an HVF pattern fired, use its more precise stop and target instead
+        # of the generic ATR-based ones. HVF stop = just outside L3/H3 level.
+        # HVF target = H1-L1 range from midpoint — typically much better than 2×.
+        hvf_stop  = sig.get("hvf_stop_level")
+        hvf_target = sig.get("hvf_target")
+        try:
+            import yfinance as yf
+            from config import YAHOO_MAP
+            yticker = YAHOO_MAP.get(ticker, ticker)
+            current = float(yf.Ticker(yticker).fast_info.get("lastPrice", 0) or 0)
+            if hvf_stop and hvf_target and current > 0:
+                hvf_stop_dist   = abs(current - hvf_stop)
+                hvf_limit_dist  = abs(hvf_target - current)
+                if hvf_stop_dist > 0 and hvf_limit_dist > hvf_stop_dist:
+                    stop_dist  = round(hvf_stop_dist,  4)
+                    limit_dist = round(hvf_limit_dist, 4)
+                    log.info(f"{ticker}: using HVF stop/target "
+                             f"(stop_dist={stop_dist} limit_dist={limit_dist} "
+                             f"R:R={sig.get('hvf_risk_reward')})")
+        except Exception:
+            pass   # keep ATR-based distances if price fetch fails
+
         signal_str = (
             f"Options:{sig.get('options_bias','—')} "
             f"BB:{sig.get('bb_breakout_dir','—')} "
+            f"HVF:{sig.get('hvf_type','—')}({sig.get('hvf_signal','—')}) "
             f"COT:{sig.get('cot_bias','—')} "
             f"PA:{sig.get('pa_verdict','—')} "
             f"Confs:{sig.get('confirmation_count',0)}"
@@ -780,6 +803,14 @@ REQUIRED_SCHEMA = [
     "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS obv_signal      text",
     "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS volume_signal   text",
     "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS volume_ratio    numeric",
+    # signal_log — batch 3 (added 2026-06-04): Hunt Volatility Funnel
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_type        text",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_signal      text",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_h3_level    numeric",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_stop_level  numeric",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_target      numeric",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_risk_reward numeric",
+    "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_quality     integer",
 ]
 
 
