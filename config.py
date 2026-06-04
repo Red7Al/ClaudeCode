@@ -167,11 +167,16 @@ EPIC_MAP = {
     "RR":    "KA.D.RR.DAILY.IP",           # Rolls-Royce Holdings PLC
 
     # -------------------------------------------------------------------------
-    # Crypto CFDs
+    # Crypto CFDs — top 5 by market cap
+    # All trade 24/7 — no market hours restriction on CS.D.* epics
+    # XRP, SOL, BNB epics: IG lookup will find and cache on first scan
     # -------------------------------------------------------------------------
     "BTCUSD":  "CS.D.BITCOIN.TODAY.IP",    # Bitcoin / USD
     "BITCOIN": "CS.D.BITCOIN.TODAY.IP",    # Bitcoin (alias)
     "ETHUSD":  "CS.D.ETHUSD.TODAY.IP",     # Ethereum / USD
+    "XRPUSD":  "CS.D.XRPUSD.TODAY.IP",    # XRP / USD
+    "SOLUSD":  "CS.D.SOLUSD.TODAY.IP",     # Solana / USD
+    "BNBUSD":  "CS.D.BNBUSD.TODAY.IP",     # BNB (Binance Coin) / USD
 
 }
 
@@ -202,6 +207,14 @@ OPTIONS_PROXY_MAP = {
     "OIL":     "USO",    # Oil      → United States Oil Fund
     "USOIL":   "USO",    # Oil alias
     "COPPER":  "COPX",   # Copper   → Global X Copper Miners ETF (proxy)
+
+    # Crypto — ETF proxies for options flow signal
+    # IBIT (BlackRock iShares Bitcoin Trust) is the most liquid Bitcoin options market
+    # ETHA (iShares Ethereum ETF) — newer, options availability varies
+    # XRP/SOL/BNB have no suitable ETF proxies yet — options will return NEUTRAL
+    "BTCUSD":  "IBIT",   # Bitcoin  → iShares Bitcoin Trust ETF
+    "BITCOIN": "IBIT",   # Bitcoin alias
+    "ETHUSD":  "ETHA",   # Ethereum → iShares Ethereum ETF
 }
 
 
@@ -250,6 +263,16 @@ YAHOO_MAP = {
     "PLTR":    "PLTR",
     "AVGO":    "AVGO",
 
+    # Crypto — Yahoo Finance tickers for price, BB, HVF, volume signals
+    # Options chains are not available on Yahoo Finance for crypto;
+    # BTCUSD uses IBIT (BlackRock Bitcoin ETF) as options flow proxy instead.
+    "BTCUSD":  "BTC-USD",
+    "BITCOIN": "BTC-USD",
+    "ETHUSD":  "ETH-USD",
+    "XRPUSD":  "XRP-USD",
+    "SOLUSD":  "SOL-USD",
+    "BNBUSD":  "BNB-USD",
+
 }
 
 
@@ -286,6 +309,15 @@ ATR_MULTIPLIERS = {
     "OIL":     2.0,
     "USOIL":   2.0,
 
+    # Crypto — significantly wider to avoid being stopped out by normal daily swings
+    # Bitcoin typically moves 3-8% per day; a tight stop gets eaten by noise
+    "BTCUSD":  2.5,
+    "BITCOIN": 2.5,
+    "ETHUSD":  2.5,
+    "XRPUSD":  3.0,   # XRP is more volatile relative to its ATR
+    "SOLUSD":  3.0,
+    "BNBUSD":  2.5,
+
     # FX — tighter (lower volatility per point)
     "GBPUSD":  1.2,
     "AUDUSD":  1.2,
@@ -313,6 +345,12 @@ SESSION_INSTRUMENTS = {
         "XAUUSD",   # Gold (trades 24hrs — always evaluated)
         "AUDUSD",   # AUD/USD
         "USDJPY",   # USD/JPY
+        # Crypto — 24/7, active during Asia session
+        "BTCUSD",   # Bitcoin
+        "ETHUSD",   # Ethereum
+        "XRPUSD",   # XRP
+        "SOLUSD",   # Solana
+        "BNBUSD",   # BNB
     ],
 
     "AUS_MONITOR": [],   # Monitor only — no new instrument scan
@@ -321,6 +359,12 @@ SESSION_INSTRUMENTS = {
         "UK100",    # FTSE 100
         "GBPUSD",   # GBP/USD
         "XAUUSD",   # Gold
+        # Crypto — 24/7, active during European session
+        "BTCUSD",   # Bitcoin
+        "ETHUSD",   # Ethereum
+        "XRPUSD",   # XRP
+        "SOLUSD",   # Solana
+        "BNBUSD",   # BNB
     ],
 
     "UK_MONITOR": [],    # Monitor only — no new instrument scan
@@ -359,6 +403,12 @@ SESSION_INSTRUMENTS = {
         "BTDR",     # Bitdeer Technologies
         "SEI",      # SEI Investments
         "NOK",      # Nokia
+        # Crypto — 24/7, most liquid during US session
+        "BTCUSD",   # Bitcoin
+        "ETHUSD",   # Ethereum
+        "XRPUSD",   # XRP
+        "SOLUSD",   # Solana
+        "BNBUSD",   # BNB
         # Multi-source CONFIRM LONG picks (LeopoldATracker + Asklivermore)
         "MU",       # Micron Technology — +75 confirmed by both sources
         "USAR",     # USA Rare Earth — +75 AI infrastructure theme
