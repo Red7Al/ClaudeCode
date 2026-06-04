@@ -2,7 +2,7 @@ name: AUS/Asia Open
 
 on:
   schedule:
-    - cron: '0 0 * * 1-5'   # 00:00 UTC Monday-Friday (Asia open)
+    - cron: '*/10 0-2 * * 1-5'   # Every 10 min, 00:00–02:59 UTC (once-per-day guard prevents re-runs)
   workflow_dispatch:
     inputs:
       force_run:
