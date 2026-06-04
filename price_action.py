@@ -831,14 +831,13 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
                     if bars_since_h3 > 60:
                         continue
 
-                    # Condition 3: Pattern must span at least 15 bars (H1 → H3)
-                    if h3[0] - h1[0] < 15:
+                    # Condition 3: Pattern must span at least 10 bars (H1 → H3)
+                    if h3[0] - h1[0] < 10:
                         continue
 
                     # Find the most significant low between each pair of highs
                     lows_h1_h2 = [l for l in recent_lows if h1[0] < l[0] < h2[0]]
                     lows_h2_h3 = [l for l in recent_lows if h2[0] < l[0] < h3[0]]
-                    lows_after_h3 = [l for l in recent_lows if l[0] > h3[0]]
 
                     if not lows_h1_h2 or not lows_h2_h3:
                         continue
@@ -852,17 +851,45 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
                     if l2[1] <= l1[1]:
                         continue
 
-                    # L3: lowest low after H3 (may not yet be confirmed)
-                    if lows_after_h3:
-                        l3 = min(lows_after_h3, key=lambda x: x[1])
-                        # L3 must be higher than L2 (funnel still contracting)
-                        if l3[1] <= l2[1]:
-                            continue
+                    # L3: the third higher low.
+                    # Must be: after L2, higher than L2, AND below H3 (still in funnel).
+                    # If price already broke out above H3, L3 was formed before the
+                    # breakout — look for it in the zone between L2 and H3 + 10 bars.
+                    l3_candidates = [
+                        l for l in recent_lows
+                        if l[0] > l2[0]          # after L2
+                        and l[1] > l2[1]          # higher low than L2
+                        and l[1] < h3[1]          # still below H3 (inside funnel)
+                    ]
+
+                    if l3_candidates:
+                        # Use the most recent qualifying L3
+                        l3 = max(l3_candidates, key=lambda x: x[0])
+                    elif current_price > h3[1]:
+                        # Price already broke above H3 (TRIGGERED) — L3 is the
+                        # highest low below H3 after L2 in the recent data
+                        all_lows_after_l2 = [
+                            l for l in recent_lows
+                            if l[0] > l2[0] and l[1] > l2[1] and l[1] < h3[1]
+                        ]
+                        # Also check the full swing_lows list for a wider window
+                        all_lows_wider = [
+                            l for l in swing_lows
+                            if l[0] > l2[0] and l[1] > l2[1] and l[1] < h3[1]
+                        ]
+                        combined = all_lows_after_l2 + all_lows_wider
+                        if combined:
+                            l3 = max(combined, key=lambda x: x[1])  # highest below H3
+                        else:
+                            # Use a proxy: midpoint of L2 and H3
+                            l3 = (h3[0] - 1, round((l2[1] + h3[1]) / 2, 6))
                     else:
-                        # L3 not yet confirmed — use current price as proxy
-                        l3 = (len(hist) - 1, current_price)
-                        if l3[1] <= l2[1]:
-                            l3 = (len(hist) - 1, l2[1] * 1.001)  # minimal valid L3
+                        # Pattern forming but L3 not yet confirmed
+                        # Use current price as proxy if it's in the right zone
+                        if l2[1] < current_price < h3[1]:
+                            l3 = (len(hist) - 1, current_price)
+                        else:
+                            continue  # Can't establish L3
 
                     # Condition 5: funnel must be converging
                     # Current funnel width (H3 - L3) must be < initial width (H1 - L1)

@@ -80,6 +80,36 @@ MIGRATIONS = [
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS volume_ratio numeric"
     ),
 
+    # ── signal_log: HVF columns (added 2026-06-04) ────────────────────────────
+    (
+        "signal_log: add hvf_type",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_type text"
+    ),
+    (
+        "signal_log: add hvf_signal",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_signal text"
+    ),
+    (
+        "signal_log: add hvf_h3_level",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_h3_level numeric"
+    ),
+    (
+        "signal_log: add hvf_stop_level",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_stop_level numeric"
+    ),
+    (
+        "signal_log: add hvf_target",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_target numeric"
+    ),
+    (
+        "signal_log: add hvf_risk_reward",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_risk_reward numeric"
+    ),
+    (
+        "signal_log: add hvf_quality",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_quality integer"
+    ),
+
 ]
 
 
