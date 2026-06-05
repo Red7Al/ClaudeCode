@@ -35,9 +35,12 @@
 # 1.1.0   2026-06-05  Alex Hind   Raised MIN_RISK_REWARD from 2.0 to 2.5.
 #                                 All trades (including HVF) now require
 #                                 minimum 2.5:1 risk/reward to be placed.
-# 1.2.0   2026-06-05  Alex Hind   Removed DAX from EPIC_MAP, OPTIONS_PROXY_MAP,
-#                                 YAHOO_MAP, and ATR_MULTIPLIERS. DAX suspended
-#                                 from trading until further notice.
+# 1.2.0   2026-06-05  Alex Hind   Removed DAX (Germany) from EPIC_MAP,
+#                                 OPTIONS_PROXY_MAP, YAHOO_MAP, ATR_MULTIPLIERS.
+#                                 DAX suspended from trading until further notice.
+# 1.3.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF to SESSION_INSTRUMENTS
+#                                 with 24/7 instruments: crypto, XAUUSD (Spot Gold),
+#                                 and FX pairs active on Sunday evening.
 # =============================================================================
 
 
@@ -463,6 +466,21 @@ SESSION_INSTRUMENTS = {
     "SESSION_CLOSE": [],  # Review + close decisions only — no new instrument scan
 
     "WEEKEND_REVIEW": [], # No instrument scan — scoring and digest only
+
+    # Sunday pre-market brief — scans 24/7 instruments active before Asia open.
+    # Crypto markets never close; Gold (XAUUSD) and FX pairs active Sunday evening.
+    "PREMARKET_BRIEF": [
+        "XAUUSD",   # Spot Gold — 24/7
+        "BTCUSD",   # Bitcoin (BTC/USD) — 24/7
+        "ETHUSD",   # Ethereum (ETH/USD) — 24/7
+        "XRPUSD",   # XRP (XRP/USD) — 24/7
+        "SOLUSD",   # Solana (SOL/USD) — 24/7
+        "BNBUSD",   # BNB / Binance Coin (BNB/USD) — 24/7
+        "GBPUSD",   # GBP/USD — opens Sunday 22:00 UTC
+        "AUDUSD",   # AUD/USD — opens Sunday 22:00 UTC
+        "USDJPY",   # USD/JPY — opens Sunday 22:00 UTC
+        "EURUSD",   # EUR/USD — opens Sunday 22:00 UTC
+    ],
 
 }
 

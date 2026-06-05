@@ -7,6 +7,12 @@
 # -----------------------------------------------------------------------------
 # Sends a test message to all four Slack channels and reports which webhooks
 # are working. Run after updating webhook URLs in GitHub Secrets.
+#
+# Version History:
+# -----------------------------------------------------------------------------
+# 1.0.0   2026-06-03  Alex Hind   Initial build.
+# 1.0.1   2026-06-05  Alex Hind   Removed non-existent SLACK_DAILY from webhook
+#                                 map — only four channels exist in this system.
 # =============================================================================
 
 import os
@@ -23,7 +29,6 @@ WEBHOOKS = {
     "SLACK_SIGNALS": os.environ.get("SLACK_SIGNALS", ""),
     "SLACK_ALERTS":  os.environ.get("SLACK_ALERTS",  ""),
     "SLACK_WEEKLY":  os.environ.get("SLACK_WEEKLY",  ""),
-    "SLACK_DAILY":   os.environ.get("SLACK_DAILY",   ""),
 }
 
 CHANNEL_NAMES = {
@@ -31,7 +36,6 @@ CHANNEL_NAMES = {
     "SLACK_SIGNALS": "#claude-trading-signals",
     "SLACK_ALERTS":  "#claude-trading-alerts",
     "SLACK_WEEKLY":  "#claude-trading-weekly",
-    "SLACK_DAILY":   "#claude-trading-daily",
 }
 
 ts = datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC")

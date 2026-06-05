@@ -29,6 +29,8 @@
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Full signal stack across all
 #                                 layers. AUS200 removed from AUS/Asia session
 #                                 instrument list (not traded).
+# 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log
+#                                 INSERT — was computed but never persisted.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -1697,7 +1699,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
             """insert into signal_log
                (session, ticker, macro_gate_pass, options_bias, call_put_ratio, iv_rank,
                 gex_bias, vwap_position, cot_bias, bb_squeeze, bb_breakout_dir,
-                director_signal, activist_signal, senate_signal, senate_senator,
+                director_signal, director_cluster_strong, activist_signal, senate_signal, senate_senator,
                 elite_senate_primary, elite_senator_name, potus_primary,
                 notable_investor, social_mention, primary_count, confirmation_count,
                 direction, pa_verdict, pa_score, trade_triggered,
@@ -1708,7 +1710,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                 sector_etf, sector_dir)
                values (:v_session, :v_ticker, :v_mgp, :v_opts_bias, :v_call_put, :v_ivr,
                        :v_gex_bias, :v_vwap_pos, :v_cot_bias, :v_bb_squeeze, :v_bb_breakout,
-                       :v_director, :v_activist, :v_senate, :v_senator_name,
+                       :v_director, :v_dir_cluster_strong, :v_activist, :v_senate, :v_senator_name,
                        :v_elite_senate, :v_elite_senator, :v_potus,
                        :v_notable, :v_social, :v_primaries, :v_confirms, :v_direction,
                        :v_pa_verdict, :v_pa_score, :v_triggered,
@@ -1723,7 +1725,9 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
             v_gex_bias=gex.get("gex_bias"), v_vwap_pos=vwap.get("vwap_position"),
             v_cot_bias=cot.get("bias"), v_bb_squeeze=squeeze.get("bb_squeeze"),
             v_bb_breakout=squeeze.get("bb_breakout_dir"),
-            v_director=directors.get("director_signal"), v_activist=activist.get("activist_signal"),
+            v_director=directors.get("director_signal"),
+            v_dir_cluster_strong=directors.get("director_cluster_strong", False),
+            v_activist=activist.get("activist_signal"),
             v_senate=senate.get("senate_signal"), v_senator_name=senate.get("senate_senator"),
             v_elite_senate=potus_sen.get("elite_senate_primary"),
             v_elite_senator=potus_sen.get("elite_senator_name"),

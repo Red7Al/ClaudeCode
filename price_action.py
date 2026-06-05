@@ -68,6 +68,9 @@
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Six price action signals
 #                                 with composite confirmation score.
+# 1.1.0   2026-06-05  Alex Hind   Raised HVF_MIN_RR from 2.0 to 2.5 in both
+#                                 single-timeframe and multi-timeframe scanners
+#                                 to match MIN_RISK_REWARD in config.py.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -1078,9 +1081,10 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
         rr     = round(reward / risk, 2) if risk > 0 else 0.0
 
         # ── R:R gate (Pattern Checker criterion #5) ───────────────────────────
-        # Minimum 2:1 R:R required to trade. Patterns below this are real but
-        # not yet tradeable — marked DEVELOPING so they surface as watchlist items.
-        HVF_MIN_RR = 2.0
+        # Minimum 2.5:1 R:R required to trade (matches MIN_RISK_REWARD in config.py).
+        # Patterns below this threshold are real but not yet tradeable — marked
+        # DEVELOPING so they surface as watchlist items in the HVF report.
+        HVF_MIN_RR = 2.5
         if rr < HVF_MIN_RR:
             log.info(f"HVF {ticker}: pattern found but R:R {rr} < {HVF_MIN_RR} — DEVELOPING (watch, not trade)")
             result.update({
@@ -1309,7 +1313,7 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
 
         risk = abs(entry - stop)          # R:R from entry level, not current price
         rr   = round(abs(target - entry) / risk, 2) if risk > 0 else 0.0
-        hvf_sig = "TRIGGERED" if triggered else "READY" if rr >= 2.0 else "DEVELOPING"
+        hvf_sig = "TRIGGERED" if triggered else "READY" if rr >= 2.5 else "DEVELOPING"
 
         result.update({
             "hvf_type": hvf_type, "hvf_signal": hvf_sig,

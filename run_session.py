@@ -26,6 +26,9 @@
 # 1.0.0   2026-06-01  Alex Hind   Initial build. Routes all session names to
 #                                 their respective handlers. Duplicate-run guard
 #                                 added via already_ran_today().
+# 1.1.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF handler — was listed in
+#                                 usage help but crashed with "Unknown session"
+#                                 when triggered by the Sunday scheduled task.
 # =============================================================================
 
 import sys
@@ -894,6 +897,11 @@ if __name__ == "__main__":
         run_session_close()
     elif session == "WEEKEND_REVIEW":
         run_weekend_review()
+    elif session == "PREMARKET_BRIEF":
+        # Sunday pre-market scan — 24/7 instruments (crypto, gold, FX) before Asia open.
+        # Instruments defined in config.SESSION_INSTRUMENTS["PREMARKET_BRIEF"].
+        # HVF report (run_hvf_report.py) is run separately by the SKILL.md prompt.
+        run_session_open(session)
     else:
         log.error(f"Unknown session: {session}")
         sys.exit(1)
