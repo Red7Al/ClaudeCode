@@ -564,6 +564,41 @@ def session_heartbeat(
     _send("signals", blocks)
 
 
+def alert_position_deterioration(session: str, ticker: str, direction: str, reasons: str):
+    """
+    Alert that an open position is showing intraday deterioration signals.
+    Posted to #claude-trading-alerts so the user can decide whether to tighten
+    the stop or exit early. Does NOT close the position automatically.
+    """
+    dir_emoji = "📈" if direction == "BUY" else "📉"
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"⚠️ Position Deterioration — {ticker}"}
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Ticker:*\n{dir_emoji} {ticker} {direction}"},
+                {"type": "mrkdwn", "text": f"*Session:*\n{session}"},
+            ]
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Intraday signals turning against position:*\n{reasons}"
+            }
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn",
+                          "text": f"_Position not closed automatically — review stop level._ | {_ts()}"}]
+        },
+    ]
+    _send("alerts", blocks)
+
+
 def alert_watchdog_trigger(session_name: str, workflow: str, late_minutes: int):
     """Alert that watchdog auto-triggered a missed session."""
     blocks = [

@@ -110,6 +110,47 @@ MIGRATIONS = [
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_quality integer"
     ),
 
+    # ── signal_log: pa_score numeric (added 2026-06-04) ───────────────────────
+    (
+        "signal_log: add pa_score",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS pa_score numeric"
+    ),
+
+    # ── signal_log: new primary signal columns (added 2026-06-04) ─────────────
+    # ADX directional primary (distinct from adx_signal which records strength)
+    (
+        "signal_log: add adx_dir",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS adx_dir text"
+    ),
+    # Opening Range Breakout
+    (
+        "signal_log: add orb_signal",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS orb_signal text"
+    ),
+    (
+        "signal_log: add orb_dir",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS orb_dir text"
+    ),
+    # 52-week high/low breakout
+    (
+        "signal_log: add week52_signal",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS week52_signal text"
+    ),
+    (
+        "signal_log: add week52_dir",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS week52_dir text"
+    ),
+
+    # ── signal_log: sector alignment columns (added 2026-06-04) ───────────────
+    (
+        "signal_log: add sector_etf",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS sector_etf text"
+    ),
+    (
+        "signal_log: add sector_dir",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS sector_dir text"
+    ),
+
 ]
 
 

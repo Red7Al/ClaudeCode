@@ -225,6 +225,11 @@ OPTIONS_PROXY_MAP = {
 
 YAHOO_MAP = {
 
+    # UK Equities — LSE tickers ending in .L
+    # Note: tickers with a trailing dot on LSE (e.g. RR., BA.) use single .L on Yahoo
+    "RR.L":    "RR.L",     # Rolls-Royce
+    "BA..L":   "BA.L",     # BAE Systems (LSE: BA. → Yahoo: BA.L)
+
     # Indices
     "SPX500":  "^GSPC",
     "NASDAQ":  "^IXIC",
@@ -328,6 +333,39 @@ ATR_MULTIPLIERS = {
 
 # Default ATR multiplier for any instrument not listed above
 ATR_MULTIPLIER_DEFAULT = 1.5
+
+
+# =============================================================================
+# Sector ETF Map
+# Maps individual equity tickers to their representative sector ETF.
+# Used by get_sector_alignment() — if the sector ETF itself is directional
+# (above/below VWAP) it adds a primary signal confirming the stock's move.
+# FX, indices, crypto, and commodities are omitted — they have their own
+# macro/COT signals and don't align to US equity sector ETFs.
+# =============================================================================
+
+SECTOR_ETF_MAP = {
+    # Technology / Software
+    "NVDA":  "XLK",   "AMD":   "XLK",   "MSFT":  "XLK",
+    "AAPL":  "XLK",   "META":  "XLK",   "AMZN":  "XLK",
+    "GOOGL": "XLK",   "TSLA":  "XLK",   "PLTR":  "XLK",
+    "CRWD":  "XLK",   "NOW":   "XLK",   "IBM":   "XLK",
+    "DELL":  "XLK",   "NOK":   "XLK",
+    # Semiconductors
+    "AVGO":  "SOXX",  "MU":    "SOXX",
+    # AI / compute / Bitcoin mining (smaller names — use broad tech)
+    "NBIS":  "XLK",   "CRWV":  "XLK",   "CLSK":  "XLK",
+    "RIOT":  "XLK",   "SNDK":  "XLK",   "HIVE":  "XLK",
+    "IREN":  "XLK",   "APLD":  "XLK",   "BTDR":  "XLK",
+    # Industrials
+    "BE":    "XLI",   "TE":    "XLI",
+    # Financials
+    "SEI":   "XLF",
+    # Energy
+    "OIL":   "XLE",   "USOIL": "XLE",
+    # Materials (rare earths)
+    "USAR":  "XLB",
+}
 
 
 # =============================================================================
@@ -495,7 +533,7 @@ INTRADAY_GUARD_ATR_MULTIPLIER = 2.0
 # Signal thresholds
 # Design decision: "trade fires when gate passes + 1 primary + 1 confirmation"
 # Original code had 2 — that requires options AND BB simultaneously which almost never aligns.
-MIN_PRIMARY_SIGNALS       = 1   # 1 primary sufficient (options OR BB breakout)
+MIN_PRIMARY_SIGNALS       = 2   # 2 primaries required (HVF alone bypasses — see signals.py)
 MIN_CONFIRMATION_SIGNALS  = 1   # Minimum confirmation signals required to trade
 MIN_CALL_PUT_RATIO_BULL   = 1.2 # Call/put ratio above this = bullish options signal
 MAX_CALL_PUT_RATIO_BEAR   = 0.8 # Call/put ratio below this = bearish options signal

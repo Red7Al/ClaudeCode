@@ -275,8 +275,9 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     from ig_shim import (get_open_positions, get_snapshot, update_stop,
                          get_close_reason, _log_trade_close_to_db, health_check,
                          open_trade, get_account_balance)
-    from notify import trade_closed, alert_circuit_breaker
+    from notify import trade_closed, alert_circuit_breaker, alert_system_error, alert_position_deterioration
     from signals import scan_instrument, get_macro_gate
+    from intraday_signals import scan_intraday
     from config import ATR_MULTIPLIERS, ATR_MULTIPLIER_DEFAULT, SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION
     import pg8000.native
     from datetime import datetime, timezone
@@ -329,6 +330,20 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
             if stop and new_stop < float(stop) * 0.995:
                 update_stop(deal_id, new_stop)
                 log.info(f"Stop lowered: {epic} {stop} -> {new_stop}")
+
+        # Intraday deterioration check — flag positions showing exit signals
+        try:
+            intra = scan_intraday(ticker)
+            if not intra.get("hold_flag") and intra.get("alert"):
+                alert_position_deterioration(
+                    session=session_name,
+                    ticker=ticker,
+                    direction=direction,
+                    reasons=intra["alert"]
+                )
+                log.warning(f"{session_name} position alert: {ticker} — {intra['alert']}")
+        except Exception as e:
+            log.debug(f"Intraday scan skipped for {ticker}: {e}")
 
     # Detect positions closed by IG
     conn = pg8000.native.Connection(

@@ -136,8 +136,8 @@ create table if not exists macro_snapshot (
 
 -- ---------------------------------------------------------------------------
 -- signal_log  (every instrument scanned, every session)
--- NOTE: call_put_ratio, primary_count, direction, pa_verdict added 2026-06-01
---       via ALTER TABLE — run run_alter_signal_log.py if missing
+-- NOTE: columns are added incrementally via run_schema.py (idempotent ALTER TABLE).
+--       Re-run run_schema.py after pulling any new columns.
 -- ---------------------------------------------------------------------------
 create table if not exists signal_log (
     id                  uuid primary key default gen_random_uuid(),
@@ -165,7 +165,26 @@ create table if not exists signal_log (
     direction           text,
     pa_verdict          text,
     trade_triggered     boolean default false,
-    signal_summary      text
+    signal_summary      text,
+    adx_signal          text,
+    adx_dir             text,
+    obv_signal          text,
+    volume_signal       text,
+    volume_ratio        numeric,
+    hvf_type            text,
+    hvf_signal          text,
+    hvf_h3_level        numeric,
+    hvf_stop_level      numeric,
+    hvf_target          numeric,
+    hvf_risk_reward     numeric,
+    hvf_quality         integer,
+    orb_signal          text,
+    orb_dir             text,
+    week52_signal       text,
+    week52_dir          text,
+    pa_score            numeric,
+    sector_etf          text,
+    sector_dir          text
 );
 
 

@@ -60,6 +60,7 @@ from config import (
     ATR_MULTIPLIERS,
     ATR_MULTIPLIER_DEFAULT,
     SESSION_INSTRUMENTS,
+    SECTOR_ETF_MAP,
     MIN_PRIMARY_SIGNALS,
     MIN_CONFIRMATION_SIGNALS,
     MIN_CALL_PUT_RATIO_BULL,
@@ -1097,6 +1098,124 @@ def get_intraday_guard(ticker: str) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# 18. OPENING RANGE BREAKOUT (ORB) — first 30-min bar vs current price
+# ---------------------------------------------------------------------------
+def get_orb_signal(ticker: str) -> dict:
+    """
+    Compare current price to the high/low of the first 30-minute bar of today's
+    session. A break above the ORB high = bullish primary; below ORB low = bearish.
+
+    Only meaningful once the opening bar has formed (30+ min into session).
+    Returns INSIDE if price hasn't broken either level yet.
+    """
+    result = {"orb_signal": None, "orb_dir": None, "orb_high": None, "orb_low": None}
+    yticker = YAHOO_MAP.get(ticker, ticker)
+    try:
+        t       = yf.Ticker(yticker)
+        intraday = t.history(period="1d", interval="30m")
+        if len(intraday) < 2:
+            return result
+
+        orb_high   = float(intraday["High"].iloc[0])
+        orb_low    = float(intraday["Low"].iloc[0])
+        last_close = float(intraday["Close"].iloc[-1])
+
+        result["orb_high"] = round(orb_high, 4)
+        result["orb_low"]  = round(orb_low, 4)
+
+        if last_close > orb_high:
+            result["orb_signal"] = "BREAKOUT"
+            result["orb_dir"]    = "BULLISH"
+        elif last_close < orb_low:
+            result["orb_signal"] = "BREAKDOWN"
+            result["orb_dir"]    = "BEARISH"
+        else:
+            result["orb_signal"] = "INSIDE"
+
+    except Exception as e:
+        log.warning(f"ORB signal failed for {ticker}: {e}")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 19. 52-WEEK HIGH/LOW BREAKOUT — momentum primary
+# ---------------------------------------------------------------------------
+def get_52week_signal(ticker: str) -> dict:
+    """
+    Price at or beyond its 52-week extreme is a momentum primary signal.
+    Within 0.5% of the 52-week high = AT_52W_HIGH (bullish).
+    Within 0.5% of the 52-week low  = AT_52W_LOW  (bearish).
+    """
+    result = {
+        "week52_signal":   None,
+        "week52_dir":      None,
+        "week52_high":     None,
+        "week52_low":      None,
+        "pct_from_high":   None,
+        "pct_from_low":    None,
+    }
+    yticker = YAHOO_MAP.get(ticker, ticker)
+    try:
+        t    = yf.Ticker(yticker)
+        hist = t.history(period="1y", interval="1d")
+        if len(hist) < 50:
+            return result
+
+        week52_high = float(hist["High"].max())
+        week52_low  = float(hist["Low"].min())
+        last_close  = float(hist["Close"].iloc[-1])
+
+        pct_from_high = (last_close - week52_high) / week52_high * 100
+        pct_from_low  = (last_close - week52_low)  / week52_low  * 100
+
+        result["week52_high"]   = round(week52_high, 4)
+        result["week52_low"]    = round(week52_low, 4)
+        result["pct_from_high"] = round(pct_from_high, 2)
+        result["pct_from_low"]  = round(pct_from_low, 2)
+
+        if pct_from_high >= -0.5:
+            result["week52_signal"] = "AT_52W_HIGH"
+            result["week52_dir"]    = "BULLISH"
+        elif pct_from_low <= 0.5:
+            result["week52_signal"] = "AT_52W_LOW"
+            result["week52_dir"]    = "BEARISH"
+
+    except Exception as e:
+        log.warning(f"52-week signal failed for {ticker}: {e}")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 20. SECTOR ALIGNMENT — sector ETF direction as primary signal
+# ---------------------------------------------------------------------------
+def get_sector_alignment(ticker: str) -> dict:
+    """
+    Check whether the ticker's sector ETF is directionally aligned.
+
+    Uses VWAP position of the sector ETF (already computed intraday) as the
+    directional proxy. If the whole sector is above VWAP the individual stock
+    has wind behind it — and vice versa for shorts.
+
+    Only fires for equities mapped in SECTOR_ETF_MAP.  FX, indices, commodities,
+    and crypto are intentionally excluded (they have COT / macro signals instead).
+    """
+    result = {"sector_etf": None, "sector_dir": None, "sector_vwap_pos": None}
+    etf = SECTOR_ETF_MAP.get(ticker)
+    if not etf:
+        return result
+    result["sector_etf"] = etf
+    try:
+        # Reuse get_vwap_position — ETF tickers pass straight through to Yahoo Finance
+        vwap_data = get_vwap_position(etf)
+        pos = vwap_data.get("vwap_position")
+        result["sector_vwap_pos"] = pos
+        result["sector_dir"] = "BULLISH" if pos == "ABOVE" else "BEARISH" if pos == "BELOW" else None
+    except Exception as e:
+        log.warning(f"Sector alignment failed for {ticker} ({etf}): {e}")
+    return result
+
+
 def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     """
     Run the full signal stack for one instrument.
@@ -1134,6 +1253,10 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     obv       = get_obv_signal(ticker)
     gex       = get_gex_bias(ticker)
     vwap      = get_vwap_position(ticker)
+    orb       = get_orb_signal(ticker)
+    week52    = get_52week_signal(ticker)
+    sector    = get_sector_alignment(ticker)
+
     cot       = get_cot_bias(ticker)
     comm_macro   = get_commodity_macro_score(ticker, macro.get("yield_spread"))
     supply_demand = _get_supply_demand(ticker)
@@ -1146,12 +1269,63 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     social    = get_social_mentions(ticker)
     atr_data  = get_atr(ticker)
 
+    # ── Data reconciliation ───────────────────────────────────────────────────
+    # Check that core price-data sources actually returned values.
+    # A ticker with a bad Yahoo Finance mapping silently returns neutral dicts
+    # that look identical to a genuine no-signal result — impossible to distinguish
+    # without an explicit check. If core data is absent, block the trade decision
+    # and surface the failure so it can be investigated.
+    #
+    # Core sources (all use daily OHLCV — must have data to be meaningful):
+    #   volume  → volume_ratio    bb   → bb_squeeze
+    #   adx     → adx             pa   → range_high (from price_action.py)
+    #   atr     → atr             vwap → vwap (intraday)
+    #
+    # Non-penalised absences (legitimately None for many instruments):
+    #   options (no chain for FX/indices/crypto)
+    #   cot     (no CFTC coverage for equities)
+    #   gex     (needs options chain)
+    data_health = {
+        "volume": volume.get("volume_ratio")        is not None,
+        "bb":     squeeze.get("bb_squeeze")         is not None,
+        "adx":    adx.get("adx")                    is not None,
+        "pa":     price_act.get("range_high")       is not None,
+        "atr":    atr_data.get("atr")               is not None,
+        "vwap":   vwap.get("vwap")                  is not None,
+    }
+    data_failures   = [src for src, ok in data_health.items() if not ok]
+    data_ok         = len(data_failures) == 0
+    # Partial failure: ≥3 core sources missing = no reliable decision possible
+    data_critical   = len(data_failures) >= 3
+
+    if data_failures:
+        log.warning(f"{ticker}: data fetch failures — {', '.join(data_failures)}"
+                    + (" [CRITICAL — trade blocked]" if data_critical else ""))
+
+    if data_critical:
+        return {
+            "ticker":          ticker,
+            "session":         session_name,
+            "timestamp":       datetime.now(timezone.utc).isoformat(),
+            "macro_gate_pass": macro.get("macro_gate_pass"),
+            "trade_signal":    False,
+            "direction":       None,
+            "primary_count":   0,
+            "confirmation_count": 0,
+            "data_ok":         False,
+            "data_failures":   data_failures,
+            "data_critical":   True,
+        }
+
     # Count primary signals aligned
-    # Primary 1: Options flow (call/put imbalance via Yahoo Finance / ETF proxies)
-    # Primary 2: BB breakout from squeeze (volatility compression breakout)
-    # Primary 2 substitute: HIGH volume + options (institutional conviction proxy)
-    # Primary 3: HVF — Hunt Volatility Funnel (highest-conviction continuation
-    #             breakout: prior trend + 3-point funnel + pending order at H3/L3)
+    # Threshold: primary_count >= 2  OR  HVF fired alone (high conviction bypass)
+    # Primary 1: Options flow      — call/put imbalance via Yahoo Finance / ETF proxies
+    # Primary 2: BB breakout       — volatility compression breakout (or high-vol substitute)
+    # Primary 3: HVF               — Hunt Volatility Funnel — standalone bypass allowed
+    # Primary 4: ADX +DI/-DI       — directional index gap ≥5 with ADX ≥20 (trending market)
+    # Primary 5: ORB breakout      — price beyond first 30-min session range
+    # Primary 6: 52-week extreme   — price within 0.5% of 52-week high/low
+    # (Sector alignment demoted to confirmation — fires on too many equity scans as primary)
     primary_count = 0
     primary_dir   = []
     options_dir   = options.get("options_bias")
@@ -1170,11 +1344,15 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     if bb_dir in ("BULLISH", "BEARISH"):
         primary_count += 1
         primary_dir.append(bb_dir)
-    elif high_volume and options_dir in ("BULLISH", "BEARISH"):
-        # High volume substitutes for BB breakout — same direction as options
-        primary_count += 1
-        primary_dir.append(options_dir)
-        log.info(f"{ticker}: HIGH volume ({volume.get('volume_ratio')}x) substituting for BB breakout")
+    elif high_volume:
+        # High volume substitutes for BB breakout — direction from VWAP position
+        # (price above VWAP on high volume = buyers in control; no options needed)
+        vwap_pos = vwap.get("vwap_position")
+        vol_dir  = "BULLISH" if vwap_pos == "ABOVE" else "BEARISH" if vwap_pos == "BELOW" else None
+        if vol_dir:
+            primary_count += 1
+            primary_dir.append(vol_dir)
+            log.info(f"{ticker}: HIGH volume ({volume.get('volume_ratio')}x) + price {vwap_pos} VWAP → {vol_dir}")
 
     if hvf_fired:
         primary_count += 1
@@ -1184,6 +1362,35 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                  f"H3={price_act.get('hvf_h3_level')} "
                  f"target={price_act.get('hvf_target')} "
                  f"R:R={price_act.get('hvf_risk_reward')})")
+
+    # ADX directional primary — +DI/-DI gap ≥5 in a trending market (ADX ≥20)
+    adx_val  = adx.get("adx")
+    di_plus  = adx.get("di_plus")
+    di_minus = adx.get("di_minus")
+    adx_dir  = None
+    if adx_val is not None and di_plus is not None and di_minus is not None:
+        if adx_val >= 20 and abs(di_plus - di_minus) >= 5:
+            adx_dir = "BULLISH" if di_plus > di_minus else "BEARISH"
+            primary_count += 1
+            primary_dir.append(adx_dir)
+            log.info(f"{ticker}: ADX directional +DI={di_plus} -DI={di_minus} ADX={adx_val} → {adx_dir}")
+
+    # ORB primary — price broke beyond the first 30-min session range
+    orb_dir = orb.get("orb_dir")
+    if orb_dir in ("BULLISH", "BEARISH"):
+        primary_count += 1
+        primary_dir.append(orb_dir)
+        log.info(f"{ticker}: ORB {orb.get('orb_signal')} high={orb.get('orb_high')} low={orb.get('orb_low')} → {orb_dir}")
+
+    # 52-week extreme primary — price at yearly high or low
+    week52_dir = week52.get("week52_dir")
+    if week52_dir in ("BULLISH", "BEARISH"):
+        primary_count += 1
+        primary_dir.append(week52_dir)
+        log.info(f"{ticker}: {week52.get('week52_signal')} ({week52.get('pct_from_high')}% from 52w high, "
+                 f"{week52.get('pct_from_low')}% from 52w low) → {week52_dir}")
+
+    sector_dir = sector.get("sector_dir")
 
     # Direction consensus — must be computed before OBV conf checks below
     direction = None
@@ -1206,18 +1413,33 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     if adx.get("adx_signal") == "STRONG_TREND":  conf_count += 1
     if obv.get("obv_signal") in ("BULLISH_DIVERGENCE","CONFIRMING_BULLISH") and direction == "BUY":  conf_count += 1
     if obv.get("obv_signal") in ("BEARISH_DIVERGENCE","CONFIRMING_BEARISH") and direction == "SELL": conf_count += 1
+    # Commodity macro score — only fires for commodity instruments (returns None for everything else)
+    comm_score = comm_macro.get("commodity_macro_score")
+    if comm_score is not None:
+        if comm_score > 0 and direction == "BUY":   conf_count += 1
+        elif comm_score < 0 and direction == "SELL": conf_count += 1
+    # Sector alignment — sector ETF VWAP position aligns with direction (equity-only)
+    if sector_dir in ("BULLISH", "BEARISH"):
+        if (sector_dir == "BULLISH" and direction == "BUY") or \
+           (sector_dir == "BEARISH" and direction == "SELL"):
+            conf_count += 1
+            log.info(f"{ticker}: sector ETF {sector.get('sector_etf')} {sector.get('sector_vwap_pos')} VWAP → conf +1")
 
-    # Trade fires when: macro gate passes + 2 primaries + 1 confirmation
-    # Price action must confirm direction — prevents catching falling knives
+    # Trade fires when: macro gate passes + primary threshold + 1 confirmation + PA confirms
+    # Primary threshold: primary_count >= 2  OR  HVF fired alone
+    # HVF bypass: HVF is high enough conviction to pass the primary stage unassisted.
+    # Price action must confirm direction — prevents catching falling knives.
     pa_verdict       = price_act.get("verdict", "WAIT")
     pa_confirms_long  = pa_verdict == "CONFIRM_LONG"  and direction == "BUY"
     pa_confirms_short = pa_verdict == "CONFIRM_SHORT" and direction == "SELL"
     pa_confirmed      = pa_confirms_long or pa_confirms_short
 
+    primary_gate = (primary_count >= MIN_PRIMARY_SIGNALS) or hvf_fired
+
     trade_signal = (
         macro.get("macro_gate_pass", False) and
-        primary_count >= MIN_PRIMARY_SIGNALS and
-        conf_count    >= MIN_CONFIRMATION_SIGNALS and
+        primary_gate and
+        conf_count >= MIN_CONFIRMATION_SIGNALS and
         direction is not None and
         pa_confirmed                               # Price action must confirm
     )
@@ -1308,6 +1530,10 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "confirmation_count": conf_count,
         "direction":         direction,
         "trade_signal":      trade_signal,
+
+        # Data reconciliation
+        "data_ok":       data_ok,
+        "data_failures": data_failures,   # [] if all sources returned data
     }
 
     # Log to Supabase
@@ -1322,18 +1548,22 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                 gex_bias, vwap_position, cot_bias, bb_squeeze, bb_breakout_dir,
                 director_signal, activist_signal, senate_signal, senate_senator,
                 notable_investor, social_mention, primary_count, confirmation_count,
-                direction, pa_verdict, trade_triggered,
-                adx_signal, obv_signal, volume_signal, volume_ratio,
+                direction, pa_verdict, pa_score, trade_triggered,
+                adx_signal, adx_dir, obv_signal, volume_signal, volume_ratio,
                 hvf_type, hvf_signal, hvf_h3_level, hvf_stop_level,
-                hvf_target, hvf_risk_reward, hvf_quality)
+                hvf_target, hvf_risk_reward, hvf_quality,
+                orb_signal, orb_dir, week52_signal, week52_dir,
+                sector_etf, sector_dir)
                values (:v_session, :v_ticker, :v_mgp, :v_opts_bias, :v_call_put, :v_ivr,
                        :v_gex_bias, :v_vwap_pos, :v_cot_bias, :v_bb_squeeze, :v_bb_breakout,
                        :v_director, :v_activist, :v_senate, :v_senator_name,
                        :v_notable, :v_social, :v_primaries, :v_confirms, :v_direction,
-                       :v_pa_verdict, :v_triggered,
-                       :v_adx, :v_obv, :v_vol_sig, :v_vol_ratio,
+                       :v_pa_verdict, :v_pa_score, :v_triggered,
+                       :v_adx, :v_adx_dir, :v_obv, :v_vol_sig, :v_vol_ratio,
                        :v_hvf_type, :v_hvf_sig, :v_hvf_h3, :v_hvf_stop,
-                       :v_hvf_target, :v_hvf_rr, :v_hvf_quality)""",
+                       :v_hvf_target, :v_hvf_rr, :v_hvf_quality,
+                       :v_orb_sig, :v_orb_dir, :v_week52_sig, :v_week52_dir,
+                       :v_sector_etf, :v_sector_dir)""",
             v_session=session_name, v_ticker=ticker,
             v_mgp=macro.get("macro_gate_pass"), v_opts_bias=options.get("options_bias"),
             v_call_put=options.get("call_put_ratio"), v_ivr=options.get("iv_rank"),
@@ -1344,13 +1574,18 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
             v_senate=senate.get("senate_signal"), v_senator_name=senate.get("senate_senator"),
             v_notable=superinv.get("notable_investor"), v_social=social.get("social_mention"),
             v_primaries=primary_count, v_confirms=conf_count, v_direction=direction,
-            v_pa_verdict=price_act.get("verdict"), v_triggered=trade_signal,
-            v_adx=adx.get("adx_signal"), v_obv=obv.get("obv_signal"),
+            v_pa_verdict=price_act.get("verdict"), v_pa_score=price_act.get("pa_score"),
+            v_triggered=trade_signal,
+            v_adx=adx.get("adx_signal"), v_adx_dir=adx_dir,
+            v_obv=obv.get("obv_signal"),
             v_vol_sig=volume.get("volume_signal"), v_vol_ratio=volume.get("volume_ratio"),
             v_hvf_type=price_act.get("hvf_type"),    v_hvf_sig=price_act.get("hvf_signal"),
             v_hvf_h3=price_act.get("hvf_h3_level"),  v_hvf_stop=price_act.get("hvf_stop_level"),
             v_hvf_target=price_act.get("hvf_target"), v_hvf_rr=price_act.get("hvf_risk_reward"),
-            v_hvf_quality=price_act.get("hvf_quality")
+            v_hvf_quality=price_act.get("hvf_quality"),
+            v_orb_sig=orb.get("orb_signal"), v_orb_dir=orb_dir,
+            v_week52_sig=week52.get("week52_signal"), v_week52_dir=week52_dir,
+            v_sector_etf=sector.get("sector_etf"), v_sector_dir=sector_dir
         )
         db.close()
     except Exception as e:
@@ -1396,9 +1631,11 @@ def run_session_scan(session_name: str) -> dict:
             log.error(f"Scan failed for {ticker}: {e}")
             scan_errors.append(f"{ticker}: {e}")
 
-    # Alert on DB logging failures or complete scan failures
+    # Alert on DB logging failures, scan exceptions, and data reconciliation failures
     try:
         from notify import alert_system_error
+
+        # 1. DB write failures
         log_failures = [
             (s["ticker"], s.get("_log_error", ""))
             for s in instrument_signals if s.get("_log_failed")
@@ -1412,13 +1649,38 @@ def run_session_scan(session_name: str) -> dict:
                 summary=f"{len(log_failures)}/{len(instrument_signals)} instruments failed to write to signal_log",
                 detail=f"Tickers: {tickers_str}\nError: {first_error}"
             )
+
+        # 2. Scan exceptions (ticker crashed completely)
         if scan_errors and len(scan_errors) >= max(3, len(candidates) // 2):
             alert_system_error(
                 session=session_name,
                 component="scan_instrument",
-                summary=f"{len(scan_errors)}/{len(candidates)} instrument scans failed",
+                summary=f"{len(scan_errors)}/{len(candidates)} instrument scans threw exceptions",
                 detail="\n".join(scan_errors[:10])
             )
+
+        # 3. Data reconciliation failures (ticker returned no price data)
+        data_failures = [
+            (s["ticker"], ", ".join(s.get("data_failures", [])))
+            for s in instrument_signals
+            if s.get("data_failures")
+        ]
+        if data_failures:
+            critical = [(t, f) for t, f in data_failures if s.get("data_critical")]
+            lines = [f"{t}: missing {f}" for t, f in data_failures[:15]]
+            alert_system_error(
+                session=session_name,
+                component="data reconciliation",
+                summary=(
+                    f"{len(data_failures)}/{len(instrument_signals)} instruments had missing data "
+                    f"({len(critical)} critical — trade blocked)"
+                ),
+                detail="\n".join(lines)
+            )
+            for ticker_fail, sources in data_failures:
+                log.warning(f"Data failure: {ticker_fail} — {sources}")
+
+        # 4. Zero results
         if candidates and not instrument_signals:
             alert_system_error(
                 session=session_name,
