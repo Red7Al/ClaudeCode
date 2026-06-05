@@ -39,6 +39,11 @@
 #                                 margin — caused IBM INSUFFICIENT_FUNDS (03-Jun-2026).
 #                                 Now skips trade when calculated size < min_size.
 #                                 Exception fallback changed from 0.5 to 0.0 (safe).
+# 1.1.0   2026-06-05  Alex Hind   calculate_position_size: when size < min_size,
+#                                 try IG minimum deal size if account margin can
+#                                 support it (min_size × price × margin_factor ≤
+#                                 available × 0.9). Only skip when truly
+#                                 unaffordable. Fixes GOOGL and RIOT being missed.
 #                                 open_trade: resolve user display name from
 #                                 user_profiles instead of hardcoded "Owner".
 # 1.0.4   2026-06-05  Alex Hind   open_trade paper trade path: return dict instead
@@ -265,9 +270,15 @@ def calculate_position_size(epic: str, stop_distance: float,
       1. Risk constraint:  size × stop_distance = risk_amount  (2% rule)
       2. Margin constraint: size × price × margin_factor ≤ available_funds
 
-    Uses the tighter of the two. If the resulting size is below IG's
-    minimum deal size the function returns (0.0, stop_distance) — caller
-    should skip the trade.
+    Uses the tighter of the two. If the resulting size is below IG's minimum
+    deal size, the function tries the minimum deal size — but ONLY if the
+    account has enough margin to support it. If not, returns (0.0, stop_distance).
+
+    Why not just force min_size always?
+      Forcing max(size, min_size) without checking margin caused IBM (IBM Corp)
+      to be submitted at size=1.0 when margin only supported ~0.24, producing
+      an INSUFFICIENT_FUNDS rejection from IG (2026-06-03). The margin check
+      here is what separates a safe fallback from that failure.
     """
     try:
         mkt      = session.get(f"/markets/{epic}", version="3")
@@ -294,17 +305,40 @@ def calculate_position_size(epic: str, stop_distance: float,
             available = 0
         margin_size = (available * 0.9) / (price * margin_factor) if price > 0 else 0
 
-        # Use the tighter of the two constraints — do NOT force up to min_size.
-        # Forcing max(size, min_size) caused IBM to be submitted at size=1.0
-        # when margin only supported ~0.24, producing INSUFFICIENT_FUNDS (2026-06-03).
+        # Use the tighter of the two constraints — do NOT blindly force up to min_size.
+        # See docstring for why the naive max(size, min_size) approach was dangerous.
         size = round(min(risk_size, margin_size), 2)
 
         if size < min_size:
-            log.warning(
-                f"{epic}: calculated size {size:.4f} below IG minimum {min_size} "
-                f"(risk={risk_size:.3f} margin={margin_size:.3f}) — skipping trade"
-            )
-            return 0.0, stop_distance
+            # Calculated size is below IG's minimum deal size.
+            # Before giving up, check whether the account can actually afford the
+            # minimum deal size from a margin perspective.
+            # Margin cost of minimum deal = min_size × price × margin_factor
+            min_size_margin_cost = min_size * price * margin_factor
+
+            if available > 0 and (available * 0.9) >= min_size_margin_cost:
+                # Account CAN support the minimum deal — use it.
+                # The trade will slightly exceed the configured risk_per_trade
+                # (actual risk = min_size × stop_distance in currency terms),
+                # but this is preferable to missing a valid signal entirely.
+                actual_risk_currency = round(min_size * stop_distance, 2)
+                actual_risk_pct      = round(actual_risk_currency / available * 100, 2) if available > 0 else 0
+                log.info(
+                    f"{epic}: calculated size {size:.4f} below IG minimum {min_size} — "
+                    f"using minimum deal size instead. "
+                    f"Actual risk: {actual_risk_currency} ({actual_risk_pct:.2f}% of available). "
+                    f"Margin cost: {min_size_margin_cost:.2f} vs available: {available:.2f}"
+                )
+                return min_size, stop_distance
+
+            else:
+                # Account cannot afford even the minimum deal margin — skip.
+                log.warning(
+                    f"{epic}: calculated size {size:.4f} below IG minimum {min_size} "
+                    f"AND minimum margin cost ({min_size_margin_cost:.2f}) exceeds "
+                    f"available funds ({available:.2f}) — skipping trade"
+                )
+                return 0.0, stop_distance
 
         log.info(f"{epic}: size={size} (risk={risk_size:.3f} margin={margin_size:.3f}) "
                  f"stop={stop_distance} margin_factor={margin_factor*100:.0f}%")
