@@ -14,6 +14,7 @@
 #   #claude-trading-signals  — session scan summaries and signal breakdowns
 #   #claude-trading-alerts   — circuit breakers, macro gate failures, loss limits
 #   #claude-trading-weekly   — weekend digest: P&L, senator scores, superinvestors
+#   #claude-trading-daily    — end-of-day executive report, UK morning brief
 #
 # All webhook URLs are loaded from environment variables.
 # Messages use Slack Block Kit for structured, readable formatting.
@@ -25,6 +26,10 @@
 # 1.1.0   2026-06-05  Alex Hind   Added HVF R:R field to signal_detail Slack
 #                                 block. Shows calculated ratio (e.g. 2.73:1)
 #                                 on every trade signal message.
+# 1.2.0   2026-06-05  Alex Hind   Added fifth channel: #claude-trading-daily
+#                                 (SLACK_DAILY) for end-of-day reports and
+#                                 morning briefs. Full instrument names in
+#                                 session_summary candidate lines.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -36,6 +41,7 @@
 #   SLACK_SIGNALS   Webhook URL for #claude-trading-signals
 #   SLACK_ALERTS    Webhook URL for #claude-trading-alerts
 #   SLACK_WEEKLY    Webhook URL for #claude-trading-weekly
+#   SLACK_DAILY     Webhook URL for #claude-trading-daily
 # =============================================================================
 
 import os
@@ -62,6 +68,7 @@ WEBHOOKS = {
     "signals": os.environ.get("SLACK_SIGNALS", ""),
     "alerts":  os.environ.get("SLACK_ALERTS",  ""),
     "weekly":  os.environ.get("SLACK_WEEKLY",  ""),
+    "daily":   os.environ.get("SLACK_DAILY",   ""),
 }
 
 
@@ -240,9 +247,12 @@ def session_summary(
     if candidates:
         candidate_lines = ""
         for c in candidates:
-            dir_emoji = "🟢" if c.get("direction") == "BUY" else "🔴"
+            dir_emoji  = "🟢" if c.get("direction") == "BUY" else "🔴"
+            ticker     = c["ticker"]
+            inst_name  = _instrument_name(ticker)
+            name_str   = f"{ticker} — {inst_name}" if inst_name != ticker else ticker
             candidate_lines += (
-                f"{dir_emoji} *{c['ticker']}* {c['direction']} — "
+                f"{dir_emoji} *{name_str}* {c['direction']} — "
                 f"{c['primary_count']} primaries, {c['confirmation_count']} confirmations\n"
             )
     else:

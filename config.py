@@ -510,6 +510,12 @@ CFTC_CODES = {
 # Minimum risk/reward ratio — trades below this are not placed
 MIN_RISK_REWARD = 2.5
 
+# HVF minimum R:R threshold — patterns below this are DEVELOPING (watchlist only, not traded).
+# Intentionally aliased to MIN_RISK_REWARD so the two values are always in sync.
+# Import HVF_MIN_RR from config wherever the HVF threshold is needed — do NOT
+# define a local copy in price_action.py or run_hvf_report.py.
+HVF_MIN_RR = MIN_RISK_REWARD
+
 # Spread width limit — trades blocked if spread exceeds this % of mid price
 MAX_SPREAD_PCT = 0.005      # 0.5%
 

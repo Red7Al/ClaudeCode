@@ -34,6 +34,13 @@
 #                                 "User profile not found". Guards against transient
 #                                 connection drops that return empty rows for a valid
 #                                 user_id (seen in production for KEEL 04-Jun-2026).
+# 1.0.3   2026-06-05  Alex Hind   calculate_position_size: remove max(size, min_size)
+#                                 that forced size up to IG minimum regardless of
+#                                 margin — caused IBM INSUFFICIENT_FUNDS (03-Jun-2026).
+#                                 Now skips trade when calculated size < min_size.
+#                                 Exception fallback changed from 0.5 to 0.0 (safe).
+#                                 open_trade: resolve user display name from
+#                                 user_profiles instead of hardcoded "Owner".
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -281,12 +288,16 @@ def calculate_position_size(epic: str, stop_distance: float,
             available = 0
         margin_size = (available * 0.9) / (price * margin_factor) if price > 0 else 0
 
-        # Use the smaller of the two
-        size = min(risk_size, margin_size)
-        size = round(max(size, min_size), 2)
+        # Use the tighter of the two constraints — do NOT force up to min_size.
+        # Forcing max(size, min_size) caused IBM to be submitted at size=1.0
+        # when margin only supported ~0.24, producing INSUFFICIENT_FUNDS (2026-06-03).
+        size = round(min(risk_size, margin_size), 2)
 
         if size < min_size:
-            log.warning(f"{epic}: calculated size {size:.4f} below IG minimum {min_size} — skipping")
+            log.warning(
+                f"{epic}: calculated size {size:.4f} below IG minimum {min_size} "
+                f"(risk={risk_size:.3f} margin={margin_size:.3f}) — skipping trade"
+            )
             return 0.0, stop_distance
 
         log.info(f"{epic}: size={size} (risk={risk_size:.3f} margin={margin_size:.3f}) "
@@ -295,7 +306,7 @@ def calculate_position_size(epic: str, stop_distance: float,
 
     except Exception as e:
         log.warning(f"Position size calculation failed for {epic}: {e}")
-        return 0.5, stop_distance   # safe fallback
+        return 0.0, stop_distance   # skip trade on error — 0.5 fallback was unsafe
 
 
 def get_account_balance() -> dict:
@@ -582,7 +593,16 @@ def open_trade(
         log.warning(f"Trade blocked — circuit breaker: {reason}")
         try:
             from notify import alert_circuit_breaker
-            alert_circuit_breaker("Owner", ticker, reason)
+            # Resolve display name from user_profiles; fall back to user_id string.
+            # Previously hardcoded "Owner" — would have shown wrong name for Wife/Son.
+            try:
+                db = get_db()
+                rows = db.run("select name from user_profiles where id = :uid", uid=user_id)
+                db.close()
+                display_name = rows[0][0] if rows else user_id
+            except Exception:
+                display_name = user_id
+            alert_circuit_breaker(display_name, ticker, reason)
         except Exception as e:
             log.warning(f"Could not send circuit breaker alert: {e}")
         return None

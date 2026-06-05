@@ -82,7 +82,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from config import YAHOO_MAP
+from config import YAHOO_MAP, HVF_MIN_RR
 
 log = logging.getLogger("price_action")
 
@@ -1081,10 +1081,8 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
         rr     = round(reward / risk, 2) if risk > 0 else 0.0
 
         # ── R:R gate (Pattern Checker criterion #5) ───────────────────────────
-        # Minimum 2.5:1 R:R required to trade (matches MIN_RISK_REWARD in config.py).
-        # Patterns below this threshold are real but not yet tradeable — marked
-        # DEVELOPING so they surface as watchlist items in the HVF report.
-        HVF_MIN_RR = 2.5
+        # Threshold imported from config.HVF_MIN_RR (= MIN_RISK_REWARD = 2.5).
+        # Single source of truth — do not hardcode here.
         if rr < HVF_MIN_RR:
             log.info(f"HVF {ticker}: pattern found but R:R {rr} < {HVF_MIN_RR} — DEVELOPING (watch, not trade)")
             result.update({
@@ -1313,7 +1311,19 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
 
         risk = abs(entry - stop)          # R:R from entry level, not current price
         rr   = round(abs(target - entry) / risk, 2) if risk > 0 else 0.0
-        hvf_sig = "TRIGGERED" if triggered else "READY" if rr >= 2.5 else "DEVELOPING"
+        # R:R gate must apply BEFORE TRIGGERED — a pattern that has broken out
+        # but has poor R:R (e.g. entry already far past H3) is DEVELOPING, not
+        # TRIGGERED. Without this gate the weekly scan was promoting low-R:R
+        # patterns to TRIGGERED, which then won the mtf ranking over high-R:R
+        # daily READY patterns (TRIGGERED rank=3 beats READY rank=2 regardless).
+        # This matched the production bug: NVDA weekly TRIGGERED R:R=0.09 beat
+        # NVDA daily READY R:R=5+ in the multi-timeframe wrapper (2026-06-04).
+        if rr < HVF_MIN_RR:          # threshold from config — single source of truth
+            hvf_sig = "DEVELOPING"
+        elif triggered:
+            hvf_sig = "TRIGGERED"
+        else:
+            hvf_sig = "READY"
 
         result.update({
             "hvf_type": hvf_type, "hvf_signal": hvf_sig,

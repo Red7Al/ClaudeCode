@@ -31,6 +31,14 @@
 #                                 instrument list (not traded).
 # 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log
 #                                 INSERT — was computed but never persisted.
+# 1.1.1   2026-06-05  Alex Hind   get_gex_bias: detect and surface Yahoo Finance
+#                                 gamma unavailability. Previously returned gex=0.0
+#                                 (false NEUTRAL) when gamma column was absent or
+#                                 all-zero — 544 rows in signal_log all NEUTRAL,
+#                                 signal never fired PINNED/TRENDING in production.
+#                                 Now returns gex=None with a warning when no real
+#                                 gamma data found. signal_log INSERT: retry up to
+#                                 2× on pg8000 08P01 bind error (OIL 04-Jun-2026).
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -440,7 +448,8 @@ def get_gex_bias(ticker: str) -> dict:
             return result
 
         spot = t.fast_info["lastPrice"]
-        total_gex = 0.0
+        total_gex   = 0.0
+        gamma_found = False   # track whether Yahoo returned any gamma data at all
 
         # Use nearest 2 expiries
         for exp in expirations[:2]:
@@ -454,19 +463,31 @@ def get_gex_bias(ticker: str) -> dict:
                     (c for c in df.columns if c.lower() == "gamma"), None
                 )
                 if gamma_col is None:
-                    log.debug(f"GEX: no gamma column in {yticker} options chain — skipping")
+                    continue   # silent — tracked via gamma_found below
+                # Treat all-zero/NaN gamma as absent (Yahoo sometimes returns a
+                # gamma column filled entirely with 0 or NaN when greeks are not
+                # available, which would silently produce gex=0.0 = NEUTRAL).
+                gamma_vals = df[gamma_col].fillna(0)
+                if gamma_vals.abs().sum() == 0:
                     continue
+                gamma_found = True
                 df["oi"]    = df["openInterest"].fillna(0)
-                df["gamma"] = df[gamma_col].fillna(0)
+                df["gamma"] = gamma_vals
                 # GEX = gamma × OI × spot² × 0.01 (per 1% move)
                 df["gex"]   = df["gamma"] * df["oi"] * spot * spot * 0.01 * sign
                 total_gex  += df["gex"].sum()
 
+        if not gamma_found:
+            # Yahoo Finance no longer supplies greeks in free options chains.
+            # Return gex=None so the signal is treated as unavailable (not NEUTRAL).
+            log.warning(f"GEX {ticker}: no gamma data from Yahoo Finance — signal unavailable")
+            return result   # gex=None, gex_bias=NEUTRAL
+
         result["gex"] = round(total_gex, 2)
         if total_gex > 0:
-            result["gex_bias"] = "PINNED"    # price likely to stay range-bound
+            result["gex_bias"] = "PINNED"    # dealers long gamma → price mean-reverts
         elif total_gex < 0:
-            result["gex_bias"] = "TRENDING"  # price likely to trend
+            result["gex_bias"] = "TRENDING"  # dealers short gamma → price trends
 
     except Exception as e:
         log.warning(f"GEX computation failed for {ticker}: {e}")

@@ -30,9 +30,9 @@
 #                                 macro, trades opened/closed, overnight positions,
 #                                 notable missed moves, daily P&L, and tomorrow's
 #                                 economic calendar.
-# 1.0.1   2026-06-05  Alex Hind   Fixed SLACK_URL: was reading non-existent
-#                                 SLACK_DAILY env var. Now uses SLACK_TRADES
-#                                 (daily P&L report belongs on the trades channel).
+# 1.0.1   2026-06-05  Alex Hind   SLACK_URL confirmed as SLACK_DAILY — posts to
+#                                 #claude-trading-daily, the correct channel for
+#                                 end-of-day executive reports.
 # =============================================================================
 
 import os
@@ -50,7 +50,7 @@ log = logging.getLogger("daily_report")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 SUPABASE_HOST = "aws-0-eu-west-1.pooler.supabase.com"
-SLACK_URL     = os.environ.get("SLACK_TRADES", "")   # daily P&L report → #claude-trading-trades
+SLACK_URL     = os.environ.get("SLACK_DAILY", "")    # end-of-day executive report → #claude-trading-daily
 
 NOTABLE_MOVE_THRESHOLD = 0.03   # 3% — flag instruments that moved this much intraday
 
