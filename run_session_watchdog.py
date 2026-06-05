@@ -22,7 +22,10 @@
 # =============================================================================
 
 import os
-from dotenv import load_dotenv; load_dotenv(override=True)
+try:
+    from dotenv import load_dotenv; load_dotenv(override=True)
+except ImportError:
+    pass   # GitHub Actions — env vars injected from secrets, no .env file needed
 import logging
 import requests
 import pg8000.native
