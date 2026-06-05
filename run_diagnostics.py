@@ -34,6 +34,10 @@
 #                                 price action, signal stack, DB writes, and
 #                                 IG connectivity. Posts ✅/❌/⚠ report to
 #                                 #claude-trading-alerts.
+# 1.0.1   2026-06-05  Alex Hind   Extended Slack coverage test: sends a probe
+#                                 message to all 5 channels so the user can
+#                                 confirm every webhook is wired correctly
+#                                 after deployment.
 # =============================================================================
 
 import os
@@ -51,7 +55,18 @@ logging.basicConfig(
 )
 log = logging.getLogger("diagnostics")
 
+# Primary channel for the diagnostic report
 SLACK_URL  = os.environ.get("SLACK_ALERTS", "")
+
+# All five channels — tested by test_slack_channels() to confirm each webhook works
+SLACK_WEBHOOKS = {
+    "SLACK_TRADES":  os.environ.get("SLACK_TRADES",  ""),
+    "SLACK_SIGNALS": os.environ.get("SLACK_SIGNALS", ""),
+    "SLACK_ALERTS":  os.environ.get("SLACK_ALERTS",  ""),
+    "SLACK_WEEKLY":  os.environ.get("SLACK_WEEKLY",  ""),
+    "SLACK_DAILY":   os.environ.get("SLACK_DAILY",   ""),
+}
+
 DIAG_TICKERS = [
     t.strip().upper()
     for t in os.environ.get("DIAG_TICKERS", "NVDA,SPX500,XAUUSD").split(",")
@@ -336,6 +351,39 @@ def test_ig_health() -> dict:
 # Slack report
 # =============================================================================
 
+def test_slack_channels() -> list:
+    """
+    Send a lightweight probe message to all 5 Slack channels.
+    Returns one result dict per channel — confirms each webhook URL is set
+    and returns HTTP 200. Run as part of diagnostics after any deployment.
+    """
+    ts  = datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC")
+    results = []
+    channel_names = {
+        "SLACK_TRADES":  "#claude-trading-trades",
+        "SLACK_SIGNALS": "#claude-trading-signals",
+        "SLACK_ALERTS":  "#claude-trading-alerts",
+        "SLACK_WEEKLY":  "#claude-trading-weekly",
+        "SLACK_DAILY":   "#claude-trading-daily",
+    }
+    for secret_name, url in SLACK_WEBHOOKS.items():
+        channel = channel_names[secret_name]
+        name    = f"Slack {channel}"
+        if not url:
+            results.append(warn(name, "NOT SET — webhook URL missing from environment"))
+            continue
+        try:
+            probe = {"text": f"🔬 Diagnostics probe — {ts} — {channel} webhook OK"}
+            resp  = _requests.post(url, json=probe, timeout=10)
+            if resp.status_code == 200:
+                results.append(ok(name, "✅ Webhook responded 200"))
+            else:
+                results.append(fail(name, f"HTTP {resp.status_code} — {resp.text[:80]}"))
+        except Exception as e:
+            results.append(fail(name, str(e)))
+    return results
+
+
 def post_report(results: list, tickers: list):
     """Post test results to #claude-trading-alerts."""
     if not SLACK_URL:
@@ -378,6 +426,7 @@ def post_report(results: list, tickers: list):
         "signal_log": "DB writes",
         "positions": "DB writes",
         "IG": "IG",
+        "Slack": "Slack channels",
     }
     for r in results:
         icon  = {"ok": "✅", "warn": "⚠️", "fail": "❌"}.get(r["status"], "❓")
@@ -459,6 +508,9 @@ def main():
 
     # ── IG connectivity ───────────────────────────────────────────────────────
     results.append(test_ig_health())
+
+    # ── Slack channel coverage (all 5 webhooks) ───────────────────────────────
+    results.extend(test_slack_channels())
 
     # ── Report ────────────────────────────────────────────────────────────────
     post_report(results, tickers)

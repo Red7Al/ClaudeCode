@@ -18,7 +18,15 @@
 #   python run_uk_morning_brief.py
 #
 # Environment Variables Required:
-#   SUPABASE_USER, SUPABASE_DB_PASSWORD, SLACK_SIGNALS
+#   SUPABASE_USER, SUPABASE_DB_PASSWORD, SLACK_DAILY
+#
+# Version History:
+# -----------------------------------------------------------------------------
+# 1.0.0   2026-06-03  Alex Hind   Initial build. UK morning brief covering
+#                                 07:00–09:00 UTC window. Posts to
+#                                 #claude-trading-daily via SLACK_DAILY.
+# 1.0.1   2026-06-05  Alex Hind   Corrected SLACK_URL from SLACK_DAILY
+#                                 (was incorrectly set to SLACK_SIGNALS).
 # =============================================================================
 
 import os
