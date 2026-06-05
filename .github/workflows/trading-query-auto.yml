@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - run: pip install pg8000
+      - run: pip install pg8000 python-dotenv
       - name: Run query and write output
         run: python run_query.py > query_output.txt 2>&1
         env:

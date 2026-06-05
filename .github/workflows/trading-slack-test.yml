@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - run: pip install requests
+      - run: pip install requests python-dotenv
       - run: python run_slack_test.py
         env:
           SLACK_TRADES:   ${{ secrets.SLACK_TRADES }}
