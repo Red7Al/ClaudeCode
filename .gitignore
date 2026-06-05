@@ -15,6 +15,7 @@ aa_text*.txt
 aa_images/
 aa_unpacked/
 TradingSystem*.docx
+*.docx
 
 # Python
 __pycache__/
