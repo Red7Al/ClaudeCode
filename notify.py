@@ -564,6 +564,52 @@ def session_heartbeat(
     _send("signals", blocks)
 
 
+def alert_director_cluster_developing(session: str, clusters: list):
+    """
+    Alert that one or more tickers have 3+ insider Form 4 purchases in 30 days
+    but no full trade signal yet. These are DEVELOPING candidates — insiders are
+    accumulating before the technical setup has confirmed. Watch for price action
+    to form a tradeable entry.
+
+    clusters: list of dicts with keys: ticker, director_count, director_detail
+    Posts to #claude-trading-signals.
+    """
+    if not clusters:
+        return
+    lines = []
+    for c in clusters:
+        ticker  = c.get("ticker", "")
+        count   = c.get("director_count", 0)
+        detail  = c.get("director_detail", "")
+        lines.append(f"• *{ticker}* — {count} insider buys (Form 4)\n  _{detail}_")
+
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text",
+                     "text": f"👥 Director Cluster — Developing Candidates ({session})"}
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"*{len(clusters)} ticker(s)* with 3+ insider purchases in 30 days "
+                    f"— no trade signal yet.\n"
+                    f"Watch for technical setup (HVF, BB breakout, ORB) to confirm entry.\n\n"
+                    + "\n".join(lines)
+                )
+            }
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn",
+                          "text": f"_Not traded until price action confirms._ | {_ts()}"}]
+        },
+    ]
+    _send("signals", blocks)
+
+
 def alert_position_deterioration(session: str, ticker: str, direction: str, reasons: str):
     """
     Alert that an open position is showing intraday deterioration signals.

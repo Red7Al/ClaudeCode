@@ -532,11 +532,19 @@ def get_director_buys(ticker: str, days: int = 30) -> dict:
                 "entity": src.get("entity_name", ""),
             })
 
-        result["director_count"]  = len(purchases)
-        result["director_signal"] = len(purchases) >= 2
+        result["director_count"]          = len(purchases)
+        result["director_signal"]         = len(purchases) >= 2
+        # 3+ insiders buying simultaneously = strong cluster → developing candidate.
+        # Not traded immediately but surfaced as watchlist so the technical setup
+        # can be monitored.  When price action eventually confirms, the cluster
+        # will also satisfy the 2+ confirmation requirement.
+        result["director_cluster_strong"] = len(purchases) >= 3
         if purchases:
-            names = ", ".join(set(p["entity"] for p in purchases[:3]))
-            result["director_detail"] = f"{len(purchases)} Form 4 filings: {names}"
+            names = ", ".join(set(p["entity"] for p in purchases[:5]))
+            result["director_detail"] = (
+                f"{len(purchases)} Form 4 filings: {names}"
+                + (" [STRONG CLUSTER]" if len(purchases) >= 3 else "")
+            )
 
     except Exception as e:
         log.warning(f"Director buy check failed for {ticker}: {e}")
@@ -1644,8 +1652,9 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "analyst_count":            analyst.get("analyst_count"),
         "analyst_recent_upgrades":  analyst.get("recent_upgrades"),
         "analyst_narrative":        analyst.get("narrative"),
-        "director_signal":   directors.get("director_signal"),
-        "director_detail":   directors.get("director_detail"),
+        "director_signal":         directors.get("director_signal"),
+        "director_cluster_strong": directors.get("director_cluster_strong", False),
+        "director_detail":         directors.get("director_detail"),
         "activist_signal":   activist.get("activist_signal"),
         "activist_detail":   activist.get("activist_detail"),
         "senate_signal":     senate.get("senate_signal"),
@@ -1834,6 +1843,26 @@ def run_session_scan(session_name: str) -> dict:
         log.warning(f"Failed to send system error alert: {e}")
 
     trade_candidates = [s for s in instrument_signals if s.get("trade_signal")]
+
+    # Director cluster developing alert — 3+ insider Form 4 buys but no trade yet.
+    # These are early-stage opportunities: insiders are accumulating but the technical
+    # setup hasn't formed. Surface them so they can be watched.
+    try:
+        from notify import alert_director_cluster_developing
+        strong_clusters = [
+            {
+                "ticker":         s.get("ticker", ""),
+                "director_count": s.get("director_count", 0),
+                "director_detail": s.get("director_detail", ""),
+            }
+            for s in instrument_signals
+            if s.get("director_cluster_strong") and not s.get("trade_signal")
+        ]
+        if strong_clusters:
+            alert_director_cluster_developing(session_name, strong_clusters)
+            log.info(f"Director cluster developing alert: {len(strong_clusters)} ticker(s)")
+    except Exception as e:
+        log.warning(f"Director cluster alert failed: {e}")
 
     return {
         "session":           session_name,

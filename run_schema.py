@@ -151,6 +151,12 @@ MIGRATIONS = [
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS sector_dir text"
     ),
 
+    # ── signal_log: director cluster strong flag (added 2026-06-05) ─────────────
+    (
+        "signal_log: add director_cluster_strong",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS director_cluster_strong boolean"
+    ),
+
     # ── signal_log: elite senator / POTUS primary columns (added 2026-06-05) ──
     (
         "signal_log: add elite_senate_primary",
