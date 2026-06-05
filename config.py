@@ -488,7 +488,7 @@ CFTC_CODES = {
 # =============================================================================
 
 # Minimum risk/reward ratio — trades below this are not placed
-MIN_RISK_REWARD = 2.0
+MIN_RISK_REWARD = 2.5
 
 # Spread width limit — trades blocked if spread exceeds this % of mid price
 MAX_SPREAD_PCT = 0.005      # 0.5%

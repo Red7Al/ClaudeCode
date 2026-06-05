@@ -312,6 +312,7 @@ def signal_detail(ticker: str, signal: dict):
                 {"type": "mrkdwn", "text": f"*Stop distance:*\n{signal.get('stop_distance', '—')}"},
                 {"type": "mrkdwn", "text": f"*Direction:*\n{signal.get('direction', '—')}"},
                 {"type": "mrkdwn", "text": f"*Trade triggered:*\n{'Yes' if signal.get('trade_signal') else 'No'}"},
+                {"type": "mrkdwn", "text": f"*HVF R:R:*\n{f\"{signal.get('hvf_risk_reward'):.2f}:1\" if signal.get('hvf_risk_reward') else '—'}"},
             ]
         },
         {

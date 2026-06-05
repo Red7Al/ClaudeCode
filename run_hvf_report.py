@@ -203,7 +203,7 @@ def categorise(all_results: dict) -> tuple:
         for r in results:
             sig = r.get("hvf_signal", "")
             rr  = r.get("risk_reward") or 0
-            if sig in ("READY", "TRIGGERED") and rr >= 2.0:
+            if sig in ("READY", "TRIGGERED") and rr >= 2.5:
                 tradeable.append(r)
             elif sig == "DEVELOPING":
                 developing.append(r)
@@ -348,7 +348,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         "elements": [{"type": "mrkdwn",
                       "text": (f"HVF scanner: daily-30 · daily-60 · daily-90 · "
                                f"daily-220 · weekly | "
-                               f"Min 2:1 R:R to trade | "
+                               f"Min 2.5:1 R:R to trade | "
                                f"Generated {scan_time} UTC")}]
     })
 
