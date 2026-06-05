@@ -35,6 +35,9 @@
 # 1.1.0   2026-06-05  Alex Hind   Raised MIN_RISK_REWARD from 2.0 to 2.5.
 #                                 All trades (including HVF) now require
 #                                 minimum 2.5:1 risk/reward to be placed.
+# 1.2.0   2026-06-05  Alex Hind   Removed DAX from EPIC_MAP, OPTIONS_PROXY_MAP,
+#                                 YAHOO_MAP, and ATR_MULTIPLIERS. DAX suspended
+#                                 from trading until further notice.
 # =============================================================================
 
 
@@ -106,7 +109,6 @@ EPIC_MAP = {
     "FTSE100": "IX.D.FTSE.IFD.IP",         # FTSE 100 (alias)
     "JPN225":  "IX.D.NIKKEI.IFD.IP",       # Nikkei 225
     "HK50":    "IX.D.HSIF.IFD.IP",         # Hang Seng
-    "DAX":     "IX.D.DAX.IFD.IP",          # DAX 40
 
     # -------------------------------------------------------------------------
     # US Equities — Large Cap Tech (24-hour CFDs)
@@ -202,7 +204,6 @@ OPTIONS_PROXY_MAP = {
     "UK100":   "EWU",    # FTSE 100 → iShares MSCI United Kingdom ETF
     "JPN225":  "EWJ",    # Nikkei   → iShares MSCI Japan ETF
     "HK50":    "EWH",    # Hang Seng → iShares MSCI Hong Kong ETF
-    "DAX":     "EWG",    # DAX      → iShares MSCI Germany ETF
 
     # Commodities — ETF options reflect institutional sentiment well
     "XAUUSD":  "GLD",    # Gold     → SPDR Gold Shares (most liquid gold options)
@@ -239,7 +240,6 @@ YAHOO_MAP = {
     "UK100":   "^FTSE",
     "JPN225":  "^N225",
     "HK50":    "^HSI",
-    "DAX":     "^GDAXI",
 
     # Commodities
     "XAUUSD":  "GC=F",         # Gold futures (closest proxy for spot)
@@ -307,7 +307,6 @@ ATR_MULTIPLIERS = {
     "UK100":   1.5,
     "JPN225":  1.5,
     "HK50":    1.5,
-    "DAX":     1.5,
 
     # Gold — standard (strong trending instrument)
     "XAUUSD":  1.5,

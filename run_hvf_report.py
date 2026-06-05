@@ -5,7 +5,7 @@
 #
 # Description:
 # -----------------------------------------------------------------------------
-# Daily HVF Report — scans FTSE 100, FTSE 250, S&P 500 and DAX constituents
+# Daily HVF Report — scans FTSE 100, FTSE 250 and S&P 500 constituents
 # for Hunt Volatility Funnel patterns and posts a structured report to Slack.
 #
 # Three sections:
@@ -30,6 +30,8 @@
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-05  Alex Hind   Initial build. Multi-timeframe HVF scanner
 #                                 covering FTSE 100, FTSE 250, S&P 500 and DAX.
+# 1.0.2   2026-06-05  Alex Hind   Removed DAX from UNIVERSE scan. DAX suspended
+#                                 until further notice.
 #                                 Posts structured Block Kit report to Slack.
 #                                 Results logged to hvf_scan_log table.
 # 1.0.1   2026-06-05  Alex Hind   Raised tradeable filter to rr >= 2.5 and
@@ -125,30 +127,11 @@ SP500 = [
     "LIN", "APD", "NEE", "SO",
 ]
 
-DAX = [
-    # Autos
-    "VOW3.DE", "BMW.DE", "MBG.DE", "PAH3.DE",
-    # Financials
-    "DBK.DE", "CBK.DE", "ALV.DE", "MUV2.DE",
-    # Industrials
-    "SIE.DE", "DHL.DE", "RHM.DE", "MTX.DE", "BAS.DE",
-    # Tech / Telecoms
-    "SAP.DE", "IFX.DE", "DTE.DE",
-    # Healthcare
-    "MRK.DE", "BAYN.DE", "FRE.DE",
-    # Consumer / Retail
-    "ADS.DE", "HNR1.DE", "HEI.DE",
-    # Energy / Utilities
-    "ENR.DE", "RWE.DE", "E.ON.DE",
-    # Other
-    "AIR.DE", "HEN3.DE", "ZAL.DE", "VNA.DE", "SHL.DE",
-]
-
 UNIVERSE = {
     "FTSE 100":  FTSE100,
     "FTSE 250":  FTSE250,
     "S&P 500":   SP500,
-    "DAX":       DAX,
+    # DAX suspended 2026-06-05 — re-add when reinstated
 }
 
 
@@ -266,7 +249,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         "text": {"type": "mrkdwn",
                  "text": (f"*{len(tradeable)} tradeable* (READY/TRIGGERED ≥2:1 R:R)  |  "
                           f"*{len(developing)} developing* (valid pattern, R:R < 2:1)\n"
-                          f"Indices: FTSE 100 · FTSE 250 · S&P 500 · DAX")}
+                          f"Indices: FTSE 100 · FTSE 250 · S&P 500")}
     })
     blocks.append({"type": "divider"})
 
