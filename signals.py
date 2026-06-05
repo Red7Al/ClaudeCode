@@ -626,6 +626,121 @@ def get_senate_signal(ticker: str, days: int = 30) -> dict:
     return result
 
 # ---------------------------------------------------------------------------
+# 8b. ELITE SENATOR / POTUS PRIMARY SIGNAL
+# ---------------------------------------------------------------------------
+def get_potus_elite_senate_primary(ticker: str, days_senate: int = 60,
+                                   days_potus: int = 90) -> dict:
+    """
+    Primary signal — fires when a PROVEN top-performer or the President acts
+    on this stock.  Two independent triggers:
+
+    A) Elite senator buy
+       Senators with win_rate >= 0.70 AND qualified=true in senator_scores.
+       These are not merely "disclosed traders" — they have a documented track
+       record of outperforming the market.  When they buy, it matters.
+       Lookback: 60 days (covers the 45-day congressional disclosure window).
+
+    B) Presidential mention / recommendation
+       Check social_mentions table for any Trump entry on this ticker within
+       the last 90 days.  Presidential stock picks move markets regardless of
+       the fundamental thesis — that directional pressure is real.
+
+    Returns:
+        elite_senate_primary  bool   — elite senator bought this stock
+        elite_senator_name    str    — name of the senator (if A fired)
+        potus_primary         bool   — presidential mention/recommendation found
+        potus_detail          str    — context of the mention (if B fired)
+        primary_fired         bool   — True if either A or B fired
+        primary_source        str    — "ELITE_SENATE" | "POTUS" | "BOTH" | ""
+    """
+    result = {
+        "elite_senate_primary": False,
+        "elite_senator_name":   "",
+        "potus_primary":        False,
+        "potus_detail":         "",
+        "primary_fired":        False,
+        "primary_source":       "",
+    }
+
+    # ── A) Elite senator buy ─────────────────────────────────────────────────
+    try:
+        db = get_db()
+        try:
+            rows = db.run(
+                """select senator_name from senator_scores
+                   where qualified = true
+                     and win_rate  >= 0.70
+                   order by score desc"""
+            )
+            elite = [r[0].lower() for r in rows] if rows else []
+        finally:
+            db.close()
+
+        if elite:
+            resp = requests.get(
+                "https://www.capitoltrades.com/trades",
+                params={
+                    "chamber":   "senate",
+                    "assetType": "stock",
+                    "txType":    "purchase",
+                    "issuer":    ticker,
+                    "pageSize":  20,
+                },
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=15
+            )
+            text = resp.text.lower()
+            matched = [s for s in elite if s in text]
+            if matched:
+                result["elite_senate_primary"] = True
+                result["elite_senator_name"]   = matched[0]
+                log.info(f"{ticker}: ELITE SENATOR BUY — {matched[0].title()} "
+                         f"(win_rate>=70%)")
+
+    except Exception as e:
+        log.warning(f"Elite senate primary check failed for {ticker}: {e}")
+
+    # ── B) Presidential mention ───────────────────────────────────────────────
+    try:
+        db = get_db()
+        try:
+            since = (datetime.now() - timedelta(days=days_potus)).strftime("%Y-%m-%d")
+            rows = db.run(
+                """select account, context from social_mentions
+                   where lower(ticker) = lower(:tk)
+                     and lower(account) like '%trump%'
+                     and mention_date >= :since
+                   order by mention_date desc
+                   limit 1""",
+                tk=ticker, since=since
+            )
+        finally:
+            db.close()
+
+        if rows:
+            account, context = rows[0][0], rows[0][1]
+            result["potus_primary"] = True
+            result["potus_detail"]  = f"POTUS mention ({account}): {str(context)[:120]}"
+            log.info(f"{ticker}: POTUS PRIMARY — presidential mention in last {days_potus}d")
+
+    except Exception as e:
+        log.warning(f"POTUS primary check failed for {ticker}: {e}")
+
+    # ── Combine ───────────────────────────────────────────────────────────────
+    if result["elite_senate_primary"] and result["potus_primary"]:
+        result["primary_fired"]  = True
+        result["primary_source"] = "BOTH"
+    elif result["elite_senate_primary"]:
+        result["primary_fired"]  = True
+        result["primary_source"] = "ELITE_SENATE"
+    elif result["potus_primary"]:
+        result["primary_fired"]  = True
+        result["primary_source"] = "POTUS"
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # 9. SUPERINVESTOR SIGNAL — Dataroma
 # ---------------------------------------------------------------------------
 SUPERINVESTORS = [
@@ -1265,6 +1380,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     directors  = get_director_buys(ticker)
     activist  = get_activist_signal(ticker)
     senate    = get_senate_signal(ticker)
+    potus_sen = get_potus_elite_senate_primary(ticker)
     superinv  = get_superinvestor_signal(ticker)
     social    = get_social_mentions(ticker)
     atr_data  = get_atr(ticker)
@@ -1325,6 +1441,8 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     # Primary 4: ADX +DI/-DI       — directional index gap ≥5 with ADX ≥20 (trending market)
     # Primary 5: ORB breakout      — price beyond first 30-min session range
     # Primary 6: 52-week extreme   — price within 0.5% of 52-week high/low
+    # Primary 7: Elite senator/POTUS — top-performing senator (win_rate≥70%) or
+    #            presidential mention buying this equity
     # (Sector alignment demoted to confirmation — fires on too many equity scans as primary)
     primary_count = 0
     primary_dir   = []
@@ -1389,6 +1507,15 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         primary_dir.append(week52_dir)
         log.info(f"{ticker}: {week52.get('week52_signal')} ({week52.get('pct_from_high')}% from 52w high, "
                  f"{week52.get('pct_from_low')}% from 52w low) → {week52_dir}")
+
+    # Elite senator / POTUS primary — direction inferred from the buy itself
+    # (a disclosed purchase is inherently bullish; POTUS mentions are context-driven
+    # but historically bullish for the named stock)
+    if potus_sen.get("primary_fired"):
+        primary_count += 1
+        primary_dir.append("BULLISH")
+        log.info(f"{ticker}: ELITE/POTUS PRIMARY — {potus_sen.get('primary_source')} "
+                 f"({potus_sen.get('elite_senator_name') or potus_sen.get('potus_detail','')})")
 
     sector_dir = sector.get("sector_dir")
 
@@ -1517,6 +1644,10 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "activist_detail":   activist.get("activist_detail"),
         "senate_signal":     senate.get("senate_signal"),
         "senate_senator":    senate.get("senate_senator"),
+        "elite_senate_primary": potus_sen.get("elite_senate_primary"),
+        "elite_senator_name":   potus_sen.get("elite_senator_name"),
+        "potus_primary":        potus_sen.get("potus_primary"),
+        "potus_detail":         potus_sen.get("potus_detail"),
         "notable_investor":  superinv.get("notable_investor"),
         "social_mention":    social.get("social_mention"),
 
@@ -1547,6 +1678,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                (session, ticker, macro_gate_pass, options_bias, call_put_ratio, iv_rank,
                 gex_bias, vwap_position, cot_bias, bb_squeeze, bb_breakout_dir,
                 director_signal, activist_signal, senate_signal, senate_senator,
+                elite_senate_primary, elite_senator_name, potus_primary,
                 notable_investor, social_mention, primary_count, confirmation_count,
                 direction, pa_verdict, pa_score, trade_triggered,
                 adx_signal, adx_dir, obv_signal, volume_signal, volume_ratio,
@@ -1557,6 +1689,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                values (:v_session, :v_ticker, :v_mgp, :v_opts_bias, :v_call_put, :v_ivr,
                        :v_gex_bias, :v_vwap_pos, :v_cot_bias, :v_bb_squeeze, :v_bb_breakout,
                        :v_director, :v_activist, :v_senate, :v_senator_name,
+                       :v_elite_senate, :v_elite_senator, :v_potus,
                        :v_notable, :v_social, :v_primaries, :v_confirms, :v_direction,
                        :v_pa_verdict, :v_pa_score, :v_triggered,
                        :v_adx, :v_adx_dir, :v_obv, :v_vol_sig, :v_vol_ratio,
@@ -1572,6 +1705,9 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
             v_bb_breakout=squeeze.get("bb_breakout_dir"),
             v_director=directors.get("director_signal"), v_activist=activist.get("activist_signal"),
             v_senate=senate.get("senate_signal"), v_senator_name=senate.get("senate_senator"),
+            v_elite_senate=potus_sen.get("elite_senate_primary"),
+            v_elite_senator=potus_sen.get("elite_senator_name"),
+            v_potus=potus_sen.get("potus_primary"),
             v_notable=superinv.get("notable_investor"), v_social=social.get("social_mention"),
             v_primaries=primary_count, v_confirms=conf_count, v_direction=direction,
             v_pa_verdict=price_act.get("verdict"), v_pa_score=price_act.get("pa_score"),

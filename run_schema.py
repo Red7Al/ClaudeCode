@@ -151,6 +151,26 @@ MIGRATIONS = [
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS sector_dir text"
     ),
 
+    # ── signal_log: elite senator / POTUS primary columns (added 2026-06-05) ──
+    (
+        "signal_log: add elite_senate_primary",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS elite_senate_primary boolean"
+    ),
+    (
+        "signal_log: add elite_senator_name",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS elite_senator_name text"
+    ),
+    (
+        "signal_log: add potus_primary",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS potus_primary boolean"
+    ),
+
+    # ── senator_scores: add win_rate index for elite query performance ─────────
+    (
+        "senator_scores: index on win_rate",
+        "CREATE INDEX IF NOT EXISTS idx_senator_scores_win_rate ON senator_scores(win_rate DESC)"
+    ),
+
     # ── hvf_scan_log table (added 2026-06-05) ─────────────────────────────────
     (
         "create hvf_scan_log",
