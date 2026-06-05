@@ -29,6 +29,11 @@
 #                                 activity history for STOP_HIT / TARGET_HIT etc.
 #                                 Add get_open_positions() 404 guard (no positions
 #                                 returns empty list, not an error).
+# 1.0.2   2026-06-03  Alex Hind   check_circuit_breakers: retry Supabase user_profile
+#                                 query up to 2 times (2s delay) before returning
+#                                 "User profile not found". Guards against transient
+#                                 connection drops that return empty rows for a valid
+#                                 user_id (seen in production for KEEL 04-Jun-2026).
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -476,39 +481,52 @@ def check_circuit_breakers(user_id: str, ticker: str) -> tuple[bool, str]:
         (False, reason_string) — trade is blocked, reason explains why
     """
 
-    db = get_db()
-    try:
-        rows = db.run(
-            """select up.daily_loss_limit,
-                      up.max_open_pos,
-                      coalesce(dp.daily_loss_hit, false) as loss_hit,
-                      coalesce(dp.total_pnl, 0)          as pnl,
-                      (select count(*)
-                       from   positions p
-                       where  p.user_id    = up.id
-                       and    p.paper_trade = up.paper_trade) as open_count
-               from   user_profiles up
-               left   join daily_pnl dp
-                      on dp.user_id    = up.id
-                      and dp.trade_date = current_date
-               where  up.id = :uid""",
-            uid=user_id
-        )
-        if not rows:
-            return False, "User profile not found in Supabase"
+    # Retry up to 2 times on empty result or exception — guards against transient
+    # Supabase connection drops that return no rows for a valid user_id.
+    _MAX_RETRIES = 2
+    _RETRY_DELAY = 2  # seconds
+    rows = None
+    for _attempt in range(1, _MAX_RETRIES + 2):  # attempts: 1, 2, 3
+        db = get_db()
+        try:
+            rows = db.run(
+                """select up.daily_loss_limit,
+                          up.max_open_pos,
+                          coalesce(dp.daily_loss_hit, false) as loss_hit,
+                          coalesce(dp.total_pnl, 0)          as pnl,
+                          (select count(*)
+                           from   positions p
+                           where  p.user_id    = up.id
+                           and    p.paper_trade = up.paper_trade) as open_count
+                   from   user_profiles up
+                   left   join daily_pnl dp
+                          on dp.user_id    = up.id
+                          and dp.trade_date = current_date
+                   where  up.id = :uid""",
+                uid=user_id
+            )
+            if rows:
+                break  # got a result — proceed
+            log.warning(f"check_circuit_breakers: empty result for user {user_id} (attempt {_attempt})")
+        except Exception as e:
+            log.warning(f"check_circuit_breakers: DB error on attempt {_attempt}: {e}")
+        finally:
+            db.close()
+        if _attempt <= _MAX_RETRIES:
+            time.sleep(_RETRY_DELAY)
 
-        daily_loss_limit, max_open_pos, loss_hit, total_pnl, open_count = rows[0]
+    if not rows:
+        return False, "User profile not found in Supabase"
 
-        # Check 1 — daily loss limit
-        if loss_hit:
-            return False, "Daily loss limit already triggered for today"
+    daily_loss_limit, max_open_pos, loss_hit, total_pnl, open_count = rows[0]
 
-        # Check 2 — max open positions
-        if open_count >= max_open_pos:
-            return False, f"Max open positions reached ({open_count}/{max_open_pos})"
+    # Check 1 — daily loss limit
+    if loss_hit:
+        return False, "Daily loss limit already triggered for today"
 
-    finally:
-        db.close()
+    # Check 2 — max open positions
+    if open_count >= max_open_pos:
+        return False, f"Max open positions reached ({open_count}/{max_open_pos})"
 
     # Check 3 — spread width
     try:
