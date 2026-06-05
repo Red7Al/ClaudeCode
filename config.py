@@ -32,6 +32,9 @@
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Epics verified against live
 #                                 IG account HTIRV. Seeded into Supabase
 #                                 epic_lookup table on 2026-05-30.
+# 1.1.0   2026-06-05  Alex Hind   Raised MIN_RISK_REWARD from 2.0 to 2.5.
+#                                 All trades (including HVF) now require
+#                                 minimum 2.5:1 risk/reward to be placed.
 # =============================================================================
 
 

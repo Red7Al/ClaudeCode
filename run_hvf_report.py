@@ -9,8 +9,8 @@
 # for Hunt Volatility Funnel patterns and posts a structured report to Slack.
 #
 # Three sections:
-#   READY/TRIGGERED  — patterns meeting ≥2:1 R:R, tradeable now
-#   DEVELOPING       — valid pattern structure, R:R < 2:1, watch list
+#   READY/TRIGGERED  — patterns meeting ≥2.5:1 R:R, tradeable now
+#   DEVELOPING       — valid pattern structure, R:R < 2.5:1, watch list
 #   IN PLAY          — patterns that have TRIGGERED and are open/active
 #
 # Multi-timeframe scanner (daily-220, daily-90, daily-60, daily-30, weekly):
@@ -25,6 +25,16 @@
 # Environment Variables:
 #   SLACK_SIGNALS (webhook URL for #claude-trading-signals)
 #   SUPABASE_USER, SUPABASE_DB_PASSWORD (for logging results)
+#
+# Version History:
+# -----------------------------------------------------------------------------
+# 1.0.0   2026-06-05  Alex Hind   Initial build. Multi-timeframe HVF scanner
+#                                 covering FTSE 100, FTSE 250, S&P 500 and DAX.
+#                                 Posts structured Block Kit report to Slack.
+#                                 Results logged to hvf_scan_log table.
+# 1.0.1   2026-06-05  Alex Hind   Raised tradeable filter to rr >= 2.5 and
+#                                 updated footer label and section descriptions
+#                                 to reflect new 2.5:1 threshold.
 # =============================================================================
 
 import os

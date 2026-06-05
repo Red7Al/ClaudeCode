@@ -20,6 +20,12 @@
 #   python run_session.py POSITION_MONITOR
 #
 # All credentials loaded from environment variables (GitHub Secrets).
+#
+# Version History:
+# -----------------------------------------------------------------------------
+# 1.0.0   2026-06-01  Alex Hind   Initial build. Routes all session names to
+#                                 their respective handlers. Duplicate-run guard
+#                                 added via already_ran_today().
 # =============================================================================
 
 import sys

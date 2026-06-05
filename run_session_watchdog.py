@@ -19,6 +19,12 @@
 #
 # Environment Variables Required:
 #   SUPABASE_USER, SUPABASE_DB_PASSWORD, SLACK_ALERTS
+#
+# Version History:
+# -----------------------------------------------------------------------------
+# 1.0.0   2026-06-03  Alex Hind   Initial build. Monitors AUS_OPEN, UK_OPEN,
+#                                 US_OPEN signal windows and alerts Slack if
+#                                 a session is overdue or produced no signals.
 # =============================================================================
 
 import os

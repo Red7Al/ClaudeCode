@@ -16,6 +16,12 @@
 # Environment Variables Required:
 #   SUPABASE_USER         Supabase PostgreSQL user (postgres.{project_id})
 #   SUPABASE_DB_PASSWORD  Supabase database password
+#
+# Version History:
+# -----------------------------------------------------------------------------
+# 1.0.0   2026-06-02  Alex Hind   Initial build. Idempotent migrations for
+#                                 signal_log, positions, macro_snapshot,
+#                                 hvf_scan_log, and epic_lookup tables.
 # =============================================================================
 
 import os

@@ -23,6 +23,13 @@
 # Environment Variables Required:
 #   SUPABASE_USER, SUPABASE_DB_PASSWORD
 #   SLACK_TRADES
+#
+# Version History:
+# -----------------------------------------------------------------------------
+# 1.0.0   2026-06-01  Alex Hind   Initial build. Full end-of-day report covering
+#                                 macro, trades opened/closed, overnight positions,
+#                                 notable missed moves, daily P&L, and tomorrow's
+#                                 economic calendar.
 # =============================================================================
 
 import os

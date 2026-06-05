@@ -22,6 +22,9 @@
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Four channels, Block Kit
 #                                 formatting, test harness included.
+# 1.1.0   2026-06-05  Alex Hind   Added HVF R:R field to signal_detail Slack
+#                                 block. Shows calculated ratio (e.g. 2.73:1)
+#                                 on every trade signal message.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------

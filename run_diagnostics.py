@@ -27,6 +27,13 @@
 #
 # GitHub Actions: trigger "Deployment Diagnostics" workflow manually from
 #   the Actions tab. Always safe — never places real trades.
+#
+# Version History:
+# -----------------------------------------------------------------------------
+# 1.0.0   2026-06-03  Alex Hind   Initial build. Tests macro, options, GEX,
+#                                 price action, signal stack, DB writes, and
+#                                 IG connectivity. Posts ✅/❌/⚠ report to
+#                                 #claude-trading-alerts.
 # =============================================================================
 
 import os
