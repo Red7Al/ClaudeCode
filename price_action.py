@@ -1153,8 +1153,9 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
 
     candidates = []
 
-    # ── daily-220 and daily-90 ────────────────────────────────────────────────
-    for days, label in [(220, "daily-220"), (90, "daily-90")]:
+    # ── daily-220, daily-90, daily-60, daily-30 ──────────────────────────────
+    for days, label in [(220, "daily-220"), (90, "daily-90"),
+                        (60, "daily-60"),   (30, "daily-30")]:
         try:
             r = get_hvf_signal(ticker, lookback_days=days, trend_hint=trend_hint)
             if r.get("hvf_type"):

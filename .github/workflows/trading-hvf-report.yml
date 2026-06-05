@@ -1,0 +1,31 @@
+name: HVF Daily Report
+
+on:
+  schedule:
+    - cron: '0 7 * * 1-5'    # 07:00 UTC Mon-Fri — before UK open
+  workflow_dispatch:           # also triggerable manually
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30        # scan 200+ tickers across 5 timeframes
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_schema.py
+        env:
+          SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - run: python run_hvf_report.py
+        env:
+          SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
+          SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}

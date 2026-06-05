@@ -286,3 +286,23 @@ create table if not exists geopolitical_risk (
     created_at   timestamptz default now(),
     updated_at   timestamptz default now()
 );
+
+
+-- ---------------------------------------------------------------------------
+-- hvf_scan_log  (daily HVF report — one row per pattern per scan)
+-- ---------------------------------------------------------------------------
+create table if not exists hvf_scan_log (
+    id              uuid primary key default gen_random_uuid(),
+    scan_time       text not null,
+    ticker          text not null,
+    index_name      text,
+    hvf_type        text,
+    hvf_signal      text,
+    hvf_timeframe   text,
+    pattern_quality integer,
+    risk_reward     numeric,
+    entry_level     numeric,
+    stop_level      numeric,
+    target          numeric,
+    recorded_at     timestamptz default now()
+);
