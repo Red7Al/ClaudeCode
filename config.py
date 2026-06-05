@@ -39,6 +39,10 @@
 #                                 OPTIONS_PROXY_MAP, YAHOO_MAP, ATR_MULTIPLIERS.
 #                                 DAX suspended from trading until further notice.
 # 1.3.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF to SESSION_INSTRUMENTS
+# 1.4.0   2026-06-05  Alex Hind   Added PA_CONFIRM_THRESHOLDS and
+#                                 PA_CONFIRM_THRESHOLD_DEFAULT — per-instrument
+#                                 PA gate thresholds. Crypto=25, FX/metals=30-35,
+#                                 equities/indices=40 (default).
 #                                 with 24/7 instruments: crypto, XAUUSD (Spot Gold),
 #                                 and FX pairs active on Sunday evening.
 # =============================================================================
@@ -555,6 +559,41 @@ SPX_STRESS_PCT      = -1.0   # SPX down 1–2.5% → STRESS mode (position sizes
 # 1.5× was too sensitive (fires on normal strong trending days).
 # 2.5× is too loose (NVDA -8% would still pass).
 INTRADAY_GUARD_ATR_MULTIPLIER = 2.0
+
+# =============================================================================
+# Price Action Confirmation Thresholds
+# The PA score must reach ± threshold before a trade fires.
+# Higher = more conservative. Lower = more sensitive.
+#
+# Root cause of missed crypto shorts on 2026-06-05:
+#   ETHUSD (Ethereum) had pa_score=-35 with 5 primary SELL signals and HVF TRIGGERED.
+#   The fixed ±40 threshold blocked it. Crypto moves violently intraday without
+#   breaking weekly chart structure, so a lower threshold is appropriate.
+#
+# HVF TRIGGERED bypass (in price_action.py):
+#   When HVF signal is TRIGGERED in the same direction as the trade, the effective
+#   threshold is halved (min 15). Price has already voted via the pattern trigger.
+# =============================================================================
+
+PA_CONFIRM_THRESHOLD_DEFAULT = 40   # US/UK equities, indices — standard
+
+PA_CONFIRM_THRESHOLDS = {
+    # Crypto — violent intraday moves without weekly structure breaking
+    "BTCUSD": 25,  "BITCOIN": 25,
+    "ETHUSD": 25,
+    "XRPUSD": 25,
+    "SOLUSD": 25,
+    "BNBUSD": 25,
+    # Precious metals — fast-moving on macro news
+    "XAUUSD": 30,  "GOLD": 30,  "SPOTGOLD": 30,
+    "XAGUSD": 30,  "SILVER": 30,
+    # Energy — macro / geopolitical driven
+    "OIL": 35,  "USOIL": 35,  "CL": 35,
+    # FX — slightly more sensitive than equities
+    "GBPUSD": 35,  "AUDUSD": 35,  "USDJPY": 35,  "EURUSD": 35,
+    "USDCAD": 35,  "USDCHF": 35,  "NZDUSD": 35,
+    # All unlisted instruments use PA_CONFIRM_THRESHOLD_DEFAULT (40)
+}
 
 # Signal thresholds
 # Design decision: "trade fires when gate passes + 1 primary + 1 confirmation"

@@ -71,6 +71,11 @@
 # 1.1.0   2026-06-05  Alex Hind   Raised HVF_MIN_RR from 2.0 to 2.5 in both
 #                                 single-timeframe and multi-timeframe scanners
 #                                 to match MIN_RISK_REWARD in config.py.
+# 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto
+#                                 now uses threshold=25, FX/commodities 30-35,
+#                                 equities/indices keep default 40.
+#                                 HVF TRIGGERED bypass (Fix 2): threshold halved
+#                                 when HVF has confirmed entry — price has voted.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -82,7 +87,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from config import YAHOO_MAP, HVF_MIN_RR
+from config import YAHOO_MAP, HVF_MIN_RR, PA_CONFIRM_THRESHOLDS, PA_CONFIRM_THRESHOLD_DEFAULT
 
 log = logging.getLogger("price_action")
 
@@ -1369,6 +1374,42 @@ def analyse_price_action(ticker: str) -> dict:
     hvf         = get_hvf_signal_mtf(ticker, trend_hint=trend)
 
     score, verdict = compute_price_action_score(range_bo, trend, atr_comp, ma_align, failed, candlestick)
+
+    # ── Fix 1: per-instrument PA threshold ────────────────────────────────────
+    # compute_price_action_score uses the fixed module-level ±40 thresholds.
+    # Override the verdict here using the per-class threshold from config.
+    # Crypto uses 25, FX/commodities 30–35, equities/indices keep the default 40.
+    thresh = PA_CONFIRM_THRESHOLDS.get(ticker, PA_CONFIRM_THRESHOLD_DEFAULT)
+    if thresh != PA_CONFIRM_THRESHOLD_DEFAULT:
+        # Re-apply verdict with the instrument-specific threshold
+        if score >= thresh:
+            verdict = "CONFIRM_LONG"
+        elif score <= -thresh:
+            verdict = "CONFIRM_SHORT"
+        else:
+            verdict = "WAIT"
+
+    # ── Fix 2: HVF TRIGGERED bypass ────────────────────────────────────────
+    # If the HVF pattern has already triggered (price through H3/L3) in the
+    # correct direction, halve the effective threshold — price has voted.
+    # Floor at 15 to prevent zero-threshold on very low-threshold instruments.
+    # This mirrors the existing logic where HVF bypasses the primary signal count.
+    hvf_signal = hvf.get("hvf_signal")
+    hvf_type   = hvf.get("hvf_type")
+    if hvf_signal == "TRIGGERED" and verdict == "WAIT":
+        bypass = max(thresh * 0.5, 15)
+        if hvf_type == "BULLISH" and score >= bypass:
+            verdict = "CONFIRM_LONG"
+            log.info(
+                f"HVF TRIGGERED bypass: {ticker} promoted WAIT → CONFIRM_LONG "
+                f"(pa_score={score:+.1f} bypass_threshold={bypass:.0f})"
+            )
+        elif hvf_type == "BEARISH" and score <= -bypass:
+            verdict = "CONFIRM_SHORT"
+            log.info(
+                f"HVF TRIGGERED bypass: {ticker} promoted WAIT → CONFIRM_SHORT "
+                f"(pa_score={score:+.1f} bypass_threshold={-bypass:.0f})"
+            )
 
     result = {
         "ticker":           ticker,

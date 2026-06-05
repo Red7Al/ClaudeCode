@@ -29,6 +29,10 @@
 # 1.1.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF handler — was listed in
 #                                 usage help but crashed with "Unknown session"
 #                                 when triggered by the Sunday scheduled task.
+# 1.2.0   2026-06-05  Alex Hind   Fix 3: when calculated position size is zero,
+#                                 fire Slack alert via alert_circuit_breaker().
+#                                 Previously silently skipped — violates no-silent-
+#                                 failures policy.
 # =============================================================================
 
 import sys
@@ -228,7 +232,16 @@ def run_session_open(session_name: str):
             log.info(f"Stress mode: size reduced {int((1-stress_mult)*100)}% for {ticker}")
 
         if size <= 0:
-            log.info(f"Skipping {ticker} — position size is zero (account too small for margin)")
+            # Trade was triggered by signals but blocked at execution — NOT a silent skip.
+            # Alert to Slack so the user can see which trades were ready but couldn't fire.
+            msg = (
+                f"{ticker} ({direction}) — trade triggered by signals but skipped: "
+                f"calculated size is zero. Likely cause: account available balance is "
+                f"too small to meet IG's minimum deal size for this instrument. "
+                f"Review account balance or reduce risk_per_trade in user_profiles."
+            )
+            log.warning(msg)
+            alert_circuit_breaker("Triggered trade skipped — insufficient margin", ticker, msg)
             continue
 
         trade_result = open_trade(
