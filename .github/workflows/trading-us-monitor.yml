@@ -1,8 +1,6 @@
 name: US Monitor (15 min)
 
 on:
-  schedule:
-    - cron: '*/20 14-20 * * 1-5'  # Every 20 min, 14:00-20:59 UTC (US session)
   workflow_dispatch:
 
 env:

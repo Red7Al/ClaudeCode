@@ -1,8 +1,6 @@
 name: HVF Daily Report
 
 on:
-  schedule:
-    - cron: '0 7 * * 1-5'    # 07:00 UTC Mon-Fri — before UK open
   workflow_dispatch:           # also triggerable manually
 
 env:

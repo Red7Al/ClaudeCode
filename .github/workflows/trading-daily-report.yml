@@ -1,8 +1,6 @@
 name: Daily Trading Report
 
 on:
-  schedule:
-    - cron: '30 21 * * 1-5'  # 21:30 UTC Monday–Friday (30 min after session close)
   workflow_dispatch:          # manual trigger for testing
 
 env:

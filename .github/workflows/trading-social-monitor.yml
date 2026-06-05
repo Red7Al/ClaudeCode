@@ -1,9 +1,6 @@
 name: Social Feed Monitor (2 hourly)
 
 on:
-  schedule:
-    - cron: '3 7-22 * * 1-5'     # Every hour, 07:00-22:00 UTC weekdays
-    - cron: '3 10,14,18 * * 0,6' # 3x on weekends (Sat/Sun)
   workflow_dispatch:
 
 env:

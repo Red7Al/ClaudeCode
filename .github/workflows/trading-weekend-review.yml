@@ -1,8 +1,6 @@
 name: Weekend Review
 
 on:
-  schedule:
-    - cron: '0 9 * * 6'     # 09:00 UTC Saturday
   workflow_dispatch:
 
 env:
