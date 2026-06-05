@@ -24,6 +24,13 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-01  Alex Hind   Initial build.
+# 1.0.1   2026-06-05  Alex Hind   get_intraday_signals: do not fall back to 5m data
+#                                 when 1h data is unavailable. RSI/MACD on 5m bars
+#                                 is 10× more reactive than intended (14 bars = 1.2h
+#                                 instead of 14h) — silent wrong-timeframe signals.
+#                                 Now logs a warning and skips RSI/MACD instead.
+#                                 Position size fallback 0.5 → 0.0 on exception;
+#                                 same dangerous pattern fixed in ig_shim.py 1.0.3.
 # =============================================================================
 
 import os
@@ -284,10 +291,18 @@ def scan_intraday(ticker: str) -> dict:
             return result
 
         closes_5m = hist["Close"]
-        closes_1h = hist_h["Close"] if not hist_h.empty else closes_5m
+        if hist_h.empty:
+            # 1h data unavailable — do not fall back to 5m data. RSI/MACD
+            # computed on 5m bars gives 10× more reactive signals than intended
+            # (14-period = 1.2h instead of 14h). Return without RSI/MACD rather
+            # than produce signals from the wrong timeframe silently.
+            log.warning(f"Intraday 1h data unavailable for {ticker} — RSI/MACD skipped")
+            closes_1h = None
+        else:
+            closes_1h = hist_h["Close"]
 
         # RSI on 1h for smoother signal
-        if len(closes_1h) >= 14:
+        if closes_1h is not None and len(closes_1h) >= 14:
             rsi = compute_rsi(closes_1h)
             result["rsi"] = rsi
             if rsi >= 75:
@@ -298,7 +313,7 @@ def scan_intraday(ticker: str) -> dict:
                 result["rsi_signal"] = "NEUTRAL"
 
         # MACD on 1h
-        if len(closes_1h) >= 35:
+        if closes_1h is not None and len(closes_1h) >= 35:
             result["macd"] = compute_macd(closes_1h)
 
         # VWAP on 5m (intraday)
@@ -443,10 +458,10 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                             try:
                                 bal         = get_account_balance()
                                 risk_amount = bal["available"] * 0.02
-                                size        = round(risk_amount / stop_dist, 1) if stop_dist > 0 else 0.5
-                                size        = max(0.5, min(size, 10.0))
+                                size        = round(risk_amount / stop_dist, 1) if stop_dist > 0 else 0.0
+                                size        = max(0.5, min(size, 10.0)) if size > 0 else 0.0
                             except Exception:
-                                size = 0.5
+                                size = 0.0  # skip trade on error — 0.5 fallback caused INSUFFICIENT_FUNDS
                             signal_str = (
                                 f"Options:{sig.get('options_bias','—')} "
                                 f"BB:{sig.get('bb_breakout_dir','—')} "

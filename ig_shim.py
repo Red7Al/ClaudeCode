@@ -41,6 +41,12 @@
 #                                 Exception fallback changed from 0.5 to 0.0 (safe).
 #                                 open_trade: resolve user display name from
 #                                 user_profiles instead of hardcoded "Owner".
+# 1.0.4   2026-06-05  Alex Hind   open_trade paper trade path: return dict instead
+#                                 of bare string. Caller accessed trade_result["level"]
+#                                 which crashed with TypeError on paper trades because
+#                                 string indices must be integers. Now returns
+#                                 {"deal_id", "level": 0.0, "stop_level": 0.0,
+#                                 "limit_level": 0.0} matching live trade format.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -635,16 +641,20 @@ def open_trade(
 
     # Step 3 — Paper trade: log only, skip IG
     if paper_trade:
+        paper_id = f"PAPER-{int(time.time())}"
         log.info(f"[PAPER] {direction} {size} x {ticker} (epic={epic})")
         _log_position_to_db(
             user_id=user_id, epic=epic, ticker=ticker,
             direction=direction, size=size,
             open_price=0, stop_loss=0, take_profit=0,
-            deal_id=f"PAPER-{int(time.time())}",
+            deal_id=paper_id,
             paper_trade=True, session_name=session_name,
             signal_summary=signal_summary
         )
-        return f"PAPER-{int(time.time())}"
+        # Return a dict matching the live trade format so callers can treat
+        # paper and live results identically. Previously returned a bare string
+        # which caused TypeError when caller accessed trade_result["level"].
+        return {"deal_id": paper_id, "level": 0.0, "stop_level": 0.0, "limit_level": 0.0}
 
     # Step 4 — Market checks: status, min stop, spread-to-stop ratio
     try:
