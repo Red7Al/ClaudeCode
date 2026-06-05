@@ -1570,12 +1570,12 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     pa_confirmed      = pa_confirms_long or pa_confirms_short
 
     # Standalone bypasses — signals high-conviction enough to pass primary gate alone:
-    #   HVF:  complete setup with entry/stop/target pre-calculated
-    #   BOTH: elite senator AND president simultaneously on the same stock —
-    #         two completely independent insider signals is the highest political
-    #         conviction possible; no other primary needed
-    potus_and_senate = potus_sen.get("primary_source") == "BOTH"
-    primary_gate = (primary_count >= MIN_PRIMARY_SIGNALS) or hvf_fired or potus_and_senate
+    #   HVF:              complete setup with entry/stop/target pre-calculated
+    #   Elite senate:     senator with ≥70% win-rate disclosed a buy
+    #   POTUS:            presidential mention/recommendation
+    #   Either or both of the above two count — no second primary needed
+    potus_or_senate = potus_sen.get("primary_fired", False)
+    primary_gate = (primary_count >= MIN_PRIMARY_SIGNALS) or hvf_fired or potus_or_senate
 
     trade_signal = (
         macro.get("macro_gate_pass", False) and
