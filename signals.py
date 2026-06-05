@@ -1686,7 +1686,12 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     # pg8000.native uses :param_name style. $N positional style fails with
     # "list index out of range" because pg8000 accesses args[N] not args[N-1].
     # Using verbose v_ prefixed names ensures the parser finds all placeholders.
-    try:
+    # Retry up to 2 times on pg8000 08P01 bind errors (prepared-statement cache
+    # collision seen in production for OIL on 2026-06-04 — transient, self-clears
+    # with a fresh connection on retry).
+    _INSERT_MAX_RETRIES = 2
+    for _insert_attempt in range(1, _INSERT_MAX_RETRIES + 2):
+      try:
         db = get_db()
         db.run(
             """insert into signal_log
@@ -1739,10 +1744,19 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
             v_sector_etf=sector.get("sector_etf"), v_sector_dir=sector_dir
         )
         db.close()
-    except Exception as e:
-        log.warning(f"Failed to log signal for {ticker}: {e}")
-        signal["_log_failed"] = True
-        signal["_log_error"]  = str(e)
+        break  # success — exit retry loop
+      except Exception as e:
+        try:
+            db.close()
+        except Exception:
+            pass
+        if _insert_attempt <= _INSERT_MAX_RETRIES:
+            log.warning(f"signal_log INSERT attempt {_insert_attempt} failed for {ticker}: {e} — retrying")
+            time.sleep(1)
+        else:
+            log.warning(f"Failed to log signal for {ticker} after {_INSERT_MAX_RETRIES + 1} attempts: {e}")
+            signal["_log_failed"] = True
+            signal["_log_error"]  = str(e)
 
     return signal
 

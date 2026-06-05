@@ -219,7 +219,15 @@ def test_full_scan(ticker: str) -> dict:
 
 
 def test_signal_log_insert() -> dict:
-    """Write a test row to signal_log then delete it. Verifies pg8000 positional param fix."""
+    """
+    Write a test row to signal_log then delete it.
+
+    IMPORTANT: this INSERT must stay in sync with the production INSERT in
+    signals.py scan_instrument(). A column-count mismatch here gives a
+    false-pass — the test looks green while production can still fail with
+    a pg8000 '08P01 bind message supplies N params, requires M' error.
+    Last verified against production INSERT: 2026-06-05 (44 columns).
+    """
     try:
         import pg8000.native
         conn = pg8000.native.Connection(
@@ -227,38 +235,53 @@ def test_signal_log_insert() -> dict:
             database="postgres", user=os.environ["SUPABASE_USER"],
             password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
         )
-        # INSERT a diagnostics row (v_ prefixed named params — pg8000.native style)
-        conn.run(
-            """insert into signal_log
-               (session, ticker, macro_gate_pass, options_bias, call_put_ratio, iv_rank,
-                gex_bias, vwap_position, cot_bias, bb_squeeze, bb_breakout_dir,
-                director_signal, activist_signal, senate_signal, senate_senator,
-                notable_investor, social_mention, primary_count, confirmation_count,
-                direction, pa_verdict, trade_triggered,
-                adx_signal, obv_signal, volume_signal, volume_ratio,
-                hvf_type, hvf_signal, hvf_h3_level, hvf_stop_level,
-                hvf_target, hvf_risk_reward, hvf_quality)
-               values (:v_sess, :v_tick, :v_mgp, :v_opts, :v_cpr, :v_ivr,
-                       :v_gex, :v_vwap, :v_cot, :v_bbs, :v_bbd,
-                       :v_dir, :v_act, :v_sen, :v_senn,
-                       :v_ni, :v_sm, :v_pc, :v_cc,
-                       :v_dirn, :v_pav, :v_tt,
-                       :v_adx, :v_obv, :v_vs, :v_vr,
-                       :v_hvf_type, :v_hvf_sig, :v_hvf_h3, :v_hvf_stop,
-                       :v_hvf_target, :v_hvf_rr, :v_hvf_quality)""",
-            v_sess="DIAG", v_tick="_TEST_", v_mgp=True, v_opts="NEUTRAL", v_cpr=None, v_ivr=None,
-            v_gex="NEUTRAL", v_vwap=None, v_cot="NEUTRAL", v_bbs=False, v_bbd=None,
-            v_dir=False, v_act=False, v_sen=False, v_senn=None,
-            v_ni=None, v_sm=None, v_pc=0, v_cc=0,
-            v_dirn=None, v_pav="WAIT", v_tt=False,
-            v_adx="NEUTRAL", v_obv="NEUTRAL", v_vs="NORMAL", v_vr=None,
-            v_hvf_type=None, v_hvf_sig=None, v_hvf_h3=None, v_hvf_stop=None,
-            v_hvf_target=None, v_hvf_rr=None, v_hvf_quality=None
-        )
-        # Clean up immediately
-        conn.run("delete from signal_log where ticker = '_TEST_' and session = 'DIAG'")
+        # 44-column INSERT — must exactly match signals.py scan_instrument() INSERT.
+        # Run two tickers (_TEST_OIL_ commodity-style, _TEST_EQ_ equity-style) to
+        # surface any instrument-type-specific binding bugs (OIL failed 2026-06-04).
+        for test_ticker in ("_TEST_OIL_", "_TEST_EQ_"):
+            conn.run(
+                """insert into signal_log
+                   (session, ticker, macro_gate_pass, options_bias, call_put_ratio, iv_rank,
+                    gex_bias, vwap_position, cot_bias, bb_squeeze, bb_breakout_dir,
+                    director_signal, activist_signal, senate_signal, senate_senator,
+                    elite_senate_primary, elite_senator_name, potus_primary,
+                    notable_investor, social_mention, primary_count, confirmation_count,
+                    direction, pa_verdict, pa_score, trade_triggered,
+                    adx_signal, adx_dir, obv_signal, volume_signal, volume_ratio,
+                    hvf_type, hvf_signal, hvf_h3_level, hvf_stop_level,
+                    hvf_target, hvf_risk_reward, hvf_quality,
+                    orb_signal, orb_dir, week52_signal, week52_dir,
+                    sector_etf, sector_dir)
+                   values (:v_session, :v_ticker, :v_mgp, :v_opts_bias, :v_call_put, :v_ivr,
+                           :v_gex_bias, :v_vwap_pos, :v_cot_bias, :v_bb_squeeze, :v_bb_breakout,
+                           :v_director, :v_activist, :v_senate, :v_senator_name,
+                           :v_elite_senate, :v_elite_senator, :v_potus,
+                           :v_notable, :v_social, :v_primaries, :v_confirms, :v_direction,
+                           :v_pa_verdict, :v_pa_score, :v_triggered,
+                           :v_adx, :v_adx_dir, :v_obv, :v_vol_sig, :v_vol_ratio,
+                           :v_hvf_type, :v_hvf_sig, :v_hvf_h3, :v_hvf_stop,
+                           :v_hvf_target, :v_hvf_rr, :v_hvf_quality,
+                           :v_orb_sig, :v_orb_dir, :v_week52_sig, :v_week52_dir,
+                           :v_sector_etf, :v_sector_dir)""",
+                v_session="DIAG", v_ticker=test_ticker,
+                v_mgp=True, v_opts_bias="NEUTRAL", v_call_put=None, v_ivr=None,
+                v_gex_bias="NEUTRAL", v_vwap_pos=None, v_cot_bias="NEUTRAL",
+                v_bb_squeeze=False, v_bb_breakout=None,
+                v_director=False, v_activist=False, v_senate=False, v_senator_name=None,
+                v_elite_senate=False, v_elite_senator=None, v_potus=False,
+                v_notable=None, v_social=None, v_primaries=0, v_confirms=0,
+                v_direction=None, v_pa_verdict="WAIT", v_pa_score=None, v_triggered=False,
+                v_adx="NEUTRAL", v_adx_dir=None, v_obv="NEUTRAL",
+                v_vol_sig="NORMAL", v_vol_ratio=None,
+                v_hvf_type=None, v_hvf_sig=None, v_hvf_h3=None, v_hvf_stop=None,
+                v_hvf_target=None, v_hvf_rr=None, v_hvf_quality=None,
+                v_orb_sig=None, v_orb_dir=None, v_week52_sig=None, v_week52_dir=None,
+                v_sector_etf=None, v_sector_dir=None
+            )
+        # Clean up both test rows immediately
+        conn.run("delete from signal_log where session = 'DIAG'")
         conn.close()
-        return ok("signal_log INSERT", "✓ write + delete succeeded (pg8000 positional params working)")
+        return ok("signal_log INSERT", "✓ write + delete succeeded (44-col INSERT, 2 test tickers)")
     except Exception as e:
         return fail("signal_log INSERT", str(e)[:120])
 
