@@ -22,6 +22,14 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.0.1   2026-06-06  Alex Hind   Fix 2 bugs: (a) late_mins added grace_minutes
+#                                 twice — deadline already incorporates grace_minutes,
+#                                 so `+ grace_minutes` inflated reported lateness by
+#                                 30 min (e.g. "1386min late" instead of "6min late");
+#                                 (b) US_OPEN deadline anchored to 14:00 UTC + 30min =
+#                                 14:30 — fires alert at the exact moment the session
+#                                 starts; fixed to 14:00 + 60min = 15:00 (30min grace
+#                                 from the 14:30 scheduled open), matching the comment.
 # 1.0.0   2026-06-03  Alex Hind   Initial build. Monitors AUS_OPEN, UK_OPEN,
 #                                 US_OPEN signal windows and alerts Slack if
 #                                 a session is overdue or produced no signals.
@@ -157,7 +165,7 @@ def check_session(conn, session_name: str, open_hour_utc: int,
                 # Notify Slack so user knows recovery is in progress
                 try:
                     from notify import alert_watchdog_trigger
-                    late_mins = int((now_utc - deadline).total_seconds() / 60) + grace_minutes
+                    late_mins = int((now_utc - deadline).total_seconds() / 60)
                     alert_watchdog_trigger(session_name, wf, late_mins)
                 except Exception:
                     pass
@@ -203,7 +211,7 @@ def main():
     SESSIONS = [
         ("AUS_OPEN", 0,  30),   # 00:00 UTC open → alert + auto-trigger if no data by 00:30
         ("UK_OPEN",  8,  30),   # 08:00 UTC open → alert + auto-trigger if no data by 08:30
-        ("US_OPEN",  14, 30),   # 14:30 UTC open → alert + auto-trigger if no data by 15:00
+        ("US_OPEN",  14, 60),   # 14:30 UTC open → alert + auto-trigger if no data by 15:00
     ]
 
     problems = 0

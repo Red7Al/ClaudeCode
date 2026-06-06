@@ -52,6 +52,16 @@
 #                                 profile risk_per_trade, and alerts on size=0.
 #                                 Also adds stress_mult to the monitor rescan path
 #                                 so SPX stress mode is respected consistently.
+# 1.5.0   2026-06-06  Alex Hind   Fix 4 bugs: (a) run_monitor closure loop: guard
+#                                 against IG returning 0 positions when DB has
+#                                 entries (transient API glitch), which would
+#                                 falsely log all positions as closed; (b) pnl
+#                                 hardcoded as 0.0 in trade_closed() — now
+#                                 computed from open_price, close_price, direction,
+#                                 size; (c) HVF limit_dist overwritten after
+#                                 calculate_position_size() — saved and restored
+#                                 when HVF target was set (both session-open and
+#                                 monitor-rescan paths).
 # 1.3.1   2026-06-06  Alex Hind   Fix circuit breaker alert in size=0 path: was
 #                                 passing the reason string as the user field,
 #                                 showing "Triggered trade skipped..." as User in
@@ -245,10 +255,17 @@ def run_session_open(session_name: str):
             risk_amount = available * profile["risk_per_trade"] * stress_mult
             epic        = get_epic(ticker)
             if epic:
+                _saved_limit_dist = limit_dist  # preserve HVF target before size calc adjusts stop_dist
                 size, stop_dist = calculate_position_size(
                     epic, stop_dist, risk_amount, available_funds=available
                 )
-                limit_dist = round(stop_dist * 2, 4)
+                # Only recalculate limit_dist when HVF did not supply a precise target.
+                # calculate_position_size may adjust stop_dist (e.g. to IG minimum),
+                # so blindly setting limit_dist = stop_dist * 2 here discards the HVF level.
+                if sig.get("hvf_stop_level") and sig.get("hvf_target"):
+                    limit_dist = _saved_limit_dist
+                else:
+                    limit_dist = round(stop_dist * 2, 4)
             else:
                 size = 0.0
         except Exception as e:
@@ -406,14 +423,30 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     ig_deal_ids = {pos["position"]["dealId"] for pos in ig_positions}
     conn.close()
 
-    for deal_id, row in our_deals.items():
-        if deal_id not in ig_deal_ids and not deal_id.startswith("PAPER-"):
-            close_reason, close_price = get_close_reason(deal_id)
-            ticker, direction, open_price, size = row[1], row[2], float(row[3]), float(row[4])
-            open_tickers.add(ticker)
-            _log_trade_close_to_db(deal_id, close_price or open_price, close_reason)
-            trade_closed(ticker, direction, open_price, close_price or open_price, 0.0, close_reason)
-            log.info(f"Detected closure: {ticker} {deal_id} — {close_reason} @ {close_price}")
+    # Safety guard: if IG returned 0 positions but we have DB entries, skip auto-close.
+    # A transient IG API glitch can return {"positions": []} when positions exist.
+    # Closing all DB positions on empty IG response causes irreversible data loss.
+    # The next monitor pass will re-check; a genuine mass-close is the rare case.
+    if not ig_positions and our_deals:
+        log.warning(
+            f"{session_name}: IG returned 0 positions but {len(our_deals)} exist in DB "
+            f"— skipping closure detection this pass to guard against API glitch"
+        )
+    else:
+        for deal_id, row in our_deals.items():
+            if deal_id not in ig_deal_ids and not deal_id.startswith("PAPER-"):
+                close_reason, close_price = get_close_reason(deal_id)
+                ticker, direction, open_price, size = row[1], row[2], float(row[3]), float(row[4])
+                open_tickers.add(ticker)
+                _log_trade_close_to_db(deal_id, close_price or open_price, close_reason)
+                actual_close = close_price or open_price
+                pnl = round(
+                    (actual_close - open_price) * size if direction == "BUY"
+                    else (open_price - actual_close) * size,
+                    2
+                )
+                trade_closed(ticker, direction, open_price, actual_close, pnl, close_reason)
+                log.info(f"Detected closure: {ticker} {deal_id} — {close_reason} @ {close_price}")
 
     # ── Part 2: scan for new entries ─────────────────────────────────────────
     try:
@@ -481,11 +514,15 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                                     # avoids a duplicate IG API call per instrument
                                     # and ensures margin check uses the same balance
                                     # snapshot as the risk calculation.
+                                    _saved_limit_dist = limit_dist
                                     size, stop_dist = calculate_position_size(
                                         epic_code, stop_dist, risk_amount,
                                         available_funds=available
                                     )
-                                    limit_dist = round(stop_dist * 2, 4)
+                                    if sig.get("hvf_stop_level") and sig.get("hvf_target"):
+                                        limit_dist = _saved_limit_dist
+                                    else:
+                                        limit_dist = round(stop_dist * 2, 4)
                             except Exception as e:
                                 log.warning(f"Monitor size calc failed for {ticker}: {e}")
 

@@ -39,6 +39,9 @@
 #                                 OPTIONS_PROXY_MAP, YAHOO_MAP, ATR_MULTIPLIERS.
 #                                 DAX suspended from trading until further notice.
 # 1.3.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF to SESSION_INSTRUMENTS
+# 1.6.0   2026-06-06  Alex Hind   Fix XAGUSD CFTC code: was '084691' (Gold's code),
+#                                 corrected to '084251' (Silver). COT lookups for
+#                                 XAGUSD were silently returning Gold positioning data.
 # 1.5.0   2026-06-06  Alex Hind   Lowered crypto PA thresholds from 25 → 20.
 #                                 ETH pa_score=-35 was still WAIT because the
 #                                 deployment of the threshold override (v1.4.0)
@@ -504,7 +507,7 @@ SESSION_INSTRUMENTS = {
 
 CFTC_CODES = {
     "XAUUSD":  "084691",   # Gold
-    "XAGUSD":  "084691",   # Silver (uses same group)
+    "XAGUSD":  "084251",   # Silver
     "OIL":     "067651",   # Crude Oil WTI
     "GBPUSD":  "096742",   # British Pound
     "AUDUSD":  "232741",   # Australian Dollar

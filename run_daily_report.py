@@ -30,6 +30,14 @@
 #                                 macro, trades opened/closed, overnight positions,
 #                                 notable missed moves, daily P&L, and tomorrow's
 #                                 economic calendar.
+# 1.0.2   2026-06-06  Alex Hind   Fix 3 bugs: (a) market_moves.get(ticker) returns
+#                                 a dict, not a float — was multiplied by 100,
+#                                 crashing with TypeError on any day with overnight
+#                                 positions; (b) fetch_company_names: sanitise ticker
+#                                 symbols before SQL f-string interpolation;
+#                                 (c) group_summary vol_signal: was comparing "HIGH"/"LOW"
+#                                 but signal_log stores "HIGH_VOLUME"/"LOW_VOLUME" — fixed
+#                                 to show correct narrative.
 # 1.0.1   2026-06-05  Alex Hind   SLACK_URL confirmed as SLACK_DAILY — posts to
 #                                 #claude-trading-daily, the correct channel for
 #                                 end-of-day executive reports.
@@ -229,7 +237,12 @@ def fetch_company_names(db, tickers: list[str]) -> dict[str, str]:
     if not tickers:
         return {}
     import re
-    placeholders = ", ".join(f"'{t}'" for t in set(tickers))
+    # Reject any ticker with chars outside the safe set before SQL interpolation.
+    # Tickers in this system are alphanumeric plus dots, hyphens, equals and ^.
+    safe_tickers = [t for t in set(tickers) if re.match(r'^[\w.\-=^]+$', t)]
+    if not safe_tickers:
+        return {}
+    placeholders = ", ".join(f"'{t}'" for t in safe_tickers)
     try:
         rows = db.run(
             f"select ticker, description from epic_lookup where ticker in ({placeholders})"
@@ -334,9 +347,10 @@ def group_summary(category: str, sample_sig: dict) -> str:
         bb_str = "no Bollinger Band squeeze or breakout — no imminent directional move detected"
 
     vol_str = ""
-    if vol == "HIGH_VOLUME":
+    # signal_log.volume_signal stores "HIGH_VOLUME" / "LOW_VOLUME" (from get_volume_signal)
+    if vol in ("HIGH_VOLUME", "HIGH"):
         vol_str = " Volume was above average (institutional conviction present)."
-    elif vol == "LOW_VOLUME":
+    elif vol in ("LOW_VOLUME", "LOW"):
         vol_str = " Volume was below average — weak conviction behind the move."
 
     adx_str = ""
@@ -590,7 +604,8 @@ def build_report(
     lines.append(f"*Positions Held Overnight — {len(open_positions)}*")
     if open_positions:
         for p in open_positions:
-            current = market_moves.get(p["ticker"])
+            # market_moves values are dicts {pct_move, volume_ratio, volume_signal}
+            current = (market_moves.get(p["ticker"]) or {}).get("pct_move")
             unreal  = ""
             if current is not None:
                 move_str = f"+{current*100:.1f}%" if current > 0 else f"{current*100:.1f}%"

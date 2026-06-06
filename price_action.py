@@ -81,6 +81,12 @@
 #                                 get CONFIRM_LONG even while HVF was BEARISH+TRIGGERED.
 #                                 Now: always apply HVF direction, force WAIT when HVF
 #                                 direction conflicts with PA score at bypass threshold.
+# 1.4.0   2026-06-06  Alex Hind   _run_hvf_on_hist: add allow_bearish_override guard
+#                                 matching get_hvf_signal. Without the guard,
+#                                 STRONG_UPTREND weekly charts had their trend
+#                                 overridden to DOWNTREND whenever strict_dec or
+#                                 peak_dec fired — generating spurious short signals
+#                                 even on a confirmed strong uptrend.
 # 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto
 #                                 now uses threshold=25, FX/commodities 30-35,
 #                                 equities/indices keep default 40.
@@ -1252,7 +1258,11 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
                 peak_dec = (pct_off >= 0.07 and len(post_pk) >= 2
                             and all(p < pk_price for _, p in post_pk))
         rising = (len(rsh) >= 3 and rsh[-1][1] > rsh[-2][1] > rsh[-3][1])
-        effective_trend = ("DOWNTREND" if (strict_dec or peak_dec) else
+        # Mirror the guard in get_hvf_signal: STRONG_UPTREND suppresses
+        # bearish override — strict_dec / peak_dec should not flip a confirmed
+        # strong uptrend into a DOWNTREND on historical replay.
+        allow_bearish_override = trend_signal not in ("STRONG_UPTREND",)
+        effective_trend = ("DOWNTREND" if (strict_dec or peak_dec) and allow_bearish_override else
                            "UPTREND"   if rising else trend_signal)
 
         if effective_trend not in ("STRONG_UPTREND", "UPTREND",

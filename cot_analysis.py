@@ -43,6 +43,12 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.0.1   2026-06-06  Alex Hind   Fix commercial positioning: fields defaulted to 0
+#                                 when CFTC returned partial data — silently computed
+#                                 comm_net=0 instead of surfacing the gap. Now checks
+#                                 for None and returns early with a warning, preventing
+#                                 a false NEUTRAL from corrupt partial data corrupting
+#                                 the COT score.
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Full 4-signal COT stack:
 #                                 extremes, managed money, price divergence,
 #                                 OI signal. Composite score added.
@@ -359,9 +365,15 @@ def analyse_cot(instrument: str) -> dict:
     prev   = legacy[-2]
 
     # ── 2. Commercial positioning ──────────────────────────────────────────
-    comm_long   = float(latest.get("comm_positions_long_all",  0))
-    comm_short  = float(latest.get("comm_positions_short_all", 0))
-    comm_net    = comm_long - comm_short
+    _cl_raw = latest.get("comm_positions_long_all")
+    _cs_raw = latest.get("comm_positions_short_all")
+    if _cl_raw is None or _cs_raw is None:
+        log.warning(f"COT {instrument}: CFTC returned partial data — missing commercial "
+                    f"position fields. Skipping to avoid computing a corrupt COT score.")
+        return result
+    comm_long  = float(_cl_raw)
+    comm_short = float(_cs_raw)
+    comm_net   = comm_long - comm_short
 
     prev_comm_long  = float(prev.get("comm_positions_long_all",  0))
     prev_comm_short = float(prev.get("comm_positions_short_all", 0))

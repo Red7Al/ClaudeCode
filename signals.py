@@ -31,6 +31,15 @@
 #                                 instrument list (not traded).
 # 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log
 #                                 INSERT — was computed but never persisted.
+# 1.3.0   2026-06-06  Alex Hind   Fix 3 bugs: (a) get_yield_curve: falsy-zero check
+#                                 on us2y/us10y silenced spread at rate=0.0 — use
+#                                 `is not None` guard; (b) get_macro_gate: same
+#                                 falsy-zero on VIX — `if vix and vix > threshold`
+#                                 allowed VIX=0.0 to bypass the gate; (c) stale `s`
+#                                 variable in data_failures critical-count list
+#                                 comprehension — `s` was last value from outer
+#                                 scan loop, not per-failure ticker; now builds a
+#                                 set of critical tickers then filters against it.
 # 1.2.0   2026-06-06  Alex Hind   get_candidate_instruments: skip US equity tickers
 #                                 from the dynamic screener in non-US sessions
 #                                 (AUS_OPEN, UK_OPEN and their monitors). These
@@ -149,7 +158,7 @@ def get_yield_curve() -> dict:
             if obs:
                 result[key] = float(obs[0]["value"])
 
-        if result["us2y"] and result["us10y"]:
+        if result["us2y"] is not None and result["us10y"] is not None:
             result["yield_spread"] = round(result["us10y"] - result["us2y"], 4)
     except Exception as e:
         log.warning(f"FRED yield curve fetch failed: {e}")
@@ -281,7 +290,7 @@ def get_macro_gate(session_name: str) -> dict:
     gate_pass = True
     reasons = []
 
-    if vix and vix > VIX_GATE_THRESHOLD:
+    if vix is not None and vix > VIX_GATE_THRESHOLD:
         gate_pass = False
         reasons.append(f"VIX too high: {vix}")
 
@@ -1880,7 +1889,8 @@ def run_session_scan(session_name: str) -> dict:
             if s.get("data_failures")
         ]
         if data_failures:
-            critical = [(t, f) for t, f in data_failures if s.get("data_critical")]
+            ticker_critical = {sig["ticker"] for sig in instrument_signals if sig.get("data_critical")}
+            critical = [(t, f) for t, f in data_failures if t in ticker_critical]
             lines = [f"{t}: missing {f}" for t, f in data_failures[:15]]
             alert_system_error(
                 session=session_name,

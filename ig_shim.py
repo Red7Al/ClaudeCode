@@ -46,6 +46,15 @@
 #                                 unaffordable. Fixes GOOGL and RIOT being missed.
 #                                 open_trade: resolve user display name from
 #                                 user_profiles instead of hardcoded "Owner".
+# 1.4.0   2026-06-06  Alex Hind   Fix 3 bugs: (a) get_close_reason: removed unsafe
+#                                 fallback that returned the first transaction with
+#                                 any non-zero open/close level — had zero deal_id
+#                                 check, so it logged the wrong trade's close price;
+#                                 (b) update_stop: add ensure_authenticated() before
+#                                 PUT — was using potentially stale token when called
+#                                 between health_check intervals; (c) _log_trade_close:
+#                                 pnl_pct sign was wrong for SELL trades (subtracted
+#                                 in wrong direction — profitable SELLs showed negative).
 # 1.3.0   2026-06-06  Alex Hind   calculate_position_size: add optional
 #                                 available_funds parameter — callers that have
 #                                 already fetched the balance can pass it directly,
@@ -521,13 +530,9 @@ def get_close_reason(deal_id: str) -> tuple[str, float]:
                 close_level = float(str(txn.get("closeLevel", 0) or 0).replace(",", ""))
                 log.info(f"Close price from transaction history: {close_level}")
                 return "SYSTEM", close_level
-        # Also search by checking all transactions for matching levels
-        for txn in txn_data.get("transactions", []):
-            close_level = float(str(txn.get("closeLevel", 0) or 0).replace(",", ""))
-            open_level  = float(str(txn.get("openLevel",  0) or 0).replace(",", ""))
-            if open_level > 0 and close_level > 0:
-                log.info(f"Best-match transaction: open={open_level} close={close_level}")
-                return "SYSTEM", close_level
+        # No fallback by price-level match — that path had zero identity check
+        # and would return the first transaction with any non-zero open/close,
+        # silently logging the wrong trade's close price.
     except Exception as e:
         log.warning(f"Transaction history fallback failed: {e}")
 
@@ -992,6 +997,7 @@ def update_stop(deal_id: str, new_stop_level: float) -> bool:
         "trailingStop": False,
     }
     try:
+        session.ensure_authenticated()   # refresh token before PUT — stop updates run outside health_check cadence
         resp = requests.put(
             f"{IG_BASE_URL}/positions/otc/{deal_id}",
             headers=session._headers("2"),
@@ -1062,7 +1068,10 @@ def _log_trade_close_to_db(deal_id: str, close_price: float, close_reason: str):
         # Compute P&L
         pnl     = (close_price - open_price) * size if direction == "BUY" \
                   else (open_price - close_price) * size
-        pnl_pct = ((close_price - open_price) / open_price * 100) if open_price else 0
+        pnl_pct = (
+            (close_price - open_price) / open_price * 100 if direction == "BUY"
+            else (open_price - close_price) / open_price * 100
+        ) if open_price else 0
 
         # ── Stop slippage detection ───────────────────────────────────────────
         # Was the position closed significantly worse than the stop level?
