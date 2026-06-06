@@ -31,6 +31,15 @@
 #                                 instrument list (not traded).
 # 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log
 #                                 INSERT — was computed but never persisted.
+# 1.2.0   2026-06-06  Alex Hind   get_candidate_instruments: skip US equity tickers
+#                                 from the dynamic screener in non-US sessions
+#                                 (AUS_OPEN, UK_OPEN and their monitors). These
+#                                 tickers are blocked by the NYSE hours guard anyway
+#                                 so scanning them wastes API calls, inflates
+#                                 signal_log, and clutters Slack #signals.
+#                                 This week: AMD, RIVN, GOOGL appeared in AUS_OPEN
+#                                 and UK_OPEN signal_log via screener even though
+#                                 they can never trade at 04:40 or 12:25 UTC.
 # 1.1.1   2026-06-05  Alex Hind   get_gex_bias: detect and surface Yahoo Finance
 #                                 gamma unavailability. Previously returned gex=0.0
 #                                 (false NEUTRAL) when gamma column was absent or
@@ -929,15 +938,30 @@ def get_candidate_instruments(session_name: str) -> list:
     Layer 1: static core instruments for the session.
     Layer 2: dynamic discovery via Yahoo Finance screener (high options volume).
     Filters: market cap > $10B, not already in open positions.
+
+    US equity tickers (NYSE-listed) are excluded from the dynamic screener when
+    the session is not US_OPEN or US_MONITOR — they cannot be traded outside
+    NYSE hours (14:30–21:00 UTC) and including them wastes scan time, inflates
+    signal_log with untradeable signals, and clutters Slack #signals.
+    The static instrument lists (SESSION_INSTRUMENTS) already exclude US equities
+    from AUS/UK sessions, so this guard applies only to screener additions.
     """
     candidates = list(SESSION_INSTRUMENTS.get(session_name, SESSION_INSTRUMENTS["US_OPEN"]))
 
     # Dynamic discovery — top movers by volume from Yahoo Finance
+    # Only add US equities when the session can actually trade them (NYSE hours).
+    US_SESSION = session_name in ("US_OPEN", "US_MONITOR", "POSITION_MONITOR")
     try:
         screener_tickers = ["TSLA","AMZN","GOOGL","AMD","PLTR","SOFI","RIVN",
                             "BAC","JPM","XOM","CVX","BABA","NIO","F","GM"]
         for ticker in screener_tickers:
             if ticker in candidates:
+                continue
+            # Skip US equities entirely in non-US sessions — they will be blocked
+            # by the NYSE hours guard in ig_shim.open_trade() anyway, so scanning
+            # them is pure waste.  Crypto and FX tickers (not in this list) are
+            # always tradeable and are already in the static AUS/UK instrument lists.
+            if not US_SESSION:
                 continue
             try:
                 t = yf.Ticker(ticker)

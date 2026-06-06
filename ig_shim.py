@@ -46,6 +46,11 @@
 #                                 unaffordable. Fixes GOOGL and RIOT being missed.
 #                                 open_trade: resolve user display name from
 #                                 user_profiles instead of hardcoded "Owner".
+# 1.2.0   2026-06-06  Alex Hind   Add KN.D.* to US_EQUITY_PREFIXES — covers
+#                                 Canadian/US cross-listed names (e.g. KEEL
+#                                 KN.D.BITFCN.DAILY.IP) that trade NYSE hours only.
+#                                 Previously missed hours guard — could place trades
+#                                 outside NYSE window for these instruments.
 # 1.0.4   2026-06-05  Alex Hind   open_trade paper trade path: return dict instead
 #                                 of bare string. Caller accessed trade_result["level"]
 #                                 which crashed with TypeError on paper trades because
@@ -654,13 +659,16 @@ def open_trade(
         return None
 
     # Step 2b — Market hours guard for US equities
-    # US equity CFDs (UA/UB/UC/UD/SE/SD/SB/SA/SG/SF prefix) only trade during
+    # US equity CFDs (UA/UB/UC/UD/SE/SD/SB/SA/SG/SF/KN prefix) only trade during
     # NYSE hours: 14:30–21:00 UTC. Do not enter pre-market or after-hours —
     # spreads are wider and stops are prone to gap-slippage (proven: IBM today).
+    # KN.D.* added 2026-06-06: covers Canadian/US cross-listed names (e.g. KEEL
+    # Infrastructure Corp KN.D.BITFCN.DAILY.IP) that trade on NYSE hours only.
     US_EQUITY_PREFIXES = (
         "UA.D.", "UB.D.", "UC.D.", "UD.D.",   # standard US equity CFDs
         "SE.D.", "SD.D.", "SB.D.", "SA.D.",    # extended-hours / alternate prefix
         "SG.D.", "SF.D.", "SC.D.",
+        "KN.D.",                               # Canadian/US cross-listed equities
     )
     if epic.startswith(US_EQUITY_PREFIXES):
         now_utc      = datetime.now(timezone.utc)

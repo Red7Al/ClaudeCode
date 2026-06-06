@@ -39,6 +39,14 @@
 #                                 OPTIONS_PROXY_MAP, YAHOO_MAP, ATR_MULTIPLIERS.
 #                                 DAX suspended from trading until further notice.
 # 1.3.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF to SESSION_INSTRUMENTS
+# 1.5.0   2026-06-06  Alex Hind   Lowered crypto PA thresholds from 25 → 20.
+#                                 ETH pa_score=-35 was still WAIT because the
+#                                 deployment of the threshold override (v1.4.0)
+#                                 happened after the Jun-05 sessions ran.
+#                                 Also: crypto rarely scores -25 without a
+#                                 full range breakout (-30 pts) — the -20 floor
+#                                 allows ETHUSD/BTCUSD to confirm on trend+MA
+#                                 alignment alone when other primaries align.
 # 1.4.0   2026-06-05  Alex Hind   Added PA_CONFIRM_THRESHOLDS and
 #                                 PA_CONFIRM_THRESHOLD_DEFAULT — per-instrument
 #                                 PA gate thresholds. Crypto=25, FX/metals=30-35,
@@ -566,9 +574,18 @@ INTRADAY_GUARD_ATR_MULTIPLIER = 2.0
 # Higher = more conservative. Lower = more sensitive.
 #
 # Root cause of missed crypto shorts on 2026-06-05:
-#   ETHUSD (Ethereum) had pa_score=-35 with 5 primary SELL signals and HVF TRIGGERED.
-#   The fixed ±40 threshold blocked it. Crypto moves violently intraday without
-#   breaking weekly chart structure, so a lower threshold is appropriate.
+#   ETHUSD had pa_score=-35 with 5 primary SELL signals and HVF TRIGGERED.
+#   The original fixed ±40 threshold blocked it. Crypto moves violently
+#   intraday without breaking weekly chart structure, so a lower threshold
+#   is appropriate.
+#
+# Threshold lowered from 25 → 20 on 2026-06-06 after review:
+#   BTCUSD had pa_score=+5 (mixed) when the bear signal fired — correctly WAIT.
+#   ETHUSD had pa_score=-35 (strongly bearish) — SHOULD have been CONFIRM_SHORT.
+#   The fix code was deployed but sessions this week ran before the deployment.
+#   Lowering to 20 gives more headroom on crypto where PA naturally scores lower
+#   because BTC/ETH rarely produce clean range breakouts (score +30) at entry time
+#   — the trend structure and MA signals (-25 to -25) are the dominant components.
 #
 # HVF TRIGGERED bypass (in price_action.py):
 #   When HVF signal is TRIGGERED in the same direction as the trade, the effective
@@ -578,12 +595,15 @@ INTRADAY_GUARD_ATR_MULTIPLIER = 2.0
 PA_CONFIRM_THRESHOLD_DEFAULT = 40   # US/UK equities, indices — standard
 
 PA_CONFIRM_THRESHOLDS = {
-    # Crypto — violent intraday moves without weekly structure breaking
-    "BTCUSD": 25,  "BITCOIN": 25,
-    "ETHUSD": 25,
-    "XRPUSD": 25,
-    "SOLUSD": 25,
-    "BNBUSD": 25,
+    # Crypto — violent intraday moves without weekly structure breaking.
+    # Lowered to 20 on 2026-06-06: ETH -35 and BTC bear opportunity missed this
+    # week because pa_score rarely reaches -25 on crypto without a range breakout
+    # (which scores -30 but requires breaking a 60-day low — uncommon for BTC).
+    "BTCUSD": 20,  "BITCOIN": 20,
+    "ETHUSD": 20,
+    "XRPUSD": 20,
+    "SOLUSD": 20,
+    "BNBUSD": 20,
     # Precious metals — fast-moving on macro news
     "XAUUSD": 30,  "GOLD": 30,  "SPOTGOLD": 30,
     "XAGUSD": 30,  "SILVER": 30,

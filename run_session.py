@@ -29,6 +29,16 @@
 # 1.1.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF handler — was listed in
 #                                 usage help but crashed with "Unknown session"
 #                                 when triggered by the Sunday scheduled task.
+# 1.3.0   2026-06-06  Alex Hind   run_monitor rescan: replace simplified inline
+#                                 size calculation with calculate_position_size().
+#                                 Previous code used risk_amount/stop_dist with a
+#                                 raw 0.02 hardcode and no margin/min-size check —
+#                                 produced limit_dist=0 when stop_dist=0, causing
+#                                 IG INVALID_STOP_OR_LIMIT rejections. Now mirrors
+#                                 the session open path exactly, respects user
+#                                 profile risk_per_trade, and alerts on size=0.
+#                                 Also adds stress_mult to the monitor rescan path
+#                                 so SPX stress mode is respected consistently.
 # 1.2.0   2026-06-05  Alex Hind   Fix 3: when calculated position size is zero,
 #                                 fire Slack alert via alert_circuit_breaker().
 #                                 Previously silently skipped — violates no-silent-
@@ -296,7 +306,8 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     """
     from ig_shim import (get_open_positions, get_snapshot, update_stop,
                          get_close_reason, _log_trade_close_to_db, health_check,
-                         open_trade, get_account_balance)
+                         open_trade, get_account_balance, calculate_position_size,
+                         get_epic)
     from notify import trade_closed, alert_circuit_breaker, alert_system_error, alert_position_deterioration
     from signals import scan_instrument, get_macro_gate
     from intraday_signals import scan_intraday
@@ -414,7 +425,8 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
         log.info(f"{session_name}: scanning {len(candidates)} instruments for new entries "
                  f"({slots_remaining} slot(s) remaining)")
         try:
-            macro = get_macro_gate(session_name)
+            macro       = get_macro_gate(session_name)
+            stress_mult = macro.get("stress_size_multiplier", 1.0)
             if macro.get("macro_gate_pass"):
                 new_trades = 0
                 for ticker in candidates:
@@ -425,13 +437,41 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                         if sig.get("trade_signal"):
                             stop_dist  = sig.get("stop_distance", 0)
                             limit_dist = round(stop_dist * 2, 4)
+
+                            # Use calculate_position_size() — same path as session open.
+                            # Previously used a simplified inline calculation that:
+                            #   (a) didn't enforce IG minimum deal size
+                            #   (b) didn't check margin constraint
+                            #   (c) produced limit_dist=0 when stop_dist=0, causing
+                            #       IG to reject the order (INVALID_STOP_OR_LIMIT).
+                            # Now mirrors run_session_open exactly — reads the risk %
+                            # from the user profile so Wife/Son profiles are respected.
+                            profile = get_user_profile()
+                            size    = 0.0
                             try:
                                 bal         = get_account_balance()
-                                risk_amount = bal["available"] * 0.02
-                                size        = round(risk_amount / stop_dist, 1) if stop_dist > 0 else 0.5
-                                size        = max(0.5, min(size, 10.0))
-                            except Exception:
-                                size = 0.5
+                                risk_amount = bal["available"] * profile["risk_per_trade"] * stress_mult
+                                epic_code   = get_epic(ticker)
+                                if epic_code:
+                                    size, stop_dist = calculate_position_size(
+                                        epic_code, stop_dist, risk_amount
+                                    )
+                                    limit_dist = round(stop_dist * 2, 4)
+                            except Exception as e:
+                                log.warning(f"Monitor size calc failed for {ticker}: {e}")
+
+                            if size <= 0:
+                                msg = (
+                                    f"{ticker} ({sig['direction']}) — monitor rescan trade "
+                                    f"skipped: calculated size is zero. "
+                                    f"Likely cause: margin too small for IG minimum deal size."
+                                )
+                                log.warning(msg)
+                                alert_circuit_breaker(
+                                    "Triggered trade skipped — insufficient margin", ticker, msg
+                                )
+                                continue
+
                             signal_str = (
                                 f"Options:{sig.get('options_bias','—')} "
                                 f"BB:{sig.get('bb_breakout_dir','—')} "
@@ -440,7 +480,6 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                                 f"Confs:{sig.get('confirmation_count',0)} "
                                 f"[{session_name} rescan]"
                             )
-                            profile = get_user_profile()
                             result = open_trade(
                                 user_id=profile["user_id"],
                                 ticker=ticker,
