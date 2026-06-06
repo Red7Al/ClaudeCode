@@ -43,6 +43,15 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.0.2   2026-06-06  Alex Hind   Extend partial-data protection beyond the latest
+#                                 commercial fields (1.0.1): every week-over-week
+#                                 *_change (commercial, non-commercial, open interest,
+#                                 managed money) was differenced against a 0-defaulted
+#                                 previous week when CFTC omitted it — fabricating a
+#                                 change equal to the full current net. Added _cot_net()
+#                                 helper returning None for missing legs; all change
+#                                 calcs now report 0 (no detectable change) instead of
+#                                 a bogus spike when the prior week is incomplete.
 # 1.0.1   2026-06-06  Alex Hind   Fix commercial positioning: fields defaulted to 0
 #                                 when CFTC returned partial data — silently computed
 #                                 comm_net=0 instead of surfacing the gap. Now checks
@@ -312,6 +321,22 @@ def compute_cot_score(
     return round(max(-100, min(100, score)), 1)
 
 
+def _cot_net(row: dict, long_key: str, short_key: str):
+    """
+    Net positioning (long - short) from a CFTC report row.
+
+    Returns None when EITHER leg is absent. Callers must treat None as
+    "unknown" — never substitute 0, because differencing a populated current
+    week against a 0-defaulted missing week fabricates a week-over-week change
+    equal to the full current net (a large false momentum signal).
+    """
+    long_val  = row.get(long_key)
+    short_val = row.get(short_key)
+    if long_val is None or short_val is None:
+        return None
+    return float(long_val) - float(short_val)
+
+
 # =============================================================================
 # Master function — full enhanced COT analysis for one instrument
 # =============================================================================
@@ -365,20 +390,19 @@ def analyse_cot(instrument: str) -> dict:
     prev   = legacy[-2]
 
     # ── 2. Commercial positioning ──────────────────────────────────────────
-    _cl_raw = latest.get("comm_positions_long_all")
-    _cs_raw = latest.get("comm_positions_short_all")
-    if _cl_raw is None or _cs_raw is None:
+    comm_net = _cot_net(latest, "comm_positions_long_all", "comm_positions_short_all")
+    if comm_net is None:
         log.warning(f"COT {instrument}: CFTC returned partial data — missing commercial "
                     f"position fields. Skipping to avoid computing a corrupt COT score.")
         return result
-    comm_long  = float(_cl_raw)
-    comm_short = float(_cs_raw)
-    comm_net   = comm_long - comm_short
 
-    prev_comm_long  = float(prev.get("comm_positions_long_all",  0))
-    prev_comm_short = float(prev.get("comm_positions_short_all", 0))
-    prev_comm_net   = prev_comm_long - prev_comm_short
-    comm_net_change = comm_net - prev_comm_net
+    prev_comm_net = _cot_net(prev, "comm_positions_long_all", "comm_positions_short_all")
+    if prev_comm_net is None:
+        log.warning(f"COT {instrument}: previous-week commercial data missing — "
+                    f"reporting comm_net_change=0 (cannot compute weekly delta).")
+        comm_net_change = 0.0
+    else:
+        comm_net_change = comm_net - prev_comm_net
 
     result["comm_net"]        = round(comm_net, 0)
     result["comm_net_change"] = round(comm_net_change, 0)
@@ -387,19 +411,19 @@ def analyse_cot(instrument: str) -> dict:
     result["pct_comm_short"]  = float(latest.get("pct_of_oi_comm_short_all", 0) or 0)
 
     # ── 3. Non-commercial (large speculators) ─────────────────────────────
-    nc_long  = float(latest.get("noncomm_positions_long_all",  0))
-    nc_short = float(latest.get("noncomm_positions_short_all", 0))
-    nc_net   = nc_long - nc_short
-    prev_nc_net = (float(prev.get("noncomm_positions_long_all", 0)) -
-                   float(prev.get("noncomm_positions_short_all", 0)))
+    nc_net = _cot_net(latest, "noncomm_positions_long_all", "noncomm_positions_short_all")
+    if nc_net is None:
+        nc_net = 0.0   # sibling column of commercial in the same row — keep math safe
+    prev_nc_net = _cot_net(prev, "noncomm_positions_long_all", "noncomm_positions_short_all")
 
     result["noncomm_net"]        = round(nc_net, 0)
-    result["noncomm_net_change"] = round(nc_net - prev_nc_net, 0)
+    result["noncomm_net_change"] = (round(nc_net - prev_nc_net, 0)
+                                    if prev_nc_net is not None else 0.0)
 
     # ── 4. Open interest ──────────────────────────────────────────────────
-    oi      = float(latest.get("open_interest_all", 0))
-    prev_oi = float(prev.get("open_interest_all",   0))
-    oi_change = oi - prev_oi
+    oi       = float(latest.get("open_interest_all", 0) or 0)
+    _prev_oi = prev.get("open_interest_all")
+    oi_change = (oi - float(_prev_oi)) if _prev_oi is not None else 0.0
 
     result["open_interest"] = round(oi, 0)
     result["oi_change"]     = round(oi_change, 0)
@@ -411,16 +435,17 @@ def analyse_cot(instrument: str) -> dict:
     if len(disagg) >= 2:
         mm_latest = disagg[-1]
         mm_prev   = disagg[-2]
-        mm_long   = float(mm_latest.get("m_money_positions_long_all",  0))
-        mm_short  = float(mm_latest.get("m_money_positions_short_all", 0))
+        mm_long   = float(mm_latest.get("m_money_positions_long_all",  0) or 0)
+        mm_short  = float(mm_latest.get("m_money_positions_short_all", 0) or 0)
         mm_net    = mm_long - mm_short
-        prev_mm_net = (float(mm_prev.get("m_money_positions_long_all",  0)) -
-                       float(mm_prev.get("m_money_positions_short_all", 0)))
+        prev_mm_net = _cot_net(mm_prev, "m_money_positions_long_all",
+                               "m_money_positions_short_all")
 
         result["managed_money_long"]   = round(mm_long,  0)
         result["managed_money_short"]  = round(mm_short, 0)
         result["managed_money_net"]    = round(mm_net,   0)
-        result["managed_money_change"] = round(mm_net - prev_mm_net, 0)
+        result["managed_money_change"] = (round(mm_net - prev_mm_net, 0)
+                                          if prev_mm_net is not None else 0.0)
 
         mm_net_series = [
             float(w.get("m_money_positions_long_all",  0)) -

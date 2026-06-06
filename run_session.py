@@ -52,6 +52,16 @@
 #                                 profile risk_per_trade, and alerts on size=0.
 #                                 Also adds stress_mult to the monitor rescan path
 #                                 so SPX stress mode is respected consistently.
+# 1.6.0   2026-06-06  Alex Hind   run_monitor closure detection: replace the blanket
+#                                 "skip when IG returns 0 positions" guard (1.5.0)
+#                                 with per-deal verification. The blanket skip never
+#                                 detected a genuine simultaneous mass-close (e.g. all
+#                                 stops hit in a flash crash) — those DB rows would
+#                                 stay open forever. Now, when IG returns an empty
+#                                 list but the DB has deals, each deal is checked
+#                                 against IG activity history and closed only if IG
+#                                 confirms a close reason (UNKNOWN ⇒ still open ⇒
+#                                 skip). Closure body extracted to _record_closure().
 # 1.5.0   2026-06-06  Alex Hind   Fix 4 bugs: (a) run_monitor closure loop: guard
 #                                 against IG returning 0 positions when DB has
 #                                 entries (transient API glitch), which would
@@ -423,30 +433,46 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     ig_deal_ids = {pos["position"]["dealId"] for pos in ig_positions}
     conn.close()
 
-    # Safety guard: if IG returned 0 positions but we have DB entries, skip auto-close.
-    # A transient IG API glitch can return {"positions": []} when positions exist.
-    # Closing all DB positions on empty IG response causes irreversible data loss.
-    # The next monitor pass will re-check; a genuine mass-close is the rare case.
+    # Record one detected closure: log to DB, compute realised P&L, notify Slack.
+    def _record_closure(deal_id, row, close_reason, close_price):
+        ticker, direction, open_price, size = row[1], row[2], float(row[3]), float(row[4])
+        open_tickers.add(ticker)
+        actual_close = close_price or open_price
+        _log_trade_close_to_db(deal_id, actual_close, close_reason)
+        pnl = round(
+            (actual_close - open_price) * size if direction == "BUY"
+            else (open_price - actual_close) * size,
+            2
+        )
+        trade_closed(ticker, direction, open_price, actual_close, pnl, close_reason)
+        log.info(f"Detected closure: {ticker} {deal_id} — {close_reason} @ {close_price}")
+
     if not ig_positions and our_deals:
+        # IG returned an empty positions list while the DB still holds open deals.
+        # Ambiguous: either a transient API glitch (positions are really still open)
+        # or a genuine mass-close (e.g. every stop hit in a flash crash). Neither
+        # blanket-close (destroys data on a glitch) nor blanket-skip (a real
+        # mass-close would never be detected) is safe. Instead verify each deal
+        # against IG activity history: get_close_reason returns a definitive reason
+        # only when IG recorded a close, and "UNKNOWN" when no close activity exists
+        # (i.e. the position is still open). Close only the deals IG confirms closed.
         log.warning(
             f"{session_name}: IG returned 0 positions but {len(our_deals)} exist in DB "
-            f"— skipping closure detection this pass to guard against API glitch"
+            f"— verifying each deal against activity history before closing"
         )
+        for deal_id, row in our_deals.items():
+            if deal_id.startswith("PAPER-"):
+                continue
+            close_reason, close_price = get_close_reason(deal_id)
+            if close_reason == "UNKNOWN":
+                log.info(f"{deal_id}: no IG close activity — assuming still open (glitch), skipping")
+                continue
+            _record_closure(deal_id, row, close_reason, close_price)
     else:
         for deal_id, row in our_deals.items():
             if deal_id not in ig_deal_ids and not deal_id.startswith("PAPER-"):
                 close_reason, close_price = get_close_reason(deal_id)
-                ticker, direction, open_price, size = row[1], row[2], float(row[3]), float(row[4])
-                open_tickers.add(ticker)
-                _log_trade_close_to_db(deal_id, close_price or open_price, close_reason)
-                actual_close = close_price or open_price
-                pnl = round(
-                    (actual_close - open_price) * size if direction == "BUY"
-                    else (open_price - actual_close) * size,
-                    2
-                )
-                trade_closed(ticker, direction, open_price, actual_close, pnl, close_reason)
-                log.info(f"Detected closure: {ticker} {deal_id} — {close_reason} @ {close_price}")
+                _record_closure(deal_id, row, close_reason, close_price)
 
     # ── Part 2: scan for new entries ─────────────────────────────────────────
     try:

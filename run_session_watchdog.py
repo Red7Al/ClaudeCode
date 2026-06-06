@@ -22,6 +22,14 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.0.2   2026-06-06  Alex Hind   Replace the grace=60 workaround (1.0.1b) with a
+#                                 proper HH:MM open-time model. check_session now takes
+#                                 open_minute_utc and SESSIONS carries an explicit
+#                                 minute, so the 14:30 US open is expressed directly
+#                                 with a true 30-min grace (deadline 15:00). The old
+#                                 model could only express HH:00 opens, forcing a
+#                                 fragile grace inflation that broke self-documentation
+#                                 and would silently misfire on any schedule change.
 # 1.0.1   2026-06-06  Alex Hind   Fix 2 bugs: (a) late_mins added grace_minutes
 #                                 twice — deadline already incorporates grace_minutes,
 #                                 so `+ grace_minutes` inflated reported lateness by
@@ -118,7 +126,7 @@ def trigger_workflow(workflow_file: str, session_name: str):
 
 
 def check_session(conn, session_name: str, open_hour_utc: int,
-                  grace_minutes: int, today: str) -> bool:
+                  open_minute_utc: int, grace_minutes: int, today: str) -> bool:
     """
     Returns True (healthy) or False (problem found).
 
@@ -128,10 +136,14 @@ def check_session(conn, session_name: str, open_hour_utc: int,
        → Auto-triggers the session workflow to recover.
     2. If macro_snapshot exists but no signal_log rows, the scan ran but
        logged nothing (likely a DB schema issue or total scan failure).
+
+    The session open time is expressed as HH:MM (open_hour_utc, open_minute_utc)
+    so sessions that don't start on the hour (e.g. US_OPEN at 14:30) get an
+    accurate deadline. grace_minutes is then a true grace window past the open.
     """
     now_utc  = datetime.now(timezone.utc)
     deadline = datetime.now(timezone.utc).replace(
-        hour=open_hour_utc, minute=0, second=0, microsecond=0
+        hour=open_hour_utc, minute=open_minute_utc, second=0, microsecond=0
     ) + timedelta(minutes=grace_minutes)
 
     # Only check if the deadline has passed today
@@ -153,7 +165,7 @@ def check_session(conn, session_name: str, open_hour_utc: int,
             session_name,
             f"No macro_snapshot recorded today — GitHub Actions cron missed. "
             f"Auto-triggering {session_name} now...",
-            f"Expected after {open_hour_utc:02d}:00 UTC + {grace_minutes}min grace. "
+            f"Expected after {open_hour_utc:02d}:{open_minute_utc:02d} UTC + {grace_minutes}min grace. "
             f"Actual time: {now_utc.strftime('%H:%M')} UTC"
         )
         # Auto-trigger the missed session instead of just alerting
@@ -204,19 +216,20 @@ def main():
 
     conn = get_db()
 
-    # (session_name, open_hour_utc, grace_minutes)
+    # (session_name, open_hour_utc, open_minute_utc, grace_minutes)
     # Grace window = 30 min after scheduled open — catch misses quickly.
     # GitHub cron can run slightly late; 30 min gives it time to fire naturally
-    # before the watchdog triggers a manual re-run.
+    # before the watchdog triggers a manual re-run. Open time is HH:MM so the
+    # 14:30 US open gets an accurate 15:00 deadline with a real 30-min grace.
     SESSIONS = [
-        ("AUS_OPEN", 0,  30),   # 00:00 UTC open → alert + auto-trigger if no data by 00:30
-        ("UK_OPEN",  8,  30),   # 08:00 UTC open → alert + auto-trigger if no data by 08:30
-        ("US_OPEN",  14, 60),   # 14:30 UTC open → alert + auto-trigger if no data by 15:00
+        ("AUS_OPEN", 0,  0,  30),   # 00:00 UTC open → alert + auto-trigger if no data by 00:30
+        ("UK_OPEN",  8,  0,  30),   # 08:00 UTC open → alert + auto-trigger if no data by 08:30
+        ("US_OPEN",  14, 30, 30),   # 14:30 UTC open → alert + auto-trigger if no data by 15:00
     ]
 
     problems = 0
-    for session_name, open_hour, grace in SESSIONS:
-        ok = check_session(conn, session_name, open_hour, grace, today)
+    for session_name, open_hour, open_minute, grace in SESSIONS:
+        ok = check_session(conn, session_name, open_hour, open_minute, grace, today)
         if not ok:
             problems += 1
 
