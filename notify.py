@@ -30,6 +30,12 @@
 #                                 (SLACK_DAILY) for end-of-day reports and
 #                                 morning briefs. Full instrument names in
 #                                 session_summary candidate lines.
+# 1.2.1   2026-06-06  Alex Hind   Fix session_heartbeat lateness calculation:
+#                                 midnight-rollover was incorrectly applied when
+#                                 session ran *before* scheduled time (e.g. Cloud
+#                                 Routines fired at 13:36 vs scheduled 14:30 →
+#                                 showed "1386min late" instead of "on time").
+#                                 Guard: only roll midnight when late_mins < -120.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -538,8 +544,10 @@ def session_heartbeat(
         sch_total = sch_h * 60 + sch_m
         act_total = act_h * 60 + act_m
         late_mins = act_total - sch_total
-        if late_mins < 0:
-            late_mins += 1440   # rolled midnight
+        if late_mins < -120:
+            late_mins += 1440   # rolled midnight (e.g. scheduled 23:30, ran 00:15)
+        elif late_mins < 0:
+            late_mins = 0       # ran early (Cloud Routines fired before window) → on time
     except Exception:
         pass
 
