@@ -46,6 +46,12 @@
 #                                 unaffordable. Fixes GOOGL and RIOT being missed.
 #                                 open_trade: resolve user display name from
 #                                 user_profiles instead of hardcoded "Owner".
+# 1.3.0   2026-06-06  Alex Hind   calculate_position_size: add optional
+#                                 available_funds parameter — callers that have
+#                                 already fetched the balance can pass it directly,
+#                                 avoiding a duplicate IG API call and preventing
+#                                 a race where a concurrent fill changes the
+#                                 available balance between the two reads.
 # 1.2.0   2026-06-06  Alex Hind   Add KN.D.* to US_EQUITY_PREFIXES — covers
 #                                 Canadian/US cross-listed names (e.g. KEEL
 #                                 KN.D.BITFCN.DAILY.IP) that trade NYSE hours only.
@@ -265,7 +271,8 @@ session = IGSession()
 # =============================================================================
 
 def calculate_position_size(epic: str, stop_distance: float,
-                            risk_amount: float) -> tuple[float, float]:
+                            risk_amount: float,
+                            available_funds: float = None) -> tuple[float, float]:
     """
     Calculate position size that satisfies BOTH risk management AND IG margin.
 
@@ -304,10 +311,19 @@ def calculate_position_size(epic: str, stop_distance: float,
         risk_size = risk_amount / stop_distance if stop_distance > 0 else 0
 
         # Margin-based size: how much stake can we afford given available funds?
-        try:
-            available = get_account_balance()["available"]
-        except Exception:
-            available = 0
+        # Use the caller-supplied balance when available — avoids a redundant
+        # IG API call when the caller already fetched the balance to compute
+        # risk_amount (e.g. run_monitor rescan calls get_account_balance() once
+        # to derive risk_amount; passing that value here saves a second call and
+        # prevents a race where a concurrent fill changes available between the
+        # two reads, causing the margin check to use a stale balance).
+        if available_funds is not None:
+            available = available_funds
+        else:
+            try:
+                available = get_account_balance()["available"]
+            except Exception:
+                available = 0
         margin_size = (available * 0.9) / (price * margin_factor) if price > 0 else 0
 
         # Use the tighter of the two constraints — do NOT blindly force up to min_size.

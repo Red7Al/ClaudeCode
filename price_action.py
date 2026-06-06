@@ -71,6 +71,16 @@
 # 1.1.0   2026-06-05  Alex Hind   Raised HVF_MIN_RR from 2.0 to 2.5 in both
 #                                 single-timeframe and multi-timeframe scanners
 #                                 to match MIN_RISK_REWARD in config.py.
+# 1.3.0   2026-06-06  Alex Hind   Fix 1: remove `if thresh != default` guard so
+#                                 config threshold is always authoritative —
+#                                 previously changing PA_CONFIRM_THRESHOLD_DEFAULT
+#                                 had zero effect on standard equities/indices.
+#                                 Fix 2 (HVF bypass): extend to cover direction
+#                                 conflicts: previously only fired when verdict==WAIT,
+#                                 so a low-threshold crypto with pa_score=+22 would
+#                                 get CONFIRM_LONG even while HVF was BEARISH+TRIGGERED.
+#                                 Now: always apply HVF direction, force WAIT when HVF
+#                                 direction conflicts with PA score at bypass threshold.
 # 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto
 #                                 now uses threshold=25, FX/commodities 30-35,
 #                                 equities/indices keep default 40.
@@ -1380,36 +1390,63 @@ def analyse_price_action(ticker: str) -> dict:
     # Override the verdict here using the per-class threshold from config.
     # Crypto uses 25, FX/commodities 30–35, equities/indices keep the default 40.
     thresh = PA_CONFIRM_THRESHOLDS.get(ticker, PA_CONFIRM_THRESHOLD_DEFAULT)
-    if thresh != PA_CONFIRM_THRESHOLD_DEFAULT:
-        # Re-apply verdict with the instrument-specific threshold
-        if score >= thresh:
-            verdict = "CONFIRM_LONG"
-        elif score <= -thresh:
-            verdict = "CONFIRM_SHORT"
-        else:
-            verdict = "WAIT"
+    # Always re-evaluate verdict against the config threshold.
+    # Removing the previous `if thresh != PA_CONFIRM_THRESHOLD_DEFAULT` guard
+    # which caused two bugs:
+    #   (a) compute_price_action_score() uses hardcoded ±40 — changing
+    #       PA_CONFIRM_THRESHOLD_DEFAULT had zero effect on standard instruments.
+    #   (b) Any instrument added to PA_CONFIRM_THRESHOLDS with value 40 would
+    #       still silently use the hardcoded threshold.
+    # Now: the config value is always authoritative regardless of what it equals.
+    if score >= thresh:
+        verdict = "CONFIRM_LONG"
+    elif score <= -thresh:
+        verdict = "CONFIRM_SHORT"
+    else:
+        verdict = "WAIT"
 
     # ── Fix 2: HVF TRIGGERED bypass ────────────────────────────────────────
-    # If the HVF pattern has already triggered (price through H3/L3) in the
-    # correct direction, halve the effective threshold — price has voted.
-    # Floor at 15 to prevent zero-threshold on very low-threshold instruments.
-    # This mirrors the existing logic where HVF bypasses the primary signal count.
+    # If the HVF pattern has already triggered (price through H3/L3), halve the
+    # effective threshold — price has voted via the pattern, so less PA score
+    # confirmation is required to proceed.
+    # Floor at 15 to prevent near-zero thresholds on very low-threshold instruments.
+    #
+    # IMPORTANT: also resolves a direction conflict.  If Fix 1 set a CONFIRM in
+    # the WRONG direction (e.g. CONFIRM_LONG with pa_score=+22 for a low-thresh
+    # crypto) while the HVF has triggered BEARISH, we must override the verdict —
+    # entering a BUY against a triggered bearish HVF is exactly the falling-knife
+    # scenario this module was designed to prevent.
+    # Previous guard `verdict == "WAIT"` was too narrow: it skipped the bypass
+    # whenever Fix 1 had already set a (possibly conflicting) verdict.
     hvf_signal = hvf.get("hvf_signal")
     hvf_type   = hvf.get("hvf_type")
-    if hvf_signal == "TRIGGERED" and verdict == "WAIT":
+    if hvf_signal == "TRIGGERED":
         bypass = max(thresh * 0.5, 15)
         if hvf_type == "BULLISH" and score >= bypass:
+            if verdict != "CONFIRM_LONG":
+                log.info(
+                    f"HVF TRIGGERED bypass: {ticker} → CONFIRM_LONG "
+                    f"(pa_score={score:+.1f} bypass={bypass:.0f} was={verdict})"
+                )
             verdict = "CONFIRM_LONG"
-            log.info(
-                f"HVF TRIGGERED bypass: {ticker} promoted WAIT → CONFIRM_LONG "
-                f"(pa_score={score:+.1f} bypass_threshold={bypass:.0f})"
-            )
         elif hvf_type == "BEARISH" and score <= -bypass:
+            if verdict != "CONFIRM_SHORT":
+                log.info(
+                    f"HVF TRIGGERED bypass: {ticker} → CONFIRM_SHORT "
+                    f"(pa_score={score:+.1f} bypass={-bypass:.0f} was={verdict})"
+                )
             verdict = "CONFIRM_SHORT"
-            log.info(
-                f"HVF TRIGGERED bypass: {ticker} promoted WAIT → CONFIRM_SHORT "
-                f"(pa_score={score:+.1f} bypass_threshold={-bypass:.0f})"
-            )
+        else:
+            # HVF triggered but PA score doesn't support its direction even at
+            # the reduced bypass threshold.  Force WAIT to avoid a trade that
+            # contradicts both the HVF pattern and the PA score.
+            if verdict not in ("WAIT",):
+                log.info(
+                    f"HVF TRIGGERED conflict: {ticker} hvf={hvf_type} but "
+                    f"pa_score={score:+.1f} does not reach bypass={bypass:.0f} — "
+                    f"overriding {verdict} → WAIT"
+                )
+            verdict = "WAIT"
 
     result = {
         "ticker":           ticker,

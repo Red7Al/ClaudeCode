@@ -544,10 +544,16 @@ def session_heartbeat(
         sch_total = sch_h * 60 + sch_m
         act_total = act_h * 60 + act_m
         late_mins = act_total - sch_total
+        # Handle midnight rollover in both directions:
+        #   Late  rollover: scheduled 23:30, ran 00:15 → late_mins = -855 → +1440 → +585 (late)
+        #   Early rollover: scheduled 00:00, ran 23:55 → late_mins = +1435 → -1440 → -5 (early)
+        # Clamp: if still negative after rollover adjustments, ran early → treat as on time.
         if late_mins < -120:
-            late_mins += 1440   # rolled midnight (e.g. scheduled 23:30, ran 00:15)
-        elif late_mins < 0:
-            late_mins = 0       # ran early (Cloud Routines fired before window) → on time
+            late_mins += 1440   # rolled midnight going forward (e.g. sched 23:30 → ran 00:15)
+        elif late_mins > 1320:  # > 22 hours late is implausible — must have run previous day
+            late_mins -= 1440
+        if late_mins < 0:
+            late_mins = 0       # ran early (any direction) → on time
     except Exception:
         pass
 

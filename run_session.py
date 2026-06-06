@@ -33,6 +33,15 @@
 #                                 fire Slack alert via alert_circuit_breaker().
 #                                 Previously silently skipped — violates no-silent-
 #                                 failures policy.
+# 1.4.0   2026-06-06  Alex Hind   Code-review fixes: (a) hoist get_user_profile()
+#                                 before the per-ticker loop — was per-signal,
+#                                 risking inconsistent paper_trade/risk on DB
+#                                 flakiness; (b) pass available_funds to
+#                                 calculate_position_size to eliminate duplicate
+#                                 get_account_balance() call; (c) fix
+#                                 alert_circuit_breaker first arg — was passing
+#                                 the reason string as user, now passes profile name.
+#                                 Same available_funds fix applied in run_session_open.
 # 1.3.0   2026-06-06  Alex Hind   run_monitor rescan: replace simplified inline
 #                                 size calculation with calculate_position_size().
 #                                 Previous code used risk_amount/stop_dist with a
@@ -232,11 +241,14 @@ def run_session_open(session_name: str):
         # Apply stress multiplier if SPX is in a down day (1.0–2.5% drop).
         try:
             bal         = get_account_balance()
-            risk_amount = bal["available"] * profile["risk_per_trade"] * stress_mult
+            available   = bal["available"]
+            risk_amount = available * profile["risk_per_trade"] * stress_mult
             epic        = get_epic(ticker)
             if epic:
-                size, stop_dist = calculate_position_size(epic, stop_dist, risk_amount)
-                limit_dist      = round(stop_dist * 2, 4)
+                size, stop_dist = calculate_position_size(
+                    epic, stop_dist, risk_amount, available_funds=available
+                )
+                limit_dist = round(stop_dist * 2, 4)
             else:
                 size = 0.0
         except Exception as e:
@@ -432,6 +444,13 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
             macro       = get_macro_gate(session_name)
             stress_mult = macro.get("stress_size_multiplier", 1.0)
             if macro.get("macro_gate_pass"):
+                # Fetch profile once per monitor pass, not per signal.
+                # Previously fetched inside the per-signal block, causing:
+                #   (a) N Supabase round-trips for N signals in one session
+                #   (b) If DB fails mid-scan, later tickers get the safe-default
+                #       profile (paper_trade=False) even for paper-only users,
+                #       which could trigger a live trade.
+                profile    = get_user_profile()
                 new_trades = 0
                 for ticker in candidates:
                     if new_trades >= slots_remaining:
@@ -450,15 +469,21 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                             #       IG to reject the order (INVALID_STOP_OR_LIMIT).
                             # Now mirrors run_session_open exactly — reads the risk %
                             # from the user profile so Wife/Son profiles are respected.
-                            profile = get_user_profile()
-                            size    = 0.0
+                            size = 0.0
                             try:
                                 bal         = get_account_balance()
-                                risk_amount = bal["available"] * profile["risk_per_trade"] * stress_mult
+                                available   = bal["available"]
+                                risk_amount = available * profile["risk_per_trade"] * stress_mult
                                 epic_code   = get_epic(ticker)
                                 if epic_code:
+                                    # Pass available_funds so calculate_position_size
+                                    # skips its internal get_account_balance() call —
+                                    # avoids a duplicate IG API call per instrument
+                                    # and ensures margin check uses the same balance
+                                    # snapshot as the risk calculation.
                                     size, stop_dist = calculate_position_size(
-                                        epic_code, stop_dist, risk_amount
+                                        epic_code, stop_dist, risk_amount,
+                                        available_funds=available
                                     )
                                     limit_dist = round(stop_dist * 2, 4)
                             except Exception as e:
@@ -472,7 +497,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                                 )
                                 log.warning(msg)
                                 alert_circuit_breaker(
-                                    "Triggered trade skipped — insufficient margin", ticker, msg
+                                    profile["name"], ticker, msg
                                 )
                                 continue
 
