@@ -29,6 +29,10 @@
 # 1.1.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF handler — was listed in
 #                                 usage help but crashed with "Unknown session"
 #                                 when triggered by the Sunday scheduled task.
+# 1.2.0   2026-06-05  Alex Hind   Fix 3: when calculated position size is zero,
+#                                 fire Slack alert via alert_circuit_breaker().
+#                                 Previously silently skipped — violates no-silent-
+#                                 failures policy.
 # 1.3.0   2026-06-06  Alex Hind   run_monitor rescan: replace simplified inline
 #                                 size calculation with calculate_position_size().
 #                                 Previous code used risk_amount/stop_dist with a
@@ -39,10 +43,10 @@
 #                                 profile risk_per_trade, and alerts on size=0.
 #                                 Also adds stress_mult to the monitor rescan path
 #                                 so SPX stress mode is respected consistently.
-# 1.2.0   2026-06-05  Alex Hind   Fix 3: when calculated position size is zero,
-#                                 fire Slack alert via alert_circuit_breaker().
-#                                 Previously silently skipped — violates no-silent-
-#                                 failures policy.
+# 1.3.1   2026-06-06  Alex Hind   Fix circuit breaker alert in size=0 path: was
+#                                 passing the reason string as the user field,
+#                                 showing "Triggered trade skipped..." as User in
+#                                 Slack. Now passes profile name (e.g. "Owner").
 # =============================================================================
 
 import sys
@@ -251,7 +255,7 @@ def run_session_open(session_name: str):
                 f"Review account balance or reduce risk_per_trade in user_profiles."
             )
             log.warning(msg)
-            alert_circuit_breaker("Triggered trade skipped — insufficient margin", ticker, msg)
+            alert_circuit_breaker(profile.get("name", "Owner"), ticker, msg)
             continue
 
         trade_result = open_trade(
