@@ -22,12 +22,15 @@
 #   Covers: crude oil inventories, gasoline, distillates, refinery utilisation.
 #   This is the most important weekly data release for crude oil traders.
 #   API: https://api.eia.gov/v2/ — FREE (API key required)
-#   Key series:
-#     PET.WCRSTUS1.W  — US crude oil stocks (weekly, barrels)
+#   Key series (verified vs live EIA API 2026-06-07):
+#     PET.WCRSTUS1.W  — US crude stocks INCL SPR (thousand barrels)
+#     PET.WCESTUS1.W  — US crude stocks EXCL SPR (commercial — the supply/demand
+#                       signal; recommended over WCRSTUS1, see version 1.1.0 note)
 #     PET.WGTSTUS1.W  — US gasoline stocks
 #     PET.WDISTUS1.W  — US distillate stocks
-#     PET.WPULEUS2.W  — US crude oil production
-#     PET.WCRRIUS2.W  — US refinery utilisation rate
+#     PET.WPULEUS3.W  — US refinery % utilisation of operable capacity (units=%)
+#     PET.WCRRIUS2.W  — US refiner net input of crude (kbbl/d) — NOT utilisation
+#     PET.WCRFPUS2.W  — US field production of crude (kbbl/d)
 #
 #   Precious Metals (COMEX / LME)
 #   ─────────────────────────────────────────
@@ -43,6 +46,19 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.1.0   2026-06-07  Alex Hind   Fix refinery-utilisation EIA series ID. The code
+#                                 tried PET.WCRRIUS2.W / WCRRIUS2 / PET.WPULEUS2.W —
+#                                 the first is refiner crude INPUT (kbbl/d, rejected
+#                                 by the 50-100 sanity check) and the other two 404 —
+#                                 so refinery_util never populated and every commodity
+#                                 scan logged two EIA 404 warnings. Now uses the
+#                                 verified PET.WPULEUS3.W (% utilisation). Series IDs
+#                                 confirmed against the live EIA API 2026-06-07.
+#                                 FLAGGED (not changed): crude-stocks signal uses
+#                                 PET.WCRSTUS1.W (total incl SPR, 790M bbl); the
+#                                 market supply/demand number is PET.WCESTUS1.W
+#                                 (commercial excl SPR, 434M bbl). Switching changes
+#                                 a live oil signal — left for user confirmation.
 # 1.0.0   2026-05-30  Alex Hind   Initial build. EIA oil inventory signal
 #                                 fully implemented. COMEX/LME stubs with
 #                                 graceful fallbacks. Geopolitical risk
@@ -202,16 +218,17 @@ def get_oil_inventory_signal() -> dict:
             break
     result["trend_weeks"] = trend
 
-    # Refinery utilisation % of capacity
-    # Try multiple EIA series IDs for utilisation rate
-    for util_series in ["PET.WCRRIUS2.W", "WCRRIUS2", "PET.WPULEUS2.W"]:
-        refinery = fetch_eia_series(util_series, periods=3)
-        if refinery:
-            util = refinery[-1][1]
-            # Sanity check — should be between 50-100%
-            if 50 <= util <= 100:
-                result["refinery_util"] = round(util, 1)
-                break
+    # Refinery utilisation % of capacity — series verified vs the live EIA API
+    # 2026-06-07: PET.WPULEUS3.W = "U.S. Percent Utilization of Refinery Operable
+    # Capacity" (units=%). The previous IDs were wrong: WPULEUS2/WCRRIUS2 (bare)
+    # return 404, and PET.WCRRIUS2.W is refiner crude INPUT (kbbl/d, ~16,881),
+    # not a percentage — so refinery_util never populated and every scan logged
+    # two EIA 404 warnings.
+    refinery = fetch_eia_series("PET.WPULEUS3.W", periods=3)
+    if refinery:
+        util = refinery[-1][1]
+        if 50 <= util <= 100:   # sanity: utilisation is a percentage
+            result["refinery_util"] = round(util, 1)
 
     # Determine signal
     abs_change = abs(latest_change)
