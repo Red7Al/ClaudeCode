@@ -1,4 +1,4 @@
-name: Sunday Pre-Open Commodity Scan (2026-06-07)
+name: Sunday Pre-Open Commodity Scan (2026-06-07b)
 
 # Sunday-evening pre-open scan via PREMARKET_BRIEF, so the commodities that
 # reopen on the CME Globex Sunday session (Gold, Silver, Oil — plus 24/7 crypto
@@ -6,11 +6,10 @@ name: Sunday Pre-Open Commodity Scan (2026-06-07)
 # of waiting for AUS_OPEN at 00:00 UTC Monday. Runs the full signal stack and may
 # open trades (honours the once-per-day guard, macro gate, and circuit breakers).
 #
-# Scheduling: GitHub-native cron (cron-job.org key not yet a repo secret). This
-# job is delay-tolerant (overnight commodity session, not a precise weekday
-# market open) and must run with the local machine off. Migrate to cron-job.org
-# once CRONJOB_API_KEY is added; if you do, remove the schedule block below to
-# avoid double-firing.
+# Scheduling: cron-job.org → workflow_dispatch ONLY. GitHub-native cron is BANNED
+# (user directive — see memory/feedback_scheduler.md). Intended schedule:
+# Sun 22:00 UTC. Pending a working CRONJOB_API_KEY to create the cron-job.org job;
+# until then, manual dispatch only.
 on:
   workflow_dispatch:
     inputs:
@@ -18,8 +17,6 @@ on:
         description: 'Set to true to bypass the once-per-day guard'
         required: false
         default: 'false'
-  schedule:
-    - cron: '0 22 * * 0'   # Sunday 22:00 UTC = 23:00 BST (~11pm UK) — CME commodity reopen
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
