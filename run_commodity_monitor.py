@@ -24,6 +24,11 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-01  Alex Hind   Initial build.
+# 1.0.1   2026-06-06  Alex Hind   Detected-closure notify: replace hardcoded 0.0 P&L
+#                                 with the realised P&L computed from open/close price,
+#                                 direction and size (mirrors the run_session.py fix).
+#                                 Slack previously reported every commodity closure as
+#                                 £0.00 regardless of actual gain/loss.
 # =============================================================================
 
 import os
@@ -147,9 +152,16 @@ def run():
             open_price = float(row[3])
             size       = float(row[5])
             close_reason, close_price = get_close_reason(deal_id)
-            _log_trade_close_to_db(deal_id, close_price or open_price, close_reason)
-            trade_closed(ticker, direction, open_price, close_price or open_price, 0.0, close_reason)
-            log.info(f"Commodity position closed: {ticker} {deal_id} — {close_reason} @ {close_price}")
+            actual_close = close_price or open_price
+            _log_trade_close_to_db(deal_id, actual_close, close_reason)
+            pnl = round(
+                (actual_close - open_price) * size if direction == "BUY"
+                else (open_price - actual_close) * size,
+                2
+            )
+            trade_closed(ticker, direction, open_price, actual_close, pnl, close_reason)
+            log.info(f"Commodity position closed: {ticker} {deal_id} — {close_reason} "
+                     f"@ {close_price} | P&L £{pnl:.2f}")
 
     log.info("Commodity monitor complete")
 

@@ -52,6 +52,18 @@
 #                                 profile risk_per_trade, and alerts on size=0.
 #                                 Also adds stress_mult to the monitor rescan path
 #                                 so SPX stress mode is respected consistently.
+# 1.7.0   2026-06-06  Alex Hind   run_monitor closure detection: the 1.6.0 per-deal
+#                                 verification relied on get_close_reason returning
+#                                 UNKNOWN for still-open deals, but for an open
+#                                 position IG's activity history returns the OPEN (or
+#                                 a trailing-stop AMEND) activity, which get_close_reason
+#                                 misreads as a SYSTEM/STOP_HIT close — so a transient
+#                                 empty-list glitch could falsely close live positions.
+#                                 Now disambiguate at the source: re-fetch the
+#                                 positions list. Glitch (re-fetch returns positions)
+#                                 ⇒ skip; error ⇒ skip; confirmed empty ⇒ record
+#                                 closures. get_close_reason is only called once a deal
+#                                 is confirmed gone from the list.
 # 1.6.0   2026-06-06  Alex Hind   run_monitor closure detection: replace the blanket
 #                                 "skip when IG returns 0 positions" guard (1.5.0)
 #                                 with per-deal verification. The blanket skip never
@@ -449,25 +461,44 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
 
     if not ig_positions and our_deals:
         # IG returned an empty positions list while the DB still holds open deals.
-        # Ambiguous: either a transient API glitch (positions are really still open)
-        # or a genuine mass-close (e.g. every stop hit in a flash crash). Neither
-        # blanket-close (destroys data on a glitch) nor blanket-skip (a real
-        # mass-close would never be detected) is safe. Instead verify each deal
-        # against IG activity history: get_close_reason returns a definitive reason
-        # only when IG recorded a close, and "UNKNOWN" when no close activity exists
-        # (i.e. the position is still open). Close only the deals IG confirms closed.
+        # Ambiguous: either a transient API glitch (a 200 with an empty array while
+        # the positions are really still open) or a genuine mass-close (e.g. every
+        # stop hit in a flash crash). Disambiguate AT THE SOURCE by re-fetching the
+        # positions list: a transient empty-glitch is very unlikely to repeat on an
+        # immediate second call, while a genuine close stays closed.
+        #
+        # Do NOT infer open-vs-closed from get_close_reason here. For a still-open
+        # deal, IG's activity history returns the OPEN activity (or a trailing-stop
+        # AMEND), which get_close_reason can misread as a SYSTEM/STOP_HIT close —
+        # that would falsely close live positions, the exact data loss this guard
+        # exists to prevent. get_close_reason is only safe once a deal is CONFIRMED
+        # gone from the positions list.
         log.warning(
             f"{session_name}: IG returned 0 positions but {len(our_deals)} exist in DB "
-            f"— verifying each deal against activity history before closing"
+            f"— re-fetching to confirm before any closure"
         )
-        for deal_id, row in our_deals.items():
-            if deal_id.startswith("PAPER-"):
-                continue
-            close_reason, close_price = get_close_reason(deal_id)
-            if close_reason == "UNKNOWN":
-                log.info(f"{deal_id}: no IG close activity — assuming still open (glitch), skipping")
-                continue
-            _record_closure(deal_id, row, close_reason, close_price)
+        try:
+            confirm = get_open_positions()
+        except Exception as e:
+            confirm = None
+            log.warning(f"{session_name}: positions re-fetch errored ({e})")
+
+        if confirm:
+            # Re-fetch found positions → the first empty result was a glitch.
+            log.warning(f"{session_name}: re-fetch returned {len(confirm)} position(s) "
+                        f"— transient glitch, skipping closure detection this pass")
+        elif confirm is None:
+            # Re-fetch errored → still ambiguous → skip to avoid false closures.
+            log.warning(f"{session_name}: re-fetch inconclusive — skipping closure detection this pass")
+        else:
+            # Re-fetch also empty → positions are genuinely gone. Record closures.
+            log.warning(f"{session_name}: re-fetch confirms 0 positions — recording "
+                        f"{len(our_deals)} closure(s)")
+            for deal_id, row in our_deals.items():
+                if deal_id.startswith("PAPER-"):
+                    continue
+                close_reason, close_price = get_close_reason(deal_id)
+                _record_closure(deal_id, row, close_reason, close_price)
     else:
         for deal_id, row in our_deals.items():
             if deal_id not in ig_deal_ids and not deal_id.startswith("PAPER-"):
