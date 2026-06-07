@@ -20,6 +20,13 @@
 #   python setup_cronjobs.py
 #
 # Safe to re-run — checks for existing jobs before creating.
+#
+# Version History:
+# -----------------------------------------------------------------------------
+# 1.0.0   2026-06-05  Alex Hind   Initial build — all session/report cron jobs.
+# 1.1.0   2026-06-07  Alex Hind   Add "COT Report" job (Sat 10:00 UTC →
+#                                 trading-cot-report.yml), scheduled after the
+#                                 weekend review (09:00) refreshes COT data.
 # =============================================================================
 
 import os
@@ -132,6 +139,7 @@ JOBS = [
     # ── Weekend ─────────────────────────────────────────────────────────────
     ("Weekend Review",      "0 9 * * 6",      "trading-weekend-review.yml"),
     ("HVF Weekend Report",  "0 9 * * 6",      "trading-hvf-report.yml"),
+    ("COT Report",          "0 10 * * 6",     "trading-cot-report.yml"),  # after weekend review refreshes COT (09:00)
 ]
 
 
