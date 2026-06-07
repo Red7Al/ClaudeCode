@@ -24,6 +24,17 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-05  Alex Hind   Initial build — all session/report cron jobs.
+# 1.2.0   2026-06-07  Alex Hind   Fix create_job payload for the real cron-job.org
+#                                 API — it sent cronExpression/exprType and headers
+#                                 as a list, which the API rejects with HTTP 500 (the
+#                                 script had never worked). Now builds explicit
+#                                 minutes/hours/mdays/months/wdays arrays via
+#                                 _cron_to_schedule() and headers as an object.
+#                                 Verified live: created COT + 2 Sunday jobs. Added
+#                                 the Sunday jobs. ⚠ Running the FULL script populates
+#                                 ALL jobs — only do so against a sole cron-job.org
+#                                 account, else it double-fires with the old
+#                                 (lost-access) account that still holds weekday jobs.
 # 1.1.0   2026-06-07  Alex Hind   Add "COT Report" job (Sat 10:00 UTC →
 #                                 trading-cot-report.yml), scheduled after the
 #                                 weekend review (09:00) refreshes COT data.
@@ -140,6 +151,9 @@ JOBS = [
     ("Weekend Review",      "0 9 * * 6",      "trading-weekend-review.yml"),
     ("HVF Weekend Report",  "0 9 * * 6",      "trading-hvf-report.yml"),
     ("COT Report",          "0 10 * * 6",     "trading-cot-report.yml"),  # after weekend review refreshes COT (09:00)
+    # ── Sunday commodity pre-open (created on the new cron-job.org account 2026-06-07) ──
+    ("Sunday Readiness Check",         "30 20 * * 0", "trading-sunday-readiness.yml"),
+    ("Sunday Pre-Open Commodity Scan", "0 22 * * 0",  "trading-premarket-brief.yml"),
 ]
 
 
@@ -153,26 +167,64 @@ def get_existing_jobs():
     return {j["title"]: j["jobId"] for j in resp.json().get("jobs", [])}
 
 
+def _cron_to_schedule(cron: str) -> dict:
+    """
+    Convert a 5-field cron expression to cron-job.org's schedule object.
+
+    cron-job.org's API does NOT accept a raw cron string — it needs explicit
+    integer arrays for minutes/hours/mdays/months/wdays ([-1] means "every").
+    Supports single values, '*', comma lists, ranges (a-b) and steps (*/n).
+    wdays use 0=Sunday..6=Saturday (same as cron). Verified against the live
+    cron-job.org API 2026-06-07 (the old cronExpression payload returned HTTP 500).
+    """
+    minute, hour, mday, month, wday = cron.split()
+
+    def parse(field: str, lo: int, hi: int) -> list:
+        if field == "*":
+            return [-1]
+        vals = set()
+        for part in field.split(","):
+            step = 1
+            base = part
+            if "/" in part:
+                base, s = part.split("/"); step = int(s)
+            if base == "*":
+                start, end = lo, hi
+            elif "-" in base:
+                a, b = base.split("-"); start, end = int(a), int(b)
+            else:
+                start = end = int(base)
+            vals.update(range(start, end + 1, step))
+        return sorted(vals)
+
+    return {
+        "timezone":  "UTC",
+        "expiresAt": 0,
+        "minutes":   parse(minute, 0, 59),
+        "hours":     parse(hour,   0, 23),
+        "mdays":     parse(mday,   1, 31),
+        "months":    parse(month,  1, 12),
+        "wdays":     parse(wday,   0, 6),
+    }
+
+
 def create_job(title: str, cron: str, workflow: str):
     url = f"{GITHUB_API}/repos/{GITHUB_REPO}/actions/workflows/{workflow}/dispatches"
     payload = {
-        "title": title,
-        "url": url,
-        "enabled": True,
+        "url":           url,
+        "enabled":       True,
+        "title":         title,
         "saveResponses": False,
-        "schedule": {
-            "timezone": "UTC",
-            "exprType": 0,           # 0 = standard cron expression
-            "cronExpression": cron,
-        },
+        "schedule":      _cron_to_schedule(cron),
         "requestMethod": 1,          # 1 = POST
         "extendedData": {
-            "headers": [
-                {"name": "Authorization",        "value": f"Bearer {GITHUB_TOKEN}"},
-                {"name": "Accept",               "value": "application/vnd.github+json"},
-                {"name": "X-GitHub-Api-Version", "value": "2022-11-28"},
-                {"name": "Content-Type",         "value": "application/json"},
-            ],
+            # cron-job.org expects headers as an OBJECT, not a list of name/value
+            "headers": {
+                "Authorization":        f"Bearer {GITHUB_TOKEN}",
+                "Accept":               "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "Content-Type":         "application/json",
+            },
             "body": '{"ref":"main"}',
         },
     }
@@ -184,8 +236,7 @@ def create_job(title: str, cron: str, workflow: str):
         timeout=15
     )
     resp.raise_for_status()
-    job_id = resp.json().get("jobId")
-    return job_id
+    return resp.json().get("jobId")
 
 
 def main():
