@@ -22,6 +22,15 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.0.3   2026-06-07  Alex Hind   CRITICAL: fix pg8000 param binding in check_session.
+#                                 The macro_snapshot and signal_log COUNT queries used
+#                                 $1/$2 positional placeholders with a list arg, but
+#                                 pg8000.native uses :name keyword params — the list
+#                                 bound to `stream`, the $-placeholders went unfilled,
+#                                 and EVERY watchdog run crashed with "IndexError: list
+#                                 index out of range" (confirmed in Actions logs since
+#                                 at least 2026-06-05 — the safety net was down). Now
+#                                 uses :sess/:d kwargs, matching already_ran_today().
 # 1.0.2   2026-06-06  Alex Hind   Replace the grace=60 workaround (1.0.1b) with a
 #                                 proper HH:MM open-time model. check_session now takes
 #                                 open_minute_utc and SESSIONS carries an explicit
@@ -151,12 +160,15 @@ def check_session(conn, session_name: str, open_hour_utc: int,
         log.info(f"{session_name}: not yet due (deadline {deadline.strftime('%H:%M')} UTC)")
         return True
 
-    # Check macro_snapshot (positional params — see signal_log INSERT note)
+    # pg8000.native uses :name keyword params (NOT $1/$2 positional). The old
+    # form passed a list (bound to `stream`) leaving the $-placeholders unfilled,
+    # so every run crashed with "IndexError: list index out of range". Mirrors the
+    # working query in run_session.already_ran_today().
     macro_rows = conn.run(
         """select count(*) from macro_snapshot
-           where session = $1
-             and date(snapshot_time at time zone 'UTC') = $2""",
-        [session_name, today]
+           where session = :sess
+             and date(snapshot_time at time zone 'UTC') = :d""",
+        sess=session_name, d=today
     )
     macro_count = int(macro_rows[0][0]) if macro_rows else 0
 
@@ -188,9 +200,9 @@ def check_session(conn, session_name: str, open_hour_utc: int,
     # macro ran — check signal_log
     sig_rows = conn.run(
         """select count(*) from signal_log
-           where session = $1
-             and date(session_time at time zone 'UTC') = $2""",
-        [session_name, today]
+           where session = :sess
+             and date(session_time at time zone 'UTC') = :d""",
+        sess=session_name, d=today
     )
     sig_count = int(sig_rows[0][0]) if sig_rows else 0
 
