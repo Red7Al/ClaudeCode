@@ -40,6 +40,14 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.1.0   2026-06-07  Alex Hind   Add market-context lines for Gold, Silver, the US
+#                                 indices (S&P 500, NASDAQ) and a UK proxy (MSCI EAFE
+#                                 positioning paired with the FTSE 100 price trend):
+#                                 each states whether COT positioning is aligned with
+#                                 the price trend, and why. New "UK / International
+#                                 (proxy)" group carries a note that CFTC has no
+#                                 FTSE/UK COT. Price trends fetched via yfinance in an
+#                                 isolated enrich step so build_report stays pure.
 # 1.0.0   2026-06-07  Alex Hind   Initial build. Reads latest cot_snapshot week,
 #                                 renders grouped per-instrument report with a
 #                                 headline section and a freshness guard, posts
@@ -54,6 +62,8 @@ import requests
 from datetime import datetime, timezone, date
 
 import pg8000.native
+
+from config import YAHOO_MAP
 
 log = logging.getLogger("cot_report")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -76,15 +86,34 @@ INSTRUMENT_NAMES = {
     "EURUSD": "Euro",
     "SPX500": "S&P 500",
     "NASDAQ": "NASDAQ 100",
+    "MSCI_EAFE": "MSCI EAFE (developed ex-US, incl. UK)",
 }
 
 # Report grouping + ordering by asset class.
 ASSET_CLASSES = [
-    ("Metals",  ["XAUUSD", "XAGUSD"]),
-    ("Energy",  ["OIL"]),
-    ("FX",      ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"]),
-    ("Indices", ["SPX500", "NASDAQ"]),
+    ("Metals",     ["XAUUSD", "XAGUSD"]),
+    ("Energy",     ["OIL"]),
+    ("FX",         ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"]),
+    ("US Indices", ["SPX500", "NASDAQ"]),
+    ("UK / International (proxy)", ["MSCI_EAFE"]),
 ]
+
+# Short note rendered under specific group headers.
+GROUP_NOTES = {
+    "UK / International (proxy)":
+        "_CFTC has no FTSE/UK index COT — MSCI EAFE (developed markets ex-US, "
+        "includes the UK) is shown as a positioning proxy, paired with the "
+        "FTSE 100 price trend._",
+}
+
+# Instruments that get a market-context line (COT positioning vs price trend).
+CONTEXT_INSTRUMENTS = ["XAUUSD", "XAGUSD", "SPX500", "NASDAQ", "MSCI_EAFE"]
+
+# Price ticker / name for the context trend line, overriding YAHOO_MAP where the
+# positioning proxy and the price reference differ: EAFE positioning is paired
+# with the FTSE 100 price per the UK-proxy decision (2026-06-07).
+CONTEXT_PRICE_TICKER = {"MSCI_EAFE": "^FTSE"}
+CONTEXT_PRICE_NAME   = {"MSCI_EAFE": "FTSE 100"}
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +190,92 @@ def _extreme_tag(comm_extreme: str, mm_extreme: str) -> str:
 
 def _name(ticker: str) -> str:
     return INSTRUMENT_NAMES.get(ticker, ticker)
+
+
+# ---------------------------------------------------------------------------
+# Market context — COT positioning vs price trend (the "why aligned / not")
+# ---------------------------------------------------------------------------
+
+def _price_trend(yticker: str, weeks: int = 13) -> tuple:
+    """
+    Return (label, pct_change) over ~`weeks` of weekly closes.
+    label is 'rising' / 'falling' / 'flat'; both None on failure. yfinance is
+    imported here so the rest of the module stays import-light and pure.
+    """
+    try:
+        import yfinance as yf
+        hist = yf.Ticker(yticker).history(period=f"{weeks * 7 + 10}d", interval="1wk")
+        if len(hist) < 3:
+            return (None, None)
+        first = float(hist["Close"].iloc[0])
+        last  = float(hist["Close"].iloc[-1])
+        if not first:
+            return (None, None)
+        pct = (last - first) / first * 100
+        label = "rising" if pct > 3 else "falling" if pct < -3 else "flat"
+        return (label, pct)
+    except Exception as e:
+        log.warning(f"Price trend fetch failed for {yticker}: {e}")
+        return (None, None)
+
+
+def market_context(row: dict, trend_label, trend_pct, price_name: str) -> str:
+    """
+    One-line plain-English read of whether COT positioning is aligned with the
+    price trend, and why. Commercials = hedgers (smart money); managed money =
+    large speculators (trend followers). Extremes/divergence are already shown on
+    the ⚠ line, so this focuses on direction + price alignment.
+    """
+    score = _num(row.get("cot_score")) or 0.0
+    comm  = _num(row.get("comm_net")) or 0.0
+    mm    = _num(row.get("managed_money_net")) or 0.0
+
+    comm_dir = "net long" if comm > 0 else "net short" if comm < 0 else "flat"
+    mm_dir   = "net long" if mm  > 0 else "net short" if mm  < 0 else "flat"
+
+    cot_bull = score >= 10
+    cot_bear = score <= -10
+
+    if trend_label is None:
+        align = "price trend unavailable — alignment unknown"
+    elif not (cot_bull or cot_bear):
+        align = (f"COT balanced (score {score:+.0f}) against a {trend_label} price "
+                 f"— no clear positioning edge")
+    elif cot_bull and trend_label == "rising":
+        align = "ALIGNED — bullish positioning confirms the rising price"
+    elif cot_bear and trend_label == "falling":
+        align = "ALIGNED — bearish positioning confirms the falling price"
+    elif cot_bull and trend_label == "falling":
+        align = ("NOT ALIGNED — smart money accumulating into a falling price "
+                 "(bullish divergence; watch for a turn)")
+    elif cot_bear and trend_label == "rising":
+        align = ("NOT ALIGNED — smart money positioned short into a rising price "
+                 "(reversal risk)")
+    else:  # flat price, directional COT
+        lean = "bullish" if cot_bull else "bearish"
+        align = f"COT leans {lean} ({score:+.0f}) — positioning ahead of a flat price"
+
+    pct_str = f"{trend_pct:+.1f}%/13wk" if trend_pct is not None else "n/a"
+    return (f"Commercials {comm_dir}, managed money {mm_dir}; "
+            f"{price_name} {trend_label or '—'} ({pct_str}). {align}.")
+
+
+def enrich_with_context(rows: list[dict]) -> list[dict]:
+    """
+    Attach a 'market_context' string to the CONTEXT_INSTRUMENTS rows. Best-effort:
+    on a price-fetch failure the context still renders with 'unavailable'. All
+    network access (yfinance) is isolated here so build_report stays pure.
+    """
+    by = {r.get("instrument"): r for r in rows}
+    for tk in CONTEXT_INSTRUMENTS:
+        r = by.get(tk)
+        if not r:
+            continue
+        price_tk   = CONTEXT_PRICE_TICKER.get(tk) or YAHOO_MAP.get(tk, tk)
+        price_name = CONTEXT_PRICE_NAME.get(tk, _name(tk))
+        label, pct = _price_trend(price_tk)
+        r["market_context"] = market_context(r, label, pct, price_name)
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +377,8 @@ def build_report(rows: list[dict], generated_at: datetime = None) -> str:
         if not present:
             continue
         lines.append(f"*{class_name}*")
+        if class_name in GROUP_NOTES:
+            lines.append(f"  {GROUP_NOTES[class_name]}")
         for t in present:
             r = by_instrument[t]
             emoji = _bias_emoji(r.get("bias"))
@@ -286,6 +403,9 @@ def build_report(rows: list[dict], generated_at: datetime = None) -> str:
                 tags.append(f"{diverg.lower()} divergence")
             if tags:
                 lines.append(f"      ⚠ {'; '.join(tags)}")
+            # Market context: COT positioning vs price trend (aligned / not aligned)
+            if r.get("market_context"):
+                lines.append(f"      ↳ {r['market_context']}")
         lines.append("")
 
     # ── Legend + footer ───────────────────────────────────────────────────────
@@ -366,6 +486,7 @@ def main():
         log.warning(msg)
         _alert_failure("cot_snapshot empty", msg)
 
+    rows = enrich_with_context(rows)   # adds price-trend market context (best-effort)
     report = build_report(rows)
     log.info("Report built. Posting to Slack...")
     post_to_slack(report)

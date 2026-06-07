@@ -39,6 +39,11 @@
 #                                 OPTIONS_PROXY_MAP, YAHOO_MAP, ATR_MULTIPLIERS.
 #                                 DAX suspended from trading until further notice.
 # 1.3.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF to SESSION_INSTRUMENTS
+# 1.8.0   2026-06-07  Alex Hind   Add MSCI_EAFE (CFTC 244041) as a COT-only proxy for
+#                                 UK/international-developed index positioning — CFTC
+#                                 has no FTSE/UK contract. YAHOO_MAP MSCI_EAFE→EFA for
+#                                 the divergence price calc; the weekly COT report
+#                                 pairs it with the FTSE 100 price trend.
 # 1.7.0   2026-06-07  Alex Hind   CORRECT the Gold/Silver CFTC codes after verifying
 #                                 every code against the live CFTC API. The 1.6.0
 #                                 diagnosis was wrong on both counts: 084691 is
@@ -268,6 +273,7 @@ YAHOO_MAP = {
     "SPX500":  "^GSPC",
     "NASDAQ":  "^IXIC",
     "UK100":   "^FTSE",
+    "MSCI_EAFE": "EFA",     # iShares MSCI EAFE ETF — price proxy for EAFE COT divergence calc
     "JPN225":  "^N225",
     "HK50":    "^HSI",
 
@@ -527,6 +533,11 @@ CFTC_CODES = {
     "EURUSD":  "099741",   # Euro
     "SPX500":  "13874+",   # S&P 500
     "NASDAQ":  "20974+",   # NASDAQ 100
+    # UK/international-developed COT proxy. CFTC has NO FTSE/UK index contract
+    # (verified 2026-06-07), so the weekly COT report pairs MSCI EAFE positioning
+    # (developed markets ex-US, which includes the UK) with the FTSE 100 price
+    # trend. Not a tradeable instrument — used for COT context only.
+    "MSCI_EAFE": "244041", # MSCI EAFE - ICE FUTURES U.S.
 }
 
 

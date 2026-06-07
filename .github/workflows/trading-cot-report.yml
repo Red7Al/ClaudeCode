@@ -1,0 +1,30 @@
+name: Weekly COT Report (2026-06-07)
+
+# Scheduling: triggered by cron-job.org via the GitHub workflow_dispatch API
+# (no GitHub-cron block — GitHub's shared cron queue is unreliable, see
+# feedback_scheduler.md). Run AFTER the weekend review has refreshed COT data.
+# Suggested cron-job.org expression (UTC): 0 10 * * 6  (Sat 10:00, ~1h after the
+# weekend-review job at 09:00 which runs refresh_all_cot).
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_cot_report.py
+        env:
+          SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_WEEKLY:         ${{ secrets.SLACK_WEEKLY }}
+          SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
