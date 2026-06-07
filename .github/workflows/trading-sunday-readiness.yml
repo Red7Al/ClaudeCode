@@ -1,0 +1,53 @@
+name: Sunday Readiness Check (2026-06-07)
+
+# Pre-open readiness check, every Sunday evening, before the commodity reopen
+# (~22:00 UTC / 23:00 BST / 11pm UK). Runs run_diagnostics.py against the
+# commodity instruments (Gold, Silver, Oil): verifies IG auth + balance, the
+# signal stack, DB writes, and all Slack webhooks, then posts a ✅/⚠/❌ report to
+# #claude-trading-alerts so any problem is visible BEFORE the open. Never trades.
+#
+# Scheduling: GitHub-native cron is used here (not cron-job.org) because the
+# cron-job.org API key is not yet a repo secret, and this check is delay-tolerant
+# and must run with the local machine off. Time-critical weekday market opens
+# stay on cron-job.org. Migrate this to cron-job.org once CRONJOB_API_KEY exists.
+on:
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: 'Tickers to test (default: commodities)'
+        required: false
+        default: 'XAUUSD,XAGUSD,OIL'
+  schedule:
+    - cron: '30 20 * * 0'   # Sunday 20:30 UTC = 21:30 BST — ~90 min before the commodity reopen
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_diagnostics.py
+        env:
+          DIAG_TICKERS:          ${{ github.event.inputs.tickers || 'XAUUSD,XAGUSD,OIL' }}
+          IG_API_KEY:            ${{ secrets.IG_API_KEY }}
+          IG_USERNAME:           ${{ secrets.IG_USERNAME }}
+          IG_PASSWORD:           ${{ secrets.IG_PASSWORD }}
+          IG_ACCOUNT_ID:         ${{ secrets.IG_ACCOUNT_ID }}
+          SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          FRED_API_KEY:          ${{ secrets.FRED_API_KEY }}
+          EIA_API_KEY:           ${{ secrets.EIA_API_KEY }}
+          QUIVER_QUANT_API_KEY:  ${{ secrets.QUIVER_QUANT_API_KEY }}
+          SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
+          SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
+          SLACK_TRADES:          ${{ secrets.SLACK_TRADES }}
+          SLACK_WEEKLY:          ${{ secrets.SLACK_WEEKLY }}
+          SLACK_DAILY:           ${{ secrets.SLACK_DAILY }}

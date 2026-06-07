@@ -1,0 +1,52 @@
+name: Sunday Pre-Open Commodity Scan (2026-06-07)
+
+# Sunday-evening pre-open scan via PREMARKET_BRIEF, so the commodities that
+# reopen on the CME Globex Sunday session (Gold, Silver, Oil — plus 24/7 crypto
+# and FX) are actioned at the reopen (~22:00 UTC / 23:00 BST / 11pm UK) instead
+# of waiting for AUS_OPEN at 00:00 UTC Monday. Runs the full signal stack and may
+# open trades (honours the once-per-day guard, macro gate, and circuit breakers).
+#
+# Scheduling: GitHub-native cron (cron-job.org key not yet a repo secret). This
+# job is delay-tolerant (overnight commodity session, not a precise weekday
+# market open) and must run with the local machine off. Migrate to cron-job.org
+# once CRONJOB_API_KEY is added; if you do, remove the schedule block below to
+# avoid double-firing.
+on:
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Set to true to bypass the once-per-day guard'
+        required: false
+        default: 'false'
+  schedule:
+    - cron: '0 22 * * 0'   # Sunday 22:00 UTC = 23:00 BST (~11pm UK) — CME commodity reopen
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_session.py PREMARKET_BRIEF
+        env:
+          IG_API_KEY:            ${{ secrets.IG_API_KEY }}
+          IG_USERNAME:           ${{ secrets.IG_USERNAME }}
+          IG_PASSWORD:           ${{ secrets.IG_PASSWORD }}
+          IG_ACCOUNT_ID:         ${{ secrets.IG_ACCOUNT_ID }}
+          SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          FRED_API_KEY:          ${{ secrets.FRED_API_KEY }}
+          EIA_API_KEY:           ${{ secrets.EIA_API_KEY }}
+          SLACK_TRADES:          ${{ secrets.SLACK_TRADES }}
+          SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
+          SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
+          SLACK_WEEKLY:          ${{ secrets.SLACK_WEEKLY }}
+          FORCE_RUN:             ${{ github.event.inputs.force_run || 'false' }}

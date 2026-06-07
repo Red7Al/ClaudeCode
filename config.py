@@ -39,6 +39,10 @@
 #                                 OPTIONS_PROXY_MAP, YAHOO_MAP, ATR_MULTIPLIERS.
 #                                 DAX suspended from trading until further notice.
 # 1.3.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF to SESSION_INSTRUMENTS
+# 1.9.0   2026-06-07  Alex Hind   Add XAGUSD (Silver) and OIL (WTI) to PREMARKET_BRIEF
+#                                 so the Sunday pre-open scan covers ALL commodities
+#                                 that reopen on the CME Globex Sunday session
+#                                 (~22:00 UTC / 11pm UK), not just Gold.
 # 1.8.0   2026-06-07  Alex Hind   Add MSCI_EAFE (CFTC 244041) as a COT-only proxy for
 #                                 UK/international-developed index positioning — CFTC
 #                                 has no FTSE/UK contract. YAHOO_MAP MSCI_EAFE→EFA for
@@ -503,7 +507,9 @@ SESSION_INSTRUMENTS = {
     # Sunday pre-market brief — scans 24/7 instruments active before Asia open.
     # Crypto markets never close; Gold (XAUUSD) and FX pairs active Sunday evening.
     "PREMARKET_BRIEF": [
-        "XAUUSD",   # Spot Gold — 24/7
+        "XAUUSD",   # Spot Gold (XAU/USD) — 24/7, CME Globex reopen Sun 22:00 UTC
+        "XAGUSD",   # Spot Silver (XAG/USD) — CME Globex reopen Sun 22:00 UTC
+        "OIL",      # US Crude Oil (WTI) — CME Globex reopen Sun 22:00 UTC
         "BTCUSD",   # Bitcoin (BTC/USD) — 24/7
         "ETHUSD",   # Ethereum (ETH/USD) — 24/7
         "XRPUSD",   # XRP (XRP/USD) — 24/7
