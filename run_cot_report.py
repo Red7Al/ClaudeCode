@@ -239,7 +239,7 @@ def build_report(rows: list[dict], generated_at: datetime = None) -> str:
     report_date_str = report_date.isoformat() if hasattr(report_date, "isoformat") else str(report_date)
 
     # ── Header + freshness guard ──────────────────────────────────────────────
-    lines.append(f"*EndToEndTrading — Weekly COT Report*")
+    lines.append("*EndToEndTrading — Weekly COT Report*")
     lines.append(f"_CFTC positioning as of {report_date_str} (Tuesday close)_")
     lines.append("─" * 48)
 
