@@ -1,0 +1,24 @@
+name: EIA Probe (temp 2026-06-07)
+
+# Temporary: verify correct EIA v2 series IDs against the live API using the
+# EIA_API_KEY secret. Delete this workflow and _eia_probe.py once the correct
+# refinery-utilisation series ID is confirmed and applied.
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - run: python _eia_probe.py
+        env:
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
