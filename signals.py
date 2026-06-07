@@ -31,6 +31,14 @@
 #                                 instrument list (not traded).
 # 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log
 #                                 INSERT — was computed but never persisted.
+# 1.4.0   2026-06-07  Alex Hind   Fix get_potus_elite_senate_primary POTUS query:
+#                                 it selected account/context from social_mentions
+#                                 filtering on ticker/mention_date — none of which
+#                                 exist (real cols: author, post_text, tickers_found
+#                                 [array], post_time). Every scan logged "column
+#                                 'account' does not exist" and the POTUS primary
+#                                 could never fire. Verified corrected query vs live
+#                                 schema. (Surfaced by run_diagnostics 2026-06-07.)
 # 1.3.0   2026-06-06  Alex Hind   Fix 3 bugs: (a) get_yield_curve: falsy-zero check
 #                                 on us2y/us10y silenced spread at rate=0.0 — use
 #                                 `is not None` guard; (b) get_macro_gate: same
@@ -755,11 +763,12 @@ def get_potus_elite_senate_primary(ticker: str, days_senate: int = 60,
         try:
             since = (datetime.now() - timedelta(days=days_potus)).strftime("%Y-%m-%d")
             rows = db.run(
-                """select account, context from social_mentions
-                   where lower(ticker) = lower(:tk)
-                     and lower(account) like '%trump%'
-                     and mention_date >= :since
-                   order by mention_date desc
+                """select author, post_text from social_mentions
+                   where exists (select 1 from unnest(tickers_found) t
+                                 where lower(t) = lower(:tk))
+                     and lower(author) like '%trump%'
+                     and post_time >= :since
+                   order by post_time desc
                    limit 1""",
                 tk=ticker, since=since
             )
@@ -767,9 +776,9 @@ def get_potus_elite_senate_primary(ticker: str, days_senate: int = 60,
             db.close()
 
         if rows:
-            account, context = rows[0][0], rows[0][1]
+            author, post_text = rows[0][0], rows[0][1]
             result["potus_primary"] = True
-            result["potus_detail"]  = f"POTUS mention ({account}): {str(context)[:120]}"
+            result["potus_detail"]  = f"POTUS mention ({author}): {str(post_text)[:120]}"
             log.info(f"{ticker}: POTUS PRIMARY — presidential mention in last {days_potus}d")
 
     except Exception as e:
