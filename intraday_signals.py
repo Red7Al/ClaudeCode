@@ -31,6 +31,12 @@
 #                                 Now logs a warning and skips RSI/MACD instead.
 #                                 Position size fallback 0.5 → 0.0 on exception;
 #                                 same dangerous pattern fixed in ig_shim.py 1.0.3.
+# 1.0.2   2026-06-08  Alex Hind   compute_rsi: zero-loss period (a pure up-move)
+#                                 returned NaN instead of 100 — so `rsi > 70` was
+#                                 silently False exactly when overbought mattered
+#                                 most. Now resolves NaN to 100 (pure rally) / 50
+#                                 (flat or too few bars). Verified on synthetic
+#                                 series: rally→100.0, flat→50.0, normal→58.5.
 # =============================================================================
 
 import os
@@ -57,7 +63,13 @@ def compute_rsi(closes: pd.Series, period: int = 14) -> float:
     loss   = (-delta.clip(upper=0)).rolling(period).mean()
     rs     = gain / loss.replace(0, np.nan)
     rsi    = 100 - (100 / (1 + rs))
-    return round(float(rsi.iloc[-1]), 1)
+    val    = rsi.iloc[-1]
+    if pd.isna(val):
+        # loss == 0 over the period: a pure up-move is max-overbought (RSI 100);
+        # a completely flat series (gain also 0, or too few bars) is neutral (50).
+        last_gain = gain.iloc[-1]
+        val = 100.0 if (pd.notna(last_gain) and last_gain > 0) else 50.0
+    return round(float(val), 1)
 
 
 # =============================================================================
