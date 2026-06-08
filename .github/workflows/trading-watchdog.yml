@@ -1,8 +1,9 @@
-name: Session Watchdog (every 30min)
+name: Session Watchdog (2026-06-08)
 
+# Scheduling: cron-job.org → workflow_dispatch (every 30min Mon-Fri, job id 7767389).
+# GitHub-native cron REMOVED — it is banned (unreliable) and was running this
+# watchdog only ~every 4.5h instead of 30min. See memory/feedback_scheduler.md.
 on:
-  schedule:
-    - cron: '*/30 0-21 * * 1-5'   # Every 30 min during trading hours Mon-Fri
   workflow_dispatch:
 
 env:

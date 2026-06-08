@@ -1,10 +1,9 @@
-name: Commodity Monitor XAU/XAG/CL (30 min gaps)
+name: Commodity Monitor XAU/XAG/CL (2026-06-08)
 
+# Scheduling: cron-job.org → workflow_dispatch (AM */30 04-08, PM */30 21-23,
+# Mon-Fri). GitHub-native cron REMOVED — banned (unreliable). Gold/Silver/Oil
+# trade 24/5; this covers the gaps between session monitors. See feedback_scheduler.md.
 on:
-  schedule:
-    # Covers gaps between session monitors — Gold, Silver, Oil trade 24/5
-    - cron: '*/30 4-7 * * 1-5'    # 04:00-07:59 UTC gap (between AUS close and UK open)
-    - cron: '*/30 21-23 * * 1-5'  # 21:00-23:59 UTC gap (after US close, before AUS open)
   workflow_dispatch:
 
 env:
