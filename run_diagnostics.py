@@ -34,6 +34,10 @@
 #                                 price action, signal stack, DB writes, and
 #                                 IG connectivity. Posts ✅/❌/⚠ report to
 #                                 #claude-trading-alerts.
+# 1.0.2   2026-06-07  Alex Hind   Sync signal_log test INSERT to production: add
+#                                 director_cluster_strong (prod is now 45 cols, the
+#                                 test was a stale 44). Verified all 45 columns exist
+#                                 in the live schema and match scan_instrument().
 # 1.0.1   2026-06-05  Alex Hind   Extended Slack coverage test: sends a probe
 #                                 message to all 5 channels so the user can
 #                                 confirm every webhook is wired correctly
@@ -241,7 +245,7 @@ def test_signal_log_insert() -> dict:
     signals.py scan_instrument(). A column-count mismatch here gives a
     false-pass — the test looks green while production can still fail with
     a pg8000 '08P01 bind message supplies N params, requires M' error.
-    Last verified against production INSERT: 2026-06-05 (44 columns).
+    Last verified against production INSERT: 2026-06-07 (45 columns, incl director_cluster_strong).
     """
     try:
         import pg8000.native
@@ -250,7 +254,7 @@ def test_signal_log_insert() -> dict:
             database="postgres", user=os.environ["SUPABASE_USER"],
             password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
         )
-        # 44-column INSERT — must exactly match signals.py scan_instrument() INSERT.
+        # 45-column INSERT — must exactly match signals.py scan_instrument() INSERT.
         # Run two tickers (_TEST_OIL_ commodity-style, _TEST_EQ_ equity-style) to
         # surface any instrument-type-specific binding bugs (OIL failed 2026-06-04).
         for test_ticker in ("_TEST_OIL_", "_TEST_EQ_"):
@@ -258,7 +262,7 @@ def test_signal_log_insert() -> dict:
                 """insert into signal_log
                    (session, ticker, macro_gate_pass, options_bias, call_put_ratio, iv_rank,
                     gex_bias, vwap_position, cot_bias, bb_squeeze, bb_breakout_dir,
-                    director_signal, activist_signal, senate_signal, senate_senator,
+                    director_signal, director_cluster_strong, activist_signal, senate_signal, senate_senator,
                     elite_senate_primary, elite_senator_name, potus_primary,
                     notable_investor, social_mention, primary_count, confirmation_count,
                     direction, pa_verdict, pa_score, trade_triggered,
@@ -269,7 +273,7 @@ def test_signal_log_insert() -> dict:
                     sector_etf, sector_dir)
                    values (:v_session, :v_ticker, :v_mgp, :v_opts_bias, :v_call_put, :v_ivr,
                            :v_gex_bias, :v_vwap_pos, :v_cot_bias, :v_bb_squeeze, :v_bb_breakout,
-                           :v_director, :v_activist, :v_senate, :v_senator_name,
+                           :v_director, :v_dir_cluster, :v_activist, :v_senate, :v_senator_name,
                            :v_elite_senate, :v_elite_senator, :v_potus,
                            :v_notable, :v_social, :v_primaries, :v_confirms, :v_direction,
                            :v_pa_verdict, :v_pa_score, :v_triggered,
@@ -282,7 +286,7 @@ def test_signal_log_insert() -> dict:
                 v_mgp=True, v_opts_bias="NEUTRAL", v_call_put=None, v_ivr=None,
                 v_gex_bias="NEUTRAL", v_vwap_pos=None, v_cot_bias="NEUTRAL",
                 v_bb_squeeze=False, v_bb_breakout=None,
-                v_director=False, v_activist=False, v_senate=False, v_senator_name=None,
+                v_director=False, v_dir_cluster=False, v_activist=False, v_senate=False, v_senator_name=None,
                 v_elite_senate=False, v_elite_senator=None, v_potus=False,
                 v_notable=None, v_social=None, v_primaries=0, v_confirms=0,
                 v_direction=None, v_pa_verdict="WAIT", v_pa_score=None, v_triggered=False,
