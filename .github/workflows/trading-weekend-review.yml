@@ -42,7 +42,7 @@ jobs:
   # constraints against the live source and posts ✅/⚠/❌ to #claude-trading-alerts.
   self_audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 10
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}

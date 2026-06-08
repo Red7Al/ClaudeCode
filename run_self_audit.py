@@ -11,8 +11,9 @@
 #
 # This is the automated form of the manual audit that caught: Gold/Silver CFTC
 # codes (wrong), EIA refinery series (404), and notable_investors' no-op
-# ON CONFLICT. Run it weekly (cron-job.org) and after any change touching an
-# external id or the DB; it posts a ✅/⚠/❌ report to #claude-trading-alerts.
+# ON CONFLICT. Run it weekly (carried by trading-weekend-review.yml) and after
+# any change touching an external id or the DB; it posts a ✅/⚠/❌ report to
+# #claude-trading-alerts.
 #
 # What it checks (all against the live source, never assumptions):
 #   1. CFTC codes  — every config.CFTC_CODES entry resolves AND its market name
@@ -21,6 +22,14 @@
 #   3. FRED series — the series ids the code fetches resolve (needs FRED_API_KEY).
 #   4. DB constraints — every ON CONFLICT target the code relies on has a real
 #                    unique/PK constraint in the live schema.
+#
+# FAIL vs WARN (important — this tool must not cry wolf):
+#   ❌ FAIL  = a DEFINITIVE wrong answer: a code resolves to the wrong market, a
+#             series returns no data, or an ON CONFLICT target has no constraint.
+#             Exits non-zero so the failure is impossible to miss.
+#   ⚠ WARN  = could NOT verify (network timeout, server 5xx, key absent). NOT
+#             proof of a bug — surfaced to Slack but does NOT fail the run, so a
+#             slow upstream API never turns the weekly job red falsely.
 #
 # Usage:
 #   python run_self_audit.py
@@ -35,12 +44,20 @@
 # 1.0.0   2026-06-08  Alex Hind   Initial build. CFTC name-match, EIA + FRED series
 #                                 resolution, and ON CONFLICT constraint existence
 #                                 checks. Posts ✅/⚠/❌ to #claude-trading-alerts.
+# 1.1.0   2026-06-08  Alex Hind   Robustness: a transient CFTC read-timeout in CI
+#                                 was wrongly reported as ❌ and failed the run
+#                                 (24/25, code 096742 is correct — the API was just
+#                                 slow). Added _get() with retry+backoff and split
+#                                 FAIL (definitive wrong answer → exit 1) from WARN
+#                                 (could-not-verify network/5xx/missing-key → exit 0,
+#                                 still shown in Slack). Header now reflects warns.
 # =============================================================================
 
 import os
 from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
 import sys
+import time
 
 import requests
 import pg8000.native
@@ -85,6 +102,25 @@ def warn(name, detail=""): return {"status": "warn", "name": name, "detail": det
 def fail(name, detail=""): return {"status": "fail", "name": name, "detail": detail}
 
 
+def _get(url, params, attempts=3, timeout=20):
+    """
+    GET with retry on transient network errors (read timeout / connection reset).
+
+    A transient failure must NOT be reported as a wrong-id FAILURE — callers
+    treat a raised exception as "could not verify" (⚠), never "❌". Returns the
+    Response; re-raises only the last exception after all attempts are exhausted.
+    """
+    last = None
+    for i in range(attempts):
+        try:
+            return requests.get(url, params=params, timeout=timeout)
+        except requests.RequestException as e:
+            last = e
+            if i < attempts - 1:
+                time.sleep(2 * (i + 1))   # 2s, then 4s backoff
+    raise last
+
+
 # ---------------------------------------------------------------------------
 # 1. CFTC codes — resolve + market-name match
 # ---------------------------------------------------------------------------
@@ -93,26 +129,28 @@ def check_cftc() -> list:
     results = []
     for inst, code in CFTC_CODES.items():
         try:
-            r = requests.get(
-                "https://publicreporting.cftc.gov/resource/6dca-aqww.json",
-                params={"$where": f"cftc_contract_market_code='{code}'",
-                        "$order": "report_date_as_yyyy_mm_dd DESC", "$limit": 1},
-                timeout=20,
-            )
-            r.raise_for_status()
-            data = r.json()
-            if not data:
-                results.append(fail(f"CFTC {inst} ({code})", "no data — invalid code"))
-                continue
-            name = data[0].get("market_and_exchange_names", "")
-            kw   = CFTC_NAME_KEYWORD.get(inst, "")
-            if kw and kw.upper() not in name.upper():
-                results.append(fail(f"CFTC {inst} ({code})",
-                                    f"resolves to '{name}' — expected '{kw}'"))
-            else:
-                results.append(ok(f"CFTC {inst} ({code})", name[:40]))
-        except Exception as e:
-            results.append(fail(f"CFTC {inst} ({code})", str(e)[:80]))
+            r = _get("https://publicreporting.cftc.gov/resource/6dca-aqww.json",
+                     {"$where": f"cftc_contract_market_code='{code}'",
+                      "$order": "report_date_as_yyyy_mm_dd DESC", "$limit": 1})
+        except requests.RequestException as e:
+            results.append(warn(f"CFTC {inst} ({code})",
+                                f"could not verify (network): {str(e)[:60]}"))
+            continue
+        if r.status_code != 200:
+            results.append(warn(f"CFTC {inst} ({code})",
+                                f"could not verify (HTTP {r.status_code})"))
+            continue
+        data = r.json()
+        if not data:
+            results.append(fail(f"CFTC {inst} ({code})", "no data — invalid code"))
+            continue
+        name = data[0].get("market_and_exchange_names", "")
+        kw   = CFTC_NAME_KEYWORD.get(inst, "")
+        if kw and kw.upper() not in name.upper():
+            results.append(fail(f"CFTC {inst} ({code})",
+                                f"resolves to '{name}' — expected '{kw}'"))
+        else:
+            results.append(ok(f"CFTC {inst} ({code})", name[:40]))
     return results
 
 
@@ -127,14 +165,15 @@ def check_eia() -> list:
     results = []
     for s in EIA_SERIES:
         try:
-            r = requests.get(f"https://api.eia.gov/v2/seriesid/{s}",
-                             params={"api_key": key, "num": 1, "out": "json"}, timeout=20)
-            if r.status_code == 200 and r.json().get("response", {}).get("data"):
-                results.append(ok(f"EIA {s}"))
-            else:
-                results.append(fail(f"EIA {s}", f"HTTP {r.status_code} / no data"))
-        except Exception as e:
-            results.append(fail(f"EIA {s}", str(e)[:80]))
+            r = _get(f"https://api.eia.gov/v2/seriesid/{s}",
+                     {"api_key": key, "num": 1, "out": "json"})
+        except requests.RequestException as e:
+            results.append(warn(f"EIA {s}", f"could not verify (network): {str(e)[:60]}"))
+            continue
+        if r.status_code == 200 and r.json().get("response", {}).get("data"):
+            results.append(ok(f"EIA {s}"))
+        else:
+            results.append(fail(f"EIA {s}", f"HTTP {r.status_code} / no data"))
     return results
 
 
@@ -145,15 +184,16 @@ def check_fred() -> list:
     results = []
     for s in FRED_SERIES:
         try:
-            r = requests.get("https://api.stlouisfed.org/fred/series/observations",
-                             params={"series_id": s, "api_key": key, "file_type": "json",
-                                     "sort_order": "desc", "limit": 1}, timeout=20)
-            if r.status_code == 200 and r.json().get("observations"):
-                results.append(ok(f"FRED {s}"))
-            else:
-                results.append(fail(f"FRED {s}", f"HTTP {r.status_code} / no observations"))
-        except Exception as e:
-            results.append(fail(f"FRED {s}", str(e)[:80]))
+            r = _get("https://api.stlouisfed.org/fred/series/observations",
+                     {"series_id": s, "api_key": key, "file_type": "json",
+                      "sort_order": "desc", "limit": 1})
+        except requests.RequestException as e:
+            results.append(warn(f"FRED {s}", f"could not verify (network): {str(e)[:60]}"))
+            continue
+        if r.status_code == 200 and r.json().get("observations"):
+            results.append(ok(f"FRED {s}"))
+        else:
+            results.append(fail(f"FRED {s}", f"HTTP {r.status_code} / no observations"))
     return results
 
 
@@ -170,7 +210,8 @@ def check_constraints() -> list:
             password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True,
         )
     except Exception as e:
-        return [fail("DB constraints", f"cannot connect: {str(e)[:80]}")]
+        # cannot reach the DB at all → could not verify (warn, not a wrong-schema fail)
+        return [warn("DB constraints", f"could not connect: {str(e)[:80]}")]
     try:
         rows = conn.run(
             """select tc.table_name,
@@ -207,8 +248,15 @@ def post_report(results: list):
     n_fail = sum(1 for r in results if r["status"] == "fail")
     n_warn = sum(1 for r in results if r["status"] == "warn")
     n_ok   = sum(1 for r in results if r["status"] == "ok")
-    head   = "✅ Self-audit clean" if n_fail == 0 else f"❌ Self-audit — {n_fail} FAILURE(S)"
-    lines  = [f"*{head}*  (✅ {n_ok}  ⚠ {n_warn}  ❌ {n_fail})", ""]
+
+    if n_fail:
+        head = f"❌ Self-audit — {n_fail} FAILURE(S)"
+    elif n_warn:
+        head = f"⚠️ Self-audit — {n_warn} unverified (network / skipped)"
+    else:
+        head = "✅ Self-audit clean"
+
+    lines = [f"*{head}*  (✅ {n_ok}  ⚠ {n_warn}  ❌ {n_fail})", ""]
     for r in results:
         icon = {"ok": "✅", "warn": "⚠️", "fail": "❌"}[r["status"]]
         # only spell out warnings/failures in detail to keep the message tight
@@ -241,10 +289,12 @@ def main():
     results += check_constraints()
     post_report(results)
     n_fail = sum(1 for r in results if r["status"] == "fail")
+    n_warn = sum(1 for r in results if r["status"] == "warn")
     if n_fail:
         log.error(f"{n_fail} self-audit check(s) FAILED")
         sys.exit(1)
-    log.info(f"Self-audit complete — {len(results)} checks, no failures")
+    log.info(f"Self-audit complete — {len(results)} checks, "
+             f"{n_warn} unverified (warn), no failures")
 
 
 if __name__ == "__main__":
