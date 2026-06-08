@@ -46,6 +46,14 @@
 #                                 unaffordable. Fixes GOOGL and RIOT being missed.
 #                                 open_trade: resolve user display name from
 #                                 user_profiles instead of hardcoded "Owner".
+# 1.5.0   2026-06-07  Alex Hind   CRITICAL safety fix: enforce the daily loss limit.
+#                                 check_circuit_breakers read daily_loss_hit, but that
+#                                 flag was NEVER set anywhere → the daily loss limit was
+#                                 not enforced at all. Now compares the day's realised
+#                                 P&L to daily_loss_limit% of account balance, blocks
+#                                 the trade and persists daily_loss_hit on breach.
+#                                 (Found in deep-review Pass 2. Basis = % of current
+#                                 balance — flag if a different basis is intended.)
 # 1.4.0   2026-06-06  Alex Hind   Fix 3 bugs: (a) get_close_reason: removed unsafe
 #                                 fallback that returned the first transaction with
 #                                 any non-zero open/close level — had zero deal_id
@@ -598,8 +606,28 @@ def check_circuit_breakers(user_id: str, ticker: str) -> tuple[bool, str]:
     daily_loss_limit, max_open_pos, loss_hit, total_pnl, open_count = rows[0]
 
     # Check 1 — daily loss limit
+    # The daily_loss_hit flag is read here but was NEVER set anywhere in the
+    # codebase, so the limit was effectively UNENFORCED — a user could exceed
+    # their daily loss limit and keep trading. Enforce it directly: compare the
+    # day's realised P&L to the limit (daily_loss_limit % of account balance) and
+    # persist the flag on breach so the daily report + later opens short-circuit.
     if loss_hit:
         return False, "Daily loss limit already triggered for today"
+    try:
+        balance = float(get_account_balance().get("balance", 0) or 0)
+        threshold = (float(daily_loss_limit) / 100.0) * balance   # daily_loss_limit is a %
+        if threshold > 0 and float(total_pnl or 0) <= -threshold:
+            try:
+                db2 = get_db()
+                db2.run("update daily_pnl set daily_loss_hit = true "
+                        "where user_id = :uid and trade_date = current_date", uid=user_id)
+                db2.close()
+            except Exception:
+                pass
+            return False, (f"Daily loss limit reached: day P&L {float(total_pnl):.2f} "
+                           f"<= -{threshold:.2f} ({daily_loss_limit}% of balance {balance:.2f})")
+    except Exception as e:
+        log.warning(f"Daily loss-limit compute failed for {user_id}: {e}")
 
     # Check 2 — max open positions
     if open_count >= max_open_pos:
