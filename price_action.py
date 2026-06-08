@@ -762,6 +762,13 @@ def _find_swing_highs_lows(hist: pd.DataFrame, n: int = 5) -> tuple:
         if (lows[i] == window_lo.min()
                 and lows[i] < lows[i - 1]
                 and lows[i] < lows[i + 1]):
+            # Spike-wick filter (see docstring): if the close sits more than 40%
+            # of the bar's range above the low, this low is a wick/rejection, not
+            # a structural support level — exclude it from swing-low candidates so
+            # the HVF funnel is built from where price actually settled.
+            bar_range = highs[i] - lows[i]
+            if bar_range > 0 and (closes[i] - lows[i]) / bar_range > 0.40:
+                continue
             swing_lows.append((i, float(lows[i])))
 
     return swing_highs, swing_lows
