@@ -24,6 +24,16 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-05  Alex Hind   Initial build — all session/report cron jobs.
+# 1.3.0   2026-06-08  Alex Hind   Consolidate JOBS to the authoritative schedule and
+#                                 reflect the live cron-job.org account: monitors are
+#                                 now single */N-step jobs (AUS/UK/US Monitor) instead
+#                                 of ~70 per-slot jobs (which would have created
+#                                 duplicates on re-run). Migrated the watchdog +
+#                                 commodity-monitor off GitHub cron onto cron-job.org.
+#                                 Added a proactive "Daily Diagnostics" job (07:30
+#                                 Mon-Fri) so deployment/stack health is checked daily
+#                                 without prompting. Matches what is live on the
+#                                 user-owned account (created 2026-06-08).
 # 1.2.0   2026-06-07  Alex Hind   Fix create_job payload for the real cron-job.org
 #                                 API — it sent cronExpression/exprType and headers
 #                                 as a list, which the API rejects with HTTP 500 (the
@@ -72,81 +82,25 @@ GITHUB_BODY = json.dumps({"ref": "main"})
 JOBS = [
     # ── Asia / AUS session ──────────────────────────────────────────────────
     ("AUS Open",            "0 0 * * 1-5",    "trading-aus-open.yml"),
-    ("AUS Monitor (1)",     "20 0 * * 1-5",   "trading-aus-monitor.yml"),
-    ("AUS Monitor (2)",     "40 0 * * 1-5",   "trading-aus-monitor.yml"),
-    ("AUS Monitor (3)",     "0 1 * * 1-5",    "trading-aus-monitor.yml"),
-    ("AUS Monitor (4)",     "20 1 * * 1-5",   "trading-aus-monitor.yml"),
-    ("AUS Monitor (5)",     "40 1 * * 1-5",   "trading-aus-monitor.yml"),
-    ("AUS Monitor (6)",     "0 2 * * 1-5",    "trading-aus-monitor.yml"),
-    ("AUS Monitor (7)",     "20 2 * * 1-5",   "trading-aus-monitor.yml"),
-    ("AUS Monitor (8)",     "40 2 * * 1-5",   "trading-aus-monitor.yml"),
-    ("AUS Monitor (9)",     "0 3 * * 1-5",    "trading-aus-monitor.yml"),
-    ("AUS Monitor (10)",    "20 3 * * 1-5",   "trading-aus-monitor.yml"),
-    ("AUS Monitor (11)",    "40 3 * * 1-5",   "trading-aus-monitor.yml"),
-    ("AUS Monitor (12)",    "0 4 * * 1-5",    "trading-aus-monitor.yml"),
-    ("AUS Monitor (13)",    "20 4 * * 1-5",   "trading-aus-monitor.yml"),
-    ("AUS Monitor (14)",    "40 4 * * 1-5",   "trading-aus-monitor.yml"),
-    ("AUS Monitor (15)",    "0 5 * * 1-5",    "trading-aus-monitor.yml"),
-    ("AUS Monitor (16)",    "20 5 * * 1-5",   "trading-aus-monitor.yml"),
-    ("AUS Monitor (17)",    "40 5 * * 1-5",   "trading-aus-monitor.yml"),
-    ("Commodity Monitor AM","0 4 * * 1-5",    "trading-commodity-monitor.yml"),
-    ("Commodity Monitor AM2","30 5 * * 1-5",  "trading-commodity-monitor.yml"),
+    ("AUS Monitor",          "*/20 0-6 * * 1-5", "trading-aus-monitor.yml"),
+    ("Commodity Monitor AM", "*/30 4-8 * * 1-5", "trading-commodity-monitor.yml"),
     # ── Pre-UK ──────────────────────────────────────────────────────────────
     ("HVF Daily Report",    "0 7 * * 1-5",    "trading-hvf-report.yml"),
     # ── UK session ──────────────────────────────────────────────────────────
     ("UK Open",             "0 8 * * 1-5",    "trading-uk-open.yml"),
     ("UK Morning Brief",    "0 9 * * 1,5",    "trading-uk-morning-brief.yml"),
-    ("UK Monitor (1)",      "20 8 * * 1-5",   "trading-uk-monitor.yml"),
-    ("UK Monitor (2)",      "40 8 * * 1-5",   "trading-uk-monitor.yml"),
-    ("UK Monitor (3)",      "0 9 * * 1-5",    "trading-uk-monitor.yml"),
-    ("UK Monitor (4)",      "20 9 * * 1-5",   "trading-uk-monitor.yml"),
-    ("UK Monitor (5)",      "40 9 * * 1-5",   "trading-uk-monitor.yml"),
-    ("UK Monitor (6)",      "0 10 * * 1-5",   "trading-uk-monitor.yml"),
-    ("UK Monitor (7)",      "20 10 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (8)",      "40 10 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (9)",      "0 11 * * 1-5",   "trading-uk-monitor.yml"),
-    ("UK Monitor (10)",     "20 11 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (11)",     "40 11 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (12)",     "0 12 * * 1-5",   "trading-uk-monitor.yml"),
-    ("UK Monitor (13)",     "20 12 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (14)",     "40 12 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (15)",     "0 13 * * 1-5",   "trading-uk-monitor.yml"),
-    ("UK Monitor (16)",     "20 13 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (17)",     "40 13 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (18)",     "0 14 * * 1-5",   "trading-uk-monitor.yml"),
-    ("UK Monitor (19)",     "20 14 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (20)",     "40 14 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (21)",     "0 15 * * 1-5",   "trading-uk-monitor.yml"),
-    ("UK Monitor (22)",     "20 15 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (23)",     "40 15 * * 1-5",  "trading-uk-monitor.yml"),
-    ("UK Monitor (24)",     "0 16 * * 1-5",   "trading-uk-monitor.yml"),
+    ("UK Monitor",           "*/20 8-16 * * 1-5","trading-uk-monitor.yml"),
     # ── US session ──────────────────────────────────────────────────────────
-    ("US Open",             "30 14 * * 1-5",  "trading-us-open.yml"),
-    ("Social Monitor",      "0 * * * 1-5",    "trading-social-monitor.yml"),
-    ("US Monitor (1)",      "50 14 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (2)",      "10 15 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (3)",      "30 15 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (4)",      "50 15 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (5)",      "10 16 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (6)",      "30 16 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (7)",      "50 16 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (8)",      "10 17 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (9)",      "30 17 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (10)",     "50 17 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (11)",     "10 18 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (12)",     "30 18 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (13)",     "50 18 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (14)",     "10 19 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (15)",     "30 19 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (16)",     "50 19 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (17)",     "10 20 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (18)",     "30 20 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (19)",     "50 20 * * 1-5",  "trading-us-monitor.yml"),
-    ("US Monitor (20)",     "10 21 * * 1-5",  "trading-us-monitor.yml"),
+    ("US Open",              "30 14 * * 1-5",    "trading-us-open.yml"),
+    ("US Monitor",           "*/20 14-21 * * 1-5","trading-us-monitor.yml"),
+    ("Social Monitor",       "0 7-22 * * 1-5",   "trading-social-monitor.yml"),
     # ── Close & reports ─────────────────────────────────────────────────────
-    ("Commodity Monitor PM","0 21 * * 1-5",   "trading-commodity-monitor.yml"),
-    ("Session Close",       "0 21 * * 1-5",   "trading-session-close.yml"),
-    ("Daily Report",        "30 21 * * 1-5",  "trading-daily-report.yml"),
+    ("Commodity Monitor PM", "*/30 21-23 * * 1-5","trading-commodity-monitor.yml"),
+    ("Session Close",        "0 21 * * 1-5",     "trading-session-close.yml"),
+    ("Daily Report",         "30 21 * * 1-5",    "trading-daily-report.yml"),
+    # ── Safety net + proactive self-checks ──────────────────────────────────
+    ("Session Watchdog",     "*/30 0-21 * * 1-5","trading-watchdog.yml"),     # migrated off GitHub cron 2026-06-08
+    ("Daily Diagnostics",    "30 7 * * 1-5",     "trading-diagnostics.yml"),  # proactive daily health check -> #alerts
     # ── Weekend ─────────────────────────────────────────────────────────────
     ("Weekend Review",      "0 9 * * 6",      "trading-weekend-review.yml"),
     ("HVF Weekend Report",  "0 9 * * 6",      "trading-hvf-report.yml"),
