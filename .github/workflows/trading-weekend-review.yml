@@ -1,5 +1,9 @@
-name: Weekend Review
+name: Weekend Review (2026-06-08)
 
+# Triggered weekly by cron-job.org "Weekend Review" (Sat 09:00 UTC) → workflow_dispatch.
+# Carries a second, independent job (self_audit) so the integrity audit runs weekly
+# without needing its own cron-job.org job. GitHub-native cron is BANNED
+# (see memory/feedback_scheduler.md).
 on:
   workflow_dispatch:
 
@@ -32,3 +36,24 @@ jobs:
           SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
           SLACK_WEEKLY:          ${{ secrets.SLACK_WEEKLY }}
           QUIVER_QUANT_API_KEY:  ${{ secrets.QUIVER_QUANT_API_KEY }}
+
+  # Independent weekly integrity audit (runs in parallel; its red/green does not
+  # affect the review job above). Re-verifies CFTC/EIA/FRED ids + ON CONFLICT
+  # constraints against the live source and posts ✅/⚠/❌ to #claude-trading-alerts.
+  self_audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      EIA_API_KEY:          ${{ secrets.EIA_API_KEY }}
+      FRED_API_KEY:         ${{ secrets.FRED_API_KEY }}
+      SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_self_audit.py

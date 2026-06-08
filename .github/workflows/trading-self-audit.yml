@@ -1,0 +1,35 @@
+name: Self-Audit external-IDs + DB constraints (2026-06-08)
+
+# Manual / on-demand integrity audit. Re-verifies every external identifier
+# (CFTC / EIA / FRED) and every ON CONFLICT constraint against the LIVE source —
+# the automated form of the manual audit that caught the Gold/Silver code swap,
+# the EIA 404, and the no-op notable_investors upsert. Posts ✅/⚠/❌ to #alerts.
+#
+# Scheduling: this is workflow_dispatch (run on demand after any change touching
+# an external id / the schema). The RECURRING weekly run is a separate job inside
+# trading-weekend-review.yml (Sat) — no extra cron-job.org job needed.
+# GitHub-native cron is BANNED (see memory/feedback_scheduler.md).
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      EIA_API_KEY:          ${{ secrets.EIA_API_KEY }}
+      FRED_API_KEY:         ${{ secrets.FRED_API_KEY }}
+      SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_self_audit.py
