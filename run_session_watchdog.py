@@ -22,6 +22,13 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.0.4   2026-06-07  Alex Hind   Fix misleading alert wording: said "GitHub Actions
+#                                 cron missed" but scheduling is via cron-job.org (the
+#                                 runner is GitHub Actions, the scheduler is not). Now
+#                                 reads "the scheduled run did not start (cron-job.org
+#                                 trigger or the workflow failed)". Also corrected a
+#                                 stale comment. (Watchdog itself is working — it
+#                                 correctly caught a missed UK_OPEN on 2026-06-08.)
 # 1.0.3   2026-06-07  Alex Hind   CRITICAL: fix pg8000 param binding in check_session.
 #                                 The macro_snapshot and signal_log COUNT queries used
 #                                 $1/$2 positional placeholders with a list arg, but
@@ -175,8 +182,8 @@ def check_session(conn, session_name: str, open_hour_utc: int,
     if macro_count == 0:
         alert(
             session_name,
-            f"No macro_snapshot recorded today — GitHub Actions cron missed. "
-            f"Auto-triggering {session_name} now...",
+            f"No macro_snapshot recorded today — the scheduled run did not start "
+            f"(cron-job.org trigger or the workflow failed). Auto-triggering {session_name} now...",
             f"Expected after {open_hour_utc:02d}:{open_minute_utc:02d} UTC + {grace_minutes}min grace. "
             f"Actual time: {now_utc.strftime('%H:%M')} UTC"
         )
@@ -230,7 +237,7 @@ def main():
 
     # (session_name, open_hour_utc, open_minute_utc, grace_minutes)
     # Grace window = 30 min after scheduled open — catch misses quickly.
-    # GitHub cron can run slightly late; 30 min gives it time to fire naturally
+    # cron-job.org can fire slightly late; 30 min gives it time to run naturally
     # before the watchdog triggers a manual re-run. Open time is HH:MM so the
     # 14:30 US open gets an accurate 15:00 deadline with a real 30-min grace.
     SESSIONS = [
