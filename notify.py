@@ -36,6 +36,10 @@
 #                                 Routines fired at 13:36 vs scheduled 14:30 →
 #                                 showed "1386min late" instead of "on time").
 #                                 Guard: only roll midnight when late_mins < -120.
+# 1.2.2   2026-06-07  Alex Hind   alert_watchdog_trigger: fix wording — said "GitHub
+#                                 Actions cron missed" but scheduling is via cron-job.org.
+#                                 Now "Scheduled run for X was missed ... (cron-job.org
+#                                 trigger or workflow failure)".
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -685,7 +689,8 @@ def alert_watchdog_trigger(session_name: str, workflow: str, late_minutes: int):
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    f"GitHub Actions cron missed {session_name} by ~{late_minutes} min.\n"
+                    f"Scheduled run for {session_name} was missed by ~{late_minutes} min "
+                    f"(cron-job.org trigger or workflow failure).\n"
                     f"Watchdog fired `{workflow}` automatically.\n"
                     f"_No action needed — session is recovering now._"
                 )

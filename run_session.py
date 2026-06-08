@@ -109,7 +109,7 @@ def already_ran_today(session_name: str) -> bool:
     """
     Return True if this session already produced a macro_snapshot today.
 
-    Used to prevent duplicate runs when GitHub Actions cron fires late and
+    Used to prevent duplicate runs when the cron-job.org trigger fires late and
     overlaps with a watchdog-triggered manual run, or when the same workflow
     is dispatched more than once in a day.
 
