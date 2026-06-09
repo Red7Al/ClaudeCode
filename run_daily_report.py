@@ -572,9 +572,33 @@ def build_report(
                 f"Size {t['size']}  [{t['session']}]{_name(t['ticker'])}"
             )
             if t.get("signal_summary"):
-                lines.append(f"  _Signals: {t['signal_summary']}_")
+                lines.append(f"  _Trigger: {t['signal_summary']}_")
     else:
+        # Explain WHY no trades opened (user directive — "if none, why").
         lines.append("  No trades opened today.")
+        if not macro.get("macro_gate_pass", True):
+            lines.append(f"  ↳ Why: macro gate was CLOSED ({macro.get('gate_reason','—')}) "
+                         f"— no new positions permitted all day.")
+        elif signal_log:
+            triggered = [s for s in signal_log if s.get("trade_triggered")]
+            near = sorted(signal_log,
+                          key=lambda s: (s.get("primary_count", 0), s.get("confirmation_count", 0)),
+                          reverse=True)
+            top = near[0] if near else None
+            if triggered:
+                lines.append(f"  ↳ Why: {len(triggered)} signal(s) triggered but the trade was "
+                             f"blocked downstream (circuit breaker / spread / market hours / size) "
+                             f"— see #alerts.")
+            else:
+                lines.append(f"  ↳ Why: {len(signal_log)} instrument(s) scanned, none met the entry "
+                             f"bar (macro gate + ≥1 primary + ≥1 confirmation).")
+            if top:
+                lines.append(f"  ↳ Closest: *{top['ticker']}*{_name(top['ticker'])} — "
+                             f"{top.get('primary_count', 0)} primary, "
+                             f"{top.get('confirmation_count', 0)} confirmation(s).")
+        else:
+            lines.append("  ↳ Why: no instruments were scanned today — the session may not have "
+                         "run (check #alerts / Session Watchdog).")
     lines.append("")
 
     # ── Trades Closed ─────────────────────────────────────────────────────────
