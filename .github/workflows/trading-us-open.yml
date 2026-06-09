@@ -39,4 +39,6 @@ jobs:
           SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
           SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
           SLACK_WEEKLY:          ${{ secrets.SLACK_WEEKLY }}
+          YAHOO_USER:            ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
           FORCE_RUN:             ${{ github.event.inputs.force_run || 'false' }}

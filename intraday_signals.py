@@ -603,6 +603,12 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                             if result:
                                 log.info(f"US Monitor NEW TRADE: {ticker} {sig['direction']}")
                                 new_trades_placed += 1
+                                try:
+                                    from trade_email import send_trade_email
+                                    send_trade_email(ticker, sig["direction"], sig, result,
+                                                     size=size, session_name="US_MONITOR")
+                                except Exception as e:
+                                    log.warning(f"Trade email failed for {ticker}: {e}")
                     except Exception as e:
                         log.warning(f"Monitor scan failed for {ticker}: {e}")
             else:

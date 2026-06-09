@@ -610,6 +610,11 @@ SESSION_TRADE_CAPS = {"AUS": 3, "UK": 3, "US": 4}
 # (e.g. 3x USDJPY in a single Asia session, which ate the budget on 2026-06-09).
 MAX_TRADES_PER_INSTRUMENT_PER_DAY = 2
 
+# Trade-open email recipients (user 2026-06-09). Sent via Yahoo SMTP (trade_email.py,
+# secrets YAHOO_USER / YAHOO_APP_PASSWORD) with the investment case + price/volume/HVF
+# charts. Editable list — add addresses to email more people.
+EMAIL_RECIPIENTS = ["eahind@yahoo.co.uk"]
+
 # Economic calendar block window — no new trades within this many minutes
 # of a high-impact event
 CALENDAR_BLOCK_MINUTES = 30
