@@ -48,6 +48,7 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 from config import HVF_MIN_RR     # single source of truth for the R:R threshold
+from notify import fmt            # 'TICKER (Full Name)' for every instrument shown
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
@@ -281,7 +282,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
                 target = _fmt_price(r.get("target"))
                 q      = r.get("pattern_quality", 0)
                 lines.append(
-                    f"{d}{s} *{t}*  R:R {rr}  Q={q}  [{tf}]\n"
+                    f"{d}{s} *{fmt(t)}*  R:R {rr}  Q={q}  [{tf}]\n"
                     f"    Entry {entry}  Stop {stop}  Target {target}"
                 )
 
@@ -322,7 +323,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
                 stop   = _fmt_price(r.get("stop_level"))
                 target = _fmt_price(r.get("target"))
                 lines.append(
-                    f"{d}👀 *{t}*  R:R {rr}  [{tf}]  "
+                    f"{d}👀 *{fmt(t)}*  R:R {rr}  [{tf}]  "
                     f"Entry {entry}  Stop {stop}  Target {target}"
                 )
             blocks.append({

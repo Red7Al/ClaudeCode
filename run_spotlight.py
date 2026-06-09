@@ -25,6 +25,8 @@ import requests
 import pg8000.native
 from datetime import datetime, timezone
 
+from notify import fmt   # 'TICKER (Full Name)' for every instrument shown
+
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("spotlight")
@@ -114,7 +116,7 @@ def build_blocks(results: list) -> list:
         blocks.append({"type": "divider"})
         blocks.append({
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*{ticker}*\n{epic_str}"}
+            "text": {"type": "mrkdwn", "text": f"*{fmt(ticker)}*\n{epic_str}"}
         })
 
         # Signal scan history

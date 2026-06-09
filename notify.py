@@ -40,6 +40,14 @@
 #                                 Actions cron missed" but scheduling is via cron-job.org.
 #                                 Now "Scheduled run for X was missed ... (cron-job.org
 #                                 trigger or workflow failure)".
+# 1.3.0   2026-06-09  Alex Hind   Full instrument name EVERY time a ticker is shown
+#                                 (memory/feedback_instrument_names). New cached fmt()
+#                                 -> 'TICKER (Full Name)'; replaces per-call DB lookups
+#                                 (one query/process, not one per message). Fixed 5
+#                                 alerts that showed the bare ticker: circuit_breaker,
+#                                 stop_slippage, position_deterioration, director_cluster,
+#                                 weekly_digest. Names cleaned of IG suffixes
+#                                 ('CleanSpark Inc (24 Hours)' -> 'CLSK (CleanSpark Inc)').
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -57,6 +65,7 @@
 import os
 from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
+import re
 import requests
 import pg8000.native
 from datetime import datetime, timezone
@@ -109,13 +118,34 @@ def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC")
 
 
-def _instrument_name(ticker: str) -> str:
+_NAME_CACHE = None   # ticker -> clean name, loaded once per process
+
+
+def _clean_name(desc: str) -> str:
     """
-    Look up the human-readable instrument name from Supabase epic_lookup.
-    Returns the description if found, or just the ticker if not.
-    e.g. 'IBM' -> 'IBM Corp (24 Hours)'
-         'NBIS' -> 'Nebius Group NV (24 Hours)'
+    Reduce an IG market description to the bare instrument/company name.
+        'CleanSpark Inc (24 Hours)'                       -> 'CleanSpark Inc'
+        'Nebius Group NV (24 Hours) - uses old Yandex epic'-> 'Nebius Group NV'
+        'GBP/USD'                                          -> 'GBP/USD'
     """
+    if not desc:
+        return ""
+    name = desc.split(" - ")[0]                    # drop editorial " - ..." notes
+    name = re.sub(r"\s*\([^)]*\)\s*$", "", name)   # drop trailing "(24 Hours)" etc.
+    return name.strip()
+
+
+def _load_names() -> dict:
+    """
+    Load and cache the ticker -> clean-name map from epic_lookup. One query per
+    process (not one per message), so a session summary listing many instruments
+    no longer opens a DB connection per ticker. Falls back to an empty map (so
+    fmt() degrades to the bare ticker) if the DB is unreachable.
+    """
+    global _NAME_CACHE
+    if _NAME_CACHE is not None:
+        return _NAME_CACHE
+    cache = {}
     try:
         conn = pg8000.native.Connection(
             host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
@@ -124,16 +154,34 @@ def _instrument_name(ticker: str) -> str:
             password=os.environ["SUPABASE_DB_PASSWORD"],
             ssl_context=True
         )
-        rows = conn.run(
-            "select description from epic_lookup where ticker = :t limit 1",
-            t=ticker
-        )
+        for tk, desc in conn.run("select ticker, description from epic_lookup"):
+            cache[tk] = _clean_name(desc)
         conn.close()
-        if rows and rows[0][0]:
-            return rows[0][0]
-    except Exception:
-        pass
-    return ticker
+    except Exception as e:
+        log.warning(f"instrument-name cache load failed (using bare tickers): {e}")
+    _NAME_CACHE = cache
+    return cache
+
+
+def fmt(ticker: str) -> str:
+    """
+    Canonical display label for an instrument: 'TICKER (Full Name)'.
+
+    Use this EVERY time a ticker is shown to a human (Slack, reports) — never
+    print the bare ticker. See memory/feedback_instrument_names. Falls back to
+    just the ticker when no name is known.
+        fmt('CLSK')   -> 'CLSK (CleanSpark Inc)'
+        fmt('XAUUSD') -> 'XAUUSD (Spot Gold)'
+    """
+    if not ticker:
+        return ticker or ""
+    name = _load_names().get(ticker, "")
+    return f"{ticker} ({name})" if name and name != ticker else ticker
+
+
+def _instrument_name(ticker: str) -> str:
+    """Backwards-compatible: clean name only (no ticker prefix). Prefer fmt()."""
+    return _load_names().get(ticker, "") or ticker
 
 
 # =============================================================================
@@ -155,8 +203,7 @@ def trade_opened(
     """Send a trade opened notification to #claude-trading-trades."""
     emoji      = "🟢" if direction == "BUY" else "🔴"
     rr         = round(abs(target - entry) / max(abs(entry - stop), 0.0001), 2)
-    inst_name  = _instrument_name(ticker)
-    title      = f"{ticker} — {inst_name}" if inst_name != ticker else ticker
+    title      = fmt(ticker)
 
     blocks = [
         {
@@ -200,8 +247,7 @@ def trade_closed(
     """Send a trade closed notification to #claude-trading-trades."""
 
     pnl_emoji  = "✅" if pnl >= 0 else "❌"
-    inst_name  = _instrument_name(ticker)
-    title      = f"{ticker} — {inst_name}" if inst_name != ticker else ticker
+    title      = fmt(ticker)
 
     # Human-readable labels for each close reason code
     reason_labels = {
@@ -258,9 +304,7 @@ def session_summary(
         candidate_lines = ""
         for c in candidates:
             dir_emoji  = "🟢" if c.get("direction") == "BUY" else "🔴"
-            ticker     = c["ticker"]
-            inst_name  = _instrument_name(ticker)
-            name_str   = f"{ticker} — {inst_name}" if inst_name != ticker else ticker
+            name_str   = fmt(c["ticker"])
             candidate_lines += (
                 f"{dir_emoji} *{name_str}* {c['direction']} — "
                 f"{c['primary_count']} primaries, {c['confirmation_count']} confirmations\n"
@@ -302,8 +346,7 @@ def signal_detail(ticker: str, signal: dict):
     Send a full signal breakdown for a specific instrument.
     Useful for understanding exactly which signals fired on a candidate trade.
     """
-    inst_name = _instrument_name(ticker)
-    title     = f"{ticker} — {inst_name}" if inst_name != ticker else ticker
+    title     = fmt(ticker)
     checks = {
         "Options flow":   signal.get("options_bias", "—"),
         "BB squeeze":     "Yes" if signal.get("bb_squeeze") else "No",
@@ -380,7 +423,7 @@ def alert_stop_slippage(
         {
             "type": "header",
             "text": {"type": "plain_text",
-                     "text": f"⚠️ Stop Slippage — {ticker} {direction}"}
+                     "text": f"⚠️ Stop Slippage — {fmt(ticker)} {direction}"}
         },
         {
             "type": "section",
@@ -403,7 +446,7 @@ def alert_stop_slippage(
                     f"*IG close reason:* `{original_reason}`\n"
                     f"The position closed {slippage_ratio:.1f}× further from entry than the stop was set. "
                     f"Likely cause: price gapped through the stop (pre-market / thin liquidity / news). "
-                    f"Review whether {ticker} should be traded outside regular market hours."
+                    f"Review whether {fmt(ticker)} should be traded outside regular market hours."
                 )
             }
         },
@@ -426,7 +469,7 @@ def alert_circuit_breaker(user: str, ticker: str, reason: str):
             "type": "section",
             "fields": [
                 {"type": "mrkdwn", "text": f"*User:*\n{user}"},
-                {"type": "mrkdwn", "text": f"*Instrument:*\n{ticker}"},
+                {"type": "mrkdwn", "text": f"*Instrument:*\n{fmt(ticker)}"},
                 {"type": "mrkdwn", "text": f"*Reason:*\n{reason}"},
             ]
         },
@@ -613,7 +656,7 @@ def alert_director_cluster_developing(session: str, clusters: list):
         ticker  = c.get("ticker", "")
         count   = c.get("director_count", 0)
         detail  = c.get("director_detail", "")
-        lines.append(f"• *{ticker}* — {count} insider buys (Form 4)\n  _{detail}_")
+        lines.append(f"• *{fmt(ticker)}* — {count} insider buys (Form 4)\n  _{detail}_")
 
     blocks = [
         {
@@ -652,12 +695,12 @@ def alert_position_deterioration(session: str, ticker: str, direction: str, reas
     blocks = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"⚠️ Position Deterioration — {ticker}"}
+            "text": {"type": "plain_text", "text": f"⚠️ Position Deterioration — {fmt(ticker)}"}
         },
         {
             "type": "section",
             "fields": [
-                {"type": "mrkdwn", "text": f"*Ticker:*\n{dir_emoji} {ticker} {direction}"},
+                {"type": "mrkdwn", "text": f"*Ticker:*\n{dir_emoji} {fmt(ticker)} {direction}"},
                 {"type": "mrkdwn", "text": f"*Session:*\n{session}"},
             ]
         },
@@ -754,7 +797,7 @@ def weekly_digest(stats: dict, top_senators: list, superinvestor_changes: list):
 
     # Format superinvestor changes (top 5)
     investor_lines = "\n".join(
-        f"• *{i['investor']}* {i['action']} {i['ticker']}"
+        f"• *{i['investor']}* {i['action']} {fmt(i['ticker'])}"
         for i in superinvestor_changes[:5]
     ) or "_No changes this week_"
 

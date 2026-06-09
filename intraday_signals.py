@@ -404,6 +404,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
     from signals import scan_instrument, get_macro_gate
     from ig_shim import open_trade, get_account_balance
     from config import SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION
+    from notify import fmt   # 'TICKER (Full Name)' for Slack display
 
     results = []
 
@@ -517,7 +518,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                 macd_str = f"MACD:{s['macd'].get('momentum','')}" if s.get("macd") else ""
                 vwap_str = f"VWAP:{s['vwap'].get('position','')}" if s.get("vwap") else ""
                 lines += (
-                    f"• *{s['ticker']}* {s['direction']} — ⚠️ {s['alert']}\n"
+                    f"• *{fmt(s['ticker'])}* {s['direction']} — ⚠️ {s['alert']}\n"
                     f"  {rsi_str}  {macd_str}  {vwap_str}\n"
                 )
 
@@ -546,7 +547,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                 trend = s.get("momentum", {}).get("intraday_trend", "—")
                 vol   = s.get("volume", {}).get("volume_signal", "—")
                 flag  = "⚠️" if not s["hold_flag"] else "✅"
-                lines += f"{flag} *{s['ticker']}* | RSI:{rsi} | MACD:{macd} | VWAP:{vwap} | Trend:{trend} | Vol:{vol}\n"
+                lines += f"{flag} *{fmt(s['ticker'])}* | RSI:{rsi} | MACD:{macd} | VWAP:{vwap} | Trend:{trend} | Vol:{vol}\n"
 
             blocks = [
                 {"type": "header",

@@ -36,6 +36,8 @@ import requests
 import pg8000.native
 from datetime import datetime, timedelta, timezone
 
+from notify import fmt   # 'TICKER (Full Name)' for every instrument shown
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("uk_morning_brief")
 
@@ -238,7 +240,7 @@ def main():
 
             signals_str = "  `" + "  |  ".join(fired) + "`" if fired else ""
             scan_lines += (
-                f"{status}  *{ticker}*{dir_str}  "
+                f"{status}  *{fmt(ticker)}*{dir_str}  "
                 f"_{primaries}P {confs}C{pa_str}_\n"
                 f"{signals_str}\n"
             )
@@ -263,7 +265,7 @@ def main():
             ticker, direction, size, open_price, stop_loss, session, sig_summary, opened_at = r
             emoji = "🟢" if direction == "BUY" else "🔴"
             trade_lines += (
-                f"{emoji} *{ticker}* {direction}  size:{size}  "
+                f"{emoji} *{fmt(ticker)}* {direction}  size:{size}  "
                 f"entry:{open_price}  SL:{stop_loss}\n"
                 f"  _{sig_summary}_\n"
             )
@@ -284,7 +286,7 @@ def main():
             ticker, direction, size, open_price, stop_loss, session, opened_at = r
             emoji = "🟢" if direction == "BUY" else "🔴"
             pos_lines += (
-                f"{emoji} *{ticker}* {direction}  "
+                f"{emoji} *{fmt(ticker)}* {direction}  "
                 f"size:{size}  entry:{open_price}  SL:{stop_loss}  [{session}]\n"
             )
         blocks.append({"type": "divider"})
