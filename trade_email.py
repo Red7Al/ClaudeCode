@@ -201,8 +201,11 @@ def send_trade_email(ticker: str, direction: str, sig: dict, trade: dict,
     False and logs on any problem; never raises into the trade-placement path.
     """
     try:
-        user = os.environ.get("YAHOO_USER", "")
-        pw   = os.environ.get("YAHOO_APP_PASSWORD", "")
+        user = os.environ.get("YAHOO_USER", "").strip()
+        # Yahoo shows app passwords as 4×4 groups ("abcd efgh ijkl mnop") but the
+        # real password is the 16 chars with NO spaces — strip them defensively
+        # (a space in the secret is the #1 cause of Yahoo 535 auth failures).
+        pw   = os.environ.get("YAHOO_APP_PASSWORD", "").replace(" ", "").strip()
         if not (user and pw):
             log.warning("YAHOO_USER / YAHOO_APP_PASSWORD not set — trade email skipped")
             return False
