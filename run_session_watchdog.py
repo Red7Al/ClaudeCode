@@ -78,8 +78,13 @@ SLACK_URL     = os.environ.get("SLACK_ALERTS", "")
 
 
 def get_db():
+    # Port 5432 = Supabase SESSION pooler (dedicated backend per connection). The
+    # watchdog is the safety net and must be reliable; it runs >1 parameterised
+    # query per connection, which on the 6543 transaction pooler can intermittently
+    # hit pg8000 prepared-statement collisions (26000 / 22007) — the same class that
+    # crashed the social monitor on 2026-06-09. Session pooler isolates statements.
     return pg8000.native.Connection(
-        host=SUPABASE_HOST, port=6543, database="postgres",
+        host=SUPABASE_HOST, port=5432, database="postgres",
         user=os.environ["SUPABASE_USER"],
         password=os.environ["SUPABASE_DB_PASSWORD"],
         ssl_context=True
