@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 log = logging.getLogger("trade_email")
 
 YAHOO_SMTP_HOST = "smtp.mail.yahoo.com"
-YAHOO_SMTP_PORT = 587
+YAHOO_SMTP_PORT = 465   # implicit SSL — Yahoo drops 587/STARTTLS ("Connection unexpectedly closed")
 
 
 # ---------------------------------------------------------------------------
@@ -232,8 +232,8 @@ def send_trade_email(ticker: str, direction: str, sig: dict, trade: dict,
                                   cid=f"<{cid}>", filename=fname)
 
         ctx = ssl.create_default_context()
-        with smtplib.SMTP(YAHOO_SMTP_HOST, YAHOO_SMTP_PORT, timeout=30) as s:
-            s.starttls(context=ctx)
+        # Implicit SSL on 465 (Yahoo intermittently drops 587/STARTTLS).
+        with smtplib.SMTP_SSL(YAHOO_SMTP_HOST, YAHOO_SMTP_PORT, context=ctx, timeout=30) as s:
             s.login(user, pw)
             s.send_message(msg)
         log.info(f"Trade email sent to {rcpts} for {ticker} ({len(charts)} charts)")
