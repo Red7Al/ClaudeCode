@@ -576,10 +576,14 @@ MAX_SPREAD_PCT = 0.005      # 0.5%
 MAX_SPREAD_TO_STOP_RATIO = 0.5
 
 # Spread retry — when market is open but spread is temporarily wide,
-# retry this many times with this many seconds between checks
-# before giving up. Pre-market/closed markets are never retried.
-SPREAD_RETRY_ATTEMPTS  = 3
-SPREAD_RETRY_WAIT_SECS = 30
+# retry this many times with this many seconds between checks before giving up.
+# Pre-market/closed markets are never retried.
+# 15 × 20s ≈ 5 min of persistence (user 2026-06-09 — missed NBIS after only 3×30s).
+# Wait kept at 20s so the worst case stays ~at the */5 monitor cadence and checks
+# the (volatile) spread often enough to catch it narrowing. Monitor workflow
+# timeouts raised to 15 min to fit. The next monitor run also re-scans + re-tries.
+SPREAD_RETRY_ATTEMPTS  = 15
+SPREAD_RETRY_WAIT_SECS = 20
 
 # Session token TTL — IG sessions expire after 6 hours
 # Refresh at 5.5 hours to avoid mid-session expiry
