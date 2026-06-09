@@ -184,6 +184,21 @@ def _instrument_name(ticker: str) -> str:
     return _load_names().get(ticker, "") or ticker
 
 
+def should_post_summary(min_hours: int = 2) -> bool:
+    """
+    Rate-limit the periodic monitor SUMMARY to at most once per `min_hours`.
+
+    Monitoring now runs every 5 min for fresh prices/volume/HVF, but the full
+    Slack summary must not spam #signals (user directive 2026-06-09: summaries
+    every 2 hours or less). Each monitor run is a fresh process, so there is no
+    in-process counter — gate on the wall clock instead: fire only in the first
+    run of an aligned hour block (hour % min_hours == 0, minute < 5). Event
+    alerts (new trade, closure, circuit breaker, deterioration) are NOT gated.
+    """
+    now = datetime.now(timezone.utc)
+    return now.hour % max(1, min_hours) == 0 and now.minute < 5
+
+
 # =============================================================================
 # Trade Notifications → #claude-trading-trades
 # Fired when a trade is opened or closed.

@@ -404,7 +404,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
     from signals import scan_instrument, get_macro_gate
     from ig_shim import open_trade, get_account_balance
     from config import SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION
-    from notify import fmt   # 'TICKER (Full Name)' for Slack display
+    from notify import fmt, should_post_summary   # name fmt + 2h summary gate
 
     results = []
 
@@ -535,8 +535,10 @@ def run_us_monitor(notify_slack: bool = True) -> list:
             requests.post(slack_url, json={"blocks": blocks}, timeout=10)
             log.info(f"US Monitor alert sent for {len(position_alerts)} positions")
 
-    # Always send session summary to signals channel
-    if notify_slack:
+    # Periodic session summary to #signals — gated to <= every 2h (monitoring runs
+    # every 5 min, but the full review must not spam the channel). The position
+    # alerts above are immediate and NOT gated. See user directive 2026-06-09.
+    if notify_slack and should_post_summary():
         slack_url = os.environ.get("SLACK_SIGNALS", "")
         if slack_url:
             lines = ""
