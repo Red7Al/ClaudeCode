@@ -153,8 +153,8 @@ EPIC_MAP = {
     # US Equities — Large Cap Tech (24-hour CFDs)
     # -------------------------------------------------------------------------
     "AAPL":  "UA.D.AAPL.DAILY.IP",         # Apple Inc
-    "MSFT":  "UA.D.MSFT.DAILY.IP",         # Microsoft Corp
-    "NVDA":  "UA.D.NVDA.DAILY.IP",         # NVIDIA Corp
+    "MSFT":  "UC.D.MSFT.DAILY.IP",         # Microsoft Corp (epic verified live 2026-06-09; was UA→404)
+    "NVDA":  "UC.D.NVDA.DAILY.IP",         # NVIDIA Corp (epic verified live 2026-06-09; was UA→404)
     "AMZN":  "UA.D.AMZN.DAILY.IP",         # Amazon.com Inc
     "GOOGL": "UB.D.GOOGL.DAILY.IP",        # Alphabet Inc Class A
     "GOOG":  "UB.D.GOOGUS.DAILY.IP",       # Alphabet Inc Class C
@@ -195,8 +195,8 @@ EPIC_MAP = {
     "IBM":   "SD.D.IBM.DAILY.IP",       # IBM Corp
     "DELL":  "SB.D.DELLUS.DAILY.IP",   # Dell Technologies
     "NOK":   "SE.D.NOK.DAILY.IP",       # Nokia OYJ ADR
-    "NOW":   "UA.D.NOW.DAILY.IP",       # ServiceNow (Trump + Jensen Huang)
-    "CRWD":  "UA.D.CRWD.DAILY.IP",     # CrowdStrike (Jensen Huang)
+    "NOW":   "SE.D.NOWUS.DAILY.IP",     # ServiceNow (Trump + Jensen Huang) — epic verified live 2026-06-09; was UA.D.NOW→404
+    "CRWD":  "UA.D.CRWDUS.DAILY.IP",    # CrowdStrike (Jensen Huang) — epic verified live 2026-06-09; was UA.D.CRWD→404
 
     # -------------------------------------------------------------------------
     # UK Equities

@@ -1939,6 +1939,16 @@ def run_session_scan(session_name: str) -> dict:
         log.warning(f"Failed to send system error alert: {e}")
 
     trade_candidates = [s for s in instrument_signals if s.get("trade_signal")]
+    # Order by CONVICTION so the strongest setups are placed first — the trade
+    # loop stops at the cap and slow spread-retries on weak names must not starve a
+    # high-R:R setup (e.g. IBM HVF R:R 5.75 was 4th in list-order and never tried).
+    # Rank: HVF risk:reward, then confirmation count, then primary count.
+    trade_candidates.sort(
+        key=lambda s: (s.get("hvf_risk_reward") or 0,
+                       s.get("confirmation_count") or 0,
+                       s.get("primary_count") or 0),
+        reverse=True,
+    )
 
     # Director cluster developing alert — 3+ insider Form 4 buys but no trade yet.
     # These are early-stage opportunities: insiders are accumulating but the technical

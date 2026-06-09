@@ -228,10 +228,14 @@ def run_session_open(session_name: str):
                     instruments_scanned,
                     result["trade_candidates"])
 
-    # Execute trades (max 3 per session)
+    # Execute trades — stop once 3 are PLACED (not merely attempted). Walk up to
+    # the 6 highest-conviction candidates so a broken-epic / spread-blocked name
+    # does not consume a slot a good setup could have used (IBM HVF R:R 5.75 was
+    # never reached under the old [:3]-attempted cap). Candidates are conviction-
+    # ordered in signals.run_session_scan.
     trades_placed = 0
     stress_mult   = macro.get("stress_size_multiplier", 1.0)
-    for sig in result["trade_candidates"][:3]:
+    for sig in result["trade_candidates"][:6]:
         if trades_placed >= 3:
             break
 
