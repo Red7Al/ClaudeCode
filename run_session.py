@@ -372,7 +372,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     from notify import trade_closed, alert_circuit_breaker, alert_system_error, alert_position_deterioration
     from signals import scan_instrument, get_macro_gate
     from intraday_signals import scan_intraday
-    from config import ATR_MULTIPLIERS, ATR_MULTIPLIER_DEFAULT, SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION
+    from config import ATR_MULTIPLIERS, ATR_MULTIPLIER_DEFAULT, SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION, SESSION_TRADE_CAPS
     import pg8000.native
     from datetime import datetime, timezone
 
@@ -531,14 +531,16 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
             database="postgres", user=os.environ["SUPABASE_USER"],
             password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
         )
+        _grp = (session_name or "").split("_")[0].upper()
         today_count = conn2.run(
-            "select count(*) from trade_log where date(opened_at) = current_date"
+            "select count(*) from trade_log where session like :g and date(opened_at) = current_date",
+            g=_grp + "%"
         )
         db_tickers = {r[0] for r in conn2.run("select ticker from positions")}
         conn2.close()
         open_tickers |= db_tickers
         trades_today    = int(today_count[0][0]) if today_count else 0
-        slots_remaining = max(0, MAX_TRADES_PER_SESSION - trades_today)
+        slots_remaining = max(0, SESSION_TRADE_CAPS.get(_grp, MAX_TRADES_PER_SESSION) - trades_today)
     except Exception as e:
         log.error(f"Could not check trade count: {e}")
         slots_remaining = 0

@@ -497,7 +497,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
     import pg8000.native
     from signals import scan_instrument, get_macro_gate
     from ig_shim import open_trade, get_account_balance
-    from config import SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION
+    from config import SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION, SESSION_TRADE_CAPS
     from notify import fmt, should_post_summary   # name fmt + 2h summary gate
 
     results = []
@@ -514,7 +514,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
         )
         # How many trades already placed today
         today_count = conn.run(
-            "select count(*) from trade_log where date(opened_at) = current_date"
+            "select count(*) from trade_log where session like 'US%' and date(opened_at) = current_date"
         )
         conn.close()
     except Exception as e:
@@ -522,8 +522,8 @@ def run_us_monitor(notify_slack: bool = True) -> list:
         return results
 
     open_tickers    = {r[0] for r in pos_rows}
-    trades_today    = int(today_count[0][0]) if today_count else 0
-    slots_remaining = max(0, MAX_TRADES_PER_SESSION - trades_today)
+    trades_today    = int(today_count[0][0]) if today_count else 0   # US-session trades today
+    slots_remaining = max(0, SESSION_TRADE_CAPS.get("US", MAX_TRADES_PER_SESSION) - trades_today)
 
     # ── Part 1: Monitor existing positions ────────────────────────────────────
     if not pos_rows:

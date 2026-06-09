@@ -117,6 +117,9 @@ from config import (
     IG_SESSION_TTL_SECONDS,
     MIN_RISK_REWARD,
     DEFAULT_TARGET_RR,
+    SESSION_TRADE_CAPS,
+    MAX_TRADES_PER_INSTRUMENT_PER_DAY,
+    MAX_TRADES_PER_SESSION,
 )
 
 
@@ -553,7 +556,7 @@ def get_close_reason(deal_id: str) -> tuple[str, float]:
 # Enforced before every trade attempt. Blocks trades that violate risk rules.
 # =============================================================================
 
-def check_circuit_breakers(user_id: str, ticker: str) -> tuple[bool, str]:
+def check_circuit_breakers(user_id: str, ticker: str, session_name: str = None) -> tuple[bool, str]:
     """
     Run all circuit breaker checks for a user before placing a trade.
 
@@ -650,6 +653,34 @@ def check_circuit_breakers(user_id: str, ticker: str) -> tuple[bool, str]:
     except Exception as e:
         log.warning(f"Spread check failed for {ticker}: {e}")
 
+    # Checks 4 & 5 — per-instrument and per-session daily trade caps.
+    # Stops one instrument (e.g. 3x USDJPY) or one session (Asia) consuming the
+    # whole day's budget and starving higher-conviction later setups. One query.
+    try:
+        grp = session_name.split("_")[0].upper() if session_name else None
+        db = get_db()
+        try:
+            inst_n, sess_n = db.run(
+                """select
+                     (select count(*) from trade_log
+                        where ticker = :t and date(opened_at) = current_date),
+                     (select count(*) from trade_log
+                        where session like :g and date(opened_at) = current_date)""",
+                t=ticker, g=(grp + "%") if grp else "%"
+            )[0]
+        finally:
+            db.close()
+        if inst_n >= MAX_TRADES_PER_INSTRUMENT_PER_DAY:
+            return False, (f"Per-instrument daily cap: {ticker} already traded "
+                           f"{inst_n}/{MAX_TRADES_PER_INSTRUMENT_PER_DAY} today")
+        if grp:
+            cap = SESSION_TRADE_CAPS.get(grp, MAX_TRADES_PER_SESSION)
+            if sess_n >= cap:
+                return False, (f"Per-session daily cap: {grp} session already placed "
+                               f"{sess_n}/{cap} today")
+    except Exception as e:
+        log.warning(f"Trade-cap check failed for {ticker}/{session_name}: {e}")
+
     return True, "OK"
 
 
@@ -682,8 +713,8 @@ def open_trade(
         None on failure or circuit breaker block
     """
 
-    # Step 1 — Circuit breakers
-    ok, reason = check_circuit_breakers(user_id, ticker)
+    # Step 1 — Circuit breakers (session_name enables per-session + per-instrument caps)
+    ok, reason = check_circuit_breakers(user_id, ticker, session_name)
     if not ok:
         log.warning(f"Trade blocked — circuit breaker: {reason}")
         try:

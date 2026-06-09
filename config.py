@@ -371,6 +371,15 @@ ATR_MULTIPLIERS = {
     "USDJPY":  1.2,
     "EURUSD":  1.2,
 
+    # Volatile small-cap equities (crypto-miners + small-cap AI infra). Their wide
+    # spreads vs tight default ATR stops blocked entries (user 2026-06-09 — e.g.
+    # RIOT/NBIS). Wider stop lifts the spread-to-stop ratio so they can fill;
+    # position sizing shrinks size to keep £-risk constant. Extreme OPENING spreads
+    # may still block until they narrow — that protection is intentional.
+    "RIOT": 3.0, "CLSK": 3.0, "NBIS": 3.0, "CRWV": 3.0, "IREN": 3.0,
+    "APLD": 3.0, "BTDR": 3.0, "HIVE": 3.0, "SEI":  3.0, "BE":   3.0,
+    "TE":   3.0, "SNDK": 3.0, "KEEL": 3.0, "WYFI": 3.0, "USAR": 3.0,
+    "PATH": 3.0, "ONDS": 3.0, "OUST": 3.0,
 }
 
 # Default ATR multiplier for any instrument not listed above
@@ -589,8 +598,17 @@ SPREAD_RETRY_WAIT_SECS = 20
 # Refresh at 5.5 hours to avoid mid-session expiry
 IG_SESSION_TTL_SECONDS = 5.5 * 3600
 
-# Maximum trades per session (across all users)
+# Maximum trades per session (across all users) — legacy global fallback.
 MAX_TRADES_PER_SESSION = 3
+
+# Per-SESSION-GROUP daily trade caps (user 2026-06-09) — so one session (e.g. the
+# Asia FX session) can't spend the whole day's budget and starve higher-conviction
+# later setups. Keys match session_name.split("_")[0]: AUS / UK / US.
+SESSION_TRADE_CAPS = {"AUS": 3, "UK": 3, "US": 4}
+
+# Per-INSTRUMENT daily trade cap — stops over-concentration in one name
+# (e.g. 3x USDJPY in a single Asia session, which ate the budget on 2026-06-09).
+MAX_TRADES_PER_INSTRUMENT_PER_DAY = 2
 
 # Economic calendar block window — no new trades within this many minutes
 # of a high-impact event
