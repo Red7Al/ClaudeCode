@@ -24,6 +24,14 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-05  Alex Hind   Initial build — all session/report cron jobs.
+# 1.4.0   2026-06-09  Alex Hind   Increased monitoring frequency (user: "best
+#                                 information", GitHub-cron limit no longer applies):
+#                                 session monitors */20->*/5, commodity */30->*/10,
+#                                 watchdog */30->*/10, social hourly->*/15. Added a
+#                                 --reconcile mode that PATCHes only the schedule of
+#                                 EXISTING jobs (preserves each job's stored auth, so
+#                                 retuning frequency needs only CRONJOB_API_KEY, no
+#                                 GitHub PAT). Deployed via trading-setup-cronjobs.yml.
 # 1.3.0   2026-06-08  Alex Hind   Consolidate JOBS to the authoritative schedule and
 #                                 reflect the live cron-job.org account: monitors are
 #                                 now single */N-step jobs (AUS/UK/US Monitor) instead
@@ -51,6 +59,7 @@
 # =============================================================================
 
 import os
+import sys
 import json
 import requests
 
@@ -58,8 +67,11 @@ CRONJOB_API_KEY = os.environ.get("CRONJOB_API_KEY", "")
 GITHUB_TOKEN    = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO     = "Red7Al/ClaudeCode"
 
-if not CRONJOB_API_KEY or not GITHUB_TOKEN:
-    print("ERROR: Set CRONJOB_API_KEY and GITHUB_TOKEN environment variables")
+# CRONJOB_API_KEY is always required. GITHUB_TOKEN is only needed to CREATE jobs
+# (it is baked into the new job's auth header); --reconcile (retune schedules of
+# existing jobs) does not need it.
+if not CRONJOB_API_KEY:
+    print("ERROR: Set CRONJOB_API_KEY environment variable")
     raise SystemExit(1)
 
 CRONJOB_API = "https://api.cron-job.org"
@@ -82,24 +94,24 @@ GITHUB_BODY = json.dumps({"ref": "main"})
 JOBS = [
     # ── Asia / AUS session ──────────────────────────────────────────────────
     ("AUS Open",            "0 0 * * 1-5",    "trading-aus-open.yml"),
-    ("AUS Monitor",          "*/20 0-6 * * 1-5", "trading-aus-monitor.yml"),
-    ("Commodity Monitor AM", "*/30 4-8 * * 1-5", "trading-commodity-monitor.yml"),
+    ("AUS Monitor",          "*/5 0-6 * * 1-5", "trading-aus-monitor.yml"),
+    ("Commodity Monitor AM", "*/10 4-8 * * 1-5", "trading-commodity-monitor.yml"),
     # ── Pre-UK ──────────────────────────────────────────────────────────────
     ("HVF Daily Report",    "0 7 * * 1-5",    "trading-hvf-report.yml"),
     # ── UK session ──────────────────────────────────────────────────────────
     ("UK Open",             "0 8 * * 1-5",    "trading-uk-open.yml"),
     ("UK Morning Brief",    "0 9 * * 1,5",    "trading-uk-morning-brief.yml"),
-    ("UK Monitor",           "*/20 8-16 * * 1-5","trading-uk-monitor.yml"),
+    ("UK Monitor",           "*/5 8-16 * * 1-5","trading-uk-monitor.yml"),
     # ── US session ──────────────────────────────────────────────────────────
     ("US Open",              "30 14 * * 1-5",    "trading-us-open.yml"),
-    ("US Monitor",           "*/20 14-21 * * 1-5","trading-us-monitor.yml"),
-    ("Social Monitor",       "0 7-22 * * 1-5",   "trading-social-monitor.yml"),
+    ("US Monitor",           "*/5 14-21 * * 1-5","trading-us-monitor.yml"),
+    ("Social Monitor",       "*/15 7-22 * * 1-5",   "trading-social-monitor.yml"),
     # ── Close & reports ─────────────────────────────────────────────────────
-    ("Commodity Monitor PM", "*/30 21-23 * * 1-5","trading-commodity-monitor.yml"),
+    ("Commodity Monitor PM", "*/10 21-23 * * 1-5","trading-commodity-monitor.yml"),
     ("Session Close",        "0 21 * * 1-5",     "trading-session-close.yml"),
     ("Daily Report",         "30 21 * * 1-5",    "trading-daily-report.yml"),
     # ── Safety net + proactive self-checks ──────────────────────────────────
-    ("Session Watchdog",     "*/30 0-21 * * 1-5","trading-watchdog.yml"),     # migrated off GitHub cron 2026-06-08
+    ("Session Watchdog",     "*/10 0-21 * * 1-5","trading-watchdog.yml"),     # migrated off GitHub cron 2026-06-08
     ("Daily Diagnostics",    "30 7 * * 1-5",     "trading-diagnostics.yml"),  # proactive daily health check -> #alerts
     # ── Weekend ─────────────────────────────────────────────────────────────
     ("Weekend Review",      "0 9 * * 6",      "trading-weekend-review.yml"),
@@ -193,7 +205,64 @@ def create_job(title: str, cron: str, workflow: str):
     return resp.json().get("jobId")
 
 
+def patch_schedule(job_id: int, cron: str):
+    """
+    Update ONLY the schedule of an existing job (PATCH = partial update).
+
+    Leaves the URL and stored auth header untouched, so retuning frequency needs
+    only CRONJOB_API_KEY — never the GitHub PAT (which would be required to
+    recreate the job's auth header). This is how we safely change live cadence.
+    """
+    resp = requests.patch(
+        f"{CRONJOB_API}/jobs/{job_id}",
+        headers={"Authorization": f"Bearer {CRONJOB_API_KEY}",
+                 "Content-Type": "application/json"},
+        json={"job": {"schedule": _cron_to_schedule(cron)}},
+        timeout=15
+    )
+    resp.raise_for_status()
+
+
+def reconcile_schedules():
+    """
+    Retune EXISTING jobs' schedules to match JOBS. Creates nothing and touches no
+    auth — only the schedule. Idempotent (PATCH-ing the same value is harmless).
+    """
+    existing = get_existing_jobs()
+    print(f"Existing jobs on account: {len(existing)}")
+    updated = missing = failed = 0
+    for title, cron, workflow in JOBS:
+        job_id = existing.get(title)
+        if not job_id:
+            print(f"  MISSING (not on account — use create mode): {title}")
+            missing += 1
+            continue
+        try:
+            patch_schedule(job_id, cron)
+            print(f"  UPDATED: {title}  ->  [{cron}]  (id={job_id})")
+            updated += 1
+        except Exception as e:
+            print(f"  FAIL: {title} — {e}")
+            failed += 1
+    print()
+    print(f"Reconcile done: {updated} updated, {missing} missing, {failed} failed")
+    if failed:
+        raise SystemExit(1)
+
+
 def main():
+    # --reconcile: only retune schedules of existing jobs (no GitHub PAT needed).
+    if "--reconcile" in sys.argv:
+        print("Reconciling cron-job.org SCHEDULES to setup_cronjobs.JOBS (frequency retune)...")
+        print(f"GitHub repo: {GITHUB_REPO}")
+        print()
+        reconcile_schedules()
+        return
+
+    if not GITHUB_TOKEN:
+        print("ERROR: create mode needs GITHUB_TOKEN. To only retune existing "
+              "schedules, run: python setup_cronjobs.py --reconcile")
+        raise SystemExit(1)
     print(f"Setting up {len(JOBS)} cron-job.org jobs for EndToEndTrading...")
     print(f"GitHub repo: {GITHUB_REPO}")
     print()

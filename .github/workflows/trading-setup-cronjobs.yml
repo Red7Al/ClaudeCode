@@ -1,0 +1,26 @@
+name: Setup Cron Jobs — reconcile schedules (2026-06-09)
+
+# Applies setup_cronjobs.py JOBS frequencies to the live cron-job.org account.
+# Runs in --reconcile mode: PATCHes ONLY each existing job's schedule, preserving
+# its stored GitHub auth header — so retuning cadence needs CRONJOB_API_KEY only
+# (no PAT). Dispatch this whenever the JOBS frequencies in setup_cronjobs.py change.
+# workflow_dispatch only — this mutates the scheduler and must never self-trigger.
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - run: python setup_cronjobs.py --reconcile
+        env:
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
