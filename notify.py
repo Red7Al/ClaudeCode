@@ -199,6 +199,35 @@ def should_post_summary(min_hours: int = 2) -> bool:
     return now.hour % max(1, min_hours) == 0 and now.minute < 5
 
 
+def _format_duration(opened_at) -> str:
+    """
+    Human-readable hold time from an open timestamp to now, e.g. '2h 14m' or
+    '1d 3h 5m'. Accepts a datetime or an ISO-8601 string. Returns '' if unknown.
+    """
+    if not opened_at:
+        return ""
+    try:
+        if isinstance(opened_at, str):
+            ts = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))
+        else:
+            ts = opened_at
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        secs = max(0, int((datetime.now(timezone.utc) - ts).total_seconds()))
+        d, rem = divmod(secs, 86400)
+        h, rem = divmod(rem, 3600)
+        m, _ = divmod(rem, 60)
+        parts = []
+        if d:
+            parts.append(f"{d}d")
+        if h:
+            parts.append(f"{h}h")
+        parts.append(f"{m}m")
+        return " ".join(parts)
+    except Exception:
+        return ""
+
+
 # =============================================================================
 # Trade Notifications → #claude-trading-trades
 # Fired when a trade is opened or closed.
@@ -257,7 +286,8 @@ def trade_closed(
     close:        float,
     pnl:          float,
     close_reason: str,          # STOP_HIT, TARGET_HIT, MANUAL, CIRCUIT_BREAKER, SYSTEM, UNKNOWN
-    user:         str = "Owner"
+    user:         str = "Owner",
+    opened_at=None,             # open timestamp (datetime/ISO str) — shows hold duration
 ):
     """Send a trade closed notification to #claude-trading-trades."""
 
@@ -271,9 +301,22 @@ def trade_closed(
         "MANUAL":          "👤 Manual Close",
         "CIRCUIT_BREAKER": "⚡ Circuit Breaker",
         "SYSTEM":          "⚙️ System Close",
-        "UNKNOWN":         "❓ Unknown",
+        # Not a bug — IG's activity history did not link a reason to this deal id.
+        "UNKNOWN":         "❓ Closed (reason unavailable from IG)",
     }
     reason_label = reason_labels.get(close_reason, close_reason)
+    duration     = _format_duration(opened_at)
+
+    fields = [
+        {"type": "mrkdwn", "text": f"*User:*\n{user}"},
+        {"type": "mrkdwn", "text": f"*Direction:*\n{direction}"},
+        {"type": "mrkdwn", "text": f"*Entry:*\n{entry}"},
+        {"type": "mrkdwn", "text": f"*Close:*\n{close}"},
+        {"type": "mrkdwn", "text": f"*P&L:*\n£{pnl:+.2f}"},
+        {"type": "mrkdwn", "text": f"*Reason:*\n{reason_label}"},
+    ]
+    if duration:
+        fields.append({"type": "mrkdwn", "text": f"*Held:*\n{duration}"})
 
     blocks = [
         {
@@ -282,14 +325,7 @@ def trade_closed(
         },
         {
             "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*User:*\n{user}"},
-                {"type": "mrkdwn", "text": f"*Direction:*\n{direction}"},
-                {"type": "mrkdwn", "text": f"*Entry:*\n{entry}"},
-                {"type": "mrkdwn", "text": f"*Close:*\n{close}"},
-                {"type": "mrkdwn", "text": f"*P&L:*\n£{pnl:+.2f}"},
-                {"type": "mrkdwn", "text": f"*Reason:*\n{reason_label}"},
-            ]
+            "fields": fields
         },
         {
             "type": "context",

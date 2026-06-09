@@ -442,7 +442,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
         password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
     )
     our_deals  = {r[0]: r for r in conn.run(
-        "select deal_id, ticker, direction, open_price, size from positions"
+        "select deal_id, ticker, direction, open_price, size, opened_at from positions"
     )}
     ig_deal_ids = {pos["position"]["dealId"] for pos in ig_positions}
     conn.close()
@@ -450,16 +450,29 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     # Record one detected closure: log to DB, compute realised P&L, notify Slack.
     def _record_closure(deal_id, row, close_reason, close_price):
         ticker, direction, open_price, size = row[1], row[2], float(row[3]), float(row[4])
+        opened_at = row[5] if len(row) > 5 else None
         open_tickers.add(ticker)
-        actual_close = close_price or open_price
+        # close_price is 0.0 when IG's activity/transaction history did not surface
+        # the close — fall back to a live market snapshot so the P&L is not a
+        # misleading £0.00 (entry == close). Snapshot is approximate but real.
+        actual_close = close_price
+        if not actual_close:
+            try:
+                from ig_shim import get_epic, get_snapshot
+                snap  = get_snapshot(get_epic(ticker))
+                actual_close = snap.get("bid", 0) if direction == "BUY" else snap.get("offer", 0)
+            except Exception as e:
+                log.warning(f"Close-price snapshot fallback failed for {ticker}: {e}")
+            actual_close = actual_close or open_price
         _log_trade_close_to_db(deal_id, actual_close, close_reason)
         pnl = round(
             (actual_close - open_price) * size if direction == "BUY"
             else (open_price - actual_close) * size,
             2
         )
-        trade_closed(ticker, direction, open_price, actual_close, pnl, close_reason)
-        log.info(f"Detected closure: {ticker} {deal_id} — {close_reason} @ {close_price}")
+        trade_closed(ticker, direction, open_price, actual_close, pnl, close_reason,
+                     opened_at=opened_at)
+        log.info(f"Detected closure: {ticker} {deal_id} — {close_reason} @ {actual_close}")
 
     if not ig_positions and our_deals:
         # IG returned an empty positions list while the DB still holds open deals.
