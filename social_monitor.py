@@ -99,8 +99,15 @@ KNOWN_TICKERS = {
 # =============================================================================
 
 def get_db():
+    # Port 5432 = Supabase SESSION pooler (dedicated backend per connection), NOT
+    # the 6543 transaction pooler. This script fires many parameterised queries in
+    # a tight loop; on the transaction pooler, pg8000's unnamed prepared statements
+    # collide across queries on a shared backend, raising 26000 ("statement does not
+    # exist") and 22007 ("invalid input syntax for timestamp" — a string bound where
+    # another query's cached plan expects a timestamp). Both crashed the monitor on
+    # 2026-06-09. The session pooler isolates each connection's statements.
     return pg8000.native.Connection(
-        host=SUPABASE_HOST, port=6543, database="postgres",
+        host=SUPABASE_HOST, port=5432, database="postgres",
         user=SUPABASE_USER, password=SUPABASE_PASS, ssl_context=True
     )
 
