@@ -1474,14 +1474,20 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     #   options (no chain for FX/indices/crypto)
     #   cot     (no CFTC coverage for equities)
     #   gex     (needs options chain)
+    # FX/spot pairs (Yahoo "...=X") have no centralised volume — do NOT penalise
+    # them for its absence (expected, not a data failure). This both removes the
+    # log noise and stops FX from sitting one source closer to the critical
+    # threshold. See task C (GBPUSD "missing volume" false alarm).
+    _is_fx = YAHOO_MAP.get(ticker, ticker).endswith("=X")
     data_health = {
-        "volume": volume.get("volume_ratio")        is not None,
         "bb":     squeeze.get("bb_squeeze")         is not None,
         "adx":    adx.get("adx")                    is not None,
         "pa":     price_act.get("range_high")       is not None,
         "atr":    atr_data.get("atr")               is not None,
         "vwap":   vwap.get("vwap")                  is not None,
     }
+    if not _is_fx:
+        data_health["volume"] = volume.get("volume_ratio") is not None
     data_failures   = [src for src, ok in data_health.items() if not ok]
     data_ok         = len(data_failures) == 0
     # Partial failure: ≥3 core sources missing = no reliable decision possible
@@ -1891,7 +1897,12 @@ def run_session_scan(session_name: str) -> dict:
                 detail="\n".join(scan_errors[:10])
             )
 
-        # 3. Data reconciliation failures (ticker returned no price data)
+        # 3. Data reconciliation failures.
+        #    Only a CRITICAL gap (one that actually blocked a trade) is a system
+        #    error worth an "Action Required" alert. Non-critical gaps are logged
+        #    for the record but never raise a #alerts error — e.g. FX/spot pairs
+        #    have no centralised volume, so "GBPUSD: missing volume" is EXPECTED,
+        #    not a failure. Previously ANY gap alerted, crying wolf with "0 critical".
         data_failures = [
             (s["ticker"], ", ".join(s.get("data_failures", [])))
             for s in instrument_signals
@@ -1900,18 +1911,21 @@ def run_session_scan(session_name: str) -> dict:
         if data_failures:
             ticker_critical = {sig["ticker"] for sig in instrument_signals if sig.get("data_critical")}
             critical = [(t, f) for t, f in data_failures if t in ticker_critical]
-            lines = [f"{t}: missing {f}" for t, f in data_failures[:15]]
-            alert_system_error(
-                session=session_name,
-                component="data reconciliation",
-                summary=(
-                    f"{len(data_failures)}/{len(instrument_signals)} instruments had missing data "
-                    f"({len(critical)} critical — trade blocked)"
-                ),
-                detail="\n".join(lines)
-            )
+            # Always log every gap (verbose record for retrospective analysis).
             for ticker_fail, sources in data_failures:
-                log.warning(f"Data failure: {ticker_fail} — {sources}")
+                log.warning(f"Data gap: {ticker_fail} — missing {sources}")
+            # Alert ONLY when a gap was critical enough to block a trade.
+            if critical:
+                lines = [f"{t}: missing {f}" for t, f in data_failures[:15]]
+                alert_system_error(
+                    session=session_name,
+                    component="data reconciliation",
+                    summary=(
+                        f"{len(critical)}/{len(instrument_signals)} instruments had "
+                        f"CRITICAL missing data (trade blocked)"
+                    ),
+                    detail="\n".join(lines)
+                )
 
         # 4. Zero results
         if candidates and not instrument_signals:
