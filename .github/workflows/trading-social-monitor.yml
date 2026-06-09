@@ -1,5 +1,9 @@
-name: Social Feed Monitor (2 hourly)
+name: Social Feed Monitor (2026-06-09)
 
+# Triggered by cron-job.org "Social Monitor" (*/15 07-22 Mon-Fri) → workflow_dispatch.
+# The old "(2 hourly)" name was a leftover from a GitHub-native schedule; GitHub
+# cron is BANNED here (see memory/feedback_scheduler.md) — there is NO schedule:
+# block. All scheduling is cron-job.org.
 on:
   workflow_dispatch:
 

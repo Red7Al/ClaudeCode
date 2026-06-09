@@ -37,6 +37,7 @@
 import os
 from dotenv import load_dotenv; load_dotenv(override=True)
 import re
+import time
 import logging
 import requests
 import xml.etree.ElementTree as ET
@@ -102,6 +103,40 @@ def get_db():
         host=SUPABASE_HOST, port=6543, database="postgres",
         user=SUPABASE_USER, password=SUPABASE_PASS, ssl_context=True
     )
+
+
+def db_run(query: str, _attempts: int = 3, **params):
+    """
+    Run a query on a fresh pooled connection, retrying on transient pooler errors.
+
+    The Supabase transaction pooler (port 6543) intermittently raises
+    "unnamed prepared statement does not exist" (SQLSTATE 26000) when it rotates
+    the backend mid-statement — it crashed the whole Social Feed Monitor run on
+    2026-06-09. This retries such transient failures (26000 / dropped connection)
+    on a brand-new connection; real SQL errors are raised immediately. All call
+    sites here are SELECTs or idempotent upserts, so a retry is always safe.
+    Returns the rows (empty list for non-SELECT statements).
+    """
+    last = None
+    for i in range(_attempts):
+        db = get_db()
+        try:
+            return db.run(query, **params)
+        except Exception as e:
+            last = e
+            msg = str(e).lower()
+            transient = ("26000" in msg or "prepared statement" in msg
+                         or "connection is closed" in msg or "network error" in msg)
+            if transient and i < _attempts - 1:
+                time.sleep(0.5 * (i + 1))
+                continue
+            raise
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+    raise last
 
 
 # =============================================================================
@@ -206,15 +241,11 @@ def extract_tickers(text: str) -> list:
 
 def is_new_ticker(ticker: str, investor_name: str) -> bool:
     """Return True if this ticker hasn't been seen from this investor before."""
-    db = get_db()
-    try:
-        rows = db.run(
-            "select id from notable_investors where ticker=:v_ticker and investor_name=:v_investor limit 1",
-            v_ticker=ticker, v_investor=investor_name
-        )
-        return len(rows) == 0
-    finally:
-        db.close()
+    rows = db_run(
+        "select id from notable_investors where ticker=:v_ticker and investor_name=:v_investor limit 1",
+        v_ticker=ticker, v_investor=investor_name
+    )
+    return len(rows) == 0
 
 
 # =============================================================================
@@ -223,25 +254,19 @@ def is_new_ticker(ticker: str, investor_name: str) -> bool:
 
 def save_new_pick(ticker: str, investor_name: str, source: str, post_url: str):
     """Save a newly discovered ticker pick to Supabase and look up IG epic."""
-    db = get_db()
-    try:
-        db.run(
-            """insert into notable_investors
-               (investor_name, ticker, action, source, disclosed_at, notes)
-               values (:v_investor, :v_ticker, 'NEW', :v_source, current_date, :v_notes)
-               on conflict do nothing""",
-            v_investor=investor_name, v_ticker=ticker, v_source=source,
-            v_notes=f"Discovered via RSS monitoring | {post_url}"
-        )
-        log.info(f"New pick saved: {ticker} from {investor_name}")
-    finally:
-        db.close()
+    db_run(
+        """insert into notable_investors
+           (investor_name, ticker, action, source, disclosed_at, notes)
+           values (:v_investor, :v_ticker, 'NEW', :v_source, current_date, :v_notes)
+           on conflict do nothing""",
+        v_investor=investor_name, v_ticker=ticker, v_source=source,
+        v_notes=f"Discovered via RSS monitoring | {post_url}"
+    )
+    log.info(f"New pick saved: {ticker} from {investor_name}")
 
     # Look up IG epic if not already cached
     try:
-        db = get_db()
-        rows = db.run("select epic from epic_lookup where ticker=:t", t=ticker)
-        db.close()
+        rows = db_run("select epic from epic_lookup where ticker=:t", t=ticker)
 
         if not rows:
             # Need IG session to look up
@@ -253,14 +278,12 @@ def save_new_pick(ticker: str, investor_name: str, source: str, post_url: str):
             if markets:
                 epic = markets[0]["epic"]
                 name = markets[0].get("instrumentName", "")
-                db = get_db()
-                db.run(
+                db_run(
                     """insert into epic_lookup (ticker, epic, description, currency, market_type)
                        values (:v_ticker, :v_epic, :v_name, 'USD', 'SHARES')
                        on conflict (ticker) do update set epic=excluded.epic, last_seen=now()""",
                     v_ticker=ticker, v_epic=epic, v_name=name
                 )
-                db.close()
                 log.info(f"Epic found: {ticker} -> {epic} ({name})")
             time.sleep(0.3)
     except Exception as e:
