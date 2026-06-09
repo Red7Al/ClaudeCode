@@ -116,6 +116,7 @@ from config import (
     SPREAD_RETRY_WAIT_SECS,
     IG_SESSION_TTL_SECONDS,
     MIN_RISK_REWARD,
+    DEFAULT_TARGET_RR,
 )
 
 
@@ -772,7 +773,7 @@ def open_trade(
         if min_stop > 0 and stop_distance < min_stop:
             log.info(f"Stop distance {stop_distance} below IG minimum {min_stop} — adjusting")
             stop_distance  = round(min_stop * 1.05, 4)
-            limit_distance = round(stop_distance * 2, 4)
+            limit_distance = round(stop_distance * DEFAULT_TARGET_RR, 4)
 
         # 4c — Spread-to-stop ratio with retry
         # Spread must be < 50% of stop distance (negative expectancy otherwise).

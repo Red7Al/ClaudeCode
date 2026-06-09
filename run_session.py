@@ -95,6 +95,8 @@ import os
 from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
 
+from config import DEFAULT_TARGET_RR   # default take-profit = stop * this (3:1)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
@@ -236,7 +238,7 @@ def run_session_open(session_name: str):
         ticker     = sig["ticker"]
         direction  = sig["direction"]
         stop_dist  = sig.get("stop_distance", 0)
-        limit_dist = round(stop_dist * 2, 4)
+        limit_dist = round(stop_dist * DEFAULT_TARGET_RR, 4)
 
         # If an HVF pattern fired, use its more precise stop and target instead
         # of the generic ATR-based ones. HVF stop = just outside L3/H3 level.
@@ -283,11 +285,11 @@ def run_session_open(session_name: str):
                 )
                 # Only recalculate limit_dist when HVF did not supply a precise target.
                 # calculate_position_size may adjust stop_dist (e.g. to IG minimum),
-                # so blindly setting limit_dist = stop_dist * 2 here discards the HVF level.
+                # so blindly setting limit_dist = stop_dist * DEFAULT_TARGET_RR here discards the HVF level.
                 if sig.get("hvf_stop_level") and sig.get("hvf_target"):
                     limit_dist = _saved_limit_dist
                 else:
-                    limit_dist = round(stop_dist * 2, 4)
+                    limit_dist = round(stop_dist * DEFAULT_TARGET_RR, 4)
             else:
                 size = 0.0
         except Exception as e:
@@ -549,7 +551,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                         sig = scan_instrument(ticker, session_name, macro)
                         if sig.get("trade_signal"):
                             stop_dist  = sig.get("stop_distance", 0)
-                            limit_dist = round(stop_dist * 2, 4)
+                            limit_dist = round(stop_dist * DEFAULT_TARGET_RR, 4)
 
                             # Use calculate_position_size() — same path as session open.
                             # Previously used a simplified inline calculation that:
@@ -579,7 +581,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                                     if sig.get("hvf_stop_level") and sig.get("hvf_target"):
                                         limit_dist = _saved_limit_dist
                                     else:
-                                        limit_dist = round(stop_dist * 2, 4)
+                                        limit_dist = round(stop_dist * DEFAULT_TARGET_RR, 4)
                             except Exception as e:
                                 log.warning(f"Monitor size calc failed for {ticker}: {e}")
 

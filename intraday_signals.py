@@ -47,7 +47,7 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timezone
 
-from config import YAHOO_MAP
+from config import YAHOO_MAP, DEFAULT_TARGET_RR
 
 log = logging.getLogger("intraday_signals")
 
@@ -467,7 +467,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                         sig = scan_instrument(ticker, "US_MONITOR", macro)
                         if sig.get("trade_signal"):
                             stop_dist  = sig.get("stop_distance", 0)
-                            limit_dist = round(stop_dist * 2, 4)
+                            limit_dist = round(stop_dist * DEFAULT_TARGET_RR, 4)
                             try:
                                 bal         = get_account_balance()
                                 risk_amount = bal["available"] * 0.02

@@ -551,14 +551,21 @@ CFTC_CODES = {
 # Risk & Trade Constants
 # =============================================================================
 
-# Minimum risk/reward ratio — trades below this are not placed
-MIN_RISK_REWARD = 2.5
+# Minimum risk/reward ratio — trades below this are not placed.
+# 3:1 (user directive 2026-06-09 — "same as Richie Williams"). Raised from 2.5.
+MIN_RISK_REWARD = 3.0
 
 # HVF minimum R:R threshold — patterns below this are DEVELOPING (watchlist only, not traded).
 # Intentionally aliased to MIN_RISK_REWARD so the two values are always in sync.
 # Import HVF_MIN_RR from config wherever the HVF threshold is needed — do NOT
 # define a local copy in price_action.py or run_hvf_report.py.
 HVF_MIN_RR = MIN_RISK_REWARD
+
+# Default take-profit distance as a multiple of the stop distance, used for
+# NON-HVF trades and as the fallback when a setup has no measured-move target.
+# 3:1 to match the R:R policy above (user directive 2026-06-09). The single
+# source of truth — import DEFAULT_TARGET_RR; never hardcode "* 2"/"* 3".
+DEFAULT_TARGET_RR = 3.0
 
 # Spread width limit — trades blocked if spread exceeds this % of mid price
 MAX_SPREAD_PCT = 0.005      # 0.5%
