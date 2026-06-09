@@ -64,8 +64,14 @@ NOTABLE_MOVE_THRESHOLD = 0.03   # 3% — flag instruments that moved this much i
 
 
 def get_db():
+    # Port 5432 = Supabase SESSION pooler (dedicated backend per connection). The
+    # daily report runs MANY parameterised queries on one connection (macro, closes,
+    # signal_log[45 params], positions, daily_pnl). On the 6543 transaction pooler
+    # pg8000's unnamed prepared statements collide across them — crashed 2026-06-09
+    # with 08P01 "bind message supplies 1 parameters, but prepared statement requires
+    # 45" (the signal_log plan colliding with a 1-param query). Session pooler isolates.
     return pg8000.native.Connection(
-        host=SUPABASE_HOST, port=6543, database="postgres",
+        host=SUPABASE_HOST, port=5432, database="postgres",
         user=os.environ["SUPABASE_USER"],
         password=os.environ["SUPABASE_DB_PASSWORD"],
         ssl_context=True

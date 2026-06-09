@@ -148,7 +148,7 @@ def _load_names() -> dict:
     cache = {}
     try:
         conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
             database="postgres",
             user=os.environ["SUPABASE_USER"],
             password=os.environ["SUPABASE_DB_PASSWORD"],

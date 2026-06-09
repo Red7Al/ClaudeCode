@@ -24,7 +24,7 @@ SUPABASE_HOST = "aws-0-eu-west-1.pooler.supabase.com"
 
 def get_db():
     return pg8000.native.Connection(
-        host=SUPABASE_HOST, port=6543, database="postgres",
+        host=SUPABASE_HOST, port=5432, database="postgres",
         user=os.environ["SUPABASE_USER"],
         password=os.environ["SUPABASE_DB_PASSWORD"],
         ssl_context=True

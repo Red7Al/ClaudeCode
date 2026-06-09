@@ -124,7 +124,7 @@ def already_ran_today(session_name: str) -> bool:
     import pg8000.native
     try:
         conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
             database="postgres", user=os.environ["SUPABASE_USER"],
             password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
         )
@@ -155,7 +155,7 @@ def get_user_profile(user_id: str = OWNER_USER_ID) -> dict:
     import pg8000.native
     try:
         conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
             database="postgres", user=os.environ["SUPABASE_USER"],
             password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
         )
@@ -451,7 +451,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
 
     # Detect positions closed by IG
     conn = pg8000.native.Connection(
-        host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+        host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
         database="postgres", user=os.environ["SUPABASE_USER"],
         password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
     )
@@ -537,7 +537,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     # ── Part 2: scan for new entries ─────────────────────────────────────────
     try:
         conn2 = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
             database="postgres", user=os.environ["SUPABASE_USER"],
             password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
         )
@@ -802,7 +802,7 @@ def refresh_senator_scores():
 
     # Build senator_scores records
     conn = pg8000.native.Connection(
-        host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+        host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
         database="postgres", user=os.environ["SUPABASE_USER"],
         password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
     )
@@ -858,7 +858,7 @@ def run_weekend_review():
 
     # Weekly P&L
     conn = pg8000.native.Connection(
-        host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+        host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
         database="postgres", user=os.environ["SUPABASE_USER"],
         password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
     )
@@ -971,7 +971,7 @@ def refresh_superinvestors():
                 self._cell += data
 
     conn = pg8000.native.Connection(
-        host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+        host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
         database="postgres", user=os.environ["SUPABASE_USER"],
         password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
     )
@@ -1060,7 +1060,7 @@ def ensure_schema():
     import pg8000.native
     try:
         conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=6543,
+            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
             database="postgres",
             user=os.environ["SUPABASE_USER"],
             password=os.environ["SUPABASE_DB_PASSWORD"],

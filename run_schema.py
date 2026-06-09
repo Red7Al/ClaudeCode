@@ -214,7 +214,7 @@ def main():
     log.info(f"Connecting to {SUPABASE_HOST}...")
     conn = pg8000.native.Connection(
         host=SUPABASE_HOST,
-        port=6543,
+        port=5432,
         database="postgres",
         user=os.environ["SUPABASE_USER"],
         password=os.environ["SUPABASE_DB_PASSWORD"],

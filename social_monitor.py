@@ -311,7 +311,7 @@ def get_company_name(ticker: str) -> str:
     # Try epic_lookup first
     try:
         conn = pg8000.native.Connection(
-            host=SUPABASE_HOST, port=6543, database="postgres",
+            host=SUPABASE_HOST, port=5432, database="postgres",
             user=SUPABASE_USER, password=SUPABASE_PASS, ssl_context=True
         )
         rows = conn.run(

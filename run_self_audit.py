@@ -205,7 +205,7 @@ def check_constraints() -> list:
     results = []
     try:
         conn = pg8000.native.Connection(
-            host=SUPABASE_HOST, port=6543, database="postgres",
+            host=SUPABASE_HOST, port=5432, database="postgres",
             user=os.environ["SUPABASE_USER"],
             password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True,
         )

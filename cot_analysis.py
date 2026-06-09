@@ -97,7 +97,7 @@ HISTORY_WEEKS = 156    # 3 years — better percentile accuracy for multi-year e
 
 def get_db():
     return pg8000.native.Connection(
-        host=SUPABASE_HOST, port=6543, database="postgres",
+        host=SUPABASE_HOST, port=5432, database="postgres",
         user=SUPABASE_USER, password=SUPABASE_PASS, ssl_context=True
     )
 
