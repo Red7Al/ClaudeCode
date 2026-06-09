@@ -532,6 +532,35 @@ def alert_circuit_breaker(user: str, ticker: str, reason: str):
     _send("alerts", blocks)
 
 
+def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary: str = ""):
+    """
+    A TRADEABLE signal fired but the trade was NOT placed — surface it loudly to
+    #alerts so a missed opportunity is never silent. Names the instrument, side,
+    the exact block reason (cap / spread / funds / epic / market hours / rejection)
+    and the signals that fired, so the user can raise a cap, add funds, or trade it
+    manually. (User directive 2026-06-09: "if we get strong signals but can't trade
+    due to a cap — MAKE ME AWARE WITH CLEAR ALERT".)
+    """
+    fields = [
+        {"type": "mrkdwn", "text": f"*Instrument:*\n{fmt(ticker)}"},
+        {"type": "mrkdwn", "text": f"*Direction:*\n{direction}"},
+        {"type": "mrkdwn", "text": f"*Why NOT placed:*\n{reason}"},
+    ]
+    blocks = [
+        {"type": "header",
+         "text": {"type": "plain_text", "text": "⚠️ TRADEABLE SIGNAL NOT PLACED"}},
+        {"type": "section", "fields": fields},
+    ]
+    if signal_summary:
+        blocks.append({"type": "section",
+                       "text": {"type": "mrkdwn", "text": f"*Signals that fired:*\n{signal_summary}"}})
+    blocks.append({"type": "context",
+                   "elements": [{"type": "mrkdwn",
+                                 "text": "_Signal was valid — blocked at execution. Raise the cap / add funds / "
+                                         "review spread, or trade manually._ | " + _ts()}]})
+    _send("alerts", blocks)
+
+
 def alert_daily_loss_limit(user: str, total_pnl: float, limit_pct: float):
     """Notify that a user has hit their daily loss limit — no more trades today."""
     blocks = [

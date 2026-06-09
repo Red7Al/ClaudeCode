@@ -717,26 +717,27 @@ def open_trade(
     ok, reason = check_circuit_breakers(user_id, ticker, session_name)
     if not ok:
         log.warning(f"Trade blocked — circuit breaker: {reason}")
+        # Clear "tradeable signal not placed" alert — covers per-session/per-instrument
+        # caps, daily-loss, max-positions, wide-spread (user 2026-06-09: make cap blocks
+        # impossible to miss). Shows the reason + the signals that fired.
         try:
-            from notify import alert_circuit_breaker
-            # Resolve display name from user_profiles; fall back to user_id string.
-            # Previously hardcoded "Owner" — would have shown wrong name for Wife/Son.
-            try:
-                db = get_db()
-                rows = db.run("select name from user_profiles where id = :uid", uid=user_id)
-                db.close()
-                display_name = rows[0][0] if rows else user_id
-            except Exception:
-                display_name = user_id
-            alert_circuit_breaker(display_name, ticker, reason)
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction, reason, signal_summary)
         except Exception as e:
-            log.warning(f"Could not send circuit breaker alert: {e}")
+            log.warning(f"Could not send missed-trade alert: {e}")
         return None
 
     # Step 2 — Resolve epic
     epic = get_epic(ticker)
     if not epic:
         log.error(f"Cannot trade {ticker} — no epic found")
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction,
+                               "No IG epic found — check epic_lookup / config.EPIC_MAP (a wrong "
+                               "epic 404s and silently blocks the instrument)", signal_summary)
+        except Exception:
+            pass
         return None
 
     # Step 2b — Market hours guard for US equities
@@ -789,11 +790,11 @@ def open_trade(
         # 4a — Market must be TRADEABLE
         mkt_status = snap.get("marketStatus", "TRADEABLE")
         if mkt_status != "TRADEABLE":
-            reason = f"Market not tradeable: {mkt_status} — skipping {ticker}"
+            reason = f"Market not tradeable (status: {mkt_status})"
             log.warning(reason)
             try:
-                from notify import alert_circuit_breaker
-                alert_circuit_breaker("Owner", ticker, reason)
+                from notify import alert_missed_trade
+                alert_missed_trade(ticker, direction, reason, signal_summary)
             except Exception:
                 pass
             return None
@@ -847,8 +848,8 @@ def open_trade(
                         )
                         log.warning(reason)
                         try:
-                            from notify import alert_circuit_breaker
-                            alert_circuit_breaker("Owner", ticker, reason)
+                            from notify import alert_missed_trade
+                            alert_missed_trade(ticker, direction, reason, signal_summary)
                         except Exception:
                             pass
                         return None
@@ -861,8 +862,8 @@ def open_trade(
                     )
                     log.warning(reason)
                     try:
-                        from notify import alert_circuit_breaker
-                        alert_circuit_breaker("Owner", ticker, reason)
+                        from notify import alert_missed_trade
+                        alert_missed_trade(ticker, direction, reason, signal_summary)
                     except Exception:
                         pass
                     return None
@@ -896,6 +897,11 @@ def open_trade(
         deal_ref = resp.get("dealReference")
         if not deal_ref:
             log.error(f"No deal reference returned by IG: {resp}")
+            try:
+                from notify import alert_missed_trade
+                alert_missed_trade(ticker, direction, "IG returned no deal reference (order not accepted)", signal_summary)
+            except Exception:
+                pass
             return None
 
         # Confirm deal (wait briefly for IG to process)

@@ -187,7 +187,7 @@ def run_session_open(session_name: str):
     from signals import run_session_scan
     from notify import (session_summary, alert_macro_gate_failed,
                         alert_calendar_block, trade_opened, alert_circuit_breaker,
-                        session_heartbeat)
+                        alert_missed_trade, session_heartbeat)
     from ig_shim import open_trade, get_account_balance, health_check, calculate_position_size, get_epic
 
     # Guard: skip if this session already ran today.
@@ -312,7 +312,10 @@ def run_session_open(session_name: str):
                 f"Review account balance or reduce risk_per_trade in user_profiles."
             )
             log.warning(msg)
-            alert_circuit_breaker(profile.get("name", "Owner"), ticker, msg)
+            alert_missed_trade(ticker, direction,
+                               "calculated size is 0 — account balance too small for IG min deal "
+                               "size, or a wrong/404 epic. Review balance / risk_per_trade / epic.",
+                               signal_str)
             continue
 
         trade_result = open_trade(
