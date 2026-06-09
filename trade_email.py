@@ -234,12 +234,19 @@ def send_trade_email(ticker: str, direction: str, sig: dict, trade: dict,
         ctx = ssl.create_default_context()
         # Implicit SSL on 465 (Yahoo intermittently drops 587/STARTTLS).
         with smtplib.SMTP_SSL(YAHOO_SMTP_HOST, YAHOO_SMTP_PORT, context=ctx, timeout=30) as s:
+            if os.environ.get("EMAIL_DEBUG"):
+                s.set_debuglevel(1)
+            s.ehlo()
             s.login(user, pw)
             s.send_message(msg)
         log.info(f"Trade email sent to {rcpts} for {ticker} ({len(charts)} charts)")
         return True
     except Exception as e:
-        log.error(f"Trade email failed for {ticker}: {e}")
+        # Log the exception TYPE + repr — "Connection unexpectedly closed" alone hides
+        # whether it's auth, IP-reputation, or handshake. user must be the FULL Yahoo
+        # address and the app password must have no spaces.
+        log.error(f"Trade email failed for {ticker}: {type(e).__name__}: {e!r} "
+                  f"(from='{user[:3]}…@…', recipients={rcpts})")
         return False
 
 
