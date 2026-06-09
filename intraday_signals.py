@@ -388,6 +388,100 @@ def scan_intraday(ticker: str) -> dict:
 # US Monitor — scan all open positions + watch list
 # =============================================================================
 
+# Non-equity members of SESSION_INSTRUMENTS["US_OPEN"] — excluded from the HVF
+# equity watch (HVF is a stock pattern; these are index / commodity / crypto / FX).
+US_NON_EQUITY = {"SPX500", "XAUUSD", "OIL", "BTCUSD", "ETHUSD", "XRPUSD", "SOLUSD", "BNBUSD"}
+
+
+def hvf_watch_us_equities(open_tickers: set, notify_slack: bool = True) -> list:
+    """
+    Run the multi-timeframe HVF scan over the US EQUITIES already in our list
+    (SESSION_INSTRUMENTS["US_OPEN"] minus index/commodity/crypto) and surface
+    tradeable + developing funnels to #signals.
+
+    This is the always-on HVF VISIBILITY layer for the US Monitor so a funnel on
+    one of our equities is never silently missed — including when the daily trade
+    cap is hit or the macro gate is closed (when Part 2 does not scan/trade).
+    Trading still happens in run_us_monitor Part 2 (HVF is a primary in
+    scan_instrument). Uses the same rigorous get_hvf_signal_mtf as the daily HVF
+    report. Caller gates cadence (every ~30 min) to bound Yahoo load.
+    """
+    from price_action import get_hvf_signal_mtf, get_trend_structure
+    from config import SESSION_INSTRUMENTS, HVF_MIN_RR
+
+    equities = [t for t in SESSION_INSTRUMENTS.get("US_OPEN", [])
+                if t not in US_NON_EQUITY and t not in (open_tickers or set())]
+
+    tradeable, developing = [], []
+    for ticker in equities:
+        try:
+            trend = get_trend_structure(ticker)
+            hvf   = get_hvf_signal_mtf(ticker, trend_hint=trend)
+            if not hvf.get("hvf_type"):
+                continue
+            hvf["ticker"] = ticker
+            sig = hvf.get("hvf_signal", "")
+            rr  = hvf.get("risk_reward") or 0
+            if sig in ("READY", "TRIGGERED") and rr >= HVF_MIN_RR:
+                tradeable.append(hvf)
+            elif sig == "DEVELOPING":
+                developing.append(hvf)
+            time.sleep(0.3)   # polite to Yahoo Finance
+        except Exception as e:
+            log.warning(f"HVF watch failed for {ticker}: {e}")
+
+    rank = {"TRIGGERED": 3, "READY": 2, "DEVELOPING": 1}
+    tradeable.sort(key=lambda r: (rank.get(r.get("hvf_signal", ""), 0),
+                                  r.get("pattern_quality", 0)), reverse=True)
+    developing.sort(key=lambda r: r.get("risk_reward") or 0, reverse=True)
+    log.info(f"HVF watch (US equities): {len(equities)} scanned, "
+             f"{len(tradeable)} tradeable, {len(developing)} developing")
+
+    if notify_slack and (tradeable or developing):
+        _post_hvf_watch(tradeable, developing, HVF_MIN_RR)
+    return tradeable
+
+
+def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
+    """Post the HVF equity-watch to #claude-trading-signals."""
+    import requests
+    from notify import fmt
+    slack_url = os.environ.get("SLACK_SIGNALS", "")
+    if not slack_url:
+        return
+
+    def _line(r):
+        d  = "🟢" if r.get("hvf_type") == "BULLISH" else "🔴"
+        s  = {"TRIGGERED": "⚡", "READY": "✅", "DEVELOPING": "👀"}.get(r.get("hvf_signal", ""), "")
+        rr = r.get("risk_reward")
+        tf = (r.get("hvf_timeframe", "") or "").replace("daily-", "d")
+        return (f"{d}{s} *{fmt(r['ticker'])}*  R:R {f'{rr:.1f}:1' if rr else '—'}  "
+                f"entry {r.get('h3_level')}  stop {r.get('stop_level')}  "
+                f"target {r.get('target')}  [{tf}]")
+
+    text = ""
+    if tradeable:
+        text += f"*⚡ Tradeable HVF on our US equities — {len(tradeable)} (R:R ≥ {min_rr:.0f}:1)*\n"
+        text += "\n".join(_line(r) for r in tradeable[:15]) + "\n\n"
+    if developing:
+        text += f"*👀 Developing HVF — {len(developing)} (watch, R:R < {min_rr:.0f}:1)*\n"
+        text += "\n".join(_line(r) for r in developing[:15])
+
+    blocks = [
+        {"type": "header",
+         "text": {"type": "plain_text", "text": "🌀 HVF Watch — US Equities (US Monitor)"}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": text.strip()[:2900]}},
+        {"type": "context",
+         "elements": [{"type": "mrkdwn",
+                        "text": "_Trading runs via the monitor signal stack; this is the HVF visibility layer._ | "
+                                + datetime.now(timezone.utc).strftime("%d %b %H:%M UTC")}]},
+    ]
+    try:
+        requests.post(slack_url, json={"blocks": blocks}, timeout=10)
+    except Exception as e:
+        log.error(f"HVF watch post failed: {e}")
+
+
 def run_us_monitor(notify_slack: bool = True) -> list:
     """
     Mid-session US Monitor — runs every 15 minutes during the US session.
@@ -450,6 +544,16 @@ def run_us_monitor(notify_slack: bool = True) -> list:
         # Flag positions that may need attention
         if not scan["hold_flag"] and scan["alert"]:
             position_alerts.append(scan)
+
+    # ── Part 1.5: HVF watch on our US equities (visibility layer) ─────────────
+    # Run the rigorous MTF HVF scan over our US equities and surface tradeable +
+    # developing funnels to #signals. Gated to ~every 30 min (HVF patterns are
+    # daily-stable) to bound Yahoo load; trading still runs via Part 2 below.
+    if datetime.now(timezone.utc).minute % 30 < 5:
+        try:
+            hvf_watch_us_equities(open_tickers, notify_slack=notify_slack)
+        except Exception as e:
+            log.warning(f"HVF equity watch failed: {e}")
 
     # ── Part 2: Re-scan session instruments for NEW entries ───────────────────
     new_trades_placed = 0
