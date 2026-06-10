@@ -63,9 +63,10 @@
 #                                 through real H1→H2→H3 pivot points, lower jaw
 #                                 through L1→L2→L3 — anchored to actual price
 #                                 history dates/levels from the signal dict.
-#                                 History extended to 180 days so oldest pivots
-#                                 are visible. Projected entry/stop/target lines
-#                                 start from H3 date (real breakout point).
+#                                 History window now spans from 14 days before
+#                                 oldest pivot date (not fixed 180 days). Legend
+#                                 and R:R removed from chart — shown in Slack
+#                                 context block below the tweet instead.
 # =============================================================================
 
 import os
@@ -772,9 +773,21 @@ def _generate_x_drafts(tradeable: list):
         chart_b64 = None
         try:
             end_dt   = datetime.now(timezone.utc)
-            # Fetch enough history to show all 3 pivot pairs — use 180 days so
-            # the oldest pivot (h1/l1) is visible even on longer timeframes.
-            start_dt = end_dt - timedelta(days=180)
+            # Fetch from 14 days before the oldest pivot so H1/L1 are visible.
+            # Fall back to 90 days when no pivot dates are present.
+            _oldest_pivot_date = min(
+                (pd.Timestamp(r[k]) for k in
+                 ("h1_date", "h2_date", "h3_date", "l1_date", "l2_date", "l3_date")
+                 if r.get(k)),
+                default=None
+            )
+            if _oldest_pivot_date is not None:
+                start_dt = _oldest_pivot_date - timedelta(days=14)
+                # Cap at 365 days to avoid huge downloads; minimum 30 days
+                start_dt = max(start_dt, end_dt - timedelta(days=365))
+                start_dt = min(start_dt, end_dt - timedelta(days=30))
+            else:
+                start_dt = end_dt - timedelta(days=90)
             hist = _yf.download(ticker, start=start_dt.strftime("%Y-%m-%d"),
                                 end=end_dt.strftime("%Y-%m-%d"),
                                 progress=False, auto_adjust=True)
@@ -865,16 +878,13 @@ def _generate_x_drafts(tradeable: list):
                     proj_dates = [h3_dt, proj_end]
 
                     ax.plot(proj_dates, [h3_p,   h3_p],   color="#2ea043",
-                            linewidth=1.6, zorder=5,
-                            label=f"Entry  {h3:g}" if ig_scale != 1.0 else f"Entry  {h3_p:g}")
+                            linewidth=1.6, zorder=5)
                     if stop_p:
                         ax.plot(proj_dates, [stop_p, stop_p], color="#f85149",
-                                linewidth=1.6, zorder=5,
-                                label=f"Stop   {stop:g}" if ig_scale != 1.0 else f"Stop   {stop_p:g}")
+                                linewidth=1.6, zorder=5)
                     if targ_p:
                         ax.plot(proj_dates, [targ_p, targ_p], color="#ffa657",
-                                linewidth=1.6, zorder=5,
-                                label=f"Target {target:g}" if ig_scale != 1.0 else f"Target {targ_p:g}")
+                                linewidth=1.6, zorder=5)
 
                     ax.axvline(h3_dt, color="#444c56", linewidth=0.8,
                                linestyle=":", zorder=2)
@@ -886,12 +896,10 @@ def _generate_x_drafts(tradeable: list):
                 for spine in ax.spines.values():
                     spine.set_edgecolor("#30363d")
                 ax.tick_params(colors="#8b949e")
-                ax.legend(fontsize=8, facecolor="#161b22", edgecolor="#30363d",
-                          labelcolor="#c9d1d9", loc="upper left")
                 dir_arrow = "▲" if direction == "BULLISH" else "▼"
                 ax.set_title(
-                    f"{ticker} ({name})  {dir_arrow} {direction.title()} — {sig_desc.title()}  |  "
-                    f"R:R {rr_str}  [{tf_raw or 'multi-month'}]",
+                    f"{ticker} ({name})  {dir_arrow} {direction.title()} — {sig_desc.title()}  "
+                    f"[{tf_raw or 'multi-month'}]",
                     color="#c9d1d9", fontsize=10, pad=10
                 )
 
