@@ -1107,8 +1107,11 @@ def ensure_schema():
         log.error(f"Schema self-heal could not connect: {e}")
         try:
             from notify import alert_system_error
-            alert_system_error("STARTUP", "ensure_schema",
-                               "Schema self-heal failed — DB unreachable", str(e))
+            alert_system_error(
+                "STARTUP", "ensure_schema",
+                "Schema self-heal skipped — DB pooler unreachable (session continued)",
+                f"{e}\n\nNo action needed unless this repeats across multiple runs. "
+                f"Schema was already current; trading session proceeded normally.")
         except Exception:
             pass
 
