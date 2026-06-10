@@ -101,33 +101,53 @@ def build_charts(ticker: str, sig: dict, trade: dict) -> list:
             ax.grid(alpha=0.3)
             charts.append(("volume", "volume.png", _fig_png(fig)))
 
-        # 3) HVF funnel — lower-highs H1→H3 and higher-lows L1→L3 converging.
+        # 3) HVF funnel — three descending lower-highs (H1>H2>H3) and three ascending
+        # higher-lows (L1<L2<L3) converging into the apex, with entry (H3) / stop /
+        # target. This is the visual definition of the Hunt Volatility Funnel.
         h1 = _num(sig.get("hvf_h1_level") or sig.get("h1_level"))
+        h2 = _num(sig.get("hvf_h2_level") or sig.get("h2_level"))
         h3 = _num(sig.get("hvf_h3_level") or sig.get("h3_level"))
         l1 = _num(sig.get("hvf_l1_level") or sig.get("l1_level"))
+        l2 = _num(sig.get("hvf_l2_level") or sig.get("l2_level"))
         l3 = _num(sig.get("hvf_l3_level") or sig.get("l3_level"))
         if not all((h1, h3, l1, l3)):
             # Re-derive the funnel levels from price_action if the sig didn't carry them.
             try:
                 from price_action import get_hvf_signal_mtf, get_trend_structure
                 hv = get_hvf_signal_mtf(ticker, trend_hint=get_trend_structure(ticker))
-                h1 = h1 or _num(hv.get("h1_level")); h3 = h3 or _num(hv.get("h3_level"))
-                l1 = l1 or _num(hv.get("l1_level")); l3 = l3 or _num(hv.get("l3_level"))
+                h1 = h1 or _num(hv.get("h1_level")); h2 = h2 or _num(hv.get("h2_level")); h3 = h3 or _num(hv.get("h3_level"))
+                l1 = l1 or _num(hv.get("l1_level")); l2 = l2 or _num(hv.get("l2_level")); l3 = l3 or _num(hv.get("l3_level"))
                 stop = stop or _num(hv.get("stop_level")); targ = targ or _num(hv.get("target"))
             except Exception:
                 pass
         if all((h1, h3, l1, l3)):
-            fig, ax = plt.subplots(figsize=(8, 4))
-            x = [0, 1]
-            ax.plot(x, [h1, h3], "r-o", lw=1.6, label="Lower highs (H1→H3)")
-            ax.plot(x, [l1, l3], "g-o", lw=1.6, label="Higher lows (L1→L3)")
-            ax.fill_between(x, [h1, h3], [l1, l3], color="grey", alpha=0.15)
-            if entry: ax.axhline(entry, color="green",  ls="--", lw=1, label=f"Entry {entry:g}")
-            if stop:  ax.axhline(stop,  color="red",    ls=":",  lw=1, label=f"Stop {stop:g}")
-            if targ:  ax.axhline(targ,  color="orange", ls=":",  lw=1, label=f"Target {targ:g}")
-            ax.set_title(f"{ticker} — HVF funnel ({sig.get('hvf_type', '')} {sig.get('hvf_signal', '')})")
-            ax.set_xticks([0, 1]); ax.set_xticklabels(["earlier", "now"])
-            ax.legend(fontsize=8, loc="best")
+            fig, ax = plt.subplots(figsize=(8.5, 4.5))
+            # Plot the three highs and three lows at pivot positions 1, 2, 3 (H2/L2
+            # included when available, else the line spans 1st→3rd).
+            hx = [0, 1, 2] if h2 else [0, 2]
+            hy = [h1, h2, h3] if h2 else [h1, h3]
+            lx = [0, 1, 2] if l2 else [0, 2]
+            ly = [l1, l2, l3] if l2 else [l1, l3]
+            ax.plot(hx, hy, "r-o", lw=1.8, label="Lower highs  H1 > H2 > H3")
+            ax.plot(lx, ly, "g-o", lw=1.8, label="Higher lows  L1 < L2 < L3")
+            ax.fill_between([0, 2], [h1, h3], [l1, l3], color="grey", alpha=0.12)
+            for xx, yy, lab, dy, col in [
+                (0, h1, "H1", 7, "red"), (1, h2, "H2", 7, "red"), (2, h3, "H3", 7, "red"),
+                (0, l1, "L1", -13, "green"), (1, l2, "L2", -13, "green"), (2, l3, "L3", -13, "green")]:
+                if yy:
+                    ax.annotate(f"{lab} {yy:g}", (xx, yy), textcoords="offset points",
+                                xytext=(0, dy), fontsize=7, color=col, ha="center")
+            if entry: ax.axhline(entry, color="blue",   ls="--", lw=1.1, label=f"Entry (H3) {entry:g}")
+            if stop:  ax.axhline(stop,  color="red",    ls=":",  lw=1,   label=f"Stop {stop:g}")
+            if targ:  ax.axhline(targ,  color="orange", ls=":",  lw=1,   label=f"Target {targ:g}")
+            rr = sig.get("hvf_risk_reward")
+            q  = sig.get("hvf_quality")
+            ax.set_title(f"{ticker} — HVF funnel ({sig.get('hvf_type','')} {sig.get('hvf_signal','')}"
+                         + (f", R:R {rr}:1" if rr else "") + (f", quality {q}" if q else "") + ")")
+            ax.set_xticks([0, 1, 2] if h2 else [0, 2])
+            ax.set_xticklabels(["1st pivot", "2nd pivot", "3rd (entry)"] if h2 else ["1st pivot", "3rd (entry)"])
+            ax.legend(fontsize=7, loc="best")
+            ax.grid(alpha=0.3)
             charts.append(("hvf", "hvf.png", _fig_png(fig)))
     except Exception as e:
         log.warning(f"trade-email chart generation failed for {ticker}: {e}")
@@ -303,8 +323,8 @@ if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.INFO)
     _sig = {"hvf_type": "BULLISH", "hvf_signal": "TRIGGERED", "hvf_risk_reward": 5.75,
-            "hvf_quality": 82, "hvf_h1_level": 268.0, "hvf_h3_level": 256.6,
-            "hvf_l1_level": 238.0, "hvf_l3_level": 248.0, "hvf_stop_level": 246.0,
+            "hvf_quality": 82, "hvf_h1_level": 268.0, "hvf_h2_level": 262.0, "hvf_h3_level": 256.6,
+            "hvf_l1_level": 238.0, "hvf_l2_level": 243.0, "hvf_l3_level": 248.0, "hvf_stop_level": 246.0,
             "hvf_target": 300.0, "pa_verdict": "CONFIRM_LONG", "pa_score": 45,
             "primary_count": 3, "confirmation_count": 3,
             "primaries_fired": ["HVF BULLISH TRIGGERED (R:R 5.75, quality 82)",

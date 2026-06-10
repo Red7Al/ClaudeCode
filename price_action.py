@@ -1045,6 +1045,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
         h2 = best_pattern["h2"]
         h3 = best_pattern["h3"]
         l1 = best_pattern["l1"]
+        l2 = best_pattern["l2"]
         l3 = best_pattern["l3"]
         initial_range = best_pattern["initial_range"]
 
@@ -1122,7 +1123,9 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
                 "target":           target,
                 "risk_reward":      rr,
                 "h1_level":         round(h1[1], 6),
+                "h2_level":         round(h2[1], 6),
                 "l1_level":         round(l1[1], 6),
+                "l2_level":         round(l2[1], 6),
                 "pattern_range":    round(initial_range, 6),
                 "bars_since_h3":    best_pattern["bars_since_h3"],
                 "pattern_quality":  best_quality,
@@ -1140,7 +1143,9 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
             "target":            target,
             "risk_reward":       rr,
             "h1_level":          round(h1[1], 6),
+            "h2_level":          round(h2[1], 6),
             "l1_level":          round(l1[1], 6),
+            "l2_level":          round(l2[1], 6),
             "pattern_range":     round(initial_range, 6),
             "bars_since_h3":     best_pattern["bars_since_h3"],
             "pattern_quality":   best_quality,
@@ -1504,7 +1509,9 @@ def analyse_price_action(ticker: str) -> dict:
         "hvf_h3_level":      hvf.get("h3_level"),          # pending entry level
         "hvf_l3_level":      hvf.get("l3_level"),          # third low (stop reference)
         "hvf_h1_level":      hvf.get("h1_level"),          # first lower-high (funnel top) — for the email chart
+        "hvf_h2_level":      hvf.get("h2_level"),          # second lower-high
         "hvf_l1_level":      hvf.get("l1_level"),          # first higher-low (funnel bottom) — for the email chart
+        "hvf_l2_level":      hvf.get("l2_level"),          # second higher-low
         "hvf_stop_level":    hvf.get("stop_level"),        # exact stop price
         "hvf_target":        hvf.get("target"),            # H1-L1 range target
         "hvf_risk_reward":   hvf.get("risk_reward"),       # pre-calculated R:R

@@ -1765,7 +1765,9 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         # Funnel shape (for the trade-open email's HVF chart): lower-highs H1→H3,
         # higher-lows L1→L3.
         "hvf_h1_level":      price_act.get("hvf_h1_level"),
+        "hvf_h2_level":      price_act.get("hvf_h2_level"),
         "hvf_l1_level":      price_act.get("hvf_l1_level"),
+        "hvf_l2_level":      price_act.get("hvf_l2_level"),
         "hvf_l3_level":      price_act.get("hvf_l3_level"),
 
         # Analyst / broker signals
