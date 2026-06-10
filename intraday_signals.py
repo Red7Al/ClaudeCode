@@ -59,6 +59,13 @@
 #                                 1.5 with a 30-min gate) — now a standalone
 #                                 US_HVF_WATCH session run every 2 hours via
 #                                 trading-us-hvf-watch.yml workflow.
+# 1.3.1   2026-06-10  Alex Hind   Fix X-draft funnel chart: upper jaw now drawn
+#                                 through real H1→H2→H3 pivot points, lower jaw
+#                                 through L1→L2→L3 — anchored to actual price
+#                                 history dates/levels from the signal dict.
+#                                 History extended to 180 days so oldest pivots
+#                                 are visible. Projected entry/stop/target lines
+#                                 start from H3 date (real breakout point).
 # =============================================================================
 
 import os
@@ -761,11 +768,13 @@ def _generate_x_drafts(tradeable: list):
             # Absolute fallback — no justification, short tags
             tweet = base_no_name + tags_short
 
-        # ── Chart: price history + converging funnel + projected levels ────────
+        # ── Chart: price history + funnel through real pivot points ─────────────
         chart_b64 = None
         try:
             end_dt   = datetime.now(timezone.utc)
-            start_dt = end_dt - timedelta(days=90)
+            # Fetch enough history to show all 3 pivot pairs — use 180 days so
+            # the oldest pivot (h1/l1) is visible even on longer timeframes.
+            start_dt = end_dt - timedelta(days=180)
             hist = _yf.download(ticker, start=start_dt.strftime("%Y-%m-%d"),
                                 end=end_dt.strftime("%Y-%m-%d"),
                                 progress=False, auto_adjust=True)
@@ -776,71 +785,98 @@ def _generate_x_drafts(tradeable: list):
                     yf_med = float(hist["Close"].median())
                     if yf_med > 0 and h3 / yf_med > 5:
                         ig_scale = h3 / yf_med
-                h3_p   = h3     / ig_scale if h3     else None
-                stop_p = stop   / ig_scale if stop   else None
-                targ_p = target / ig_scale if target else None
 
-                close  = hist["Close"].squeeze()
-                dates  = hist.index
-                n      = len(dates)
+                def _s(v):
+                    return v / ig_scale if v else None
+
+                h3_p   = _s(h3)
+                stop_p = _s(stop)
+                targ_p = _s(target)
+                h1_p   = _s(r.get("h1_level"))
+                h2_p   = _s(r.get("h2_level"))
+                l1_p   = _s(r.get("l1_level"))
+                l2_p   = _s(r.get("l2_level"))
+                l3_p   = _s(r.get("l3_level") or stop)   # l3 = stop base
+
+                # Convert pivot date strings to datetime for plotting
+                def _pd(key):
+                    ds = r.get(key)
+                    if not ds:
+                        return None
+                    try:
+                        return pd.Timestamp(ds)
+                    except Exception:
+                        return None
+
+                h1_dt = _pd("h1_date"); h2_dt = _pd("h2_date"); h3_dt = _pd("h3_date")
+                l1_dt = _pd("l1_date"); l2_dt = _pd("l2_date"); l3_dt = _pd("l3_date")
+
+                close = hist["Close"].squeeze()
+                dates = hist.index
+                n     = len(dates)
 
                 fig, ax = plt.subplots(figsize=(10, 5))
                 fig.patch.set_facecolor("#0d1117")
                 ax.set_facecolor("#0d1117")
 
-                # Price line
+                # Price line + fill
                 ax.plot(dates, close, color="#58a6ff", linewidth=1.6, zorder=3)
                 ax.fill_between(dates, close, float(close.min()), alpha=0.07,
                                 color="#58a6ff", zorder=2)
 
-                # ── Funnel: converging upper + lower boundary lines ────────────
-                # The funnel spans the last 60% of history, converging to h3_p
-                # at the final date. Upper jaw starts above the recent high,
-                # lower jaw starts below the recent low.
-                if h3_p:
-                    funnel_start_idx = max(0, int(n * 0.35))
-                    funnel_dates     = dates[funnel_start_idx:]
-                    fn = len(funnel_dates)
+                # ── Funnel: upper jaw H1→H2→H3, lower jaw L1→L2→L3 ───────────
+                # Plot through the actual 3 pivot points so the lines sit on
+                # the real swing highs/lows in the price history.
+                upper_pts = [(dt, lv) for dt, lv in
+                             [(h1_dt, h1_p), (h2_dt, h2_p), (h3_dt, h3_p)]
+                             if dt is not None and lv is not None]
+                lower_pts = [(dt, lv) for dt, lv in
+                             [(l1_dt, l1_p), (l2_dt, l2_p), (l3_dt, l3_p)]
+                             if dt is not None and lv is not None]
 
-                    recent_close = close.iloc[funnel_start_idx:]
-                    price_range  = float(recent_close.max() - recent_close.min())
-                    jaw_open     = price_range * 0.55   # how far apart the jaws start
+                if len(upper_pts) >= 2:
+                    ux, uy = zip(*upper_pts)
+                    ax.plot(ux, uy, color="#e3b341", linewidth=1.4,
+                            linestyle="--", alpha=0.9, zorder=4)
+                    ax.scatter(ux, uy, color="#e3b341", s=22, zorder=5, alpha=0.9)
 
-                    upper_start = h3_p + jaw_open
-                    lower_start = h3_p - jaw_open * 0.7  # asymmetric — tighter below
+                if len(lower_pts) >= 2:
+                    lx, ly = zip(*lower_pts)
+                    ax.plot(lx, ly, color="#e3b341", linewidth=1.4,
+                            linestyle="--", alpha=0.9, zorder=4)
+                    ax.scatter(lx, ly, color="#e3b341", s=22, zorder=5, alpha=0.9)
 
-                    upper_line = np.linspace(upper_start, h3_p, fn)
-                    lower_line = np.linspace(lower_start, h3_p, fn)
+                # Shade the funnel region between the two jaws
+                if len(upper_pts) >= 2 and len(lower_pts) >= 2:
+                    all_dates = sorted(set(ux) | set(lx))
+                    def _interp(pts, target_dates):
+                        xs = mdates.date2num([p[0] for p in pts])
+                        ys = [p[1] for p in pts]
+                        return np.interp(mdates.date2num(target_dates), xs, ys)
+                    u_interp = _interp(upper_pts, all_dates)
+                    l_interp = _interp(lower_pts, all_dates)
+                    ax.fill_between(all_dates, u_interp, l_interp,
+                                    alpha=0.07, color="#e3b341", zorder=1)
 
-                    ax.plot(funnel_dates, upper_line, color="#e3b341",
-                            linewidth=1.2, linestyle="--", alpha=0.8, zorder=4)
-                    ax.plot(funnel_dates, lower_line, color="#e3b341",
-                            linewidth=1.2, linestyle="--", alpha=0.8, zorder=4)
-                    ax.fill_between(funnel_dates, upper_line, lower_line,
-                                    alpha=0.06, color="#e3b341", zorder=1)
-
-                # ── Projected levels to the right of last date ────────────────
-                # Extend 15% of the chart width beyond the last candle
-                if h3_p and n > 1:
-                    last_date   = dates[-1]
-                    day_delta   = (dates[-1] - dates[-2])
-                    proj_end    = last_date + day_delta * max(1, int(n * 0.15))
-                    proj_dates  = [last_date, proj_end]
+                # ── Projected levels to the right of H3 ──────────────────────
+                if h3_p and h3_dt is not None and n > 1:
+                    day_delta = dates[-1] - dates[-2]
+                    proj_end  = dates[-1] + day_delta * max(1, int(n * 0.15))
+                    proj_dates = [h3_dt, proj_end]
 
                     ax.plot(proj_dates, [h3_p,   h3_p],   color="#2ea043",
-                            linewidth=1.5, linestyle="-", zorder=5,
+                            linewidth=1.6, zorder=5,
                             label=f"Entry  {h3:g}" if ig_scale != 1.0 else f"Entry  {h3_p:g}")
                     if stop_p:
                         ax.plot(proj_dates, [stop_p, stop_p], color="#f85149",
-                                linewidth=1.5, linestyle="-", zorder=5,
+                                linewidth=1.6, zorder=5,
                                 label=f"Stop   {stop:g}" if ig_scale != 1.0 else f"Stop   {stop_p:g}")
                     if targ_p:
                         ax.plot(proj_dates, [targ_p, targ_p], color="#ffa657",
-                                linewidth=1.5, linestyle="-", zorder=5,
+                                linewidth=1.6, zorder=5,
                                 label=f"Target {target:g}" if ig_scale != 1.0 else f"Target {targ_p:g}")
 
-                    # Breakout marker at apex
-                    ax.axvline(last_date, color="#444c56", linewidth=0.8,
+                    ax.axvline(h3_dt, color="#444c56", linewidth=0.8,
                                linestyle=":", zorder=2)
 
                 ax.xaxis.set_major_formatter(mdates.DateFormatter("%b '%y"))
