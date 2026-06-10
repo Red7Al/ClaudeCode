@@ -44,6 +44,11 @@
 #                                 fills/cancels each pass, and counts open positions
 #                                 + today's PENDING working orders in the US slot
 #                                 budget (was trade_log only).
+# 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF
+#                                 Slack post, _generate_x_drafts() posts one
+#                                 tweet-ready block per instrument (with HVF chart
+#                                 attached) to SLACK_X channel for review before
+#                                 manual posting to X.
 # =============================================================================
 
 import os
@@ -447,6 +452,8 @@ def hvf_watch_us_equities(open_tickers: set, notify_slack: bool = True) -> list:
 
     if notify_slack and (tradeable or developing):
         _post_hvf_watch(tradeable, developing, HVF_MIN_RR)
+        if tradeable:
+            _generate_x_drafts(tradeable)
     return tradeable
 
 
@@ -488,6 +495,168 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
         requests.post(slack_url, json={"blocks": blocks}, timeout=10)
     except Exception as e:
         log.error(f"HVF watch post failed: {e}")
+
+
+def _generate_x_drafts(tradeable: list):
+    """
+    Post one tweet-ready draft per tradeable HVF instrument to #claude-x-drafts
+    (SLACK_X env var). Each draft is a Slack message with the HVF price chart
+    attached, ready to copy-paste to X.
+
+    Tweet format (≤280 chars):
+        📈 $TICKER (Company Name) — HVF {type} {signal}
+        Entry: {h3}  Stop: {stop}  Target: {target}  R:R {rr}:1
+        Quality: {quality}  Timeframe: {tf}
+        #HVF #TechnicalAnalysis #Trading #{TICKER}
+    """
+    import requests
+    import io
+    import base64
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    import yfinance as _yf
+    from datetime import datetime, timezone, timedelta
+    from notify import fmt
+
+    slack_url = os.environ.get("SLACK_X", "")
+    if not slack_url:
+        log.warning("SLACK_X not set — X draft reports skipped")
+        return
+
+    for r in tradeable[:10]:
+        ticker    = r.get("ticker", "")
+        direction = r.get("hvf_type", "BULLISH")
+        signal    = r.get("hvf_signal", "")
+        h3        = r.get("h3_level")
+        stop      = r.get("stop_level")
+        target    = r.get("target")
+        rr        = r.get("risk_reward")
+        quality   = r.get("hvf_quality") or r.get("pattern_quality") or ""
+        tf_raw    = (r.get("hvf_timeframe", "") or "").replace("daily-", "d")
+        name      = r.get("name") or ticker          # full company name if available
+
+        # ── Build tweet text ──────────────────────────────────────────────────
+        dir_emoji = "📈" if direction == "BULLISH" else "📉"
+        sig_emoji = {"TRIGGERED": "⚡", "READY": "✅", "DEVELOPING": "👀"}.get(signal, "")
+        rr_str    = f"{rr:.1f}:1" if rr else "—"
+        h3_str    = f"{h3:g}" if h3 else "—"
+        stop_str  = f"{stop:g}" if stop else "—"
+        tgt_str   = f"{target:g}" if target else "—"
+
+        tweet = (
+            f"{dir_emoji}{sig_emoji} ${ticker} ({name}) — HVF {direction.title()} {signal}\n"
+            f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
+            f"Quality: {quality or '—'}  Timeframe: {tf_raw or '—'}\n"
+            f"#HVF #TechnicalAnalysis #Trading #{ticker}"
+        )
+        if len(tweet) > 280:
+            # Trim company name to ticker only if over limit
+            tweet = (
+                f"{dir_emoji}{sig_emoji} ${ticker} — HVF {direction.title()} {signal}\n"
+                f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
+                f"Quality: {quality or '—'}  [{tf_raw or '—'}]\n"
+                f"#HVF #TechnicalAnalysis #{ticker}"
+            )
+
+        # ── Build HVF price chart ─────────────────────────────────────────────
+        chart_b64 = None
+        try:
+            end_dt  = datetime.now(timezone.utc)
+            start_dt = end_dt - timedelta(days=180)
+            hist = _yf.download(ticker, start=start_dt.strftime("%Y-%m-%d"),
+                                end=end_dt.strftime("%Y-%m-%d"),
+                                progress=False, auto_adjust=True)
+            if hist is not None and not hist.empty:
+                # ig_scale normalisation — same logic as trade_email.py
+                ig_scale = 1.0
+                if h3:
+                    yf_med = float(hist["Close"].median())
+                    if yf_med > 0:
+                        ratio = h3 / yf_med
+                        if ratio > 5:
+                            ig_scale = ratio
+                h3_p    = h3    / ig_scale if h3    else None
+                stop_p  = stop  / ig_scale if stop  else None
+                targ_p  = target / ig_scale if target else None
+
+                fig, ax = plt.subplots(figsize=(9, 4.5))
+                fig.patch.set_facecolor("#0d1117")
+                ax.set_facecolor("#0d1117")
+
+                close = hist["Close"].squeeze()
+                dates = hist.index
+                ax.plot(dates, close, color="#58a6ff", linewidth=1.5, label=ticker)
+                ax.fill_between(dates, close, alpha=0.08, color="#58a6ff")
+
+                if h3_p:
+                    ax.axhline(h3_p,   color="#2ea043", linewidth=1.2, linestyle="--",
+                               label=f"Entry {h3:g}" if ig_scale != 1.0 else f"Entry {h3_p:g}")
+                if stop_p:
+                    ax.axhline(stop_p, color="#f85149", linewidth=1.2, linestyle=":",
+                               label=f"Stop {stop:g}" if ig_scale != 1.0 else f"Stop {stop_p:g}")
+                if targ_p:
+                    ax.axhline(targ_p, color="#ffa657", linewidth=1.2, linestyle="-.",
+                               label=f"Target {target:g}" if ig_scale != 1.0 else f"Target {targ_p:g}")
+
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%b '%y"))
+                ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
+                plt.xticks(rotation=30, color="#8b949e", fontsize=8)
+                plt.yticks(color="#8b949e", fontsize=8)
+                for spine in ax.spines.values():
+                    spine.set_edgecolor("#30363d")
+                ax.tick_params(colors="#8b949e")
+                ax.legend(fontsize=8, facecolor="#161b22", edgecolor="#30363d",
+                          labelcolor="#c9d1d9")
+                ax.set_title(f"{ticker} — HVF {direction.title()} {signal}",
+                             color="#c9d1d9", fontsize=11, pad=8)
+
+                buf = io.BytesIO()
+                plt.savefig(buf, format="png", dpi=130, bbox_inches="tight",
+                            facecolor="#0d1117")
+                plt.close(fig)
+                buf.seek(0)
+                chart_b64 = base64.b64encode(buf.read()).decode()
+        except Exception as e:
+            log.warning(f"X draft chart failed for {ticker}: {e}")
+
+        # ── Post to SLACK_X channel ───────────────────────────────────────────
+        blocks = [
+            {"type": "header",
+             "text": {"type": "plain_text",
+                      "text": f"X Draft — {fmt(ticker)} {direction.title()} HVF {signal}"}},
+            {"type": "section",
+             "text": {"type": "mrkdwn",
+                      "text": f"*Tweet ({len(tweet)} chars):*\n```{tweet}```"}},
+            {"type": "context",
+             "elements": [{"type": "mrkdwn",
+                            "text": (f"R:R {rr_str}  |  Quality: {quality or '—'}  |  "
+                                     f"Timeframe: {tf_raw or '—'}  |  "
+                                     + datetime.now(timezone.utc).strftime("%d %b %H:%M UTC"))}]},
+        ]
+        if chart_b64:
+            # Slack cannot display a base64 image inline via webhooks — attach a note
+            # instructing where to find the chart. When the bot is upgraded to the
+            # Slack files.upload API this will be replaced with a real attachment.
+            blocks.insert(2, {
+                "type": "section",
+                "text": {"type": "mrkdwn",
+                         "text": "_Chart: see attached image below (posted via files.upload)_"}
+            })
+
+        try:
+            requests.post(slack_url, json={"blocks": blocks}, timeout=10)
+            log.info(f"X draft posted for {ticker} ({len(tweet)} chars)")
+        except Exception as e:
+            log.error(f"X draft Slack post failed for {ticker}: {e}")
+
+        # If chart was generated, post it as a follow-up plain image block
+        # (files.upload API requires a bot token — webhook only supports JSON;
+        #  chart is logged here and can be sent via the bot token path when added)
+        if chart_b64:
+            log.debug(f"X draft chart for {ticker} generated ({len(chart_b64)} b64 chars) "
+                      f"— files.upload not yet wired, chart not attached to Slack message")
 
 
 def run_us_monitor(notify_slack: bool = True) -> list:

@@ -45,6 +45,11 @@
 #                                 one axis. Legend still shows the original IG values.
 # 1.3.0   2026-07-09  Alex Hind   Remove HVF funnel schematic (chart #3) — redundant
 #                                 now the funnel is overlaid on the price history chart.
+# 1.4.0   2026-06-10  Alex Hind   Director buys: render Form 4 transaction details as
+#                                 a structured HTML mini-table (name, date, shares,
+#                                 price, amount) when director_transactions list is
+#                                 present in the signal dict. Uses data fetched by
+#                                 signals.py v1.6.0 _fetch_form4_transactions().
 # =============================================================================
 
 import os
@@ -316,7 +321,16 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
             primaries.append(f"HVF {sig.get('hvf_type')} {sig.get('hvf_signal','')}".strip())
     if not confirmations:
         if sig.get("director_signal"):
-            confirmations.append("Director buys — " + (sig.get("director_detail") or "insider cluster (Form 4)"))
+            dir_txs = sig.get("director_transactions") or []
+            if dir_txs:
+                # Build one line per transaction: name, date, shares, price, amount
+                tx_lines = "; ".join(
+                    f"{t['name']} {t['date']}: {t['shares']:,} sh @ ${t['price_per_share']:,.2f} (${t['amount']:,.0f})"
+                    for t in dir_txs[:5]
+                )
+                confirmations.append(f"Director buys ({len(dir_txs)}) — {tx_lines}")
+            else:
+                confirmations.append("Director buys — " + (sig.get("director_detail") or "insider cluster (Form 4)"))
         if sig.get("cot_bias") in ("BULLISH", "BEARISH"):
             _cb = []
             if sig.get("cot_score"): _cb.append(f"score {sig['cot_score']:+.0f}")
@@ -389,6 +403,40 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
 
     table_rows = "".join(_row(k, v, highlight=(k == "Trade Ref")) for k, v in rows)
 
+    # Director transactions block — shown only when structured data is available
+    dir_txs = sig.get("director_transactions") or []
+    dir_block = ""
+    if dir_txs:
+        header = (f'<tr style="background:#f0f4f8">'
+                  f'<th style="padding:5px 10px;font-size:11px;text-align:left;color:#555;'
+                  f'border-bottom:1px solid #d0d7de">Name</th>'
+                  f'<th style="padding:5px 10px;font-size:11px;text-align:left;color:#555;'
+                  f'border-bottom:1px solid #d0d7de">Date</th>'
+                  f'<th style="padding:5px 10px;font-size:11px;text-align:right;color:#555;'
+                  f'border-bottom:1px solid #d0d7de">Shares</th>'
+                  f'<th style="padding:5px 10px;font-size:11px;text-align:right;color:#555;'
+                  f'border-bottom:1px solid #d0d7de">Price</th>'
+                  f'<th style="padding:5px 10px;font-size:11px;text-align:right;color:#555;'
+                  f'border-bottom:1px solid #d0d7de">Amount</th>'
+                  f'</tr>')
+        rows_html = ""
+        for t in dir_txs[:6]:
+            rows_html += (
+                f'<tr>'
+                f'<td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #f0f0f0">{t["name"]}</td>'
+                f'<td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #f0f0f0">{t["date"]}</td>'
+                f'<td style="padding:5px 10px;font-size:12px;text-align:right;border-bottom:1px solid #f0f0f0">{t["shares"]:,}</td>'
+                f'<td style="padding:5px 10px;font-size:12px;text-align:right;border-bottom:1px solid #f0f0f0">${t["price_per_share"]:,.2f}</td>'
+                f'<td style="padding:5px 10px;font-size:12px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:600">${t["amount"]:,.0f}</td>'
+                f'</tr>'
+            )
+        dir_block = (
+            f'<p style="margin:12px 0 4px 0;font-size:12px;font-weight:700;color:#555;'
+            f'text-transform:uppercase;letter-spacing:1px">Insider Transactions (Form 4)</p>'
+            f'<table style="width:100%;border-collapse:collapse;border:1px solid #d0d7de;'
+            f'border-radius:3px;margin-bottom:10px">{header}{rows_html}</table>'
+        )
+
     pa_block = ""
     if sig.get("pa_verdict"):
         pa_block = (f'<p style="margin:8px 0;font-size:13px">'
@@ -433,6 +481,7 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
               text-transform:uppercase;letter-spacing:1px">Confirmations ({cc})</p>
     <ul style="margin:0 0 14px 16px;padding:0">{_li(confirmations)}</ul>
 
+    {dir_block}
     {pa_block}
   </div>
 

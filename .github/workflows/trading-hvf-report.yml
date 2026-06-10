@@ -27,3 +27,4 @@ jobs:
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
           SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
           SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
+          SLACK_X:               ${{ secrets.SLACK_X }}

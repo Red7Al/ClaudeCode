@@ -425,6 +425,14 @@ def main():
     blocks = build_slack_blocks(tradeable, developing, scan_time)
     post_to_slack(blocks)
 
+    # X draft reports — one tweet-ready Slack post per tradeable instrument
+    if tradeable:
+        try:
+            from intraday_signals import _generate_x_drafts
+            _generate_x_drafts(tradeable)
+        except Exception as e:
+            log.warning(f"X draft generation failed (non-critical): {e}")
+
     # Log to DB
     log_to_db(tradeable, developing, scan_time)
 

@@ -73,6 +73,11 @@
 #                                 managed-money extremes, OI signal, price divergence
 #                                 and net + WoW change. Carry HVF pivot dates,
 #                                 director_count and cot_comm_net in the signal dict.
+# 1.6.0   2026-07-09  Alex Hind   Director buys: parse Form 4 XML from EDGAR to get
+#                                 actual transaction dates, share counts, prices and
+#                                 total amounts (not just filing metadata). New helper
+#                                 _fetch_form4_transactions(). director_transactions
+#                                 field added to signal dict.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -553,54 +558,141 @@ def get_vwap_position(ticker: str) -> dict:
 # ---------------------------------------------------------------------------
 # 6. DIRECTOR BUYS — SEC Form 4
 # ---------------------------------------------------------------------------
+def _fetch_form4_transactions(accession_no: str) -> list:
+    """
+    Fetch a Form 4 XML from SEC EDGAR and return all open-market purchase
+    transactions (code=P, acquired=A) as a list of dicts:
+      {name, date, shares, price_per_share, amount}
+
+    The filer CIK is extracted from the accession number (first 10 digits).
+    Best-effort — returns [] on any network or parse error.
+    """
+    import xml.etree.ElementTree as ET
+    try:
+        # Accession format: XXXXXXXXXX-YY-ZZZZZZ (filer CIK = first segment, stripped)
+        cik_str = accession_no.split("-")[0].lstrip("0") or "0"
+        acc_clean = accession_no.replace("-", "")
+        hdrs = {"User-Agent": "EndToEndTrading research@trading.com"}
+
+        # Filing index — lists all documents so we can find the primary XML.
+        idx_r = requests.get(
+            f"https://www.sec.gov/Archives/edgar/data/{cik_str}/{acc_clean}/index.json",
+            headers=hdrs, timeout=10)
+        if idx_r.status_code != 200:
+            return []
+
+        items = idx_r.json().get("directory", {}).get("item", [])
+        xml_name = None
+        for item in items:
+            name = item.get("name", "")
+            # Primary Form 4 XML: ends in .xml, not an XSL stylesheet
+            if name.lower().endswith(".xml") and "xsl" not in name.lower():
+                xml_name = name
+                break
+        if not xml_name:
+            return []
+
+        xml_r = requests.get(
+            f"https://www.sec.gov/Archives/edgar/data/{cik_str}/{acc_clean}/{xml_name}",
+            headers=hdrs, timeout=10)
+        if xml_r.status_code != 200:
+            return []
+
+        root = ET.fromstring(xml_r.text)
+
+        # Reporter name sits at the top of the ownershipDocument
+        name_el = root.find(".//reportingOwnerName/value")
+        reporter = (name_el.text or "").strip() if name_el is not None else ""
+
+        txs = []
+        for tx in root.findall(".//nonDerivativeTransaction"):
+            code = (tx.findtext(".//transactionCoding/transactionCode") or "").strip().upper()
+            acq  = (tx.findtext(".//transactionAmounts/transactionAcquiredDisposedCode/value") or "").strip().upper()
+            # Only open-market purchases
+            if code != "P" or acq != "A":
+                continue
+            date       = (tx.findtext(".//transactionDate/value") or "").strip()
+            shares_str = (tx.findtext(".//transactionAmounts/transactionShares/value") or "").strip()
+            price_str  = (tx.findtext(".//transactionAmounts/transactionPricePerShare/value") or "").strip()
+            try:
+                shares = float(shares_str)
+                price  = float(price_str)
+            except (ValueError, TypeError):
+                continue
+            txs.append({
+                "name":            reporter,
+                "date":            date,
+                "shares":          int(shares),
+                "price_per_share": round(price, 2),
+                "amount":          round(shares * price, 2),
+            })
+        return txs
+    except Exception as e:
+        log.debug(f"Form 4 XML fetch failed ({accession_no}): {e}")
+        return []
+
+
 def get_director_buys(ticker: str, days: int = 30) -> dict:
     """
     Query SEC EDGAR for Form 4 open-market purchases by directors/officers.
-    Returns cluster_buy=True if 2+ insiders bought within {days} days, size > $50k.
+    Fetches each Form 4 XML to get actual transaction dates, share counts,
+    prices and amounts (not just filing metadata).
+    Returns cluster_buy=True if 2+ purchases found within {days} days.
     """
-    result = {"director_signal": False, "director_count": 0, "director_detail": ""}
+    result = {
+        "director_signal":        False,
+        "director_count":         0,
+        "director_detail":        "",
+        "director_transactions":  [],   # [{name, date, shares, price_per_share, amount}]
+    }
     try:
         since = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         resp = requests.get(
             "https://efts.sec.gov/LATEST/search-index",
             params={
-                "q":           f'"{ticker}"',
-                "forms":       "4",
-                "dateRange":   "custom",
-                "startdt":     since,
-                "enddt":       datetime.now().strftime("%Y-%m-%d"),
+                "q":         f'"{ticker}"',
+                "forms":     "4",
+                "dateRange": "custom",
+                "startdt":   since,
+                "enddt":     datetime.now().strftime("%Y-%m-%d"),
             },
             headers={"User-Agent": "EndToEndTrading research@trading.com"},
-            timeout=15
+            timeout=15,
         )
         if resp.status_code != 200:
             return result
 
         hits = resp.json().get("hits", {}).get("hits", [])
-        purchases = []
-        for hit in hits[:20]:
+        all_txs = []
+        seen = set()
+        for hit in hits[:12]:   # cap requests: 12 filings max
             src = hit.get("_source", {})
-            form_type = src.get("form_type", "")
-            if form_type != "4":
+            if src.get("form_type") != "4":
                 continue
-            purchases.append({
-                "filed":  src.get("file_date", ""),
-                "entity": src.get("entity_name", ""),
-            })
+            acc = src.get("accession_no", "")
+            if not acc or acc in seen:
+                continue
+            seen.add(acc)
+            txs = _fetch_form4_transactions(acc)
+            all_txs.extend(txs)
+            time.sleep(0.15)    # polite to SEC servers (max ~7 req/s)
 
-        result["director_count"]          = len(purchases)
-        result["director_signal"]         = len(purchases) >= 2
-        # 3+ insiders buying simultaneously = strong cluster → developing candidate.
-        # Not traded immediately but surfaced as watchlist so the technical setup
-        # can be monitored.  When price action eventually confirms, the cluster
-        # will also satisfy the 2+ confirmation requirement.
-        result["director_cluster_strong"] = len(purchases) >= 3
-        if purchases:
-            names = ", ".join(sorted(set(p["entity"] for p in purchases[:5] if p["entity"])))
+        result["director_count"]          = len(all_txs)
+        result["director_signal"]         = len(all_txs) >= 2
+        result["director_cluster_strong"] = len(all_txs) >= 3
+        result["director_transactions"]   = sorted(all_txs, key=lambda x: x["date"], reverse=True)
+
+        if all_txs:
+            suffix = " [STRONG CLUSTER]" if len(all_txs) >= 3 else ""
+            lines = []
+            for t in result["director_transactions"][:5]:
+                lines.append(
+                    f"{t['name']} — {t['shares']:,} shares @ ${t['price_per_share']:,.2f}"
+                    f" (${t['amount']:,.0f}) on {t['date']}"
+                )
             result["director_detail"] = (
-                f"{len(purchases)} insiders bought in last {days}d (Form 4)"
-                + (f": {names}" if names else "")
-                + (" [STRONG CLUSTER]" if len(purchases) >= 3 else "")
+                f"{len(all_txs)} insider purchase{'s' if len(all_txs) != 1 else ''} "
+                f"in last {days}d (Form 4){suffix}:\n" + "\n".join(lines)
             )
 
     except Exception as e:
