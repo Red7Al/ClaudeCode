@@ -349,13 +349,15 @@ def run_session_open(session_name: str):
             trade_opened(ticker, direction, size,
                          trade_result["level"], trade_result["stop_level"],
                          trade_result["limit_level"], session_name, signal_str,
-                         user=profile["name"])
+                         user=profile["name"],
+                         deal_ref=trade_result.get("deal_id", ""))
             trades_placed += 1
             # Email the investment case + price/volume/HVF charts (fail-safe).
             try:
                 from trade_email import send_trade_email
                 send_trade_email(ticker, direction, sig, trade_result,
-                                 size=size, session_name=session_name)
+                                 size=size, session_name=session_name,
+                                 deal_ref=trade_result.get("deal_id", ""))
             except Exception as e:
                 log.warning(f"Trade email failed for {ticker}: {e}")
 

@@ -1,0 +1,26 @@
+name: Resend Working Order Emails 2026-07-09
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  resend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python resend_working_order_emails.py
+        env:
+          SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+          YAHOO_USER:            ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}

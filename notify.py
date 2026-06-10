@@ -53,6 +53,11 @@
 #                                 working_order_updated, working_order_outcome
 #                                 (FILLED announced via trade_opened; CANCELLED/EXPIRED
 #                                 surfaced so nothing disappears silently).
+# 1.5.0   2026-07-09  Alex Hind   Trade reference (IG deal_id) added to all trade
+#                                 Slack blocks: trade_opened, working_order_placed,
+#                                 working_order_updated, working_order_outcome.
+#                                 trade_closed: Held duration now always shown (was
+#                                 conditional — omitted when opened_at was None).
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -242,12 +247,26 @@ def trade_opened(
     target:         float,
     session:        str,        # e.g. "US_OPEN"
     signal_summary: str,        # e.g. "Options BULLISH | BB breakout | Senate: Tuberville"
-    user:           str = "Owner"
+    user:           str = "Owner",
+    deal_ref:       str = "",   # IG deal reference / deal_id
 ):
     """Send a trade opened notification to #claude-trading-trades."""
     emoji      = "🟢" if direction == "BUY" else "🔴"
     rr         = round(abs(target - entry) / max(abs(entry - stop), 0.0001), 2)
     title      = fmt(ticker)
+
+    fields = [
+        {"type": "mrkdwn", "text": f"*User:*\n{user}"},
+        {"type": "mrkdwn", "text": f"*Session:*\n{session}"},
+        {"type": "mrkdwn", "text": f"*Direction:*\n{direction}"},
+        {"type": "mrkdwn", "text": f"*Size:*\n{size}"},
+        {"type": "mrkdwn", "text": f"*Entry:*\n{entry}"},
+        {"type": "mrkdwn", "text": f"*Stop:*\n{stop}"},
+        {"type": "mrkdwn", "text": f"*Target:*\n{target}"},
+        {"type": "mrkdwn", "text": f"*R:R:*\n{rr}:1"},
+    ]
+    if deal_ref:
+        fields.append({"type": "mrkdwn", "text": f"*Trade Ref:*\n`{deal_ref}`"})
 
     blocks = [
         {
@@ -256,16 +275,7 @@ def trade_opened(
         },
         {
             "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*User:*\n{user}"},
-                {"type": "mrkdwn", "text": f"*Session:*\n{session}"},
-                {"type": "mrkdwn", "text": f"*Direction:*\n{direction}"},
-                {"type": "mrkdwn", "text": f"*Size:*\n{size}"},
-                {"type": "mrkdwn", "text": f"*Entry:*\n{entry}"},
-                {"type": "mrkdwn", "text": f"*Stop:*\n{stop}"},
-                {"type": "mrkdwn", "text": f"*Target:*\n{target}"},
-                {"type": "mrkdwn", "text": f"*R:R:*\n{rr}:1"},
-            ]
+            "fields": fields
         },
         {
             "type": "section",
@@ -314,9 +324,8 @@ def trade_closed(
         {"type": "mrkdwn", "text": f"*Close:*\n{close}"},
         {"type": "mrkdwn", "text": f"*P&L:*\n£{pnl:+.2f}"},
         {"type": "mrkdwn", "text": f"*Reason:*\n{reason_label}"},
+        {"type": "mrkdwn", "text": f"*Held:*\n{duration or '—'}"},
     ]
-    if duration:
-        fields.append({"type": "mrkdwn", "text": f"*Held:*\n{duration}"})
 
     blocks = [
         {
@@ -353,12 +362,26 @@ def working_order_placed(
     good_till:      str,        # expiry of the order, display string
     session:        str,
     signal_summary: str,
-    user:           str = "Owner"
+    user:           str = "Owner",
+    deal_ref:       str = "",   # IG deal reference / deal_id
 ):
     """Announce a new pending working order (NOT yet a position)."""
     emoji = "🟢" if direction == "BUY" else "🔴"
     rr    = round(abs(target - entry) / max(abs(entry - stop), 0.0001), 2)
     kind  = "breakout entry" if otype == "STOP" else "pullback entry"
+
+    fields = [
+        {"type": "mrkdwn", "text": f"*User:*\n{user}"},
+        {"type": "mrkdwn", "text": f"*Session:*\n{session}"},
+        {"type": "mrkdwn", "text": f"*Size:*\n{size}"},
+        {"type": "mrkdwn", "text": f"*Entry (H3):*\n{entry}"},
+        {"type": "mrkdwn", "text": f"*Stop:*\n{stop}"},
+        {"type": "mrkdwn", "text": f"*Target:*\n{target}"},
+        {"type": "mrkdwn", "text": f"*R:R:*\n{rr}:1"},
+        {"type": "mrkdwn", "text": f"*Good till:*\n{good_till}"},
+    ]
+    if deal_ref:
+        fields.append({"type": "mrkdwn", "text": f"*Trade Ref:*\n`{deal_ref}`"})
 
     blocks = [
         {
@@ -374,16 +397,7 @@ def working_order_placed(
         },
         {
             "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*User:*\n{user}"},
-                {"type": "mrkdwn", "text": f"*Session:*\n{session}"},
-                {"type": "mrkdwn", "text": f"*Size:*\n{size}"},
-                {"type": "mrkdwn", "text": f"*Entry (H3):*\n{entry}"},
-                {"type": "mrkdwn", "text": f"*Stop:*\n{stop}"},
-                {"type": "mrkdwn", "text": f"*Target:*\n{target}"},
-                {"type": "mrkdwn", "text": f"*R:R:*\n{rr}:1"},
-                {"type": "mrkdwn", "text": f"*Good till:*\n{good_till}"},
-            ]
+            "fields": fields
         },
         {
             "type": "section",
@@ -404,11 +418,23 @@ def working_order_updated(
     old_stop:  float, new_stop:  float,
     old_target: float, new_target: float,
     session:   str,
-    user:      str = "Owner"
+    user:      str = "Owner",
+    deal_ref:  str = "",    # IG deal reference / deal_id
 ):
     """Announce that an existing pending order was amended to fresher HVF levels."""
     def _chg(a, b):
         return f"{a} → *{b}*" if a != b else f"{b} (unchanged)"
+
+    fields = [
+        {"type": "mrkdwn", "text": f"*User:*\n{user}"},
+        {"type": "mrkdwn", "text": f"*Session:*\n{session}"},
+        {"type": "mrkdwn", "text": f"*Entry:*\n{_chg(old_entry, new_entry)}"},
+        {"type": "mrkdwn", "text": f"*Stop:*\n{_chg(old_stop, new_stop)}"},
+        {"type": "mrkdwn", "text": f"*Target:*\n{_chg(old_target, new_target)}"},
+    ]
+    if deal_ref:
+        fields.append({"type": "mrkdwn", "text": f"*Trade Ref:*\n`{deal_ref}`"})
+
     blocks = [
         {
             "type": "header",
@@ -423,13 +449,7 @@ def working_order_updated(
         },
         {
             "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*User:*\n{user}"},
-                {"type": "mrkdwn", "text": f"*Session:*\n{session}"},
-                {"type": "mrkdwn", "text": f"*Entry:*\n{_chg(old_entry, new_entry)}"},
-                {"type": "mrkdwn", "text": f"*Stop:*\n{_chg(old_stop, new_stop)}"},
-                {"type": "mrkdwn", "text": f"*Target:*\n{_chg(old_target, new_target)}"},
-            ]
+            "fields": fields
         },
         {
             "type": "context",
@@ -445,7 +465,8 @@ def working_order_outcome(
     entry:     float,
     outcome:   str,             # "CANCELLED" or "EXPIRED"
     detail:    str = "",
-    user:      str = "Owner"
+    user:      str = "Owner",
+    deal_ref:  str = "",        # IG deal reference / deal_id
 ):
     """
     Surface a pending order that ended WITHOUT filling (cancelled in IG, or its
@@ -454,8 +475,9 @@ def working_order_outcome(
     """
     label = {"CANCELLED": "🚫 Working Order Cancelled",
              "EXPIRED":   "⌛ Working Order Expired"}.get(outcome, f"Working order {outcome}")
+    ref_line = f"\nTrade ref: `{deal_ref}`" if deal_ref else ""
     text = (f"*{fmt(ticker)}* {direction} pending entry at *{entry}* ended without filling "
-            f"({outcome.lower()})." + (f"\n{detail}" if detail else ""))
+            f"({outcome.lower()})." + (f"\n{detail}" if detail else "") + ref_line)
     blocks = [
         {"type": "header",  "text": {"type": "plain_text", "text": f"{label} — {fmt(ticker)}"}},
         {"type": "section", "text": {"type": "mrkdwn", "text": text}},

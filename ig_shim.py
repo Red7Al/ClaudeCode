@@ -1587,7 +1587,8 @@ def update_working_order(deal_id: str, ticker: str, direction: str,
             working_order_updated(ticker, direction,
                                   existing["entry_level"], entry_level,
                                   existing["stop_level"], stop_level,
-                                  existing["limit_level"], limit_level, session_name)
+                                  existing["limit_level"], limit_level, session_name,
+                                  deal_ref=new_deal_id)
         except Exception as e:
             log.warning(f"Could not send working-order-updated notification: {e}")
 
@@ -1755,7 +1756,7 @@ def reconcile_working_orders() -> dict:
                 try:
                     from notify import working_order_outcome
                     working_order_outcome(ticker, direction, float(entry or 0), outcome,
-                                          detail=f"Order {deal_id}, session {sess}.")
+                                          detail=f"Session {sess}.", deal_ref=deal_id)
                 except Exception as e:
                     log.warning(f"Outcome notification failed for {ticker}: {e}")
 
@@ -1856,13 +1857,15 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
             working_order_placed(ticker, direction, size, result["level"],
                                  result["stop_level"], result["limit_level"],
                                  result.get("otype", "STOP"), result.get("good_till", "—"),
-                                 session_name, signal_str, user=profile.get("name", "Owner"))
+                                 session_name, signal_str, user=profile.get("name", "Owner"),
+                                 deal_ref=result.get("deal_id", ""))
         except Exception as e:
             log.warning(f"Working-order notification failed for {ticker}: {e}")
         try:
             from trade_email import send_trade_email
             send_trade_email(ticker, direction, sig, result, size=size,
-                             session_name=session_name, event="Working order placed")
+                             session_name=session_name, event="Working order placed",
+                             deal_ref=result.get("deal_id", ""))
         except Exception as e:
             log.warning(f"Working-order email failed for {ticker}: {e}")
     return result
