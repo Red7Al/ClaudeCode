@@ -60,6 +60,7 @@
 # =============================================================================
 
 import os
+import time
 try:
     from dotenv import load_dotenv; load_dotenv(override=True)
 except ImportError:
@@ -78,17 +79,27 @@ SLACK_URL     = os.environ.get("SLACK_ALERTS", "")
 
 
 def get_db():
-    # Port 5432 = Supabase SESSION pooler (dedicated backend per connection). The
-    # watchdog is the safety net and must be reliable; it runs >1 parameterised
-    # query per connection, which on the 6543 transaction pooler can intermittently
-    # hit pg8000 prepared-statement collisions (26000 / 22007) — the same class that
-    # crashed the social monitor on 2026-06-09. Session pooler isolates statements.
-    return pg8000.native.Connection(
-        host=SUPABASE_HOST, port=5432, database="postgres",
-        user=os.environ["SUPABASE_USER"],
-        password=os.environ["SUPABASE_DB_PASSWORD"],
-        ssl_context=True
-    )
+    # Port 5432 = Supabase SESSION pooler (dedicated backend per connection — avoids
+    # pg8000 prepared-statement collisions, the 26000/22007/08P01 class). The session
+    # pooler has a LOWER connection limit than 6543 and can transiently time out under
+    # the aggressive */5 schedule (crashed the watchdog 2026-06-10 07:50). So set an
+    # explicit connect timeout and RETRY with backoff so a brief pool-exhaustion spike
+    # self-recovers instead of failing the safety net.
+    last = None
+    for attempt in range(3):
+        try:
+            return pg8000.native.Connection(
+                host=SUPABASE_HOST, port=5432, database="postgres",
+                user=os.environ["SUPABASE_USER"],
+                password=os.environ["SUPABASE_DB_PASSWORD"],
+                ssl_context=True, timeout=15,
+            )
+        except Exception as e:
+            last = e
+            log.warning(f"DB connect attempt {attempt + 1}/3 failed: {e}")
+            if attempt < 2:
+                time.sleep(3 * (attempt + 1))   # 3s, 6s — let a pool slot free up
+    raise last
 
 
 def alert(session: str, problem: str, detail: str = ""):
