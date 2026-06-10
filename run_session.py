@@ -74,6 +74,16 @@
 #                                 against IG activity history and closed only if IG
 #                                 confirms a close reason (UNKNOWN ⇒ still open ⇒
 #                                 skip). Closure body extracted to _record_closure().
+# 1.6.0   2026-06-10  Alex Hind   HVF setups → IG WORKING ORDERS (user 2026-06-10):
+#                                 session open + monitor rescan route HVF signals
+#                                 (READY/TRIGGERED with entry/stop/target, direction-
+#                                 aligned) to place_hvf_order_from_sig — a pending
+#                                 order at the exact H3 entry — instead of a market
+#                                 order. Re-signals amend, never duplicate; no fall-
+#                                 through to market. run_monitor reconciles fills/
+#                                 cancels each pass. Session slot count now includes
+#                                 positions opened today (was trade_log only) +
+#                                 today's PENDING working orders.
 # 1.5.0   2026-06-06  Alex Hind   Fix 4 bugs: (a) run_monitor closure loop: guard
 #                                 against IG returning 0 positions when DB has
 #                                 entries (transient API glitch), which would
@@ -181,7 +191,8 @@ def run_session_open(session_name: str):
     from notify import (session_summary, alert_macro_gate_failed,
                         alert_calendar_block, trade_opened, alert_circuit_breaker,
                         alert_missed_trade, session_heartbeat)
-    from ig_shim import open_trade, get_account_balance, health_check, calculate_position_size, get_epic
+    from ig_shim import (open_trade, get_account_balance, health_check,
+                         calculate_position_size, get_epic, place_hvf_order_from_sig)
 
     # Guard: skip if this session already ran today.
     # Prevents duplicate signal_log noise from delayed cron + watchdog + manual triggers.
@@ -234,6 +245,21 @@ def run_session_open(session_name: str):
 
         ticker     = sig["ticker"]
         direction  = sig["direction"]
+
+        # ── HVF setups → IG WORKING ORDER (user 2026-06-10) ──────────────────
+        # The pattern pre-defines entry (H3) / stop / target, so place a pending
+        # order at those exact levels instead of a market order at scan price.
+        # Re-signals amend the existing order; never falls through to a market
+        # order (a blocked/duplicate working order must not become a chase).
+        _hvf_dir_ok = ((sig.get("hvf_type") == "BULLISH" and direction == "BUY") or
+                       (sig.get("hvf_type") == "BEARISH" and direction == "SELL"))
+        if _hvf_dir_ok and sig.get("hvf_signal") in ("READY", "TRIGGERED") and \
+                sig.get("hvf_h3_level") and sig.get("hvf_stop_level") and sig.get("hvf_target"):
+            wo = place_hvf_order_from_sig(sig, profile, session_name, stress_mult)
+            if wo and not wo.get("updated"):
+                trades_placed += 1   # a level amend is not a new trade slot
+            continue
+
         stop_dist  = sig.get("stop_distance", 0)
         limit_dist = round(stop_dist * DEFAULT_TARGET_RR, 4)
 
@@ -371,7 +397,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     from ig_shim import (get_open_positions, get_snapshot, update_stop,
                          get_close_reason, _log_trade_close_to_db, health_check,
                          open_trade, get_account_balance, calculate_position_size,
-                         get_epic)
+                         get_epic, place_hvf_order_from_sig, reconcile_working_orders)
     from notify import trade_closed, alert_circuit_breaker, alert_system_error, alert_position_deterioration
     from signals import scan_instrument, get_macro_gate
     from intraday_signals import scan_intraday
@@ -523,12 +549,35 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                 close_reason, close_price = get_close_reason(deal_id)
                 _record_closure(deal_id, row, close_reason, close_price)
 
+    # ── Part 1.75: reconcile pending HVF working orders ──────────────────────
+    # Detect orders that FILLED (insert the position so this monitor manages its
+    # closure from now on) or ended CANCELLED/EXPIRED (surfaced to Slack). Runs
+    # before Part 2 so a fresh fill counts as an open ticker below.
+    try:
+        wo_sum = reconcile_working_orders()
+        if wo_sum["filled"] or wo_sum["cancelled"] or wo_sum["expired"]:
+            log.info(f"{session_name}: working orders — filled {wo_sum['filled']}, "
+                     f"cancelled {wo_sum['cancelled']}, expired {wo_sum['expired']}")
+    except Exception as e:
+        log.warning(f"{session_name}: working-order reconcile failed: {e}")
+
     # ── Part 2: scan for new entries ─────────────────────────────────────────
     try:
         conn2 = _pool_get_db()
         _grp = (session_name or "").split("_")[0].upper()
+        # Session budget = everything opened today: closed trades (trade_log) +
+        # still-open positions (was missing — caps undercounted all day) +
+        # pending working orders placed today (FILLED ones already appear as
+        # positions/trade_log rows).
         today_count = conn2.run(
-            "select count(*) from trade_log where session like :g and date(opened_at) = current_date",
+            """select
+                 (select count(*) from trade_log
+                    where session like :g and date(opened_at) = current_date)
+               + (select count(*) from positions
+                    where session like :g and date(opened_at) = current_date)
+               + (select count(*) from working_orders
+                    where session like :g and status = 'PENDING'
+                      and date(placed_at) = current_date)""",
             g=_grp + "%"
         )
         db_tickers = {r[0] for r in conn2.run("select ticker from positions")}
@@ -564,6 +613,18 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                     try:
                         sig = scan_instrument(ticker, session_name, macro)
                         if sig.get("trade_signal"):
+                            # HVF setups → pending working order at the pattern's
+                            # exact entry/stop/target (re-signal = amend, never a
+                            # duplicate). No fall-through to a market order.
+                            _hvf_dir_ok = ((sig.get("hvf_type") == "BULLISH" and sig["direction"] == "BUY") or
+                                           (sig.get("hvf_type") == "BEARISH" and sig["direction"] == "SELL"))
+                            if _hvf_dir_ok and sig.get("hvf_signal") in ("READY", "TRIGGERED") and \
+                                    sig.get("hvf_h3_level") and sig.get("hvf_stop_level") and sig.get("hvf_target"):
+                                wo = place_hvf_order_from_sig(sig, profile, session_name, stress_mult)
+                                if wo and not wo.get("updated"):
+                                    new_trades += 1
+                                continue
+
                             stop_dist  = sig.get("stop_distance", 0)
                             limit_dist = round(stop_dist * DEFAULT_TARGET_RR, 4)
 

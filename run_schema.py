@@ -22,6 +22,12 @@
 # 1.0.0   2026-06-02  Alex Hind   Initial build. Idempotent migrations for
 #                                 signal_log, positions, macro_snapshot,
 #                                 hvf_scan_log, and epic_lookup tables.
+# 1.1.0   2026-06-10  Alex Hind   working_orders table — pending HVF entry orders
+#                                 placed on IG (entry at H3 with stop+target). Kept
+#                                 separate from positions: a pending order is NOT a
+#                                 position; putting it in positions would make
+#                                 run_monitor falsely record it as closed. Status
+#                                 lifecycle PENDING → FILLED/CANCELLED/EXPIRED.
 # =============================================================================
 
 import os
@@ -202,6 +208,48 @@ MIGRATIONS = [
             target          numeric,
             recorded_at     timestamptz default now()
         )"""
+    ),
+
+    # ── working_orders table (added 2026-06-10) ───────────────────────────────
+    # Pending HVF entry orders on IG. NOT positions — run_monitor must never see
+    # these in the positions table or it would falsely log them as closed trades.
+    # Lifecycle: PENDING → FILLED (reconcile inserts the positions row) /
+    #            CANCELLED / EXPIRED. Caps count today's PENDING rows.
+    (
+        "create working_orders",
+        """CREATE TABLE IF NOT EXISTS working_orders (
+            id              bigserial primary key,
+            deal_ref        text,
+            deal_id         text unique,
+            user_id         text not null,
+            ticker          text not null,
+            epic            text not null,
+            direction       text not null,
+            size            numeric not null,
+            entry_level     numeric not null,
+            stop_level      numeric,
+            limit_level     numeric,
+            otype           text,
+            hvf_type        text,
+            status          text not null default 'PENDING',
+            paper_trade     boolean default false,
+            session         text,
+            signal_summary  text,
+            good_till       timestamptz,
+            placed_at       timestamptz default now(),
+            updated_at      timestamptz default now(),
+            filled_at       timestamptz,
+            fill_deal_id    text,
+            notes           text
+        )"""
+    ),
+    (
+        "working_orders: index on status",
+        "CREATE INDEX IF NOT EXISTS idx_working_orders_status ON working_orders(status)"
+    ),
+    (
+        "working_orders: index on ticker + placed_at",
+        "CREATE INDEX IF NOT EXISTS idx_working_orders_ticker_placed ON working_orders(ticker, placed_at DESC)"
     ),
 
 ]

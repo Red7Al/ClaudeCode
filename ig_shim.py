@@ -46,6 +46,24 @@
 #                                 unaffordable. Fixes GOOGL and RIOT being missed.
 #                                 open_trade: resolve user display name from
 #                                 user_profiles instead of hardcoded "Owner".
+# 1.6.0   2026-06-10  Alex Hind   HVF setups now placed as IG WORKING ORDERS (user
+#                                 2026-06-10: "HVF provides STOP, ENTRY and EXIT —
+#                                 these should be ORDERS in IG"). New: place_working_order
+#                                 (pending STOP/LIMIT entry at H3 with HVF stop+target
+#                                 attached, confirmed via /confirms), update_working_order
+#                                 (re-signal = AMEND not duplicate), delete_working_order,
+#                                 get_working_orders, reconcile_working_orders (fill →
+#                                 positions row so the monitor manages closure; cancelled/
+#                                 expired surfaced), place_hvf_order_from_sig (routing
+#                                 helper). Caps fix: per-instrument/per-session counts now
+#                                 include positions opened today (was trade_log only —
+#                                 trades still open did NOT count toward caps) and
+#                                 today's PENDING working orders. detect_ig_scale: aligns
+#                                 Yahoo-unit HVF levels to IG points (EURUSD 1.1539 →
+#                                 11538.6 ×10⁴, JPY ×10² — verified live 2026-06-10);
+#                                 non-power-of-ten mismatches still refused by the
+#                                 entry-distance guard. Live-tested: EURUSD far-from-
+#                                 market LIMIT placed → ACCEPTED → reconciled → deleted.
 # 1.5.0   2026-06-07  Alex Hind   CRITICAL safety fix: enforce the daily loss limit.
 #                                 check_circuit_breakers read daily_loss_hit, but that
 #                                 flag was NEVER set anywhere → the daily loss limit was
@@ -97,10 +115,11 @@
 
 import os
 from dotenv import load_dotenv; load_dotenv(override=True)
+import math
 import time
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
@@ -650,6 +669,13 @@ def check_circuit_breakers(user_id: str, ticker: str, session_name: str = None) 
     # Checks 4 & 5 — per-instrument and per-session daily trade caps.
     # Stops one instrument (e.g. 3x USDJPY) or one session (Asia) consuming the
     # whole day's budget and starving higher-conviction later setups. One query.
+    # Counts ALL of today's trade intents:
+    #   trade_log       trades opened today and already closed
+    #   positions       trades opened today and still open (was MISSING — caps
+    #                   previously undercounted while positions stayed open)
+    #   working_orders  pending HVF entry orders placed today (PENDING only —
+    #                   FILLED ones already appear as positions/trade_log rows,
+    #                   counting both would double-count one trade)
     try:
         grp = session_name.split("_")[0].upper() if session_name else None
         db = get_db()
@@ -657,9 +683,19 @@ def check_circuit_breakers(user_id: str, ticker: str, session_name: str = None) 
             inst_n, sess_n = db.run(
                 """select
                      (select count(*) from trade_log
-                        where ticker = :t and date(opened_at) = current_date),
+                        where ticker = :t and date(opened_at) = current_date)
+                   + (select count(*) from positions
+                        where ticker = :t and date(opened_at) = current_date)
+                   + (select count(*) from working_orders
+                        where ticker = :t and status = 'PENDING'
+                          and date(placed_at) = current_date),
                      (select count(*) from trade_log
-                        where session like :g and date(opened_at) = current_date)""",
+                        where session like :g and date(opened_at) = current_date)
+                   + (select count(*) from positions
+                        where session like :g and date(opened_at) = current_date)
+                   + (select count(*) from working_orders
+                        where session like :g and status = 'PENDING'
+                          and date(placed_at) = current_date)""",
                 t=ticker, g=(grp + "%") if grp else "%"
             )[0]
         finally:
@@ -674,6 +710,16 @@ def check_circuit_breakers(user_id: str, ticker: str, session_name: str = None) 
                                f"{sess_n}/{cap} today")
     except Exception as e:
         log.warning(f"Trade-cap check failed for {ticker}/{session_name}: {e}")
+        # No silent failures (user directive): a broken cap check means caps are
+        # NOT being enforced — surface it. (Trade still proceeds: blocking every
+        # trade on a transient DB blip would silently starve valid signals.)
+        try:
+            from notify import alert_system_error
+            alert_system_error(session=session_name or "TRADING", component="check_circuit_breakers",
+                               summary=f"Trade-cap check failed for {ticker} — caps not enforced this attempt",
+                               detail=str(e))
+        except Exception:
+            pass
 
     return True, "OK"
 
@@ -1036,6 +1082,790 @@ def get_snapshot(epic: str) -> dict:
     """Return the current market snapshot (bid, offer, high, low, net change) for an epic."""
     data = session.get(f"/markets/{epic}", version="3")
     return data.get("snapshot", {})
+
+
+# =============================================================================
+# Working Orders — HVF pending entries (user 2026-06-10)
+#
+# An HVF setup pre-defines ENTRY (H3 breakout), STOP and TARGET. Instead of a
+# market order at whatever price the scan happens to see, we place a PENDING
+# working order at the exact entry level with the stop and target attached, so
+# the trade triggers precisely at the breakout.
+#
+# Lifecycle:  place_working_order → IG holds the order → reconcile_working_orders
+#             (called by the monitors) detects FILLED (→ row inserted into the
+#             positions table so the monitor manages closure normally) or
+#             CANCELLED / EXPIRED (surfaced to Slack — nothing ends silently).
+#
+# CRITICAL:   a pending order is NOT a position. It must NEVER be written to the
+#             positions table while pending — run_monitor would see it missing
+#             from IG /positions and falsely record it as a closed trade. All
+#             pending state lives in the dedicated working_orders table.
+#
+# Re-signals: the same funnel fires on every scan while it remains valid. A new
+#             signal for a ticker with a PENDING order is treated as an UPDATE:
+#             levels moved materially → amend the IG order in place (never a
+#             second order); levels unchanged → skip silently.
+# =============================================================================
+
+# Amend (rather than skip) a pending order when any of entry/stop/target moved
+# by more than this percentage — re-scans recompute HVF pivots slightly as new
+# bars arrive; sub-threshold jitter is noise, beyond it the setup truly moved.
+WO_UPDATE_THRESHOLD_PCT = 0.25
+
+
+def _round_level(value, decimals: int):
+    """Round a price level to the market's quoted decimal places (IG rejects
+    levels with more precision than the instrument's step, e.g. 149.089996)."""
+    try:
+        return round(float(value), max(0, int(decimals)))
+    except (TypeError, ValueError):
+        return value
+
+
+def detect_ig_scale(current: float, level: float) -> float:
+    """
+    Power-of-ten factor mapping signal units → IG units (1.0 when already aligned).
+
+    HVF levels are computed from Yahoo prices, but IG quotes FX in points:
+    EURUSD Yahoo 1.1539 vs IG 11538.6 (×10⁴), USDJPY Yahoo 155.1 vs IG 15512
+    (×10²) — verified live 2026-06-10 (EURUSD CS.D.EURUSD.TODAY.IP offer 11538.7).
+    Equities/commodities quote 1:1 and return 1.0. Only a CLEAN power of ten
+    (ratio within ±25% of 10^n) is treated as a unit difference — anything else
+    returns 1.0 so the entry-distance guard downstream refuses the order as a
+    genuinely stale/wrong level rather than silently "fixing" it.
+    """
+    try:
+        if current <= 0 or level <= 0:
+            return 1.0
+        ratio = current / level
+        if 0.2 < ratio < 5:
+            return 1.0
+        power = round(math.log10(ratio))
+        scale = 10.0 ** power
+        return scale if abs(ratio / scale - 1.0) <= 0.25 else 1.0
+    except Exception:
+        return 1.0
+
+
+def get_working_orders() -> list:
+    """Return all working orders on the account (GET /workingorders v2)."""
+    try:
+        data = session.get("/workingorders", version="2")
+        return data.get("workingOrders", [])
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            return []   # no working orders — normal condition
+        raise
+
+
+def _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction,
+                             size, entry_level, stop_level, limit_level, otype,
+                             hvf_type, good_till, paper_trade, session_name,
+                             signal_summary):
+    """Insert a new PENDING working-order record. Never raises."""
+    try:
+        db = get_db()
+        try:
+            db.run(
+                """insert into working_orders
+                   (deal_ref, deal_id, user_id, ticker, epic, direction, size,
+                    entry_level, stop_level, limit_level, otype, hvf_type, good_till,
+                    status, paper_trade, session, signal_summary)
+                   values (:v_ref, :v_deal, :v_uid, :v_ticker, :v_epic, :v_dir, :v_size,
+                           :v_entry, :v_stop, :v_limit, :v_otype, :v_hvf, :v_till,
+                           'PENDING', :v_paper, :v_session, :v_signal)""",
+                v_ref=deal_ref, v_deal=deal_id, v_uid=user_id, v_ticker=ticker,
+                v_epic=epic, v_dir=direction, v_size=size, v_entry=entry_level,
+                v_stop=stop_level, v_limit=limit_level, v_otype=otype, v_hvf=hvf_type,
+                v_till=good_till, v_paper=paper_trade, v_session=session_name,
+                v_signal=signal_summary
+            )
+            log.info(f"Working order logged to Supabase: {deal_id} ({ticker} {direction} @ {entry_level})")
+        finally:
+            db.close()
+    except Exception as ex:
+        log.error(f"Failed to log working order to Supabase: {ex}")
+
+
+def _set_working_order_status(deal_id: str, status: str, fill_deal_id: str = None,
+                              notes: str = None):
+    """Update a working-order row's lifecycle status. Never raises."""
+    try:
+        db = get_db()
+        try:
+            db.run(
+                """update working_orders
+                   set status = :v_status, updated_at = now(),
+                       filled_at    = case when :v_status = 'FILLED' then now() else filled_at end,
+                       fill_deal_id = coalesce(:v_fill, fill_deal_id),
+                       notes        = coalesce(:v_notes, notes)
+                   where deal_id = :v_deal""",
+                v_status=status, v_fill=fill_deal_id, v_notes=notes, v_deal=deal_id
+            )
+        finally:
+            db.close()
+    except Exception as ex:
+        log.error(f"Failed to update working order {deal_id} → {status}: {ex}")
+
+
+def _get_pending_working_order(ticker: str, user_id: str):
+    """Return the most recent PENDING working-order row for ticker+user, or None."""
+    try:
+        db = get_db()
+        try:
+            rows = db.run(
+                """select deal_id, entry_level, stop_level, limit_level, direction,
+                          otype, good_till, size
+                   from   working_orders
+                   where  ticker = :t and user_id = :u and status = 'PENDING'
+                   order  by placed_at desc limit 1""",
+                t=ticker, u=user_id
+            )
+        finally:
+            db.close()
+        if not rows:
+            return None
+        return {"deal_id": rows[0][0], "entry_level": float(rows[0][1] or 0),
+                "stop_level": float(rows[0][2] or 0), "limit_level": float(rows[0][3] or 0),
+                "direction": rows[0][4], "otype": rows[0][5], "good_till": rows[0][6],
+                "size": float(rows[0][7] or 0)}
+    except Exception as ex:
+        log.warning(f"Pending working-order lookup failed for {ticker}: {ex}")
+        return None
+
+
+def _good_till_str(dt) -> str:
+    """Format a datetime as IG's goodTillDate string (yyyy/MM/dd HH:mm:ss, UTC)."""
+    return dt.strftime("%Y/%m/%d %H:%M:%S")
+
+
+def place_working_order(
+    user_id:        str,
+    ticker:         str,
+    direction:      str,            # "BUY" or "SELL"
+    size:           float,
+    entry_level:    float,          # HVF H3 breakout level (bearish: L3)
+    stop_level:     float,          # HVF stop (just beyond L3/H3)
+    limit_level:    float,          # HVF target
+    session_name:   str,
+    signal_summary: str,
+    paper_trade:    bool = False,
+    good_till_days: int = 4,        # HVF freshness window — stale setups expire
+    hvf_type:       str = None,
+    max_entry_distance_pct: float = 0.25,   # sanity guard: entry vs current price
+) -> Optional[dict]:
+    """
+    Place (or amend) a PENDING entry order on IG at the HVF level.
+
+    Order type (IG decides fill behaviour by which side of market the level is):
+        BUY  → "STOP"  if entry >= current offer (breakout buy-stop above market)
+               "LIMIT" if entry <  current offer (price already past H3 — wait for
+                        the pullback to the planned entry; never chase at market)
+        SELL → mirrored.
+
+    UPDATE-not-duplicate: if a PENDING order already exists for this ticker+user,
+    the new signal AMENDS it when any level moved > WO_UPDATE_THRESHOLD_PCT
+    (otherwise skips). Never places a second order for the same ticker.
+
+    Returns dict {deal_id, deal_ref, level, stop_level, limit_level, otype,
+    working_order: True, updated: bool} on success, None when blocked/rejected/skipped.
+    """
+    # Step 0a — an open position on this ticker already carries the exposure;
+    # do not stack a pending order on top of it.
+    try:
+        db = get_db()
+        try:
+            pos_rows = db.run(
+                "select deal_id from positions where ticker = :t and user_id = :u limit 1",
+                t=ticker, u=user_id)
+        finally:
+            db.close()
+        if pos_rows:
+            log.info(f"{ticker}: open position exists ({pos_rows[0][0]}) — not placing a working order")
+            return None
+    except Exception as e:
+        log.warning(f"{ticker}: open-position dedup check failed: {e}")
+
+    # Step 0b — UPDATE-not-duplicate (user 2026-06-10): re-signal for a ticker
+    # with a PENDING order amends it (levels moved) or skips (unchanged). Runs
+    # BEFORE circuit breakers — an amend adds no new exposure, so a full session
+    # cap must not freeze an existing order on stale levels.
+    existing = _get_pending_working_order(ticker, user_id)
+    if existing:
+        if existing["direction"] != direction:
+            # Direction flipped (e.g. funnel re-classified) — replace the order.
+            log.info(f"{ticker}: pending {existing['direction']} order exists but new signal is "
+                     f"{direction} — deleting old order and placing fresh")
+            delete_working_order(existing["deal_id"], reason=f"direction changed to {direction}")
+        else:
+            moved = max(
+                abs(entry_level - existing["entry_level"]) / max(existing["entry_level"], 1e-9),
+                abs((stop_level or 0) - existing["stop_level"]) / max(existing["stop_level"], 1e-9)
+                    if existing["stop_level"] else 0,
+                abs((limit_level or 0) - existing["limit_level"]) / max(existing["limit_level"], 1e-9)
+                    if existing["limit_level"] else 0,
+            ) * 100.0
+            if moved <= WO_UPDATE_THRESHOLD_PCT:
+                log.info(f"{ticker}: PENDING working order already at these levels "
+                         f"(max move {moved:.3f}% <= {WO_UPDATE_THRESHOLD_PCT}%) — skipping (no duplicate)")
+                return None
+            log.info(f"{ticker}: HVF levels moved {moved:.2f}% — amending existing order "
+                     f"{existing['deal_id']} instead of placing a new one")
+            return update_working_order(
+                existing["deal_id"], ticker, direction, entry_level, stop_level,
+                limit_level, existing, session_name, user_id, paper_trade=paper_trade)
+
+    # Step 1 — circuit breakers (daily loss, max positions, spread, daily caps).
+    # A working order consumes a trade slot the moment it is placed.
+    ok, reason = check_circuit_breakers(user_id, ticker, session_name)
+    if not ok:
+        log.warning(f"Working order blocked — circuit breaker: {reason}")
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction, f"[working order] {reason}", signal_summary)
+        except Exception as e:
+            log.warning(f"Could not send missed-trade alert: {e}")
+        return None
+
+    # Step 2 — resolve epic
+    epic = get_epic(ticker)
+    if not epic:
+        log.error(f"Cannot place working order for {ticker} — no epic found")
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction,
+                               "[working order] No IG epic found — check epic_lookup / config.EPIC_MAP",
+                               signal_summary)
+        except Exception:
+            pass
+        return None
+
+    # Step 3 — paper trades: log the pending order only, never call IG
+    if paper_trade:
+        paper_id  = f"PAPER-WO-{int(time.time())}"
+        good_till = datetime.now(timezone.utc) + timedelta(days=good_till_days)
+        log.info(f"[PAPER] working order {direction} {size} x {ticker} @ {entry_level} (epic={epic})")
+        _log_working_order_to_db(paper_id, paper_id, user_id, ticker, epic, direction,
+                                 size, entry_level, stop_level, limit_level, "STOP",
+                                 hvf_type, good_till, True, session_name, signal_summary)
+        return {"deal_id": paper_id, "deal_ref": paper_id, "level": entry_level,
+                "stop_level": stop_level, "limit_level": limit_level, "otype": "STOP",
+                "working_order": True, "updated": False}
+
+    # Step 4 — market snapshot: current price, decimal precision, order-type choice
+    try:
+        mkt      = session.get(f"/markets/{epic}", version="3")
+        snap     = mkt.get("snapshot", {})
+        bid      = float(snap.get("bid", 0) or 0)
+        offer    = float(snap.get("offer", 0) or 0)
+        decimals = int(snap.get("decimalPlacesFactor", 2) or 2)
+    except Exception as e:
+        log.error(f"{ticker}: market snapshot failed — cannot place working order: {e}")
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction, f"[working order] market snapshot failed: {e}",
+                               signal_summary)
+        except Exception:
+            pass
+        return None
+
+    current = offer if direction == "BUY" else bid
+    if not current:
+        current = (bid + offer) / 2 if (bid or offer) else 0
+    if not current:
+        log.error(f"{ticker}: no current price in snapshot — skipping working order")
+        return None
+
+    # Align signal units → IG units (FX: Yahoo 1.1539 vs IG 11538.6). No-op (×1)
+    # for instruments that already match; non-power-of-ten mismatches are left
+    # for the distance guard below to refuse.
+    scale = detect_ig_scale(current, entry_level)
+    if scale != 1.0:
+        log.warning(f"{ticker}: scaling HVF levels ×{scale:g} into IG units "
+                    f"(IG price {current} vs signal entry {entry_level})")
+        entry_level *= scale
+        stop_level  *= scale
+        limit_level *= scale
+
+    entry_level = _round_level(entry_level, decimals)
+    stop_level  = _round_level(stop_level,  decimals)
+    limit_level = _round_level(limit_level, decimals)
+
+    # Sanity guard — entry wildly far from the live IG price means stale pattern
+    # data or a Yahoo/IG unit mismatch for this instrument. Refuse + alert rather
+    # than park a nonsense order. (Tests may override the threshold.)
+    dist_pct = abs(entry_level - current) / current * 100.0
+    if dist_pct > max_entry_distance_pct * 100.0:
+        msg = (f"[working order] entry {entry_level} is {dist_pct:.1f}% from current IG price "
+               f"{current} — possible stale pattern or Yahoo/IG unit mismatch; order NOT placed")
+        log.error(f"{ticker}: {msg}")
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction, msg, signal_summary)
+        except Exception:
+            pass
+        return None
+
+    # Level geometry must match the direction or IG will reject the order.
+    if direction == "BUY" and not (stop_level < entry_level < limit_level):
+        log.error(f"{ticker}: invalid BUY levels stop={stop_level} entry={entry_level} "
+                  f"limit={limit_level} — skipping")
+        return None
+    if direction == "SELL" and not (limit_level < entry_level < stop_level):
+        log.error(f"{ticker}: invalid SELL levels limit={limit_level} entry={entry_level} "
+                  f"stop={stop_level} — skipping")
+        return None
+
+    if direction == "BUY":
+        otype = "STOP" if entry_level >= current else "LIMIT"
+    else:
+        otype = "STOP" if entry_level <= current else "LIMIT"
+
+    good_till = datetime.now(timezone.utc) + timedelta(days=good_till_days)
+
+    body = {
+        "epic":           epic,
+        "direction":      direction,
+        "size":           str(size),
+        "level":          str(entry_level),
+        "type":           otype,
+        "timeInForce":    "GOOD_TILL_DATE",
+        "goodTillDate":   _good_till_str(good_till),
+        "guaranteedStop": False,
+        "stopLevel":      str(stop_level),
+        "limitLevel":     str(limit_level),
+        "currencyCode":   "GBP",
+        "expiry":         "DFB",
+        "forceOpen":      True,
+    }
+
+    log.info(f"Placing working order: {direction} {otype} {size} x {ticker} (epic={epic}) | "
+             f"entry={entry_level} stop={stop_level} target={limit_level} "
+             f"current={current} goodTill={body['goodTillDate']}")
+
+    try:
+        resp     = session.post("/workingorders/otc", body=body, version="2")
+        deal_ref = resp.get("dealReference")
+        if not deal_ref:
+            log.error(f"No deal reference returned for working order: {resp}")
+            try:
+                from notify import alert_missed_trade
+                alert_missed_trade(ticker, direction,
+                                   "[working order] IG returned no deal reference", signal_summary)
+            except Exception:
+                pass
+            return None
+
+        time.sleep(1)
+        confirm = session.get(f"/confirms/{deal_ref}", version="1")
+        status  = confirm.get("dealStatus")
+        deal_id = confirm.get("dealId")
+
+        if status != "ACCEPTED":
+            reason_code = confirm.get("reason", "UNKNOWN")
+            log.error(f"Working order rejected: {status} — {reason_code}")
+            try:
+                from notify import alert_missed_trade
+                alert_missed_trade(ticker, direction,
+                                   f"[working order] IG rejected the pending order: {reason_code}",
+                                   signal_summary)
+            except Exception:
+                pass
+            return None
+
+        log.info(f"Working order confirmed: {deal_id} ({ticker} {direction} {otype} @ {entry_level})")
+
+        _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction,
+                                 size, entry_level, stop_level, limit_level, otype,
+                                 hvf_type, good_till, False, session_name, signal_summary)
+
+        return {"deal_id": deal_id, "deal_ref": deal_ref, "level": entry_level,
+                "stop_level": stop_level, "limit_level": limit_level, "otype": otype,
+                "good_till": body["goodTillDate"], "working_order": True, "updated": False}
+
+    except requests.HTTPError as e:
+        log.error(f"IG API error placing working order: {e.response.status_code} — {e.response.text}")
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction,
+                               f"[working order] IG API error {e.response.status_code}: "
+                               f"{e.response.text[:160]}", signal_summary)
+        except Exception:
+            pass
+        return None
+
+
+def update_working_order(deal_id: str, ticker: str, direction: str,
+                         entry_level: float, stop_level: float, limit_level: float,
+                         existing: dict, session_name: str, user_id: str,
+                         paper_trade: bool = False) -> Optional[dict]:
+    """
+    Amend an existing pending order to fresh HVF levels (PUT /workingorders/otc v2).
+    Keeps the original good-till date. Returns a result dict on success, None on failure.
+    """
+    # Paper rows: update the DB record only.
+    if paper_trade or str(deal_id).startswith("PAPER-"):
+        try:
+            db = get_db()
+            try:
+                db.run("""update working_orders set entry_level=:e, stop_level=:s,
+                          limit_level=:l, updated_at=now() where deal_id=:d""",
+                       e=entry_level, s=stop_level, l=limit_level, d=deal_id)
+            finally:
+                db.close()
+        except Exception as ex:
+            log.error(f"Paper working-order update failed for {deal_id}: {ex}")
+        return {"deal_id": deal_id, "level": entry_level, "stop_level": stop_level,
+                "limit_level": limit_level, "otype": existing.get("otype", "STOP"),
+                "working_order": True, "updated": True}
+
+    try:
+        # Re-derive order type against the live price (entry may have crossed it).
+        epic = get_epic(ticker)
+        snap = get_snapshot(epic) if epic else {}
+        bid, offer = float(snap.get("bid", 0) or 0), float(snap.get("offer", 0) or 0)
+        decimals   = int(snap.get("decimalPlacesFactor", 2) or 2)
+        current    = offer if direction == "BUY" else bid
+        # Same unit alignment as placement (FX Yahoo→IG points) — no-op when aligned.
+        scale = detect_ig_scale(current, entry_level) if current else 1.0
+        if scale != 1.0:
+            log.warning(f"{ticker}: amend levels scaled ×{scale:g} into IG units")
+            entry_level *= scale
+            stop_level  *= scale
+            limit_level *= scale
+        entry_level = _round_level(entry_level, decimals)
+        stop_level  = _round_level(stop_level,  decimals)
+        limit_level = _round_level(limit_level, decimals)
+        if direction == "BUY":
+            otype = "STOP" if (not current) or entry_level >= current else "LIMIT"
+        else:
+            otype = "STOP" if (not current) or entry_level <= current else "LIMIT"
+
+        good_till = existing.get("good_till")
+        body = {
+            "level":          str(entry_level),
+            "type":           otype,
+            "timeInForce":    "GOOD_TILL_DATE" if good_till else "GOOD_TILL_CANCELLED",
+            "guaranteedStop": False,
+            "stopLevel":      str(stop_level),
+            "limitLevel":     str(limit_level),
+        }
+        if good_till:
+            body["goodTillDate"] = _good_till_str(good_till)
+
+        session.ensure_authenticated()
+        resp = requests.put(f"{IG_BASE_URL}/workingorders/otc/{deal_id}",
+                            headers=session._headers("2"), json=body, timeout=15)
+        resp.raise_for_status()
+        deal_ref = resp.json().get("dealReference")
+        time.sleep(1)
+        confirm = session.get(f"/confirms/{deal_ref}", version="1")
+        if confirm.get("dealStatus") != "ACCEPTED":
+            log.error(f"Working-order amend rejected for {ticker}: {confirm.get('reason')}")
+            return None
+
+        new_deal_id = confirm.get("dealId") or deal_id
+        try:
+            db = get_db()
+            try:
+                db.run("""update working_orders set entry_level=:e, stop_level=:s,
+                          limit_level=:l, otype=:o, deal_id=:nd, updated_at=now()
+                          where deal_id=:d""",
+                       e=entry_level, s=stop_level, l=limit_level, o=otype,
+                       nd=new_deal_id, d=deal_id)
+            finally:
+                db.close()
+        except Exception as ex:
+            log.error(f"Working-order DB update failed for {deal_id}: {ex}")
+
+        log.info(f"Working order amended: {ticker} {direction} entry "
+                 f"{existing['entry_level']}→{entry_level} stop {existing['stop_level']}→{stop_level} "
+                 f"target {existing['limit_level']}→{limit_level}")
+        try:
+            from notify import working_order_updated
+            working_order_updated(ticker, direction,
+                                  existing["entry_level"], entry_level,
+                                  existing["stop_level"], stop_level,
+                                  existing["limit_level"], limit_level, session_name)
+        except Exception as e:
+            log.warning(f"Could not send working-order-updated notification: {e}")
+
+        return {"deal_id": new_deal_id, "level": entry_level, "stop_level": stop_level,
+                "limit_level": limit_level, "otype": otype,
+                "working_order": True, "updated": True}
+
+    except requests.HTTPError as e:
+        log.error(f"IG API error amending working order {deal_id}: "
+                  f"{e.response.status_code} — {e.response.text}")
+        return None
+    except Exception as e:
+        log.error(f"Working-order amend failed for {deal_id}: {e}")
+        return None
+
+
+def delete_working_order(deal_id: str, reason: str = "") -> bool:
+    """
+    Cancel a pending working order (DELETE /workingorders/otc/{dealId} v2).
+    Marks the DB row CANCELLED. Returns True on success.
+    """
+    if str(deal_id).startswith("PAPER-"):
+        _set_working_order_status(deal_id, "CANCELLED", notes=reason or "paper cancel")
+        return True
+    try:
+        resp     = session.delete(f"/workingorders/otc/{deal_id}", body={}, version="2")
+        deal_ref = resp.get("dealReference")
+        if deal_ref:
+            time.sleep(1)
+            confirm = session.get(f"/confirms/{deal_ref}", version="1")
+            if confirm.get("dealStatus") != "ACCEPTED":
+                log.error(f"Working-order delete rejected for {deal_id}: {confirm.get('reason')}")
+                return False
+        _set_working_order_status(deal_id, "CANCELLED", notes=reason or "deleted via API")
+        log.info(f"Working order deleted: {deal_id}" + (f" ({reason})" if reason else ""))
+        return True
+    except requests.HTTPError as e:
+        log.error(f"IG API error deleting working order {deal_id}: "
+                  f"{e.response.status_code} — {e.response.text}")
+        return False
+
+
+def reconcile_working_orders() -> dict:
+    """
+    Sync PENDING working orders against IG. Called by the session monitors.
+
+    For each PENDING row:
+      still in IG /workingorders → leave as is
+      gone + matching NEW position in /positions → FILLED: insert into the
+          positions table (monitor then manages closure normally), announce via
+          notify.trade_opened + trade email
+      gone + no matching position → CANCELLED (or EXPIRED when good-till passed),
+          announce via notify.working_order_outcome — nothing ends silently
+
+    Returns {"pending": n, "filled": [...], "cancelled": [...], "expired": [...]}.
+    Never raises — monitors must not crash on a reconcile failure.
+    """
+    summary = {"pending": 0, "filled": [], "cancelled": [], "expired": []}
+    try:
+        db = get_db()
+        try:
+            rows = db.run(
+                """select deal_id, deal_ref, user_id, ticker, epic, direction, size,
+                          entry_level, stop_level, limit_level, otype, session,
+                          signal_summary, good_till, hvf_type, paper_trade
+                   from   working_orders where status = 'PENDING'""")
+        finally:
+            db.close()
+        if not rows:
+            return summary
+
+        now_utc = datetime.now(timezone.utc)
+
+        # Paper rows can't be reconciled against IG — just expire stale ones.
+        live_rows = []
+        for r in rows:
+            if str(r[0]).startswith("PAPER-"):
+                good_till = r[13]
+                if good_till and good_till < now_utc:
+                    _set_working_order_status(r[0], "EXPIRED", notes="paper order expired")
+                    summary["expired"].append(r[3])
+                else:
+                    summary["pending"] += 1
+                continue
+            live_rows.append(r)
+        if not live_rows:
+            return summary
+
+        ig_pending = set()
+        for wo in get_working_orders():
+            wod = wo.get("workingOrderData", {}) or {}
+            if wod.get("dealId"):
+                ig_pending.add(wod["dealId"])
+
+        ig_positions = get_open_positions()
+        db = get_db()
+        try:
+            tracked = {r[0] for r in db.run("select deal_id from positions")}
+        finally:
+            db.close()
+
+        for (deal_id, deal_ref, user_id, ticker, epic, direction, size, entry,
+             stop, limit, otype, sess, sig_sum, good_till, hvf_type, paper) in live_rows:
+
+            if deal_id in ig_pending:
+                summary["pending"] += 1
+                continue
+
+            # Gone from /workingorders — find the position it became, if any.
+            match = None
+            for p in ig_positions:
+                pos  = p.get("position", {}) or {}
+                pmkt = p.get("market", {}) or {}
+                if pmkt.get("epic") != epic or pos.get("direction") != direction:
+                    continue
+                if pos.get("dealId") in tracked:
+                    continue   # already a tracked position (opened by open_trade)
+                p_size = float(pos.get("size") or pos.get("dealSize") or 0)
+                if abs(p_size - float(size)) <= max(0.011, float(size) * 0.05):
+                    match = p
+                    break
+
+            if match:
+                pos        = match["position"]
+                fill_deal  = pos.get("dealId")
+                fill_level = float(pos.get("level") or pos.get("openLevel") or entry or 0)
+                stop_lvl   = float(pos.get("stopLevel")  or stop  or 0)
+                limit_lvl  = float(pos.get("limitLevel") or limit or 0)
+                log.info(f"Working order FILLED: {ticker} {direction} {size} @ {fill_level} "
+                         f"(order {deal_id} → position {fill_deal})")
+                _log_position_to_db(user_id, epic, ticker, direction, float(size),
+                                    fill_level, stop_lvl, limit_lvl, fill_deal,
+                                    False, sess, sig_sum)
+                _set_working_order_status(deal_id, "FILLED", fill_deal_id=fill_deal)
+                tracked.add(fill_deal)
+                summary["filled"].append(ticker)
+                try:
+                    from notify import trade_opened
+                    trade_opened(ticker, direction, float(size), fill_level, stop_lvl,
+                                 limit_lvl, sess or "WORKING_ORDER",
+                                 f"HVF pending order filled — {sig_sum}")
+                except Exception as e:
+                    log.warning(f"Fill notification failed for {ticker}: {e}")
+                try:
+                    from trade_email import send_trade_email
+                    send_trade_email(
+                        ticker, direction,
+                        {"hvf_type": hvf_type, "hvf_signal": "TRIGGERED",
+                         "primaries_fired": [f"HVF pending order filled at {fill_level}"],
+                         "confirmations_fired": [sig_sum] if sig_sum else []},
+                        {"level": fill_level, "stop_level": stop_lvl, "limit_level": limit_lvl,
+                         "deal_id": fill_deal},
+                        size=size, session_name=sess or "WORKING_ORDER",
+                        event="Working order FILLED — trade opened")
+                except Exception as e:
+                    log.warning(f"Fill email failed for {ticker}: {e}")
+            else:
+                expired = bool(good_till and good_till < now_utc)
+                outcome = "EXPIRED" if expired else "CANCELLED"
+                _set_working_order_status(deal_id, outcome,
+                                          notes="good-till passed" if expired
+                                          else "removed from IG without fill")
+                summary["expired" if expired else "cancelled"].append(ticker)
+                log.info(f"Working order {outcome}: {ticker} {direction} @ {entry} ({deal_id})")
+                try:
+                    from notify import working_order_outcome
+                    working_order_outcome(ticker, direction, float(entry or 0), outcome,
+                                          detail=f"Order {deal_id}, session {sess}.")
+                except Exception as e:
+                    log.warning(f"Outcome notification failed for {ticker}: {e}")
+
+    except Exception as e:
+        log.error(f"reconcile_working_orders failed: {e}")
+    return summary
+
+
+def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
+                             stress_mult: float = 1.0) -> Optional[dict]:
+    """
+    Route a scanned HVF signal to a pending working order (the entry/stop/target
+    come from the pattern itself). Sizes from |entry − stop| — the actual risk
+    of the pending order — using the same margin-aware sizing as market trades.
+    Sends the working-order Slack notification + investment-case email on success.
+
+    Returns the place/update result dict, or None when skipped/blocked.
+    """
+    ticker    = sig["ticker"]
+    direction = sig.get("direction")
+    entry     = sig.get("hvf_h3_level")     # entry level for BOTH directions (bearish = L3)
+    stop      = sig.get("hvf_stop_level")
+    target    = sig.get("hvf_target")
+    if not all((ticker, direction, entry, stop, target)):
+        return None
+
+    # The pending order is directional — the funnel type must agree with the
+    # signal-consensus direction (a BULLISH funnel can't back a SELL order).
+    hvf_type = sig.get("hvf_type")
+    if (hvf_type == "BULLISH" and direction != "BUY") or \
+       (hvf_type == "BEARISH" and direction != "SELL"):
+        log.info(f"{ticker}: HVF {hvf_type} conflicts with consensus {direction} — "
+                 f"falling back to market-order path")
+        return None
+
+    entry, stop, target = float(entry), float(stop), float(target)
+
+    size = 0.0
+    try:
+        epic = get_epic(ticker)
+        if not epic:
+            raise ValueError("no IG epic")
+        # Align signal units → IG units BEFORE sizing: FX HVF levels come from
+        # Yahoo (EURUSD 1.1539) while IG quotes points (11538.6). Sizing from the
+        # unscaled distance would compute risk in the wrong units entirely.
+        snap    = get_snapshot(epic)
+        bid     = float(snap.get("bid", 0) or 0)
+        offer   = float(snap.get("offer", 0) or 0)
+        current = offer if direction == "BUY" else bid
+        scale   = detect_ig_scale(current, entry) if current else 1.0
+        if scale != 1.0:
+            log.warning(f"{ticker}: HVF levels scaled ×{scale:g} into IG units for sizing/orders")
+            entry, stop, target = entry * scale, stop * scale, target * scale
+
+        stop_distance = abs(entry - stop)
+        if stop_distance <= 0:
+            return None
+
+        bal         = get_account_balance()
+        available   = bal["available"]
+        risk_amount = available * float(profile.get("risk_per_trade", 0.02)) * stress_mult
+        size, adj_stop_distance = calculate_position_size(
+            epic, stop_distance, risk_amount, available_funds=available)
+        # IG minimum stop distance may widen the stop — keep it anchored to ENTRY.
+        # Guard: never accept a widening that dwarfs the entry price (that means
+        # a unit mismatch slipped through, not a real minimum-distance rule).
+        if adj_stop_distance > stop_distance and (adj_stop_distance / max(entry, 1e-9)) < 0.5:
+            stop = entry - adj_stop_distance if direction == "BUY" else entry + adj_stop_distance
+            log.info(f"{ticker}: working-order stop widened to IG minimum "
+                     f"(distance {adj_stop_distance}) → stop level {stop}")
+    except Exception as e:
+        log.warning(f"Working-order size calc failed for {ticker}: {e}")
+
+    if size <= 0:
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction,
+                               "[working order] calculated size is 0 — balance too small for IG "
+                               "min deal size, or margin/epic problem", str(sig.get("primaries_fired") or ""))
+        except Exception:
+            pass
+        return None
+
+    signal_str = (f"HVF {hvf_type} {sig.get('hvf_signal','')} "
+                  f"R:R {sig.get('hvf_risk_reward','—')} quality {sig.get('hvf_quality','—')} | "
+                  f"P:{sig.get('primary_count',0)} C:{sig.get('confirmation_count',0)} "
+                  f"[{session_name}]")
+
+    result = place_working_order(
+        user_id=profile["user_id"], ticker=ticker, direction=direction, size=size,
+        entry_level=entry, stop_level=stop, limit_level=target,
+        session_name=session_name, signal_summary=signal_str,
+        paper_trade=profile.get("paper_trade", False), hvf_type=hvf_type)
+
+    if result and not result.get("updated"):
+        try:
+            from notify import working_order_placed
+            working_order_placed(ticker, direction, size, result["level"],
+                                 result["stop_level"], result["limit_level"],
+                                 result.get("otype", "STOP"), result.get("good_till", "—"),
+                                 session_name, signal_str, user=profile.get("name", "Owner"))
+        except Exception as e:
+            log.warning(f"Working-order notification failed for {ticker}: {e}")
+        try:
+            from trade_email import send_trade_email
+            send_trade_email(ticker, direction, sig, result, size=size,
+                             session_name=session_name, event="Working order placed")
+        except Exception as e:
+            log.warning(f"Working-order email failed for {ticker}: {e}")
+    return result
 
 
 # =============================================================================

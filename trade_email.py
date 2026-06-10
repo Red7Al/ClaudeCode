@@ -265,7 +265,7 @@ def build_charts(ticker: str, sig: dict, trade: dict) -> list:
 # ---------------------------------------------------------------------------
 
 def _investment_case(ticker: str, direction: str, size, session_name: str,
-                     sig: dict, trade: dict) -> tuple:
+                     sig: dict, trade: dict, event: str = "Trade opened") -> tuple:
     try:
         from notify import fmt
         name = fmt(ticker)
@@ -317,7 +317,7 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
     rationale = (f"{pc} primary signal{'s' if pc != 1 else ''} pointed {direction}"
                  + (f", backed by {cc} confirmation{'s' if cc != 1 else ''}" if cc else ""))
 
-    text = [f"Trade opened: {name} {direction}", "=" * 44]
+    text = [f"{event}: {name} {direction}", "=" * 44]
     text += [f"{k:14}: {v}" for k, v in rows]
     text += ["", f"WHY THIS IS A {direction}: {rationale}.", "", f"Primary signals ({pc}):"]
     text += ([f"  • {p}" for p in primaries] or ["  • (none recorded)"])
@@ -334,7 +334,7 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
     def _li(items):
         return "".join(f"<li>{i}</li>" for i in items) or "<li><i>none recorded</i></li>"
     html = (
-        f"<h2>Trade opened — {name} {direction}</h2>"
+        f"<h2>{event} — {name} {direction}</h2>"
         f"<table>{''.join(_tr(k, v) for k, v in rows)}</table>"
         f"<p><b>Why this is a {direction}:</b> {rationale}.</p>"
         f"<h3>Primary signals ({pc})</h3><ul>{_li(primaries)}</ul>"
@@ -409,9 +409,11 @@ def _send_via_yahoo(subject, text, html, charts, rcpts) -> bool:
 
 
 def send_trade_email(ticker: str, direction: str, sig: dict, trade: dict,
-                     size=None, session_name: str = "", recipients=None) -> bool:
+                     size=None, session_name: str = "", recipients=None,
+                     event: str = "Trade opened") -> bool:
     """
-    Email the investment case + charts for a newly opened trade. Prefers the Resend
+    Email the investment case + charts for a newly opened trade (or, with
+    event="Working order placed", for a pending HVF entry order). Prefers the Resend
     HTTP API (RESEND_API_KEY); falls back to Yahoo SMTP. FAIL-SAFE: returns False and
     logs on any problem; never raises into the trade-placement path.
     """
@@ -424,8 +426,8 @@ def send_trade_email(ticker: str, direction: str, sig: dict, trade: dict,
         if not rcpts:
             return False
 
-        subject = f"Trade opened: {ticker} {direction} @ {trade.get('level', '?')}"
-        text, html = _investment_case(ticker, direction, size, session_name, sig, trade)
+        subject = f"{event}: {ticker} {direction} @ {trade.get('level', '?')}"
+        text, html = _investment_case(ticker, direction, size, session_name, sig, trade, event=event)
         charts = build_charts(ticker, sig, trade)
 
         if os.environ.get("RESEND_API_KEY"):

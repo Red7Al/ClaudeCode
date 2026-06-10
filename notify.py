@@ -48,6 +48,11 @@
 #                                 stop_slippage, position_deterioration, director_cluster,
 #                                 weekly_digest. Names cleaned of IG suffixes
 #                                 ('CleanSpark Inc (24 Hours)' -> 'CLSK (CleanSpark Inc)').
+# 1.4.0   2026-06-10  Alex Hind   Working-order notifications (HVF pending entries →
+#                                 IG working orders, user 2026-06-10): working_order_placed,
+#                                 working_order_updated, working_order_outcome
+#                                 (FILLED announced via trade_opened; CANCELLED/EXPIRED
+#                                 surfaced so nothing disappears silently).
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -326,6 +331,135 @@ def trade_closed(
             "type": "context",
             "elements": [{"type": "mrkdwn", "text": _ts()}]
         },
+    ]
+    _send("trades", blocks)
+
+
+# =============================================================================
+# Working Orders → #claude-trading-trades
+# HVF setups are placed as PENDING entry orders at the breakout level (H3) with
+# the pattern's stop and target attached (user 2026-06-10). These notifications
+# track the order lifecycle: placed → (updated) → filled / cancelled / expired.
+# =============================================================================
+
+def working_order_placed(
+    ticker:         str,
+    direction:      str,        # "BUY" or "SELL"
+    size:           float,
+    entry:          float,      # pending entry level (HVF H3 breakout)
+    stop:           float,
+    target:         float,
+    otype:          str,        # "STOP" (breakout) or "LIMIT" (pullback)
+    good_till:      str,        # expiry of the order, display string
+    session:        str,
+    signal_summary: str,
+    user:           str = "Owner"
+):
+    """Announce a new pending working order (NOT yet a position)."""
+    emoji = "🟢" if direction == "BUY" else "🔴"
+    rr    = round(abs(target - entry) / max(abs(entry - stop), 0.0001), 2)
+    kind  = "breakout entry" if otype == "STOP" else "pullback entry"
+
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text",
+                     "text": f"{emoji}⏳ Working Order Placed — {fmt(ticker)}"}
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn",
+                     "text": (f"Pending *{direction} {otype}* order ({kind}) — fills only "
+                              f"when price reaches the entry level. Not yet a position.")}
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*User:*\n{user}"},
+                {"type": "mrkdwn", "text": f"*Session:*\n{session}"},
+                {"type": "mrkdwn", "text": f"*Size:*\n{size}"},
+                {"type": "mrkdwn", "text": f"*Entry (H3):*\n{entry}"},
+                {"type": "mrkdwn", "text": f"*Stop:*\n{stop}"},
+                {"type": "mrkdwn", "text": f"*Target:*\n{target}"},
+                {"type": "mrkdwn", "text": f"*R:R:*\n{rr}:1"},
+                {"type": "mrkdwn", "text": f"*Good till:*\n{good_till}"},
+            ]
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*Signals:* {signal_summary}"}
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": _ts()}]
+        },
+    ]
+    _send("trades", blocks)
+
+
+def working_order_updated(
+    ticker:    str,
+    direction: str,
+    old_entry: float, new_entry: float,
+    old_stop:  float, new_stop:  float,
+    old_target: float, new_target: float,
+    session:   str,
+    user:      str = "Owner"
+):
+    """Announce that an existing pending order was amended to fresher HVF levels."""
+    def _chg(a, b):
+        return f"{a} → *{b}*" if a != b else f"{b} (unchanged)"
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text",
+                     "text": f"🔄 Working Order Updated — {fmt(ticker)}"}
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn",
+                     "text": (f"Latest scan re-confirmed the {direction} HVF setup with moved "
+                              f"levels — the pending order was amended (not duplicated).")}
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*User:*\n{user}"},
+                {"type": "mrkdwn", "text": f"*Session:*\n{session}"},
+                {"type": "mrkdwn", "text": f"*Entry:*\n{_chg(old_entry, new_entry)}"},
+                {"type": "mrkdwn", "text": f"*Stop:*\n{_chg(old_stop, new_stop)}"},
+                {"type": "mrkdwn", "text": f"*Target:*\n{_chg(old_target, new_target)}"},
+            ]
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": _ts()}]
+        },
+    ]
+    _send("trades", blocks)
+
+
+def working_order_outcome(
+    ticker:    str,
+    direction: str,
+    entry:     float,
+    outcome:   str,             # "CANCELLED" or "EXPIRED"
+    detail:    str = "",
+    user:      str = "Owner"
+):
+    """
+    Surface a pending order that ended WITHOUT filling (cancelled in IG, or its
+    good-till date passed). Fills are announced separately via trade_opened().
+    Posting this keeps the order lifecycle fully visible — no silent endings.
+    """
+    label = {"CANCELLED": "🚫 Working Order Cancelled",
+             "EXPIRED":   "⌛ Working Order Expired"}.get(outcome, f"Working order {outcome}")
+    text = (f"*{fmt(ticker)}* {direction} pending entry at *{entry}* ended without filling "
+            f"({outcome.lower()})." + (f"\n{detail}" if detail else ""))
+    blocks = [
+        {"type": "header",  "text": {"type": "plain_text", "text": f"{label} — {fmt(ticker)}"}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": text}},
+        {"type": "context", "elements": [{"type": "mrkdwn", "text": f"User: {user} | {_ts()}"}]},
     ]
     _send("trades", blocks)
 

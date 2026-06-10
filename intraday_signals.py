@@ -37,6 +37,13 @@
 #                                 most. Now resolves NaN to 100 (pure rally) / 50
 #                                 (flat or too few bars). Verified on synthetic
 #                                 series: rally→100.0, flat→50.0, normal→58.5.
+# 1.1.0   2026-06-10  Alex Hind   HVF setups → IG WORKING ORDERS (user 2026-06-10):
+#                                 US monitor routes HVF signals to a pending order at
+#                                 the exact H3 entry (re-signal = amend, never a
+#                                 duplicate; no market fall-through), reconciles
+#                                 fills/cancels each pass, and counts open positions
+#                                 + today's PENDING working orders in the US slot
+#                                 budget (was trade_log only).
 # =============================================================================
 
 import os
@@ -497,11 +504,23 @@ def run_us_monitor(notify_slack: bool = True) -> list:
     import requests
     import pg8000.native
     from signals import scan_instrument, get_macro_gate
-    from ig_shim import open_trade, get_account_balance
+    from ig_shim import (open_trade, get_account_balance,
+                         place_hvf_order_from_sig, reconcile_working_orders)
     from config import SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION, SESSION_TRADE_CAPS
     from notify import fmt, should_post_summary   # name fmt + 2h summary gate
 
     results = []
+
+    # ── Reconcile pending HVF working orders first ────────────────────────────
+    # A fill inserts the position row (so the DB fetch below sees it and Part 1
+    # monitors it); cancels/expiries are surfaced to Slack — nothing ends silently.
+    try:
+        wo_sum = reconcile_working_orders()
+        if wo_sum["filled"] or wo_sum["cancelled"] or wo_sum["expired"]:
+            log.info(f"US Monitor: working orders — filled {wo_sum['filled']}, "
+                     f"cancelled {wo_sum['cancelled']}, expired {wo_sum['expired']}")
+    except Exception as e:
+        log.warning(f"US Monitor: working-order reconcile failed: {e}")
 
     # ── DB connection ─────────────────────────────────────────────────────────
     try:
@@ -509,9 +528,17 @@ def run_us_monitor(notify_slack: bool = True) -> list:
         pos_rows = conn.run(
             "select ticker, direction, open_price, stop_loss, deal_id from positions"
         )
-        # How many trades already placed today
+        # Trades already placed today: closed (trade_log) + still open (positions,
+        # previously missing from the count) + pending working orders placed today.
         today_count = conn.run(
-            "select count(*) from trade_log where session like 'US%' and date(opened_at) = current_date"
+            """select
+                 (select count(*) from trade_log
+                    where session like 'US%' and date(opened_at) = current_date)
+               + (select count(*) from positions
+                    where session like 'US%' and date(opened_at) = current_date)
+               + (select count(*) from working_orders
+                    where session like 'US%' and status = 'PENDING'
+                      and date(placed_at) = current_date)"""
         )
         conn.close()
     except Exception as e:
@@ -567,6 +594,23 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                     try:
                         sig = scan_instrument(ticker, "US_MONITOR", macro)
                         if sig.get("trade_signal"):
+                            from run_session import get_user_profile
+                            profile = get_user_profile()
+
+                            # HVF setups → pending working order at the pattern's
+                            # exact entry/stop/target (re-signal = amend, never a
+                            # duplicate). No fall-through to a market order.
+                            _hvf_dir_ok = ((sig.get("hvf_type") == "BULLISH" and sig["direction"] == "BUY") or
+                                           (sig.get("hvf_type") == "BEARISH" and sig["direction"] == "SELL"))
+                            if _hvf_dir_ok and sig.get("hvf_signal") in ("READY", "TRIGGERED") and \
+                                    sig.get("hvf_h3_level") and sig.get("hvf_stop_level") and sig.get("hvf_target"):
+                                wo = place_hvf_order_from_sig(
+                                    sig, profile, "US_MONITOR",
+                                    macro.get("stress_size_multiplier", 1.0))
+                                if wo and not wo.get("updated"):
+                                    new_trades_placed += 1
+                                continue
+
                             stop_dist  = sig.get("stop_distance", 0)
                             limit_dist = round(stop_dist * DEFAULT_TARGET_RR, 4)
                             try:
@@ -584,8 +628,6 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                                 f"Confs:{sig.get('confirmation_count',0)} "
                                 f"[intraday rescan]"
                             )
-                            from run_session import get_user_profile
-                            profile = get_user_profile()
                             result = open_trade(
                                 user_id=profile["user_id"],
                                 ticker=ticker,
