@@ -43,6 +43,8 @@
 #                                 entry/yfinance_median > 5, all IG levels are divided
 #                                 by the ratio so price history and trade levels share
 #                                 one axis. Legend still shows the original IG values.
+# 1.3.0   2026-07-09  Alex Hind   Remove HVF funnel schematic (chart #3) — redundant
+#                                 now the funnel is overlaid on the price history chart.
 # =============================================================================
 
 import os
@@ -260,42 +262,6 @@ def build_charts(ticker: str, sig: dict, trade: dict) -> list:
             ax.grid(alpha=0.3)
             charts.append(("volume", "volume.png", _fig_png(fig)))
 
-        # 3) HVF funnel schematic — three descending lower-highs (H1>H2>H3) and three
-        # ascending higher-lows (L1<L2<L3) converging into the apex, with entry (H3) /
-        # stop / target. The visual definition of the Hunt Volatility Funnel.
-        if all((h1, h3, l1, l3)):
-            fig, ax = plt.subplots(figsize=(8.5, 4.5))
-            # Plot the three highs and three lows at pivot positions 1, 2, 3 (H2/L2
-            # included when available, else the line spans 1st→3rd).
-            hx = [0, 1, 2] if h2 else [0, 2]
-            hy = [h1, h2, h3] if h2 else [h1, h3]
-            lx = [0, 1, 2] if l2 else [0, 2]
-            ly = [l1, l2, l3] if l2 else [l1, l3]
-            ax.plot(hx, hy, "r-o", lw=1.8, label="Lower highs  H1 > H2 > H3")
-            ax.plot(lx, ly, "g-o", lw=1.8, label="Higher lows  L1 < L2 < L3")
-            ax.fill_between([0, 2], [h1, h3], [l1, l3], color="grey", alpha=0.12)
-            for xx, yy, lab, dy, col in [
-                (0, h1, "H1", 7, "red"), (1, h2, "H2", 7, "red"), (2, h3, "H3", 7, "red"),
-                (0, l1, "L1", -13, "green"), (1, l2, "L2", -13, "green"), (2, l3, "L3", -13, "green")]:
-                if yy:
-                    ax.annotate(f"{lab} {yy:g}", (xx, yy), textcoords="offset points",
-                                xytext=(0, dy), fontsize=7, color=col, ha="center")
-            # Scale IG levels to match yfinance units (same scale as h1/h2/h3/l1/l2/l3)
-            e_s = entry / ig_scale if entry else None
-            s_s = stop  / ig_scale if stop  else None
-            t_s = targ  / ig_scale if targ  else None
-            if e_s: ax.axhline(e_s, color="blue",   ls="--", lw=1.1, label=f"Entry (H3) {entry:g}")
-            if s_s: ax.axhline(s_s, color="red",    ls=":",  lw=1,   label=f"Stop {stop:g}")
-            if t_s: ax.axhline(t_s, color="orange", ls=":",  lw=1,   label=f"Target {targ:g}")
-            rr = sig.get("hvf_risk_reward")
-            q  = sig.get("hvf_quality")
-            ax.set_title(f"{ticker} — HVF funnel ({sig.get('hvf_type','')} {sig.get('hvf_signal','')}"
-                         + (f", R:R {rr}:1" if rr else "") + (f", quality {q}" if q else "") + ")")
-            ax.set_xticks([0, 1, 2] if h2 else [0, 2])
-            ax.set_xticklabels(["1st pivot", "2nd pivot", "3rd (entry)"] if h2 else ["1st pivot", "3rd (entry)"])
-            ax.legend(fontsize=7, loc="best")
-            ax.grid(alpha=0.3)
-            charts.append(("hvf", "hvf.png", _fig_png(fig)))
     except Exception as e:
         log.warning(f"trade-email chart generation failed for {ticker}: {e}")
     return charts
@@ -390,7 +356,7 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
     text += ([f"  • {c}" for c in confirmations] or ["  • (none recorded)"])
     if sig.get("pa_verdict"):
         text += ["", f"Price-action verdict: {sig.get('pa_verdict')} (score {sig.get('pa_score', '—')})"]
-    text += ["", "Charts attached: price history, volume history, HVF funnel.",
+    text += ["", "Charts attached: price history (with HVF funnel overlay), volume history.",
              f"\nGenerated {datetime.now(timezone.utc):%d %b %Y %H:%M UTC} by EndToEndTrading."]
     text = "\n".join(str(t) for t in text)
 
@@ -473,7 +439,7 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
   <!-- Charts note -->
   <div style="padding:12px 24px;background:#f6f8fa;border-top:1px solid #e8ecf0">
     <p style="margin:0;font-size:12px;color:#555">
-      Charts attached: price history (6 months), volume history, HVF funnel schematic.
+      Charts attached: price history with HVF funnel overlay (6 months), volume history.
     </p>
   </div>
 
