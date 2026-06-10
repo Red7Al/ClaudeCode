@@ -45,6 +45,7 @@
 # =============================================================================
 
 import os
+from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 import sys
 import logging
 import traceback
@@ -249,11 +250,7 @@ def test_signal_log_insert() -> dict:
     """
     try:
         import pg8000.native
-        conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-            database="postgres", user=os.environ["SUPABASE_USER"],
-            password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
-        )
+        conn = _pool_get_db()
         # 45-column INSERT — must exactly match signals.py scan_instrument() INSERT.
         # Run two tickers (_TEST_OIL_ commodity-style, _TEST_EQ_ equity-style) to
         # surface any instrument-type-specific binding bugs (OIL failed 2026-06-04).
@@ -309,11 +306,7 @@ def test_positions_insert() -> dict:
     """Write + rollback a test positions row. Verifies trade logging fix."""
     try:
         import pg8000.native
-        conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-            database="postgres", user=os.environ["SUPABASE_USER"],
-            password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
-        )
+        conn = _pool_get_db()
         # Need a valid user_id — fetch first available
         rows = conn.run("select id from user_profiles limit 1")
         uid  = rows[0][0] if rows else "00000000-0000-0000-0000-000000000001"

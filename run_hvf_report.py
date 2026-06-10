@@ -41,6 +41,7 @@
 # =============================================================================
 
 import os
+from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 import logging
 import time
 from datetime import datetime, timezone
@@ -376,13 +377,7 @@ def log_to_db(tradeable: list, developing: list, scan_time: str):
     """
     try:
         import pg8000.native
-        conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-            database="postgres",
-            user=os.environ["SUPABASE_USER"],
-            password=os.environ["SUPABASE_DB_PASSWORD"],
-            ssl_context=True
-        )
+        conn = _pool_get_db()
         for r in tradeable + developing:
             conn.run(
                 """insert into hvf_scan_log

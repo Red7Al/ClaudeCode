@@ -19,6 +19,7 @@
 # =============================================================================
 
 import os
+from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
 import requests
@@ -36,12 +37,7 @@ SLACK_URL     = os.environ.get("SLACK_SIGNALS", "")
 
 
 def get_db():
-    return pg8000.native.Connection(
-        host=SUPABASE_HOST, port=5432, database="postgres",
-        user=os.environ["SUPABASE_USER"],
-        password=os.environ["SUPABASE_DB_PASSWORD"],
-        ssl_context=True
-    )
+    return _pool_get_db()
 
 
 def spotlight_ticker(conn, ticker: str) -> dict:

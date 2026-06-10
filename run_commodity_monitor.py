@@ -32,6 +32,7 @@
 # =============================================================================
 
 import os
+from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 from dotenv import load_dotenv; load_dotenv(override=True)
 import sys
 import logging
@@ -84,11 +85,7 @@ def run():
     log.info(f"Monitoring {len(commodity_positions)} commodity position(s)")
 
     # Connect to Supabase
-    conn = pg8000.native.Connection(
-        host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-        database="postgres", user=os.environ["SUPABASE_USER"],
-        password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
-    )
+    conn = _pool_get_db()
     our_deals = {
         r[0]: r for r in conn.run(
             "select deal_id, ticker, direction, open_price, stop_loss, size from positions"

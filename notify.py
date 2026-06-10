@@ -63,6 +63,7 @@
 # =============================================================================
 
 import os
+from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
 import re
@@ -147,13 +148,7 @@ def _load_names() -> dict:
         return _NAME_CACHE
     cache = {}
     try:
-        conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-            database="postgres",
-            user=os.environ["SUPABASE_USER"],
-            password=os.environ["SUPABASE_DB_PASSWORD"],
-            ssl_context=True
-        )
+        conn = _pool_get_db()
         for tk, desc in conn.run("select ticker, description from epic_lookup"):
             cache[tk] = _clean_name(desc)
         conn.close()

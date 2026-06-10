@@ -123,10 +123,9 @@ SUPABASE_PASS = os.environ["SUPABASE_DB_PASSWORD"]
 # DB helper
 # ---------------------------------------------------------------------------
 def get_db():
-    return pg8000.native.Connection(
-        host=SUPABASE_HOST, port=5432, database="postgres",
-        user=SUPABASE_USER, password=SUPABASE_PASS, ssl_context=True
-    )
+    """Supabase connection via the shared resilient session-pooler helper (timeout + retry)."""
+    from db_pool import get_db as _pool_get_db
+    return _pool_get_db()
 
 # ---------------------------------------------------------------------------
 # 1. MACRO GATE

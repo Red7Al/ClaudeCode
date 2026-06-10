@@ -40,6 +40,7 @@
 # =============================================================================
 
 import os
+from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
 import numpy as np
@@ -504,11 +505,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
 
     # ── DB connection ─────────────────────────────────────────────────────────
     try:
-        conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-            database="postgres", user=os.environ["SUPABASE_USER"],
-            password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
-        )
+        conn = _pool_get_db()
         pos_rows = conn.run(
             "select ticker, direction, open_price, stop_loss, deal_id from positions"
         )

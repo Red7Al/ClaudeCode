@@ -81,6 +81,7 @@
 # =============================================================================
 
 import os
+from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 import logging
 import requests
 import pg8000.native
@@ -109,10 +110,7 @@ OIL_SIGNIFICANT_BUILD =  2_000   # +2M barrels build (= +2,000 thousand barrels)
 # =============================================================================
 
 def get_db():
-    return pg8000.native.Connection(
-        host=SUPABASE_HOST, port=5432, database="postgres",
-        user=SUPABASE_USER, password=SUPABASE_PASS, ssl_context=True
-    )
+    return _pool_get_db()
 
 
 # =============================================================================

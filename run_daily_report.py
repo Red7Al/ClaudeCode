@@ -44,6 +44,7 @@
 # =============================================================================
 
 import os
+from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
 import requests
@@ -70,12 +71,7 @@ def get_db():
     # pg8000's unnamed prepared statements collide across them — crashed 2026-06-09
     # with 08P01 "bind message supplies 1 parameters, but prepared statement requires
     # 45" (the signal_log plan colliding with a 1-param query). Session pooler isolates.
-    return pg8000.native.Connection(
-        host=SUPABASE_HOST, port=5432, database="postgres",
-        user=os.environ["SUPABASE_USER"],
-        password=os.environ["SUPABASE_DB_PASSWORD"],
-        ssl_context=True
-    )
+    return _pool_get_db()
 
 
 # ---------------------------------------------------------------------------

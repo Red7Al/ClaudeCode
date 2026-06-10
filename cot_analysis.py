@@ -68,6 +68,7 @@
 # =============================================================================
 
 import os
+from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 import logging
 import requests
 import numpy as np
@@ -96,10 +97,7 @@ HISTORY_WEEKS = 156    # 3 years — better percentile accuracy for multi-year e
 # =============================================================================
 
 def get_db():
-    return pg8000.native.Connection(
-        host=SUPABASE_HOST, port=5432, database="postgres",
-        user=SUPABASE_USER, password=SUPABASE_PASS, ssl_context=True
-    )
+    return _pool_get_db()
 
 
 # =============================================================================

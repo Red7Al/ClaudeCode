@@ -54,6 +54,7 @@
 # =============================================================================
 
 import os
+from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
 import sys
@@ -204,11 +205,7 @@ def check_fred() -> list:
 def check_constraints() -> list:
     results = []
     try:
-        conn = pg8000.native.Connection(
-            host=SUPABASE_HOST, port=5432, database="postgres",
-            user=os.environ["SUPABASE_USER"],
-            password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True,
-        )
+        conn = _pool_get_db()
     except Exception as e:
         # cannot reach the DB at all → could not verify (warn, not a wrong-schema fail)
         return [warn("DB constraints", f"could not connect: {str(e)[:80]}")]

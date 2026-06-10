@@ -92,6 +92,7 @@
 
 import sys
 import os
+from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
 
@@ -123,11 +124,7 @@ def already_ran_today(session_name: str) -> bool:
         return False
     import pg8000.native
     try:
-        conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-            database="postgres", user=os.environ["SUPABASE_USER"],
-            password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
-        )
+        conn = _pool_get_db()
         rows = conn.run(
             """select count(*) from macro_snapshot
                where  session = :v_sess
@@ -154,11 +151,7 @@ def get_user_profile(user_id: str = OWNER_USER_ID) -> dict:
     """
     import pg8000.native
     try:
-        conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-            database="postgres", user=os.environ["SUPABASE_USER"],
-            password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
-        )
+        conn = _pool_get_db()
         rows = conn.run(
             """select name, risk_per_trade, daily_loss_limit,
                       max_open_pos, paper_trade
@@ -450,11 +443,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
             log.debug(f"Intraday scan skipped for {ticker}: {e}")
 
     # Detect positions closed by IG
-    conn = pg8000.native.Connection(
-        host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-        database="postgres", user=os.environ["SUPABASE_USER"],
-        password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
-    )
+    conn = _pool_get_db()
     our_deals  = {r[0]: r for r in conn.run(
         "select deal_id, ticker, direction, open_price, size, opened_at from positions"
     )}
@@ -536,11 +525,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
 
     # ── Part 2: scan for new entries ─────────────────────────────────────────
     try:
-        conn2 = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-            database="postgres", user=os.environ["SUPABASE_USER"],
-            password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
-        )
+        conn2 = _pool_get_db()
         _grp = (session_name or "").split("_")[0].upper()
         today_count = conn2.run(
             "select count(*) from trade_log where session like :g and date(opened_at) = current_date",
@@ -801,11 +786,7 @@ def refresh_senator_scores():
             continue
 
     # Build senator_scores records
-    conn = pg8000.native.Connection(
-        host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-        database="postgres", user=os.environ["SUPABASE_USER"],
-        password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
-    )
+    conn = _pool_get_db()
 
     updated = 0
     for senator, returns in scored.items():
@@ -857,11 +838,7 @@ def run_weekend_review():
     refresh_superinvestors()
 
     # Weekly P&L
-    conn = pg8000.native.Connection(
-        host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-        database="postgres", user=os.environ["SUPABASE_USER"],
-        password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
-    )
+    conn = _pool_get_db()
     since = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
     rows  = conn.run(
         f"select sum(pnl), count(*), sum(case when pnl>0 then 1 else 0 end) "
@@ -970,11 +947,7 @@ def refresh_superinvestors():
             if self._in_td:
                 self._cell += data
 
-    conn = pg8000.native.Connection(
-        host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-        database="postgres", user=os.environ["SUPABASE_USER"],
-        password=os.environ["SUPABASE_DB_PASSWORD"], ssl_context=True
-    )
+    conn = _pool_get_db()
 
     inserted = 0
     today    = date.today().isoformat()
@@ -1059,13 +1032,7 @@ def ensure_schema():
     """
     import pg8000.native
     try:
-        conn = pg8000.native.Connection(
-            host="aws-0-eu-west-1.pooler.supabase.com", port=5432,
-            database="postgres",
-            user=os.environ["SUPABASE_USER"],
-            password=os.environ["SUPABASE_DB_PASSWORD"],
-            ssl_context=True
-        )
+        conn = _pool_get_db()
         for sql in REQUIRED_SCHEMA:
             try:
                 conn.run(sql)
