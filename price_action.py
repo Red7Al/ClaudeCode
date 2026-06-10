@@ -92,6 +92,11 @@
 #                                 equities/indices keep default 40.
 #                                 HVF TRIGGERED bypass (Fix 2): threshold halved
 #                                 when HVF has confirmed entry — price has voted.
+# 1.5.0   2026-06-10  Alex Hind   HVF pivots now expose calendar dates
+#                                 (h1_date..l3_date) so the trade-open email can
+#                                 draw the funnel on the real price timeline. Added
+#                                 to get_hvf_signal, _run_hvf_on_hist and surfaced
+#                                 by analyse_price_action (hvf_h1_date..hvf_l3_date).
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -1049,6 +1054,22 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
         l3 = best_pattern["l3"]
         initial_range = best_pattern["initial_range"]
 
+        # ── Pivot DATES ───────────────────────────────────────────────────────
+        # best_pattern stores each pivot as (bar_index, price). Map the index to a
+        # calendar date so the trade-open email can overlay the funnel on the real
+        # price timeline (lower-highs line H1→H3, higher-lows line L1→L3). User
+        # 2026-06-10. Set on `result` now so BOTH the DEVELOPING and the tradeable
+        # result paths below inherit them (neither overwrites the *_date keys).
+        def _pivot_date(piv):
+            try:
+                return hist.index[piv[0]].strftime("%Y-%m-%d")
+            except Exception:
+                return None
+        result.update({
+            "h1_date": _pivot_date(h1), "h2_date": _pivot_date(h2), "h3_date": _pivot_date(h3),
+            "l1_date": _pivot_date(l1), "l2_date": _pivot_date(l2), "l3_date": _pivot_date(l3),
+        })
+
         # ── Volume profile check (Pattern Checker criterion #4) ───────────────
         # Volume should DECLINE as price compresses into the funnel (the coil),
         # then EXPAND on the breakout above H3 (bullish) or below L3 (bearish).
@@ -1362,6 +1383,11 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
         else:
             hvf_sig = "READY"
 
+        def _pivot_date(piv):
+            try:
+                return hist.index[piv[0]].strftime("%Y-%m-%d")
+            except Exception:
+                return None
         result.update({
             "hvf_type": hvf_type, "hvf_signal": hvf_sig,
             "h3_level": entry, "l3_level": round(l3[1], 4),
@@ -1372,6 +1398,10 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
             "pattern_quality": best_quality,
             "convergence": round(best_pattern["convergence"], 3),
             "volume_confirmed": False,
+            # Pivot dates for the trade-email funnel overlay (user 2026-06-10).
+            "h1_date": _pivot_date(best_pattern["h1"]), "h2_date": _pivot_date(best_pattern["h2"]),
+            "h3_date": _pivot_date(best_pattern["h3"]), "l1_date": _pivot_date(best_pattern["l1"]),
+            "l2_date": _pivot_date(best_pattern["l2"]), "l3_date": _pivot_date(best_pattern["l3"]),
         })
     except Exception as e:
         log.warning(f"HVF weekly scan failed for {ticker}: {e}")
@@ -1512,6 +1542,13 @@ def analyse_price_action(ticker: str) -> dict:
         "hvf_h2_level":      hvf.get("h2_level"),          # second lower-high
         "hvf_l1_level":      hvf.get("l1_level"),          # first higher-low (funnel bottom) — for the email chart
         "hvf_l2_level":      hvf.get("l2_level"),          # second higher-low
+        # Pivot DATES for the trade-open email's funnel-on-price overlay (user 2026-06-10).
+        "hvf_h1_date":       hvf.get("h1_date"),
+        "hvf_h2_date":       hvf.get("h2_date"),
+        "hvf_h3_date":       hvf.get("h3_date"),
+        "hvf_l1_date":       hvf.get("l1_date"),
+        "hvf_l2_date":       hvf.get("l2_date"),
+        "hvf_l3_date":       hvf.get("l3_date"),
         "hvf_stop_level":    hvf.get("stop_level"),        # exact stop price
         "hvf_target":        hvf.get("target"),            # H1-L1 range target
         "hvf_risk_reward":   hvf.get("risk_reward"),       # pre-calculated R:R

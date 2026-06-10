@@ -6,12 +6,15 @@
 # Description:
 # -----------------------------------------------------------------------------
 # Email the investment case + charts to a configurable recipient list whenever a
-# trade is opened (user directive 2026-06-09). Charts: price history, volume
-# history, and the HVF funnel (lower-highs / higher-lows converging, with
-# entry/stop/target).
+# trade is opened (user directive 2026-06-09). The investment case explains WHY:
+# each fired primary/confirmation is shown with its supporting detail — Options
+# flow (call/put + IV rank + GEX), Director buys (insider count + window + names)
+# and COT positioning (score, extremes, OI, net + WoW change). Charts: price
+# history with the HVF funnel overlaid on the real timeline, volume history, and a
+# standalone HVF funnel schematic (entry/stop/target).
 #
-# Sender:     Yahoo SMTP (smtp.mail.yahoo.com:587, STARTTLS) authenticated with
-#             YAHOO_USER + YAHOO_APP_PASSWORD (GitHub secrets / app password).
+# Sender:     Resend HTTP API (RESEND_API_KEY) preferred; Yahoo SMTP (465/SSL,
+#             YAHOO_USER + YAHOO_APP_PASSWORD) as fallback.
 # Recipients: config.EMAIL_RECIPIENTS (default ["eahind@yahoo.co.uk"]).
 #
 # FAIL-SAFE: send_trade_email() never raises — a mail/chart failure must NEVER
@@ -22,6 +25,10 @@
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-09  Alex Hind   Initial build — Yahoo SMTP, investment-case body,
 #                                 inline price / volume / HVF-funnel charts.
+# 1.1.0   2026-06-10  Alex Hind   Show supporting detail for Options flow, Director
+#                                 buys and COT positioning in the investment case;
+#                                 overlay the HVF funnel on the price-history chart
+#                                 (real timeline, via pivot dates). User 2026-06-10.
 # =============================================================================
 
 import os
@@ -59,9 +66,83 @@ def _num(v):
         return None
 
 
+def _overlay_hvf_funnel(ax, hist, levels, date_map):
+    """
+    Overlay the HVF funnel on a price chart's REAL date axis: the descending
+    lower-highs line (H1→H3) and the ascending higher-lows line (L1→L3), pivots
+    marked. Uses the pivot DATES when the sig carries them (exact placement on the
+    timeline); otherwise approximates the funnel across the most recent ~40 bars so
+    a funnel is always shown. Best-effort — never raises (a failure just omits the
+    overlay; the price line still renders).
+    """
+    try:
+        import pandas as pd
+        h1, h2, h3, l1, l2, l3 = levels
+        if not all((h1, h3, l1, l3)) or len(hist.index) < 3:
+            return
+        idx = hist.index
+
+        def _xpos(date_str):
+            """Snap a 'YYYY-MM-DD' pivot date to the nearest bar on the price axis."""
+            if not date_str:
+                return None
+            try:
+                ts = pd.Timestamp(date_str)
+                if idx.tz is not None and ts.tzinfo is None:
+                    ts = ts.tz_localize(idx.tz)
+                elif idx.tz is None and ts.tzinfo is not None:
+                    ts = ts.tz_localize(None)
+                return idx[idx.get_indexer([ts], method="nearest")[0]]
+            except Exception:
+                return None
+
+        highs = [(_xpos(date_map.get("hvf_h1_date")), h1),
+                 (_xpos(date_map.get("hvf_h2_date")), h2),
+                 (_xpos(date_map.get("hvf_h3_date")), h3)]
+        lows  = [(_xpos(date_map.get("hvf_l1_date")), l1),
+                 (_xpos(date_map.get("hvf_l2_date")), l2),
+                 (_xpos(date_map.get("hvf_l3_date")), l3)]
+        highs = [(x, y) for x, y in highs if x is not None and y]
+        lows  = [(x, y) for x, y in lows  if x is not None and y]
+
+        if len(highs) >= 2 and len(lows) >= 2:
+            h_labels = ["H1", "H2", "H3"][:len(highs)]
+            l_labels = ["L1", "L2", "L3"][:len(lows)]
+        else:
+            # Fallback: draw the converging funnel over the last ~40 bars (apex = latest bar).
+            n = len(idx)
+            span = min(40, max(10, n // 4))
+            x0, x1 = idx[max(0, n - span)], idx[-1]
+            highs = [(x0, h1), (x1, h3)]
+            lows  = [(x0, l1), (x1, l3)]
+            h_labels, l_labels = ["H1", "H3"], ["L1", "L3"]
+
+        hx = [x for x, _ in highs]; hy = [y for _, y in highs]
+        lx = [x for x, _ in lows];  ly = [y for _, y in lows]
+        ax.plot(hx, hy, "r--o", lw=1.4, ms=5, label="HVF lower highs (H1>H2>H3)")
+        ax.plot(lx, ly, "g--o", lw=1.4, ms=5, label="HVF higher lows (L1<L2<L3)")
+        try:
+            ax.fill_between([hx[0], hx[-1]], [hy[0], hy[-1]], [ly[0], ly[-1]],
+                            color="grey", alpha=0.10, zorder=0)
+        except Exception:
+            pass
+        for (x, y), lab in zip(highs, h_labels):
+            ax.annotate(lab, (x, y), textcoords="offset points", xytext=(0, 6),
+                        fontsize=7, color="red", ha="center")
+        for (x, y), lab in zip(lows, l_labels):
+            ax.annotate(lab, (x, y), textcoords="offset points", xytext=(0, -12),
+                        fontsize=7, color="green", ha="center")
+    except Exception:
+        return
+
+
 def build_charts(ticker: str, sig: dict, trade: dict) -> list:
     """
-    Return [(cid, filename, png_bytes), ...] for price, volume and HVF-funnel charts.
+    Return [(cid, filename, png_bytes), ...] for the trade-open email:
+      1. Price history (6mo) + entry/stop/target AND the HVF funnel overlaid on the
+         REAL price timeline (lower-highs H1→H3, higher-lows L1→L3).
+      2. Volume history (6mo).
+      3. HVF funnel schematic (clean close-up with R:R / quality).
     Best-effort: any failure yields fewer (or no) charts, never an exception.
     """
     charts = []
@@ -76,50 +157,75 @@ def build_charts(ticker: str, sig: dict, trade: dict) -> list:
         stop  = _num(trade.get("stop_level"))
         targ  = _num(trade.get("limit_level"))
 
-        yt = YAHOO_MAP.get(ticker, ticker)
-        try:
-            hist = yf.Ticker(yt).history(period="6mo", interval="1d")
-        except Exception:
-            hist = None
-
-        if hist is not None and not hist.empty:
-            # 1) Price history with entry/stop/target
-            fig, ax = plt.subplots(figsize=(9, 4))
-            ax.plot(hist.index, hist["Close"], color="#1f77b4", lw=1.3, label="Close")
-            for lvl, lab, col in ((entry, "Entry", "green"), (stop, "Stop", "red"), (targ, "Target", "orange")):
-                if lvl:
-                    ax.axhline(lvl, color=col, ls="--", lw=1, label=f"{lab} {lvl:g}")
-            ax.set_title(f"{ticker} — Price history (6 months)")
-            ax.legend(fontsize=8, loc="best")
-            ax.grid(alpha=0.3)
-            charts.append(("price", "price.png", _fig_png(fig)))
-
-            # 2) Volume history
-            fig, ax = plt.subplots(figsize=(9, 3))
-            ax.bar(hist.index, hist["Volume"], color="#888888", width=1.0)
-            ax.set_title(f"{ticker} — Volume history (6 months)")
-            ax.grid(alpha=0.3)
-            charts.append(("volume", "volume.png", _fig_png(fig)))
-
-        # 3) HVF funnel — three descending lower-highs (H1>H2>H3) and three ascending
-        # higher-lows (L1<L2<L3) converging into the apex, with entry (H3) / stop /
-        # target. This is the visual definition of the Hunt Volatility Funnel.
-        h1 = _num(sig.get("hvf_h1_level") or sig.get("h1_level"))
-        h2 = _num(sig.get("hvf_h2_level") or sig.get("h2_level"))
-        h3 = _num(sig.get("hvf_h3_level") or sig.get("h3_level"))
-        l1 = _num(sig.get("hvf_l1_level") or sig.get("l1_level"))
-        l2 = _num(sig.get("hvf_l2_level") or sig.get("l2_level"))
-        l3 = _num(sig.get("hvf_l3_level") or sig.get("l3_level"))
+        # ── Gather the HVF funnel ONCE (levels + pivot dates) — used by BOTH the
+        #    price-chart overlay (#1) and the standalone schematic (#3). ──────────
+        def _lvl(*keys):
+            for k in keys:
+                v = _num(sig.get(k))
+                if v:
+                    return v
+            return None
+        h1 = _lvl("hvf_h1_level", "h1_level"); h2 = _lvl("hvf_h2_level", "h2_level"); h3 = _lvl("hvf_h3_level", "h3_level")
+        l1 = _lvl("hvf_l1_level", "l1_level"); l2 = _lvl("hvf_l2_level", "l2_level"); l3 = _lvl("hvf_l3_level", "l3_level")
+        dates = {k: sig.get(k) for k in (
+            "hvf_h1_date", "hvf_h2_date", "hvf_h3_date", "hvf_l1_date", "hvf_l2_date", "hvf_l3_date")}
         if not all((h1, h3, l1, l3)):
-            # Re-derive the funnel levels from price_action if the sig didn't carry them.
+            # Re-derive the funnel (levels + dates) from price_action if sig lacked it.
             try:
                 from price_action import get_hvf_signal_mtf, get_trend_structure
                 hv = get_hvf_signal_mtf(ticker, trend_hint=get_trend_structure(ticker))
                 h1 = h1 or _num(hv.get("h1_level")); h2 = h2 or _num(hv.get("h2_level")); h3 = h3 or _num(hv.get("h3_level"))
                 l1 = l1 or _num(hv.get("l1_level")); l2 = l2 or _num(hv.get("l2_level")); l3 = l3 or _num(hv.get("l3_level"))
                 stop = stop or _num(hv.get("stop_level")); targ = targ or _num(hv.get("target"))
+                if not any(dates.values()):
+                    dates = {f"hvf_{p}_date": hv.get(f"{p}_date") for p in ("h1", "h2", "h3", "l1", "l2", "l3")}
             except Exception:
                 pass
+
+        # Widen the chart window if the funnel's oldest pivot predates 6 months
+        # (weekly funnels can span >1 year) so the entire funnel is visible rather
+        # than clamped to the chart's left edge. Defaults to 6 months.
+        period, plabel = "6mo", "6 months"
+        try:
+            import pandas as pd
+            _ds = [pd.Timestamp(d) for d in dates.values() if d]
+            if _ds:
+                _months = (pd.Timestamp.now() - min(_ds)).days / 30.4
+                if   _months > 22:  period, plabel = "5y", "5 years"
+                elif _months > 11:  period, plabel = "2y", "2 years"
+                elif _months > 5.5: period, plabel = "1y", "1 year"
+        except Exception:
+            period, plabel = "6mo", "6 months"
+
+        yt = YAHOO_MAP.get(ticker, ticker)
+        try:
+            hist = yf.Ticker(yt).history(period=period, interval="1d")
+        except Exception:
+            hist = None
+
+        if hist is not None and not hist.empty:
+            # 1) Price history + entry/stop/target + HVF funnel overlay on the real axis
+            fig, ax = plt.subplots(figsize=(9, 4.5))
+            ax.plot(hist.index, hist["Close"], color="#1f77b4", lw=1.3, label="Close")
+            _overlay_hvf_funnel(ax, hist, (h1, h2, h3, l1, l2, l3), dates)
+            for lvl, lab, col in ((entry, "Entry", "green"), (stop, "Stop", "red"), (targ, "Target", "orange")):
+                if lvl:
+                    ax.axhline(lvl, color=col, ls="--", lw=1, label=f"{lab} {lvl:g}")
+            ax.set_title(f"{ticker} — Price history ({plabel}) with HVF funnel")
+            ax.legend(fontsize=7, loc="best")
+            ax.grid(alpha=0.3)
+            charts.append(("price", "price.png", _fig_png(fig)))
+
+            # 2) Volume history
+            fig, ax = plt.subplots(figsize=(9, 3))
+            ax.bar(hist.index, hist["Volume"], color="#888888", width=1.0)
+            ax.set_title(f"{ticker} — Volume history ({plabel})")
+            ax.grid(alpha=0.3)
+            charts.append(("volume", "volume.png", _fig_png(fig)))
+
+        # 3) HVF funnel schematic — three descending lower-highs (H1>H2>H3) and three
+        # ascending higher-lows (L1<L2<L3) converging into the apex, with entry (H3) /
+        # stop / target. The visual definition of the Hunt Volatility Funnel.
         if all((h1, h3, l1, l3)):
             fig, ax = plt.subplots(figsize=(8.5, 4.5))
             # Plot the three highs and three lows at pivot positions 1, 2, 3 (H2/L2
@@ -183,14 +289,30 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
     pc = sig.get("primary_count", len(primaries))
     cc = sig.get("confirmation_count", len(confirmations))
 
-    # Fallback for sigs without the named lists — derive primaries from raw fields.
+    # Fallback for sigs without the named lists — derive from raw fields, carrying
+    # the same supporting detail the source builds (options call/put + IV rank; COT
+    # score/extremes/OI; director count + names).
     if not primaries:
         if sig.get("options_bias") in ("BULLISH", "BEARISH"):
-            primaries.append(f"Options flow {sig['options_bias']}")
+            _ob = []
+            if sig.get("call_put_ratio") is not None: _ob.append(f"call/put {sig['call_put_ratio']:.2f}")
+            if sig.get("iv_rank") is not None:         _ob.append(f"IV rank {sig['iv_rank']}%")
+            primaries.append(f"Options flow {sig['options_bias']}" + (f" — {', '.join(_ob)}" if _ob else ""))
         if sig.get("bb_breakout_dir") in ("BULLISH", "BEARISH"):
             primaries.append(f"BB breakout {sig['bb_breakout_dir']}")
         if sig.get("hvf_type"):
             primaries.append(f"HVF {sig.get('hvf_type')} {sig.get('hvf_signal','')}".strip())
+    if not confirmations:
+        if sig.get("director_signal"):
+            confirmations.append("Director buys — " + (sig.get("director_detail") or "insider cluster (Form 4)"))
+        if sig.get("cot_bias") in ("BULLISH", "BEARISH"):
+            _cb = []
+            if sig.get("cot_score"): _cb.append(f"score {sig['cot_score']:+.0f}")
+            if sig.get("cot_comm_extreme") and sig["cot_comm_extreme"] != "NORMAL":
+                _cb.append(f"commercials {sig['cot_comm_extreme']}")
+            if sig.get("cot_oi_signal") and sig["cot_oi_signal"] != "NEUTRAL":
+                _cb.append(f"OI {sig['cot_oi_signal']}")
+            confirmations.append(f"COT positioning {sig['cot_bias']}" + (f" — {', '.join(_cb)}" if _cb else ""))
 
     rationale = (f"{pc} primary signal{'s' if pc != 1 else ''} pointed {direction}"
                  + (f", backed by {cc} confirmation{'s' if cc != 1 else ''}" if cc else ""))
@@ -326,12 +448,24 @@ if __name__ == "__main__":
             "hvf_quality": 82, "hvf_h1_level": 268.0, "hvf_h2_level": 262.0, "hvf_h3_level": 256.6,
             "hvf_l1_level": 238.0, "hvf_l2_level": 243.0, "hvf_l3_level": 248.0, "hvf_stop_level": 246.0,
             "hvf_target": 300.0, "pa_verdict": "CONFIRM_LONG", "pa_score": 45,
+            # Pivot dates — exercise the funnel-on-price overlay (within the 6mo window).
+            "hvf_h1_date": "2026-03-02", "hvf_h2_date": "2026-04-06", "hvf_h3_date": "2026-05-18",
+            "hvf_l1_date": "2026-03-16", "hvf_l2_date": "2026-04-20", "hvf_l3_date": "2026-05-26",
+            # Structured fields (exercise the fallback detail path too).
+            "call_put_ratio": 1.85, "iv_rank": 72, "options_bias": "BULLISH",
+            "cot_bias": "BULLISH", "cot_score": 42.0, "cot_comm_extreme": "EXTREME_LONG",
+            "cot_oi_signal": "rising", "cot_comm_net": 12340, "cot_comm_net_change": 2100,
+            "director_signal": True, "director_count": 3,
+            "director_detail": "3 insiders bought in last 30d (Form 4): A. Krishna, J. Kavanaugh [STRONG CLUSTER]",
             "primary_count": 3, "confirmation_count": 3,
             "primaries_fired": ["HVF BULLISH TRIGGERED (R:R 5.75, quality 82)",
-                                "Options flow BULLISH",
+                                "Options flow BULLISH — call/put 1.85, IV rank 72%, GEX BULLISH",
                                 "ADX directional BULLISH (+DI 30 / -DI 18, ADX 35)"],
-            "confirmations_fired": ["Director buys — 3 insiders in 30 days",
-                                    "COT positioning BULLISH", "Sector ETF XLK aligned"]}
+            "confirmations_fired": ["Director buys — 3 insiders bought in last 30d (Form 4): "
+                                    "A. Krishna, J. Kavanaugh [STRONG CLUSTER]",
+                                    "COT positioning BULLISH — score +42, commercials EXTREME_LONG, "
+                                    "OI rising, commercials net +12,340 (+2,100 WoW)",
+                                    "Sector ETF XLK aligned"]}
     _trade = {"level": 256.6, "stop_level": 246.0, "limit_level": 300.0, "deal_id": "TEST"}
     if "--send" in sys.argv:
         ok = send_trade_email("IBM", "BUY", _sig, _trade, size=1.0, session_name="EMAIL_TEST")

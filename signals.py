@@ -65,6 +65,14 @@
 #                                 Now returns gex=None with a warning when no real
 #                                 gamma data found. signal_log INSERT: retry up to
 #                                 2× on pg8000 08P01 bind error (OIL 04-Jun-2026).
+# 1.5.0   2026-06-10  Alex Hind   Trade-email detail (user 2026-06-10): enrich the
+#                                 fired-signal strings — Options flow now carries
+#                                 call/put ratio + IV rank + GEX bias; Director buys
+#                                 carries insider count + 30d window + names; COT
+#                                 positioning carries composite score, commercial /
+#                                 managed-money extremes, OI signal, price divergence
+#                                 and net + WoW change. Carry HVF pivot dates,
+#                                 director_count and cot_comm_net in the signal dict.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -588,9 +596,10 @@ def get_director_buys(ticker: str, days: int = 30) -> dict:
         # will also satisfy the 2+ confirmation requirement.
         result["director_cluster_strong"] = len(purchases) >= 3
         if purchases:
-            names = ", ".join(set(p["entity"] for p in purchases[:5]))
+            names = ", ".join(sorted(set(p["entity"] for p in purchases[:5] if p["entity"])))
             result["director_detail"] = (
-                f"{len(purchases)} Form 4 filings: {names}"
+                f"{len(purchases)} insiders bought in last {days}d (Form 4)"
+                + (f": {names}" if names else "")
                 + (" [STRONG CLUSTER]" if len(purchases) >= 3 else "")
             )
 
@@ -1634,7 +1643,17 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     # trade-open email can EXPLAIN the trade (not just show counts). User 2026-06-10.
     primaries_fired = []
     if options_dir in ("BULLISH", "BEARISH"):
-        primaries_fired.append(f"Options flow {options_dir}")
+        # Show the evidence behind the bias: call/put volume ratio, IV rank, and
+        # dealer gamma (GEX) bias when non-neutral. User 2026-06-10.
+        _opt_bits = []
+        if options.get("call_put_ratio") is not None:
+            _opt_bits.append(f"call/put {options['call_put_ratio']:.2f}")
+        if options.get("iv_rank") is not None:
+            _opt_bits.append(f"IV rank {options['iv_rank']}%")
+        if gex.get("gex_bias") and gex.get("gex_bias") != "NEUTRAL":
+            _opt_bits.append(f"GEX {gex['gex_bias']}")
+        primaries_fired.append(
+            f"Options flow {options_dir}" + (f" — {', '.join(_opt_bits)}" if _opt_bits else ""))
     if bb_dir in ("BULLISH", "BEARISH"):
         primaries_fired.append(f"BB breakout {bb_dir}")
     elif high_volume and vwap.get("vwap_position") in ("ABOVE", "BELOW"):
@@ -1654,8 +1673,9 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
 
     confirmations_fired = []
     if directors.get("director_signal"):
-        confirmations_fired.append(f"Director buys — {directors.get('director_detail')}"
-                                   if directors.get("director_detail") else "Director cluster buys")
+        # director_detail already reads "N insiders bought in last 30d (Form 4): NAMES".
+        confirmations_fired.append("Director buys — " +
+                                   (directors.get("director_detail") or "insider cluster (Form 4)"))
     if activist.get("activist_signal"):
         confirmations_fired.append(f"Activist 13D — {activist.get('activist_detail', '')}".strip(" —"))
     if senate.get("senate_signal"):
@@ -1665,7 +1685,26 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     if social.get("social_signal"):
         confirmations_fired.append("Social mention")
     if cot.get("bias") in ("BULLISH", "BEARISH"):
-        confirmations_fired.append(f"COT positioning {cot.get('bias')}")
+        # Show what's driving the COT bias: composite score, positioning extremes,
+        # open-interest signal, price divergence and commercial net + WoW change.
+        _cot_bits = []
+        if cot.get("cot_score"):
+            _cot_bits.append(f"score {cot['cot_score']:+.0f}")
+        if cot.get("comm_extreme") and cot["comm_extreme"] != "NORMAL":
+            _cot_bits.append(f"commercials {cot['comm_extreme']}")
+        if cot.get("mm_extreme") and cot["mm_extreme"] != "NORMAL":
+            _cot_bits.append(f"managed-money {cot['mm_extreme']}")
+        if cot.get("oi_signal") and cot["oi_signal"] != "NEUTRAL":
+            _cot_bits.append(f"OI {cot['oi_signal']}")
+        if cot.get("price_divergence") and cot["price_divergence"] != "NONE":
+            _cot_bits.append(f"price divergence {cot['price_divergence']}")
+        if cot.get("comm_net") is not None:
+            _net = f"commercials net {int(cot['comm_net']):+,}"
+            if cot.get("comm_net_change") is not None:
+                _net += f" ({int(cot['comm_net_change']):+,} WoW)"
+            _cot_bits.append(_net)
+        confirmations_fired.append(
+            f"COT positioning {cot.get('bias')}" + (f" — {', '.join(_cot_bits)}" if _cot_bits else ""))
     if adx.get("adx_signal") == "STRONG_TREND":
         confirmations_fired.append("ADX strong trend")
     if (obv.get("obv_signal") in ("BULLISH_DIVERGENCE", "CONFIRMING_BULLISH") and direction == "BUY") or \
@@ -1736,6 +1775,8 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "cot_mm_extreme":        cot.get("mm_extreme"),
         "cot_price_divergence":  cot.get("price_divergence"),
         "cot_oi_signal":         cot.get("oi_signal"),
+        "cot_comm_net":          cot.get("comm_net"),
+        "cot_comm_net_change":   cot.get("comm_net_change"),
         "commodity_macro_score":    comm_macro.get("commodity_macro_score"),
         "commodity_macro_summary":  comm_macro.get("commodity_macro_summary"),
         "supply_demand_signal":     supply_demand.get("signal"),
@@ -1768,6 +1809,13 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "hvf_l1_level":      price_act.get("hvf_l1_level"),
         "hvf_l2_level":      price_act.get("hvf_l2_level"),
         "hvf_l3_level":      price_act.get("hvf_l3_level"),
+        # Pivot dates — let the trade-open email draw the funnel on the real price axis.
+        "hvf_h1_date":       price_act.get("hvf_h1_date"),
+        "hvf_h2_date":       price_act.get("hvf_h2_date"),
+        "hvf_h3_date":       price_act.get("hvf_h3_date"),
+        "hvf_l1_date":       price_act.get("hvf_l1_date"),
+        "hvf_l2_date":       price_act.get("hvf_l2_date"),
+        "hvf_l3_date":       price_act.get("hvf_l3_date"),
 
         # Analyst / broker signals
         "analyst_signal":           analyst.get("signal"),
@@ -1778,6 +1826,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "analyst_narrative":        analyst.get("narrative"),
         "director_signal":         directors.get("director_signal"),
         "director_cluster_strong": directors.get("director_cluster_strong", False),
+        "director_count":          directors.get("director_count"),
         "director_detail":         directors.get("director_detail"),
         "activist_signal":   activist.get("activist_signal"),
         "activist_detail":   activist.get("activist_detail"),
