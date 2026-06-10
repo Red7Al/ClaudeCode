@@ -24,6 +24,9 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-05  Alex Hind   Initial build — all session/report cron jobs.
+# 1.5.0   2026-06-10  Alex Hind   Add "US HVF Watch" job (30 14,16,18,20 Mon-Fri
+#                                 → trading-us-hvf-watch.yml). HVF watch decoupled
+#                                 from 30-min US Monitor; runs 2-hourly with dedup.
 # 1.4.0   2026-06-09  Alex Hind   Increased monitoring frequency (user: "best
 #                                 information", GitHub-cron limit no longer applies):
 #                                 session monitors */20->*/5, commodity */30->*/10,
@@ -105,6 +108,7 @@ JOBS = [
     # ── US session ──────────────────────────────────────────────────────────
     ("US Open",              "30 14 * * 1-5",    "trading-us-open.yml"),
     ("US Monitor",           "*/5 14-21 * * 1-5","trading-us-monitor.yml"),
+    ("US HVF Watch",         "30 14,16,18,20 * * 1-5", "trading-us-hvf-watch.yml"),
     ("Social Monitor",       "*/15 7-22 * * 1-5",   "trading-social-monitor.yml"),
     # ── Close & reports ─────────────────────────────────────────────────────
     ("Commodity Monitor PM", "*/10 21-23 * * 1-5","trading-commodity-monitor.yml"),
