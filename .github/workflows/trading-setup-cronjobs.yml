@@ -1,18 +1,27 @@
-name: Setup Cron Jobs — reconcile schedules (2026-06-09)
+name: Setup Cron Jobs — reconcile schedules (2026-06-10)
 
-# Applies setup_cronjobs.py JOBS frequencies to the live cron-job.org account.
-# Runs in --reconcile mode: PATCHes ONLY each existing job's schedule, preserving
-# its stored GitHub auth header — so retuning cadence needs CRONJOB_API_KEY only
-# (no PAT). Dispatch this whenever the JOBS frequencies in setup_cronjobs.py change.
-# workflow_dispatch only — this mutates the scheduler and must never self-trigger.
+# --reconcile (default): PATCHes ONLY each existing job's schedule.
+#   Needs CRONJOB_API_KEY only. Use after changing cadence in setup_cronjobs.py.
+# --create-missing: creates any JOBS entries not yet on cron-job.org.
+#   Needs CRONJOB_API_KEY + GH_PAT (PAT is embedded in the new job's auth header).
+#   Safe to re-run — skips existing jobs.
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'reconcile = retune schedules only | create-missing = add new jobs'
+        required: false
+        default: 'reconcile'
+        type: choice
+        options:
+          - reconcile
+          - create-missing
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  reconcile:
+  setup:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
@@ -21,6 +30,14 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install requests
-      - run: python setup_cronjobs.py --reconcile
+      - name: Reconcile schedules
+        if: ${{ github.event.inputs.mode == 'reconcile' || github.event.inputs.mode == '' }}
+        run: python setup_cronjobs.py --reconcile
         env:
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+      - name: Create missing jobs
+        if: ${{ github.event.inputs.mode == 'create-missing' }}
+        run: python setup_cronjobs.py --create-missing
+        env:
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          GITHUB_TOKEN:    ${{ secrets.GH_PAT }}

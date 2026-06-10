@@ -24,6 +24,10 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-05  Alex Hind   Initial build — all session/report cron jobs.
+# 1.6.0   2026-06-10  Alex Hind   --create-missing mode: creates only JOBS not yet
+#                                 on cron-job.org (skips existing). Safe to re-run.
+#                                 Workflow updated to expose mode input (reconcile /
+#                                 create-missing) and pass GH_PAT as GITHUB_TOKEN.
 # 1.5.0   2026-06-10  Alex Hind   Add "US HVF Watch" job (30 14,16,18,20 Mon-Fri
 #                                 → trading-us-hvf-watch.yml). HVF watch decoupled
 #                                 from 30-min US Monitor; runs 2-hourly with dedup.
@@ -254,6 +258,39 @@ def reconcile_schedules():
         raise SystemExit(1)
 
 
+def create_missing_jobs():
+    """
+    Create only JOBS entries not yet on cron-job.org. Skips existing jobs.
+    Safe to re-run. Requires CRONJOB_API_KEY + GITHUB_TOKEN (PAT).
+    """
+    if not GITHUB_TOKEN:
+        print("ERROR: --create-missing needs GITHUB_TOKEN (PAT). "
+              "Set GH_PAT secret or pass GITHUB_TOKEN env var.")
+        raise SystemExit(1)
+
+    existing = get_existing_jobs()
+    print(f"Existing jobs on account: {len(existing)}")
+
+    created = skipped = failed = 0
+    for title, cron, workflow in JOBS:
+        if title in existing:
+            print(f"  SKIP (exists): {title}")
+            skipped += 1
+            continue
+        try:
+            job_id = create_job(title, cron, workflow)
+            print(f"  CREATED: {title}  [{cron}]  → {workflow}  (id={job_id})")
+            created += 1
+        except Exception as e:
+            print(f"  FAIL: {title} — {e}")
+            failed += 1
+
+    print()
+    print(f"Done: {created} created, {skipped} skipped, {failed} failed")
+    if failed:
+        raise SystemExit(1)
+
+
 def main():
     # --reconcile: only retune schedules of existing jobs (no GitHub PAT needed).
     if "--reconcile" in sys.argv:
@@ -261,6 +298,14 @@ def main():
         print(f"GitHub repo: {GITHUB_REPO}")
         print()
         reconcile_schedules()
+        return
+
+    # --create-missing: create any JOBS not yet on cron-job.org. Skips existing.
+    if "--create-missing" in sys.argv:
+        print("Creating missing cron-job.org jobs...")
+        print(f"GitHub repo: {GITHUB_REPO}")
+        print()
+        create_missing_jobs()
         return
 
     if not GITHUB_TOKEN:
