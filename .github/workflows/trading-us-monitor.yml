@@ -25,6 +25,7 @@ jobs:
       SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
       YAHOO_USER:            ${{ secrets.YAHOO_USER }}
       YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
+      RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

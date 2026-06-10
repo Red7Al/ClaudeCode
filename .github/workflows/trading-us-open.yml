@@ -41,4 +41,5 @@ jobs:
           SLACK_WEEKLY:          ${{ secrets.SLACK_WEEKLY }}
           YAHOO_USER:            ${{ secrets.YAHOO_USER }}
           YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
+          RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
           FORCE_RUN:             ${{ github.event.inputs.force_run || 'false' }}
