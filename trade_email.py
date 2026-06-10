@@ -29,6 +29,7 @@ import io
 import ssl
 import smtplib
 import logging
+import requests
 from email.message import EmailMessage
 from datetime import datetime, timezone
 
@@ -194,21 +195,73 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
 # Send
 # ---------------------------------------------------------------------------
 
+def _html_with_inline(html: str, charts: list) -> str:
+    return html + "".join(
+        f'<br><img src="cid:{cid}" style="max-width:720px;border:1px solid #ddd">'
+        for cid, _, _ in charts)
+
+
+def _send_via_resend(subject, text, html, charts, rcpts) -> bool:
+    """Send via the Resend HTTP API (no SMTP, no app password). Charts attached inline."""
+    import base64
+    key = os.environ.get("RESEND_API_KEY", "")
+    if not key:
+        return False
+    # Resend test mode (no verified domain) sends FROM onboarding@resend.dev and only
+    # delivers to the account-owner address. Set RESEND_FROM once a domain is verified.
+    sender = os.environ.get("RESEND_FROM", "onboarding@resend.dev")
+    payload = {
+        "from": sender, "to": rcpts, "subject": subject,
+        "text": text, "html": _html_with_inline(html, charts),
+        "attachments": [
+            {"filename": fname, "content": base64.b64encode(png).decode(), "content_id": cid}
+            for cid, fname, png in charts
+        ],
+    }
+    r = requests.post("https://api.resend.com/emails",
+                      headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                      json=payload, timeout=30)
+    if r.status_code >= 300:
+        log.error(f"Resend API {r.status_code}: {r.text[:300]}")
+        return False
+    log.info(f"Trade email sent via Resend to {rcpts} ({len(charts)} charts)")
+    return True
+
+
+def _send_via_yahoo(subject, text, html, charts, rcpts) -> bool:
+    """Fallback: Yahoo SMTP (465/SSL) with a 16-char app password (spaces stripped)."""
+    user = os.environ.get("YAHOO_USER", "").strip()
+    pw   = os.environ.get("YAHOO_APP_PASSWORD", "").replace(" ", "").strip()
+    if not (user and pw):
+        return False
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"]    = user
+    msg["To"]      = ", ".join(rcpts)
+    msg.set_content(text)
+    msg.add_alternative(_html_with_inline(html, charts), subtype="html")
+    html_part = msg.get_payload()[-1]
+    for cid, fname, png in charts:
+        html_part.add_related(png, maintype="image", subtype="png", cid=f"<{cid}>", filename=fname)
+    ctx = ssl.create_default_context()
+    with smtplib.SMTP_SSL(YAHOO_SMTP_HOST, YAHOO_SMTP_PORT, context=ctx, timeout=30) as s:
+        if os.environ.get("EMAIL_DEBUG"):
+            s.set_debuglevel(1)
+        s.ehlo()
+        s.login(user, pw)
+        s.send_message(msg)
+    log.info(f"Trade email sent via Yahoo SMTP to {rcpts} ({len(charts)} charts)")
+    return True
+
+
 def send_trade_email(ticker: str, direction: str, sig: dict, trade: dict,
                      size=None, session_name: str = "", recipients=None) -> bool:
     """
-    Email the investment case + charts for a newly opened trade. FAIL-SAFE: returns
-    False and logs on any problem; never raises into the trade-placement path.
+    Email the investment case + charts for a newly opened trade. Prefers the Resend
+    HTTP API (RESEND_API_KEY); falls back to Yahoo SMTP. FAIL-SAFE: returns False and
+    logs on any problem; never raises into the trade-placement path.
     """
     try:
-        user = os.environ.get("YAHOO_USER", "").strip()
-        # Yahoo shows app passwords as 4×4 groups ("abcd efgh ijkl mnop") but the
-        # real password is the 16 chars with NO spaces — strip them defensively
-        # (a space in the secret is the #1 cause of Yahoo 535 auth failures).
-        pw   = os.environ.get("YAHOO_APP_PASSWORD", "").replace(" ", "").strip()
-        if not (user and pw):
-            log.warning("YAHOO_USER / YAHOO_APP_PASSWORD not set — trade email skipped")
-            return False
         try:
             from config import EMAIL_RECIPIENTS
         except Exception:
@@ -217,39 +270,18 @@ def send_trade_email(ticker: str, direction: str, sig: dict, trade: dict,
         if not rcpts:
             return False
 
+        subject = f"Trade opened: {ticker} {direction} @ {trade.get('level', '?')}"
         text, html = _investment_case(ticker, direction, size, session_name, sig, trade)
-
-        msg = EmailMessage()
-        msg["Subject"] = f"Trade opened: {ticker} {direction} @ {trade.get('level', '?')}"
-        msg["From"]    = user
-        msg["To"]      = ", ".join(rcpts)
-        msg.set_content(text)
-
         charts = build_charts(ticker, sig, trade)
-        html_imgs = "".join(f'<br><img src="cid:{cid}" style="max-width:720px;border:1px solid #ddd">'
-                            for cid, _, _ in charts)
-        msg.add_alternative(html + html_imgs, subtype="html")
-        html_part = msg.get_payload()[-1]
-        for cid, fname, png in charts:
-            html_part.add_related(png, maintype="image", subtype="png",
-                                  cid=f"<{cid}>", filename=fname)
 
-        ctx = ssl.create_default_context()
-        # Implicit SSL on 465 (Yahoo intermittently drops 587/STARTTLS).
-        with smtplib.SMTP_SSL(YAHOO_SMTP_HOST, YAHOO_SMTP_PORT, context=ctx, timeout=30) as s:
-            if os.environ.get("EMAIL_DEBUG"):
-                s.set_debuglevel(1)
-            s.ehlo()
-            s.login(user, pw)
-            s.send_message(msg)
-        log.info(f"Trade email sent to {rcpts} for {ticker} ({len(charts)} charts)")
-        return True
+        if os.environ.get("RESEND_API_KEY"):
+            return _send_via_resend(subject, text, html, charts, rcpts)
+        if os.environ.get("YAHOO_USER") and os.environ.get("YAHOO_APP_PASSWORD"):
+            return _send_via_yahoo(subject, text, html, charts, rcpts)
+        log.warning("No email sender configured (RESEND_API_KEY or YAHOO_*) — trade email skipped")
+        return False
     except Exception as e:
-        # Log the exception TYPE + repr — "Connection unexpectedly closed" alone hides
-        # whether it's auth, IP-reputation, or handshake. user must be the FULL Yahoo
-        # address and the app password must have no spaces.
-        log.error(f"Trade email failed for {ticker}: {type(e).__name__}: {e!r} "
-                  f"(from='{user[:3]}…@…', recipients={rcpts})")
+        log.error(f"Trade email failed for {ticker}: {type(e).__name__}: {e!r}")
         return False
 
 
