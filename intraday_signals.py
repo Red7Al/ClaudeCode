@@ -49,6 +49,16 @@
 #                                 tweet-ready block per instrument (with HVF chart
 #                                 attached) to SLACK_X channel for review before
 #                                 manual posting to X.
+# 1.3.0   2026-06-10  Alex Hind   HVF watch deduplication: _post_hvf_watch now
+#                                 fingerprints the tradeable+developing lists and
+#                                 compares against the last-posted state in
+#                                 hvf_watch_state DB table. Sends "No changes in
+#                                 the latest period." when nothing has moved; full
+#                                 update only when figures actually change.
+#                                 HVF watch removed from run_us_monitor (was Part
+#                                 1.5 with a 30-min gate) — now a standalone
+#                                 US_HVF_WATCH session run every 2 hours via
+#                                 trading-us-hvf-watch.yml workflow.
 # =============================================================================
 
 import os
@@ -457,14 +467,107 @@ def hvf_watch_us_equities(open_tickers: set, notify_slack: bool = True) -> list:
     return tradeable
 
 
+def _hvf_fingerprint(tradeable: list, developing: list) -> str:
+    """
+    Stable fingerprint of the current HVF watch state.
+    Changes when any instrument is added/removed or its signal, R:R (1dp),
+    entry level (2dp), stop or target changes. Developing list is included
+    so additions/removals there also trigger a post.
+    """
+    import hashlib, json
+
+    def _item(r):
+        return (
+            r.get("ticker", ""),
+            r.get("hvf_type", ""),
+            r.get("hvf_signal", ""),
+            round(r.get("risk_reward") or 0, 1),
+            round(r.get("h3_level") or 0, 2),
+            round(r.get("stop_level") or 0, 2),
+            round(r.get("target") or 0, 2),
+        )
+
+    payload = {
+        "t": sorted([_item(r) for r in tradeable]),
+        "d": sorted([_item(r) for r in developing]),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def _hvf_last_fingerprint() -> str:
+    """Read the last-posted HVF watch fingerprint from DB. Returns '' on any error."""
+    try:
+        conn = _pool_get_db()
+        rows = conn.run(
+            "SELECT fingerprint FROM hvf_watch_state WHERE key = 'us_equities' LIMIT 1"
+        )
+        conn.close()
+        return rows[0][0] if rows else ""
+    except Exception as e:
+        log.debug(f"hvf_last_fingerprint read failed: {e}")
+        return ""
+
+
+def _hvf_save_fingerprint(fp: str):
+    """Upsert the current HVF watch fingerprint into DB."""
+    try:
+        conn = _pool_get_db()
+        conn.run(
+            """INSERT INTO hvf_watch_state (key, fingerprint, posted_at)
+               VALUES ('us_equities', :fp, now())
+               ON CONFLICT (key) DO UPDATE
+               SET fingerprint = EXCLUDED.fingerprint,
+                   posted_at   = EXCLUDED.posted_at""",
+            fp=fp,
+        )
+        conn.close()
+    except Exception as e:
+        log.warning(f"hvf_save_fingerprint failed (non-critical): {e}")
+
+
 def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
-    """Post the HVF equity-watch to #claude-trading-signals."""
+    """
+    Post the HVF equity-watch to #claude-trading-signals.
+
+    Deduplication: compute a fingerprint of the current tradeable+developing
+    lists. If it matches the last-posted fingerprint stored in hvf_watch_state,
+    send a short "No changes" notice instead of repeating the full list.
+    The fingerprint changes when any instrument is added/removed or its signal,
+    R:R, entry, stop or target changes.
+    """
     import requests
     from notify import fmt
     slack_url = os.environ.get("SLACK_SIGNALS", "")
     if not slack_url:
         return
 
+    now_str = datetime.now(timezone.utc).strftime("%d %b %H:%M UTC")
+
+    # ── Deduplication check ───────────────────────────────────────────────────
+    current_fp  = _hvf_fingerprint(tradeable, developing)
+    last_fp     = _hvf_last_fingerprint()
+
+    if current_fp == last_fp:
+        # Nothing changed — send a lightweight "no change" notice and return
+        blocks = [
+            {"type": "header",
+             "text": {"type": "plain_text", "text": "🌀 HVF Watch — US Equities (US Monitor)"}},
+            {"type": "section",
+             "text": {"type": "mrkdwn",
+                      "text": (f"*No changes in the latest period.*\n"
+                               f"_{len(tradeable)} tradeable, {len(developing)} developing — "
+                               f"unchanged since last post._")}},
+            {"type": "context",
+             "elements": [{"type": "mrkdwn",
+                            "text": f"Checked {now_str} | no figure changes detected"}]},
+        ]
+        try:
+            requests.post(slack_url, json={"blocks": blocks}, timeout=10)
+        except Exception as e:
+            log.error(f"HVF watch (no-change) post failed: {e}")
+        return
+
+    # ── Full update — something changed ──────────────────────────────────────
     def _line(r):
         d  = "🟢" if r.get("hvf_type") == "BULLISH" else "🔴"
         s  = {"TRIGGERED": "⚡", "READY": "✅", "DEVELOPING": "👀"}.get(r.get("hvf_signal", ""), "")
@@ -489,10 +592,11 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
         {"type": "context",
          "elements": [{"type": "mrkdwn",
                         "text": "_Trading runs via the monitor signal stack; this is the HVF visibility layer._ | "
-                                + datetime.now(timezone.utc).strftime("%d %b %H:%M UTC")}]},
+                                + now_str}]},
     ]
     try:
         requests.post(slack_url, json={"blocks": blocks}, timeout=10)
+        _hvf_save_fingerprint(current_fp)
     except Exception as e:
         log.error(f"HVF watch post failed: {e}")
 
@@ -738,17 +842,9 @@ def run_us_monitor(notify_slack: bool = True) -> list:
         if not scan["hold_flag"] and scan["alert"]:
             position_alerts.append(scan)
 
-    # ── Part 1.5: HVF watch on our US equities (visibility layer) ─────────────
-    # Run the rigorous MTF HVF scan over our US equities and surface tradeable +
-    # developing funnels to #signals. Gated to ~every 30 min (HVF patterns are
-    # daily-stable) to bound Yahoo load; trading still runs via Part 2 below.
-    if datetime.now(timezone.utc).minute % 30 < 5:
-        try:
-            hvf_watch_us_equities(open_tickers, notify_slack=notify_slack)
-        except Exception as e:
-            log.warning(f"HVF equity watch failed: {e}")
-
     # ── Part 2: Re-scan session instruments for NEW entries ───────────────────
+    # NOTE: HVF watch (visibility layer) is now a separate workflow
+    # (trading-us-hvf-watch.yml, session US_HVF_WATCH) running every 2 hours.
     new_trades_placed = 0
     if slots_remaining > 0:
         log.info(f"US Monitor: scanning for new entries ({slots_remaining} slot(s) remaining today)")

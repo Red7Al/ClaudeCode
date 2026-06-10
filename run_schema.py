@@ -251,6 +251,16 @@ MIGRATIONS = [
         "working_orders: index on ticker + placed_at",
         "CREATE INDEX IF NOT EXISTS idx_working_orders_ticker_placed ON working_orders(ticker, placed_at DESC)"
     ),
+    # ── hvf_watch_state — stores last-posted HVF watch fingerprint for dedup ──
+    (
+        "create hvf_watch_state",
+        """CREATE TABLE IF NOT EXISTS hvf_watch_state (
+            id          bigserial primary key,
+            key         text not null unique,
+            fingerprint text not null,
+            posted_at   timestamptz default now()
+        )"""
+    ),
 
 ]
 

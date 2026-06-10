@@ -1138,6 +1138,13 @@ if __name__ == "__main__":
     elif session == "US_MONITOR":
         from intraday_signals import run_us_monitor
         run_us_monitor(notify_slack=True)
+    elif session == "US_HVF_WATCH":
+        # 2-hourly HVF visibility layer — separate from the 30-min position/entry monitor.
+        # Posts to #signals only when figures change; "No changes" notice otherwise.
+        from intraday_signals import hvf_watch_us_equities
+        from config import SESSION_INSTRUMENTS
+        tickers = set(SESSION_INSTRUMENTS.get("US_OPEN", []))
+        hvf_watch_us_equities(tickers, notify_slack=True)
     elif session == "SESSION_CLOSE":
         run_session_close()
     elif session == "WEEKEND_REVIEW":

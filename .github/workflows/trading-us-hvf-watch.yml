@@ -1,0 +1,28 @@
+name: US HVF Watch (2-hourly) 2026-06-10
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+      FRED_API_KEY:          ${{ secrets.FRED_API_KEY }}
+      QUIVER_QUANT_API_KEY:  ${{ secrets.QUIVER_QUANT_API_KEY }}
+      SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
+      SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
+      SLACK_X:               ${{ secrets.SLACK_X }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_session.py US_HVF_WATCH
