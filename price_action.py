@@ -1503,6 +1503,8 @@ def analyse_price_action(ticker: str) -> dict:
         "hvf_signal":        hvf.get("hvf_signal"),        # READY / TRIGGERED / None
         "hvf_h3_level":      hvf.get("h3_level"),          # pending entry level
         "hvf_l3_level":      hvf.get("l3_level"),          # third low (stop reference)
+        "hvf_h1_level":      hvf.get("h1_level"),          # first lower-high (funnel top) — for the email chart
+        "hvf_l1_level":      hvf.get("l1_level"),          # first higher-low (funnel bottom) — for the email chart
         "hvf_stop_level":    hvf.get("stop_level"),        # exact stop price
         "hvf_target":        hvf.get("target"),            # H1-L1 range target
         "hvf_risk_reward":   hvf.get("risk_reward"),       # pre-calculated R:R

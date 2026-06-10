@@ -157,36 +157,48 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
         ("Session", session_name), ("Entry", entry), ("Stop", stop),
         ("Target", targ), ("R:R", rr_s),
     ]
-    signals = [
-        ("Options bias",  sig.get("options_bias")),
-        ("BB breakout",   sig.get("bb_breakout_dir")),
-        ("HVF",           f"{sig.get('hvf_type','')} {sig.get('hvf_signal','')}".strip() or None),
-        ("COT bias",      sig.get("cot_bias")),
-        ("Price action",  sig.get("pa_verdict")),
-        ("ADX",           sig.get("adx_signal")),
-        ("Director buys", sig.get("director_signal")),
-        ("Senate",        sig.get("senate_signal")),
-        ("Notable inv.",  sig.get("notable_investor")),
-        ("Social",        sig.get("social_mention")),
-        ("Primaries",     sig.get("primary_count")),
-        ("Confirmations", sig.get("confirmation_count")),
-    ]
-    sig_lines = [(k, v) for k, v in signals if v not in (None, "", "—", "NONE")]
+    # Named signals that fired (from scan_instrument). Explains WHY, not just counts.
+    primaries     = list(sig.get("primaries_fired") or [])
+    confirmations = list(sig.get("confirmations_fired") or [])
+    pc = sig.get("primary_count", len(primaries))
+    cc = sig.get("confirmation_count", len(confirmations))
+
+    # Fallback for sigs without the named lists — derive primaries from raw fields.
+    if not primaries:
+        if sig.get("options_bias") in ("BULLISH", "BEARISH"):
+            primaries.append(f"Options flow {sig['options_bias']}")
+        if sig.get("bb_breakout_dir") in ("BULLISH", "BEARISH"):
+            primaries.append(f"BB breakout {sig['bb_breakout_dir']}")
+        if sig.get("hvf_type"):
+            primaries.append(f"HVF {sig.get('hvf_type')} {sig.get('hvf_signal','')}".strip())
+
+    rationale = (f"{pc} primary signal{'s' if pc != 1 else ''} pointed {direction}"
+                 + (f", backed by {cc} confirmation{'s' if cc != 1 else ''}" if cc else ""))
 
     text = [f"Trade opened: {name} {direction}", "=" * 44]
     text += [f"{k:14}: {v}" for k, v in rows]
-    text += ["", "Why this trade (signals that fired):"]
-    text += [f"  • {k}: {v}" for k, v in sig_lines]
+    text += ["", f"WHY THIS IS A {direction}: {rationale}.", "", f"Primary signals ({pc}):"]
+    text += ([f"  • {p}" for p in primaries] or ["  • (none recorded)"])
+    text += ["", f"Confirmations ({cc}):"]
+    text += ([f"  • {c}" for c in confirmations] or ["  • (none recorded)"])
+    if sig.get("pa_verdict"):
+        text += ["", f"Price-action verdict: {sig.get('pa_verdict')} (score {sig.get('pa_score', '—')})"]
     text += ["", "Charts attached: price history, volume history, HVF funnel.",
              f"\nGenerated {datetime.now(timezone.utc):%d %b %Y %H:%M UTC} by EndToEndTrading."]
     text = "\n".join(str(t) for t in text)
 
     def _tr(k, v):
         return f"<tr><td style='padding:2px 10px;color:#555'>{k}</td><td style='padding:2px 10px'><b>{v}</b></td></tr>"
+    def _li(items):
+        return "".join(f"<li>{i}</li>" for i in items) or "<li><i>none recorded</i></li>"
     html = (
         f"<h2>Trade opened — {name} {direction}</h2>"
         f"<table>{''.join(_tr(k, v) for k, v in rows)}</table>"
-        f"<h3>Why this trade</h3><table>{''.join(_tr(k, v) for k, v in sig_lines)}</table>"
+        f"<p><b>Why this is a {direction}:</b> {rationale}.</p>"
+        f"<h3>Primary signals ({pc})</h3><ul>{_li(primaries)}</ul>"
+        f"<h3>Confirmations ({cc})</h3><ul>{_li(confirmations)}</ul>"
+        + (f"<p><b>Price-action verdict:</b> {sig.get('pa_verdict')} "
+           f"(score {sig.get('pa_score','—')})</p>" if sig.get('pa_verdict') else "")
     )
     return text, html
 
@@ -291,9 +303,16 @@ if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.INFO)
     _sig = {"hvf_type": "BULLISH", "hvf_signal": "TRIGGERED", "hvf_risk_reward": 5.75,
-            "options_bias": "BULLISH", "bb_breakout_dir": "UP", "pa_verdict": "CONFIRM_LONG",
-            "primary_count": 3, "confirmation_count": 3}
-    _trade = {"level": 256.6, "stop_level": 242.2, "limit_level": 339.3, "deal_id": "TEST"}
+            "hvf_quality": 82, "hvf_h1_level": 268.0, "hvf_h3_level": 256.6,
+            "hvf_l1_level": 238.0, "hvf_l3_level": 248.0, "hvf_stop_level": 246.0,
+            "hvf_target": 300.0, "pa_verdict": "CONFIRM_LONG", "pa_score": 45,
+            "primary_count": 3, "confirmation_count": 3,
+            "primaries_fired": ["HVF BULLISH TRIGGERED (R:R 5.75, quality 82)",
+                                "Options flow BULLISH",
+                                "ADX directional BULLISH (+DI 30 / -DI 18, ADX 35)"],
+            "confirmations_fired": ["Director buys — 3 insiders in 30 days",
+                                    "COT positioning BULLISH", "Sector ETF XLK aligned"]}
+    _trade = {"level": 256.6, "stop_level": 246.0, "limit_level": 300.0, "deal_id": "TEST"}
     if "--send" in sys.argv:
         ok = send_trade_email("IBM", "BUY", _sig, _trade, size=1.0, session_name="EMAIL_TEST")
         print(f"send_trade_email returned: {ok}")

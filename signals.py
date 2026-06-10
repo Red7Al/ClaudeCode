@@ -1631,6 +1631,53 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
             conf_count += 1
             log.info(f"{ticker}: sector ETF {sector.get('sector_etf')} {sector.get('sector_vwap_pos')} VWAP → conf +1")
 
+    # Named lists of which signals actually fired — mirrors the counting above so the
+    # trade-open email can EXPLAIN the trade (not just show counts). User 2026-06-10.
+    primaries_fired = []
+    if options_dir in ("BULLISH", "BEARISH"):
+        primaries_fired.append(f"Options flow {options_dir}")
+    if bb_dir in ("BULLISH", "BEARISH"):
+        primaries_fired.append(f"BB breakout {bb_dir}")
+    elif high_volume and vwap.get("vwap_position") in ("ABOVE", "BELOW"):
+        primaries_fired.append(f"High volume + price {vwap.get('vwap_position')} VWAP")
+    if hvf_fired:
+        primaries_fired.append(f"HVF {hvf_type} {hvf_sig} (R:R {price_act.get('hvf_risk_reward')}, "
+                               f"quality {price_act.get('hvf_quality')})")
+    if adx_dir:
+        primaries_fired.append(f"ADX directional {adx_dir} (+DI {di_plus} / -DI {di_minus}, ADX {adx_val})")
+    if orb_dir in ("BULLISH", "BEARISH"):
+        primaries_fired.append(f"ORB breakout {orb_dir}")
+    if week52_dir in ("BULLISH", "BEARISH"):
+        primaries_fired.append(f"52-week extreme {week52_dir}")
+    if potus_sen.get("primary_fired"):
+        primaries_fired.append(f"Elite senator / POTUS ({potus_sen.get('primary_source', '')} "
+                               f"{potus_sen.get('elite_senator_name') or potus_sen.get('potus_detail', '')})".strip())
+
+    confirmations_fired = []
+    if directors.get("director_signal"):
+        confirmations_fired.append(f"Director buys — {directors.get('director_detail')}"
+                                   if directors.get("director_detail") else "Director cluster buys")
+    if activist.get("activist_signal"):
+        confirmations_fired.append(f"Activist 13D — {activist.get('activist_detail', '')}".strip(" —"))
+    if senate.get("senate_signal"):
+        confirmations_fired.append(f"Senate buy — {senate.get('senate_senator', '')}".strip(" —"))
+    if superinv.get("superinvestor_signal"):
+        confirmations_fired.append(f"Superinvestor — {superinv.get('notable_investor', '')}".strip(" —"))
+    if social.get("social_signal"):
+        confirmations_fired.append("Social mention")
+    if cot.get("bias") in ("BULLISH", "BEARISH"):
+        confirmations_fired.append(f"COT positioning {cot.get('bias')}")
+    if adx.get("adx_signal") == "STRONG_TREND":
+        confirmations_fired.append("ADX strong trend")
+    if (obv.get("obv_signal") in ("BULLISH_DIVERGENCE", "CONFIRMING_BULLISH") and direction == "BUY") or \
+       (obv.get("obv_signal") in ("BEARISH_DIVERGENCE", "CONFIRMING_BEARISH") and direction == "SELL"):
+        confirmations_fired.append(f"OBV {obv.get('obv_signal')}")
+    if comm_score is not None and ((comm_score > 0 and direction == "BUY") or (comm_score < 0 and direction == "SELL")):
+        confirmations_fired.append("Commodity macro aligned")
+    if sector_dir in ("BULLISH", "BEARISH") and \
+       ((sector_dir == "BULLISH" and direction == "BUY") or (sector_dir == "BEARISH" and direction == "SELL")):
+        confirmations_fired.append(f"Sector ETF {sector.get('sector_etf', '')} aligned".strip())
+
     # Trade fires when: macro gate passes + primary threshold + 1 confirmation + PA confirms
     # Primary threshold: primary_count >= 2  OR  HVF fired alone
     # HVF bypass: HVF is high enough conviction to pass the primary stage unassisted.
@@ -1715,6 +1762,11 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "hvf_target":        price_act.get("hvf_target"),     # H1-L1 range target
         "hvf_risk_reward":   price_act.get("hvf_risk_reward"),
         "hvf_quality":       price_act.get("hvf_quality"),    # 0-100 pattern quality
+        # Funnel shape (for the trade-open email's HVF chart): lower-highs H1→H3,
+        # higher-lows L1→L3.
+        "hvf_h1_level":      price_act.get("hvf_h1_level"),
+        "hvf_l1_level":      price_act.get("hvf_l1_level"),
+        "hvf_l3_level":      price_act.get("hvf_l3_level"),
 
         # Analyst / broker signals
         "analyst_signal":           analyst.get("signal"),
@@ -1745,6 +1797,8 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         # Decision inputs
         "primary_count":     primary_count,
         "confirmation_count": conf_count,
+        "primaries_fired":   primaries_fired,      # named list — for the trade-open email
+        "confirmations_fired": confirmations_fired,
         "direction":         direction,
         "trade_signal":      trade_signal,
 
