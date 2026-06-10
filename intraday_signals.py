@@ -632,6 +632,34 @@ def _generate_x_drafts(tradeable: list):
         log.warning("SLACK_X not set — X draft reports skipped")
         return
 
+    # ── Batch fetch latest signal context per ticker from signal_log ──────────
+    # Enriches tweet with options flow / director buy confirmation when available.
+    # Fails silently — absence of this data never blocks the draft post.
+    _sig_ctx: dict = {}   # ticker → {options_bias, call_put_ratio, director_signal}
+    try:
+        tickers_in = tradeable[:10]
+        ticker_list = [r.get("ticker", "") for r in tickers_in if r.get("ticker")]
+        if ticker_list:
+            placeholders = ", ".join(f"'{t}'" for t in ticker_list)
+            conn = _pool_get_db()
+            rows = conn.run(f"""
+                SELECT DISTINCT ON (ticker)
+                       ticker, options_bias, call_put_ratio, iv_rank, director_signal
+                FROM signal_log
+                WHERE ticker IN ({placeholders})
+                ORDER BY ticker, session_time DESC
+            """)
+            conn.close()
+            for row in rows:
+                _sig_ctx[row[0]] = {
+                    "options_bias":   row[1],
+                    "call_put_ratio": row[2],
+                    "iv_rank":        row[3],
+                    "director_signal": row[4],
+                }
+    except Exception as e:
+        log.debug(f"X drafts: signal_log lookup failed (non-critical): {e}")
+
     # Human-readable signal state labels (no pattern name)
     _SIG_LABEL = {
         "TRIGGERED": "breaking out",
@@ -665,13 +693,50 @@ def _generate_x_drafts(tradeable: list):
         sig_desc   = _SIG_LABEL.get(signal, signal.lower())
         tf_desc    = _tf_desc(tf_raw)
 
+        # ── Justification line from signal_log (options flow / director buys) ──
+        ctx   = _sig_ctx.get(ticker, {})
+        obs_b = ctx.get("options_bias") or ""
+        cpr   = ctx.get("call_put_ratio")
+        ivr   = ctx.get("iv_rank")
+        dir_s = ctx.get("director_signal")
+
+        justifications = []
+        # Options flow — only include if aligned with trade direction
+        aligned_options = (
+            (direction == "BULLISH" and obs_b == "BULLISH") or
+            (direction == "BEARISH" and obs_b == "BEARISH")
+        )
+        if obs_b and obs_b not in ("NEUTRAL", "") and aligned_options:
+            bits = []
+            if cpr is not None:
+                bits.append(f"C/P {float(cpr):.2f}")
+            if ivr is not None:
+                bits.append(f"IV rank {float(ivr):.0f}%")
+            detail = f" ({', '.join(bits)})" if bits else ""
+            justifications.append(f"Options flow {obs_b.lower()}{detail}")
+        # Director buys
+        if dir_s:
+            justifications.append("Insider buying on record")
+
+        just_line = "  ·  ".join(justifications) if justifications else ""
+
         # ── Tweet text — no pattern name, natural description ─────────────────
         tweet = (
             f"{dir_emoji} ${ticker} ({name}) — Volatility squeeze {sig_desc} {dir_word}, {tf_desc} setup\n"
             f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
-            f"#StockAlert #TechnicalAnalysis #{ticker} #Trading"
+            + (f"{just_line}\n" if just_line else "")
+            + f"#StockAlert #TechnicalAnalysis #{ticker} #Trading"
         )
         if len(tweet) > 280:
+            # Drop company name and/or justification to fit
+            tweet = (
+                f"{dir_emoji} ${ticker} — Volatility squeeze {sig_desc} {dir_word}, {tf_desc}\n"
+                f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
+                + (f"{just_line}\n" if just_line else "")
+                + f"#StockAlert #TechnicalAnalysis #{ticker}"
+            )
+        if len(tweet) > 280:
+            # Last resort — drop justification line entirely
             tweet = (
                 f"{dir_emoji} ${ticker} — Volatility squeeze {sig_desc} {dir_word}, {tf_desc}\n"
                 f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
