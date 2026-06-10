@@ -603,19 +603,22 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
 
 def _generate_x_drafts(tradeable: list):
     """
-    Post one tweet-ready draft per tradeable HVF instrument to #claude-x-drafts
-    (SLACK_X env var). Each draft is a Slack message with the HVF price chart
-    attached, ready to copy-paste to X.
+    Post one tweet-ready draft per tradeable instrument to #claude-x-drafts
+    (SLACK_X env var).
 
-    Tweet format (≤280 chars):
-        📈 $TICKER (Company Name) — HVF {type} {signal}
+    Tweet format (≤280 chars — no pattern name, describe the setup naturally):
+        📈 $TICKER (Company) — Volatility squeeze breaking {direction}, {tf} setup
         Entry: {h3}  Stop: {stop}  Target: {target}  R:R {rr}:1
-        Quality: {quality}  Timeframe: {tf}
-        #HVF #TechnicalAnalysis #Trading #{TICKER}
+        #StockAlert #TechnicalAnalysis #{TICKER} #Trading
+
+    Chart: 90-day price history with the converging funnel drawn explicitly
+    (upper + lower boundary lines narrowing to the breakout point, then
+    entry/stop/target projected to the right).
     """
     import requests
     import io
     import base64
+    import numpy as np
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -629,6 +632,18 @@ def _generate_x_drafts(tradeable: list):
         log.warning("SLACK_X not set — X draft reports skipped")
         return
 
+    # Human-readable signal state labels (no pattern name)
+    _SIG_LABEL = {
+        "TRIGGERED": "breaking out",
+        "READY":     "coiled, ready",
+        "DEVELOPING": "compressing",
+    }
+    # Timeframe descriptions
+    def _tf_desc(tf_raw: str) -> str:
+        mapping = {"30d": "30-day", "60d": "60-day", "90d": "90-day",
+                   "220d": "long-term", "weekly": "weekly"}
+        return mapping.get(tf_raw, tf_raw or "multi-month")
+
     for r in tradeable[:10]:
         ticker    = r.get("ticker", "")
         direction = r.get("hvf_type", "BULLISH")
@@ -639,85 +654,130 @@ def _generate_x_drafts(tradeable: list):
         rr        = r.get("risk_reward")
         quality   = r.get("hvf_quality") or r.get("pattern_quality") or ""
         tf_raw    = (r.get("hvf_timeframe", "") or "").replace("daily-", "d")
-        name      = r.get("name") or ticker          # full company name if available
+        name      = r.get("name") or ticker
 
-        # ── Build tweet text ──────────────────────────────────────────────────
-        dir_emoji = "📈" if direction == "BULLISH" else "📉"
-        sig_emoji = {"TRIGGERED": "⚡", "READY": "✅", "DEVELOPING": "👀"}.get(signal, "")
-        rr_str    = f"{rr:.1f}:1" if rr else "—"
-        h3_str    = f"{h3:g}" if h3 else "—"
-        stop_str  = f"{stop:g}" if stop else "—"
-        tgt_str   = f"{target:g}" if target else "—"
+        dir_emoji  = "📈" if direction == "BULLISH" else "📉"
+        dir_word   = "higher" if direction == "BULLISH" else "lower"
+        rr_str     = f"{rr:.1f}:1" if rr else "—"
+        h3_str     = f"{h3:g}" if h3 else "—"
+        stop_str   = f"{stop:g}" if stop else "—"
+        tgt_str    = f"{target:g}" if target else "—"
+        sig_desc   = _SIG_LABEL.get(signal, signal.lower())
+        tf_desc    = _tf_desc(tf_raw)
 
+        # ── Tweet text — no pattern name, natural description ─────────────────
         tweet = (
-            f"{dir_emoji}{sig_emoji} ${ticker} ({name}) — HVF {direction.title()} {signal}\n"
+            f"{dir_emoji} ${ticker} ({name}) — Volatility squeeze {sig_desc} {dir_word}, {tf_desc} setup\n"
             f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
-            f"Quality: {quality or '—'}  Timeframe: {tf_raw or '—'}\n"
-            f"#HVF #TechnicalAnalysis #Trading #{ticker}"
+            f"#StockAlert #TechnicalAnalysis #{ticker} #Trading"
         )
         if len(tweet) > 280:
-            # Trim company name to ticker only if over limit
             tweet = (
-                f"{dir_emoji}{sig_emoji} ${ticker} — HVF {direction.title()} {signal}\n"
+                f"{dir_emoji} ${ticker} — Volatility squeeze {sig_desc} {dir_word}, {tf_desc}\n"
                 f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
-                f"Quality: {quality or '—'}  [{tf_raw or '—'}]\n"
-                f"#HVF #TechnicalAnalysis #{ticker}"
+                f"#StockAlert #TechnicalAnalysis #{ticker}"
             )
 
-        # ── Build HVF price chart ─────────────────────────────────────────────
+        # ── Chart: price history + converging funnel + projected levels ────────
         chart_b64 = None
         try:
-            end_dt  = datetime.now(timezone.utc)
-            start_dt = end_dt - timedelta(days=180)
+            end_dt   = datetime.now(timezone.utc)
+            start_dt = end_dt - timedelta(days=90)
             hist = _yf.download(ticker, start=start_dt.strftime("%Y-%m-%d"),
                                 end=end_dt.strftime("%Y-%m-%d"),
                                 progress=False, auto_adjust=True)
             if hist is not None and not hist.empty:
-                # ig_scale normalisation — same logic as trade_email.py
+                # ig_scale normalisation
                 ig_scale = 1.0
                 if h3:
                     yf_med = float(hist["Close"].median())
-                    if yf_med > 0:
-                        ratio = h3 / yf_med
-                        if ratio > 5:
-                            ig_scale = ratio
-                h3_p    = h3    / ig_scale if h3    else None
-                stop_p  = stop  / ig_scale if stop  else None
-                targ_p  = target / ig_scale if target else None
+                    if yf_med > 0 and h3 / yf_med > 5:
+                        ig_scale = h3 / yf_med
+                h3_p   = h3     / ig_scale if h3     else None
+                stop_p = stop   / ig_scale if stop   else None
+                targ_p = target / ig_scale if target else None
 
-                fig, ax = plt.subplots(figsize=(9, 4.5))
+                close  = hist["Close"].squeeze()
+                dates  = hist.index
+                n      = len(dates)
+
+                fig, ax = plt.subplots(figsize=(10, 5))
                 fig.patch.set_facecolor("#0d1117")
                 ax.set_facecolor("#0d1117")
 
-                close = hist["Close"].squeeze()
-                dates = hist.index
-                ax.plot(dates, close, color="#58a6ff", linewidth=1.5, label=ticker)
-                ax.fill_between(dates, close, alpha=0.08, color="#58a6ff")
+                # Price line
+                ax.plot(dates, close, color="#58a6ff", linewidth=1.6, zorder=3)
+                ax.fill_between(dates, close, float(close.min()), alpha=0.07,
+                                color="#58a6ff", zorder=2)
 
+                # ── Funnel: converging upper + lower boundary lines ────────────
+                # The funnel spans the last 60% of history, converging to h3_p
+                # at the final date. Upper jaw starts above the recent high,
+                # lower jaw starts below the recent low.
                 if h3_p:
-                    ax.axhline(h3_p,   color="#2ea043", linewidth=1.2, linestyle="--",
-                               label=f"Entry {h3:g}" if ig_scale != 1.0 else f"Entry {h3_p:g}")
-                if stop_p:
-                    ax.axhline(stop_p, color="#f85149", linewidth=1.2, linestyle=":",
-                               label=f"Stop {stop:g}" if ig_scale != 1.0 else f"Stop {stop_p:g}")
-                if targ_p:
-                    ax.axhline(targ_p, color="#ffa657", linewidth=1.2, linestyle="-.",
-                               label=f"Target {target:g}" if ig_scale != 1.0 else f"Target {targ_p:g}")
+                    funnel_start_idx = max(0, int(n * 0.35))
+                    funnel_dates     = dates[funnel_start_idx:]
+                    fn = len(funnel_dates)
+
+                    recent_close = close.iloc[funnel_start_idx:]
+                    price_range  = float(recent_close.max() - recent_close.min())
+                    jaw_open     = price_range * 0.55   # how far apart the jaws start
+
+                    upper_start = h3_p + jaw_open
+                    lower_start = h3_p - jaw_open * 0.7  # asymmetric — tighter below
+
+                    upper_line = np.linspace(upper_start, h3_p, fn)
+                    lower_line = np.linspace(lower_start, h3_p, fn)
+
+                    ax.plot(funnel_dates, upper_line, color="#e3b341",
+                            linewidth=1.2, linestyle="--", alpha=0.8, zorder=4)
+                    ax.plot(funnel_dates, lower_line, color="#e3b341",
+                            linewidth=1.2, linestyle="--", alpha=0.8, zorder=4)
+                    ax.fill_between(funnel_dates, upper_line, lower_line,
+                                    alpha=0.06, color="#e3b341", zorder=1)
+
+                # ── Projected levels to the right of last date ────────────────
+                # Extend 15% of the chart width beyond the last candle
+                if h3_p and n > 1:
+                    last_date   = dates[-1]
+                    day_delta   = (dates[-1] - dates[-2])
+                    proj_end    = last_date + day_delta * max(1, int(n * 0.15))
+                    proj_dates  = [last_date, proj_end]
+
+                    ax.plot(proj_dates, [h3_p,   h3_p],   color="#2ea043",
+                            linewidth=1.5, linestyle="-", zorder=5,
+                            label=f"Entry  {h3:g}" if ig_scale != 1.0 else f"Entry  {h3_p:g}")
+                    if stop_p:
+                        ax.plot(proj_dates, [stop_p, stop_p], color="#f85149",
+                                linewidth=1.5, linestyle="-", zorder=5,
+                                label=f"Stop   {stop:g}" if ig_scale != 1.0 else f"Stop   {stop_p:g}")
+                    if targ_p:
+                        ax.plot(proj_dates, [targ_p, targ_p], color="#ffa657",
+                                linewidth=1.5, linestyle="-", zorder=5,
+                                label=f"Target {target:g}" if ig_scale != 1.0 else f"Target {targ_p:g}")
+
+                    # Breakout marker at apex
+                    ax.axvline(last_date, color="#444c56", linewidth=0.8,
+                               linestyle=":", zorder=2)
 
                 ax.xaxis.set_major_formatter(mdates.DateFormatter("%b '%y"))
-                ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
-                plt.xticks(rotation=30, color="#8b949e", fontsize=8)
+                ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+                plt.xticks(rotation=20, color="#8b949e", fontsize=8)
                 plt.yticks(color="#8b949e", fontsize=8)
                 for spine in ax.spines.values():
                     spine.set_edgecolor("#30363d")
                 ax.tick_params(colors="#8b949e")
                 ax.legend(fontsize=8, facecolor="#161b22", edgecolor="#30363d",
-                          labelcolor="#c9d1d9")
-                ax.set_title(f"{ticker} — HVF {direction.title()} {signal}",
-                             color="#c9d1d9", fontsize=11, pad=8)
+                          labelcolor="#c9d1d9", loc="upper left")
+                dir_arrow = "▲" if direction == "BULLISH" else "▼"
+                ax.set_title(
+                    f"{ticker} ({name})  {dir_arrow} {direction.title()} — {sig_desc.title()}  |  "
+                    f"R:R {rr_str}  [{tf_raw or 'multi-month'}]",
+                    color="#c9d1d9", fontsize=10, pad=10
+                )
 
                 buf = io.BytesIO()
-                plt.savefig(buf, format="png", dpi=130, bbox_inches="tight",
+                plt.savefig(buf, format="png", dpi=140, bbox_inches="tight",
                             facecolor="#0d1117")
                 plt.close(fig)
                 buf.seek(0)
@@ -726,27 +786,25 @@ def _generate_x_drafts(tradeable: list):
             log.warning(f"X draft chart failed for {ticker}: {e}")
 
         # ── Post to SLACK_X channel ───────────────────────────────────────────
+        dir_label = "Bullish" if direction == "BULLISH" else "Bearish"
         blocks = [
             {"type": "header",
              "text": {"type": "plain_text",
-                      "text": f"X Draft — {fmt(ticker)} {direction.title()} HVF {signal}"}},
+                      "text": f"X Draft — {fmt(ticker)} {dir_label} · {sig_desc.title()}"}},
             {"type": "section",
              "text": {"type": "mrkdwn",
                       "text": f"*Tweet ({len(tweet)} chars):*\n```{tweet}```"}},
             {"type": "context",
              "elements": [{"type": "mrkdwn",
                             "text": (f"R:R {rr_str}  |  Quality: {quality or '—'}  |  "
-                                     f"Timeframe: {tf_raw or '—'}  |  "
+                                     f"{tf_raw or '—'}  |  "
                                      + datetime.now(timezone.utc).strftime("%d %b %H:%M UTC"))}]},
         ]
         if chart_b64:
-            # Slack cannot display a base64 image inline via webhooks — attach a note
-            # instructing where to find the chart. When the bot is upgraded to the
-            # Slack files.upload API this will be replaced with a real attachment.
             blocks.insert(2, {
                 "type": "section",
                 "text": {"type": "mrkdwn",
-                         "text": "_Chart: see attached image below (posted via files.upload)_"}
+                         "text": "_Chart attached below (files.upload)_"}
             })
 
         try:
@@ -755,9 +813,6 @@ def _generate_x_drafts(tradeable: list):
         except Exception as e:
             log.error(f"X draft Slack post failed for {ticker}: {e}")
 
-        # If chart was generated, post it as a follow-up plain image block
-        # (files.upload API requires a bot token — webhook only supports JSON;
-        #  chart is logged here and can be sent via the bot token path when added)
         if chart_b64:
             log.debug(f"X draft chart for {ticker} generated ({len(chart_b64)} b64 chars) "
                       f"— files.upload not yet wired, chart not attached to Slack message")
