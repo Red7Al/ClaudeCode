@@ -707,41 +707,59 @@ def _generate_x_drafts(tradeable: list):
             (direction == "BEARISH" and obs_b == "BEARISH")
         )
         if obs_b and obs_b not in ("NEUTRAL", "") and aligned_options:
-            bits = []
+            # Build two versions: full (with IV rank) and short (without)
+            bits_full  = []
+            bits_short = []
             if cpr is not None:
-                bits.append(f"C/P {float(cpr):.2f}")
+                bits_full.append(f"call/put {float(cpr):.2f}")
+                bits_short.append(f"call/put {float(cpr):.2f}")
             if ivr is not None:
-                bits.append(f"IV rank {float(ivr):.0f}%")
-            detail = f" ({', '.join(bits)})" if bits else ""
-            justifications.append(f"Options flow {obs_b.lower()}{detail}")
-        # Director buys
+                bits_full.append(f"implied volatility rank {float(ivr):.0f}%")
+            detail_full  = f" ({', '.join(bits_full)})"  if bits_full  else ""
+            detail_short = f" ({', '.join(bits_short)})" if bits_short else ""
+            justifications.append((
+                f"Options flow {obs_b.lower()}{detail_full}",   # full version
+                f"Options flow {obs_b.lower()}{detail_short}",  # short fallback
+            ))
+        # Director buys — stored as plain string (same in both versions)
         if dir_s:
-            justifications.append("Insider buying on record")
+            justifications.append(("Insider buying on record", "Insider buying on record"))
 
-        just_line = "  ·  ".join(justifications) if justifications else ""
+        def _just_line(use_full: bool) -> str:
+            idx = 0 if use_full else 1
+            return "  ·  ".join(j[idx] for j in justifications)
 
-        # ── Tweet text — no pattern name, natural description ─────────────────
-        tweet = (
+        # ── Tweet text — try progressively shorter versions to fit 280 chars ──
+        base_with_name = (
             f"{dir_emoji} ${ticker} ({name}) — Volatility squeeze {sig_desc} {dir_word}, {tf_desc} setup\n"
             f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
-            + (f"{just_line}\n" if just_line else "")
-            + f"#StockAlert #TechnicalAnalysis #{ticker} #Trading"
         )
-        if len(tweet) > 280:
-            # Drop company name and/or justification to fit
-            tweet = (
-                f"{dir_emoji} ${ticker} — Volatility squeeze {sig_desc} {dir_word}, {tf_desc}\n"
-                f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
-                + (f"{just_line}\n" if just_line else "")
-                + f"#StockAlert #TechnicalAnalysis #{ticker}"
-            )
-        if len(tweet) > 280:
-            # Last resort — drop justification line entirely
-            tweet = (
-                f"{dir_emoji} ${ticker} — Volatility squeeze {sig_desc} {dir_word}, {tf_desc}\n"
-                f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
-                f"#StockAlert #TechnicalAnalysis #{ticker}"
-            )
+        base_no_name = (
+            f"{dir_emoji} ${ticker} — Volatility squeeze {sig_desc} {dir_word}, {tf_desc}\n"
+            f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
+        )
+        tags_long  = f"#StockAlert #TechnicalAnalysis #{ticker} #Trading"
+        tags_short = f"#StockAlert #TechnicalAnalysis #{ticker}"
+
+        def _build(base, just, tags):
+            return base + (f"{just}\n" if just else "") + tags
+
+        tweet = None
+        for base in (base_with_name, base_no_name):
+            for use_full in (True, False):
+                just = _just_line(use_full) if justifications else ""
+                for tags in (tags_long, tags_short):
+                    candidate = _build(base, just, tags)
+                    if len(candidate) <= 280:
+                        tweet = candidate
+                        break
+                if tweet:
+                    break
+            if tweet:
+                break
+        if not tweet:
+            # Absolute fallback — no justification, short tags
+            tweet = base_no_name + tags_short
 
         # ── Chart: price history + converging funnel + projected levels ────────
         chart_b64 = None
