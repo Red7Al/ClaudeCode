@@ -1,4 +1,4 @@
-name: US HVF Watch (2-hourly) 2026-06-10
+name: US HVF Watch (2-hourly) 2026-06-11
 
 on:
   workflow_dispatch:
@@ -17,7 +17,9 @@ jobs:
       QUIVER_QUANT_API_KEY:  ${{ secrets.QUIVER_QUANT_API_KEY }}
       SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
       SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
-      SLACK_X:               ${{ secrets.SLACK_X }}
+      SLACK_TWITTER:         ${{ secrets.SLACK_TWITTER }}
+      SLACK_BOT_TOKEN:       ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_TWITTER_CHANNEL_ID: ${{ secrets.SLACK_TWITTER_CHANNEL_ID }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

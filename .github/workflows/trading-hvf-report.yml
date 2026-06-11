@@ -1,4 +1,4 @@
-name: HVF Daily Report
+name: HVF Daily Report (2026-06-11)
 
 on:
   workflow_dispatch:           # also triggerable manually
@@ -27,4 +27,6 @@ jobs:
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
           SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
           SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
-          SLACK_X:               ${{ secrets.SLACK_X }}
+          SLACK_TWITTER:         ${{ secrets.SLACK_TWITTER }}
+          SLACK_BOT_TOKEN:       ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_TWITTER_CHANNEL_ID: ${{ secrets.SLACK_TWITTER_CHANNEL_ID }}

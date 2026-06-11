@@ -49,6 +49,14 @@
 #                                 tweet-ready block per instrument (with HVF chart
 #                                 attached) to SLACK_TWITTER channel for review before
 #                                 manual posting to X.
+# 1.3.1   2026-06-11  Alex Hind   _generate_x_drafts: post card image now uploaded to
+#                                 the SLACK_TWITTER channel via the Slack external
+#                                 upload flow (files.getUploadURLExternal →
+#                                 completeUploadExternal; legacy files.upload retired).
+#                                 Needs SLACK_BOT_TOKEN (files:write) +
+#                                 SLACK_TWITTER_CHANNEL_ID secrets; until both are set
+#                                 the draft text posts with an explicit "chart not
+#                                 attached" note (no silent gap).
 # 1.2.5   2026-06-11  Alex Hind   _generate_x_drafts: revert 1.2.3 — SLACK_CLAUDE_TWITTER
 #                                 removed; SLACK_TWITTER is the only secret and already
 #                                 points at #claude-twitter (user correction 2026-06-11).
@@ -954,11 +962,14 @@ def _generate_x_drafts(tradeable: list):
                                      f"{tf_raw or '—'}  |  "
                                      + datetime.now(timezone.utc).strftime("%d %b %H:%M UTC"))}]},
         ]
-        if chart_b64:
+        bot_token  = os.environ.get("SLACK_BOT_TOKEN", "")
+        channel_id = os.environ.get("SLACK_TWITTER_CHANNEL_ID", "")
+        if chart_b64 and not (bot_token and channel_id):
             blocks.insert(2, {
                 "type": "section",
                 "text": {"type": "mrkdwn",
-                         "text": "_Chart attached below (files.upload)_"}
+                         "text": "_Chart generated but not attached — "
+                                 "SLACK_BOT_TOKEN / SLACK_TWITTER_CHANNEL_ID not set_"}
             })
 
         try:
@@ -967,9 +978,43 @@ def _generate_x_drafts(tradeable: list):
         except Exception as e:
             log.error(f"X draft Slack post failed (SLACK_TWITTER) for {ticker}: {e}")
 
-        if chart_b64:
-            log.debug(f"X draft chart for {ticker} generated ({len(chart_b64)} b64 chars) "
-                      f"— files.upload not yet wired, chart not attached to Slack message")
+        # ── Attach the post card image via Slack external upload flow ────────
+        # Legacy files.upload is retired (2025) — the current flow is:
+        # 1. files.getUploadURLExternal  → one-time upload URL + file id
+        # 2. POST raw bytes to that URL
+        # 3. files.completeUploadExternal → finalise + share into the channel
+        if chart_b64 and bot_token and channel_id:
+            try:
+                png_bytes = base64.b64decode(chart_b64)
+                fname     = f"x_post_{ticker.replace('.', '_')}.png"
+                hdrs      = {"Authorization": f"Bearer {bot_token}"}
+
+                r1 = requests.post(
+                    "https://slack.com/api/files.getUploadURLExternal",
+                    headers=hdrs,
+                    data={"filename": fname, "length": len(png_bytes)},
+                    timeout=10,
+                ).json()
+                if not r1.get("ok"):
+                    raise RuntimeError(f"getUploadURLExternal: {r1.get('error')}")
+
+                r2 = requests.post(r1["upload_url"], data=png_bytes, timeout=30)
+                r2.raise_for_status()
+
+                r3 = requests.post(
+                    "https://slack.com/api/files.completeUploadExternal",
+                    headers={**hdrs, "Content-Type": "application/json"},
+                    json={"files": [{"id": r1["file_id"],
+                                     "title": f"X post card — {ticker} ({name})"}],
+                          "channel_id": channel_id},
+                    timeout=10,
+                ).json()
+                if not r3.get("ok"):
+                    raise RuntimeError(f"completeUploadExternal: {r3.get('error')}")
+                log.info(f"X draft chart attached for {ticker} "
+                         f"({len(png_bytes)} bytes → {channel_id})")
+            except Exception as e:
+                log.error(f"X draft chart upload failed for {ticker}: {e}")
 
 
 def run_us_monitor(notify_slack: bool = True) -> list:
