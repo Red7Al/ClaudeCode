@@ -413,7 +413,7 @@ def working_order_placed(
             "elements": [{"type": "mrkdwn", "text": _ts()}]
         },
     ]
-    _send("trades", blocks)
+    _send("orders", blocks)
 
 
 def working_order_updated(

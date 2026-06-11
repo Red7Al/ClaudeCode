@@ -1157,15 +1157,16 @@ def _round_level(value, decimals: int):
 
 def detect_ig_scale(current: float, level: float) -> float:
     """
-    Power-of-ten factor mapping signal units → IG units (1.0 when already aligned).
+    Factor mapping signal units (Yahoo) → IG units. Returns 1.0 when already aligned.
 
-    HVF levels are computed from Yahoo prices, but IG quotes FX in points:
-    EURUSD Yahoo 1.1539 vs IG 11538.6 (×10⁴), USDJPY Yahoo 155.1 vs IG 15512
-    (×10²) — verified live 2026-06-10 (EURUSD CS.D.EURUSD.TODAY.IP offer 11538.7).
-    Equities/commodities quote 1:1 and return 1.0. Only a CLEAN power of ten
-    (ratio within ±25% of 10^n) is treated as a unit difference — anything else
-    returns 1.0 so the entry-distance guard downstream refuses the order as a
-    genuinely stale/wrong level rather than silently "fixing" it.
+    Two cases:
+      FX (EURUSD/USDJPY): IG quotes in points — clean power-of-ten ratio (±25%).
+        EURUSD Yahoo 1.1539 vs IG 11538.6 (×10⁴), USDJPY 155.1 vs IG 15512 (×10²).
+      US equities on IG UK: quoted in USD cents OR GBX (pence). Both produce a ratio
+        in the 50–250 range (cents=100 exactly; pence≈78–130 depending on GBP/USD).
+        A dedicated GBX path in place_working_order reads baseExchangeRate from the IG
+        market snapshot when available; this fallback handles the cents case and acts
+        as a safety net for GBX when baseExchangeRate is absent/zero.
     """
     try:
         if current <= 0 or level <= 0:
@@ -1173,6 +1174,11 @@ def detect_ig_scale(current: float, level: float) -> float:
         ratio = current / level
         if 0.2 < ratio < 5:
             return 1.0
+        # US equities (cents) and GBX equities (pence): ratio 50–250 → scale ×100.
+        # Tolerance spans USD cents (ratio=100) through GBX pence at any FX rate (≈78–130).
+        if 50 < ratio < 250:
+            return 100.0
+        # FX/other: strict power-of-ten detection (±25% of 10^n).
         power = round(math.log10(ratio))
         scale = 10.0 ** power
         return scale if abs(ratio / scale - 1.0) <= 0.25 else 1.0
@@ -1287,7 +1293,7 @@ def place_working_order(
     paper_trade:    bool = False,
     good_till_days: int = 4,        # HVF freshness window — stale setups expire
     hvf_type:       str = None,
-    max_entry_distance_pct: float = 0.25,   # sanity guard: entry vs current price
+    max_entry_distance_pct: float = 0.90,   # sanity guard: entry vs current price (after unit conversion)
 ) -> Optional[dict]:
     """
     Place (or amend) a PENDING entry order on IG at the HVF level.
@@ -1455,11 +1461,16 @@ def place_working_order(
     # Distance from current price — drives both the sanity guard and proximity band.
     dist_pct = abs(entry_level - current) / current * 100.0
 
-    # Sanity guard — entry wildly far from the live IG price means stale pattern
-    # data or a Yahoo/IG unit mismatch. Refuse + alert. (Tests may override threshold.)
+    # Sanity guard — only fires if entry is >90% from live IG price AFTER unit
+    # conversion. This catches a genuinely wrong epic (wrong instrument entirely)
+    # or completely uncorrectable scale. Stale-but-valid setups (entry 10-90% from
+    # current because the stock has moved since the HVF was computed) fall through
+    # to the proximity band below, which queues them as WATCHING — they'll be
+    # promoted when/if price returns to the entry. (Tests may override threshold.)
     if dist_pct > max_entry_distance_pct * 100.0:
-        msg = (f"[working order] entry {entry_level} is {dist_pct:.1f}% from current IG price "
-               f"{current} — possible stale pattern or Yahoo/IG unit mismatch; order NOT placed")
+        msg = (f"Entry {entry_level} is {dist_pct:.0f}% from live IG price {current} "
+               f"after unit conversion — epic may be wrong or instrument has been renamed. "
+               f"Order NOT placed.")
         log.error(f"{ticker}: {msg}")
         try:
             from notify import alert_missed_trade
@@ -2111,7 +2122,7 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         session_name=session_name, signal_summary=signal_str,
         paper_trade=profile.get("paper_trade", False), hvf_type=hvf_type)
 
-    if result and not result.get("updated"):
+    if result and not result.get("updated") and not result.get("watching"):
         try:
             from notify import working_order_placed
             working_order_placed(ticker, direction, size, result["level"],

@@ -287,15 +287,19 @@ def get_intraday_move_and_volume(tickers: list[str]) -> dict[str, dict]:
 
             pct = (today_close - prev_close) / prev_close
 
-            # Volume vs 20-day average (excluding today)
+            # Volume vs 20-day average (excluding today).
+            # Instruments without real share volume (spot FX, indices, gold spot)
+            # often return near-zero historical volumes from Yahoo, producing
+            # nonsensical ratios (e.g. XAUUSD 125×). Suppress when avg < 1000.
             avg_vol    = float(hist["Volume"].iloc[:-1].mean())
             vol_ratio  = None
             vol_signal = "NORMAL"
-            if avg_vol > 0:
-                vol_ratio = round(today_vol / avg_vol, 2)
-                if vol_ratio >= 1.5:
+            if avg_vol >= 1000:
+                raw_ratio = today_vol / avg_vol
+                vol_ratio = round(min(raw_ratio, 50.0), 2)  # cap at 50× — higher is data noise
+                if raw_ratio >= 1.5:
                     vol_signal = "HIGH"
-                elif vol_ratio < 0.5:
+                elif raw_ratio < 0.5:
                     vol_signal = "LOW"
 
             data[ticker] = {
