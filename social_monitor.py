@@ -350,8 +350,9 @@ def alert_new_picks(new_picks: list):
     if not new_picks:
         return
 
-    # Post to SLACK_TWITTER (dedicated orders channel) if set, else fall back to SLACK_SIGNALS
-    slack_url = os.environ.get("SLACK_TWITTER", "") or os.environ.get("SLACK_SIGNALS", "")
+    # RSS mention alerts go to #signals. SLACK_TWITTER is reserved for content
+    # published TO Twitter/X — do not use it for monitoring notifications.
+    slack_url = os.environ.get("SLACK_SIGNALS", "")
     if not slack_url:
         return
 

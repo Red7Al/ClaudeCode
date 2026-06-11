@@ -297,6 +297,18 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
         ("Session",    session_name), ("Entry", entry), ("Stop", stop),
         ("Target",     targ), ("R:R", rr_s),
     ]
+
+    # For working orders, show live price and how far away the entry is.
+    if event == "Working order placed":
+        cur = trade.get("current_price")
+        if cur and entry and entry != "—":
+            try:
+                dist = abs(float(entry) - float(cur)) / float(cur) * 100.0
+                rows.append(("Current Price", f"{cur}  ({dist:.1f}% from entry)"))
+            except Exception:
+                pass
+        rows.append(("Note", "NOT yet visible in IG platform — placed automatically when price reaches entry"))
+
     if ref:
         rows.append(("Trade Ref", ref))
 

@@ -502,7 +502,7 @@ def working_order_watching(
     session_name:  str = "",
 ):
     """Price is not yet within the proximity band — order queued as WATCHING.
-    No capital committed. Posts to #trades so the user can see what is being watched."""
+    No capital committed, NOT visible in IG platform."""
     rr = None
     if stop and target and entry:
         sd = abs(entry - stop); td = abs(target - entry)
@@ -512,7 +512,12 @@ def working_order_watching(
     blocks = [
         {"type": "header",
          "text": {"type": "plain_text",
-                  "text": f"👁 Setup queued (watching) — {fmt(ticker)}"}},
+                  "text": f"👁 Watching (NOT in IG) — {fmt(ticker)}"}},
+        {"type": "section",
+         "text": {"type": "mrkdwn",
+                  "text": (f"*{fmt(ticker)}* {direction} setup queued internally. "
+                           f"*No IG order has been placed* — this will not appear in the IG platform. "
+                           f"Price is *{dist_pct:.1f}%* from entry; order places automatically when within *{proximity_pct}%*.")}},
         {"type": "section",
          "fields": [
              {"type": "mrkdwn", "text": f"*Direction:*\n{direction}"},
@@ -520,13 +525,11 @@ def working_order_watching(
              {"type": "mrkdwn", "text": f"*Stop:*\n{stop}"},
              {"type": "mrkdwn", "text": f"*Target:*\n{target}"},
              {"type": "mrkdwn", "text": f"*R:R:*\n{rr_str}"},
-             {"type": "mrkdwn", "text": f"*Distance:*\n{dist_pct:.1f}% from entry"},
+             {"type": "mrkdwn", "text": f"*Distance from entry:*\n{dist_pct:.1f}%"},
          ]},
         {"type": "context",
          "elements": [{"type": "mrkdwn",
-                       "text": (f"Order will be placed automatically when within "
-                                f"{proximity_pct}% of entry. "
-                                f"Session: {session_name} | {_ts()}")}]},
+                       "text": f"Session: {session_name} | {_ts()}"}]},
     ]
     _send("orders", blocks)
 

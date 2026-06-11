@@ -1491,7 +1491,8 @@ def place_working_order(
         log.info(f"{ticker}: entry {entry_level} is {dist_pct:.2f}% away — logged as WATCHING "
                  f"(will place order when within {WO_PROXIMITY_PCT}%)")
         return {"deal_id": watch_id, "watching": True, "level": entry_level,
-                "stop_level": stop_level, "limit_level": limit_level, "working_order": True}
+                "stop_level": stop_level, "limit_level": limit_level,
+                "current_price": current, "working_order": True}
 
     # Level geometry must match the direction or IG will reject the order.
     if direction == "BUY" and not (stop_level < entry_level < limit_level):
@@ -1568,7 +1569,8 @@ def place_working_order(
 
         return {"deal_id": deal_id, "deal_ref": deal_ref, "level": entry_level,
                 "stop_level": stop_level, "limit_level": limit_level, "otype": otype,
-                "good_till": body["goodTillDate"], "working_order": True, "updated": False}
+                "good_till": body["goodTillDate"], "working_order": True, "updated": False,
+                "current_price": current}
 
     except requests.HTTPError as e:
         log.error(f"IG API error placing working order: {e.response.status_code} — {e.response.text}")
