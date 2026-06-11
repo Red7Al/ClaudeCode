@@ -28,6 +28,8 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.1.0   2026-06-11  Alex Hind   FTSE250 expanded from 40 to 250 constituents
+#                                 (full index sourced from Wikipedia 2026-06-11).
 # 1.0.0   2026-06-05  Alex Hind   Initial build. Multi-timeframe HVF scanner
 #                                 covering FTSE 100, FTSE 250, S&P 500 and DAX.
 # 1.0.2   2026-06-05  Alex Hind   Removed DAX (Germany) from UNIVERSE scan.
@@ -89,26 +91,40 @@ FTSE100 = [
 ]
 
 FTSE250 = [
-    # Financials / Asset managers
-    "JUP.L", "MAN.L", "ABDN.L", "ICG.L", "3IN.L", "HICL.L", "INPP.L",
-    # Housebuilders
-    "BWY.L", "MCS.L", "CLDN.L",
-    # Retail / Consumer
-    "JD..L", "SPD.L", "OCDO.L", "PETS.L", "THG.L",
-    # Media / Tech
-    "FOUR.L", "AUTO.L", "JUST.L", "DPLM.L", "FDM.L",
-    # Healthcare
-    "HIK.L", "CTEC.L", "NXR.L",
-    # Industrials
-    "RWI.L", "CLLN.L", "SXS.L", "IMI.L", "HWDN.L",
-    # Energy / Resources
-    "ENQ.L", "TLW.L", "HBR.L",
-    # Travel / Leisure
-    "TUI.L", "SDR.L", "HOTC.L",
-    # Real estate
-    "HMSO.L", "PHP.L", "BBOX.L", "EBOX.L",
-    # Food / Beverages
-    "HFD.L", "BAKK.L",
+    # Full 250 constituents — sourced from Wikipedia 2026-06-11, converted to Yahoo .L format.
+    # Investment trusts / closed-end funds are included; scanner handles Yahoo misses gracefully.
+    "3IN.L", "FOUR.L", "AAS.L", "ABDN.L", "ASL.L", "AEP.L", "ALFA.L", "ATT.L",
+    "AO.L", "APN.L", "ASHM.L", "AIE.L", "AML.L", "ATYM.L", "AGT.L", "AVON.L",
+    "BME.L", "BGFD.L", "USA.L", "BBY.L", "BCG.L", "BNKR.L", "BAG.L", "AJB.L",
+    "BWY.L", "BHMG.L", "BYG.L", "BPCR.L", "BRGE.L", "BRSC.L", "BRWM.L", "BSIF.L",
+    "BOY.L", "BREE.L", "BPT.L", "BUT.L", "BYIT.L", "CCR.L", "CLDN.L", "CGT.L",
+    "CWR.L", "CHG.L", "CSN.L", "CHRY.L", "CTY.L", "CKN.L", "CBG.L", "CMCX.L",
+    "COA.L", "CCC.L", "COST.L", "CWK.L", "CURY.L", "CVSG.L", "DLN.L", "DSCV.L",
+    "DOM.L", "DRX.L", "DOCS.L", "DNLM.L", "EZJ.L", "EDIN.L", "EWI.L", "ELM.L",
+    "ENOG.L", "ESCT.L", "EWG.L", "FCSS.L", "FEML.L", "FEV.L", "FSV.L", "FGT.L",
+    "FGP.L", "FGEN.L", "FSG.L", "FRAS.L", "FCH.L", "GFRD.L", "GAMA.L", "GBG.L",
+    "GCP.L", "GEN.L", "GNS.L", "GSCT.L", "GDWN.L", "GFTU.L", "GRI.L", "GPE.L",
+    "UKW.L", "GNC.L", "GRG.L", "HMSO.L", "HBR.L", "HVPE.L", "HWG.L", "HAS.L",
+    "HTWS.L", "HFEL.L", "HSL.L", "HRI.L", "HGT.L", "HICL.L", "HIK.L", "HILS.L",
+    "HFG.L", "HOC.L", "BOWL.L", "HTG.L", "IBST.L", "ICGT.L", "IEM.L", "INCH.L",
+    "IHP.L", "IPF.L", "INPP.L", "IWG.L", "IAD.L", "INVP.L", "IPO.L", "ITH.L",
+    "ITV.L", "JMAT.L", "JSG.L", "JAM.L", "JCH.L", "JEMI.L", "JMGI.L", "JEDT.L",
+    "JEGI.L", "JGGI.L", "JIGI.L", "JFJ.L", "JTC.L", "JUP.L", "KNOS.L", "KLR.L",
+    "KIE.L", "LRE.L", "LWDB.L", "EMG.L", "MSLH.L", "MEGP.L", "MRC.L", "MRCH.L",
+    "MTRO.L", "MAB.L", "MTO.L", "GROW.L", "MNKS.L", "MONY.L", "MOON.L", "MGAM.L",
+    "MGNS.L", "MUT.L", "MYI.L", "NBPE.L", "NCC.L", "N91.L", "NAS.L", "OCI.L",
+    "OCDO.L", "OSB.L", "OXB.L", "OXIG.L", "ONT.L", "PHI.L", "PAGE.L", "PAF.L",
+    "PINT.L", "PIN.L", "PAG.L", "PEY.L", "PPET.L", "PNN.L", "PNL.L", "PETS.L",
+    "PTEC.L", "PLUS.L", "PCGH.L", "POLN.L", "PPH.L", "PFD.L", "PHP.L", "PRN.L",
+    "QQ.L", "QLT.L", "RNK.L", "RPI.L", "RAT.L", "RSW.L", "RHIM.L", "RCP.L",
+    "ROR.L", "RS1.L", "RTW.L", "RICA.L", "SAFE.L", "SAGA.L", "SVS.L", "MNTN.L",
+    "ATR.L", "SDP.L", "SOI.L", "SAIN.L", "SEIT.L", "SNR.L", "SEQI.L", "SRP.L",
+    "SHC.L", "SHAW.L", "SRE.L", "SCT.L", "SPI.L", "SSPG.L", "SUPR.L", "SYNC.L",
+    "THRL.L", "TATE.L", "TW.L", "TBCG.L", "TEP.L", "TMPL.L", "TEM.L", "TRIG.L",
+    "THG.L", "TCAP.L", "TRN.L", "TPK.L", "TRY.L", "TRST.L", "TFIF.L", "UTG.L",
+    "UEM.L", "VSVS.L", "VCT.L", "VEIL.L", "VOF.L", "VTY.L", "FAN.L", "WOSG.L",
+    "JDW.L", "SMWH.L", "WIX.L", "WIZZ.L", "WKP.L", "WWH.L", "WPP.L", "XPP.L",
+    "XPS.L", "ZIG.L",
 ]
 
 SP500 = [
