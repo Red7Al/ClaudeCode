@@ -30,6 +30,10 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.2.0   2026-06-11  Alex Hind   RSS alert: sorted CONFIRM first then WAIT by score;
+#                                 handles always prefixed with @; removed "New X Pick
+#                                 Detected" header (claude-twitter = published posts only);
+#                                 handle stored in new_picks dict for correct display.
 # 1.1.0   2026-06-11  Alex Hind   Add 8 new trusted accounts: GlobalMktObserver,
 #                                 DVSignals, Javier Blas, Peter Brandt, ZeroHedge,
 #                                 WSJ Markets, BRICSinfo, WatcherGuru.
@@ -356,41 +360,41 @@ def alert_new_picks(new_picks: list):
     if not slack_url:
         return
 
-    lines = ""
+    # Build pick list with PA verdict for sorting
+    enriched = []
     for pick in new_picks:
         ticker   = pick["ticker"]
-        investor = pick["investor_name"]
+        # Use stored handle; fallback to investor_name. Always ensure @ prefix.
+        raw_handle = pick.get("handle") or pick.get("investor_name", "")
+        handle   = raw_handle if raw_handle.startswith("@") else f"@{raw_handle}"
         company  = get_company_name(ticker)
         label    = f"{ticker} ({company})" if company else ticker
 
-        # Quick price action check
         try:
             from price_action import analyse_price_action
             pa      = analyse_price_action(ticker)
             verdict = pa.get("verdict", "WAIT")
             score   = pa.get("pa_score", 0)
             trend   = pa.get("trend_structure", "—")
-            emoji   = "🟢" if verdict == "CONFIRM_LONG" else ("🔴" if verdict == "CONFIRM_SHORT" else "⏸")
-            pa_str  = f"{emoji} {verdict} ({score:+.0f}) | {trend}"
         except Exception:
-            pa_str = "⚪ PA unavailable"
+            verdict, score, trend = "WAIT", 0, "—"
 
-        lines += f"• *{label}* via @{investor} — {pa_str}\n"
+        emoji  = "🟢" if verdict == "CONFIRM_LONG" else ("🔴" if verdict == "CONFIRM_SHORT" else "⏸")
+        pa_str = f"{emoji} {verdict} ({score:+.0f}) | {trend}"
+
+        # Sort weight: CONFIRM first, then by score descending
+        sort_key = (0 if "CONFIRM" in verdict else 1, -score)
+        enriched.append((sort_key, label, handle, pa_str))
+
+    enriched.sort(key=lambda x: x[0])
+    lines = "".join(f"• *{label}* via {handle} — {pa_str}\n"
+                    for _, label, handle, pa_str in enriched)
 
     blocks = [
         {
-            "type": "header",
-            "text": {"type": "plain_text", "text": "🐦 New X Pick Detected"}
-        },
-        {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*New equity mentions found via RSS monitoring:*\n{lines}"}
+            "text": {"type": "mrkdwn", "text": f"*🐦 New X mentions ({datetime.now(timezone.utc).strftime('%d %b %H:%M UTC')}):*\n{lines}"}
         },
-        {
-            "type": "context",
-            "elements": [{"type": "mrkdwn",
-                          "text": f"EndToEndTrading | {datetime.now(timezone.utc).strftime('%d %b %H:%M UTC')}"}]
-        }
     ]
 
     try:
@@ -433,6 +437,7 @@ def scan_social_feeds(max_age_hours: int = 24) -> list:
                     all_new_picks.append({
                         "ticker":       ticker,
                         "investor_name": name,
+                        "handle":       handle,
                         "source":       source,
                         "post_content": post["title"][:100],
                     })
