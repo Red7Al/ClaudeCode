@@ -24,6 +24,9 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-05  Alex Hind   Initial build — all session/report cron jobs.
+# 1.7.0   2026-06-11  Alex Hind   Add "UK HVF Watch" job (30 8,10,12,14 Mon-Fri
+#                                 → trading-uk-hvf-watch.yml). Mirrors US HVF Watch
+#                                 cadence for UK/FTSE250 instruments.
 # 1.6.0   2026-06-10  Alex Hind   --create-missing mode: creates only JOBS not yet
 #                                 on cron-job.org (skips existing). Safe to re-run.
 #                                 Workflow updated to expose mode input (reconcile /
@@ -113,6 +116,7 @@ JOBS = [
     ("US Open",              "30 14 * * 1-5",    "trading-us-open.yml"),
     ("US Monitor",           "*/5 14-21 * * 1-5","trading-us-monitor.yml"),
     ("US HVF Watch",         "30 14,16,18,20 * * 1-5", "trading-us-hvf-watch.yml"),
+    ("UK HVF Watch",         "30 8,10,12,14 * * 1-5",  "trading-uk-hvf-watch.yml"),
     ("Social Monitor",       "*/15 7-22 * * 1-5",   "trading-social-monitor.yml"),
     # ── Close & reports ─────────────────────────────────────────────────────
     ("Commodity Monitor PM", "*/10 21-23 * * 1-5","trading-commodity-monitor.yml"),

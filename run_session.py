@@ -1153,6 +1153,13 @@ if __name__ == "__main__":
         from config import SESSION_INSTRUMENTS
         tickers = set(SESSION_INSTRUMENTS.get("US_OPEN", []))
         hvf_watch_us_equities(tickers, notify_slack=True)
+    elif session == "UK_HVF_WATCH":
+        # 2-hourly HVF watch for UK/FTSE250 instruments — mirrors US_HVF_WATCH cadence.
+        # Uses UK_OPEN instrument list; deduplicates via hvf_watch_state fingerprint.
+        from intraday_signals import hvf_watch_us_equities
+        from config import SESSION_INSTRUMENTS
+        tickers = set(SESSION_INSTRUMENTS.get("UK_OPEN", []))
+        hvf_watch_us_equities(tickers, notify_slack=True)
     elif session == "SESSION_CLOSE":
         run_session_close()
     elif session == "WEEKEND_REVIEW":

@@ -489,6 +489,101 @@ def working_order_outcome(
     _send("trades", blocks)
 
 
+def working_order_watching(
+    ticker:        str,
+    direction:     str,
+    entry:         float,
+    stop:          float,
+    target:        float,
+    dist_pct:      float,
+    proximity_pct: float,
+    session_name:  str = "",
+):
+    """Price is not yet within the proximity band — order queued as WATCHING.
+    No capital committed. Posts to #trades so the user can see what is being watched."""
+    rr = None
+    if stop and target and entry:
+        sd = abs(entry - stop); td = abs(target - entry)
+        if sd > 0:
+            rr = round(td / sd, 1)
+    rr_str = f"{rr:.1f}:1" if rr else "—"
+    blocks = [
+        {"type": "header",
+         "text": {"type": "plain_text",
+                  "text": f"👁 Setup queued (watching) — {fmt(ticker)}"}},
+        {"type": "section",
+         "fields": [
+             {"type": "mrkdwn", "text": f"*Direction:*\n{direction}"},
+             {"type": "mrkdwn", "text": f"*Entry:*\n{entry}"},
+             {"type": "mrkdwn", "text": f"*Stop:*\n{stop}"},
+             {"type": "mrkdwn", "text": f"*Target:*\n{target}"},
+             {"type": "mrkdwn", "text": f"*R:R:*\n{rr_str}"},
+             {"type": "mrkdwn", "text": f"*Distance:*\n{dist_pct:.1f}% from entry"},
+         ]},
+        {"type": "context",
+         "elements": [{"type": "mrkdwn",
+                       "text": (f"Order will be placed automatically when within "
+                                f"{proximity_pct}% of entry. "
+                                f"Session: {session_name} | {_ts()}")}]},
+    ]
+    _send("trades", blocks)
+
+
+def working_order_watching_promoted(
+    ticker:       str,
+    direction:    str,
+    entry:        float,
+    stop:         float,
+    target:       float,
+    deal_id:      str,
+    session_name: str = "",
+):
+    """A WATCHING order has entered the proximity band and been placed on IG."""
+    blocks = [
+        {"type": "header",
+         "text": {"type": "plain_text",
+                  "text": f"✅ Order placed — {fmt(ticker)} (was watching)"}},
+        {"type": "section",
+         "fields": [
+             {"type": "mrkdwn", "text": f"*Direction:*\n{direction}"},
+             {"type": "mrkdwn", "text": f"*Entry:*\n{entry}"},
+             {"type": "mrkdwn", "text": f"*Stop:*\n{stop}"},
+             {"type": "mrkdwn", "text": f"*Target:*\n{target}"},
+         ]},
+        {"type": "context",
+         "elements": [{"type": "mrkdwn",
+                       "text": f"Price entered {entry} proximity band — order now live. "
+                               f"Deal: `{deal_id}` | {session_name} | {_ts()}"}]},
+    ]
+    _send("trades", blocks)
+
+
+def working_order_cancelled_proximity(
+    ticker:        str,
+    direction:     str,
+    entry:         float,
+    current_price: float,
+    dist_pct:      float,
+    threshold_pct: float,
+    deal_id:       str,
+):
+    """A PENDING working order was cancelled because price moved outside the band."""
+    blocks = [
+        {"type": "header",
+         "text": {"type": "plain_text",
+                  "text": f"🚫 Working order cancelled — {fmt(ticker)}"}},
+        {"type": "section",
+         "text": {"type": "mrkdwn",
+                  "text": (f"*{fmt(ticker)}* {direction} order at *{entry}* cancelled.\n"
+                           f"Price is now *{current_price}* — *{dist_pct:.1f}%* from entry "
+                           f"(threshold {threshold_pct}%). No capital was lost.")}},
+        {"type": "context",
+         "elements": [{"type": "mrkdwn",
+                       "text": f"Deal: `{deal_id}` | {_ts()}"}]},
+    ]
+    _send("alerts", blocks)
+
+
 # =============================================================================
 # Signal Summaries → #claude-trading-signals
 # Fired at the end of each session scan.

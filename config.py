@@ -446,8 +446,10 @@ SESSION_INSTRUMENTS = {
 
     "UK_OPEN": [
         "UK100",    # FTSE 100
+        "UK250",    # FTSE 250 index
         "GBPUSD",   # GBP/USD
         "XAUUSD",   # Gold
+        # Add FTSE 250 individual stocks here once IG tickers are verified
         # Crypto — 24/7, active during European session
         "BTCUSD",   # Bitcoin
         "ETHUSD",   # Ethereum

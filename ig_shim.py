@@ -64,6 +64,15 @@
 #                                 non-power-of-ten mismatches still refused by the
 #                                 entry-distance guard. Live-tested: EURUSD far-from-
 #                                 market LIMIT placed → ACCEPTED → reconciled → deleted.
+# 1.7.0   2026-06-11  Alex Hind   Proximity band for working orders: orders placed only
+#                                 when price is within WO_PROXIMITY_PCT (1%) of entry.
+#                                 Beyond that, logged as WATCHING (no capital committed).
+#                                 reconcile_working_orders upgrades WATCHING→PENDING when
+#                                 price enters band; cancels PENDING when price drifts
+#                                 beyond WO_CANCEL_BAND_PCT (2.5%) with Slack alert.
+#                                 _promote_watching_order() places the live IG order at
+#                                 promotion time. _get_pending_working_order now matches
+#                                 WATCHING rows to prevent duplicates.
 # 1.6.0   2026-06-11  Alex Hind   Post-trade review: _post_trade_review() called from
 #                                 _log_trade_close_to_db after every close. Checks R:R,
 #                                 stop tightness vs spread, and minimum meaningful risk
@@ -1120,6 +1129,15 @@ def get_snapshot(epic: str) -> dict:
 # bars arrive; sub-threshold jitter is noise, beyond it the setup truly moved.
 WO_UPDATE_THRESHOLD_PCT = 0.25
 
+# Working-order proximity band (2026-06-11):
+#   WO_PROXIMITY_PCT   — only place a live IG order when price is within this %
+#                        of the entry level. Further away → logged as WATCHING.
+#   WO_CANCEL_BAND_PCT — cancel an existing PENDING order when price has drifted
+#                        beyond this % from entry (capital no longer committed
+#                        to a setup that is now remote).
+WO_PROXIMITY_PCT   = 1.0
+WO_CANCEL_BAND_PCT = 2.5
+
 
 def _round_level(value, decimals: int):
     """Round a price level to the market's quoted decimal places (IG rejects
@@ -1169,8 +1187,9 @@ def get_working_orders() -> list:
 def _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction,
                              size, entry_level, stop_level, limit_level, otype,
                              hvf_type, good_till, paper_trade, session_name,
-                             signal_summary):
-    """Insert a new PENDING working-order record. Never raises."""
+                             signal_summary, status="PENDING"):
+    """Insert a new working-order record. status defaults to PENDING; pass WATCHING
+    when price is not yet in range and no capital is committed. Never raises."""
     try:
         db = get_db()
         try:
@@ -1181,14 +1200,14 @@ def _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction
                     status, paper_trade, session, signal_summary)
                    values (:v_ref, :v_deal, :v_uid, :v_ticker, :v_epic, :v_dir, :v_size,
                            :v_entry, :v_stop, :v_limit, :v_otype, :v_hvf, :v_till,
-                           'PENDING', :v_paper, :v_session, :v_signal)""",
+                           :v_status, :v_paper, :v_session, :v_signal)""",
                 v_ref=deal_ref, v_deal=deal_id, v_uid=user_id, v_ticker=ticker,
                 v_epic=epic, v_dir=direction, v_size=size, v_entry=entry_level,
                 v_stop=stop_level, v_limit=limit_level, v_otype=otype, v_hvf=hvf_type,
-                v_till=good_till, v_paper=paper_trade, v_session=session_name,
-                v_signal=signal_summary
+                v_till=good_till, v_status=status, v_paper=paper_trade,
+                v_session=session_name, v_signal=signal_summary
             )
-            log.info(f"Working order logged to Supabase: {deal_id} ({ticker} {direction} @ {entry_level})")
+            log.info(f"Working order logged to Supabase: {deal_id} ({ticker} {direction} @ {entry_level}) [{status}]")
         finally:
             db.close()
     except Exception as ex:
@@ -1217,15 +1236,16 @@ def _set_working_order_status(deal_id: str, status: str, fill_deal_id: str = Non
 
 
 def _get_pending_working_order(ticker: str, user_id: str):
-    """Return the most recent PENDING working-order row for ticker+user, or None."""
+    """Return the most recent PENDING or WATCHING working-order row for ticker+user, or None.
+    WATCHING rows have no capital committed but still block duplicate entries."""
     try:
         db = get_db()
         try:
             rows = db.run(
                 """select deal_id, entry_level, stop_level, limit_level, direction,
-                          otype, good_till, size
+                          otype, good_till, size, status
                    from   working_orders
-                   where  ticker = :t and user_id = :u and status = 'PENDING'
+                   where  ticker = :t and user_id = :u and status in ('PENDING','WATCHING')
                    order  by placed_at desc limit 1""",
                 t=ticker, u=user_id
             )
@@ -1236,7 +1256,7 @@ def _get_pending_working_order(ticker: str, user_id: str):
         return {"deal_id": rows[0][0], "entry_level": float(rows[0][1] or 0),
                 "stop_level": float(rows[0][2] or 0), "limit_level": float(rows[0][3] or 0),
                 "direction": rows[0][4], "otype": rows[0][5], "good_till": rows[0][6],
-                "size": float(rows[0][7] or 0)}
+                "size": float(rows[0][7] or 0), "status": rows[0][8]}
     except Exception as ex:
         log.warning(f"Pending working-order lookup failed for {ticker}: {ex}")
         return None
@@ -1399,10 +1419,11 @@ def place_working_order(
     stop_level  = _round_level(stop_level,  decimals)
     limit_level = _round_level(limit_level, decimals)
 
-    # Sanity guard — entry wildly far from the live IG price means stale pattern
-    # data or a Yahoo/IG unit mismatch for this instrument. Refuse + alert rather
-    # than park a nonsense order. (Tests may override the threshold.)
+    # Distance from current price — drives both the sanity guard and proximity band.
     dist_pct = abs(entry_level - current) / current * 100.0
+
+    # Sanity guard — entry wildly far from the live IG price means stale pattern
+    # data or a Yahoo/IG unit mismatch. Refuse + alert. (Tests may override threshold.)
     if dist_pct > max_entry_distance_pct * 100.0:
         msg = (f"[working order] entry {entry_level} is {dist_pct:.1f}% from current IG price "
                f"{current} — possible stale pattern or Yahoo/IG unit mismatch; order NOT placed")
@@ -1413,6 +1434,31 @@ def place_working_order(
         except Exception:
             pass
         return None
+
+    # Proximity band — only commit capital when price is close to the entry.
+    # Beyond WO_PROXIMITY_PCT, log as WATCHING (no IG order placed, no margin
+    # committed) and post a Slack alert. reconcile_working_orders will upgrade
+    # the WATCHING row to PENDING once price enters the band.
+    if dist_pct > WO_PROXIMITY_PCT:
+        watch_id  = f"WATCH-{ticker}-{int(time.time())}"
+        good_till = datetime.now(timezone.utc) + timedelta(days=good_till_days)
+        _log_working_order_to_db(
+            watch_id, watch_id, user_id, ticker, epic, direction,
+            size, entry_level, stop_level, limit_level,
+            "STOP" if direction == "BUY" else "STOP",   # placeholder — set at placement time
+            hvf_type, good_till, paper_trade, session_name, signal_summary,
+            status="WATCHING"
+        )
+        try:
+            from notify import working_order_watching
+            working_order_watching(ticker, direction, entry_level, stop_level,
+                                   limit_level, dist_pct, WO_PROXIMITY_PCT, session_name)
+        except Exception as ne:
+            log.warning(f"Watching notification failed for {ticker}: {ne}")
+        log.info(f"{ticker}: entry {entry_level} is {dist_pct:.2f}% away — logged as WATCHING "
+                 f"(will place order when within {WO_PROXIMITY_PCT}%)")
+        return {"deal_id": watch_id, "watching": True, "level": entry_level,
+                "stop_level": stop_level, "limit_level": limit_level, "working_order": True}
 
     # Level geometry must match the direction or IG will reject the order.
     if direction == "BUY" and not (stop_level < entry_level < limit_level):
@@ -1638,6 +1684,93 @@ def delete_working_order(deal_id: str, reason: str = "") -> bool:
         return False
 
 
+def _promote_watching_order(row) -> bool:
+    """
+    Place a live IG order for a WATCHING row that has entered the proximity band.
+    Updates the row in-place (deal_id, deal_ref, status → PENDING).
+    Returns True on success, False on failure (row stays WATCHING for next cycle).
+    """
+    (deal_id, deal_ref, user_id, ticker, epic, direction, size, entry,
+     stop, limit, otype, sess, sig_sum, good_till, hvf_type, paper) = row
+
+    if paper:
+        _set_working_order_status(deal_id, "PENDING",
+                                  notes="WATCHING promoted to PENDING (paper)")
+        return True
+
+    try:
+        mkt      = session.get(f"/markets/{epic}", version="3")
+        snap     = mkt.get("snapshot", {})
+        bid      = float(snap.get("bid", 0) or 0)
+        offer    = float(snap.get("offer", 0) or 0)
+        decimals = int(snap.get("decimalPlacesFactor", 2) or 2)
+        current  = offer if direction == "BUY" else bid
+        if not current:
+            current = (bid + offer) / 2 if (bid or offer) else float(entry)
+    except Exception as e:
+        log.warning(f"{ticker}: market snapshot failed in WATCHING promote: {e}")
+        return False
+
+    real_otype = "STOP" if (direction == "BUY" and float(entry) >= current) \
+                 or (direction == "SELL" and float(entry) <= current) else "LIMIT"
+    good_till_dt = good_till or datetime.now(timezone.utc) + timedelta(days=3)
+
+    body = {
+        "epic":           epic,
+        "direction":      direction,
+        "size":           str(float(size)),
+        "level":          str(_round_level(float(entry), decimals)),
+        "type":           real_otype,
+        "timeInForce":    "GOOD_TILL_DATE",
+        "goodTillDate":   _good_till_str(good_till_dt),
+        "guaranteedStop": False,
+        "stopLevel":      str(_round_level(float(stop),  decimals)),
+        "limitLevel":     str(_round_level(float(limit), decimals)),
+        "currencyCode":   "GBP",
+        "expiry":         "DFB",
+        "forceOpen":      True,
+    }
+    try:
+        resp     = session.post("/workingorders/otc", body=body, version="2")
+        new_ref  = resp.get("dealReference")
+        if not new_ref:
+            log.error(f"{ticker}: WATCHING promote — no deal reference returned: {resp}")
+            return False
+        time.sleep(1)
+        confirm  = session.get(f"/confirms/{new_ref}", version="1")
+        status_  = confirm.get("dealStatus")
+        new_id   = confirm.get("dealId")
+        if status_ != "ACCEPTED":
+            log.error(f"{ticker}: WATCHING promote rejected: {confirm.get('reason')}")
+            return False
+
+        # Update the existing WATCHING row to PENDING with the real IG IDs
+        db = get_db()
+        try:
+            db.run(
+                """update working_orders
+                   set deal_id = :v_new_id, deal_ref = :v_new_ref,
+                       status = 'PENDING', otype = :v_otype, updated_at = now()
+                   where deal_id = :v_old_id""",
+                v_new_id=new_id, v_new_ref=new_ref, v_otype=real_otype, v_old_id=deal_id
+            )
+        finally:
+            db.close()
+
+        log.info(f"{ticker}: WATCHING → PENDING — order placed {new_id} @ {entry}")
+        try:
+            from notify import working_order_watching_promoted
+            working_order_watching_promoted(ticker, direction, float(entry), float(stop),
+                                            float(limit), new_id, sess or "MONITOR")
+        except Exception as ne:
+            log.warning(f"Promote notification failed for {ticker}: {ne}")
+        return True
+
+    except Exception as e:
+        log.error(f"{ticker}: WATCHING promote failed: {e}")
+        return False
+
+
 def reconcile_working_orders() -> dict:
     """
     Sync PENDING working orders against IG. Called by the session monitors.
@@ -1653,7 +1786,8 @@ def reconcile_working_orders() -> dict:
     Returns {"pending": n, "filled": [...], "cancelled": [...], "expired": [...]}.
     Never raises — monitors must not crash on a reconcile failure.
     """
-    summary = {"pending": 0, "filled": [], "cancelled": [], "expired": []}
+    summary = {"pending": 0, "watching": 0, "filled": [], "cancelled": [], "expired": [],
+               "promoted": []}
     try:
         db = get_db()
         try:
@@ -1661,7 +1795,7 @@ def reconcile_working_orders() -> dict:
                 """select deal_id, deal_ref, user_id, ticker, epic, direction, size,
                           entry_level, stop_level, limit_level, otype, session,
                           signal_summary, good_till, hvf_type, paper_trade
-                   from   working_orders where status = 'PENDING'""")
+                   from   working_orders where status in ('PENDING','WATCHING')""")
         finally:
             db.close()
         if not rows:
@@ -1669,9 +1803,62 @@ def reconcile_working_orders() -> dict:
 
         now_utc = datetime.now(timezone.utc)
 
+        # Separate WATCHING from PENDING. Query includes both statuses.
+        watching_rows = []
+        pending_rows  = []
+        for r in rows:
+            # Need status — fetch it (column not in original select; use deal_id prefix heuristic)
+            deal_id_val = str(r[0])
+            db2 = get_db()
+            try:
+                st_rows = db2.run("select status from working_orders where deal_id=:d", d=deal_id_val)
+                row_status = st_rows[0][0] if st_rows else "PENDING"
+            except Exception:
+                row_status = "PENDING"
+            finally:
+                db2.close()
+            if row_status == "WATCHING":
+                watching_rows.append(r)
+            else:
+                pending_rows.append(r)
+
+        # ── Pass 0: WATCHING → PENDING upgrade ───────────────────────────────
+        # For each WATCHING row, check if price has entered the proximity band.
+        for r in watching_rows:
+            deal_id, _, _, ticker, epic, direction, size, entry, stop, limit, _, sess, _, good_till, _, paper = r
+            if good_till and good_till < now_utc:
+                _set_working_order_status(deal_id, "EXPIRED",
+                                          notes="watching order expired without reaching entry range")
+                summary["expired"].append(ticker)
+                log.info(f"WATCHING order expired (never reached range): {ticker} @ {entry}")
+                continue
+            try:
+                snap    = session.get(f"/markets/{epic}", version="3").get("snapshot", {})
+                bid     = float(snap.get("bid", 0) or 0)
+                offer   = float(snap.get("offer", 0) or 0)
+                current = offer if direction == "BUY" else bid
+                if not current:
+                    current = (bid + offer) / 2 if (bid or offer) else 0
+                if not current:
+                    summary["watching"] += 1
+                    continue
+                dist_pct = abs(float(entry) - current) / current * 100.0
+                if dist_pct <= WO_PROXIMITY_PCT:
+                    ok = _promote_watching_order(r)
+                    if ok:
+                        summary["promoted"].append(ticker)
+                    else:
+                        summary["watching"] += 1
+                else:
+                    summary["watching"] += 1
+                    log.debug(f"{ticker}: still WATCHING — {dist_pct:.2f}% from entry {entry}")
+            except Exception as we:
+                log.warning(f"WATCHING check failed for {ticker}: {we}")
+                summary["watching"] += 1
+
         # Paper rows can't be reconciled against IG — just expire stale ones.
         live_rows = []
-        for r in rows:
+        for r in pending_rows:
             if str(r[0]).startswith("PAPER-"):
                 good_till = r[13]
                 if good_till and good_till < now_utc:
@@ -1701,6 +1888,37 @@ def reconcile_working_orders() -> dict:
              stop, limit, otype, sess, sig_sum, good_till, hvf_type, paper) in live_rows:
 
             if deal_id in ig_pending:
+                # Still in IG — check if price has moved outside the cancel band.
+                # If so, delete the order and alert: no point committing margin to
+                # a setup the market has moved away from.
+                try:
+                    snap_r  = session.get(f"/markets/{epic}", version="3").get("snapshot", {})
+                    bid_r   = float(snap_r.get("bid", 0) or 0)
+                    offer_r = float(snap_r.get("offer", 0) or 0)
+                    cur_r   = offer_r if direction == "BUY" else bid_r
+                    if not cur_r:
+                        cur_r = (bid_r + offer_r) / 2 if (bid_r or offer_r) else 0
+                    if cur_r:
+                        dist_r = abs(float(entry) - cur_r) / cur_r * 100.0
+                        if dist_r > WO_CANCEL_BAND_PCT:
+                            cancel_reason = (
+                                f"price moved {dist_r:.1f}% from entry {entry} "
+                                f"(threshold {WO_CANCEL_BAND_PCT}%)"
+                            )
+                            log.info(f"{ticker}: cancelling PENDING order — {cancel_reason}")
+                            delete_working_order(deal_id, reason=cancel_reason)
+                            try:
+                                from notify import working_order_cancelled_proximity
+                                working_order_cancelled_proximity(
+                                    ticker, direction, float(entry), cur_r,
+                                    dist_r, WO_CANCEL_BAND_PCT, deal_id)
+                            except Exception as ne:
+                                log.warning(f"Cancel-proximity notification failed for {ticker}: {ne}")
+                            summary["cancelled"].append(ticker)
+                            continue
+                except Exception as ce:
+                    log.debug(f"Out-of-band check failed for {ticker}: {ce}")
+
                 summary["pending"] += 1
                 continue
 
