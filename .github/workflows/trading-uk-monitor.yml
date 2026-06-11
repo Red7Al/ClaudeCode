@@ -19,6 +19,7 @@ jobs:
       SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
       SLACK_TRADES:          ${{ secrets.SLACK_TRADES }}
       SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
+      SLACK_ORDERS:          ${{ secrets.SLACK_ORDERS }}
       YAHOO_USER:            ${{ secrets.YAHOO_USER }}
       YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
       RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}

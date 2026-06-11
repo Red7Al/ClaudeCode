@@ -94,11 +94,13 @@ log = logging.getLogger("notify")
 # =============================================================================
 
 WEBHOOKS = {
-    "trades":  os.environ.get("SLACK_TRADES",  ""),
-    "signals": os.environ.get("SLACK_SIGNALS", ""),
-    "alerts":  os.environ.get("SLACK_ALERTS",  ""),
-    "weekly":  os.environ.get("SLACK_WEEKLY",  ""),
-    "daily":   os.environ.get("SLACK_DAILY",   ""),
+    "trades":   os.environ.get("SLACK_TRADES",   ""),
+    "signals":  os.environ.get("SLACK_SIGNALS",  ""),
+    "alerts":   os.environ.get("SLACK_ALERTS",   ""),
+    "weekly":   os.environ.get("SLACK_WEEKLY",   ""),
+    "daily":    os.environ.get("SLACK_DAILY",    ""),
+    "orders":   os.environ.get("SLACK_ORDERS",   ""),
+    "twitter":  os.environ.get("SLACK_TWITTER",  ""),
 }
 
 
@@ -526,7 +528,7 @@ def working_order_watching(
                                 f"{proximity_pct}% of entry. "
                                 f"Session: {session_name} | {_ts()}")}]},
     ]
-    _send("trades", blocks)
+    _send("orders", blocks)
 
 
 def working_order_watching_promoted(
@@ -555,7 +557,7 @@ def working_order_watching_promoted(
                        "text": f"Price entered {entry} proximity band — order now live. "
                                f"Deal: `{deal_id}` | {session_name} | {_ts()}"}]},
     ]
-    _send("trades", blocks)
+    _send("orders", blocks)
 
 
 def working_order_cancelled_proximity(
@@ -581,7 +583,7 @@ def working_order_cancelled_proximity(
          "elements": [{"type": "mrkdwn",
                        "text": f"Deal: `{deal_id}` | {_ts()}"}]},
     ]
-    _send("alerts", blocks)
+    _send("orders", blocks)
 
 
 # =============================================================================

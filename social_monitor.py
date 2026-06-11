@@ -339,7 +339,8 @@ def alert_new_picks(new_picks: list):
     if not new_picks:
         return
 
-    slack_url = os.environ.get("SLACK_SIGNALS", "")
+    # Post to SLACK_TWITTER (dedicated orders channel) if set, else fall back to SLACK_SIGNALS
+    slack_url = os.environ.get("SLACK_TWITTER", "") or os.environ.get("SLACK_SIGNALS", "")
     if not slack_url:
         return
 
@@ -348,7 +349,7 @@ def alert_new_picks(new_picks: list):
         ticker   = pick["ticker"]
         investor = pick["investor_name"]
         company  = get_company_name(ticker)
-        name_str = f"  _({company})_" if company else ""
+        label    = f"{ticker} ({company})" if company else ticker
 
         # Quick price action check
         try:
@@ -362,7 +363,7 @@ def alert_new_picks(new_picks: list):
         except Exception:
             pa_str = "⚪ PA unavailable"
 
-        lines += f"• *{ticker}* via @{investor} — {pa_str}{name_str}\n"
+        lines += f"• *{label}* via @{investor} — {pa_str}\n"
 
     blocks = [
         {
