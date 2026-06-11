@@ -88,7 +88,7 @@ def run():
     conn = _pool_get_db()
     our_deals = {
         r[0]: r for r in conn.run(
-            "select deal_id, ticker, direction, open_price, stop_loss, size from positions"
+            "select deal_id, ticker, direction, open_price, stop_loss, size, take_profit from positions"
         )
     }
     ig_deal_ids = {pos["position"]["dealId"] for pos in all_positions}
@@ -145,9 +145,17 @@ def run():
             continue   # skip non-commodity positions
 
         if deal_id not in ig_deal_ids and not deal_id.startswith("PAPER-"):
-            direction  = row[2]
-            open_price = float(row[3])
-            size       = float(row[5])
+            direction   = row[2]
+            open_price  = float(row[3])
+            stop_loss   = float(row[4]) if row[4] else None
+            size        = float(row[5])
+            take_profit = float(row[6]) if len(row) > 6 and row[6] else None
+            rr = None
+            if stop_loss and take_profit and open_price:
+                stop_dist   = abs(open_price - stop_loss)
+                target_dist = abs(take_profit - open_price)
+                if stop_dist > 0:
+                    rr = round(target_dist / stop_dist, 2)
             close_reason, close_price = get_close_reason(deal_id)
             actual_close = close_price or open_price
             _log_trade_close_to_db(deal_id, actual_close, close_reason)
@@ -156,7 +164,7 @@ def run():
                 else (open_price - actual_close) * size,
                 2
             )
-            trade_closed(ticker, direction, open_price, actual_close, pnl, close_reason)
+            trade_closed(ticker, direction, open_price, actual_close, pnl, close_reason, rr=rr)
             log.info(f"Commodity position closed: {ticker} {deal_id} — {close_reason} "
                      f"@ {close_price} | P&L £{pnl:.2f}")
 

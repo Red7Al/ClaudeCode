@@ -298,6 +298,7 @@ def trade_closed(
     close_reason: str,          # STOP_HIT, TARGET_HIT, MANUAL, CIRCUIT_BREAKER, SYSTEM, UNKNOWN
     user:         str = "Owner",
     opened_at=None,             # open timestamp (datetime/ISO str) — shows hold duration
+    rr:           float = None, # R:R ratio calculated from stop/target at entry
 ):
     """Send a trade closed notification to #claude-trading-trades."""
 
@@ -317,12 +318,14 @@ def trade_closed(
     reason_label = reason_labels.get(close_reason, close_reason)
     duration     = _format_duration(opened_at)
 
+    rr_str = f"{rr:.1f}:1" if rr else "—"
     fields = [
         {"type": "mrkdwn", "text": f"*User:*\n{user}"},
         {"type": "mrkdwn", "text": f"*Direction:*\n{direction}"},
         {"type": "mrkdwn", "text": f"*Entry:*\n{entry}"},
         {"type": "mrkdwn", "text": f"*Close:*\n{close}"},
         {"type": "mrkdwn", "text": f"*P&L:*\n£{pnl:+.2f}"},
+        {"type": "mrkdwn", "text": f"*R:R:*\n{rr_str}"},
         {"type": "mrkdwn", "text": f"*Reason:*\n{reason_label}"},
         {"type": "mrkdwn", "text": f"*Held:*\n{duration or '—'}"},
     ]

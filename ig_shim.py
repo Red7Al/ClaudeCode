@@ -64,6 +64,13 @@
 #                                 non-power-of-ten mismatches still refused by the
 #                                 entry-distance guard. Live-tested: EURUSD far-from-
 #                                 market LIMIT placed → ACCEPTED → reconciled → deleted.
+# 1.6.0   2026-06-11  Alex Hind   Post-trade review: _post_trade_review() called from
+#                                 _log_trade_close_to_db after every close. Checks R:R,
+#                                 stop tightness vs spread, and minimum meaningful risk
+#                                 (£). Posts a GOOD / MARGINAL / POOR verdict to #alerts
+#                                 with specific flags so bad trade decisions surface
+#                                 immediately. R:R now calculated from stored levels and
+#                                 included in the trade_closed Slack notification.
 # 1.5.0   2026-06-07  Alex Hind   CRITICAL safety fix: enforce the daily loss limit.
 #                                 check_circuit_breakers read daily_loss_hit, but that
 #                                 flag was NEVER set anywhere → the daily loss limit was
@@ -1934,6 +1941,125 @@ def _log_position_to_db(
         db.close()
 
 
+def _post_trade_review(pos: dict, pnl: float, close_reason: str):
+    """
+    Post a structured post-trade verdict to #alerts after every close.
+
+    Checks three things in priority order:
+      1. R:R — was the reward worth the risk on paper?
+      2. Stop tightness — was the stop wider than the bid-ask spread?
+      3. Minimum meaningful risk — was the £ at risk worth placing the trade?
+
+    Verdict is GOOD / MARGINAL / POOR with specific flags so bad entries are
+    surfaced immediately and can inform sizing/stop adjustments.
+    """
+    try:
+        from notify import _send
+
+        open_price  = float(pos["open_price"])
+        stop_loss   = float(pos["stop_loss"]) if pos.get("stop_loss") else None
+        take_profit = float(pos["take_profit"]) if pos.get("take_profit") else None
+        size        = float(pos["size"])
+        direction   = pos["direction"]
+        ticker      = pos["ticker"]
+        epic        = pos["epic"]
+
+        flags   = []
+        verdict = "GOOD"
+
+        # ── R:R check ────────────────────────────────────────────────────────
+        rr = None
+        if stop_loss and take_profit and open_price:
+            stop_dist   = abs(open_price - stop_loss)
+            target_dist = abs(take_profit - open_price)
+            if stop_dist > 0:
+                rr = round(target_dist / stop_dist, 2)
+
+        if rr is None:
+            flags.append("No R:R — take_profit or stop not set")
+            verdict = "MARGINAL"
+        elif rr < 1.5:
+            flags.append(f"Low R:R {rr:.1f}:1 (target {target_dist:.1f} pts vs stop {stop_dist:.1f} pts)")
+            verdict = "POOR"
+        elif rr < 2.0:
+            flags.append(f"Marginal R:R {rr:.1f}:1")
+            if verdict == "GOOD":
+                verdict = "MARGINAL"
+
+        # ── Stop tightness: fetch live spread and compare ─────────────────────
+        try:
+            mkt  = session.get(f"/markets/{epic}", version="3")
+            snap = mkt.get("snapshot", {})
+            bid  = float(snap.get("bid") or 0)
+            ask  = float(snap.get("offer") or snap.get("ask") or 0)
+            spread = round(ask - bid, 4) if bid and ask else None
+            if stop_loss and spread and spread > 0:
+                stop_dist_chk = abs(open_price - stop_loss)
+                if stop_dist_chk < spread:
+                    flags.append(
+                        f"Stop ({stop_dist_chk:.2f} pts) LESS than spread ({spread:.2f} pts) "
+                        f"— stop was inside the spread, fill impossible at intended level"
+                    )
+                    verdict = "POOR"
+                elif stop_dist_chk < 2 * spread:
+                    flags.append(
+                        f"Stop ({stop_dist_chk:.2f} pts) < 2× spread ({spread:.2f} pts) "
+                        f"— very likely to be clipped by normal bid/ask movement"
+                    )
+                    if verdict == "GOOD":
+                        verdict = "MARGINAL"
+        except Exception as se:
+            log.debug(f"Post-trade review: spread check failed for {epic}: {se}")
+
+        # ── Minimum meaningful risk ───────────────────────────────────────────
+        if stop_loss:
+            risk_gbp = round(abs(open_price - stop_loss) * size, 2)
+            if risk_gbp < 3.0:
+                flags.append(
+                    f"Tiny risk £{risk_gbp:.2f} — position too small to be meaningful. "
+                    f"Review position sizing or minimum account balance."
+                )
+                if verdict == "GOOD":
+                    verdict = "MARGINAL"
+
+        # ── Actual outcome vs expectation ─────────────────────────────────────
+        outcome = "profit" if pnl >= 0 else "loss"
+        if close_reason == "STOP_HIT" and rr and rr >= 2.0 and verdict == "GOOD":
+            pass   # stopped out on a good setup — no additional flag needed
+
+        # ── Build Slack message ───────────────────────────────────────────────
+        verdict_emoji = {"GOOD": "✅", "MARGINAL": "⚠️", "POOR": "❌"}.get(verdict, "ℹ️")
+        rr_str = f"{rr:.1f}:1" if rr else "—"
+        pnl_str = f"£{pnl:+.2f}"
+
+        flag_text = "\n".join(f"• {f}" for f in flags) if flags else "No issues identified."
+
+        blocks = [
+            {"type": "header",
+             "text": {"type": "plain_text",
+                      "text": f"{verdict_emoji} Post-trade review — {ticker} ({direction}) — {verdict}"}},
+            {"type": "section",
+             "fields": [
+                 {"type": "mrkdwn", "text": f"*R:R:*\n{rr_str}"},
+                 {"type": "mrkdwn", "text": f"*P&L:*\n{pnl_str}"},
+                 {"type": "mrkdwn", "text": f"*Close reason:*\n{close_reason}"},
+                 {"type": "mrkdwn", "text": f"*Session:*\n{pos.get('session', '—')}"},
+             ]},
+            {"type": "section",
+             "text": {"type": "mrkdwn", "text": f"*Flags:*\n{flag_text}"}},
+            {"type": "context",
+             "elements": [{"type": "mrkdwn",
+                           "text": (f"Entry {open_price} | Stop {stop_loss or '—'} | "
+                                    f"Target {take_profit or '—'} | Size {size} | "
+                                    f"Deal {pos.get('deal_id', '—')}")}]},
+        ]
+        _send("alerts", blocks)
+        log.info(f"Post-trade review posted for {ticker}: {verdict} | R:R {rr_str} | P&L {pnl_str}")
+
+    except Exception as e:
+        log.warning(f"Post-trade review failed for {pos.get('deal_id', '?')}: {e}")
+
+
 def _log_trade_close_to_db(deal_id: str, close_price: float, close_reason: str):
     """
     Move a closed position from the positions table to the trade_log table.
@@ -2057,6 +2183,13 @@ def _log_trade_close_to_db(deal_id: str, close_price: float, close_reason: str):
         log.error(f"Failed to log trade close to Supabase: {ex}")
     finally:
         db.close()
+
+    # Post-trade review — runs outside the DB transaction so a review failure
+    # never prevents the close from being recorded.
+    try:
+        _post_trade_review(pos, pnl, close_reason)
+    except Exception as re:
+        log.warning(f"Post-trade review raised unexpected error for {deal_id}: {re}")
 
 
 # =============================================================================

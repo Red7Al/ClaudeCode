@@ -473,7 +473,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     # Detect positions closed by IG
     conn = _pool_get_db()
     our_deals  = {r[0]: r for r in conn.run(
-        "select deal_id, ticker, direction, open_price, size, opened_at from positions"
+        "select deal_id, ticker, direction, open_price, size, opened_at, stop_loss, take_profit from positions"
     )}
     ig_deal_ids = {pos["position"]["dealId"] for pos in ig_positions}
     conn.close()
@@ -481,7 +481,15 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     # Record one detected closure: log to DB, compute realised P&L, notify Slack.
     def _record_closure(deal_id, row, close_reason, close_price):
         ticker, direction, open_price, size = row[1], row[2], float(row[3]), float(row[4])
-        opened_at = row[5] if len(row) > 5 else None
+        opened_at   = row[5] if len(row) > 5 else None
+        stop_loss   = float(row[6]) if len(row) > 6 and row[6] else None
+        take_profit = float(row[7]) if len(row) > 7 and row[7] else None
+        rr = None
+        if stop_loss and take_profit and open_price:
+            stop_dist   = abs(open_price - stop_loss)
+            target_dist = abs(take_profit - open_price)
+            if stop_dist > 0:
+                rr = round(target_dist / stop_dist, 2)
         open_tickers.add(ticker)
         # close_price is 0.0 when IG's activity/transaction history did not surface
         # the close — fall back to a live market snapshot so the P&L is not a
@@ -502,7 +510,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
             2
         )
         trade_closed(ticker, direction, open_price, actual_close, pnl, close_reason,
-                     opened_at=opened_at)
+                     opened_at=opened_at, rr=rr)
         log.info(f"Detected closure: {ticker} {deal_id} — {close_reason} @ {actual_close}")
 
     if not ig_positions and our_deals:
