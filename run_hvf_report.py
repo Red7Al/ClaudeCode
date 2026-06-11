@@ -28,21 +28,17 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.2.0   2026-06-11  Alex Hind   FTSE100 expanded from 71 to 100 constituents;
-#                                 FTSE250 expanded from 40 to 250 constituents.
-#                                 Both sourced from Wikipedia 2026-06-11.
-#                                 BT.A (LSE) corrected to BT-A.L (Yahoo ticker).
-# 1.1.0   2026-06-11  Alex Hind   FTSE250 expanded from 40 to 250 constituents
-#                                 (full index sourced from Wikipedia 2026-06-11).
-# 1.0.0   2026-06-05  Alex Hind   Initial build. Multi-timeframe HVF scanner
-#                                 covering FTSE 100, FTSE 250, S&P 500 and DAX.
-# 1.0.2   2026-06-05  Alex Hind   Removed DAX (Germany) from UNIVERSE scan.
-#                                 DAX suspended until further notice.
-# 1.0.3   2026-06-05  Alex Hind   Fixed stale 2.0/2:1 references in categorise()
-#                                 docstring and Slack summary block — now 2.5.
-#                                 Results logged to hvf_scan_log table.
-# 1.0.1   2026-06-05  Alex Hind   Raised tradeable filter to rr >= 2.5 and
-#                                 updated footer label and section descriptions
+# 1.2.0   2026-06-11  Alex Hind   FTSE100 expanded from 71 to 100 constituents; FTSE250 expanded from 40 to 250
+#                                 constituents. Both sourced from Wikipedia 2026-06-11. BT.A (LSE) corrected to BT-A.L
+#                                 (Yahoo ticker).
+# 1.1.0   2026-06-11  Alex Hind   FTSE250 expanded from 40 to 250 constituents (full index sourced from Wikipedia
+#                                 2026-06-11).
+# 1.0.0   2026-06-05  Alex Hind   Initial build. Multi-timeframe HVF scanner covering FTSE 100, FTSE 250, S&P 500 and
+#                                 DAX.
+# 1.0.2   2026-06-05  Alex Hind   Removed DAX (Germany) from UNIVERSE scan. DAX suspended until further notice.
+# 1.0.3   2026-06-05  Alex Hind   Fixed stale 2.0/2:1 references in categorise() docstring and Slack summary block — now
+#                                 2.5. Results logged to hvf_scan_log table.
+# 1.0.1   2026-06-05  Alex Hind   Raised tradeable filter to rr >= 2.5 and updated footer label and section descriptions
 #                                 to reflect new 2.5:1 threshold.
 # =============================================================================
 

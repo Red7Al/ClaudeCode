@@ -27,9 +27,8 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-06-10  Alex Hind   Initial build — resilient session-pooler connect
-#                                 (timeout + retry/backoff), extracted from the
-#                                 watchdog fix and shared across the whole codebase.
+# 1.0.0   2026-06-10  Alex Hind   Initial build — resilient session-pooler connect (timeout + retry/backoff), extracted
+#                                 from the watchdog fix and shared across the whole codebase.
 # =============================================================================
 
 import os

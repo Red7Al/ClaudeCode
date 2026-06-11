@@ -30,18 +30,13 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-06-03  Alex Hind   Initial build. Tests macro, options, GEX,
-#                                 price action, signal stack, DB writes, and
-#                                 IG connectivity. Posts ✅/❌/⚠ report to
-#                                 #claude-trading-alerts.
-# 1.0.2   2026-06-07  Alex Hind   Sync signal_log test INSERT to production: add
-#                                 director_cluster_strong (prod is now 45 cols, the
-#                                 test was a stale 44). Verified all 45 columns exist
-#                                 in the live schema and match scan_instrument().
-# 1.0.1   2026-06-05  Alex Hind   Extended Slack coverage test: sends a probe
-#                                 message to all 5 channels so the user can
-#                                 confirm every webhook is wired correctly
-#                                 after deployment.
+# 1.0.0   2026-06-03  Alex Hind   Initial build. Tests macro, options, GEX, price action, signal stack, DB writes, and
+#                                 IG connectivity. Posts ✅/❌/⚠ report to #claude-trading-alerts.
+# 1.0.2   2026-06-07  Alex Hind   Sync signal_log test INSERT to production: add director_cluster_strong (prod is now 45
+#                                 cols, the test was a stale 44). Verified all 45 columns exist in the live schema and
+#                                 match scan_instrument().
+# 1.0.1   2026-06-05  Alex Hind   Extended Slack coverage test: sends a probe message to all 5 channels so the user can
+#                                 confirm every webhook is wired correctly after deployment.
 # =============================================================================
 
 import os

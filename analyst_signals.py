@@ -33,8 +33,8 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-06-01  Alex Hind   Initial build. Yahoo Finance analyst data
-#                                 with consensus scoring and recency weighting.
+# 1.0.0   2026-06-01  Alex Hind   Initial build. Yahoo Finance analyst data with consensus scoring and recency
+#                                 weighting.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------

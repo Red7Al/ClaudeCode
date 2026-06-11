@@ -24,85 +24,58 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-01  Alex Hind   Initial build.
-# 1.0.1   2026-06-05  Alex Hind   get_intraday_signals: do not fall back to 5m data
-#                                 when 1h data is unavailable. RSI/MACD on 5m bars
-#                                 is 10× more reactive than intended (14 bars = 1.2h
-#                                 instead of 14h) — silent wrong-timeframe signals.
-#                                 Now logs a warning and skips RSI/MACD instead.
-#                                 Position size fallback 0.5 → 0.0 on exception;
-#                                 same dangerous pattern fixed in ig_shim.py 1.0.3.
-# 1.0.2   2026-06-08  Alex Hind   compute_rsi: zero-loss period (a pure up-move)
-#                                 returned NaN instead of 100 — so `rsi > 70` was
-#                                 silently False exactly when overbought mattered
-#                                 most. Now resolves NaN to 100 (pure rally) / 50
-#                                 (flat or too few bars). Verified on synthetic
-#                                 series: rally→100.0, flat→50.0, normal→58.5.
-# 1.1.0   2026-06-10  Alex Hind   HVF setups → IG WORKING ORDERS (user 2026-06-10):
-#                                 US monitor routes HVF signals to a pending order at
-#                                 the exact H3 entry (re-signal = amend, never a
-#                                 duplicate; no market fall-through), reconciles
-#                                 fills/cancels each pass, and counts open positions
-#                                 + today's PENDING working orders in the US slot
-#                                 budget (was trade_log only).
-# 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF
-#                                 Slack post, _generate_x_drafts() posts one
-#                                 tweet-ready block per instrument (with HVF chart
-#                                 attached) to SLACK_TWITTER channel for review before
-#                                 manual posting to X.
-# 1.4.2   2026-06-11  Alex Hind   X drafts: ALL aligned confirmations now in the tweet
-#                                 in plain English (was options flow + insider only):
-#                                 COT → "Futures positioning bullish (COT report)",
-#                                 ADX → "Strong trend in force (ADX)", OBV → "Volume
-#                                 flow backing the move", sector → "Sector (XLK) moving
-#                                 the same way", Senate → "US Senate-disclosed buying".
-#                                 Fitting loop trims lowest-priority confirmations
-#                                 first to stay ≤280 chars (user 2026-06-11).
-# 1.4.1   2026-06-11  Alex Hind   Signal summary: Confs:N now lists WHICH confirmations
-#                                 fired, via signals.conf_names() (user 2026-06-11 —
-#                                 'How is NEUTRAL a confirmation?': the Options/BB/COT
-#                                 fields show family STATE, not the counted items).
-# 1.4.0   2026-06-11  Alex Hind   (renumbered from duplicate 1.3.1)
-#                                 _generate_x_drafts: post card image now uploaded to
-#                                 the SLACK_TWITTER channel via the Slack external
-#                                 upload flow (files.getUploadURLExternal →
-#                                 completeUploadExternal; legacy files.upload retired).
-#                                 Needs SLACK_BOT_TOKEN (files:write) +
-#                                 SLACK_TWITTER_CHANNEL_ID secrets; until both are set
-#                                 the draft text posts with an explicit "chart not
-#                                 attached" note (no silent gap).
-# 1.2.5   2026-06-11  Alex Hind   _generate_x_drafts: revert 1.2.3 — SLACK_CLAUDE_TWITTER
-#                                 removed; SLACK_TWITTER is the only secret and already
-#                                 points at #claude-twitter (user correction 2026-06-11).
-# 1.2.4   2026-06-11  Alex Hind   _generate_x_drafts: chart upgraded to the agreed X
-#                                 post card format (2026-06-10): tweet-text header
-#                                 panel (@handle, $TICKER (Name), setup, levels,
-#                                 hashtags, "Not financial advice."), red upper jaw /
-#                                 green lower jaw funnel, full-width entry/stop/target
-#                                 lines with right-edge labels. Replaces plain chart.
-# 1.2.3   2026-06-11  Alex Hind   _generate_x_drafts: also post to SLACK_CLAUDE_TWITTER
-#                                 (#claude-twitter channel) in addition to SLACK_TWITTER.
-# 1.2.2   2026-06-11  Alex Hind   _generate_x_drafts: always append "Not financial
-#                                 advice." to every tweet (user directive 2026-06-11).
-# 1.2.1   2026-06-11  Alex Hind   _generate_x_drafts: SLACK_X renamed to SLACK_TWITTER
-#                                 (user directive — no separate SLACK_X secret exists).
-# 1.3.0   2026-06-10  Alex Hind   HVF watch deduplication: _post_hvf_watch now
-#                                 fingerprints the tradeable+developing lists and
-#                                 compares against the last-posted state in
-#                                 hvf_watch_state DB table. Sends "No changes in
-#                                 the latest period." when nothing has moved; full
-#                                 update only when figures actually change.
-#                                 HVF watch removed from run_us_monitor (was Part
-#                                 1.5 with a 30-min gate) — now a standalone
-#                                 US_HVF_WATCH session run every 2 hours via
+# 1.0.1   2026-06-05  Alex Hind   get_intraday_signals: do not fall back to 5m data when 1h data is unavailable.
+#                                 RSI/MACD on 5m bars is 10× more reactive than intended (14 bars = 1.2h instead of 14h)
+#                                 — silent wrong-timeframe signals. Now logs a warning and skips RSI/MACD instead.
+#                                 Position size fallback 0.5 → 0.0 on exception; same dangerous pattern fixed in
+#                                 ig_shim.py 1.0.3.
+# 1.0.2   2026-06-08  Alex Hind   compute_rsi: zero-loss period (a pure up-move) returned NaN instead of 100 — so `rsi >
+#                                 70` was silently False exactly when overbought mattered most. Now resolves NaN to 100
+#                                 (pure rally) / 50 (flat or too few bars). Verified on synthetic series: rally→100.0,
+#                                 flat→50.0, normal→58.5.
+# 1.1.0   2026-06-10  Alex Hind   HVF setups → IG WORKING ORDERS (user 2026-06-10): US monitor routes HVF signals to a
+#                                 pending order at the exact H3 entry (re-signal = amend, never a duplicate; no market
+#                                 fall-through), reconciles fills/cancels each pass, and counts open positions + today's
+#                                 PENDING working orders in the US slot budget (was trade_log only).
+# 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF Slack post, _generate_x_drafts()
+#                                 posts one tweet-ready block per instrument (with HVF chart attached) to SLACK_TWITTER
+#                                 channel for review before manual posting to X.
+# 1.4.2   2026-06-11  Alex Hind   X drafts: ALL aligned confirmations now in the tweet in plain English (was options
+#                                 flow + insider only): COT → "Futures positioning bullish (COT report)", ADX → "Strong
+#                                 trend in force (ADX)", OBV → "Volume flow backing the move", sector → "Sector (XLK)
+#                                 moving the same way", Senate → "US Senate-disclosed buying". Fitting loop trims
+#                                 lowest-priority confirmations first to stay ≤280 chars (user 2026-06-11).
+# 1.4.1   2026-06-11  Alex Hind   Signal summary: Confs:N now lists WHICH confirmations fired, via signals.conf_names()
+#                                 (user 2026-06-11 — 'How is NEUTRAL a confirmation?': the Options/BB/COT fields show
+#                                 family STATE, not the counted items).
+# 1.4.0   2026-06-11  Alex Hind   (renumbered from duplicate 1.3.1) _generate_x_drafts: post card image now uploaded to
+#                                 the SLACK_TWITTER channel via the Slack external upload flow
+#                                 (files.getUploadURLExternal → completeUploadExternal; legacy files.upload retired).
+#                                 Needs SLACK_BOT_TOKEN (files:write) + SLACK_TWITTER_CHANNEL_ID secrets; until both are
+#                                 set the draft text posts with an explicit "chart not attached" note (no silent gap).
+# 1.2.5   2026-06-11  Alex Hind   _generate_x_drafts: revert 1.2.3 — SLACK_CLAUDE_TWITTER removed; SLACK_TWITTER is the
+#                                 only secret and already points at #claude-twitter (user correction 2026-06-11).
+# 1.2.4   2026-06-11  Alex Hind   _generate_x_drafts: chart upgraded to the agreed X post card format (2026-06-10):
+#                                 tweet-text header panel (@handle, $TICKER (Name), setup, levels, hashtags, "Not
+#                                 financial advice."), red upper jaw / green lower jaw funnel, full-width
+#                                 entry/stop/target lines with right-edge labels. Replaces plain chart.
+# 1.2.3   2026-06-11  Alex Hind   _generate_x_drafts: also post to SLACK_CLAUDE_TWITTER (#claude-twitter channel) in
+#                                 addition to SLACK_TWITTER.
+# 1.2.2   2026-06-11  Alex Hind   _generate_x_drafts: always append "Not financial advice." to every tweet (user
+#                                 directive 2026-06-11).
+# 1.2.1   2026-06-11  Alex Hind   _generate_x_drafts: SLACK_X renamed to SLACK_TWITTER (user directive — no separate
+#                                 SLACK_X secret exists).
+# 1.3.0   2026-06-10  Alex Hind   HVF watch deduplication: _post_hvf_watch now fingerprints the tradeable+developing
+#                                 lists and compares against the last-posted state in hvf_watch_state DB table. Sends
+#                                 "No changes in the latest period." when nothing has moved; full update only when
+#                                 figures actually change. HVF watch removed from run_us_monitor (was Part 1.5 with a
+#                                 30-min gate) — now a standalone US_HVF_WATCH session run every 2 hours via
 #                                 trading-us-hvf-watch.yml workflow.
-# 1.3.1   2026-06-10  Alex Hind   Fix X-draft funnel chart: upper jaw now drawn
-#                                 through real H1→H2→H3 pivot points, lower jaw
-#                                 through L1→L2→L3 — anchored to actual price
-#                                 history dates/levels from the signal dict.
-#                                 History window now spans from 14 days before
-#                                 oldest pivot date (not fixed 180 days). Legend
-#                                 and R:R removed from chart — shown in Slack
-#                                 context block below the tweet instead.
+# 1.3.1   2026-06-10  Alex Hind   Fix X-draft funnel chart: upper jaw now drawn through real H1→H2→H3 pivot points,
+#                                 lower jaw through L1→L2→L3 — anchored to actual price history dates/levels from the
+#                                 signal dict. History window now spans from 14 days before oldest pivot date (not fixed
+#                                 180 days). Legend and R:R removed from chart — shown in Slack context block below the
+#                                 tweet instead.
 # =============================================================================
 
 import os

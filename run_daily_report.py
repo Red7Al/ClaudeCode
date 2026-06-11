@@ -26,21 +26,15 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-06-01  Alex Hind   Initial build. Full end-of-day report covering
-#                                 macro, trades opened/closed, overnight positions,
-#                                 notable missed moves, daily P&L, and tomorrow's
-#                                 economic calendar.
-# 1.0.2   2026-06-06  Alex Hind   Fix 3 bugs: (a) market_moves.get(ticker) returns
-#                                 a dict, not a float — was multiplied by 100,
-#                                 crashing with TypeError on any day with overnight
-#                                 positions; (b) fetch_company_names: sanitise ticker
-#                                 symbols before SQL f-string interpolation;
-#                                 (c) group_summary vol_signal: was comparing "HIGH"/"LOW"
-#                                 but signal_log stores "HIGH_VOLUME"/"LOW_VOLUME" — fixed
-#                                 to show correct narrative.
-# 1.0.1   2026-06-05  Alex Hind   SLACK_URL confirmed as SLACK_DAILY — posts to
-#                                 #claude-trading-daily, the correct channel for
-#                                 end-of-day executive reports.
+# 1.0.0   2026-06-01  Alex Hind   Initial build. Full end-of-day report covering macro, trades opened/closed, overnight
+#                                 positions, notable missed moves, daily P&L, and tomorrow's economic calendar.
+# 1.0.2   2026-06-06  Alex Hind   Fix 3 bugs: (a) market_moves.get(ticker) returns a dict, not a float — was multiplied
+#                                 by 100, crashing with TypeError on any day with overnight positions; (b)
+#                                 fetch_company_names: sanitise ticker symbols before SQL f-string interpolation; (c)
+#                                 group_summary vol_signal: was comparing "HIGH"/"LOW" but signal_log stores
+#                                 "HIGH_VOLUME"/"LOW_VOLUME" — fixed to show correct narrative.
+# 1.0.1   2026-06-05  Alex Hind   SLACK_URL confirmed as SLACK_DAILY — posts to #claude-trading-daily, the correct
+#                                 channel for end-of-day executive reports.
 # =============================================================================
 
 import os

@@ -24,111 +24,74 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-05-30  Alex Hind   Initial build
-# 1.0.1   2026-05-30  Alex Hind   Fix expiry from "-" to "DFB" for rolling CFD
-#                                 contracts. Add get_close_reason() to query IG
-#                                 activity history for STOP_HIT / TARGET_HIT etc.
-#                                 Add get_open_positions() 404 guard (no positions
-#                                 returns empty list, not an error).
-# 1.0.2   2026-06-03  Alex Hind   check_circuit_breakers: retry Supabase user_profile
-#                                 query up to 2 times (2s delay) before returning
-#                                 "User profile not found". Guards against transient
-#                                 connection drops that return empty rows for a valid
-#                                 user_id (seen in production for KEEL 04-Jun-2026).
-# 1.0.3   2026-06-05  Alex Hind   calculate_position_size: remove max(size, min_size)
-#                                 that forced size up to IG minimum regardless of
-#                                 margin — caused IBM INSUFFICIENT_FUNDS (03-Jun-2026).
-#                                 Now skips trade when calculated size < min_size.
-#                                 Exception fallback changed from 0.5 to 0.0 (safe).
-# 1.1.0   2026-06-05  Alex Hind   calculate_position_size: when size < min_size,
-#                                 try IG minimum deal size if account margin can
-#                                 support it (min_size × price × margin_factor ≤
-#                                 available × 0.9). Only skip when truly
-#                                 unaffordable. Fixes GOOGL and RIOT being missed.
-#                                 open_trade: resolve user display name from
-#                                 user_profiles instead of hardcoded "Owner".
-# 1.6.0   2026-06-10  Alex Hind   HVF setups now placed as IG WORKING ORDERS (user
-#                                 2026-06-10: "HVF provides STOP, ENTRY and EXIT —
-#                                 these should be ORDERS in IG"). New: place_working_order
-#                                 (pending STOP/LIMIT entry at H3 with HVF stop+target
-#                                 attached, confirmed via /confirms), update_working_order
-#                                 (re-signal = AMEND not duplicate), delete_working_order,
-#                                 get_working_orders, reconcile_working_orders (fill →
-#                                 positions row so the monitor manages closure; cancelled/
-#                                 expired surfaced), place_hvf_order_from_sig (routing
-#                                 helper). Caps fix: per-instrument/per-session counts now
-#                                 include positions opened today (was trade_log only —
-#                                 trades still open did NOT count toward caps) and
-#                                 today's PENDING working orders. detect_ig_scale: aligns
-#                                 Yahoo-unit HVF levels to IG points (EURUSD 1.1539 →
-#                                 11538.6 ×10⁴, JPY ×10² — verified live 2026-06-10);
-#                                 non-power-of-ten mismatches still refused by the
-#                                 entry-distance guard. Live-tested: EURUSD far-from-
+# 1.0.1   2026-05-30  Alex Hind   Fix expiry from "-" to "DFB" for rolling CFD contracts. Add get_close_reason() to
+#                                 query IG activity history for STOP_HIT / TARGET_HIT etc. Add get_open_positions() 404
+#                                 guard (no positions returns empty list, not an error).
+# 1.0.2   2026-06-03  Alex Hind   check_circuit_breakers: retry Supabase user_profile query up to 2 times (2s delay)
+#                                 before returning "User profile not found". Guards against transient connection drops
+#                                 that return empty rows for a valid user_id (seen in production for KEEL 04-Jun-2026).
+# 1.0.3   2026-06-05  Alex Hind   calculate_position_size: remove max(size, min_size) that forced size up to IG minimum
+#                                 regardless of margin — caused IBM INSUFFICIENT_FUNDS (03-Jun-2026). Now skips trade
+#                                 when calculated size < min_size. Exception fallback changed from 0.5 to 0.0 (safe).
+# 1.1.0   2026-06-05  Alex Hind   calculate_position_size: when size < min_size, try IG minimum deal size if account
+#                                 margin can support it (min_size × price × margin_factor ≤ available × 0.9). Only skip
+#                                 when truly unaffordable. Fixes GOOGL and RIOT being missed. open_trade: resolve user
+#                                 display name from user_profiles instead of hardcoded "Owner".
+# 1.6.0   2026-06-10  Alex Hind   HVF setups now placed as IG WORKING ORDERS (user 2026-06-10: "HVF provides STOP, ENTRY
+#                                 and EXIT — these should be ORDERS in IG"). New: place_working_order (pending
+#                                 STOP/LIMIT entry at H3 with HVF stop+target attached, confirmed via /confirms),
+#                                 update_working_order (re-signal = AMEND not duplicate), delete_working_order,
+#                                 get_working_orders, reconcile_working_orders (fill → positions row so the monitor
+#                                 manages closure; cancelled/ expired surfaced), place_hvf_order_from_sig (routing
+#                                 helper). Caps fix: per-instrument/per-session counts now include positions opened
+#                                 today (was trade_log only — trades still open did NOT count toward caps) and today's
+#                                 PENDING working orders. detect_ig_scale: aligns Yahoo-unit HVF levels to IG points
+#                                 (EURUSD 1.1539 → 11538.6 ×10⁴, JPY ×10² — verified live 2026-06-10); non-power-of-ten
+#                                 mismatches still refused by the entry-distance guard. Live-tested: EURUSD far-from-
 #                                 market LIMIT placed → ACCEPTED → reconciled → deleted.
-# 1.9.0   2026-06-11  Alex Hind   (Z) get_epic: strip Yahoo .L suffix before DB lookup
-#                                 so LAND.L → LAND matches EPIC_MAP seeded entries.
-#                                 Tries normalized key first, then original, searches
-#                                 IG with normalized, caches under normalized key.
-#                                 (B) open_trade: INSUFFICIENT_FUNDS retry — halve
-#                                 size and resubmit once before alerting as missed.
-#                                 (C) open_trade: tight-stop guard — skip trade when
-#                                 stop_distance < 0.5% of price AND price ≥ 500pt
-#                                 (GBX equities); alerts as missed with explanation.
-# 1.8.0   2026-06-11  Alex Hind   GBX (pence) conversion for US stocks quoted on IG UK.
-#                                 place_working_order now reads instrument.currencies[0]
-#                                 .baseExchangeRate (pence per USD) and applies it to
-#                                 Yahoo-derived HVF levels before the sanity guard.
-#                                 detect_ig_scale (power-of-ten FX logic) unchanged and
-#                                 still handles EURUSD/USDJPY. Fixes RIOT/NVDA etc.
-#                                 rejecting with "99.4% from current IG price".
-# 1.7.0   2026-06-11  Alex Hind   Proximity band for working orders: orders placed only
-#                                 when price is within WO_PROXIMITY_PCT (1%) of entry.
-#                                 Beyond that, logged as WATCHING (no capital committed).
-#                                 reconcile_working_orders upgrades WATCHING→PENDING when
-#                                 price enters band; cancels PENDING when price drifts
-#                                 beyond WO_CANCEL_BAND_PCT (2.5%) with Slack alert.
-#                                 _promote_watching_order() places the live IG order at
-#                                 promotion time. _get_pending_working_order now matches
-#                                 WATCHING rows to prevent duplicates.
-# 1.6.0   2026-06-11  Alex Hind   Post-trade review: _post_trade_review() called from
-#                                 _log_trade_close_to_db after every close. Checks R:R,
-#                                 stop tightness vs spread, and minimum meaningful risk
-#                                 (£). Posts a GOOD / MARGINAL / POOR verdict to #alerts
-#                                 with specific flags so bad trade decisions surface
-#                                 immediately. R:R now calculated from stored levels and
-#                                 included in the trade_closed Slack notification.
-# 1.5.0   2026-06-07  Alex Hind   CRITICAL safety fix: enforce the daily loss limit.
-#                                 check_circuit_breakers read daily_loss_hit, but that
-#                                 flag was NEVER set anywhere → the daily loss limit was
-#                                 not enforced at all. Now compares the day's realised
-#                                 P&L to daily_loss_limit% of account balance, blocks
-#                                 the trade and persists daily_loss_hit on breach.
-#                                 (Found in deep-review Pass 2. Basis = % of current
-#                                 balance — flag if a different basis is intended.)
-# 1.4.0   2026-06-06  Alex Hind   Fix 3 bugs: (a) get_close_reason: removed unsafe
-#                                 fallback that returned the first transaction with
-#                                 any non-zero open/close level — had zero deal_id
-#                                 check, so it logged the wrong trade's close price;
-#                                 (b) update_stop: add ensure_authenticated() before
-#                                 PUT — was using potentially stale token when called
-#                                 between health_check intervals; (c) _log_trade_close:
-#                                 pnl_pct sign was wrong for SELL trades (subtracted
-#                                 in wrong direction — profitable SELLs showed negative).
-# 1.3.0   2026-06-06  Alex Hind   calculate_position_size: add optional
-#                                 available_funds parameter — callers that have
-#                                 already fetched the balance can pass it directly,
-#                                 avoiding a duplicate IG API call and preventing
-#                                 a race where a concurrent fill changes the
-#                                 available balance between the two reads.
-# 1.2.0   2026-06-06  Alex Hind   Add KN.D.* to US_EQUITY_PREFIXES — covers
-#                                 Canadian/US cross-listed names (e.g. KEEL
-#                                 KN.D.BITFCN.DAILY.IP) that trade NYSE hours only.
-#                                 Previously missed hours guard — could place trades
-#                                 outside NYSE window for these instruments.
-# 1.0.4   2026-06-05  Alex Hind   open_trade paper trade path: return dict instead
-#                                 of bare string. Caller accessed trade_result["level"]
-#                                 which crashed with TypeError on paper trades because
-#                                 string indices must be integers. Now returns
-#                                 {"deal_id", "level": 0.0, "stop_level": 0.0,
+# 1.9.0   2026-06-11  Alex Hind   (Z) get_epic: strip Yahoo .L suffix before DB lookup so LAND.L → LAND matches EPIC_MAP
+#                                 seeded entries. Tries normalized key first, then original, searches IG with
+#                                 normalized, caches under normalized key. (B) open_trade: INSUFFICIENT_FUNDS retry —
+#                                 halve size and resubmit once before alerting as missed. (C) open_trade: tight-stop
+#                                 guard — skip trade when stop_distance < 0.5% of price AND price ≥ 500pt (GBX
+#                                 equities); alerts as missed with explanation.
+# 1.8.0   2026-06-11  Alex Hind   GBX (pence) conversion for US stocks quoted on IG UK. place_working_order now reads
+#                                 instrument.currencies[0] .baseExchangeRate (pence per USD) and applies it to
+#                                 Yahoo-derived HVF levels before the sanity guard. detect_ig_scale (power-of-ten FX
+#                                 logic) unchanged and still handles EURUSD/USDJPY. Fixes RIOT/NVDA etc. rejecting with
+#                                 "99.4% from current IG price".
+# 1.7.0   2026-06-11  Alex Hind   Proximity band for working orders: orders placed only when price is within
+#                                 WO_PROXIMITY_PCT (1%) of entry. Beyond that, logged as WATCHING (no capital
+#                                 committed). reconcile_working_orders upgrades WATCHING→PENDING when price enters band;
+#                                 cancels PENDING when price drifts beyond WO_CANCEL_BAND_PCT (2.5%) with Slack alert.
+#                                 _promote_watching_order() places the live IG order at promotion time.
+#                                 _get_pending_working_order now matches WATCHING rows to prevent duplicates.
+# 1.6.0   2026-06-11  Alex Hind   Post-trade review: _post_trade_review() called from _log_trade_close_to_db after every
+#                                 close. Checks R:R, stop tightness vs spread, and minimum meaningful risk (£). Posts a
+#                                 GOOD / MARGINAL / POOR verdict to #alerts with specific flags so bad trade decisions
+#                                 surface immediately. R:R now calculated from stored levels and included in the
+#                                 trade_closed Slack notification.
+# 1.5.0   2026-06-07  Alex Hind   CRITICAL safety fix: enforce the daily loss limit. check_circuit_breakers read
+#                                 daily_loss_hit, but that flag was NEVER set anywhere → the daily loss limit was not
+#                                 enforced at all. Now compares the day's realised P&L to daily_loss_limit% of account
+#                                 balance, blocks the trade and persists daily_loss_hit on breach. (Found in deep-review
+#                                 Pass 2. Basis = % of current balance — flag if a different basis is intended.)
+# 1.4.0   2026-06-06  Alex Hind   Fix 3 bugs: (a) get_close_reason: removed unsafe fallback that returned the first
+#                                 transaction with any non-zero open/close level — had zero deal_id check, so it logged
+#                                 the wrong trade's close price; (b) update_stop: add ensure_authenticated() before PUT
+#                                 — was using potentially stale token when called between health_check intervals; (c)
+#                                 _log_trade_close: pnl_pct sign was wrong for SELL trades (subtracted in wrong
+#                                 direction — profitable SELLs showed negative).
+# 1.3.0   2026-06-06  Alex Hind   calculate_position_size: add optional available_funds parameter — callers that have
+#                                 already fetched the balance can pass it directly, avoiding a duplicate IG API call and
+#                                 preventing a race where a concurrent fill changes the available balance between the
+#                                 two reads.
+# 1.2.0   2026-06-06  Alex Hind   Add KN.D.* to US_EQUITY_PREFIXES — covers Canadian/US cross-listed names (e.g. KEEL
+#                                 KN.D.BITFCN.DAILY.IP) that trade NYSE hours only. Previously missed hours guard —
+#                                 could place trades outside NYSE window for these instruments.
+# 1.0.4   2026-06-05  Alex Hind   open_trade paper trade path: return dict instead of bare string. Caller accessed
+#                                 trade_result["level"] which crashed with TypeError on paper trades because string
+#                                 indices must be integers. Now returns {"deal_id", "level": 0.0, "stop_level": 0.0,
 #                                 "limit_level": 0.0} matching live trade format.
 #
 # Dependencies:

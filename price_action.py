@@ -66,37 +66,25 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-05-30  Alex Hind   Initial build. Six price action signals
-#                                 with composite confirmation score.
-# 1.1.0   2026-06-05  Alex Hind   Raised HVF_MIN_RR from 2.0 to 2.5 in both
-#                                 single-timeframe and multi-timeframe scanners
-#                                 to match MIN_RISK_REWARD in config.py.
-# 1.3.0   2026-06-06  Alex Hind   Fix 1: remove `if thresh != default` guard so
-#                                 config threshold is always authoritative —
-#                                 previously changing PA_CONFIRM_THRESHOLD_DEFAULT
-#                                 had zero effect on standard equities/indices.
-#                                 Fix 2 (HVF bypass): extend to cover direction
-#                                 conflicts: previously only fired when verdict==WAIT,
-#                                 so a low-threshold crypto with pa_score=+22 would
-#                                 get CONFIRM_LONG even while HVF was BEARISH+TRIGGERED.
-#                                 Now: always apply HVF direction, force WAIT when HVF
-#                                 direction conflicts with PA score at bypass threshold.
-# 1.4.0   2026-06-06  Alex Hind   _run_hvf_on_hist: add allow_bearish_override guard
-#                                 matching get_hvf_signal. Without the guard,
-#                                 STRONG_UPTREND weekly charts had their trend
-#                                 overridden to DOWNTREND whenever strict_dec or
-#                                 peak_dec fired — generating spurious short signals
-#                                 even on a confirmed strong uptrend.
-# 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto
-#                                 now uses threshold=25, FX/commodities 30-35,
-#                                 equities/indices keep default 40.
-#                                 HVF TRIGGERED bypass (Fix 2): threshold halved
-#                                 when HVF has confirmed entry — price has voted.
-# 1.5.0   2026-06-10  Alex Hind   HVF pivots now expose calendar dates
-#                                 (h1_date..l3_date) so the trade-open email can
-#                                 draw the funnel on the real price timeline. Added
-#                                 to get_hvf_signal, _run_hvf_on_hist and surfaced
-#                                 by analyse_price_action (hvf_h1_date..hvf_l3_date).
+# 1.0.0   2026-05-30  Alex Hind   Initial build. Six price action signals with composite confirmation score.
+# 1.1.0   2026-06-05  Alex Hind   Raised HVF_MIN_RR from 2.0 to 2.5 in both single-timeframe and multi-timeframe
+#                                 scanners to match MIN_RISK_REWARD in config.py.
+# 1.3.0   2026-06-06  Alex Hind   Fix 1: remove `if thresh != default` guard so config threshold is always authoritative
+#                                 — previously changing PA_CONFIRM_THRESHOLD_DEFAULT had zero effect on standard
+#                                 equities/indices. Fix 2 (HVF bypass): extend to cover direction conflicts: previously
+#                                 only fired when verdict==WAIT, so a low-threshold crypto with pa_score=+22 would get
+#                                 CONFIRM_LONG even while HVF was BEARISH+TRIGGERED. Now: always apply HVF direction,
+#                                 force WAIT when HVF direction conflicts with PA score at bypass threshold.
+# 1.4.0   2026-06-06  Alex Hind   _run_hvf_on_hist: add allow_bearish_override guard matching get_hvf_signal. Without
+#                                 the guard, STRONG_UPTREND weekly charts had their trend overridden to DOWNTREND
+#                                 whenever strict_dec or peak_dec fired — generating spurious short signals even on a
+#                                 confirmed strong uptrend.
+# 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto now uses threshold=25, FX/commodities
+#                                 30-35, equities/indices keep default 40. HVF TRIGGERED bypass (Fix 2): threshold
+#                                 halved when HVF has confirmed entry — price has voted.
+# 1.5.0   2026-06-10  Alex Hind   HVF pivots now expose calendar dates (h1_date..l3_date) so the trade-open email can
+#                                 draw the funnel on the real price timeline. Added to get_hvf_signal, _run_hvf_on_hist
+#                                 and surfaced by analyse_price_action (hvf_h1_date..hvf_l3_date).
 #
 # Dependencies:
 # -----------------------------------------------------------------------------

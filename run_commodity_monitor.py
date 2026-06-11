@@ -24,11 +24,9 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-01  Alex Hind   Initial build.
-# 1.0.1   2026-06-06  Alex Hind   Detected-closure notify: replace hardcoded 0.0 P&L
-#                                 with the realised P&L computed from open/close price,
-#                                 direction and size (mirrors the run_session.py fix).
-#                                 Slack previously reported every commodity closure as
-#                                 £0.00 regardless of actual gain/loss.
+# 1.0.1   2026-06-06  Alex Hind   Detected-closure notify: replace hardcoded 0.0 P&L with the realised P&L computed from
+#                                 open/close price, direction and size (mirrors the run_session.py fix). Slack
+#                                 previously reported every commodity closure as £0.00 regardless of actual gain/loss.
 # =============================================================================
 
 import os

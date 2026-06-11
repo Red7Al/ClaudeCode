@@ -22,40 +22,28 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.4   2026-06-07  Alex Hind   Fix misleading alert wording: said "GitHub Actions
-#                                 cron missed" but scheduling is via cron-job.org (the
-#                                 runner is GitHub Actions, the scheduler is not). Now
-#                                 reads "the scheduled run did not start (cron-job.org
-#                                 trigger or the workflow failed)". Also corrected a
-#                                 stale comment. (Watchdog itself is working — it
-#                                 correctly caught a missed UK_OPEN on 2026-06-08.)
-# 1.0.3   2026-06-07  Alex Hind   CRITICAL: fix pg8000 param binding in check_session.
-#                                 The macro_snapshot and signal_log COUNT queries used
-#                                 $1/$2 positional placeholders with a list arg, but
-#                                 pg8000.native uses :name keyword params — the list
-#                                 bound to `stream`, the $-placeholders went unfilled,
-#                                 and EVERY watchdog run crashed with "IndexError: list
-#                                 index out of range" (confirmed in Actions logs since
-#                                 at least 2026-06-05 — the safety net was down). Now
+# 1.0.4   2026-06-07  Alex Hind   Fix misleading alert wording: said "GitHub Actions cron missed" but scheduling is via
+#                                 cron-job.org (the runner is GitHub Actions, the scheduler is not). Now reads "the
+#                                 scheduled run did not start (cron-job.org trigger or the workflow failed)". Also
+#                                 corrected a stale comment. (Watchdog itself is working — it correctly caught a missed
+#                                 UK_OPEN on 2026-06-08.)
+# 1.0.3   2026-06-07  Alex Hind   CRITICAL: fix pg8000 param binding in check_session. The macro_snapshot and signal_log
+#                                 COUNT queries used $1/$2 positional placeholders with a list arg, but pg8000.native
+#                                 uses :name keyword params — the list bound to `stream`, the $-placeholders went
+#                                 unfilled, and EVERY watchdog run crashed with "IndexError: list index out of range"
+#                                 (confirmed in Actions logs since at least 2026-06-05 — the safety net was down). Now
 #                                 uses :sess/:d kwargs, matching already_ran_today().
-# 1.0.2   2026-06-06  Alex Hind   Replace the grace=60 workaround (1.0.1b) with a
-#                                 proper HH:MM open-time model. check_session now takes
-#                                 open_minute_utc and SESSIONS carries an explicit
-#                                 minute, so the 14:30 US open is expressed directly
-#                                 with a true 30-min grace (deadline 15:00). The old
-#                                 model could only express HH:00 opens, forcing a
-#                                 fragile grace inflation that broke self-documentation
-#                                 and would silently misfire on any schedule change.
-# 1.0.1   2026-06-06  Alex Hind   Fix 2 bugs: (a) late_mins added grace_minutes
-#                                 twice — deadline already incorporates grace_minutes,
-#                                 so `+ grace_minutes` inflated reported lateness by
-#                                 30 min (e.g. "1386min late" instead of "6min late");
-#                                 (b) US_OPEN deadline anchored to 14:00 UTC + 30min =
-#                                 14:30 — fires alert at the exact moment the session
-#                                 starts; fixed to 14:00 + 60min = 15:00 (30min grace
-#                                 from the 14:30 scheduled open), matching the comment.
-# 1.0.0   2026-06-03  Alex Hind   Initial build. Monitors AUS_OPEN, UK_OPEN,
-#                                 US_OPEN signal windows and alerts Slack if
+# 1.0.2   2026-06-06  Alex Hind   Replace the grace=60 workaround (1.0.1b) with a proper HH:MM open-time model.
+#                                 check_session now takes open_minute_utc and SESSIONS carries an explicit minute, so
+#                                 the 14:30 US open is expressed directly with a true 30-min grace (deadline 15:00). The
+#                                 old model could only express HH:00 opens, forcing a fragile grace inflation that broke
+#                                 self-documentation and would silently misfire on any schedule change.
+# 1.0.1   2026-06-06  Alex Hind   Fix 2 bugs: (a) late_mins added grace_minutes twice — deadline already incorporates
+#                                 grace_minutes, so `+ grace_minutes` inflated reported lateness by 30 min (e.g.
+#                                 "1386min late" instead of "6min late"); (b) US_OPEN deadline anchored to 14:00 UTC +
+#                                 30min = 14:30 — fires alert at the exact moment the session starts; fixed to 14:00 +
+#                                 60min = 15:00 (30min grace from the 14:30 scheduled open), matching the comment.
+# 1.0.0   2026-06-03  Alex Hind   Initial build. Monitors AUS_OPEN, UK_OPEN, US_OPEN signal windows and alerts Slack if
 #                                 a session is overdue or produced no signals.
 # =============================================================================
 

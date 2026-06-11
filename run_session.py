@@ -23,84 +23,57 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-06-01  Alex Hind   Initial build. Routes all session names to
-#                                 their respective handlers. Duplicate-run guard
-#                                 added via already_ran_today().
-# 1.1.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF handler — was listed in
-#                                 usage help but crashed with "Unknown session"
-#                                 when triggered by the Sunday scheduled task.
-# 1.2.0   2026-06-05  Alex Hind   Fix 3: when calculated position size is zero,
-#                                 fire Slack alert via alert_circuit_breaker().
-#                                 Previously silently skipped — violates no-silent-
-#                                 failures policy.
-# 1.4.0   2026-06-06  Alex Hind   Code-review fixes: (a) hoist get_user_profile()
-#                                 before the per-ticker loop — was per-signal,
-#                                 risking inconsistent paper_trade/risk on DB
-#                                 flakiness; (b) pass available_funds to
-#                                 calculate_position_size to eliminate duplicate
-#                                 get_account_balance() call; (c) fix
-#                                 alert_circuit_breaker first arg — was passing
-#                                 the reason string as user, now passes profile name.
-#                                 Same available_funds fix applied in run_session_open.
-# 1.3.0   2026-06-06  Alex Hind   run_monitor rescan: replace simplified inline
-#                                 size calculation with calculate_position_size().
-#                                 Previous code used risk_amount/stop_dist with a
-#                                 raw 0.02 hardcode and no margin/min-size check —
-#                                 produced limit_dist=0 when stop_dist=0, causing
-#                                 IG INVALID_STOP_OR_LIMIT rejections. Now mirrors
-#                                 the session open path exactly, respects user
-#                                 profile risk_per_trade, and alerts on size=0.
-#                                 Also adds stress_mult to the monitor rescan path
-#                                 so SPX stress mode is respected consistently.
-# 1.7.0   2026-06-06  Alex Hind   run_monitor closure detection: the 1.6.0 per-deal
-#                                 verification relied on get_close_reason returning
-#                                 UNKNOWN for still-open deals, but for an open
-#                                 position IG's activity history returns the OPEN (or
-#                                 a trailing-stop AMEND) activity, which get_close_reason
-#                                 misreads as a SYSTEM/STOP_HIT close — so a transient
-#                                 empty-list glitch could falsely close live positions.
-#                                 Now disambiguate at the source: re-fetch the
-#                                 positions list. Glitch (re-fetch returns positions)
-#                                 ⇒ skip; error ⇒ skip; confirmed empty ⇒ record
-#                                 closures. get_close_reason is only called once a deal
-#                                 is confirmed gone from the list.
-# 1.6.0   2026-06-06  Alex Hind   run_monitor closure detection: replace the blanket
-#                                 "skip when IG returns 0 positions" guard (1.5.0)
-#                                 with per-deal verification. The blanket skip never
-#                                 detected a genuine simultaneous mass-close (e.g. all
-#                                 stops hit in a flash crash) — those DB rows would
-#                                 stay open forever. Now, when IG returns an empty
-#                                 list but the DB has deals, each deal is checked
-#                                 against IG activity history and closed only if IG
-#                                 confirms a close reason (UNKNOWN ⇒ still open ⇒
-#                                 skip). Closure body extracted to _record_closure().
-# 1.6.0   2026-06-10  Alex Hind   HVF setups → IG WORKING ORDERS (user 2026-06-10):
-#                                 session open + monitor rescan route HVF signals
-#                                 (READY/TRIGGERED with entry/stop/target, direction-
-#                                 aligned) to place_hvf_order_from_sig — a pending
-#                                 order at the exact H3 entry — instead of a market
-#                                 order. Re-signals amend, never duplicate; no fall-
-#                                 through to market. run_monitor reconciles fills/
-#                                 cancels each pass. Session slot count now includes
-#                                 positions opened today (was trade_log only) +
-#                                 today's PENDING working orders.
-# 1.7.0   2026-06-11  Alex Hind   run_session_close: post end-of-day digest of blocked
-#                                 tradeable signals (summarize_missed_trades — pairs
-#                                 with the new alert_missed_trade dedupe in notify 1.7.0).
-# 1.5.0   2026-06-06  Alex Hind   Fix 4 bugs: (a) run_monitor closure loop: guard
-#                                 against IG returning 0 positions when DB has
-#                                 entries (transient API glitch), which would
-#                                 falsely log all positions as closed; (b) pnl
-#                                 hardcoded as 0.0 in trade_closed() — now
-#                                 computed from open_price, close_price, direction,
-#                                 size; (c) HVF limit_dist overwritten after
-#                                 calculate_position_size() — saved and restored
-#                                 when HVF target was set (both session-open and
-#                                 monitor-rescan paths).
-# 1.3.1   2026-06-06  Alex Hind   Fix circuit breaker alert in size=0 path: was
-#                                 passing the reason string as the user field,
-#                                 showing "Triggered trade skipped..." as User in
-#                                 Slack. Now passes profile name (e.g. "Owner").
+# 1.0.0   2026-06-01  Alex Hind   Initial build. Routes all session names to their respective handlers. Duplicate-run
+#                                 guard added via already_ran_today().
+# 1.1.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF handler — was listed in usage help but crashed with "Unknown
+#                                 session" when triggered by the Sunday scheduled task.
+# 1.2.0   2026-06-05  Alex Hind   Fix 3: when calculated position size is zero, fire Slack alert via
+#                                 alert_circuit_breaker(). Previously silently skipped — violates no-silent- failures
+#                                 policy.
+# 1.4.0   2026-06-06  Alex Hind   Code-review fixes: (a) hoist get_user_profile() before the per-ticker loop — was
+#                                 per-signal, risking inconsistent paper_trade/risk on DB flakiness; (b) pass
+#                                 available_funds to calculate_position_size to eliminate duplicate
+#                                 get_account_balance() call; (c) fix alert_circuit_breaker first arg — was passing the
+#                                 reason string as user, now passes profile name. Same available_funds fix applied in
+#                                 run_session_open.
+# 1.3.0   2026-06-06  Alex Hind   run_monitor rescan: replace simplified inline size calculation with
+#                                 calculate_position_size(). Previous code used risk_amount/stop_dist with a raw 0.02
+#                                 hardcode and no margin/min-size check — produced limit_dist=0 when stop_dist=0,
+#                                 causing IG INVALID_STOP_OR_LIMIT rejections. Now mirrors the session open path
+#                                 exactly, respects user profile risk_per_trade, and alerts on size=0. Also adds
+#                                 stress_mult to the monitor rescan path so SPX stress mode is respected consistently.
+# 1.7.0   2026-06-06  Alex Hind   run_monitor closure detection: the 1.6.0 per-deal verification relied on
+#                                 get_close_reason returning UNKNOWN for still-open deals, but for an open position IG's
+#                                 activity history returns the OPEN (or a trailing-stop AMEND) activity, which
+#                                 get_close_reason misreads as a SYSTEM/STOP_HIT close — so a transient empty-list
+#                                 glitch could falsely close live positions. Now disambiguate at the source: re-fetch
+#                                 the positions list. Glitch (re-fetch returns positions) ⇒ skip; error ⇒ skip;
+#                                 confirmed empty ⇒ record closures. get_close_reason is only called once a deal is
+#                                 confirmed gone from the list.
+# 1.6.0   2026-06-06  Alex Hind   run_monitor closure detection: replace the blanket "skip when IG returns 0 positions"
+#                                 guard (1.5.0) with per-deal verification. The blanket skip never detected a genuine
+#                                 simultaneous mass-close (e.g. all stops hit in a flash crash) — those DB rows would
+#                                 stay open forever. Now, when IG returns an empty list but the DB has deals, each deal
+#                                 is checked against IG activity history and closed only if IG confirms a close reason
+#                                 (UNKNOWN ⇒ still open ⇒ skip). Closure body extracted to _record_closure().
+# 1.6.0   2026-06-10  Alex Hind   HVF setups → IG WORKING ORDERS (user 2026-06-10): session open + monitor rescan route
+#                                 HVF signals (READY/TRIGGERED with entry/stop/target, direction- aligned) to
+#                                 place_hvf_order_from_sig — a pending order at the exact H3 entry — instead of a market
+#                                 order. Re-signals amend, never duplicate; no fall- through to market. run_monitor
+#                                 reconciles fills/ cancels each pass. Session slot count now includes positions opened
+#                                 today (was trade_log only) + today's PENDING working orders.
+# 1.7.0   2026-06-11  Alex Hind   run_session_close: post end-of-day digest of blocked tradeable signals
+#                                 (summarize_missed_trades — pairs with the new alert_missed_trade dedupe in notify
+#                                 1.7.0).
+# 1.5.0   2026-06-06  Alex Hind   Fix 4 bugs: (a) run_monitor closure loop: guard against IG returning 0 positions when
+#                                 DB has entries (transient API glitch), which would falsely log all positions as
+#                                 closed; (b) pnl hardcoded as 0.0 in trade_closed() — now computed from open_price,
+#                                 close_price, direction, size; (c) HVF limit_dist overwritten after
+#                                 calculate_position_size() — saved and restored when HVF target was set (both
+#                                 session-open and monitor-rescan paths).
+# 1.3.1   2026-06-06  Alex Hind   Fix circuit breaker alert in size=0 path: was passing the reason string as the user
+#                                 field, showing "Triggered trade skipped..." as User in Slack. Now passes profile name
+#                                 (e.g. "Owner").
 # =============================================================================
 
 import sys

@@ -41,16 +41,13 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-06-08  Alex Hind   Initial build. CFTC name-match, EIA + FRED series
-#                                 resolution, and ON CONFLICT constraint existence
-#                                 checks. Posts ✅/⚠/❌ to #claude-trading-alerts.
-# 1.1.0   2026-06-08  Alex Hind   Robustness: a transient CFTC read-timeout in CI
-#                                 was wrongly reported as ❌ and failed the run
-#                                 (24/25, code 096742 is correct — the API was just
-#                                 slow). Added _get() with retry+backoff and split
-#                                 FAIL (definitive wrong answer → exit 1) from WARN
-#                                 (could-not-verify network/5xx/missing-key → exit 0,
-#                                 still shown in Slack). Header now reflects warns.
+# 1.0.0   2026-06-08  Alex Hind   Initial build. CFTC name-match, EIA + FRED series resolution, and ON CONFLICT
+#                                 constraint existence checks. Posts ✅/⚠/❌ to #claude-trading-alerts.
+# 1.1.0   2026-06-08  Alex Hind   Robustness: a transient CFTC read-timeout in CI was wrongly reported as ❌ and failed
+#                                 the run (24/25, code 096742 is correct — the API was just slow). Added _get() with
+#                                 retry+backoff and split FAIL (definitive wrong answer → exit 1) from WARN
+#                                 (could-not-verify network/5xx/missing-key → exit 0, still shown in Slack). Header now
+#                                 reflects warns.
 # =============================================================================
 
 import os

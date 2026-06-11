@@ -21,65 +21,45 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-05-30  Alex Hind   Initial build. Four channels, Block Kit
-#                                 formatting, test harness included.
-# 1.1.0   2026-06-05  Alex Hind   Added HVF R:R field to signal_detail Slack
-#                                 block. Shows calculated ratio (e.g. 2.73:1)
+# 1.0.0   2026-05-30  Alex Hind   Initial build. Four channels, Block Kit formatting, test harness included.
+# 1.1.0   2026-06-05  Alex Hind   Added HVF R:R field to signal_detail Slack block. Shows calculated ratio (e.g. 2.73:1)
 #                                 on every trade signal message.
-# 1.2.0   2026-06-05  Alex Hind   Added fifth channel: #claude-trading-daily
-#                                 (SLACK_DAILY) for end-of-day reports and
-#                                 morning briefs. Full instrument names in
-#                                 session_summary candidate lines.
-# 1.2.1   2026-06-06  Alex Hind   Fix session_heartbeat lateness calculation:
-#                                 midnight-rollover was incorrectly applied when
-#                                 session ran *before* scheduled time (e.g. Cloud
-#                                 Routines fired at 13:36 vs scheduled 14:30 →
-#                                 showed "1386min late" instead of "on time").
-#                                 Guard: only roll midnight when late_mins < -120.
-# 1.2.2   2026-06-07  Alex Hind   alert_watchdog_trigger: fix wording — said "GitHub
-#                                 Actions cron missed" but scheduling is via cron-job.org.
-#                                 Now "Scheduled run for X was missed ... (cron-job.org
-#                                 trigger or workflow failure)".
-# 1.3.0   2026-06-09  Alex Hind   Full instrument name EVERY time a ticker is shown
-#                                 (memory/feedback_instrument_names). New cached fmt()
-#                                 -> 'TICKER (Full Name)'; replaces per-call DB lookups
-#                                 (one query/process, not one per message). Fixed 5
-#                                 alerts that showed the bare ticker: circuit_breaker,
-#                                 stop_slippage, position_deterioration, director_cluster,
-#                                 weekly_digest. Names cleaned of IG suffixes
-#                                 ('CleanSpark Inc (24 Hours)' -> 'CLSK (CleanSpark Inc)').
-# 1.4.0   2026-06-10  Alex Hind   Working-order notifications (HVF pending entries →
-#                                 IG working orders, user 2026-06-10): working_order_placed,
-#                                 working_order_updated, working_order_outcome
-#                                 (FILLED announced via trade_opened; CANCELLED/EXPIRED
-#                                 surfaced so nothing disappears silently).
-# 1.5.0   2026-07-09  Alex Hind   Trade reference (IG deal_id) added to all trade
-#                                 Slack blocks: trade_opened, working_order_placed,
-#                                 working_order_updated, working_order_outcome.
-#                                 trade_closed: Held duration now always shown (was
-#                                 conditional — omitted when opened_at was None).
-# 1.6.0   2026-06-11  Alex Hind   trade_opened: add Distance to Stop and Distance to
-#                                 Target fields (absolute points + % of entry) so a
-#                                 tight stop is immediately visible at entry time.
-# 1.7.0   2026-06-11  Alex Hind   alert_missed_trade deduplication + corrective actions
-#                                 (user 2026-06-11 — #alerts flooded, same 5 tickers
-#                                 re-alerting every 5-min monitor cycle). Block reasons
-#                                 are classified (TIGHT_STOP / SPREAD_VS_STOP /
-#                                 SPREAD_TOO_WIDE / INSUFFICIENT_FUNDS / SIZE_ZERO /
-#                                 CAP / REJECTED / OTHER) and upserted into
-#                                 missed_trade_log; only the FIRST occurrence per
-#                                 (day, ticker, direction, class) posts to #alerts —
-#                                 now including a specific CORRECTIVE ACTION line.
-#                                 Repeats bump occurrences silently. DB unavailable →
-#                                 fail-open (alert posts anyway, never silent).
-#                                 New summarize_missed_trades() posts one end-of-day
-#                                 digest of all blocked signals (called at SESSION_CLOSE).
-# 1.7.1   2026-06-11  Alex Hind   _SIGNAL_KEY abbreviation legend (PA/BB/COT/HVF/Confs/
-#                                 R:R) appended to the context footer of every message
-#                                 showing a signal summary: trade_opened,
-#                                 working_order_placed, signal_detail,
-#                                 alert_missed_trade, summarize_missed_trades.
-#                                 Context block = zero chars off the main message.
+# 1.2.0   2026-06-05  Alex Hind   Added fifth channel: #claude-trading-daily (SLACK_DAILY) for end-of-day reports and
+#                                 morning briefs. Full instrument names in session_summary candidate lines.
+# 1.2.1   2026-06-06  Alex Hind   Fix session_heartbeat lateness calculation: midnight-rollover was incorrectly applied
+#                                 when session ran *before* scheduled time (e.g. Cloud Routines fired at 13:36 vs
+#                                 scheduled 14:30 → showed "1386min late" instead of "on time"). Guard: only roll
+#                                 midnight when late_mins < -120.
+# 1.2.2   2026-06-07  Alex Hind   alert_watchdog_trigger: fix wording — said "GitHub Actions cron missed" but scheduling
+#                                 is via cron-job.org. Now "Scheduled run for X was missed ... (cron-job.org trigger or
+#                                 workflow failure)".
+# 1.3.0   2026-06-09  Alex Hind   Full instrument name EVERY time a ticker is shown (memory/feedback_instrument_names).
+#                                 New cached fmt() -> 'TICKER (Full Name)'; replaces per-call DB lookups (one
+#                                 query/process, not one per message). Fixed 5 alerts that showed the bare ticker:
+#                                 circuit_breaker, stop_slippage, position_deterioration, director_cluster,
+#                                 weekly_digest. Names cleaned of IG suffixes ('CleanSpark Inc (24 Hours)' -> 'CLSK
+#                                 (CleanSpark Inc)').
+# 1.4.0   2026-06-10  Alex Hind   Working-order notifications (HVF pending entries → IG working orders, user
+#                                 2026-06-10): working_order_placed, working_order_updated, working_order_outcome
+#                                 (FILLED announced via trade_opened; CANCELLED/EXPIRED surfaced so nothing disappears
+#                                 silently).
+# 1.5.0   2026-07-09  Alex Hind   Trade reference (IG deal_id) added to all trade Slack blocks: trade_opened,
+#                                 working_order_placed, working_order_updated, working_order_outcome. trade_closed: Held
+#                                 duration now always shown (was conditional — omitted when opened_at was None).
+# 1.6.0   2026-06-11  Alex Hind   trade_opened: add Distance to Stop and Distance to Target fields (absolute points + %
+#                                 of entry) so a tight stop is immediately visible at entry time.
+# 1.7.0   2026-06-11  Alex Hind   alert_missed_trade deduplication + corrective actions (user 2026-06-11 — #alerts
+#                                 flooded, same 5 tickers re-alerting every 5-min monitor cycle). Block reasons are
+#                                 classified (TIGHT_STOP / SPREAD_VS_STOP / SPREAD_TOO_WIDE / INSUFFICIENT_FUNDS /
+#                                 SIZE_ZERO / CAP / REJECTED / OTHER) and upserted into missed_trade_log; only the FIRST
+#                                 occurrence per (day, ticker, direction, class) posts to #alerts — now including a
+#                                 specific CORRECTIVE ACTION line. Repeats bump occurrences silently. DB unavailable →
+#                                 fail-open (alert posts anyway, never silent). New summarize_missed_trades() posts one
+#                                 end-of-day digest of all blocked signals (called at SESSION_CLOSE).
+# 1.7.1   2026-06-11  Alex Hind   _SIGNAL_KEY abbreviation legend (PA/BB/COT/HVF/Confs/ R:R) appended to the context
+#                                 footer of every message showing a signal summary: trade_opened, working_order_placed,
+#                                 signal_detail, alert_missed_trade, summarize_missed_trades. Context block = zero chars
+#                                 off the main message.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------

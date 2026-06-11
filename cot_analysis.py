@@ -43,24 +43,18 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.2   2026-06-06  Alex Hind   Extend partial-data protection beyond the latest
-#                                 commercial fields (1.0.1): every week-over-week
-#                                 *_change (commercial, non-commercial, open interest,
-#                                 managed money) was differenced against a 0-defaulted
-#                                 previous week when CFTC omitted it — fabricating a
-#                                 change equal to the full current net. Added _cot_net()
-#                                 helper returning None for missing legs; all change
-#                                 calcs now report 0 (no detectable change) instead of
-#                                 a bogus spike when the prior week is incomplete.
-# 1.0.1   2026-06-06  Alex Hind   Fix commercial positioning: fields defaulted to 0
-#                                 when CFTC returned partial data — silently computed
-#                                 comm_net=0 instead of surfacing the gap. Now checks
-#                                 for None and returns early with a warning, preventing
-#                                 a false NEUTRAL from corrupt partial data corrupting
-#                                 the COT score.
-# 1.0.0   2026-05-30  Alex Hind   Initial build. Full 4-signal COT stack:
-#                                 extremes, managed money, price divergence,
-#                                 OI signal. Composite score added.
+# 1.0.2   2026-06-06  Alex Hind   Extend partial-data protection beyond the latest commercial fields (1.0.1): every
+#                                 week-over-week *_change (commercial, non-commercial, open interest, managed money) was
+#                                 differenced against a 0-defaulted previous week when CFTC omitted it — fabricating a
+#                                 change equal to the full current net. Added _cot_net() helper returning None for
+#                                 missing legs; all change calcs now report 0 (no detectable change) instead of a bogus
+#                                 spike when the prior week is incomplete.
+# 1.0.1   2026-06-06  Alex Hind   Fix commercial positioning: fields defaulted to 0 when CFTC returned partial data —
+#                                 silently computed comm_net=0 instead of surfacing the gap. Now checks for None and
+#                                 returns early with a warning, preventing a false NEUTRAL from corrupt partial data
+#                                 corrupting the COT score.
+# 1.0.0   2026-05-30  Alex Hind   Initial build. Full 4-signal COT stack: extremes, managed money, price divergence, OI
+#                                 signal. Composite score added.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------

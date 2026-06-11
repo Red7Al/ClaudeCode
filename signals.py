@@ -26,63 +26,41 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-05-30  Alex Hind   Initial build. Full signal stack across all
-#                                 layers. AUS200 removed from AUS/Asia session
-#                                 instrument list (not traded).
-# 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log
-#                                 INSERT — was computed but never persisted.
-# 1.8.0   2026-06-11  Alex Hind   New conf_names(sig) helper — short names of the
-#                                 confirmations that actually fired, shown next to
-#                                 Confs:N in every signal summary (user 2026-06-11:
-#                                 count beside Options/BB/COT status fields wrongly
-#                                 implied NEUTRAL items were being counted).
-# 1.4.0   2026-06-07  Alex Hind   Fix get_potus_elite_senate_primary POTUS query:
-#                                 it selected account/context from social_mentions
-#                                 filtering on ticker/mention_date — none of which
-#                                 exist (real cols: author, post_text, tickers_found
-#                                 [array], post_time). Every scan logged "column
-#                                 'account' does not exist" and the POTUS primary
-#                                 could never fire. Verified corrected query vs live
-#                                 schema. (Surfaced by run_diagnostics 2026-06-07.)
-# 1.3.0   2026-06-06  Alex Hind   Fix 3 bugs: (a) get_yield_curve: falsy-zero check
-#                                 on us2y/us10y silenced spread at rate=0.0 — use
-#                                 `is not None` guard; (b) get_macro_gate: same
-#                                 falsy-zero on VIX — `if vix and vix > threshold`
-#                                 allowed VIX=0.0 to bypass the gate; (c) stale `s`
-#                                 variable in data_failures critical-count list
-#                                 comprehension — `s` was last value from outer
-#                                 scan loop, not per-failure ticker; now builds a
-#                                 set of critical tickers then filters against it.
-# 1.2.0   2026-06-06  Alex Hind   get_candidate_instruments: skip US equity tickers
-#                                 from the dynamic screener in non-US sessions
-#                                 (AUS_OPEN, UK_OPEN and their monitors). These
-#                                 tickers are blocked by the NYSE hours guard anyway
-#                                 so scanning them wastes API calls, inflates
-#                                 signal_log, and clutters Slack #signals.
-#                                 This week: AMD, RIVN, GOOGL appeared in AUS_OPEN
-#                                 and UK_OPEN signal_log via screener even though
-#                                 they can never trade at 04:40 or 12:25 UTC.
-# 1.1.1   2026-06-05  Alex Hind   get_gex_bias: detect and surface Yahoo Finance
-#                                 gamma unavailability. Previously returned gex=0.0
-#                                 (false NEUTRAL) when gamma column was absent or
-#                                 all-zero — 544 rows in signal_log all NEUTRAL,
-#                                 signal never fired PINNED/TRENDING in production.
-#                                 Now returns gex=None with a warning when no real
-#                                 gamma data found. signal_log INSERT: retry up to
-#                                 2× on pg8000 08P01 bind error (OIL 04-Jun-2026).
-# 1.5.0   2026-06-10  Alex Hind   Trade-email detail (user 2026-06-10): enrich the
-#                                 fired-signal strings — Options flow now carries
-#                                 call/put ratio + IV rank + GEX bias; Director buys
-#                                 carries insider count + 30d window + names; COT
-#                                 positioning carries composite score, commercial /
-#                                 managed-money extremes, OI signal, price divergence
-#                                 and net + WoW change. Carry HVF pivot dates,
-#                                 director_count and cot_comm_net in the signal dict.
-# 1.6.0   2026-07-09  Alex Hind   Director buys: parse Form 4 XML from EDGAR to get
-#                                 actual transaction dates, share counts, prices and
-#                                 total amounts (not just filing metadata). New helper
-#                                 _fetch_form4_transactions(). director_transactions
-#                                 field added to signal dict.
+# 1.0.0   2026-05-30  Alex Hind   Initial build. Full signal stack across all layers. AUS200 removed from AUS/Asia
+#                                 session instrument list (not traded).
+# 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log INSERT — was computed but never persisted.
+# 1.8.0   2026-06-11  Alex Hind   New conf_names(sig) helper — short names of the confirmations that actually fired,
+#                                 shown next to Confs:N in every signal summary (user 2026-06-11: count beside
+#                                 Options/BB/COT status fields wrongly implied NEUTRAL items were being counted).
+# 1.4.0   2026-06-07  Alex Hind   Fix get_potus_elite_senate_primary POTUS query: it selected account/context from
+#                                 social_mentions filtering on ticker/mention_date — none of which exist (real cols:
+#                                 author, post_text, tickers_found [array], post_time). Every scan logged "column
+#                                 'account' does not exist" and the POTUS primary could never fire. Verified corrected
+#                                 query vs live schema. (Surfaced by run_diagnostics 2026-06-07.)
+# 1.3.0   2026-06-06  Alex Hind   Fix 3 bugs: (a) get_yield_curve: falsy-zero check on us2y/us10y silenced spread at
+#                                 rate=0.0 — use `is not None` guard; (b) get_macro_gate: same falsy-zero on VIX — `if
+#                                 vix and vix > threshold` allowed VIX=0.0 to bypass the gate; (c) stale `s` variable in
+#                                 data_failures critical-count list comprehension — `s` was last value from outer scan
+#                                 loop, not per-failure ticker; now builds a set of critical tickers then filters
+#                                 against it.
+# 1.2.0   2026-06-06  Alex Hind   get_candidate_instruments: skip US equity tickers from the dynamic screener in non-US
+#                                 sessions (AUS_OPEN, UK_OPEN and their monitors). These tickers are blocked by the NYSE
+#                                 hours guard anyway so scanning them wastes API calls, inflates signal_log, and
+#                                 clutters Slack #signals. This week: AMD, RIVN, GOOGL appeared in AUS_OPEN and UK_OPEN
+#                                 signal_log via screener even though they can never trade at 04:40 or 12:25 UTC.
+# 1.1.1   2026-06-05  Alex Hind   get_gex_bias: detect and surface Yahoo Finance gamma unavailability. Previously
+#                                 returned gex=0.0 (false NEUTRAL) when gamma column was absent or all-zero — 544 rows
+#                                 in signal_log all NEUTRAL, signal never fired PINNED/TRENDING in production. Now
+#                                 returns gex=None with a warning when no real gamma data found. signal_log INSERT:
+#                                 retry up to 2× on pg8000 08P01 bind error (OIL 04-Jun-2026).
+# 1.5.0   2026-06-10  Alex Hind   Trade-email detail (user 2026-06-10): enrich the fired-signal strings — Options flow
+#                                 now carries call/put ratio + IV rank + GEX bias; Director buys carries insider count +
+#                                 30d window + names; COT positioning carries composite score, commercial /
+#                                 managed-money extremes, OI signal, price divergence and net + WoW change. Carry HVF
+#                                 pivot dates, director_count and cot_comm_net in the signal dict.
+# 1.6.0   2026-07-09  Alex Hind   Director buys: parse Form 4 XML from EDGAR to get actual transaction dates, share
+#                                 counts, prices and total amounts (not just filing metadata). New helper
+#                                 _fetch_form4_transactions(). director_transactions field added to signal dict.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------

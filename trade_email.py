@@ -23,33 +23,25 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-06-09  Alex Hind   Initial build — Yahoo SMTP, investment-case body,
-#                                 inline price / volume / HVF-funnel charts.
-# 1.1.0   2026-06-10  Alex Hind   Show supporting detail for Options flow, Director
-#                                 buys and COT positioning in the investment case;
-#                                 overlay the HVF funnel on the price-history chart
-#                                 (real timeline, via pivot dates). User 2026-06-10.
-# 1.2.0   2026-07-09  Alex Hind   Trade reference (IG deal_id) added to email subject
-#                                 and investment-case table. Corporate HTML redesign:
-#                                 dark header band, structured two-column layout,
-#                                 professional footer — IBM-style presentation.
-#                                 Opposing primary signals tagged in rationale and
-#                                 list (e.g. ADX BEARISH in a BUY trade): rationale
-#                                 now reads "2 of 3 aligned BUY (1 opposed)";
-#                                 opposing items highlighted [Opposing] in dark red.
-#                                 Fix: IG trade levels (entry/stop/target) rescaled to
-#                                 match yfinance price units before plotting. IG may
-#                                 quote in pence or US cents (~100x yfinance); if
-#                                 entry/yfinance_median > 5, all IG levels are divided
-#                                 by the ratio so price history and trade levels share
-#                                 one axis. Legend still shows the original IG values.
-# 1.3.0   2026-07-09  Alex Hind   Remove HVF funnel schematic (chart #3) — redundant
-#                                 now the funnel is overlaid on the price history chart.
-# 1.4.0   2026-06-10  Alex Hind   Director buys: render Form 4 transaction details as
-#                                 a structured HTML mini-table (name, date, shares,
-#                                 price, amount) when director_transactions list is
-#                                 present in the signal dict. Uses data fetched by
-#                                 signals.py v1.6.0 _fetch_form4_transactions().
+# 1.0.0   2026-06-09  Alex Hind   Initial build — Yahoo SMTP, investment-case body, inline price / volume / HVF-funnel
+#                                 charts.
+# 1.1.0   2026-06-10  Alex Hind   Show supporting detail for Options flow, Director buys and COT positioning in the
+#                                 investment case; overlay the HVF funnel on the price-history chart (real timeline, via
+#                                 pivot dates). User 2026-06-10.
+# 1.2.0   2026-07-09  Alex Hind   Trade reference (IG deal_id) added to email subject and investment-case table.
+#                                 Corporate HTML redesign: dark header band, structured two-column layout, professional
+#                                 footer — IBM-style presentation. Opposing primary signals tagged in rationale and list
+#                                 (e.g. ADX BEARISH in a BUY trade): rationale now reads "2 of 3 aligned BUY (1
+#                                 opposed)"; opposing items highlighted [Opposing] in dark red. Fix: IG trade levels
+#                                 (entry/stop/target) rescaled to match yfinance price units before plotting. IG may
+#                                 quote in pence or US cents (~100x yfinance); if entry/yfinance_median > 5, all IG
+#                                 levels are divided by the ratio so price history and trade levels share one axis.
+#                                 Legend still shows the original IG values.
+# 1.3.0   2026-07-09  Alex Hind   Remove HVF funnel schematic (chart #3) — redundant now the funnel is overlaid on the
+#                                 price history chart.
+# 1.4.0   2026-06-10  Alex Hind   Director buys: render Form 4 transaction details as a structured HTML mini-table
+#                                 (name, date, shares, price, amount) when director_transactions list is present in the
+#                                 signal dict. Uses data fetched by signals.py v1.6.0 _fetch_form4_transactions().
 # =============================================================================
 
 import os

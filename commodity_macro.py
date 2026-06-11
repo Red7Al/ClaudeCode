@@ -47,8 +47,7 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-05-30  Alex Hind   Initial build. Four macro drivers with
-#                                 instrument-specific weighting matrices.
+# 1.0.0   2026-05-30  Alex Hind   Initial build. Four macro drivers with instrument-specific weighting matrices.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------

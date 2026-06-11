@@ -19,18 +19,14 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-06-02  Alex Hind   Initial build. Idempotent migrations for
-#                                 signal_log, positions, macro_snapshot,
+# 1.0.0   2026-06-02  Alex Hind   Initial build. Idempotent migrations for signal_log, positions, macro_snapshot,
 #                                 hvf_scan_log, and epic_lookup tables.
-# 1.2.0   2026-06-11  Alex Hind   missed_trade_log table — dedupes TRADEABLE SIGNAL
-#                                 NOT PLACED alerts: one row per (day, ticker,
-#                                 direction, reason class), repeats bump occurrences.
-# 1.1.0   2026-06-10  Alex Hind   working_orders table — pending HVF entry orders
-#                                 placed on IG (entry at H3 with stop+target). Kept
-#                                 separate from positions: a pending order is NOT a
-#                                 position; putting it in positions would make
-#                                 run_monitor falsely record it as closed. Status
-#                                 lifecycle PENDING → FILLED/CANCELLED/EXPIRED.
+# 1.2.0   2026-06-11  Alex Hind   missed_trade_log table — dedupes TRADEABLE SIGNAL NOT PLACED alerts: one row per (day,
+#                                 ticker, direction, reason class), repeats bump occurrences.
+# 1.1.0   2026-06-10  Alex Hind   working_orders table — pending HVF entry orders placed on IG (entry at H3 with
+#                                 stop+target). Kept separate from positions: a pending order is NOT a position; putting
+#                                 it in positions would make run_monitor falsely record it as closed. Status lifecycle
+#                                 PENDING → FILLED/CANCELLED/EXPIRED.
 # =============================================================================
 
 import os

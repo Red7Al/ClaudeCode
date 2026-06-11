@@ -46,23 +46,16 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.1.0   2026-06-07  Alex Hind   Fix refinery-utilisation EIA series ID. The code
-#                                 tried PET.WCRRIUS2.W / WCRRIUS2 / PET.WPULEUS2.W —
-#                                 the first is refiner crude INPUT (kbbl/d, rejected
-#                                 by the 50-100 sanity check) and the other two 404 —
-#                                 so refinery_util never populated and every commodity
-#                                 scan logged two EIA 404 warnings. Now uses the
-#                                 verified PET.WPULEUS3.W (% utilisation). Series IDs
-#                                 confirmed against the live EIA API 2026-06-07.
-#                                 FLAGGED (not changed): crude-stocks signal uses
-#                                 PET.WCRSTUS1.W (total incl SPR, 790M bbl); the
-#                                 market supply/demand number is PET.WCESTUS1.W
-#                                 (commercial excl SPR, 434M bbl). Switching changes
-#                                 a live oil signal — left for user confirmation.
-# 1.0.0   2026-05-30  Alex Hind   Initial build. EIA oil inventory signal
-#                                 fully implemented. COMEX/LME stubs with
-#                                 graceful fallbacks. Geopolitical risk
-#                                 registry from Supabase.
+# 1.1.0   2026-06-07  Alex Hind   Fix refinery-utilisation EIA series ID. The code tried PET.WCRRIUS2.W / WCRRIUS2 /
+#                                 PET.WPULEUS2.W — the first is refiner crude INPUT (kbbl/d, rejected by the 50-100
+#                                 sanity check) and the other two 404 — so refinery_util never populated and every
+#                                 commodity scan logged two EIA 404 warnings. Now uses the verified PET.WPULEUS3.W (%
+#                                 utilisation). Series IDs confirmed against the live EIA API 2026-06-07. FLAGGED (not
+#                                 changed): crude-stocks signal uses PET.WCRSTUS1.W (total incl SPR, 790M bbl); the
+#                                 market supply/demand number is PET.WCESTUS1.W (commercial excl SPR, 434M bbl).
+#                                 Switching changes a live oil signal — left for user confirmation.
+# 1.0.0   2026-05-30  Alex Hind   Initial build. EIA oil inventory signal fully implemented. COMEX/LME stubs with
+#                                 graceful fallbacks. Geopolitical risk registry from Supabase.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------

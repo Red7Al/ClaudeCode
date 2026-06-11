@@ -24,47 +24,32 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-05  Alex Hind   Initial build — all session/report cron jobs.
-# 1.7.0   2026-06-11  Alex Hind   Add "UK HVF Watch" job (30 8,10,12,14 Mon-Fri
-#                                 → trading-uk-hvf-watch.yml). Mirrors US HVF Watch
-#                                 cadence for UK/FTSE250 instruments.
-# 1.6.0   2026-06-10  Alex Hind   --create-missing mode: creates only JOBS not yet
-#                                 on cron-job.org (skips existing). Safe to re-run.
-#                                 Workflow updated to expose mode input (reconcile /
-#                                 create-missing) and pass GH_PAT as GITHUB_TOKEN.
-# 1.5.0   2026-06-10  Alex Hind   Add "US HVF Watch" job (30 14,16,18,20 Mon-Fri
-#                                 → trading-us-hvf-watch.yml). HVF watch decoupled
-#                                 from 30-min US Monitor; runs 2-hourly with dedup.
-# 1.4.0   2026-06-09  Alex Hind   Increased monitoring frequency (user: "best
-#                                 information", GitHub-cron limit no longer applies):
-#                                 session monitors */20->*/5, commodity */30->*/10,
-#                                 watchdog */30->*/10, social hourly->*/15. Added a
-#                                 --reconcile mode that PATCHes only the schedule of
-#                                 EXISTING jobs (preserves each job's stored auth, so
-#                                 retuning frequency needs only CRONJOB_API_KEY, no
-#                                 GitHub PAT). Deployed via trading-setup-cronjobs.yml.
-# 1.3.0   2026-06-08  Alex Hind   Consolidate JOBS to the authoritative schedule and
-#                                 reflect the live cron-job.org account: monitors are
-#                                 now single */N-step jobs (AUS/UK/US Monitor) instead
-#                                 of ~70 per-slot jobs (which would have created
-#                                 duplicates on re-run). Migrated the watchdog +
-#                                 commodity-monitor off GitHub cron onto cron-job.org.
-#                                 Added a proactive "Daily Diagnostics" job (07:30
-#                                 Mon-Fri) so deployment/stack health is checked daily
-#                                 without prompting. Matches what is live on the
-#                                 user-owned account (created 2026-06-08).
-# 1.2.0   2026-06-07  Alex Hind   Fix create_job payload for the real cron-job.org
-#                                 API — it sent cronExpression/exprType and headers
-#                                 as a list, which the API rejects with HTTP 500 (the
-#                                 script had never worked). Now builds explicit
-#                                 minutes/hours/mdays/months/wdays arrays via
-#                                 _cron_to_schedule() and headers as an object.
-#                                 Verified live: created COT + 2 Sunday jobs. Added
-#                                 the Sunday jobs. ⚠ Running the FULL script populates
-#                                 ALL jobs — only do so against a sole cron-job.org
-#                                 account, else it double-fires with the old
-#                                 (lost-access) account that still holds weekday jobs.
-# 1.1.0   2026-06-07  Alex Hind   Add "COT Report" job (Sat 10:00 UTC →
-#                                 trading-cot-report.yml), scheduled after the
+# 1.7.0   2026-06-11  Alex Hind   Add "UK HVF Watch" job (30 8,10,12,14 Mon-Fri → trading-uk-hvf-watch.yml). Mirrors US
+#                                 HVF Watch cadence for UK/FTSE250 instruments.
+# 1.6.0   2026-06-10  Alex Hind   --create-missing mode: creates only JOBS not yet on cron-job.org (skips existing).
+#                                 Safe to re-run. Workflow updated to expose mode input (reconcile / create-missing) and
+#                                 pass GH_PAT as GITHUB_TOKEN.
+# 1.5.0   2026-06-10  Alex Hind   Add "US HVF Watch" job (30 14,16,18,20 Mon-Fri → trading-us-hvf-watch.yml). HVF watch
+#                                 decoupled from 30-min US Monitor; runs 2-hourly with dedup.
+# 1.4.0   2026-06-09  Alex Hind   Increased monitoring frequency (user: "best information", GitHub-cron limit no longer
+#                                 applies): session monitors */20->*/5, commodity */30->*/10, watchdog */30->*/10,
+#                                 social hourly->*/15. Added a --reconcile mode that PATCHes only the schedule of
+#                                 EXISTING jobs (preserves each job's stored auth, so retuning frequency needs only
+#                                 CRONJOB_API_KEY, no GitHub PAT). Deployed via trading-setup-cronjobs.yml.
+# 1.3.0   2026-06-08  Alex Hind   Consolidate JOBS to the authoritative schedule and reflect the live cron-job.org
+#                                 account: monitors are now single */N-step jobs (AUS/UK/US Monitor) instead of ~70
+#                                 per-slot jobs (which would have created duplicates on re-run). Migrated the watchdog +
+#                                 commodity-monitor off GitHub cron onto cron-job.org. Added a proactive "Daily
+#                                 Diagnostics" job (07:30 Mon-Fri) so deployment/stack health is checked daily without
+#                                 prompting. Matches what is live on the user-owned account (created 2026-06-08).
+# 1.2.0   2026-06-07  Alex Hind   Fix create_job payload for the real cron-job.org API — it sent cronExpression/exprType
+#                                 and headers as a list, which the API rejects with HTTP 500 (the script had never
+#                                 worked). Now builds explicit minutes/hours/mdays/months/wdays arrays via
+#                                 _cron_to_schedule() and headers as an object. Verified live: created COT + 2 Sunday
+#                                 jobs. Added the Sunday jobs. ⚠ Running the FULL script populates ALL jobs — only do so
+#                                 against a sole cron-job.org account, else it double-fires with the old (lost-access)
+#                                 account that still holds weekday jobs.
+# 1.1.0   2026-06-07  Alex Hind   Add "COT Report" job (Sat 10:00 UTC → trading-cot-report.yml), scheduled after the
 #                                 weekend review (09:00) refreshes COT data.
 # =============================================================================
 

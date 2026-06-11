@@ -29,54 +29,37 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.0.0   2026-05-30  Alex Hind   Initial build. Epics verified against live
-#                                 IG account HTIRV. Seeded into Supabase
+# 1.0.0   2026-05-30  Alex Hind   Initial build. Epics verified against live IG account HTIRV. Seeded into Supabase
 #                                 epic_lookup table on 2026-05-30.
-# 1.1.0   2026-06-05  Alex Hind   Raised MIN_RISK_REWARD from 2.0 to 2.5.
-#                                 All trades (including HVF) now require
-#                                 minimum 2.5:1 risk/reward to be placed.
-# 1.2.0   2026-06-05  Alex Hind   Removed DAX (Germany) from EPIC_MAP,
-#                                 OPTIONS_PROXY_MAP, YAHOO_MAP, ATR_MULTIPLIERS.
+# 1.1.0   2026-06-05  Alex Hind   Raised MIN_RISK_REWARD from 2.0 to 2.5. All trades (including HVF) now require minimum
+#                                 2.5:1 risk/reward to be placed.
+# 1.2.0   2026-06-05  Alex Hind   Removed DAX (Germany) from EPIC_MAP, OPTIONS_PROXY_MAP, YAHOO_MAP, ATR_MULTIPLIERS.
 #                                 DAX suspended from trading until further notice.
 # 1.3.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF to SESSION_INSTRUMENTS
-# 1.9.0   2026-06-07  Alex Hind   Add XAGUSD (Silver) and OIL (WTI) to PREMARKET_BRIEF
-#                                 so the Sunday pre-open scan covers ALL commodities
-#                                 that reopen on the CME Globex Sunday session
-#                                 (~22:00 UTC / 11pm UK), not just Gold.
-# 1.8.0   2026-06-07  Alex Hind   Add MSCI_EAFE (CFTC 244041) as a COT-only proxy for
-#                                 UK/international-developed index positioning — CFTC
-#                                 has no FTSE/UK contract. YAHOO_MAP MSCI_EAFE→EFA for
-#                                 the divergence price calc; the weekly COT report
-#                                 pairs it with the FTSE 100 price trend.
-# 1.7.0   2026-06-07  Alex Hind   CORRECT the Gold/Silver CFTC codes after verifying
-#                                 every code against the live CFTC API. The 1.6.0
-#                                 diagnosis was wrong on both counts: 084691 is
-#                                 SILVER (not Gold), and 084251 returns NO DATA (not
-#                                 Silver). Real bug: XAUUSD (Gold) was pulling 084691
-#                                 = Silver's positioning, so Gold COT was always
-#                                 Silver's numbers; and 1.6.0's XAGUSD→084251 broke
-#                                 Silver entirely. Now verified: Gold=088691,
-#                                 Silver=084691 ("...- COMMODITY EXCHANGE INC."). All
-#                                 other codes (OIL, GBPUSD, AUDUSD, USDJPY, EURUSD,
+# 1.9.0   2026-06-07  Alex Hind   Add XAGUSD (Silver) and OIL (WTI) to PREMARKET_BRIEF so the Sunday pre-open scan
+#                                 covers ALL commodities that reopen on the CME Globex Sunday session (~22:00 UTC / 11pm
+#                                 UK), not just Gold.
+# 1.8.0   2026-06-07  Alex Hind   Add MSCI_EAFE (CFTC 244041) as a COT-only proxy for UK/international-developed index
+#                                 positioning — CFTC has no FTSE/UK contract. YAHOO_MAP MSCI_EAFE→EFA for the divergence
+#                                 price calc; the weekly COT report pairs it with the FTSE 100 price trend.
+# 1.7.0   2026-06-07  Alex Hind   CORRECT the Gold/Silver CFTC codes after verifying every code against the live CFTC
+#                                 API. The 1.6.0 diagnosis was wrong on both counts: 084691 is SILVER (not Gold), and
+#                                 084251 returns NO DATA (not Silver). Real bug: XAUUSD (Gold) was pulling 084691 =
+#                                 Silver's positioning, so Gold COT was always Silver's numbers; and 1.6.0's
+#                                 XAGUSD→084251 broke Silver entirely. Now verified: Gold=088691, Silver=084691 ("...-
+#                                 COMMODITY EXCHANGE INC."). All other codes (OIL, GBPUSD, AUDUSD, USDJPY, EURUSD,
 #                                 SPX500, NASDAQ) confirmed correct.
-# 1.6.0   2026-06-06  Alex Hind   Fix XAGUSD CFTC code: was '084691' (Gold's code),
-#                                 corrected to '084251' (Silver). COT lookups for
-#                                 XAGUSD were silently returning Gold positioning data.
-#                                 [SUPERSEDED by 1.7.0 — this diagnosis was incorrect.]
-# 1.5.0   2026-06-06  Alex Hind   Lowered crypto PA thresholds from 25 → 20.
-#                                 ETH pa_score=-35 was still WAIT because the
-#                                 deployment of the threshold override (v1.4.0)
-#                                 happened after the Jun-05 sessions ran.
-#                                 Also: crypto rarely scores -25 without a
-#                                 full range breakout (-30 pts) — the -20 floor
-#                                 allows ETHUSD/BTCUSD to confirm on trend+MA
-#                                 alignment alone when other primaries align.
-# 1.4.0   2026-06-05  Alex Hind   Added PA_CONFIRM_THRESHOLDS and
-#                                 PA_CONFIRM_THRESHOLD_DEFAULT — per-instrument
-#                                 PA gate thresholds. Crypto=25, FX/metals=30-35,
-#                                 equities/indices=40 (default).
-#                                 with 24/7 instruments: crypto, XAUUSD (Spot Gold),
-#                                 and FX pairs active on Sunday evening.
+# 1.6.0   2026-06-06  Alex Hind   Fix XAGUSD CFTC code: was '084691' (Gold's code), corrected to '084251' (Silver). COT
+#                                 lookups for XAGUSD were silently returning Gold positioning data. [SUPERSEDED by 1.7.0
+#                                 — this diagnosis was incorrect.]
+# 1.5.0   2026-06-06  Alex Hind   Lowered crypto PA thresholds from 25 → 20. ETH pa_score=-35 was still WAIT because the
+#                                 deployment of the threshold override (v1.4.0) happened after the Jun-05 sessions ran.
+#                                 Also: crypto rarely scores -25 without a full range breakout (-30 pts) — the -20 floor
+#                                 allows ETHUSD/BTCUSD to confirm on trend+MA alignment alone when other primaries
+#                                 align.
+# 1.4.0   2026-06-05  Alex Hind   Added PA_CONFIRM_THRESHOLDS and PA_CONFIRM_THRESHOLD_DEFAULT — per-instrument PA gate
+#                                 thresholds. Crypto=25, FX/metals=30-35, equities/indices=40 (default). with 24/7
+#                                 instruments: crypto, XAUUSD (Spot Gold), and FX pairs active on Sunday evening.
 # =============================================================================
 
 

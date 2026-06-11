@@ -30,15 +30,13 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.2.0   2026-06-11  Alex Hind   RSS alert: sorted CONFIRM first then WAIT by score;
-#                                 handles always prefixed with @; removed "New X Pick
-#                                 Detected" header (claude-twitter = published posts only);
-#                                 handle stored in new_picks dict for correct display.
-# 1.1.0   2026-06-11  Alex Hind   Add 8 new trusted accounts: GlobalMktObserver,
-#                                 DVSignals, Javier Blas, Peter Brandt, ZeroHedge,
-#                                 WSJ Markets, BRICSinfo, WatcherGuru.
-# 1.0.0   2026-06-01  Alex Hind   Initial build. RSS parsing, ticker extraction,
-#                                 IG epic lookup, price action scan, Slack alert.
+# 1.2.0   2026-06-11  Alex Hind   RSS alert: sorted CONFIRM first then WAIT by score; handles always prefixed with @;
+#                                 removed "New X Pick Detected" header (claude-twitter = published posts only); handle
+#                                 stored in new_picks dict for correct display.
+# 1.1.0   2026-06-11  Alex Hind   Add 8 new trusted accounts: GlobalMktObserver, DVSignals, Javier Blas, Peter Brandt,
+#                                 ZeroHedge, WSJ Markets, BRICSinfo, WatcherGuru.
+# 1.0.0   2026-06-01  Alex Hind   Initial build. RSS parsing, ticker extraction, IG epic lookup, price action scan,
+#                                 Slack alert.
 # =============================================================================
 
 import os

@@ -40,19 +40,14 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
-# 1.1.0   2026-06-07  Alex Hind   Add market-context lines for Gold, Silver, the US
-#                                 indices (S&P 500, NASDAQ) and a UK proxy (MSCI EAFE
-#                                 positioning paired with the FTSE 100 price trend):
-#                                 each states whether COT positioning is aligned with
-#                                 the price trend, and why. New "UK / International
-#                                 (proxy)" group carries a note that CFTC has no
-#                                 FTSE/UK COT. Price trends fetched via yfinance in an
-#                                 isolated enrich step so build_report stays pure.
-# 1.0.0   2026-06-07  Alex Hind   Initial build. Reads latest cot_snapshot week,
-#                                 renders grouped per-instrument report with a
-#                                 headline section and a freshness guard, posts
-#                                 to #claude-trading-weekly. Surfaces failures to
-#                                 #claude-trading-alerts (no silent failures).
+# 1.1.0   2026-06-07  Alex Hind   Add market-context lines for Gold, Silver, the US indices (S&P 500, NASDAQ) and a UK
+#                                 proxy (MSCI EAFE positioning paired with the FTSE 100 price trend): each states
+#                                 whether COT positioning is aligned with the price trend, and why. New "UK /
+#                                 International (proxy)" group carries a note that CFTC has no FTSE/UK COT. Price trends
+#                                 fetched via yfinance in an isolated enrich step so build_report stays pure.
+# 1.0.0   2026-06-07  Alex Hind   Initial build. Reads latest cot_snapshot week, renders grouped per-instrument report
+#                                 with a headline section and a freshness guard, posts to #claude-trading-weekly.
+#                                 Surfaces failures to #claude-trading-alerts (no silent failures).
 # =============================================================================
 
 import os

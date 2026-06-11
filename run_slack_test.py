@@ -11,8 +11,8 @@
 # Version History:
 # -----------------------------------------------------------------------------
 # 1.0.0   2026-06-03  Alex Hind   Initial build.
-# 1.0.1   2026-06-05  Alex Hind   Removed non-existent SLACK_DAILY from webhook
-#                                 map — only four channels exist in this system.
+# 1.0.1   2026-06-05  Alex Hind   Removed non-existent SLACK_DAILY from webhook map — only four channels exist in this
+#                                 system.
 # =============================================================================
 
 import os
