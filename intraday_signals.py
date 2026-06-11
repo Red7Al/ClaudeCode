@@ -49,6 +49,12 @@
 #                                 tweet-ready block per instrument (with HVF chart
 #                                 attached) to SLACK_TWITTER channel for review before
 #                                 manual posting to X.
+# 1.2.4   2026-06-11  Alex Hind   _generate_x_drafts: chart upgraded to the agreed X
+#                                 post card format (2026-06-10): tweet-text header
+#                                 panel (@handle, $TICKER (Name), setup, levels,
+#                                 hashtags, "Not financial advice."), red upper jaw /
+#                                 green lower jaw funnel, full-width entry/stop/target
+#                                 lines with right-edge labels. Replaces plain chart.
 # 1.2.3   2026-06-11  Alex Hind   _generate_x_drafts: also post to SLACK_CLAUDE_TWITTER
 #                                 (#claude-twitter channel) in addition to SLACK_TWITTER.
 # 1.2.2   2026-06-11  Alex Hind   _generate_x_drafts: always append "Not financial
@@ -837,18 +843,44 @@ def _generate_x_drafts(tradeable: list):
                 dates = hist.index
                 n     = len(dates)
 
-                fig, ax = plt.subplots(figsize=(10, 5))
+                # ── Agreed X post card format (user-approved 2026-06-10) ──────
+                # Combined card: tweet-text header panel above the chart.
+                # Header: @handle / $TICKER (Name) / setup line / levels line /
+                # hashtags / "Not financial advice." — chart fills the rest.
+                fig = plt.figure(figsize=(12, 8.5))
                 fig.patch.set_facecolor("#0d1117")
+                ax = fig.add_axes([0.05, 0.06, 0.83, 0.62])
                 ax.set_facecolor("#0d1117")
+
+                dir_arrow = "▲" if direction == "BULLISH" else "▼"
+                hdr_lines = [
+                    (0.965, "@EndToEndTrading", "#1d9bf0", 13, "bold",   "normal"),
+                    (0.925, f"{dir_arrow} ${ticker} ({name})",
+                                                 "#ffffff", 16, "bold",   "normal"),
+                    (0.885, f"Volatility squeeze {sig_desc} {dir_word} — "
+                            f"{tf_raw or 'multi-month'} setup",
+                                                 "#c9d1d9", 13, "normal", "normal"),
+                    (0.845, f"Entry: {h3_str}   Stop: {stop_str}   "
+                            f"Target: {tgt_str}   R:R {rr_str}",
+                                                 "#c9d1d9", 12, "normal", "normal"),
+                    (0.805, f"#StockAlert #TechnicalAnalysis #{ticker} #Trading",
+                                                 "#8b949e", 11, "normal", "normal"),
+                    (0.770, "Not financial advice.",
+                                                 "#8b949e", 10, "normal", "italic"),
+                ]
+                for hy, htxt, hcol, hsize, hweight, hstyle in hdr_lines:
+                    fig.text(0.05, hy, htxt, color=hcol, fontsize=hsize,
+                             fontweight=hweight, style=hstyle,
+                             ha="left", va="top")
 
                 # Price line + fill
                 ax.plot(dates, close, color="#58a6ff", linewidth=1.6, zorder=3)
                 ax.fill_between(dates, close, float(close.min()), alpha=0.07,
                                 color="#58a6ff", zorder=2)
 
-                # ── Funnel: upper jaw H1→H2→H3, lower jaw L1→L2→L3 ───────────
-                # Plot through the actual 3 pivot points so the lines sit on
-                # the real swing highs/lows in the price history.
+                # ── Funnel: upper jaw H1→H2→H3 (red), lower jaw L1→L2→L3
+                # (green) — through the actual pivot points so the lines sit
+                # on the real swing highs/lows in the price history.
                 upper_pts = [(dt, lv) for dt, lv in
                              [(h1_dt, h1_p), (h2_dt, h2_p), (h3_dt, h3_p)]
                              if dt is not None and lv is not None]
@@ -858,62 +890,46 @@ def _generate_x_drafts(tradeable: list):
 
                 if len(upper_pts) >= 2:
                     ux, uy = zip(*upper_pts)
-                    ax.plot(ux, uy, color="#e3b341", linewidth=1.4,
+                    ax.plot(ux, uy, color="#f85149", linewidth=1.4,
                             linestyle="--", alpha=0.9, zorder=4)
-                    ax.scatter(ux, uy, color="#e3b341", s=22, zorder=5, alpha=0.9)
+                    ax.scatter(ux, uy, color="#f85149", s=26, zorder=5, alpha=0.95)
 
                 if len(lower_pts) >= 2:
                     lx, ly = zip(*lower_pts)
-                    ax.plot(lx, ly, color="#e3b341", linewidth=1.4,
+                    ax.plot(lx, ly, color="#3fb950", linewidth=1.4,
                             linestyle="--", alpha=0.9, zorder=4)
-                    ax.scatter(lx, ly, color="#e3b341", s=22, zorder=5, alpha=0.9)
+                    ax.scatter(lx, ly, color="#3fb950", s=26, zorder=5, alpha=0.95)
 
-                # Shade the funnel region between the two jaws
-                if len(upper_pts) >= 2 and len(lower_pts) >= 2:
-                    all_dates = sorted(set(ux) | set(lx))
-                    def _interp(pts, target_dates):
-                        xs = mdates.date2num([p[0] for p in pts])
-                        ys = [p[1] for p in pts]
-                        return np.interp(mdates.date2num(target_dates), xs, ys)
-                    u_interp = _interp(upper_pts, all_dates)
-                    l_interp = _interp(lower_pts, all_dates)
-                    ax.fill_between(all_dates, u_interp, l_interp,
-                                    alpha=0.07, color="#e3b341", zorder=1)
+                # ── Entry / stop / target: full-width lines + right-edge
+                # labels in matching colours (agreed card format).
+                trans = ax.get_yaxis_transform()
+                if h3_p:
+                    ax.axhline(h3_p, color="#e3b341", linewidth=1.2,
+                               linestyle="--", alpha=0.9, zorder=4)
+                    ax.text(1.01, h3_p, f"Entry {h3_str}", transform=trans,
+                            color="#e3b341", fontsize=9, va="center")
+                if stop_p:
+                    ax.axhline(stop_p, color="#f85149", linewidth=1.0,
+                               linestyle=":", alpha=0.9, zorder=4)
+                    ax.text(1.01, stop_p, f"Stop {stop_str}", transform=trans,
+                            color="#f85149", fontsize=9, va="center")
+                if targ_p:
+                    ax.axhline(targ_p, color="#3fb950", linewidth=1.0,
+                               linestyle=":", alpha=0.9, zorder=4)
+                    ax.text(1.01, targ_p, f"Target {tgt_str}", transform=trans,
+                            color="#3fb950", fontsize=9, va="center")
 
-                # ── Projected levels to the right of H3 ──────────────────────
-                if h3_p and h3_dt is not None and n > 1:
-                    day_delta = dates[-1] - dates[-2]
-                    proj_end  = dates[-1] + day_delta * max(1, int(n * 0.15))
-                    proj_dates = [h3_dt, proj_end]
-
-                    ax.plot(proj_dates, [h3_p,   h3_p],   color="#2ea043",
-                            linewidth=1.6, zorder=5)
-                    if stop_p:
-                        ax.plot(proj_dates, [stop_p, stop_p], color="#f85149",
-                                linewidth=1.6, zorder=5)
-                    if targ_p:
-                        ax.plot(proj_dates, [targ_p, targ_p], color="#ffa657",
-                                linewidth=1.6, zorder=5)
-
-                    ax.axvline(h3_dt, color="#444c56", linewidth=0.8,
-                               linestyle=":", zorder=2)
-
-                ax.xaxis.set_major_formatter(mdates.DateFormatter("%b '%y"))
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
                 ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
-                plt.xticks(rotation=20, color="#8b949e", fontsize=8)
-                plt.yticks(color="#8b949e", fontsize=8)
+                plt.setp(ax.get_xticklabels(), rotation=0,
+                         color="#8b949e", fontsize=9)
+                plt.setp(ax.get_yticklabels(), color="#8b949e", fontsize=9)
                 for spine in ax.spines.values():
                     spine.set_edgecolor("#30363d")
                 ax.tick_params(colors="#8b949e")
-                dir_arrow = "▲" if direction == "BULLISH" else "▼"
-                ax.set_title(
-                    f"{ticker} ({name})  {dir_arrow} {direction.title()} — {sig_desc.title()}  "
-                    f"[{tf_raw or 'multi-month'}]",
-                    color="#c9d1d9", fontsize=10, pad=10
-                )
 
                 buf = io.BytesIO()
-                plt.savefig(buf, format="png", dpi=140, bbox_inches="tight",
+                plt.savefig(buf, format="png", dpi=140,
                             facecolor="#0d1117")
                 plt.close(fig)
                 buf.seek(0)
