@@ -28,6 +28,10 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.2.0   2026-06-11  Alex Hind   FTSE100 expanded from 71 to 100 constituents;
+#                                 FTSE250 expanded from 40 to 250 constituents.
+#                                 Both sourced from Wikipedia 2026-06-11.
+#                                 BT.A (LSE) corrected to BT-A.L (Yahoo ticker).
 # 1.1.0   2026-06-11  Alex Hind   FTSE250 expanded from 40 to 250 constituents
 #                                 (full index sourced from Wikipedia 2026-06-11).
 # 1.0.0   2026-06-05  Alex Hind   Initial build. Multi-timeframe HVF scanner
@@ -62,32 +66,21 @@ log = logging.getLogger("hvf_report")
 # ---------------------------------------------------------------------------
 
 FTSE100 = [
-    # Financials
-    "HSBA.L", "BARC.L", "LLOY.L", "NWG.L", "STAN.L", "PRU.L", "AV.L",
-    "LGEN.L", "MNG.L", "LSEG.L", "BEZ.L", "HSX.L", "ADM.L",
-    # Energy
-    "BP.L", "SHEL.L",
-    # Mining / Materials
-    "RIO.L", "AAL.L", "GLEN.L", "ANTO.L", "FRES.L", "MNDI.L",
-    # Pharma / Healthcare
-    "AZN.L", "GSK.L", "HLN.L", "SN..L", "HIK.L", "RKT.L",
-    # Consumer / Retail
-    "ULVR.L", "DGE.L", "NXT.L", "MKS.L", "BRBY.L", "WTB.L", "REL.L",
-    # Tech / Telecoms
-    "SAGE.L", "VOD.L", "BT-A.L", "AUTO.L", "RMV.L", "EXPN.L",
-    # Industrials / Defence
-    "BA..L", "RR.L", "WEIR.L", "SMIN.L", "IMI.L", "HLMA.L",
-    "CPG.L", "ITRK.L", "BNZL.L", "INF.L", "WPP.L",
-    # Housebuilders / Real estate
-    "PSN.L", "TW..L", "BDEV.L", "SGRO.L", "LAND.L", "BLND.L",
-    # Utilities
-    "NG..L", "SSE.L", "SVT.L", "UU..L", "CNA.L",
-    # Travel / Leisure
-    "IHG.L", "IAG.L", "EZJ.L",
-    # Tobacco / FMCG
-    "IMB.L", "BATS.L",
-    # Other
-    "CRDA.L", "RS1.L", "MRO.L", "CCH.L",
+    # Full 100 constituents — sourced from Wikipedia 2026-06-11, converted to Yahoo .L format.
+    # BT.A (LSE) → BT-A.L (Yahoo uses hyphen); SN. → SN.L; NG. → NG.L; BA. → BA.L; JD. → JD.L
+    "III.L", "ADM.L", "AAF.L", "ALW.L", "AAL.L", "ANTO.L", "ABF.L", "AZN.L",
+    "AUTO.L", "AV.L", "BAB.L", "BA.L", "BARC.L", "BTRW.L", "BEZ.L", "BKG.L",
+    "BP.L", "BATS.L", "BLND.L", "BT-A.L", "BNZL.L", "BRBY.L", "CNA.L", "CCEP.L",
+    "CCH.L", "CPG.L", "CTEC.L", "CRDA.L", "DCC.L", "DGE.L", "DPLM.L", "EDV.L",
+    "ENT.L", "EXPN.L", "FCIT.L", "FRES.L", "GAW.L", "GLEN.L", "GSK.L", "HLN.L",
+    "HLMA.L", "HSX.L", "HWDN.L", "HSBA.L", "ICG.L", "IGG.L", "IHG.L", "IMI.L",
+    "IMB.L", "INF.L", "IAG.L", "ITRK.L", "JD.L", "BGEO.L", "KGF.L", "LAND.L",
+    "LGEN.L", "LLOY.L", "LMP.L", "LSEG.L", "MNG.L", "MKS.L", "MRO.L", "MTLN.L",
+    "MNDI.L", "NG.L", "NWG.L", "NXT.L", "PSON.L", "PSH.L", "PSN.L", "PCT.L",
+    "PRU.L", "RKT.L", "REL.L", "RTO.L", "RMV.L", "RIO.L", "RR.L", "SGE.L",
+    "SBRY.L", "SDR.L", "SMT.L", "SGRO.L", "SVT.L", "SHEL.L", "SMIN.L", "SN.L",
+    "SPX.L", "SSE.L", "STAN.L", "SDLF.L", "STJ.L", "TSCO.L", "BBOX.L", "ULVR.L",
+    "UU.L", "VOD.L", "WEIR.L", "WTB.L",
 ]
 
 FTSE250 = [
