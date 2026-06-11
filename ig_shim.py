@@ -64,6 +64,13 @@
 #                                 non-power-of-ten mismatches still refused by the
 #                                 entry-distance guard. Live-tested: EURUSD far-from-
 #                                 market LIMIT placed → ACCEPTED → reconciled → deleted.
+# 1.8.0   2026-06-11  Alex Hind   GBX (pence) conversion for US stocks quoted on IG UK.
+#                                 place_working_order now reads instrument.currencies[0]
+#                                 .baseExchangeRate (pence per USD) and applies it to
+#                                 Yahoo-derived HVF levels before the sanity guard.
+#                                 detect_ig_scale (power-of-ten FX logic) unchanged and
+#                                 still handles EURUSD/USDJPY. Fixes RIOT/NVDA etc.
+#                                 rejecting with "99.4% from current IG price".
 # 1.7.0   2026-06-11  Alex Hind   Proximity band for working orders: orders placed only
 #                                 when price is within WO_PROXIMITY_PCT (1%) of entry.
 #                                 Beyond that, logged as WATCHING (no capital committed).
@@ -1404,16 +1411,42 @@ def place_working_order(
         log.error(f"{ticker}: no current price in snapshot — skipping working order")
         return None
 
-    # Align signal units → IG units (FX: Yahoo 1.1539 vs IG 11538.6). No-op (×1)
-    # for instruments that already match; non-power-of-ten mismatches are left
-    # for the distance guard below to refuse.
-    scale = detect_ig_scale(current, entry_level)
-    if scale != 1.0:
-        log.warning(f"{ticker}: scaling HVF levels ×{scale:g} into IG units "
-                    f"(IG price {current} vs signal entry {entry_level})")
-        entry_level *= scale
-        stop_level  *= scale
-        limit_level *= scale
+    # Align signal units → IG units.
+    # Two cases handled:
+    #   1. FX power-of-ten (EURUSD Yahoo 1.1539 vs IG 11538.6 ×10⁴): detect_ig_scale
+    #   2. USD stock quoted on IG in GBX (pence): IG returns instrument.currencies[].
+    #      baseExchangeRate = pence per USD. Yahoo levels are USD; multiply by that
+    #      rate. detect_ig_scale fails here because the ratio (≈78–170) is not a
+    #      clean power-of-ten (it includes the live GBP/USD FX factor).
+    ig_ccy = ""
+    usd_to_ig = 1.0
+    try:
+        currencies = mkt.get("instrument", {}).get("currencies", [])
+        if currencies:
+            ig_ccy = currencies[0].get("code", "")
+            if ig_ccy == "GBX":
+                # baseExchangeRate: pence per 1 USD (e.g. ~127.x at GBP/USD 1.27)
+                base_rate = float(currencies[0].get("baseExchangeRate", 0) or 0)
+                if base_rate > 0:
+                    usd_to_ig = base_rate
+    except Exception:
+        pass
+
+    if usd_to_ig != 1.0:
+        log.warning(f"{ticker}: GBX instrument — converting Yahoo USD levels ×{usd_to_ig:.2f} "
+                    f"(IG price {current} vs raw entry {entry_level})")
+        entry_level *= usd_to_ig
+        stop_level  *= usd_to_ig
+        limit_level *= usd_to_ig
+    else:
+        # FX instruments (EURUSD, USDJPY, etc.) — power-of-ten alignment
+        scale = detect_ig_scale(current, entry_level)
+        if scale != 1.0:
+            log.warning(f"{ticker}: scaling HVF levels ×{scale:g} into IG units "
+                        f"(IG price {current} vs signal entry {entry_level})")
+            entry_level *= scale
+            stop_level  *= scale
+            limit_level *= scale
 
     entry_level = _round_level(entry_level, decimals)
     stop_level  = _round_level(stop_level,  decimals)
