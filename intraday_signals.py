@@ -40,6 +40,10 @@
 # 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF Slack post, _generate_x_drafts()
 #                                 posts one tweet-ready block per instrument (with HVF chart attached) to SLACK_TWITTER
 #                                 channel for review before manual posting to X.
+# 1.4.4   2026-06-11  Alex Hind   X drafts: fix second chart crash — yfinance returns MultiIndex columns for a single
+#                                 ticker so hist["Close"] is a DataFrame; float(DataFrame.median()) raised TypeError and
+#                                 every chart failed in run 27370959365. Squeeze to Series once after download.
+#                                 Reproduced and fix verified locally against live yfinance before commit.
 # 1.4.3   2026-06-11  Alex Hind   X drafts: (a) FIX chart tz bug — pivot dates from the scan are tz-naive while end_dt
 #                                 is UTC-aware; comparison raised TypeError and EVERY chart failed in run 27368931212.
 #                                 Now localised to UTC first. (b) TRIGGERED setups posted first (breaking out now),
@@ -862,10 +866,16 @@ def _generate_x_drafts(tradeable: list):
                                 end=end_dt.strftime("%Y-%m-%d"),
                                 progress=False, auto_adjust=True)
             if hist is not None and not hist.empty:
+                # yfinance returns MultiIndex columns for a single ticker, so
+                # hist["Close"] is a DataFrame — squeeze to a Series ONCE here.
+                # float(DataFrame.median()) raised TypeError and every chart
+                # failed in run 27370959365.
+                close = hist["Close"].squeeze()
+
                 # ig_scale normalisation
                 ig_scale = 1.0
                 if h3:
-                    yf_med = float(hist["Close"].median())
+                    yf_med = float(close.median())
                     if yf_med > 0 and h3 / yf_med > 5:
                         ig_scale = h3 / yf_med
 
@@ -894,7 +904,6 @@ def _generate_x_drafts(tradeable: list):
                 h1_dt = _pd("h1_date"); h2_dt = _pd("h2_date"); h3_dt = _pd("h3_date")
                 l1_dt = _pd("l1_date"); l2_dt = _pd("l2_date"); l3_dt = _pd("l3_date")
 
-                close = hist["Close"].squeeze()
                 dates = hist.index
                 n     = len(dates)
 
