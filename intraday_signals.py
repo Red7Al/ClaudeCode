@@ -49,6 +49,8 @@
 #                                 tweet-ready block per instrument (with HVF chart
 #                                 attached) to SLACK_TWITTER channel for review before
 #                                 manual posting to X.
+# 1.2.3   2026-06-11  Alex Hind   _generate_x_drafts: also post to SLACK_CLAUDE_TWITTER
+#                                 (#claude-twitter channel) in addition to SLACK_TWITTER.
 # 1.2.2   2026-06-11  Alex Hind   _generate_x_drafts: always append "Not financial
 #                                 advice." to every tweet (user directive 2026-06-11).
 # 1.2.1   2026-06-11  Alex Hind   _generate_x_drafts: SLACK_X renamed to SLACK_TWITTER
@@ -643,6 +645,7 @@ def _generate_x_drafts(tradeable: list):
     if not slack_url:
         log.warning("SLACK_TWITTER not set — X draft reports skipped")
         return
+    slack_claude_twitter_url = os.environ.get("SLACK_CLAUDE_TWITTER", "")
 
     # ── Batch fetch latest signal context per ticker from signal_log ──────────
     # Enriches tweet with options flow / director buy confirmation when available.
@@ -942,9 +945,18 @@ def _generate_x_drafts(tradeable: list):
 
         try:
             requests.post(slack_url, json={"blocks": blocks}, timeout=10)
-            log.info(f"X draft posted for {ticker} ({len(tweet)} chars)")
+            log.info(f"X draft posted to SLACK_TWITTER for {ticker} ({len(tweet)} chars)")
         except Exception as e:
-            log.error(f"X draft Slack post failed for {ticker}: {e}")
+            log.error(f"X draft Slack post failed (SLACK_TWITTER) for {ticker}: {e}")
+
+        if slack_claude_twitter_url:
+            try:
+                requests.post(slack_claude_twitter_url, json={"blocks": blocks}, timeout=10)
+                log.info(f"X draft posted to #claude-twitter for {ticker}")
+            except Exception as e:
+                log.error(f"X draft Slack post failed (#claude-twitter) for {ticker}: {e}")
+        else:
+            log.warning("SLACK_CLAUDE_TWITTER not set — #claude-twitter post skipped")
 
         if chart_b64:
             log.debug(f"X draft chart for {ticker} generated ({len(chart_b64)} b64 chars) "
