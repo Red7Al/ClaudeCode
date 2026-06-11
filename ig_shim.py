@@ -64,6 +64,15 @@
 #                                 non-power-of-ten mismatches still refused by the
 #                                 entry-distance guard. Live-tested: EURUSD far-from-
 #                                 market LIMIT placed → ACCEPTED → reconciled → deleted.
+# 1.9.0   2026-06-11  Alex Hind   (Z) get_epic: strip Yahoo .L suffix before DB lookup
+#                                 so LAND.L → LAND matches EPIC_MAP seeded entries.
+#                                 Tries normalized key first, then original, searches
+#                                 IG with normalized, caches under normalized key.
+#                                 (B) open_trade: INSUFFICIENT_FUNDS retry — halve
+#                                 size and resubmit once before alerting as missed.
+#                                 (C) open_trade: tight-stop guard — skip trade when
+#                                 stop_distance < 0.5% of price AND price ≥ 500pt
+#                                 (GBX equities); alerts as missed with explanation.
 # 1.8.0   2026-06-11  Alex Hind   GBX (pence) conversion for US stocks quoted on IG UK.
 #                                 place_working_order now reads instrument.currencies[0]
 #                                 .baseExchangeRate (pence per USD) and applies it to
@@ -462,19 +471,27 @@ def get_epic(ticker: str) -> Optional[str]:
     Returns None if the instrument cannot be found.
     """
 
-    # Step 1 — Check Supabase cache
+    # Normalize Yahoo Finance LSE suffix before lookup.
+    # Yahoo appends .L for LSE stocks (LAND.L, BA..L, RR.L, BT-A.L).
+    # EPIC_MAP and the DB are keyed without .L (LAND, BA., RR, BT-A).
+    # Strip the trailing .L so the cache always hits the right key.
+    normalized = ticker[:-2] if ticker.endswith('.L') and len(ticker) > 2 else ticker
+
+    # Step 1 — Check Supabase cache (try normalized first, then original as fallback
+    # in case a previous cache-miss wrote the full .L form).
     db = get_db()
     try:
-        rows = db.run("select epic from epic_lookup where ticker = :t", t=ticker)
-        if rows:
-            log.info(f"Epic cache hit: {ticker} → {rows[0][0]}")
-            return rows[0][0]
+        for lookup in ([normalized, ticker] if normalized != ticker else [ticker]):
+            rows = db.run("select epic from epic_lookup where ticker = :t", t=lookup)
+            if rows:
+                log.info(f"Epic cache hit: {ticker} → {rows[0][0]} (key='{lookup}')")
+                return rows[0][0]
     finally:
         db.close()
 
-    # Step 2 — Cache miss: search IG
-    log.info(f"Epic cache miss for {ticker} — searching IG markets...")
-    data    = session.get("/markets", params={"searchTerm": ticker}, version="1")
+    # Step 2 — Cache miss: search IG using the normalized ticker
+    log.info(f"Epic cache miss for {ticker} — searching IG markets (term='{normalized}')...")
+    data    = session.get("/markets", params={"searchTerm": normalized}, version="1")
     markets = data.get("markets", [])
     if not markets:
         log.warning(f"No IG market found for ticker: {ticker}")
@@ -484,7 +501,7 @@ def get_epic(ticker: str) -> Optional[str]:
     description = markets[0].get("instrumentName", "")
     market_type = markets[0].get("instrumentType", "")
 
-    # Step 3 — Write back to Supabase cache for future lookups
+    # Step 3 — Write back to Supabase cache keyed on the normalized ticker
     db = get_db()
     try:
         db.run(
@@ -492,9 +509,9 @@ def get_epic(ticker: str) -> Optional[str]:
                values (:v_ticker, :v_epic, :v_desc, :v_mtype)
                on conflict (ticker) do update
                set epic=excluded.epic, last_seen=now()""",
-            v_ticker=ticker, v_epic=epic, v_desc=description, v_mtype=market_type
+            v_ticker=normalized, v_epic=epic, v_desc=description, v_mtype=market_type
         )
-        log.info(f"Epic cached: {ticker} → {epic}")
+        log.info(f"Epic cached: {normalized} → {epic}")
     finally:
         db.close()
 
@@ -931,6 +948,29 @@ def open_trade(
                         pass
                     return None
 
+        # 4d — Tight-stop guard for expensive instruments (e.g. GBX-denominated UK equities).
+        # A stop tighter than 0.5% of price on a ≥500pt instrument is hit by normal
+        # tick movement within minutes (proven: SNDK 176054p stop 623p = 0.35%, 3-min
+        # stop-out, -£19.20). The HVF stop may be valid for a daily timeframe but the
+        # CFD spread + tick noise kills it intraday. Skip and alert.
+        mid_price = (bid + offer) / 2 if bid > 0 and offer > 0 else offer or bid
+        if mid_price >= 500 and stop_distance > 0:
+            stop_pct = stop_distance / mid_price * 100
+            if stop_pct < 0.5:
+                reason = (
+                    f"Stop distance {stop_distance:.1f}pt is only {stop_pct:.2f}% of "
+                    f"current price {mid_price:.1f}pt — minimum 0.5% for instruments "
+                    f"≥500pt. HVF stop too tight; pattern may need a wider L3 or "
+                    f"more recent scan."
+                )
+                log.warning(reason)
+                try:
+                    from notify import alert_missed_trade
+                    alert_missed_trade(ticker, direction, reason, signal_summary)
+                except Exception:
+                    pass
+                return None
+
     except Exception as e:
         log.warning(f"Market pre-checks failed for {ticker}: {e}")
 
@@ -979,17 +1019,53 @@ def open_trade(
         if status != "ACCEPTED":
             reason_code = confirm.get("reason", "UNKNOWN")
             log.error(f"Deal rejected: {status} — {reason_code}")
-            try:
-                from notify import alert_system_error
-                alert_system_error(
-                    session="IG_ORDER",
-                    component="open_trade",
-                    summary=f"Deal rejected for {ticker} {direction} — {reason_code}",
-                    detail=f"epic={epic}  size={size}  stop={stop_distance}  limit={limit_distance}"
-                )
-            except Exception as e:
-                log.warning(f"Could not send deal rejection alert: {e}")
-            return None
+
+            # INSUFFICIENT_FUNDS: retry once at half size before giving up.
+            # Account balance may have changed since calculate_position_size ran
+            # (e.g. a concurrent fill consumed margin). Halving avoids a hard skip.
+            if reason_code == "INSUFFICIENT_FUNDS":
+                retry_size = round(size / 2, 2)
+                if retry_size >= 0.01:
+                    log.warning(
+                        f"{ticker}: INSUFFICIENT_FUNDS at size={size} — "
+                        f"retrying at size={retry_size}"
+                    )
+                    body["size"] = str(retry_size)
+                    try:
+                        resp2     = session.post("/positions/otc", body=body, version="2")
+                        deal_ref2 = resp2.get("dealReference")
+                        if deal_ref2:
+                            time.sleep(1)
+                            confirm2   = session.get(f"/confirms/{deal_ref2}", version="1")
+                            if confirm2.get("dealStatus") == "ACCEPTED":
+                                # Retry succeeded — continue with the new confirm
+                                deal_id     = confirm2.get("dealId")
+                                level       = confirm2.get("level", 0)
+                                stop_level  = confirm2.get("stopLevel", 0)
+                                limit_level = confirm2.get("limitLevel", 0)
+                                size        = retry_size
+                                log.info(
+                                    f"{ticker}: retry at size={retry_size} ACCEPTED — "
+                                    f"deal={deal_id} level={level}"
+                                )
+                                # Fall through to the success path below
+                                confirm = confirm2
+                                status  = "ACCEPTED"
+                    except Exception as retry_exc:
+                        log.warning(f"{ticker}: INSUFFICIENT_FUNDS retry failed: {retry_exc}")
+
+            if status != "ACCEPTED":
+                try:
+                    from notify import alert_system_error
+                    alert_system_error(
+                        session="IG_ORDER",
+                        component="open_trade",
+                        summary=f"Deal rejected for {ticker} {direction} — {reason_code}",
+                        detail=f"epic={epic}  size={size}  stop={stop_distance}  limit={limit_distance}"
+                    )
+                except Exception as e:
+                    log.warning(f"Could not send deal rejection alert: {e}")
+                return None
 
         log.info(f"Deal confirmed: {deal_id} at level {level}  stop={stop_level}  limit={limit_level}")
 

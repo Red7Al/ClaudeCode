@@ -47,8 +47,10 @@
 # 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF
 #                                 Slack post, _generate_x_drafts() posts one
 #                                 tweet-ready block per instrument (with HVF chart
-#                                 attached) to SLACK_X channel for review before
+#                                 attached) to SLACK_TWITTER channel for review before
 #                                 manual posting to X.
+# 1.2.1   2026-06-11  Alex Hind   _generate_x_drafts: SLACK_TWITTER renamed to SLACK_TWITTER
+#                                 (user directive — no separate SLACK_TWITTER secret exists).
 # 1.3.0   2026-06-10  Alex Hind   HVF watch deduplication: _post_hvf_watch now
 #                                 fingerprints the tradeable+developing lists and
 #                                 compares against the last-posted state in
@@ -612,7 +614,7 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
 def _generate_x_drafts(tradeable: list):
     """
     Post one tweet-ready draft per tradeable instrument to #claude-x-drafts
-    (SLACK_X env var).
+    (SLACK_TWITTER env var).
 
     Tweet format (≤280 chars — no pattern name, describe the setup naturally):
         📈 $TICKER (Company) — Volatility squeeze breaking {direction}, {tf} setup
@@ -635,9 +637,9 @@ def _generate_x_drafts(tradeable: list):
     from datetime import datetime, timezone, timedelta
     from notify import fmt
 
-    slack_url = os.environ.get("SLACK_X", "")
+    slack_url = os.environ.get("SLACK_TWITTER", "")
     if not slack_url:
-        log.warning("SLACK_X not set — X draft reports skipped")
+        log.warning("SLACK_TWITTER not set — X draft reports skipped")
         return
 
     # ── Batch fetch latest signal context per ticker from signal_log ──────────
@@ -912,7 +914,7 @@ def _generate_x_drafts(tradeable: list):
         except Exception as e:
             log.warning(f"X draft chart failed for {ticker}: {e}")
 
-        # ── Post to SLACK_X channel ───────────────────────────────────────────
+        # ── Post to SLACK_TWITTER channel ───────────────────────────────────────────
         dir_label = "Bullish" if direction == "BULLISH" else "Bearish"
         blocks = [
             {"type": "header",

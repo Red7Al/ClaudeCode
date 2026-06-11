@@ -58,6 +58,9 @@
 #                                 working_order_updated, working_order_outcome.
 #                                 trade_closed: Held duration now always shown (was
 #                                 conditional — omitted when opened_at was None).
+# 1.6.0   2026-06-11  Alex Hind   trade_opened: add Distance to Stop and Distance to
+#                                 Target fields (absolute points + % of entry) so a
+#                                 tight stop is immediately visible at entry time.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -253,9 +256,13 @@ def trade_opened(
     deal_ref:       str = "",   # IG deal reference / deal_id
 ):
     """Send a trade opened notification to #claude-trading-trades."""
-    emoji      = "🟢" if direction == "BUY" else "🔴"
-    rr         = round(abs(target - entry) / max(abs(entry - stop), 0.0001), 2)
-    title      = fmt(ticker)
+    emoji          = "🟢" if direction == "BUY" else "🔴"
+    stop_dist_pts  = abs(entry - stop)
+    tgt_dist_pts   = abs(target - entry)
+    rr             = round(tgt_dist_pts / max(stop_dist_pts, 0.0001), 2)
+    stop_dist_pct  = round(stop_dist_pts  / entry * 100, 2) if entry else 0
+    tgt_dist_pct   = round(tgt_dist_pts   / entry * 100, 2) if entry else 0
+    title          = fmt(ticker)
 
     fields = [
         {"type": "mrkdwn", "text": f"*User:*\n{user}"},
@@ -263,8 +270,8 @@ def trade_opened(
         {"type": "mrkdwn", "text": f"*Direction:*\n{direction}"},
         {"type": "mrkdwn", "text": f"*Size:*\n{size}"},
         {"type": "mrkdwn", "text": f"*Entry:*\n{entry}"},
-        {"type": "mrkdwn", "text": f"*Stop:*\n{stop}"},
-        {"type": "mrkdwn", "text": f"*Target:*\n{target}"},
+        {"type": "mrkdwn", "text": f"*Stop:*\n{stop}  ({stop_dist_pts:.1f}pt / {stop_dist_pct:.2f}%)"},
+        {"type": "mrkdwn", "text": f"*Target:*\n{target}  ({tgt_dist_pts:.1f}pt / {tgt_dist_pct:.2f}%)"},
         {"type": "mrkdwn", "text": f"*R:R:*\n{rr}:1"},
     ]
     if deal_ref:
