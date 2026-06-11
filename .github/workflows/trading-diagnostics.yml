@@ -48,3 +48,4 @@ jobs:
           SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
           SLACK_TRADES:          ${{ secrets.SLACK_TRADES }}
           SLACK_WEEKLY:          ${{ secrets.SLACK_WEEKLY }}
+          SLACK_DAILY:           ${{ secrets.SLACK_DAILY }}
