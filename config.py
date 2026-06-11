@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         config.py
 # Author:       Alex Hind
 # Created:      2026-05-30
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Central configuration for the EndToEndTrading system.
 # All instrument definitions, epic codes, ATR multipliers, session instrument
 # lists, and system constants live here.
@@ -28,7 +28,7 @@
 #   SE.D.*    Extended hours US equity CFDs
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Epics verified against live IG account HTIRV. Seeded into Supabase
 #                                 epic_lookup table on 2026-05-30.
 # 1.1.0   2026-06-05  Alex Hind   Raised MIN_RISK_REWARD from 2.0 to 2.5. All trades (including HVF) now require minimum
@@ -60,20 +60,20 @@
 # 1.4.0   2026-06-05  Alex Hind   Added PA_CONFIRM_THRESHOLDS and PA_CONFIRM_THRESHOLD_DEFAULT — per-instrument PA gate
 #                                 thresholds. Crypto=25, FX/metals=30-35, equities/indices=40 (default). with 24/7
 #                                 instruments: crypto, XAUUSD (Spot Gold), and FX pairs active on Sunday evening.
-# =============================================================================
+# ======================================================================================================================
 
 
-# =============================================================================
+# ======================================================================================================================
 # IG Epic Codes — Verified CFD Epics
 # Maps our ticker names to the exact IG API epic identifiers.
 # Expiry: DFB (Daily Funded Bet) for all rolling CFD contracts.
-# =============================================================================
+# ======================================================================================================================
 
 EPIC_MAP = {
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # Forex — Spot Cash CFDs (TODAY contracts)
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     "GBPUSD":  "CS.D.GBPUSD.TODAY.IP",     # British Pound / US Dollar
     "AUDUSD":  "CS.D.AUDUSD.TODAY.IP",     # Australian Dollar / US Dollar
     "USDJPY":  "CS.D.USDJPY.TODAY.IP",     # US Dollar / Japanese Yen
@@ -82,9 +82,9 @@ EPIC_MAP = {
     "USDCHF":  "CS.D.USDCHF.TODAY.IP",     # US Dollar / Swiss Franc
     "NZDUSD":  "CS.D.NZDUSD.TODAY.IP",     # New Zealand Dollar / US Dollar
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # Commodities — Precious Metals (Spot Cash CFDs)
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     "XAUUSD":    "CS.D.USCGC.TODAY.IP",    # Spot Gold
     "GOLD":      "CS.D.USCGC.TODAY.IP",    # Spot Gold (alias)
     "SPOTGOLD":  "CS.D.USCGC.TODAY.IP",    # Spot Gold (alias)
@@ -98,16 +98,16 @@ EPIC_MAP = {
     "LEAD":      "CS.D.LEAD.TODAY.IP",     # Lead
     "ALUMINIUM": "CS.D.ALUMINIUM.TODAY.IP",# Aluminium
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # Commodities — Energy (Futures CFDs)
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     "OIL":    "CC.D.CL.USS.IP",            # US Crude Oil (WTI)
     "USOIL":  "CC.D.CL.USS.IP",            # US Crude Oil (alias)
     "CL":     "CC.D.CL.USS.IP",            # US Crude Oil (alias)
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # Indices — Major Markets (CFDs)
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # S&P 500
     "SPX500": "IX.D.SPTR500.IFD.IP",       # S&P 500
     "SPX":    "IX.D.SPTR500.IFD.IP",       # S&P 500 (alias)
@@ -132,9 +132,9 @@ EPIC_MAP = {
     "JPN225":  "IX.D.NIKKEI.IFD.IP",       # Nikkei 225
     "HK50":    "IX.D.HSIF.IFD.IP",         # Hang Seng
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # US Equities — Large Cap Tech (24-hour CFDs)
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     "AAPL":  "UA.D.AAPL.DAILY.IP",         # Apple Inc
     "MSFT":  "UC.D.MSFT.DAILY.IP",         # Microsoft Corp (epic verified live 2026-06-09; was UA→404)
     "NVDA":  "UC.D.NVDA.DAILY.IP",         # NVIDIA Corp (epic verified live 2026-06-09; was UA→404)
@@ -147,9 +147,9 @@ EPIC_MAP = {
     "TSLA":  "UD.D.TSLA.DAILY.IP",         # Tesla Inc
     "PLTR":  "SE.D.PLTRUS.DAILY.IP",       # Palantir Technologies
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # US Equities — Semiconductors
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     "INTC":  "UB.D.INTC.DAILY.IP",         # Intel Corp
     "QCOM":  "UA.D.QCOM.DAILY.IP",         # Qualcomm
     "MU":    "UA.D.MU.DAILY.IP",           # Micron Technology
@@ -157,9 +157,9 @@ EPIC_MAP = {
     "KLAC":  "UA.D.KLAC.DAILY.IP",         # KLA Corp
     "ASML":  "EG.D.ASML.DAILY.IP",         # ASML Holding NV (European listed)
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # Aschenbrenner AI Infrastructure / Energy Picks
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     "NBIS":  "UD.D.YNDX.DAILY.IP",      # Nebius Group (AI cloud) — uses old Yandex epic on IG
     "SNDK":  "UD.D.SNDKUS.DAILY.IP",    # SanDisk
     "BE":    "SA.D.BEUS.DAILY.IP",       # Bloom Energy (power for AI datacentres)
@@ -172,18 +172,18 @@ EPIC_MAP = {
     "TE":    "SG.D.TELUS.DAILY.IP",     # TE Connectivity
     "SEI":   "UD.D.SEICUS.DAILY.IP",    # SEI Investments
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # Trump / Jensen Huang Recommended
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     "IBM":   "SD.D.IBM.DAILY.IP",       # IBM Corp
     "DELL":  "SB.D.DELLUS.DAILY.IP",   # Dell Technologies
     "NOK":   "SE.D.NOK.DAILY.IP",       # Nokia OYJ ADR
     "NOW":   "SE.D.NOWUS.DAILY.IP",     # ServiceNow (Trump + Jensen Huang) — epic verified live 2026-06-09; was UA.D.NOW→404
     "CRWD":  "UA.D.CRWDUS.DAILY.IP",    # CrowdStrike (Jensen Huang) — epic verified live 2026-06-09; was UA.D.CRWD→404
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # UK Equities
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     "BP":    "KA.D.BP.DAILY.IP",           # BP PLC
     "LLOY":  "KA.D.LLOY.DAILY.IP",         # Lloyds Banking Group
     "BARC":  "KA.D.BARC.DAILY.IP",         # Barclays PLC
@@ -193,11 +193,11 @@ EPIC_MAP = {
     "VOD":   "KA.D.VOD.DAILY.IP",          # Vodafone Group PLC
     "RR":    "KA.D.RR.DAILY.IP",           # Rolls-Royce Holdings PLC
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # Crypto CFDs — top 5 by market cap
     # All trade 24/7 — no market hours restriction on CS.D.* epics
     # XRP, SOL, BNB epics: IG lookup will find and cache on first scan
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     "BTCUSD":  "CS.D.BITCOIN.TODAY.IP",    # Bitcoin / USD
     "BITCOIN": "CS.D.BITCOIN.TODAY.IP",    # Bitcoin (alias)
     "ETHUSD":  "CS.D.ETHUSD.TODAY.IP",     # Ethereum / USD
@@ -208,13 +208,13 @@ EPIC_MAP = {
 }
 
 
-# =============================================================================
+# ======================================================================================================================
 # Options Proxy Map
 # Indices and commodities don't have options chains on Yahoo Finance
 # (^GSPC, ^FTSE, GC=F etc. return empty option chains).
 # Map them to liquid ETF proxies for options/GEX signals ONLY.
 # Price data continues to use YAHOO_MAP (correct scale for ATR/stop calcs).
-# =============================================================================
+# ======================================================================================================================
 
 OPTIONS_PROXY_MAP = {
     # US indices — ETF proxies have the world's most liquid options markets
@@ -244,10 +244,10 @@ OPTIONS_PROXY_MAP = {
 }
 
 
-# =============================================================================
+# ======================================================================================================================
 # Yahoo Finance Ticker Mapping
 # Maps our internal ticker names to Yahoo Finance symbols for price/options data.
-# =============================================================================
+# ======================================================================================================================
 
 YAHOO_MAP = {
 
@@ -307,11 +307,11 @@ YAHOO_MAP = {
 }
 
 
-# =============================================================================
+# ======================================================================================================================
 # ATR Stop Loss Multipliers
 # Applied to the 14-period ATR to compute the stop distance for each instrument.
 # Wider multiplier = more breathing room = less likely to be stopped out by noise.
-# =============================================================================
+# ======================================================================================================================
 
 ATR_MULTIPLIERS = {
 
@@ -369,14 +369,14 @@ ATR_MULTIPLIERS = {
 ATR_MULTIPLIER_DEFAULT = 1.5
 
 
-# =============================================================================
+# ======================================================================================================================
 # Sector ETF Map
 # Maps individual equity tickers to their representative sector ETF.
 # Used by get_sector_alignment() — if the sector ETF itself is directional
 # (above/below VWAP) it adds a primary signal confirming the stock's move.
 # FX, indices, crypto, and commodities are omitted — they have their own
 # macro/COT signals and don't align to US equity sector ETFs.
-# =============================================================================
+# ======================================================================================================================
 
 SECTOR_ETF_MAP = {
     # Technology / Software
@@ -402,11 +402,11 @@ SECTOR_ETF_MAP = {
 }
 
 
-# =============================================================================
+# ======================================================================================================================
 # Session Instrument Lists
 # Defines which instruments are evaluated at each session open.
 # AUS200 excluded — not traded.
-# =============================================================================
+# ======================================================================================================================
 
 SESSION_INSTRUMENTS = {
 
@@ -518,10 +518,10 @@ SESSION_INSTRUMENTS = {
 }
 
 
-# =============================================================================
+# ======================================================================================================================
 # CFTC Contract Codes for COT Data
 # Used to query the CFTC Commitment of Traders API.
-# =============================================================================
+# ======================================================================================================================
 
 CFTC_CODES = {
     "XAUUSD":  "088691",   # Gold   - COMMODITY EXCHANGE INC. (verified vs CFTC API 2026-06-07)
@@ -541,9 +541,9 @@ CFTC_CODES = {
 }
 
 
-# =============================================================================
+# ======================================================================================================================
 # Risk & Trade Constants
-# =============================================================================
+# ======================================================================================================================
 
 # Minimum risk/reward ratio — trades below this are not placed.
 # 3:1 (user directive 2026-06-09 — "same as Richie Williams"). Raised from 2.5.
@@ -619,7 +619,7 @@ SPX_STRESS_PCT      = -1.0   # SPX down 1–2.5% → STRESS mode (position sizes
 # 2.5× is too loose (NVDA -8% would still pass).
 INTRADAY_GUARD_ATR_MULTIPLIER = 2.0
 
-# =============================================================================
+# ======================================================================================================================
 # Price Action Confirmation Thresholds
 # The PA score must reach ± threshold before a trade fires.
 # Higher = more conservative. Lower = more sensitive.
@@ -641,7 +641,7 @@ INTRADAY_GUARD_ATR_MULTIPLIER = 2.0
 # HVF TRIGGERED bypass (in price_action.py):
 #   When HVF signal is TRIGGERED in the same direction as the trade, the effective
 #   threshold is halved (min 15). Price has already voted via the pattern trigger.
-# =============================================================================
+# ======================================================================================================================
 
 PA_CONFIRM_THRESHOLD_DEFAULT = 40   # US/UK equities, indices — standard
 

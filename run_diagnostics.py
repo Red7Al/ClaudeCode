@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         run_diagnostics.py
 # Author:       Alex Hind
 # Created:      2026-06-03
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Post-deployment diagnostics. Run this after every code change to confirm
 # each layer of the signal stack is working correctly.
 #
@@ -29,7 +29,7 @@
 #   the Actions tab. Always safe — never places real trades.
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-03  Alex Hind   Initial build. Tests macro, options, GEX, price action, signal stack, DB writes, and
 #                                 IG connectivity. Posts ✅/❌/⚠ report to #claude-trading-alerts.
 # 1.0.2   2026-06-07  Alex Hind   Sync signal_log test INSERT to production: add director_cluster_strong (prod is now 45
@@ -37,7 +37,7 @@
 #                                 match scan_instrument().
 # 1.0.1   2026-06-05  Alex Hind   Extended Slack coverage test: sends a probe message to all 5 channels so the user can
 #                                 confirm every webhook is wired correctly after deployment.
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
@@ -74,9 +74,9 @@ DIAG_TICKERS = [
 ]
 
 
-# =============================================================================
+# ======================================================================================================================
 # Result helpers
-# =============================================================================
+# ======================================================================================================================
 
 def ok(name: str, value: str, detail: str = "") -> dict:
     return {"name": name, "status": "ok", "value": value, "detail": detail}
@@ -88,9 +88,9 @@ def warn(name: str, value: str, detail: str = "") -> dict:
     return {"name": name, "status": "warn", "value": value, "detail": detail}
 
 
-# =============================================================================
+# ======================================================================================================================
 # Individual test functions
-# =============================================================================
+# ======================================================================================================================
 
 def test_vix() -> dict:
     try:
@@ -339,9 +339,9 @@ def test_ig_health() -> dict:
         return fail("IG health", str(e))
 
 
-# =============================================================================
+# ======================================================================================================================
 # Slack report
-# =============================================================================
+# ======================================================================================================================
 
 def test_slack_channels() -> list:
     """
@@ -461,9 +461,9 @@ def post_report(results: list, tickers: list):
         log.error(f"Slack post failed: {e}")
 
 
-# =============================================================================
+# ======================================================================================================================
 # Main
-# =============================================================================
+# ======================================================================================================================
 
 def main():
     tickers = DIAG_TICKERS
@@ -472,39 +472,39 @@ def main():
 
     results = []
 
-    # ── Macro layer ────────────────────────────────────────────────────────────
+    # ── Macro layer ───────────────────────────────────────────────────────────────────────────────────────────────────
     results.append(test_vix())
     results.append(test_dxy())
     results.append(test_fred_yield_curve())
     results.append(test_market_stress())
 
-    # ── Options layer (includes ETF proxy test for indices) ────────────────────
+    # ── Options layer (includes ETF proxy test for indices) ───────────────────────────────────────────────────────────
     for ticker in tickers:
         results.append(test_options_signal(ticker))
 
-    # ── GEX (gamma fix verification) ─────────────────────────────────────────
+    # ── GEX (gamma fix verification) ──────────────────────────────────────────────────────────────────────────────────
     for ticker in tickers:
         results.append(test_gex(ticker))
 
-    # ── Price action ─────────────────────────────────────────────────────────
+    # ── Price action ──────────────────────────────────────────────────────────────────────────────────────────────────
     for ticker in tickers:
         results.append(test_price_action(ticker))
 
-    # ── Full signal scan (primary_count, confirmation_count, trade_signal) ────
+    # ── Full signal scan (primary_count, confirmation_count, trade_signal) ────────────────────────────────────────────
     for ticker in tickers:
         results.append(test_full_scan(ticker))
 
-    # ── Database write tests ──────────────────────────────────────────────────
+    # ── Database write tests ──────────────────────────────────────────────────────────────────────────────────────────
     results.append(test_signal_log_insert())
     results.append(test_positions_insert())
 
-    # ── IG connectivity ───────────────────────────────────────────────────────
+    # ── IG connectivity ───────────────────────────────────────────────────────────────────────────────────────────────
     results.append(test_ig_health())
 
-    # ── Slack channel coverage (all 5 webhooks) ───────────────────────────────
+    # ── Slack channel coverage (all 5 webhooks) ───────────────────────────────────────────────────────────────────────
     results.extend(test_slack_channels())
 
-    # ── Report ────────────────────────────────────────────────────────────────
+    # ── Report ────────────────────────────────────────────────────────────────────────────────────────────────────────
     post_report(results, tickers)
 
     # Exit 1 if any failures (useful for CI)

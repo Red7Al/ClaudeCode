@@ -1,13 +1,13 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         run_query.py
 # Author:       Alex Hind
 # Created:      2026-06-02
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Diagnostic query — prints today's trades and open positions to stdout.
 # Run via the "Query: Today's Trades" GitHub Actions workflow.
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
@@ -35,7 +35,7 @@ def main():
     print(f"  EndToEndTrading — Diagnostic Query  ({today} UTC)")
     print(f"{'='*60}")
 
-    # ── Open positions ────────────────────────────────────────────────────────
+    # ── Open positions ────────────────────────────────────────────────────────────────────────────────────────────────
     rows = conn.run(
         """select ticker, direction, size, open_price, stop_loss,
                   take_profit, paper_trade, session, opened_at, signal_summary
@@ -55,7 +55,7 @@ def main():
     else:
         print("  (none)")
 
-    # ── Trades opened today ───────────────────────────────────────────────────
+    # ── Trades opened today ───────────────────────────────────────────────────────────────────────────────────────────
     rows = conn.run(
         """select ticker, direction, size, open_price, stop_loss,
                   paper_trade, session, opened_at, signal_summary
@@ -76,7 +76,7 @@ def main():
     else:
         print("  (none)")
 
-    # ── Trades closed today ───────────────────────────────────────────────────
+    # ── Trades closed today ───────────────────────────────────────────────────────────────────────────────────────────
     rows = conn.run(
         """select ticker, direction, size, open_price, close_price,
                   pnl, close_reason, paper_trade, closed_at
@@ -97,7 +97,7 @@ def main():
     else:
         print("  (none)")
 
-    # ── Daily P&L summary ─────────────────────────────────────────────────────
+    # ── Daily P&L summary ─────────────────────────────────────────────────────────────────────────────────────────────
     rows = conn.run(
         """select up.name, dp.total_pnl, dp.trade_count,
                   dp.win_count, dp.loss_count, dp.daily_loss_hit
@@ -118,7 +118,7 @@ def main():
     else:
         print("  (no activity today)")
 
-    # ── Last macro snapshot ───────────────────────────────────────────────────
+    # ── Last macro snapshot ───────────────────────────────────────────────────────────────────────────────────────────
     rows = conn.run(
         """select session, vix, dxy, yield_spread, macro_gate_pass, gate_reason, snapshot_time
            from   macro_snapshot
@@ -134,7 +134,7 @@ def main():
         if not gate_pass:
             print(f"    Reason: {reason}")
 
-    # ── signal_log column check ───────────────────────────────────────────────
+    # ── signal_log column check ───────────────────────────────────────────────────────────────────────────────────────
     col_rows = conn.run(
         """select column_name from information_schema.columns
            where table_name = 'signal_log'
@@ -144,7 +144,7 @@ def main():
     found = [r[0] for r in col_rows]
     print(f"\nSIGNAL_LOG SCHEMA CHECK — new columns present: {found}")
 
-    # ── signal_log row counts by session/date ─────────────────────────────────
+    # ── signal_log row counts by session/date ─────────────────────────────────────────────────────────────────────────
     count_rows = conn.run(
         """select date(session_time at time zone 'UTC') as day,
                   session, count(*) as n
@@ -158,7 +158,7 @@ def main():
     for r in count_rows:
         print(f"  {r[0]}  {str(r[1]).ljust(20)}  {r[2]} rows")
 
-    # ── Today's signal log — sorted by signal strength ───────────────────────
+    # ── Today's signal log — sorted by signal strength ────────────────────────────────────────────────────────────────
     rows = conn.run(
         """select ticker, session, primary_count, confirmation_count,
                   direction, trade_triggered, pa_verdict,
@@ -202,7 +202,7 @@ def main():
     else:
         print("  (no signal records for today)")
 
-    # ── Ticker spotlight (comma-separated list supported) ─────────────────────
+    # ── Ticker spotlight (comma-separated list supported) ─────────────────────────────────────────────────────────────
     spotlight_env = os.environ.get("SPOTLIGHT_TICKER", "")
     spotlights    = [t.strip().upper() for t in spotlight_env.split(",") if t.strip()]
 

@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         run_schema.py
 # Author:       Alex Hind
 # Created:      2026-06-02
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Idempotent schema migration script for the EndToEndTrading Supabase database.
 # Safe to re-run at any time — all statements use IF NOT EXISTS / ON CONFLICT.
 #
@@ -18,7 +18,7 @@
 #   SUPABASE_DB_PASSWORD  Supabase database password
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-02  Alex Hind   Initial build. Idempotent migrations for signal_log, positions, macro_snapshot,
 #                                 hvf_scan_log, and epic_lookup tables.
 # 1.2.0   2026-06-11  Alex Hind   missed_trade_log table — dedupes TRADEABLE SIGNAL NOT PLACED alerts: one row per (day,
@@ -27,7 +27,7 @@
 #                                 stop+target). Kept separate from positions: a pending order is NOT a position; putting
 #                                 it in positions would make run_monitor falsely record it as closed. Status lifecycle
 #                                 PENDING → FILLED/CANCELLED/EXPIRED.
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
@@ -42,9 +42,9 @@ log = logging.getLogger("run_schema")
 
 SUPABASE_HOST = "aws-0-eu-west-1.pooler.supabase.com"
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Migrations — applied in order, each is idempotent
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 MIGRATIONS = [
 
@@ -92,7 +92,7 @@ MIGRATIONS = [
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS volume_ratio numeric"
     ),
 
-    # ── signal_log: HVF columns (added 2026-06-04) ────────────────────────────
+    # ── signal_log: HVF columns (added 2026-06-04) ────────────────────────────────────────────────────────────────────
     (
         "signal_log: add hvf_type",
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_type text"
@@ -122,13 +122,13 @@ MIGRATIONS = [
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS hvf_quality integer"
     ),
 
-    # ── signal_log: pa_score numeric (added 2026-06-04) ───────────────────────
+    # ── signal_log: pa_score numeric (added 2026-06-04) ───────────────────────────────────────────────────────────────
     (
         "signal_log: add pa_score",
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS pa_score numeric"
     ),
 
-    # ── signal_log: new primary signal columns (added 2026-06-04) ─────────────
+    # ── signal_log: new primary signal columns (added 2026-06-04) ─────────────────────────────────────────────────────
     # ADX directional primary (distinct from adx_signal which records strength)
     (
         "signal_log: add adx_dir",
@@ -153,7 +153,7 @@ MIGRATIONS = [
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS week52_dir text"
     ),
 
-    # ── signal_log: sector alignment columns (added 2026-06-04) ───────────────
+    # ── signal_log: sector alignment columns (added 2026-06-04) ───────────────────────────────────────────────────────
     (
         "signal_log: add sector_etf",
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS sector_etf text"
@@ -163,7 +163,7 @@ MIGRATIONS = [
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS sector_dir text"
     ),
 
-    # ── signal_log: director cluster strong flag (added 2026-06-05) ─────────────
+    # ── signal_log: director cluster strong flag (added 2026-06-05) ───────────────────────────────────────────────────
     (
         "signal_log: add director_cluster_strong",
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS director_cluster_strong boolean"
@@ -183,13 +183,13 @@ MIGRATIONS = [
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS potus_primary boolean"
     ),
 
-    # ── senator_scores: add win_rate index for elite query performance ─────────
+    # ── senator_scores: add win_rate index for elite query performance ────────────────────────────────────────────────
     (
         "senator_scores: index on win_rate",
         "CREATE INDEX IF NOT EXISTS idx_senator_scores_win_rate ON senator_scores(win_rate DESC)"
     ),
 
-    # ── hvf_scan_log table (added 2026-06-05) ─────────────────────────────────
+    # ── hvf_scan_log table (added 2026-06-05) ─────────────────────────────────────────────────────────────────────────
     (
         "create hvf_scan_log",
         """CREATE TABLE IF NOT EXISTS hvf_scan_log (
@@ -209,7 +209,7 @@ MIGRATIONS = [
         )"""
     ),
 
-    # ── working_orders table (added 2026-06-10) ───────────────────────────────
+    # ── working_orders table (added 2026-06-10) ───────────────────────────────────────────────────────────────────────
     # Pending HVF entry orders on IG. NOT positions — run_monitor must never see
     # these in the positions table or it would falsely log them as closed trades.
     # Lifecycle: PENDING → FILLED (reconcile inserts the positions row) /
@@ -260,7 +260,7 @@ MIGRATIONS = [
             posted_at   timestamptz default now()
         )"""
     ),
-    # ── missed_trade_log — dedupes TRADEABLE-SIGNAL-NOT-PLACED alerts ─────────
+    # ── missed_trade_log — dedupes TRADEABLE-SIGNAL-NOT-PLACED alerts ─────────────────────────────────────────────────
     # One row per (day, ticker, direction, reason class). First occurrence posts
     # a full #alerts message with corrective action; repeats only bump the
     # counter. Session close posts one summary of the day's rows.
@@ -284,9 +284,9 @@ MIGRATIONS = [
 ]
 
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Runner
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def main():
     log.info(f"Connecting to {SUPABASE_HOST}...")

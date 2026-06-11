@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         run_session.py
 # Author:       Alex Hind
 # Created:      2026-06-01
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Entry point for GitHub Actions scheduled workflows.
 # Called with a session name argument, runs the appropriate routine.
 #
@@ -22,7 +22,7 @@
 # All credentials loaded from environment variables (GitHub Secrets).
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-01  Alex Hind   Initial build. Routes all session names to their respective handlers. Duplicate-run
 #                                 guard added via already_ran_today().
 # 1.1.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF handler — was listed in usage help but crashed with "Unknown
@@ -74,7 +74,7 @@
 # 1.3.1   2026-06-06  Alex Hind   Fix circuit breaker alert in size=0 path: was passing the reason string as the user
 #                                 field, showing "Triggered trade skipped..." as User in Slack. Now passes profile name
 #                                 (e.g. "Owner").
-# =============================================================================
+# ======================================================================================================================
 
 import sys
 import os
@@ -222,7 +222,7 @@ def run_session_open(session_name: str):
         ticker     = sig["ticker"]
         direction  = sig["direction"]
 
-        # ── HVF setups → IG WORKING ORDER (user 2026-06-10) ──────────────────
+        # ── HVF setups → IG WORKING ORDER (user 2026-06-10) ───────────────────────────────────────────────────────────
         # The pattern pre-defines entry (H3) / stop / target, so place a pending
         # order at those exact levels instead of a market order at scan price.
         # Re-signals amend the existing order; never falls through to a market
@@ -349,7 +349,7 @@ def run_session_open(session_name: str):
 
     log.info(f"{session_name} complete. Trades placed: {trades_placed}")
 
-    # ── Heartbeat — always post so you know the session ran ───────────────────
+    # ── Heartbeat — always post so you know the session ran ───────────────────────────────────────────────────────────
     SCHEDULED = {"AUS_OPEN": "00:00", "UK_OPEN": "08:00", "US_OPEN": "14:30"}
     try:
         from datetime import datetime, timezone
@@ -407,7 +407,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     else:
         log.info(f"{session_name}: no open positions — skipping stop review")
 
-    # ── Part 1: trailing stops ────────────────────────────────────────────────
+    # ── Part 1: trailing stops ────────────────────────────────────────────────────────────────────────────────────────
     for pos in ig_positions:
         open_tickers.add(pos["market"].get("instrumentName", ""))
         epic      = pos["market"]["epic"]
@@ -538,7 +538,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                 close_reason, close_price = get_close_reason(deal_id)
                 _record_closure(deal_id, row, close_reason, close_price)
 
-    # ── Part 1.75: reconcile pending HVF working orders ──────────────────────
+    # ── Part 1.75: reconcile pending HVF working orders ───────────────────────────────────────────────────────────────
     # Detect orders that FILLED (insert the position so this monitor manages its
     # closure from now on) or ended CANCELLED/EXPIRED (surfaced to Slack). Runs
     # before Part 2 so a fresh fill counts as an open ticker below.
@@ -550,7 +550,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
     except Exception as e:
         log.warning(f"{session_name}: working-order reconcile failed: {e}")
 
-    # ── Part 2: scan for new entries ─────────────────────────────────────────
+    # ── Part 2: scan for new entries ──────────────────────────────────────────────────────────────────────────────────
     try:
         conn2 = _pool_get_db()
         _grp = (session_name or "").split("_")[0].upper()
@@ -747,7 +747,7 @@ def run_session_close():
 
     log.info(f"Session close: closed={closed} held={held}")
 
-    # ── End-of-day digest of blocked tradeable signals ────────────────────────
+    # ── End-of-day digest of blocked tradeable signals ────────────────────────────────────────────────────────────────
     # alert_missed_trade only posts the FIRST block per (ticker, direction,
     # reason class) each day; this single summary shows the full day's picture
     # with occurrence counts and corrective actions (user 2026-06-11).
@@ -1058,11 +1058,11 @@ def refresh_superinvestors():
     log.info(f"Superinvestor refresh complete: {inserted} new entries inserted")
 
 
-# =============================================================================
+# ======================================================================================================================
 # Schema self-heal
 # Runs at the top of every session. ADD COLUMN IF NOT EXISTS is a no-op when
 # the column already exists — safe to run every time, no manual trigger needed.
-# =============================================================================
+# ======================================================================================================================
 
 REQUIRED_SCHEMA = [
     # signal_log — batch 1 (added 2026-06-02)
@@ -1116,9 +1116,9 @@ def ensure_schema():
             pass
 
 
-# =============================================================================
+# ======================================================================================================================
 # Main
-# =============================================================================
+# ======================================================================================================================
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

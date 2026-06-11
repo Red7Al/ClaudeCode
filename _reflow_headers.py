@@ -1,8 +1,9 @@
-# One-off retrofit (2026-06-11): reflow wrapped version-history entries in the
-# header comment block of every .py file to a 120-character max line width.
-# Only touches groups that match the strict "# <ver>   <date>  <author>   text"
-# pattern plus their deep-indent continuation lines — tables, bullets and
-# section breaks are left untouched.
+# Comment-width retrofit tool (user directive 2026-06-11): max comment line width is 120 characters.
+#   pass 1 (2026-06-11): reflowed wrapped version-history entries ("# <ver>   <date>  <author>   text" groups)
+#   pass 2 (2026-06-11): spacer/banner lines widened to 120 — "# ===...", "# ---...", "# ──...",
+#                        and "# ── Section title ──────" trailing runs (indented banners keep their indent).
+# Only strict patterns are touched — tables, bullets and prose comments are left untouched.
+# Re-run any time: idempotent.
 import re
 import sys
 import textwrap
@@ -14,6 +15,36 @@ ENTRY_RE = re.compile(
     r"^(#\s+\d+\.\d+(?:\.\d+)?\s+\d{4}-\d{2}-\d{2}\s+\S+(?:\s\S+)*?\s{2,})(\S.*)$"
 )
 CONT_RE = re.compile(r"^#(\s{10,})(\S.*)$")
+
+# Pure spacer banners: "# ====", "# ----", "# ────" (optionally indented)
+SPACER_RE = re.compile(r"^(\s*)# ?([=\-─])\2{2,}\s*$")
+# Titled section banners: "# ── Title text ───────" (optionally indented)
+TITLED_RE = re.compile(r"^(\s*# ── .*?\S)\s*(─{3,})\s*$")
+
+
+def fix_spacers(lines: list) -> tuple[list, int]:
+    """Widen spacer/banner comment lines to exactly MAX_WIDTH columns."""
+    out, changed = [], 0
+    for line in lines:
+        m = SPACER_RE.match(line)
+        if m:
+            indent, ch = m.group(1), m.group(2)
+            new = f"{indent}# " + ch * (MAX_WIDTH - len(indent) - 2)
+            if new != line:
+                changed += 1
+            out.append(new)
+            continue
+        t = TITLED_RE.match(line)
+        if t:
+            head = t.group(1)
+            pad = MAX_WIDTH - len(head) - 1
+            new = f"{head} " + "─" * max(pad, 3)
+            if new != line:
+                changed += 1
+            out.append(new)
+            continue
+        out.append(line)
+    return out, changed
 
 
 def reflow_file(path: Path) -> int:
@@ -63,6 +94,8 @@ def reflow_file(path: Path) -> int:
         result.append(lines[i])
         i += 1
 
+    result, spacer_changed = fix_spacers(result)
+    changed += spacer_changed
     if changed:
         path.write_text("\n".join(result) + "\n", encoding="utf-8")
     return changed

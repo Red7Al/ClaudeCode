@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         run_spotlight.py
 # Author:       Alex Hind
 # Created:      2026-06-03
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # On-demand ticker spotlight — queries signal_log, notable_investors and
 # social_mentions for one or more tickers and posts a summary to Slack.
 #
@@ -16,7 +16,7 @@
 # Environment Variables Required:
 #   SUPABASE_USER, SUPABASE_DB_PASSWORD, SLACK_SIGNALS
 #   SPOTLIGHT_TICKER  — comma-separated tickers (e.g. "PLTR,DELL,NBIS")
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)

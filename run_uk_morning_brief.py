@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         run_uk_morning_brief.py
 # Author:       Alex Hind
 # Created:      2026-06-03
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 9am UTC Monday & Friday brief covering the UK session so far (07:00–09:00 UTC).
 # Posts to #claude-trading-signals via SLACK_SIGNALS webhook.
 #
@@ -21,11 +21,11 @@
 #   SUPABASE_USER, SUPABASE_DB_PASSWORD, SLACK_DAILY
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-03  Alex Hind   Initial build. UK morning brief covering 07:00–09:00 UTC window. Posts to
 #                                 #claude-trading-daily via SLACK_DAILY.
 # 1.0.1   2026-06-05  Alex Hind   Corrected SLACK_URL from SLACK_DAILY (was incorrectly set to SLACK_SIGNALS).
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
@@ -92,7 +92,7 @@ def main():
 
     db = get_db()
 
-    # ── Macro snapshot ────────────────────────────────────────────────────────
+    # ── Macro snapshot ────────────────────────────────────────────────────────────────────────────────────────────────
     macro_rows = db.run(
         """select vix, dxy, yield_spread, macro_gate_pass, gate_reason, snapshot_time
            from   macro_snapshot
@@ -114,7 +114,7 @@ def main():
             "snapshot_time": macro_rows[0][5],
         }
 
-    # ── Signal log for window ─────────────────────────────────────────────────
+    # ── Signal log for window ─────────────────────────────────────────────────────────────────────────────────────────
     signal_rows = db.run(
         """select ticker, session, primary_count, confirmation_count,
                   direction, trade_triggered, pa_verdict,
@@ -130,7 +130,7 @@ def main():
         s=since_ts, u=until_ts
     )
 
-    # ── Trades opened in window ───────────────────────────────────────────────
+    # ── Trades opened in window ───────────────────────────────────────────────────────────────────────────────────────
     trade_rows = db.run(
         """select ticker, direction, size, open_price, stop_loss, session, signal_summary, opened_at
            from   positions
@@ -140,7 +140,7 @@ def main():
         s=since_ts, u=until_ts
     )
 
-    # ── All open positions ────────────────────────────────────────────────────
+    # ── All open positions ────────────────────────────────────────────────────────────────────────────────────────────
     pos_rows = db.run(
         """select ticker, direction, size, open_price, stop_loss, session, opened_at
            from   positions
@@ -149,7 +149,7 @@ def main():
 
     db.close()
 
-    # ── Build Slack blocks ────────────────────────────────────────────────────
+    # ── Build Slack blocks ────────────────────────────────────────────────────────────────────────────────────────────
     blocks = []
 
     # Header

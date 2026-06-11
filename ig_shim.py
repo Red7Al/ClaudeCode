@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         ig_shim.py
 # Author:       Alex Hind
 # Created:      2026-05-30
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # IG API execution shim for the EndToEndTrading system.
 # Pure execution layer — contains NO trading decision logic.
 # All decisions are made upstream by the Claude Cloud Routines.
@@ -22,7 +22,7 @@
 # No credentials are ever written to this file or any log.
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-05-30  Alex Hind   Initial build
 # 1.0.1   2026-05-30  Alex Hind   Fix expiry from "-" to "DFB" for rolling CFD contracts. Add get_close_reason() to
 #                                 query IG activity history for STOP_HIT / TARGET_HIT etc. Add get_open_positions() 404
@@ -95,18 +95,18 @@
 #                                 "limit_level": 0.0} matching live trade format.
 #
 # Dependencies:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 #   pip install requests pg8000
 #
 # Environment Variables Required:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 #   IG_API_KEY            IG developer API key
 #   IG_USERNAME           IG account username (not email)
 #   IG_PASSWORD           IG account password
 #   IG_ACCOUNT_ID         IG account reference (e.g. HTIRV)
 #   SUPABASE_USER         Supabase PostgreSQL user (postgres.{project_id})
 #   SUPABASE_DB_PASSWORD  Supabase database password
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from dotenv import load_dotenv; load_dotenv(override=True)
@@ -137,9 +137,9 @@ from config import (
 )
 
 
-# =============================================================================
+# ======================================================================================================================
 # Logging
-# =============================================================================
+# ======================================================================================================================
 
 logging.basicConfig(
     level=logging.INFO,
@@ -148,9 +148,9 @@ logging.basicConfig(
 log = logging.getLogger("ig_shim")
 
 
-# =============================================================================
+# ======================================================================================================================
 # Configuration — loaded from environment variables only
-# =============================================================================
+# ======================================================================================================================
 
 IG_API_KEY    = os.environ["IG_API_KEY"]
 IG_USERNAME   = os.environ["IG_USERNAME"]
@@ -163,10 +163,10 @@ SUPABASE_USER = os.environ["SUPABASE_USER"]         # format: postgres.{project_
 SUPABASE_PASS = os.environ["SUPABASE_DB_PASSWORD"]
 
 
-# =============================================================================
+# ======================================================================================================================
 # Supabase connection factory
 # Returns a new connection on each call — caller must close after use.
-# =============================================================================
+# ======================================================================================================================
 
 def get_db() -> pg8000.native.Connection:
     """Supabase connection via the shared resilient session-pooler helper (timeout + retry)."""
@@ -174,10 +174,10 @@ def get_db() -> pg8000.native.Connection:
     return _pool_get_db()
 
 
-# =============================================================================
+# ======================================================================================================================
 # IG Session Management
 # Handles authentication, token storage, and auto-refresh before 6hr expiry.
-# =============================================================================
+# ======================================================================================================================
 
 class IGSession:
     """
@@ -194,7 +194,7 @@ class IGSession:
         self._cst: Optional[str] = None
         self._authenticated_at: Optional[float] = None
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _headers(self, version: str = "2") -> dict:
         """Build standard IG API request headers, including auth tokens if available."""
@@ -209,7 +209,7 @@ class IGSession:
             h["CST"]              = self._cst
         return h
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
 
     def authenticate(self):
         """Authenticate with IG and store session tokens."""
@@ -230,7 +230,7 @@ class IGSession:
         self._authenticated_at   = time.time()
         log.info("IG authentication successful")
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
 
     def ensure_authenticated(self):
         """Authenticate if not yet done, or refresh if session is approaching expiry."""
@@ -241,7 +241,7 @@ class IGSession:
             log.info("Session approaching expiry — refreshing...")
             self.authenticate()
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
 
     def get(self, path: str, version: str = "1", params: dict = None) -> dict:
         """Authenticated GET request to the IG API."""
@@ -255,7 +255,7 @@ class IGSession:
         resp.raise_for_status()
         return resp.json()
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
 
     def post(self, path: str, body: dict, version: str = "1") -> dict:
         """Authenticated POST request to the IG API."""
@@ -269,7 +269,7 @@ class IGSession:
         resp.raise_for_status()
         return resp.json()
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
 
     def delete(self, path: str, body: dict, version: str = "1") -> dict:
         """
@@ -289,15 +289,15 @@ class IGSession:
         return resp.json()
 
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Singleton session instance — shared across all calls in this process
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 session = IGSession()
 
 
-# =============================================================================
+# ======================================================================================================================
 # Account
-# =============================================================================
+# ======================================================================================================================
 
 def calculate_position_size(epic: str, stop_distance: float,
                             risk_amount: float,
@@ -417,11 +417,11 @@ def get_account_balance() -> dict:
     raise ValueError(f"Account {IG_ACCOUNT_ID} not found in IG response")
 
 
-# =============================================================================
+# ======================================================================================================================
 # Epic Lookup
 # Checks Supabase cache first. Falls back to IG market search on cache miss.
 # New epics found via search are written back to the cache automatically.
-# =============================================================================
+# ======================================================================================================================
 
 def get_epic(ticker: str) -> Optional[str]:
     """
@@ -481,9 +481,9 @@ def get_epic(ticker: str) -> Optional[str]:
     return epic
 
 
-# =============================================================================
+# ======================================================================================================================
 # Open Positions
-# =============================================================================
+# ======================================================================================================================
 
 def get_open_positions() -> list:
     """
@@ -567,10 +567,10 @@ def get_close_reason(deal_id: str) -> tuple[str, float]:
     return "UNKNOWN", 0.0
 
 
-# =============================================================================
+# ======================================================================================================================
 # Circuit Breakers
 # Enforced before every trade attempt. Blocks trades that violate risk rules.
-# =============================================================================
+# ======================================================================================================================
 
 def check_circuit_breakers(user_id: str, ticker: str, session_name: str = None) -> tuple[bool, str]:
     """
@@ -727,9 +727,9 @@ def check_circuit_breakers(user_id: str, ticker: str, session_name: str = None) 
     return True, "OK"
 
 
-# =============================================================================
+# ======================================================================================================================
 # Open a Trade
-# =============================================================================
+# ======================================================================================================================
 
 def open_trade(
     user_id:        str,
@@ -1052,9 +1052,9 @@ def open_trade(
         return None
 
 
-# =============================================================================
+# ======================================================================================================================
 # Close a Trade
-# =============================================================================
+# ======================================================================================================================
 
 def close_trade(deal_id: str, reason: str = "MANUAL") -> bool:
     """
@@ -1120,9 +1120,9 @@ def close_trade(deal_id: str, reason: str = "MANUAL") -> bool:
         return False
 
 
-# =============================================================================
+# ======================================================================================================================
 # Price Data
-# =============================================================================
+# ======================================================================================================================
 
 def get_prices(epic: str, resolution: str = "HOUR", count: int = 50) -> list:
     """
@@ -1146,7 +1146,7 @@ def get_snapshot(epic: str) -> dict:
     return data.get("snapshot", {})
 
 
-# =============================================================================
+# ======================================================================================================================
 # Working Orders — HVF pending entries (user 2026-06-10)
 #
 # An HVF setup pre-defines ENTRY (H3 breakout), STOP and TARGET. Instead of a
@@ -1168,7 +1168,7 @@ def get_snapshot(epic: str) -> dict:
 #             signal for a ticker with a PENDING order is treated as an UPDATE:
 #             levels moved materially → amend the IG order in place (never a
 #             second order); levels unchanged → skip silently.
-# =============================================================================
+# ======================================================================================================================
 
 # Amend (rather than skip) a pending order when any of entry/stop/target moved
 # by more than this percentage — re-scans recompute HVF pivots slightly as new
@@ -1907,7 +1907,7 @@ def reconcile_working_orders() -> dict:
             else:
                 pending_rows.append(r)
 
-        # ── Pass 0: WATCHING → PENDING upgrade ───────────────────────────────
+        # ── Pass 0: WATCHING → PENDING upgrade ────────────────────────────────────────────────────────────────────────
         # For each WATCHING row, check if price has entered the proximity band.
         for r in watching_rows:
             deal_id, _, _, ticker, epic, direction, size, entry, stop, limit, _, sess, _, good_till, _, paper = r
@@ -2181,9 +2181,9 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Trailing Stop Update
-# =============================================================================
+# ======================================================================================================================
 
 def update_stop(deal_id: str, new_stop_level: float) -> bool:
     """
@@ -2215,9 +2215,9 @@ def update_stop(deal_id: str, new_stop_level: float) -> bool:
         return False
 
 
-# =============================================================================
+# ======================================================================================================================
 # Supabase Logging Helpers (private)
-# =============================================================================
+# ======================================================================================================================
 
 def _log_position_to_db(
     user_id, epic, ticker, direction, size,
@@ -2270,7 +2270,7 @@ def _post_trade_review(pos: dict, pnl: float, close_reason: str):
         flags   = []
         verdict = "GOOD"
 
-        # ── R:R check ────────────────────────────────────────────────────────
+        # ── R:R check ─────────────────────────────────────────────────────────────────────────────────────────────────
         rr = None
         if stop_loss and take_profit and open_price:
             stop_dist   = abs(open_price - stop_loss)
@@ -2289,7 +2289,7 @@ def _post_trade_review(pos: dict, pnl: float, close_reason: str):
             if verdict == "GOOD":
                 verdict = "MARGINAL"
 
-        # ── Stop tightness: fetch live spread and compare ─────────────────────
+        # ── Stop tightness: fetch live spread and compare ─────────────────────────────────────────────────────────────
         try:
             mkt  = session.get(f"/markets/{epic}", version="3")
             snap = mkt.get("snapshot", {})
@@ -2314,7 +2314,7 @@ def _post_trade_review(pos: dict, pnl: float, close_reason: str):
         except Exception as se:
             log.debug(f"Post-trade review: spread check failed for {epic}: {se}")
 
-        # ── Minimum meaningful risk ───────────────────────────────────────────
+        # ── Minimum meaningful risk ───────────────────────────────────────────────────────────────────────────────────
         if stop_loss:
             risk_gbp = round(abs(open_price - stop_loss) * size, 2)
             if risk_gbp < 3.0:
@@ -2325,12 +2325,12 @@ def _post_trade_review(pos: dict, pnl: float, close_reason: str):
                 if verdict == "GOOD":
                     verdict = "MARGINAL"
 
-        # ── Actual outcome vs expectation ─────────────────────────────────────
+        # ── Actual outcome vs expectation ─────────────────────────────────────────────────────────────────────────────
         outcome = "profit" if pnl >= 0 else "loss"
         if close_reason == "STOP_HIT" and rr and rr >= 2.0 and verdict == "GOOD":
             pass   # stopped out on a good setup — no additional flag needed
 
-        # ── Build Slack message ───────────────────────────────────────────────
+        # ── Build Slack message ───────────────────────────────────────────────────────────────────────────────────────
         verdict_emoji = {"GOOD": "✅", "MARGINAL": "⚠️", "POOR": "❌"}.get(verdict, "ℹ️")
         rr_str = f"{rr:.1f}:1" if rr else "—"
         pnl_str = f"£{pnl:+.2f}"
@@ -2395,7 +2395,7 @@ def _log_trade_close_to_db(deal_id: str, close_price: float, close_reason: str):
             else (open_price - close_price) / open_price * 100
         ) if open_price else 0
 
-        # ── Stop slippage detection ───────────────────────────────────────────
+        # ── Stop slippage detection ───────────────────────────────────────────────────────────────────────────────────
         # Was the position closed significantly worse than the stop level?
         # If so, override the close_reason and alert — this is actionable information.
         stop_loss = float(pos["stop_loss"]) if pos["stop_loss"] else None
@@ -2495,11 +2495,11 @@ def _log_trade_close_to_db(deal_id: str, close_price: float, close_reason: str):
         log.warning(f"Post-trade review raised unexpected error for {deal_id}: {re}")
 
 
-# =============================================================================
+# ======================================================================================================================
 # Health Check
 # Verifies IG connectivity and returns current account state.
 # Run manually to confirm the system is operational before market open.
-# =============================================================================
+# ======================================================================================================================
 
 def health_check() -> dict:
     """
@@ -2522,10 +2522,10 @@ def health_check() -> dict:
         return {"status": "ERROR", "error": str(e)}
 
 
-# =============================================================================
+# ======================================================================================================================
 # Entry point — run health check when executed directly
 # Usage: python ig_shim.py
-# =============================================================================
+# ======================================================================================================================
 
 if __name__ == "__main__":
     print(json.dumps(health_check(), indent=2))

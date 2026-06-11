@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         signals.py
 # Author:       Alex Hind
 # Created:      2026-05-30
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Signal computation layer for the EndToEndTrading system.
 # Queries all external data sources and returns structured signal data
 # for each instrument. Contains NO trading decision logic — all decisions
@@ -25,7 +25,7 @@
 #   Discovery       Dynamic instrument screener (Yahoo Finance)
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Full signal stack across all layers. AUS200 removed from AUS/Asia
 #                                 session instrument list (not traded).
 # 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log INSERT — was computed but never persisted.
@@ -63,15 +63,15 @@
 #                                 _fetch_form4_transactions(). director_transactions field added to signal dict.
 #
 # Dependencies:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 #   pip install yfinance pandas numpy requests pg8000
 #
 # Environment Variables Required:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 #   FRED_API_KEY          FRED API key for yield curve data
 #   SUPABASE_USER         Supabase PostgreSQL user (postgres.{project_id})
 #   SUPABASE_DB_PASSWORD  Supabase database password
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from dotenv import load_dotenv; load_dotenv(override=True)
@@ -115,9 +115,9 @@ SUPABASE_HOST = "aws-0-eu-west-1.pooler.supabase.com"
 SUPABASE_USER = os.environ["SUPABASE_USER"]
 SUPABASE_PASS = os.environ["SUPABASE_DB_PASSWORD"]
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # DB helper
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_db():
     """Supabase connection via the shared resilient session-pooler helper (timeout + retry)."""
     from db_pool import get_db as _pool_get_db
@@ -136,9 +136,9 @@ def conf_names(sig: dict) -> str:
     names = [c.split(" — ")[0] for c in (sig.get("confirmations_fired") or [])]
     return ", ".join(names)
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1. MACRO GATE
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_vix() -> Optional[float]:
     try:
         t = yf.Ticker("^VIX")
@@ -359,9 +359,9 @@ def get_macro_gate(session_name: str) -> dict:
 
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 2. OPTIONS FLOW — call/put imbalance + IV rank
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_options_signal(ticker: str) -> dict:
     """
     Compute options bias from Yahoo Finance chain snapshot.
@@ -411,9 +411,9 @@ def get_options_signal(ticker: str) -> dict:
         log.warning(f"Options signal failed for {ticker}: {e}")
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 3. BOLLINGER BAND SQUEEZE (HVF equivalent)
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_bb_squeeze(ticker: str, period: int = 20) -> dict:
     """
     Detect volatility compression (Bollinger Band squeeze) and breakout direction.
@@ -460,9 +460,9 @@ def get_bb_squeeze(ticker: str, period: int = 20) -> dict:
         log.warning(f"BB squeeze failed for {ticker}: {e}")
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 4. GEX (Gamma Exposure) — computed from options chain
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_gex_bias(ticker: str) -> dict:
     """
     Estimate net gamma exposure from options chain.
@@ -527,9 +527,9 @@ def get_gex_bias(ticker: str) -> dict:
         log.warning(f"GEX computation failed for {ticker}: {e}")
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 5. VWAP POSITION
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_vwap_position(ticker: str) -> dict:
     """Return whether price is above or below intraday VWAP."""
     result = {"vwap": None, "vwap_position": None}
@@ -551,9 +551,9 @@ def get_vwap_position(ticker: str) -> dict:
         log.warning(f"VWAP failed for {ticker}: {e}")
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 6. DIRECTOR BUYS — SEC Form 4
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def _fetch_form4_transactions(accession_no: str) -> list:
     """
     Fetch a Form 4 XML from SEC EDGAR and return all open-market purchase
@@ -695,9 +695,9 @@ def get_director_buys(ticker: str, days: int = 30) -> dict:
         log.warning(f"Director buy check failed for {ticker}: {e}")
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 7. ACTIVIST SIGNAL — SEC Schedule 13D
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_activist_signal(ticker: str, days: int = 60) -> dict:
     """Check for recent SC 13D (activist) filings for the ticker."""
     result = {"activist_signal": False, "activist_detail": ""}
@@ -727,9 +727,9 @@ def get_activist_signal(ticker: str, days: int = 60) -> dict:
         log.warning(f"Activist signal check failed for {ticker}: {e}")
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 8. SENATE SIGNAL — Quiver Quant + qualified senator list
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_senate_signal(ticker: str, days: int = 30) -> dict:
     """
     Check Capitol Trades for recent Senate equity purchases in this ticker
@@ -778,9 +778,9 @@ def get_senate_signal(ticker: str, days: int = 30) -> dict:
         log.warning(f"Senate signal check failed for {ticker}: {e}")
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 8b. ELITE SENATOR / POTUS PRIMARY SIGNAL
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_potus_elite_senate_primary(ticker: str, days_senate: int = 60,
                                    days_potus: int = 90) -> dict:
     """
@@ -815,7 +815,7 @@ def get_potus_elite_senate_primary(ticker: str, days_senate: int = 60,
         "primary_source":       "",
     }
 
-    # ── A) Elite senator buy ─────────────────────────────────────────────────
+    # ── A) Elite senator buy ──────────────────────────────────────────────────────────────────────────────────────────
     try:
         db = get_db()
         try:
@@ -853,7 +853,7 @@ def get_potus_elite_senate_primary(ticker: str, days_senate: int = 60,
     except Exception as e:
         log.warning(f"Elite senate primary check failed for {ticker}: {e}")
 
-    # ── B) Presidential mention ───────────────────────────────────────────────
+    # ── B) Presidential mention ───────────────────────────────────────────────────────────────────────────────────────
     try:
         db = get_db()
         try:
@@ -880,7 +880,7 @@ def get_potus_elite_senate_primary(ticker: str, days_senate: int = 60,
     except Exception as e:
         log.warning(f"POTUS primary check failed for {ticker}: {e}")
 
-    # ── Combine ───────────────────────────────────────────────────────────────
+    # ── Combine ───────────────────────────────────────────────────────────────────────────────────────────────────────
     if result["elite_senate_primary"] and result["potus_primary"]:
         result["primary_fired"]  = True
         result["primary_source"] = "BOTH"
@@ -894,9 +894,9 @@ def get_potus_elite_senate_primary(ticker: str, days_senate: int = 60,
     return result
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 9. SUPERINVESTOR SIGNAL — Dataroma
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 SUPERINVESTORS = [
     ("Berkshire Hathaway", "BRK"),
     ("Pershing Square",    "PS"),
@@ -938,9 +938,9 @@ def get_superinvestor_signal(ticker: str) -> dict:
         log.warning(f"Superinvestor signal failed for {ticker}: {e}")
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 10. SOCIAL MENTIONS — Trump (Truth Social) + Musk (X), last 24h
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_social_mentions(ticker: str) -> dict:
     """
     Check Supabase social_mentions table for ticker mentions in last 24 hours.
@@ -969,9 +969,9 @@ def get_social_mentions(ticker: str) -> dict:
         log.warning(f"Social mention check failed for {ticker}: {e}")
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 11. ECONOMIC CALENDAR — risk filter
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_upcoming_events(minutes_ahead: int = 30) -> dict:
     """
     Check for major economic events in the next {minutes_ahead} minutes.
@@ -1009,9 +1009,9 @@ def get_upcoming_events(minutes_ahead: int = 30) -> dict:
         log.warning(f"Economic calendar check failed: {e}")
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 12. ATR COMPUTATION (for position sizing)
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def get_atr(ticker: str, period: int = 14) -> dict:
     """Compute 14-period ATR and stop distance from current price."""
@@ -1041,9 +1041,9 @@ def get_atr(ticker: str, period: int = 14) -> dict:
         log.warning(f"ATR computation failed for {ticker}: {e}")
     return result
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 13. DYNAMIC INSTRUMENT DISCOVERY
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Session instrument lists imported from config.py
 
 def get_candidate_instruments(session_name: str) -> list:
@@ -1092,9 +1092,9 @@ def get_candidate_instruments(session_name: str) -> list:
 
     return candidates[:15]
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 14. FULL SIGNAL SCAN — one instrument
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def _get_analyst_signal(ticker: str) -> dict:
     """Wrapper for broker analyst signal. Fails gracefully."""
     try:
@@ -1147,9 +1147,9 @@ def get_commodity_macro_score(ticker: str, yield_spread: float = None) -> dict:
     return result
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 15. ADX — trend strength filter
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_adx(ticker: str, period: int = 14) -> dict:
     """
     Average Directional Index — measures trend STRENGTH, not direction.
@@ -1213,9 +1213,9 @@ def get_adx(ticker: str, period: int = 14) -> dict:
     return result
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 16. OBV — On-Balance Volume divergence
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_obv_signal(ticker: str, period: int = 20) -> dict:
     """
     On-Balance Volume trend vs price trend over the last {period} days.
@@ -1277,9 +1277,9 @@ def get_obv_signal(ticker: str, period: int = 20) -> dict:
     return result
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 17. VOLUME SIGNAL — today vs 20-day average
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_volume_signal(ticker: str) -> dict:
     """
     Compare today's volume to the 20-day average daily volume.
@@ -1382,9 +1382,9 @@ def get_intraday_guard(ticker: str) -> dict:
     return result
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 18. OPENING RANGE BREAKOUT (ORB) — first 30-min bar vs current price
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_orb_signal(ticker: str) -> dict:
     """
     Compare current price to the high/low of the first 30-minute bar of today's
@@ -1422,9 +1422,9 @@ def get_orb_signal(ticker: str) -> dict:
     return result
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 19. 52-WEEK HIGH/LOW BREAKOUT — momentum primary
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_52week_signal(ticker: str) -> dict:
     """
     Price at or beyond its 52-week extreme is a momentum primary signal.
@@ -1470,9 +1470,9 @@ def get_52week_signal(ticker: str) -> dict:
     return result
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 20. SECTOR ALIGNMENT — sector ETF direction as primary signal
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_sector_alignment(ticker: str) -> dict:
     """
     Check whether the ticker's sector ETF is directionally aligned.
@@ -1507,7 +1507,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     """
     log.info(f"Scanning {ticker}...")
 
-    # ── Intraday guard ────────────────────────────────────────────────────────
+    # ── Intraday guard ────────────────────────────────────────────────────────────────────────────────────────────────
     # Skip instruments that have already made a violent intraday move.
     # A stock down 8% at the open is a falling knife — our ATR-based stop will
     # be set incorrectly and the PA signals (which use daily closes) won't
@@ -1554,7 +1554,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     social    = get_social_mentions(ticker)
     atr_data  = get_atr(ticker)
 
-    # ── Data reconciliation ───────────────────────────────────────────────────
+    # ── Data reconciliation ───────────────────────────────────────────────────────────────────────────────────────────
     # Check that core price-data sources actually returned values.
     # A ticker with a bad Yahoo Finance mapping silently returns neutral dicts
     # that look identical to a genuine no-signal result — impossible to distinguish
@@ -2025,9 +2025,9 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
 
     return signal
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 15. SESSION SCAN — all instruments
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def run_session_scan(session_name: str) -> dict:
     """
     Run the full signal scan for a session.

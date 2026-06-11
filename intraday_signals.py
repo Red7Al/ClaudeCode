@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         intraday_signals.py
 # Author:       Alex Hind
 # Created:      2026-06-01
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Intraday technical signal computation for the US Monitor session.
 # Evaluates open positions and candidate instruments mid-session using
 # short-timeframe technical indicators.
@@ -22,7 +22,7 @@
 #   Can also be called at any session open for additional confirmation
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-01  Alex Hind   Initial build.
 # 1.0.1   2026-06-05  Alex Hind   get_intraday_signals: do not fall back to 5m data when 1h data is unavailable.
 #                                 RSI/MACD on 5m bars is 10× more reactive than intended (14 bars = 1.2h instead of 14h)
@@ -76,7 +76,7 @@
 #                                 signal dict. History window now spans from 14 days before oldest pivot date (not fixed
 #                                 180 days). Legend and R:R removed from chart — shown in Slack context block below the
 #                                 tweet instead.
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
@@ -92,9 +92,9 @@ from config import YAHOO_MAP, DEFAULT_TARGET_RR
 log = logging.getLogger("intraday_signals")
 
 
-# =============================================================================
+# ======================================================================================================================
 # RSI
-# =============================================================================
+# ======================================================================================================================
 
 def compute_rsi(closes: pd.Series, period: int = 14) -> float:
     """Compute RSI. Returns 0-100. >70 overbought, <30 oversold."""
@@ -112,9 +112,9 @@ def compute_rsi(closes: pd.Series, period: int = 14) -> float:
     return round(float(val), 1)
 
 
-# =============================================================================
+# ======================================================================================================================
 # MACD
-# =============================================================================
+# ======================================================================================================================
 
 def compute_macd(closes: pd.Series,
                  fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
@@ -153,9 +153,9 @@ def compute_macd(closes: pd.Series,
     }
 
 
-# =============================================================================
+# ======================================================================================================================
 # VWAP (intraday)
-# =============================================================================
+# ======================================================================================================================
 
 def compute_vwap(hist: pd.DataFrame) -> dict:
     """
@@ -178,9 +178,9 @@ def compute_vwap(hist: pd.DataFrame) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Volume analysis
-# =============================================================================
+# ======================================================================================================================
 
 def compute_volume_signal(ticker: str, hist_5m: pd.DataFrame) -> dict:
     """
@@ -216,9 +216,9 @@ def compute_volume_signal(ticker: str, hist_5m: pd.DataFrame) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Price momentum
-# =============================================================================
+# ======================================================================================================================
 
 def compute_price_momentum(hist_5m: pd.DataFrame) -> dict:
     """
@@ -260,9 +260,9 @@ def compute_price_momentum(hist_5m: pd.DataFrame) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # BB position (intraday)
-# =============================================================================
+# ======================================================================================================================
 
 def compute_bb_position(closes: pd.Series, period: int = 20) -> dict:
     """
@@ -304,9 +304,9 @@ def compute_bb_position(closes: pd.Series, period: int = 20) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Master intraday scan — one instrument
-# =============================================================================
+# ======================================================================================================================
 
 def scan_intraday(ticker: str) -> dict:
     """
@@ -424,9 +424,9 @@ def scan_intraday(ticker: str) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # US Monitor — scan all open positions + watch list
-# =============================================================================
+# ======================================================================================================================
 
 # Non-equity members of SESSION_INSTRUMENTS["US_OPEN"] — excluded from the HVF
 # equity watch (HVF is a stock pattern; these are index / commodity / crypto / FX).
@@ -560,7 +560,7 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
 
     now_str = datetime.now(timezone.utc).strftime("%d %b %H:%M UTC")
 
-    # ── Deduplication check ───────────────────────────────────────────────────
+    # ── Deduplication check ───────────────────────────────────────────────────────────────────────────────────────────
     current_fp  = _hvf_fingerprint(tradeable, developing)
     last_fp     = _hvf_last_fingerprint()
 
@@ -584,7 +584,7 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
             log.error(f"HVF watch (no-change) post failed: {e}")
         return
 
-    # ── Full update — something changed ──────────────────────────────────────
+    # ── Full update — something changed ───────────────────────────────────────────────────────────────────────────────
     def _line(r):
         d  = "🟢" if r.get("hvf_type") == "BULLISH" else "🔴"
         s  = {"TRIGGERED": "⚡", "READY": "✅", "DEVELOPING": "👀"}.get(r.get("hvf_signal", ""), "")
@@ -649,7 +649,7 @@ def _generate_x_drafts(tradeable: list):
         log.warning("SLACK_TWITTER not set — X draft reports skipped")
         return
 
-    # ── Batch fetch latest signal context per ticker from signal_log ──────────
+    # ── Batch fetch latest signal context per ticker from signal_log ──────────────────────────────────────────────────
     # Enriches tweet with options flow / director buy confirmation when available.
     # Fails silently — absence of this data never blocks the draft post.
     _sig_ctx: dict = {}   # ticker → {options_bias, call_put_ratio, director_signal}
@@ -818,7 +818,7 @@ def _generate_x_drafts(tradeable: list):
             # Absolute fallback — no justification, short tags
             tweet = base_no_name + tags_short + disclaimer
 
-        # ── Chart: price history + funnel through real pivot points ─────────────
+        # ── Chart: price history + funnel through real pivot points ───────────────────────────────────────────────────
         chart_b64 = None
         try:
             end_dt   = datetime.now(timezone.utc)
@@ -877,7 +877,7 @@ def _generate_x_drafts(tradeable: list):
                 dates = hist.index
                 n     = len(dates)
 
-                # ── Agreed X post card format (user-approved 2026-06-10) ──────
+                # ── Agreed X post card format (user-approved 2026-06-10) ──────────────────────────────────────────────
                 # Combined card: tweet-text header panel above the chart.
                 # Header: @handle / $TICKER (Name) / setup line / levels line /
                 # hashtags / "Not financial advice." — chart fills the rest.
@@ -971,7 +971,7 @@ def _generate_x_drafts(tradeable: list):
         except Exception as e:
             log.warning(f"X draft chart failed for {ticker}: {e}")
 
-        # ── Post to SLACK_TWITTER channel ───────────────────────────────────────────
+        # ── Post to SLACK_TWITTER channel ─────────────────────────────────────────────────────────────────────────────
         dir_label = "Bullish" if direction == "BULLISH" else "Bearish"
         blocks = [
             {"type": "header",
@@ -1002,7 +1002,7 @@ def _generate_x_drafts(tradeable: list):
         except Exception as e:
             log.error(f"X draft Slack post failed (SLACK_TWITTER) for {ticker}: {e}")
 
-        # ── Attach the post card image via Slack external upload flow ────────
+        # ── Attach the post card image via Slack external upload flow ─────────────────────────────────────────────────
         # Legacy files.upload is retired (2025) — the current flow is:
         # 1. files.getUploadURLExternal  → one-time upload URL + file id
         # 2. POST raw bytes to that URL
@@ -1062,7 +1062,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
 
     results = []
 
-    # ── Reconcile pending HVF working orders first ────────────────────────────
+    # ── Reconcile pending HVF working orders first ────────────────────────────────────────────────────────────────────
     # A fill inserts the position row (so the DB fetch below sees it and Part 1
     # monitors it); cancels/expiries are surfaced to Slack — nothing ends silently.
     try:
@@ -1073,7 +1073,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
     except Exception as e:
         log.warning(f"US Monitor: working-order reconcile failed: {e}")
 
-    # ── DB connection ─────────────────────────────────────────────────────────
+    # ── DB connection ─────────────────────────────────────────────────────────────────────────────────────────────────
     try:
         conn = _pool_get_db()
         pos_rows = conn.run(
@@ -1100,7 +1100,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
     trades_today    = int(today_count[0][0]) if today_count else 0   # US-session trades today
     slots_remaining = max(0, SESSION_TRADE_CAPS.get("US", MAX_TRADES_PER_SESSION) - trades_today)
 
-    # ── Part 1: Monitor existing positions ────────────────────────────────────
+    # ── Part 1: Monitor existing positions ────────────────────────────────────────────────────────────────────────────
     if not pos_rows:
         log.info("US Monitor: no open positions — skipping position review")
 
@@ -1120,7 +1120,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
         if not scan["hold_flag"] and scan["alert"]:
             position_alerts.append(scan)
 
-    # ── Part 2: Re-scan session instruments for NEW entries ───────────────────
+    # ── Part 2: Re-scan session instruments for NEW entries ───────────────────────────────────────────────────────────
     # NOTE: HVF watch (visibility layer) is now a separate workflow
     # (trading-us-hvf-watch.yml, session US_HVF_WATCH) running every 2 hours.
     new_trades_placed = 0
@@ -1260,10 +1260,10 @@ def run_us_monitor(notify_slack: bool = True) -> list:
     return results
 
 
-# =============================================================================
+# ======================================================================================================================
 # Entry point
 # Usage: python intraday_signals.py
-# =============================================================================
+# ======================================================================================================================
 
 if __name__ == "__main__":
     import logging, os

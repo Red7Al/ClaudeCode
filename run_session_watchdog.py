@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         run_session_watchdog.py
 # Author:       Alex Hind
 # Created:      2026-06-03
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Watchdog — checks that expected trading sessions have actually produced
 # signal data within the expected window. Alerts to Slack #claude-trading-alerts
 # if a session ran (macro_snapshot exists) but no signal_log rows were written,
@@ -21,7 +21,7 @@
 #   SUPABASE_USER, SUPABASE_DB_PASSWORD, SLACK_ALERTS
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.4   2026-06-07  Alex Hind   Fix misleading alert wording: said "GitHub Actions cron missed" but scheduling is via
 #                                 cron-job.org (the runner is GitHub Actions, the scheduler is not). Now reads "the
 #                                 scheduled run did not start (cron-job.org trigger or the workflow failed)". Also
@@ -45,7 +45,7 @@
 #                                 60min = 15:00 (30min grace from the 14:30 scheduled open), matching the comment.
 # 1.0.0   2026-06-03  Alex Hind   Initial build. Monitors AUS_OPEN, UK_OPEN, US_OPEN signal windows and alerts Slack if
 #                                 a session is overdue or produced no signals.
-# =============================================================================
+# ======================================================================================================================
 
 import os
 import time

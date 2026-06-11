@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         commodity_supply_demand.py
 # Author:       Alex Hind
 # Created:      2026-05-30
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Supply and demand fundamentals for commodity instruments.
 # This is where commodities differ from equities — physical inventory levels
 # and production/consumption balances drive prices over weeks and months.
@@ -45,7 +45,7 @@
 #   reduces position size, but does not block trade direction.
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.1.0   2026-06-07  Alex Hind   Fix refinery-utilisation EIA series ID. The code tried PET.WCRRIUS2.W / WCRRIUS2 /
 #                                 PET.WPULEUS2.W — the first is refiner crude INPUT (kbbl/d, rejected by the 50-100
 #                                 sanity check) and the other two 404 — so refinery_util never populated and every
@@ -58,20 +58,20 @@
 #                                 graceful fallbacks. Geopolitical risk registry from Supabase.
 #
 # Dependencies:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 #   pip install requests pg8000
 #
 # Environment Variables Required:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 #   EIA_API_KEY           Free EIA API key (register at eia.gov/opendata)
 #   SUPABASE_USER         Supabase user
 #   SUPABASE_DB_PASSWORD  Supabase password
 #
 # Note on EIA_API_KEY:
-# ─────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 #   Register free at: https://www.eia.gov/opendata/register.php
 #   Add to environment variables once obtained.
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
@@ -98,17 +98,17 @@ OIL_SIGNIFICANT_DRAW  = -2_000   # -2M barrels draw  (= -2,000 thousand barrels)
 OIL_SIGNIFICANT_BUILD =  2_000   # +2M barrels build (= +2,000 thousand barrels)
 
 
-# =============================================================================
+# ======================================================================================================================
 # Database helper
-# =============================================================================
+# ======================================================================================================================
 
 def get_db():
     return _pool_get_db()
 
 
-# =============================================================================
+# ======================================================================================================================
 # EIA API helper
-# =============================================================================
+# ======================================================================================================================
 
 def fetch_eia_series(series_id: str, periods: int = 8) -> list:
     """
@@ -148,9 +148,9 @@ def fetch_eia_series(series_id: str, periods: int = 8) -> list:
         return []
 
 
-# =============================================================================
+# ======================================================================================================================
 # Oil Supply & Demand Signal (EIA)
-# =============================================================================
+# ======================================================================================================================
 
 def get_oil_inventory_signal() -> dict:
     """
@@ -260,9 +260,9 @@ def get_oil_inventory_signal() -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Precious Metals Inventory Signal (COMEX registered stocks)
-# =============================================================================
+# ======================================================================================================================
 
 def get_metals_inventory_signal(instrument: str) -> dict:
     """
@@ -291,7 +291,7 @@ def get_metals_inventory_signal(instrument: str) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Oil Futures Curve — Contango vs Backwardation
 # The shape of the oil futures curve is one of the most reliable indicators
 # of physical supply/demand tightness.
@@ -300,7 +300,7 @@ def get_metals_inventory_signal(instrument: str) -> dict:
 # Contango (spot < futures) = oversupply, weak demand → BEARISH
 #
 # Uses front-month vs 6-month forward price from Yahoo Finance.
-# =============================================================================
+# ======================================================================================================================
 
 def get_oil_curve_signal() -> dict:
     """
@@ -388,11 +388,11 @@ def get_oil_curve_signal() -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Demand Signals — Baltic Dry Index + China Proxy
 # BDI measures shipping rates for dry bulk commodities (coal, grain, iron ore).
 # Rising BDI = strong demand for physical commodities = bullish industrial metals.
-# =============================================================================
+# ======================================================================================================================
 
 def get_demand_signals() -> dict:
     """
@@ -482,9 +482,9 @@ def get_demand_signals() -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Geopolitical Risk Registry
-# =============================================================================
+# ======================================================================================================================
 
 def get_geopolitical_risk(instrument: str) -> dict:
     """
@@ -542,9 +542,9 @@ def get_geopolitical_risk(instrument: str) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Master supply & demand analysis per instrument
-# =============================================================================
+# ======================================================================================================================
 
 def analyse_supply_demand(instrument: str) -> dict:
     """
@@ -569,7 +569,7 @@ def analyse_supply_demand(instrument: str) -> dict:
         "data_available":  False,
     }
 
-    # ── Oil ─────────────────────────────────────────────────────────────────
+    # ── Oil ───────────────────────────────────────────────────────────────────────────────────────────────────────────
     if instrument in ("OIL", "USOIL", "CL"):
         inv     = get_oil_inventory_signal()
         curve   = get_oil_curve_signal()
@@ -601,7 +601,7 @@ def analyse_supply_demand(instrument: str) -> dict:
             result["stop_multiplier"] = geo["stop_multiplier"]
             result["size_multiplier"] = geo["size_multiplier"]
 
-    # ── Gold / Silver ────────────────────────────────────────────────────────
+    # ── Gold / Silver ─────────────────────────────────────────────────────────────────────────────────────────────────
     elif instrument in ("XAUUSD", "GOLD", "XAGUSD", "SILVER"):
         inv  = get_metals_inventory_signal(instrument)
         geo  = get_geopolitical_risk(instrument)
@@ -615,7 +615,7 @@ def analyse_supply_demand(instrument: str) -> dict:
             result["narrative"] += f" | Geopolitical: {geo['risk_level']} — {geo['description']} (safe haven demand)"
             result["stop_multiplier"] = geo["stop_multiplier"]
 
-    # ── Industrial metals ────────────────────────────────────────────────────
+    # ── Industrial metals ─────────────────────────────────────────────────────────────────────────────────────────────
     elif instrument in ("COPPER", "PLATINUM", "PALLADIUM", "ALUMINIUM", "ZINC", "NICKEL"):
         inv  = get_metals_inventory_signal(instrument)
         geo  = get_geopolitical_risk(instrument)
@@ -629,17 +629,17 @@ def analyse_supply_demand(instrument: str) -> dict:
             result["stop_multiplier"] = geo["stop_multiplier"]
             result["size_multiplier"] = geo["size_multiplier"]
 
-    # ── Non-commodity ────────────────────────────────────────────────────────
+    # ── Non-commodity ─────────────────────────────────────────────────────────────────────────────────────────────────
     else:
         result["narrative"] = "Not a commodity instrument — supply/demand not applicable"
 
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Entry point — run analysis for all commodity instruments
 # Usage: python commodity_supply_demand.py
-# =============================================================================
+# ======================================================================================================================
 
 if __name__ == "__main__":
     import logging

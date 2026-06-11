@@ -1,14 +1,14 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         price_action.py
 # Author:       Alex Hind
 # Created:      2026-05-30
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Price action confirmation signals for the EndToEndTrading system.
 #
 # PURPOSE — Avoiding the falling knife
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 # COT data and macro fundamentals tell you WHAT to trade and in WHICH
 # DIRECTION. Price action tells you WHEN to enter.
 #
@@ -21,7 +21,7 @@
 #   - Poor timing that turns a correct thesis into a losing trade
 #
 # Signals implemented:
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 #
 #   1. Range Breakout
 #      Price breaks above a multi-month consolidation high (bullish)
@@ -56,7 +56,7 @@
 #      Buyers tried and failed — bearish signal.
 #
 # Composite Price Action Score:
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 #   Each signal contributes to a score from -100 to +100.
 #   CONFIRM_LONG  = score >= +40  (price structure supports a long entry)
 #   CONFIRM_SHORT = score <= -40  (price structure supports a short entry)
@@ -65,7 +65,7 @@
 # Data source: Yahoo Finance OHLCV (daily and weekly candles)
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Six price action signals with composite confirmation score.
 # 1.1.0   2026-06-05  Alex Hind   Raised HVF_MIN_RR from 2.0 to 2.5 in both single-timeframe and multi-timeframe
 #                                 scanners to match MIN_RISK_REWARD in config.py.
@@ -87,9 +87,9 @@
 #                                 and surfaced by analyse_price_action (hvf_h1_date..hvf_l3_date).
 #
 # Dependencies:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 #   pip install yfinance pandas numpy
-# =============================================================================
+# ======================================================================================================================
 
 import logging
 import numpy as np
@@ -111,9 +111,9 @@ MA_CROSSOVER_DAYS    = 210   # enough for 200 SMA
 FAILED_BREAK_DAYS    = 5     # candles to look back for failed break
 
 
-# =============================================================================
+# ======================================================================================================================
 # Data fetching helper
-# =============================================================================
+# ======================================================================================================================
 
 def _get_daily(ticker: str, days: int = 220) -> pd.DataFrame:
     """Fetch daily OHLCV data for a ticker. Returns empty DataFrame on failure."""
@@ -139,9 +139,9 @@ def _get_weekly(ticker: str, weeks: int = 30) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-# =============================================================================
+# ======================================================================================================================
 # Signal 1 — Range Breakout
-# =============================================================================
+# ======================================================================================================================
 
 def get_range_breakout(ticker: str) -> dict:
     """
@@ -192,9 +192,9 @@ def get_range_breakout(ticker: str) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Signal 2 — Trend Structure (Higher Highs / Higher Lows)
-# =============================================================================
+# ======================================================================================================================
 
 def get_trend_structure(ticker: str) -> dict:
     """
@@ -261,9 +261,9 @@ def get_trend_structure(ticker: str) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Signal 3 — ATR Compression / Expansion
-# =============================================================================
+# ======================================================================================================================
 
 def get_atr_compression(ticker: str, period: int = 14) -> dict:
     """
@@ -321,9 +321,9 @@ def get_atr_compression(ticker: str, period: int = 14) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Signal 4 — Moving Average Alignment
-# =============================================================================
+# ======================================================================================================================
 
 def get_ma_alignment(ticker: str) -> dict:
     """
@@ -399,9 +399,9 @@ def get_ma_alignment(ticker: str) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Signal 5 — Candlestick Patterns (daily bars)
-# =============================================================================
+# ======================================================================================================================
 
 def get_candlestick_pattern(ticker: str) -> dict:
     """
@@ -448,7 +448,7 @@ def get_candlestick_pattern(ticker: str) -> dict:
     lower_wick = (min(t_open, t_close) - t_low)
     upper_wick = (t_high - max(t_open, t_close))
 
-    # ── Bullish engulfing ─────────────────────────────────────────────────
+    # ── Bullish engulfing ─────────────────────────────────────────────────────────────────────────────────────────────
     if t_bull and p_bear and t_open < p_close and t_close > p_open:
         result["pattern"]           = "BULLISH_ENGULFING"
         result["pattern_direction"] = "BULLISH"
@@ -458,7 +458,7 @@ def get_candlestick_pattern(ticker: str) -> dict:
         )
         return result
 
-    # ── Bearish engulfing ─────────────────────────────────────────────────
+    # ── Bearish engulfing ─────────────────────────────────────────────────────────────────────────────────────────────
     if t_bear and p_bull and t_open > p_close and t_close < p_open:
         result["pattern"]           = "BEARISH_ENGULFING"
         result["pattern_direction"] = "BEARISH"
@@ -468,7 +468,7 @@ def get_candlestick_pattern(ticker: str) -> dict:
         )
         return result
 
-    # ── Hammer (bullish) ──────────────────────────────────────────────────
+    # ── Hammer (bullish) ──────────────────────────────────────────────────────────────────────────────────────────────
     if (lower_wick >= 2 * t_body and
             upper_wick <= 0.3 * t_body and
             t_body > 0):
@@ -480,7 +480,7 @@ def get_candlestick_pattern(ticker: str) -> dict:
         )
         return result
 
-    # ── Shooting star (bearish) ────────────────────────────────────────────
+    # ── Shooting star (bearish) ───────────────────────────────────────────────────────────────────────────────────────
     if (upper_wick >= 2 * t_body and
             lower_wick <= 0.3 * t_body and
             t_body > 0):
@@ -492,7 +492,7 @@ def get_candlestick_pattern(ticker: str) -> dict:
         )
         return result
 
-    # ── Marubozu bull (full conviction) ───────────────────────────────────
+    # ── Marubozu bull (full conviction) ───────────────────────────────────────────────────────────────────────────────
     if (t_bull and
             lower_wick <= 0.05 * t_range and
             upper_wick <= 0.05 * t_range):
@@ -501,7 +501,7 @@ def get_candlestick_pattern(ticker: str) -> dict:
         result["description"]       = "Bullish Marubozu — no wicks, pure buying conviction."
         return result
 
-    # ── Marubozu bear ─────────────────────────────────────────────────────
+    # ── Marubozu bear ─────────────────────────────────────────────────────────────────────────────────────────────────
     if (t_bear and
             lower_wick <= 0.05 * t_range and
             upper_wick <= 0.05 * t_range):
@@ -513,9 +513,9 @@ def get_candlestick_pattern(ticker: str) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Signal 6 & 7 — Failed Breakdown (Bullish) / Failed Breakout (Bearish)
-# =============================================================================
+# ======================================================================================================================
 
 def get_failed_break(ticker: str) -> dict:
     """
@@ -587,9 +587,9 @@ def get_failed_break(ticker: str) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Composite Price Action Score and Confirmation
-# =============================================================================
+# ======================================================================================================================
 
 def compute_price_action_score(
     range_breakout:  dict,
@@ -616,7 +616,7 @@ def compute_price_action_score(
     """
     score = 0.0
 
-    # ── Range breakout ────────────────────────────────────────────────────
+    # ── Range breakout ────────────────────────────────────────────────────────────────────────────────────────────────
     breakout_scores = {
         "BULLISH_BREAKOUT": +30,
         "BEARISH_BREAKOUT": -30,
@@ -624,7 +624,7 @@ def compute_price_action_score(
     }
     score += breakout_scores.get(range_breakout.get("signal", "NONE"), 0)
 
-    # ── Trend structure ───────────────────────────────────────────────────
+    # ── Trend structure ───────────────────────────────────────────────────────────────────────────────────────────────
     trend_scores = {
         "STRONG_UPTREND":    +25,
         "UPTREND":           +15,
@@ -634,7 +634,7 @@ def compute_price_action_score(
     }
     score += trend_scores.get(trend_structure.get("signal", "SIDEWAYS"), 0)
 
-    # ── MA alignment ──────────────────────────────────────────────────────
+    # ── MA alignment ──────────────────────────────────────────────────────────────────────────────────────────────────
     ma_scores = {
         "FULL_BULL":    +20,
         "PARTIAL_BULL": +10,
@@ -650,7 +650,7 @@ def compute_price_action_score(
     if ma_alignment.get("death_cross"):
         score -= 5
 
-    # ── Failed break (high conviction reversal) ───────────────────────────
+    # ── Failed break (high conviction reversal) ───────────────────────────────────────────────────────────────────────
     failed_scores = {
         "FAILED_BREAKDOWN": +15,
         "FAILED_BREAKOUT":  -15,
@@ -658,13 +658,13 @@ def compute_price_action_score(
     }
     score += failed_scores.get(failed_break.get("signal", "NONE"), 0)
 
-    # ── ATR compression + expansion (timing) ─────────────────────────────
+    # ── ATR compression + expansion (timing) ──────────────────────────────────────────────────────────────────────────
     if atr_compression.get("expanding") and atr_compression.get("compressed"):
         score += 10     # Compressed AND expanding = breakout confirmed
     elif atr_compression.get("compressed"):
         score += 5      # Still coiling — slight timing bonus
 
-    # ── Candlestick pattern ───────────────────────────────────────────────
+    # ── Candlestick pattern ───────────────────────────────────────────────────────────────────────────────────────────
     if candlestick:
         candle_scores = {
             "BULLISH_ENGULFING": +15,
@@ -689,7 +689,7 @@ def compute_price_action_score(
     return score, verdict
 
 
-# =============================================================================
+# ======================================================================================================================
 # Signal 8 — Hunt Volatility Funnel (HVF)
 #
 # The HVF is a continuation breakout pattern developed by Francis Hunt
@@ -708,7 +708,7 @@ def compute_price_action_score(
 #      (often gives 3-5× R:R on quality setups — much better than 2× ATR)
 #
 # This replaces / upgrades our existing BB squeeze primary signal.
-# =============================================================================
+# ======================================================================================================================
 
 def _find_swing_highs_lows(hist: pd.DataFrame, n: int = 5) -> tuple:
     """
@@ -840,7 +840,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
         if len(swing_lows_5) < 3 and len(swing_lows_3) < 3:
             return result
 
-        # ── Recent-trend override ─────────────────────────────────────────────
+        # ── Recent-trend override ─────────────────────────────────────────────────────────────────────────────────────
         # The long-term 220-day trend can mask a post-peak reversal.
         # Example: BP rallied 355→609p (220-day = UPTREND) but then peaked at 609p
         # in March 2026 and has been printing lower highs ever since.  A bearish HVF
@@ -926,7 +926,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
             recent_highs = swing_highs[-10:]
             recent_lows  = swing_lows[-10:]
 
-            # ── Search for valid H1>H2>H3 with interleaved L1<L2<L3 ──────────
+            # ── Search for valid H1>H2>H3 with interleaved L1<L2<L3 ───────────────────────────────────────────────────
             for hi in range(len(recent_highs)):
                 for hj in range(hi + 1, len(recent_highs)):
                     for hk in range(hj + 1, len(recent_highs)):
@@ -1008,7 +1008,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
                         if convergence >= 0.70:
                             continue
 
-                        # ── Quality scoring ──────────────────────────────────
+                        # ── Quality scoring ───────────────────────────────────────────────────────────────────────────
                         quality = 0
                         quality += int((1.0 - convergence) * 50)
                         quality += max(0, 30 - bars_since_h3)
@@ -1033,7 +1033,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
         if best_pattern is None:
             return result
 
-        # ── Unpack best pattern ───────────────────────────────────────────────
+        # ── Unpack best pattern ───────────────────────────────────────────────────────────────────────────────────────
         h1 = best_pattern["h1"]
         h2 = best_pattern["h2"]
         h3 = best_pattern["h3"]
@@ -1042,7 +1042,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
         l3 = best_pattern["l3"]
         initial_range = best_pattern["initial_range"]
 
-        # ── Pivot DATES ───────────────────────────────────────────────────────
+        # ── Pivot DATES ───────────────────────────────────────────────────────────────────────────────────────────────
         # best_pattern stores each pivot as (bar_index, price). Map the index to a
         # calendar date so the trade-open email can overlay the funnel on the real
         # price timeline (lower-highs line H1→H3, higher-lows line L1→L3). User
@@ -1058,7 +1058,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
             "l1_date": _pivot_date(l1), "l2_date": _pivot_date(l2), "l3_date": _pivot_date(l3),
         })
 
-        # ── Volume profile check (Pattern Checker criterion #4) ───────────────
+        # ── Volume profile check (Pattern Checker criterion #4) ───────────────────────────────────────────────────────
         # Volume should DECLINE as price compresses into the funnel (the coil),
         # then EXPAND on the breakout above H3 (bullish) or below L3 (bearish).
         # We measure:
@@ -1087,7 +1087,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
         except Exception:
             volume_confirmed = False  # don't fail HVF just because volume data is missing
 
-        # ── Entry, stop, and target ───────────────────────────────────────────
+        # ── Entry, stop, and target ───────────────────────────────────────────────────────────────────────────────────
         # Target = midpoint(H3, L3) ± (H1 - L1)  [Hunt's formula]
         midpoint_h3_l3 = (h3[1] + l3[1]) / 2.0
 
@@ -1118,7 +1118,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
         reward = abs(target - entry_level)
         rr     = round(reward / risk, 2) if risk > 0 else 0.0
 
-        # ── R:R gate (Pattern Checker criterion #5) ───────────────────────────
+        # ── R:R gate (Pattern Checker criterion #5) ───────────────────────────────────────────────────────────────────
         # Threshold imported from config.HVF_MIN_RR (= MIN_RISK_REWARD = 2.5).
         # Single source of truth — do not hardcode here.
         if rr < HVF_MIN_RR:
@@ -1175,9 +1175,9 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Multi-timeframe HVF wrapper
-# =============================================================================
+# ======================================================================================================================
 
 def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
     """
@@ -1197,7 +1197,7 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
 
     candidates = []
 
-    # ── daily-220, daily-90, daily-60, daily-30 ──────────────────────────────
+    # ── daily-220, daily-90, daily-60, daily-30 ───────────────────────────────────────────────────────────────────────
     for days, label in [(220, "daily-220"), (90, "daily-90"),
                         (60, "daily-60"),   (30, "daily-30")]:
         try:
@@ -1208,7 +1208,7 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
         except Exception as e:
             log.debug(f"HVF {label} failed for {ticker}: {e}")
 
-    # ── weekly ───────────────────────────────────────────────────────────────
+    # ── weekly ────────────────────────────────────────────────────────────────────────────────────────────────────────
     try:
         import yfinance as yf
         t        = yf.Ticker(yticker)
@@ -1396,9 +1396,9 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Master function — full price action analysis for one instrument
-# =============================================================================
+# ======================================================================================================================
 
 def analyse_price_action(ticker: str) -> dict:
     """
@@ -1425,7 +1425,7 @@ def analyse_price_action(ticker: str) -> dict:
 
     score, verdict = compute_price_action_score(range_bo, trend, atr_comp, ma_align, failed, candlestick)
 
-    # ── Fix 1: per-instrument PA threshold ────────────────────────────────────
+    # ── Fix 1: per-instrument PA threshold ────────────────────────────────────────────────────────────────────────────
     # compute_price_action_score uses the fixed module-level ±40 thresholds.
     # Override the verdict here using the per-class threshold from config.
     # Crypto uses 25, FX/commodities 30–35, equities/indices keep the default 40.
@@ -1445,7 +1445,7 @@ def analyse_price_action(ticker: str) -> dict:
     else:
         verdict = "WAIT"
 
-    # ── Fix 2: HVF TRIGGERED bypass ────────────────────────────────────────
+    # ── Fix 2: HVF TRIGGERED bypass ───────────────────────────────────────────────────────────────────────────────────
     # If the HVF pattern has already triggered (price through H3/L3), halve the
     # effective threshold — price has voted via the pattern, so less PA score
     # confirmation is required to proceed.
@@ -1558,10 +1558,10 @@ def analyse_price_action(ticker: str) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Entry point — run analysis for a list of instruments
 # Usage: python price_action.py
-# =============================================================================
+# ======================================================================================================================
 
 if __name__ == "__main__":
     import logging

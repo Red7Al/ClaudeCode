@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         notify.py
 # Author:       Alex Hind
 # Created:      2026-05-30
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Slack notification module for the EndToEndTrading system.
 # Sends richly formatted messages to the correct Slack channel based on
 # the type of event (trade, signal, alert, or weekly digest).
@@ -20,7 +20,7 @@
 # Messages use Slack Block Kit for structured, readable formatting.
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Four channels, Block Kit formatting, test harness included.
 # 1.1.0   2026-06-05  Alex Hind   Added HVF R:R field to signal_detail Slack block. Shows calculated ratio (e.g. 2.73:1)
 #                                 on every trade signal message.
@@ -56,23 +56,27 @@
 #                                 specific CORRECTIVE ACTION line. Repeats bump occurrences silently. DB unavailable →
 #                                 fail-open (alert posts anyway, never silent). New summarize_missed_trades() posts one
 #                                 end-of-day digest of all blocked signals (called at SESSION_CLOSE).
+# 1.7.2   2026-06-11  Alex Hind   Corrective actions rewritten in plain English with full mechanism context (user
+#                                 2026-06-11 — "Structural — the HVF L3 sits too close to entry" was not
+#                                 understandable): each class now explains what the numbers mean and why the trade was
+#                                 blocked before saying what to do.
 # 1.7.1   2026-06-11  Alex Hind   _SIGNAL_KEY abbreviation legend (PA/BB/COT/HVF/Confs/ R:R) appended to the context
 #                                 footer of every message showing a signal summary: trade_opened, working_order_placed,
 #                                 signal_detail, alert_missed_trade, summarize_missed_trades. Context block = zero chars
 #                                 off the main message.
 #
 # Dependencies:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 #   pip install requests
 #
 # Environment Variables Required:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 #   SLACK_TRADES    Webhook URL for #claude-trading-trades
 #   SLACK_SIGNALS   Webhook URL for #claude-trading-signals
 #   SLACK_ALERTS    Webhook URL for #claude-trading-alerts
 #   SLACK_WEEKLY    Webhook URL for #claude-trading-weekly
 #   SLACK_DAILY     Webhook URL for #claude-trading-daily
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
@@ -84,16 +88,16 @@ import pg8000.native
 from datetime import datetime, timezone
 
 
-# =============================================================================
+# ======================================================================================================================
 # Logging
-# =============================================================================
+# ======================================================================================================================
 
 log = logging.getLogger("notify")
 
 
-# =============================================================================
+# ======================================================================================================================
 # Webhook Configuration — loaded from environment variables
-# =============================================================================
+# ======================================================================================================================
 
 WEBHOOKS = {
     "trades":   os.environ.get("SLACK_TRADES",   ""),
@@ -106,9 +110,9 @@ WEBHOOKS = {
 }
 
 
-# =============================================================================
+# ======================================================================================================================
 # Internal Helpers
-# =============================================================================
+# ======================================================================================================================
 
 def _send(channel: str, blocks: list) -> bool:
     """
@@ -244,10 +248,10 @@ def _format_duration(opened_at) -> str:
         return ""
 
 
-# =============================================================================
+# ======================================================================================================================
 # Trade Notifications → #claude-trading-trades
 # Fired when a trade is opened or closed.
-# =============================================================================
+# ======================================================================================================================
 
 def trade_opened(
     ticker:         str,
@@ -362,12 +366,12 @@ def trade_closed(
     _send("trades", blocks)
 
 
-# =============================================================================
+# ======================================================================================================================
 # Working Orders → #claude-trading-trades
 # HVF setups are placed as PENDING entry orders at the breakout level (H3) with
 # the pattern's stop and target attached (user 2026-06-10). These notifications
 # track the order lifecycle: placed → (updated) → filled / cancelled / expired.
-# =============================================================================
+# ======================================================================================================================
 
 def working_order_placed(
     ticker:         str,
@@ -602,10 +606,10 @@ def working_order_cancelled_proximity(
     _send("orders", blocks)
 
 
-# =============================================================================
+# ======================================================================================================================
 # Signal Summaries → #claude-trading-signals
 # Fired at the end of each session scan.
-# =============================================================================
+# ======================================================================================================================
 
 def session_summary(
     session_name: str,
@@ -707,10 +711,10 @@ def signal_detail(ticker: str, signal: dict):
     _send("signals", blocks)
 
 
-# =============================================================================
+# ======================================================================================================================
 # Alerts → #claude-trading-alerts
 # Fired for risk events, system blocks, and conditions requiring attention.
-# =============================================================================
+# ======================================================================================================================
 
 def alert_stop_slippage(
     ticker:          str,
@@ -799,34 +803,53 @@ def alert_circuit_breaker(user: str, ticker: str, reason: str):
     _send("alerts", blocks)
 
 
-# ── Block-reason classification + corrective actions ─────────────────────────
+# ── Block-reason classification + corrective actions ──────────────────────────────────────────────────────────────────
 # Each class maps to a specific corrective action so a blocked trade is reviewed
 # like a closed trade is (user 2026-06-11): what would have made it tradeable?
+# Corrective actions are written for a reader without the pattern jargon in their
+# head (user 2026-06-11): each one explains the MECHANISM (what the numbers mean
+# and why the trade was blocked) before saying what to do about it.
 _MISSED_TRADE_CLASSES = [
     # (class, substring matched in reason, corrective action)
     ("TIGHT_STOP", "minimum 0.5% for instruments",
-     "Structural — the HVF L3 sits too close to entry for this instrument's price "
-     "scale. Will NOT clear on retry: needs a wider stop basis (longer timeframe "
-     "pattern) or drop the instrument. Recurs every scan until the pattern changes."),
+     "The pattern dictates both levels: entry is its last swing high (H3), stop is "
+     "its last swing low (L3) — and here the gap between them is under 0.5% of the "
+     "instrument's price. That is smaller than its normal tick-to-tick movement plus "
+     "the dealing spread, so the stop would be hit by random noise within minutes, "
+     "not by the trade being wrong (this is what stopped SNDK out in 3 minutes). "
+     "Retrying cannot fix it — the pattern's shape is the problem. Fix: use a "
+     "longer-timeframe pattern on the same instrument (wider funnel = wider stop), "
+     "or skip it."),
     ("SPREAD_VS_STOP", "still",          # "Spread (X) still N.Nx stop (Y) after 15 retries"
-     "Spread exceeds 0.5× stop. Clears only if the spread narrows (often mid-session) "
-     "or the stop widens (longer-timeframe pattern). If it persists all day, the "
-     "instrument's spread is too wide for this stop size — skip or trade manually."),
+     "The broker's spread (the cost paid just to enter) is more than half the stop "
+     "distance — e.g. spread 117 vs stop 63 means the trade starts ~1.8× its entire "
+     "risk budget offside, so even a good entry likely stops out. Spreads usually "
+     "narrow mid-session, so this often clears on a later scan. If it persists all "
+     "day: the stop is too small for this instrument's spread — use a "
+     "longer-timeframe pattern (wider stop) or skip."),
     ("SPREAD_TOO_WIDE", "Spread too wide",
-     "Spread > 0.5% of mid — illiquid at this moment; usually narrows mid-session. "
-     "Persistent all day = instrument unsuitable for spread betting at this size."),
+     "The spread is more than 0.5% of the instrument's price — the market is "
+     "illiquid right now, so the entry cost eats too much of the expected move. "
+     "Usually narrows mid-session (often widest at the open). Persistent all day "
+     "means the instrument is too illiquid to spread-bet at this size."),
     ("INSUFFICIENT_FUNDS", "INSUFFICIENT_FUNDS",
-     "Margin exhausted (half-size retry also failed). Add funds, close a position, "
-     "or accept fewer concurrent trades."),
+     "The account's free margin cannot cover this position — open positions are "
+     "already using it (a half-size retry was attempted and also failed). Fix: add "
+     "funds, close an existing position, or accept fewer concurrent trades."),
     ("SIZE_ZERO", "calculated size is 0",
-     "Computed size below IG minimum deal size — balance too small for this "
-     "instrument's margin. Add funds or remove the instrument from the session list."),
+     "The risk-based position size (2% of available balance ÷ stop distance) came "
+     "out below IG's minimum bet size for this instrument — the account is too "
+     "small to trade it at the intended risk. Fix: add funds, or remove this "
+     "instrument from the session list."),
     ("CAP", "cap",
-     "Session/day trade cap reached while a valid signal fired. Raise the cap in "
-     "config if intentional capacity exists, or trade manually."),
+     "The configured maximum number of trades for this session/day was already "
+     "reached when this valid signal fired. The cap limits how much can be risked "
+     "at once. Fix: raise the cap in config if you genuinely want more concurrent "
+     "exposure, or take the trade manually."),
     ("REJECTED", "reject",
-     "IG rejected the deal — check the reason code; may be market hours, epic "
-     "status, or account restriction."),
+     "IG's dealing system refused the order — the reason code in the alert says "
+     "why (commonly: market closed for this instrument, the epic suspended, or an "
+     "account restriction). Check the code; not usually fixable from our side."),
 ]
 
 
@@ -1250,10 +1273,10 @@ def alert_calendar_block(event: str, session: str):
     _send("alerts", blocks)
 
 
-# =============================================================================
+# ======================================================================================================================
 # Weekly Digest → #claude-trading-weekly
 # Fired by the weekend review routine every Saturday morning.
-# =============================================================================
+# ======================================================================================================================
 
 def weekly_digest(stats: dict, top_senators: list, superinvestor_changes: list):
     """
@@ -1308,10 +1331,10 @@ def weekly_digest(stats: dict, top_senators: list, superinvestor_changes: list):
     _send("weekly", blocks)
 
 
-# =============================================================================
+# ======================================================================================================================
 # Entry point — send test messages to all four channels
 # Usage: python notify.py
-# =============================================================================
+# ======================================================================================================================
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

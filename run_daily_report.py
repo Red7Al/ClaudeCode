@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         run_daily_report.py
 # Author:       Alex Hind
 # Created:      2026-06-01
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # End-of-day executive trading report. Runs at 21:30 UTC Mon–Fri via GitHub
 # Actions (after SESSION_CLOSE at 21:00).
 #
@@ -25,7 +25,7 @@
 #   SLACK_TRADES
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-01  Alex Hind   Initial build. Full end-of-day report covering macro, trades opened/closed, overnight
 #                                 positions, notable missed moves, daily P&L, and tomorrow's economic calendar.
 # 1.0.2   2026-06-06  Alex Hind   Fix 3 bugs: (a) market_moves.get(ticker) returns a dict, not a float — was multiplied
@@ -35,7 +35,7 @@
 #                                 "HIGH_VOLUME"/"LOW_VOLUME" — fixed to show correct narrative.
 # 1.0.1   2026-06-05  Alex Hind   SLACK_URL confirmed as SLACK_DAILY — posts to #claude-trading-daily, the correct
 #                                 channel for end-of-day executive reports.
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
@@ -68,9 +68,9 @@ def get_db():
     return _pool_get_db()
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Data fetchers
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def fetch_todays_trades(db, today_str: str) -> list[dict]:
     """All trades opened today, with signal summary."""
@@ -221,9 +221,9 @@ def fetch_signal_log(db, today_str: str) -> list[dict]:
     return result
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Market move detection
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def fetch_company_names(db, tickers: list[str]) -> dict[str, str]:
     """
@@ -311,9 +311,9 @@ def get_intraday_moves(tickers: list[str]) -> dict[str, float]:
     return {k: v["pct_move"] for k, v in get_intraday_move_and_volume(tickers).items()}
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Signal gap explanation
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def group_summary(category: str, sample_sig: dict) -> str:
     """
@@ -406,9 +406,9 @@ def group_summary(category: str, sample_sig: dict) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Calendar — tomorrow's events
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def get_tomorrows_events() -> list[dict]:
     """Fetch tomorrow's high-impact ForexFactory events."""
@@ -434,9 +434,9 @@ def get_tomorrows_events() -> list[dict]:
     return events
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Format helpers
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def _pnl_str(pnl: float) -> str:
     return f"+£{pnl:.2f}" if pnl >= 0 else f"-£{abs(pnl):.2f}"
@@ -463,9 +463,9 @@ def _hold_duration(opened_at) -> str:
 USER_LABELS = {}  # name comes directly from user_profiles.name via join
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Report builder
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def build_report(
     today_str: str,
@@ -492,11 +492,11 @@ def build_report(
 
     lines = []
 
-    # ── Header ───────────────────────────────────────────────────────────────
+    # ── Header ────────────────────────────────────────────────────────────────────────────────────────────────────────
     lines.append(f"*EndToEndTrading — Daily Report  {today_str}*")
     lines.append("─" * 48)
 
-    # ── Macro ─────────────────────────────────────────────────────────────────
+    # ── Macro ─────────────────────────────────────────────────────────────────────────────────────────────────────────
     def _arrow(current, prev):
         if prev is None or current is None: return ""
         diff = current - prev
@@ -562,7 +562,7 @@ def build_report(
         lines.append(f"  ⚠ *Reason: {macro.get('gate_reason','')}*")
     lines.append("")
 
-    # ── Trades Opened ─────────────────────────────────────────────────────────
+    # ── Trades Opened ─────────────────────────────────────────────────────────────────────────────────────────────────
     lines.append(f"*Trades Opened Today — {len(trades_opened)}*")
     if trades_opened:
         for t in trades_opened:
@@ -601,7 +601,7 @@ def build_report(
                          "run (check #alerts / Session Watchdog).")
     lines.append("")
 
-    # ── Trades Closed ─────────────────────────────────────────────────────────
+    # ── Trades Closed ─────────────────────────────────────────────────────────────────────────────────────────────────
     lines.append(f"*Trades Closed Today — {len(trades_closed)}*")
     if trades_closed:
         for t in trades_closed:
@@ -624,7 +624,7 @@ def build_report(
         lines.append("  No trades closed today.")
     lines.append("")
 
-    # ── Open Positions (Overnight) ────────────────────────────────────────────
+    # ── Open Positions (Overnight) ────────────────────────────────────────────────────────────────────────────────────
     lines.append(f"*Positions Held Overnight — {len(open_positions)}*")
     if open_positions:
         for p in open_positions:
@@ -643,7 +643,7 @@ def build_report(
         lines.append("  No open positions. Fully flat overnight.")
     lines.append("")
 
-    # ── Notable Moves NOT Traded ──────────────────────────────────────────────
+    # ── Notable Moves NOT Traded ──────────────────────────────────────────────────────────────────────────────────────
     all_scanned_tickers = {s["ticker"] for s in signal_log}
     traded_tickers      = {t["ticker"] for t in trades_opened}
 
@@ -712,7 +712,7 @@ def build_report(
         lines.append("  No scanned instruments had notable moves outside traded positions.")
     lines.append("")
 
-    # ── Daily P&L ─────────────────────────────────────────────────────────────
+    # ── Daily P&L ─────────────────────────────────────────────────────────────────────────────────────────────────────
     lines.append("*Daily P&L*")
     if daily_pnl:
         total = sum(u["total_pnl"] for u in daily_pnl)
@@ -732,7 +732,7 @@ def build_report(
         lines.append("  P&L data not yet available.")
     lines.append("")
 
-    # ── Tomorrow's Calendar ───────────────────────────────────────────────────
+    # ── Tomorrow's Calendar ───────────────────────────────────────────────────────────────────────────────────────────
     lines.append("*Tomorrow — High Impact Events*")
     if tomorrow_events:
         for ev in tomorrow_events:
@@ -749,9 +749,9 @@ def build_report(
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def main():
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")

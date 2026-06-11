@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         run_cot_report.py
 # Author:       Alex Hind
 # Created:      2026-06-07
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Weekly Commitment of Traders (COT) report. Posts a structured summary of the
 # latest CFTC positioning to Slack #claude-trading-weekly.
 #
@@ -39,7 +39,7 @@
 #   SLACK_ALERTS                          (optional — error surfacing)
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.1.0   2026-06-07  Alex Hind   Add market-context lines for Gold, Silver, the US indices (S&P 500, NASDAQ) and a UK
 #                                 proxy (MSCI EAFE positioning paired with the FTSE 100 price trend): each states
 #                                 whether COT positioning is aligned with the price trend, and why. New "UK /
@@ -48,7 +48,7 @@
 # 1.0.0   2026-06-07  Alex Hind   Initial build. Reads latest cot_snapshot week, renders grouped per-instrument report
 #                                 with a headline section and a freshness guard, posts to #claude-trading-weekly.
 #                                 Surfaces failures to #claude-trading-alerts (no silent failures).
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
@@ -112,9 +112,9 @@ CONTEXT_PRICE_TICKER = {"MSCI_EAFE": "^FTSE"}
 CONTEXT_PRICE_NAME   = {"MSCI_EAFE": "FTSE 100"}
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Database
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def get_db():
     return _pool_get_db()
@@ -140,9 +140,9 @@ def fetch_latest_cot(db) -> list[dict]:
     return [dict(zip(cols, r)) for r in (rows or [])]
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Format helpers
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def _num(v, default=None):
     """Coerce a DB numeric/None to float, or return default."""
@@ -183,9 +183,9 @@ def _name(ticker: str) -> str:
     return INSTRUMENT_NAMES.get(ticker, ticker)
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Market context — COT positioning vs price trend (the "why aligned / not")
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def _price_trend(yticker: str, weeks: int = 13) -> tuple:
     """
@@ -269,9 +269,9 @@ def enrich_with_context(rows: list[dict]) -> list[dict]:
     return rows
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Headline detection
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def build_headlines(rows: list[dict]) -> list[str]:
     """
@@ -323,9 +323,9 @@ def build_headlines(rows: list[dict]) -> list[str]:
     return lines
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Report builder
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def build_report(rows: list[dict], generated_at: datetime = None) -> str:
     """
@@ -344,7 +344,7 @@ def build_report(rows: list[dict], generated_at: datetime = None) -> str:
     report_date = rows[0].get("report_date")
     report_date_str = report_date.isoformat() if hasattr(report_date, "isoformat") else str(report_date)
 
-    # ── Header + freshness guard ──────────────────────────────────────────────
+    # ── Header + freshness guard ──────────────────────────────────────────────────────────────────────────────────────
     lines.append("*EndToEndTrading — Weekly COT Report*")
     lines.append(f"_CFTC positioning as of {report_date_str} (Tuesday close)_")
     lines.append("─" * 48)
@@ -354,14 +354,14 @@ def build_report(rows: list[dict], generated_at: datetime = None) -> str:
         lines.append(stale_note)
         lines.append("")
 
-    # ── Headlines ─────────────────────────────────────────────────────────────
+    # ── Headlines ─────────────────────────────────────────────────────────────────────────────────────────────────────
     headlines = build_headlines(rows)
     if headlines:
         lines.append("*Headlines*")
         lines.extend(headlines)
         lines.append("")
 
-    # ── Per-asset-class detail ────────────────────────────────────────────────
+    # ── Per-asset-class detail ────────────────────────────────────────────────────────────────────────────────────────
     by_instrument = {r["instrument"]: r for r in rows}
     for class_name, tickers in ASSET_CLASSES:
         present = [t for t in tickers if t in by_instrument]
@@ -399,7 +399,7 @@ def build_report(rows: list[dict], generated_at: datetime = None) -> str:
                 lines.append(f"      ↳ {r['market_context']}")
         lines.append("")
 
-    # ── Legend + footer ───────────────────────────────────────────────────────
+    # ── Legend + footer ───────────────────────────────────────────────────────────────────────────────────────────────
     lines.append(
         "_Commercials = hedgers (smart money); Managed money = large speculators. "
         "COT score combines positioning percentile, extremes, divergence and open "
@@ -424,9 +424,9 @@ def _staleness_note(report_date, generated_at: datetime):
     return ""
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Slack
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def post_to_slack(text: str) -> bool:
     if not SLACK_URL:
@@ -455,9 +455,9 @@ def _alert_failure(component: str, detail: str):
         log.error(f"Could not surface COT report failure to Slack: {e}")
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def main():
     log.info("Generating weekly COT report...")

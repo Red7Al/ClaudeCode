@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         cot_analysis.py
 # Author:       Alex Hind
 # Created:      2026-05-30
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Enhanced Commitment of Traders (COT) analysis module.
 # Fetches weekly CFTC data and computes professional-grade COT signals
 # used by institutional traders to identify turning points and trend strength.
@@ -42,7 +42,7 @@
 #   Yahoo Finance:          Price data for divergence calculation
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.2   2026-06-06  Alex Hind   Extend partial-data protection beyond the latest commercial fields (1.0.1): every
 #                                 week-over-week *_change (commercial, non-commercial, open interest, managed money) was
 #                                 differenced against a 0-defaulted previous week when CFTC omitted it — fabricating a
@@ -57,9 +57,9 @@
 #                                 signal. Composite score added.
 #
 # Dependencies:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 #   pip install requests yfinance pandas numpy pg8000
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
@@ -86,18 +86,18 @@ EXTREME_LOW_PCT  = 10    # below 10th percentile = extreme short
 HISTORY_WEEKS = 156    # 3 years — better percentile accuracy for multi-year extreme identification
 
 
-# =============================================================================
+# ======================================================================================================================
 # Database helper
-# =============================================================================
+# ======================================================================================================================
 
 def get_db():
     return _pool_get_db()
 
 
-# =============================================================================
+# ======================================================================================================================
 # Fetch COT history from CFTC
 # Returns last N weeks of data for percentile calculations.
-# =============================================================================
+# ======================================================================================================================
 
 def fetch_cot_history(cftc_code: str, weeks: int = HISTORY_WEEKS) -> list:
     """
@@ -145,9 +145,9 @@ def fetch_disaggregated_history(cftc_code: str, weeks: int = HISTORY_WEEKS) -> l
         return []
 
 
-# =============================================================================
+# ======================================================================================================================
 # Percentile ranking
-# =============================================================================
+# ======================================================================================================================
 
 def percentile_rank(series: list, current_value: float) -> float:
     """
@@ -163,10 +163,10 @@ def percentile_rank(series: list, current_value: float) -> float:
     return round(rank, 1)
 
 
-# =============================================================================
+# ======================================================================================================================
 # Price direction from Yahoo Finance
 # Used for divergence calculation — is price trending up or down?
-# =============================================================================
+# ======================================================================================================================
 
 def get_price_direction(ticker: str, weeks: int = 4) -> str:
     """
@@ -191,10 +191,10 @@ def get_price_direction(ticker: str, weeks: int = 4) -> str:
         return "FLAT"
 
 
-# =============================================================================
+# ======================================================================================================================
 # OI Signal
 # Determines whether a price move is driven by real money or covering/liquidation
-# =============================================================================
+# ======================================================================================================================
 
 def compute_oi_signal(oi_change: float, price_direction: str) -> str:
     """
@@ -220,10 +220,10 @@ def compute_oi_signal(oi_change: float, price_direction: str) -> str:
     return "NEUTRAL"
 
 
-# =============================================================================
+# ======================================================================================================================
 # Price vs Positioning Divergence
 # Smart money (commercials) diverging from price = major signal
-# =============================================================================
+# ======================================================================================================================
 
 def compute_divergence(
     price_direction: str,
@@ -248,10 +248,10 @@ def compute_divergence(
     return "NONE"
 
 
-# =============================================================================
+# ======================================================================================================================
 # Composite COT Score (-100 to +100)
 # Combines all signals into a single directional reading.
-# =============================================================================
+# ======================================================================================================================
 
 def compute_cot_score(
     comm_net_pct_rank:  float,
@@ -329,9 +329,9 @@ def _cot_net(row: dict, long_key: str, short_key: str):
     return float(long_val) - float(short_val)
 
 
-# =============================================================================
+# ======================================================================================================================
 # Master function — full enhanced COT analysis for one instrument
-# =============================================================================
+# ======================================================================================================================
 
 def analyse_cot(instrument: str) -> dict:
     """
@@ -371,7 +371,7 @@ def analyse_cot(instrument: str) -> dict:
         log.warning(f"No CFTC code for {instrument}")
         return result
 
-    # ── 1. Fetch Legacy COT history (52 weeks) ─────────────────────────────
+    # ── 1. Fetch Legacy COT history (52 weeks) ────────────────────────────────────────────────────────────────────────
     legacy = fetch_cot_history(cftc_code, weeks=HISTORY_WEEKS)
     if len(legacy) < 2:
         log.warning(f"Insufficient COT history for {instrument}")
@@ -381,7 +381,7 @@ def analyse_cot(instrument: str) -> dict:
     latest = legacy[-1]
     prev   = legacy[-2]
 
-    # ── 2. Commercial positioning ──────────────────────────────────────────
+    # ── 2. Commercial positioning ─────────────────────────────────────────────────────────────────────────────────────
     comm_net = _cot_net(latest, "comm_positions_long_all", "comm_positions_short_all")
     if comm_net is None:
         log.warning(f"COT {instrument}: CFTC returned partial data — missing commercial "
@@ -402,7 +402,7 @@ def analyse_cot(instrument: str) -> dict:
     result["pct_comm_long"]   = float(latest.get("pct_of_oi_comm_long_all",  0) or 0)
     result["pct_comm_short"]  = float(latest.get("pct_of_oi_comm_short_all", 0) or 0)
 
-    # ── 3. Non-commercial (large speculators) ─────────────────────────────
+    # ── 3. Non-commercial (large speculators) ─────────────────────────────────────────────────────────────────────────
     nc_net = _cot_net(latest, "noncomm_positions_long_all", "noncomm_positions_short_all")
     if nc_net is None:
         nc_net = 0.0   # sibling column of commercial in the same row — keep math safe
@@ -412,7 +412,7 @@ def analyse_cot(instrument: str) -> dict:
     result["noncomm_net_change"] = (round(nc_net - prev_nc_net, 0)
                                     if prev_nc_net is not None else 0.0)
 
-    # ── 4. Open interest ──────────────────────────────────────────────────
+    # ── 4. Open interest ──────────────────────────────────────────────────────────────────────────────────────────────
     oi       = float(latest.get("open_interest_all", 0) or 0)
     _prev_oi = prev.get("open_interest_all")
     oi_change = (oi - float(_prev_oi)) if _prev_oi is not None else 0.0
@@ -420,7 +420,7 @@ def analyse_cot(instrument: str) -> dict:
     result["open_interest"] = round(oi, 0)
     result["oi_change"]     = round(oi_change, 0)
 
-    # ── 5. Managed Money (from Disaggregated report) ───────────────────────
+    # ── 5. Managed Money (from Disaggregated report) ──────────────────────────────────────────────────────────────────
     disagg = fetch_disaggregated_history(cftc_code, weeks=HISTORY_WEEKS)
     mm_net_series = []
 
@@ -455,7 +455,7 @@ def analyse_cot(instrument: str) -> dict:
             for w in legacy
         ]
 
-    # ── 6. Percentile rankings (52-week history) ───────────────────────────
+    # ── 6. Percentile rankings (52-week history) ──────────────────────────────────────────────────────────────────────
     comm_net_series = [
         float(w.get("comm_positions_long_all",  0)) -
         float(w.get("comm_positions_short_all", 0))
@@ -468,7 +468,7 @@ def analyse_cot(instrument: str) -> dict:
     result["comm_net_pct_rank"] = comm_pct_rank
     result["mm_net_pct_rank"]   = mm_pct_rank
 
-    # ── 7. Extreme positioning flags ──────────────────────────────────────
+    # ── 7. Extreme positioning flags ──────────────────────────────────────────────────────────────────────────────────
     if comm_pct_rank >= EXTREME_HIGH_PCT:
         comm_extreme = "EXTREME_LONG"
     elif comm_pct_rank <= EXTREME_LOW_PCT:
@@ -486,7 +486,7 @@ def analyse_cot(instrument: str) -> dict:
     result["comm_extreme"] = comm_extreme
     result["mm_extreme"]   = mm_extreme
 
-    # ── 8. Basic bias (commercial direction + change) ─────────────────────
+    # ── 8. Basic bias (commercial direction + change) ─────────────────────────────────────────────────────────────────
     if comm_net > 0 and comm_net_change > 0:
         bias = "BULLISH"
     elif comm_net < 0 and comm_net_change < 0:
@@ -495,16 +495,16 @@ def analyse_cot(instrument: str) -> dict:
         bias = "NEUTRAL"
     result["bias"] = bias
 
-    # ── 9. Price vs positioning divergence ────────────────────────────────
+    # ── 9. Price vs positioning divergence ────────────────────────────────────────────────────────────────────────────
     price_direction = get_price_direction(instrument, weeks=4)
     divergence      = compute_divergence(price_direction, comm_net_change)
     result["price_divergence"] = divergence
 
-    # ── 10. OI signal ─────────────────────────────────────────────────────
+    # ── 10. OI signal ─────────────────────────────────────────────────────────────────────────────────────────────────
     oi_signal = compute_oi_signal(oi_change, price_direction)
     result["oi_signal"] = oi_signal
 
-    # ── 11. Composite COT score ────────────────────────────────────────────
+    # ── 11. Composite COT score ───────────────────────────────────────────────────────────────────────────────────────
     cot_score = compute_cot_score(
         comm_pct_rank, mm_pct_rank,
         comm_extreme,  mm_extreme,
@@ -521,9 +521,9 @@ def analyse_cot(instrument: str) -> dict:
     return result
 
 
-# =============================================================================
+# ======================================================================================================================
 # Persist to Supabase
-# =============================================================================
+# ======================================================================================================================
 
 def save_cot_analysis(result: dict):
     """Write or update the COT analysis result in the cot_snapshot table."""
@@ -579,9 +579,9 @@ def save_cot_analysis(result: dict):
         db.close()
 
 
-# =============================================================================
+# ======================================================================================================================
 # Refresh all instruments — called by weekend review routine
-# =============================================================================
+# ======================================================================================================================
 
 def refresh_all_cot():
     """
@@ -598,10 +598,10 @@ def refresh_all_cot():
     return results
 
 
-# =============================================================================
+# ======================================================================================================================
 # Entry point — run full refresh and print summary
 # Usage: python cot_analysis.py
-# =============================================================================
+# ======================================================================================================================
 
 if __name__ == "__main__":
     import logging

@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         run_commodity_monitor.py
 # Author:       Alex Hind
 # Created:      2026-06-01
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Dedicated commodity monitor for Gold (XAUUSD), Silver (XAGUSD) and
 # Oil (OIL/CL). Runs every 30 minutes during gap hours when no session
 # monitor is active — fills 24/5 coverage for commodity positions.
@@ -22,12 +22,12 @@
 #   - Alert via Slack if position closed or stop moved significantly
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-01  Alex Hind   Initial build.
 # 1.0.1   2026-06-06  Alex Hind   Detected-closure notify: replace hardcoded 0.0 P&L with the realised P&L computed from
 #                                 open/close price, direction and size (mirrors the run_session.py fix). Slack
 #                                 previously reported every commodity closure as £0.00 regardless of actual gain/loss.
-# =============================================================================
+# ======================================================================================================================
 
 import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)

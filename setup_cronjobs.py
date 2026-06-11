@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         setup_cronjobs.py
 # Author:       Alex Hind
 # Created:      2026-06-05
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # One-shot script to create all cron-job.org jobs that trigger GitHub
 # Actions workflow_dispatch for the EndToEndTrading system.
 #
@@ -22,7 +22,7 @@
 # Safe to re-run — checks for existing jobs before creating.
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-05  Alex Hind   Initial build — all session/report cron jobs.
 # 1.7.0   2026-06-11  Alex Hind   Add "UK HVF Watch" job (30 8,10,12,14 Mon-Fri → trading-uk-hvf-watch.yml). Mirrors US
 #                                 HVF Watch cadence for UK/FTSE250 instruments.
@@ -51,7 +51,7 @@
 #                                 account that still holds weekday jobs.
 # 1.1.0   2026-06-07  Alex Hind   Add "COT Report" job (Sat 10:00 UTC → trading-cot-report.yml), scheduled after the
 #                                 weekend review (09:00) refreshes COT data.
-# =============================================================================
+# ======================================================================================================================
 
 import os
 import sys
@@ -81,36 +81,36 @@ GITHUB_HEADERS = {
 
 GITHUB_BODY = json.dumps({"ref": "main"})
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Jobs to create
 # Each entry: (title, cron_expression, workflow_file)
 # cron_expression uses UTC (cron-job.org default is UTC)
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 JOBS = [
-    # ── Asia / AUS session ──────────────────────────────────────────────────
+    # ── Asia / AUS session ────────────────────────────────────────────────────────────────────────────────────────────
     ("AUS Open",            "0 0 * * 1-5",    "trading-aus-open.yml"),
     ("AUS Monitor",          "*/5 0-6 * * 1-5", "trading-aus-monitor.yml"),
     ("Commodity Monitor AM", "*/10 4-8 * * 1-5", "trading-commodity-monitor.yml"),
-    # ── Pre-UK ──────────────────────────────────────────────────────────────
+    # ── Pre-UK ────────────────────────────────────────────────────────────────────────────────────────────────────────
     ("HVF Daily Report",    "0 7 * * 1-5",    "trading-hvf-report.yml"),
-    # ── UK session ──────────────────────────────────────────────────────────
+    # ── UK session ────────────────────────────────────────────────────────────────────────────────────────────────────
     ("UK Open",             "0 8 * * 1-5",    "trading-uk-open.yml"),
     ("UK Morning Brief",    "0 9 * * 1,5",    "trading-uk-morning-brief.yml"),
     ("UK Monitor",           "*/5 8-16 * * 1-5","trading-uk-monitor.yml"),
-    # ── US session ──────────────────────────────────────────────────────────
+    # ── US session ────────────────────────────────────────────────────────────────────────────────────────────────────
     ("US Open",              "30 14 * * 1-5",    "trading-us-open.yml"),
     ("US Monitor",           "*/5 14-21 * * 1-5","trading-us-monitor.yml"),
     ("US HVF Watch",         "30 14,16,18,20 * * 1-5", "trading-us-hvf-watch.yml"),
     ("UK HVF Watch",         "30 8,10,12,14 * * 1-5",  "trading-uk-hvf-watch.yml"),
     ("Social Monitor",       "*/15 7-22 * * 1-5",   "trading-social-monitor.yml"),
-    # ── Close & reports ─────────────────────────────────────────────────────
+    # ── Close & reports ───────────────────────────────────────────────────────────────────────────────────────────────
     ("Commodity Monitor PM", "*/10 21-23 * * 1-5","trading-commodity-monitor.yml"),
     ("Session Close",        "0 21 * * 1-5",     "trading-session-close.yml"),
     ("Daily Report",         "30 21 * * 1-5",    "trading-daily-report.yml"),
-    # ── Safety net + proactive self-checks ──────────────────────────────────
+    # ── Safety net + proactive self-checks ────────────────────────────────────────────────────────────────────────────
     ("Session Watchdog",     "*/10 0-21 * * 1-5","trading-watchdog.yml"),     # migrated off GitHub cron 2026-06-08
     ("Daily Diagnostics",    "30 7 * * 1-5",     "trading-diagnostics.yml"),  # proactive daily health check -> #alerts
-    # ── Weekend ─────────────────────────────────────────────────────────────
+    # ── Weekend ───────────────────────────────────────────────────────────────────────────────────────────────────────
     ("Weekend Review",      "0 9 * * 6",      "trading-weekend-review.yml"),
     ("HVF Weekend Report",  "0 9 * * 6",      "trading-hvf-report.yml"),
     ("COT Report",          "0 10 * * 6",     "trading-cot-report.yml"),  # after weekend review refreshes COT (09:00)

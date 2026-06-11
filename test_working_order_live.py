@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         test_working_order_live.py
 # Author:       Alex Hind
 # Created:      2026-06-10
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # ONE-SHOT live verification of the IG working-order path. SAFE BY DESIGN:
 # places a single BUY LIMIT order ~30% BELOW the live market (it cannot fill),
 # confirms IG accepts it, verifies it in GET /workingorders + the DB row, runs
@@ -14,7 +14,7 @@
 # The order spends < 10 seconds alive and never has margin at risk.
 #
 # Usage:  python test_working_order_live.py
-# =============================================================================
+# ======================================================================================================================
 
 import time
 import logging

@@ -1,10 +1,10 @@
-# =============================================================================
+# ======================================================================================================================
 # File:         trade_email.py
 # Author:       Alex Hind
 # Created:      2026-06-09
 #
 # Description:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Email the investment case + charts to a configurable recipient list whenever a
 # trade is opened (user directive 2026-06-09). The investment case explains WHY:
 # each fired primary/confirmation is shown with its supporting detail — Options
@@ -22,7 +22,7 @@
 # is unaffected).
 #
 # Version History:
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-09  Alex Hind   Initial build — Yahoo SMTP, investment-case body, inline price / volume / HVF-funnel
 #                                 charts.
 # 1.1.0   2026-06-10  Alex Hind   Show supporting detail for Options flow, Director buys and COT positioning in the
@@ -42,7 +42,7 @@
 # 1.4.0   2026-06-10  Alex Hind   Director buys: render Form 4 transaction details as a structured HTML mini-table
 #                                 (name, date, shares, price, amount) when director_transactions list is present in the
 #                                 signal dict. Uses data fetched by signals.py v1.6.0 _fetch_form4_transactions().
-# =============================================================================
+# ======================================================================================================================
 
 import os
 import io
@@ -59,9 +59,9 @@ YAHOO_SMTP_HOST = "smtp.mail.yahoo.com"
 YAHOO_SMTP_PORT = 465   # implicit SSL — Yahoo drops 587/STARTTLS ("Connection unexpectedly closed")
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Charts (best-effort; never raises)
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def _fig_png(fig) -> bytes:
     import matplotlib.pyplot as plt
@@ -264,9 +264,9 @@ def build_charts(ticker: str, sig: dict, trade: dict) -> list:
     return charts
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Investment-case body
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def _investment_case(ticker: str, direction: str, size, session_name: str,
                      sig: dict, trade: dict, event: str = "Trade opened",
@@ -509,9 +509,9 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
     return text, html
 
 
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Send
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def _html_with_inline(html: str, charts: list) -> str:
     return html + "".join(
