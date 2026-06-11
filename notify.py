@@ -74,6 +74,12 @@
 #                                 fail-open (alert posts anyway, never silent).
 #                                 New summarize_missed_trades() posts one end-of-day
 #                                 digest of all blocked signals (called at SESSION_CLOSE).
+# 1.7.1   2026-06-11  Alex Hind   _SIGNAL_KEY abbreviation legend (PA/BB/COT/HVF/Confs/
+#                                 R:R) appended to the context footer of every message
+#                                 showing a signal summary: trade_opened,
+#                                 working_order_placed, signal_detail,
+#                                 alert_missed_trade, summarize_missed_trades.
+#                                 Context block = zero chars off the main message.
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -145,6 +151,13 @@ def _send(channel: str, blocks: list) -> bool:
 def _ts() -> str:
     """Return current UTC time as a formatted string for message footers."""
     return datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC")
+
+
+# Abbreviation key appended to the context footer of every message that shows a
+# signal summary (user 2026-06-11). Context blocks are separate from the main
+# message body, so this costs the summary itself zero characters.
+_SIGNAL_KEY = ("PA = price action · BB = Bollinger Bands · COT = Commitment of Traders · "
+               "HVF = Hunt Volatility Funnel · Confs = confirmations · R:R = risk:reward")
 
 
 _NAME_CACHE = None   # ticker -> clean name, loaded once per process
@@ -305,7 +318,7 @@ def trade_opened(
         },
         {
             "type": "context",
-            "elements": [{"type": "mrkdwn", "text": _ts()}]
+            "elements": [{"type": "mrkdwn", "text": f"{_SIGNAL_KEY}\n{_ts()}"}]
         },
     ]
     _send("trades", blocks)
@@ -430,7 +443,7 @@ def working_order_placed(
         },
         {
             "type": "context",
-            "elements": [{"type": "mrkdwn", "text": _ts()}]
+            "elements": [{"type": "mrkdwn", "text": f"{_SIGNAL_KEY}\n{_ts()}"}]
         },
     ]
     _send("orders", blocks)
@@ -708,7 +721,7 @@ def signal_detail(ticker: str, signal: dict):
         },
         {
             "type": "context",
-            "elements": [{"type": "mrkdwn", "text": _ts()}]
+            "elements": [{"type": "mrkdwn", "text": f"{_SIGNAL_KEY}\n{_ts()}"}]
         },
     ]
     _send("signals", blocks)
@@ -908,7 +921,8 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
     blocks.append({"type": "context",
                    "elements": [{"type": "mrkdwn",
                                  "text": "_First occurrence today — repeats are counted silently; "
-                                         "see the session-close summary for totals._ | " + _ts()}]})
+                                         "see the session-close summary for totals._\n"
+                                         f"{_SIGNAL_KEY}\n{_ts()}"}]})
     _send("alerts", blocks)
 
 
@@ -960,7 +974,7 @@ def summarize_missed_trades():
                        "text": {"type": "mrkdwn",
                                 "text": "*Corrective actions:*\n" + "\n".join(action_lines)[:2900]}})
     blocks.append({"type": "context",
-                   "elements": [{"type": "mrkdwn", "text": _ts()}]})
+                   "elements": [{"type": "mrkdwn", "text": f"{_SIGNAL_KEY}\n{_ts()}"}]})
     _send("alerts", blocks)
 
 
