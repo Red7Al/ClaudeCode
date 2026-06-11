@@ -40,6 +40,11 @@
 # 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF Slack post, _generate_x_drafts()
 #                                 posts one tweet-ready block per instrument (with HVF chart attached) to SLACK_TWITTER
 #                                 channel for review before manual posting to X.
+# 1.4.3   2026-06-11  Alex Hind   X drafts: (a) FIX chart tz bug — pivot dates from the scan are tz-naive while end_dt
+#                                 is UTC-aware; comparison raised TypeError and EVERY chart failed in run 27368931212.
+#                                 Now localised to UTC first. (b) TRIGGERED setups posted first (breaking out now),
+#                                 then READY, quality desc; cap raised 10 → 20 (51 tradeable found 2026-06-11, only
+#                                 first 10 posted). (c) Pattern quality ≥60 added to tweet justifications.
 # 1.4.2   2026-06-11  Alex Hind   X drafts: ALL aligned confirmations now in the tweet in plain English (was options
 #                                 flow + insider only): COT → "Futures positioning bullish (COT report)", ADX → "Strong
 #                                 trend in force (ADX)", OBV → "Volume flow backing the move", sector → "Sector (XLK)
@@ -698,7 +703,13 @@ def _generate_x_drafts(tradeable: list):
                    "220d": "long-term", "weekly": "weekly"}
         return mapping.get(tf_raw, tf_raw or "multi-month")
 
-    for r in tradeable[:10]:
+    # TRIGGERED setups first (breaking out NOW — the timely posts), then READY,
+    # quality descending within each group. Cap 20 per run.
+    _ordered = sorted(
+        tradeable,
+        key=lambda r: (r.get("hvf_signal") != "TRIGGERED",
+                       -(r.get("hvf_quality") or r.get("pattern_quality") or 0)))
+    for r in _ordered[:20]:
         ticker    = r.get("ticker", "")
         direction = r.get("hvf_type", "BULLISH")
         signal    = r.get("hvf_signal", "")
@@ -740,6 +751,11 @@ def _generate_x_drafts(tradeable: list):
                     (direction == "BEARISH" and bias == "BEARISH"))
 
         justifications = []   # (full, short) — priority order, trimmed from the end
+        # Pattern quality first — it scores THE setup being posted (0–100: pivot
+        # clarity, funnel symmetry, volume profile). Only shown when strong.
+        if quality and isinstance(quality, (int, float)) and quality >= 60:
+            justifications.append((f"Pattern quality {quality:.0f}/100",
+                                   f"Quality {quality:.0f}/100"))
         if obs_b and obs_b != "NEUTRAL" and _aligned(obs_b):
             bits_full, bits_short = [], []
             if cpr is not None:
@@ -831,6 +847,11 @@ def _generate_x_drafts(tradeable: list):
                 default=None
             )
             if _oldest_pivot_date is not None:
+                # Pivot dates from the scan are tz-naive; end_dt is UTC-aware.
+                # Localise before any comparison — naive vs aware raises
+                # TypeError (every chart failed in run 27368931212).
+                if _oldest_pivot_date.tzinfo is None:
+                    _oldest_pivot_date = _oldest_pivot_date.tz_localize("UTC")
                 start_dt = _oldest_pivot_date - timedelta(days=14)
                 # Cap at 365 days to avoid huge downloads; minimum 30 days
                 start_dt = max(start_dt, end_dt - timedelta(days=365))
