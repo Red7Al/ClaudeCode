@@ -49,6 +49,14 @@
 #                                 tweet-ready block per instrument (with HVF chart
 #                                 attached) to SLACK_TWITTER channel for review before
 #                                 manual posting to X.
+# 1.4.2   2026-06-11  Alex Hind   X drafts: ALL aligned confirmations now in the tweet
+#                                 in plain English (was options flow + insider only):
+#                                 COT → "Futures positioning bullish (COT report)",
+#                                 ADX → "Strong trend in force (ADX)", OBV → "Volume
+#                                 flow backing the move", sector → "Sector (XLK) moving
+#                                 the same way", Senate → "US Senate-disclosed buying".
+#                                 Fitting loop trims lowest-priority confirmations
+#                                 first to stay ≤280 chars (user 2026-06-11).
 # 1.4.1   2026-06-11  Alex Hind   Signal summary: Confs:N now lists WHICH confirmations
 #                                 fired, via signals.conf_names() (user 2026-06-11 —
 #                                 'How is NEUTRAL a confirmation?': the Options/BB/COT
@@ -680,7 +688,9 @@ def _generate_x_drafts(tradeable: list):
             conn = _pool_get_db()
             rows = conn.run(f"""
                 SELECT DISTINCT ON (ticker)
-                       ticker, options_bias, call_put_ratio, iv_rank, director_signal
+                       ticker, options_bias, call_put_ratio, iv_rank, director_signal,
+                       cot_bias, adx_signal, obv_signal, sector_etf, sector_dir,
+                       senate_signal, senate_senator
                 FROM signal_log
                 WHERE ticker IN ({placeholders})
                 ORDER BY ticker, session_time DESC
@@ -688,10 +698,17 @@ def _generate_x_drafts(tradeable: list):
             conn.close()
             for row in rows:
                 _sig_ctx[row[0]] = {
-                    "options_bias":   row[1],
-                    "call_put_ratio": row[2],
-                    "iv_rank":        row[3],
+                    "options_bias":    row[1],
+                    "call_put_ratio":  row[2],
+                    "iv_rank":         row[3],
                     "director_signal": row[4],
+                    "cot_bias":        row[5],
+                    "adx_signal":      row[6],
+                    "obv_signal":      row[7],
+                    "sector_etf":      row[8],
+                    "sector_dir":      row[9],
+                    "senate_signal":   row[10],
+                    "senate_senator":  row[11],
                 }
     except Exception as e:
         log.debug(f"X drafts: signal_log lookup failed (non-critical): {e}")
@@ -729,23 +746,29 @@ def _generate_x_drafts(tradeable: list):
         sig_desc   = _SIG_LABEL.get(signal, signal.lower())
         tf_desc    = _tf_desc(tf_raw)
 
-        # ── Justification line from signal_log (options flow / director buys) ──
-        ctx   = _sig_ctx.get(ticker, {})
-        obs_b = ctx.get("options_bias") or ""
-        cpr   = ctx.get("call_put_ratio")
-        ivr   = ctx.get("iv_rank")
-        dir_s = ctx.get("director_signal")
+        # ── Justification line from signal_log — every aligned confirmation in
+        # plain English (user 2026-06-11: confirmations must be understandable;
+        # no Confs:N counts or NEUTRAL states in tweets). Priority order below;
+        # the fitting loop trims from the end until the tweet fits 280 chars.
+        ctx    = _sig_ctx.get(ticker, {})
+        obs_b  = ctx.get("options_bias") or ""
+        cpr    = ctx.get("call_put_ratio")
+        ivr    = ctx.get("iv_rank")
+        dir_s  = ctx.get("director_signal")
+        cot_b  = ctx.get("cot_bias") or ""
+        adx_s  = ctx.get("adx_signal") or ""
+        obv_s  = ctx.get("obv_signal") or ""
+        sec_d  = ctx.get("sector_dir") or ""
+        sec_e  = ctx.get("sector_etf") or ""
+        sen_s  = ctx.get("senate_signal")
 
-        justifications = []
-        # Options flow — only include if aligned with trade direction
-        aligned_options = (
-            (direction == "BULLISH" and obs_b == "BULLISH") or
-            (direction == "BEARISH" and obs_b == "BEARISH")
-        )
-        if obs_b and obs_b not in ("NEUTRAL", "") and aligned_options:
-            # Build two versions: full (with IV rank) and short (without)
-            bits_full  = []
-            bits_short = []
+        def _aligned(bias: str) -> bool:
+            return ((direction == "BULLISH" and bias == "BULLISH") or
+                    (direction == "BEARISH" and bias == "BEARISH"))
+
+        justifications = []   # (full, short) — priority order, trimmed from the end
+        if obs_b and obs_b != "NEUTRAL" and _aligned(obs_b):
+            bits_full, bits_short = [], []
             if cpr is not None:
                 bits_full.append(f"call/put {float(cpr):.2f}")
                 bits_short.append(f"call/put {float(cpr):.2f}")
@@ -754,16 +777,32 @@ def _generate_x_drafts(tradeable: list):
             detail_full  = f" ({', '.join(bits_full)})"  if bits_full  else ""
             detail_short = f" ({', '.join(bits_short)})" if bits_short else ""
             justifications.append((
-                f"Options flow {obs_b.lower()}{detail_full}",   # full version
-                f"Options flow {obs_b.lower()}{detail_short}",  # short fallback
+                f"Options flow {obs_b.lower()}{detail_full}",
+                f"Options flow {obs_b.lower()}{detail_short}",
             ))
-        # Director buys — stored as plain string (same in both versions)
         if dir_s:
-            justifications.append(("Insider buying on record", "Insider buying on record"))
+            justifications.append(("Insider buying on record",
+                                   "Insider buying on record"))
+        if sen_s and direction == "BULLISH":
+            justifications.append(("US Senate-disclosed buying",
+                                   "Senate buying"))
+        if cot_b and cot_b != "NEUTRAL" and _aligned(cot_b):
+            justifications.append((f"Futures positioning {cot_b.lower()} (COT report)",
+                                   f"COT {cot_b.lower()}"))
+        if adx_s == "STRONG_TREND":
+            justifications.append(("Strong trend in force (ADX)",
+                                   "Strong trend (ADX)"))
+        if (direction == "BULLISH" and obv_s in ("BULLISH_DIVERGENCE", "CONFIRMING_BULLISH")) or \
+           (direction == "BEARISH" and obv_s in ("BEARISH_DIVERGENCE", "CONFIRMING_BEARISH")):
+            justifications.append(("Volume flow backing the move",
+                                   "Volume backing move"))
+        if sec_d and _aligned(sec_d):
+            justifications.append((f"Sector ({sec_e}) moving the same way",
+                                   "Sector aligned"))
 
-        def _just_line(use_full: bool) -> str:
+        def _just_line(use_full: bool, n: int) -> str:
             idx = 0 if use_full else 1
-            return "  ·  ".join(j[idx] for j in justifications)
+            return "  ·  ".join(j[idx] for j in justifications[:n])
 
         # ── Tweet text — try progressively shorter versions to fit 280 chars ──
         base_with_name = (
@@ -782,14 +821,21 @@ def _generate_x_drafts(tradeable: list):
         def _build(base, just, tags):
             return base + (f"{just}\n" if just else "") + tags + disclaimer
 
+        # Fitting order: keep as MANY confirmations as possible first (n_just
+        # outermost, descending), preferring full wording over short at each
+        # count; finally drop the company name. More confirmations beat verbose
+        # detail on one (user 2026-06-11).
         tweet = None
         for base in (base_with_name, base_no_name):
-            for use_full in (True, False):
-                just = _just_line(use_full) if justifications else ""
-                for tags in (tags_long, tags_short):
-                    candidate = _build(base, just, tags)
-                    if len(candidate) <= 280:
-                        tweet = candidate
+            for n_just in range(len(justifications), -1, -1):
+                for use_full in (True, False):
+                    just = _just_line(use_full, n_just)
+                    for tags in (tags_long, tags_short):
+                        candidate = _build(base, just, tags)
+                        if len(candidate) <= 280:
+                            tweet = candidate
+                            break
+                    if tweet:
                         break
                 if tweet:
                     break
