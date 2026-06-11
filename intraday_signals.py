@@ -49,8 +49,10 @@
 #                                 tweet-ready block per instrument (with HVF chart
 #                                 attached) to SLACK_TWITTER channel for review before
 #                                 manual posting to X.
-# 1.2.1   2026-06-11  Alex Hind   _generate_x_drafts: SLACK_TWITTER renamed to SLACK_TWITTER
-#                                 (user directive — no separate SLACK_TWITTER secret exists).
+# 1.2.2   2026-06-11  Alex Hind   _generate_x_drafts: always append "Not financial
+#                                 advice." to every tweet (user directive 2026-06-11).
+# 1.2.1   2026-06-11  Alex Hind   _generate_x_drafts: SLACK_X renamed to SLACK_TWITTER
+#                                 (user directive — no separate SLACK_X secret exists).
 # 1.3.0   2026-06-10  Alex Hind   HVF watch deduplication: _post_hvf_watch now
 #                                 fingerprints the tradeable+developing lists and
 #                                 compares against the last-posted state in
@@ -748,11 +750,13 @@ def _generate_x_drafts(tradeable: list):
             f"{dir_emoji} ${ticker} — Volatility squeeze {sig_desc} {dir_word}, {tf_desc}\n"
             f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
         )
+        # "Not financial advice." is always appended — user directive 2026-06-11.
+        disclaimer = "\nNot financial advice."
         tags_long  = f"#StockAlert #TechnicalAnalysis #{ticker} #Trading"
         tags_short = f"#StockAlert #TechnicalAnalysis #{ticker}"
 
         def _build(base, just, tags):
-            return base + (f"{just}\n" if just else "") + tags
+            return base + (f"{just}\n" if just else "") + tags + disclaimer
 
         tweet = None
         for base in (base_with_name, base_no_name):
@@ -769,7 +773,7 @@ def _generate_x_drafts(tradeable: list):
                 break
         if not tweet:
             # Absolute fallback — no justification, short tags
-            tweet = base_no_name + tags_short
+            tweet = base_no_name + tags_short + disclaimer
 
         # ── Chart: price history + funnel through real pivot points ─────────────
         chart_b64 = None
