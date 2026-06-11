@@ -30,6 +30,9 @@
 #
 # Version History:
 # -----------------------------------------------------------------------------
+# 1.1.0   2026-06-11  Alex Hind   Add 8 new trusted accounts: GlobalMktObserver,
+#                                 DVSignals, Javier Blas, Peter Brandt, ZeroHedge,
+#                                 WSJ Markets, BRICSinfo, WatcherGuru.
 # 1.0.0   2026-06-01  Alex Hind   Initial build. RSS parsing, ticker extraction,
 #                                 IG epic lookup, price action scan, Slack alert.
 # =============================================================================
@@ -72,6 +75,14 @@ TRACKED_ACCOUNTS = [
     {"handle": "BlackPantherCapital","name": "BlackPantherCapital","source": "X/@BlackPantherCapital"},
     {"handle": "pdicarlotrader",    "name": "PDiCarloTrader",      "source": "X/@pdicarlotrader"},
     {"handle": "polymarketmoney",   "name": "PolymarketMoney",     "source": "X/@polymarketmoney"},
+    {"handle": "GlobalMktObserv",   "name": "GlobalMktObserver",   "source": "X/@GlobalMktObserv"},
+    {"handle": "DVSignals",         "name": "DVSignals",           "source": "X/@DVSignals"},
+    {"handle": "JavierBlas",        "name": "Javier Blas",         "source": "X/@JavierBlas"},
+    {"handle": "PeterLBrandt",      "name": "Peter Brandt",        "source": "X/@PeterLBrandt"},
+    {"handle": "ZeroHedge",         "name": "ZeroHedge",           "source": "X/@ZeroHedge"},
+    {"handle": "WSJMarkets",        "name": "WSJ Markets",         "source": "X/@WSJMarkets"},
+    {"handle": "BRICSinfo",         "name": "BRICSinfo",           "source": "X/@BRICSinfo"},
+    {"handle": "WatcherGuru",       "name": "WatcherGuru",         "source": "X/@WatcherGuru"},
 ]
 
 # Known non-ticker uppercase words to ignore
