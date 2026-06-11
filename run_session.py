@@ -84,6 +84,9 @@
 #                                 cancels each pass. Session slot count now includes
 #                                 positions opened today (was trade_log only) +
 #                                 today's PENDING working orders.
+# 1.7.0   2026-06-11  Alex Hind   run_session_close: post end-of-day digest of blocked
+#                                 tradeable signals (summarize_missed_trades — pairs
+#                                 with the new alert_missed_trade dedupe in notify 1.7.0).
 # 1.5.0   2026-06-06  Alex Hind   Fix 4 bugs: (a) run_monitor closure loop: guard
 #                                 against IG returning 0 positions when DB has
 #                                 entries (transient API glitch), which would
@@ -285,6 +288,8 @@ def run_session_open(session_name: str):
         except Exception:
             pass   # keep ATR-based distances if price fetch fails
 
+        from signals import conf_names
+        _confs = conf_names(sig)
         signal_str = (
             f"Options:{sig.get('options_bias','—')} "
             f"BB:{sig.get('bb_breakout_dir','—')} "
@@ -292,6 +297,7 @@ def run_session_open(session_name: str):
             f"COT:{sig.get('cot_bias','—')} "
             f"PA:{sig.get('pa_verdict','—')} "
             f"Confs:{sig.get('confirmation_count',0)}"
+            + (f" ({_confs})" if _confs else "")
         )
 
         # Size: margin-aware, uses risk_per_trade from user profile.
@@ -682,13 +688,16 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                                 )
                                 continue
 
+                            from signals import conf_names
+                            _confs = conf_names(sig)
                             signal_str = (
                                 f"Options:{sig.get('options_bias','—')} "
                                 f"BB:{sig.get('bb_breakout_dir','—')} "
                                 f"Vol:{sig.get('volume_signal','—')} "
                                 f"COT:{sig.get('cot_bias','—')} "
-                                f"Confs:{sig.get('confirmation_count',0)} "
-                                f"[{session_name} rescan]"
+                                f"Confs:{sig.get('confirmation_count',0)}"
+                                + (f" ({_confs})" if _confs else "") +
+                                f" [{session_name} rescan]"
                             )
                             result = open_trade(
                                 user_id=profile["user_id"],
@@ -764,6 +773,16 @@ def run_session_close():
             held += 1
 
     log.info(f"Session close: closed={closed} held={held}")
+
+    # ── End-of-day digest of blocked tradeable signals ────────────────────────
+    # alert_missed_trade only posts the FIRST block per (ticker, direction,
+    # reason class) each day; this single summary shows the full day's picture
+    # with occurrence counts and corrective actions (user 2026-06-11).
+    try:
+        from notify import summarize_missed_trades
+        summarize_missed_trades()
+    except Exception as e:
+        log.error(f"Missed-trade summary failed: {e}")
 
 
 def refresh_senator_scores():

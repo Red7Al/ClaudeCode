@@ -49,7 +49,12 @@
 #                                 tweet-ready block per instrument (with HVF chart
 #                                 attached) to SLACK_TWITTER channel for review before
 #                                 manual posting to X.
-# 1.3.1   2026-06-11  Alex Hind   _generate_x_drafts: post card image now uploaded to
+# 1.4.1   2026-06-11  Alex Hind   Signal summary: Confs:N now lists WHICH confirmations
+#                                 fired, via signals.conf_names() (user 2026-06-11 —
+#                                 'How is NEUTRAL a confirmation?': the Options/BB/COT
+#                                 fields show family STATE, not the counted items).
+# 1.4.0   2026-06-11  Alex Hind   (renumbered from duplicate 1.3.1)
+#                                 _generate_x_drafts: post card image now uploaded to
 #                                 the SLACK_TWITTER channel via the Slack external
 #                                 upload flow (files.getUploadURLExternal →
 #                                 completeUploadExternal; legacy files.upload retired).
@@ -1139,13 +1144,16 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                                 size        = max(0.5, min(size, 10.0)) if size > 0 else 0.0
                             except Exception:
                                 size = 0.0  # skip trade on error — 0.5 fallback caused INSUFFICIENT_FUNDS
+                            from signals import conf_names
+                            _confs = conf_names(sig)
                             signal_str = (
                                 f"Options:{sig.get('options_bias','—')} "
                                 f"BB:{sig.get('bb_breakout_dir','—')} "
                                 f"COT:{sig.get('cot_bias','—')} "
                                 f"PA:{sig.get('pa_verdict','—')} "
-                                f"Confs:{sig.get('confirmation_count',0)} "
-                                f"[intraday rescan]"
+                                f"Confs:{sig.get('confirmation_count',0)}"
+                                + (f" ({_confs})" if _confs else "") +
+                                f" [intraday rescan]"
                             )
                             result = open_trade(
                                 user_id=profile["user_id"],

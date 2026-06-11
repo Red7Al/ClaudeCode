@@ -31,6 +31,11 @@
 #                                 instrument list (not traded).
 # 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log
 #                                 INSERT — was computed but never persisted.
+# 1.8.0   2026-06-11  Alex Hind   New conf_names(sig) helper — short names of the
+#                                 confirmations that actually fired, shown next to
+#                                 Confs:N in every signal summary (user 2026-06-11:
+#                                 count beside Options/BB/COT status fields wrongly
+#                                 implied NEUTRAL items were being counted).
 # 1.4.0   2026-06-07  Alex Hind   Fix get_potus_elite_senate_primary POTUS query:
 #                                 it selected account/context from social_mentions
 #                                 filtering on ticker/mention_date — none of which
@@ -139,6 +144,19 @@ def get_db():
     """Supabase connection via the shared resilient session-pooler helper (timeout + retry)."""
     from db_pool import get_db as _pool_get_db
     return _pool_get_db()
+
+
+def conf_names(sig: dict) -> str:
+    """
+    Short names of the confirmations that ACTUALLY fired — e.g.
+    'Director buys, ADX strong trend, Sector ETF XLK aligned'.
+
+    Use this next to confirmation_count in any signal summary: the count alone is
+    misleading beside the Options/BB/COT status fields (user 2026-06-11 — 'How is
+    NEUTRAL a confirmation?': those fields show family STATE, not what was counted).
+    """
+    names = [c.split(" — ")[0] for c in (sig.get("confirmations_fired") or [])]
+    return ", ".join(names)
 
 # ---------------------------------------------------------------------------
 # 1. MACRO GATE

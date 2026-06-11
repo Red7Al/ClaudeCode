@@ -61,6 +61,19 @@
 # 1.6.0   2026-06-11  Alex Hind   trade_opened: add Distance to Stop and Distance to
 #                                 Target fields (absolute points + % of entry) so a
 #                                 tight stop is immediately visible at entry time.
+# 1.7.0   2026-06-11  Alex Hind   alert_missed_trade deduplication + corrective actions
+#                                 (user 2026-06-11 — #alerts flooded, same 5 tickers
+#                                 re-alerting every 5-min monitor cycle). Block reasons
+#                                 are classified (TIGHT_STOP / SPREAD_VS_STOP /
+#                                 SPREAD_TOO_WIDE / INSUFFICIENT_FUNDS / SIZE_ZERO /
+#                                 CAP / REJECTED / OTHER) and upserted into
+#                                 missed_trade_log; only the FIRST occurrence per
+#                                 (day, ticker, direction, class) posts to #alerts —
+#                                 now including a specific CORRECTIVE ACTION line.
+#                                 Repeats bump occurrences silently. DB unavailable →
+#                                 fail-open (alert posts anyway, never silent).
+#                                 New summarize_missed_trades() posts one end-of-day
+#                                 digest of all blocked signals (called at SESSION_CLOSE).
 #
 # Dependencies:
 # -----------------------------------------------------------------------------
@@ -793,32 +806,161 @@ def alert_circuit_breaker(user: str, ticker: str, reason: str):
     _send("alerts", blocks)
 
 
+# ── Block-reason classification + corrective actions ─────────────────────────
+# Each class maps to a specific corrective action so a blocked trade is reviewed
+# like a closed trade is (user 2026-06-11): what would have made it tradeable?
+_MISSED_TRADE_CLASSES = [
+    # (class, substring matched in reason, corrective action)
+    ("TIGHT_STOP", "minimum 0.5% for instruments",
+     "Structural — the HVF L3 sits too close to entry for this instrument's price "
+     "scale. Will NOT clear on retry: needs a wider stop basis (longer timeframe "
+     "pattern) or drop the instrument. Recurs every scan until the pattern changes."),
+    ("SPREAD_VS_STOP", "still",          # "Spread (X) still N.Nx stop (Y) after 15 retries"
+     "Spread exceeds 0.5× stop. Clears only if the spread narrows (often mid-session) "
+     "or the stop widens (longer-timeframe pattern). If it persists all day, the "
+     "instrument's spread is too wide for this stop size — skip or trade manually."),
+    ("SPREAD_TOO_WIDE", "Spread too wide",
+     "Spread > 0.5% of mid — illiquid at this moment; usually narrows mid-session. "
+     "Persistent all day = instrument unsuitable for spread betting at this size."),
+    ("INSUFFICIENT_FUNDS", "INSUFFICIENT_FUNDS",
+     "Margin exhausted (half-size retry also failed). Add funds, close a position, "
+     "or accept fewer concurrent trades."),
+    ("SIZE_ZERO", "calculated size is 0",
+     "Computed size below IG minimum deal size — balance too small for this "
+     "instrument's margin. Add funds or remove the instrument from the session list."),
+    ("CAP", "cap",
+     "Session/day trade cap reached while a valid signal fired. Raise the cap in "
+     "config if intentional capacity exists, or trade manually."),
+    ("REJECTED", "reject",
+     "IG rejected the deal — check the reason code; may be market hours, epic "
+     "status, or account restriction."),
+]
+
+
+def _classify_missed_trade(reason: str):
+    """Return (reason_class, corrective_action) for a block reason string."""
+    r = (reason or "").lower()
+    for cls, needle, action in _MISSED_TRADE_CLASSES:
+        if needle.lower() in r:
+            return cls, action
+    return "OTHER", "Unclassified block reason — review manually."
+
+
 def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary: str = ""):
     """
-    A TRADEABLE signal fired but the trade was NOT placed — surface it loudly to
-    #alerts so a missed opportunity is never silent. Names the instrument, side,
-    the exact block reason (cap / spread / funds / epic / market hours / rejection)
-    and the signals that fired, so the user can raise a cap, add funds, or trade it
-    manually. (User directive 2026-06-09: "if we get strong signals but can't trade
-    due to a cap — MAKE ME AWARE WITH CLEAR ALERT".)
+    A TRADEABLE signal fired but the trade was NOT placed — surface it to #alerts
+    so a missed opportunity is never silent. (User directive 2026-06-09.)
+
+    Deduplicated (user 2026-06-11 — same blocked signal re-alerted every 5-min
+    monitor cycle, flooding #alerts): the block reason is classified and upserted
+    into missed_trade_log. Only the FIRST occurrence per (day, ticker, direction,
+    reason class) posts a full alert — including its CORRECTIVE ACTION — while
+    repeats bump the occurrence counter silently. The day's full picture is posted
+    once by summarize_missed_trades() at session close. If the DB is unavailable
+    the alert posts anyway (fail-open — never silent).
     """
+    reason_class, corrective = _classify_missed_trade(reason)
+
+    occurrences = 1
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            rows = db.run(
+                """insert into missed_trade_log
+                       (trade_date, ticker, direction, reason_class,
+                        last_reason, signal_summary)
+                   values (current_date, :t, :d, :c, :r, :s)
+                   on conflict (trade_date, ticker, direction, reason_class)
+                   do update set occurrences = missed_trade_log.occurrences + 1,
+                                 last_seen   = now(),
+                                 last_reason = excluded.last_reason
+                   returning occurrences""",
+                t=ticker, d=direction, c=reason_class, r=reason,
+                s=signal_summary or None)
+            occurrences = rows[0][0]
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"missed_trade_log upsert failed ({e}) — posting alert without dedupe")
+
+    if occurrences > 1:
+        log.info(f"Missed trade {ticker} {direction} {reason_class} — "
+                 f"occurrence #{occurrences} today, alert suppressed (deduped)")
+        return
+
     fields = [
         {"type": "mrkdwn", "text": f"*Instrument:*\n{fmt(ticker)}"},
         {"type": "mrkdwn", "text": f"*Direction:*\n{direction}"},
         {"type": "mrkdwn", "text": f"*Why NOT placed:*\n{reason}"},
+        {"type": "mrkdwn", "text": f"*Class:*\n{reason_class}"},
     ]
     blocks = [
         {"type": "header",
          "text": {"type": "plain_text", "text": "⚠️ TRADEABLE SIGNAL NOT PLACED"}},
         {"type": "section", "fields": fields},
+        {"type": "section",
+         "text": {"type": "mrkdwn", "text": f"*Corrective action:*\n{corrective}"}},
     ]
     if signal_summary:
         blocks.append({"type": "section",
                        "text": {"type": "mrkdwn", "text": f"*Signals that fired:*\n{signal_summary}"}})
     blocks.append({"type": "context",
                    "elements": [{"type": "mrkdwn",
-                                 "text": "_Signal was valid — blocked at execution. Raise the cap / add funds / "
-                                         "review spread, or trade manually._ | " + _ts()}]})
+                                 "text": "_First occurrence today — repeats are counted silently; "
+                                         "see the session-close summary for totals._ | " + _ts()}]})
+    _send("alerts", blocks)
+
+
+def summarize_missed_trades():
+    """
+    Post ONE end-of-day digest of every blocked tradeable signal to #alerts:
+    instrument, direction, reason class, occurrence count, first/last seen and
+    the corrective action. Called at SESSION_CLOSE. No blocked signals → no post.
+    """
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            rows = db.run(
+                """select ticker, direction, reason_class, occurrences,
+                          to_char(first_seen at time zone 'UTC', 'HH24:MI'),
+                          to_char(last_seen  at time zone 'UTC', 'HH24:MI'),
+                          last_reason
+                     from missed_trade_log
+                    where trade_date = current_date
+                    order by occurrences desc""")
+        finally:
+            db.close()
+    except Exception as e:
+        log.error(f"summarize_missed_trades: DB read failed — {e}")
+        return
+
+    if not rows:
+        return
+
+    corrective_by_class = {cls: act for cls, _, act in _MISSED_TRADE_CLASSES}
+    lines = []
+    for ticker, direction, cls, n, first, last, last_reason in rows:
+        lines.append(f"• {fmt(ticker)} {direction} — *{cls}* ×{n} "
+                     f"({first}–{last} UTC)\n    _{last_reason}_")
+    actions = sorted({r[2] for r in rows} & set(corrective_by_class))
+    action_lines = [f"• *{cls}:* {corrective_by_class[cls]}" for cls in actions]
+
+    total = sum(r[3] for r in rows)
+    blocks = [
+        {"type": "header",
+         "text": {"type": "plain_text",
+                  "text": f"📋 Missed trades today: {len(rows)} signals, {total} blocks"}},
+        {"type": "section",
+         "text": {"type": "mrkdwn", "text": "\n".join(lines)[:2900]}},
+    ]
+    if action_lines:
+        blocks.append({"type": "section",
+                       "text": {"type": "mrkdwn",
+                                "text": "*Corrective actions:*\n" + "\n".join(action_lines)[:2900]}})
+    blocks.append({"type": "context",
+                   "elements": [{"type": "mrkdwn", "text": _ts()}]})
     _send("alerts", blocks)
 
 

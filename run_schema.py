@@ -22,6 +22,9 @@
 # 1.0.0   2026-06-02  Alex Hind   Initial build. Idempotent migrations for
 #                                 signal_log, positions, macro_snapshot,
 #                                 hvf_scan_log, and epic_lookup tables.
+# 1.2.0   2026-06-11  Alex Hind   missed_trade_log table — dedupes TRADEABLE SIGNAL
+#                                 NOT PLACED alerts: one row per (day, ticker,
+#                                 direction, reason class), repeats bump occurrences.
 # 1.1.0   2026-06-10  Alex Hind   working_orders table — pending HVF entry orders
 #                                 placed on IG (entry at H3 with stop+target). Kept
 #                                 separate from positions: a pending order is NOT a
@@ -259,6 +262,26 @@ MIGRATIONS = [
             key         text not null unique,
             fingerprint text not null,
             posted_at   timestamptz default now()
+        )"""
+    ),
+    # ── missed_trade_log — dedupes TRADEABLE-SIGNAL-NOT-PLACED alerts ─────────
+    # One row per (day, ticker, direction, reason class). First occurrence posts
+    # a full #alerts message with corrective action; repeats only bump the
+    # counter. Session close posts one summary of the day's rows.
+    (
+        "create missed_trade_log",
+        """CREATE TABLE IF NOT EXISTS missed_trade_log (
+            id             bigserial primary key,
+            trade_date     date not null default current_date,
+            ticker         text not null,
+            direction      text not null,
+            reason_class   text not null,
+            last_reason    text,
+            signal_summary text,
+            occurrences    integer not null default 1,
+            first_seen     timestamptz default now(),
+            last_seen      timestamptz default now(),
+            unique (trade_date, ticker, direction, reason_class)
         )"""
     ),
 
