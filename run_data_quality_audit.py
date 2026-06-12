@@ -35,6 +35,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.2.0   2026-06-12  Alex Hind   Phase 2: full-cache identity sweep EVERY night — every cached epic (all markets,
+#                                 zero IG allowance) verified via ig_shim.instrument_names_match (shared with get_epic
+#                                 so the rule cannot drift). Closes the ASX gap: the UK-only identity check left US/AU
+#                                 tickers unguarded and the wrong-company class recurred within hours. First run caught
+#                                 BNO → Bionomics Ltd (Yahoo BNO = Brent Oil Fund) — purged, never traded.
+# 1.1.0   2026-06-12  Alex Hind   Identity reconciliation for audited tickers (IDENTITY_MISMATCH → #alerts).
 # 1.0.0   2026-06-12  Alex Hind   Initial build — nightly rotation audit, allowance-aware, CRITICAL → #alerts.
 # ======================================================================================================================
 
@@ -249,6 +255,41 @@ def _post_slack(rows: list, remaining):
             log.error(f"Audit Slack post failed: {e}")
 
 
+def _identity_sweep_all_cached() -> list:
+    """
+    Recon register #4, FULL scope (ASX 2026-06-12: the UK-only identity check
+    left US/AU tickers unguarded and the wrong-company class recurred within
+    hours). Every cached equity epic, every night: the IG instrument name must
+    share a significant word with the Yahoo company name. Costs ZERO IG
+    allowance — name comparisons only. Mismatches are CRITICAL (wrong company).
+    """
+    import yfinance as yf
+    from db_pool import get_db
+    from ig_shim import instrument_names_match
+
+    db = get_db()
+    try:
+        cached = db.run("select ticker, epic, description from epic_lookup "
+                        "where epic like '%.D.%' and description is not null")
+    finally:
+        db.close()
+    findings = []
+    for t, e, d in cached:
+        try:
+            y = (yf.Ticker(t).info or {}).get("shortName") or ""
+        except Exception:
+            continue   # FX/index/commodity tickers have no Yahoo equity name
+        if y and not instrument_names_match(t, d, y):
+            findings.append({"ticker": t, "days_compared": 0, "close_max_dev_pct": None,
+                             "phantom_high_wicks": 0, "phantom_low_wicks": 0,
+                             "verdict": "IDENTITY_MISMATCH",
+                             "detail": f"epic {e} is '{d}' but Yahoo says {t} is '{y}' — "
+                                       f"WRONG COMPANY mapped"})
+            log.error(f"Identity sweep: {t} → {e} ('{d}') vs Yahoo '{y}' — MISMATCH")
+    log.info(f"Identity sweep: {len(cached)} cached epics checked, {len(findings)} mismatches")
+    return findings
+
+
 def main():
     args = sys.argv[1:]
     if args and not args[0].isdigit():
@@ -271,6 +312,11 @@ def main():
                 break
         except Exception as e:
             log.warning(f"  {ticker}: audit failed — {e}")
+
+    # Phase 2 — full-cache identity sweep (every cached epic, every market;
+    # zero IG allowance). Runs after the price rotation so its findings join
+    # the same weight-ordered digest.
+    rows.extend(_identity_sweep_all_cached())
 
     if rows:
         _save(rows)

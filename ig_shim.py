@@ -440,6 +440,40 @@ def get_account_balance() -> dict:
 # New epics found via search are written back to the cache automatically.
 # ======================================================================================================================
 
+def instrument_names_match(ticker: str, ig_name: str, yahoo_name: str) -> bool:
+    """
+    True when an IG instrument name and a Yahoo company name plausibly refer to
+    the SAME company for this ticker. Shared by get_epic verification and the
+    nightly identity sweep so the rule cannot drift. Matches on:
+    - any significant word in common ("Land Securities Group PLC" <-> "Land Securities")
+    - the ticker itself appearing as a word in either name ("IBM Corp" <-> ticker IBM)
+    - the acronym of either name equalling the ticker ("International Business
+      Machines" -> IBM; false-positive fix 2026-06-12)
+    """
+    _sw = {"plc", "the", "inc", "corp", "corporation", "group", "ltd", "limited",
+           "holdings", "holding", "trust", "ord", "and", "of", "co", "24",
+           "hours", "adr", "sa", "nv", "se", "ag", "class"}
+
+    def words(s):
+        return [w for w in (s or "").lower().replace(".", " ").replace(",", " ")
+                .replace("(", " ").replace(")", " ").split() if w not in _sw]
+
+    iw, yw = words(ig_name), words(yahoo_name)
+    sig_i = {w for w in iw if len(w) > 2}
+    sig_y = {w for w in yw if len(w) > 2}
+    if sig_i and sig_y and (sig_i & sig_y):
+        return True
+    # Ticker/acronym checks use the YAHOO side only — the IG candidate being
+    # validated may be literally named after the ticker while being the wrong
+    # company (ASX Ltd vs ticker ASX = ASE Technology; caught in unit checks).
+    t = ticker.lower().replace(".l", "").replace("-", "")
+    if t in yw and t in iw:
+        return True   # both names carry the ticker word (IBM Corp <-> IBM ...)
+    if len(yw) >= 2 and "".join(w[0] for w in yw) == t and t in iw:
+        return True   # Yahoo acronym == ticker and IG carries it (Intl Business Machines -> IBM Corp)
+    return False
+
+
 def get_epic(ticker: str) -> Optional[str]:
     """
     Return the IG epic code for a given ticker symbol.
@@ -514,23 +548,10 @@ def get_epic(ticker: str) -> Optional[str]:
     # ticker. If the best-scored candidate fails, prefer the best candidate
     # that DOES match; if none match, refuse + alert rather than guess.
     # Skipped when Yahoo has no name (FX/indices/commodities tickers).
-    def _name_words(s):
-        _sw = {"plc", "the", "inc", "corp", "corporation", "group", "ltd",
-               "limited", "holdings", "holding", "trust", "ord", "and", "of",
-               "co", "24", "hours", "adr", "sa", "nv", "se", "ag", "class"}
-        return {w for w in (s or "").lower().replace(".", " ").replace(",", " ").split()
-                if w not in _sw and len(w) > 2}
-
-    y_name = None
-    try:
-        import yfinance as _yf
-        y_name = (_yf.Ticker(ticker).info or {}).get("shortName")
-    except Exception:
-        pass
-    if y_name and _name_words(y_name):
-        yw = _name_words(y_name)
-        if not (yw & _name_words(best.get("instrumentName", ""))):
-            matching = [m for m in markets if yw & _name_words(m.get("instrumentName", ""))]
+    if y_name:
+        if not instrument_names_match(ticker, best.get("instrumentName", ""), y_name):
+            matching = [m for m in markets
+                        if instrument_names_match(ticker, m.get("instrumentName", ""), y_name)]
             if matching:
                 best = max(matching, key=_epic_score)
                 log.warning(f"get_epic {ticker}: best-scored epic was a different company — "
