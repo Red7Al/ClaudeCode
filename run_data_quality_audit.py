@@ -89,6 +89,33 @@ def _audit_ticker(ticker: str) -> dict:
         row["detail"]  = "ticker has no IG epic (not tradeable on IG, or UK epic refused)"
         return row
 
+    # ── Identity reconciliation (recon register #4): the IG instrument NAME
+    # must match the Yahoo company name for this ticker — catches the
+    # LAND→Gladstone Land class (wrong company mapped) continuously, not just
+    # at lookup time. Word-overlap check: at least one significant word of one
+    # name must appear in the other.
+    try:
+        from db_pool import get_db as _gdb
+        _db = _gdb()
+        try:
+            _r = _db.run("select description from epic_lookup where epic = :e limit 1", e=epic)
+        finally:
+            _db.close()
+        ig_name = (_r[0][0] or "") if _r else ""
+        y_name  = (yf.Ticker(ticker).info or {}).get("shortName") or ""
+        if ig_name and y_name:
+            _stop  = {"plc", "the", "inc", "corp", "corporation", "group", "ltd",
+                      "limited", "holdings", "trust", "ord", "and", "of", "co"}
+            ig_w = {w for w in ig_name.lower().replace(".", " ").split() if w not in _stop and len(w) > 2}
+            y_w  = {w for w in y_name.lower().replace(".", " ").split() if w not in _stop and len(w) > 2}
+            if ig_w and y_w and not (ig_w & y_w):
+                row["verdict"] = "IDENTITY_MISMATCH"
+                row["detail"]  = (f"IG instrument '{ig_name}' vs Yahoo company '{y_name}' share no "
+                                  f"significant words — epic {epic} may map to the WRONG COMPANY")
+                return row
+    except Exception as e:
+        log.debug(f"{ticker}: identity check skipped ({e})")
+
     ig_df, remaining = get_prices_df(epic, resolution="DAY", count=COMPARE_DAYS)
     row["remaining"] = remaining
     if ig_df.empty:
@@ -183,11 +210,11 @@ def _post_slack(rows: list, remaining):
     import requests
     from notify import fmt
 
-    rank = {"CRITICAL_MISMATCH": 0, "PHANTOM_WICKS": 1, "NO_OVERLAP": 2,
+    rank = {"IDENTITY_MISMATCH": 0, "CRITICAL_MISMATCH": 0, "PHANTOM_WICKS": 1, "NO_OVERLAP": 2,
             "NO_IG_DATA": 3, "NO_YAHOO_DATA": 3, "NO_EPIC": 4, "OK": 5}
     rows = sorted(rows, key=lambda r: (rank.get(r["verdict"], 9),
                                        -(r["phantom_high_wicks"] + r["phantom_low_wicks"])))
-    critical = [r for r in rows if r["verdict"] == "CRITICAL_MISMATCH"]
+    critical = [r for r in rows if r["verdict"] in ("CRITICAL_MISMATCH", "IDENTITY_MISMATCH")]
     wicky    = [r for r in rows if r["verdict"] == "PHANTOM_WICKS"]
     ok_n     = sum(1 for r in rows if r["verdict"] == "OK")
 
