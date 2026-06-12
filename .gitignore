@@ -38,3 +38,6 @@ LOGS/
 # OS
 .DS_Store
 Thumbs.db
+
+# Frozen HVF regression fixtures MUST be committed (test_hvf_method.py, CI gate)
+!tests_fixtures/*.csv
