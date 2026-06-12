@@ -82,6 +82,14 @@
 # 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto now uses threshold=25, FX/commodities
 #                                 30-35, equities/indices keep default 40. HVF TRIGGERED bypass (Fix 2): threshold
 #                                 halved when HVF has confirmed entry — price has voted.
+# 1.7.0   2026-06-12  Alex Hind   IG broker data as ARBITER (user: "if the IG data is more accurate, please use it").
+#                                 New validate_hvf_with_ig(): every UK (.L) tradeable setup is corroborated pivot-by-
+#                                 pivot against IG daily candles before posting/trading — pass → entry/stop/target/R:R
+#                                 recomputed from IG levels; fail → demoted to DEVELOPING with the mismatch named.
+#                                 Weekly pivots compare across their whole week; synthetic L3 (midpoint/current-price
+#                                 fallbacks, now flagged l3_synthetic) skips comparison. Allowance-guarded: skipped
+#                                 below 1,500 of the 10,000/week IG budget (verified live). US feeds are clean — no
+#                                 allowance spent.
 # 1.6.0   2026-06-12  Alex Hind   THREE HVF detection fixes (user's colleague spotted a genuine RR.L funnel our scanner
 #                                 missed — investigation proved them right):
 #                                 (1) _sanitise_ohlc: phantom exchange wicks in Yahoo data clipped before pivot detection
@@ -1023,6 +1031,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
                             and l[1] < h3[1]
                         ]
 
+                        l3_synthetic = False   # True when L3 is derived, not a real candle pivot
                         if l3_candidates:
                             l3 = max(l3_candidates, key=lambda x: x[0])
                         elif current_price > h3[1]:
@@ -1039,9 +1048,11 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
                                 l3 = max(combined, key=lambda x: x[1])
                             else:
                                 l3 = (h3[0] - 1, round((l2[1] + h3[1]) / 2, 6))
+                                l3_synthetic = True
                         else:
                             if l2[1] < current_price < h3[1]:
                                 l3 = (len(hist) - 1, current_price)
+                                l3_synthetic = True
                             else:
                                 continue
 
@@ -1075,6 +1086,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
                             best_pattern = {
                                 "h1": h1, "h2": h2, "h3": h3,
                                 "l1": l1, "l2": l2, "l3": l3,
+                                "l3_synthetic": l3_synthetic,
                                 "convergence": convergence,
                                 "bars_since_h3": bars_since_h3,
                                 "initial_range": initial_range,
@@ -1106,6 +1118,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
         result.update({
             "h1_date": _pivot_date(h1), "h2_date": _pivot_date(h2), "h3_date": _pivot_date(h3),
             "l1_date": _pivot_date(l1), "l2_date": _pivot_date(l2), "l3_date": _pivot_date(l3),
+            "l3_synthetic": best_pattern.get("l3_synthetic", False),
         })
 
         # ── Volume profile check (Pattern Checker criterion #4) ───────────────────────────────────────────────────────
@@ -1290,6 +1303,122 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
     return best
 
 
+def validate_hvf_with_ig(ticker: str, result: dict, min_allowance: int = 1500) -> dict:
+    """
+    Re-validate a Yahoo-detected HVF setup against IG broker candles — the
+    arbiter data source (user 2026-06-12: "if the IG data is more accurate,
+    use it"). Yahoo's LSE feed contains phantom prints, so every UK tradeable
+    setup is corroborated pivot-by-pivot before it is posted or traded.
+
+    For each pivot (H1..H3 by High, L1..L3 by Low) the Yahoo level must be
+    within 1.5% of the IG candle's High/Low on the pivot date (±1 trading
+    day). If ALL pivots corroborate: entry/stop/target/R:R are RECOMPUTED
+    from the IG levels (Hunt's formula) and result["ig_validated"] = True.
+    If any pivot fails: the setup is demoted to DEVELOPING and
+    result["ig_validated"] = False with the mismatch named.
+
+    Budget: only call for .L tickers (US feeds are clean). One call costs
+    `count` points of the 10,000/week IG allowance; validation is skipped
+    (ig_validated = None) when the remaining allowance is below
+    min_allowance, when the ticker has no IG epic, or on any fetch error —
+    the Yahoo result then stands unchanged.
+    """
+    result.setdefault("ig_validated", None)
+    if not result.get("hvf_type"):
+        return result
+    try:
+        from ig_shim import get_epic, get_prices_df
+        epic = get_epic(ticker)
+        if not epic:
+            log.info(f"IG validation {ticker}: no epic — skipped")
+            return result
+
+        # Enough candles to reach back to H1 (+buffer), capped at 220
+        pivot_dates = [result.get(k) for k in
+                       ("h1_date", "h2_date", "h3_date", "l1_date", "l2_date", "l3_date")
+                       if result.get(k)]
+        if not pivot_dates:
+            return result
+        oldest = min(pd.Timestamp(d) for d in pivot_dates)
+        bars_needed = int((pd.Timestamp.now() - oldest).days * 0.72) + 15   # ~trading days
+        count = max(60, min(220, bars_needed))
+
+        ig_df, remaining = get_prices_df(epic, resolution="DAY", count=count)
+        if remaining is not None and remaining < min_allowance:
+            log.warning(f"IG validation {ticker}: allowance {remaining} < {min_allowance} "
+                        f"reserve — skipped (Yahoo levels stand)")
+            return result
+        if ig_df.empty:
+            return result
+
+        # Weekly patterns label pivots with the WEEK-START date, so the pivot
+        # extreme can sit anywhere in that week — compare against the whole
+        # week of daily IG candles. Daily patterns compare the pivot's OWN
+        # day (±1 day only as a holiday/timezone fallback) — a window minimum
+        # would wrongly pull in deeper lows from neighbouring days.
+        is_weekly = (result.get("hvf_timeframe") == "weekly")
+
+        checks = [("h1", "High"), ("h2", "High"), ("h3", "High"),
+                  ("l1", "Low"),  ("l2", "Low"),  ("l3", "Low")]
+        ig_levels = {}
+        for piv, col in checks:
+            y_level = result.get(f"{piv}_level")
+            y_date  = result.get(f"{piv}_date")
+            if y_level is None or y_date is None:
+                continue
+            if piv == "l3" and result.get("l3_synthetic"):
+                continue   # derived level (midpoint/current price) — no candle to compare
+            d = pd.Timestamp(y_date)
+            if is_weekly:
+                window = ig_df.loc[d: d + pd.Timedelta(days=6)]
+            else:
+                window = ig_df.loc[d: d]
+                if window.empty:
+                    window = ig_df.loc[d - pd.Timedelta(days=1): d + pd.Timedelta(days=1)]
+            if window.empty:
+                continue   # pivot predates fetched window — not a failure
+            ig_level = float(window[col].max() if col == "High" else window[col].min())
+            ig_levels[piv] = ig_level
+            if abs(y_level - ig_level) / ig_level > 0.015:
+                result["ig_validated"] = False
+                result["ig_mismatch"]  = (f"{piv.upper()} {y_level:g} (Yahoo) vs "
+                                          f"{ig_level:g} (IG) on {y_date}")
+                result["hvf_signal"]   = "DEVELOPING"
+                log.warning(f"IG validation {ticker}: FAILED — {result['ig_mismatch']} "
+                            f"— demoted to DEVELOPING")
+                return result
+
+        # All pivots corroborated — recompute levels from IG data (Yahoo value
+        # stands in for any pivot that had no comparable IG candle, e.g. a
+        # synthetic L3 or a pivot older than the fetched window).
+        if all(k in ig_levels for k in ("h1", "h3")):
+            h1 = ig_levels["h1"]
+            h3 = ig_levels["h3"]
+            l1 = ig_levels.get("l1", result.get("l1_level"))
+            l3 = ig_levels.get("l3", result.get("l3_level"))
+            initial_range = h1 - l1
+            midpoint      = (h3 + l3) / 2.0
+            if result["hvf_type"] == "BULLISH":
+                result["h3_level"]   = round(h3, 6)
+                result["stop_level"] = round(l3 * 0.998, 6)
+                result["target"]     = round(midpoint + initial_range, 6)
+                risk   = h3 - result["stop_level"]
+                reward = result["target"] - h3
+            else:
+                result["l3_level"]   = round(l3, 6)
+                result["stop_level"] = round(h3 * 1.002, 6)
+                result["target"]     = round(midpoint - initial_range, 6)
+                risk   = result["stop_level"] - l3
+                reward = l3 - result["target"]
+            if risk > 0:
+                result["risk_reward"] = round(reward / risk, 2)
+        result["ig_validated"] = True
+        log.info(f"IG validation {ticker}: PASSED — levels recomputed from broker data")
+    except Exception as e:
+        log.warning(f"IG validation {ticker} errored (Yahoo levels stand): {e}")
+    return result
+
+
 def _run_hvf_on_hist(ticker: str, hist) -> dict:
     """
     Run the HVF pattern search on a pre-fetched history DataFrame.
@@ -1370,10 +1499,12 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
                         if l2[1] < l1[1] * 0.995:
                             continue
                         l3c = [l for l in rl if l[0] > l2[0] and l[1] >= l2[1] * 0.995 and l[1] < h3[1]]
+                        l3_synthetic = False
                         if l3c:
                             l3 = max(l3c, key=lambda x: x[0])
                         elif l2[1] < current_price < h3[1]:
                             l3 = (len(hist) - 1, current_price)
+                            l3_synthetic = True
                         else:
                             continue
                         ir = h1[1] - l1[1]; cr = h3[1] - l3[1]
@@ -1387,6 +1518,7 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
                             best_quality = quality
                             best_pattern = {"h1": h1, "h2": h2, "h3": h3,
                                             "l1": l1, "l2": l2, "l3": l3,
+                                            "l3_synthetic": l3_synthetic,
                                             "convergence": conv, "bars_since_h3": bars_since_h3,
                                             "initial_range": ir}
 
@@ -1442,6 +1574,7 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
             "h1_date": _pivot_date(best_pattern["h1"]), "h2_date": _pivot_date(best_pattern["h2"]),
             "h3_date": _pivot_date(best_pattern["h3"]), "l1_date": _pivot_date(best_pattern["l1"]),
             "l2_date": _pivot_date(best_pattern["l2"]), "l3_date": _pivot_date(best_pattern["l3"]),
+            "l3_synthetic": best_pattern.get("l3_synthetic", False),
         })
     except Exception as e:
         log.warning(f"HVF weekly scan failed for {ticker}: {e}")

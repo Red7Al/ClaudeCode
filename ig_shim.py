@@ -49,6 +49,13 @@
 #                                 (EURUSD 1.1539 → 11538.6 ×10⁴, JPY ×10² — verified live 2026-06-10); non-power-of-ten
 #                                 mismatches still refused by the entry-distance guard. Live-tested: EURUSD far-from-
 #                                 market LIMIT placed → ACCEPTED → reconciled → deleted.
+# 1.10.0  2026-06-12  Alex Hind   (a) get_prices_df(): IG candles as DataFrame + remaining weekly allowance — IG is
+#                                 the arbiter data source for UK pattern levels (user 2026-06-12). (b) get_epic() now
+#                                 SCORES search results instead of taking the first: exact ticker in the epic body, DFB
+#                                 preferred, .L tickers require the KA.D. UK-share family (search for 'LAND' returned
+#                                 Gladstone Land Corp [US] first and Land Securities fifth — a wrong-instrument trade
+#                                 risk; 3 bad cached mappings found and purged: LAND/TEM/SPX, none ever traded). A .L
+#                                 ticker that cannot resolve to a UK epic is refused and alerted, never cached.
 # 1.9.0   2026-06-11  Alex Hind   (Z) get_epic: strip Yahoo .L suffix before DB lookup so LAND.L → LAND matches EPIC_MAP
 #                                 seeded entries. Tries normalized key first, then original, searches IG with
 #                                 normalized, caches under normalized key. (B) open_trade: INSUFFICIENT_FUNDS retry —
@@ -460,9 +467,50 @@ def get_epic(ticker: str) -> Optional[str]:
         log.warning(f"No IG market found for ticker: {ticker}")
         return None
 
-    epic        = markets[0]["epic"]
-    description = markets[0].get("instrumentName", "")
-    market_type = markets[0].get("instrumentType", "")
+    # ── Pick the RIGHT market, not the first one (user 2026-06-12: search for
+    # 'LAND' returned Gladstone Land Corporation [US, UB.D.LANDUS] first, and
+    # Land Securities [UK, KA.D.LAND] fifth — a .L ticker mapped to the WRONG
+    # COMPANY, which would have traded the wrong instrument).
+    # IG epic anatomy: <family>.D.<TICKER>.<expiry>.IP — UK shares are
+    # KA.D.<TICKER>., US shares <fam>.D.<TICKER>US. Scoring: exact ticker
+    # match in the epic body, DFB (no expiry) preferred; .L tickers strongly
+    # prefer KA.D. and penalise US epics.
+    is_uk = ticker.endswith(".L")
+
+    def _epic_score(m):
+        epic_str = m.get("epic", "")
+        parts    = epic_str.split(".")
+        mid      = parts[2] if len(parts) > 2 else ""
+        s = 0
+        if mid == normalized.replace(".", "").replace("-", ""):
+            s += 4                      # exact ticker in epic body
+        elif mid == normalized.replace(".", "").replace("-", "") + "US":
+            s += 2 if not is_uk else -8 # US listing of the same ticker
+        if m.get("expiry") == "DFB":
+            s += 2                      # rolling daily bet, what we trade
+        if is_uk and epic_str.startswith("KA.D."):
+            s += 8                      # UK share family
+        return s
+
+    best = max(markets, key=_epic_score)
+    if is_uk and not best.get("epic", "").startswith("KA.D."):
+        # A .L ticker that cannot resolve to a UK share epic is a wrong-
+        # instrument risk — surface loudly and refuse to cache it.
+        try:
+            from notify import alert_system_error
+            alert_system_error("EPIC_LOOKUP", "get_epic",
+                               f"UK ticker {ticker} resolved to non-UK epic "
+                               f"{best.get('epic')} ({best.get('instrumentName')}) — NOT cached, "
+                               f"instrument skipped. Verify manually.",
+                               detail=str([m.get('epic') for m in markets[:6]]))
+        except Exception:
+            pass
+        log.error(f"get_epic {ticker}: best match {best.get('epic')} is not a UK share epic — refusing")
+        return None
+
+    epic        = best["epic"]
+    description = best.get("instrumentName", "")
+    market_type = best.get("instrumentType", "")
 
     # Step 3 — Write back to Supabase cache keyed on the normalized ticker
     db = get_db()
@@ -1138,6 +1186,56 @@ def get_prices(epic: str, resolution: str = "HOUR", count: int = 50) -> list:
         params={"resolution": resolution, "max": count, "pageSize": count}
     )
     return data.get("prices", [])
+
+
+def get_prices_df(epic: str, resolution: str = "DAY", count: int = 120):
+    """
+    Fetch IG candles as a pandas DataFrame (Open/High/Low/Close/Volume, date
+    index) plus the remaining weekly historical-price allowance.
+
+    IG broker data is the ARBITER for pattern levels (user 2026-06-12): Yahoo's
+    LSE feed contains phantom prints (RR.L fake 1,420 high / 990 low) so UK HVF
+    setups are re-validated against these candles before posting/trading.
+    The weekly allowance is 10,000 data points (verified live 2026-06-12) —
+    callers must budget via the returned remaining_allowance.
+
+    Returns (df, remaining_allowance); (empty DataFrame, None) on failure.
+    Prices are bid/ask midpoints, matching the scale Yahoo quotes (GBX for
+    UK shares).
+    """
+    import pandas as pd
+    try:
+        data = session.get(
+            f"/prices/{epic}",
+            version="3",
+            params={"resolution": resolution, "max": count, "pageSize": count}
+        )
+        remaining = (data.get("metadata", {}) or {}).get("allowance", {}).get("remainingAllowance")
+        rows = []
+        for c in data.get("prices", []):
+            def _mid(k):
+                b = (c.get(k) or {}).get("bid")
+                a = (c.get(k) or {}).get("ask")
+                if b is not None and a is not None:
+                    return (b + a) / 2.0
+                return b if b is not None else a
+            o, h, l, cl = _mid("openPrice"), _mid("highPrice"), _mid("lowPrice"), _mid("closePrice")
+            if None in (o, h, l, cl):
+                continue
+            rows.append({
+                "Date":   pd.Timestamp(c.get("snapshotTime", "").replace("/", "-")[:10]),
+                "Open":   o, "High": h, "Low": l, "Close": cl,
+                "Volume": c.get("lastTradedVolume") or 0,
+            })
+        if not rows:
+            return pd.DataFrame(), remaining
+        df = pd.DataFrame(rows).set_index("Date").sort_index()
+        log.info(f"IG prices {epic}: {len(df)} {resolution} candles "
+                 f"(weekly allowance remaining: {remaining})")
+        return df, remaining
+    except Exception as e:
+        log.warning(f"IG price fetch failed for {epic}: {e}")
+        return pd.DataFrame(), None
 
 
 def get_snapshot(epic: str) -> dict:

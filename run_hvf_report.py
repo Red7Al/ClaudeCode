@@ -28,6 +28,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.0   2026-06-12  Alex Hind   categorise(): UK (.L) tradeable setups are IG-validated (validate_hvf_with_ig)
+#                                 before posting — weight-ordered first so the best setups get the allowance, capped at
+#                                 15/run; IG mismatches are demoted to DEVELOPING.
 # 1.2.0   2026-06-11  Alex Hind   FTSE100 expanded from 71 to 100 constituents; FTSE250 expanded from 40 to 250
 #                                 constituents. Both sourced from Wikipedia 2026-06-11. BT.A (LSE) corrected to BT-A.L
 #                                 (Yahoo ticker).
@@ -215,6 +218,27 @@ def categorise(all_results: dict) -> tuple:
         SIGNAL_RANK.get(r.get("hvf_signal", ""), 0),
         r.get("pattern_quality", 0)
     ), reverse=True)
+
+    # ── IG validation for UK tradeable setups (user 2026-06-12: IG data is the
+    # arbiter). Yahoo's LSE feed contains phantom prints, so every .L setup is
+    # corroborated pivot-by-pivot against IG broker candles BEFORE posting:
+    # pass → entry/stop/target recomputed from IG levels; fail → demoted to
+    # DEVELOPING. Weight-ordered first so the best setups get the allowance;
+    # capped per run to protect the 10,000/week budget. US feeds are clean —
+    # no allowance spent there.
+    from price_action import validate_hvf_with_ig
+    IG_VALIDATE_MAX = 15
+    validated = 0
+    still_tradeable = []
+    for r in tradeable:
+        if r.get("ticker", "").endswith(".L") and validated < IG_VALIDATE_MAX:
+            r = validate_hvf_with_ig(r["ticker"], r)
+            validated += 1
+        if r.get("hvf_signal") in ("READY", "TRIGGERED"):
+            still_tradeable.append(r)
+        else:
+            developing.append(r)   # demoted by IG mismatch
+    tradeable = still_tradeable
 
     developing.sort(key=lambda r: r.get("risk_reward") or 0, reverse=True)
     return tradeable, developing

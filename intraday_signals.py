@@ -40,6 +40,8 @@
 # 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF Slack post, _generate_x_drafts()
 #                                 posts one tweet-ready block per instrument (with HVF chart attached) to SLACK_TWITTER
 #                                 channel for review before manual posting to X.
+# 1.5.1   2026-06-12  Alex Hind   hvf_watch: UK (.L) tradeable setups IG-validated before posting (cap 10/run);
+#                                 mismatches demoted to DEVELOPING. Mirrors run_hvf_report 1.3.0.
 # 1.5.0   2026-06-12  Alex Hind   X post card renderer extracted to render_x_post_card() — SINGLE SOURCE OF TRUTH used
 #                                 by both _generate_x_drafts (Slack) and new generate_x_cards.py (local PNGs for manual
 #                                 X posting while SLACK_BOT_TOKEN lacks files:write). New _resolve_name(): full company
@@ -490,6 +492,24 @@ def hvf_watch_us_equities(open_tickers: set, notify_slack: bool = True) -> list:
     rank = {"TRIGGERED": 3, "READY": 2, "DEVELOPING": 1}
     tradeable.sort(key=lambda r: (rank.get(r.get("hvf_signal", ""), 0),
                                   r.get("pattern_quality", 0)), reverse=True)
+
+    # ── IG validation for UK tradeable setups (user 2026-06-12: IG is the
+    # arbiter — Yahoo LSE wicks contain phantom prints). Weight-ordered first
+    # so the best setups get the allowance; capped to protect the 10,000/week
+    # budget. Mismatches are demoted to DEVELOPING. US tickers skip (clean feed).
+    from price_action import validate_hvf_with_ig
+    _validated = 0
+    _still = []
+    for r in tradeable:
+        if r.get("ticker", "").endswith(".L") and _validated < 10:
+            r = validate_hvf_with_ig(r["ticker"], r)
+            _validated += 1
+        if r.get("hvf_signal") in ("READY", "TRIGGERED"):
+            _still.append(r)
+        else:
+            developing.append(r)
+    tradeable = _still
+
     developing.sort(key=lambda r: r.get("risk_reward") or 0, reverse=True)
     log.info(f"HVF watch (US equities): {len(equities)} scanned, "
              f"{len(tradeable)} tradeable, {len(developing)} developing")
