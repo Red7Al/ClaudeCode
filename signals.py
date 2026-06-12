@@ -29,6 +29,11 @@
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Full signal stack across all layers. AUS200 removed from AUS/Asia
 #                                 session instrument list (not traded).
 # 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log INSERT — was computed but never persisted.
+# 1.10.0  2026-06-12  Alex Hind   COT staleness decay (user: "COT data gets older each day and less relevant"). CFTC
+#                                 publishes Fridays with data as of the preceding Tuesday, so 3–10 days old is normal.
+#                                 get_cot_bias now returns report_date / report_age_days, and beyond 14 days (two cycles
+#                                 behind) the bias is NEUTRALISED (cannot confirm a trade) with a warning logged. Every
+#                                 COT confirmation line now shows "report Nd old" so the reader can judge freshness.
 # 1.9.0   2026-06-11  Alex Hind   Confirmations must AGREE WITH THE TRADE DIRECTION (user: "Bearish is not confirmation
 #                                 for a buy" — a BUY was showing "COT positioning BEARISH" as a counted confirmation).
 #                                 Director/activist/senate/superinvestor/social buying evidence now counts on BUY only;
@@ -202,13 +207,17 @@ def get_cot_bias(instrument: str) -> dict:
         "mm_extreme":        "NORMAL",
         "price_divergence":  "NONE",
         "oi_signal":         "NEUTRAL",
+        "report_date":       None,
+        "report_age_days":   None,
+        "stale":             False,
     }
     try:
         db = get_db()
         try:
             rows = db.run(
                 """select comm_net, comm_net_change, bias, cot_score,
-                          comm_extreme, mm_extreme, price_divergence, oi_signal
+                          comm_extreme, mm_extreme, price_divergence, oi_signal,
+                          report_date
                    from   cot_snapshot
                    where  instrument = :i
                    order  by report_date desc limit 1""",
@@ -223,8 +232,30 @@ def get_cot_bias(instrument: str) -> dict:
                 result["mm_extreme"]       = rows[0][5] or "NORMAL"
                 result["price_divergence"] = rows[0][6] or "NONE"
                 result["oi_signal"]        = rows[0][7] or "NEUTRAL"
+                result["report_date"]      = rows[0][8]
         finally:
             db.close()
+
+        # ── Staleness decay (user 2026-06-12: COT gets older and less relevant
+        # each day). CFTC publishes Fridays with data as of the preceding
+        # Tuesday, so 3–10 days old is the NORMAL cycle. Beyond 14 days the
+        # report is two cycles behind (missed refresh or release) — positioning
+        # has likely moved, so the bias is neutralised and cannot confirm a
+        # trade. report_age_days is always exposed so every display can show
+        # how old the data is.
+        if result["report_date"] is not None:
+            _rd = result["report_date"]
+            if hasattr(_rd, "date"):
+                _rd = _rd.date()
+            age = (datetime.now(timezone.utc).date() - _rd).days
+            result["report_age_days"] = age
+            if age > 14:
+                result["stale"] = True
+                if result["bias"] != "NEUTRAL":
+                    log.warning(f"COT {instrument}: report {age}d old (> 14d) — "
+                                f"bias {result['bias']} neutralised as stale")
+                result["bias"]      = "NEUTRAL"
+                result["cot_score"] = 0.0
     except Exception as e:
         log.warning(f"COT fetch failed for {instrument}: {e}")
     return result
@@ -1796,6 +1827,10 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         # Show what's driving the COT bias: composite score, positioning extremes,
         # open-interest signal, price divergence and commercial net + WoW change.
         _cot_bits = []
+        if cot.get("report_age_days") is not None:
+            # Always show how old the report is (user 2026-06-12: COT gets less
+            # relevant each day) — normal cycle is 3–10 days; >14d is neutralised.
+            _cot_bits.append(f"report {cot['report_age_days']}d old")
         if cot.get("cot_score"):
             _cot_bits.append(f"score {cot['cot_score']:+.0f}")
         if cot.get("comm_extreme") and cot["comm_extreme"] != "NORMAL":

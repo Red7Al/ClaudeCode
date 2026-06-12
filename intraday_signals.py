@@ -40,6 +40,11 @@
 # 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF Slack post, _generate_x_drafts()
 #                                 posts one tweet-ready block per instrument (with HVF chart attached) to SLACK_TWITTER
 #                                 channel for review before manual posting to X.
+# 1.5.0   2026-06-12  Alex Hind   X post card renderer extracted to render_x_post_card() — SINGLE SOURCE OF TRUTH used
+#                                 by both _generate_x_drafts (Slack) and new generate_x_cards.py (local PNGs for manual
+#                                 X posting while SLACK_BOT_TOKEN lacks files:write). New _resolve_name(): full company
+#                                 name via epic_lookup then yfinance ("$BRGE.L (BRGE.L)" → "(BlackRock Greater Europe
+#                                 Invest)") for tweets and cards. _SIG_LABEL/_tf_desc now module-level.
 # 1.4.5   2026-06-11  Alex Hind   _post_hvf_watch: tradeable/developing lists now in WEIGHT order (TRIGGERED first,
 #                                 quality desc, R:R desc) before the [:15] cap — was caller order, so the cap could
 #                                 silently drop the best setups (user 2026-06-11: all lists in weight order).
@@ -637,6 +642,264 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
         log.error(f"HVF watch post failed: {e}")
 
 
+# Human-readable signal state labels (no pattern name) — shared by the Slack
+# draft text and the post card renderer.
+_SIG_LABEL = {
+    "TRIGGERED": "breaking out",
+    "READY":     "coiled, ready",
+    "DEVELOPING": "compressing",
+}
+
+
+def _tf_desc(tf_raw: str) -> str:
+    """Human-readable timeframe description for tweets and cards."""
+    mapping = {"30d": "30-day", "60d": "60-day", "90d": "90-day",
+               "220d": "long-term", "weekly": "weekly"}
+    return mapping.get(tf_raw, tf_raw or "multi-month")
+
+
+_RESOLVED_NAMES: dict = {}   # ticker -> full name, cached per process
+
+
+def _resolve_name(ticker: str) -> str:
+    """
+    Full instrument name for a ticker (memory/feedback_instrument_names: always
+    show the full name - scanner rows carry no name, which produced
+    "$BRGE.L (BRGE.L)" in tweets). Sources in order:
+    1. notify's epic_lookup cache (instruments the system has traded)
+    2. yfinance shortName/longName (covers FTSE constituents not yet traded)
+    Cached per process; falls back to the bare ticker.
+    """
+    if ticker in _RESOLVED_NAMES:
+        return _RESOLVED_NAMES[ticker]
+    name = None
+    try:
+        from notify import fmt
+        for key in ([ticker, ticker[:-2]] if ticker.endswith(".L") else [ticker]):
+            s = fmt(key)
+            if s.endswith(")") and "(" in s:
+                name = s[s.index("(") + 1:-1]
+                break
+    except Exception:
+        pass
+    if not name:
+        try:
+            import yfinance as _yf
+            info = _yf.Ticker(ticker).info
+            name = info.get("shortName") or info.get("longName")
+            if name:
+                # Yahoo suffixes ("LAND SECURITIES GROUP PLC ORD ...") - trim
+                # share-class noise and title-case all-caps names.
+                name = name.split(" ORD")[0].strip().rstrip(".")
+                if name.isupper():
+                    name = name.title().replace("Plc", "PLC")
+        except Exception:
+            pass
+    _RESOLVED_NAMES[ticker] = name or ticker
+    return _RESOLVED_NAMES[ticker]
+
+
+def render_x_post_card(r: dict):
+    """
+    Render the user-approved X post card (2026-06-10) for one tradeable HVF row
+    and return PNG bytes (None on failure — logged, never raises).
+
+    SINGLE SOURCE OF TRUTH for the card: used by _generate_x_drafts (Slack
+    upload) and generate_x_cards.py (local files when Slack upload is
+    unavailable). Card: tweet-text header panel (@EndToEndTrading, $TICKER
+    (Name), setup, levels, hashtags, "Not financial advice.") above the price
+    chart with red H1→H2→H3 / green L1→L2→L3 funnel and full-width
+    entry/stop/target lines with right-edge labels.
+
+    Expects the dict produced by get_hvf_signal_mtf + scan metadata: ticker,
+    name, hvf_type, hvf_signal, hvf_timeframe, h3_level, stop_level, target,
+    risk_reward, h1..l3 _level/_date.
+    """
+    import io
+    import base64                      # noqa: F401  (callers b64-encode; kept for parity)
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    import pandas as pd
+    import yfinance as _yf
+    from datetime import datetime, timezone, timedelta
+
+    ticker    = r.get("ticker", "")
+    direction = r.get("hvf_type", "BULLISH")
+    signal    = r.get("hvf_signal", "")
+    h3        = r.get("h3_level")
+    stop      = r.get("stop_level")
+    target    = r.get("target")
+    rr        = r.get("risk_reward")
+    tf_raw    = (r.get("hvf_timeframe", "") or "").replace("daily-", "d")
+    name      = r.get("name") or _resolve_name(ticker)
+
+    dir_word  = "higher" if direction == "BULLISH" else "lower"
+    rr_str    = f"{rr:.1f}:1" if rr else "—"
+    h3_str    = f"{h3:g}" if h3 else "—"
+    stop_str  = f"{stop:g}" if stop else "—"
+    tgt_str   = f"{target:g}" if target else "—"
+    sig_desc  = _SIG_LABEL.get(signal, signal.lower())
+
+    try:
+        end_dt   = datetime.now(timezone.utc)
+        # Fetch from 14 days before the oldest pivot so H1/L1 are visible.
+        # Fall back to 90 days when no pivot dates are present.
+        _oldest_pivot_date = min(
+            (pd.Timestamp(r[k]) for k in
+             ("h1_date", "h2_date", "h3_date", "l1_date", "l2_date", "l3_date")
+             if r.get(k)),
+            default=None
+        )
+        if _oldest_pivot_date is not None:
+            # Pivot dates from the scan are tz-naive; end_dt is UTC-aware.
+            # Localise before any comparison — naive vs aware raises
+            # TypeError (every chart failed in run 27368931212).
+            if _oldest_pivot_date.tzinfo is None:
+                _oldest_pivot_date = _oldest_pivot_date.tz_localize("UTC")
+            start_dt = _oldest_pivot_date - timedelta(days=14)
+            # Cap at 365 days to avoid huge downloads; minimum 30 days
+            start_dt = max(start_dt, end_dt - timedelta(days=365))
+            start_dt = min(start_dt, end_dt - timedelta(days=30))
+        else:
+            start_dt = end_dt - timedelta(days=90)
+        hist = _yf.download(ticker, start=start_dt.strftime("%Y-%m-%d"),
+                            end=end_dt.strftime("%Y-%m-%d"),
+                            progress=False, auto_adjust=True)
+        if hist is None or hist.empty:
+            return None
+
+        # yfinance returns MultiIndex columns for a single ticker, so
+        # hist["Close"] is a DataFrame — squeeze to a Series ONCE here.
+        # float(DataFrame.median()) raised TypeError and every chart
+        # failed in run 27370959365.
+        close = hist["Close"].squeeze()
+
+        # ig_scale normalisation
+        ig_scale = 1.0
+        if h3:
+            yf_med = float(close.median())
+            if yf_med > 0 and h3 / yf_med > 5:
+                ig_scale = h3 / yf_med
+
+        def _s(v):
+            return v / ig_scale if v else None
+
+        h3_p   = _s(h3)
+        stop_p = _s(stop)
+        targ_p = _s(target)
+        h1_p   = _s(r.get("h1_level"))
+        h2_p   = _s(r.get("h2_level"))
+        l1_p   = _s(r.get("l1_level"))
+        l2_p   = _s(r.get("l2_level"))
+        l3_p   = _s(r.get("l3_level") or stop)   # l3 = stop base
+
+        # Convert pivot date strings to datetime for plotting
+        def _pdt(key):
+            ds = r.get(key)
+            if not ds:
+                return None
+            try:
+                return pd.Timestamp(ds)
+            except Exception:
+                return None
+
+        h1_dt = _pdt("h1_date"); h2_dt = _pdt("h2_date"); h3_dt = _pdt("h3_date")
+        l1_dt = _pdt("l1_date"); l2_dt = _pdt("l2_date"); l3_dt = _pdt("l3_date")
+
+        dates = hist.index
+
+        # ── Agreed X post card format (user-approved 2026-06-10) ──────────────────────────────────────────────────────
+        # Combined card: tweet-text header panel above the chart.
+        fig = plt.figure(figsize=(12, 8.5))
+        fig.patch.set_facecolor("#0d1117")
+        ax = fig.add_axes([0.05, 0.06, 0.83, 0.62])
+        ax.set_facecolor("#0d1117")
+
+        dir_arrow = "▲" if direction == "BULLISH" else "▼"
+        hdr_lines = [
+            (0.965, "@EndToEndTrading", "#1d9bf0", 13, "bold",   "normal"),
+            (0.925, f"{dir_arrow} ${ticker} ({name})",
+                                         "#ffffff", 16, "bold",   "normal"),
+            (0.885, f"Volatility squeeze {sig_desc} {dir_word} — "
+                    f"{tf_raw or 'multi-month'} setup",
+                                         "#c9d1d9", 13, "normal", "normal"),
+            (0.845, f"Entry: {h3_str}   Stop: {stop_str}   "
+                    f"Target: {tgt_str}   R:R {rr_str}",
+                                         "#c9d1d9", 12, "normal", "normal"),
+            (0.805, f"#StockAlert #TechnicalAnalysis #{ticker} #Trading",
+                                         "#8b949e", 11, "normal", "normal"),
+            (0.770, "Not financial advice.",
+                                         "#8b949e", 10, "normal", "italic"),
+        ]
+        for hy, htxt, hcol, hsize, hweight, hstyle in hdr_lines:
+            fig.text(0.05, hy, htxt, color=hcol, fontsize=hsize,
+                     fontweight=hweight, style=hstyle,
+                     ha="left", va="top")
+
+        # Price line + fill
+        ax.plot(dates, close, color="#58a6ff", linewidth=1.6, zorder=3)
+        ax.fill_between(dates, close, float(close.min()), alpha=0.07,
+                        color="#58a6ff", zorder=2)
+
+        # ── Funnel: upper jaw H1→H2→H3 (red), lower jaw L1→L2→L3 (green) ──────────────────────────────────────────────
+        upper_pts = [(dt, lv) for dt, lv in
+                     [(h1_dt, h1_p), (h2_dt, h2_p), (h3_dt, h3_p)]
+                     if dt is not None and lv is not None]
+        lower_pts = [(dt, lv) for dt, lv in
+                     [(l1_dt, l1_p), (l2_dt, l2_p), (l3_dt, l3_p)]
+                     if dt is not None and lv is not None]
+
+        if len(upper_pts) >= 2:
+            ux, uy = zip(*upper_pts)
+            ax.plot(ux, uy, color="#f85149", linewidth=1.4,
+                    linestyle="--", alpha=0.9, zorder=4)
+            ax.scatter(ux, uy, color="#f85149", s=26, zorder=5, alpha=0.95)
+
+        if len(lower_pts) >= 2:
+            lx, ly = zip(*lower_pts)
+            ax.plot(lx, ly, color="#3fb950", linewidth=1.4,
+                    linestyle="--", alpha=0.9, zorder=4)
+            ax.scatter(lx, ly, color="#3fb950", s=26, zorder=5, alpha=0.95)
+
+        # ── Entry / stop / target: full-width lines + right-edge labels ───────────────────────────────────────────────
+        trans = ax.get_yaxis_transform()
+        if h3_p:
+            ax.axhline(h3_p, color="#e3b341", linewidth=1.2,
+                       linestyle="--", alpha=0.9, zorder=4)
+            ax.text(1.01, h3_p, f"Entry {h3_str}", transform=trans,
+                    color="#e3b341", fontsize=9, va="center")
+        if stop_p:
+            ax.axhline(stop_p, color="#f85149", linewidth=1.0,
+                       linestyle=":", alpha=0.9, zorder=4)
+            ax.text(1.01, stop_p, f"Stop {stop_str}", transform=trans,
+                    color="#f85149", fontsize=9, va="center")
+        if targ_p:
+            ax.axhline(targ_p, color="#3fb950", linewidth=1.0,
+                       linestyle=":", alpha=0.9, zorder=4)
+            ax.text(1.01, targ_p, f"Target {tgt_str}", transform=trans,
+                    color="#3fb950", fontsize=9, va="center")
+
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+        plt.setp(ax.get_xticklabels(), rotation=0,
+                 color="#8b949e", fontsize=9)
+        plt.setp(ax.get_yticklabels(), color="#8b949e", fontsize=9)
+        for spine in ax.spines.values():
+            spine.set_edgecolor("#30363d")
+        ax.tick_params(colors="#8b949e")
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=140, facecolor="#0d1117")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as e:
+        log.warning(f"X post card render failed for {ticker}: {e}")
+        return None
+
+
 def _generate_x_drafts(tradeable: list):
     """
     Post one tweet-ready draft per tradeable instrument to #claude-x-drafts
@@ -705,18 +968,6 @@ def _generate_x_drafts(tradeable: list):
     except Exception as e:
         log.debug(f"X drafts: signal_log lookup failed (non-critical): {e}")
 
-    # Human-readable signal state labels (no pattern name)
-    _SIG_LABEL = {
-        "TRIGGERED": "breaking out",
-        "READY":     "coiled, ready",
-        "DEVELOPING": "compressing",
-    }
-    # Timeframe descriptions
-    def _tf_desc(tf_raw: str) -> str:
-        mapping = {"30d": "30-day", "60d": "60-day", "90d": "90-day",
-                   "220d": "long-term", "weekly": "weekly"}
-        return mapping.get(tf_raw, tf_raw or "multi-month")
-
     # TRIGGERED setups first (breaking out NOW — the timely posts), then READY,
     # quality descending within each group. Cap 20 per run.
     _ordered = sorted(
@@ -733,7 +984,7 @@ def _generate_x_drafts(tradeable: list):
         rr        = r.get("risk_reward")
         quality   = r.get("hvf_quality") or r.get("pattern_quality") or ""
         tf_raw    = (r.get("hvf_timeframe", "") or "").replace("daily-", "d")
-        name      = r.get("name") or ticker
+        name      = r.get("name") or _resolve_name(ticker)
 
         dir_emoji  = "📈" if direction == "BULLISH" else "📉"
         dir_word   = "higher" if direction == "BULLISH" else "lower"
@@ -848,168 +1099,11 @@ def _generate_x_drafts(tradeable: list):
             # Absolute fallback — no justification, short tags
             tweet = base_no_name + tags_short + disclaimer
 
-        # ── Chart: price history + funnel through real pivot points ───────────────────────────────────────────────────
+        # ── Chart: rendered by the shared card renderer (single source of truth) ──────────────────────────────────────
         chart_b64 = None
-        try:
-            end_dt   = datetime.now(timezone.utc)
-            # Fetch from 14 days before the oldest pivot so H1/L1 are visible.
-            # Fall back to 90 days when no pivot dates are present.
-            _oldest_pivot_date = min(
-                (pd.Timestamp(r[k]) for k in
-                 ("h1_date", "h2_date", "h3_date", "l1_date", "l2_date", "l3_date")
-                 if r.get(k)),
-                default=None
-            )
-            if _oldest_pivot_date is not None:
-                # Pivot dates from the scan are tz-naive; end_dt is UTC-aware.
-                # Localise before any comparison — naive vs aware raises
-                # TypeError (every chart failed in run 27368931212).
-                if _oldest_pivot_date.tzinfo is None:
-                    _oldest_pivot_date = _oldest_pivot_date.tz_localize("UTC")
-                start_dt = _oldest_pivot_date - timedelta(days=14)
-                # Cap at 365 days to avoid huge downloads; minimum 30 days
-                start_dt = max(start_dt, end_dt - timedelta(days=365))
-                start_dt = min(start_dt, end_dt - timedelta(days=30))
-            else:
-                start_dt = end_dt - timedelta(days=90)
-            hist = _yf.download(ticker, start=start_dt.strftime("%Y-%m-%d"),
-                                end=end_dt.strftime("%Y-%m-%d"),
-                                progress=False, auto_adjust=True)
-            if hist is not None and not hist.empty:
-                # yfinance returns MultiIndex columns for a single ticker, so
-                # hist["Close"] is a DataFrame — squeeze to a Series ONCE here.
-                # float(DataFrame.median()) raised TypeError and every chart
-                # failed in run 27370959365.
-                close = hist["Close"].squeeze()
-
-                # ig_scale normalisation
-                ig_scale = 1.0
-                if h3:
-                    yf_med = float(close.median())
-                    if yf_med > 0 and h3 / yf_med > 5:
-                        ig_scale = h3 / yf_med
-
-                def _s(v):
-                    return v / ig_scale if v else None
-
-                h3_p   = _s(h3)
-                stop_p = _s(stop)
-                targ_p = _s(target)
-                h1_p   = _s(r.get("h1_level"))
-                h2_p   = _s(r.get("h2_level"))
-                l1_p   = _s(r.get("l1_level"))
-                l2_p   = _s(r.get("l2_level"))
-                l3_p   = _s(r.get("l3_level") or stop)   # l3 = stop base
-
-                # Convert pivot date strings to datetime for plotting
-                def _pd(key):
-                    ds = r.get(key)
-                    if not ds:
-                        return None
-                    try:
-                        return pd.Timestamp(ds)
-                    except Exception:
-                        return None
-
-                h1_dt = _pd("h1_date"); h2_dt = _pd("h2_date"); h3_dt = _pd("h3_date")
-                l1_dt = _pd("l1_date"); l2_dt = _pd("l2_date"); l3_dt = _pd("l3_date")
-
-                dates = hist.index
-                n     = len(dates)
-
-                # ── Agreed X post card format (user-approved 2026-06-10) ──────────────────────────────────────────────
-                # Combined card: tweet-text header panel above the chart.
-                # Header: @handle / $TICKER (Name) / setup line / levels line /
-                # hashtags / "Not financial advice." — chart fills the rest.
-                fig = plt.figure(figsize=(12, 8.5))
-                fig.patch.set_facecolor("#0d1117")
-                ax = fig.add_axes([0.05, 0.06, 0.83, 0.62])
-                ax.set_facecolor("#0d1117")
-
-                dir_arrow = "▲" if direction == "BULLISH" else "▼"
-                hdr_lines = [
-                    (0.965, "@EndToEndTrading", "#1d9bf0", 13, "bold",   "normal"),
-                    (0.925, f"{dir_arrow} ${ticker} ({name})",
-                                                 "#ffffff", 16, "bold",   "normal"),
-                    (0.885, f"Volatility squeeze {sig_desc} {dir_word} — "
-                            f"{tf_raw or 'multi-month'} setup",
-                                                 "#c9d1d9", 13, "normal", "normal"),
-                    (0.845, f"Entry: {h3_str}   Stop: {stop_str}   "
-                            f"Target: {tgt_str}   R:R {rr_str}",
-                                                 "#c9d1d9", 12, "normal", "normal"),
-                    (0.805, f"#StockAlert #TechnicalAnalysis #{ticker} #Trading",
-                                                 "#8b949e", 11, "normal", "normal"),
-                    (0.770, "Not financial advice.",
-                                                 "#8b949e", 10, "normal", "italic"),
-                ]
-                for hy, htxt, hcol, hsize, hweight, hstyle in hdr_lines:
-                    fig.text(0.05, hy, htxt, color=hcol, fontsize=hsize,
-                             fontweight=hweight, style=hstyle,
-                             ha="left", va="top")
-
-                # Price line + fill
-                ax.plot(dates, close, color="#58a6ff", linewidth=1.6, zorder=3)
-                ax.fill_between(dates, close, float(close.min()), alpha=0.07,
-                                color="#58a6ff", zorder=2)
-
-                # ── Funnel: upper jaw H1→H2→H3 (red), lower jaw L1→L2→L3
-                # (green) — through the actual pivot points so the lines sit
-                # on the real swing highs/lows in the price history.
-                upper_pts = [(dt, lv) for dt, lv in
-                             [(h1_dt, h1_p), (h2_dt, h2_p), (h3_dt, h3_p)]
-                             if dt is not None and lv is not None]
-                lower_pts = [(dt, lv) for dt, lv in
-                             [(l1_dt, l1_p), (l2_dt, l2_p), (l3_dt, l3_p)]
-                             if dt is not None and lv is not None]
-
-                if len(upper_pts) >= 2:
-                    ux, uy = zip(*upper_pts)
-                    ax.plot(ux, uy, color="#f85149", linewidth=1.4,
-                            linestyle="--", alpha=0.9, zorder=4)
-                    ax.scatter(ux, uy, color="#f85149", s=26, zorder=5, alpha=0.95)
-
-                if len(lower_pts) >= 2:
-                    lx, ly = zip(*lower_pts)
-                    ax.plot(lx, ly, color="#3fb950", linewidth=1.4,
-                            linestyle="--", alpha=0.9, zorder=4)
-                    ax.scatter(lx, ly, color="#3fb950", s=26, zorder=5, alpha=0.95)
-
-                # ── Entry / stop / target: full-width lines + right-edge
-                # labels in matching colours (agreed card format).
-                trans = ax.get_yaxis_transform()
-                if h3_p:
-                    ax.axhline(h3_p, color="#e3b341", linewidth=1.2,
-                               linestyle="--", alpha=0.9, zorder=4)
-                    ax.text(1.01, h3_p, f"Entry {h3_str}", transform=trans,
-                            color="#e3b341", fontsize=9, va="center")
-                if stop_p:
-                    ax.axhline(stop_p, color="#f85149", linewidth=1.0,
-                               linestyle=":", alpha=0.9, zorder=4)
-                    ax.text(1.01, stop_p, f"Stop {stop_str}", transform=trans,
-                            color="#f85149", fontsize=9, va="center")
-                if targ_p:
-                    ax.axhline(targ_p, color="#3fb950", linewidth=1.0,
-                               linestyle=":", alpha=0.9, zorder=4)
-                    ax.text(1.01, targ_p, f"Target {tgt_str}", transform=trans,
-                            color="#3fb950", fontsize=9, va="center")
-
-                ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
-                ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
-                plt.setp(ax.get_xticklabels(), rotation=0,
-                         color="#8b949e", fontsize=9)
-                plt.setp(ax.get_yticklabels(), color="#8b949e", fontsize=9)
-                for spine in ax.spines.values():
-                    spine.set_edgecolor("#30363d")
-                ax.tick_params(colors="#8b949e")
-
-                buf = io.BytesIO()
-                plt.savefig(buf, format="png", dpi=140,
-                            facecolor="#0d1117")
-                plt.close(fig)
-                buf.seek(0)
-                chart_b64 = base64.b64encode(buf.read()).decode()
-        except Exception as e:
-            log.warning(f"X draft chart failed for {ticker}: {e}")
+        png = render_x_post_card(r)
+        if png:
+            chart_b64 = base64.b64encode(png).decode()
 
         # ── Post to SLACK_TWITTER channel ─────────────────────────────────────────────────────────────────────────────
         dir_label = "Bullish" if direction == "BULLISH" else "Bearish"

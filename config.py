@@ -593,7 +593,8 @@ SESSION_TRADE_CAPS = {"AUS": 3, "UK": 3, "US": 4}
 
 # Per-INSTRUMENT daily trade cap — stops over-concentration in one name
 # (e.g. 3x USDJPY in a single Asia session, which ate the budget on 2026-06-09).
-MAX_TRADES_PER_INSTRUMENT_PER_DAY = 2
+# Raised 2 → 5 (user 2026-06-12 — XAUUSD blocked at 2/2 with valid signals).
+MAX_TRADES_PER_INSTRUMENT_PER_DAY = 5
 
 # Trade-open email recipients (user 2026-06-09). Sent via Yahoo SMTP (trade_email.py,
 # secrets YAHOO_USER / YAHOO_APP_PASSWORD) with the investment case + price/volume/HVF
