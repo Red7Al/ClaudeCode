@@ -49,6 +49,16 @@
 #                                 (EURUSD 1.1539 → 11538.6 ×10⁴, JPY ×10² — verified live 2026-06-10); non-power-of-ten
 #                                 mismatches still refused by the entry-distance guard. Live-tested: EURUSD far-from-
 #                                 market LIMIT placed → ACCEPTED → reconciled → deleted.
+# 1.11.0  2026-06-12  Alex Hind   Wrong-instrument hardening after the ASX incident (ticker 'ASX' = ASE Technology on
+#                                 Yahoo; best-scored IG match was ASX Ltd, the Australian exchange — wrong company
+#                                 queued as WATCHING 54.2% from entry): (a) get_epic now verifies the chosen IG
+#                                 instrument NAME shares a significant word with the Yahoo company name; mismatches are
+#                                 overridden by a name-matching candidate or refused + alerted. (b) Cache keyed by the
+#                                 ORIGINAL ticker — UK rows carry .L (migrated; bare keys collided: TSCO = Tesco AND
+#                                 Tractor Supply); .L lookups never fall back to bare keys. (c) WATCHING queue rejects
+#                                 setups where price sits beyond 1.2× the pattern's own stop distance — such patterns
+#                                 are invalidated or mis-instrumented, nothing valid to watch. Cache audit purged 29
+#                                 mismatched rows, migrated 15 UK keys; zero trades/orders were exposed.
 # 1.10.0  2026-06-12  Alex Hind   (a) get_prices_df(): IG candles as DataFrame + remaining weekly allowance — IG is
 #                                 the arbiter data source for UK pattern levels (user 2026-06-12). (b) get_epic() now
 #                                 SCORES search results instead of taking the first: exact ticker in the epic body, DFB
@@ -447,15 +457,17 @@ def get_epic(ticker: str) -> Optional[str]:
     # Strip the trailing .L so the cache always hits the right key.
     normalized = ticker[:-2] if ticker.endswith('.L') and len(ticker) > 2 else ticker
 
-    # Step 1 — Check Supabase cache (try normalized first, then original as fallback
-    # in case a previous cache-miss wrote the full .L form).
+    # Step 1 — Check Supabase cache. The cache key IS the original ticker:
+    # UK rows are keyed WITH the .L suffix (migrated 2026-06-12) because bare
+    # keys collide across markets — 'TSCO' is Tesco PLC in London and Tractor
+    # Supply in New York; 'LAND' is Land Securities and Gladstone Land. A .L
+    # ticker must therefore NEVER fall back to a bare-key row.
     db = get_db()
     try:
-        for lookup in ([normalized, ticker] if normalized != ticker else [ticker]):
-            rows = db.run("select epic from epic_lookup where ticker = :t", t=lookup)
-            if rows:
-                log.info(f"Epic cache hit: {ticker} → {rows[0][0]} (key='{lookup}')")
-                return rows[0][0]
+        rows = db.run("select epic from epic_lookup where ticker = :t", t=ticker)
+        if rows:
+            log.info(f"Epic cache hit: {ticker} → {rows[0][0]}")
+            return rows[0][0]
     finally:
         db.close()
 
@@ -493,6 +505,51 @@ def get_epic(ticker: str) -> Optional[str]:
         return s
 
     best = max(markets, key=_epic_score)
+
+    # ── Identity verification (ASX 2026-06-12: ticker 'ASX' = ASE Technology
+    # on Yahoo but the search's best score was ASX Ltd, the Australian
+    # exchange — wrong company queued 54% from entry; same class as
+    # LAND→Gladstone and SNOW→SnowWorld). The IG instrument NAME must share
+    # at least one significant word with the Yahoo company name for this
+    # ticker. If the best-scored candidate fails, prefer the best candidate
+    # that DOES match; if none match, refuse + alert rather than guess.
+    # Skipped when Yahoo has no name (FX/indices/commodities tickers).
+    def _name_words(s):
+        _sw = {"plc", "the", "inc", "corp", "corporation", "group", "ltd",
+               "limited", "holdings", "holding", "trust", "ord", "and", "of",
+               "co", "24", "hours", "adr", "sa", "nv", "se", "ag", "class"}
+        return {w for w in (s or "").lower().replace(".", " ").replace(",", " ").split()
+                if w not in _sw and len(w) > 2}
+
+    y_name = None
+    try:
+        import yfinance as _yf
+        y_name = (_yf.Ticker(ticker).info or {}).get("shortName")
+    except Exception:
+        pass
+    if y_name and _name_words(y_name):
+        yw = _name_words(y_name)
+        if not (yw & _name_words(best.get("instrumentName", ""))):
+            matching = [m for m in markets if yw & _name_words(m.get("instrumentName", ""))]
+            if matching:
+                best = max(matching, key=_epic_score)
+                log.warning(f"get_epic {ticker}: best-scored epic was a different company — "
+                            f"overridden by name match → {best.get('epic')} "
+                            f"({best.get('instrumentName')})")
+            else:
+                try:
+                    from notify import alert_system_error
+                    alert_system_error("EPIC_LOOKUP", "get_epic",
+                                       f"{ticker} ({y_name}): no IG search result matches this "
+                                       f"company's name — wrong-instrument risk, NOT cached, "
+                                       f"instrument skipped.",
+                                       detail=str([(m.get('epic'), m.get('instrumentName'))
+                                                   for m in markets[:6]]))
+                except Exception:
+                    pass
+                log.error(f"get_epic {ticker}: no candidate matches Yahoo name '{y_name}' — refusing")
+                return None
+
     if is_uk and not best.get("epic", "").startswith("KA.D."):
         # A .L ticker that cannot resolve to a UK share epic is a wrong-
         # instrument risk — surface loudly and refuse to cache it.
@@ -520,9 +577,9 @@ def get_epic(ticker: str) -> Optional[str]:
                values (:v_ticker, :v_epic, :v_desc, :v_mtype)
                on conflict (ticker) do update
                set epic=excluded.epic, last_seen=now()""",
-            v_ticker=normalized, v_epic=epic, v_desc=description, v_mtype=market_type
+            v_ticker=ticker, v_epic=epic, v_desc=description, v_mtype=market_type   # key = ORIGINAL ticker (.L kept)
         )
-        log.info(f"Epic cached: {normalized} → {epic}")
+        log.info(f"Epic cached: {ticker} → {epic}")
     finally:
         db.close()
 
@@ -1608,6 +1665,26 @@ def place_working_order(
         msg = (f"Entry {entry_level} is {dist_pct:.0f}% from live IG price {current} "
                f"after unit conversion — epic may be wrong or instrument has been renamed. "
                f"Order NOT placed.")
+        log.error(f"{ticker}: {msg}")
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction, msg, signal_summary)
+        except Exception:
+            pass
+        return None
+
+    # Pattern-invalidation guard (ASX 2026-06-12: a wrong-epic order queued
+    # 54.2% from entry). A valid HVF has price INSIDE the funnel — never
+    # further from the entry than the pattern's own stop distance. If price
+    # sits beyond ~1.2× the stop distance, the pattern is already invalidated
+    # (or the levels belong to a different instrument): nothing valid to watch.
+    stop_dist_pct = abs(entry_level - stop_level) / current * 100.0 if current else 0.0
+    max_watch_pct = max(WO_PROXIMITY_PCT, stop_dist_pct * 1.2)
+    if dist_pct > max_watch_pct:
+        msg = (f"Price is {dist_pct:.1f}% from entry {entry_level} but the pattern's own "
+               f"stop is only {stop_dist_pct:.1f}% away — the setup is already invalidated "
+               f"(price outside the funnel) or the levels belong to a different instrument. "
+               f"NOT queued as WATCHING.")
         log.error(f"{ticker}: {msg}")
         try:
             from notify import alert_missed_trade

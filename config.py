@@ -36,6 +36,10 @@
 # 1.2.0   2026-06-05  Alex Hind   Removed DAX (Germany) from EPIC_MAP, OPTIONS_PROXY_MAP, YAHOO_MAP, ATR_MULTIPLIERS.
 #                                 DAX suspended from trading until further notice.
 # 1.3.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF to SESSION_INSTRUMENTS
+# 1.10.0  2026-06-12  Alex Hind   TICKER FIX: "TE" replaced with "TEL" everywhere — Yahoo's TE is T1 Energy Inc, NOT
+#                                 TE Connectivity (TEL). All TE signals had been computed on T1 Energy's prices while
+#                                 orders would have routed to TE Connectivity's epic; never traded. Also
+#                                 MAX_TRADES_PER_INSTRUMENT_PER_DAY 2 → 5 (user 2026-06-12).
 # 1.9.0   2026-06-07  Alex Hind   Add XAGUSD (Silver) and OIL (WTI) to PREMARKET_BRIEF so the Sunday pre-open scan
 #                                 covers ALL commodities that reopen on the CME Globex Sunday session (~22:00 UTC / 11pm
 #                                 UK), not just Gold.
@@ -169,7 +173,7 @@ EPIC_MAP = {
     "RIOT":  "UC.D.RIOTUS.DAILY.IP",    # Riot Platforms (crypto mining)
     "CLSK":  "UA.D.CLSKUS.DAILY.IP",    # CleanSpark (Bitcoin mining)
     "BTDR":  "UA.D.BTDRUS.DAILY.IP",    # Bitdeer Technologies
-    "TE":    "SG.D.TELUS.DAILY.IP",     # TE Connectivity
+    "TEL":   "SG.D.TELUS.DAILY.IP",     # TE Connectivity (Yahoo ticker TEL — "TE" is T1 Energy, fixed 2026-06-12)
     "SEI":   "UD.D.SEICUS.DAILY.IP",    # SEI Investments
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -361,7 +365,7 @@ ATR_MULTIPLIERS = {
     # may still block until they narrow — that protection is intentional.
     "RIOT": 3.0, "CLSK": 3.0, "NBIS": 3.0, "CRWV": 3.0, "IREN": 3.0,
     "APLD": 3.0, "BTDR": 3.0, "HIVE": 3.0, "SEI":  3.0, "BE":   3.0,
-    "TE":   3.0, "SNDK": 3.0, "KEEL": 3.0, "WYFI": 3.0, "USAR": 3.0,
+    "TEL":  3.0, "SNDK": 3.0, "KEEL": 3.0, "WYFI": 3.0, "USAR": 3.0,
     "PATH": 3.0, "ONDS": 3.0, "OUST": 3.0,
 }
 
@@ -392,7 +396,7 @@ SECTOR_ETF_MAP = {
     "RIOT":  "XLK",   "SNDK":  "XLK",   "HIVE":  "XLK",
     "IREN":  "XLK",   "APLD":  "XLK",   "BTDR":  "XLK",
     # Industrials
-    "BE":    "XLI",   "TE":    "XLI",
+    "BE":    "XLI",   "TEL":   "XLI",
     # Financials
     "SEI":   "XLF",
     # Energy
@@ -459,7 +463,7 @@ SESSION_INSTRUMENTS = {
         "RIOT",     # Riot Platforms
         "SNDK",     # SanDisk
         "BE",       # Bloom Energy
-        "TE",       # TE Connectivity
+        "TEL",      # TE Connectivity (Yahoo ticker corrected from "TE" = T1 Energy, 2026-06-12)
         # Trump recommendations
         "IBM",      # IBM
         "DELL",     # Dell Technologies
