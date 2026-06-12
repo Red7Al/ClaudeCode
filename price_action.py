@@ -82,6 +82,13 @@
 # 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto now uses threshold=25, FX/commodities
 #                                 30-35, equities/indices keep default 40. HVF TRIGGERED bypass (Fix 2): threshold
 #                                 halved when HVF has confirmed entry — price has voted.
+# 1.8.1   2026-06-12  Alex Hind   FIX invariant false positive: h3_level stores the ENTRY in every result, and for
+#                                 BEARISH patterns entry = L3 — so h3_level == l3_level BY DESIGN and the naive H3<=L3
+#                                 check wrongly suppressed a legitimate META BEARISH TRIGGERED setup (18:56 UTC alert).
+#                                 Bullish compares directly; bearish reconstructs true H3 from the stop (stop/1.002).
+#                                 Regression suite had NO bearish detection case — three added (detect, invariants
+#                                 accept entry==L3, target<entry<stop ordering). META verified live: BEARISH TRIGGERED
+#                                 entry 594.81 R:R 4.56 invariants clean. Suite now 21 cases.
 # 1.8.0   2026-06-12  Alex Hind   HVF correctness guarantees (user: "changes must NOT negatively impact the correct
 #                                 calculation of the HVF method"): (a) check_hvf_invariants() — geometry rules every
 #                                 emitted pattern must satisfy (H1>L1, H3>L3, convergence in (0,0.7), positive target,
@@ -1361,8 +1368,18 @@ def check_hvf_invariants(r: dict) -> list:
 
     if h1 is not None and l1 is not None and h1 <= l1:
         v.append(f"H1 {h1} <= L1 {l1} (initial range not positive)")
-    if h3 is not None and l3 is not None and h3 <= l3:
-        v.append(f"H3 {h3} <= L3 {l3} (funnel inverted)")
+    # Funnel-inversion check. NOTE: h3_level stores the ENTRY in every result,
+    # and for BEARISH patterns entry = L3 — so h3_level == l3_level BY DESIGN
+    # there (META false-suppression 2026-06-12 18:56 UTC). For bullish compare
+    # directly; for bearish reconstruct the true H3 from the stop (stop = H3 ×
+    # 1.002) before comparing.
+    if r["hvf_type"] == "BULLISH":
+        if h3 is not None and l3 is not None and h3 <= l3:
+            v.append(f"H3 {h3} <= L3 {l3} (funnel inverted)")
+    elif r["hvf_type"] == "BEARISH" and stop is not None and l3 is not None:
+        h3_true = stop / 1.002
+        if h3_true <= l3 * 0.999:
+            v.append(f"true H3 {h3_true:.4f} (from stop) <= L3 {l3} (funnel inverted)")
     if r.get("convergence") is not None and not (0 < r["convergence"] < 0.70):
         v.append(f"convergence {r['convergence']} outside (0, 0.70)")
     if target is not None and target <= 0:

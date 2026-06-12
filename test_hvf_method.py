@@ -171,6 +171,38 @@ def case_stale_h3():
     check("6 stale H3 (>60 bars) rejected", not r.get("hvf_type"), f"type={r.get('hvf_type')}")
 
 
+def case_bearish():
+    """
+    Bearish (inverted) funnel after a downtrend. Added 2026-06-12 after the META
+    incident: every bearish result stores ENTRY in h3_level (= L3 by design), so
+    a naive H3<=L3 invariant check suppressed a legitimate bearish setup in
+    production. The suite previously had NO bearish detection case — this is it.
+    """
+    import price_action as pa
+    from price_action import check_hvf_invariants
+    # Downtrend 250→170, then funnel: lows descending-ish for entry at L3 break;
+    # geometry mirrors the bullish FUNNEL flipped around price 183.
+    pivots = [(70, 174), (78, 196), (88, 179.5), (96, 190), (106, 183), (114, 187.5)]
+    # Build: prior DOWNTREND from 250 into the funnel
+    pts = [(0, 250)] + pivots
+    f = build_frame(pts, 126, end_level=185)
+    orig = pa._get_daily
+    pa._get_daily = lambda ticker, days=220: pa._sanitise_ohlc(f.tail(days), ticker)
+    try:
+        r = pa.get_hvf_signal("SYNTH", lookback_days=220,
+                              trend_hint={"signal": "DOWNTREND"})
+    finally:
+        pa._get_daily = orig
+    check("8x bearish funnel detected", r.get("hvf_type") == "BEARISH",
+          f"type={r.get('hvf_type')}")
+    if r.get("hvf_type") == "BEARISH":
+        check("8y bearish entry==L3 by design, invariants must accept it",
+              check_hvf_invariants(r) == [], str(check_hvf_invariants(r)))
+        check("8z bearish order: target < entry < stop",
+              r.get("target") < r.get("h3_level") < r.get("stop_level"),
+              f"t={r.get('target')} e={r.get('h3_level')} s={r.get('stop_level')}")
+
+
 def case_invariant_selftest():
     from price_action import check_hvf_invariants
     bad = {"hvf_type": "BEARISH", "hvf_signal": "READY", "h1_level": 100, "l1_level": 80,
@@ -253,6 +285,7 @@ def main():
     case_hammer_lows()
     case_non_converging()
     case_stale_h3()
+    case_bearish()
     case_invariant_selftest()
     if not quick:
         print("— frozen fixture cases —")
