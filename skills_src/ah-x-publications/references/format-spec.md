@@ -72,7 +72,7 @@ direction     ▲ (bullish) / ▼ (bearish) prefix on the title row
 
 ```
 📈 $MONY.L (Mony Group PLC) — Volatility squeeze breaking out higher, d220 setup
-Entry: 178.1  Stop: 173.353  Target: 209.88  R:R 6.7:1
+Now: 182.8  Entry: 178.1  Stop: 173.353  Target: 209.88  R:R 6.7:1
 Pattern quality 82/100
 #StockAlert #TechnicalAnalysis #MONY.L #Trading
 Not financial advice.

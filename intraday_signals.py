@@ -40,6 +40,9 @@
 # 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF Slack post, _generate_x_drafts()
 #                                 posts one tweet-ready block per instrument (with HVF chart attached) to SLACK_TWITTER
 #                                 channel for review before manual posting to X.
+# 1.5.2   2026-06-12  Alex Hind   "Now: {price}" leads the levels line in tweets AND on the post card (user 2026-06-12 —
+#                                 readers must see distance to the trigger). Card uses its fresh download (× ig_scale to
+#                                 match level units); tweet uses the scan's current_price.
 # 1.5.1   2026-06-12  Alex Hind   hvf_watch: UK (.L) tradeable setups IG-validated before posting (cap 10/run);
 #                                 mismatches demoted to DEVELOPING. Mirrors run_hvf_report 1.3.0.
 # 1.5.0   2026-06-12  Alex Hind   X post card renderer extracted to render_x_post_card() — SINGLE SOURCE OF TRUTH used
@@ -845,7 +848,9 @@ def render_x_post_card(r: dict):
             (0.885, f"Volatility squeeze {sig_desc} {dir_word} — "
                     f"{tf_raw or 'multi-month'} setup",
                                          "#c9d1d9", 13, "normal", "normal"),
-            (0.845, f"Entry: {h3_str}   Stop: {stop_str}   "
+            # "Now" shown in the SAME units as the level strings (× ig_scale
+            # restores signal units when the chart series was normalised).
+            (0.845, f"Now: {float(close.iloc[-1]) * ig_scale:g}   Entry: {h3_str}   Stop: {stop_str}   "
                     f"Target: {tgt_str}   R:R {rr_str}",
                                          "#c9d1d9", 12, "normal", "normal"),
             (0.805, f"#StockAlert #TechnicalAnalysis #{ticker} #Trading",
@@ -1079,13 +1084,17 @@ def _generate_x_drafts(tradeable: list):
             return "  ·  ".join(j[idx] for j in justifications[:n])
 
         # ── Tweet text — try progressively shorter versions to fit 280 chars ──
+        # Current price leads the levels line (user 2026-06-12) so a reader can
+        # judge distance to the trigger at a glance.
+        px      = r.get("current_price")
+        now_str = f"Now: {px:g}  " if px else ""
         base_with_name = (
             f"{dir_emoji} ${ticker} ({name}) — Volatility squeeze {sig_desc} {dir_word}, {tf_desc} setup\n"
-            f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
+            f"{now_str}Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
         )
         base_no_name = (
             f"{dir_emoji} ${ticker} — Volatility squeeze {sig_desc} {dir_word}, {tf_desc}\n"
-            f"Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
+            f"{now_str}Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
         )
         # "Not financial advice." is always appended — user directive 2026-06-11.
         disclaimer = "\nNot financial advice."

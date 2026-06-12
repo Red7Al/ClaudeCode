@@ -27,7 +27,7 @@ Structure, in order:
 
 ```
 📈 $TICKER (Full Company Name) — Volatility squeeze {breaking out|coiled, ready} {higher|lower}, {timeframe} setup
-Entry: 178.1  Stop: 173.353  Target: 209.88  R:R 6.7:1
+Now: 182.8  Entry: 178.1  Stop: 173.353  Target: 209.88  R:R 6.7:1
 Pattern quality 82/100  ·  Options flow bullish (call/put 1.42)  ·  Futures positioning bullish (COT report)
 #StockAlert #TechnicalAnalysis #TICKER #Trading
 Not financial advice.
@@ -52,7 +52,9 @@ Rules (each one is a user directive — violating any is a regression):
    the company name. More evidence beats prettier prose.
 6. **No pattern name** in public posts — "Volatility squeeze", never "HVF"/"Hunt
    Volatility Funnel" (the method name stays in-house).
-7. Timeframe in human words: "90-day setup", "6-month setup", "long-term", "weekly".
+7. **Current price leads the levels line** — `Now: 182.8  Entry: …` (2026-06-12) so a
+   reader judges distance to the trigger at a glance. Same on the card header.
+8. Timeframe in human words: "90-day setup", "6-month setup", "long-term", "weekly".
 
 ## The post card (PNG, attached under the tweet)
 

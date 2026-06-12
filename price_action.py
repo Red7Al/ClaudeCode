@@ -82,6 +82,8 @@
 # 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto now uses threshold=25, FX/commodities
 #                                 30-35, equities/indices keep default 40. HVF TRIGGERED bypass (Fix 2): threshold
 #                                 halved when HVF has confirmed entry — price has voted.
+# 1.9.1   2026-06-12  Alex Hind   current_price stored on every HVF result (daily + weekly paths, empty dicts) — feeds
+#                                 the "Now:" display in tweets and post cards (user 2026-06-12).
 # 1.9.0   2026-06-12  Alex Hind   daily-180 timeframe added to the MTF scan (user request) — six-month window for
 #                                 funnels whose H1 falls between the 90- and 220-day lookbacks. Blast radius covered:
 #                                 scan loop + docstrings here, _tf_desc ("6-month") in intraday_signals, run_hvf_report
@@ -901,7 +903,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
         "target": None,   "risk_reward": None,
         "h1_level": None, "l1_level": None, "pattern_range": None,
         "bars_since_h3": None, "pattern_quality": 0, "convergence": None,
-        "volume_confirmed": False,
+        "volume_confirmed": False, "current_price": None,
     }
 
     try:
@@ -910,6 +912,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
             return result
 
         current_price = float(hist["Close"].iloc[-1])
+        result["current_price"] = round(current_price, 6)   # for tweet/card "Now:" display
 
         # Prior trend — use hint if supplied (avoids double API call)
         if trend_hint:
@@ -1345,7 +1348,7 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
         empty = {k: None for k in [
             "hvf_type", "hvf_signal", "h3_level", "l3_level", "stop_level",
             "target", "risk_reward", "h1_level", "l1_level", "pattern_range",
-            "bars_since_h3", "pattern_quality", "convergence", "volume_confirmed",
+            "bars_since_h3", "pattern_quality", "convergence", "volume_confirmed", "current_price",
         ]}
         empty["hvf_timeframe"] = None
         return empty
@@ -1373,7 +1376,7 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
         empty = {k: None for k in [
             "hvf_type", "hvf_signal", "h3_level", "l3_level", "stop_level",
             "target", "risk_reward", "h1_level", "l1_level", "pattern_range",
-            "bars_since_h3", "pattern_quality", "convergence", "volume_confirmed",
+            "bars_since_h3", "pattern_quality", "convergence", "volume_confirmed", "current_price",
         ]}
         empty["hvf_timeframe"] = None
         return empty
@@ -1616,13 +1619,14 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
         "target": None, "risk_reward": None,
         "h1_level": None, "l1_level": None, "pattern_range": None,
         "bars_since_h3": None, "pattern_quality": 0, "convergence": None,
-        "volume_confirmed": False,
+        "volume_confirmed": False, "current_price": None,
     }
     try:
         if len(hist) < 20:
             return result
 
         current_price = float(hist["Close"].iloc[-1])
+        result["current_price"] = round(current_price, 6)   # for tweet/card "Now:" display
         trend         = get_trend_structure(ticker)
         trend_signal  = trend.get("signal", "SIDEWAYS")
 
