@@ -1,0 +1,40 @@
+name: HVF Method Regression Tests (2026-06-12)
+
+# Runs the deterministic HVF regression suite (test_hvf_method.py — offline,
+# frozen fixtures, no secrets needed) on every push that touches detection
+# code. A red run means a change altered HVF behaviour — investigate before
+# trusting any scan output. Also manually triggerable. No schedule: block
+# (GitHub-native cron is banned — scheduling stays on cron-job.org).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'price_action.py'
+      - 'test_hvf_method.py'
+      - 'tests_fixtures/**'
+      - 'config.py'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python test_hvf_method.py
+      - name: Alert on failure
+        if: failure()
+        env:
+          SLACK_ALERTS: ${{ secrets.SLACK_ALERTS }}
+        run: |
+          curl -s -X POST -H 'Content-type: application/json' --data \
+            '{"text":"🚨 HVF regression suite FAILED on push to main — detection behaviour changed. Do not trust scan output until investigated. https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
+            "$SLACK_ALERTS"

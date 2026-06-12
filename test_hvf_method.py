@@ -1,0 +1,267 @@
+# ======================================================================================================================
+# File:         test_hvf_method.py
+# Author:       Alex Hind
+# Created:      2026-06-12
+#
+# Description:
+# ----------------------------------------------------------------------------------------------------------------------
+# HVF method regression suite (user 2026-06-12: "any changes to prices, volumes etc must NOT negatively impact the
+# correct calculation of the HVF method"). Fully OFFLINE and deterministic — no network, no live data:
+#
+#   Synthetic cases (constructed price paths with KNOWN correct answers):
+#     1. Textbook bullish funnel        → must detect BULLISH at the exact H3 entry
+#     2. Flat-top funnel (H2 ≈ H3)      → must detect (the RR.L fix, 2026-06-12)
+#     3. Phantom-wick injection         → sanitiser must clip; detection identical to the clean series
+#     4. Hammer-bottom lows             → must be swing-low pivots (the removed-filter fix, 2026-06-12)
+#     5. Non-converging channel         → must NOT detect (convergence ≥ 0.70)
+#     6. Stale H3 (> 60 bars old)       → must NOT detect
+#     7. Invariant checker self-test    → corrupt results must be flagged
+#
+#   Frozen real-data fixtures (tests_fixtures/*.csv — raw Yahoo bars INCLUDING the phantom prints, captured 2026-06-12):
+#     8. RR.L weekly  → BULLISH, entry ≈ 1330 (the colleague-verified funnel our scanner originally missed)
+#     9. NVDA daily   → NO pattern (the false positive that died when the hammer filter was removed)
+#    10. HIK.L daily  → BULLISH TRIGGERED (regression anchor for a known-good detection)
+#    11. RR.L daily sanitiser → the four phantom bars (29-May 1,420 high; 990/1,051/1,107 lows) must be clipped
+#
+# Every emitted pattern is ALSO checked against price_action.check_hvf_invariants — the same geometry rules the
+# production runtime guard enforces, so tests and production can never disagree about what "correct" means.
+#
+# Usage:
+#   python test_hvf_method.py            # full suite (exit 0 = pass, 1 = fail)
+#   python test_hvf_method.py --quick    # synthetic cases only (pre-commit speed, no file IO)
+#
+# CI: .github/workflows/trading-tests.yml runs this on every push touching detection code.
+#
+# Version History:
+# ----------------------------------------------------------------------------------------------------------------------
+# 1.0.0   2026-06-12  Alex Hind   Initial build — 11 cases covering every HVF defect found 2026-06-11/12.
+# ======================================================================================================================
+
+import io
+import os
+import sys
+import numpy as np
+import pandas as pd
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+
+FIXDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tests_fixtures")
+PASS, FAIL = [], []
+
+
+def check(name: str, cond: bool, detail: str = ""):
+    (PASS if cond else FAIL).append(name)
+    print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f"  — {detail}" if detail and not cond else ""))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Synthetic price-path builder
+# ----------------------------------------------------------------------------------------------------------------------
+
+def build_frame(pivots: list, n_bars: int, start_level: float = 100.0, end_level: float = None) -> pd.DataFrame:
+    """
+    Piecewise-linear daily OHLCV frame through (bar_index, level) pivot points.
+    Pivot bars become clean window extremes so _find_swing_highs_lows sees them.
+    """
+    pts = sorted(pivots, key=lambda p: p[0])
+    if pts[0][0] != 0:
+        pts = [(0, start_level)] + pts
+    if pts[-1][0] != n_bars - 1:
+        pts = pts + [(n_bars - 1, end_level if end_level is not None else pts[-1][1])]
+    xs, ys = zip(*pts)
+    path = np.interp(np.arange(n_bars), xs, ys)
+    df = pd.DataFrame({
+        "Open":   path,
+        "High":   path + 0.6,
+        "Low":    path - 0.6,
+        "Close":  path,
+        "Volume": np.full(n_bars, 1_000_000.0),
+    }, index=pd.bdate_range(end="2026-06-12", periods=n_bars))
+    return df
+
+
+def detect(frame: pd.DataFrame, lookback: int = 220):
+    """Run the production daily detector on a constructed frame (offline)."""
+    import price_action as pa
+    orig = pa._get_daily
+    # Mirror production _get_daily exactly: the sanitiser runs on every fetch.
+    pa._get_daily = lambda ticker, days=220: pa._sanitise_ohlc(frame.tail(days), ticker)
+    try:
+        r = pa.get_hvf_signal("SYNTH", lookback_days=lookback,
+                              trend_hint={"signal": "UPTREND"})
+    finally:
+        pa._get_daily = orig
+    return r
+
+
+# Standard funnel geometry used by several cases:
+# uptrend 100→192, then H1=192 > H2=186.5 > H3=183 against L1=170 < L2=176 < L3=178.5.
+# Ceiling decline kept < 5% so the recent-trend override does not flip the
+# pattern bearish, and initial range sized so R:R clears the 3.0:1 gate —
+# both constraints are part of the detector's contract (verified by case 1).
+FUNNEL = [(70, 192), (78, 170), (88, 186.5), (96, 176), (106, 183), (114, 178.5)]
+
+
+def case_textbook():
+    from price_action import check_hvf_invariants
+    f = build_frame(FUNNEL, 126, end_level=181)
+    r = detect(f)
+    check("1a textbook funnel detected", r.get("hvf_type") == "BULLISH", str(r.get("hvf_type")))
+    check("1b entry at H3 level", r.get("h3_level") is not None and abs(r["h3_level"] - 183.6) < 1.5,
+          f"entry={r.get('h3_level')}")
+    check("1c invariants clean", check_hvf_invariants(r) == [], str(check_hvf_invariants(r)))
+    return r
+
+
+def case_flat_top():
+    # H3 (190.4) sits within 0.5% of H2 (190) — the RR.L flat-ceiling shape.
+    # Deep L1 keeps the projected R:R above the 3.0 gate. Current price held
+    # within 7% of the H1 peak so the peak-and-decline reversal override
+    # (≥7% off a dominant peak → bearish mode) does not flip the pattern —
+    # that override is part of the detector's contract (see case 2 history).
+    pivots = [(70, 200), (78, 155), (88, 190), (96, 170), (106, 190.4), (114, 180)]
+    f = build_frame(pivots, 126, end_level=187)
+    r = detect(f)
+    check("2 flat-top funnel (H3 within 0.5% of H2) detected", r.get("hvf_type") == "BULLISH",
+          f"type={r.get('hvf_type')}")
+
+
+def case_phantom_wick():
+    clean = build_frame(FUNNEL, 126, end_level=181)
+    dirty = clean.copy()
+    # Phantom prints mid-funnel: a fake high above H1 and a fake crash low —
+    # exactly the RR.L 29-May/20-May failure mode.
+    dirty.iloc[100, dirty.columns.get_loc("High")] = 230.0
+    dirty.iloc[92,  dirty.columns.get_loc("Low")]  = 120.0
+    r_clean, r_dirty = detect(clean), detect(dirty)
+    check("3a phantom wicks do not change detection",
+          r_dirty.get("hvf_type") == r_clean.get("hvf_type") == "BULLISH",
+          f"clean={r_clean.get('hvf_type')} dirty={r_dirty.get('hvf_type')}")
+    same_entry = (r_clean.get("h3_level") and r_dirty.get("h3_level")
+                  and abs(r_clean["h3_level"] - r_dirty["h3_level"]) < 0.5)
+    check("3b entry level unchanged by phantom wicks", bool(same_entry),
+          f"clean={r_clean.get('h3_level')} dirty={r_dirty.get('h3_level')}")
+
+
+def case_hammer_lows():
+    from price_action import _find_swing_highs_lows
+    f = build_frame(FUNNEL, 126, end_level=181)
+    # Make every L-pivot a hammer: deep low, close near the high of the bar —
+    # the shape the removed spike-wick filter wrongly excluded.
+    for bar in (78, 96, 114):
+        f.iloc[bar, f.columns.get_loc("Low")]   = f["Close"].iloc[bar] - 3.0
+        f.iloc[bar, f.columns.get_loc("High")]  = f["Close"].iloc[bar] + 0.7
+    _, lows = _find_swing_highs_lows(f, n=5)
+    low_bars = {i for i, _ in lows}
+    check("4 hammer-bottom lows are swing pivots", {78, 96, 114}.issubset(low_bars),
+          f"found={sorted(low_bars)}")
+
+
+def case_non_converging():
+    pivots = [(70, 200), (78, 170), (88, 197), (96, 171), (106, 195), (114, 172)]
+    f = build_frame(pivots, 126, end_level=185)
+    r = detect(f)
+    check("5 non-converging channel rejected", not r.get("hvf_type"), f"type={r.get('hvf_type')}")
+
+
+def case_stale_h3():
+    pivots = [(20, 200), (28, 170), (38, 190), (46, 176), (56, 183), (64, 178.5)]
+    f = build_frame(pivots, 200, end_level=181)   # H3 at bar 56 of 200 → 143 bars old
+    r = detect(f)
+    check("6 stale H3 (>60 bars) rejected", not r.get("hvf_type"), f"type={r.get('hvf_type')}")
+
+
+def case_invariant_selftest():
+    from price_action import check_hvf_invariants
+    bad = {"hvf_type": "BEARISH", "hvf_signal": "READY", "h1_level": 100, "l1_level": 80,
+           "h3_level": 90, "l3_level": 85, "stop_level": 90.2, "target": -13.9,
+           "risk_reward": 19.0, "convergence": 0.25}
+    v = check_hvf_invariants(bad)
+    check("7 invariant checker flags negative target (OCDO.L class)",
+          any("target" in x for x in v), str(v))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Frozen real-data fixture cases
+# ----------------------------------------------------------------------------------------------------------------------
+
+def _load(name):
+    df = pd.read_csv(os.path.join(FIXDIR, f"{name}.csv"), index_col=0, parse_dates=True)
+    return df
+
+
+def fixture_cases():
+    import price_action as pa
+    import yfinance
+
+    daily = {"RR.L": _load("rrl_daily"), "HIK.L": _load("hikl_daily"),
+             "NVDA": _load("nvda_daily"), "MONY.L": _load("monyl_daily")}
+    weekly = {"RR.L": _load("rrl_weekly")}
+
+    class FakeTicker:
+        def __init__(self, t): self.t = t
+        def history(self, period=None, interval="1d"):
+            src = weekly if interval == "1wk" else daily
+            if self.t not in src:
+                return pd.DataFrame()
+            return src[self.t].copy()
+
+    orig_ticker = yfinance.Ticker
+    yfinance.Ticker = FakeTicker
+    try:
+        from price_action import check_hvf_invariants
+
+        r = pa.get_hvf_signal_mtf("RR.L", trend_hint={"signal": "UPTREND"})
+        check("8a RR.L frozen: colleague's funnel detected", r.get("hvf_type") == "BULLISH",
+              f"type={r.get('hvf_type')}")
+        check("8b RR.L frozen: entry at the 1,330 ceiling",
+              r.get("h3_level") is not None and abs(r["h3_level"] - 1330.0) < 12,
+              f"entry={r.get('h3_level')}")
+        check("8c RR.L frozen: invariants clean", check_hvf_invariants(r) == [],
+              str(check_hvf_invariants(r)))
+
+        r = pa.get_hvf_signal_mtf("NVDA", trend_hint={"signal": "UPTREND"})
+        check("9 NVDA frozen: false positive stays dead", not r.get("hvf_type"),
+              f"type={r.get('hvf_type')}")
+
+        r = pa.get_hvf_signal_mtf("HIK.L", trend_hint={"signal": "UPTREND"})
+        check("10 HIK.L frozen: known-good detection holds",
+              r.get("hvf_type") == "BULLISH" and r.get("hvf_signal") in ("TRIGGERED", "READY"),
+              f"type={r.get('hvf_type')} sig={r.get('hvf_signal')}")
+
+        s = pa._sanitise_ohlc(daily["RR.L"].copy(), "RR.L")
+        check("11a RR.L sanitiser: phantom 1,420 high clipped",
+              float(s.loc["2026-05-29", "High"]) < 1400,
+              f"high={float(s.loc['2026-05-29', 'High'])}")
+        check("11b RR.L sanitiser: phantom 990 low clipped",
+              float(s.loc["2026-05-20", "Low"]) > 1100,
+              f"low={float(s.loc['2026-05-20', 'Low'])}")
+        check("11c RR.L sanitiser: phantom 1,107 low clipped",
+              float(s.loc["2026-06-02", "Low"]) > 1200,
+              f"low={float(s.loc['2026-06-02', 'Low'])}")
+    finally:
+        yfinance.Ticker = orig_ticker
+
+
+def main():
+    quick = "--quick" in sys.argv
+    print("HVF method regression suite" + (" (quick: synthetic only)" if quick else ""))
+    print("— synthetic cases —")
+    case_textbook()
+    case_flat_top()
+    case_phantom_wick()
+    case_hammer_lows()
+    case_non_converging()
+    case_stale_h3()
+    case_invariant_selftest()
+    if not quick:
+        print("— frozen fixture cases —")
+        fixture_cases()
+    print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
+    if FAIL:
+        print("FAILED:", ", ".join(FAIL))
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

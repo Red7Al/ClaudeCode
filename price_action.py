@@ -82,6 +82,15 @@
 # 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto now uses threshold=25, FX/commodities
 #                                 30-35, equities/indices keep default 40. HVF TRIGGERED bypass (Fix 2): threshold
 #                                 halved when HVF has confirmed entry — price has voted.
+# 1.8.0   2026-06-12  Alex Hind   HVF correctness guarantees (user: "changes must NOT negatively impact the correct
+#                                 calculation of the HVF method"): (a) check_hvf_invariants() — geometry rules every
+#                                 emitted pattern must satisfy (H1>L1, H3>L3, convergence in (0,0.7), positive target,
+#                                 stop<entry<target ordering, sane R:R, chronological pivots); (b) runtime guard in
+#                                 get_hvf_signal_mtf alerts + suppresses any violating result (OCDO.L negative-target
+#                                 class can never post); (c) flat-top tolerance applied to the DAILY path — the 1.6.0
+#                                 fix had only landed in the weekly path (caught by test_hvf_method.py case 2);
+#                                 (d) ig_validation_log daily cache (1.7.1). Covered by test_hvf_method.py: 18 cases,
+#                                 frozen fixtures in tests_fixtures/, CI gate trading-hvf-tests.yml on every push.
 # 1.7.0   2026-06-12  Alex Hind   IG broker data as ARBITER (user: "if the IG data is more accurate, please use it").
 #                                 New validate_hvf_with_ig(): every UK (.L) tradeable setup is corroborated pivot-by-
 #                                 pivot against IG daily candles before posting/trading — pass → entry/stop/target/R:R
@@ -990,8 +999,17 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
                     for hk in range(hj + 1, len(recent_highs)):
                         h1, h2, h3 = recent_highs[hi], recent_highs[hj], recent_highs[hk]
 
-                        # Condition 1: lower highs
-                        if not (h1[1] > h2[1] > h3[1]):
+                        # Condition 1: lower highs. H1 must sit meaningfully
+                        # above H2 (initial contraction), but H3 may be FLAT vs
+                        # H2 (0.5% tolerance) — the mirror image of the
+                        # flat-base tolerance on lows below. A flat ceiling
+                        # against rising lows is still converging pressure
+                        # (RR.L 2026-06-12: highs 1,328/1,330/1,337 flat top vs
+                        # lows rising 1,078→1,203 — rejected by strict h1>h2>h3
+                        # by 0.1%). NOTE 2026-06-12: this tolerance initially
+                        # landed only in the weekly path; the regression suite
+                        # (test_hvf_method.py case 2) caught the daily gap.
+                        if not (h1[1] > h2[1] * 1.005 and h3[1] <= h2[1] * 1.005):
                             continue
 
                         # Condition 2: H3 must be recent (within 60 daily bars)
@@ -1300,7 +1318,66 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
     best = max(candidates,
                key=lambda r: (signal_rank.get(r.get("hvf_signal", ""), 0),
                               r.get("pattern_quality", 0)))
+
+    # ── Runtime invariant guard (user 2026-06-12): a result that breaks the
+    # pattern's own geometry must NEVER reach Slack or a trade. Alert and
+    # suppress instead of surfacing nonsense (e.g. OCDO.L negative target).
+    violations = check_hvf_invariants(best)
+    if violations:
+        log.error(f"HVF invariant violation {ticker}: {violations} — result suppressed")
+        try:
+            from notify import alert_system_error
+            alert_system_error("HVF_SCAN", "get_hvf_signal_mtf",
+                               f"{ticker}: detected pattern breaks its own geometry — "
+                               f"suppressed, not posted/traded.",
+                               detail="; ".join(violations))
+        except Exception:
+            pass
+        empty = {k: None for k in [
+            "hvf_type", "hvf_signal", "h3_level", "l3_level", "stop_level",
+            "target", "risk_reward", "h1_level", "l1_level", "pattern_range",
+            "bars_since_h3", "pattern_quality", "convergence", "volume_confirmed",
+        ]}
+        empty["hvf_timeframe"] = None
+        return empty
     return best
+
+
+def check_hvf_invariants(r: dict) -> list:
+    """
+    Geometry invariants every emitted HVF result MUST satisfy by definition.
+    Returns a list of violation strings (empty = valid). Shared by the runtime
+    guard in get_hvf_signal_mtf and the regression suite (test_hvf_method.py)
+    so production and tests can never disagree about what "correct" means
+    (user 2026-06-12: changes must NOT negatively impact correct HVF calculation).
+    """
+    v = []
+    if not r or not r.get("hvf_type"):
+        return v
+    h1, h3 = r.get("h1_level"), r.get("h3_level")
+    l1, l3 = r.get("l1_level"), r.get("l3_level")
+    entry  = h3 if r["hvf_type"] == "BULLISH" else l3
+    stop, target, rr = r.get("stop_level"), r.get("target"), r.get("risk_reward")
+
+    if h1 is not None and l1 is not None and h1 <= l1:
+        v.append(f"H1 {h1} <= L1 {l1} (initial range not positive)")
+    if h3 is not None and l3 is not None and h3 <= l3:
+        v.append(f"H3 {h3} <= L3 {l3} (funnel inverted)")
+    if r.get("convergence") is not None and not (0 < r["convergence"] < 0.70):
+        v.append(f"convergence {r['convergence']} outside (0, 0.70)")
+    if target is not None and target <= 0:
+        v.append(f"target {target} is not a positive price")
+    if None not in (entry, stop, target):
+        if r["hvf_type"] == "BULLISH" and not (stop < entry < target):
+            v.append(f"BULLISH order broken: stop {stop} < entry {entry} < target {target} expected")
+        if r["hvf_type"] == "BEARISH" and not (target < entry < stop):
+            v.append(f"BEARISH order broken: target {target} < entry {entry} < stop {stop} expected")
+    if rr is not None and not (0 < rr < 100):
+        v.append(f"risk_reward {rr} outside sane range (0, 100)")
+    dates = [r.get(k) for k in ("h1_date", "h2_date", "h3_date") if r.get(k)]
+    if dates != sorted(dates):
+        v.append(f"high pivot dates not chronological: {dates}")
+    return v
 
 
 def validate_hvf_with_ig(ticker: str, result: dict, min_allowance: int = 1500) -> dict:
