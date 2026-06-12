@@ -1326,6 +1326,37 @@ def validate_hvf_with_ig(ticker: str, result: dict, min_allowance: int = 1500) -
     result.setdefault("ig_validated", None)
     if not result.get("hvf_type"):
         return result
+
+    # ── Daily cache: the 2-hourly watches re-validate the same setups all day;
+    # one IG fetch per ticker per day is enough (pivots are historical, levels
+    # stable intraday). Saves most of the validation allowance burn.
+    try:
+        from db_pool import get_db as _gdb
+        _db = _gdb()
+        try:
+            rows = _db.run(
+                """select ig_validated, mismatch, entry_level, stop_level, target, risk_reward
+                     from ig_validation_log
+                    where trade_date = current_date and ticker = :t""", t=ticker)
+        finally:
+            _db.close()
+        if rows:
+            v, mism, e_, s_, tg_, rr_ = rows[0]
+            result["ig_validated"] = v
+            if v is False:
+                result["hvf_signal"]  = "DEVELOPING"
+                result["ig_mismatch"] = mism
+            elif v is True and e_ is not None:
+                key = "h3_level" if result["hvf_type"] == "BULLISH" else "l3_level"
+                result[key]           = float(e_)
+                result["stop_level"]  = float(s_) if s_ is not None else result.get("stop_level")
+                result["target"]      = float(tg_) if tg_ is not None else result.get("target")
+                result["risk_reward"] = float(rr_) if rr_ is not None else result.get("risk_reward")
+            log.info(f"IG validation {ticker}: cache hit (validated={v})")
+            return result
+    except Exception as e:
+        log.debug(f"IG validation cache read failed ({e}) — validating fresh")
+
     try:
         from ig_shim import get_epic, get_prices_df
         epic = get_epic(ticker)
@@ -1386,6 +1417,7 @@ def validate_hvf_with_ig(ticker: str, result: dict, min_allowance: int = 1500) -
                 result["hvf_signal"]   = "DEVELOPING"
                 log.warning(f"IG validation {ticker}: FAILED — {result['ig_mismatch']} "
                             f"— demoted to DEVELOPING")
+                _cache_ig_validation(ticker, result)
                 return result
 
         # All pivots corroborated — recompute levels from IG data (Yahoo value
@@ -1414,9 +1446,38 @@ def validate_hvf_with_ig(ticker: str, result: dict, min_allowance: int = 1500) -
                 result["risk_reward"] = round(reward / risk, 2)
         result["ig_validated"] = True
         log.info(f"IG validation {ticker}: PASSED — levels recomputed from broker data")
+        _cache_ig_validation(ticker, result)
     except Exception as e:
         log.warning(f"IG validation {ticker} errored (Yahoo levels stand): {e}")
     return result
+
+
+def _cache_ig_validation(ticker: str, result: dict):
+    """Persist today's IG validation outcome so later runs reuse it (one IG fetch per ticker per day)."""
+    try:
+        from db_pool import get_db as _gdb
+        entry = result.get("h3_level") if result.get("hvf_type") == "BULLISH" else result.get("l3_level")
+        _db = _gdb()
+        try:
+            _db.run(
+                """insert into ig_validation_log
+                       (trade_date, ticker, ig_validated, mismatch,
+                        entry_level, stop_level, target, risk_reward)
+                   values (current_date, :t, :v, :m, :e, :s, :tg, :rr)
+                   on conflict (trade_date, ticker) do update
+                   set ig_validated = excluded.ig_validated,
+                       mismatch     = excluded.mismatch,
+                       entry_level  = excluded.entry_level,
+                       stop_level   = excluded.stop_level,
+                       target       = excluded.target,
+                       risk_reward  = excluded.risk_reward""",
+                t=ticker, v=result.get("ig_validated"), m=result.get("ig_mismatch"),
+                e=entry, s=result.get("stop_level"),
+                tg=result.get("target"), rr=result.get("risk_reward"))
+        finally:
+            _db.close()
+    except Exception as e:
+        log.debug(f"IG validation cache write failed for {ticker}: {e}")
 
 
 def _run_hvf_on_hist(ticker: str, hist) -> dict:

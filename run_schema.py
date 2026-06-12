@@ -260,6 +260,41 @@ MIGRATIONS = [
             posted_at   timestamptz default now()
         )"""
     ),
+    # ── data_quality_log — nightly Yahoo-vs-IG price audit (user 2026-06-12) ──
+    (
+        "create data_quality_log",
+        """CREATE TABLE IF NOT EXISTS data_quality_log (
+            id                  bigserial primary key,
+            audit_date          date not null default current_date,
+            ticker              text not null,
+            days_compared       integer,
+            close_max_dev_pct   numeric,
+            phantom_high_wicks  integer,
+            phantom_low_wicks   integer,
+            verdict             text,
+            detail              text,
+            created_at          timestamptz default now(),
+            unique (audit_date, ticker)
+        )"""
+    ),
+    # ── ig_validation_log — daily cache of IG pivot validation results so the
+    #    2-hourly watches reuse one fetch per ticker per day (allowance budget) ──
+    (
+        "create ig_validation_log",
+        """CREATE TABLE IF NOT EXISTS ig_validation_log (
+            id            bigserial primary key,
+            trade_date    date not null default current_date,
+            ticker        text not null,
+            ig_validated  boolean,
+            mismatch      text,
+            entry_level   numeric,
+            stop_level    numeric,
+            target        numeric,
+            risk_reward   numeric,
+            created_at    timestamptz default now(),
+            unique (trade_date, ticker)
+        )"""
+    ),
     # ── missed_trade_log — dedupes TRADEABLE-SIGNAL-NOT-PLACED alerts ─────────────────────────────────────────────────
     # One row per (day, ticker, direction, reason class). First occurrence posts
     # a full #alerts message with corrective action; repeats only bump the

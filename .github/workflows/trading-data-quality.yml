@@ -1,0 +1,33 @@
+name: Data Quality Audit (nightly — 2026-06-12)
+
+# Nightly Yahoo-vs-IG price data audit (user 2026-06-12). Triggered by
+# cron-job.org via workflow_dispatch at 22:15 UTC Mon-Fri — NEVER add a
+# schedule: block (GitHub-native cron is banned, user directive 2026-06-07).
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      IG_API_KEY:            ${{ secrets.IG_API_KEY }}
+      IG_USERNAME:           ${{ secrets.IG_USERNAME }}
+      IG_PASSWORD:           ${{ secrets.IG_PASSWORD }}
+      IG_ACCOUNT_ID:         ${{ secrets.IG_ACCOUNT_ID }}
+      SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
+      SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_schema.py
+      - run: python run_data_quality_audit.py

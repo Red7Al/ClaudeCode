@@ -107,6 +107,7 @@ JOBS = [
     ("Commodity Monitor PM", "*/10 21-23 * * 1-5","trading-commodity-monitor.yml"),
     ("Session Close",        "0 21 * * 1-5",     "trading-session-close.yml"),
     ("Daily Report",         "30 21 * * 1-5",    "trading-daily-report.yml"),
+    ("Data Quality Audit",   "15 22 * * 1-5",    "trading-data-quality.yml"),  # Yahoo-vs-IG nightly audit (2026-06-12)
     # ── Safety net + proactive self-checks ────────────────────────────────────────────────────────────────────────────
     ("Session Watchdog",     "*/10 0-21 * * 1-5","trading-watchdog.yml"),     # migrated off GitHub cron 2026-06-08
     ("Daily Diagnostics",    "30 7 * * 1-5",     "trading-diagnostics.yml"),  # proactive daily health check -> #alerts
