@@ -82,6 +82,21 @@
 # 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto now uses threshold=25, FX/commodities
 #                                 30-35, equities/indices keep default 40. HVF TRIGGERED bypass (Fix 2): threshold
 #                                 halved when HVF has confirmed entry — price has voted.
+# 1.6.0   2026-06-12  Alex Hind   THREE HVF detection fixes (user's colleague spotted a genuine RR.L funnel our scanner
+#                                 missed — investigation proved them right):
+#                                 (1) _sanitise_ohlc: phantom exchange wicks in Yahoo data clipped before pivot detection
+#                                 (RR.L 29-May high printed 1,420 vs IG's real 1,345.9; lows 990/1,051/1,107 vs real
+#                                 1,163/1,207/1,269 — the fake 1,420 broke the descending-highs line). Applied in
+#                                 _get_daily, _get_weekly and the weekly MTF fetch.
+#                                 (2) Spike-wick swing-low filter REMOVED: it excluded every low whose close sat >40% of
+#                                 the range above the low — i.e. every hammer/capitulation bottom, the most structural
+#                                 lows there are. RR.L had ONE swing low in 220 bars; no funnel could ever assemble.
+#                                 Bad prints are now handled by (1) at the data layer.
+#                                 (3) Flat-top tolerance: H3 may be flat vs H2 (0.5%, mirroring the existing flat-base
+#                                 tolerance on lows) — a flat ceiling against rising lows is converging pressure.
+#                                 Verified: RR.L now BULLISH READY entry 1,330 (colleague's level); HIK.L/LAND.L/MONY.L
+#                                 unchanged; NVDA's old pattern was a false positive built on filtered-away lows and
+#                                 correctly no longer detects.
 # 1.5.0   2026-06-10  Alex Hind   HVF pivots now expose calendar dates (h1_date..l3_date) so the trade-open email can
 #                                 draw the funnel on the real price timeline. Added to get_hvf_signal, _run_hvf_on_hist
 #                                 and surfaced by analyse_price_action (hvf_h1_date..hvf_l3_date).
@@ -115,12 +130,47 @@ FAILED_BREAK_DAYS    = 5     # candles to look back for failed break
 # Data fetching helper
 # ======================================================================================================================
 
+def _sanitise_ohlc(df: pd.DataFrame, ticker: str = "") -> pd.DataFrame:
+    """
+    Clip phantom wicks — bad exchange prints in Yahoo data that poison pivot
+    detection (user 2026-06-12: RR.L showed a fake 1,420p high on 29 May vs
+    IG's real 1,345.9p, plus fake lows of 990/1,051/1,107p vs IG's
+    1,163/1,207/1,269p — the phantom high broke the descending-highs line so
+    the genuine HVF funnel a colleague spotted was never detected).
+
+    Rule: a wick (High above the bar body, or Low below it) longer than
+    1.5 × the 20-bar rolling median of the bar range is not plausible trading
+    — real RR.L wicks in the affected window were ≤ 45p while the phantoms
+    were 80–180p. Such wicks are clipped back to the bar body. The rolling
+    median is robust to the phantoms themselves (they are a small minority of
+    bars). Applies to every pattern function via _get_daily/_get_weekly.
+    """
+    if df is None or df.empty or not {"Open", "High", "Low", "Close"}.issubset(df.columns):
+        return df
+    df = df.copy()
+    body_hi = df[["Open", "Close"]].max(axis=1)
+    body_lo = df[["Open", "Close"]].min(axis=1)
+    rng_med = (df["High"] - df["Low"]).rolling(20, min_periods=5).median()
+    rng_med = rng_med.fillna((df["High"] - df["Low"]).median())
+    limit   = 1.5 * rng_med
+    bad_up  = (df["High"] - body_hi) > limit
+    bad_dn  = (body_lo - df["Low"]) > limit
+    n_bad   = int(bad_up.sum()) + int(bad_dn.sum())
+    if n_bad:
+        df.loc[bad_up, "High"] = body_hi[bad_up]
+        df.loc[bad_dn, "Low"]  = body_lo[bad_dn]
+        log.info(f"OHLC sanitise {ticker}: clipped {n_bad} phantom wick(s) "
+                 f"(>1.5× median bar range beyond the body)")
+    return df
+
+
 def _get_daily(ticker: str, days: int = 220) -> pd.DataFrame:
-    """Fetch daily OHLCV data for a ticker. Returns empty DataFrame on failure."""
+    """Fetch daily OHLCV data for a ticker, phantom wicks clipped. Empty DataFrame on failure."""
     yticker = YAHOO_MAP.get(ticker, ticker)
     try:
         t    = yf.Ticker(yticker)
         hist = t.history(period=f"{days + 30}d", interval="1d")
+        hist = _sanitise_ohlc(hist, ticker)
         return hist.tail(days) if len(hist) >= days else hist
     except Exception as e:
         log.warning(f"Daily data fetch failed for {ticker}: {e}")
@@ -128,11 +178,12 @@ def _get_daily(ticker: str, days: int = 220) -> pd.DataFrame:
 
 
 def _get_weekly(ticker: str, weeks: int = 30) -> pd.DataFrame:
-    """Fetch weekly OHLCV data for a ticker. Returns empty DataFrame on failure."""
+    """Fetch weekly OHLCV data for a ticker, phantom wicks clipped. Empty DataFrame on failure."""
     yticker = YAHOO_MAP.get(ticker, ticker)
     try:
         t    = yf.Ticker(yticker)
         hist = t.history(period=f"{weeks * 7 + 30}d", interval="1wk")
+        hist = _sanitise_ohlc(hist, ticker)
         return hist.tail(weeks) if len(hist) >= weeks else hist
     except Exception as e:
         log.warning(f"Weekly data fetch failed for {ticker}: {e}")
@@ -722,14 +773,10 @@ def _find_swing_highs_lows(hist: pd.DataFrame, n: int = 5) -> tuple:
     N=5 on daily data gives 11-bar pivots — filters out minor noise while
     capturing the significant turns that form HVF inflection points.
 
-    Spike wick filter (swing lows):
-        If a bar's close is more than 40% of its range above its low, that low
-        is a wick/spike rather than a structural support level — it represents
-        a brief intraday rejection, not where price actually settled.
-        Such bars are excluded from swing low candidates.
-        Example: BP.L 26-May-2026 — Low 500p, Close 521p, range 51p.
-        Wick = 21p = 41% of range → excluded. Structural lows (512→525→535)
-        correctly identified as rising, revealing the bearish HVF funnel.
+    Bad exchange prints are handled upstream by _sanitise_ohlc (phantom wicks
+    clipped at the data layer), so pivots here are taken from clean High/Low
+    series with no close-position filtering — a hammer bottom (close well off
+    the low) is a structural low, not noise.
 
     Returns:
         swing_highs: list of (bar_index, price) tuples, oldest first
@@ -755,13 +802,16 @@ def _find_swing_highs_lows(hist: pd.DataFrame, n: int = 5) -> tuple:
         if (lows[i] == window_lo.min()
                 and lows[i] < lows[i - 1]
                 and lows[i] < lows[i + 1]):
-            # Spike-wick filter (see docstring): if the close sits more than 40%
-            # of the bar's range above the low, this low is a wick/rejection, not
-            # a structural support level — exclude it from swing-low candidates so
-            # the HVF funnel is built from where price actually settled.
-            bar_range = highs[i] - lows[i]
-            if bar_range > 0 and (closes[i] - lows[i]) / bar_range > 0.40:
-                continue
+            # NOTE (2026-06-12): the former "spike-wick filter" here (excluding
+            # lows whose close sat >40% of the range above the low) was REMOVED.
+            # It threw away every hammer/capitulation bottom — the MOST
+            # structural lows that exist (a reversal day by definition closes
+            # well off its low) — leaving RR.L with ONE swing low in 220 bars,
+            # so no funnel could ever assemble and a genuine HVF was missed
+            # (user's colleague spotted it 2026-06-12). The bad-print problem
+            # the filter was patched in for (BP 500p phantom wick, 26-May-2026)
+            # is now handled at the data layer by _sanitise_ohlc, which clips
+            # implausible wicks before pivot detection.
             swing_lows.append((i, float(lows[i])))
 
     return swing_highs, swing_lows
@@ -1212,7 +1262,7 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
     try:
         import yfinance as yf
         t        = yf.Ticker(yticker)
-        hist_wk  = t.history(period="3y", interval="1wk").dropna()
+        hist_wk  = _sanitise_ohlc(t.history(period="3y", interval="1wk").dropna(), ticker)
         if len(hist_wk) >= 30:
             # Patch _get_daily to return weekly bars for this call
             # by temporarily overriding the history fetch inline
@@ -1304,7 +1354,9 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
                 for hj in range(hi + 1, len(rh)):
                     for hk in range(hj + 1, len(rh)):
                         h1, h2, h3 = rh[hi], rh[hj], rh[hk]
-                        if not (h1[1] > h2[1] > h3[1]):
+                        # Flat-top tolerance — mirrors the daily path (see
+                        # get_hvf_signal Condition 1, 2026-06-12).
+                        if not (h1[1] > h2[1] * 1.005 and h3[1] <= h2[1] * 1.005):
                             continue
                         bars_since_h3 = len(hist) - 1 - h3[0]
                         if bars_since_h3 > 40 or h3[0] - h1[0] < 4:
