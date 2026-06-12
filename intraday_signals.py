@@ -40,6 +40,9 @@
 # 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF Slack post, _generate_x_drafts()
 #                                 posts one tweet-ready block per instrument (with HVF chart attached) to SLACK_TWITTER
 #                                 channel for review before manual posting to X.
+# 1.4.5   2026-06-11  Alex Hind   _post_hvf_watch: tradeable/developing lists now in WEIGHT order (TRIGGERED first,
+#                                 quality desc, R:R desc) before the [:15] cap — was caller order, so the cap could
+#                                 silently drop the best setups (user 2026-06-11: all lists in weight order).
 # 1.4.4   2026-06-11  Alex Hind   X drafts: fix second chart crash — yfinance returns MultiIndex columns for a single
 #                                 ticker so hist["Close"] is a DataFrame; float(DataFrame.median()) raised TypeError and
 #                                 every chart failed in run 27370959365. Squeeze to Series once after download.
@@ -603,13 +606,20 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
                 f"entry {r.get('h3_level')}  stop {r.get('stop_level')}  "
                 f"target {r.get('target')}  [{tf}]")
 
+    # Weight order (user 2026-06-11: all lists in weight order): TRIGGERED before
+    # READY, then quality desc, then R:R desc — matters because lists cap at 15.
+    def _weight(r):
+        return (r.get("hvf_signal") != "TRIGGERED",
+                -(r.get("hvf_quality") or r.get("pattern_quality") or 0),
+                -(r.get("risk_reward") or 0))
+
     text = ""
     if tradeable:
         text += f"*⚡ Tradeable HVF on our US equities — {len(tradeable)} (R:R ≥ {min_rr:.0f}:1)*\n"
-        text += "\n".join(_line(r) for r in tradeable[:15]) + "\n\n"
+        text += "\n".join(_line(r) for r in sorted(tradeable, key=_weight)[:15]) + "\n\n"
     if developing:
         text += f"*👀 Developing HVF — {len(developing)} (watch, R:R < {min_rr:.0f}:1)*\n"
-        text += "\n".join(_line(r) for r in developing[:15])
+        text += "\n".join(_line(r) for r in sorted(developing, key=_weight)[:15])
 
     blocks = [
         {"type": "header",

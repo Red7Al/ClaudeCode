@@ -29,6 +29,13 @@
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Full signal stack across all layers. AUS200 removed from AUS/Asia
 #                                 session instrument list (not traded).
 # 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log INSERT — was computed but never persisted.
+# 1.9.0   2026-06-11  Alex Hind   Confirmations must AGREE WITH THE TRADE DIRECTION (user: "Bearish is not confirmation
+#                                 for a buy" — a BUY was showing "COT positioning BEARISH" as a counted confirmation).
+#                                 Director/activist/senate/superinvestor/social buying evidence now counts on BUY only;
+#                                 COT bias must match the side; ADX STRONG_TREND counts only when the dominant DI
+#                                 (+DI vs -DI) matches the side. confirmations_fired list mirrors the same rules, so
+#                                 emails/tweets/Slack never name a misaligned confirmation. Tightens trade entry:
+#                                 conf_count can only drop, never rise.
 # 1.8.0   2026-06-11  Alex Hind   New conf_names(sig) helper — short names of the confirmations that actually fired,
 #                                 shown next to Confs:N in every signal summary (user 2026-06-11: count beside
 #                                 Options/BB/COT status fields wrongly implied NEUTRAL items were being counted).
@@ -1704,15 +1711,24 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         elif bearish > bullish:
             direction = "SELL"
 
-    # Count confirmation signals
+    # Count confirmation signals — every confirmation must AGREE WITH THE TRADE
+    # DIRECTION (user 2026-06-11: "Bearish is not confirmation for a buy").
+    # Insider/political/social buying evidence is long-side only; COT must match
+    # the side; ADX strength counts only when the dominant DI matches the side.
     conf_count = 0
-    if directors.get("director_signal"):  conf_count += 1
-    if activist.get("activist_signal"):   conf_count += 1
-    if senate.get("senate_signal"):       conf_count += 1
-    if superinv.get("superinvestor_signal"): conf_count += 1
-    if social.get("social_signal"):       conf_count += 1
-    if cot.get("bias") in ("BULLISH","BEARISH"): conf_count += 1
-    if adx.get("adx_signal") == "STRONG_TREND":  conf_count += 1
+    _adx_trend_up = (di_plus or 0) > (di_minus or 0)
+    if direction == "BUY":
+        if directors.get("director_signal"):      conf_count += 1
+        if activist.get("activist_signal"):       conf_count += 1
+        if senate.get("senate_signal"):           conf_count += 1
+        if superinv.get("superinvestor_signal"):  conf_count += 1
+        if social.get("social_signal"):           conf_count += 1
+    if (cot.get("bias") == "BULLISH" and direction == "BUY") or \
+       (cot.get("bias") == "BEARISH" and direction == "SELL"):
+        conf_count += 1
+    if adx.get("adx_signal") == "STRONG_TREND" and \
+       ((_adx_trend_up and direction == "BUY") or (not _adx_trend_up and direction == "SELL")):
+        conf_count += 1
     if obv.get("obv_signal") in ("BULLISH_DIVERGENCE","CONFIRMING_BULLISH") and direction == "BUY":  conf_count += 1
     if obv.get("obv_signal") in ("BEARISH_DIVERGENCE","CONFIRMING_BEARISH") and direction == "SELL": conf_count += 1
     # Commodity macro score — only fires for commodity instruments (returns None for everything else)
@@ -1760,19 +1776,23 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                                f"{potus_sen.get('elite_senator_name') or potus_sen.get('potus_detail', '')})".strip())
 
     confirmations_fired = []
-    if directors.get("director_signal"):
+    # Mirrors the direction-aligned counting above exactly — a confirmation that
+    # disagrees with the trade side must neither count NOR appear in the list
+    # (user 2026-06-11: "Bearish is not confirmation for a buy").
+    if direction == "BUY" and directors.get("director_signal"):
         # director_detail already reads "N insiders bought in last 30d (Form 4): NAMES".
         confirmations_fired.append("Director buys — " +
                                    (directors.get("director_detail") or "insider cluster (Form 4)"))
-    if activist.get("activist_signal"):
+    if direction == "BUY" and activist.get("activist_signal"):
         confirmations_fired.append(f"Activist 13D — {activist.get('activist_detail', '')}".strip(" —"))
-    if senate.get("senate_signal"):
+    if direction == "BUY" and senate.get("senate_signal"):
         confirmations_fired.append(f"Senate buy — {senate.get('senate_senator', '')}".strip(" —"))
-    if superinv.get("superinvestor_signal"):
+    if direction == "BUY" and superinv.get("superinvestor_signal"):
         confirmations_fired.append(f"Superinvestor — {superinv.get('notable_investor', '')}".strip(" —"))
-    if social.get("social_signal"):
+    if direction == "BUY" and social.get("social_signal"):
         confirmations_fired.append("Social mention")
-    if cot.get("bias") in ("BULLISH", "BEARISH"):
+    if (cot.get("bias") == "BULLISH" and direction == "BUY") or \
+       (cot.get("bias") == "BEARISH" and direction == "SELL"):
         # Show what's driving the COT bias: composite score, positioning extremes,
         # open-interest signal, price divergence and commercial net + WoW change.
         _cot_bits = []
@@ -1793,8 +1813,10 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
             _cot_bits.append(_net)
         confirmations_fired.append(
             f"COT positioning {cot.get('bias')}" + (f" — {', '.join(_cot_bits)}" if _cot_bits else ""))
-    if adx.get("adx_signal") == "STRONG_TREND":
-        confirmations_fired.append("ADX strong trend")
+    if adx.get("adx_signal") == "STRONG_TREND" and \
+       ((_adx_trend_up and direction == "BUY") or (not _adx_trend_up and direction == "SELL")):
+        confirmations_fired.append(
+            f"ADX strong trend {'up' if _adx_trend_up else 'down'} (+DI {di_plus} / -DI {di_minus})")
     if (obv.get("obv_signal") in ("BULLISH_DIVERGENCE", "CONFIRMING_BULLISH") and direction == "BUY") or \
        (obv.get("obv_signal") in ("BEARISH_DIVERGENCE", "CONFIRMING_BEARISH") and direction == "SELL"):
         confirmations_fired.append(f"OBV {obv.get('obv_signal')}")

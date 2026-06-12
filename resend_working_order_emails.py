@@ -14,6 +14,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.1.0   2026-06-11  Alex Hind   COT confirmation rebuilt direction-aligned only (mirrors signals.py 1.9.0 —
+#                                 "Bearish is not confirmation for a buy").
 # 1.0.0   2026-07-09  Alex Hind   Initial build — resend after chart scale fix.
 # ======================================================================================================================
 
@@ -84,7 +86,11 @@ def _build_sig(row: dict) -> dict:
     sig["primaries_fired"] = primaries
 
     confirmations = []
-    if sig["cot_bias"] not in (None, "NEUTRAL"):
+    # COT only counts when it agrees with the order side (user 2026-06-11:
+    # "Bearish is not confirmation for a buy") — mirrors signals.py 1.9.0.
+    _dir = row.get("direction")
+    if (sig["cot_bias"] == "BULLISH" and _dir == "BUY") or \
+       (sig["cot_bias"] == "BEARISH" and _dir == "SELL"):
         confirmations.append(f"COT positioning {sig['cot_bias']}")
     if sig["pa_verdict"] and sig["pa_verdict"] not in ("NEUTRAL", "CONFLICTED"):
         confirmations.append(f"Price-action {sig['pa_verdict']} (score {sig['pa_score'] or '—'})")

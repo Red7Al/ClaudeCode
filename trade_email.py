@@ -39,6 +39,9 @@
 #                                 Legend still shows the original IG values.
 # 1.3.0   2026-07-09  Alex Hind   Remove HVF funnel schematic (chart #3) — redundant now the funnel is overlaid on the
 #                                 price history chart.
+# 1.5.0   2026-06-11  Alex Hind   Confirmation fallback rebuild: direction-aligned only (mirrors signals.py 1.9.0 —
+#                                 "Bearish is not confirmation for a buy"). Director buys on BUY only; COT must match
+#                                 the trade side.
 # 1.4.0   2026-06-10  Alex Hind   Director buys: render Form 4 transaction details as a structured HTML mini-table
 #                                 (name, date, shares, price, amount) when director_transactions list is present in the
 #                                 signal dict. Uses data fetched by signals.py v1.6.0 _fetch_form4_transactions().
@@ -324,7 +327,10 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
         if sig.get("hvf_type"):
             primaries.append(f"HVF {sig.get('hvf_type')} {sig.get('hvf_signal','')}".strip())
     if not confirmations:
-        if sig.get("director_signal"):
+        # Direction-aligned only (user 2026-06-11: "Bearish is not confirmation
+        # for a buy") — mirrors signals.py 1.9.0: director buys are long-side
+        # evidence; COT must match the trade side.
+        if direction == "BUY" and sig.get("director_signal"):
             dir_txs = sig.get("director_transactions") or []
             if dir_txs:
                 # Build one line per transaction: name, date, shares, price, amount
@@ -335,7 +341,8 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
                 confirmations.append(f"Director buys ({len(dir_txs)}) — {tx_lines}")
             else:
                 confirmations.append("Director buys — " + (sig.get("director_detail") or "insider cluster (Form 4)"))
-        if sig.get("cot_bias") in ("BULLISH", "BEARISH"):
+        if (sig.get("cot_bias") == "BULLISH" and direction == "BUY") or \
+           (sig.get("cot_bias") == "BEARISH" and direction == "SELL"):
             _cb = []
             if sig.get("cot_score"): _cb.append(f"score {sig['cot_score']:+.0f}")
             if sig.get("cot_comm_extreme") and sig["cot_comm_extreme"] != "NORMAL":
