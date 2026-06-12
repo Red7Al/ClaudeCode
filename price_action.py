@@ -82,6 +82,13 @@
 # 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto now uses threshold=25, FX/commodities
 #                                 30-35, equities/indices keep default 40. HVF TRIGGERED bypass (Fix 2): threshold
 #                                 halved when HVF has confirmed entry — price has voted.
+# 1.9.0   2026-06-12  Alex Hind   daily-180 timeframe added to the MTF scan (user request) — six-month window for
+#                                 funnels whose H1 falls between the 90- and 220-day lookbacks. Blast radius covered:
+#                                 scan loop + docstrings here, _tf_desc ("6-month") in intraday_signals, run_hvf_report
+#                                 header/footer, AH skill docs (repacked). Verified: suite 22/22 green (fixture anchors
+#                                 unchanged); live shadow-diff on 6 tickers — only HIK.L changed, traced to its breakout
+#                                 fading into the 12-Jun close (1,480.0 vs 1,480.36 trigger), i.e. market movement,
+#                                 not the new timeframe.
 # 1.8.2   2026-06-12  Alex Hind   Absurd-target rejection at DETECTION (proactive #alerts sweep): ETHUSD bearish
 #                                 funnel projected target −606 (full AMP1 below zero after a large prior range) and
 #                                 alerted every 5-min scan; OCDO.L same class. Bearish targets ≤10% of entry, or any
@@ -1294,6 +1301,8 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
 
     Timeframes:
       daily-220   Standard full-history scan — catches mature multi-month funnels
+      daily-180   Six-month scan (user 2026-06-12) — funnels that formed after an
+                  H1 the 220-day window dates too early, without losing freshness
       daily-90    Shorter daily scan — catches post-peak reversals forming over
                   the last 3 months (e.g. a stock topping after a big rally)
       weekly      Weekly candles via a separate fetch — catches large-scale funnels
@@ -1306,8 +1315,8 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
 
     candidates = []
 
-    # ── daily-220, daily-90, daily-60, daily-30 ───────────────────────────────────────────────────────────────────────
-    for days, label in [(220, "daily-220"), (90, "daily-90"),
+    # ── daily-220, daily-180, daily-90, daily-60, daily-30 ────────────────────────────────────────────────────────────
+    for days, label in [(220, "daily-220"), (180, "daily-180"), (90, "daily-90"),
                         (60, "daily-60"),   (30, "daily-30")]:
         try:
             r = get_hvf_signal(ticker, lookback_days=days, trend_hint=trend_hint)
@@ -1787,7 +1796,7 @@ def analyse_price_action(ticker: str) -> dict:
     ma_align    = get_ma_alignment(ticker)
     failed      = get_failed_break(ticker)
     candlestick = get_candlestick_pattern(ticker)
-    # HVF: multi-timeframe scan (daily-220, daily-90, weekly) — best result wins
+    # HVF: multi-timeframe scan (daily-220/180/90/60/30, weekly) — best result wins
     hvf         = get_hvf_signal_mtf(ticker, trend_hint=trend)
 
     score, verdict = compute_price_action_score(range_bo, trend, atr_comp, ma_align, failed, candlestick)

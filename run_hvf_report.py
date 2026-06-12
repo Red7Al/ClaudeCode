@@ -13,7 +13,7 @@
 #   DEVELOPING       — valid pattern structure, R:R < 2.5:1, watch list
 #   IN PLAY          — patterns that have TRIGGERED and are open/active
 #
-# Multi-timeframe scanner (daily-220, daily-90, daily-60, daily-30, weekly):
+# Multi-timeframe scanner (daily-220, daily-180, daily-90, daily-60, daily-30, weekly):
 #   Shorter timeframes catch post-peak reversals and tight recent funnels
 #   that the standard 220-day lookback misses.
 #
@@ -374,7 +374,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         "type": "context",
         "elements": [{"type": "mrkdwn",
                       "text": (f"HVF scanner: daily-30 · daily-60 · daily-90 · "
-                               f"daily-220 · weekly | "
+                               f"daily-180 · daily-220 · weekly | "
                                f"Min {HVF_MIN_RR}:1 R:R to trade | "
                                f"Generated {scan_time} UTC")}]
     })

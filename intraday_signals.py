@@ -674,7 +674,7 @@ _SIG_LABEL = {
 def _tf_desc(tf_raw: str) -> str:
     """Human-readable timeframe description for tweets and cards."""
     mapping = {"30d": "30-day", "60d": "60-day", "90d": "90-day",
-               "220d": "long-term", "weekly": "weekly"}
+               "180d": "6-month", "220d": "long-term", "weekly": "weekly"}
     return mapping.get(tf_raw, tf_raw or "multi-month")
 
 

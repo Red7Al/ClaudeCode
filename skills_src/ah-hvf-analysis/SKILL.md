@@ -60,7 +60,7 @@ R:R    = |Target − Entry| ÷ |Entry − Stop|          ← computed from ENTRY
    TRIGGERED is assigned. Below it → DEVELOPING (watchlist), never tradeable. Single source of
    truth in config.py — never hardcode.
 9. **States** — TRIGGERED (price past entry) > READY (pattern complete, waiting) > DEVELOPING
-   (structure valid, R:R or compression not there). Multi-timeframe scan: daily-220 / daily-90 /
+   (structure valid, R:R or compression not there). Multi-timeframe scan: daily-220 / daily-180 / daily-90 /
    daily-60 / daily-30 / weekly; best state wins, quality breaks ties.
 10. **Quality 0–100** — convergence (≤50 pts) + freshness (≤30) + trend strength (10/20) +
     funnel symmetry (≤10).
