@@ -203,6 +203,29 @@ def case_bearish():
               f"t={r.get('target')} e={r.get('h3_level')} s={r.get('stop_level')}")
 
 
+def case_absurd_target():
+    """
+    ETHUSD 2026-06-12: a bearish funnel low on the chart after a huge prior
+    range projected target −606 (Hunt's full-AMP1 below zero) and alerted every
+    5-minute scan. Such projections cannot physically complete and must be
+    REJECTED AT DETECTION — never emitted, never alerted.
+    """
+    import price_action as pa
+    # Prior collapse 1000→~150, funnel at the lows: AMP1 (≈300) dwarfs price.
+    pivots = [(0, 1000), (70, 400), (78, 100), (88, 250), (96, 140), (106, 180), (114, 150)]
+    f = build_frame(pivots, 126, end_level=165)
+    orig = pa._get_daily
+    pa._get_daily = lambda ticker, days=220: pa._sanitise_ohlc(f.tail(days), ticker)
+    try:
+        r = pa.get_hvf_signal("SYNTH", lookback_days=220,
+                              trend_hint={"signal": "DOWNTREND"})
+    finally:
+        pa._get_daily = orig
+    ok = not r.get("hvf_type") or (r.get("target") or 1) > 0
+    check("12 absurd bearish target (ETHUSD class) rejected at detection", ok,
+          f"type={r.get('hvf_type')} target={r.get('target')}")
+
+
 def case_invariant_selftest():
     from price_action import check_hvf_invariants
     bad = {"hvf_type": "BEARISH", "hvf_signal": "READY", "h1_level": 100, "l1_level": 80,
@@ -286,6 +309,7 @@ def main():
     case_non_converging()
     case_stale_h3()
     case_bearish()
+    case_absurd_target()
     case_invariant_selftest()
     if not quick:
         print("— frozen fixture cases —")

@@ -8,3 +8,12 @@ repos:
         entry: gitleaks protect --staged --redact --config .gitleaks.toml
         language: golang
         pass_filenames: false
+  - repo: local
+    hooks:
+      - id: hvf-regression-quick
+        name: HVF regression suite (quick, offline)
+        description: Detection-code commits cannot land without the synthetic suite green (2026-06-12)
+        entry: python test_hvf_method.py --quick
+        language: system
+        files: ^(price_action|config|test_hvf_method)\.py$
+        pass_filenames: false

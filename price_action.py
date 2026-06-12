@@ -82,6 +82,12 @@
 # 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto now uses threshold=25, FX/commodities
 #                                 30-35, equities/indices keep default 40. HVF TRIGGERED bypass (Fix 2): threshold
 #                                 halved when HVF has confirmed entry — price has voted.
+# 1.8.2   2026-06-12  Alex Hind   Absurd-target rejection at DETECTION (proactive #alerts sweep): ETHUSD bearish
+#                                 funnel projected target −606 (full AMP1 below zero after a large prior range) and
+#                                 alerted every 5-min scan; OCDO.L same class. Bearish targets ≤10% of entry, or any
+#                                 target ≤0, are rejected before emission (daily + weekly paths) — the invariant guard
+#                                 remains as backstop. Verified live: ETHUSD no pattern, META BEARISH valid, OCDO.L
+#                                 target now positive. Suite case 12 added (22 cases).
 # 1.8.1   2026-06-12  Alex Hind   FIX invariant false positive: h3_level stores the ENTRY in every result, and for
 #                                 BEARISH patterns entry = L3 — so h3_level == l3_level BY DESIGN and the naive H3<=L3
 #                                 check wrongly suppressed a legitimate META BEARISH TRIGGERED setup (18:56 UTC alert).
@@ -1197,6 +1203,21 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
             triggered = current_price < l3[1]
         hvf_signal_str = "TRIGGERED" if triggered else "READY"
 
+        # ── Absurd-target rejection (ETHUSD 2026-06-12: bearish target −606,
+        # alerting every 5-min scan; OCDO.L showed the same class). When the
+        # projected move (full AMP1) exceeds the price level itself, Hunt's
+        # formula extrapolates below zero — a pattern that cannot physically
+        # complete. Reject at detection so it never reaches the invariant
+        # guard, Slack, or a trade. Floor at 10% of entry: a target implying
+        # a >90% collapse is not a tradeable continuation projection.
+        if target <= entry_level * 0.10 and not bullish:
+            log.info(f"HVF {ticker}: BEARISH target {target} below 10% of entry "
+                     f"{entry_level} — projection not physically tradeable, rejected")
+            return result
+        if target <= 0:
+            log.info(f"HVF {ticker}: target {target} not a positive price — rejected")
+            return result
+
         # Risk/reward calculated from the ENTRY LEVEL (H3 for bullish, L3 for bearish).
         # Using entry — not current price — gives a stable R:R that is a property of
         # the setup itself, not a function of where price happens to be at scan time.
@@ -1693,6 +1714,12 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
             hvf_type = "BEARISH"; entry = round(l3[1], 4)
             stop = round(h3[1] * 1.002, 4); target = round(mid - ir, 4)
             triggered = current_price < l3[1]
+
+        # Absurd-target rejection — mirrors the daily path (ETHUSD 2026-06-12:
+        # bearish target −606; projection below 10% of entry cannot complete).
+        if target <= 0 or (hvf_type == "BEARISH" and target <= entry * 0.10):
+            log.info(f"HVF weekly {ticker}: target {target} not physically tradeable — rejected")
+            return result
 
         risk = abs(entry - stop)          # R:R from entry level, not current price
         rr   = round(abs(target - entry) / risk, 2) if risk > 0 else 0.0
