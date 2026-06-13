@@ -40,6 +40,10 @@
 # 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF Slack post, _generate_x_drafts()
 #                                 posts one tweet-ready block per instrument (with HVF chart attached) to SLACK_TWITTER
 #                                 channel for review before manual posting to X.
+# 1.6.1   2026-06-13  Alex Hind   X drafts posted to SLACK_TWITTER in BEST→WORST order (user 2026-06-13): TRIGGERED
+#                                 before READY, quality desc, then R:R desc (was quality only). Each draft header
+#                                 carries its rank 'N/total (best→worst)' so the order is explicit even if Slack
+#                                 interleaves the webhook text with the bot-uploaded chart images.
 # 1.6.0   2026-06-13  Alex Hind   X post format (user 2026-06-13): tweet TEXT drops the price line (Now/Entry/Stop/
 #                                 Target/R:R) and the HVF timeframe — prices live on the PNG card. Card header gains
 #                                 a 52-week High/Low line (1y fetch, ×ig_scale) and drops the timeframe. Confirmations
@@ -1012,11 +1016,19 @@ def _generate_x_drafts(tradeable: list):
 
     # TRIGGERED setups first (breaking out NOW — the timely posts), then READY,
     # quality descending within each group. Cap 20 per run.
-    _ordered = sorted(
-        tradeable,
-        key=lambda r: (r.get("hvf_signal") != "TRIGGERED",
-                       -(r.get("hvf_quality") or r.get("pattern_quality") or 0)))
-    for r in _ordered[:20]:
+    # Best → worst weight order (user 2026-06-13): TRIGGERED (breaking out now)
+    # before READY, then pattern quality desc, then R:R desc. The drafts post in
+    # this order and each carries its rank (below), so the channel reads
+    # best-first even if Slack interleaves the webhook text with the bot-uploaded
+    # chart images.
+    def _draft_weight(r):
+        return (r.get("hvf_signal") != "TRIGGERED",
+                -(r.get("hvf_quality") or r.get("pattern_quality") or 0),
+                -(r.get("risk_reward") or 0))
+
+    _ordered = sorted(tradeable, key=_draft_weight)[:20]
+    _total   = len(_ordered)
+    for _rank, r in enumerate(_ordered, 1):
         ticker    = r.get("ticker", "")
         direction = r.get("hvf_type", "BULLISH")
         signal    = r.get("hvf_signal", "")
@@ -1153,7 +1165,8 @@ def _generate_x_drafts(tradeable: list):
         blocks = [
             {"type": "header",
              "text": {"type": "plain_text",
-                      "text": f"X Draft — {fmt(ticker)} {dir_label} · {sig_desc.title()}"}},
+                      "text": f"X Draft {_rank}/{_total} (best→worst) — {fmt(ticker)} "
+                              f"{dir_label} · {sig_desc.title()}"}},
             {"type": "section",
              "text": {"type": "mrkdwn",
                       "text": f"*Tweet ({len(tweet)} chars):*\n```{tweet}```"}},
