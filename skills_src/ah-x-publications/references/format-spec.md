@@ -12,7 +12,7 @@ target, R:R, pattern quality, and the aligned-confirmation context.
 
 ```
 base_with_name = "{emoji} ${ticker} ({name}) — Volatility squeeze {state} {higher|lower}, {tf} setup\n"
-                 "Entry: {entry}  Stop: {stop}  Target: {target}  R:R {rr}:1\n"
+                 "Now: {current_price}  Entry: {entry}  Stop: {stop}  Target: {target}  R:R {rr}:1\n"
 base_no_name   = same without "({name})" and without the word "setup"
 justifications = ordered list of (full, short) phrasings:
     1. Pattern quality {q}/100                      (only if q ≥ 60)
