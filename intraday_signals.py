@@ -82,6 +82,8 @@
 # 1.15.0  2026-06-13  Alex Hind   (A) tweet hashtags now include market + country (#FTSE100 #UK / #SP500 #USA) via
 #                                 _x_market_tags (from the scan index). (B) _resolve_name prefers Yahoo longName and
 #                                 normalises the "plc" suffix WITHOUT .title() — fixes acronym mangling (HSBC was "Hsbc").
+# 1.16.0  2026-06-13  Alex Hind   Tweet market tag uses the REAL listing exchange for US names (#NASDAQ/#NYSE via yfinance
+#                                 exchange code, cached) instead of #SP500; UK keeps its index (#FTSE100/#FTSE250). User 2026-06-13.
 # 1.6.1   2026-06-13  Alex Hind   X drafts posted to SLACK_TWITTER in BEST→WORST order (user 2026-06-13): TRIGGERED
 #                                 before READY, quality desc, then R:R desc (was quality only). Each draft header
 #                                 carries its rank 'N/total (best→worst)' so the order is explicit even if Slack
@@ -878,16 +880,36 @@ def _resolve_name(ticker: str) -> str:
     return _RESOLVED_NAMES[ticker]
 
 
+_EXCHANGE_TAGS: dict = {}
+
+
+def _exchange_tag(ticker: str) -> str:
+    """Listing-exchange hashtag from yfinance (cached per process): NYQ→#NYSE,
+    NMS→#NASDAQ, LSE→#LSE (user 2026-06-13: correct listing exchange)."""
+    if ticker in _EXCHANGE_TAGS:
+        return _EXCHANGE_TAGS[ticker]
+    tag = None
+    try:
+        import yfinance as _yf
+        ex = (_yf.Ticker(ticker).info.get("exchange") or "").upper()
+        tag = {"NMS": "#NASDAQ", "NGM": "#NASDAQ", "NCM": "#NASDAQ", "NGS": "#NASDAQ",
+               "NYQ": "#NYSE", "PCX": "#NYSE", "ASE": "#NYSE", "LSE": "#LSE"}.get(ex)
+    except Exception:
+        pass
+    _EXCHANGE_TAGS[ticker] = tag or ("#LSE" if ticker.endswith(".L") else "#NYSE")
+    return _EXCHANGE_TAGS[ticker]
+
+
 def _x_market_tags(r: dict) -> str:
-    """Market + country hashtags for the tweet (user 2026-06-13): e.g. "#FTSE100 #UK"
-    or "#SP500 #USA". Driven by the scan's index; falls back on the ticker suffix."""
-    mapping = {"FTSE 100": ("#FTSE100", "#UK"),
-               "FTSE 250": ("#FTSE250", "#UK"),
-               "S&P 500":  ("#SP500",  "#USA")}
-    market, country = mapping.get(
-        r.get("index") or "",
-        ("#LSE", "#UK") if (r.get("ticker") or "").endswith(".L") else ("#SP500", "#USA"))
-    return f"{market} {country}"
+    """Market + country hashtags (user 2026-06-13). UK names use their index
+    (#FTSE100/#FTSE250); US names use the REAL listing exchange (#NASDAQ/#NYSE), not the
+    S&P bucket. Country #UK/#USA."""
+    idx = r.get("index") or ""
+    if idx in ("FTSE 100", "FTSE 250"):
+        return ("#FTSE100" if idx == "FTSE 100" else "#FTSE250") + " #UK"
+    if (r.get("ticker") or "").endswith(".L"):
+        return "#FTSE #UK"
+    return f"{_exchange_tag(r.get('ticker') or '')} #USA"
 
 
 def render_x_post_card(r: dict):
