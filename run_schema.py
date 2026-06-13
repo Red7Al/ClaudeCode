@@ -21,6 +21,8 @@
 # ----------------------------------------------------------------------------------------------------------------------
 # 1.3.0   2026-06-13  Alex Hind   signal_log: add vwap_pct (numeric) — % distance from intraday VWAP, shown on the X
 #                                 post card (user 2026-06-13). Idempotent ADD COLUMN IF NOT EXISTS.
+# 1.4.0   2026-06-13  Alex Hind   hvf_suppressed_log table — invariant-rejected HVF results logged for reporting
+#                                 (user 2026-06-13), replacing the Slack alert for that bad-data class.
 # 1.0.0   2026-06-02  Alex Hind   Initial build. Idempotent migrations for signal_log, positions, macro_snapshot,
 #                                 hvf_scan_log, and epic_lookup tables.
 # 1.2.0   2026-06-11  Alex Hind   missed_trade_log table — dedupes TRADEABLE SIGNAL NOT PLACED alerts: one row per (day,
@@ -282,6 +284,22 @@ MIGRATIONS = [
             detail              text,
             created_at          timestamptz default now(),
             unique (audit_date, ticker)
+        )"""
+    ),
+    # ── hvf_suppressed_log — HVF results the runtime invariant guard rejected (user
+    #    2026-06-13). Bad-data setups (e.g. absurd R:R from near-zero risk) that were
+    #    never posted/traded; logged here for periodic reporting INSTEAD of a Slack
+    #    #alerts ping (which was just noise). ──
+    (
+        "create hvf_suppressed_log",
+        """CREATE TABLE IF NOT EXISTS hvf_suppressed_log (
+            id            bigserial primary key,
+            suppressed_at timestamptz default now(),
+            ticker        text not null,
+            hvf_timeframe text,
+            hvf_type      text,
+            risk_reward   numeric,
+            violations    text
         )"""
     ),
     # ── ig_validation_log — daily cache of IG pivot validation results so the
