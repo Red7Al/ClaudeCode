@@ -100,6 +100,9 @@
 #                                 Detection, timeframe choice and the R:R gate are untouched — quality only reorders the
 #                                 list/drafts. One short daily fetch per instrument on the chosen result. Suite green
 #                                 (no quality assertions); shadow-diff not required (no detection/level change).
+# 1.13.0  2026-06-13  Alex Hind   Invariant-suppressed results now log to hvf_suppressed_log for reporting INSTEAD of a
+#                                 Slack #alerts ping (user 2026-06-13: "log it, no slack alert" — e.g. DSCV.L R:R 100.73).
+#                                 Suppression unchanged (bad data still never posted/traded); detection untouched; suite green.
 # 1.9.2   2026-06-12  Alex Hind   PROTOTYPE compute_exhaustion_amp1() (backlog 9a, NOT wired into detection) — official-method
 #                                 AMP1: re-anchors ONLY the clipped exhaustion extreme to full history, keeps the
 #                                 funnel's own first-pullback pivot (avoids RW's 52wk-low over-extension). For shadow-
@@ -1427,14 +1430,20 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
     violations = check_hvf_invariants(best)
     if violations:
         log.error(f"HVF invariant violation {ticker}: {violations} — result suppressed")
+        # Bad-data setup caught by the runtime guard — never posted/traded. Record it in
+        # hvf_suppressed_log for periodic reporting; NO Slack #alerts ping (user 2026-06-13:
+        # these are caught-and-binned data-quality events, not actionable alerts).
         try:
-            from notify import alert_system_error
-            alert_system_error("HVF_SCAN", "get_hvf_signal_mtf",
-                               f"{ticker}: detected pattern breaks its own geometry — "
-                               f"suppressed, not posted/traded.",
-                               detail="; ".join(violations))
-        except Exception:
-            pass
+            from db_pool import get_db as _gdb
+            _sdb = _gdb()
+            _sdb.run("""insert into hvf_suppressed_log
+                        (ticker, hvf_timeframe, hvf_type, risk_reward, violations)
+                        values (:t, :tf, :ht, :rr, :v)""",
+                     t=ticker, tf=best.get("hvf_timeframe"), ht=best.get("hvf_type"),
+                     rr=best.get("risk_reward"), v="; ".join(violations))
+            _sdb.close()
+        except Exception as e:
+            log.warning(f"hvf_suppressed_log insert failed (non-critical): {e}")
         empty = {k: None for k in [
             "hvf_type", "hvf_signal", "h3_level", "l3_level", "stop_level",
             "target", "risk_reward", "h1_level", "l1_level", "pattern_range",
