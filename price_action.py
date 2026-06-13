@@ -82,6 +82,12 @@
 # 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto now uses threshold=25, FX/commodities
 #                                 30-35, equities/indices keep default 40. HVF TRIGGERED bypass (Fix 2): threshold
 #                                 halved when HVF has confirmed entry — price has voted.
+# 1.10.0  2026-06-12  Alex Hind   MERGE 9a: apply_exhaustion_amp1() wired into get_hvf_signal_mtf — every chosen result's
+#                                 target amplitude is re-anchored to the prior trend's TRUE exhaustion extreme
+#                                 (official Hunt method), target+R:R recomputed, R:R gate re-applied; entry/stop
+#                                 unchanged. validate_hvf_with_ig keeps the re-anchored AMP1 (does not undo it).
+#                                 Targets on daily-window setups grow (we were clipping the top); weekly/long
+#                                 windows unchanged. Suite 24 cases green incl. case 13; shadow-diff was reviewed.
 # 1.9.2   2026-06-12  Alex Hind   PROTOTYPE compute_exhaustion_amp1() (backlog 9a, NOT wired into detection) — official-method
 #                                 AMP1: re-anchors ONLY the clipped exhaustion extreme to full history, keeps the
 #                                 funnel's own first-pullback pivot (avoids RW's 52wk-low over-extension). For shadow-
@@ -1363,6 +1369,12 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
                key=lambda r: (signal_rank.get(r.get("hvf_signal", ""), 0),
                               r.get("pattern_quality", 0)))
 
+    # ── Official-method AMP1 exhaustion anchor (backlog 9a, merged 2026-06-12):
+    # re-anchor the target amplitude to the prior trend's true exhaustion extreme,
+    # recompute target + R:R, re-apply the R:R gate. Entry/stop unchanged. One
+    # long-history fetch per instrument (on the chosen result only).
+    best = apply_exhaustion_amp1(ticker, best)
+
     # ── Runtime invariant guard (user 2026-06-12): a result that breaks the
     # pattern's own geometry must NEVER reach Slack or a trade. Alert and
     # suppress instead of surfacing nonsense (e.g. OCDO.L negative target).
@@ -1509,6 +1521,59 @@ def compute_exhaustion_amp1(ticker: str, result: dict, long_days: int = 500,
         return None
 
 
+def apply_exhaustion_amp1(ticker: str, result: dict) -> dict:
+    """
+    MERGE of backlog 9a (user 2026-06-12): re-anchor the target AMPLITUDE to the prior
+    trend's TRUE exhaustion extreme (official HVF method), recompute target + R:R, and
+    re-apply the R:R gate. Mutates and returns `result`. Entry (H3/L3) and stop are
+    UNCHANGED — only the target amplitude and the state may move.
+
+    Called once per instrument on the chosen MTF result (not per-timeframe — cost bound).
+    No-op when the funnel already anchors at the exhaustion (window reached it) or when the
+    long-history fetch fails (the in-window target stands; result["amp1_anchored"]=False).
+    """
+    result.setdefault("amp1_anchored", False)
+    if not result.get("hvf_type"):
+        return result
+    off = compute_exhaustion_amp1(ticker, result)
+    if not off:
+        return result
+
+    bullish = result["hvf_type"] == "BULLISH"
+    entry = result.get("h3_level") if bullish else result.get("l3_level")
+    stop  = result.get("stop_level")
+    if entry is None or stop is None:
+        return result
+
+    moved = abs((off["amp1_official"] or 0) - (off["amp1_window"] or 0)) > 1e-6
+    result["pattern_range"]   = off["amp1_official"]
+    result["target"]          = off["target_official"]
+    result["exhaustion_level"] = off["exhaustion"]
+    result["amp1_anchored"]   = moved
+
+    risk = abs(entry - stop)
+    if risk > 0:
+        result["risk_reward"] = round(abs(result["target"] - entry) / risk, 2)
+
+    # Re-apply the R:R gate with the re-anchored R:R. A bigger AMP1 can PROMOTE a
+    # DEVELOPING setup to tradeable, or (rarely, bearish) demote — keep the gate honest.
+    rr = result.get("risk_reward") or 0
+    px = result.get("current_price")
+    if rr < HVF_MIN_RR:
+        result["hvf_signal"] = "DEVELOPING"
+    else:
+        if px is not None:
+            triggered = (px > entry) if bullish else (px < entry)
+            result["hvf_signal"] = "TRIGGERED" if triggered else "READY"
+        elif result.get("hvf_signal") == "DEVELOPING":
+            result["hvf_signal"] = "READY"   # promoted but price unknown → READY
+    if moved:
+        log.info(f"HVF {ticker}: AMP1 re-anchored to exhaustion {off['exhaustion']} → "
+                 f"target {result['target']} R:R {result.get('risk_reward')} "
+                 f"({result['hvf_signal']})")
+    return result
+
+
 def validate_hvf_with_ig(ticker: str, result: dict, min_allowance: int = 1500) -> dict:
     """
     Re-validate a Yahoo-detected HVF setup against IG broker candles — the
@@ -1634,7 +1699,13 @@ def validate_hvf_with_ig(ticker: str, result: dict, min_allowance: int = 1500) -
             h3 = ig_levels["h3"]
             l1 = ig_levels.get("l1", result.get("l1_level"))
             l3 = ig_levels.get("l3", result.get("l3_level"))
-            initial_range = h1 - l1
+            # AMP1 for the target: when the result was exhaustion-anchored (9a),
+            # KEEP that amplitude (pattern_range) — re-deriving h1−l1 from in-window
+            # IG pivots would undo the re-anchor. Yahoo and IG agree on the pivots
+            # (validated above), so the Yahoo-derived AMP1 is consistent with the
+            # IG midpoint. Otherwise use the in-window IG range as before.
+            initial_range = result["pattern_range"] if result.get("amp1_anchored") \
+                else (h1 - l1)
             midpoint      = (h3 + l3) / 2.0
             if result["hvf_type"] == "BULLISH":
                 result["h3_level"]   = round(h3, 6)

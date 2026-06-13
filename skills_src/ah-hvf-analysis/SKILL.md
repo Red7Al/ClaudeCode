@@ -31,7 +31,7 @@ the recent-trend override below, which re-classifies a post-peak decline as the 
 ```
 AMP1   = H1 − L1                      (initial_range in code)
 Mid    = (H3 + L3) ÷ 2
-Target = Mid + AMP1 (long) / Mid − AMP1 (short)     ← full AMP1, never discounted
+Target = Mid + AMP1 (long) / Mid − AMP1 (short)     ← AMP1 re-anchored to true exhaustion (9a)
 Entry  = H3 (buy-stop)   / L3 (sell-stop)           ← pending working order at the exact level
 Stop   = L3 × 0.998      / H3 × 1.002               ← 0.2% beyond the third pivot
 R:R    = |Target − Entry| ÷ |Entry − Stop|          ← computed from ENTRY, never current price
@@ -81,7 +81,7 @@ R:R    = |Target − Entry| ÷ |Entry − Stop|          ← computed from ENTRY
   spread must be < 0.5% of mid and < 0.5× stop distance; per-instrument cap 5/day; session caps.
 - **Set-and-forget via working orders**: entry/stop/target placed as one pending IG working
   order at the exact H3/L3; re-signals amend, never duplicate.
-- **The regression contract**: `test_hvf_method.py` (18 cases, frozen fixtures) + CI gate.
+- **The regression contract**: `test_hvf_method.py` (frozen fixtures + synthetic cases) + CI gate.
   ANY change to detection or data handling must keep the suite green.
 
 ## How to run things
@@ -109,9 +109,9 @@ python -c "from price_action import get_hvf_signal_mtf, get_trend_structure; \
 
 The pattern, entry, and **target formula are word-for-word faithful** to Francis Hunt's
 publicly documented HVF (`Target = midpoint(H3,L3) ± (H1−L1)`). Attention items, in order:
-1. **AMP1 exhaustion anchor** — Hunt anchors H1/L1 at the prior trend's actual exhaustion
-   extremes; our daily windows pick in-window pivots and can clip a >7-month-old top
-   (the weekly path mitigates). Highest-value gap.
+1. **AMP1 exhaustion anchor — ✅ NOW IMPLEMENTED** (apply_exhaustion_amp1, 2026-06-12): the
+   target amplitude re-anchors to the prior trend's true exhaustion extreme over full
+   history; entry/stop unchanged. Daily-window targets grow; weekly unchanged.
 2. **Continuation-only** — our recent-trend override re-classifies post-peak declines,
    a departure from pure continuation.
 3. **`convergence < 0.70` and R:R `3.0` are HOUSE tunings, NOT official numbers** — Hunt

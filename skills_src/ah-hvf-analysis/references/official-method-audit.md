@@ -44,7 +44,7 @@ Net: definition matches across all three; neither RW's examples nor our daily wi
 reliably anchor where Hunt says. RW errs deep (52wk low → inflated AMP1); we err shallow
 (in-window → understated AMP1). The official anchor sits between.
 
-### 1. AMP1 exhaustion anchor — the most important gap
+### 1. AMP1 exhaustion anchor — ✅ MERGED 2026-06-12 (apply_exhaustion_amp1)
 Hunt is explicit: AMP1 is dictated by "the extremities of the price action in its INITIAL
 EXHAUSTION" — i.e. the actual top of the prior trend (H1) and its first natural-support
 pullback low (L1). Our scanner picks H1/L1 as swing pivots inside a FIXED LOOKBACK WINDOW
@@ -55,10 +55,9 @@ daily windows clip; only the weekly path sees it.
 - Mitigation already present: the weekly timeframe reaches ~3 years, so a true multi-month
   funnel is caught there.
 - Residual risk: daily-timeframe HVFs on instruments with a >7-month-old exhaustion top
-  use a clipped AMP1. **Decision for the user:** add an "exhaustion-anchor" step that, for
-  a candidate funnel, looks back to the dominant high/low of the FULL available history
-  for H1/L1 (not just the window) when computing AMP1 + target. Detection-behaviour change
-  → requires suite-green + universe shadow-diff.
+  use a clipped AMP1. **DONE:** apply_exhaustion_amp1 re-anchors ONLY the clipped exhaustion extreme to full
+  history (keeps the funnel's own first-pullback pivot — avoids RW's 52wk over-extension);
+  recomputes target+R:R, re-applies the R:R gate; entry/stop unchanged. Suite case 13.
 
 ### 2. Continuation-only vs our recent-trend override
 Hunt's HVF is strictly a CONTINUATION pattern. Our `recent-trend override` re-classifies a

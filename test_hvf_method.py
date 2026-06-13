@@ -34,7 +34,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
-# 1.0.0   2026-06-12  Alex Hind   Initial build — 11 cases covering every HVF defect found 2026-06-11/12.
+# 1.1.0   2026-06-12  Alex Hind   Case 13 — official-method AMP1 exhaustion anchor (9a merged): re-anchors when the
+#                                 window clips the true top, no-op when it doesn't, entry/stop never move.
+# 1.0.0   2026-06-12  Alex Hind   Initial build — cases covering every HVF defect found 2026-06-11/12.
 # ======================================================================================================================
 
 import io
@@ -226,6 +228,51 @@ def case_absurd_target():
           f"type={r.get('hvf_type')} target={r.get('target')}")
 
 
+def case_exhaustion_anchor():
+    """
+    9a (merged 2026-06-12): apply_exhaustion_amp1 re-anchors the target amplitude to the
+    prior trend's true exhaustion high when the detection window clipped it, and is a no-op
+    when the window already reached it. Entry/stop never move.
+    """
+    import price_action as pa
+    from price_action import apply_exhaustion_amp1, check_hvf_invariants
+
+    # Bullish result: window AMP1 = H1−L1 = 190−170 = 20; mid(H3,L3)=180.5; window target 200.5
+    base = dict(hvf_type="BULLISH", hvf_signal="READY",
+                h1_level=190.0, l1_level=170.0, h2_date="2026-04-15",
+                h3_level=183.0, l3_level=178.0, stop_level=177.6,
+                target=200.5, pattern_range=20.0, risk_reward=3.24, current_price=184.0)
+
+    def _frame(top_high):
+        idx = pd.bdate_range(end="2026-04-15", periods=120)
+        path = np.linspace(120, 185, 120)
+        df = pd.DataFrame({"Open": path, "High": path + 0.5, "Low": path - 0.5,
+                           "Close": path, "Volume": 1e6}, index=idx)
+        df.iloc[40, df.columns.get_loc("High")] = top_high   # the exhaustion candle
+        return df
+
+    orig = pa._get_daily
+    try:
+        # (a) true top 210 is ABOVE the detected H1 190 → re-anchor, target extends
+        pa._get_daily = lambda t, days=220: _frame(210.0)
+        r = apply_exhaustion_amp1("SYNTH", dict(base))
+        check("13a exhaustion above window → re-anchored", r.get("amp1_anchored") is True,
+              f"anchored={r.get('amp1_anchored')}")
+        check("13b target extended to exhaustion (210−170 from mid)", abs(r["target"] - 220.5) < 0.6,
+              f"target={r['target']}")
+        check("13c entry & stop unchanged", r["h3_level"] == 183.0 and r["stop_level"] == 177.6,
+              f"entry={r['h3_level']} stop={r['stop_level']}")
+        check("13d invariants clean after re-anchor", check_hvf_invariants(r) == [],
+              str(check_hvf_invariants(r)))
+        # (b) true top 186 is BELOW the detected H1 190 → no change
+        pa._get_daily = lambda t, days=220: _frame(186.0)
+        r2 = apply_exhaustion_amp1("SYNTH", dict(base))
+        check("13e exhaustion within window → no-op", r2.get("amp1_anchored") is False
+              and abs(r2["target"] - 200.5) < 0.01, f"anchored={r2.get('amp1_anchored')} target={r2['target']}")
+    finally:
+        pa._get_daily = orig
+
+
 def case_invariant_selftest():
     from price_action import check_hvf_invariants
     bad = {"hvf_type": "BEARISH", "hvf_signal": "READY", "h1_level": 100, "l1_level": 80,
@@ -310,6 +357,7 @@ def main():
     case_stale_h3()
     case_bearish()
     case_absurd_target()
+    case_exhaustion_anchor()
     case_invariant_selftest()
     if not quick:
         print("— frozen fixture cases —")
