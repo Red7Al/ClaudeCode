@@ -49,6 +49,11 @@
 #                                 (EURUSD 1.1539 → 11538.6 ×10⁴, JPY ×10² — verified live 2026-06-10); non-power-of-ten
 #                                 mismatches still refused by the entry-distance guard. Live-tested: EURUSD far-from-
 #                                 market LIMIT placed → ACCEPTED → reconciled → deleted.
+# 1.11.1  2026-06-13  Alex Hind   calculate_position_size: added a guard comment documenting that spread-bet margin
+#                                 has NO FX conversion (size × level × margin_factor = GBP directly), verified vs the
+#                                 live account (RR.L £262.06 computed = £261.60 actual deposit). Considered adding
+#                                 USD→GBP FX (user request) and REJECTED — would under-reserve ~23% and reintroduce
+#                                 INSUFFICIENT_FUNDS. No behaviour change.
 # 1.11.0  2026-06-12  Alex Hind   Wrong-instrument hardening after the ASX incident (ticker 'ASX' = ASE Technology on
 #                                 Yahoo; best-scored IG match was ASX Ltd, the Australian exchange — wrong company
 #                                 queued as WATCHING 54.2% from entry): (a) get_epic now verifies the chosen IG
@@ -370,6 +375,16 @@ def calculate_position_size(epic: str, stop_distance: float,
                 available = get_account_balance()["available"]
             except Exception:
                 available = 0
+        # ⚠️ DO NOT add an FX conversion here. SPREAD-BET margin = size × level ×
+        # margin_factor, in GBP DIRECTLY — the £/point stake already encodes the
+        # GBP exposure, so the underlying currency (USD for DELL, GBX for RR.L)
+        # and the pence/cents quoting are all absorbed by the £/point convention.
+        # Verified empirically against the live account 2026-06-13: RR.L size 1.0
+        # @ level 1310.3 @ 20% → computed £262.06, and IG's actual held margin
+        # (account deposit) was £261.60 — a match with no FX. Applying the USD→GBP
+        # rate (≈0.77) would UNDER-reserve ~23% and bring INSUFFICIENT_FUNDS
+        # rejections / margin-call risk straight back. (Considered + rejected
+        # 2026-06-13.)
         margin_size = (available * 0.9) / (price * margin_factor) if price > 0 else 0
 
         # Use the tighter of the two constraints — do NOT blindly force up to min_size.
