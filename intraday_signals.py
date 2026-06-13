@@ -40,6 +40,13 @@
 # 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF Slack post, _generate_x_drafts()
 #                                 posts one tweet-ready block per instrument (with HVF chart attached) to SLACK_TWITTER
 #                                 channel for review before manual posting to X.
+# 1.7.0   2026-06-13  Alex Hind   FIX INSUFFICIENT_FUNDS: the US monitor rescan path sized trades naively with a 0.5
+#                                 floor (size=max(0.5, risk/stop)) and NEVER checked margin — DELL needed ~£3,050
+#                                 margin on £860 available, rejected every scan. Now routes through the margin-aware
+#                                 calculate_position_size (smaller of risk-based and margin-affordable size; profile
+#                                 risk_per_trade + stress_mult), matching the session-open and UK/AUS-monitor paths.
+#                                 size 0 → skip with a missed-trade alert (no IG rejection). Verified: DELL now sizes
+#                                 0.1 (margin ≈ £611) instead of 0.5.
 # 1.6.1   2026-06-13  Alex Hind   X drafts posted to SLACK_TWITTER in BEST→WORST order (user 2026-06-13): TRIGGERED
 #                                 before READY, quality desc, then R:R desc (was quality only). Each draft header
 #                                 carries its rank 'N/total (best→worst)' so the order is explicit even if Slack
@@ -1246,7 +1253,8 @@ def run_us_monitor(notify_slack: bool = True) -> list:
     import pg8000.native
     from signals import scan_instrument, get_macro_gate
     from ig_shim import (open_trade, get_account_balance,
-                         place_hvf_order_from_sig, reconcile_working_orders)
+                         place_hvf_order_from_sig, reconcile_working_orders,
+                         calculate_position_size, get_epic)
     from config import SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION, SESSION_TRADE_CAPS
     from notify import fmt, should_post_summary   # name fmt + 2h summary gate
 
@@ -1345,14 +1353,39 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                                 continue
 
                             stop_dist  = sig.get("stop_distance", 0)
-                            limit_dist = round(stop_dist * DEFAULT_TARGET_RR, 4)
+                            # Margin-AWARE sizing (user 2026-06-13 — DELL was
+                            # rejected INSUFFICIENT_FUNDS because this path floored
+                            # size at 0.5 and never checked margin). Route through
+                            # calculate_position_size, which takes the SMALLER of
+                            # the risk-based size and the margin-affordable size,
+                            # and returns 0 only when even the minimum deal can't
+                            # be margined. No 0.5 floor.
                             try:
                                 bal         = get_account_balance()
-                                risk_amount = bal["available"] * 0.02
-                                size        = round(risk_amount / stop_dist, 1) if stop_dist > 0 else 0.0
-                                size        = max(0.5, min(size, 10.0)) if size > 0 else 0.0
-                            except Exception:
-                                size = 0.0  # skip trade on error — 0.5 fallback caused INSUFFICIENT_FUNDS
+                                stress_mult = macro.get("stress_size_multiplier", 1.0)
+                                risk_amount = bal["available"] * profile["risk_per_trade"] * stress_mult
+                                epic        = get_epic(ticker)
+                                if epic and stop_dist > 0:
+                                    size, stop_dist = calculate_position_size(
+                                        epic, stop_dist, risk_amount,
+                                        available_funds=bal["available"])
+                                else:
+                                    size = 0.0
+                            except Exception as e:
+                                log.warning(f"US Monitor sizing failed for {ticker}: {e}")
+                                size = 0.0   # skip on error — never floor to 0.5
+                            limit_dist = round(stop_dist * DEFAULT_TARGET_RR, 4)
+                            if size <= 0:
+                                try:
+                                    from notify import alert_missed_trade
+                                    alert_missed_trade(
+                                        ticker, sig.get("direction", "?"),
+                                        "Available margin too small for even the minimum deal size on this "
+                                        "instrument — no position placed (no INSUFFICIENT_FUNDS rejection).",
+                                        sig.get("signal_summary", ""))
+                                except Exception:
+                                    pass
+                                continue
                             from signals import conf_names
                             _confs = conf_names(sig)
                             signal_str = (
