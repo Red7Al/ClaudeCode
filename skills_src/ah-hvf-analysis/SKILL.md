@@ -105,8 +105,22 @@ python -c "from price_action import get_hvf_signal_mtf, get_trend_structure; \
   → check each rule above, (4) only then the method itself. This ordering found all three
   real bugs on 2026-06-12.
 
+## Fidelity to the official method (audited 2026-06-12)
+
+The pattern, entry, and **target formula are word-for-word faithful** to Francis Hunt's
+publicly documented HVF (`Target = midpoint(H3,L3) ± (H1−L1)`). Attention items, in order:
+1. **AMP1 exhaustion anchor** — Hunt anchors H1/L1 at the prior trend's actual exhaustion
+   extremes; our daily windows pick in-window pivots and can clip a >7-month-old top
+   (the weekly path mitigates). Highest-value gap.
+2. **Continuation-only** — our recent-trend override re-classifies post-peak declines,
+   a departure from pure continuation.
+3. **`convergence < 0.70` and R:R `3.0` are HOUSE tunings, NOT official numbers** — Hunt
+   publishes neither (his examples show R:R 9.9–13.5). Never present them as Hunt's.
+See `references/official-method-audit.md` for citations and the decision points.
+
 ## Reference files
 
 - `references/parameter-reference.md` — every constant with its code location and history
 - `references/pipeline-reference.md` — end-to-end flow: scan → validate → post → order → review
-- `references/differences-vs-rw.md` — honest gap analysis vs the manual RW-hvf-analysis ruleset
+- `references/differences-vs-rw.md` — gap analysis vs the manual RW-hvf-analysis ruleset
+- `references/official-method-audit.md` — fidelity audit vs Francis Hunt's public method
