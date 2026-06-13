@@ -32,6 +32,10 @@
 #                                 block, making it a function-local — on a day with DEVELOPING setups but ZERO tradeable
 #                                 ones the developing branch raised UnboundLocalError and the whole report crashed (no
 #                                 Slack post). Hoisted the import to module scope (used by both sections).
+# 1.6.0   2026-06-13  Alex Hind   Report shows TOP HVF_REPORT_TOP_N setups in global WEIGHT order (TRIGGERED first then
+#                                 quality), NOT grouped by index; each line tagged with its market (user 2026-06-13:
+#                                 "too many setups, not in weight order"). Full counts stay in the summary line. Removed
+#                                 the now-unused groupby import.
 # 1.4.0   2026-06-13  Alex Hind   One instrument, all timeframes (user 2026-06-13): each setup is shown ONCE and the
 #                                 other timeframes its funnel appears on are listed inline ("Also on:" with a state emoji
 #                                 in TRADEABLE, "· also …" in DEVELOPING), sourced from the new mtf_timeframes field on
@@ -58,12 +62,11 @@ import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 import logging
 import time
-from itertools import groupby                 # module-level: used by BOTH report sections
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-from config import HVF_MIN_RR     # single source of truth for the R:R threshold
+from config import HVF_MIN_RR, HVF_REPORT_TOP_N   # single source of truth for thresholds/limits
 from notify import fmt            # 'TICKER (Full Name)' for every instrument shown
 
 logging.basicConfig(level=logging.INFO,
@@ -293,6 +296,25 @@ def _other_timeframes(r):
             if c.get("hvf_timeframe") and c.get("hvf_timeframe") != primary]
 
 
+def _index_short(index_name: str) -> str:
+    """Short market tag for a report line (user 2026-06-13)."""
+    return {"FTSE 100": "FTSE100", "FTSE 250": "FTSE250",
+            "S&P 500": "S&P500"}.get(index_name, index_name or "?")
+
+
+def _chunk_lines(lines, limit=2900):
+    """Pack rendered lines into <=limit-char chunks (Slack caps a section at 3000)."""
+    out, cur = [], ""
+    for ln in lines:
+        if cur and len(cur) + 1 + len(ln) > limit:
+            out.append(cur); cur = ln
+        else:
+            cur = (cur + "\n" + ln) if cur else ln
+    if cur:
+        out.append(cur)
+    return out
+
+
 def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
     """Build Slack Block Kit message for the daily HVF report."""
     blocks = []
@@ -314,47 +336,40 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
 
     # ── TRADEABLE ─────────────────────────────────────────────────────────────────────────────────────────────────────
     if tradeable:
+        # Top N in WEIGHT order (user 2026-06-13: "too many setups, not in weight order").
+        # categorise() already sorted tradeable by signal (TRIGGERED first) then quality;
+        # show the top N in that order, NOT grouped by index. Each line carries its market.
+        top = tradeable[:HVF_REPORT_TOP_N]
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn",
-                     "text": f"*⚡ TRADEABLE — {len(tradeable)} setups*"}
+                     "text": f"*⚡ TRADEABLE — top {len(top)} of {len(tradeable)}* (weight order)"}
         })
-
-        # Group by index
-        tradeable_sorted = sorted(tradeable, key=lambda r: r.get("index", ""))
-        for index_name, group in groupby(tradeable_sorted, key=lambda r: r.get("index", "")):
-            group = list(group)
-            lines = []
-            for r in group:
-                d  = _dir_emoji(r.get("hvf_type"))
-                s  = _signal_emoji(r.get("hvf_signal"))
-                t  = r.get("ticker", "")
-                rr = _rr(r)
-                tf = _tf_short(r.get("hvf_timeframe", ""))
-                entry  = _fmt_price(r.get("h3_level"))
-                stop   = _fmt_price(r.get("stop_level"))
-                target = _fmt_price(r.get("target"))
-                q      = r.get("pattern_quality", 0)
-                line = (f"{d}{s} *{fmt(t)}*  R:R {rr}  Q={q}  [{tf}]\n"
-                        f"    Entry {entry}  Stop {stop}  Target {target}")
-                # One instrument, all timeframes (feedback_hvf_timeframe_grouping): list the
-                # other timeframes the same funnel appears on, each with its own state emoji.
-                # The vetted entry/stop/target/R:R above belong to the primary timeframe [{tf}].
-                others = _other_timeframes(r)
-                if others:
-                    extra = "  ·  ".join(
-                        f"{_signal_emoji(c.get('hvf_signal'))} {_tf_short(c.get('hvf_timeframe'))}"
-                        for c in others)
-                    line += f"\n    Also on: {extra}"
-                lines.append(line)
-
-            # Slack limits block text to 3000 chars — chunk if needed
-            chunk = "\n".join(lines)
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn",
-                         "text": f"*{index_name}*\n{chunk[:2900]}"}
-            })
+        lines = []
+        for r in top:
+            d  = _dir_emoji(r.get("hvf_type"))
+            s  = _signal_emoji(r.get("hvf_signal"))
+            t  = r.get("ticker", "")
+            rr = _rr(r)
+            tf = _tf_short(r.get("hvf_timeframe", ""))
+            idx = _index_short(r.get("index", ""))
+            entry  = _fmt_price(r.get("h3_level"))
+            stop   = _fmt_price(r.get("stop_level"))
+            target = _fmt_price(r.get("target"))
+            q      = r.get("pattern_quality", 0)
+            line = (f"{d}{s} *{fmt(t)}*  R:R {rr}  Q={q}  [{tf}] · {idx}\n"
+                    f"    Entry {entry}  Stop {stop}  Target {target}")
+            # One instrument, all timeframes (feedback_hvf_timeframe_grouping): list the
+            # other timeframes the same funnel appears on, each with its own state emoji.
+            others = _other_timeframes(r)
+            if others:
+                extra = "  ·  ".join(
+                    f"{_signal_emoji(c.get('hvf_signal'))} {_tf_short(c.get('hvf_timeframe'))}"
+                    for c in others)
+                line += f"\n    Also on: {extra}"
+            lines.append(line)
+        for blk in _chunk_lines(lines):
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})
     else:
         blocks.append({
             "type": "section",
@@ -366,37 +381,30 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
 
     # ── DEVELOPING ────────────────────────────────────────────────────────────────────────────────────────────────────
     if developing:
+        topd = developing[:HVF_REPORT_TOP_N]   # categorise() ordered these by R:R desc
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn",
-                     "text": f"*👀 DEVELOPING — {len(developing)} on watch*"}
+                     "text": f"*👀 DEVELOPING — top {len(topd)} of {len(developing)} on watch*"}
         })
-
-        dev_sorted = sorted(developing, key=lambda r: r.get("index", ""))
-        for index_name, group in groupby(dev_sorted, key=lambda r: r.get("index", "")):
-            group = list(group)
-            lines = []
-            for r in group:
-                d  = _dir_emoji(r.get("hvf_type"))
-                t  = r.get("ticker", "")
-                rr = _rr(r)
-                tf = _tf_short(r.get("hvf_timeframe", ""))
-                entry  = _fmt_price(r.get("h3_level"))
-                stop   = _fmt_price(r.get("stop_level"))
-                target = _fmt_price(r.get("target"))
-                # One instrument, all timeframes (feedback_hvf_timeframe_grouping) — compact
-                # "· also …" tail listing the other timeframes this funnel appears on.
-                others = _other_timeframes(r)
-                also = ("  · also " + ", ".join(_tf_short(c.get("hvf_timeframe")) for c in others)) if others else ""
-                lines.append(
-                    f"{d}👀 *{fmt(t)}*  R:R {rr}  [{tf}]  "
-                    f"Entry {entry}  Stop {stop}  Target {target}{also}"
-                )
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn",
-                         "text": f"*{index_name}*\n" + "\n".join(lines[:2900])}
-            })
+        lines = []
+        for r in topd:
+            d  = _dir_emoji(r.get("hvf_type"))
+            t  = r.get("ticker", "")
+            rr = _rr(r)
+            tf = _tf_short(r.get("hvf_timeframe", ""))
+            idx = _index_short(r.get("index", ""))
+            entry  = _fmt_price(r.get("h3_level"))
+            stop   = _fmt_price(r.get("stop_level"))
+            target = _fmt_price(r.get("target"))
+            others = _other_timeframes(r)
+            also = ("  · also " + ", ".join(_tf_short(c.get("hvf_timeframe")) for c in others)) if others else ""
+            lines.append(
+                f"{d}👀 *{fmt(t)}*  R:R {rr}  [{tf}] · {idx}  "
+                f"Entry {entry}  Stop {stop}  Target {target}{also}"
+            )
+        for blk in _chunk_lines(lines):
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})
     else:
         blocks.append({
             "type": "section",

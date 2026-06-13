@@ -39,6 +39,8 @@
 # 1.11.0  2026-06-13  Alex Hind   X_DRAFT_TOP_N (count of X drafts per run, default 20) and HVF_LIQUIDITY_TIERS_GBP
 #                                 (turnover-based pattern-quality penalty so illiquid names rank lower) — both tunable
 #                                 here without touching intraday_signals.py / price_action.py (user 2026-06-13).
+# 1.12.0  2026-06-13  Alex Hind   HVF_REPORT_TOP_N — max setups listed in the daily report (weight-ordered); tunable
+#                                 here (user 2026-06-13: "too many setups").
 # 1.10.0  2026-06-12  Alex Hind   TICKER FIX: "TE" replaced with "TEL" everywhere — Yahoo's TE is T1 Energy Inc, NOT
 #                                 TE Connectivity (TEL). All TE signals had been computed on T1 Energy's prices while
 #                                 orders would have routed to TE Connectivity's epic; never traded. Also
@@ -565,6 +567,11 @@ HVF_MIN_RR = MIN_RISK_REWARD
 # Number of HVF X (Twitter) drafts posted per run, best→worst (user 2026-06-13).
 # Stored here so the count is changed in ONE place without re-testing intraday_signals.
 X_DRAFT_TOP_N = 20
+
+# Max HVF setups listed in the daily report's TRADEABLE / DEVELOPING sections, shown in
+# WEIGHT order (TRIGGERED first, then quality) — the full count still shows in the summary
+# line. Keeps the report readable (user 2026-06-13: "too many setups, not in weight order").
+HVF_REPORT_TOP_N = 20
 
 # HVF liquidity quality penalty (user 2026-06-13): illiquid names must NOT rank high on
 # the list. Tiers of recent median DAILY turnover (Close × Volume, in GBP — ".L" prices
