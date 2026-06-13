@@ -29,6 +29,21 @@ the third high and the third low."
 
 ## Needs ATTENTION
 
+### 0. Three-way AMP1 comparison (official vs RW vs ours)
+Hunt's "first low" = the first natural-support PULLBACK low after the exhaustion high —
+NOT the 52-week low.
+- **RW stated rule**: matches Hunt exactly — "AMP1 = H1−L1, exhaustion candle levels, NOT
+  52wk range, full target, no discounting."
+- **RW worked examples**: deviate — Gold uses the post-ATH counter-low (correct), but
+  Silver and Rolls-Royce substitute the 52-WEEK LOW for L1 (RR flagged "proxy, verify").
+  RR: RW L1=868p (52wk) → AMP1 552 → target 1,771; official first-pullback low ≈1,078p
+  (30 Mar) → AMP1 342 → target ≈1,607. RW's target is ~164p high purely from the proxy.
+- **Ours**: in-window pivots — correct WHEN the window reaches the exhaustion top (RR.L
+  weekly already anchors at the 1,420 ATH), but daily windows clip older tops.
+Net: definition matches across all three; neither RW's examples nor our daily windows
+reliably anchor where Hunt says. RW errs deep (52wk low → inflated AMP1); we err shallow
+(in-window → understated AMP1). The official anchor sits between.
+
 ### 1. AMP1 exhaustion anchor — the most important gap
 Hunt is explicit: AMP1 is dictated by "the extremities of the price action in its INITIAL
 EXHAUSTION" — i.e. the actual top of the prior trend (H1) and its first natural-support

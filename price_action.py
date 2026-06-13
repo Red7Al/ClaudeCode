@@ -82,6 +82,10 @@
 # 1.2.0   2026-06-05  Alex Hind   Per-instrument PA threshold (Fix 1): crypto now uses threshold=25, FX/commodities
 #                                 30-35, equities/indices keep default 40. HVF TRIGGERED bypass (Fix 2): threshold
 #                                 halved when HVF has confirmed entry — price has voted.
+# 1.9.2   2026-06-12  Alex Hind   PROTOTYPE compute_exhaustion_amp1() (backlog 9a, NOT wired into detection) — official-method
+#                                 AMP1: re-anchors ONLY the clipped exhaustion extreme to full history, keeps the
+#                                 funnel's own first-pullback pivot (avoids RW's 52wk-low over-extension). For shadow-
+#                                 diffing via shadow_diff_amp1.py before any merge. No production behaviour change.
 # 1.9.1   2026-06-12  Alex Hind   current_price stored on every HVF result (daily + weekly paths, empty dicts) — feeds
 #                                 the "Now:" display in tweets and post cards (user 2026-06-12).
 # 1.9.0   2026-06-12  Alex Hind   daily-180 timeframe added to the MTF scan (user request) — six-month window for
@@ -1428,6 +1432,81 @@ def check_hvf_invariants(r: dict) -> list:
     if dates != sorted(dates):
         v.append(f"high pivot dates not chronological: {dates}")
     return v
+
+
+def compute_exhaustion_amp1(ticker: str, result: dict, long_days: int = 500,
+                            exhaustion_lookback: int = 260):
+    """
+    OFFICIAL-METHOD AMP1 (backlog 9a — PROTOTYPE, not wired into get_hvf_signal).
+    Francis Hunt anchors AMP1 at the prior trend's ACTUAL exhaustion extremes, not the
+    in-window swing pivots: AMP1 = (exhaustion high − first natural-support pullback low)
+    for a bullish funnel, mirrored for bearish. Entry/stop stay at the funnel's 3rd pivots;
+    only the target AMPLITUDE is re-anchored.
+
+    Returns a dict {amp1_official, target_official, exhaustion, first_pullback, amp1_window,
+    target_window} for shadow-diffing against the live values, or None when it cannot be
+    computed. Pure read — never mutates `result`.
+
+    Caveat: the exhaustion extreme is the dominant High/Low in the ~`exhaustion_lookback`
+    trading days BEFORE the funnel's H2 (captures the immediately-preceding trend, not an
+    ancient cycle top). Shadow-diff before trusting.
+    """
+    import pandas as pd
+    if not result.get("hvf_type"):
+        return None
+    h3, l3 = result.get("h3_level"), result.get("l3_level")
+    h2_date = result.get("h2_date")
+    if h3 is None or l3 is None or not h2_date:
+        return None
+    try:
+        hist = _get_daily(ticker, days=long_days)   # sanitised long history
+        if hist is None or hist.empty:
+            return None
+        cutoff = pd.Timestamp(h2_date)
+        if cutoff.tzinfo is not None:
+            cutoff = cutoff.tz_localize(None)
+        idx = hist.index
+        if getattr(idx, "tz", None) is not None:
+            hist = hist.copy()
+            hist.index = idx.tz_localize(None)
+        prior = hist[hist.index <= cutoff].tail(exhaustion_lookback)
+        if len(prior) < 20:
+            return None
+
+        # Hunt's L1 = the funnel's OWN first pullback low (the "final natural support" the
+        # detector already found in-window) — NOT the deepest low over the year (that is
+        # RW's 52wk-low over-extension error). So re-anchor ONLY the clipped EXHAUSTION
+        # extreme to full history; keep the funnel's other first-pivot. Never pull inward.
+        h1, l1 = result.get("h1_level"), result.get("l1_level")
+        if h1 is None or l1 is None:
+            return None
+        bullish = result["hvf_type"] == "BULLISH"
+        mid = (h3 + l3) / 2.0
+        if bullish:
+            exh  = max(float(prior["High"].max()), h1)   # true exhaustion high ≥ detected H1
+            pull = l1                                    # funnel's first pullback low (kept)
+            amp1 = exh - pull
+            target = round(mid + amp1, 6)
+        else:
+            exh  = min(float(prior["Low"].min()), l1)    # true exhaustion low ≤ detected L1
+            pull = h1                                    # funnel's first pullback high (kept)
+            amp1 = pull - exh
+            target = round(mid - amp1, 6)
+        if amp1 <= 0 or target <= 0:
+            return None
+
+        amp1_window = h1 - l1
+        return {
+            "amp1_official":  round(amp1, 6),
+            "target_official": target,
+            "exhaustion":     round(exh, 6),
+            "first_pullback": round(pull, 6),
+            "amp1_window":    round(amp1_window, 6) if amp1_window is not None else None,
+            "target_window":  result.get("target"),
+        }
+    except Exception as e:
+        log.warning(f"compute_exhaustion_amp1 {ticker} failed: {e}")
+        return None
 
 
 def validate_hvf_with_ig(ticker: str, result: dict, min_allowance: int = 1500) -> dict:
