@@ -11,18 +11,24 @@ Inputs per setup: ticker, company name, direction (BULLISH/BEARISH), state
 target, R:R, pattern quality, and the aligned-confirmation context.
 
 ```
-base_with_name = "{emoji} ${ticker} ({name}) — Volatility squeeze {state} {higher|lower}\n"
-base_no_name   = same without "({name})"
+disp_ticker    = ticker without trailing ".L"        # $MNG / #MNG for UK names (2026-06-13)
+hook           = rotate(_X_HOOKS[state]).format(cash="$"+disp_ticker)   # line 1, e.g. "👀 Watching $MNG"
+description    = rotate(_X_DESC[(direction, state)]) # line 2, rotated squeeze phrasing
+rotate(list)   = list[(rank-1 + day_of_year) % len(list)]   # consecutive posts differ
+base_with_name = "{hook} ({name})\n{description}\n"
+base_no_name   = "{hook}\n{description}\n"
 # NO price line and NO HVF timeframe in the tweet text (2026-06-13) — both live on the PNG card.
 justifications = ordered list of (full, short) phrasings:
     1. Pattern quality {q}/100                      (only if q ≥ 60)
     2. Options flow {bias} (call/put {x.xx}, implied volatility rank {n}%)   | short: drop IV rank
     3. Insider buying on record
     4. US Senate-disclosed buying                   | short: Senate buying    (longs only)
-    5. Futures positioning {bias} (COT report)      | short: COT {bias}
-    6. Strong trend in force (ADX)                  | short: Strong trend (ADX)
-    7. Volume flow backing the move                 | short: Volume backing move
-    8. Sector ({ETF}) moving the same way           | short: Sector aligned
+    5. Futures positioning {bias} (COT report, smart money) | short: COT {bias} (smart money)
+    6. Above VWAP / Below VWAP                       | short: same (aligned: ABOVE→long, BELOW→short)
+    7. Strong trend in force (ADX)                  | short: Strong trend (ADX)
+    8. Volume flow backing the move (OBV)           | short: Volume backing (OBV)
+    9. Sector ({ETF}) moving the same way           | short: Sector aligned
+# VWAP tweet tag is short only; the plain-English VWAP "why" is drawn on the PNG card.
 tags_long  = "#StockAlert #TechnicalAnalysis #{ticker} #Trading"
 tags_short = drop "#Trading"
 disclaimer = "\nNot financial advice."
@@ -55,6 +61,8 @@ target line   axhline dotted #3fb950 width 1.0 + right label "Target {v}"
 labels        ax.text(1.01, level, …, transform=ax.get_yaxis_transform(), va="center")
 x axis        DateFormatter "%b %d", MonthLocator(1), ticks #8b949e size 9
 spines        #30363d;  tick colour #8b949e
+vwap caption  fig.text x=0.05 y=0.015 italic #8b949e size 8.5 — direction-aligned VWAP
+              logic from signal_log.vwap_position (ABOVE+bullish / BELOW+bearish); else omitted
 direction     ▲ (bullish) / ▼ (bearish) prefix on the title row
 ```
 

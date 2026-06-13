@@ -26,26 +26,35 @@ system both come from `intraday_signals.py` (`_generate_x_drafts` for text,
 Structure, in order:
 
 ```
-📈 $TICKER (Full Company Name) — Volatility squeeze {breaking out|coiled, ready} {higher|lower}
-Pattern quality 82/100  ·  Options flow bullish (call/put 1.42)  ·  Futures positioning bullish (COT report)
+👀 Watching $TICKER (Full Company Name)                       ← rotated HOOK leads (line 1)
+Volatility squeeze {breaking out|coiled, ready} {higher|lower}  ← rotated description (line 2)
+Pattern quality 82/100  ·  Above VWAP  ·  Options flow bullish (call/put 1.42)
 #StockAlert #TechnicalAnalysis #TICKER #Trading
 Not financial advice.
 
-(Prices and timeframe are NOT in the tweet text — they live on the PNG card.)
+(UK names: ".L" stripped → $MNG / #MNG. Prices and timeframe are NOT in the tweet —
+ they live on the PNG card. Hook + description both rotate so consecutive posts differ.)
 ```
 
 Rules (each one is a user directive — violating any is a regression):
 1. **"Not financial advice."** on EVERY post, no exceptions (2026-06-11). Appended in code,
    not by author discipline.
-2. **Full company name** beside the ticker — "$MONY.L (Mony Group PLC)", never a bare
+2. **Full company name** beside the ticker — "$MNG (Mony Group PLC)", never a bare
    ticker (resolve via the broker lookup, then Yahoo; the system's `_resolve_name`).
+   **Strip ".L"** from the cashtag/hashtag for UK names (2026-06-13): $MNG / #MNG, not
+   $MNG.L (X cashtags don't allow the dot anyway).
 3. **Plain-English justifications only** (2026-06-11): no raw enums, no "Confs:N" counts,
    no NEUTRAL states. The approved vocabulary:
    - Pattern quality NN/100 (only when ≥ 60 — weak quality is not a selling point)
    - "Options flow bullish (call/put 1.42, implied volatility rank 72%)"
    - "Insider buying on record" · "US Senate-disclosed buying"
-   - "Futures positioning bullish (COT report)" · "Strong trend in force (ADX)"
-   - "Volume flow backing the move" · "Sector (XLK) moving the same way"
+   - "Futures positioning bullish (COT report, smart money)" — COT commercials are the
+     system's smart money; options flow is NOT (mixed institutional + retail), so only
+     COT carries the "(smart money)" tag (2026-06-13). · "Strong trend in force (ADX)"
+   - "Volume flow backing the move (OBV)" · "Sector (XLK) moving the same way"
+   - "Above VWAP" / "Below VWAP" — short tag ONLY (direction-aligned: ABOVE→long,
+     BELOW→short). The plain-English VWAP reasoning is drawn on the PNG card, NOT the
+     tweet (2026-06-13). No VWAP % in the tweet — `signal_log` stores position, not %.
 4. **Only direction-aligned justifications** (2026-06-11: "Bearish is not confirmation
    for a buy"): bullish evidence never decorates a short, and vice versa.
 5. **Fitting order when over 280 chars**: keep as MANY justifications as possible first
@@ -56,6 +65,13 @@ Rules (each one is a user directive — violating any is a regression):
 7. **No prices in the tweet text** (2026-06-13) — Now/Entry/Stop/Target/R:R live on the PNG
    card, not the tweet. The tweet is description + clear-English confirmations only.
 8. **No HVF timeframe** (e.g. d220) in the tweet OR card (2026-06-13).
+9. **Lead with a rotated hook** (2026-06-13) — line 1 is a hook (`👀 Watching $MNG`,
+   `🚨 Breakout: $MNG`, …), not raw numbers. Hooks live in `_X_HOOKS` keyed by signal
+   state (TRIGGERED/READY).
+10. **Rotate the phrasing** (2026-06-13) — both hook and the line-2 description cycle
+    through `_X_HOOKS`/`_X_DESC` by batch position + day-of-year so consecutive posts
+    don't read identically. Meaning is fixed (state + direction); only wording varies.
+    Emoji hooks render fine in tweet text (X/Slack), unlike the matplotlib card.
 
 ## The post card (PNG, attached under the tweet)
 
@@ -65,12 +81,18 @@ Dark "X-native" card, 12 × 8.5 in @ 140 dpi, background `#0d1117`. Two zones:
 | y | Text | Colour | Size | Style |
 |---|---|---|---|---|
 | 0.965 | @EndToEndTrading | #1d9bf0 | 13 | bold |
-| 0.925 | ▲/▼ $TICKER (Company Name) | #ffffff | 16 | bold |
+| 0.925 | ▲/▼ $TICKER (Company Name) — ".L" stripped | #ffffff | 16 | bold |
 | 0.888 | Volatility squeeze … (NO timeframe) | #c9d1d9 | 13 | |
-| 0.852 | Now / Entry / Stop / Target / R:R line | #c9d1d9 | 12 | |
-| 0.818 | 52w High / 52w Low (1y fetch) | #8b949e | 11 | |
+| 0.852 | Now · ◎ Entry · ● Stop · ▲ Target · ⚖ R:R — colour-coded markers (see below) | mixed | 12 | |
+| 0.818 | 52w High / 52w Low (1y fetch) + ◆ P/E (forward→trailing, omitted if absent/≤0) | #8b949e | 11 | |
 | 0.784 | hashtags | #8b949e | 11 | |
 | 0.750 | Not financial advice. | #8b949e | 10 | italic |
+
+**Levels line markers (y=0.852, drawn as colour-coded segments, 2026-06-13):** colour
+emoji don't render in matplotlib's font, so use DejaVu-safe glyphs, each in its own
+colour — `◎ Entry` gold `#e3b341`, `● Stop` red `#f85149`, `▲ Target` green `#3fb950`,
+`⚖ R:R` neutral `#c9d1d9`. Rendered segment-by-segment (one `fig.text` per segment,
+widths measured via the Agg renderer) because a single text call is one colour.
 
 **Chart (axes rect [0.05, 0.06, 0.83, 0.62]):**
 - Price line `#58a6ff` (1.6 px) with a 7%-alpha fill to the series minimum
@@ -78,7 +100,16 @@ Dark "X-native" card, 12 × 8.5 in @ 140 dpi, background `#0d1117`. Two zones:
   with dots; lower jaw L1→L2→L3 dashed green `#3fb950` with dots
 - Full-width horizontal lines + right-edge labels: Entry dashed gold `#e3b341`,
   Stop dotted red, Target dotted green — label text matches line colour
+- **52-week-high gridline** (purple `#a371f7`, dashed, 2026-06-13): target context —
+  shows headroom to the year's high or a break to new highs. Skipped if implausibly far
+  above the action; y-axis is reframed to all levels so nothing is clipped.
 - Axis text `#8b949e` size 9, spines `#30363d`, month-day x-format
+- **VWAP logic caption** (bottom, `fig.text` x=0.05 y=0.015, italic `#8b949e` size 8.5),
+  shown only when the day's VWAP position aligns with the trade direction (2026-06-13):
+  "VWAP: price above the day's volume-weighted average — buyers paying up, demand
+  aggressive → confirms the long" (bearish: "below … — sellers pressing, demand weak →
+  confirms the short"). Sourced from `signal_log.vwap_position` — the same value as the
+  tweet's short tag, so card and tweet always agree. Absent position → no caption.
 - History window: from 14 days before the oldest pivot (capped 365d, min 30d)
 - Data must be SANITISED before plotting (phantom exchange wicks clipped) and pivots
   must be the detector's, never hand-drawn — the funnel sits on real swing points

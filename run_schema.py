@@ -19,6 +19,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.0   2026-06-13  Alex Hind   signal_log: add vwap_pct (numeric) — % distance from intraday VWAP, shown on the X
+#                                 post card (user 2026-06-13). Idempotent ADD COLUMN IF NOT EXISTS.
 # 1.0.0   2026-06-02  Alex Hind   Initial build. Idempotent migrations for signal_log, positions, macro_snapshot,
 #                                 hvf_scan_log, and epic_lookup tables.
 # 1.2.0   2026-06-11  Alex Hind   missed_trade_log table — dedupes TRADEABLE SIGNAL NOT PLACED alerts: one row per (day,
@@ -68,6 +70,11 @@ MIGRATIONS = [
     (
         "signal_log: add pa_verdict",
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS pa_verdict text"
+    ),
+    (
+        # user 2026-06-13: % distance from intraday VWAP, shown on the X post card.
+        "signal_log: add vwap_pct",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS vwap_pct numeric"
     ),
 
     # ── signal_log: columns read by run_daily_report.py but missing from table ──
