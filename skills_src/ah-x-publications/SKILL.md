@@ -21,6 +21,25 @@ system both come from `intraday_signals.py` (`_generate_x_drafts` for text,
 
 ---
 
+## ⛔ Delivery & secrets — DO NOT BREAK (user 2026-06-13)
+
+This flow already works. Change ONLY the ORDER and the text/PNG CONTENT. Never swap the
+delivery mechanism or "work around" it.
+
+- **Delivery (the working format):** `_generate_x_drafts(tradeable)` posts **one Slack
+  message per instrument = tweet TEXT + that instrument's card PNG**, in WEIGHT order
+  (TRIGGERED first → quality desc → R:R), to #arw-claude-twitter. This is what runs in
+  production and what we must preserve.
+- **Secrets are in GitHub Secrets, NOT local `.env`.** Text posts via the `SLACK_TWITTER`
+  webhook; the PNG uploads via `SLACK_BOT_TOKEN` + `SLACK_TWITTER_CHANNEL_ID` (webhooks
+  CANNOT upload images — only the bot token can). Those three are GitHub-only, so the
+  publication runs in GitHub Actions, not locally.
+- **Never:** try to post from the local environment; ask the user to put secrets in
+  `.env`; or replace the text+PNG flow with a text-only Slack-MCP send (the MCP connector
+  can't attach images, so it is NOT a substitute). See memory `secrets_and_x_delivery`.
+
+---
+
 ## The tweet (≤ 280 characters, hard limit)
 
 Structure, in order:
