@@ -68,6 +68,17 @@
 # 1.11.0  2026-06-13  Alex Hind   X-draft count moved to config.X_DRAFT_TOP_N (was hardcoded 20) so it's tuned in one
 #                                 place; the signal_log context enrichment now covers all X_DRAFT_TOP_N posted drafts
 #                                 (was the first 10), so ranks 11–20 also get their plain-English confirmations.
+# 1.12.0  2026-06-13  Alex Hind   FIX: _X_HOOKS keyed by signal only → BEARISH setups got bullish hooks ("📈 breaking
+#                                 out" / "Breakout:" on a breakdown, contradicting the direction-correct description).
+#                                 Now keyed by (direction, signal): bearish TRIGGERED → "📉 breaking down now" / "Breakdown:".
+# 1.13.0  2026-06-13  Alex Hind   Tweet now carries a plain-English PRIMARY-signal explainer line (_X_EXPLAIN, rotated,
+#                                 direction+state aware) so a reader with no system knowledge understands the squeeze —
+#                                 user 2026-06-13 ("very little explanation of primary/confirmation signals"). Fitting
+#                                 prioritises keeping the explainer (then name, then confirmations to taste) within 280.
+# 1.14.0  2026-06-13  Alex Hind   Tweet disclaimer: blank line before it + rendered in Unicode bold italic (user
+#                                 2026-06-13). Fitting now uses _x_weighted_len (SMP glyphs — emoji hooks + bold-italic
+#                                 disclaimer — count as 2, matching X's 280 weighting) instead of len(), so "fits X" is
+#                                 honest. NOTE: bold-italic disclaimer is SMP Unicode — not screen-reader friendly.
 # 1.6.1   2026-06-13  Alex Hind   X drafts posted to SLACK_TWITTER in BEST→WORST order (user 2026-06-13): TRIGGERED
 #                                 before READY, quality desc, then R:R desc (was quality only). Each draft header
 #                                 carries its rank 'N/total (best→worst)' so the order is explicit even if Slack
@@ -715,10 +726,16 @@ _SIG_LABEL = {
 # keeping the MEANING fixed — state (breaking out vs coiled) and direction (higher vs
 # lower). "{cash}" is filled with the $cashtag (".L" stripped for UK names).
 _X_HOOKS = {
-    "TRIGGERED": ["🚨 Breakout: {cash}", "⚡ {cash} on the move",
-                  "🚨 {cash} just triggered", "📈 {cash} breaking out now"],
-    "READY":     ["👀 Watching {cash}", "👀 On the radar: {cash}",
-                  "⏳ {cash} coiling up", "👀 {cash} setting up"],
+    # Keyed by (direction, signal) — a bearish setup must NOT get a bullish hook
+    # (📈 "breaking out" on a breakdown). READY hooks are direction-neutral.
+    ("BULLISH", "TRIGGERED"): ["🚨 Breakout: {cash}", "⚡ {cash} on the move",
+                               "🚨 {cash} just triggered", "📈 {cash} breaking out now"],
+    ("BEARISH", "TRIGGERED"): ["🚨 Breakdown: {cash}", "⚡ {cash} on the move",
+                               "🚨 {cash} just triggered", "📉 {cash} breaking down now"],
+    ("BULLISH", "READY"):     ["👀 Watching {cash}", "👀 On the radar: {cash}",
+                               "⏳ {cash} coiling up", "👀 {cash} setting up"],
+    ("BEARISH", "READY"):     ["👀 Watching {cash}", "👀 On the radar: {cash}",
+                               "⏳ {cash} coiling up", "👀 {cash} setting up"],
 }
 _X_DESC = {
     ("BULLISH", "TRIGGERED"): ["Volatility squeeze breaking out higher",
@@ -738,6 +755,36 @@ _X_DESC = {
                                "Coiling tight, loaded to the downside",
                                "Range tightening, leaning lower"],
 }
+# Plain-English explanation of the PRIMARY signal (the squeeze) so a reader with no
+# system knowledge understands what's happening — added to the tweet body (user
+# 2026-06-13: "very little explanation of primary/confirmation signals"). Rotated and
+# direction+state aware; kept short (~75 chars) so it coexists with confirmations.
+_X_EXPLAIN = {
+    ("BULLISH", "TRIGGERED"): [
+        "A tight coil just broke out the top — momentum often follows the break.",
+        "Range squeezed shut, now releasing upward as buyers clear the ceiling.",
+        "Compression resolved to the upside; squeeze breakouts like this can run.",
+        "Buyers cleared the ceiling after a long squeeze; watching for follow-through.",
+    ],
+    ("BULLISH", "READY"): [
+        "Range is winding tighter; a push above the ceiling is the trigger to watch.",
+        "Coiling into a tight squeeze — a break higher would confirm the move.",
+        "Energy building in a narrowing range; bias is up on a break above.",
+        "Tightening toward a decision point, leaning higher — not triggered yet.",
+    ],
+    ("BEARISH", "TRIGGERED"): [
+        "A tight coil just broke down through support — moves like this often extend.",
+        "Range squeezed shut, now releasing downward as sellers clear the floor.",
+        "Compression resolved to the downside; squeeze breakdowns like this can run.",
+        "Sellers cleared the floor after a long squeeze; watching for follow-through.",
+    ],
+    ("BEARISH", "READY"): [
+        "Range is winding tighter; a drop below support is the trigger to watch.",
+        "Coiling into a tight squeeze — a break lower would confirm the move.",
+        "Energy building in a narrowing range; bias is down on a break below.",
+        "Tightening toward a decision point, leaning lower — not triggered yet.",
+    ],
+}
 
 
 def _x_rotation_index(rank: int) -> int:
@@ -746,6 +793,31 @@ def _x_rotation_index(rank: int) -> int:
     day to day. Callers take this modulo the template-list length."""
     import time as _t
     return (rank - 1) + _t.gmtime().tm_yday
+
+
+def _bold_italic(s: str) -> str:
+    """Map ASCII letters to Unicode Mathematical Bold Italic so the text shows as
+    bold-italic on X (plain tweets have no markdown). NOTE: these are supplementary-
+    plane glyphs — screen readers may skip them and X counts each as 2 chars."""
+    out = []
+    for c in s:
+        o = ord(c)
+        if 65 <= o <= 90:      out.append(chr(0x1D468 + o - 65))   # A–Z
+        elif 97 <= o <= 122:   out.append(chr(0x1D482 + o - 97))   # a–z
+        else:                  out.append(c)
+    return "".join(out)
+
+
+def _x_weighted_len(s: str) -> int:
+    """Approximate X's weighted character count: supplementary-plane code points
+    (emoji hooks, the bold-italic disclaimer) count as 2, everything else as 1 —
+    models the 280-char limit far better than len() for our content."""
+    return sum(2 if ord(c) > 0xFFFF else 1 for c in s)
+
+
+# Disclaimer in bold italic, preceded by a blank line (user 2026-06-13). Plain ASCII
+# is kept here for readability; rendered to Unicode bold-italic once at import.
+_NFA_DISCLAIMER = "\n\n" + _bold_italic("Not financial advice.")
 
 
 def _tf_desc(tf_raw: str) -> str:
@@ -1195,10 +1267,14 @@ def _generate_x_drafts(tradeable: list):
         # Rotated hook + description (user 2026-06-13) — see _X_HOOKS / _X_DESC. Falls
         # back gracefully if a state/direction combo isn't templated.
         _rot   = _x_rotation_index(_rank)
-        _hooks = _X_HOOKS.get(signal, _X_HOOKS["READY"])
+        _hooks = _X_HOOKS.get((direction, signal)) or _X_HOOKS[("BULLISH", "READY")]
         hook   = _hooks[_rot % len(_hooks)].format(cash=f"${disp_ticker}")
         _descs = _X_DESC.get((direction, signal), [f"Volatility squeeze {sig_desc} {dir_word}"])
         description = _descs[_rot % len(_descs)]
+        # Plain-English primary-signal explanation (user 2026-06-13) — rotated; empty
+        # for any non-templated state (then the explainer line is simply omitted).
+        _expls  = _X_EXPLAIN.get((direction, signal), [""])
+        explain = _expls[_rot % len(_expls)]
 
         # ── Justification line from signal_log — every aligned confirmation in
         # plain English (user 2026-06-11: confirmations must be understandable;
@@ -1280,28 +1356,35 @@ def _generate_x_drafts(tradeable: list):
         # Prices (Now/Entry/Stop/Target/R:R) and the HVF timeframe are NOT in the
         # tweet text — they live on the attached PNG card. The tweet is hook +
         # description + clear-English confirmations only.
+        # Base variants in PRIORITY order (user 2026-06-13): keep the plain-English
+        # explainer line AND the company name; drop them only if the tweet won't fit
+        # 280 otherwise. The explainer is dropped before the name is kept (explanation
+        # matters more than the long name).
+        base_name_expl = f"{hook} ({name})\n{description}\n{explain}\n"
+        base_expl      = f"{hook}\n{description}\n{explain}\n"
         base_with_name = f"{hook} ({name})\n{description}\n"
         base_no_name   = f"{hook}\n{description}\n"
-        # "Not financial advice." is always appended — user directive 2026-06-11.
-        disclaimer = "\nNot financial advice."
+        # "Not financial advice." — always appended (2026-06-11); now preceded by a
+        # blank line and rendered in bold italic (user 2026-06-13).
+        disclaimer = _NFA_DISCLAIMER
         tags_long  = f"#StockAlert #TechnicalAnalysis #{disp_ticker} #Trading"
         tags_short = f"#StockAlert #TechnicalAnalysis #{disp_ticker}"
 
         def _build(base, just, tags):
             return base + (f"{just}\n" if just else "") + tags + disclaimer
 
-        # Fitting order: keep as MANY confirmations as possible first (n_just
-        # outermost, descending), preferring full wording over short at each
-        # count; finally drop the company name. More confirmations beat verbose
-        # detail on one (user 2026-06-11).
+        # Within each base, keep as MANY confirmations as possible (n_just descending),
+        # full wording before short. The explainer-bearing bases come first so the
+        # primary-signal explanation is preferred over extra confirmations / the name.
+        _bases = ([base_name_expl, base_expl] if explain else []) + [base_with_name, base_no_name]
         tweet = None
-        for base in (base_with_name, base_no_name):
+        for base in _bases:
             for n_just in range(len(justifications), -1, -1):
                 for use_full in (True, False):
                     just = _just_line(use_full, n_just)
                     for tags in (tags_long, tags_short):
                         candidate = _build(base, just, tags)
-                        if len(candidate) <= 280:
+                        if _x_weighted_len(candidate) <= 280:   # X-weighted, not len()
                             tweet = candidate
                             break
                     if tweet:

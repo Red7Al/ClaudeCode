@@ -15,6 +15,10 @@ disp_ticker    = ticker without trailing ".L"        # $MNG / #MNG for UK names 
 hook           = rotate(_X_HOOKS[state]).format(cash="$"+disp_ticker)   # line 1, e.g. "👀 Watching $MNG"
 description    = rotate(_X_DESC[(direction, state)]) # line 2, rotated squeeze phrasing
 rotate(list)   = list[(rank-1 + day_of_year) % len(list)]   # consecutive posts differ
+explain        = rotate(_X_EXPLAIN[(direction, state)])  # line 3: plain-English squeeze explanation
+# Bases in priority order — keep the explainer (and name) unless 280 forces a drop:
+base_name_expl = "{hook} ({name})\n{description}\n{explain}\n"
+base_expl      = "{hook}\n{description}\n{explain}\n"
 base_with_name = "{hook} ({name})\n{description}\n"
 base_no_name   = "{hook}\n{description}\n"
 # NO price line and NO HVF timeframe in the tweet text (2026-06-13) — both live on the PNG card.

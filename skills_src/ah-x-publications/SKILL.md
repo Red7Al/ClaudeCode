@@ -28,6 +28,7 @@ Structure, in order:
 ```
 👀 Watching $TICKER (Full Company Name)                       ← rotated HOOK leads (line 1)
 Volatility squeeze {breaking out|coiled, ready} {higher|lower}  ← rotated description (line 2)
+A tight coil just broke out the top — momentum often follows.   ← rotated plain-English explainer (line 3)
 Pattern quality 82/100  ·  Above VWAP  ·  Options flow bullish (call/put 1.42)
 #StockAlert #TechnicalAnalysis #TICKER #Trading
 Not financial advice.
@@ -66,12 +67,17 @@ Rules (each one is a user directive — violating any is a regression):
    card, not the tweet. The tweet is description + clear-English confirmations only.
 8. **No HVF timeframe** (e.g. d220) in the tweet OR card (2026-06-13).
 9. **Lead with a rotated hook** (2026-06-13) — line 1 is a hook (`👀 Watching $MNG`,
-   `🚨 Breakout: $MNG`, …), not raw numbers. Hooks live in `_X_HOOKS` keyed by signal
-   state (TRIGGERED/READY).
-10. **Rotate the phrasing** (2026-06-13) — both hook and the line-2 description cycle
-    through `_X_HOOKS`/`_X_DESC` by batch position + day-of-year so consecutive posts
-    don't read identically. Meaning is fixed (state + direction); only wording varies.
-    Emoji hooks render fine in tweet text (X/Slack), unlike the matplotlib card.
+   `🚨 Breakout: $MNG`, …), not raw numbers. Hooks live in `_X_HOOKS` keyed by
+   (direction, signal) — a BEARISH setup gets a "Breakdown:" / "📉 breaking down" hook,
+   never a bullish one (2026-06-13 fix).
+10. **Rotate the phrasing** (2026-06-13) — hook, description AND the explainer cycle
+    through `_X_HOOKS`/`_X_DESC`/`_X_EXPLAIN` by batch position + day-of-year so
+    consecutive posts don't read identically. Meaning is fixed (state + direction);
+    only wording varies. Emoji hooks render fine in tweet text (X/Slack), not the card.
+11. **Plain-English primary-signal explainer** (2026-06-13) — line 3 is a rotated,
+    direction+state-aware sentence explaining the squeeze so a reader with no system
+    knowledge follows it (`_X_EXPLAIN`). The fitting keeps it ahead of extra
+    confirmations and the company name, but always inside 280 chars.
 
 ## The post card (PNG, attached under the tweet)
 
