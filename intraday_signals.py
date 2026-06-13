@@ -79,6 +79,9 @@
 #                                 2026-06-13). Fitting now uses _x_weighted_len (SMP glyphs — emoji hooks + bold-italic
 #                                 disclaimer — count as 2, matching X's 280 weighting) instead of len(), so "fits X" is
 #                                 honest. NOTE: bold-italic disclaimer is SMP Unicode — not screen-reader friendly.
+# 1.15.0  2026-06-13  Alex Hind   (A) tweet hashtags now include market + country (#FTSE100 #UK / #SP500 #USA) via
+#                                 _x_market_tags (from the scan index). (B) _resolve_name prefers Yahoo longName and
+#                                 normalises the "plc" suffix WITHOUT .title() — fixes acronym mangling (HSBC was "Hsbc").
 # 1.6.1   2026-06-13  Alex Hind   X drafts posted to SLACK_TWITTER in BEST→WORST order (user 2026-06-13): TRIGGERED
 #                                 before READY, quality desc, then R:R desc (was quality only). Each draft header
 #                                 carries its rank 'N/total (best→worst)' so the order is explicit even if Slack
@@ -853,19 +856,38 @@ def _resolve_name(ticker: str) -> str:
         pass
     if not name:
         try:
+            import re as _re
             import yfinance as _yf
             info = _yf.Ticker(ticker).info
-            name = info.get("shortName") or info.get("longName")
+            # Prefer longName (properly cased, e.g. "HSBC Holdings plc") over shortName
+            # (ALL CAPS + share-class noise). NEVER .title() the whole name — that mangles
+            # acronyms: HSBC → Hsbc (user 2026-06-13).
+            name = info.get("longName") or info.get("shortName")
             if name:
-                # Yahoo suffixes ("LAND SECURITIES GROUP PLC ORD ...") - trim
-                # share-class noise and title-case all-caps names.
-                name = name.split(" ORD")[0].strip().rstrip(".")
+                name = name.split(" ORD")[0].split(" REIT")[0].strip()
+                # Normalise the legal-form suffix to "PLC" (plc / p.l.c. / Plc → PLC).
+                name = _re.sub(r"[\s.]*[Pp]\.?[Ll]\.?[Cc]\.?\s*$", " PLC", name).strip()
+                # Fallback only: a shortName that is STILL all-caps → title-case but keep
+                # short (<=4 char) all-caps tokens as acronyms (HSBC, GSK, BP).
                 if name.isupper():
-                    name = name.title().replace("Plc", "PLC")
+                    name = " ".join(w if len(w) <= 4 else w.capitalize()
+                                    for w in name.split())
         except Exception:
             pass
     _RESOLVED_NAMES[ticker] = name or ticker
     return _RESOLVED_NAMES[ticker]
+
+
+def _x_market_tags(r: dict) -> str:
+    """Market + country hashtags for the tweet (user 2026-06-13): e.g. "#FTSE100 #UK"
+    or "#SP500 #USA". Driven by the scan's index; falls back on the ticker suffix."""
+    mapping = {"FTSE 100": ("#FTSE100", "#UK"),
+               "FTSE 250": ("#FTSE250", "#UK"),
+               "S&P 500":  ("#SP500",  "#USA")}
+    market, country = mapping.get(
+        r.get("index") or "",
+        ("#LSE", "#UK") if (r.get("ticker") or "").endswith(".L") else ("#SP500", "#USA"))
+    return f"{market} {country}"
 
 
 def render_x_post_card(r: dict):
@@ -1367,8 +1389,10 @@ def _generate_x_drafts(tradeable: list):
         # "Not financial advice." — always appended (2026-06-11); now preceded by a
         # blank line and rendered in bold italic (user 2026-06-13).
         disclaimer = _NFA_DISCLAIMER
-        tags_long  = f"#StockAlert #TechnicalAnalysis #{disp_ticker} #Trading"
-        tags_short = f"#StockAlert #TechnicalAnalysis #{disp_ticker}"
+        # Market + country hashtags (user 2026-06-13): e.g. #FTSE100 #UK, #SP500 #USA.
+        _mkt = _x_market_tags(r)
+        tags_long  = f"#StockAlert #TechnicalAnalysis #{disp_ticker} {_mkt} #Trading"
+        tags_short = f"#StockAlert #TechnicalAnalysis #{disp_ticker} {_mkt}"
 
         def _build(base, just, tags):
             return base + (f"{just}\n" if just else "") + tags + disclaimer
