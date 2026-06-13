@@ -87,10 +87,9 @@ def _build_sig(row: dict) -> dict:
 
     confirmations = []
     # COT only counts when it agrees with the order side (user 2026-06-11:
-    # "Bearish is not confirmation for a buy") — mirrors signals.py 1.9.0.
-    _dir = row.get("direction")
-    if (sig["cot_bias"] == "BULLISH" and _dir == "BUY") or \
-       (sig["cot_bias"] == "BEARISH" and _dir == "SELL"):
+    # "Bearish is not confirmation for a buy") — canonical helper in signals.py.
+    from signals import bias_aligned
+    if bias_aligned(sig.get("cot_bias"), row.get("direction")):
         confirmations.append(f"COT positioning {sig['cot_bias']}")
     if sig["pa_verdict"] and sig["pa_verdict"] not in ("NEUTRAL", "CONFLICTED"):
         confirmations.append(f"Price-action {sig['pa_verdict']} (score {sig['pa_score'] or '—'})")

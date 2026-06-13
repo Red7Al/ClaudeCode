@@ -26,6 +26,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.11.0  2026-06-13  Alex Hind   get_vwap_position now also returns vwap_pct (% distance from intraday VWAP); persisted
+#                                 to signal_log (new column, also in run_schema.py) and the result summary. Feeds the
+#                                 "+0.7%" figure on the X post card's VWAP caption (user 2026-06-13).
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Full signal stack across all layers. AUS200 removed from AUS/Asia
 #                                 session instrument list (not traded).
 # 1.1.0   2026-06-05  Alex Hind   Added director_cluster_strong to signal_log INSERT — was computed but never persisted.
@@ -147,6 +150,23 @@ def conf_names(sig: dict) -> str:
     """
     names = [c.split(" — ")[0] for c in (sig.get("confirmations_fired") or [])]
     return ", ".join(names)
+
+
+def bias_aligned(bias: str, direction: str) -> bool:
+    """
+    CANONICAL definition of "does this signal agree with the trade side?" —
+    the house rule (user 2026-06-11): "Bearish is not confirmation for a buy."
+    Single source of truth so the rule cannot drift across signals.py,
+    trade_email.py, resend_working_order_emails.py and intraday_signals.py
+    (consolidated from 4 inline copies — code review 2026-06-13).
+
+      bias:      "BULLISH" | "BEARISH" (anything else → never aligned)
+      direction: long  side = "BUY"  or "BULLISH"
+                 short side = "SELL" or "BEARISH"
+    """
+    long_side  = direction in ("BUY", "BULLISH")
+    short_side = direction in ("SELL", "BEARISH")
+    return (bias == "BULLISH" and long_side) or (bias == "BEARISH" and short_side)
 
 # ----------------------------------------------------------------------------------------------------------------------
 # 1. MACRO GATE
@@ -570,7 +590,7 @@ def get_gex_bias(ticker: str) -> dict:
 # ----------------------------------------------------------------------------------------------------------------------
 def get_vwap_position(ticker: str) -> dict:
     """Return whether price is above or below intraday VWAP."""
-    result = {"vwap": None, "vwap_position": None}
+    result = {"vwap": None, "vwap_position": None, "vwap_pct": None}
     yticker = YAHOO_MAP.get(ticker, ticker)
     try:
         t    = yf.Ticker(yticker)
@@ -585,6 +605,9 @@ def get_vwap_position(ticker: str) -> dict:
 
         result["vwap"]          = round(last_vwap, 4)
         result["vwap_position"] = "ABOVE" if last_close > last_vwap else "BELOW"
+        # % distance from VWAP (user 2026-06-13) — persisted so the X post card can
+        # show the "+0.7%" figure on its VWAP caption without recomputing intraday data.
+        result["vwap_pct"]      = round((last_close - last_vwap) / last_vwap * 100, 2)
     except Exception as e:
         log.warning(f"VWAP failed for {ticker}: {e}")
     return result
@@ -1754,8 +1777,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         if senate.get("senate_signal"):           conf_count += 1
         if superinv.get("superinvestor_signal"):  conf_count += 1
         if social.get("social_signal"):           conf_count += 1
-    if (cot.get("bias") == "BULLISH" and direction == "BUY") or \
-       (cot.get("bias") == "BEARISH" and direction == "SELL"):
+    if bias_aligned(cot.get("bias"), direction):
         conf_count += 1
     if adx.get("adx_signal") == "STRONG_TREND" and \
        ((_adx_trend_up and direction == "BUY") or (not _adx_trend_up and direction == "SELL")):
@@ -1768,11 +1790,9 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         if comm_score > 0 and direction == "BUY":   conf_count += 1
         elif comm_score < 0 and direction == "SELL": conf_count += 1
     # Sector alignment — sector ETF VWAP position aligns with direction (equity-only)
-    if sector_dir in ("BULLISH", "BEARISH"):
-        if (sector_dir == "BULLISH" and direction == "BUY") or \
-           (sector_dir == "BEARISH" and direction == "SELL"):
-            conf_count += 1
-            log.info(f"{ticker}: sector ETF {sector.get('sector_etf')} {sector.get('sector_vwap_pos')} VWAP → conf +1")
+    if bias_aligned(sector_dir, direction):
+        conf_count += 1
+        log.info(f"{ticker}: sector ETF {sector.get('sector_etf')} {sector.get('sector_vwap_pos')} VWAP → conf +1")
 
     # Named lists of which signals actually fired — mirrors the counting above so the
     # trade-open email can EXPLAIN the trade (not just show counts). User 2026-06-10.
@@ -1822,8 +1842,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         confirmations_fired.append(f"Superinvestor — {superinv.get('notable_investor', '')}".strip(" —"))
     if direction == "BUY" and social.get("social_signal"):
         confirmations_fired.append("Social mention")
-    if (cot.get("bias") == "BULLISH" and direction == "BUY") or \
-       (cot.get("bias") == "BEARISH" and direction == "SELL"):
+    if bias_aligned(cot.get("bias"), direction):
         # Show what's driving the COT bias: composite score, positioning extremes,
         # open-interest signal, price divergence and commercial net + WoW change.
         _cot_bits = []
@@ -1857,8 +1876,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         confirmations_fired.append(f"OBV {obv.get('obv_signal')}")
     if comm_score is not None and ((comm_score > 0 and direction == "BUY") or (comm_score < 0 and direction == "SELL")):
         confirmations_fired.append("Commodity macro aligned")
-    if sector_dir in ("BULLISH", "BEARISH") and \
-       ((sector_dir == "BULLISH" and direction == "BUY") or (sector_dir == "BEARISH" and direction == "SELL")):
+    if bias_aligned(sector_dir, direction):
         confirmations_fired.append(f"Sector ETF {sector.get('sector_etf', '')} aligned".strip())
 
     # Trade fires when: macro gate passes + primary threshold + 1 confirmation + PA confirms
@@ -1914,6 +1932,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         # Confirmation signals
         "gex_bias":          gex.get("gex_bias"),
         "vwap_position":     vwap.get("vwap_position"),
+        "vwap_pct":          vwap.get("vwap_pct"),
         "cot_bias":              cot.get("bias"),
         "cot_score":             cot.get("cot_score"),
         "cot_comm_extreme":      cot.get("comm_extreme"),
@@ -2016,7 +2035,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         db.run(
             """insert into signal_log
                (session, ticker, macro_gate_pass, options_bias, call_put_ratio, iv_rank,
-                gex_bias, vwap_position, cot_bias, bb_squeeze, bb_breakout_dir,
+                gex_bias, vwap_position, vwap_pct, cot_bias, bb_squeeze, bb_breakout_dir,
                 director_signal, director_cluster_strong, activist_signal, senate_signal, senate_senator,
                 elite_senate_primary, elite_senator_name, potus_primary,
                 notable_investor, social_mention, primary_count, confirmation_count,
@@ -2027,7 +2046,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                 orb_signal, orb_dir, week52_signal, week52_dir,
                 sector_etf, sector_dir)
                values (:v_session, :v_ticker, :v_mgp, :v_opts_bias, :v_call_put, :v_ivr,
-                       :v_gex_bias, :v_vwap_pos, :v_cot_bias, :v_bb_squeeze, :v_bb_breakout,
+                       :v_gex_bias, :v_vwap_pos, :v_vwap_pct, :v_cot_bias, :v_bb_squeeze, :v_bb_breakout,
                        :v_director, :v_dir_cluster_strong, :v_activist, :v_senate, :v_senator_name,
                        :v_elite_senate, :v_elite_senator, :v_potus,
                        :v_notable, :v_social, :v_primaries, :v_confirms, :v_direction,
@@ -2041,6 +2060,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
             v_mgp=macro.get("macro_gate_pass"), v_opts_bias=options.get("options_bias"),
             v_call_put=options.get("call_put_ratio"), v_ivr=options.get("iv_rank"),
             v_gex_bias=gex.get("gex_bias"), v_vwap_pos=vwap.get("vwap_position"),
+            v_vwap_pct=vwap.get("vwap_pct"),
             v_cot_bias=cot.get("bias"), v_bb_squeeze=squeeze.get("bb_squeeze"),
             v_bb_breakout=squeeze.get("bb_breakout_dir"),
             v_director=directors.get("director_signal"),

@@ -88,6 +88,18 @@
 #                                 unchanged. validate_hvf_with_ig keeps the re-anchored AMP1 (does not undo it).
 #                                 Targets on daily-window setups grow (we were clipping the top); weekly/long
 #                                 windows unchanged. Suite 24 cases green incl. case 13; shadow-diff was reviewed.
+# 1.11.0  2026-06-13  Alex Hind   get_hvf_signal_mtf attaches mtf_timeframes — the full, weight-ordered set of every
+#                                 timeframe whose funnel was detected — to the chosen result, so the HVF report can show
+#                                 each instrument ONCE and list all its timeframes (user 2026-06-13). DETECTION UNCHANGED:
+#                                 `best` selection, AMP1 re-anchor and the invariant guard are untouched; only the chosen
+#                                 timeframe carries AMP1/IG numbers, the rest are raw-state annotations. Additive key only
+#                                 — no existing key/value changes, so no detection shadow-diff needed; suite stays green.
+# 1.12.0  2026-06-13  Alex Hind   Liquidity penalty on the quality SCORE (user 2026-06-13): _liquidity_penalty() subtracts
+#                                 points (HVF_LIQUIDITY_TIERS_GBP) from the chosen result's pattern_quality by recent
+#                                 median daily turnover (.L pence ÷100 to £), so thin small trusts no longer top the list.
+#                                 Detection, timeframe choice and the R:R gate are untouched — quality only reorders the
+#                                 list/drafts. One short daily fetch per instrument on the chosen result. Suite green
+#                                 (no quality assertions); shadow-diff not required (no detection/level change).
 # 1.9.2   2026-06-12  Alex Hind   PROTOTYPE compute_exhaustion_amp1() (backlog 9a, NOT wired into detection) — official-method
 #                                 AMP1: re-anchors ONLY the clipped exhaustion extreme to full history, keeps the
 #                                 funnel's own first-pullback pivot (avoids RW's 52wk-low over-extension). For shadow-
@@ -160,7 +172,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from config import YAHOO_MAP, HVF_MIN_RR, PA_CONFIRM_THRESHOLDS, PA_CONFIRM_THRESHOLD_DEFAULT
+from config import (YAHOO_MAP, HVF_MIN_RR, PA_CONFIRM_THRESHOLDS,
+                    PA_CONFIRM_THRESHOLD_DEFAULT, HVF_LIQUIDITY_TIERS_GBP)
 
 log = logging.getLogger("price_action")
 
@@ -1308,6 +1321,39 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
 # Multi-timeframe HVF wrapper
 # ======================================================================================================================
 
+def _liquidity_penalty(ticker: str) -> int:
+    """
+    Quality-score penalty for thin liquidity (user 2026-06-13): illiquid names must
+    not rank high on the HVF list. Returns 0 (liquid, or liquidity unknown — never
+    penalise on missing data) down to the most negative tier in HVF_LIQUIDITY_TIERS_GBP
+    (e.g. -40 for very thin small investment trusts).
+
+    Liquidity = recent median DAILY turnover (Close × Volume) over the last ~30
+    sessions. ".L" prices are quoted in pence, so turnover is ÷100 to pounds before
+    the GBP tiers are applied. One short daily fetch per instrument; computed on the
+    chosen MTF result only (not per timeframe), so it never changes which timeframe
+    was selected — it only reorders instruments against each other.
+    """
+    try:
+        import yfinance as yf
+        yt   = YAHOO_MAP.get(ticker, ticker)
+        hist = yf.Ticker(yt).history(period="2mo", interval="1d")
+        if hist is None or hist.empty or "Volume" not in hist or "Close" not in hist:
+            return 0
+        turn = float((hist["Close"] * hist["Volume"]).tail(30).median())
+        if not turn or turn != turn:          # 0 or NaN → unknown, do not penalise
+            return 0
+        if ticker.endswith(".L"):
+            turn /= 100.0                      # pence → pounds
+        for floor, penalty in HVF_LIQUIDITY_TIERS_GBP:
+            if turn >= floor:
+                return penalty
+        return 0
+    except Exception as e:
+        log.debug(f"liquidity penalty failed for {ticker}: {e}")
+        return 0
+
+
 def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
     """
     Run HVF detection across three timeframes and return the best result.
@@ -1396,6 +1442,34 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
         ]}
         empty["hvf_timeframe"] = None
         return empty
+
+    # ── Liquidity penalty (user 2026-06-13): demote illiquid names so thin small
+    # trusts can't top the list. Applied to the chosen result's quality SCORE only —
+    # detection, the timeframe choice and the R:R tradeable gate are all unaffected.
+    if best.get("pattern_quality") is not None:
+        _liq_pen = _liquidity_penalty(ticker)
+        if _liq_pen:
+            best["pattern_quality"] = max(0, min(100, best["pattern_quality"] + _liq_pen))
+
+    # ── Multi-timeframe roll-up (user 2026-06-13, feedback_hvf_timeframe_grouping):
+    # the report shows each instrument ONCE and lists every timeframe its funnel appears
+    # on, instead of a separate row per timeframe. Attach the full candidate set — compact
+    # and weight-ordered (TRIGGERED > READY > DEVELOPING, then quality) — to the chosen
+    # result. Detection is UNCHANGED: `best` is still the single chosen timeframe and only
+    # it carries the AMP1-anchored / IG-validated numbers. The other timeframes are raw
+    # detections, so we expose their state for the "also on" annotation but never their
+    # un-anchored R:R as if it were tradeable; the primary entry/stop/target/R:R shown by
+    # the report still come from `best`.
+    best["mtf_timeframes"] = sorted(
+        ({"hvf_timeframe":   c.get("hvf_timeframe"),
+          "hvf_signal":      c.get("hvf_signal"),
+          "hvf_type":        c.get("hvf_type"),
+          "risk_reward":     c.get("risk_reward"),
+          "pattern_quality": c.get("pattern_quality")}
+         for c in candidates),
+        key=lambda c: (signal_rank.get(c["hvf_signal"], 0), c["pattern_quality"] or 0),
+        reverse=True,
+    )
     return best
 
 

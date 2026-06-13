@@ -28,6 +28,15 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.5.0   2026-06-13  Alex Hind   FIX (code-review): `from itertools import groupby` was imported inside the `if tradeable:`
+#                                 block, making it a function-local — on a day with DEVELOPING setups but ZERO tradeable
+#                                 ones the developing branch raised UnboundLocalError and the whole report crashed (no
+#                                 Slack post). Hoisted the import to module scope (used by both sections).
+# 1.4.0   2026-06-13  Alex Hind   One instrument, all timeframes (user 2026-06-13): each setup is shown ONCE and the
+#                                 other timeframes its funnel appears on are listed inline ("Also on:" with a state emoji
+#                                 in TRADEABLE, "· also …" in DEVELOPING), sourced from the new mtf_timeframes field on
+#                                 the get_hvf_signal_mtf result. Footer legend added. Which instruments/sections appear is
+#                                 unchanged — the scanner still returns one chosen result per instrument.
 # 1.3.0   2026-06-12  Alex Hind   categorise(): UK (.L) tradeable setups are IG-validated (validate_hvf_with_ig)
 #                                 before posting — weight-ordered first so the best setups get the allowance, capped at
 #                                 15/run; IG mismatches are demoted to DEVELOPING.
@@ -49,6 +58,7 @@ import os
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 import logging
 import time
+from itertools import groupby                 # module-level: used by BOTH report sections
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv(override=True)
@@ -268,6 +278,21 @@ def _signal_emoji(sig):
     return {"TRIGGERED": "⚡", "READY": "✅", "DEVELOPING": "👀"}.get(sig, "")
 
 
+def _tf_short(label):
+    """daily-90 → d90, weekly → weekly. Compact timeframe tag for the report."""
+    return (label or "").replace("daily-", "d")
+
+
+def _other_timeframes(r):
+    """The timeframes — other than the primary/best one — the same instrument's
+    funnel also appears on, for the 'report instrument once, list all timeframes'
+    rule (feedback_hvf_timeframe_grouping). Already weight-ordered (TRIGGERED >
+    READY > DEVELOPING, then quality) by get_hvf_signal_mtf.mtf_timeframes."""
+    primary = r.get("hvf_timeframe")
+    return [c for c in (r.get("mtf_timeframes") or [])
+            if c.get("hvf_timeframe") and c.get("hvf_timeframe") != primary]
+
+
 def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
     """Build Slack Block Kit message for the daily HVF report."""
     blocks = []
@@ -296,7 +321,6 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         })
 
         # Group by index
-        from itertools import groupby
         tradeable_sorted = sorted(tradeable, key=lambda r: r.get("index", ""))
         for index_name, group in groupby(tradeable_sorted, key=lambda r: r.get("index", "")):
             group = list(group)
@@ -306,15 +330,23 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
                 s  = _signal_emoji(r.get("hvf_signal"))
                 t  = r.get("ticker", "")
                 rr = _rr(r)
-                tf = r.get("hvf_timeframe", "").replace("daily-", "d")
+                tf = _tf_short(r.get("hvf_timeframe", ""))
                 entry  = _fmt_price(r.get("h3_level"))
                 stop   = _fmt_price(r.get("stop_level"))
                 target = _fmt_price(r.get("target"))
                 q      = r.get("pattern_quality", 0)
-                lines.append(
-                    f"{d}{s} *{fmt(t)}*  R:R {rr}  Q={q}  [{tf}]\n"
-                    f"    Entry {entry}  Stop {stop}  Target {target}"
-                )
+                line = (f"{d}{s} *{fmt(t)}*  R:R {rr}  Q={q}  [{tf}]\n"
+                        f"    Entry {entry}  Stop {stop}  Target {target}")
+                # One instrument, all timeframes (feedback_hvf_timeframe_grouping): list the
+                # other timeframes the same funnel appears on, each with its own state emoji.
+                # The vetted entry/stop/target/R:R above belong to the primary timeframe [{tf}].
+                others = _other_timeframes(r)
+                if others:
+                    extra = "  ·  ".join(
+                        f"{_signal_emoji(c.get('hvf_signal'))} {_tf_short(c.get('hvf_timeframe'))}"
+                        for c in others)
+                    line += f"\n    Also on: {extra}"
+                lines.append(line)
 
             # Slack limits block text to 3000 chars — chunk if needed
             chunk = "\n".join(lines)
@@ -348,13 +380,17 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
                 d  = _dir_emoji(r.get("hvf_type"))
                 t  = r.get("ticker", "")
                 rr = _rr(r)
-                tf = r.get("hvf_timeframe", "").replace("daily-", "d")
+                tf = _tf_short(r.get("hvf_timeframe", ""))
                 entry  = _fmt_price(r.get("h3_level"))
                 stop   = _fmt_price(r.get("stop_level"))
                 target = _fmt_price(r.get("target"))
+                # One instrument, all timeframes (feedback_hvf_timeframe_grouping) — compact
+                # "· also …" tail listing the other timeframes this funnel appears on.
+                others = _other_timeframes(r)
+                also = ("  · also " + ", ".join(_tf_short(c.get("hvf_timeframe")) for c in others)) if others else ""
                 lines.append(
                     f"{d}👀 *{fmt(t)}*  R:R {rr}  [{tf}]  "
-                    f"Entry {entry}  Stop {stop}  Target {target}"
+                    f"Entry {entry}  Stop {stop}  Target {target}{also}"
                 )
             blocks.append({
                 "type": "section",
@@ -376,6 +412,9 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
                       "text": (f"HVF scanner: daily-30 · daily-60 · daily-90 · "
                                f"daily-180 · daily-220 · weekly | "
                                f"Min {HVF_MIN_RR}:1 R:R to trade | "
+                               f"\"Also on\" = other timeframes the same funnel appears on "
+                               f"(⚡ triggered · ✅ ready · 👀 developing); the entry/stop/target/R:R "
+                               f"shown are for the primary timeframe in [brackets] | "
                                f"Generated {scan_time} UTC")}]
     })
 

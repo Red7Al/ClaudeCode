@@ -36,6 +36,9 @@
 # 1.2.0   2026-06-05  Alex Hind   Removed DAX (Germany) from EPIC_MAP, OPTIONS_PROXY_MAP, YAHOO_MAP, ATR_MULTIPLIERS.
 #                                 DAX suspended from trading until further notice.
 # 1.3.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF to SESSION_INSTRUMENTS
+# 1.11.0  2026-06-13  Alex Hind   X_DRAFT_TOP_N (count of X drafts per run, default 20) and HVF_LIQUIDITY_TIERS_GBP
+#                                 (turnover-based pattern-quality penalty so illiquid names rank lower) — both tunable
+#                                 here without touching intraday_signals.py / price_action.py (user 2026-06-13).
 # 1.10.0  2026-06-12  Alex Hind   TICKER FIX: "TE" replaced with "TEL" everywhere — Yahoo's TE is T1 Energy Inc, NOT
 #                                 TE Connectivity (TEL). All TE signals had been computed on T1 Energy's prices while
 #                                 orders would have routed to TE Connectivity's epic; never traded. Also
@@ -558,6 +561,22 @@ MIN_RISK_REWARD = 3.0
 # Import HVF_MIN_RR from config wherever the HVF threshold is needed — do NOT
 # define a local copy in price_action.py or run_hvf_report.py.
 HVF_MIN_RR = MIN_RISK_REWARD
+
+# Number of HVF X (Twitter) drafts posted per run, best→worst (user 2026-06-13).
+# Stored here so the count is changed in ONE place without re-testing intraday_signals.
+X_DRAFT_TOP_N = 20
+
+# HVF liquidity quality penalty (user 2026-06-13): illiquid names must NOT rank high on
+# the list. Tiers of recent median DAILY turnover (Close × Volume, in GBP — ".L" prices
+# are pence so turnover is ÷100 to pounds) → points subtracted from the pattern-quality
+# score. Highest floor first; the first floor the turnover meets wins. Tune here freely —
+# it only reorders the list, it never changes detection or the R:R tradeable gate.
+HVF_LIQUIDITY_TIERS_GBP = [
+    (10_000_000,   0),   # >= £10m/day  — fully liquid, no penalty
+    ( 3_000_000, -10),   # £3m – £10m
+    ( 1_000_000, -25),   # £1m – £3m
+    (         0, -40),   # < £1m        — very thin (e.g. small investment trusts)
+]
 
 # Default take-profit distance as a multiple of the stop distance, used for
 # NON-HVF trades and as the fallback when a setup has no measured-move target.

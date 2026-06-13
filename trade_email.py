@@ -341,8 +341,8 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
                 confirmations.append(f"Director buys ({len(dir_txs)}) — {tx_lines}")
             else:
                 confirmations.append("Director buys — " + (sig.get("director_detail") or "insider cluster (Form 4)"))
-        if (sig.get("cot_bias") == "BULLISH" and direction == "BUY") or \
-           (sig.get("cot_bias") == "BEARISH" and direction == "SELL"):
+        from signals import bias_aligned
+        if bias_aligned(sig.get("cot_bias"), direction):
             _cb = []
             if sig.get("cot_score"): _cb.append(f"score {sig['cot_score']:+.0f}")
             if sig.get("cot_comm_extreme") and sig["cot_comm_extreme"] != "NORMAL":

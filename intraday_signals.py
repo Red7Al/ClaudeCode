@@ -47,6 +47,38 @@
 #                                 risk_per_trade + stress_mult), matching the session-open and UK/AUS-monitor paths.
 #                                 size 0 → skip with a missed-trade alert (no IG rejection). Verified: DELL now sizes
 #                                 0.1 (margin ≈ £611) instead of 0.5.
+# 1.8.0   2026-06-13  Alex Hind   VWAP confirmation surfaced (user 2026-06-13): tweet gets a short, direction-aligned
+#                                 "Above VWAP"/"Below VWAP" tag; the plain-English logic ("price above the day's
+#                                 volume-weighted average — buyers paying up, demand aggressive → confirms the long")
+#                                 is drawn on the PNG card instead of the tweet. Both read the SAME signal_log.vwap_position
+#                                 (added to the X-draft query) so card and tweet always agree. Volume justification now
+#                                 names its indicator: "Volume flow backing the move (OBV)". COT figure NOT added — cot_score
+#                                 lives in cot_snapshot, not signal_log, and COT applies only to futures-backed instruments.
+# 1.9.0   2026-06-13  Alex Hind   X publication overhaul (user 2026-06-13): (a) tweet LEADS with a rotated hook
+#                                 ("👀 Watching $MNG") and a rotated squeeze description — _X_HOOKS/_X_DESC cycled by
+#                                 batch position + day-of-year so consecutive posts differ; (b) ".L" stripped from the
+#                                 cashtag/hashtag (UK names → $MNG, #MNG) in tweet AND card; (c) card levels line gets
+#                                 markers ◎ entry · ● stop · ▲ target · ⚖ R:R (DejaVu-safe — colour emoji don't render
+#                                 in the card font); (d) 52-week-high gridline drawn on the chart for target context,
+#                                 with y-axis reframed to all levels; (e) VWAP caption shows the % (vwap_pct) too.
+# 1.10.0  2026-06-13  Alex Hind   (a) P/E ratio added to the card's grey context line ("P/E 14.2" with a diamond
+#                                 marker; FORWARD then trailing via yfinance .info; omitted if absent/non-positive).
+#                                 (b) COT confirmation tagged "(smart money)" in the tweet — COT commercials are the
+#                                 system's smart money; options flow is NOT (mixed institutional + retail), no such tag.
+# 1.11.0  2026-06-13  Alex Hind   X-draft count moved to config.X_DRAFT_TOP_N (was hardcoded 20) so it's tuned in one
+#                                 place; the signal_log context enrichment now covers all X_DRAFT_TOP_N posted drafts
+#                                 (was the first 10), so ranks 11–20 also get their plain-English confirmations.
+# 1.12.0  2026-06-13  Alex Hind   FIX: _X_HOOKS keyed by signal only → BEARISH setups got bullish hooks ("📈 breaking
+#                                 out" / "Breakout:" on a breakdown, contradicting the direction-correct description).
+#                                 Now keyed by (direction, signal): bearish TRIGGERED → "📉 breaking down now" / "Breakdown:".
+# 1.13.0  2026-06-13  Alex Hind   Tweet now carries a plain-English PRIMARY-signal explainer line (_X_EXPLAIN, rotated,
+#                                 direction+state aware) so a reader with no system knowledge understands the squeeze —
+#                                 user 2026-06-13 ("very little explanation of primary/confirmation signals"). Fitting
+#                                 prioritises keeping the explainer (then name, then confirmations to taste) within 280.
+# 1.14.0  2026-06-13  Alex Hind   Tweet disclaimer: blank line before it + rendered in Unicode bold italic (user
+#                                 2026-06-13). Fitting now uses _x_weighted_len (SMP glyphs — emoji hooks + bold-italic
+#                                 disclaimer — count as 2, matching X's 280 weighting) instead of len(), so "fits X" is
+#                                 honest. NOTE: bold-italic disclaimer is SMP Unicode — not screen-reader friendly.
 # 1.6.1   2026-06-13  Alex Hind   X drafts posted to SLACK_TWITTER in BEST→WORST order (user 2026-06-13): TRIGGERED
 #                                 before READY, quality desc, then R:R desc (was quality only). Each draft header
 #                                 carries its rank 'N/total (best→worst)' so the order is explicit even if Slack
@@ -124,7 +156,7 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timezone
 
-from config import YAHOO_MAP, DEFAULT_TARGET_RR
+from config import YAHOO_MAP, DEFAULT_TARGET_RR, X_DRAFT_TOP_N
 
 log = logging.getLogger("intraday_signals")
 
@@ -688,6 +720,105 @@ _SIG_LABEL = {
     "DEVELOPING": "compressing",
 }
 
+# ── Tweet phrasing rotation (user 2026-06-13) ─────────────────────────────────────────────────────────────────────────
+# Vary the opening hook and the plain-English squeeze description so consecutive posts
+# don't read identically. Rotated by batch position + day-of-year (_x_rotation_index),
+# keeping the MEANING fixed — state (breaking out vs coiled) and direction (higher vs
+# lower). "{cash}" is filled with the $cashtag (".L" stripped for UK names).
+_X_HOOKS = {
+    # Keyed by (direction, signal) — a bearish setup must NOT get a bullish hook
+    # (📈 "breaking out" on a breakdown). READY hooks are direction-neutral.
+    ("BULLISH", "TRIGGERED"): ["🚨 Breakout: {cash}", "⚡ {cash} on the move",
+                               "🚨 {cash} just triggered", "📈 {cash} breaking out now"],
+    ("BEARISH", "TRIGGERED"): ["🚨 Breakdown: {cash}", "⚡ {cash} on the move",
+                               "🚨 {cash} just triggered", "📉 {cash} breaking down now"],
+    ("BULLISH", "READY"):     ["👀 Watching {cash}", "👀 On the radar: {cash}",
+                               "⏳ {cash} coiling up", "👀 {cash} setting up"],
+    ("BEARISH", "READY"):     ["👀 Watching {cash}", "👀 On the radar: {cash}",
+                               "⏳ {cash} coiling up", "👀 {cash} setting up"],
+}
+_X_DESC = {
+    ("BULLISH", "TRIGGERED"): ["Volatility squeeze breaking out higher",
+                               "Tight coil firing to the upside",
+                               "Compression giving way — pushing higher",
+                               "Squeeze released, momentum turning up"],
+    ("BULLISH", "READY"):     ["Volatility squeeze coiled, ready higher",
+                               "Compression building — primed for an upside break",
+                               "Coiling tight, loaded to the upside",
+                               "Range tightening, leaning higher"],
+    ("BEARISH", "TRIGGERED"): ["Volatility squeeze breaking down lower",
+                               "Tight coil cracking to the downside",
+                               "Compression giving way — pressing lower",
+                               "Squeeze released, momentum turning down"],
+    ("BEARISH", "READY"):     ["Volatility squeeze coiled, ready lower",
+                               "Compression building — primed for a downside break",
+                               "Coiling tight, loaded to the downside",
+                               "Range tightening, leaning lower"],
+}
+# Plain-English explanation of the PRIMARY signal (the squeeze) so a reader with no
+# system knowledge understands what's happening — added to the tweet body (user
+# 2026-06-13: "very little explanation of primary/confirmation signals"). Rotated and
+# direction+state aware; kept short (~75 chars) so it coexists with confirmations.
+_X_EXPLAIN = {
+    ("BULLISH", "TRIGGERED"): [
+        "A tight coil just broke out the top — momentum often follows the break.",
+        "Range squeezed shut, now releasing upward as buyers clear the ceiling.",
+        "Compression resolved to the upside; squeeze breakouts like this can run.",
+        "Buyers cleared the ceiling after a long squeeze; watching for follow-through.",
+    ],
+    ("BULLISH", "READY"): [
+        "Range is winding tighter; a push above the ceiling is the trigger to watch.",
+        "Coiling into a tight squeeze — a break higher would confirm the move.",
+        "Energy building in a narrowing range; bias is up on a break above.",
+        "Tightening toward a decision point, leaning higher — not triggered yet.",
+    ],
+    ("BEARISH", "TRIGGERED"): [
+        "A tight coil just broke down through support — moves like this often extend.",
+        "Range squeezed shut, now releasing downward as sellers clear the floor.",
+        "Compression resolved to the downside; squeeze breakdowns like this can run.",
+        "Sellers cleared the floor after a long squeeze; watching for follow-through.",
+    ],
+    ("BEARISH", "READY"): [
+        "Range is winding tighter; a drop below support is the trigger to watch.",
+        "Coiling into a tight squeeze — a break lower would confirm the move.",
+        "Energy building in a narrowing range; bias is down on a break below.",
+        "Tightening toward a decision point, leaning lower — not triggered yet.",
+    ],
+}
+
+
+def _x_rotation_index(rank: int) -> int:
+    """Rotation offset for tweet phrasing (user 2026-06-13): batch position +
+    day-of-year, so consecutive posts in a run differ and the same setup varies
+    day to day. Callers take this modulo the template-list length."""
+    import time as _t
+    return (rank - 1) + _t.gmtime().tm_yday
+
+
+def _bold_italic(s: str) -> str:
+    """Map ASCII letters to Unicode Mathematical Bold Italic so the text shows as
+    bold-italic on X (plain tweets have no markdown). NOTE: these are supplementary-
+    plane glyphs — screen readers may skip them and X counts each as 2 chars."""
+    out = []
+    for c in s:
+        o = ord(c)
+        if 65 <= o <= 90:      out.append(chr(0x1D468 + o - 65))   # A–Z
+        elif 97 <= o <= 122:   out.append(chr(0x1D482 + o - 97))   # a–z
+        else:                  out.append(c)
+    return "".join(out)
+
+
+def _x_weighted_len(s: str) -> int:
+    """Approximate X's weighted character count: supplementary-plane code points
+    (emoji hooks, the bold-italic disclaimer) count as 2, everything else as 1 —
+    models the 280-char limit far better than len() for our content."""
+    return sum(2 if ord(c) > 0xFFFF else 1 for c in s)
+
+
+# Disclaimer in bold italic, preceded by a blank line (user 2026-06-13). Plain ASCII
+# is kept here for readability; rendered to Unicode bold-italic once at import.
+_NFA_DISCLAIMER = "\n\n" + _bold_italic("Not financial advice.")
+
 
 def _tf_desc(tf_raw: str) -> str:
     """Human-readable timeframe description for tweets and cards."""
@@ -772,6 +903,7 @@ def render_x_post_card(r: dict):
     rr        = r.get("risk_reward")
     tf_raw    = (r.get("hvf_timeframe", "") or "").replace("daily-", "d")
     name      = r.get("name") or _resolve_name(ticker)
+    disp_ticker = ticker[:-2] if ticker.endswith(".L") else ticker   # strip ".L" (user 2026-06-13)
 
     dir_word  = "higher" if direction == "BULLISH" else "lower"
     rr_str    = f"{rr:.1f}:1" if rr else "—"
@@ -860,28 +992,38 @@ def render_x_post_card(r: dict):
         # PNG, not in the tweet. Dedicated 1y fetch; ×ig_scale to match the
         # level units (same convention as "Now").
         wk52_str = ""
+        wk52_high_raw = None   # chart-unit 52w high, for the gridline (user 2026-06-13)
         try:
-            _y52 = _yf.Ticker(ticker).history(period="1y", interval="1d")
+            _tk  = _yf.Ticker(ticker)
+            _y52 = _tk.history(period="1y", interval="1d")
             if _y52 is not None and not _y52.empty:
-                wk52_str = (f"52w High: {float(_y52['High'].max()) * ig_scale:g}   "
+                wk52_high_raw = float(_y52["High"].max())
+                wk52_str = (f"52w High: {wk52_high_raw * ig_scale:g}   "
                             f"52w Low: {float(_y52['Low'].min()) * ig_scale:g}")
+            # P/E ratio (user 2026-06-13) — FORWARD first (price ÷ projected EPS, the
+            # growth/breakout framing), falling back to trailing. yfinance .info can be
+            # slow/flaky so isolate it; absent or non-positive (no/neg earnings) → omitted.
+            # "◆" is a DejaVu-safe marker (colour emoji don't render here).
+            try:
+                _info = _tk.info or {}
+                _pe = _info.get("forwardPE") or _info.get("trailingPE")
+                if isinstance(_pe, (int, float)) and _pe > 0:
+                    wk52_str = (wk52_str + "   " if wk52_str else "") + f"◆ P/E {_pe:.1f}"
+            except Exception:
+                pass
         except Exception:
             pass
 
         # Timeframe label (e.g. d220) deliberately NOT shown (user 2026-06-13).
         hdr_lines = [
             (0.965, "@EndToEndTrading", "#1d9bf0", 13, "bold",   "normal"),
-            (0.925, f"{dir_arrow} ${ticker} ({name})",
+            (0.925, f"{dir_arrow} ${disp_ticker} ({name})",
                                          "#ffffff", 16, "bold",   "normal"),
             (0.888, f"Volatility squeeze {sig_desc} {dir_word}",
                                          "#c9d1d9", 13, "normal", "normal"),
-            # "Now" shown in the SAME units as the level strings (× ig_scale
-            # restores signal units when the chart series was normalised).
-            (0.852, f"Now: {float(close.iloc[-1]) * ig_scale:g}   Entry: {h3_str}   Stop: {stop_str}   "
-                    f"Target: {tgt_str}   R:R {rr_str}",
-                                         "#c9d1d9", 12, "normal", "normal"),
+            # Levels line (y=0.852) is drawn separately below with per-marker colours.
             (0.818, wk52_str,            "#8b949e", 11, "normal", "normal"),
-            (0.784, f"#StockAlert #TechnicalAnalysis #{ticker} #Trading",
+            (0.784, f"#StockAlert #TechnicalAnalysis #{disp_ticker} #Trading",
                                          "#8b949e", 11, "normal", "normal"),
             (0.750, "Not financial advice.",
                                          "#8b949e", 10, "normal", "italic"),
@@ -890,6 +1032,30 @@ def render_x_post_card(r: dict):
             fig.text(0.05, hy, htxt, color=hcol, fontsize=hsize,
                      fontweight=hweight, style=hstyle,
                      ha="left", va="top")
+
+        # ── Levels line with colour-coded markers (user 2026-06-13) ───────────────────────────────────────────────────
+        # Drawn as sequential segments so each marker carries its own colour: ◎ entry
+        # gold, ● stop red, ▲ target green, ⚖ R:R neutral (DejaVu-safe glyphs — colour
+        # emoji don't render in the card font). Segment widths are measured via the Agg
+        # renderer to place them left-to-right (one fig.text can only be a single colour).
+        _now_v = f"{float(close.iloc[-1]) * ig_scale:g}"
+        _level_segs = [
+            (f"Now {_now_v}      ", "#c9d1d9"),
+            (f"◎ Entry {h3_str}",   "#e3b341"),   # gold — matches the entry line
+            ("      ",              "#c9d1d9"),
+            (f"● Stop {stop_str}",  "#f85149"),   # red
+            ("      ",              "#c9d1d9"),
+            (f"▲ Target {tgt_str}", "#3fb950"),   # green
+            ("      ",              "#c9d1d9"),
+            (f"⚖ R:R {rr_str}",     "#c9d1d9"),
+        ]
+        _lx = 0.05
+        _renderer = fig.canvas.get_renderer()
+        _figw = fig.bbox.width
+        for _seg_txt, _seg_col in _level_segs:
+            _t = fig.text(_lx, 0.852, _seg_txt, color=_seg_col, fontsize=12,
+                          ha="left", va="top")
+            _lx += _t.get_window_extent(renderer=_renderer).width / _figw
 
         # Price line + fill
         ax.plot(dates, close, color="#58a6ff", linewidth=1.6, zorder=3)
@@ -934,6 +1100,27 @@ def render_x_post_card(r: dict):
             ax.text(1.01, targ_p, f"Target {tgt_str}", transform=trans,
                     color="#3fb950", fontsize=9, va="center")
 
+        # ── 52-week high gridline (user 2026-06-13): context for the target — shows
+        # whether the target has room before the year's high or breaks to new highs.
+        # Drawn in chart units (wk52_high_raw); label in signal units (× ig_scale) to
+        # match the Entry/Stop/Target labels. Skipped if implausibly far above the
+        # action so it can't squash the price line.
+        _ylevels = [v for v in (float(close.min()), float(close.max()),
+                                stop_p, targ_p, h3_p) if v]
+        _data_max = max([float(close.max())] + [v for v in (targ_p, h3_p) if v])
+        if wk52_high_raw is not None and wk52_high_raw <= _data_max * 1.6:
+            ax.axhline(wk52_high_raw, color="#a371f7", linewidth=1.0,
+                       linestyle=(0, (4, 3)), alpha=0.85, zorder=4)
+            ax.text(1.01, wk52_high_raw, f"52w High {wk52_high_raw * ig_scale:g}",
+                    transform=trans, color="#a371f7", fontsize=9, va="center")
+            _ylevels.append(wk52_high_raw)
+        # Frame the y-axis to all relevant levels so neither the target nor the 52w
+        # line is clipped and the price action isn't squashed.
+        if _ylevels:
+            _ymin, _ymax = min(_ylevels), max(_ylevels)
+            _pad = (_ymax - _ymin) * 0.06 or 1.0
+            ax.set_ylim(_ymin - _pad, _ymax + _pad)
+
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
         ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
         plt.setp(ax.get_xticklabels(), rotation=0,
@@ -942,6 +1129,24 @@ def render_x_post_card(r: dict):
         for spine in ax.spines.values():
             spine.set_edgecolor("#30363d")
         ax.tick_params(colors="#8b949e")
+
+        # ── VWAP logic caption (user 2026-06-13): the plain-English "why it confirms"
+        # lives HERE on the card (the tweet keeps just the short "Above/Below VWAP").
+        # Shown only when the day's VWAP position aligns with the trade direction —
+        # sourced from signal_log.vwap_position via the caller; absent → no caption.
+        _vwap_pos = (r.get("vwap_position") or "").upper()
+        _vwap_pct = r.get("vwap_pct")
+        _pct_txt  = f", {_vwap_pct:+.1f}%" if isinstance(_vwap_pct, (int, float)) else ""
+        _vwap_logic = ""
+        if direction == "BULLISH" and _vwap_pos == "ABOVE":
+            _vwap_logic = (f"VWAP: price above the day's volume-weighted average{_pct_txt} — "
+                           "buyers paying up, demand aggressive → confirms the long")
+        elif direction == "BEARISH" and _vwap_pos == "BELOW":
+            _vwap_logic = (f"VWAP: price below the day's volume-weighted average{_pct_txt} — "
+                           "sellers pressing, demand weak → confirms the short")
+        if _vwap_logic:
+            fig.text(0.05, 0.015, _vwap_logic, color="#8b949e", fontsize=8.5,
+                     style="italic", ha="left", va="bottom")
 
         buf = io.BytesIO()
         plt.savefig(buf, format="png", dpi=140, facecolor="#0d1117")
@@ -989,7 +1194,7 @@ def _generate_x_drafts(tradeable: list):
     # Fails silently — absence of this data never blocks the draft post.
     _sig_ctx: dict = {}   # ticker → {options_bias, call_put_ratio, director_signal}
     try:
-        tickers_in = tradeable[:10]
+        tickers_in = tradeable[:X_DRAFT_TOP_N]   # enrich all posted drafts (input is pre-sorted best-first)
         ticker_list = [r.get("ticker", "") for r in tickers_in if r.get("ticker")]
         if ticker_list:
             placeholders = ", ".join(f"'{t}'" for t in ticker_list)
@@ -998,7 +1203,7 @@ def _generate_x_drafts(tradeable: list):
                 SELECT DISTINCT ON (ticker)
                        ticker, options_bias, call_put_ratio, iv_rank, director_signal,
                        cot_bias, adx_signal, obv_signal, sector_etf, sector_dir,
-                       senate_signal, senate_senator
+                       senate_signal, senate_senator, vwap_position, vwap_pct
                 FROM signal_log
                 WHERE ticker IN ({placeholders})
                 ORDER BY ticker, session_time DESC
@@ -1017,6 +1222,8 @@ def _generate_x_drafts(tradeable: list):
                     "sector_dir":      row[9],
                     "senate_signal":   row[10],
                     "senate_senator":  row[11],
+                    "vwap_position":   row[12],
+                    "vwap_pct":        row[13],
                 }
     except Exception as e:
         log.debug(f"X drafts: signal_log lookup failed (non-critical): {e}")
@@ -1033,7 +1240,7 @@ def _generate_x_drafts(tradeable: list):
                 -(r.get("hvf_quality") or r.get("pattern_quality") or 0),
                 -(r.get("risk_reward") or 0))
 
-    _ordered = sorted(tradeable, key=_draft_weight)[:20]
+    _ordered = sorted(tradeable, key=_draft_weight)[:X_DRAFT_TOP_N]   # count is config-driven (user 2026-06-13)
     _total   = len(_ordered)
     for _rank, r in enumerate(_ordered, 1):
         ticker    = r.get("ticker", "")
@@ -1055,6 +1262,19 @@ def _generate_x_drafts(tradeable: list):
         tgt_str    = f"{target:g}" if target else "—"
         sig_desc   = _SIG_LABEL.get(signal, signal.lower())
         tf_desc    = _tf_desc(tf_raw)
+        # Display ticker: strip ".L" from UK names for the cashtag/hashtag (user 2026-06-13).
+        disp_ticker = ticker[:-2] if ticker.endswith(".L") else ticker
+        # Rotated hook + description (user 2026-06-13) — see _X_HOOKS / _X_DESC. Falls
+        # back gracefully if a state/direction combo isn't templated.
+        _rot   = _x_rotation_index(_rank)
+        _hooks = _X_HOOKS.get((direction, signal)) or _X_HOOKS[("BULLISH", "READY")]
+        hook   = _hooks[_rot % len(_hooks)].format(cash=f"${disp_ticker}")
+        _descs = _X_DESC.get((direction, signal), [f"Volatility squeeze {sig_desc} {dir_word}"])
+        description = _descs[_rot % len(_descs)]
+        # Plain-English primary-signal explanation (user 2026-06-13) — rotated; empty
+        # for any non-templated state (then the explainer line is simply omitted).
+        _expls  = _X_EXPLAIN.get((direction, signal), [""])
+        explain = _expls[_rot % len(_expls)]
 
         # ── Justification line from signal_log — every aligned confirmation in
         # plain English (user 2026-06-11: confirmations must be understandable;
@@ -1071,10 +1291,11 @@ def _generate_x_drafts(tradeable: list):
         sec_d  = ctx.get("sector_dir") or ""
         sec_e  = ctx.get("sector_etf") or ""
         sen_s  = ctx.get("senate_signal")
+        vwap_p = (ctx.get("vwap_position") or "").upper()
 
+        from signals import bias_aligned as _aligned_fn
         def _aligned(bias: str) -> bool:
-            return ((direction == "BULLISH" and bias == "BULLISH") or
-                    (direction == "BEARISH" and bias == "BEARISH"))
+            return _aligned_fn(bias, direction)   # canonical rule (signals.py)
 
         justifications = []   # (full, short) — priority order, trimmed from the end
         # Pattern quality first — it scores THE setup being posted (0–100: pivot
@@ -1102,15 +1323,26 @@ def _generate_x_drafts(tradeable: list):
             justifications.append(("US Senate-disclosed buying",
                                    "Senate buying"))
         if cot_b and cot_b != "NEUTRAL" and _aligned(cot_b):
-            justifications.append((f"Futures positioning {cot_b.lower()} (COT report)",
-                                   f"COT {cot_b.lower()}"))
+            # COT commercials = the system's "smart money" (hedgers in the physical) —
+            # labelled as such (user 2026-06-13). Options flow is NOT smart money (mixed
+            # institutional + retail sentiment), so only COT carries this tag.
+            justifications.append((f"Futures positioning {cot_b.lower()} (COT report, smart money)",
+                                   f"COT {cot_b.lower()} (smart money)"))
+        # VWAP — short and direction-aligned only (user 2026-06-13). The detailed
+        # plain-English "why it confirms" lives on the PNG card; the tweet carries
+        # just the terse tag. ABOVE confirms a long, BELOW confirms a short, so the
+        # word always matches the trade side and never decorates the wrong way.
+        if (direction == "BULLISH" and vwap_p == "ABOVE") or \
+           (direction == "BEARISH" and vwap_p == "BELOW"):
+            _vw = "Above VWAP" if direction == "BULLISH" else "Below VWAP"
+            justifications.append((_vw, _vw))
         if adx_s == "STRONG_TREND":
             justifications.append(("Strong trend in force (ADX)",
                                    "Strong trend (ADX)"))
         if (direction == "BULLISH" and obv_s in ("BULLISH_DIVERGENCE", "CONFIRMING_BULLISH")) or \
            (direction == "BEARISH" and obv_s in ("BEARISH_DIVERGENCE", "CONFIRMING_BEARISH")):
-            justifications.append(("Volume flow backing the move",
-                                   "Volume backing move"))
+            justifications.append(("Volume flow backing the move (OBV)",
+                                   "Volume backing (OBV)"))
         if sec_d and _aligned(sec_d):
             justifications.append((f"Sector ({sec_e}) moving the same way",
                                    "Sector aligned"))
@@ -1120,35 +1352,39 @@ def _generate_x_drafts(tradeable: list):
             return "  ·  ".join(j[idx] for j in justifications[:n])
 
         # ── Tweet text — try progressively shorter versions to fit 280 chars ──
+        # Lead with the rotated HOOK, then the rotated description (user 2026-06-13).
         # Prices (Now/Entry/Stop/Target/R:R) and the HVF timeframe are NOT in the
-        # tweet text (user 2026-06-13) — they live on the attached PNG card. The
-        # tweet is the setup description + clear-English confirmations only.
-        base_with_name = (
-            f"{dir_emoji} ${ticker} ({name}) — Volatility squeeze {sig_desc} {dir_word}\n"
-        )
-        base_no_name = (
-            f"{dir_emoji} ${ticker} — Volatility squeeze {sig_desc} {dir_word}\n"
-        )
-        # "Not financial advice." is always appended — user directive 2026-06-11.
-        disclaimer = "\nNot financial advice."
-        tags_long  = f"#StockAlert #TechnicalAnalysis #{ticker} #Trading"
-        tags_short = f"#StockAlert #TechnicalAnalysis #{ticker}"
+        # tweet text — they live on the attached PNG card. The tweet is hook +
+        # description + clear-English confirmations only.
+        # Base variants in PRIORITY order (user 2026-06-13): keep the plain-English
+        # explainer line AND the company name; drop them only if the tweet won't fit
+        # 280 otherwise. The explainer is dropped before the name is kept (explanation
+        # matters more than the long name).
+        base_name_expl = f"{hook} ({name})\n{description}\n{explain}\n"
+        base_expl      = f"{hook}\n{description}\n{explain}\n"
+        base_with_name = f"{hook} ({name})\n{description}\n"
+        base_no_name   = f"{hook}\n{description}\n"
+        # "Not financial advice." — always appended (2026-06-11); now preceded by a
+        # blank line and rendered in bold italic (user 2026-06-13).
+        disclaimer = _NFA_DISCLAIMER
+        tags_long  = f"#StockAlert #TechnicalAnalysis #{disp_ticker} #Trading"
+        tags_short = f"#StockAlert #TechnicalAnalysis #{disp_ticker}"
 
         def _build(base, just, tags):
             return base + (f"{just}\n" if just else "") + tags + disclaimer
 
-        # Fitting order: keep as MANY confirmations as possible first (n_just
-        # outermost, descending), preferring full wording over short at each
-        # count; finally drop the company name. More confirmations beat verbose
-        # detail on one (user 2026-06-11).
+        # Within each base, keep as MANY confirmations as possible (n_just descending),
+        # full wording before short. The explainer-bearing bases come first so the
+        # primary-signal explanation is preferred over extra confirmations / the name.
+        _bases = ([base_name_expl, base_expl] if explain else []) + [base_with_name, base_no_name]
         tweet = None
-        for base in (base_with_name, base_no_name):
+        for base in _bases:
             for n_just in range(len(justifications), -1, -1):
                 for use_full in (True, False):
                     just = _just_line(use_full, n_just)
                     for tags in (tags_long, tags_short):
                         candidate = _build(base, just, tags)
-                        if len(candidate) <= 280:
+                        if _x_weighted_len(candidate) <= 280:   # X-weighted, not len()
                             tweet = candidate
                             break
                     if tweet:
@@ -1163,6 +1399,12 @@ def _generate_x_drafts(tradeable: list):
 
         # ── Chart: rendered by the shared card renderer (single source of truth) ──────────────────────────────────────
         chart_b64 = None
+        # Hand the card the same VWAP position the tweet used, so the card's
+        # plain-English VWAP logic and the tweet's short tag always agree
+        # (one signal_log source — user 2026-06-13).
+        if ctx.get("vwap_position"):
+            r["vwap_position"] = ctx.get("vwap_position")
+            r["vwap_pct"]      = ctx.get("vwap_pct")
         png = render_x_post_card(r)
         if png:
             chart_b64 = base64.b64encode(png).decode()
