@@ -26,11 +26,12 @@ system both come from `intraday_signals.py` (`_generate_x_drafts` for text,
 Structure, in order:
 
 ```
-📈 $TICKER (Full Company Name) — Volatility squeeze {breaking out|coiled, ready} {higher|lower}, {timeframe} setup
-Now: 182.8  Entry: 178.1  Stop: 173.353  Target: 209.88  R:R 6.7:1
+📈 $TICKER (Full Company Name) — Volatility squeeze {breaking out|coiled, ready} {higher|lower}
 Pattern quality 82/100  ·  Options flow bullish (call/put 1.42)  ·  Futures positioning bullish (COT report)
 #StockAlert #TechnicalAnalysis #TICKER #Trading
 Not financial advice.
+
+(Prices and timeframe are NOT in the tweet text — they live on the PNG card.)
 ```
 
 Rules (each one is a user directive — violating any is a regression):
@@ -52,9 +53,9 @@ Rules (each one is a user directive — violating any is a regression):
    the company name. More evidence beats prettier prose.
 6. **No pattern name** in public posts — "Volatility squeeze", never "HVF"/"Hunt
    Volatility Funnel" (the method name stays in-house).
-7. **Current price leads the levels line** — `Now: 182.8  Entry: …` (2026-06-12) so a
-   reader judges distance to the trigger at a glance. Same on the card header.
-8. Timeframe in human words: "90-day setup", "6-month setup", "long-term", "weekly".
+7. **No prices in the tweet text** (2026-06-13) — Now/Entry/Stop/Target/R:R live on the PNG
+   card, not the tweet. The tweet is description + clear-English confirmations only.
+8. **No HVF timeframe** (e.g. d220) in the tweet OR card (2026-06-13).
 
 ## The post card (PNG, attached under the tweet)
 
@@ -65,10 +66,11 @@ Dark "X-native" card, 12 × 8.5 in @ 140 dpi, background `#0d1117`. Two zones:
 |---|---|---|---|---|
 | 0.965 | @EndToEndTrading | #1d9bf0 | 13 | bold |
 | 0.925 | ▲/▼ $TICKER (Company Name) | #ffffff | 16 | bold |
-| 0.885 | Volatility squeeze … — {tf} setup | #c9d1d9 | 13 | |
-| 0.845 | Entry / Stop / Target / R:R line | #c9d1d9 | 12 | |
-| 0.805 | hashtags | #8b949e | 11 | |
-| 0.770 | Not financial advice. | #8b949e | 10 | italic |
+| 0.888 | Volatility squeeze … (NO timeframe) | #c9d1d9 | 13 | |
+| 0.852 | Now / Entry / Stop / Target / R:R line | #c9d1d9 | 12 | |
+| 0.818 | 52w High / 52w Low (1y fetch) | #8b949e | 11 | |
+| 0.784 | hashtags | #8b949e | 11 | |
+| 0.750 | Not financial advice. | #8b949e | 10 | italic |
 
 **Chart (axes rect [0.05, 0.06, 0.83, 0.62]):**
 - Price line `#58a6ff` (1.6 px) with a 7%-alpha fill to the series minimum

@@ -11,9 +11,9 @@ Inputs per setup: ticker, company name, direction (BULLISH/BEARISH), state
 target, R:R, pattern quality, and the aligned-confirmation context.
 
 ```
-base_with_name = "{emoji} ${ticker} ({name}) — Volatility squeeze {state} {higher|lower}, {tf} setup\n"
-                 "Now: {current_price}  Entry: {entry}  Stop: {stop}  Target: {target}  R:R {rr}:1\n"
-base_no_name   = same without "({name})" and without the word "setup"
+base_with_name = "{emoji} ${ticker} ({name}) — Volatility squeeze {state} {higher|lower}\n"
+base_no_name   = same without "({name})"
+# NO price line and NO HVF timeframe in the tweet text (2026-06-13) — both live on the PNG card.
 justifications = ordered list of (full, short) phrasings:
     1. Pattern quality {q}/100                      (only if q ≥ 60)
     2. Options flow {bias} (call/put {x.xx}, implied volatility rank {n}%)   | short: drop IV rank
@@ -71,9 +71,9 @@ direction     ▲ (bullish) / ▼ (bearish) prefix on the title row
 ## Worked example (MONY.L, 12 Jun 2026 — 227 chars)
 
 ```
-📈 $MONY.L (Mony Group PLC) — Volatility squeeze breaking out higher, d220 setup
-Now: 182.8  Entry: 178.1  Stop: 173.353  Target: 209.88  R:R 6.7:1
-Pattern quality 82/100
+📈 $MONY.L (Mony Group PLC) — Volatility squeeze breaking out higher
+Pattern quality 82/100  ·  Options flow bullish (call/put 1.62, implied volatility rank 88%)  ·  Insider buying on record
 #StockAlert #TechnicalAnalysis #MONY.L #Trading
 Not financial advice.
+(prices + 52w high/low on the PNG card, not the text)
 ```

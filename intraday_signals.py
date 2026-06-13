@@ -40,6 +40,10 @@
 # 1.2.0   2026-06-10  Alex Hind   X (Twitter) draft reports: after each tradeable-HVF Slack post, _generate_x_drafts()
 #                                 posts one tweet-ready block per instrument (with HVF chart attached) to SLACK_TWITTER
 #                                 channel for review before manual posting to X.
+# 1.6.0   2026-06-13  Alex Hind   X post format (user 2026-06-13): tweet TEXT drops the price line (Now/Entry/Stop/
+#                                 Target/R:R) and the HVF timeframe — prices live on the PNG card. Card header gains
+#                                 a 52-week High/Low line (1y fetch, ×ig_scale) and drops the timeframe. Confirmations
+#                                 stay in clear English (now with more char budget).
 # 1.5.2   2026-06-12  Alex Hind   "Now: {price}" leads the levels line in tweets AND on the post card (user 2026-06-12 —
 #                                 readers must see distance to the trigger). Card uses its fresh download (× ig_scale to
 #                                 match level units); tweet uses the scan's current_price.
@@ -841,21 +845,34 @@ def render_x_post_card(r: dict):
         ax.set_facecolor("#0d1117")
 
         dir_arrow = "▲" if direction == "BULLISH" else "▼"
+        # 52-week high/low for the card (user 2026-06-13) — prices live on the
+        # PNG, not in the tweet. Dedicated 1y fetch; ×ig_scale to match the
+        # level units (same convention as "Now").
+        wk52_str = ""
+        try:
+            _y52 = _yf.Ticker(ticker).history(period="1y", interval="1d")
+            if _y52 is not None and not _y52.empty:
+                wk52_str = (f"52w High: {float(_y52['High'].max()) * ig_scale:g}   "
+                            f"52w Low: {float(_y52['Low'].min()) * ig_scale:g}")
+        except Exception:
+            pass
+
+        # Timeframe label (e.g. d220) deliberately NOT shown (user 2026-06-13).
         hdr_lines = [
             (0.965, "@EndToEndTrading", "#1d9bf0", 13, "bold",   "normal"),
             (0.925, f"{dir_arrow} ${ticker} ({name})",
                                          "#ffffff", 16, "bold",   "normal"),
-            (0.885, f"Volatility squeeze {sig_desc} {dir_word} — "
-                    f"{tf_raw or 'multi-month'} setup",
+            (0.888, f"Volatility squeeze {sig_desc} {dir_word}",
                                          "#c9d1d9", 13, "normal", "normal"),
             # "Now" shown in the SAME units as the level strings (× ig_scale
             # restores signal units when the chart series was normalised).
-            (0.845, f"Now: {float(close.iloc[-1]) * ig_scale:g}   Entry: {h3_str}   Stop: {stop_str}   "
+            (0.852, f"Now: {float(close.iloc[-1]) * ig_scale:g}   Entry: {h3_str}   Stop: {stop_str}   "
                     f"Target: {tgt_str}   R:R {rr_str}",
                                          "#c9d1d9", 12, "normal", "normal"),
-            (0.805, f"#StockAlert #TechnicalAnalysis #{ticker} #Trading",
+            (0.818, wk52_str,            "#8b949e", 11, "normal", "normal"),
+            (0.784, f"#StockAlert #TechnicalAnalysis #{ticker} #Trading",
                                          "#8b949e", 11, "normal", "normal"),
-            (0.770, "Not financial advice.",
+            (0.750, "Not financial advice.",
                                          "#8b949e", 10, "normal", "italic"),
         ]
         for hy, htxt, hcol, hsize, hweight, hstyle in hdr_lines:
@@ -1084,17 +1101,14 @@ def _generate_x_drafts(tradeable: list):
             return "  ·  ".join(j[idx] for j in justifications[:n])
 
         # ── Tweet text — try progressively shorter versions to fit 280 chars ──
-        # Current price leads the levels line (user 2026-06-12) so a reader can
-        # judge distance to the trigger at a glance.
-        px      = r.get("current_price")
-        now_str = f"Now: {px:g}  " if px else ""
+        # Prices (Now/Entry/Stop/Target/R:R) and the HVF timeframe are NOT in the
+        # tweet text (user 2026-06-13) — they live on the attached PNG card. The
+        # tweet is the setup description + clear-English confirmations only.
         base_with_name = (
-            f"{dir_emoji} ${ticker} ({name}) — Volatility squeeze {sig_desc} {dir_word}, {tf_desc} setup\n"
-            f"{now_str}Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
+            f"{dir_emoji} ${ticker} ({name}) — Volatility squeeze {sig_desc} {dir_word}\n"
         )
         base_no_name = (
-            f"{dir_emoji} ${ticker} — Volatility squeeze {sig_desc} {dir_word}, {tf_desc}\n"
-            f"{now_str}Entry: {h3_str}  Stop: {stop_str}  Target: {tgt_str}  R:R {rr_str}\n"
+            f"{dir_emoji} ${ticker} — Volatility squeeze {sig_desc} {dir_word}\n"
         )
         # "Not financial advice." is always appended — user directive 2026-06-11.
         disclaimer = "\nNot financial advice."
