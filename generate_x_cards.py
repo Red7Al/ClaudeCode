@@ -27,6 +27,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.1.0   2026-06-14  Alex Hind   Code-review: _today_tradeable sort now uses price_action.hvf_weight() (single source of
+#                                 truth for weight order). Behaviour identical for READY/TRIGGERED rows.
 # 1.0.0   2026-06-12  Alex Hind   Initial build — local fallback while SLACK_BOT_TOKEN lacks files:write.
 # ======================================================================================================================
 
@@ -55,7 +57,8 @@ def _today_tradeable(limit: int) -> list:
                 order by ticker, recorded_at desc""")
     finally:
         db.close()
-    rows.sort(key=lambda r: (r[1] != "TRIGGERED", -(r[2] or 0)))
+    from price_action import hvf_weight          # (ticker, hvf_signal, pattern_quality)
+    rows.sort(key=lambda r: hvf_weight(r[1], r[2]))
     return [r[0] for r in rows[:limit]]
 
 

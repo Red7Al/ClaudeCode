@@ -23,6 +23,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.8.0   2026-06-14  Alex Hind   Code-review: _weight / _draft_weight now delegate to price_action.hvf_weight() (single
+#                                 source of truth for weight order) instead of an inline tuple. Behaviour identical.
 # 1.0.0   2026-06-01  Alex Hind   Initial build.
 # 1.0.1   2026-06-05  Alex Hind   get_intraday_signals: do not fall back to 5m data when 1h data is unavailable.
 #                                 RSI/MACD on 5m bars is 10× more reactive than intended (14 bars = 1.2h instead of 14h)
@@ -690,10 +692,11 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
 
     # Weight order (user 2026-06-11: all lists in weight order): TRIGGERED before
     # READY, then quality desc, then R:R desc — matters because lists cap at 15.
+    from price_action import hvf_weight
     def _weight(r):
-        return (r.get("hvf_signal") != "TRIGGERED",
-                -(r.get("hvf_quality") or r.get("pattern_quality") or 0),
-                -(r.get("risk_reward") or 0))
+        return hvf_weight(r.get("hvf_signal"),
+                          r.get("hvf_quality") or r.get("pattern_quality"),
+                          r.get("risk_reward"))
 
     text = ""
     if tradeable:
@@ -1325,10 +1328,11 @@ def _generate_x_drafts(tradeable: list):
     # this order and each carries its rank (below), so the channel reads
     # best-first even if Slack interleaves the webhook text with the bot-uploaded
     # chart images.
+    from price_action import hvf_weight
     def _draft_weight(r):
-        return (r.get("hvf_signal") != "TRIGGERED",
-                -(r.get("hvf_quality") or r.get("pattern_quality") or 0),
-                -(r.get("risk_reward") or 0))
+        return hvf_weight(r.get("hvf_signal"),
+                          r.get("hvf_quality") or r.get("pattern_quality"),
+                          r.get("risk_reward"))
 
     _ordered = sorted(tradeable, key=_draft_weight)[:X_DRAFT_TOP_N]   # count is config-driven (user 2026-06-13)
     _total   = len(_ordered)

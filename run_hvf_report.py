@@ -28,6 +28,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.7.0   2026-06-14  Alex Hind   Code-review: tradeable sort now uses the canonical price_action.hvf_weight() key (single
+#                                 source of truth for the "all lists in weight order" rule — was a local SIGNAL_RANK dict,
+#                                 now removed). Behaviour identical for READY/TRIGGERED lists; R:R is now a deterministic
+#                                 tiebreaker where two setups share signal+quality. developing sort (R:R only) unchanged.
 # 1.5.0   2026-06-13  Alex Hind   FIX (code-review): `from itertools import groupby` was imported inside the `if tradeable:`
 #                                 block, making it a function-local — on a day with DEVELOPING setups but ZERO tradeable
 #                                 ones the developing branch raised UnboundLocalError and the whole report crashed (no
@@ -205,9 +209,6 @@ def scan_universe() -> dict:
 # Categorise results
 # ----------------------------------------------------------------------------------------------------------------------
 
-SIGNAL_RANK = {"TRIGGERED": 3, "READY": 2, "DEVELOPING": 1}
-
-
 def categorise(all_results: dict) -> tuple:
     """
     Split into three report sections:
@@ -227,10 +228,9 @@ def categorise(all_results: dict) -> tuple:
             elif sig == "DEVELOPING":
                 developing.append(r)
 
-    tradeable.sort(key=lambda r: (
-        SIGNAL_RANK.get(r.get("hvf_signal", ""), 0),
-        r.get("pattern_quality", 0)
-    ), reverse=True)
+    from price_action import hvf_weight
+    tradeable.sort(key=lambda r: hvf_weight(
+        r.get("hvf_signal"), r.get("pattern_quality"), r.get("risk_reward")))
 
     # ── IG validation for UK tradeable setups (user 2026-06-12: IG data is the
     # arbiter). Yahoo's LSE feed contains phantom prints, so every .L setup is

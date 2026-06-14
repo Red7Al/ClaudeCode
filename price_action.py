@@ -66,6 +66,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.14.0  2026-06-14  Alex Hind   Code-review: new hvf_weight(signal, quality, risk_reward) — CANONICAL weight-order sort
+#                                 key (TRIGGERED>READY>DEVELOPING, quality desc, R:R desc), single source of truth for the
+#                                 "all lists in weight order" rule. Consolidates 6 duplicated sort keys (intraday drafts
+#                                 ×2, run_hvf_report, generate_x_cards, quality_report, shadow_diff). Display-only; the MTF
+#                                 best-selection (get_hvf_signal_mtf) is unchanged — detection untouched, suite green.
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Six price action signals with composite confirmation score.
 # 1.1.0   2026-06-05  Alex Hind   Raised HVF_MIN_RR from 2.0 to 2.5 in both single-timeframe and multi-timeframe
 #                                 scanners to match MIN_RISK_REWARD in config.py.
@@ -1480,6 +1485,22 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
         reverse=True,
     )
     return best
+
+
+def hvf_weight(signal: str, quality, risk_reward=0.0) -> tuple:
+    """
+    CANONICAL weight-order sort key (best first) for HVF setups — TRIGGERED >
+    READY > DEVELOPING, then pattern quality desc, then R:R desc. Use directly
+    with `sorted(..., key=...)` (ascending). Single source of truth for the
+    "all lists in weight order" rule (user 2026-06-11); consolidated from 6
+    duplicated sort keys in the code-review 2026-06-13.
+
+    Call with the raw fields so it works for both dict results and DB-row tuples:
+        sorted(results, key=lambda r: hvf_weight(r["hvf_signal"], r["hvf_quality"], r["risk_reward"]))
+        rows.sort(key=lambda r: hvf_weight(r[1], r[2]))          # (ticker, signal, quality)
+    """
+    rank = {"TRIGGERED": 0, "READY": 1, "DEVELOPING": 2}.get(signal, 3)
+    return (rank, -(quality or 0), -(risk_reward or 0))
 
 
 def check_hvf_invariants(r: dict) -> list:
