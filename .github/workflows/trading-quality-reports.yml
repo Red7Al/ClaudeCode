@@ -1,0 +1,37 @@
+name: HVF Quality Reports (2026-06-14)
+
+# Per-instrument plain-English "quality angle" reports (PNG) + skim tweets to
+# #arw-claude-twitter. Manual / cron-job.org dispatch (GitHub-native schedule is banned).
+#   args default = the current top-10 tradeable tickers (initial send, publishes all).
+#   pass "--daily" to publish only setups whose entry/target/R:R changed vs the prior scan.
+#   pass a number (e.g. "10") to take today's top-N from hvf_scan_log.
+
+on:
+  workflow_dispatch:
+    inputs:
+      args:
+        description: "Args for quality_report.py (tickers, a count, or --daily)"
+        required: false
+        default: "AXP MGNS.L LGEN.L MNG.L BAC TMPL.L ABF.L HSBA.L BLND.L NWG.L"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python quality_report.py ${{ github.event.inputs.args }}
+        env:
+          SUPABASE_USER:            ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_TWITTER:            ${{ secrets.SLACK_TWITTER }}
+          SLACK_BOT_TOKEN:          ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_TWITTER_CHANNEL_ID: ${{ secrets.SLACK_TWITTER_CHANNEL_ID }}
