@@ -5,3 +5,4 @@ numpy>=1.24.0
 pg8000>=1.30.0
 python-dotenv>=1.0.0
 matplotlib>=3.7.0
+twikit>=2.0.0          # free X (Twitter) publishing via unofficial web API (x_publish.py)

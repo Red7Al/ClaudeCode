@@ -26,6 +26,8 @@
 # 1.0.0   2026-06-05  Alex Hind   Initial build — all session/report cron jobs.
 # 1.7.0   2026-06-11  Alex Hind   Add "UK HVF Watch" job (30 8,10,12,14 Mon-Fri → trading-uk-hvf-watch.yml). Mirrors US
 #                                 HVF Watch cadence for UK/FTSE250 instruments.
+# 1.8.0   2026-06-14  Alex Hind   Add "HVF Quality Reports" (45 7 Mon-Fri) + weekend (45 9 Sat) → trading-quality-reports.yml,
+#                                 right after each HVF scan populates hvf_scan_log; runs --daily (publish only changed).
 # 1.6.0   2026-06-10  Alex Hind   --create-missing mode: creates only JOBS not yet on cron-job.org (skips existing).
 #                                 Safe to re-run. Workflow updated to expose mode input (reconcile / create-missing) and
 #                                 pass GH_PAT as GITHUB_TOKEN.
@@ -93,6 +95,7 @@ JOBS = [
     ("Commodity Monitor AM", "*/10 4-8 * * 1-5", "trading-commodity-monitor.yml"),
     # ── Pre-UK ────────────────────────────────────────────────────────────────────────────────────────────────────────
     ("HVF Daily Report",    "0 7 * * 1-5",    "trading-hvf-report.yml"),
+    ("HVF Quality Reports", "45 7 * * 1-5",   "trading-quality-reports.yml"),  # after the 07:00 HVF scan (user 2026-06-14)
     # ── UK session ────────────────────────────────────────────────────────────────────────────────────────────────────
     ("UK Open",             "0 8 * * 1-5",    "trading-uk-open.yml"),
     ("UK Morning Brief",    "0 9 * * 1,5",    "trading-uk-morning-brief.yml"),
@@ -114,6 +117,7 @@ JOBS = [
     # ── Weekend ───────────────────────────────────────────────────────────────────────────────────────────────────────
     ("Weekend Review",      "0 9 * * 6",      "trading-weekend-review.yml"),
     ("HVF Weekend Report",  "0 9 * * 6",      "trading-hvf-report.yml"),
+    ("HVF Quality Reports Wknd", "45 9 * * 6", "trading-quality-reports.yml"),  # after the Sat 09:00 HVF scan
     ("COT Report",          "0 10 * * 6",     "trading-cot-report.yml"),  # after weekend review refreshes COT (09:00)
     # ── Sunday commodity pre-open (created on the new cron-job.org account 2026-06-07) ──
     ("Sunday Readiness Check",         "30 20 * * 0", "trading-sunday-readiness.yml"),
