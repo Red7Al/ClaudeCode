@@ -1,0 +1,25 @@
+name: X Auth Verify — twikit (2026-06-14)
+
+# Confirms the TWIKIT_COOKIES secret authenticates to X. Posts NOTHING — it just reads
+# the logged-in handle. Run this after adding the secret, before wiring live posting.
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python x_publish.py --verify
+        env:
+          TWIKIT_COOKIES: ${{ secrets.TWIKIT_COOKIES }}
