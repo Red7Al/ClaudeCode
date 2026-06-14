@@ -35,6 +35,12 @@ env/
 data/
 LOGS/
 
+# Generated artifacts (not source)
+# x_drafts/ = locally-rendered tweet/report card PNG previews
+# *.skill   = packaged skill exports (source of truth is skills_src/)
+x_drafts/
+*.skill
+
 # OS
 .DS_Store
 Thumbs.db
