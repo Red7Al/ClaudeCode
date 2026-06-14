@@ -23,6 +23,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.9.0   2026-06-14  Alex Hind   Code-review (perf): _yf_info() memoises yfinance .info per process. The X-card path
+#                                 fetched .info 3x per instrument (name, exchange tag, P/E) — each a ~1-2s round-trip;
+#                                 now one fetch is shared. No behaviour change (.info is static metadata). [epic_lookup
+#                                 persistence was rejected: epic_lookup.epic is NOT NULL and untraded constituents have
+#                                 no epic, so a name-only row can't be stored without polluting the trade-epic lookup.]
 # 1.8.0   2026-06-14  Alex Hind   Code-review: _weight / _draft_weight now delegate to price_action.hvf_weight() (single
 #                                 source of truth for weight order) instead of an inline tuple. Behaviour identical.
 # 1.0.0   2026-06-01  Alex Hind   Initial build.
@@ -882,6 +887,31 @@ def _tf_desc(tf_raw: str) -> str:
 
 
 _RESOLVED_NAMES: dict = {}   # ticker -> full name, cached per process
+_YF_INFO_CACHE: dict = {}    # ticker -> yfinance .info, fetched once per process
+
+
+def _yf_info(ticker: str) -> dict:
+    """
+    yfinance .info for a ticker, fetched ONCE per process and memoised.
+
+    .info is a slow (~1-2s) network round-trip, and the X-card path reads it
+    three times for the same instrument — full name (_resolve_name), listing
+    exchange (_exchange_tag) and P/E (render_x_post_card). Sharing one fetch
+    cuts ~2 of every 3 .info calls per card with no behaviour change (.info is
+    static company metadata). Returns {} on any failure — every caller already
+    treats absent fields as optional.
+    """
+    if ticker in _YF_INFO_CACHE:
+        return _YF_INFO_CACHE[ticker]
+    info = {}
+    try:
+        import yfinance as _yf
+        info = _yf.Ticker(ticker).info or {}
+    except Exception:
+        pass
+    _YF_INFO_CACHE[ticker] = info
+    return info
+
 
 
 def _resolve_name(ticker: str) -> str:
@@ -908,8 +938,7 @@ def _resolve_name(ticker: str) -> str:
     if not name:
         try:
             import re as _re
-            import yfinance as _yf
-            info = _yf.Ticker(ticker).info
+            info = _yf_info(ticker)
             # Prefer longName (properly cased, e.g. "HSBC Holdings plc") over shortName
             # (ALL CAPS + share-class noise). NEVER .title() the whole name — that mangles
             # acronyms: HSBC → Hsbc (user 2026-06-13).
@@ -939,8 +968,7 @@ def _exchange_tag(ticker: str) -> str:
         return _EXCHANGE_TAGS[ticker]
     tag = None
     try:
-        import yfinance as _yf
-        ex = (_yf.Ticker(ticker).info.get("exchange") or "").upper()
+        ex = (_yf_info(ticker).get("exchange") or "").upper()
         tag = {"NMS": "#NASDAQ", "NGM": "#NASDAQ", "NCM": "#NASDAQ", "NGS": "#NASDAQ",
                "NYQ": "#NYSE", "PCX": "#NYSE", "ASE": "#NYSE", "LSE": "#LSE"}.get(ex)
     except Exception:
@@ -1098,7 +1126,7 @@ def render_x_post_card(r: dict):
             # slow/flaky so isolate it; absent or non-positive (no/neg earnings) → omitted.
             # "◆" is a DejaVu-safe marker (colour emoji don't render here).
             try:
-                _info = _tk.info or {}
+                _info = _yf_info(ticker)
                 _pe = _info.get("forwardPE") or _info.get("trailingPE")
                 if isinstance(_pe, (int, float)) and _pe > 0:
                     wk52_str = (wk52_str + "   " if wk52_str else "") + f"◆ P/E {_pe:.1f}"
