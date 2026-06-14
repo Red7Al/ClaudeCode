@@ -1,4 +1,4 @@
-name: X Auth Verify — official API (2026-06-14b diag)
+name: X Auth Verify — official API (2026-06-14c)
 
 # Confirms the X_* API key secrets authenticate to X. Posts NOTHING — just reads the
 # logged-in handle. Run this after adding the secrets, before wiring live posting.
@@ -20,17 +20,6 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -r requirements.txt
-      - name: Secret length check (values never printed — only byte counts)
-        env:
-          X_API_KEY:       ${{ secrets.X_API_KEY }}
-          X_API_SECRET:    ${{ secrets.X_API_SECRET }}
-          X_ACCESS_TOKEN:  ${{ secrets.X_ACCESS_TOKEN }}
-          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-        run: |
-          printf 'X_API_KEY len=%s\n'       "$(printf %s "$X_API_KEY"       | wc -c)"
-          printf 'X_API_SECRET len=%s\n'    "$(printf %s "$X_API_SECRET"    | wc -c)"
-          printf 'X_ACCESS_TOKEN len=%s\n'  "$(printf %s "$X_ACCESS_TOKEN"  | wc -c)"
-          printf 'X_ACCESS_SECRET len=%s\n' "$(printf %s "$X_ACCESS_SECRET" | wc -c)"
       - run: python x_publish.py --verify
         env:
           X_API_KEY:       ${{ secrets.X_API_KEY }}
