@@ -31,6 +31,11 @@
 # 1.0.0   2026-06-14  Alex Hind   Initial build (user 2026-06-13/14): sector-aware fundamentals → plain-English prose
 #                                 report PNG + skim tweet; daily change-detection vs hvf_scan_log; posts to
 #                                 #arw-claude-twitter. 13-17 min stagger reserved for live X (drafts only for now).
+# 1.1.0   2026-06-14  Alex Hind   Prose rework (user 2026-06-14): one fact per SHORT sentence (no run-ons); phrasing
+#                                 picked PER INSTRUMENT from pools (_pick) so reports read bespoke, not templated;
+#                                 insider stake shown as a £/$ VALUE (× market cap), not a misleading bare %; varied,
+#                                 clearer financial caveat (fixes the repeated "usual yardsticks" / NatWest grammar);
+#                                 "throws off strong cash" → "surplus cash" in the tweet.
 # ======================================================================================================================
 
 import os
@@ -40,7 +45,6 @@ import datetime
 import logging
 import random
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("quality_report")
 
@@ -61,8 +65,9 @@ def _money(x, gbp: bool) -> str:
     s = "£" if gbp else "$"
     if x is None:
         return "n/a"
+    sign = "-" if x < 0 else ""
     ax = abs(x)
-    return f"{s}{x/1e9:.1f}bn" if ax >= 1e9 else f"{s}{x/1e6:.0f}m"
+    return f"{sign}{s}{ax/1e9:.1f}bn" if ax >= 1e9 else f"{sign}{s}{ax/1e6:.0f}m"
 
 
 def _rising_run(vals_new_first) -> int:
@@ -126,8 +131,13 @@ def fundamentals(ticker: str) -> dict:
     rk = info.get("recommendationKey")
     f["analyst_rec"] = rk.title() if rk and rk != "none" else None
     f["target_pct"] = ((tgt - px) / px * 100) if (tgt and px) else None
+    f["mcap"] = info.get("marketCap")
+    f["industry"] = info.get("industry")
     ins = info.get("heldPercentInsiders")
     f["insider_pct"] = ins * 100 if isinstance(ins, (int, float)) and ins > 0 else None
+    # Insider stake as a £/$ VALUE (user 2026-06-14: a % alone misleads on a big-cap —
+    # 0.1% of a giant market cap is still a large sum).
+    f["insider_value"] = (ins * f["mcap"]) if (f.get("insider_pct") and f.get("mcap")) else None
 
     if not f["financial"]:
         try:
@@ -161,8 +171,83 @@ def fundamentals(ticker: str) -> dict:
 # Prose report (common-man narrative) + skim tweet
 # ----------------------------------------------------------------------------------------------------------------------
 
+import hashlib
+
+# Phrasing pools — one is picked PER INSTRUMENT (stable per name, different between names)
+# so each report reads as if written on its own, not from a template (user 2026-06-14).
+# Sentences are kept SHORT — one fact each — to stay readable.
+_P_GROWTH = [
+    "{name} keeps growing — sales up {ry} years running, now {rev}.",
+    "{name} is on a steady run: {ry} straight years of higher sales, reaching {rev}.",
+    "Sales at {name} have climbed {ry} years in a row, to {rev}.",
+    "{name} has grown sales every year for {ry} years; they now stand at {rev}.",
+    "The top line keeps building at {name} — up {ry} years straight, {rev} today.",
+]
+_P_RATE = ["That's roughly {rate}% a year.", "About {rate}% a year.", "A steady ~{rate}% a year."]
+_P_PROFIT = [
+    "Profit has grown too, from {ni0} to {ni1}.",
+    "Profit followed, climbing from {ni0} to {ni1}.",
+    "Earnings rose alongside — {ni0} to {ni1}.",
+    "It drops to the bottom line: profit up {ni0} to {ni1}.",
+]
+_P_CASH = [
+    "It generates real surplus cash — {fcf} left over last year after running and reinvesting.",
+    "The profit is backed by cash: {fcf} of surplus last year.",
+    "Cash generation is strong — {fcf} free after costs and investment.",
+    "That profit turns into cash, {fcf} of it spare last year.",
+]
+_P_NETCASH = [
+    "The balance sheet is strong: more cash ({cash}) than debt ({debt}).",
+    "Finances are solid — {cash} of cash against just {debt} of debt.",
+    "Little borrowing here: {cash} cash versus {debt} debt.",
+    "It sits on net cash, {cash} against {debt} of debt.",
+]
+_P_NETDEBT = [
+    "It carries {debt} of debt against {cash} of cash.",
+    "There is some borrowing — {debt} of debt, {cash} of cash.",
+    "Debt stands at {debt}, with {cash} of cash on hand.",
+]
+_P_ROE = [
+    "Returns are high: {roe}% on shareholders' money.",
+    "It uses capital well, earning {roe}% on shareholders' money.",
+    "A strong {roe}% return on what shareholders have put in.",
+    "Money is put to work well — {roe}% return on equity.",
+]
+_P_DIV = [
+    "The dividend has risen {streak} years running.",
+    "Shareholders get a rising payout — {streak} straight years of dividend growth.",
+    "It has lifted its dividend {streak} years in a row.",
+    "A {streak}-year run of dividend increases, too.",
+]
+_P_ANALYST = [
+    "Analysts ({n}) {rec}see the shares worth about {pct}% {dir} today's price.",
+    "The {n} analysts covering it {rec}peg fair value about {pct}% {dir}.",
+    "Broker targets ({n} analysts) {rec}sit about {pct}% {dir} the price.",
+]
+_P_INSIDER = [
+    "Company insiders hold about {value} of stock ({pct}%).",
+    "Insiders own roughly {value} worth, about {pct}% of the company.",
+    "Management's own holding is around {value} ({pct}%).",
+]
+_P_FIN_CAVEAT = [
+    "{name} is in {industry}, where cash-flow, debt and revenue figures behave very differently — so it's better judged on its record and returns.",
+    "As a {industry} business, {name} doesn't fit the usual cash-flow and debt measures; consistency and returns are what count.",
+    "For a financial like {name}, the normal cash-flow and balance-sheet yardsticks don't apply cleanly, so the dividend record and returns matter most.",
+    "{name} runs a {industry} balance sheet, so conventional cash and debt metrics can mislead — returns and the payout tell the story.",
+    "Being a {industry} firm, {name} is best read through its returns and dividend reliability, not cash flow or borrowing.",
+]
+
+
+def _pick(pool, ticker, salt):
+    """Stable per-(ticker, salt) choice from a phrasing pool — same for a name every run,
+    but different between names, so reports don't look templated."""
+    h = int(hashlib.md5(f"{ticker}|{salt}".encode()).hexdigest()[:8], 16)
+    return pool[h % len(pool)]
+
+
 def build_report(r: dict, change_note: str = None) -> tuple:
-    """Return (title, prose_body) — plain-English narrative, sector-aware."""
+    """(title, prose_body) — plain English, one fact per short sentence, phrasing varied
+    per instrument so each report reads bespoke (user 2026-06-14)."""
     from intraday_signals import _resolve_name
     tk = r["ticker"]
     gbp = tk.endswith(".L")
@@ -172,48 +257,41 @@ def build_report(r: dict, change_note: str = None) -> tuple:
     s = []
 
     if f.get("financial"):
-        s.append(f"{name} is a financial company, so the usual yardsticks — cash flow, "
-                 f"borrowing levels and revenue growth — don't mean what they would for an "
-                 f"ordinary business, and we leave them out rather than mislead.")
-        bits = []
+        s.append(_pick(_P_FIN_CAVEAT, tk, "cav").format(name=name, industry=(f.get("industry") or "financial services")))
         if f.get("div_streak"):
-            bits.append(f"it has raised its dividend {f['div_streak']} years in a row")
+            s.append(_pick(_P_DIV, tk, "div").format(streak=f["div_streak"]))
         if f.get("roe"):
-            bits.append(f"it earns a return of {f['roe']*100:.0f}% on the money shareholders have put in")
-        if bits:
-            s.append("What matters here is consistency and returns: " + ", and ".join(bits) + ".")
+            s.append(_pick(_P_ROE, tk, "roe").format(roe=f"{f['roe']*100:.0f}"))
     else:
         if f.get("rev_run"):
-            g = f", about {f['rev_cagr']*100:.0f}% a year," if f.get("rev_cagr") else ""
-            line = f"{name} is a steadily growing business. Sales have risen {f['rev_run']} years in a row{g} to {_money(f.get('rev_latest'), gbp)}"
-            if f.get("ni_run"):
-                line += f", and profit has grown over the same stretch, from {_money(f['ni_first'], gbp)} to {_money(f['ni_latest'], gbp)}."
-            else:
-                line += "."
-            s.append(line)
+            s.append(_pick(_P_GROWTH, tk, "grw").format(name=name, ry=f["rev_run"], rev=_money(f.get("rev_latest"), gbp)))
+            if f.get("rev_cagr"):
+                s.append(_pick(_P_RATE, tk, "rate").format(rate=f"{f['rev_cagr']*100:.0f}"))
+        if f.get("ni_run"):
+            s.append(_pick(_P_PROFIT, tk, "pft").format(ni0=_money(f["ni_first"], gbp), ni1=_money(f["ni_latest"], gbp)))
         if f.get("fcf") and f["fcf"]["pos"]:
-            s.append(f"That growth comes with real cash, not just paper profit: it threw off "
-                     f"{_money(f['fcf']['latest'], gbp)} of spare cash last year.")
+            s.append(_pick(_P_CASH, tk, "cash").format(fcf=_money(f["fcf"]["latest"], gbp)))
         if f.get("net_cash"):
-            s.append(f"Its finances are solid — it holds more cash ({_money(f['cash'], gbp)}) "
-                     f"than debt ({_money(f['debt'], gbp)}), so it isn't leaning on borrowing.")
+            s.append(_pick(_P_NETCASH, tk, "bs").format(cash=_money(f["cash"], gbp), debt=_money(f["debt"], gbp)))
         elif f.get("debt") is not None:
-            s.append(f"It carries {_money(f['debt'], gbp)} of debt against {_money(f['cash'], gbp)} of cash.")
-        ret = []
+            s.append(_pick(_P_NETDEBT, tk, "bs").format(cash=_money(f["cash"], gbp), debt=_money(f["debt"], gbp)))
         if f.get("roe"):
-            ret.append(f"earns a return of {f['roe']*100:.0f}% on what shareholders have invested")
+            s.append(_pick(_P_ROE, tk, "roe").format(roe=f"{f['roe']*100:.0f}"))
         if f.get("div_streak"):
-            ret.append(f"has raised its dividend {f['div_streak']} years running")
-        if ret:
-            s.append("It also " + ", and ".join(ret) + ".")
+            s.append(_pick(_P_DIV, tk, "div").format(streak=f["div_streak"]))
 
     if f.get("target_pct") is not None:
-        more = "more" if f["target_pct"] >= 0 else "less"
+        d = "above" if f["target_pct"] >= 0 else "below"
         rec = f'rate it "{f["analyst_rec"]}" and ' if f.get("analyst_rec") else ""
-        s.append(f"The {f.get('analyst_n') or 'covering'} analysts who follow it {rec}"
-                 f"on average see the shares worth about {abs(f['target_pct']):.0f}% {more} than today's price.")
-    if f.get("insider_pct") is not None:
-        s.append(f"Management has skin in the game, owning {f['insider_pct']:.1f}% of the company themselves.")
+        pct = f"{abs(f['target_pct']):.0f}"
+        if f.get("analyst_n"):
+            s.append(_pick(_P_ANALYST, tk, "an").format(n=f["analyst_n"], rec=rec, pct=pct, dir=d))
+        else:
+            s.append(f"Analysts {rec}on average see the shares worth about {pct}% {d} today's price.")
+    if f.get("insider_value") is not None:
+        s.append(_pick(_P_INSIDER, tk, "ins").format(value=_money(f["insider_value"], gbp), pct=f"{f['insider_pct']:.1f}"))
+    elif f.get("insider_pct") is not None:
+        s.append(f"Company insiders own about {f['insider_pct']:.1f}% of the shares.")
 
     body = " ".join(s) if s else f"Limited fundamental data available for {name}."
     if change_note:
@@ -239,7 +317,7 @@ def build_tweet(r: dict) -> str:
         if f.get("rev_run"):
             bits.append(f"sales up {f['rev_run']} years running")
         if f.get("fcf") and f["fcf"]["pos"]:
-            bits.append("throws off strong cash")
+            bits.append("strong surplus cash")
         if f.get("net_cash"):
             bits.append("more cash than debt")
         if f.get("div_streak"):
@@ -413,6 +491,10 @@ def _today_top(limit: int) -> list:
 
 
 def main():
+    try:                                            # UTF-8 stdout for the script (not on import)
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    except Exception:
+        pass
     from dotenv import load_dotenv
     load_dotenv(override=True)
     args = sys.argv[1:]

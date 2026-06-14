@@ -84,6 +84,8 @@
 #                                 normalises the "plc" suffix WITHOUT .title() — fixes acronym mangling (HSBC was "Hsbc").
 # 1.16.0  2026-06-13  Alex Hind   Tweet market tag uses the REAL listing exchange for US names (#NASDAQ/#NYSE via yfinance
 #                                 exchange code, cached) instead of #SP500; UK keeps its index (#FTSE100/#FTSE250). User 2026-06-13.
+# 1.17.0  2026-06-14  Alex Hind   Expanded the tweet phrasing pools (_X_HOOKS/_X_DESC/_X_EXPLAIN) to ~10-12 variants each
+#                                 per (direction, signal) so consecutive posts don't read like a template (user 2026-06-14).
 # 1.6.1   2026-06-13  Alex Hind   X drafts posted to SLACK_TWITTER in BEST→WORST order (user 2026-06-13): TRIGGERED
 #                                 before READY, quality desc, then R:R desc (was quality only). Each draft header
 #                                 carries its rank 'N/total (best→worst)' so the order is explicit even if Slack
@@ -733,32 +735,52 @@ _SIG_LABEL = {
 _X_HOOKS = {
     # Keyed by (direction, signal) — a bearish setup must NOT get a bullish hook
     # (📈 "breaking out" on a breakdown). READY hooks are direction-neutral.
-    ("BULLISH", "TRIGGERED"): ["🚨 Breakout: {cash}", "⚡ {cash} on the move",
-                               "🚨 {cash} just triggered", "📈 {cash} breaking out now"],
-    ("BEARISH", "TRIGGERED"): ["🚨 Breakdown: {cash}", "⚡ {cash} on the move",
-                               "🚨 {cash} just triggered", "📉 {cash} breaking down now"],
-    ("BULLISH", "READY"):     ["👀 Watching {cash}", "👀 On the radar: {cash}",
-                               "⏳ {cash} coiling up", "👀 {cash} setting up"],
-    ("BEARISH", "READY"):     ["👀 Watching {cash}", "👀 On the radar: {cash}",
-                               "⏳ {cash} coiling up", "👀 {cash} setting up"],
+    ("BULLISH", "TRIGGERED"): [
+        "🚨 Breakout: {cash}", "⚡ {cash} on the move", "🚨 {cash} just triggered",
+        "📈 {cash} breaking out now", "🔥 {cash} is going", "👀 {cash} just cleared resistance",
+        "📈 {cash} popping higher", "⚡ Squeeze fired — {cash}", "🚀 {cash} breaking higher",
+        "📈 {cash} off the launchpad", "🟢 {cash} triggered long", "⚡ {cash} breaking out"],
+    ("BEARISH", "TRIGGERED"): [
+        "🚨 Breakdown: {cash}", "⚡ {cash} on the move", "🚨 {cash} just triggered",
+        "📉 {cash} breaking down now", "🔻 {cash} rolling over", "👀 {cash} just lost support",
+        "📉 {cash} cracking lower", "⚡ Squeeze fired — {cash}", "📉 {cash} breaking down",
+        "🔻 {cash} under pressure", "🔴 {cash} triggered short", "⚡ {cash} losing the floor"],
+    ("BULLISH", "READY"):     [
+        "👀 Watching {cash}", "👀 On the radar: {cash}", "⏳ {cash} coiling up",
+        "👀 {cash} setting up", "🧭 {cash} on the watchlist", "⏳ {cash} winding tighter",
+        "👀 Keep an eye on {cash}", "🔍 {cash} building a base", "⏳ {cash} loading up",
+        "👀 {cash} primed", "🧭 {cash} one to watch", "⏳ {cash} coiling under resistance"],
+    ("BEARISH", "READY"):     [
+        "👀 Watching {cash}", "👀 On the radar: {cash}", "⏳ {cash} coiling up",
+        "👀 {cash} setting up", "🧭 {cash} on the watchlist", "⏳ {cash} winding tighter",
+        "👀 Keep an eye on {cash}", "🔍 {cash} rounding over", "⏳ {cash} losing steam",
+        "👀 {cash} primed to roll", "🧭 {cash} one to watch", "⏳ {cash} capped at resistance"],
 }
 _X_DESC = {
-    ("BULLISH", "TRIGGERED"): ["Volatility squeeze breaking out higher",
-                               "Tight coil firing to the upside",
-                               "Compression giving way — pushing higher",
-                               "Squeeze released, momentum turning up"],
-    ("BULLISH", "READY"):     ["Volatility squeeze coiled, ready higher",
-                               "Compression building — primed for an upside break",
-                               "Coiling tight, loaded to the upside",
-                               "Range tightening, leaning higher"],
-    ("BEARISH", "TRIGGERED"): ["Volatility squeeze breaking down lower",
-                               "Tight coil cracking to the downside",
-                               "Compression giving way — pressing lower",
-                               "Squeeze released, momentum turning down"],
-    ("BEARISH", "READY"):     ["Volatility squeeze coiled, ready lower",
-                               "Compression building — primed for a downside break",
-                               "Coiling tight, loaded to the downside",
-                               "Range tightening, leaning lower"],
+    ("BULLISH", "TRIGGERED"): [
+        "Volatility squeeze breaking out higher", "Tight coil firing to the upside",
+        "Compression giving way — pushing higher", "Squeeze released, momentum turning up",
+        "A long range just snapped to the upside", "Coiled tight, now breaking the ceiling",
+        "Volatility squeeze resolving higher", "The lid's off — pushing higher",
+        "Pressure released to the upside", "Range broken, buyers in control"],
+    ("BULLISH", "READY"):     [
+        "Volatility squeeze coiled, ready higher", "Compression building — primed for an upside break",
+        "Coiling tight, loaded to the upside", "Range tightening, leaning higher",
+        "Winding into a tight spring, bias up", "Pressure building under the ceiling",
+        "Squeezing tighter, upside break in view", "Energy coiling for a move higher",
+        "Narrowing range, watching for the pop", "Tightening up, ready to run higher"],
+    ("BEARISH", "TRIGGERED"): [
+        "Volatility squeeze breaking down lower", "Tight coil cracking to the downside",
+        "Compression giving way — pressing lower", "Squeeze released, momentum turning down",
+        "A long range just snapped to the downside", "Coiled tight, now losing the floor",
+        "Volatility squeeze resolving lower", "Support's gone — pressing lower",
+        "Pressure released to the downside", "Range broken, sellers in control"],
+    ("BEARISH", "READY"):     [
+        "Volatility squeeze coiled, ready lower", "Compression building — primed for a downside break",
+        "Coiling tight, loaded to the downside", "Range tightening, leaning lower",
+        "Winding into a tight spring, bias down", "Pressure building under support",
+        "Squeezing tighter, downside break in view", "Energy coiling for a move lower",
+        "Narrowing range, watching for the drop", "Tightening up, ready to roll lower"],
 }
 # Plain-English explanation of the PRIMARY signal (the squeeze) so a reader with no
 # system knowledge understands what's happening — added to the tweet body (user
@@ -770,24 +792,48 @@ _X_EXPLAIN = {
         "Range squeezed shut, now releasing upward as buyers clear the ceiling.",
         "Compression resolved to the upside; squeeze breakouts like this can run.",
         "Buyers cleared the ceiling after a long squeeze; watching for follow-through.",
+        "After weeks of coiling, price has pushed through the top of the range.",
+        "The range got tighter and tighter — and it's just given way to the upside.",
+        "Sellers ran out of room and buyers broke it out; these moves can extend.",
+        "A long, narrowing range has snapped higher — the kind of move that trends.",
+        "Weeks of compression, now a clean break above resistance.",
+        "The squeeze has fired upward — energy released after a long build-up.",
     ],
     ("BULLISH", "READY"): [
         "Range is winding tighter; a push above the ceiling is the trigger to watch.",
         "Coiling into a tight squeeze — a break higher would confirm the move.",
         "Energy building in a narrowing range; bias is up on a break above.",
         "Tightening toward a decision point, leaning higher — not triggered yet.",
+        "Price is compressing under resistance; a close above it sets it off.",
+        "The range keeps narrowing — watching for the break to the upside.",
+        "A tight base is forming; an upside break would be the signal.",
+        "Pressure's building below the ceiling, ready to release higher.",
+        "Still coiling — the higher the lows hold, the closer the upside break.",
+        "Wound up tight under resistance; a push through is what to watch.",
     ],
     ("BEARISH", "TRIGGERED"): [
         "A tight coil just broke down through support — moves like this often extend.",
         "Range squeezed shut, now releasing downward as sellers clear the floor.",
         "Compression resolved to the downside; squeeze breakdowns like this can run.",
         "Sellers cleared the floor after a long squeeze; watching for follow-through.",
+        "After weeks of coiling, price has cracked below the range.",
+        "The range got tighter and tighter — and it's just given way to the downside.",
+        "Buyers ran out of room and sellers broke it down; these moves can extend.",
+        "A long, narrowing range has snapped lower — the kind of move that trends.",
+        "Weeks of compression, now a clean break below support.",
+        "The squeeze has fired downward — pressure released after a long build-up.",
     ],
     ("BEARISH", "READY"): [
         "Range is winding tighter; a drop below support is the trigger to watch.",
         "Coiling into a tight squeeze — a break lower would confirm the move.",
         "Energy building in a narrowing range; bias is down on a break below.",
         "Tightening toward a decision point, leaning lower — not triggered yet.",
+        "Price is compressing on support; a close below it sets it off.",
+        "The range keeps narrowing — watching for the break to the downside.",
+        "A tight top is forming; a downside break would be the signal.",
+        "Pressure's building above the floor, ready to release lower.",
+        "Still coiling — the lower the highs cap, the closer the downside break.",
+        "Wound up tight on support; a drop through is what to watch.",
     ],
 }
 

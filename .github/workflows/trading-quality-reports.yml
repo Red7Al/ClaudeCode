@@ -12,7 +12,7 @@ on:
       args:
         description: "Args for quality_report.py (tickers, a count, or --daily)"
         required: false
-        default: "AXP MGNS.L LGEN.L MNG.L BAC TMPL.L ABF.L HSBA.L BLND.L NWG.L"
+        default: "--daily"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
