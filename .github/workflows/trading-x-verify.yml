@@ -1,7 +1,7 @@
-name: X Auth Verify — twikit (2026-06-14)
+name: X Auth Verify — official API (2026-06-14)
 
-# Confirms the TWIKIT_COOKIES secret authenticates to X. Posts NOTHING — it just reads
-# the logged-in handle. Run this after adding the secret, before wiring live posting.
+# Confirms the X_* API key secrets authenticate to X. Posts NOTHING — just reads the
+# logged-in handle. Run this after adding the secrets, before wiring live posting.
 
 on:
   workflow_dispatch:
@@ -22,4 +22,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python x_publish.py --verify
         env:
-          TWIKIT_COOKIES: ${{ secrets.TWIKIT_COOKIES }}
+          X_API_KEY:       ${{ secrets.X_API_KEY }}
+          X_API_SECRET:    ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN:  ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}

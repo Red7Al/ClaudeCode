@@ -47,8 +47,9 @@ review channel the webhook text + the bot-uploaded PNG land as two adjacent item
   `secrets_and_x_delivery`).
 - Scheduled via cron-job.org (`setup_cronjobs.py` → `trading-quality-reports.yml`): 07:45 Mon–Fri
   and 09:45 Sat, just after each HVF scan populates `hvf_scan_log`, in `--daily` mode.
-- Live X posting is via `x_publish.py` (twikit, cookie auth, 13–17 min stagger) once cookies are
-  provided as a secret — see that module's header.
+- Live X posting is via `x_publish.py` (official X API v2 via tweepy, OAuth 1.0a — the X_* secrets;
+  13–17 min stagger) once the keys are set — see that module's header. (twikit was dropped: its login
+  broke on X's Mar-2026 site change with no fixed release.)
 
 ## Source of truth
 `quality_report.py` — fundamentals engine (`fundamentals`), prose (`build_report` + `_P_*`/`_pick`),
