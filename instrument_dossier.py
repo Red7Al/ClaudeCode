@@ -37,6 +37,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.2.0   2026-06-15  Alex Hind   HVF summary now prints FULL figures (Entry/Stop/Target/R:R/Q) for EVERY timeframe the
+#                                 funnel appears on, in weight order (user 2026-06-15), replacing the one-line "Also on".
+#                                 Primary row is flagged; non-primary rows show raw detection levels.
 # 1.1.0   2026-06-15  Alex Hind   slack.txt now surfaces the tight-stop ⚠️ caution from the X-draft collect dict (#9b), so
 #                                 a structurally-untradeable funnel is flagged in the dossier too.
 # 1.0.0   2026-06-15  Alex Hind   Initial build (user 2026-06-15): one ticker in → all Slack/email/X artifacts + PNGs out,
@@ -160,12 +163,23 @@ def _hvf_summary(ticker: str, name: str, r: dict) -> str:
         f"  Quality   : {r.get('pattern_quality', '—')}/100",
         f"  Now       : {_g(r.get('current_price'))}",
     ]
-    others = r.get("mtf_timeframes") or []
-    if others:
-        tfs = ", ".join(
-            f"{(c.get('hvf_timeframe','') or '').replace('daily-','d')}={c.get('hvf_signal','')}"
-            for c in others)
-        lines.append(f"  Also on   : {tfs}")
+    # Full figures for EVERY timeframe the funnel appears on (user 2026-06-15), in
+    # weight order. The primary (best) timeframe carries the AMP1-anchored / IG-
+    # validated target+R:R; the others show their raw per-timeframe detection levels.
+    tfs = r.get("mtf_timeframes") or []
+    if tfs:
+        lines.append("")
+        lines.append("  By date range (each timeframe the funnel appears on):")
+        for c in tfs:
+            tf_lbl = (c.get("hvf_timeframe", "") or "").replace("daily-", "d")
+            rr_c   = c.get("risk_reward")
+            rr_cs  = f"{rr_c:.1f}:1" if isinstance(rr_c, (int, float)) and rr_c else "—"
+            primary = "  ◄ primary (exhaustion-anchored, IG-validated)" if tf_lbl == tf else ""
+            lines.append(f"    [{tf_lbl}] {c.get('hvf_signal', '—')}{primary}")
+            lines.append(f"        Entry {_g(c.get('h3_level'))}   Stop {_g(c.get('stop_level'))}   "
+                         f"Target {_g(c.get('target'))}   R:R {rr_cs}   Q {c.get('pattern_quality', '—')}/100")
+        lines.append("    (Non-primary rows show RAW detection figures — only the primary's target/R:R is "
+                     "exhaustion-anchored and IG-validated.)")
     return "\n".join(lines)
 
 

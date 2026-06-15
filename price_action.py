@@ -66,6 +66,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.16.0  2026-06-15  Alex Hind   mtf_timeframes now also carries each timeframe's h3_level/stop_level/target (user
+#                                 2026-06-15: the dossier shows ALL figures per date range, not just the chosen one).
+#                                 ADDITIVE — raw per-timeframe levels; only `best` is exhaustion-anchored/IG-validated.
+#                                 No detection/selection change; suite green.
 # 1.15.0  2026-06-15  Alex Hind   Backlog #9b (groundwork, INERT): get_hvf_signal_mtf now annotates the chosen result with
 #                                 stop_pct + tight_stop_intraday (stop < config.TIGHT_STOP_MIN_PCT of price), carried into
 #                                 analyse_price_action as hvf_stop_pct / hvf_tight_stop_intraday. ADDITIVE only — nothing
@@ -1485,7 +1489,15 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
           "hvf_signal":      c.get("hvf_signal"),
           "hvf_type":        c.get("hvf_type"),
           "risk_reward":     c.get("risk_reward"),
-          "pattern_quality": c.get("pattern_quality")}
+          "pattern_quality": c.get("pattern_quality"),
+          # Per-timeframe levels (user 2026-06-15: the dossier shows ALL figures for
+          # each date range, not just the chosen one). These are the RAW per-timeframe
+          # detection levels — only the chosen `best` timeframe carries the AMP1-
+          # anchored target / R:R and IG validation (best is one of `candidates` and
+          # apply_exhaustion_amp1 mutated it in place, so best's row is already anchored).
+          "h3_level":        c.get("h3_level"),
+          "stop_level":      c.get("stop_level"),
+          "target":          c.get("target")}
          for c in candidates),
         key=lambda c: (signal_rank.get(c["hvf_signal"], 0), c["pattern_quality"] or 0),
         reverse=True,
