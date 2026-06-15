@@ -23,6 +23,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.13.0  2026-06-15  Alex Hind   open_trade market pre-checks (Step 4) now FAIL CLOSED (user 2026-06-15). Previously a
+#                                 try/except logged a warning and fell through to place the order with spread/stop/status
+#                                 UNVERIFIED — how a 0.098%-stop AMD market order slipped past the 4d tight-stop guard.
+#                                 An exception in 4a-4d now blocks the trade + alerts (fail-safe) instead of placing it.
 # 1.12.0  2026-06-15  Alex Hind   Backlog #9b (behaviour): place_hvf_order_from_sig now skips a setup flagged
 #                                 hvf_tight_stop_intraday SILENTLY (no missed-trade alert) — the funnel is structurally
 #                                 untradeable at IG intraday (stop < config.TIGHT_STOP_MIN_PCT of price); the report still
@@ -1083,7 +1087,21 @@ def open_trade(
                 return None
 
     except Exception as e:
-        log.warning(f"Market pre-checks failed for {ticker}: {e}")
+        # FAIL CLOSED (was fail-open, user 2026-06-15). The market pre-checks (4a
+        # tradeable status, 4b IG min-stop, 4c spread-to-stop, 4d tight-stop) are the
+        # safety gates. If they can't COMPLETE, we have NOT verified the trade is safe
+        # to place — so we must NOT place it. Previously this only logged a warning and
+        # fell through to Step 5, placing an UNVERIFIED order: that is how a 0.098%-stop
+        # AMD market order slipped past the 4d guard. Block + alert (visible, not silent).
+        reason = (f"Market pre-checks could not complete ({type(e).__name__}: {e}) — "
+                  f"trade NOT placed (fail-safe; spread/stop/status unverified)")
+        log.error(f"{ticker}: {reason}")
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction, reason, signal_summary)
+        except Exception:
+            pass
+        return None
 
     # Step 5 — Live trade: build and submit order
     body = {

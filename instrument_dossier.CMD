@@ -1,2 +1,2 @@
-python instrument_dossier.py AAPL
+python instrument_dossier.py HG=F
 pause

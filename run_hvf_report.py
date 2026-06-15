@@ -28,6 +28,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.10.0  2026-06-15  Alex Hind   "Also on" now lists FULL figures (Entry/Stop/Target/R:R/Q) per other timeframe (user
+#                                 2026-06-15), not just a state emoji — mtf_timeframes carries the per-timeframe levels.
+#                                 Headline stays the primary (anchored/validated); "Also on" rows are raw detection.
 # 1.9.0   2026-06-15  Alex Hind   Backlog #9b: tradeable lines whose stop is < TIGHT_STOP_MIN_PCT of price now carry a
 #                                 "⚠️ Stop only N% of price — too tight for IG intraday; not auto-traded" label (user
 #                                 2026-06-15, option b). The funnel stays in the report (valid pattern); it just isn't
@@ -394,13 +397,18 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
                 line += (f"\n    ⚠️ Stop only {sp}% of price — too tight for IG intraday "
                          f"(spread + tick noise); not auto-traded.")
             # One instrument, all timeframes (feedback_hvf_timeframe_grouping): list the
-            # other timeframes the same funnel appears on, each with its own state emoji.
+            # other timeframes the same funnel appears on — now with FULL figures per
+            # date range (user 2026-06-15). The headline above is the primary (exhaustion-
+            # anchored, IG-validated); these are RAW per-timeframe detection levels.
             others = _other_timeframes(r)
             if others:
-                extra = "  ·  ".join(
-                    f"{_signal_emoji(c.get('hvf_signal'))} {_tf_short(c.get('hvf_timeframe'))}"
-                    for c in others)
-                line += f"\n    Also on: {extra}"
+                line += "\n    Also on:"
+                for c in others:
+                    c_rr  = c.get("risk_reward")
+                    c_rrs = f"{c_rr:.1f}:1" if isinstance(c_rr, (int, float)) and c_rr else "—"
+                    line += (f"\n      {_signal_emoji(c.get('hvf_signal'))} {_tf_short(c.get('hvf_timeframe'))}  "
+                             f"Entry {_fmt_price(c.get('h3_level'))}  Stop {_fmt_price(c.get('stop_level'))}  "
+                             f"Target {_fmt_price(c.get('target'))}  R:R {c_rrs}  Q={c.get('pattern_quality', '—')}")
             lines.append(line)
         for blk in _chunk_lines(lines):
             blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})
@@ -455,8 +463,9 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
                                f"daily-180 · daily-220 · weekly | "
                                f"Min {HVF_MIN_RR}:1 R:R to trade | "
                                f"\"Also on\" = other timeframes the same funnel appears on "
-                               f"(⚡ triggered · ✅ ready · 👀 developing); the entry/stop/target/R:R "
-                               f"shown are for the primary timeframe in [brackets] | "
+                               f"(⚡ triggered · ✅ ready · 👀 developing), each with its OWN raw "
+                               f"entry/stop/target/R:R; the headline figures are for the primary "
+                               f"timeframe in [brackets] (the only one exhaustion-anchored + IG-validated) | "
                                f"Generated {scan_time} UTC")}]
     })
 
