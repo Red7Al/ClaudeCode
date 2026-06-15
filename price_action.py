@@ -66,6 +66,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.15.0  2026-06-15  Alex Hind   Backlog #9b (groundwork, INERT): get_hvf_signal_mtf now annotates the chosen result with
+#                                 stop_pct + tight_stop_intraday (stop < config.TIGHT_STOP_MIN_PCT of price), carried into
+#                                 analyse_price_action as hvf_stop_pct / hvf_tight_stop_intraday. ADDITIVE only — nothing
+#                                 reads the flag for a decision yet (no trade/report behaviour change); shadow_diff_tight_
+#                                 stop.py shows the blast radius for review before the skip/label wiring is merged. Suite green.
 # 1.14.0  2026-06-14  Alex Hind   Code-review: new hvf_weight(signal, quality, risk_reward) — CANONICAL weight-order sort
 #                                 key (TRIGGERED>READY>DEVELOPING, quality desc, R:R desc), single source of truth for the
 #                                 "all lists in weight order" rule. Consolidates 6 duplicated sort keys (intraday drafts
@@ -181,7 +186,8 @@ import pandas as pd
 import yfinance as yf
 
 from config import (YAHOO_MAP, HVF_MIN_RR, PA_CONFIRM_THRESHOLDS,
-                    PA_CONFIRM_THRESHOLD_DEFAULT, HVF_LIQUIDITY_TIERS_GBP)
+                    PA_CONFIRM_THRESHOLD_DEFAULT, HVF_LIQUIDITY_TIERS_GBP,
+                    TIGHT_STOP_MIN_PCT)
 
 log = logging.getLogger("price_action")
 
@@ -1484,6 +1490,25 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
         key=lambda c: (signal_rank.get(c["hvf_signal"], 0), c["pattern_quality"] or 0),
         reverse=True,
     )
+
+    # ── Tight-stop flag (backlog #9b, user 2026-06-15) ────────────────────────────────────────────────────────────────
+    # A stop closer than TIGHT_STOP_MIN_PCT of price is eaten by spread + tick noise
+    # intraday — the funnel is valid on a daily/weekly timeframe but structurally
+    # untradeable at IG (proven: SNDK 0.35% stopped out in 3 min; AMD 0.098% churned
+    # for pennies, 2026-06-15). Computed HERE at pattern evaluation — not at trade
+    # time — so it is known before any trade is attempted and cannot be skipped by an
+    # IG-call exception the way the execution-time guard (open_trade 4d, fail-open)
+    # can. ADDITIVE: detection output is unchanged; these two fields only annotate the
+    # chosen result. The trade path skips a flagged setup silently; the report still
+    # shows it, labelled. The percentage is scale-invariant (stop ÷ entry).
+    _entry, _stop = best.get("h3_level"), best.get("stop_level")
+    if _entry and _stop:
+        _sp = abs(_entry - _stop) / _entry * 100.0
+        best["stop_pct"]            = round(_sp, 3)
+        best["tight_stop_intraday"] = _sp < TIGHT_STOP_MIN_PCT
+    else:
+        best["stop_pct"]            = None
+        best["tight_stop_intraday"] = False
     return best
 
 
@@ -2179,6 +2204,10 @@ def analyse_price_action(ticker: str) -> dict:
         "hvf_bars_since_h3": hvf.get("bars_since_h3"),    # freshness
         "hvf_timeframe":     hvf.get("hvf_timeframe"),    # daily-220 / daily-90 / weekly
         "hvf_volume_confirmed": hvf.get("volume_confirmed", False),
+        # Tight-stop flag (backlog #9b) — carried through so the trade path can skip a
+        # structurally-untradeable funnel silently (stop < TIGHT_STOP_MIN_PCT of price).
+        "hvf_tight_stop_intraday": hvf.get("tight_stop_intraday", False),
+        "hvf_stop_pct":            hvf.get("stop_pct"),
     }
 
     log.info(

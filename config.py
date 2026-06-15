@@ -599,6 +599,15 @@ MAX_SPREAD_PCT = 0.005      # 0.5%
 # If spread costs more than 50% of the stop, the trade is negative expectancy
 MAX_SPREAD_TO_STOP_RATIO = 0.5
 
+# Tight-stop floor — a stop closer than this % of price is eaten by spread + tick
+# noise intraday, so the funnel is structurally untradeable at IG even though the
+# pattern is valid on a daily/weekly timeframe (proven: SNDK 0.35% stopped out in
+# 3 min; AMD 0.10% churned for pennies, 2026-06-15). Single source of truth shared
+# by the HVF pattern-evaluation flag (price_action.get_hvf_signal_mtf) and the
+# execution-time guard (ig_shim.open_trade step 4d). The percentage is scale-
+# invariant (stop ÷ entry), so it is correct in pence, points or dollars.
+TIGHT_STOP_MIN_PCT = 0.5
+
 # Spread retry — when market is open but spread is temporarily wide,
 # retry this many times with this many seconds between checks before giving up.
 # Pre-market/closed markets are never retried.

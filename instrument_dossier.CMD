@@ -1,0 +1,2 @@
+python instrument_dossier.py AAPL
+pause
