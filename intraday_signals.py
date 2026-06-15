@@ -23,6 +23,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.9.1   2026-06-15  Alex Hind   _resolve_name also collapses the spelled-out "Public Limited Company" suffix to "PLC"
+#                                 (VOD.L "Vodafone Group Public Limited Company" → "Vodafone Group PLC") — shorter, and
+#                                 consistent with the existing plc/p.l.c. normalisation. Feeds tweets, cards and the HVF
+#                                 report label. Display only.
 # 1.9.0   2026-06-14  Alex Hind   Code-review (perf): _yf_info() memoises yfinance .info per process. The X-card path
 #                                 fetched .info 3x per instrument (name, exchange tag, P/E) — each a ~1-2s round-trip;
 #                                 now one fetch is shared. No behaviour change (.info is static metadata). [epic_lookup
@@ -945,7 +949,10 @@ def _resolve_name(ticker: str) -> str:
             name = info.get("longName") or info.get("shortName")
             if name:
                 name = name.split(" ORD")[0].split(" REIT")[0].strip()
-                # Normalise the legal-form suffix to "PLC" (plc / p.l.c. / Plc → PLC).
+                # Normalise the legal-form suffix to "PLC". First the spelled-out form
+                # ("Vodafone Group Public Limited Company" → "Vodafone Group PLC"), then
+                # the abbreviations (plc / p.l.c. / Plc → PLC).
+                name = _re.sub(r"\s+Public\s+Limited\s+Company\s*$", " PLC", name, flags=_re.I).strip()
                 name = _re.sub(r"[\s.]*[Pp]\.?[Ll]\.?[Cc]\.?\s*$", " PLC", name).strip()
                 # Fallback only: a shortName that is STILL all-caps → title-case but keep
                 # short (<=4 char) all-caps tokens as acronyms (HSBC, GSK, BP).

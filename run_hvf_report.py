@@ -28,6 +28,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.8.0   2026-06-15  Alex Hind   Report lines now show the FULL instrument name next to every ticker (user 2026-06-15;
+#                                 memory/feedback_instrument_names). notify.fmt() only knows the ~76 epic_lookup names, so
+#                                 scanned constituents (VOD.L, NXT.L, …) showed a bare ticker — new _label() resolves them
+#                                 via the yfinance-backed _resolve_name (epic_lookup → yfinance, cached). Display only.
 # 1.7.0   2026-06-14  Alex Hind   Code-review: tradeable sort now uses the canonical price_action.hvf_weight() key (single
 #                                 source of truth for the "all lists in weight order" rule — was a local SIGNAL_RANK dict,
 #                                 now removed). Behaviour identical for READY/TRIGGERED lists; R:R is now a deterministic
@@ -71,7 +75,8 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 from config import HVF_MIN_RR, HVF_REPORT_TOP_N   # single source of truth for thresholds/limits
-from notify import fmt            # 'TICKER (Full Name)' for every instrument shown
+# Display labels go through _label() (yfinance-backed) — notify.fmt() alone only
+# knows the ~76 epic_lookup names, so scanned constituents showed a bare ticker.
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
@@ -273,6 +278,22 @@ def _rr(r):
     return f"{rr:.1f}:1" if rr else "-"
 
 
+def _label(ticker: str) -> str:
+    """
+    'TICKER (Full Name)' for display (memory/feedback_instrument_names — never a
+    bare ticker). notify.fmt() only knows the ~76 names in epic_lookup, so most
+    scanned constituents (VOD.L, NXT.L, …) fell back to the bare ticker. Resolve
+    those via the yfinance-backed intraday_signals._resolve_name (epic_lookup →
+    yfinance, cached per process). Falls back to the ticker if unresolved.
+    """
+    try:
+        from intraday_signals import _resolve_name
+        name = _resolve_name(ticker)
+    except Exception:
+        name = ticker
+    return f"{ticker} ({name})" if name and name != ticker else ticker
+
+
 def _dir_emoji(hvf_type):
     return "🟢" if hvf_type == "BULLISH" else "🔴"
 
@@ -357,7 +378,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
             stop   = _fmt_price(r.get("stop_level"))
             target = _fmt_price(r.get("target"))
             q      = r.get("pattern_quality", 0)
-            line = (f"{d}{s} *{fmt(t)}*  R:R {rr}  Q={q}  [{tf}] · {idx}\n"
+            line = (f"{d}{s} *{_label(t)}*  R:R {rr}  Q={q}  [{tf}] · {idx}\n"
                     f"    Entry {entry}  Stop {stop}  Target {target}")
             # One instrument, all timeframes (feedback_hvf_timeframe_grouping): list the
             # other timeframes the same funnel appears on, each with its own state emoji.
@@ -400,7 +421,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
             others = _other_timeframes(r)
             also = ("  · also " + ", ".join(_tf_short(c.get("hvf_timeframe")) for c in others)) if others else ""
             lines.append(
-                f"{d}👀 *{fmt(t)}*  R:R {rr}  [{tf}] · {idx}  "
+                f"{d}👀 *{_label(t)}*  R:R {rr}  [{tf}] · {idx}  "
                 f"Entry {entry}  Stop {stop}  Target {target}{also}"
             )
         for blk in _chunk_lines(lines):
