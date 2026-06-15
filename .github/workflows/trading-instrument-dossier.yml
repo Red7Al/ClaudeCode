@@ -1,0 +1,49 @@
+name: Instrument Dossier (2026-06-15)
+
+# One ticker in -> the full publication pack (HVF analysis, X tweet + post-card,
+# Slack X-draft block, investment-case email), rendered via the production code
+# paths. Because this runs in Actions WITH the real secrets, it also POSTS the
+# tweet + card to #arw-claude-twitter (user 2026-06-15: "when the dossier runs
+# also run the tweet process to the slack channel"). Local runs cannot post.
+#
+# workflow_dispatch only — triggered on demand (manually or via cron-job.org).
+# No `schedule:` block (memory: feedback_scheduler — GitHub-native cron is BANNED).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: 'Ticker(s) to dossier, space-separated (e.g. RR.L NVDA)'
+        required: true
+        default: 'RR.L'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python instrument_dossier.py ${{ inputs.ticker }}
+        env:
+          SUPABASE_USER:            ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_TWITTER:            ${{ secrets.SLACK_TWITTER }}
+          SLACK_BOT_TOKEN:          ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_TWITTER_CHANNEL_ID: ${{ secrets.SLACK_TWITTER_CHANNEL_ID }}
+          SLACK_ALERTS:             ${{ secrets.SLACK_ALERTS }}
+      # The generated artifacts (summary/tweet/card/email) are uploaded so they can be
+      # downloaded from the run; the tweet + card are also already in #arw-claude-twitter.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dossier
+          path: dossier/
+          if-no-files-found: ignore

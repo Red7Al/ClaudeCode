@@ -23,6 +23,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.8.0   2026-06-15  Alex Hind   run_session_close holds HVF SWING positions overnight (user 2026-06-15: "hold positions
+#                                 overnight to meet HVF target price"). They carry their own IG limit (AMP1 target) + stop,
+#                                 so the generic 1.5×-risk session-close profit-lock no longer force-closes them; identified
+#                                 by the "HVF " signal_summary prefix (fail-safe: lookup error → normal close rules).
 # 1.0.0   2026-06-01  Alex Hind   Initial build. Routes all session names to their respective handlers. Duplicate-run
 #                                 guard added via already_ran_today().
 # 1.1.0   2026-06-05  Alex Hind   Added PREMARKET_BRIEF handler — was listed in usage help but crashed with "Unknown
@@ -710,6 +714,25 @@ def run_session_close():
     positions  = get_open_positions()
     closed = held = 0
 
+    # HVF positions are multi-DAY swing trades (user 2026-06-15: "hold positions
+    # overnight to meet HVF target price"). They carry their OWN IG limit at the AMP1
+    # target + stop, so they must run to that target/stop — NOT be force-closed at
+    # session close by the generic 1.5×-risk profit-lock (which is for intraday
+    # positions). Identify them by the "HVF " signal_summary prefix that
+    # place_hvf_order_from_sig writes. Fail-safe: if the lookup fails we fall back to
+    # the normal close rules rather than risk leaving everything open.
+    hvf_deals = set()
+    try:
+        from db_pool import get_db
+        _db = get_db()
+        try:
+            _rows = _db.run("select deal_id from positions where signal_summary like 'HVF %'")
+            hvf_deals = {r[0] for r in _rows if r[0]}
+        finally:
+            _db.close()
+    except Exception as e:
+        log.warning(f"Session close: HVF-position lookup failed — closing by the normal rules: {e}")
+
     for pos in positions:
         epic      = pos["market"]["epic"]
         deal_id   = pos["position"]["dealId"]
@@ -717,6 +740,13 @@ def run_session_close():
         level     = float(pos["position"]["level"])
         size      = float(pos["position"]["size"])
         stop      = pos["position"].get("stopLevel", 0)
+
+        # Hold HVF swing positions overnight — let their own IG target/stop run.
+        if deal_id in hvf_deals:
+            log.info(f"{epic}: HVF swing position — holding overnight to reach its target/stop "
+                     f"(no session-close profit-lock).")
+            held += 1
+            continue
 
         snap  = get_snapshot(epic)
         price = snap.get("bid", 0) if direction == "BUY" else snap.get("offer", 0)

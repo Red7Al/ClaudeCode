@@ -37,6 +37,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.0   2026-06-15  Alex Hind   When SLACK_TWITTER is present (i.e. running in the Instrument Dossier GitHub Action),
+#                                 the dossier now POSTS the tweet + card to #arw-claude-twitter via the same
+#                                 _generate_x_drafts path (user 2026-06-15). Local runs stay generate-only (the secret is
+#                                 never set locally), so the no-post-from-local rule holds. New workflow + skill updated.
 # 1.2.0   2026-06-15  Alex Hind   HVF summary now prints FULL figures (Entry/Stop/Target/R:R/Q) for EVERY timeframe the
 #                                 funnel appears on, in weight order (user 2026-06-15), replacing the one-line "Also on".
 #                                 Primary row is flagged; non-primary rows show raw detection levels.
@@ -215,7 +219,13 @@ def build_dossier(ticker: str) -> str:
     if has_pattern:
         try:
             from intraday_signals import _generate_x_drafts
-            drafts = _generate_x_drafts([r], post=False, collect=True) or []
+            # Post the tweet + card to #arw-claude-twitter ONLY when SLACK_TWITTER is set —
+            # i.e. running in GitHub Actions (user 2026-06-15: "when the dossier runs also
+            # run the tweet process to the slack channel"). Locally SLACK_TWITTER is never
+            # set (memory: secrets_and_x_delivery — the local machine cannot post), so a
+            # local run stays generate-only. Same production path; never an MCP substitute.
+            _post_x = bool(os.environ.get("SLACK_TWITTER"))
+            drafts = _generate_x_drafts([r], post=_post_x, collect=True) or []
             if drafts:
                 d = drafts[0]
                 with open(os.path.join(out_dir, "tweet.txt"), "w", encoding="utf-8") as f:
@@ -234,7 +244,9 @@ def build_dossier(ticker: str) -> str:
                     f"{_caution}{'-' * 60}\n{d['tweet']}\n{'-' * 60}\n[card.png attached]\n")
                 with open(os.path.join(out_dir, "slack.txt"), "w", encoding="utf-8") as f:
                     f.write(slack_txt)
-                manifest.append("Slack X-draft block → slack.txt")
+                manifest.append("Slack X-draft block → slack.txt"
+                                + ("  (POSTED to #arw-claude-twitter)" if _post_x
+                                   else "  (not posted — local run, no SLACK_TWITTER)"))
             else:
                 manifest.append("X tweet: not generated (no draft produced)")
         except Exception as e:

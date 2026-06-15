@@ -7,8 +7,9 @@ description: >
   Slack X-draft block, and the trade-open investment-case email (HTML + chart PNGs). Use
   whenever the user asks for "everything on <ticker>", "the full pack/dossier for <ticker>",
   "show me the tweet AND email AND chart for X", or wants to review one instrument's outputs
-  before publishing. Everything renders through the production code paths (no rebuilds) and
-  NOTHING is posted or sent — artifacts are written to a local folder for review.
+  before publishing. Everything renders through the production code paths (no rebuilds). A
+  LOCAL run writes artifacts to a folder for review and posts NOTHING; the Instrument Dossier
+  GitHub Action (which has the secrets) ALSO posts the tweet + card to #arw-claude-twitter.
 ---
 
 # AH Instrument Dossier — all Slack/email/X outputs for one instrument
@@ -18,9 +19,11 @@ The point is fidelity: the tweet, card, email and Slack block are produced by th
 functions the live system uses, so what you review is what would publish.
 
 ## Hard rules (read first)
-- **Never post or send from here.** This generates artifacts only. Posting to Slack/X and
-  sending email run in GitHub Actions with the real secrets (memory: secrets_and_x_delivery,
-  feedback_scheduler — the local machine is switchable off). Do not substitute an MCP send.
+- **Posting happens in Actions, never from local.** A local `python instrument_dossier.py`
+  run writes artifacts only — SLACK_TWITTER is never set locally, so it cannot post (memory:
+  secrets_and_x_delivery, feedback_scheduler — the local machine is switchable off). To get the
+  tweet + card into #arw-claude-twitter, run the **Instrument Dossier** GitHub Action (it has
+  the secrets and posts via the SAME `_generate_x_drafts` path). Never substitute an MCP send.
 - **Numbers are live, never from memory.** HVF levels/R:R/quality come from the live scanner
   (`get_hvf_signal_mtf`); the card/tweet come from `render_x_post_card` / `_generate_x_drafts`.
 - **Keep it simple** (memory: feedback_keep_it_simple). Do not swap the mechanism; if the user
@@ -29,9 +32,14 @@ functions the live system uses, so what you review is what would publish.
 
 ## Run it
 ```
-python instrument_dossier.py RR.L          # one instrument
+python instrument_dossier.py RR.L          # one instrument  (LOCAL: artifacts only, no post)
 python instrument_dossier.py NVDA HIK.L    # several
 ```
+To also post the tweet + card to **#arw-claude-twitter**, run the Action (it has the secrets):
+```
+gh workflow run trading-instrument-dossier.yml -f ticker="RR.L"
+```
+The run uploads the same artifacts as a downloadable bundle, and the tweet/card land in Slack.
 Output → `dossier\<TICKER>_<UTC-stamp>\`:
 - `summary.txt`  — HVF analysis + a manifest of what was produced (also printed to console)
 - `tweet.txt`    — the X tweet text, copy-paste ready (no length prefix — memory: feedback_tweet_presentation)
