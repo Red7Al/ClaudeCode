@@ -39,6 +39,8 @@
 # 1.11.0  2026-06-13  Alex Hind   X_DRAFT_TOP_N (count of X drafts per run, default 20) and HVF_LIQUIDITY_TIERS_GBP
 #                                 (turnover-based pattern-quality penalty so illiquid names rank lower) — both tunable
 #                                 here without touching intraday_signals.py / price_action.py (user 2026-06-13).
+# 1.13.0  2026-06-15  Alex Hind   Sync stale epics: QCOM UA→UC, MU UA→UC (both verified live).
+#                                 Add TSM: UA.D.TSM.DAILY.IP (G.D.TSM was 404; UA unverified).
 # 1.12.0  2026-06-13  Alex Hind   HVF_REPORT_TOP_N — max setups listed in the daily report (weight-ordered); tunable
 #                                 here (user 2026-06-13: "too many setups").
 # 1.10.0  2026-06-12  Alex Hind   TICKER FIX: "TE" replaced with "TEL" everywhere — Yahoo's TE is T1 Energy Inc, NOT
@@ -160,8 +162,9 @@ EPIC_MAP = {
     # US Equities — Semiconductors
     # ------------------------------------------------------------------------------------------------------------------
     "INTC":  "UB.D.INTC.DAILY.IP",         # Intel Corp
-    "QCOM":  "UA.D.QCOM.DAILY.IP",         # Qualcomm
-    "MU":    "UA.D.MU.DAILY.IP",           # Micron Technology
+    "QCOM":  "UC.D.QCOM.DAILY.IP",         # Qualcomm (verified live 2026-06-15; was UA→UC)
+    "MU":    "UC.D.MU.DAILY.IP",           # Micron Technology (verified live 2026-06-09; was UA→UC)
+    "TSM":   "UA.D.TSM.DAILY.IP",          # Taiwan Semiconductor ADR (2026-06-15: G.D.TSM was 404; UA unverified)
     "AMAT":  "UA.D.AMAT.DAILY.IP",         # Applied Materials
     "KLAC":  "UA.D.KLAC.DAILY.IP",         # KLA Corp
     "ASML":  "EG.D.ASML.DAILY.IP",         # ASML Holding NV (European listed)
