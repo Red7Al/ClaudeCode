@@ -23,6 +23,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.11.0  2026-06-15  Alex Hind   Backlog #9b: a tight-stop draft (hvf_tight_stop_intraday) still posts (user 2026-06-15
+#                                 "publish with a caution note") but the Slack wrapper now carries a ⚠️ caution — the R:R is
+#                                 inflated by the tiny stop, IG won't hold it intraday, take it MANUALLY with a wider stop /
+#                                 smaller size. Caution rides in the Slack block + dossier collect dict, NOT the 280-char
+#                                 tweet or the public card. Auto-trading already skips it (ig_shim).
 # 1.10.0  2026-06-15  Alex Hind   _generate_x_drafts gains post=False/collect=True (dossier mode): builds the SAME tweet +
 #                                 card for each instrument but returns them instead of posting to Slack. Lets
 #                                 instrument_dossier.py render one instrument's X artifacts via the exact production path
@@ -1552,6 +1557,18 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         if png:
             chart_b64 = base64.b64encode(png).decode()
 
+        # Tight-stop caution (backlog #9b, user 2026-06-15 — "publish with a caution
+        # note"): a funnel whose stop is < TIGHT_STOP_MIN_PCT of price is not auto-traded
+        # (structurally untradeable at IG intraday), and its R:R looks inflated BECAUSE the
+        # stop is tiny. The draft still posts so you can take a MANUAL trade — with a wider
+        # stop / smaller size. This guidance is for you (the manual trader), so it rides in
+        # the Slack wrapper, NOT in the 280-char tweet or on the public card.
+        caution = ""
+        if r.get("tight_stop_intraday"):
+            caution = (f"⚠️ Tight stop ({r.get('stop_pct')}% of price) — the R:R is inflated by the "
+                       f"tiny stop and IG won't hold it intraday. For a manual trade use a wider stop "
+                       f"/ smaller size. Not auto-traded.")
+
         # Dossier (collect) mode: capture the same artifacts, skip the Slack post.
         if collect:
             _collected.append({
@@ -1559,6 +1576,7 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
                 "rank": _rank, "total": _total, "name": name,
                 "direction": direction, "signal": signal, "rr_str": rr_str,
                 "quality": quality, "tf_raw": tf_raw, "sig_desc": sig_desc,
+                "caution": caution,
             })
         if not post:
             continue
@@ -1579,6 +1597,9 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
                                      f"{tf_raw or '—'}  |  "
                                      + datetime.now(timezone.utc).strftime("%d %b %H:%M UTC"))}]},
         ]
+        if caution:
+            blocks.insert(2, {"type": "section",
+                              "text": {"type": "mrkdwn", "text": caution}})
         bot_token  = os.environ.get("SLACK_BOT_TOKEN", "")
         channel_id = os.environ.get("SLACK_TWITTER_CHANNEL_ID", "")
         if chart_b64 and not (bot_token and channel_id):

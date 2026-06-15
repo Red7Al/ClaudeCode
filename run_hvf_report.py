@@ -28,6 +28,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.9.0   2026-06-15  Alex Hind   Backlog #9b: tradeable lines whose stop is < TIGHT_STOP_MIN_PCT of price now carry a
+#                                 "⚠️ Stop only N% of price — too tight for IG intraday; not auto-traded" label (user
+#                                 2026-06-15, option b). The funnel stays in the report (valid pattern); it just isn't
+#                                 traded. The inflated R:R on these is the tell of the tiny stop.
 # 1.8.0   2026-06-15  Alex Hind   Report lines now show the FULL instrument name next to every ticker (user 2026-06-15;
 #                                 memory/feedback_instrument_names). notify.fmt() only knows the ~76 epic_lookup names, so
 #                                 scanned constituents (VOD.L, NXT.L, …) showed a bare ticker — new _label() resolves them
@@ -380,6 +384,15 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
             q      = r.get("pattern_quality", 0)
             line = (f"{d}{s} *{_label(t)}*  R:R {rr}  Q={q}  [{tf}] · {idx}\n"
                     f"    Entry {entry}  Stop {stop}  Target {target}")
+            # Tight-stop label (backlog #9b): a funnel whose stop is < TIGHT_STOP_MIN_PCT
+            # of price is structurally untradeable at IG intraday (spread + tick noise),
+            # so we DON'T trade it — but it stays in the report, plainly labelled, because
+            # the pattern itself is valid (user 2026-06-15, option b). The inflated R:R is
+            # the tell. NB: a sub-0.5% stop is exactly why the R:R looks too good to be true.
+            if r.get("tight_stop_intraday"):
+                sp = r.get("stop_pct")
+                line += (f"\n    ⚠️ Stop only {sp}% of price — too tight for IG intraday "
+                         f"(spread + tick noise); not auto-traded.")
             # One instrument, all timeframes (feedback_hvf_timeframe_grouping): list the
             # other timeframes the same funnel appears on, each with its own state emoji.
             others = _other_timeframes(r)

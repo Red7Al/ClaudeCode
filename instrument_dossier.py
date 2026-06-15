@@ -37,6 +37,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.1.0   2026-06-15  Alex Hind   slack.txt now surfaces the tight-stop ⚠️ caution from the X-draft collect dict (#9b), so
+#                                 a structurally-untradeable funnel is flagged in the dossier too.
 # 1.0.0   2026-06-15  Alex Hind   Initial build (user 2026-06-15): one ticker in → all Slack/email/X artifacts + PNGs out,
 #                                 rendered via the production code paths. No posting/sending.
 # ======================================================================================================================
@@ -210,11 +212,12 @@ def build_dossier(ticker: str) -> str:
                         f.write(d["png"])
                     manifest.append(f"X post-card ({len(d['png']):,} bytes) → card.png")
                 # Slack X-draft block layout (what #claude-twitter receives).
+                _caution = f"{d.get('caution')}\n" if d.get("caution") else ""
                 slack_txt = (
                     f"X Draft — {ticker} ({name})  {d.get('direction','').title()} · "
                     f"{(d.get('sig_desc') or '').title()}\n"
                     f"R:R {d.get('rr_str','—')} | Quality {d.get('quality') or '—'} | {d.get('tf_raw') or '—'}\n"
-                    f"{'-' * 60}\n{d['tweet']}\n{'-' * 60}\n[card.png attached]\n")
+                    f"{_caution}{'-' * 60}\n{d['tweet']}\n{'-' * 60}\n[card.png attached]\n")
                 with open(os.path.join(out_dir, "slack.txt"), "w", encoding="utf-8") as f:
                     f.write(slack_txt)
                 manifest.append("Slack X-draft block → slack.txt")

@@ -23,6 +23,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.12.0  2026-06-15  Alex Hind   Backlog #9b (behaviour): place_hvf_order_from_sig now skips a setup flagged
+#                                 hvf_tight_stop_intraday SILENTLY (no missed-trade alert) — the funnel is structurally
+#                                 untradeable at IG intraday (stop < config.TIGHT_STOP_MIN_PCT of price); the report still
+#                                 shows it labelled. open_trade 4d guard repointed at config.TIGHT_STOP_MIN_PCT (single
+#                                 source of truth). NB AMD 2026-06-15 was a CONFIRMATION-STACK trade (ATR stop), a separate
+#                                 path from this HVF flag — the 4d fail-open weakness that let it through is logged separately.
 # 1.0.0   2026-05-30  Alex Hind   Initial build
 # 1.0.1   2026-05-30  Alex Hind   Fix expiry from "-" to "DFB" for rolling CFD contracts. Add get_close_reason() to
 #                                 query IG activity history for STOP_HIT / TARGET_HIT etc. Add get_open_positions() 404
@@ -148,6 +154,7 @@ from config import (
     ATR_MULTIPLIER_DEFAULT,
     MAX_SPREAD_PCT,
     MAX_SPREAD_TO_STOP_RATIO,
+    TIGHT_STOP_MIN_PCT,
     SPREAD_RETRY_ATTEMPTS,
     SPREAD_RETRY_WAIT_SECS,
     IG_SESSION_TTL_SECONDS,
@@ -1060,10 +1067,10 @@ def open_trade(
         mid_price = (bid + offer) / 2 if bid > 0 and offer > 0 else offer or bid
         if mid_price >= 500 and stop_distance > 0:
             stop_pct = stop_distance / mid_price * 100
-            if stop_pct < 0.5:
+            if stop_pct < TIGHT_STOP_MIN_PCT:
                 reason = (
                     f"Stop distance {stop_distance:.1f}pt is only {stop_pct:.2f}% of "
-                    f"current price {mid_price:.1f}pt — minimum 0.5% for instruments "
+                    f"current price {mid_price:.1f}pt — minimum {TIGHT_STOP_MIN_PCT}% for instruments "
                     f"≥500pt. HVF stop too tight; pattern may need a wider L3 or "
                     f"more recent scan."
                 )
@@ -2302,6 +2309,18 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
     stop      = sig.get("hvf_stop_level")
     target    = sig.get("hvf_target")
     if not all((ticker, direction, entry, stop, target)):
+        return None
+
+    # Tight-stop skip (backlog #9b): a funnel whose stop is closer than
+    # TIGHT_STOP_MIN_PCT of price is structurally untradeable at IG intraday — spread
+    # + tick noise stop it out for pennies (SNDK 0.35%, AMD 0.098%). The flag is set
+    # at pattern evaluation (price_action.get_hvf_signal_mtf). Skip SILENTLY here at
+    # the decision point — no missed-trade alert (the daily SNDK/AMD-class noise this
+    # flag exists to remove); the HVF report still shows the funnel, labelled.
+    if sig.get("hvf_tight_stop_intraday"):
+        log.info(f"{ticker}: HVF stop too tight for IG intraday "
+                 f"({sig.get('hvf_stop_pct')}% of price < {TIGHT_STOP_MIN_PCT}%) — no working order "
+                 f"(structurally untradeable; shown in report).")
         return None
 
     # The pending order is directional — the funnel type must agree with the
