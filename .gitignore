@@ -37,8 +37,10 @@ LOGS/
 
 # Generated artifacts (not source)
 # x_drafts/ = locally-rendered tweet/report card PNG previews
+# dossier/  = per-instrument dossier output (instrument_dossier.py)
 # *.skill   = packaged skill exports (source of truth is skills_src/)
 x_drafts/
+dossier/
 *.skill
 
 # OS

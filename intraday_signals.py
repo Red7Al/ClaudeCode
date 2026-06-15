@@ -23,6 +23,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.10.0  2026-06-15  Alex Hind   _generate_x_drafts gains post=False/collect=True (dossier mode): builds the SAME tweet +
+#                                 card for each instrument but returns them instead of posting to Slack. Lets
+#                                 instrument_dossier.py render one instrument's X artifacts via the exact production path
+#                                 (no format drift). Default behaviour (post=True) is unchanged.
 # 1.9.1   2026-06-15  Alex Hind   _resolve_name also collapses the spelled-out "Public Limited Company" suffix to "PLC"
 #                                 (VOD.L "Vodafone Group Public Limited Company" → "Vodafone Group PLC") — shorter, and
 #                                 consistent with the existing plc/p.l.c. normalisation. Feeds tweets, cards and the HVF
@@ -1286,10 +1290,17 @@ def render_x_post_card(r: dict):
         return None
 
 
-def _generate_x_drafts(tradeable: list):
+def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False):
     """
     Post one tweet-ready draft per tradeable instrument to #claude-x-drafts
     (SLACK_TWITTER env var).
+
+    post=False / collect=True: build the SAME tweet text + card PNG for each
+    instrument (the exact production path — no format drift) but do NOT post to
+    Slack; return a list of dicts
+    [{ticker, tweet, png, rank, total, name, direction, signal, rr_str, quality,
+      tf_raw, sig_desc}]. Used by instrument_dossier.py to render one
+    instrument's X artifacts locally. Both flags can be combined.
 
     Tweet format (≤280 chars — no pattern name, describe the setup naturally):
         📈 $TICKER (Company) — Volatility squeeze breaking {direction}, {tf} setup
@@ -1313,7 +1324,7 @@ def _generate_x_drafts(tradeable: list):
     from notify import fmt
 
     slack_url = os.environ.get("SLACK_TWITTER", "")
-    if not slack_url:
+    if post and not slack_url:
         log.warning("SLACK_TWITTER not set — X draft reports skipped")
         return
 
@@ -1371,6 +1382,7 @@ def _generate_x_drafts(tradeable: list):
 
     _ordered = sorted(tradeable, key=_draft_weight)[:X_DRAFT_TOP_N]   # count is config-driven (user 2026-06-13)
     _total   = len(_ordered)
+    _collected: list = []   # populated only when collect=True (dossier mode)
     for _rank, r in enumerate(_ordered, 1):
         ticker    = r.get("ticker", "")
         direction = r.get("hvf_type", "BULLISH")
@@ -1540,6 +1552,17 @@ def _generate_x_drafts(tradeable: list):
         if png:
             chart_b64 = base64.b64encode(png).decode()
 
+        # Dossier (collect) mode: capture the same artifacts, skip the Slack post.
+        if collect:
+            _collected.append({
+                "ticker": ticker, "tweet": tweet, "png": png,
+                "rank": _rank, "total": _total, "name": name,
+                "direction": direction, "signal": signal, "rr_str": rr_str,
+                "quality": quality, "tf_raw": tf_raw, "sig_desc": sig_desc,
+            })
+        if not post:
+            continue
+
         # ── Post to SLACK_TWITTER channel ─────────────────────────────────────────────────────────────────────────────
         dir_label = "Bullish" if direction == "BULLISH" else "Bearish"
         blocks = [
@@ -1609,6 +1632,9 @@ def _generate_x_drafts(tradeable: list):
                          f"({len(png_bytes)} bytes → {channel_id})")
             except Exception as e:
                 log.error(f"X draft chart upload failed for {ticker}: {e}")
+
+    if collect:
+        return _collected
 
 
 def run_us_monitor(notify_slack: bool = True) -> list:
