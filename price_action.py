@@ -66,6 +66,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.17.0  2026-06-16  Alex Hind   group_by_market() + market_short() — CANONICAL per-market grouping for HVF outputs
+#                                 (user 2026-06-16: "top 10 by market"). Groups already-weight-sorted rows by market,
+#                                 caps to config.PER_MARKET_TOP_N each, orders by config.MARKET_ORDER. Single source of
+#                                 truth shared by run_hvf_report, intraday_signals (X drafts) and quality_report.
 # 1.16.0  2026-06-15  Alex Hind   mtf_timeframes now also carries each timeframe's h3_level/stop_level/target (user
 #                                 2026-06-15: the dossier shows ALL figures per date range, not just the chosen one).
 #                                 ADDITIVE — raw per-timeframe levels; only `best` is exhaustion-anchored/IG-validated.
@@ -1538,6 +1542,37 @@ def hvf_weight(signal: str, quality, risk_reward=0.0) -> tuple:
     """
     rank = {"TRIGGERED": 0, "READY": 1, "DEVELOPING": 2}.get(signal, 3)
     return (rank, -(quality or 0), -(risk_reward or 0))
+
+
+def market_short(market_name) -> str:
+    """Short market tag for grouped report sub-headers (user 2026-06-16). Single source
+    of truth so the daily report, X drafts and quality reports label markets identically."""
+    return {"FTSE 100": "FTSE100", "FTSE 250": "FTSE250",
+            "S&P 500": "S&P500"}.get(market_name, market_name or "?")
+
+
+def group_by_market(rows, n=None, market_of=None, market_order=None) -> list:
+    """CANONICAL per-market grouping for HVF outputs (user 2026-06-16: "top 10 by market").
+
+    Groups `rows` by market PRESERVING the input order within each market (so callers pass
+    rows already sorted by hvf_weight / R:R), caps each market to its top `n` (None = no
+    cap), and returns a list of (market_name, [rows]) ordered by `market_order` — markets
+    not listed fall to the end, alphabetically.
+
+    `market_of(row)` extracts the market label; it defaults to the dict "index" field, so
+    it works directly on HVF result dicts. Pass a lambda for tuple/DB-row inputs, e.g.
+    `group_by_market(rows, n=10, market_of=lambda r: r[3], market_order=MARKET_ORDER)`.
+    """
+    from collections import OrderedDict
+    if market_of is None:
+        market_of = lambda r: (r.get("index") if isinstance(r, dict) else None) or "?"
+    buckets: "OrderedDict[str, list]" = OrderedDict()
+    for r in rows:
+        buckets.setdefault(market_of(r) or "?", []).append(r)
+    order = list(market_order or [])
+    def _key(m):
+        return (order.index(m) if m in order else len(order), m)
+    return [(m, (rs[:n] if n else rs)) for m, rs in sorted(buckets.items(), key=lambda kv: _key(kv[0]))]
 
 
 def check_hvf_invariants(r: dict) -> list:

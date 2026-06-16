@@ -23,6 +23,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.14.0  2026-06-16  Alex Hind   X drafts grouped per market (user 2026-06-16: "top 10 by market"): _generate_x_drafts
+#                                 now selects the top PER_MARKET_TOP_N per market (price_action.group_by_market, MARKET_ORDER)
+#                                 instead of a global X_DRAFT_TOP_N=20, and posts a per-market section header when the market
+#                                 changes. Same per-instrument webhook+card delivery (content/order only). signal_log
+#                                 enrichment now covers exactly the posted set.
 # 1.13.0  2026-06-15  Alex Hind   X-draft tweet now surfaces a broker-recommendation confirmation (user 2026-06-15) —
 #                                 reads analyst_signal/analyst_recommendation from signal_log, gated on the recommendation
 #                                 matching the trade side ("Brokers rate it Buy"). Direction-aligned; hold/none excluded.
@@ -190,7 +195,7 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timezone
 
-from config import YAHOO_MAP, DEFAULT_TARGET_RR, X_DRAFT_TOP_N
+from config import YAHOO_MAP, DEFAULT_TARGET_RR, PER_MARKET_TOP_N, MARKET_ORDER
 
 log = logging.getLogger("intraday_signals")
 
@@ -1345,12 +1350,26 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         log.warning("SLACK_TWITTER not set — X draft reports skipped")
         return
 
+    # ── Per-market draft selection (user 2026-06-16: "top 10 by market") ──────────────────────────────────────────────
+    # Weight order within each market (TRIGGERED first, then quality desc, then R:R desc),
+    # grouped by market in MARKET_ORDER, capped at PER_MARKET_TOP_N each. Drafts post in this
+    # order with a per-market header (below) so the channel reads as grouped per-market sections.
+    from price_action import hvf_weight, group_by_market
+    def _draft_weight(r):
+        return hvf_weight(r.get("hvf_signal"),
+                          r.get("hvf_quality") or r.get("pattern_quality"),
+                          r.get("risk_reward"))
+    _groups  = group_by_market(sorted(tradeable, key=_draft_weight),
+                               n=PER_MARKET_TOP_N, market_order=MARKET_ORDER)
+    _ordered = [r for _, rows in _groups for r in rows]
+    _total   = len(_ordered)
+
     # ── Batch fetch latest signal context per ticker from signal_log ──────────────────────────────────────────────────
     # Enriches tweet with options flow / director buy confirmation when available.
     # Fails silently — absence of this data never blocks the draft post.
     _sig_ctx: dict = {}   # ticker → {options_bias, call_put_ratio, director_signal}
     try:
-        tickers_in = tradeable[:X_DRAFT_TOP_N]   # enrich all posted drafts (input is pre-sorted best-first)
+        tickers_in = _ordered   # enrich exactly the drafts we'll post (per-market grouped, user 2026-06-16)
         ticker_list = [r.get("ticker", "") for r in tickers_in if r.get("ticker")]
         if ticker_list:
             placeholders = ", ".join(f"'{t}'" for t in ticker_list)
@@ -1387,21 +1406,11 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
     except Exception as e:
         log.debug(f"X drafts: signal_log lookup failed (non-critical): {e}")
 
-    # TRIGGERED setups first (breaking out NOW — the timely posts), then READY,
-    # quality descending within each group. Cap 20 per run.
-    # Best → worst weight order (user 2026-06-13): TRIGGERED (breaking out now)
-    # before READY, then pattern quality desc, then R:R desc. The drafts post in
-    # this order and each carries its rank (below), so the channel reads
-    # best-first even if Slack interleaves the webhook text with the bot-uploaded
-    # chart images.
-    from price_action import hvf_weight
-    def _draft_weight(r):
-        return hvf_weight(r.get("hvf_signal"),
-                          r.get("hvf_quality") or r.get("pattern_quality"),
-                          r.get("risk_reward"))
-
-    _ordered = sorted(tradeable, key=_draft_weight)[:X_DRAFT_TOP_N]   # count is config-driven (user 2026-06-13)
-    _total   = len(_ordered)
+    # _ordered / _total were computed above as a per-market grouped selection (user 2026-06-16:
+    # "top 10 by market"): within each market TRIGGERED first, then quality desc, then R:R desc;
+    # markets in MARKET_ORDER. Each draft carries its global rank (below) and each market group
+    # gets a header, so the channel reads as grouped per-market sections.
+    _last_market = None   # emit one section header per market when posting
     _collected: list = []   # populated only when collect=True (dossier mode)
     for _rank, r in enumerate(_ordered, 1):
         ticker    = r.get("ticker", "")
@@ -1606,6 +1615,22 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
             })
         if not post:
             continue
+
+        # ── Per-market section header (user 2026-06-16: "top 10 by market") ───────────────────────────────────────────
+        # One divider+header message when the market changes, so the channel reads as grouped
+        # per-market sections. Same webhook/mechanism as the draft text — content only.
+        _mkt = r.get("index") or "?"
+        if _mkt != _last_market:
+            _last_market = _mkt
+            try:
+                from price_action import market_short
+                requests.post(slack_url, json={"blocks": [
+                    {"type": "divider"},
+                    {"type": "header", "text": {"type": "plain_text",
+                                                "text": f"📊 {market_short(_mkt)} — top {PER_MARKET_TOP_N} HVF"}},
+                ]}, timeout=10)
+            except Exception as e:
+                log.debug(f"X draft market header post failed for {_mkt}: {e}")
 
         # ── Post to SLACK_TWITTER channel ─────────────────────────────────────────────────────────────────────────────
         dir_label = "Bullish" if direction == "BULLISH" else "Bearish"

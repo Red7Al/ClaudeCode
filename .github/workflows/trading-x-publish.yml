@@ -1,0 +1,41 @@
+name: X Publish — one instrument (2026-06-16)
+
+# Live-publish ONE instrument's X post (short tweet text + post-card PNG) to X (Twitter),
+# via publish_one_to_x.py -> x_publish.publish_to_x. Runs in Actions WITH the X_* secrets
+# (memory: secrets_and_x_delivery — the local machine has no X_* keys and never posts).
+#
+# workflow_dispatch only — fires a REAL, public, irreversible tweet when invoked.
+# No `schedule:` block (memory: feedback_scheduler — GitHub-native cron is BANNED).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: 'Single ticker to publish to X (e.g. AXP, RR.L)'
+        required: true
+        default: 'AXP'
+      dry:
+        description: 'Dry run (build + print the tweet, post NOTHING)'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python publish_one_to_x.py ${{ inputs.ticker }} ${{ inputs.dry && '--dry' || '' }}
+        env:
+          X_API_KEY:            ${{ secrets.X_API_KEY }}
+          X_API_SECRET:         ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN:       ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET:      ${{ secrets.X_ACCESS_SECRET }}
+          SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}

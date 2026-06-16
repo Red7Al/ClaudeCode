@@ -29,6 +29,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.14.0  2026-06-16  Alex Hind   Per-market reporting (user 2026-06-16): replaced the global X_DRAFT_TOP_N=20 and
+#                                 HVF_REPORT_TOP_N=20 caps with PER_MARKET_TOP_N=10 + MARKET_ORDER. Every HVF output
+#                                 now shows the top 10 PER market, grouped into per-market sections, instead of a single
+#                                 global top-20. Within each market price_action.hvf_weight order is unchanged.
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Epics verified against live IG account HTIRV. Seeded into Supabase
 #                                 epic_lookup table on 2026-05-30.
 # 1.1.0   2026-06-05  Alex Hind   Raised MIN_RISK_REWARD from 2.0 to 2.5. All trades (including HVF) now require minimum
@@ -567,14 +571,16 @@ MIN_RISK_REWARD = 3.0
 # define a local copy in price_action.py or run_hvf_report.py.
 HVF_MIN_RR = MIN_RISK_REWARD
 
-# Number of HVF X (Twitter) drafts posted per run, best→worst (user 2026-06-13).
-# Stored here so the count is changed in ONE place without re-testing intraday_signals.
-X_DRAFT_TOP_N = 20
+# Per-market reporting cap (user 2026-06-16): every HVF output — the daily report's
+# TRADEABLE / DEVELOPING sections, the X (Twitter) drafts, and the quality reports — shows
+# the top PER_MARKET_TOP_N setups PER market, GROUPED into per-market sections, instead of a
+# single global top-N. Within each market the canonical weight order still applies
+# (price_action.hvf_weight). Supersedes the old global X_DRAFT_TOP_N / HVF_REPORT_TOP_N caps.
+PER_MARKET_TOP_N = 10
 
-# Max HVF setups listed in the daily report's TRADEABLE / DEVELOPING sections, shown in
-# WEIGHT order (TRIGGERED first, then quality) — the full count still shows in the summary
-# line. Keeps the report readable (user 2026-06-13: "too many setups, not in weight order").
-HVF_REPORT_TOP_N = 20
+# Canonical market order for the grouped reports (matches run_hvf_report.UNIVERSE key order).
+# Markets not listed fall to the end, alphabetically (see price_action.group_by_market).
+MARKET_ORDER = ["FTSE 100", "FTSE 250", "S&P 500"]
 
 # HVF liquidity quality penalty (user 2026-06-13): illiquid names must NOT rank high on
 # the list. Tiers of recent median DAILY turnover (Close × Volume, in GBP — ".L" prices

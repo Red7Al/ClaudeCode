@@ -40,6 +40,26 @@ delivery mechanism or "work around" it.
 
 ---
 
+## Per-instrument publication ORDER (user 2026-06-16) — short text → PNG → long text
+
+Every instrument's publication is emitted in this FIXED order, both to #arw-claude-twitter and in
+any X thread:
+1. **Short tweet text** (`_generate_x_drafts` — ≤280, the hook + plain-English confirmations).
+2. **The post-card PNG** (`render_x_post_card` — price chart + HVF funnel + entry/stop/target).
+3. **The long quality-report thread** (ah-quality-report `paginate_report_thread` — the
+   fundamentals "quality angle" as a numbered 1/n TEXT thread; NOT a PNG since 2026-06-16).
+
+Never reorder these, and never turn the long text (3) back into an image.
+
+## Per-market grouping (user 2026-06-16: "top 10 by market")
+
+X drafts post the top `PER_MARKET_TOP_N` (config, = 10) PER market, GROUPED — a per-market section
+header (`📊 FTSE100 — top 10 HVF`) precedes each market's instruments, markets in `MARKET_ORDER`.
+Selection + order come from `price_action.group_by_market` (the single source of truth, shared with
+the daily HVF report and the quality reports); the per-instrument webhook+card delivery is unchanged.
+
+---
+
 ## The tweet (≤ 280 characters, hard limit)
 
 Structure, in order:
