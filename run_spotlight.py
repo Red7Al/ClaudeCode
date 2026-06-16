@@ -186,7 +186,7 @@ def build_blocks(results: list) -> list:
     blocks.append({
         "type": "context",
         "elements": [{"type": "mrkdwn",
-                      "text": f"EndToEndTrading Spotlight | {now}"}]
+                      "text": f"Spotlight | {now}"}]
     })
     return blocks
 

@@ -23,6 +23,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.12.0  2026-06-15  Alex Hind   (a) X post-card: removed the @EndToEndTrading handle line (user 2026-06-15: remove brand
+#                                 text from tweets/reports). (b) _resolve_name strips a trailing standalone "Or"/"Ord"/
+#                                 "Ordinary" share-class token ("Helios Towers Or" → "Helios Towers") — the uppercase
+#                                 " ORD" split missed the mixed/truncated forms (user 2026-06-15).
 # 1.11.0  2026-06-15  Alex Hind   Backlog #9b: a tight-stop draft (hvf_tight_stop_intraday) still posts (user 2026-06-15
 #                                 "publish with a caution note") but the Slack wrapper now carries a ⚠️ caution — the R:R is
 #                                 inflated by the tiny stop, IG won't hold it intraday, take it MANUALLY with a wider stop /
@@ -958,6 +962,11 @@ def _resolve_name(ticker: str) -> str:
             name = info.get("longName") or info.get("shortName")
             if name:
                 name = name.split(" ORD")[0].split(" REIT")[0].strip()
+                # A trailing standalone "Or"/"Ord"/"Ordinary" token is share-class noise
+                # ("ordinary shares"), often truncated to "Or" in the feed (user 2026-06-15:
+                # "if a name ends in 'or' it is probably 'Ord'"). Strip it — the uppercase
+                # " ORD" split above misses the mixed/truncated forms.
+                name = _re.sub(r"\s+Or(?:d(?:inary)?)?\s*$", "", name, flags=_re.I).strip()
                 # Normalise the legal-form suffix to "PLC". First the spelled-out form
                 # ("Vodafone Group Public Limited Company" → "Vodafone Group PLC"), then
                 # the abbreviations (plc / p.l.c. / Plc → PLC).
@@ -1152,8 +1161,8 @@ def render_x_post_card(r: dict):
             pass
 
         # Timeframe label (e.g. d220) deliberately NOT shown (user 2026-06-13).
+        # No @EndToEndTrading handle on the card (user 2026-06-15: remove the brand text).
         hdr_lines = [
-            (0.965, "@EndToEndTrading", "#1d9bf0", 13, "bold",   "normal"),
             (0.925, f"{dir_arrow} ${disp_ticker} ({name})",
                                          "#ffffff", 16, "bold",   "normal"),
             (0.888, f"Volatility squeeze {sig_desc} {dir_word}",

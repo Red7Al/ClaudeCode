@@ -293,7 +293,7 @@ def main():
     blocks.append({
         "type": "context",
         "elements": [{"type": "mrkdwn",
-                      "text": f"EndToEndTrading | UK Morning Brief | "
+                      "text": f"UK Morning Brief | "
                               f"{now.strftime('%d %b %Y %H:%M UTC')}"}]
     })
 

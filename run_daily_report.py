@@ -493,7 +493,7 @@ def build_report(
     lines = []
 
     # ── Header ────────────────────────────────────────────────────────────────────────────────────────────────────────
-    lines.append(f"*EndToEndTrading — Daily Report  {today_str}*")
+    lines.append(f"*Daily Report  {today_str}*")
     lines.append("─" * 48)
 
     # ── Macro ─────────────────────────────────────────────────────────────────────────────────────────────────────────

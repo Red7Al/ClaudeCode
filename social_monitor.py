@@ -30,6 +30,7 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.0   2026-06-15  Alex Hind   Add @TrendSpider to TRACKED_ACCOUNTS (user 2026-06-15).
 # 1.2.0   2026-06-11  Alex Hind   RSS alert: sorted CONFIRM first then WAIT by score; handles always prefixed with @;
 #                                 removed "New X Pick Detected" header (claude-twitter = published posts only); handle
 #                                 stored in new_picks dict for correct display.
@@ -85,6 +86,7 @@ TRACKED_ACCOUNTS = [
     {"handle": "WSJMarkets",        "name": "WSJ Markets",         "source": "X/@WSJMarkets"},
     {"handle": "BRICSinfo",         "name": "BRICSinfo",           "source": "X/@BRICSinfo"},
     {"handle": "WatcherGuru",       "name": "WatcherGuru",         "source": "X/@WatcherGuru"},
+    {"handle": "TrendSpider",       "name": "TrendSpider",         "source": "X/@TrendSpider"},
 ]
 
 # Known non-ticker uppercase words to ignore
