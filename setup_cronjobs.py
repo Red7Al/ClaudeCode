@@ -23,6 +23,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.10.0  2026-06-16  Alex Hind   Add --prune mode (delete cron-job.org jobs no longer in JOBS, scoped to THIS repo's
+#                                 workflow dispatches — needs only CRONJOB_API_KEY). Removed "HVF Quality Reports" +
+#                                 "HVF Quality Reports Wknd": the long report now rides with every publication
+#                                 (intraday_signals._generate_x_drafts), so a standalone quality job double-posts.
 # 1.9.0   2026-06-16  Alex Hind   Add "Pre-Order Report" job (45 21 Mon-Fri → trading-working-orders-report.yml): daily
 #                                 report of the engine-managed working_orders to #arw-claude-orders, after the 21:30 Daily
 #                                 Report (user 2026-06-16). Deploy with --create-missing.
@@ -69,7 +73,7 @@ GITHUB_REPO     = "Red7Al/ClaudeCode"
 
 # CRONJOB_API_KEY is always required. GITHUB_TOKEN is only needed to CREATE jobs
 # (it is baked into the new job's auth header); --reconcile (retune schedules of
-# existing jobs) does not need it.
+# existing jobs) and --prune (delete this-repo jobs no longer in JOBS) do not need it.
 if not CRONJOB_API_KEY:
     print("ERROR: Set CRONJOB_API_KEY environment variable")
     raise SystemExit(1)
@@ -98,7 +102,10 @@ JOBS = [
     ("Commodity Monitor AM", "*/10 4-8 * * 1-5", "trading-commodity-monitor.yml"),
     # ── Pre-UK ────────────────────────────────────────────────────────────────────────────────────────────────────────
     ("HVF Daily Report",    "0 7 * * 1-5",    "trading-hvf-report.yml"),
-    ("HVF Quality Reports", "45 7 * * 1-5",   "trading-quality-reports.yml"),  # after the 07:00 HVF scan (user 2026-06-14)
+    # "HVF Quality Reports" removed 2026-06-16: the long quality report now rides with EVERY
+    # publication (intraday_signals._generate_x_drafts -> quality_report.publish_long_report_for),
+    # so a separate quality-only job would double-post AND is an incomplete publication on its own
+    # (no card/short tweet). Removed here and deleted from cron-job.org via --prune.
     # ── UK session ────────────────────────────────────────────────────────────────────────────────────────────────────
     ("UK Open",             "0 8 * * 1-5",    "trading-uk-open.yml"),
     ("UK Morning Brief",    "0 9 * * 1,5",    "trading-uk-morning-brief.yml"),
@@ -121,7 +128,7 @@ JOBS = [
     # ── Weekend ───────────────────────────────────────────────────────────────────────────────────────────────────────
     ("Weekend Review",      "0 9 * * 6",      "trading-weekend-review.yml"),
     ("HVF Weekend Report",  "0 9 * * 6",      "trading-hvf-report.yml"),
-    ("HVF Quality Reports Wknd", "45 9 * * 6", "trading-quality-reports.yml"),  # after the Sat 09:00 HVF scan
+    # "HVF Quality Reports Wknd" removed 2026-06-16 — long report now rides with publications (see above).
     ("COT Report",          "0 10 * * 6",     "trading-cot-report.yml"),  # after weekend review refreshes COT (09:00)
     # ── Sunday commodity pre-open (created on the new cron-job.org account 2026-06-07) ──
     ("Sunday Readiness Check",         "30 20 * * 0", "trading-sunday-readiness.yml"),
@@ -289,6 +296,74 @@ def create_missing_jobs():
         raise SystemExit(1)
 
 
+def _job_detail(job_id: int) -> dict:
+    """Full detail for one job (the list endpoint omits the target URL)."""
+    resp = requests.get(
+        f"{CRONJOB_API}/jobs/{job_id}",
+        headers={"Authorization": f"Bearer {CRONJOB_API_KEY}"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json().get("jobDetails", {})
+
+
+def delete_job(job_id: int):
+    resp = requests.delete(
+        f"{CRONJOB_API}/jobs/{job_id}",
+        headers={"Authorization": f"Bearer {CRONJOB_API_KEY}"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+
+
+def prune_jobs():
+    """Delete cron-job.org jobs this script no longer manages — SAFELY scoped (added 2026-06-16).
+
+    A job is pruned ONLY when BOTH hold: (1) its title is not in JOBS, and (2) its target URL
+    points at THIS repo's workflow dispatches (`/repos/<repo>/actions/workflows/...`). So it can
+    only ever remove jobs this script created for this repo that are no longer wanted (e.g. the
+    retired "HVF Quality Reports"); unrelated cron-job.org jobs are never touched. Needs only
+    CRONJOB_API_KEY (no GitHub PAT). The URL is read from each candidate's detail endpoint.
+    """
+    managed = {t for t, _, _ in JOBS}
+    marker = f"/repos/{GITHUB_REPO}/actions/workflows/"
+    resp = requests.get(
+        f"{CRONJOB_API}/jobs",
+        headers={"Authorization": f"Bearer {CRONJOB_API_KEY}"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    jobs = resp.json().get("jobs", [])
+    print(f"Existing jobs on account: {len(jobs)}")
+    deleted = kept = skipped = failed = 0
+    for j in jobs:
+        title = j.get("title", "")
+        if title in managed:
+            kept += 1
+            continue
+        try:
+            url = _job_detail(j["jobId"]).get("url", "") or ""
+        except Exception as e:
+            print(f"  SKIP (detail fetch failed): {title} — {e}")
+            skipped += 1
+            continue
+        if marker not in url:
+            print(f"  SKIP (not this repo's dispatch): {title}")
+            skipped += 1
+            continue
+        try:
+            delete_job(j["jobId"])
+            print(f"  PRUNED: {title}  (id={j['jobId']})  -> {url}")
+            deleted += 1
+        except Exception as e:
+            print(f"  FAIL pruning {title} — {e}")
+            failed += 1
+    print()
+    print(f"Prune done: {deleted} deleted, {kept} kept (managed), {skipped} skipped, {failed} failed")
+    if failed:
+        raise SystemExit(1)
+
+
 def main():
     # --reconcile: only retune schedules of existing jobs (no GitHub PAT needed).
     if "--reconcile" in sys.argv:
@@ -304,6 +379,14 @@ def main():
         print(f"GitHub repo: {GITHUB_REPO}")
         print()
         create_missing_jobs()
+        return
+
+    # --prune: delete this-repo jobs no longer in JOBS (safely scoped). Needs only CRONJOB_API_KEY.
+    if "--prune" in sys.argv:
+        print("Pruning cron-job.org jobs not in setup_cronjobs.JOBS (this repo's dispatches only)...")
+        print(f"GitHub repo: {GITHUB_REPO}")
+        print()
+        prune_jobs()
         return
 
     if not GITHUB_TOKEN:

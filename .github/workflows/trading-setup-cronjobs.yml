@@ -1,21 +1,24 @@
-name: Setup Cron Jobs — reconcile schedules (2026-06-10)
+name: Setup Cron Jobs — reconcile / create / prune (2026-06-16)
 
 # --reconcile (default): PATCHes ONLY each existing job's schedule.
 #   Needs CRONJOB_API_KEY only. Use after changing cadence in setup_cronjobs.py.
 # --create-missing: creates any JOBS entries not yet on cron-job.org.
 #   Needs CRONJOB_API_KEY + GH_PAT (PAT is embedded in the new job's auth header).
 #   Safe to re-run — skips existing jobs.
+# --prune: deletes cron-job.org jobs no longer in JOBS, scoped to THIS repo's workflow
+#   dispatches only. Needs CRONJOB_API_KEY only. Won't touch unrelated jobs.
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'reconcile = retune schedules only | create-missing = add new jobs'
+        description: 'reconcile = retune schedules | create-missing = add new | prune = delete removed'
         required: false
         default: 'reconcile'
         type: choice
         options:
           - reconcile
           - create-missing
+          - prune
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -41,3 +44,8 @@ jobs:
         env:
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
           GITHUB_TOKEN:    ${{ secrets.GH_PAT }}
+      - name: Prune removed jobs
+        if: ${{ github.event.inputs.mode == 'prune' }}
+        run: python setup_cronjobs.py --prune
+        env:
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
