@@ -39,3 +39,4 @@ jobs:
           X_ACCESS_SECRET:      ${{ secrets.X_ACCESS_SECRET }}
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_TWITTER:        ${{ secrets.SLACK_TWITTER }}   # confirmation of the X publication (user 2026-06-16)
