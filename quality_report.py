@@ -30,6 +30,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.6.0   2026-06-16  Alex Hind   publish_long_report_for(r): posts ONLY the long 1/n thread for one instrument. Called from
+#                                 intraday_signals._generate_x_drafts so the long report ALWAYS accompanies the card +
+#                                 short tweet on every publication / dossier (user 2026-06-16: all three or it's incomplete).
 # 1.5.0   2026-06-16  Alex Hind   FIX misleading growth claims (user 2026-06-16: "profit up £1.6bn to £11m"): rev_run/ni_run
 #                                 are always >=1, so the profit line ("climbing from X to Y") and the sales-growth line
 #                                 were shown even on a FALL / a single year. Now: sales growth needs rev_run>=2 (+positive
@@ -625,6 +628,41 @@ def publish_quality_reports(setups: list, limit: int = 10, changed_only: bool = 
         published += 1
     log.info(f"quality reports: {published}/{total} published")
     return published
+
+
+def publish_long_report_for(r: dict, post: bool = True) -> list:
+    """Post ONLY the long quality report (1/n thread) for ONE instrument to #arw-claude-twitter.
+
+    A complete publication = card PNG + short tweet + this long thread (user 2026-06-16); this is
+    the hook that pairs the long report with every short+PNG publication and dossier run (called
+    from intraday_signals._generate_x_drafts). The SHORT summary (component B) is the X draft, so
+    here we send the THREAD only — no skim tweet. Returns the thread parts (also when post=False)."""
+    import requests
+    from intraday_signals import _resolve_name, _x_market_tags, _NFA_DISCLAIMER
+    tk = r.get("ticker", "")
+    if not tk:
+        return []
+    r.setdefault("name", _resolve_name(tk))
+    title, body = build_report(r)
+    disp = tk[:-2] if tk.endswith(".L") else tk
+    tail = f"#{disp} {_x_market_tags(r)}{_NFA_DISCLAIMER}"
+    thread = paginate_report_thread(title, body, tail)
+    if not post:
+        return thread
+    slack_url = os.environ.get("SLACK_TWITTER", "")
+    if not slack_url:
+        log.warning(f"SLACK_TWITTER not set — long quality report not posted for {tk}")
+        return thread
+    blocks = [{"type": "section", "text": {"type": "mrkdwn",
+               "text": f"*Long report — {tk} ({r['name']}) — {len(thread)} part(s), copy each block:*"}}]
+    for part in thread:
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"```{part}```"}})
+    try:
+        requests.post(slack_url, json={"blocks": blocks}, timeout=10)
+        log.info(f"long quality report posted for {tk} ({len(thread)}-part thread)")
+    except Exception as e:
+        log.error(f"long quality report Slack post failed for {tk}: {e}")
+    return thread
 
 
 # ----------------------------------------------------------------------------------------------------------------------

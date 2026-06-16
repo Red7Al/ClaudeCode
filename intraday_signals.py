@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.16.0  2026-06-16  Alex Hind   Complete publication (user 2026-06-16): _generate_x_drafts now posts the long quality report
+#                                 (1/n thread) right after each instrument's card + short tweet, via quality_report.
+#                                 publish_long_report_for — so card + short + long ALWAYS go together (publications + dossier).
 # 1.15.0  2026-06-16  Alex Hind   Tweet spacing (user 2026-06-16): blank line after the hook/company line, and a blank line
 #                                 before the confirmations block ("Pattern quality …"); description + explainer stay one
 #                                 paragraph. Adds 2 newlines to the 280-fit budget (accounted for in the fitting loop).
@@ -1711,6 +1714,15 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
                          f"({len(png_bytes)} bytes → {channel_id})")
             except Exception as e:
                 log.error(f"X draft chart upload failed for {ticker}: {e}")
+
+        # ── Component C: the long quality report (1/n thread) MUST accompany every published
+        # instrument (user 2026-06-16). A publication = card + short tweet + long thread; short
+        # +PNG without the long report is incomplete. Posted right after the card, same channel.
+        try:
+            from quality_report import publish_long_report_for
+            publish_long_report_for(r)
+        except Exception as e:
+            log.error(f"long quality report failed for {ticker}: {e}")
 
     if collect:
         return _collected
