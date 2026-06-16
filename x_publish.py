@@ -27,6 +27,8 @@
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-14  Alex Hind   Initial build — cookie-based twikit publisher.
+# 2.3.0   2026-06-16  Alex Hind   More delays (user 2026-06-16): lead_delay 6->12s (media needs time) and a 5s inter_delay
+#                                 BETWEEN each comment so X threads them in order (rapid replies were displaying jumbled).
 # 2.2.0   2026-06-16  Alex Hind   publish_thread_to_x (user 2026-06-16): LEAD (short+card) posts first with a short delay
 #                                 before the long report (A); the long report's 1/n is the MAIN page (reply to the lead)
 #                                 and 2/n..n/n are COMMENTS on the 1/n page (each replies to 1/n, not chained) (B).
@@ -118,15 +120,16 @@ def publish_to_x(items, stagger: bool = True) -> int:
     return posted
 
 
-def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, lead_delay: int = 6,
-                        stagger: bool = False) -> tuple:
+def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, lead_delay: int = 12,
+                        inter_delay: int = 5, stagger: bool = False) -> tuple:
     """Post a COMPLETE publication to X (user 2026-06-16):
       1. LEAD = short tweet + card. It MUST publish before the long report (user A); if it
          fails, the long report is NOT posted.
-      2. a short `lead_delay` pause so the short + card is fully live first (user A).
+      2. wait `lead_delay`s so the short + card (media takes a few seconds to process) is
+         fully live before the long report (user A, 2026-06-16: "more delays may be needed").
       3. the long report's 1/n part = the MAIN page, posted as a reply to the lead.
       4. parts 2/n..n/n = COMMENTS on the 1/n main page — each replies to the 1/n tweet
-         (NOT chained to each other), so they hang off the main page (user B).
+         (NOT chained), with `inter_delay`s between them so X threads them in order (user B).
     Returns (lead_tweet_id, posted_count). No-op -> (None, 0) when the X_* keys are missing."""
     api, client = _clients()
     if client is None:
@@ -142,7 +145,7 @@ def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, lead_delay: int 
     parts = parts or []
     if not parts:
         return lead_id, posted
-    # 2) brief pause so the short + card is fully published before the long report (user A)
+    # 2) wait so the short + card is fully published before the long report (user A)
     if lead_delay:
         time.sleep(lead_delay)
     # 3) 1/n = MAIN page of the long report, replying to the lead
@@ -153,8 +156,13 @@ def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, lead_delay: int 
     except Exception as e:
         log.error(f"X long-report main page (1/{len(parts)}) failed: {e}")
         return lead_id, posted
-    # 4) 2/n..n/n = COMMENTS on the 1/n main page — each replies to the main page (user B)
+    # 4) 2/n..n/n = COMMENTS on the 1/n main page — each replies to the main page, spaced out
+    #    by inter_delay so they land/display in order (user 2026-06-16) (user B)
     for i, part in enumerate(parts[1:], start=2):
+        if stagger:
+            time.sleep(random.randint(STAGGER_MIN, STAGGER_MAX))
+        elif inter_delay:
+            time.sleep(inter_delay)
         try:
             _post_one(api, client, part, None, in_reply_to=main_id)
             posted += 1
@@ -162,8 +170,6 @@ def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, lead_delay: int 
         except Exception as e:
             log.error(f"X comment {i}/{len(parts)} failed: {e}")
             continue
-        if stagger and i < len(parts):
-            time.sleep(random.randint(STAGGER_MIN, STAGGER_MAX))
     log.info(f"X publication complete: {posted} tweet(s) (lead + 1/{len(parts)} main + {posted - 2} comment(s))")
     return lead_id, posted
 

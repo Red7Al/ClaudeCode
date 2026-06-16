@@ -66,13 +66,20 @@ Drafts post to #arw-claude-twitter for review. To push a REAL tweet to the **@Sq
 account, use the official X API path (NOT the Slack flow):
 - `publish_one_to_x.py TICKER` builds the SAME short tweet + card AND the long 1/n report
   (`_generate_x_drafts` collect + `quality_report.publish_long_report_for`), then posts the
-  COMPLETE publication as ONE X thread via `x_publish.publish_thread_to_x` — lead tweet (short
-  text + card), then the long report as chained replies (`in_reply_to`). All three on X, never
+  COMPLETE publication as ONE X thread via `x_publish.publish_thread_to_x`. All three on X, never
   short+card alone (user 2026-06-16). `--dry` previews without posting.
-- After posting, a confirmation with the tweet link is sent to #arw-claude-twitter (`SLACK_TWITTER`).
+- **Thread structure (user 2026-06-16):** LEAD = short tweet + card, posted FIRST; then a
+  `lead_delay` (12s — media needs time to process) before the long report; the long report's
+  **1/n is the MAIN page** (reply to the lead) and **2/n..n/n are COMMENTS on 1/n** (each replies
+  to 1/n, NOT chained), spaced by `inter_delay` (5s) so X threads them in order.
+- **Dedup (user 2026-06-16: duplicate publications):** a ticker is skipped if it was published to
+  X within 12h (recorded in the `x_publications` table); pass `--force` (workflow `-f force=true`)
+  to override. Repeated manual runs no longer create duplicate threads.
+- After posting, a confirmation with the tweet link is sent to #arw-claude-twitter (`SLACK_TWITTER`
+  — must be in the workflow env).
 - Actions only — the four `X_*` secrets (`X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`,
   `X_ACCESS_SECRET`) live in GitHub, never local (memory: secrets_and_x_delivery):
-  `gh workflow run trading-x-publish.yml -f ticker=AXP` (or `-f dry=true`).
+  `gh workflow run trading-x-publish.yml -f ticker=AXP` (or `-f dry=true` / `-f force=true`).
 - The free X tier returns **402 Payment Required**; a paid / pay-per-use plan with billing is
   required (~$0.015 per tweet — a publication is 1 lead + N reply tweets). Verified 2026-06-16.
 - `trading-x-verify.yml` (`x_publish.py --verify`) checks auth without posting.

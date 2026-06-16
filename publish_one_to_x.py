@@ -25,6 +25,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.2.0   2026-06-16  Alex Hind   Dedup (user 2026-06-16: duplicate publications): skip if the ticker was published to X
+#                                 within 12h (x_publications table) unless --force; record each publication after posting.
 # 1.1.0   2026-06-16  Alex Hind   Publish the COMPLETE publication to X (user 2026-06-16): lead tweet + card THEN the
 #                                 long 1/n report as a reply thread (publish_thread_to_x). Posts a confirmation with the
 #                                 tweet link to #arw-claude-twitter after publishing.
@@ -81,16 +83,57 @@ def _confirm_to_slack(ticker: str, name: str, lead_id, posted: int, n_parts: int
         log.error(f"X publication confirmation failed for {ticker}: {e}")
 
 
+_DEDUP_HOURS = 12   # don't re-publish the same instrument to X within this window (user 2026-06-16)
+_PUB_TABLE_SQL = ("create table if not exists x_publications "
+                  "(id bigserial primary key, ticker text not null, tweet_id text, "
+                  "published_at timestamptz default now())")
+
+
+def _recently_published(ticker: str) -> bool:
+    """True if `ticker` was published to X within the last _DEDUP_HOURS hours (dedup, user
+    2026-06-16: duplicate publications). Best-effort — on any DB error returns False so a flaky
+    DB never blocks a publish."""
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            db.run(_PUB_TABLE_SQL)
+            rows = db.run(f"select 1 from x_publications where ticker = :t "
+                          f"and published_at > now() - interval '{_DEDUP_HOURS} hours' limit 1", t=ticker)
+            return bool(rows)
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"dedup check failed for {ticker} (proceeding): {e}")
+        return False
+
+
+def _record_publication(ticker: str, tweet_id):
+    """Record a live X publication so repeats are de-duplicated. Never raises."""
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            db.run(_PUB_TABLE_SQL)
+            db.run("insert into x_publications (ticker, tweet_id) values (:t, :i)",
+                   t=ticker, i=(str(tweet_id) if tweet_id else None))
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"failed to record X publication for {ticker}: {e}")
+
+
 def main():
     try:                                            # UTF-8 stdout for the emoji/bold-italic text
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
     except Exception:
         pass
 
-    dry = "--dry" in sys.argv
+    dry   = "--dry" in sys.argv
+    force = "--force" in sys.argv                   # override the dedup guard
     tickers = [a for a in sys.argv[1:] if not a.startswith("--")]
     if not tickers:
-        log.error("usage: python publish_one_to_x.py TICKER [--dry]")
+        log.error("usage: python publish_one_to_x.py TICKER [--dry] [--force]")
         sys.exit(1)
     ticker = tickers[0]
 
@@ -99,6 +142,12 @@ def main():
         load_dotenv(override=True)
     except Exception:
         pass
+
+    # Dedup: don't re-publish the same instrument within the window (user 2026-06-16) unless forced.
+    if not (dry or force) and _recently_published(ticker):
+        log.info(f"{ticker}: already published to X within {_DEDUP_HOURS}h — skipping "
+                 f"(re-run with --force to override).")
+        return
 
     pub = build_publication(ticker)
     if not pub:
@@ -125,6 +174,7 @@ def main():
     if posted < 1:
         log.error("nothing was posted (X keys missing or API error) — see log above.")
         sys.exit(3)
+    _record_publication(ticker, lead_id)            # dedup record (user 2026-06-16)
     _confirm_to_slack(ticker, res.get("name", ticker), lead_id, posted, len(thread))
 
 
