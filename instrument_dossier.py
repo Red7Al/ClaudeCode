@@ -37,6 +37,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.4.0   2026-06-15  Alex Hind   --check-slack flag (user 2026-06-15): reports whether SLACK_TWITTER / SLACK_BOT_TOKEN /
+#                                 SLACK_TWITTER_CHANNEL_ID are visible to the process (values HIDDEN) so a posting session
+#                                 can be confirmed before a real run; loads .env the same way a run does. No run performed.
 # 1.3.0   2026-06-15  Alex Hind   When SLACK_TWITTER is present (i.e. running in the Instrument Dossier GitHub Action),
 #                                 the dossier now POSTS the tweet + card to #arw-claude-twitter via the same
 #                                 _generate_x_drafts path (user 2026-06-15). Local runs stay generate-only (the secret is
@@ -301,11 +304,53 @@ def build_dossier(ticker: str) -> str:
     return out_dir
 
 
+def _check_slack() -> None:
+    """
+    --check-slack: report whether the X-posting keys are visible to THIS process,
+    so you can confirm a terminal session is set up BEFORE a real run — WITHOUT ever
+    printing the values. Mirrors what a run sees (loads .env the same way the code
+    does). SLACK_TWITTER posts the tweet text; the card IMAGE needs BOTH
+    SLACK_BOT_TOKEN and SLACK_TWITTER_CHANNEL_ID (a webhook can't upload a PNG).
+    """
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(override=True)
+    except Exception:
+        pass
+    keys = [
+        ("SLACK_TWITTER",            "tweet text (webhook)"),
+        ("SLACK_BOT_TOKEN",          "card image upload"),
+        ("SLACK_TWITTER_CHANNEL_ID", "card image target channel"),
+    ]
+    print("Slack X-posting keys visible to this process (values hidden):")
+    present = {}
+    for name, role in keys:
+        ok = bool(os.environ.get(name))
+        present[name] = ok
+        print(f"  [{'OK ' if ok else 'MISSING'}] {name:24} — {role}")
+    text_ok  = present["SLACK_TWITTER"]
+    image_ok = present["SLACK_BOT_TOKEN"] and present["SLACK_TWITTER_CHANNEL_ID"]
+    print()
+    if text_ok and image_ok:
+        print("→ Ready: a dossier run will POST the tweet + card to #arw-claude-twitter.")
+    elif text_ok:
+        print("→ Partial: the tweet TEXT will post, but NOT the card image — set "
+              "SLACK_BOT_TOKEN + SLACK_TWITTER_CHANNEL_ID for the graph.")
+    else:
+        print("→ Not set: a run stays LOCAL (artifacts on disk, nothing posted). Set the "
+              "keys in this terminal session, then re-run --check-slack.")
+
+
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python instrument_dossier.py <TICKER>   e.g. RR.L")
+    args = sys.argv[1:]
+    if "--check-slack" in args:
+        _check_slack()
         return
-    for ticker in sys.argv[1:]:
+    if not args:
+        print("Usage: python instrument_dossier.py <TICKER> [<TICKER> ...]   e.g. RR.L")
+        print("       python instrument_dossier.py --check-slack            (verify posting keys, no run)")
+        return
+    for ticker in args:
         try:
             build_dossier(ticker)
         except Exception as e:

@@ -1,2 +1,2 @@
-python instrument_dossier.py HG=F
+python instrument_dossier.py AXP
 pause
