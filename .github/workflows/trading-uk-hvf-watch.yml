@@ -1,4 +1,4 @@
-name: UK HVF Watch (2-hourly) 2026-06-11
+name: UK HVF Watch (2-hourly) 2026-06-16
 
 on:
   workflow_dispatch:
@@ -27,4 +27,7 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -r requirements.txt
-      - run: python run_session.py UK_HVF_WATCH
+      # Tweet feed (user 2026-06-16: graphs + summary + long report together each run).
+      - run: python run_session.py UK_HVF_WATCH      # HVF graphs + summary tweets → #arw-claude-twitter
+      - run: python quality_report.py --daily        # long narrative report (only setups that changed since last run)
+        if: always()                                  # post the long report even if the watch step had no new setups
