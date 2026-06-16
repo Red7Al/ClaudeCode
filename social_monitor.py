@@ -30,6 +30,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.5.0   2026-06-16  Alex Hind   CONFIRM_LONG mention → dossier read to #arw-claude-signals (user 2026-06-16): when a
+#                                 tracked X account flags a ticker and price action confirms long, post the HVF summary +
+#                                 technical read (instrument_dossier helpers) to #signals. Never auto-publishes to X.
 # 1.4.0   2026-06-16  Alex Hind   X-mentions alert: one blank line between the CONFIRM block and the WAIT block
 #                                 (user 2026-06-16) — a visible gap separates long/short-confirm picks from waiting ones.
 # 1.3.0   2026-06-15  Alex Hind   Add @TrendSpider to TRACKED_ACCOUNTS (user 2026-06-15).
@@ -348,10 +351,37 @@ def get_company_name(ticker: str) -> str:
     return ""
 
 
+def _run_dossier_to_signals(ticker: str, name: str, slack_url: str):
+    """A tracked X account flagged this ticker CONFIRM_LONG → run the system's dossier read and
+    post it to #arw-claude-signals so the operator gets the full picture (user 2026-06-16). Posts
+    the HVF summary + the technical read (reusing the dossier's own helpers); never auto-publishes
+    to X. Never raises — a failure must not break the mentions alert."""
+    try:
+        from price_action import get_hvf_signal_mtf, get_trend_structure
+        from instrument_dossier import _hvf_summary, _technical_block
+        r = get_hvf_signal_mtf(ticker, trend_hint=get_trend_structure(ticker))
+        r["ticker"] = ticker
+        summary = _hvf_summary(ticker, name, r)
+        blocks = [{"type": "section", "text": {"type": "mrkdwn",
+                   "text": f"🎯 *CONFIRM_LONG flagged by a tracked X account — dossier for "
+                           f"{ticker} ({name})*\n```{summary[:2900]}```"}}]
+        try:
+            tech = _technical_block(ticker)
+            if tech:
+                blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"```{tech[:2900]}```"}})
+        except Exception:
+            pass
+        requests.post(slack_url, json={"blocks": blocks}, timeout=15)
+        log.info(f"dossier read posted to #arw-claude-signals for {ticker} (CONFIRM_LONG)")
+    except Exception as e:
+        log.warning(f"dossier-to-signals failed for {ticker}: {e}")
+
+
 def alert_new_picks(new_picks: list):
     """
     Run price action on newly discovered tickers and send Slack alert.
     new_picks: list of {ticker, investor_name, source, post_content}
+    A CONFIRM_LONG mention also triggers a dossier read to #arw-claude-signals (user 2026-06-16).
     """
     if not new_picks:
         return
@@ -364,6 +394,7 @@ def alert_new_picks(new_picks: list):
 
     # Build pick list with PA verdict for sorting
     enriched = []
+    confirm_longs = []   # CONFIRM_LONG mentions → run the dossier into #signals (user 2026-06-16)
     for pick in new_picks:
         ticker   = pick["ticker"]
         # Use stored handle; fallback to investor_name. Always ensure @ prefix.
@@ -383,6 +414,8 @@ def alert_new_picks(new_picks: list):
 
         emoji  = "🟢" if verdict == "CONFIRM_LONG" else ("🔴" if verdict == "CONFIRM_SHORT" else "⏸")
         pa_str = f"{emoji} {verdict} ({score:+.0f}) | {trend}"
+        if verdict == "CONFIRM_LONG":
+            confirm_longs.append((ticker, company or ticker))
 
         # Sort weight: CONFIRM first, then by score descending
         sort_key = (0 if "CONFIRM" in verdict else 1, -score)
@@ -412,6 +445,11 @@ def alert_new_picks(new_picks: list):
         log.info(f"Slack alert sent for {len(new_picks)} new picks")
     except Exception as e:
         log.warning(f"Slack alert failed: {e}")
+
+    # A CONFIRM_LONG from a tracked account is a strong cue — run the dossier read into
+    # #arw-claude-signals for each (user 2026-06-16).
+    for _tk, _nm in confirm_longs:
+        _run_dossier_to_signals(_tk, _nm, slack_url)
 
 
 # ======================================================================================================================

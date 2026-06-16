@@ -53,13 +53,6 @@ This is **enforced in code**: `_generate_x_drafts` posts (1)+(2) then calls
 report, the UK/US HVF watches, and the instrument dossier) emits all three. Never reorder, never
 drop one, never turn the long text back into an image.
 
-## De-brand — no "quality" in public posts (user 2026-06-16)
-
-The word **"quality" must not appear** in published text. The setup-strength metric is
-**"Setup score NN/100"** (was "Pattern quality"), and the long thread's title is just
-`$TICKER (Company Name)` (was "… — the quality angle"). `pattern_quality` stays as an internal
-field/variable name — this is about the public wording only.
-
 ## Per-market grouping (user 2026-06-16: "top 10 by market")
 
 X drafts post the top `PER_MARKET_TOP_N` (config, = 10) PER market, GROUPED — a per-market section
@@ -71,16 +64,18 @@ the daily HVF report and the quality reports); the per-instrument webhook+card d
 
 Drafts post to #arw-claude-twitter for review. To push a REAL tweet to the **@SqueezeSignals** X
 account, use the official X API path (NOT the Slack flow):
-- `publish_one_to_x.py TICKER` builds the SAME short tweet + card (`_generate_x_drafts` collect) and
-  posts via `x_publish.publish_to_x` (tweepy, OAuth 1.0a). `--dry` previews without posting.
+- `publish_one_to_x.py TICKER` builds the SAME short tweet + card AND the long 1/n report
+  (`_generate_x_drafts` collect + `quality_report.publish_long_report_for`), then posts the
+  COMPLETE publication as ONE X thread via `x_publish.publish_thread_to_x` — lead tweet (short
+  text + card), then the long report as chained replies (`in_reply_to`). All three on X, never
+  short+card alone (user 2026-06-16). `--dry` previews without posting.
+- After posting, a confirmation with the tweet link is sent to #arw-claude-twitter (`SLACK_TWITTER`).
 - Actions only — the four `X_*` secrets (`X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`,
   `X_ACCESS_SECRET`) live in GitHub, never local (memory: secrets_and_x_delivery):
   `gh workflow run trading-x-publish.yml -f ticker=AXP` (or `-f dry=true`).
 - The free X tier returns **402 Payment Required**; a paid / pay-per-use plan with billing is
-  required (~$0.015 per media post, no URL). Verified 2026-06-16 — first live post was INF.L.
+  required (~$0.015 per tweet — a publication is 1 lead + N reply tweets). Verified 2026-06-16.
 - `trading-x-verify.yml` (`x_publish.py --verify`) checks auth without posting.
-- **Gap:** this live path posts only (1)+(2) — the long 1/n thread (3) is NOT yet threaded onto X
-  (it posts to the Slack review channel only). Posting (3) as X replies needs `in_reply_to` chaining.
 
 ---
 
@@ -92,7 +87,7 @@ Structure, in order:
 👀 Watching $TICKER (Full Company Name)                       ← rotated HOOK leads (line 1)
 Volatility squeeze {breaking out|coiled, ready} {higher|lower}  ← rotated description (line 2)
 A tight coil just broke out the top — momentum often follows.   ← rotated plain-English explainer (line 3)
-Setup score 82/100  ·  Above VWAP  ·  Options flow bullish (call/put 1.42)
+Pattern quality 82/100  ·  Above VWAP  ·  Options flow bullish (call/put 1.42)
 #StockAlert #TechnicalAnalysis #TICKER #Trading
 Not financial advice.
 
@@ -109,8 +104,7 @@ Rules (each one is a user directive — violating any is a regression):
    $MNG.L (X cashtags don't allow the dot anyway).
 3. **Plain-English justifications only** (2026-06-11): no raw enums, no "Confs:N" counts,
    no NEUTRAL states. The approved vocabulary:
-   - Setup score NN/100 (only when ≥ 60 — a weak score is not a selling point; the word
-     "quality" is NEVER used in posts, user 2026-06-16)
+   - Pattern quality NN/100 (only when ≥ 60 — weak quality is not a selling point)
    - "Options flow bullish (call/put 1.42, implied volatility rank 72%)"
    - "Insider buying on record" · "US Senate-disclosed buying"
    - "Futures positioning bullish (COT report, smart money)" — COT commercials are the
