@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.9.0   2026-06-16  Alex Hind   Add "Pre-Order Report" job (45 21 Mon-Fri → trading-working-orders-report.yml): daily
+#                                 report of the engine-managed working_orders to #arw-claude-orders, after the 21:30 Daily
+#                                 Report (user 2026-06-16). Deploy with --create-missing.
 # 1.0.0   2026-06-05  Alex Hind   Initial build — all session/report cron jobs.
 # 1.7.0   2026-06-11  Alex Hind   Add "UK HVF Watch" job (30 8,10,12,14 Mon-Fri → trading-uk-hvf-watch.yml). Mirrors US
 #                                 HVF Watch cadence for UK/FTSE250 instruments.
@@ -110,6 +113,7 @@ JOBS = [
     ("Commodity Monitor PM", "*/10 21-23 * * 1-5","trading-commodity-monitor.yml"),
     ("Session Close",        "0 21 * * 1-5",     "trading-session-close.yml"),
     ("Daily Report",         "30 21 * * 1-5",    "trading-daily-report.yml"),
+    ("Pre-Order Report",     "45 21 * * 1-5",    "trading-working-orders-report.yml"),  # engine-managed working_orders -> #arw-claude-orders (user 2026-06-16)
     ("Data Quality Audit",   "15 22 * * 1-5",    "trading-data-quality.yml"),  # Yahoo-vs-IG nightly audit (2026-06-12)
     # ── Safety net + proactive self-checks ────────────────────────────────────────────────────────────────────────────
     ("Session Watchdog",     "*/10 0-21 * * 1-5","trading-watchdog.yml"),     # migrated off GitHub cron 2026-06-08
