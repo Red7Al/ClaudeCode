@@ -19,6 +19,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.6.0   2026-06-16  Alex Hind   x_publications table — dedup record for live X publications (publish_one_to_x skips
+#                                 re-publishing a ticker within 12h). user 2026-06-16: duplicate publications.
 # 1.5.0   2026-06-15  Alex Hind   signal_log: add analyst_signal + analyst_recommendation (broker recommendation, so the
 #                                 X-draft tweet can surface it as a confirmation — user 2026-06-15).
 # 1.3.0   2026-06-13  Alex Hind   signal_log: add vwap_pct (numeric) — % distance from intraday VWAP, shown on the X
@@ -349,6 +351,23 @@ MIGRATIONS = [
             last_seen      timestamptz default now(),
             unique (trade_date, ticker, direction, reason_class)
         )"""
+    ),
+    # ── x_publications — dedup record for LIVE X (Twitter) publications (added 2026-06-16) ──
+    # publish_one_to_x.py records each live X publication here and skips re-publishing the same
+    # ticker within 12h (user 2026-06-16: duplicate publications). The module also creates this
+    # table defensively, so it works even if this migration hasn't been run.
+    (
+        "create x_publications",
+        """CREATE TABLE IF NOT EXISTS x_publications (
+            id           bigserial primary key,
+            ticker       text not null,
+            tweet_id     text,
+            published_at timestamptz default now()
+        )"""
+    ),
+    (
+        "x_publications: index on ticker + time",
+        "CREATE INDEX IF NOT EXISTS idx_x_pub_ticker_time ON x_publications(ticker, published_at DESC)"
     ),
 
 ]
