@@ -40,16 +40,25 @@ delivery mechanism or "work around" it.
 
 ---
 
-## Per-instrument publication ORDER (user 2026-06-16) — short text → PNG → long text
+## A COMPLETE publication = three artifacts, ALWAYS together (user 2026-06-16)
 
-Every instrument's publication is emitted in this FIXED order, both to #arw-claude-twitter and in
-any X thread:
+A publication for an instrument is INCOMPLETE unless all three go out, in this fixed order:
 1. **Short tweet text** (`_generate_x_drafts` — ≤280, the hook + plain-English confirmations).
-2. **The post-card PNG** (`render_x_post_card` — price chart + HVF funnel + entry/stop/target).
-3. **The long quality-report thread** (ah-quality-report `paginate_report_thread` — the
-   fundamentals "quality angle" as a numbered 1/n TEXT thread; NOT a PNG since 2026-06-16).
+2. **The post-card PNG** (`render_x_post_card` — price chart + funnel + entry/stop/target).
+3. **The long fundamentals thread** (ah-quality-report `paginate_report_thread` — a numbered
+   1/n TEXT thread: a public-safe chart read THEN the fundamentals; NOT a PNG, since 2026-06-16).
 
-Never reorder these, and never turn the long text (3) back into an image.
+This is **enforced in code**: `_generate_x_drafts` posts (1)+(2) then calls
+`quality_report.publish_long_report_for(r)` for (3) — so every publishing path (the daily HVF
+report, the UK/US HVF watches, and the instrument dossier) emits all three. Never reorder, never
+drop one, never turn the long text back into an image.
+
+## De-brand — no "quality" in public posts (user 2026-06-16)
+
+The word **"quality" must not appear** in published text. The setup-strength metric is
+**"Setup score NN/100"** (was "Pattern quality"), and the long thread's title is just
+`$TICKER (Company Name)` (was "… — the quality angle"). `pattern_quality` stays as an internal
+field/variable name — this is about the public wording only.
 
 ## Per-market grouping (user 2026-06-16: "top 10 by market")
 
@@ -57,6 +66,21 @@ X drafts post the top `PER_MARKET_TOP_N` (config, = 10) PER market, GROUPED — 
 header (`📊 FTSE100 — top 10 HVF`) precedes each market's instruments, markets in `MARKET_ORDER`.
 Selection + order come from `price_action.group_by_market` (the single source of truth, shared with
 the daily HVF report and the quality reports); the per-instrument webhook+card delivery is unchanged.
+
+## Live publishing to X — `publish_one_to_x.py` + `trading-x-publish.yml`
+
+Drafts post to #arw-claude-twitter for review. To push a REAL tweet to the **@SqueezeSignals** X
+account, use the official X API path (NOT the Slack flow):
+- `publish_one_to_x.py TICKER` builds the SAME short tweet + card (`_generate_x_drafts` collect) and
+  posts via `x_publish.publish_to_x` (tweepy, OAuth 1.0a). `--dry` previews without posting.
+- Actions only — the four `X_*` secrets (`X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`,
+  `X_ACCESS_SECRET`) live in GitHub, never local (memory: secrets_and_x_delivery):
+  `gh workflow run trading-x-publish.yml -f ticker=AXP` (or `-f dry=true`).
+- The free X tier returns **402 Payment Required**; a paid / pay-per-use plan with billing is
+  required (~$0.015 per media post, no URL). Verified 2026-06-16 — first live post was INF.L.
+- `trading-x-verify.yml` (`x_publish.py --verify`) checks auth without posting.
+- **Gap:** this live path posts only (1)+(2) — the long 1/n thread (3) is NOT yet threaded onto X
+  (it posts to the Slack review channel only). Posting (3) as X replies needs `in_reply_to` chaining.
 
 ---
 
@@ -68,7 +92,7 @@ Structure, in order:
 👀 Watching $TICKER (Full Company Name)                       ← rotated HOOK leads (line 1)
 Volatility squeeze {breaking out|coiled, ready} {higher|lower}  ← rotated description (line 2)
 A tight coil just broke out the top — momentum often follows.   ← rotated plain-English explainer (line 3)
-Pattern quality 82/100  ·  Above VWAP  ·  Options flow bullish (call/put 1.42)
+Setup score 82/100  ·  Above VWAP  ·  Options flow bullish (call/put 1.42)
 #StockAlert #TechnicalAnalysis #TICKER #Trading
 Not financial advice.
 
@@ -85,7 +109,8 @@ Rules (each one is a user directive — violating any is a regression):
    $MNG.L (X cashtags don't allow the dot anyway).
 3. **Plain-English justifications only** (2026-06-11): no raw enums, no "Confs:N" counts,
    no NEUTRAL states. The approved vocabulary:
-   - Pattern quality NN/100 (only when ≥ 60 — weak quality is not a selling point)
+   - Setup score NN/100 (only when ≥ 60 — a weak score is not a selling point; the word
+     "quality" is NEVER used in posts, user 2026-06-16)
    - "Options flow bullish (call/put 1.42, implied volatility rank 72%)"
    - "Insider buying on record" · "US Senate-disclosed buying"
    - "Futures positioning bullish (COT report, smart money)" — COT commercials are the
