@@ -27,6 +27,9 @@
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-14  Alex Hind   Initial build — cookie-based twikit publisher.
+# 2.2.0   2026-06-16  Alex Hind   publish_thread_to_x (user 2026-06-16): LEAD (short+card) posts first with a short delay
+#                                 before the long report (A); the long report's 1/n is the MAIN page (reply to the lead)
+#                                 and 2/n..n/n are COMMENTS on the 1/n page (each replies to 1/n, not chained) (B).
 # 2.1.0   2026-06-16  Alex Hind   publish_thread_to_x(): post a COMPLETE publication as one X thread — lead tweet (short
 #                                 text + card) then the long 1/n report as chained replies (in_reply_to). _post_one now
 #                                 returns the tweet id and accepts in_reply_to. (user 2026-06-16: all three on X too.)
@@ -115,33 +118,53 @@ def publish_to_x(items, stagger: bool = True) -> int:
     return posted
 
 
-def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, stagger: bool = False) -> tuple:
-    """Post a COMPLETE publication as ONE X thread (user 2026-06-16): a lead tweet (short text +
-    card image), then `parts` (the long 1/n report) chained as replies. Returns
-    (lead_tweet_id, posted_count). No-op -> (None, 0) when the X_* keys are missing.
-    Replies post back-to-back (stagger=False) so the thread lands together."""
+def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, lead_delay: int = 6,
+                        stagger: bool = False) -> tuple:
+    """Post a COMPLETE publication to X (user 2026-06-16):
+      1. LEAD = short tweet + card. It MUST publish before the long report (user A); if it
+         fails, the long report is NOT posted.
+      2. a short `lead_delay` pause so the short + card is fully live first (user A).
+      3. the long report's 1/n part = the MAIN page, posted as a reply to the lead.
+      4. parts 2/n..n/n = COMMENTS on the 1/n main page — each replies to the 1/n tweet
+         (NOT chained to each other), so they hang off the main page (user B).
+    Returns (lead_tweet_id, posted_count). No-op -> (None, 0) when the X_* keys are missing."""
     api, client = _clients()
     if client is None:
         return None, 0
+    # 1) LEAD — short text + card. Must succeed before anything else goes out.
     try:
         lead_id = _post_one(api, client, lead_text, lead_png)
     except Exception as e:
-        log.error(f"X lead post failed: {e}")
+        log.error(f"X lead (short+card) post failed — long report NOT posted: {e}")
         return None, 0
     log.info(f"posted X lead tweet {lead_id} (+card)")
+    posted = 1
     parts = parts or []
-    posted, prev = 1, lead_id
-    for i, part in enumerate(parts, 1):
+    if not parts:
+        return lead_id, posted
+    # 2) brief pause so the short + card is fully published before the long report (user A)
+    if lead_delay:
+        time.sleep(lead_delay)
+    # 3) 1/n = MAIN page of the long report, replying to the lead
+    try:
+        main_id = _post_one(api, client, parts[0], None, in_reply_to=lead_id)
+        posted += 1
+        log.info(f"posted X long-report MAIN page 1/{len(parts)} ({main_id})")
+    except Exception as e:
+        log.error(f"X long-report main page (1/{len(parts)}) failed: {e}")
+        return lead_id, posted
+    # 4) 2/n..n/n = COMMENTS on the 1/n main page — each replies to the main page (user B)
+    for i, part in enumerate(parts[1:], start=2):
         try:
-            prev = _post_one(api, client, part, None, in_reply_to=prev) or prev
+            _post_one(api, client, part, None, in_reply_to=main_id)
             posted += 1
-            log.info(f"posted X thread reply {i}/{len(parts)}")
+            log.info(f"posted X comment {i}/{len(parts)} on the 1/{len(parts)} main page")
         except Exception as e:
-            log.error(f"X thread reply {i} failed: {e}")
-            break
+            log.error(f"X comment {i}/{len(parts)} failed: {e}")
+            continue
         if stagger and i < len(parts):
             time.sleep(random.randint(STAGGER_MIN, STAGGER_MAX))
-    log.info(f"X thread complete: {posted} tweet(s) total (lead {lead_id})")
+    log.info(f"X publication complete: {posted} tweet(s) (lead + 1/{len(parts)} main + {posted - 2} comment(s))")
     return lead_id, posted
 
 
