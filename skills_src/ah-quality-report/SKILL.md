@@ -28,10 +28,6 @@ trigger") → the reward-vs-risk to target/stop — THEN the fundamentals read.
 **PUBLIC-SAFE, hard rule:** the chart read NEVER names the in-house method — no "HVF", no "Hunt
 Volatility Funnel", and no "funnel"; the only public vocabulary is squeeze / coil / tightening
 range / breakout / ceiling / floor (same rule as ah-x-publications).
-**No "quality" wording in the published text (user 2026-06-16):** the thread title is just
-`$TICKER (Company Name)` (was "… — the quality angle"), and the setup metric is "Setup score
-NN/100" (`pattern_quality` stays as an internal field name only). This skill keeps its name; only
-the public output changed.
 
 The long thread is posted by `publish_long_report_for(r)`, called from
 `intraday_signals._generate_x_drafts` so it ALWAYS rides with the short tweet + card (a complete

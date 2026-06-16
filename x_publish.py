@@ -27,6 +27,9 @@
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-14  Alex Hind   Initial build — cookie-based twikit publisher.
+# 2.1.0   2026-06-16  Alex Hind   publish_thread_to_x(): post a COMPLETE publication as one X thread — lead tweet (short
+#                                 text + card) then the long 1/n report as chained replies (in_reply_to). _post_one now
+#                                 returns the tweet id and accepts in_reply_to. (user 2026-06-16: all three on X too.)
 # 2.0.0   2026-06-14  Alex Hind   SWITCHED to the official X API v2 via tweepy (user 2026-06-14): twikit's login is broken
 #                                 (X's Mar-2026 "client transaction" change, no fixed release; 2.3.3 latest still fails).
 #                                 OAuth 1.0a keys (4 GitHub secrets), media upload + create_tweet, 13-17 min stagger,
@@ -64,7 +67,8 @@ def _clients():
     return api, client
 
 
-def _post_one(api, client, text: str, png: bytes = None):
+def _post_one(api, client, text: str, png: bytes = None, in_reply_to: str = None):
+    """Post one tweet (optional image, optional reply target). Returns the new tweet id."""
     media_ids = None
     if png:
         fd, path = tempfile.mkstemp(suffix=".png")
@@ -78,7 +82,14 @@ def _post_one(api, client, text: str, png: bytes = None):
                 os.remove(path)
             except Exception:
                 pass
-    client.create_tweet(text=text, media_ids=media_ids)       # v2 create tweet
+    kwargs = {"text": text, "media_ids": media_ids}
+    if in_reply_to:
+        kwargs["in_reply_to_tweet_id"] = in_reply_to
+    resp = client.create_tweet(**kwargs)                      # v2 create tweet
+    try:
+        return resp.data["id"]
+    except Exception:
+        return None
 
 
 def publish_to_x(items, stagger: bool = True) -> int:
@@ -102,6 +113,36 @@ def publish_to_x(items, stagger: bool = True) -> int:
             time.sleep(wait)
     log.info(f"X publish complete: {posted}/{len(items)} posted")
     return posted
+
+
+def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, stagger: bool = False) -> tuple:
+    """Post a COMPLETE publication as ONE X thread (user 2026-06-16): a lead tweet (short text +
+    card image), then `parts` (the long 1/n report) chained as replies. Returns
+    (lead_tweet_id, posted_count). No-op -> (None, 0) when the X_* keys are missing.
+    Replies post back-to-back (stagger=False) so the thread lands together."""
+    api, client = _clients()
+    if client is None:
+        return None, 0
+    try:
+        lead_id = _post_one(api, client, lead_text, lead_png)
+    except Exception as e:
+        log.error(f"X lead post failed: {e}")
+        return None, 0
+    log.info(f"posted X lead tweet {lead_id} (+card)")
+    parts = parts or []
+    posted, prev = 1, lead_id
+    for i, part in enumerate(parts, 1):
+        try:
+            prev = _post_one(api, client, part, None, in_reply_to=prev) or prev
+            posted += 1
+            log.info(f"posted X thread reply {i}/{len(parts)}")
+        except Exception as e:
+            log.error(f"X thread reply {i} failed: {e}")
+            break
+        if stagger and i < len(parts):
+            time.sleep(random.randint(STAGGER_MIN, STAGGER_MAX))
+    log.info(f"X thread complete: {posted} tweet(s) total (lead {lead_id})")
+    return lead_id, posted
 
 
 def verify() -> bool:
