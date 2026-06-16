@@ -23,6 +23,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.17.0  2026-06-16  Alex Hind   Tweet de-brand (user 2026-06-16): "Pattern quality NN/100" -> "Setup score NN/100" (short
+#                                 "Score NN/100"); Slack footer "Quality:" -> "Setup score:". No "quality" wording in posts.
 # 1.16.0  2026-06-16  Alex Hind   Complete publication (user 2026-06-16): _generate_x_drafts now posts the long quality report
 #                                 (1/n thread) right after each instrument's card + short tweet, via quality_report.
 #                                 publish_long_report_for — so card + short + long ALWAYS go together (publications + dossier).
@@ -1479,8 +1481,8 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         # Pattern quality first — it scores THE setup being posted (0–100: pivot
         # clarity, funnel symmetry, volume profile). Only shown when strong.
         if quality and isinstance(quality, (int, float)) and quality >= 60:
-            justifications.append((f"Pattern quality {quality:.0f}/100",
-                                   f"Quality {quality:.0f}/100"))
+            justifications.append((f"Setup score {quality:.0f}/100",
+                                   f"Score {quality:.0f}/100"))
         if obs_b and obs_b != "NEUTRAL" and _aligned(obs_b):
             bits_full, bits_short = [], []
             if cpr is not None:
@@ -1654,7 +1656,7 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
                       "text": f"*Tweet ({len(tweet)} chars):*\n```{tweet}```"}},
             {"type": "context",
              "elements": [{"type": "mrkdwn",
-                            "text": (f"R:R {rr_str}  |  Quality: {quality or '—'}  |  "
+                            "text": (f"R:R {rr_str}  |  Setup score: {quality or '—'}  |  "
                                      f"{tf_raw or '—'}  |  "
                                      + datetime.now(timezone.utc).strftime("%d %b %H:%M UTC"))}]},
         ]

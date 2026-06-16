@@ -30,6 +30,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.7.0   2026-06-16  Alex Hind   Drop "quality" branding from PUBLIC output (user 2026-06-16): the long-thread title is now
+#                                 just "$TICKER (Company)" (was "… — the quality angle"); skim tweet + retired-path Slack
+#                                 labels de-branded too. Internal names / logs / file name unchanged.
 # 1.6.0   2026-06-16  Alex Hind   publish_long_report_for(r): posts ONLY the long 1/n thread for one instrument. Called from
 #                                 intraday_signals._generate_x_drafts so the long report ALWAYS accompanies the card +
 #                                 short tweet on every publication / dossier (user 2026-06-16: all three or it's incomplete).
@@ -395,10 +398,11 @@ def build_report(r: dict, change_note: str = None) -> tuple:
 
     fund  = " ".join(s) if s else f"Limited fundamental data available for {name}."
     chart = _chart_story(r, name, gbp)                       # public-safe "why the setup matters"
-    body  = (chart + "\n\n" + fund) if chart else fund       # lead with the chart why-now, then the quality angle
+    body  = (chart + "\n\n" + fund) if chart else fund       # lead with the chart why-now, then the fundamentals
     if change_note:
         body += f"\n\nWhat's changed since the last report: {change_note}"
-    return f"${disp} ({name}) — the quality angle", body
+    # No "quality" branding in the public title (user 2026-06-16) — just the ticker + company.
+    return f"${disp} ({name})", body
 
 
 def build_tweet(r: dict) -> str:
@@ -426,9 +430,9 @@ def build_tweet(r: dict) -> str:
             bits.append(f"dividend raised {f['div_streak']} years")
     if f.get("target_pct") is not None and f["target_pct"] > 0:
         bits.append(f"analysts see ~{f['target_pct']:.0f}% upside")
-    summary = ", ".join(bits[:4]) if bits else "fundamental quality screen"
+    summary = ", ".join(bits[:4]) if bits else "fundamental screen"
     tags = _x_market_tags(r)
-    return (f"👀 ${disp} ({name}) — the quality angle\n"
+    return (f"👀 ${disp} ({name})\n"
             f"{summary[0].upper() + summary[1:]}. Full story in the thread 👇\n"
             f"#{disp} {tags}{_NFA_DISCLAIMER}")
 
@@ -569,7 +573,7 @@ def _post(tweet: str, thread: list, ticker: str, name: str, rank: int, total: in
         return
     blocks = [
         {"type": "header", "text": {"type": "plain_text",
-                                    "text": f"Quality report {rank}/{total} — {ticker} ({name})"}},
+                                    "text": f"Report {rank}/{total} — {ticker} ({name})"}},
         {"type": "section", "text": {"type": "mrkdwn", "text": f"*Skim tweet:*\n```{tweet}```"}},
         {"type": "section", "text": {"type": "mrkdwn",
                                      "text": f"*Thread — {len(thread)} part(s), copy each block:*"}},
@@ -614,7 +618,7 @@ def publish_quality_reports(setups: list, limit: int = 10, changed_only: bool = 
                 requests.post(slack_url, json={"blocks": [
                     {"type": "divider"},
                     {"type": "header", "text": {"type": "plain_text",
-                                                "text": f"📊 {market_short(mkt)} — quality reports (top {PER_MARKET_TOP_N})"}},
+                                                "text": f"📊 {market_short(mkt)} — reports (top {PER_MARKET_TOP_N})"}},
                 ]}, timeout=10)
             except Exception as e:
                 log.debug(f"quality report market header failed for {mkt}: {e}")
