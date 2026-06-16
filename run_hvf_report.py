@@ -28,6 +28,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.11.0  2026-06-15  Alex Hind   Each tradeable line gains a compact technical read (user 2026-06-15): "TA: N Buy / N
+#                                 Sell / N Hold · Div growth ±x%" via technical_summary.summary_line (full per-indicator
+#                                 detail is in the dossier). Supplementary context only; one extra yfinance fetch per line.
 # 1.10.0  2026-06-15  Alex Hind   "Also on" now lists FULL figures (Entry/Stop/Target/R:R/Q) per other timeframe (user
 #                                 2026-06-15), not just a state emoji — mtf_timeframes carries the per-timeframe levels.
 #                                 Headline stays the primary (anchored/validated); "Also on" rows are raw detection.
@@ -409,6 +412,15 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
                     line += (f"\n      {_signal_emoji(c.get('hvf_signal'))} {_tf_short(c.get('hvf_timeframe'))}  "
                              f"Entry {_fmt_price(c.get('h3_level'))}  Stop {_fmt_price(c.get('stop_level'))}  "
                              f"Target {_fmt_price(c.get('target'))}  R:R {c_rrs}  Q={c.get('pattern_quality', '—')}")
+            # Supplementary technical read (user 2026-06-15) — compact one-liner; full
+            # per-indicator detail lives in the dossier. Context only, never gates a trade.
+            try:
+                from technical_summary import get_technical_summary, summary_line
+                _ta = summary_line(get_technical_summary(t))
+                if _ta:
+                    line += f"\n    {_ta}"
+            except Exception:
+                pass
             lines.append(line)
         for blk in _chunk_lines(lines):
             blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})

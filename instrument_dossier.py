@@ -37,6 +37,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.5.0   2026-06-15  Alex Hind   Technical read section (user 2026-06-15): MA10/30/50, RSI14, Stoch(9,6), ATR14, ADX14,
+#                                 CCI20 as Buy/Sell/Hold + dividend growth, via technical_summary.py. Supplementary
+#                                 context only — does not gate a trade or touch HVF detection.
 # 1.4.0   2026-06-15  Alex Hind   --check-slack flag (user 2026-06-15): reports whether SLACK_TWITTER / SLACK_BOT_TOKEN /
 #                                 SLACK_TWITTER_CHANNEL_ID are visible to the process (values HIDDEN) so a posting session
 #                                 can be confirmed before a real run; loads .env the same way a run does. No run performed.
@@ -190,6 +193,28 @@ def _hvf_summary(ticker: str, name: str, r: dict) -> str:
     return "\n".join(lines)
 
 
+def _technical_block(ticker: str) -> str:
+    """
+    Supplementary technical read (user 2026-06-15) — MA10/30/50, RSI14, Stoch(9,6),
+    ATR14, ADX14, CCI20 as Buy/Sell/Hold + dividend growth. CONTEXT only: it does not
+    gate a trade or change HVF detection. ATR is volatility (no Buy/Sell).
+    """
+    from technical_summary import get_technical_summary
+    ts = get_technical_summary(ticker)
+    lines = ["Technical read (supplementary context — not a trade signal):"]
+    if ts.get("error") or not ts.get("indicators"):
+        lines.append(f"    unavailable ({ts.get('error') or 'no data'})")
+        return "\n".join(lines)
+    for name, val, rating in ts["indicators"]:
+        tag = f"[{rating}]" if rating != "—" else "[ vol ]"
+        lines.append(f"    {name:14} {str(val):18} {tag}")
+    dg = ts.get("dividend_growth_pct")
+    dg_str = f"{dg:+.1f}% YoY" if dg is not None else "n/a (non-payer)"
+    lines.append(f"    {'Dividend growth':14} {dg_str:18}")
+    lines.append(f"    → {ts['buy']} Buy / {ts['sell']} Sell / {ts['hold']} Hold")
+    return "\n".join(lines)
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Build & write the dossier
 # ----------------------------------------------------------------------------------------------------------------------
@@ -213,7 +238,7 @@ def build_dossier(ticker: str) -> str:
     os.makedirs(out_dir, exist_ok=True)
 
     summary = _hvf_summary(ticker, name, r)
-    manifest = [summary, ""]
+    manifest = [summary, "", _technical_block(ticker), ""]
 
     has_pattern = bool(r.get("hvf_type"))
     ctx = _latest_signal_log(ticker)
