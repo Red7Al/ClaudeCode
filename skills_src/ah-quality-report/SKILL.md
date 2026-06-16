@@ -21,6 +21,14 @@ but as a PNG does not work") so it reads as a copy-paste thread, not an image. I
 #arw-claude-twitter review channel the skim tweet and each thread part land as adjacent
 copy-paste code blocks. (`render_report_card` is gone.)
 
+The long report LEADS with a plain-English **chart-setup read** (`_chart_story` / `_P_CHART_*`,
+added 2026-06-16) — why the setup matters, in the style of the colleague's chart report: the
+squeeze (range compressed to ~N% of its original width) → the breakout (or "coiled at the
+trigger") → the reward-vs-risk to target/stop — THEN the fundamentals "quality angle".
+**PUBLIC-SAFE, hard rule:** the chart read NEVER names the in-house method — no "HVF", no "Hunt
+Volatility Funnel", and no "funnel"; the only public vocabulary is squeeze / coil / tightening
+range / breakout / ceiling / floor (same rule as ah-x-publications).
+
 ## Hard rules (each came from a specific user correction — don't regress)
 - **Common-man English, not accountant.** No jargon: never "CAGR", "ROE", "OCF/FCF", "D/E".
   Say "about 12% a year", "return on shareholders' money", "spare cash", "more cash than debt".

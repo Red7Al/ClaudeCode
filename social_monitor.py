@@ -30,6 +30,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.4.0   2026-06-16  Alex Hind   X-mentions alert: one blank line between the CONFIRM block and the WAIT block
+#                                 (user 2026-06-16) — a visible gap separates long/short-confirm picks from waiting ones.
 # 1.3.0   2026-06-15  Alex Hind   Add @TrendSpider to TRACKED_ACCOUNTS (user 2026-06-15).
 # 1.2.0   2026-06-11  Alex Hind   RSS alert: sorted CONFIRM first then WAIT by score; handles always prefixed with @;
 #                                 removed "New X Pick Detected" header (claude-twitter = published posts only); handle
@@ -387,8 +389,16 @@ def alert_new_picks(new_picks: list):
         enriched.append((sort_key, label, handle, pa_str))
 
     enriched.sort(key=lambda x: x[0])
-    lines = "".join(f"• *{label}* via {handle} — {pa_str}\n"
-                    for _, label, handle, pa_str in enriched)
+    # One blank line between the CONFIRM block and the WAIT block (user 2026-06-16).
+    # sort_key[0]: 0 = CONFIRM_LONG/SHORT, 1 = WAIT — insert the gap at that boundary.
+    lines = ""
+    prev_group = None
+    for sort_key, label, handle, pa_str in enriched:
+        group = sort_key[0]
+        if prev_group is not None and group != prev_group:
+            lines += "\n"
+        lines += f"• *{label}* via {handle} — {pa_str}\n"
+        prev_group = group
 
     blocks = [
         {
