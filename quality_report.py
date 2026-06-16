@@ -30,6 +30,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.4.0   2026-06-16  Alex Hind   Long report ALSO reads the chart setup (user 2026-06-16: explain why it matters, like the
+#                                 colleague's report) — new _chart_story()/_P_CHART_* prose: squeeze -> breakout ->
+#                                 reward-vs-risk, led before the fundamentals. PUBLIC-SAFE: never names the in-house
+#                                 method (squeeze/coil/range/breakout only — no "HVF", no "funnel").
 # 1.3.0   2026-06-16  Alex Hind   Per-market reports (user 2026-06-16: "top 10 by market"): _today_top now returns the
 #                                 top PER_MARKET_TOP_N PER market (price_action.group_by_market, MARKET_ORDER) instead of a
 #                                 global top-N; publish_quality_reports posts a per-market section header when the market
@@ -261,6 +265,72 @@ def _pick(pool, ticker, salt):
     return pool[h % len(pool)]
 
 
+# Chart-setup narrative (user 2026-06-16): the long report ALSO explains WHY the technical
+# setup matters — the squeeze/breakout read a colleague would give. PUBLIC-SAFE: it never
+# names the in-house method (house rule: "Volatility squeeze", NEVER "HVF"/"Hunt Volatility
+# Funnel"); the public vocabulary is squeeze / coil / tightening range / breakout / ceiling
+# / floor. Phrasing varies per instrument (_pick), like the fundamentals prose.
+_P_CHART_OPEN = [
+    "Now the chart. {name} has spent months winding into a tighter and tighter range.",
+    "Here's the timing too: on the chart, {name} has coiled for months into a steadily narrowing range.",
+    "The chart adds the why-now. {name} has been squeezing into an ever-narrower range for months.",
+]
+_P_CHART_SQUEEZE = [
+    "The rallies kept getting capped while the dips held higher, tightening the range to about {pct} of its original width.",
+    "Sellers capped each bounce and buyers lifted each dip, so the range is now roughly {pct} of where it started.",
+    "Lower highs met rising lows until the range compressed to about {pct} of its original height.",
+]
+_P_CHART_BREAK_UP = [
+    "It has now broken out the top — and a long coil like this letting go is exactly the kind of move that tends to run.",
+    "That squeeze has just snapped higher, and when a coil this long releases, the move often runs.",
+]
+_P_CHART_BREAK_DOWN = [
+    "It has now broken down through the floor — and a long coil like this letting go is exactly the kind of move that tends to run.",
+    "That squeeze has just given way to the downside, and when a coil this long releases, the move often runs.",
+]
+_P_CHART_READY_UP = [
+    "It is now coiled just under the ceiling near {entry} — a break above there is the trigger.",
+    "Price is pressed right under resistance near {entry}; a close above it is the signal.",
+]
+_P_CHART_READY_DOWN = [
+    "It is now coiled just above the floor near {entry} — a break below there is the trigger.",
+    "Price is pressed right on support near {entry}; a close below it is the signal.",
+]
+_P_CHART_RR = [
+    "From there the path opens toward {target}, against risk back to {stop} — about {rr}x more reward than risk.",
+    "If it plays out it targets {target} while risking back to {stop} — roughly {rr}x the reward for the risk.",
+]
+
+
+def _chart_story(r: dict, name: str, gbp: bool) -> str:
+    """Plain-English read of WHY the technical setup matters, for the long report. PUBLIC-SAFE:
+    never names the in-house method (squeeze/coil/range/breakout only). One fact per short
+    sentence; returns "" if direction is unknown."""
+    direction = (r.get("hvf_type") or "").upper()
+    signal    = (r.get("hvf_signal") or "").upper()
+    if direction not in ("BULLISH", "BEARISH"):
+        return ""
+    up = direction == "BULLISH"
+    tk = r.get("ticker", "")
+
+    def _lvl(v):
+        return None if v is None else (f"{v:,.0f}p" if gbp else f"${v:,.2f}")
+
+    entry, stop, target = _lvl(r.get("h3_level")), _lvl(r.get("stop_level")), _lvl(r.get("target"))
+    rr, conv = r.get("risk_reward"), r.get("convergence")
+
+    parts = [_pick(_P_CHART_OPEN, tk, "co").format(name=name)]
+    if isinstance(conv, (int, float)) and 0 < conv < 1:
+        parts.append(_pick(_P_CHART_SQUEEZE, tk, "sq").format(pct=f"{conv * 100:.0f}%"))
+    if signal == "TRIGGERED":
+        parts.append(_pick(_P_CHART_BREAK_UP if up else _P_CHART_BREAK_DOWN, tk, "br"))
+    elif entry:
+        parts.append(_pick(_P_CHART_READY_UP if up else _P_CHART_READY_DOWN, tk, "rd").format(entry=entry))
+    if rr and target and stop:
+        parts.append(_pick(_P_CHART_RR, tk, "rr").format(target=target, stop=stop, rr=f"{rr:.0f}"))
+    return " ".join(parts)
+
+
 def build_report(r: dict, change_note: str = None) -> tuple:
     """(title, prose_body) — plain English, one fact per short sentence, phrasing varied
     per instrument so each report reads bespoke (user 2026-06-14)."""
@@ -309,7 +379,9 @@ def build_report(r: dict, change_note: str = None) -> tuple:
     elif f.get("insider_pct") is not None:
         s.append(f"Company insiders own about {f['insider_pct']:.1f}% of the shares.")
 
-    body = " ".join(s) if s else f"Limited fundamental data available for {name}."
+    fund  = " ".join(s) if s else f"Limited fundamental data available for {name}."
+    chart = _chart_story(r, name, gbp)                       # public-safe "why the setup matters"
+    body  = (chart + "\n\n" + fund) if chart else fund       # lead with the chart why-now, then the quality angle
     if change_note:
         body += f"\n\nWhat's changed since the last report: {change_note}"
     return f"${disp} ({name}) — the quality angle", body
