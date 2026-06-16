@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.15.0  2026-06-16  Alex Hind   Tweet spacing (user 2026-06-16): blank line after the hook/company line, and a blank line
+#                                 before the confirmations block ("Pattern quality …"); description + explainer stay one
+#                                 paragraph. Adds 2 newlines to the 280-fit budget (accounted for in the fitting loop).
 # 1.14.0  2026-06-16  Alex Hind   X drafts grouped per market (user 2026-06-16: "top 10 by market"): _generate_x_drafts
 #                                 now selects the top PER_MARKET_TOP_N per market (price_action.group_by_market, MARKET_ORDER)
 #                                 instead of a global X_DRAFT_TOP_N=20, and posts a per-market section header when the market
@@ -1541,10 +1544,13 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         # explainer line AND the company name; drop them only if the tweet won't fit
         # 280 otherwise. The explainer is dropped before the name is kept (explanation
         # matters more than the long name).
-        base_name_expl = f"{hook} ({name})\n{description}\n{explain}\n"
-        base_expl      = f"{hook}\n{description}\n{explain}\n"
-        base_with_name = f"{hook} ({name})\n{description}\n"
-        base_no_name   = f"{hook}\n{description}\n"
+        # Blank line after the hook/company line (user 2026-06-16). The description and the
+        # explainer stay together as ONE paragraph; the blank line before the confirmations
+        # block is added in _build below.
+        base_name_expl = f"{hook} ({name})\n\n{description}\n{explain}\n"
+        base_expl      = f"{hook}\n\n{description}\n{explain}\n"
+        base_with_name = f"{hook} ({name})\n\n{description}\n"
+        base_no_name   = f"{hook}\n\n{description}\n"
         # "Not financial advice." — always appended (2026-06-11); now preceded by a
         # blank line and rendered in bold italic (user 2026-06-13).
         disclaimer = _NFA_DISCLAIMER
@@ -1554,7 +1560,8 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         tags_short = f"#StockAlert #TechnicalAnalysis #{disp_ticker} {_mkt}"
 
         def _build(base, just, tags):
-            return base + (f"{just}\n" if just else "") + tags + disclaimer
+            # Blank line before the confirmations block (e.g. "Pattern quality …") — user 2026-06-16.
+            return base + (f"\n{just}\n" if just else "") + tags + disclaimer
 
         # Within each base, keep as MANY confirmations as possible (n_just descending),
         # full wording before short. The explainer-bearing bases come first so the
