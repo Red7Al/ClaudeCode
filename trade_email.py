@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.10.0  2026-06-15  Alex Hind   Broker view line (user 2026-06-15) — sig["broker_view"] rendered as a separate line in
+#                                 the text + HTML email (not inside the counted Confirmations). Also dropped the
+#                                 "by EndToEndTrading" footer text (brand-removal).
 # 1.0.0   2026-06-09  Alex Hind   Initial build — Yahoo SMTP, investment-case body, inline price / volume / HVF-funnel
 #                                 charts.
 # 1.1.0   2026-06-10  Alex Hind   Show supporting detail for Options flow, Director buys and COT positioning in the
@@ -379,10 +382,12 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
              or ["  • (none recorded)"])
     text += ["", f"Confirmations ({cc}):"]
     text += ([f"  • {c}" for c in confirmations] or ["  • (none recorded)"])
+    if sig.get("broker_view"):
+        text += ["", f"Broker view: {sig['broker_view']}"]
     if sig.get("pa_verdict"):
         text += ["", f"Price-action verdict: {sig.get('pa_verdict')} (score {sig.get('pa_score', '—')})"]
     text += ["", "Charts attached: price history (with HVF funnel overlay), volume history.",
-             f"\nGenerated {datetime.now(timezone.utc):%d %b %Y %H:%M UTC} by EndToEndTrading."]
+             f"\nGenerated {datetime.now(timezone.utc):%d %b %Y %H:%M UTC}."]
     text = "\n".join(str(t) for t in text)
 
     # Corporate HTML — IBM-style: dark header, two-column data table, structured sections
@@ -454,6 +459,12 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
                     f'<b>Price-action verdict:</b> {sig["pa_verdict"]} '
                     f'(score {sig.get("pa_score","—")})</p>')
 
+    # Broker view (user 2026-06-15) — a separate line, not in the counted confirmations.
+    broker_block = ""
+    if sig.get("broker_view"):
+        broker_block = (f'<p style="margin:8px 0;font-size:13px">'
+                        f'<b>Broker view:</b> {sig["broker_view"]}</p>')
+
     ref_line = (f'<p style="margin:0;font-size:11px;color:#777">'
                 f'Trade reference: <code style="font-family:monospace">{ref}</code></p>') if ref else ""
 
@@ -492,6 +503,7 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
               text-transform:uppercase;letter-spacing:1px">Confirmations ({cc})</p>
     <ul style="margin:0 0 14px 16px;padding:0">{_li(confirmations)}</ul>
 
+    {broker_block}
     {dir_block}
     {pa_block}
   </div>

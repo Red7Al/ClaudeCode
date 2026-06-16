@@ -19,6 +19,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.5.0   2026-06-15  Alex Hind   signal_log: add analyst_signal + analyst_recommendation (broker recommendation, so the
+#                                 X-draft tweet can surface it as a confirmation — user 2026-06-15).
 # 1.3.0   2026-06-13  Alex Hind   signal_log: add vwap_pct (numeric) — % distance from intraday VWAP, shown on the X
 #                                 post card (user 2026-06-13). Idempotent ADD COLUMN IF NOT EXISTS.
 # 1.4.0   2026-06-13  Alex Hind   hvf_suppressed_log table — invariant-rejected HVF results logged for reporting
@@ -87,6 +89,14 @@ MIGRATIONS = [
     (
         "signal_log: add adx_signal",
         "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS adx_signal text"
+    ),
+    (
+        "signal_log: add analyst_signal (broker recommendation — user 2026-06-15)",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS analyst_signal text"
+    ),
+    (
+        "signal_log: add analyst_recommendation (broker consensus key)",
+        "ALTER TABLE signal_log ADD COLUMN IF NOT EXISTS analyst_recommendation text"
     ),
     (
         "signal_log: add obv_signal",

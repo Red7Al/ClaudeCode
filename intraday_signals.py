@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.13.0  2026-06-15  Alex Hind   X-draft tweet now surfaces a broker-recommendation confirmation (user 2026-06-15) —
+#                                 reads analyst_signal/analyst_recommendation from signal_log, gated on the recommendation
+#                                 matching the trade side ("Brokers rate it Buy"). Direction-aligned; hold/none excluded.
 # 1.12.0  2026-06-15  Alex Hind   (a) X post-card: removed the @EndToEndTrading handle line (user 2026-06-15: remove brand
 #                                 text from tweets/reports). (b) _resolve_name strips a trailing standalone "Or"/"Ord"/
 #                                 "Ordinary" share-class token ("Helios Towers Or" → "Helios Towers") — the uppercase
@@ -1356,7 +1359,8 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
                 SELECT DISTINCT ON (ticker)
                        ticker, options_bias, call_put_ratio, iv_rank, director_signal,
                        cot_bias, adx_signal, obv_signal, sector_etf, sector_dir,
-                       senate_signal, senate_senator, vwap_position, vwap_pct
+                       senate_signal, senate_senator, vwap_position, vwap_pct,
+                       analyst_signal, analyst_recommendation
                 FROM signal_log
                 WHERE ticker IN ({placeholders})
                 ORDER BY ticker, session_time DESC
@@ -1377,6 +1381,8 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
                     "senate_senator":  row[11],
                     "vwap_position":   row[12],
                     "vwap_pct":        row[13],
+                    "analyst_signal":  row[14],
+                    "analyst_recommendation": row[15],
                 }
     except Exception as e:
         log.debug(f"X drafts: signal_log lookup failed (non-critical): {e}")
@@ -1447,6 +1453,8 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         sec_e  = ctx.get("sector_etf") or ""
         sen_s  = ctx.get("senate_signal")
         vwap_p = (ctx.get("vwap_position") or "").upper()
+        anal_b = ctx.get("analyst_signal") or ""            # BULLISH / BEARISH / NEUTRAL
+        anal_r = ctx.get("analyst_recommendation") or ""    # strong_buy / buy / hold / sell …
 
         from signals import bias_aligned as _aligned_fn
         def _aligned(bias: str) -> bool:
@@ -1483,6 +1491,15 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
             # institutional + retail sentiment), so only COT carries this tag.
             justifications.append((f"Futures positioning {cot_b.lower()} (COT report, smart money)",
                                    f"COT {cot_b.lower()} (smart money)"))
+        # Broker recommendations (user 2026-06-15: confirmations weren't showing broker
+        # recommendations — e.g. LGEN). Gate on the RECOMMENDATION matching the trade side
+        # (buy → long, sell → short) — not the composite analyst signal, which is often
+        # NEUTRAL even on a "buy". "hold"/"none" is not a confirmation.
+        _anal_r = (anal_r or "").lower()
+        if (direction == "BULLISH" and _anal_r in ("strong_buy",  "buy")) or \
+           (direction == "BEARISH" and _anal_r in ("strong_sell", "sell")):
+            _rec = _anal_r.replace("_", " ").title()
+            justifications.append((f"Brokers rate it {_rec}", f"Brokers: {_rec}"))
         # VWAP — short and direction-aligned only (user 2026-06-13). The detailed
         # plain-English "why it confirms" lives on the PNG card; the tweet carries
         # just the terse tag. ABOVE confirms a long, BELOW confirms a short, so the

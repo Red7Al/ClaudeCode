@@ -26,6 +26,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.12.0  2026-06-15  Alex Hind   Broker recommendations surfaced (user 2026-06-15: confirmations weren't showing them).
+#                                 New sig["broker_view"] — a direction-aligned broker-consensus line (gated on the
+#                                 RECOMMENDATION matching the trade side, not the often-NEUTRAL composite signal). Kept
+#                                 OUT of the counted confirmations_fired/conf_count (broker bias is ~7:1 bullish — counting
+#                                 it would inflate the long gate). analyst_signal/analyst_recommendation now written to
+#                                 signal_log (for the X-draft tweet).
 # 1.11.0  2026-06-13  Alex Hind   get_vwap_position now also returns vwap_pct (% distance from intraday VWAP); persisted
 #                                 to signal_log (new column, also in run_schema.py) and the result summary. Feeds the
 #                                 "+0.7%" figure on the X post card's VWAP caption (user 2026-06-13).
@@ -1879,6 +1885,25 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
     if bias_aligned(sector_dir, direction):
         confirmations_fired.append(f"Sector ETF {sector.get('sector_etf', '')} aligned".strip())
 
+    # Broker/analyst consensus (user 2026-06-15: confirmations weren't showing broker
+    # recommendations — e.g. LGEN). Surfaced as a SEPARATE display line (broker_view),
+    # NOT inside the counted confirmations_fired list — confirmations_fired must keep
+    # mirroring conf_count (which feeds the trade verdict), and broker consensus skews
+    # bullish ~7:1, so counting it would inflate the long gate. Gate on the
+    # RECOMMENDATION matching the trade side (not the composite analyst signal, which is
+    # often NEUTRAL on a "buy"); "hold"/"none" is not a recommendation.
+    broker_view = None
+    _rec_raw = (analyst.get("recommendation") or "").lower()
+    if (direction == "BUY"  and _rec_raw in ("strong_buy",  "buy")) or \
+       (direction == "SELL" and _rec_raw in ("strong_sell", "sell")):
+        _abits = []
+        if analyst.get("analyst_count"):
+            _abits.append(f"{analyst['analyst_count']} analysts")
+        if analyst.get("upside_pct"):
+            _abits.append(f"{analyst['upside_pct']:+.0f}% to mean target")
+        broker_view = (f"Broker consensus {_rec_raw.replace('_', ' ').title()}"
+                       + (f" — {', '.join(_abits)}" if _abits else ""))
+
     # Trade fires when: macro gate passes + primary threshold + 1 confirmation + PA confirms
     # Primary threshold: primary_count >= 2  OR  HVF fired alone
     # HVF bypass: HVF is high enough conviction to pass the primary stage unassisted.
@@ -1988,6 +2013,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
         "analyst_count":            analyst.get("analyst_count"),
         "analyst_recent_upgrades":  analyst.get("recent_upgrades"),
         "analyst_narrative":        analyst.get("narrative"),
+        "broker_view":              broker_view,   # direction-aligned broker line (email/Slack)
         "director_signal":         directors.get("director_signal"),
         "director_cluster_strong": directors.get("director_cluster_strong", False),
         "director_count":          directors.get("director_count"),
@@ -2044,7 +2070,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                 hvf_type, hvf_signal, hvf_h3_level, hvf_stop_level,
                 hvf_target, hvf_risk_reward, hvf_quality,
                 orb_signal, orb_dir, week52_signal, week52_dir,
-                sector_etf, sector_dir)
+                sector_etf, sector_dir, analyst_signal, analyst_recommendation)
                values (:v_session, :v_ticker, :v_mgp, :v_opts_bias, :v_call_put, :v_ivr,
                        :v_gex_bias, :v_vwap_pos, :v_vwap_pct, :v_cot_bias, :v_bb_squeeze, :v_bb_breakout,
                        :v_director, :v_dir_cluster_strong, :v_activist, :v_senate, :v_senator_name,
@@ -2055,7 +2081,7 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
                        :v_hvf_type, :v_hvf_sig, :v_hvf_h3, :v_hvf_stop,
                        :v_hvf_target, :v_hvf_rr, :v_hvf_quality,
                        :v_orb_sig, :v_orb_dir, :v_week52_sig, :v_week52_dir,
-                       :v_sector_etf, :v_sector_dir)""",
+                       :v_sector_etf, :v_sector_dir, :v_analyst_sig, :v_analyst_rec)""",
             v_session=session_name, v_ticker=ticker,
             v_mgp=macro.get("macro_gate_pass"), v_opts_bias=options.get("options_bias"),
             v_call_put=options.get("call_put_ratio"), v_ivr=options.get("iv_rank"),
@@ -2083,7 +2109,8 @@ def scan_instrument(ticker: str, session_name: str, macro: dict) -> dict:
             v_hvf_quality=price_act.get("hvf_quality"),
             v_orb_sig=orb.get("orb_signal"), v_orb_dir=orb_dir,
             v_week52_sig=week52.get("week52_signal"), v_week52_dir=week52_dir,
-            v_sector_etf=sector.get("sector_etf"), v_sector_dir=sector_dir
+            v_sector_etf=sector.get("sector_etf"), v_sector_dir=sector_dir,
+            v_analyst_sig=analyst.get("signal"), v_analyst_rec=analyst.get("recommendation")
         )
         db.close()
         break  # success — exit retry loop
