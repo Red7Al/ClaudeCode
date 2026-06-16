@@ -30,6 +30,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.5.0   2026-06-16  Alex Hind   FIX misleading growth claims (user 2026-06-16: "profit up £1.6bn to £11m"): rev_run/ni_run
+#                                 are always >=1, so the profit line ("climbing from X to Y") and the sales-growth line
+#                                 were shown even on a FALL / a single year. Now: sales growth needs rev_run>=2 (+positive
+#                                 CAGR); the profit line shows only when ni_latest > ni_first > 0. Same gate in build_tweet.
 # 1.4.0   2026-06-16  Alex Hind   Long report ALSO reads the chart setup (user 2026-06-16: explain why it matters, like the
 #                                 colleague's report) — new _chart_story()/_P_CHART_* prose: squeeze -> breakout ->
 #                                 reward-vs-risk, led before the fundamentals. PUBLIC-SAFE: never names the in-house
@@ -349,11 +353,18 @@ def build_report(r: dict, change_note: str = None) -> tuple:
         if f.get("roe"):
             s.append(_pick(_P_ROE, tk, "roe").format(roe=f"{f['roe']*100:.0f}"))
     else:
-        if f.get("rev_run"):
+        # Only claim growth when sales genuinely rose for >=2 consecutive years. rev_run is
+        # always >=1 (it counts the latest year as 1), so the old truthy check sold "up 1
+        # years running" — and even a fall — as growth (user 2026-06-16).
+        if f.get("rev_run") and f["rev_run"] >= 2:
             s.append(_pick(_P_GROWTH, tk, "grw").format(name=name, ry=f["rev_run"], rev=_money(f.get("rev_latest"), gbp)))
-            if f.get("rev_cagr"):
+            if f.get("rev_cagr") and f["rev_cagr"] > 0:
                 s.append(_pick(_P_RATE, tk, "rate").format(rate=f"{f['rev_cagr']*100:.0f}"))
-        if f.get("ni_run"):
+        # "Profit climbing from X to Y" must be TRUE end to end. ni_run was always >=1, so a
+        # FALL (e.g. £1.6bn -> £11m) was being rendered as a climb (user 2026-06-16). Show the
+        # line only when profit actually grew over the span.
+        if f.get("ni_first") is not None and f.get("ni_latest") is not None \
+                and f["ni_first"] > 0 and f["ni_latest"] > f["ni_first"]:
             s.append(_pick(_P_PROFIT, tk, "pft").format(ni0=_money(f["ni_first"], gbp), ni1=_money(f["ni_latest"], gbp)))
         if f.get("fcf") and f["fcf"]["pos"]:
             s.append(_pick(_P_CASH, tk, "cash").format(fcf=_money(f["fcf"]["latest"], gbp)))
@@ -402,7 +413,7 @@ def build_tweet(r: dict) -> str:
         if f.get("roe"):
             bits.append(f"{f['roe']*100:.0f}% return on equity")
     else:
-        if f.get("rev_run"):
+        if f.get("rev_run") and f["rev_run"] >= 2:
             bits.append(f"sales up {f['rev_run']} years running")
         if f.get("fcf") and f["fcf"]["pos"]:
             bits.append("strong surplus cash")
