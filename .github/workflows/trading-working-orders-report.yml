@@ -1,0 +1,33 @@
+name: Pre-Order Report (2026-06-16)
+
+# Daily report of the engine-managed pre-orders (the working_orders table — pending HVF
+# entry orders BEFORE they become live IG positions) to #arw-claude-orders (SLACK_ORDERS).
+#
+# workflow_dispatch only — run manually or via cron-job.org (GitHub-native `schedule:` is
+# BANNED — memory: feedback_scheduler).
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: 'Dry run (build + print, post NOTHING)'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python working_orders_report.py ${{ inputs.dry && '--dry' || '' }}
+        env:
+          SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_ORDERS:         ${{ secrets.SLACK_ORDERS }}
