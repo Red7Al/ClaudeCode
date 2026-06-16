@@ -28,6 +28,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.12.0  2026-06-16  Alex Hind   Per-market sections (user 2026-06-16: "top 10 by market"): TRADEABLE and DEVELOPING are
+#                                 now GROUPED by market (FTSE100 / FTSE250 / S&P500…), each showing its top PER_MARKET_TOP_N
+#                                 in weight order, instead of one flat global top-HVF_REPORT_TOP_N list. Reverses the
+#                                 2026-06-13 flat-list change. Line-building extracted to _tradeable_line/_developing_line;
+#                                 grouping via price_action.group_by_market; _index_short delegates to market_short (SoT).
 # 1.11.0  2026-06-15  Alex Hind   Each tradeable line gains a compact technical read (user 2026-06-15): "TA: N Buy / N
 #                                 Sell / N Hold · Div growth ±x%" via technical_summary.summary_line (full per-indicator
 #                                 detail is in the dossier). Supplementary context only; one extra yfinance fetch per line.
@@ -84,7 +89,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-from config import HVF_MIN_RR, HVF_REPORT_TOP_N   # single source of truth for thresholds/limits
+from config import HVF_MIN_RR, PER_MARKET_TOP_N, MARKET_ORDER   # single source of truth for thresholds/limits
 # Display labels go through _label() (yfinance-backed) — notify.fmt() alone only
 # knows the ~76 epic_lookup names, so scanned constituents showed a bare ticker.
 
@@ -328,9 +333,10 @@ def _other_timeframes(r):
 
 
 def _index_short(index_name: str) -> str:
-    """Short market tag for a report line (user 2026-06-13)."""
-    return {"FTSE 100": "FTSE100", "FTSE 250": "FTSE250",
-            "S&P 500": "S&P500"}.get(index_name, index_name or "?")
+    """Short market tag for a report line. Delegates to price_action.market_short so the
+    daily report, X drafts and quality reports label markets identically (SoT)."""
+    from price_action import market_short
+    return market_short(index_name)
 
 
 def _chunk_lines(lines, limit=2900):
@@ -344,6 +350,67 @@ def _chunk_lines(lines, limit=2900):
     if cur:
         out.append(cur)
     return out
+
+
+def _tradeable_line(r) -> str:
+    """One rendered TRADEABLE report line (extracted 2026-06-16 so the per-market grouping
+    loop stays readable; logic unchanged)."""
+    d  = _dir_emoji(r.get("hvf_type"))
+    s  = _signal_emoji(r.get("hvf_signal"))
+    t  = r.get("ticker", "")
+    rr = _rr(r)
+    tf = _tf_short(r.get("hvf_timeframe", ""))
+    idx = _index_short(r.get("index", ""))
+    entry  = _fmt_price(r.get("h3_level"))
+    stop   = _fmt_price(r.get("stop_level"))
+    target = _fmt_price(r.get("target"))
+    q      = r.get("pattern_quality", 0)
+    line = (f"{d}{s} *{_label(t)}*  R:R {rr}  Q={q}  [{tf}] · {idx}\n"
+            f"    Entry {entry}  Stop {stop}  Target {target}")
+    # Tight-stop label (backlog #9b): a funnel whose stop is < TIGHT_STOP_MIN_PCT of price
+    # is structurally untradeable at IG intraday (spread + tick noise), so we DON'T trade it
+    # — but it stays in the report, plainly labelled, because the pattern itself is valid
+    # (user 2026-06-15, option b). The inflated R:R is the tell of the tiny stop.
+    if r.get("tight_stop_intraday"):
+        sp = r.get("stop_pct")
+        line += (f"\n    ⚠️ Stop only {sp}% of price — too tight for IG intraday "
+                 f"(spread + tick noise); not auto-traded.")
+    # One instrument, all timeframes (feedback_hvf_timeframe_grouping): list the other
+    # timeframes the same funnel appears on — FULL figures per date range (user 2026-06-15).
+    others = _other_timeframes(r)
+    if others:
+        line += "\n    Also on:"
+        for c in others:
+            c_rr  = c.get("risk_reward")
+            c_rrs = f"{c_rr:.1f}:1" if isinstance(c_rr, (int, float)) and c_rr else "—"
+            line += (f"\n      {_signal_emoji(c.get('hvf_signal'))} {_tf_short(c.get('hvf_timeframe'))}  "
+                     f"Entry {_fmt_price(c.get('h3_level'))}  Stop {_fmt_price(c.get('stop_level'))}  "
+                     f"Target {_fmt_price(c.get('target'))}  R:R {c_rrs}  Q={c.get('pattern_quality', '—')}")
+    # Supplementary technical read (user 2026-06-15) — compact one-liner; context only.
+    try:
+        from technical_summary import get_technical_summary, summary_line
+        _ta = summary_line(get_technical_summary(t))
+        if _ta:
+            line += f"\n    {_ta}"
+    except Exception:
+        pass
+    return line
+
+
+def _developing_line(r) -> str:
+    """One rendered DEVELOPING report line (extracted 2026-06-16; logic unchanged)."""
+    d  = _dir_emoji(r.get("hvf_type"))
+    t  = r.get("ticker", "")
+    rr = _rr(r)
+    tf = _tf_short(r.get("hvf_timeframe", ""))
+    idx = _index_short(r.get("index", ""))
+    entry  = _fmt_price(r.get("h3_level"))
+    stop   = _fmt_price(r.get("stop_level"))
+    target = _fmt_price(r.get("target"))
+    others = _other_timeframes(r)
+    also = ("  · also " + ", ".join(_tf_short(c.get("hvf_timeframe")) for c in others)) if others else ""
+    return (f"{d}👀 *{_label(t)}*  R:R {rr}  [{tf}] · {idx}  "
+            f"Entry {entry}  Stop {stop}  Target {target}{also}")
 
 
 def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
@@ -367,63 +434,27 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
 
     # ── TRADEABLE ─────────────────────────────────────────────────────────────────────────────────────────────────────
     if tradeable:
-        # Top N in WEIGHT order (user 2026-06-13: "too many setups, not in weight order").
-        # categorise() already sorted tradeable by signal (TRIGGERED first) then quality;
-        # show the top N in that order, NOT grouped by index. Each line carries its market.
-        top = tradeable[:HVF_REPORT_TOP_N]
+        # Grouped into per-market sections, top PER_MARKET_TOP_N each (user 2026-06-16:
+        # "top 10 by market"). categorise() already sorted tradeable by hvf_weight
+        # (TRIGGERED first, then quality), so each market keeps canonical weight order.
+        from collections import Counter
+        from price_action import group_by_market
+        totals = Counter(r.get("index") for r in tradeable)
+        groups = group_by_market(tradeable, n=PER_MARKET_TOP_N, market_order=MARKET_ORDER)
+        shown  = sum(len(rs) for _, rs in groups)
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn",
-                     "text": f"*⚡ TRADEABLE — top {len(top)} of {len(tradeable)}* (weight order)"}
+                     "text": f"*⚡ TRADEABLE — top {PER_MARKET_TOP_N}/market · {shown} of {len(tradeable)}*"}
         })
-        lines = []
-        for r in top:
-            d  = _dir_emoji(r.get("hvf_type"))
-            s  = _signal_emoji(r.get("hvf_signal"))
-            t  = r.get("ticker", "")
-            rr = _rr(r)
-            tf = _tf_short(r.get("hvf_timeframe", ""))
-            idx = _index_short(r.get("index", ""))
-            entry  = _fmt_price(r.get("h3_level"))
-            stop   = _fmt_price(r.get("stop_level"))
-            target = _fmt_price(r.get("target"))
-            q      = r.get("pattern_quality", 0)
-            line = (f"{d}{s} *{_label(t)}*  R:R {rr}  Q={q}  [{tf}] · {idx}\n"
-                    f"    Entry {entry}  Stop {stop}  Target {target}")
-            # Tight-stop label (backlog #9b): a funnel whose stop is < TIGHT_STOP_MIN_PCT
-            # of price is structurally untradeable at IG intraday (spread + tick noise),
-            # so we DON'T trade it — but it stays in the report, plainly labelled, because
-            # the pattern itself is valid (user 2026-06-15, option b). The inflated R:R is
-            # the tell. NB: a sub-0.5% stop is exactly why the R:R looks too good to be true.
-            if r.get("tight_stop_intraday"):
-                sp = r.get("stop_pct")
-                line += (f"\n    ⚠️ Stop only {sp}% of price — too tight for IG intraday "
-                         f"(spread + tick noise); not auto-traded.")
-            # One instrument, all timeframes (feedback_hvf_timeframe_grouping): list the
-            # other timeframes the same funnel appears on — now with FULL figures per
-            # date range (user 2026-06-15). The headline above is the primary (exhaustion-
-            # anchored, IG-validated); these are RAW per-timeframe detection levels.
-            others = _other_timeframes(r)
-            if others:
-                line += "\n    Also on:"
-                for c in others:
-                    c_rr  = c.get("risk_reward")
-                    c_rrs = f"{c_rr:.1f}:1" if isinstance(c_rr, (int, float)) and c_rr else "—"
-                    line += (f"\n      {_signal_emoji(c.get('hvf_signal'))} {_tf_short(c.get('hvf_timeframe'))}  "
-                             f"Entry {_fmt_price(c.get('h3_level'))}  Stop {_fmt_price(c.get('stop_level'))}  "
-                             f"Target {_fmt_price(c.get('target'))}  R:R {c_rrs}  Q={c.get('pattern_quality', '—')}")
-            # Supplementary technical read (user 2026-06-15) — compact one-liner; full
-            # per-indicator detail lives in the dossier. Context only, never gates a trade.
-            try:
-                from technical_summary import get_technical_summary, summary_line
-                _ta = summary_line(get_technical_summary(t))
-                if _ta:
-                    line += f"\n    {_ta}"
-            except Exception:
-                pass
-            lines.append(line)
-        for blk in _chunk_lines(lines):
-            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})
+        for market, rows in groups:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn",
+                         "text": f"*{_index_short(market)}* — {len(rows)} of {totals.get(market, len(rows))}"}
+            })
+            for blk in _chunk_lines([_tradeable_line(r) for r in rows]):
+                blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})
     else:
         blocks.append({
             "type": "section",
@@ -435,30 +466,26 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
 
     # ── DEVELOPING ────────────────────────────────────────────────────────────────────────────────────────────────────
     if developing:
-        topd = developing[:HVF_REPORT_TOP_N]   # categorise() ordered these by R:R desc
+        # Per-market sections too, top PER_MARKET_TOP_N each (user 2026-06-16).
+        # categorise() ordered developing by R:R desc, preserved within each market.
+        from collections import Counter
+        from price_action import group_by_market
+        totals = Counter(r.get("index") for r in developing)
+        groups = group_by_market(developing, n=PER_MARKET_TOP_N, market_order=MARKET_ORDER)
+        shown  = sum(len(rs) for _, rs in groups)
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn",
-                     "text": f"*👀 DEVELOPING — top {len(topd)} of {len(developing)} on watch*"}
+                     "text": f"*👀 DEVELOPING — top {PER_MARKET_TOP_N}/market · {shown} of {len(developing)} on watch*"}
         })
-        lines = []
-        for r in topd:
-            d  = _dir_emoji(r.get("hvf_type"))
-            t  = r.get("ticker", "")
-            rr = _rr(r)
-            tf = _tf_short(r.get("hvf_timeframe", ""))
-            idx = _index_short(r.get("index", ""))
-            entry  = _fmt_price(r.get("h3_level"))
-            stop   = _fmt_price(r.get("stop_level"))
-            target = _fmt_price(r.get("target"))
-            others = _other_timeframes(r)
-            also = ("  · also " + ", ".join(_tf_short(c.get("hvf_timeframe")) for c in others)) if others else ""
-            lines.append(
-                f"{d}👀 *{_label(t)}*  R:R {rr}  [{tf}] · {idx}  "
-                f"Entry {entry}  Stop {stop}  Target {target}{also}"
-            )
-        for blk in _chunk_lines(lines):
-            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})
+        for market, rows in groups:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn",
+                         "text": f"*{_index_short(market)}* — {len(rows)} of {totals.get(market, len(rows))}"}
+            })
+            for blk in _chunk_lines([_developing_line(r) for r in rows]):
+                blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})
     else:
         blocks.append({
             "type": "section",

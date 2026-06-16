@@ -6,8 +6,10 @@
 # Description:
 # ----------------------------------------------------------------------------------------------------------------------
 # Per-instrument "quality angle" publication for the top HVF setups: a plain-English (common-man, NOT accountant)
-# NARRATIVE report — rendered as a PNG — plus a short, searchable companion tweet. Posted to #arw-claude-twitter
-# (SLACK_TWITTER webhook for text + SLACK_BOT_TOKEN/SLACK_TWITTER_CHANNEL_ID for the PNG), exactly like the HVF X drafts.
+# NARRATIVE report — published as a NUMBERED TEXT THREAD (1/n, <=280 weighted chars per part) — plus a short,
+# searchable companion tweet. Posted to #arw-claude-twitter via the SLACK_TWITTER webhook (text only). The long
+# report is no longer painted into a PNG (user 2026-06-16): the text reads better as a copy-paste thread. The HVF
+# chart post-card and the short skim tweet are UNCHANGED.
 #
 # Fundamentals (yfinance) are SECTOR-AWARE: for financials (banks/insurers/REITs) the usual cash-flow / debt /
 # revenue-growth yardsticks are NOT meaningful (balance-sheet driven) and are omitted with a plain reason; we lean on
@@ -19,8 +21,8 @@
 # the ticker; a fresh report is published when first-seen OR when entry/target/R:R move, with a plain "What's changed"
 # line. Unchanged setups are skipped (no duplicate spam).
 #
-# Usage:   python quality_report.py            # top 10 of today's tradeable HVF setups
-#          python quality_report.py 5          # top 5
+# Usage:   python quality_report.py            # top PER_MARKET_TOP_N (10) per market of today's tradeable HVF setups
+#          python quality_report.py 5          # top 5 per market
 #          python quality_report.py NVDA MGNS.L
 #
 # Env (in GitHub Secrets, not local .env): SUPABASE_USER/SUPABASE_DB_PASSWORD, SLACK_TWITTER,
@@ -28,6 +30,18 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.0   2026-06-16  Alex Hind   Per-market reports (user 2026-06-16: "top 10 by market"): _today_top now returns the
+#                                 top PER_MARKET_TOP_N PER market (price_action.group_by_market, MARKET_ORDER) instead of a
+#                                 global top-N; publish_quality_reports posts a per-market section header when the market
+#                                 changes; CLI numeric arg / default are now per-market counts.
+# 1.2.1   2026-06-16  Alex Hind   Skim tweet now says "Full story in the thread" (was "...in the image"): the long
+#                                 report is a text thread, not a PNG, so the image pointer no longer applied (user 2026-06-16).
+# 1.2.0   2026-06-16  Alex Hind   Long report reverted from PNG to TEXT (user 2026-06-16): the narrative is now a
+#                                 numbered X thread (1/n, <=280 weighted chars/part) instead of render_report_card's
+#                                 image. New paginate_report_thread() + _split_sentences/_hard_wrap helpers; part 1
+#                                 leads with the title, hashtags + "Not financial advice." land on the final part.
+#                                 _post() now posts the thread as copy-paste code blocks (PNG upload path removed).
+#                                 The HVF chart card and the short skim tweet (build_tweet) are untouched.
 # 1.1.0   2026-06-14  Alex Hind   Code-review: _today_top sort now uses price_action.hvf_weight() (single source of truth
 #                                 for weight order). Behaviour identical for READY/TRIGGERED rows.
 # 1.0.0   2026-06-14  Alex Hind   Initial build (user 2026-06-13/14): sector-aware fundamentals → plain-English prose
@@ -329,41 +343,92 @@ def build_tweet(r: dict) -> str:
     summary = ", ".join(bits[:4]) if bits else "fundamental quality screen"
     tags = _x_market_tags(r)
     return (f"👀 ${disp} ({name}) — the quality angle\n"
-            f"{summary[0].upper() + summary[1:]}. Full story in the image 👇\n"
+            f"{summary[0].upper() + summary[1:]}. Full story in the thread 👇\n"
             f"#{disp} {tags}{_NFA_DISCLAIMER}")
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Report PNG (matplotlib text card — same dark style as the HVF card)
+# Report TEXT thread (numbered 1/n parts, <=280 weighted chars each) — user 2026-06-16.
+# The long narrative is published as copy-paste tweet text, not a PNG. The HVF chart card
+# and the short skim tweet are unchanged; only the long report moved from image to thread.
 # ----------------------------------------------------------------------------------------------------------------------
 
-def render_report_card(title: str, body: str):
-    """Render the prose report to a dark PNG card. 'Not financial advice.' styled like
-    the HVF card (grey, italic). Returns PNG bytes (None on failure)."""
-    import textwrap
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    try:
-        paras = body.split("\n\n")
-        wrapped = "\n\n".join(textwrap.fill(p, width=84) for p in paras)
-        n_lines = wrapped.count("\n") + 1
-        height = max(4.5, 1.5 + 0.30 * n_lines)
-        fig = plt.figure(figsize=(11, height))
-        fig.patch.set_facecolor("#0d1117")
-        fig.text(0.04, 0.93, title, color="#ffffff", fontsize=16, fontweight="bold",
-                 va="top", ha="left")
-        fig.text(0.04, 0.80, wrapped, color="#c9d1d9", fontsize=12.5, va="top",
-                 ha="left", linespacing=1.55)
-        fig.text(0.04, 0.05, "Not financial advice.", color="#8b949e", fontsize=10,
-                 style="italic", va="bottom", ha="left")
-        buf = io.BytesIO()
-        plt.savefig(buf, format="png", dpi=140, facecolor="#0d1117")
-        plt.close(fig)
-        return buf.getvalue()
-    except Exception as e:
-        log.warning(f"report card render failed: {e}")
-        return None
+import re
+
+_THREAD_LIMIT = 280            # X hard limit per tweet (weighted; see intraday_signals._x_weighted_len)
+_THREAD_MARKER_RESERVE = 8     # room kept for a trailing " (nn/nn)" marker
+
+
+def _split_sentences(text: str) -> list:
+    r"""Split prose into sentence-sized atoms, preserving terminal punctuation. Paragraph
+    breaks (\n\n — e.g. the 'What's changed' note) are honoured as boundaries."""
+    out = []
+    for para in text.split("\n\n"):
+        para = para.strip()
+        if not para:
+            continue
+        for sent in re.split(r"(?<=[.!?])\s+", para):
+            sent = sent.strip()
+            if sent:
+                out.append(sent)
+    return out
+
+
+def _hard_wrap(text: str, width: int) -> list:
+    """Last-resort word wrap for a lone sentence longer than one tweet (weighted width)."""
+    from intraday_signals import _x_weighted_len
+    words, lines, cur = text.split(), [], ""
+    for w in words:
+        cand = f"{cur} {w}".strip()
+        if _x_weighted_len(cand) <= width:
+            cur = cand
+        else:
+            if cur:
+                lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    return lines or [text]
+
+
+def paginate_report_thread(title: str, body: str, tail: str) -> list:
+    """Lay the long quality-report narrative out as a numbered X thread (user 2026-06-16).
+
+    Returns a list of strings, each <= 280 WEIGHTED chars INCLUDING its trailing "(i/n)"
+    marker. Part 1 leads with the title/hook; `tail` (market hashtags + "Not financial
+    advice.") is appended to the last part, or becomes its own final part if it will not
+    fit. Sentences are never split mid-word (an over-long lone sentence is hard-wrapped
+    only as a fallback)."""
+    from intraday_signals import _x_weighted_len
+    budget = _THREAD_LIMIT - _THREAD_MARKER_RESERVE
+    parts, cur, title_pending = [], (title or ""), bool(title)
+    for sent in _split_sentences(body):
+        sep = "\n\n" if title_pending else (" " if cur else "")
+        candidate = f"{cur}{sep}{sent}" if cur else sent
+        if _x_weighted_len(candidate) <= budget:
+            cur, title_pending = candidate, False
+        else:
+            if cur:
+                parts.append(cur)
+                cur, title_pending = "", False
+            if _x_weighted_len(sent) > budget:                 # one sentence won't fit a tweet
+                chunks = _hard_wrap(sent, budget)
+                parts.extend(chunks[:-1])
+                cur = chunks[-1]
+            else:
+                cur = sent
+    if cur:
+        parts.append(cur)
+    if not parts:
+        parts = [title or ""]
+    if tail:
+        joined = f"{parts[-1]}\n\n{tail}"
+        if _x_weighted_len(joined) <= budget:
+            parts[-1] = joined
+        else:
+            parts.append(tail)
+    n = len(parts)
+    return [f"{p} ({i}/{n})" for i, p in enumerate(parts, 1)]
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -406,44 +471,30 @@ def _changes(ticker: str, entry, stop, target, rr) -> tuple:
 # Publish to #arw-claude-twitter (text via webhook + PNG via bot-token upload) — same flow as _generate_x_drafts
 # ----------------------------------------------------------------------------------------------------------------------
 
-def _post(tweet: str, png: bytes, ticker: str, name: str, rank: int, total: int):
+def _post(tweet: str, thread: list, ticker: str, name: str, rank: int, total: int):
+    """Post the skim tweet + the numbered narrative thread to #arw-claude-twitter as
+    copy-paste-ready code blocks (one fence per tweet). Text-only via the SLACK_TWITTER
+    webhook — the long report is no longer a PNG (user 2026-06-16)."""
     import requests
     slack_url = os.environ.get("SLACK_TWITTER", "")
     if not slack_url:
-        log.warning("SLACK_TWITTER not set — quality report not posted (text below):\n" + tweet)
+        log.warning("SLACK_TWITTER not set — quality report not posted. Skim tweet + thread below:\n"
+                    + tweet + "\n\n" + "\n\n".join(thread))
         return
     blocks = [
         {"type": "header", "text": {"type": "plain_text",
-                                    "text": f"Quality report {rank}/{total} — {ticker}"}},
-        {"type": "section", "text": {"type": "mrkdwn", "text": f"*Tweet:*\n```{tweet}```"}},
+                                    "text": f"Quality report {rank}/{total} — {ticker} ({name})"}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*Skim tweet:*\n```{tweet}```"}},
+        {"type": "section", "text": {"type": "mrkdwn",
+                                     "text": f"*Thread — {len(thread)} part(s), copy each block:*"}},
     ]
-    bot, chan = os.environ.get("SLACK_BOT_TOKEN", ""), os.environ.get("SLACK_TWITTER_CHANNEL_ID", "")
-    if png and not (bot and chan):
-        blocks.append({"type": "section", "text": {"type": "mrkdwn",
-                       "text": "_Report PNG generated but not attached — bot token/channel not set_"}})
+    for part in thread:
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"```{part}```"}})
     try:
         requests.post(slack_url, json={"blocks": blocks}, timeout=10)
-        log.info(f"quality report posted for {ticker}")
+        log.info(f"quality report posted for {ticker} ({len(thread)}-part thread)")
     except Exception as e:
         log.error(f"quality report Slack post failed for {ticker}: {e}")
-    if png and bot and chan:
-        try:
-            hdrs = {"Authorization": f"Bearer {bot}"}
-            fname = f"quality_{ticker.replace('.', '_')}.png"
-            r1 = requests.post("https://slack.com/api/files.getUploadURLExternal", headers=hdrs,
-                               data={"filename": fname, "length": len(png)}, timeout=10).json()
-            if not r1.get("ok"):
-                raise RuntimeError(f"getUploadURLExternal: {r1.get('error')}")
-            requests.post(r1["upload_url"], data=png, timeout=30).raise_for_status()
-            r3 = requests.post("https://slack.com/api/files.completeUploadExternal",
-                               headers={**hdrs, "Content-Type": "application/json"},
-                               json={"files": [{"id": r1["file_id"], "title": f"Quality report — {ticker} ({name})"}],
-                                     "channel_id": chan}, timeout=10).json()
-            if not r3.get("ok"):
-                raise RuntimeError(f"completeUploadExternal: {r3.get('error')}")
-            log.info(f"quality report PNG attached for {ticker}")
-        except Exception as e:
-            log.error(f"quality report PNG upload failed for {ticker}: {e}")
 
 
 def publish_quality_reports(setups: list, limit: int = 10, changed_only: bool = False):
@@ -452,10 +503,15 @@ def publish_quality_reports(setups: list, limit: int = 10, changed_only: bool = 
     levels moved. changed_only=True (daily): publish ONLY names first-seen or whose
     entry/target/R:R moved. `setups` are HVF result dicts (ticker, hvf_type,
     h3_level/stop_level/target, risk_reward, index, name)."""
-    from intraday_signals import _resolve_name
+    import requests
+    from intraday_signals import _resolve_name, _x_market_tags, _NFA_DISCLAIMER
+    from price_action import market_short
+    from config import PER_MARKET_TOP_N
+    slack_url = os.environ.get("SLACK_TWITTER", "")
     top = setups[:limit]
     total = len(top)
     published = 0
+    last_market = None
     for rank, r in enumerate(top, 1):
         tk = r.get("ticker", "")
         entry, stop, target, rr = r.get("h3_level"), r.get("stop_level"), r.get("target"), r.get("risk_reward")
@@ -463,11 +519,26 @@ def publish_quality_reports(setups: list, limit: int = 10, changed_only: bool = 
         if changed_only and not do_pub:
             log.info(f"{tk}: entry/target/R:R unchanged — quality report skipped")
             continue
+        # Per-market section header (user 2026-06-16: "top 10 by market") — one divider+header
+        # per market group, only when actually posting (SLACK_TWITTER set) and the market changes.
+        mkt = r.get("index")
+        if slack_url and mkt and mkt != last_market:
+            last_market = mkt
+            try:
+                requests.post(slack_url, json={"blocks": [
+                    {"type": "divider"},
+                    {"type": "header", "text": {"type": "plain_text",
+                                                "text": f"📊 {market_short(mkt)} — quality reports (top {PER_MARKET_TOP_N})"}},
+                ]}, timeout=10)
+            except Exception as e:
+                log.debug(f"quality report market header failed for {mkt}: {e}")
         r.setdefault("name", _resolve_name(tk))
         title, body = build_report(r, change_note=note)
         tweet = build_tweet(r)
-        png = render_report_card(title, body)
-        _post(tweet, png, tk, r["name"], rank, total)
+        disp = tk[:-2] if tk.endswith(".L") else tk
+        tail = f"#{disp} {_x_market_tags(r)}{_NFA_DISCLAIMER}"   # hashtags + "Not financial advice." on the last part
+        thread = paginate_report_thread(title, body, tail)
+        _post(tweet, thread, tk, r["name"], rank, total)
         published += 1
     log.info(f"quality reports: {published}/{total} published")
     return published
@@ -477,7 +548,9 @@ def publish_quality_reports(setups: list, limit: int = 10, changed_only: bool = 
 # Standalone entry — today's top tradeable from hvf_scan_log, re-scanned live for fresh levels + fundamentals
 # ----------------------------------------------------------------------------------------------------------------------
 
-def _today_top(limit: int) -> list:
+def _today_top(per_market: int) -> list:
+    """Today's tradeable HVF setups, top `per_market` PER market (user 2026-06-16: "top 10
+    by market"), grouped and ordered by MARKET_ORDER. Returns [(ticker, index_name)]."""
     from db_pool import get_db
     db = get_db()
     try:
@@ -488,9 +561,11 @@ def _today_top(limit: int) -> list:
                 order by ticker, recorded_at desc""")
     finally:
         db.close()
-    from price_action import hvf_weight          # (ticker, hvf_signal, pattern_quality, index_name)
+    from price_action import hvf_weight, group_by_market   # row = (ticker, hvf_signal, pattern_quality, index_name)
+    from config import MARKET_ORDER
     rows.sort(key=lambda r: hvf_weight(r[1], r[2]))
-    return [(r[0], r[3]) for r in rows[:limit]]
+    groups = group_by_market(rows, n=per_market, market_of=lambda r: r[3], market_order=MARKET_ORDER)
+    return [(r[0], r[3]) for _, mrows in groups for r in mrows]
 
 
 def main():
@@ -503,12 +578,13 @@ def main():
     args = sys.argv[1:]
     daily = "--daily" in args                       # daily run: only publish changed setups
     args = [a for a in args if a != "--daily"]
+    from config import PER_MARKET_TOP_N
     if args and args[0].isdigit():
-        pairs = _today_top(int(args[0]))
+        pairs = _today_top(int(args[0]))      # numeric arg = count PER market (user 2026-06-16)
     elif args:
         pairs = [(a, None) for a in args]
     else:
-        pairs = _today_top(10)
+        pairs = _today_top(PER_MARKET_TOP_N)
     if not pairs:
         log.info("No tradeable setups today — nothing to publish.")
         return
