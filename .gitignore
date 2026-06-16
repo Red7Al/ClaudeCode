@@ -49,3 +49,7 @@ Thumbs.db
 
 # Frozen HVF regression fixtures MUST be committed (test_hvf_method.py, CI gate)
 !tests_fixtures/*.csv
+
+# Local convenience launcher — holds hardcoded Slack creds for local testing; NEVER track it
+# (user 2026-06-16: secrets must not enter the repo — see memory secrets_and_x_delivery).
+instrument_dossier.CMD
