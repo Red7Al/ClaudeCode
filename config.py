@@ -29,6 +29,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.15.0  2026-06-17  Alex Hind   X-draft caps split from the analytical report (user 2026-06-17): X_DRAFT_PER_MARKET=5
+#                                 (drafts shown per market, changed-only) + X_PUBLISH_TOP_N=2 (top-2/market of the changed
+#                                 set auto-published LIVE to X by the morning report). PER_MARKET_TOP_N (=10) now caps only
+#                                 the analytical HVF report + quality reports.
 # 1.14.0  2026-06-16  Alex Hind   Per-market reporting (user 2026-06-16): replaced the global X_DRAFT_TOP_N=20 and
 #                                 HVF_REPORT_TOP_N=20 caps with PER_MARKET_TOP_N=10 + MARKET_ORDER. Every HVF output
 #                                 now shows the top 10 PER market, grouped into per-market sections, instead of a single
@@ -571,12 +575,20 @@ MIN_RISK_REWARD = 3.0
 # define a local copy in price_action.py or run_hvf_report.py.
 HVF_MIN_RR = MIN_RISK_REWARD
 
-# Per-market reporting cap (user 2026-06-16): every HVF output — the daily report's
-# TRADEABLE / DEVELOPING sections, the X (Twitter) drafts, and the quality reports — shows
-# the top PER_MARKET_TOP_N setups PER market, GROUPED into per-market sections, instead of a
-# single global top-N. Within each market the canonical weight order still applies
-# (price_action.hvf_weight). Supersedes the old global X_DRAFT_TOP_N / HVF_REPORT_TOP_N caps.
+# Per-market reporting cap (user 2026-06-16): the analytical daily HVF report's TRADEABLE /
+# DEVELOPING sections (run_hvf_report) and the quality reports show the top PER_MARKET_TOP_N
+# setups PER market, GROUPED into per-market sections. Within each market the canonical weight
+# order applies (price_action.hvf_weight).
 PER_MARKET_TOP_N = 10
+
+# X-draft caps (user 2026-06-17). The X publication drafts (#arw-claude-twitter) are capped
+# SEPARATELY from the analytical report above:
+#   X_DRAFT_PER_MARKET — top N per market SHOWN as drafts, and only re-shown when an
+#                        instrument's confirmations changed (intraday_signals._generate_x_drafts).
+#   X_PUBLISH_TOP_N    — of that changed draft set, the top N per market are auto-published LIVE
+#                        to X (@SqueezeSignals) by the morning report (run_hvf_report).
+X_DRAFT_PER_MARKET = 5
+X_PUBLISH_TOP_N    = 2
 
 # Canonical market order for the grouped reports (matches run_hvf_report.UNIVERSE key order).
 # Markets not listed fall to the end, alphabetically (see price_action.group_by_market).

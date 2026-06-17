@@ -28,6 +28,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.13.0  2026-06-17  Alex Hind   Morning live-X (user 2026-06-17): X drafts now changed_only (top X_DRAFT_PER_MARKET/market,
+#                                 re-shown only when confirmations change); the top X_PUBLISH_TOP_N/market of that changed
+#                                 set are auto-published LIVE to X (_publish_top_per_market_to_x -> publish_tickers_to_x,
+#                                 spaced to avoid overlap). Analytical report unchanged (still PER_MARKET_TOP_N).
 # 1.12.0  2026-06-16  Alex Hind   Per-market sections (user 2026-06-16: "top 10 by market"): TRADEABLE and DEVELOPING are
 #                                 now GROUPED by market (FTSE100 / FTSE250 / S&P500…), each showing its top PER_MARKET_TOP_N
 #                                 in weight order, instead of one flat global top-HVF_REPORT_TOP_N list. Reverses the
@@ -89,7 +93,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-from config import HVF_MIN_RR, PER_MARKET_TOP_N, MARKET_ORDER   # single source of truth for thresholds/limits
+from config import HVF_MIN_RR, PER_MARKET_TOP_N, MARKET_ORDER, X_PUBLISH_TOP_N   # single source of truth for thresholds/limits
 # Display labels go through _label() (yfinance-backed) — notify.fmt() alone only
 # knows the ~76 epic_lookup names, so scanned constituents showed a bare ticker.
 
@@ -560,6 +564,23 @@ def log_to_db(tradeable: list, developing: list, scan_time: str):
 # Entry point
 # ----------------------------------------------------------------------------------------------------------------------
 
+def _publish_top_per_market_to_x(posted: list):
+    """Publish the top X_PUBLISH_TOP_N per market (of the changed draft set) LIVE to X
+    (user 2026-06-17). `posted` are the instruments _generate_x_drafts actually drafted, already
+    in market-grouped weight order; threads are spaced so they don't overlap (publish_tickers_to_x)."""
+    if not posted:
+        log.info("Live X: no changed drafts to publish today.")
+        return
+    from price_action import group_by_market
+    groups  = group_by_market(posted, n=X_PUBLISH_TOP_N, market_order=MARKET_ORDER)
+    tickers = [r.get("ticker") for _, rows in groups for r in rows if r.get("ticker")]
+    if not tickers:
+        return
+    log.info(f"Live X: publishing top {X_PUBLISH_TOP_N}/market = {len(tickers)} instrument(s): {tickers}")
+    from publish_one_to_x import publish_tickers_to_x
+    publish_tickers_to_x(tickers)
+
+
 def main():
     scan_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     log.info(f"HVF Daily Report starting — {scan_time} UTC")
@@ -583,13 +604,21 @@ def main():
     blocks = build_slack_blocks(tradeable, developing, scan_time)
     post_to_slack(blocks)
 
-    # X draft reports — one tweet-ready Slack post per tradeable instrument
+    # X draft reports — one tweet-ready Slack post per tradeable instrument, top X_DRAFT_PER_MARKET
+    # per market, ONLY re-shown when confirmations changed (user 2026-06-17). Then the top
+    # X_PUBLISH_TOP_N per market OF THAT CHANGED SET are auto-published LIVE to X, spaced so the
+    # threads don't overlap on the timeline.
     if tradeable:
+        posted = []
         try:
             from intraday_signals import _generate_x_drafts
-            _generate_x_drafts(tradeable)
+            posted = _generate_x_drafts(tradeable, changed_only=True) or []
         except Exception as e:
             log.warning(f"X draft generation failed (non-critical): {e}")
+        try:
+            _publish_top_per_market_to_x(posted)
+        except Exception as e:
+            log.warning(f"live X publish failed (non-critical): {e}")
 
     # Log to DB
     log_to_db(tradeable, developing, scan_time)

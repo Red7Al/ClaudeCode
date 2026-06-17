@@ -25,6 +25,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.0   2026-06-17  Alex Hind   Batch mode (user 2026-06-17): publish_tickers_to_x() posts several instruments to X spaced
+#                                 by _INTER_INSTRUMENT_DELAY (60s) so threads don't overlap; --top-per-market=N publishes
+#                                 today's top-N/market tradeable. Used by the morning report for the top-2/market live X.
 # 1.2.0   2026-06-16  Alex Hind   Dedup (user 2026-06-16: duplicate publications): skip if the ticker was published to X
 #                                 within 12h (x_publications table) unless --force; record each publication after posting.
 # 1.1.0   2026-06-16  Alex Hind   Publish the COMPLETE publication to X (user 2026-06-16): lead tweet + card THEN the
@@ -123,6 +126,52 @@ def _record_publication(ticker: str, tweet_id):
         log.warning(f"failed to record X publication for {ticker}: {e}")
 
 
+_INTER_INSTRUMENT_DELAY = 60   # seconds between instruments in a batch, so threads don't overlap (user 2026-06-17)
+
+
+def publish_tickers_to_x(tickers, inter_instrument_delay: int = _INTER_INSTRUMENT_DELAY) -> int:
+    """Publish each ticker's COMPLETE publication (lead + card + long 1/n thread) to live X,
+    spaced by `inter_instrument_delay` so the threads do NOT overlap on the timeline (user
+    2026-06-17). The caller has already chosen the set (e.g. top-2/market of the changed drafts),
+    so NO 12h dedup is applied here; each is recorded + confirmed. Returns the count published."""
+    import time
+    from x_publish import publish_thread_to_x
+    published = 0
+    for i, tk in enumerate(tickers):
+        try:
+            pub = build_publication(tk)
+        except Exception as e:
+            log.warning(f"{tk}: build failed — skipped: {e}"); pub = None
+        if not pub:
+            log.info(f"{tk}: no tradeable funnel — skipped.")
+        else:
+            res, tweet, png, thread = pub
+            lead_id, n = publish_thread_to_x(tweet, png, thread)
+            if n >= 1:
+                _record_publication(tk, lead_id)
+                _confirm_to_slack(tk, res.get("name", tk), lead_id, n, len(thread))
+                published += 1
+                log.info(f"{tk}: published {n} tweet(s) to X (lead {lead_id}).")
+            else:
+                log.error(f"{tk}: nothing posted to X.")
+        if inter_instrument_delay and i < len(tickers) - 1:
+            log.info(f"waiting {inter_instrument_delay}s before the next instrument (avoid overlap)…")
+            time.sleep(inter_instrument_delay)
+    log.info(f"live X batch complete: published {published}/{len(tickers)} instrument(s).")
+    return published
+
+
+def _top_per_market_arg() -> int:
+    """Parse --top-per-market=N (equals form, unambiguous). Returns N or 0."""
+    for a in sys.argv[1:]:
+        if a.startswith("--top-per-market="):
+            try:
+                return int(a.split("=", 1)[1])
+            except ValueError:
+                return 0
+    return 0
+
+
 def main():
     try:                                            # UTF-8 stdout for the emoji/bold-italic text
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
@@ -131,17 +180,32 @@ def main():
 
     dry   = "--dry" in sys.argv
     force = "--force" in sys.argv                   # override the dedup guard
-    tickers = [a for a in sys.argv[1:] if not a.startswith("--")]
-    if not tickers:
-        log.error("usage: python publish_one_to_x.py TICKER [--dry] [--force]")
-        sys.exit(1)
-    ticker = tickers[0]
+    top_n = _top_per_market_arg()                   # batch: today's top-N/market tradeable
 
     try:
         from dotenv import load_dotenv
         load_dotenv(override=True)
     except Exception:
         pass
+
+    # ── Batch mode: publish today's top-N per market (from hvf_scan_log) to live X ──
+    if top_n:
+        from quality_report import _today_top
+        tks = [tk for tk, _ in _today_top(top_n)]   # top N per market, market order
+        if not tks:
+            log.info("No tradeable setups today — nothing to publish.")
+            return
+        log.info(f"--top-per-market={top_n}: {len(tks)} instrument(s) to X: {tks}")
+        if dry:
+            return
+        publish_tickers_to_x(tks)
+        return
+
+    tickers = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if not tickers:
+        log.error("usage: python publish_one_to_x.py TICKER [--dry] [--force]  |  --top-per-market=N")
+        sys.exit(1)
+    ticker = tickers[0]
 
     # Dedup: don't re-publish the same instrument within the window (user 2026-06-16) unless forced.
     if not (dry or force) and _recently_published(ticker):

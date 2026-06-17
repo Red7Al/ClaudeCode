@@ -23,6 +23,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.17.0  2026-06-17  Alex Hind   X drafts: top X_DRAFT_PER_MARKET (=5) per market (was PER_MARKET_TOP_N), and changed_only
+#                                 mode — only re-show an instrument when its CONFIRMATIONS change (x_draft_state fingerprint,
+#                                 user 2026-06-17). _generate_x_drafts now RETURNS the posted set so the morning report can
+#                                 publish the top X_PUBLISH_TOP_N/market of the changed set to live X.
 # 1.16.0  2026-06-16  Alex Hind   Complete publication (user 2026-06-16): _generate_x_drafts now posts the long quality report
 #                                 (1/n thread) right after each instrument's card + short tweet, via quality_report.
 #                                 publish_long_report_for — so card + short + long ALWAYS go together (publications + dossier).
@@ -201,7 +205,7 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timezone
 
-from config import YAHOO_MAP, DEFAULT_TARGET_RR, PER_MARKET_TOP_N, MARKET_ORDER
+from config import YAHOO_MAP, DEFAULT_TARGET_RR, PER_MARKET_TOP_N, MARKET_ORDER, X_DRAFT_PER_MARKET
 
 log = logging.getLogger("intraday_signals")
 
@@ -1318,7 +1322,48 @@ def render_x_post_card(r: dict):
         return None
 
 
-def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False):
+# ── X-draft changed-detection (user 2026-06-17) — only re-show an instrument when its
+# CONFIRMATIONS change. Fingerprint = direction + signal + the set of confirmation labels with
+# numbers stripped (so a value wiggle e.g. call/put 1.42->1.40 does NOT reshow, but an added /
+# removed / flipped confirmation, or a direction/state change, does). State lives in the
+# x_draft_state table (created defensively so it works without a separate schema run).
+_X_DRAFT_STATE_SQL = ("create table if not exists x_draft_state "
+                      "(ticker text primary key, fingerprint text, posted_at timestamptz default now())")
+
+
+def _draft_confirmations_fp(direction, signal, justifications) -> str:
+    import hashlib, re
+    labels = sorted(re.sub(r"[\d.,%]+", "", j[1]).strip() for j in justifications)
+    basis = "|".join([(direction or ""), (signal or "")] + labels)
+    return hashlib.md5(basis.encode()).hexdigest()[:16]
+
+
+def _draft_fp_last(ticker: str) -> str:
+    try:
+        conn = _pool_get_db()
+        conn.run(_X_DRAFT_STATE_SQL)
+        rows = conn.run("select fingerprint from x_draft_state where ticker = :t", t=ticker)
+        conn.close()
+        return rows[0][0] if rows else ""
+    except Exception as e:
+        log.debug(f"draft fp read failed for {ticker}: {e}")
+        return ""
+
+
+def _draft_fp_save(ticker: str, fp: str):
+    try:
+        conn = _pool_get_db()
+        conn.run(_X_DRAFT_STATE_SQL)
+        conn.run("insert into x_draft_state (ticker, fingerprint, posted_at) values (:t, :f, now()) "
+                 "on conflict (ticker) do update set fingerprint = excluded.fingerprint, "
+                 "posted_at = excluded.posted_at", t=ticker, f=fp)
+        conn.close()
+    except Exception as e:
+        log.warning(f"draft fp save failed for {ticker}: {e}")
+
+
+def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False,
+                       changed_only: bool = False):
     """
     Post one tweet-ready draft per tradeable instrument to #claude-x-drafts
     (SLACK_TWITTER env var).
@@ -1356,17 +1401,18 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         log.warning("SLACK_TWITTER not set — X draft reports skipped")
         return
 
-    # ── Per-market draft selection (user 2026-06-16: "top 10 by market") ──────────────────────────────────────────────
+    # ── Per-market draft selection ───────────────────────────────────────────────────────────────────────────────────
     # Weight order within each market (TRIGGERED first, then quality desc, then R:R desc),
-    # grouped by market in MARKET_ORDER, capped at PER_MARKET_TOP_N each. Drafts post in this
-    # order with a per-market header (below) so the channel reads as grouped per-market sections.
+    # grouped by market in MARKET_ORDER, capped at X_DRAFT_PER_MARKET each (user 2026-06-17:
+    # X drafts are top-5/market, separate from the analytical report's PER_MARKET_TOP_N). Drafts
+    # post in this order with a per-market header so the channel reads as grouped sections.
     from price_action import hvf_weight, group_by_market
     def _draft_weight(r):
         return hvf_weight(r.get("hvf_signal"),
                           r.get("hvf_quality") or r.get("pattern_quality"),
                           r.get("risk_reward"))
     _groups  = group_by_market(sorted(tradeable, key=_draft_weight),
-                               n=PER_MARKET_TOP_N, market_order=MARKET_ORDER)
+                               n=X_DRAFT_PER_MARKET, market_order=MARKET_ORDER)
     _ordered = [r for _, rows in _groups for r in rows]
     _total   = len(_ordered)
 
@@ -1418,6 +1464,7 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
     # gets a header, so the channel reads as grouped per-market sections.
     _last_market = None   # emit one section header per market when posting
     _collected: list = []   # populated only when collect=True (dossier mode)
+    _posted: list = []      # instruments actually posted (returned; morning report picks top-2/market for live X)
     for _rank, r in enumerate(_ordered, 1):
         ticker    = r.get("ticker", "")
         direction = r.get("hvf_type", "BULLISH")
@@ -1537,6 +1584,14 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         def _just_line(use_full: bool, n: int) -> str:
             idx = 0 if use_full else 1
             return "  ·  ".join(j[idx] for j in justifications[:n])
+
+        # Changed-only (user 2026-06-17): skip this instrument unless its CONFIRMATIONS changed
+        # since the last draft. Only applied when changed_only=True (the morning report); the HVF
+        # watch and the dossier are unaffected.
+        _fp = _draft_confirmations_fp(direction, signal, justifications)
+        if changed_only and _draft_fp_last(ticker) == _fp:
+            log.info(f"X draft: {ticker} confirmations unchanged — skipped")
+            continue
 
         # ── Tweet text — try progressively shorter versions to fit 280 chars ──
         # Lead with the rotated HOOK, then the rotated description (user 2026-06-13).
@@ -1724,8 +1779,16 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         except Exception as e:
             log.error(f"long quality report failed for {ticker}: {e}")
 
+        # Record the post: morning report picks top-X_PUBLISH_TOP_N/market of these for live X;
+        # changed-detection saves the confirmations fingerprint (user 2026-06-17).
+        if post:
+            _posted.append(r)
+            if changed_only:
+                _draft_fp_save(ticker, _fp)
+
     if collect:
         return _collected
+    return _posted
 
 
 def run_us_monitor(notify_slack: bool = True) -> list:

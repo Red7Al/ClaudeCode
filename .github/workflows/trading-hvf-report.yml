@@ -1,4 +1,4 @@
-name: HVF Daily Report (2026-06-11)
+name: HVF Daily Report (2026-06-17)
 
 on:
   workflow_dispatch:           # also triggerable manually
@@ -9,7 +9,7 @@ env:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30        # scan 200+ tickers across 5 timeframes
+    timeout-minutes: 45        # scan 200+ tickers + spaced per-market live-X publish (user 2026-06-17)
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -30,3 +30,7 @@ jobs:
           SLACK_TWITTER:         ${{ secrets.SLACK_TWITTER }}
           SLACK_BOT_TOKEN:       ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_TWITTER_CHANNEL_ID: ${{ secrets.SLACK_TWITTER_CHANNEL_ID }}
+          X_API_KEY:             ${{ secrets.X_API_KEY }}      # live X publish of top-2/market (user 2026-06-17)
+          X_API_SECRET:          ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN:        ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET:       ${{ secrets.X_ACCESS_SECRET }}
