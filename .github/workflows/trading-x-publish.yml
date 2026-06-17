@@ -1,19 +1,24 @@
-name: X Publish — one instrument (2026-06-16)
+name: X Publish — instrument or top-N/market (2026-06-17)
 
-# Live-publish ONE instrument's X post (short tweet text + post-card PNG) to X (Twitter),
-# via publish_one_to_x.py -> x_publish.publish_to_x. Runs in Actions WITH the X_* secrets
-# (memory: secrets_and_x_delivery — the local machine has no X_* keys and never posts).
+# Live-publish to X (Twitter) via publish_one_to_x.py -> x_publish. Either ONE instrument (full
+# thread: short+card lead, then the long 1/n report), OR a BATCH of today's top-N tradeable per
+# market (top_per_market input), spaced so threads don't overlap. Runs in Actions WITH the X_*
+# secrets (memory: secrets_and_x_delivery — the local machine has no X_* keys and never posts).
 #
-# workflow_dispatch only — fires a REAL, public, irreversible tweet when invoked.
+# workflow_dispatch only — fires REAL, public, irreversible tweets when invoked.
 # No `schedule:` block (memory: feedback_scheduler — GitHub-native cron is BANNED).
 
 on:
   workflow_dispatch:
     inputs:
       ticker:
-        description: 'Single ticker to publish to X (e.g. AXP, RR.L)'
-        required: true
+        description: 'Single ticker to publish (ignored if top_per_market > 0)'
+        required: false
         default: 'AXP'
+      top_per_market:
+        description: "Batch: publish today's top-N tradeable per market (0 = single-ticker mode)"
+        required: false
+        default: '0'
       dry:
         description: 'Dry run (build + print the tweet, post NOTHING)'
         type: boolean
@@ -28,7 +33,7 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -36,7 +41,13 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -r requirements.txt
-      - run: python publish_one_to_x.py ${{ inputs.ticker }} ${{ inputs.dry && '--dry' || '' }} ${{ inputs.force && '--force' || '' }}
+      - name: Publish to X
+        run: |
+          if [ "${{ inputs.top_per_market }}" != "0" ] && [ -n "${{ inputs.top_per_market }}" ]; then
+            python publish_one_to_x.py --top-per-market=${{ inputs.top_per_market }} ${{ inputs.dry && '--dry' || '' }}
+          else
+            python publish_one_to_x.py ${{ inputs.ticker }} ${{ inputs.dry && '--dry' || '' }} ${{ inputs.force && '--force' || '' }}
+          fi
         env:
           X_API_KEY:            ${{ secrets.X_API_KEY }}
           X_API_SECRET:         ${{ secrets.X_API_SECRET }}
