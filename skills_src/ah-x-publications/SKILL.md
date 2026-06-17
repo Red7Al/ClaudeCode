@@ -70,8 +70,10 @@ account, use the official X API path (NOT the Slack flow):
   short+card alone (user 2026-06-16). `--dry` previews without posting.
 - **Thread structure (user 2026-06-16):** LEAD = short tweet + card, posted FIRST; then a
   `lead_delay` (12s — media needs time to process) before the long report; the long report's
-  **1/n is the MAIN page** (reply to the lead) and **2/n..n/n are COMMENTS on 1/n** (each replies
-  to 1/n, NOT chained), spaced by `inter_delay` (5s) so X threads them in order.
+  **1/n is the MAIN page** (reply to the lead) and **2/n..n/n CHAIN beneath it** (each replies to
+  the PREVIOUS page), spaced by `inter_delay` (5s), so X renders them strictly in order.
+  *Do NOT make 2/n..n/n all reply to 1/n* — sibling replies to one parent display newest-first
+  (X showed 1/4, 4/4, 3/4, 2/4), so the chain is required for correct order.
 - **Dedup (user 2026-06-16: duplicate publications):** a ticker is skipped if it was published to
   X within 12h (recorded in the `x_publications` table); pass `--force` (workflow `-f force=true`)
   to override. Repeated manual runs no longer create duplicate threads.

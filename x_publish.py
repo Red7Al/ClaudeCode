@@ -27,6 +27,9 @@
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-14  Alex Hind   Initial build — cookie-based twikit publisher.
+# 2.4.0   2026-06-16  Alex Hind   Thread CHAIN, not siblings (user 2026-06-16: pages displayed 1/4, 4/4, 3/4, 2/4): 2/n..n/n
+#                                 now each reply to the PREVIOUS page (chain) so X renders them in order; replying all to
+#                                 1/n made them siblings, which X shows newest-first.
 # 2.3.0   2026-06-16  Alex Hind   More delays (user 2026-06-16): lead_delay 6->12s (media needs time) and a 5s inter_delay
 #                                 BETWEEN each comment so X threads them in order (rapid replies were displaying jumbled).
 # 2.2.0   2026-06-16  Alex Hind   publish_thread_to_x (user 2026-06-16): LEAD (short+card) posts first with a short delay
@@ -128,8 +131,9 @@ def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, lead_delay: int 
       2. wait `lead_delay`s so the short + card (media takes a few seconds to process) is
          fully live before the long report (user A, 2026-06-16: "more delays may be needed").
       3. the long report's 1/n part = the MAIN page, posted as a reply to the lead.
-      4. parts 2/n..n/n = COMMENTS on the 1/n main page — each replies to the 1/n tweet
-         (NOT chained), with `inter_delay`s between them so X threads them in order (user B).
+      4. parts 2/n..n/n thread beneath it as a CHAIN (each replies to the PREVIOUS page),
+         spaced by `inter_delay`, so X renders them strictly in order — sibling replies to one
+         parent display newest-first, which jumbled the order (user 2026-06-16).
     Returns (lead_tweet_id, posted_count). No-op -> (None, 0) when the X_* keys are missing."""
     api, client = _clients()
     if client is None:
@@ -156,21 +160,24 @@ def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, lead_delay: int 
     except Exception as e:
         log.error(f"X long-report main page (1/{len(parts)}) failed: {e}")
         return lead_id, posted
-    # 4) 2/n..n/n = COMMENTS on the 1/n main page — each replies to the main page, spaced out
-    #    by inter_delay so they land/display in order (user 2026-06-16) (user B)
+    # 4) 2/n..n/n = the rest of the report, CHAINED — each replies to the PREVIOUS page, not all
+    #    to 1/n. Sibling replies sharing one parent display newest-first on X (1/4, 4/4, 3/4, 2/4
+    #    — user 2026-06-16); a chain renders strictly in order 1/n -> 2/n -> ... beneath the main
+    #    page. Spaced by inter_delay. (Supersedes the earlier "all reply to 1/n" approach.)
+    prev = main_id
     for i, part in enumerate(parts[1:], start=2):
         if stagger:
             time.sleep(random.randint(STAGGER_MIN, STAGGER_MAX))
         elif inter_delay:
             time.sleep(inter_delay)
         try:
-            _post_one(api, client, part, None, in_reply_to=main_id)
+            prev = _post_one(api, client, part, None, in_reply_to=prev) or prev
             posted += 1
-            log.info(f"posted X comment {i}/{len(parts)} on the 1/{len(parts)} main page")
+            log.info(f"posted X thread page {i}/{len(parts)} (chained, in order)")
         except Exception as e:
-            log.error(f"X comment {i}/{len(parts)} failed: {e}")
-            continue
-    log.info(f"X publication complete: {posted} tweet(s) (lead + 1/{len(parts)} main + {posted - 2} comment(s))")
+            log.error(f"X thread page {i}/{len(parts)} failed — chain stops here: {e}")
+            break
+    log.info(f"X publication complete: {posted} tweet(s) (lead + {posted - 1}-page thread in order)")
     return lead_id, posted
 
 
