@@ -23,6 +23,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.19.0  2026-06-19  Alex Hind   FIX wrong instrument name (user 2026-06-19: AXP tweeted as "AXP Energy Limited"): _resolve_name
+#                                 now prefers yfinance (the exact scanned Yahoo ticker) over notify's epic_lookup, which can
+#                                 carry a wrong-instrument name. epic_lookup is the fallback only.
+# 1.18.0  2026-06-17  Alex Hind   Draft Slack numbering (user 2026-06-17): per-instrument number RESETS per market
+#                                 ("X Draft 1/5 …", not global 11/30); the market name + its position "(k of K)" are in
+#                                 both the section header and each draft title.
 # 1.17.0  2026-06-17  Alex Hind   X drafts: top X_DRAFT_PER_MARKET (=5) per market (was PER_MARKET_TOP_N), and changed_only
 #                                 mode — only re-show an instrument when its CONFIRMATIONS change (x_draft_state fingerprint,
 #                                 user 2026-06-17). _generate_x_drafts now RETURNS the posted set so the morning report can
@@ -953,48 +959,49 @@ def _resolve_name(ticker: str) -> str:
     """
     Full instrument name for a ticker (memory/feedback_instrument_names: always
     show the full name - scanner rows carry no name, which produced
-    "$BRGE.L (BRGE.L)" in tweets). Sources in order:
-    1. notify's epic_lookup cache (instruments the system has traded)
-    2. yfinance shortName/longName (covers FTSE constituents not yet traded)
+    "$BRGE.L (BRGE.L)" in tweets). Sources in order (user 2026-06-19):
+    1. yfinance longName/shortName for the EXACT Yahoo ticker the scanner used — the
+       authoritative company name for the publication.
+    2. notify's epic_lookup cache — FALLBACK only (it can carry a wrong-instrument name,
+       e.g. AXP -> "AXP Energy Limited" instead of NYSE American Express).
     Cached per process; falls back to the bare ticker.
     """
     if ticker in _RESOLVED_NAMES:
         return _RESOLVED_NAMES[ticker]
     name = None
+    # 1. yfinance longName/shortName for the EXACT Yahoo ticker the scanner used — the
+    #    authoritative company name for the publication. notify's epic_lookup can carry a
+    #    WRONG-INSTRUMENT name (AXP -> "AXP Energy Limited" instead of NYSE American Express,
+    #    user 2026-06-19), so it is only a FALLBACK now.
     try:
-        from notify import fmt
-        for key in ([ticker, ticker[:-2]] if ticker.endswith(".L") else [ticker]):
-            s = fmt(key)
-            if s.endswith(")") and "(" in s:
-                name = s[s.index("(") + 1:-1]
-                break
+        import re as _re
+        info = _yf_info(ticker)
+        # Prefer longName (properly cased, e.g. "HSBC Holdings plc") over shortName (ALL CAPS +
+        # share-class noise). NEVER .title() the whole name — that mangles acronyms (HSBC → Hsbc).
+        name = info.get("longName") or info.get("shortName")
+        if name:
+            name = name.split(" ORD")[0].split(" REIT")[0].strip()
+            # A trailing standalone "Or"/"Ord"/"Ordinary" token is share-class noise (user 2026-06-15).
+            name = _re.sub(r"\s+Or(?:d(?:inary)?)?\s*$", "", name, flags=_re.I).strip()
+            # Normalise the legal-form suffix to "PLC" (spelled-out form, then plc/p.l.c./Plc).
+            name = _re.sub(r"\s+Public\s+Limited\s+Company\s*$", " PLC", name, flags=_re.I).strip()
+            name = _re.sub(r"[\s.]*[Pp]\.?[Ll]\.?[Cc]\.?\s*$", " PLC", name).strip()
+            # A shortName STILL all-caps → title-case, keeping short (<=4 char) tokens as acronyms.
+            if name.isupper():
+                name = " ".join(w if len(w) <= 4 else w.capitalize()
+                                for w in name.split())
     except Exception:
-        pass
+        name = None
+    # 2. Fallback: notify's epic_lookup cache (instruments the system has traded) — only when
+    #    yfinance has no name. (It can be wrong-instrument, so never preferred over yfinance.)
     if not name:
         try:
-            import re as _re
-            info = _yf_info(ticker)
-            # Prefer longName (properly cased, e.g. "HSBC Holdings plc") over shortName
-            # (ALL CAPS + share-class noise). NEVER .title() the whole name — that mangles
-            # acronyms: HSBC → Hsbc (user 2026-06-13).
-            name = info.get("longName") or info.get("shortName")
-            if name:
-                name = name.split(" ORD")[0].split(" REIT")[0].strip()
-                # A trailing standalone "Or"/"Ord"/"Ordinary" token is share-class noise
-                # ("ordinary shares"), often truncated to "Or" in the feed (user 2026-06-15:
-                # "if a name ends in 'or' it is probably 'Ord'"). Strip it — the uppercase
-                # " ORD" split above misses the mixed/truncated forms.
-                name = _re.sub(r"\s+Or(?:d(?:inary)?)?\s*$", "", name, flags=_re.I).strip()
-                # Normalise the legal-form suffix to "PLC". First the spelled-out form
-                # ("Vodafone Group Public Limited Company" → "Vodafone Group PLC"), then
-                # the abbreviations (plc / p.l.c. / Plc → PLC).
-                name = _re.sub(r"\s+Public\s+Limited\s+Company\s*$", " PLC", name, flags=_re.I).strip()
-                name = _re.sub(r"[\s.]*[Pp]\.?[Ll]\.?[Cc]\.?\s*$", " PLC", name).strip()
-                # Fallback only: a shortName that is STILL all-caps → title-case but keep
-                # short (<=4 char) all-caps tokens as acronyms (HSBC, GSK, BP).
-                if name.isupper():
-                    name = " ".join(w if len(w) <= 4 else w.capitalize()
-                                    for w in name.split())
+            from notify import fmt
+            for key in ([ticker, ticker[:-2]] if ticker.endswith(".L") else [ticker]):
+                s = fmt(key)
+                if s.endswith(")") and "(" in s:
+                    name = s[s.index("(") + 1:-1]
+                    break
         except Exception:
             pass
     _RESOLVED_NAMES[ticker] = name or ticker
@@ -1414,6 +1421,12 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
     _groups  = group_by_market(sorted(tradeable, key=_draft_weight),
                                n=X_DRAFT_PER_MARKET, market_order=MARKET_ORDER)
     _ordered = [r for _, rows in _groups for r in rows]
+    # Per-market draft numbering (user 2026-06-17): each market's instruments number from 1
+    # (reset when the market changes), with the market named + numbered "(k of K)" in the title.
+    from price_action import market_short
+    _market_count = {m: len(rows) for m, rows in _groups}            # per-market draft size (denominator)
+    _market_no    = {m: i + 1 for i, (m, _) in enumerate(_groups)}   # market position (k of K)
+    _n_markets    = len(_groups)
     _total   = len(_ordered)
 
     # ── Batch fetch latest signal context per ticker from signal_log ──────────────────────────────────────────────────
@@ -1463,6 +1476,7 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
     # markets in MARKET_ORDER. Each draft carries its global rank (below) and each market group
     # gets a header, so the channel reads as grouped per-market sections.
     _last_market = None   # emit one section header per market when posting
+    _mkt_idx = 0          # per-market instrument counter (resets when the market changes)
     _collected: list = []   # populated only when collect=True (dossier mode)
     _posted: list = []      # instruments actually posted (returned; morning report picks top-2/market for live X)
     for _rank, r in enumerate(_ordered, 1):
@@ -1687,23 +1701,26 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         _mkt = r.get("index") or "?"
         if _mkt != _last_market:
             _last_market = _mkt
+            _mkt_idx = 0                       # new market → reset the per-market numbering
             try:
-                from price_action import market_short
                 requests.post(slack_url, json={"blocks": [
                     {"type": "divider"},
                     {"type": "header", "text": {"type": "plain_text",
-                                                "text": f"📊 {market_short(_mkt)} — top {PER_MARKET_TOP_N} HVF"}},
+                                                "text": f"📊 {market_short(_mkt)} ({_market_no.get(_mkt, 1)} of {_n_markets}) "
+                                                        f"— top {X_DRAFT_PER_MARKET} HVF"}},
                 ]}, timeout=10)
             except Exception as e:
                 log.debug(f"X draft market header post failed for {_mkt}: {e}")
+        _mkt_idx += 1                          # 1-based position within this market
 
         # ── Post to SLACK_TWITTER channel ─────────────────────────────────────────────────────────────────────────────
         dir_label = "Bullish" if direction == "BULLISH" else "Bearish"
         blocks = [
             {"type": "header",
              "text": {"type": "plain_text",
-                      "text": f"X Draft {_rank}/{_total} (best→worst) — {fmt(ticker)} "
-                              f"{dir_label} · {sig_desc.title()}"}},
+                      "text": f"X Draft {_mkt_idx}/{_market_count.get(_mkt, _mkt_idx)} · "
+                              f"{market_short(_mkt)} ({_market_no.get(_mkt, 1)} of {_n_markets}) — "
+                              f"{fmt(ticker)} {dir_label} · {sig_desc.title()}"}},
             {"type": "section",
              "text": {"type": "mrkdwn",
                       "text": f"*Tweet ({len(tweet)} chars):*\n```{tweet}```"}},
