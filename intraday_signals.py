@@ -23,6 +23,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.25.0  2026-06-19  Alex Hind   Expected time-to-target in the X-draft Slack wrapper context line (user 2026-06-19) via
+#                                 price_action.target_horizon — Slack only; deliberately NOT in the tweet text or on the card.
 # 1.24.0  2026-06-19  Alex Hind   X card (user 2026-06-19): top levels line now shows Support/Resistance after R:R (recent
 #                                 ~20-bar swing low/high); the squeeze description carries the SECTOR name; and each
 #                                 right-edge Entry/Stop/Target label shows its % from the live price (pct_from_current).
@@ -1845,6 +1847,10 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         # ── Post to SLACK_TWITTER channel ─────────────────────────────────────────────────────────────────────────────
         dir_label = "Bullish" if direction == "BULLISH" else "Bearish"
         _seen_tag = "  👀 Seen before" if _seen else ""
+        # Expected time-to-target (user 2026-06-19) — in the Slack draft wrapper only, NEVER in
+        # the tweet text or on the card (those are the public X artifacts).
+        from price_action import target_horizon
+        _tgt_horizon = target_horizon(r)
         blocks = [
             {"type": "header",
              "text": {"type": "plain_text",
@@ -1856,7 +1862,9 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
                       "text": f"*Tweet ({len(tweet)} chars):*\n```{tweet}```"}},
             {"type": "context",
              "elements": [{"type": "mrkdwn",
-                            "text": (f"R:R {rr_str}  |  Quality: {quality or '—'}  |  "
+                            "text": (f"R:R {rr_str}"
+                                     + (f" · {_tgt_horizon} to target" if _tgt_horizon else "")
+                                     + f"  |  Quality: {quality or '—'}  |  "
                                      f"{tf_raw or '—'}  |  "
                                      + datetime.now(timezone.utc).strftime("%d %b %H:%M UTC"))}]},
         ]

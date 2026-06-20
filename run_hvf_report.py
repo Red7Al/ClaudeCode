@@ -28,6 +28,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.17.0  2026-06-19  Alex Hind   Expected time-to-target next to R:R on the TRADEABLE line (user 2026-06-19) via
+#                                 price_action.target_horizon — Slack only (#signals), never on the X card/tweet.
 # 1.16.0  2026-06-19  Alex Hind   Current price + % distance (user 2026-06-19): every TRADEABLE/DEVELOPING line now shows
 #                                 "Now <price>" and each level's % from the live price, via price_action.pct_from_current.
 # 1.15.0  2026-06-19  Alex Hind   D220 -> D240 (user 2026-06-19): scanner header + footer now read daily-240 (the
@@ -379,14 +381,18 @@ def _tradeable_line(r) -> str:
     q      = r.get("pattern_quality", 0)
     # Current price + % distance of each level from it (user 2026-06-19): every line that
     # shows entry/stop/target also shows the live price and how far each level is from it.
-    from price_action import pct_from_current
+    from price_action import pct_from_current, target_horizon
     cur    = r.get("current_price")
     now    = _fmt_price(cur)
     e_pct  = pct_from_current(r.get("h3_level"),   cur)
     s_pct  = pct_from_current(r.get("stop_level"), cur)
     t_pct  = pct_from_current(r.get("target"),     cur)
     _wrap  = lambda p: f" ({p})" if p else ""
-    line = (f"{d}{s} *{_label(t)}*  R:R {rr}  Q={q}  [{tf}] · {idx}\n"
+    # Expected time-to-target next to R:R (user 2026-06-19) — Slack only (this report posts to
+    # #signals; it never goes on the X card/tweet).
+    _hz    = target_horizon(r)
+    _hz_s  = f"  ·  {_hz} to target" if _hz else ""
+    line = (f"{d}{s} *{_label(t)}*  R:R {rr}{_hz_s}  Q={q}  [{tf}] · {idx}\n"
             f"    Now {now}  Entry {entry}{_wrap(e_pct)}  Stop {stop}{_wrap(s_pct)}  Target {target}{_wrap(t_pct)}")
     # Tight-stop label (backlog #9b): a funnel whose stop is < TIGHT_STOP_MIN_PCT of price
     # is structurally untradeable at IG intraday (spread + tick noise), so we DON'T trade it

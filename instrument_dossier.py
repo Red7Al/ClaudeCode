@@ -38,6 +38,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.10.0  2026-06-19  Alex Hind   Narrative trade paragraph now states the expected time-to-target (user 2026-06-19) via
+#                                 price_action.target_horizon (dossier/Slack surface, not the X card).
 # 1.9.0   2026-06-19  Alex Hind   Plain-English 'Rolls-Royce style' narrative report (user 2026-06-19): _narrative_report
 #                                 writes a 4-5 paragraph write-up (headline / why+quality via quality_report.build_report /
 #                                 funnel+5 rules / the trade with live price+distances+R:R / bottom line) to narrative.txt
@@ -280,6 +282,13 @@ def _narrative_report(ticker: str, name: str, r: dict) -> str:
     )
 
     # 4 — the trade
+    try:
+        from price_action import target_horizon
+        _hz = target_horizon(r)
+    except Exception:
+        _hz = ""
+    _hz_txt = (f" On the funnel's formation timescale the target is roughly a {_hz.lstrip('~')} "
+               f"objective." if _hz else "")
     paras.append(
         f"The trade: enter {side} on a break to {_g(entry)}, protective stop at {_g(stop)} "
         f"({s_p or 'n/a'} from the current price), first target {_g(target)} ({t_p or 'n/a'} away). "
@@ -287,7 +296,7 @@ def _narrative_report(ticker: str, name: str, r: dict) -> str:
         + (f", comfortably past the {HVF_MIN_RR:g}:1 floor the system needs to act"
            if isinstance(rr, (int, float)) and rr >= HVF_MIN_RR
            else f", which is below the {HVF_MIN_RR:g}:1 floor, so it stays on the watch list rather than trading")
-        + "."
+        + "." + _hz_txt
     )
 
     # 5 — the bottom line

@@ -66,6 +66,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.23.0  2026-06-19  Alex Hind   target_horizon() helper (user 2026-06-19): rough expected time-to-target from the funnel
+#                                 formation span (H1->H3), timeframe fallback. Slack-only consumers; never on the X card.
 # 1.22.0  2026-06-19  Alex Hind   Fix stale R:R-gate comment (said "= 2.5"; live HVF_MIN_RR is 3.0). Comment no longer
 #                                 hardcodes the number — it drifts (2.0 -> 2.5 -> 3.0). Comment-only; no behaviour change.
 # 1.21.0  2026-06-19  Alex Hind   analyse_price_action now returns current_price (user 2026-06-19) so consumers (e.g.
@@ -1568,6 +1570,38 @@ def pct_from_current(level, current) -> str:
     if not isinstance(level, (int, float)) or not isinstance(current, (int, float)) or not current:
         return ""
     return f"{(level / current - 1) * 100:+.1f}%"
+
+
+def _humanize_days(days: int) -> str:
+    """Round a day count to a human phrase: '~9 days' / '~6 weeks' / '~4 months'."""
+    if days < 14:
+        return f"~{days} days"
+    if days < 70:
+        return f"~{round(days / 7)} weeks"
+    return f"~{round(days / 30)} months"
+
+
+def target_horizon(r: dict) -> str:
+    """Rough EXPECTED time to reach target (user 2026-06-19) — Slack only, never on the X
+    card/tweet. Heuristic: a measured move tends to play out over a time similar to the
+    funnel's formation span (H1 -> H3); falls back to the scan timeframe when pivot dates are
+    absent. Returns '' if nothing usable. CANONICAL so every Slack report phrases it the same."""
+    from datetime import datetime
+    days = None
+    h1d, h3d = r.get("h1_date"), r.get("h3_date")
+    try:
+        if h1d and h3d:
+            d1 = datetime.fromisoformat(str(h1d)[:10])
+            d3 = datetime.fromisoformat(str(h3d)[:10])
+            days = (d3 - d1).days
+    except Exception:
+        days = None
+    if not days or days <= 0:
+        days = {"daily-30": 21, "daily-60": 42, "daily-90": 63,
+                "daily-180": 120, "daily-240": 160, "weekly": 180}.get(r.get("hvf_timeframe") or "")
+    if not days or days <= 0:
+        return ""
+    return _humanize_days(days)
 
 
 def market_short(market_name) -> str:
