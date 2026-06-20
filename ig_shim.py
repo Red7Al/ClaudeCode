@@ -23,6 +23,13 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.14.0  2026-06-19  Alex Hind   FIX wrong-instrument epic resolution (user 2026-06-19, AXP→AXP Energy). (1) y_name was
+#                                 referenced but never assigned, so the identity guard NameError'd and never ran — now
+#                                 computed via _yahoo_name (memoised). (2) get_epic now validates identity on the cache HIT
+#                                 too (not just on miss): a cached epic whose IG name doesn't match the Yahoo company is
+#                                 alerted, purged and re-resolved — never traded. _EPIC_VERIFIED_OVERRIDES whitelists pairs
+#                                 the matcher can't confirm (spot ETH, SpaceX). Exchange is carried by the Yahoo ticker
+#                                 (AXP=NYSE AmEx, AXP.AX=ASX AXP Energy), so both can be pinned to their own unique epic.
 # 1.13.0  2026-06-15  Alex Hind   open_trade market pre-checks (Step 4) now FAIL CLOSED (user 2026-06-15). Previously a
 #                                 try/except logged a warning and fell through to place the order with spread/stop/status
 #                                 UNVERIFIED — how a 0.098%-stop AMD market order slipped past the 4d tight-stop guard.
@@ -500,6 +507,38 @@ def instrument_names_match(ticker: str, ig_name: str, yahoo_name: str) -> bool:
     return False
 
 
+_EPIC_VERIFIED_OVERRIDES = {
+    # ticker -> epic that the name-matcher CANNOT confirm but a human has verified correct
+    # (user 2026-06-19). These bypass the identity check so they are never wrongly purged.
+    "ETH":  "CS.D.ETHUSD.TODAY.IP",   # spot Ether; Yahoo 'ETH' returns a Grayscale ETF name
+    "SPCX": "UD.D.SPCXUS.DAILY.IP",   # SpaceX vs 'Space Exploration Technologies Corp.'
+}
+
+
+def _is_verified_epic(ticker: str, epic: str) -> bool:
+    return _EPIC_VERIFIED_OVERRIDES.get(ticker) == epic
+
+
+_YNAME_CACHE: dict = {}
+
+
+def _yahoo_name(ticker: str) -> str:
+    """Yahoo company name for the EXACT ticker — used to verify an IG epic is the right
+    instrument. Memoised per process (one yfinance call per ticker). '' on any failure, in
+    which case callers skip name validation (fail-open to today's behaviour)."""
+    if ticker in _YNAME_CACHE:
+        return _YNAME_CACHE[ticker]
+    name = ""
+    try:
+        import yfinance as _yf
+        info = _yf.Ticker(ticker).info or {}
+        name = info.get("longName") or info.get("shortName") or ""
+    except Exception:
+        name = ""
+    _YNAME_CACHE[ticker] = name
+    return name
+
+
 def get_epic(ticker: str) -> Optional[str]:
     """
     Return the IG epic code for a given ticker symbol.
@@ -517,6 +556,11 @@ def get_epic(ticker: str) -> Optional[str]:
     # Strip the trailing .L so the cache always hits the right key.
     normalized = ticker[:-2] if ticker.endswith('.L') and len(ticker) > 2 else ticker
 
+    # Yahoo company name for identity checks. (Bug fix, user 2026-06-19: y_name was referenced
+    # below and on the miss path but NEVER assigned — the wrong-instrument guard NameError'd, so
+    # it never ran. That is how rows like AXP→AXP Energy persisted.)
+    y_name = _yahoo_name(ticker)
+
     # Step 1 — Check Supabase cache. The cache key IS the original ticker:
     # UK rows are keyed WITH the .L suffix (migrated 2026-06-12) because bare
     # keys collide across markets — 'TSCO' is Tesco PLC in London and Tractor
@@ -524,12 +568,38 @@ def get_epic(ticker: str) -> Optional[str]:
     # ticker must therefore NEVER fall back to a bare-key row.
     db = get_db()
     try:
-        rows = db.run("select epic from epic_lookup where ticker = :t", t=ticker)
-        if rows:
-            log.info(f"Epic cache hit: {ticker} → {rows[0][0]}")
-            return rows[0][0]
+        rows = db.run("select epic, description from epic_lookup where ticker = :t", t=ticker)
     finally:
         db.close()
+    if rows:
+        cached_epic, cached_desc = rows[0][0], rows[0][1]
+        # Validate identity on the cache HIT too (user 2026-06-19). Previously a hit was returned
+        # unchecked, so stale wrong rows (AXP→AXP Energy, SPGI→Spain 35, TGT→11880 SA …) were
+        # served and could be TRADED. Trust the row only when: Yahoo has no name (FX/index/
+        # commodity), it's a verified override, or the IG and Yahoo names match.
+        if (not y_name) or _is_verified_epic(ticker, cached_epic) \
+                or instrument_names_match(ticker, cached_desc or "", y_name):
+            log.info(f"Epic cache hit: {ticker} → {cached_epic}")
+            return cached_epic
+        # Mismatch → never trade the wrong instrument. Alert, purge the bad row, then re-resolve.
+        log.error(f"get_epic {ticker}: cached epic {cached_epic} ({cached_desc!r}) != Yahoo company "
+                  f"{y_name!r} — wrong-instrument; purging + re-resolving via IG.")
+        try:
+            from notify import alert_system_error
+            alert_system_error("EPIC_LOOKUP", "get_epic",
+                               f"{ticker}: cached epic {cached_epic} ({cached_desc}) does not match "
+                               f"'{y_name}' — wrong instrument; purged and re-resolving.")
+        except Exception:
+            pass
+        try:
+            dbx = get_db()
+            try:
+                dbx.run("delete from epic_lookup where ticker = :t", t=ticker)
+            finally:
+                dbx.close()
+        except Exception as e:
+            log.warning(f"get_epic {ticker}: could not purge bad cache row: {e}")
+        # fall through to Step 2 (IG search, now with a working identity guard)
 
     # Step 2 — Cache miss: search IG using the normalized ticker
     log.info(f"Epic cache miss for {ticker} — searching IG markets (term='{normalized}')...")
