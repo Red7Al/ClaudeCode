@@ -40,6 +40,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.2.0   2026-06-19  Alex Hind   SELF-HEAL stale data (user 2026-06-19: "old data is of no use"): main() no longer just
+#                                 warns when the snapshot is stale/empty — it calls cot_analysis.refresh_all_cot() (live
+#                                 CFTC fetch) and re-reads before rendering. Only if CFTC has no newer week does it show an
+#                                 (accurate) "latest available week is N days old — refreshed live just now" note instead
+#                                 of the old "the weekend refresh may not have run" warning.
 # 1.1.0   2026-06-07  Alex Hind   Add market-context lines for Gold, Silver, the US indices (S&P 500, NASDAQ) and a UK
 #                                 proxy (MSCI EAFE positioning paired with the FTSE 100 price trend): each states
 #                                 whether COT positioning is aligned with the price trend, and why. New "UK /
@@ -327,11 +332,14 @@ def build_headlines(rows: list[dict]) -> list[str]:
 # Report builder
 # ----------------------------------------------------------------------------------------------------------------------
 
-def build_report(rows: list[dict], generated_at: datetime = None) -> str:
+def build_report(rows: list[dict], generated_at: datetime = None, refreshed: bool = False) -> str:
     """
     Build the full COT report text (Slack mrkdwn). Pure function — operates on a
     list of row dicts (cot_snapshot columns, or analyse_cot output), so it can
     render either the stored snapshot or a freshly computed set.
+
+    `refreshed` = a live CFTC refresh was already attempted before building (so any
+    remaining staleness is CFTC not having published yet, not a missed refresh job).
     """
     generated_at = generated_at or datetime.now(timezone.utc)
     lines = []
@@ -349,7 +357,7 @@ def build_report(rows: list[dict], generated_at: datetime = None) -> str:
     lines.append(f"_CFTC positioning as of {report_date_str} (Tuesday close)_")
     lines.append("─" * 48)
 
-    stale_note = _staleness_note(report_date, generated_at)
+    stale_note = _staleness_note(report_date, generated_at, refreshed)
     if stale_note:
         lines.append(stale_note)
         lines.append("")
@@ -410,13 +418,19 @@ def build_report(rows: list[dict], generated_at: datetime = None) -> str:
     return "\n".join(lines)
 
 
-def _staleness_note(report_date, generated_at: datetime):
-    """Return a warning string if the snapshot week is older than COT_STALE_DAYS, else ''."""
+def _staleness_note(report_date, generated_at: datetime, refreshed: bool = False):
+    """Return a warning string if the snapshot week is older than COT_STALE_DAYS, else ''.
+    If a live refresh was already attempted (`refreshed`), the note says CFTC simply has
+    no newer week yet — not that the refresh job was missed (it wasn't; we just ran it)."""
     try:
         rd = report_date if isinstance(report_date, date) else \
             datetime.strptime(str(report_date)[:10], "%Y-%m-%d").date()
         age_days = (generated_at.date() - rd).days
         if age_days > COT_STALE_DAYS:
+            if refreshed:
+                return (f"ℹ *Latest available week is {age_days} days old* — refreshed live from CFTC "
+                        f"just now; CFTC has not yet published a newer week (weekly release is Fri "
+                        f"~15:30 ET, positions as of the prior Tuesday).")
             return (f"⚠ *Data may be stale* — latest COT week is {age_days} days old. "
                     f"The weekend refresh (refresh_all_cot) may not have run.")
     except Exception:
@@ -459,26 +473,61 @@ def _alert_failure(component: str, detail: str):
 # Main
 # ----------------------------------------------------------------------------------------------------------------------
 
+def _row_age_days(rows, generated_at: datetime = None):
+    """Age (days) of the latest snapshot week, or None if no rows / unparseable."""
+    if not rows:
+        return None
+    generated_at = generated_at or datetime.now(timezone.utc)
+    rd = rows[0].get("report_date")
+    try:
+        d = rd if isinstance(rd, date) else datetime.strptime(str(rd)[:10], "%Y-%m-%d").date()
+        return (generated_at.date() - d).days
+    except Exception:
+        return None
+
+
+def _load_latest_cot():
+    db = get_db()
+    try:
+        return fetch_latest_cot(db)
+    finally:
+        db.close()
+
+
 def main():
     log.info("Generating weekly COT report...")
     try:
-        db = get_db()
-        try:
-            rows = fetch_latest_cot(db)
-        finally:
-            db.close()
+        rows = _load_latest_cot()
     except Exception as e:
         log.error(f"Could not read cot_snapshot: {e}")
         _alert_failure("cot_snapshot read", str(e))
         raise
 
+    # Self-heal (user 2026-06-19): stale or empty data is useless — never just warn and
+    # serve an old week. Pull the latest from CFTC via refresh_all_cot() and re-read. Only
+    # if CFTC genuinely has nothing newer (refreshed=True below) do we render a freshness note.
+    age = _row_age_days(rows)
+    refreshed = False
+    if (not rows) or (age is not None and age > COT_STALE_DAYS):
+        log.warning(f"COT snapshot stale/empty (age={age}d, threshold {COT_STALE_DAYS}d) — "
+                    f"running refresh_all_cot() to self-heal")
+        try:
+            from cot_analysis import refresh_all_cot
+            refresh_all_cot()                      # live CFTC fetch + persist for every instrument
+            refreshed = True
+            rows = _load_latest_cot()
+            log.info(f"refresh_all_cot complete — latest snapshot now {_row_age_days(rows)}d old")
+        except Exception as e:
+            log.error(f"COT self-heal refresh failed: {e}")
+            _alert_failure("refresh_all_cot self-heal", str(e))
+
     if not rows:
-        msg = "COT report: cot_snapshot is empty — nothing to report."
+        msg = "COT report: cot_snapshot is empty even after a live refresh — nothing to report."
         log.warning(msg)
-        _alert_failure("cot_snapshot empty", msg)
+        _alert_failure("cot_snapshot empty after refresh", msg)
 
     rows = enrich_with_context(rows)   # adds price-trend market context (best-effort)
-    report = build_report(rows)
+    report = build_report(rows, refreshed=refreshed)
     log.info("Report built. Posting to Slack...")
     post_to_slack(report)
 
