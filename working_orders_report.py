@@ -21,6 +21,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.1.0   2026-06-19  Alex Hind   Current price + % from price + R:R on every WATCHING / Settled line (user 2026-06-19,
+#                                 New B #1/#2 + C #3): _levels_str adds "now <px> · entry X (+a%) · stop Y (+b%) ·
+#                                 target Z (+c%) · R:R". Live price via _live_price (yfinance fast_info -> last close, cached).
 # 1.0.0   2026-06-16  Alex Hind   Initial build (user 2026-06-16): daily pre-order report of the working_orders table
 #                                 to #arw-claude-orders (SLACK_ORDERS). Live PENDING/WATCHING + today's FILLED/CANCELLED/
 #                                 EXPIRED. --dry for a no-post local preview.
@@ -105,6 +108,56 @@ def fetch_today_changes() -> list:
         db.close()
 
 
+_PRICE_CACHE: dict = {}
+
+
+def _live_price(ticker: str):
+    """Current price for a working-order ticker (user 2026-06-19) — cached per run. Tries
+    yfinance fast_info, falls back to the last daily close (YAHOO_MAP-aware). None on failure."""
+    if ticker in _PRICE_CACHE:
+        return _PRICE_CACHE[ticker]
+    px = None
+    try:
+        import yfinance as yf
+        fi = yf.Ticker(ticker).fast_info
+        px = fi.get("lastPrice") if hasattr(fi, "get") else getattr(fi, "last_price", None)
+        px = float(px) if px else None
+    except Exception:
+        px = None
+    if not px:
+        try:
+            from price_action import _get_daily
+            df = _get_daily(ticker, days=5)
+            if df is not None and not df.empty:
+                px = float(df["Close"].iloc[-1])
+        except Exception:
+            px = None
+    _PRICE_CACHE[ticker] = px
+    return px
+
+
+def _levels_str(ticker, entry, stop, target) -> str:
+    """Shared 'now + entry/stop/target with % from price + R:R' line (user 2026-06-19, New B/C):
+    every working-order line shows the live price, each level's distance from it, and the R:R."""
+    from price_action import pct_from_current
+    cur = _live_price(ticker)
+
+    def _wp(lv):
+        p = pct_from_current(lv, cur)
+        return f" ({p})" if p else ""
+
+    rr_s = ""
+    try:
+        if entry and stop and target and (float(entry) - float(stop)) != 0:
+            rr = abs(float(target) - float(entry)) / abs(float(entry) - float(stop))
+            rr_s = f" · R:R {rr:.1f}:1"
+    except Exception:
+        rr_s = ""
+    now = f"now {_fmt(cur)} · " if cur else ""
+    return (f"    {now}entry {_fmt(entry)}{_wp(entry)} · stop {_fmt(stop)}{_wp(stop)} · "
+            f"target {_fmt(target)}{_wp(target)}{rr_s}")
+
+
 def _live_line(row) -> str:
     (status, ticker, direction, hvf_type, size, entry, stop, limit_lvl,
      session, placed_at, good_till, paper, _uid) = row
@@ -112,8 +165,8 @@ def _live_line(row) -> str:
     gtd = f" · GTD {_date(good_till)}" if good_till else ""
     sess = f" · {session}" if session else ""
     return (f"{_dir_emoji(direction)} *{ticker}* {(direction or '').upper()}{paper_tag}\n"
-            f"    entry {_fmt(entry)} · stop {_fmt(stop)} · target {_fmt(limit_lvl)} · "
-            f"size {_size(size)}{sess} · placed {_dt(placed_at)}{gtd}")
+            f"{_levels_str(ticker, entry, stop, limit_lvl)}\n"
+            f"    size {_size(size)}{sess} · placed {_dt(placed_at)}{gtd}")
 
 
 def _done_line(row) -> str:
@@ -124,7 +177,7 @@ def _done_line(row) -> str:
     when = _dt(filled_at if status == "FILLED" else updated_at)
     note = f" — {notes}" if notes else ""
     return (f"{icon} *{ticker}* {(direction or '').upper()} {status.lower()} at {when}{paper_tag}\n"
-            f"    entry {_fmt(entry)} · stop {_fmt(stop)} · target {_fmt(limit_lvl)}{note}")
+            f"{_levels_str(ticker, entry, stop, limit_lvl)}{(' — ' + notes) if notes else ''}")
 
 
 def _chunk(lines, limit=2900) -> list:
