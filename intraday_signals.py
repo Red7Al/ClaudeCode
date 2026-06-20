@@ -23,6 +23,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.21.0  2026-06-19  Alex Hind   Publication correctness (user 2026-06-19): changed-detection now keys on published LEVELS
+#                                 (entry/stop/target) not confirmations — _levels_fp/_parse_levels_fp/_levels_changes_line
+#                                 replace _draft_confirmations_fp. A republished seen-before instrument is tagged "👀 Seen
+#                                 before" with the exact level delta (Current #3). Per-market header shows "top N of M
+#                                 candidates" (However #3). When nothing is new/changed, the top set is re-shown under a
+#                                 "Shared again as there is nothing new to show" banner instead of an empty channel (However #4).
 # 1.20.0  2026-06-19  Alex Hind   Quality gate (user 2026-06-19): _generate_x_drafts drops setups below MIN_PUBLISH_QUALITY (70)
 #                                 from the X drafts / live-X (dossier collect mode exempt). Draft weight order is now
 #                                 R:R-first (price_action.hvf_weight 1.18.0).
@@ -1341,11 +1347,35 @@ _X_DRAFT_STATE_SQL = ("create table if not exists x_draft_state "
                       "(ticker text primary key, fingerprint text, posted_at timestamptz default now())")
 
 
-def _draft_confirmations_fp(direction, signal, justifications) -> str:
-    import hashlib, re
-    labels = sorted(re.sub(r"[\d.,%]+", "", j[1]).strip() for j in justifications)
-    basis = "|".join([(direction or ""), (signal or "")] + labels)
-    return hashlib.md5(basis.encode()).hexdigest()[:16]
+def _levels_fp(h3, stop, target) -> str:
+    """Levels fingerprint for changed-detection (user 2026-06-19): republish a
+    seen-before instrument ONLY when a published LEVEL (entry/stop/target) moves.
+    Stored verbatim (not hashed) so the previous levels can be parsed back to show
+    the delta. '%g' matches the precision the tweet/card display, so sub-display
+    noise never triggers a republish. Superseded the confirmations fingerprint."""
+    def _f(v):
+        return f"{v:g}" if isinstance(v, (int, float)) else "—"
+    return f"E{_f(h3)}|S{_f(stop)}|T{_f(target)}"
+
+
+def _parse_levels_fp(fp: str) -> dict:
+    """Parse a _levels_fp string back to {'E':.., 'S':.., 'T':..} display strings."""
+    out = {}
+    for part in (fp or "").split("|"):
+        if part and part[0] in "EST":
+            out[part[0]] = part[1:]
+    return out
+
+
+def _levels_changes_line(prev_fp: str, h3, stop, target) -> str:
+    """Human 'what moved since last publication' line (user 2026-06-19) for a
+    seen-before instrument being republished because a level changed."""
+    prev = _parse_levels_fp(prev_fp)
+    cur  = _parse_levels_fp(_levels_fp(h3, stop, target))
+    labels = {"E": "Entry", "S": "Stop", "T": "Target"}
+    chips = [f"{labels[k]} {prev.get(k, '—')} → {cur.get(k, '—')}"
+             for k in ("E", "S", "T") if prev.get(k, "—") != cur.get(k, "—")]
+    return "  ·  ".join(chips)
 
 
 def _draft_fp_last(ticker: str) -> str:
@@ -1433,10 +1463,15 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
     # Per-market draft numbering (user 2026-06-17): each market's instruments number from 1
     # (reset when the market changes), with the market named + numbered "(k of K)" in the title.
     from price_action import market_short
-    _market_count = {m: len(rows) for m, rows in _groups}            # per-market draft size (denominator)
     _market_no    = {m: i + 1 for i, (m, _) in enumerate(_groups)}   # market position (k of K)
     _n_markets    = len(_groups)
     _total   = len(_ordered)
+    # However #3 (user 2026-06-19): the per-market header shows "top N of M candidates",
+    # where M is the FULL candidate count for that market BEFORE the X_DRAFT_PER_MARKET cap.
+    _market_total: dict = {}
+    for _r in tradeable:
+        _mk = _r.get("index") or "?"
+        _market_total[_mk] = _market_total.get(_mk, 0) + 1
 
     # ── Batch fetch latest signal context per ticker from signal_log ──────────────────────────────────────────────────
     # Enriches tweet with options flow / director buy confirmation when available.
@@ -1484,11 +1519,50 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
     # "top 10 by market"): within each market TRIGGERED first, then quality desc, then R:R desc;
     # markets in MARKET_ORDER. Each draft carries its global rank (below) and each market group
     # gets a header, so the channel reads as grouped per-market sections.
+    # ── Changed-detection on published LEVELS (user 2026-06-19, Current #3) ───────────────────────────────────────────
+    # changed_only (morning report): republish a seen-before instrument ONLY when a level
+    # (entry/stop/target) moved since its last publication; show the delta + a "seen before"
+    # tag. If NOTHING is new or changed, fall back to re-showing the top set with a
+    # "nothing new" banner (However #4) rather than posting an empty channel.
+    _change_state: dict = {}   # ticker -> (seen_before, changed, prev_fp, cur_fp)
+    for r in _ordered:
+        _t   = r.get("ticker", "")
+        _cfp = _levels_fp(r.get("h3_level"), r.get("stop_level"), r.get("target"))
+        _prev = _draft_fp_last(_t) if changed_only else ""
+        _change_state[_t] = (bool(_prev), (_prev != _cfp), _prev, _cfp)
+    _nothing_new = False
+    if changed_only:
+        _nothing_new = not any((not _change_state[r.get("ticker", "")][0])
+                               or _change_state[r.get("ticker", "")][1] for r in _ordered)
+    # Rows we will actually post: in changed mode, only new/changed instruments — unless
+    # nothing is new, in which case re-show everything (the top set) with the banner.
+    if changed_only and not _nothing_new:
+        _publish = [r for r in _ordered
+                    if (not _change_state[r.get("ticker", "")][0])
+                    or _change_state[r.get("ticker", "")][1]]
+    else:
+        _publish = list(_ordered)
+    # Numerator of "top N of M candidates" — what is actually being shown, per market.
+    _shown_count: dict = {}
+    for r in _publish:
+        _mk = r.get("index") or "?"
+        _shown_count[_mk] = _shown_count.get(_mk, 0) + 1
+    # One global "nothing new" banner (However #4) before any market section.
+    if post and _nothing_new and slack_url:
+        try:
+            requests.post(slack_url, json={"blocks": [
+                {"type": "divider"},
+                {"type": "header", "text": {"type": "plain_text",
+                                            "text": "🔁 Shared again as there is nothing new to show"}},
+            ]}, timeout=10)
+        except Exception as e:
+            log.debug(f"X draft nothing-new banner post failed: {e}")
+
     _last_market = None   # emit one section header per market when posting
     _mkt_idx = 0          # per-market instrument counter (resets when the market changes)
     _collected: list = []   # populated only when collect=True (dossier mode)
     _posted: list = []      # instruments actually posted (returned; morning report picks top-2/market for live X)
-    for _rank, r in enumerate(_ordered, 1):
+    for _rank, r in enumerate(_publish, 1):
         ticker    = r.get("ticker", "")
         direction = r.get("hvf_type", "BULLISH")
         signal    = r.get("hvf_signal", "")
@@ -1608,13 +1682,12 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
             idx = 0 if use_full else 1
             return "  ·  ".join(j[idx] for j in justifications[:n])
 
-        # Changed-only (user 2026-06-17): skip this instrument unless its CONFIRMATIONS changed
-        # since the last draft. Only applied when changed_only=True (the morning report); the HVF
-        # watch and the dossier are unaffected.
-        _fp = _draft_confirmations_fp(direction, signal, justifications)
-        if changed_only and _draft_fp_last(ticker) == _fp:
-            log.info(f"X draft: {ticker} confirmations unchanged — skipped")
-            continue
+        # Changed-detection (user 2026-06-19, Current #3): the _publish set was already
+        # filtered to new/changed instruments above. Here we just pull this ticker's state
+        # to (a) tag a republished instrument "seen before" and (b) show what level moved.
+        _seen, _changed, _prev_fp, _fp = _change_state.get(
+            ticker, (False, True, "", _levels_fp(h3, stop, target)))
+        _changes_line = _levels_changes_line(_prev_fp, h3, stop, target) if (_seen and _changed) else ""
 
         # ── Tweet text — try progressively shorter versions to fit 280 chars ──
         # Lead with the rotated HOOK, then the rotated description (user 2026-06-13).
@@ -1716,7 +1789,7 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
                     {"type": "divider"},
                     {"type": "header", "text": {"type": "plain_text",
                                                 "text": f"📊 {market_short(_mkt)} ({_market_no.get(_mkt, 1)} of {_n_markets}) "
-                                                        f"— top {X_DRAFT_PER_MARKET} HVF"}},
+                                                        f"— top {_shown_count.get(_mkt, 0)} of {_market_total.get(_mkt, 0)} candidates"}},
                 ]}, timeout=10)
             except Exception as e:
                 log.debug(f"X draft market header post failed for {_mkt}: {e}")
@@ -1724,12 +1797,13 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
 
         # ── Post to SLACK_TWITTER channel ─────────────────────────────────────────────────────────────────────────────
         dir_label = "Bullish" if direction == "BULLISH" else "Bearish"
+        _seen_tag = "  👀 Seen before" if _seen else ""
         blocks = [
             {"type": "header",
              "text": {"type": "plain_text",
-                      "text": f"X Draft {_mkt_idx}/{_market_count.get(_mkt, _mkt_idx)} · "
+                      "text": f"X Draft {_mkt_idx}/{_shown_count.get(_mkt, _mkt_idx)} · "
                               f"{market_short(_mkt)} ({_market_no.get(_mkt, 1)} of {_n_markets}) — "
-                              f"{fmt(ticker)} {dir_label} · {sig_desc.title()}"}},
+                              f"{fmt(ticker)} {dir_label} · {sig_desc.title()}{_seen_tag}"}},
             {"type": "section",
              "text": {"type": "mrkdwn",
                       "text": f"*Tweet ({len(tweet)} chars):*\n```{tweet}```"}},
@@ -1742,6 +1816,12 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         if caution:
             blocks.insert(2, {"type": "section",
                               "text": {"type": "mrkdwn", "text": caution}})
+        # Seen-before delta (user 2026-06-19, Current #3): when a previously-published
+        # instrument is republished because a level moved, show exactly what moved.
+        if _changes_line:
+            blocks.insert(2, {"type": "section",
+                              "text": {"type": "mrkdwn",
+                                       "text": f"👀 *Seen before* — changed since last publication:  {_changes_line}"}})
         bot_token  = os.environ.get("SLACK_BOT_TOKEN", "")
         channel_id = os.environ.get("SLACK_TWITTER_CHANNEL_ID", "")
         if chart_b64 and not (bot_token and channel_id):
