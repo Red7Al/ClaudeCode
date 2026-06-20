@@ -21,6 +21,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.1.1   2026-06-19  Alex Hind   Code-review fix: _done_line use the `note` var it already builds (was recomputing the
+#                                 same string inline; dead variable). No behaviour change.
 # 1.1.0   2026-06-19  Alex Hind   Current price + % from price + R:R on every WATCHING / Settled line (user 2026-06-19,
 #                                 New B #1/#2 + C #3): _levels_str adds "now <px> · entry X (+a%) · stop Y (+b%) ·
 #                                 target Z (+c%) · R:R". Live price via _live_price (yfinance fast_info -> last close, cached).
@@ -177,7 +179,7 @@ def _done_line(row) -> str:
     when = _dt(filled_at if status == "FILLED" else updated_at)
     note = f" — {notes}" if notes else ""
     return (f"{icon} *{ticker}* {(direction or '').upper()} {status.lower()} at {when}{paper_tag}\n"
-            f"{_levels_str(ticker, entry, stop, limit_lvl)}{(' — ' + notes) if notes else ''}")
+            f"{_levels_str(ticker, entry, stop, limit_lvl)}{note}")
 
 
 def _chunk(lines, limit=2900) -> list:

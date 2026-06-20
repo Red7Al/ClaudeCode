@@ -22,6 +22,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.2.0   2026-06-19  Alex Hind   Code-review fix: don't hold the session-pooler DB connection open across the multi-minute
+#                                 self-heal scan (it can drop). Close before run_session_scan, ALWAYS reopen after (even on
+#                                 scan failure); the re-read + trade/position queries pick up the fresh handle by late binding.
 # 1.1.0   2026-06-19  Alex Hind   SELF-HEAL empty scan window (user 2026-06-19): instead of reporting "UK_OPEN may not
 #                                 have run", run_session_scan("UK_OPEN") is invoked (scan-only — writes signal_log, never
 #                                 executes trades) and the window re-read (extended to a fresh now since the scan takes
@@ -144,16 +147,21 @@ def main():
     # Skipped for fixed replay windows (replaying a past window must not trigger a fresh scan).
     if not signal_rows and not (start_env and end_env):
         log.warning("UK brief: no signals in window — running UK_OPEN scan to self-heal (scan only, no trades)")
+        # The scan takes minutes — don't hold a session-pooler connection open across it (it can
+        # drop). Close before, ALWAYS reopen after (even if the scan raises), so the re-read and
+        # the trade/position queries below get a live handle. They use `db` by late binding.
+        db.close()
         try:
             from signals import run_session_scan
             run_session_scan("UK_OPEN")
-            # The scan takes minutes, so fresh rows carry a session_time AFTER the original
-            # `until` — extend the window to a fresh now so the re-read picks them up.
-            until_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-            signal_rows = _load_signal_rows(until_ts)
-            log.info(f"UK brief self-heal: scan complete, {len(signal_rows)} signal(s) now in window")
         except Exception as e:
             log.error(f"UK brief self-heal scan failed: {e}")
+        db = get_db()
+        # Fresh rows carry a session_time AFTER the original `until` — extend the window to a
+        # fresh now so the re-read picks them up.
+        until_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        signal_rows = _load_signal_rows(until_ts)
+        log.info(f"UK brief self-heal: {len(signal_rows)} signal(s) in window after scan")
 
     # ── Trades opened in window ───────────────────────────────────────────────────────────────────────────────────────
     trade_rows = db.run(
