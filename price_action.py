@@ -66,6 +66,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.21.0  2026-06-19  Alex Hind   analyse_price_action now returns current_price (user 2026-06-19) so consumers (e.g.
+#                                 social_monitor's mention line) can show "% from current price" without a second fetch.
 # 1.20.0  2026-06-19  Alex Hind   pct_from_current() canonical helper (user 2026-06-19): signed "% from current price" for a
 #                                 level, so every report printing entry/stop/target next to the live price uses one format.
 # 1.19.0  2026-06-19  Alex Hind   D220 -> D240 (user 2026-06-19, "global"): the long-term daily scan is now 240 bars,
@@ -2277,6 +2279,9 @@ def analyse_price_action(ticker: str) -> dict:
         # structurally-untradeable funnel silently (stop < TIGHT_STOP_MIN_PCT of price).
         "hvf_tight_stop_intraday": hvf.get("tight_stop_intraday", False),
         "hvf_stop_pct":            hvf.get("stop_pct"),
+        # Live price (user 2026-06-19) so consumers can show "% from current price"
+        # (e.g. social_monitor's mention line) without a second fetch.
+        "current_price":     hvf.get("current_price"),
     }
 
     log.info(

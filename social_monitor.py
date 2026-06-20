@@ -30,6 +30,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.7.0   2026-06-19  Alex Hind   X-mentions line now shows R:R + entry % from the live price when an HVF setup exists
+#                                 (user 2026-06-19), via price_action.pct_from_current. (CONFIRM_LONG dossier read already
+#                                 carries full % + R:R through _hvf_summary.)
 # 1.6.0   2026-06-19  Alex Hind   Add 6 trusted accounts (user 2026-06-19): EchoAnalysis, VJNCapital, JPATrades,
 #                                 DeepValueBagger, DefiWimar, TheStockWhale.
 # 1.5.0   2026-06-16  Alex Hind   CONFIRM_LONG mention → dossier read to #arw-claude-signals (user 2026-06-16): when a
@@ -412,17 +415,29 @@ def alert_new_picks(new_picks: list):
         company  = get_company_name(ticker)
         label    = f"{ticker} ({company})" if company else ticker
 
+        rr = None
+        h3 = cur = None
         try:
             from price_action import analyse_price_action
             pa      = analyse_price_action(ticker)
             verdict = pa.get("verdict", "WAIT")
             score   = pa.get("pa_score", 0)
             trend   = pa.get("trend_structure", "—")
+            rr      = pa.get("hvf_risk_reward")
+            h3      = pa.get("hvf_h3_level")
+            cur     = pa.get("current_price")
         except Exception:
             verdict, score, trend = "WAIT", 0, "—"
 
         emoji  = "🟢" if verdict == "CONFIRM_LONG" else ("🔴" if verdict == "CONFIRM_SHORT" else "⏸")
         pa_str = f"{emoji} {verdict} ({score:+.0f}) | {trend}"
+        # R:R + entry distance from the live price when an HVF setup exists (user 2026-06-19).
+        if isinstance(rr, (int, float)) and rr:
+            pa_str += f" | R:R {rr:.1f}:1"
+        from price_action import pct_from_current
+        _ep = pct_from_current(h3, cur)
+        if _ep:
+            pa_str += f" | entry {_ep} from price"
         if verdict == "CONFIRM_LONG":
             confirm_longs.append((ticker, company or ticker))
 
