@@ -30,6 +30,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.9.0   2026-06-19  Alex Hind   Large single holder made clear (user 2026-06-19): fundamentals() fetches the top
+#                                 institutional holder + %; build_report calls it out when >=LARGE_HOLDER_PCT (10%),
+#                                 "dominant/controlling-sized" at >=20% (e.g. a Berkshire-style stake). Flows into the
+#                                 dossier narrative too (which reuses build_report).
 # 1.8.0   2026-06-19  Alex Hind   _chart_story now states the live price + % distance to entry/target (user 2026-06-19),
 #                                 in the same plain-English style, via price_action.pct_from_current.
 # 1.7.0   2026-06-19  Alex Hind   _today_top selects risk_reward and sorts via hvf_weight so the long-report ordering is
@@ -125,6 +129,11 @@ def _yearly_growth(vals_new_first):
 # Sector-aware fundamentals (yfinance)
 # ----------------------------------------------------------------------------------------------------------------------
 
+# A single holder above this % is surfaced as a notable concentrated stake (user 2026-06-19);
+# >=20% is called out as "dominant / controlling-sized" (e.g. a Berkshire-style position).
+LARGE_HOLDER_PCT = 10.0
+
+
 def fundamentals(ticker: str) -> dict:
     """Sector-aware fundamentals. Missing or sector-inappropriate factors come back None."""
     import yfinance as yf
@@ -169,6 +178,28 @@ def fundamentals(ticker: str) -> dict:
     # Insider stake as a £/$ VALUE (user 2026-06-14: a % alone misleads on a big-cap —
     # 0.1% of a giant market cap is still a large sum).
     f["insider_value"] = (ins * f["mcap"]) if (f.get("insider_pct") and f.get("mcap")) else None
+
+    # Largest single holder (user 2026-06-19): a big concentrated stake (e.g. Berkshire
+    # owning >20%) is materially relevant and must be made clear. Surface the top
+    # institutional holder + its %. yfinance column names vary across versions, so resolve
+    # them defensively; fraction vs percent is normalised. Best-effort — never blocks.
+    f["top_holder"], f["top_holder_pct"] = None, None
+    try:
+        inst = t.institutional_holders
+        if inst is not None and not inst.empty:
+            cols = {str(c).lower(): c for c in inst.columns}
+            hcol = next((cols[k] for k in cols if k in ("holder", "holders")), None)
+            pcol = next((cols[k] for k in cols
+                         if k in ("pctheld", "% out", "pct_held") or "pct" in k or "% out" in k), None)
+            if hcol is not None and pcol is not None:
+                top = inst.iloc[0]
+                pct = float(top[pcol])
+                if pct <= 1.0:          # some versions report a fraction (0.21), others a percent (21.0)
+                    pct *= 100
+                f["top_holder"] = str(top[hcol]).strip()
+                f["top_holder_pct"] = pct
+    except Exception:
+        pass
 
     if not f["financial"]:
         try:
@@ -410,6 +441,12 @@ def build_report(r: dict, change_note: str = None) -> tuple:
         s.append(_pick(_P_INSIDER, tk, "ins").format(value=_money(f["insider_value"], gbp), pct=f"{f['insider_pct']:.1f}"))
     elif f.get("insider_pct") is not None:
         s.append(f"Company insiders own about {f['insider_pct']:.1f}% of the shares.")
+    # Large single holder made clear (user 2026-06-19): a concentrated stake (e.g. Berkshire
+    # >20%) is materially relevant. Flag the top holder when notable; "dominant" at >=20%.
+    thp = f.get("top_holder_pct")
+    if f.get("top_holder") and isinstance(thp, (int, float)) and thp >= LARGE_HOLDER_PCT:
+        emph = " — a dominant, controlling-sized stake" if thp >= 20 else " — a notably concentrated stake"
+        s.append(f"One holder stands out: {f['top_holder']} owns about {thp:.1f}% of the company{emph}.")
 
     fund  = " ".join(s) if s else f"Limited fundamental data available for {name}."
     chart = _chart_story(r, name, gbp)                       # public-safe "why the setup matters"
