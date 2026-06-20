@@ -18,6 +18,7 @@
 # IMPORTANT — this NEVER posts or sends anything. It writes artifacts to a local folder for review / manual use:
 #       dossier\<TICKER>_<UTC-stamp>\
 #           summary.txt      — HVF analysis + manifest (also printed to console)
+#           narrative.txt    — plain-English 'Rolls-Royce style' 4-5 paragraph write-up of the setup
 #           tweet.txt        — the X tweet text (copy-paste ready)
 #           card.png         — the X post-card image
 #           slack.txt        — the X-draft Slack block layout (tweet + card reference)
@@ -37,6 +38,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.9.0   2026-06-19  Alex Hind   Plain-English 'Rolls-Royce style' narrative report (user 2026-06-19): _narrative_report
+#                                 writes a 4-5 paragraph write-up (headline / why+quality via quality_report.build_report /
+#                                 funnel+5 rules / the trade with live price+distances+R:R / bottom line) to narrative.txt
+#                                 and into summary.txt.
 # 1.8.0   2026-06-19  Alex Hind   FIVE HVF rules + thresholds with per-instrument status (user 2026-06-19): _hvf_rules_block
 #                                 shows prior-trend / lower-highs / higher-lows / >=30% convergence / <=60-bar freshness +
 #                                 the R:R>=HVF_MIN_RR tradeable gate, each marked [OK]/[--] with the measured value.
@@ -205,6 +210,98 @@ def _hvf_summary(ticker: str, name: str, r: dict) -> str:
     return "\n".join(lines)
 
 
+def _narrative_report(ticker: str, name: str, r: dict) -> str:
+    """Plain-English 'Rolls-Royce style' write-up of the setup (user 2026-06-19) — 4-5 short
+    paragraphs the operator can read top-to-bottom: (1) headline, (2) the why + quality angle
+    (reuses quality_report.build_report, the single source of that prose), (3) the funnel and
+    which of the five rules it satisfies, (4) the trade itself with live price + distances +
+    R:R, (5) the bottom line — what confirms it and what invalidates it. ASCII only."""
+    from config import HVF_MIN_RR
+    try:
+        from price_action import pct_from_current
+    except Exception:
+        pct_from_current = lambda a, b: ""
+
+    if not r.get("hvf_type"):
+        return (f"{name} ({ticker}) - no qualifying Hunt Volatility Funnel on any timeframe right "
+                f"now, so there is no setup to write up. The scan keeps watching for a funnel to form.")
+
+    def _g(v):
+        return f"{v:g}" if isinstance(v, (int, float)) else "-"
+
+    up      = r.get("hvf_type") == "BULLISH"
+    side    = "long" if up else "short"
+    sigword = {"TRIGGERED": "has triggered", "READY": "is armed and ready",
+               "DEVELOPING": "is still developing"}.get(r.get("hvf_signal"), "is forming")
+    cur     = r.get("current_price")
+    entry, stop, target = r.get("h3_level"), r.get("stop_level"), r.get("target")
+    rr      = r.get("risk_reward")
+    rr_s    = f"{rr:.1f}:1" if isinstance(rr, (int, float)) and rr else "-"
+    conv    = r.get("convergence")
+    bsh     = r.get("bars_since_h3")
+    e_p, s_p, t_p = (pct_from_current(entry, cur), pct_from_current(stop, cur),
+                     pct_from_current(target, cur))
+
+    paras = []
+
+    # 1 — headline
+    sector = ""
+    try:
+        from intraday_signals import _yf_info
+        sector = (_yf_info(ticker).get("sector") or "").strip()
+    except Exception:
+        pass
+    sct = f" {sector}" if sector else ""
+    paras.append(
+        f"{name} ({ticker}) is a{sct} name where a volatility-funnel {side} setup {sigword}. "
+        f"It trades around {_g(cur)} today, with the trade entry at {_g(entry)} "
+        f"({e_p or 'n/a'} from here)."
+    )
+
+    # 2 — the why + quality angle (single source of this prose)
+    try:
+        from quality_report import build_report
+        _title, body = build_report(r)
+        if body:
+            paras.append(body.strip())
+    except Exception as e:
+        log.debug(f"narrative: quality_report.build_report failed for {ticker}: {e}")
+
+    # 3 — the funnel and the five rules
+    conv_txt = (f"a funnel that has contracted to {(1 - conv) * 100:.0f}% tighter than where it began"
+                if isinstance(conv, (int, float)) else "a contracting funnel")
+    fresh_txt = (f"the breakout pivot formed just {bsh} bars ago, so it is current"
+                 if isinstance(bsh, (int, float)) else "a recent breakout pivot")
+    paras.append(
+        f"Structurally this is {conv_txt}: a series of {'lower highs pressing on rising lows' if up else 'higher lows capped by falling highs'} "
+        f"that squeezes price toward a decision point. It satisfies all five funnel rules - a confirmed prior "
+        f"trend, the converging highs and lows, the >=30% contraction, and {fresh_txt}. The detailed rule-by-rule "
+        f"status is in the HVF rules block above."
+    )
+
+    # 4 — the trade
+    paras.append(
+        f"The trade: enter {side} on a break to {_g(entry)}, protective stop at {_g(stop)} "
+        f"({s_p or 'n/a'} from the current price), first target {_g(target)} ({t_p or 'n/a'} away). "
+        f"That is about {rr_s} reward-to-risk"
+        + (f", comfortably past the {HVF_MIN_RR:g}:1 floor the system needs to act"
+           if isinstance(rr, (int, float)) and rr >= HVF_MIN_RR
+           else f", which is below the {HVF_MIN_RR:g}:1 floor, so it stays on the watch list rather than trading")
+        + "."
+    )
+
+    # 5 — the bottom line
+    confirm = f"a clean break and close beyond {_g(entry)}"
+    invalid = f"price reclaims {_g(stop)}"
+    paras.append(
+        f"Bottom line: the setup is confirmed by {confirm}; it is invalidated if {invalid}. "
+        f"Until one of those happens it is a {side} bias, not a position - the funnel marks where the "
+        f"odds tip, not a guarantee."
+    )
+
+    return "\n\n".join(paras)
+
+
 def _hvf_rules_block(r: dict) -> str:
     """The FIVE Hunt Volatility Funnel rules + their thresholds, with this instrument's
     status (user 2026-06-19). When a funnel is detected every rule passed by construction,
@@ -290,7 +387,13 @@ def build_dossier(ticker: str) -> str:
     os.makedirs(out_dir, exist_ok=True)
 
     summary = _hvf_summary(ticker, name, r)
-    manifest = [summary, "", _hvf_rules_block(r), "", _technical_block(ticker), ""]
+    # Plain-English 'Rolls-Royce style' narrative (user 2026-06-19) — also written to its own file.
+    narrative = _narrative_report(ticker, name, r)
+    with open(os.path.join(out_dir, "narrative.txt"), "w", encoding="utf-8") as f:
+        f.write(narrative + "\n")
+    manifest = [summary, "",
+                "PLAIN-ENGLISH REPORT (-> narrative.txt):", narrative, "",
+                _hvf_rules_block(r), "", _technical_block(ticker), ""]
 
     has_pattern = bool(r.get("hvf_type"))
     ctx = _latest_signal_log(ticker)
