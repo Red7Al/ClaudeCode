@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.20.0  2026-06-19  Alex Hind   Quality gate (user 2026-06-19): _generate_x_drafts drops setups below MIN_PUBLISH_QUALITY (70)
+#                                 from the X drafts / live-X (dossier collect mode exempt). Draft weight order is now
+#                                 R:R-first (price_action.hvf_weight 1.18.0).
 # 1.19.0  2026-06-19  Alex Hind   FIX wrong instrument name (user 2026-06-19: AXP tweeted as "AXP Energy Limited"): _resolve_name
 #                                 now prefers yfinance (the exact scanned Yahoo ticker) over notify's epic_lookup, which can
 #                                 carry a wrong-instrument name. epic_lookup is the fallback only.
@@ -211,7 +214,7 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timezone
 
-from config import YAHOO_MAP, DEFAULT_TARGET_RR, PER_MARKET_TOP_N, MARKET_ORDER, X_DRAFT_PER_MARKET
+from config import YAHOO_MAP, DEFAULT_TARGET_RR, PER_MARKET_TOP_N, MARKET_ORDER, X_DRAFT_PER_MARKET, MIN_PUBLISH_QUALITY
 
 log = logging.getLogger("intraday_signals")
 
@@ -1408,8 +1411,14 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         log.warning("SLACK_TWITTER not set — X draft reports skipped")
         return
 
+    # Quality gate (user 2026-06-19): don't PUBLISH sub-threshold setups in the X drafts / live-X.
+    # The on-demand dossier (collect mode) is exempt — it renders whatever ticker is requested.
+    if not collect:
+        tradeable = [r for r in tradeable
+                     if (r.get("hvf_quality") or r.get("pattern_quality") or 0) >= MIN_PUBLISH_QUALITY]
+
     # ── Per-market draft selection ───────────────────────────────────────────────────────────────────────────────────
-    # Weight order within each market (TRIGGERED first, then quality desc, then R:R desc),
+    # Weight order within each market (R:R-first now, then signal, then quality — hvf_weight),
     # grouped by market in MARKET_ORDER, capped at X_DRAFT_PER_MARKET each (user 2026-06-17:
     # X drafts are top-5/market, separate from the analytical report's PER_MARKET_TOP_N). Drafts
     # post in this order with a per-market header so the channel reads as grouped sections.

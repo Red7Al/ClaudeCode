@@ -66,6 +66,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.18.0  2026-06-19  Alex Hind   hvf_weight: R:R desc is now the PRIMARY sort (user 2026-06-19), then signal
+#                                 (TRIGGERED>READY>DEVELOPING), then quality. Was signal->quality->R:R. Callers must pass
+#                                 risk_reward for it to take effect.
 # 1.17.0  2026-06-16  Alex Hind   group_by_market() + market_short() — CANONICAL per-market grouping for HVF outputs
 #                                 (user 2026-06-16: "top 10 by market"). Groups already-weight-sorted rows by market,
 #                                 caps to config.PER_MARKET_TOP_N each, orders by config.MARKET_ORDER. Single source of
@@ -1530,18 +1533,20 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
 
 def hvf_weight(signal: str, quality, risk_reward=0.0) -> tuple:
     """
-    CANONICAL weight-order sort key (best first) for HVF setups — TRIGGERED >
-    READY > DEVELOPING, then pattern quality desc, then R:R desc. Use directly
-    with `sorted(..., key=...)` (ascending). Single source of truth for the
-    "all lists in weight order" rule (user 2026-06-11); consolidated from 6
-    duplicated sort keys in the code-review 2026-06-13.
+    CANONICAL weight-order sort key (best first) for HVF setups. Use directly with
+    `sorted(..., key=...)` (ascending). Single source of truth for the "all lists in weight
+    order" rule.
+
+    Order (user 2026-06-19): **R:R descending is the PRIMARY focus**, then TRIGGERED > READY >
+    DEVELOPING, then pattern quality desc. (Was signal -> quality -> R:R until 2026-06-19.)
+    NOTE: callers MUST pass risk_reward for the new primary sort to take effect — a 2-arg call
+    leaves R:R=0 and sorts only by signal/quality.
 
     Call with the raw fields so it works for both dict results and DB-row tuples:
         sorted(results, key=lambda r: hvf_weight(r["hvf_signal"], r["hvf_quality"], r["risk_reward"]))
-        rows.sort(key=lambda r: hvf_weight(r[1], r[2]))          # (ticker, signal, quality)
     """
     rank = {"TRIGGERED": 0, "READY": 1, "DEVELOPING": 2}.get(signal, 3)
-    return (rank, -(quality or 0), -(risk_reward or 0))
+    return (-(risk_reward or 0), rank, -(quality or 0))
 
 
 def market_short(market_name) -> str:

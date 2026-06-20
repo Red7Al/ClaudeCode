@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.11.0  2026-06-19  Alex Hind   "before 8am" (user 2026-06-19): HVF Daily Report moved to 05:30 UTC Mon-SAT (was 07:00
+#                                 Mon-Fri) so all morning publications (report + X drafts + live-X) finish before 07:00
+#                                 UTC = 8am BST. Removed the separate 09:00 Sat "HVF Weekend Report" (now covered Mon-Sat).
 # 1.10.0  2026-06-16  Alex Hind   Add --prune mode (delete cron-job.org jobs no longer in JOBS, scoped to THIS repo's
 #                                 workflow dispatches — needs only CRONJOB_API_KEY). Removed "HVF Quality Reports" +
 #                                 "HVF Quality Reports Wknd": the long report now rides with every publication
@@ -101,7 +104,7 @@ JOBS = [
     ("AUS Monitor",          "*/5 0-6 * * 1-5", "trading-aus-monitor.yml"),
     ("Commodity Monitor AM", "*/10 4-8 * * 1-5", "trading-commodity-monitor.yml"),
     # ── Pre-UK ────────────────────────────────────────────────────────────────────────────────────────────────────────
-    ("HVF Daily Report",    "0 7 * * 1-5",    "trading-hvf-report.yml"),
+    ("HVF Daily Report",    "30 5 * * 1-6",   "trading-hvf-report.yml"),  # 05:30 UTC Mon-Sat -> all publications (report + X drafts + live-X) done before 07:00 UTC (8am BST) (user 2026-06-19)
     # "HVF Quality Reports" removed 2026-06-16: the long quality report now rides with EVERY
     # publication (intraday_signals._generate_x_drafts -> quality_report.publish_long_report_for),
     # so a separate quality-only job would double-post AND is an incomplete publication on its own
@@ -127,7 +130,8 @@ JOBS = [
     ("Daily Diagnostics",    "30 7 * * 1-5",     "trading-diagnostics.yml"),  # proactive daily health check -> #alerts
     # ── Weekend ───────────────────────────────────────────────────────────────────────────────────────────────────────
     ("Weekend Review",      "0 9 * * 6",      "trading-weekend-review.yml"),
-    ("HVF Weekend Report",  "0 9 * * 6",      "trading-hvf-report.yml"),
+    # "HVF Weekend Report" removed 2026-06-19 — the HVF Daily Report now runs Mon-SAT at 05:30 UTC
+    # (covers Saturday), so a separate 09:00 Sat report is redundant.
     # "HVF Quality Reports Wknd" removed 2026-06-16 — long report now rides with publications (see above).
     ("COT Report",          "0 10 * * 6",     "trading-cot-report.yml"),  # after weekend review refreshes COT (09:00)
     # ── Sunday commodity pre-open (created on the new cron-job.org account 2026-06-07) ──

@@ -676,15 +676,15 @@ def _today_top(per_market: int) -> list:
     db = get_db()
     try:
         rows = db.run(
-            """select distinct on (ticker) ticker, hvf_signal, pattern_quality, index_name
+            """select distinct on (ticker) ticker, hvf_signal, pattern_quality, index_name, risk_reward
                  from hvf_scan_log
                 where scan_time::date = current_date and hvf_signal in ('READY', 'TRIGGERED')
                 order by ticker, recorded_at desc""")
     finally:
         db.close()
-    from price_action import hvf_weight, group_by_market   # row = (ticker, hvf_signal, pattern_quality, index_name)
+    from price_action import hvf_weight, group_by_market   # row = (ticker, signal, quality, index, risk_reward)
     from config import MARKET_ORDER
-    rows.sort(key=lambda r: hvf_weight(r[1], r[2]))
+    rows.sort(key=lambda r: hvf_weight(r[1], r[2], r[4]))   # R:R-first (user 2026-06-19)
     groups = group_by_market(rows, n=per_market, market_of=lambda r: r[3], market_order=MARKET_ORDER)
     return [(r[0], r[3]) for _, mrows in groups for r in mrows]
 

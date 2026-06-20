@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.16.0  2026-06-19  Alex Hind   MIN_PUBLISH_QUALITY=70 (user 2026-06-19): instruments below 70/100 pattern quality are not
+#                                 published in the X drafts / live-X (analytical report + dossiers unaffected).
 # 1.15.0  2026-06-17  Alex Hind   X-draft caps split from the analytical report (user 2026-06-17): X_DRAFT_PER_MARKET=5
 #                                 (drafts shown per market, changed-only) + X_PUBLISH_TOP_N=2 (top-2/market of the changed
 #                                 set auto-published LIVE to X by the morning report). PER_MARKET_TOP_N (=10) now caps only
@@ -589,6 +591,10 @@ PER_MARKET_TOP_N = 10
 #                        to X (@SqueezeSignals) by the morning report (run_hvf_report).
 X_DRAFT_PER_MARKET = 5
 X_PUBLISH_TOP_N    = 2
+
+# Minimum pattern quality to PUBLISH (user 2026-06-19: don't show instruments below this in the
+# X drafts / live-X). The analytical HVF report and on-demand dossiers are NOT filtered by it.
+MIN_PUBLISH_QUALITY = 70
 
 # Canonical market order for the grouped reports (matches run_hvf_report.UNIVERSE key order).
 # Markets not listed fall to the end, alphabetically (see price_action.group_by_market).
