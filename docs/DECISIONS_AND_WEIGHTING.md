@@ -15,8 +15,17 @@ decision. Generated from the live code (`price_action.hvf_weight`, `config.py`,
    *publishable to X*.
 5. **Order** every candidate by the single weighting key below.
 6. **Group per market** and show the top *N* of *M* candidates.
-7. **Publish** — to X (card + short tweet + long thread, quality ≥ 70 only) and to Slack (daily
-   report, dossier, alerts — with current price, % distance and expected time-to-target).
+7. **Publish** — to **Slack first** (daily report, dossier, alerts — *more* instruments, with
+   current price, % distance and expected time-to-target), then **X** (card + short tweet + long
+   thread — the *top subset*, quality ≥ 70 only, no data‑source names).
+
+## Execution is a separate system
+
+This repo **analyses and publishes**; it does not place broker orders. The actual order is
+executed by the separate **`TradingViewWebhook`** service when a TradingView alert fires
+(`TradingView alert → TradingViewWebhook → IG REST API`). That boundary is shown dashed/greyed in
+the diagram above — the HVF orders publication posts *candidate* orders ("not yet placed"), and
+execution happens downstream in the other system.
 
 ## The weighting calculation
 

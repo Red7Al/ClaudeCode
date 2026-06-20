@@ -15,6 +15,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.2.0   2026-06-19  Alex Hind   Decision flow: add the EXECUTION node (user 2026-06-19) — broker execution is a separate
+#                                 system (TradingView alert -> TradingViewWebhook -> IG), shown dashed/greyed.
 # 1.1.0   2026-06-19  Alex Hind   Decision flow: Slack now precedes X (user 2026-06-19) — Slack publishes first / more
 #                                 instruments, X then publishes the top subset.
 # 1.0.0   2026-06-19  Alex Hind   Initial build — funnel schematic, decision flow, weighting illustration.
@@ -82,9 +84,9 @@ def _box(ax, x, y, w, h, text, color):
     ax.text(x + w / 2, y + h / 2, text, color=FG, ha="center", va="center", fontsize=9)
 
 
-def _arrow(ax, x1, y1, x2, y2):
+def _arrow(ax, x1, y1, x2, y2, dashed=False, color=MUTED):
     ax.add_patch(FancyArrowPatch((x1, y1), (x2, y2), arrowstyle="-|>", mutation_scale=14,
-                                 color=MUTED, lw=1.4))
+                                 color=color, lw=1.4, linestyle="--" if dashed else "-"))
 
 
 def decision_flow():
@@ -108,9 +110,18 @@ def decision_flow():
     _arrow(ax, 4.0, 5.5, 3.0, 5.5)
     _arrow(ax, 1.7, 4.8, 2.6, 3.55)      # grouping -> Slack (first)
     _arrow(ax, 5.1, 2.75, 6.7, 2.75)     # Slack -> X (X is the narrower, later step)
-    ax.text(6.0, 0.9, "Same weight order (R:R first) drives every list. Slack publishes first and shows more "
-                      "instruments; X then publishes the top subset (quality>=70).", color=MUTED, ha="center", fontsize=9)
-    ax.set_title("From scan to publication — how a signal becomes a decision", color=FG, fontsize=13, weight="bold")
+    # Execution is a SEPARATE system (user 2026-06-19): this repo publishes/analyses only.
+    # The actual broker order is placed by TradingViewWebhook -> IG when a TradingView alert
+    # fires — shown dashed/greyed to mark the system boundary.
+    _box(ax, 3.0, -0.9, 6.0, 1.3,
+         "EXECUTION — separate system\nTradingView alert -> TradingViewWebhook -> IG REST API\n(places the actual broker order; not part of this repo)", MUTED)
+    _arrow(ax, 3.2, 2.0, 4.6, 0.45, dashed=True)   # Slack/publish -> execution (informational boundary)
+    _arrow(ax, 8.4, 2.0, 7.4, 0.45, dashed=True)   # X/publish -> execution
+    ax.text(6.0, -1.5, "Same weight order (R:R first) drives every list. Slack publishes first / more instruments; "
+                       "X then the top subset (quality>=70). Broker execution is a separate system.",
+            color=MUTED, ha="center", fontsize=9)
+    ax.set_ylim(-2.0, 10)
+    ax.set_title("From scan to publication (and where execution happens)", color=FG, fontsize=13, weight="bold")
     ax.axis("off")
     _save(fig, "decision_flow.png")
 
