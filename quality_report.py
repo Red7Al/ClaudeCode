@@ -30,6 +30,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.8.0   2026-06-19  Alex Hind   _chart_story now states the live price + % distance to entry/target (user 2026-06-19),
+#                                 in the same plain-English style, via price_action.pct_from_current.
+# 1.7.0   2026-06-19  Alex Hind   _today_top selects risk_reward and sorts via hvf_weight so the long-report ordering is
+#                                 R:R-first (user 2026-06-19), matching every other list.
 # 1.6.0   2026-06-16  Alex Hind   publish_long_report_for(r): posts ONLY the long 1/n thread for one instrument. Called from
 #                                 intraday_signals._generate_x_drafts so the long report ALWAYS accompanies the card +
 #                                 short tweet on every publication / dossier (user 2026-06-16: all three or it's incomplete).
@@ -307,6 +311,10 @@ _P_CHART_RR = [
     "From there the path opens toward {target}, against risk back to {stop} — about {rr}x more reward than risk.",
     "If it plays out it targets {target} while risking back to {stop} — roughly {rr}x the reward for the risk.",
 ]
+_P_CHART_NOW = [
+    "It trades around {now} today ({dist} from here).",
+    "Right now it sits near {now} — {dist} from where it stands.",
+]
 
 
 def _chart_story(r: dict, name: str, gbp: bool) -> str:
@@ -335,6 +343,16 @@ def _chart_story(r: dict, name: str, gbp: bool) -> str:
         parts.append(_pick(_P_CHART_READY_UP if up else _P_CHART_READY_DOWN, tk, "rd").format(entry=entry))
     if rr and target and stop:
         parts.append(_pick(_P_CHART_RR, tk, "rr").format(target=target, stop=stop, rr=f"{rr:.0f}"))
+    # Current price + % distance to entry/target (user 2026-06-19) — same plain-English style.
+    from price_action import pct_from_current
+    cur = r.get("current_price")
+    e_p = pct_from_current(r.get("h3_level"), cur)
+    t_p = pct_from_current(r.get("target"),   cur)
+    if cur and (e_p or t_p):
+        _bits = []
+        if e_p: _bits.append(f"entry {e_p} away")
+        if t_p: _bits.append(f"target {t_p} away")
+        parts.append(_pick(_P_CHART_NOW, tk, "now").format(now=_lvl(cur), dist=", ".join(_bits)))
     return " ".join(parts)
 
 

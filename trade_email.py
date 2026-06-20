@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.11.0  2026-06-19  Alex Hind   Current price + % distance on every trade email (user 2026-06-19): the live price is now
+#                                 always shown (was working-orders only) and Entry/Stop/Target each carry their % from the
+#                                 live price, via price_action.pct_from_current.
 # 1.10.0  2026-06-15  Alex Hind   Broker view line (user 2026-06-15) — sig["broker_view"] rendered as a separate line in
 #                                 the text + HTML email (not inside the counted Confirmations). Also dropped the
 #                                 "by EndToEndTrading" footer text (brand-removal).
@@ -290,21 +293,31 @@ def _investment_case(ticker: str, direction: str, size, session_name: str,
     rr_s  = f"{rr:.1f}:1" if isinstance(rr, (int, float)) and rr else "—"
     ref   = deal_ref or trade.get("deal_id", "") or trade.get("deal_ref", "")
 
+    # Current price + each level's % from it, on every trade email (user 2026-06-19):
+    # whenever entry/stop/target are shown, show the live price and the distance to each.
+    from price_action import pct_from_current
+    cur = trade.get("current_price") or sig.get("current_price")
+    def _f(v):
+        try:
+            return float(v)
+        except Exception:
+            return None
+    def _wp(v):
+        p = pct_from_current(_f(v), cur)
+        return f"  ({p} from price)" if p else ""
+
     rows = [
         ("Instrument", name), ("Direction", direction), ("Size", size),
-        ("Session",    session_name), ("Entry", entry), ("Stop", stop),
-        ("Target",     targ), ("R:R", rr_s),
+        ("Session",    session_name),
+    ]
+    if cur:
+        rows.append(("Current Price", f"{cur}"))
+    rows += [
+        ("Entry",  f"{entry}{_wp(entry)}"), ("Stop", f"{stop}{_wp(stop)}"),
+        ("Target", f"{targ}{_wp(targ)}"),   ("R:R",  rr_s),
     ]
 
-    # For working orders, show live price and how far away the entry is.
     if event == "Working order placed":
-        cur = trade.get("current_price")
-        if cur and entry and entry != "—":
-            try:
-                dist = abs(float(entry) - float(cur)) / float(cur) * 100.0
-                rows.append(("Current Price", f"{cur}  ({dist:.1f}% from entry)"))
-            except Exception:
-                pass
         rows.append(("Note", "NOT yet visible in IG platform — placed automatically when price reaches entry"))
 
     if ref:
