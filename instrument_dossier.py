@@ -37,6 +37,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.8.0   2026-06-19  Alex Hind   FIVE HVF rules + thresholds with per-instrument status (user 2026-06-19): _hvf_rules_block
+#                                 shows prior-trend / lower-highs / higher-lows / >=30% convergence / <=60-bar freshness +
+#                                 the R:R>=HVF_MIN_RR tradeable gate, each marked [OK]/[--] with the measured value.
 # 1.7.0   2026-06-19  Alex Hind   Current price + % distance (user 2026-06-19): _hvf_summary now shows "% from price" next to
 #                                 entry/stop/target (via price_action.pct_from_current); Now moved above the levels.
 # 1.6.0   2026-06-19  Alex Hind   All HVF comments (user 2026-06-19, Current #5): slack.txt + summary now list EVERY HVF
@@ -202,6 +205,46 @@ def _hvf_summary(ticker: str, name: str, r: dict) -> str:
     return "\n".join(lines)
 
 
+def _hvf_rules_block(r: dict) -> str:
+    """The FIVE Hunt Volatility Funnel rules + their thresholds, with this instrument's
+    status (user 2026-06-19). When a funnel is detected every rule passed by construction,
+    so this shows the measured value against each threshold; with no funnel it lists the
+    rules so the reader sees what must hold. ASCII only (the dossier prints to console)."""
+    from config import HVF_MIN_RR
+
+    def _g(v):
+        return f"{v:g}" if isinstance(v, (int, float)) else "—"
+
+    def _mark(ok):
+        return "[OK]" if ok else "[--]"
+
+    has = bool(r.get("hvf_type"))
+    h1, h2, h3 = r.get("h1_level"), r.get("h2_level"), r.get("h3_level")
+    l1, l2, l3 = r.get("l1_level"), r.get("l2_level"), r.get("l3_level")
+    conv, bsh, rr = r.get("convergence"), r.get("bars_since_h3"), r.get("risk_reward")
+    direction = r.get("hvf_type") or "—"
+
+    ok2 = has and None not in (h1, h2, h3) and h1 > h2 > h3
+    ok3 = has and None not in (l1, l2, l3) and l1 < l2 < l3
+    ok4 = isinstance(conv, (int, float)) and conv < 0.70
+    ok5 = isinstance(bsh, (int, float)) and bsh <= 60
+    okrr = isinstance(rr, (int, float)) and rr >= HVF_MIN_RR
+    rr_txt = f"{rr:.1f}:1" if isinstance(rr, (int, float)) else "—"
+
+    lines = ["FIVE rules of the Hunt Volatility Funnel (threshold -> this setup):"]
+    if not has:
+        lines.append("  No qualifying funnel right now - one or more rules below is not met.")
+    lines += [
+        f"  1. Prior trend confirmed (up->long, down->short)   {_mark(has)} {direction}",
+        f"  2. Lower highs  H1>H2>H3 (ceiling falling)          {_mark(ok2)} {_g(h1)} > {_g(h2)} > {_g(h3)}",
+        f"  3. Higher lows  L1<L2<L3 (floor rising)             {_mark(ok3)} {_g(l1)} < {_g(l2)} < {_g(l3)}",
+        f"  4. Funnel converged >=30% (width ratio <0.70)       {_mark(ok4)} {_g(conv)}",
+        f"  5. Fresh: H3 formed within 60 bars                  {_mark(ok5)} {_g(bsh)} bars ago",
+        f"  Tradeable gate: R:R >= {HVF_MIN_RR:g}                          {_mark(okrr)} {rr_txt}",
+    ]
+    return "\n".join(lines)
+
+
 def _technical_block(ticker: str) -> str:
     """
     Supplementary technical read (user 2026-06-15) — MA10/30/50, RSI14, Stoch(9,6),
@@ -247,7 +290,7 @@ def build_dossier(ticker: str) -> str:
     os.makedirs(out_dir, exist_ok=True)
 
     summary = _hvf_summary(ticker, name, r)
-    manifest = [summary, "", _technical_block(ticker), ""]
+    manifest = [summary, "", _hvf_rules_block(r), "", _technical_block(ticker), ""]
 
     has_pattern = bool(r.get("hvf_type"))
     ctx = _latest_signal_log(ticker)
