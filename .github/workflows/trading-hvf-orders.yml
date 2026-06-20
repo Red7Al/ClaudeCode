@@ -1,0 +1,29 @@
+name: HVF Orders (2026-06-19)
+
+on:
+  workflow_dispatch:           # also triggerable manually
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30        # scan 200+ tickers + single Slack post (no live-X here)
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_schema.py
+        env:
+          SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - run: python run_hvf_orders.py
+        env:
+          SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_ORDERS:          ${{ secrets.SLACK_ORDERS }}
+          SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}

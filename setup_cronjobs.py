@@ -23,6 +23,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.12.0  2026-06-19  Alex Hind   Add "HVF Orders" job (0 6 * * 1-6 -> trading-hvf-orders.yml): daily actionable HVF setups
+#                                 to #arw-claude-orders, before 07:00 UTC (8am BST) (user 2026-06-19).
 # 1.11.0  2026-06-19  Alex Hind   "before 8am" (user 2026-06-19): HVF Daily Report moved to 05:30 UTC Mon-SAT (was 07:00
 #                                 Mon-Fri) so all morning publications (report + X drafts + live-X) finish before 07:00
 #                                 UTC = 8am BST. Removed the separate 09:00 Sat "HVF Weekend Report" (now covered Mon-Sat).
@@ -105,6 +107,7 @@ JOBS = [
     ("Commodity Monitor AM", "*/10 4-8 * * 1-5", "trading-commodity-monitor.yml"),
     # ── Pre-UK ────────────────────────────────────────────────────────────────────────────────────────────────────────
     ("HVF Daily Report",    "30 5 * * 1-6",   "trading-hvf-report.yml"),  # 05:30 UTC Mon-Sat -> all publications (report + X drafts + live-X) done before 07:00 UTC (8am BST) (user 2026-06-19)
+    ("HVF Orders",          "0 6 * * 1-6",    "trading-hvf-orders.yml"),  # 06:00 UTC Mon-Sat -> actionable HVF setups to #arw-claude-orders, before 07:00 UTC (8am BST) (user 2026-06-19)
     # "HVF Quality Reports" removed 2026-06-16: the long quality report now rides with EVERY
     # publication (intraday_signals._generate_x_drafts -> quality_report.publish_long_report_for),
     # so a separate quality-only job would double-post AND is an incomplete publication on its own
