@@ -30,6 +30,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.6.0   2026-06-19  Alex Hind   Add 6 trusted accounts (user 2026-06-19): EchoAnalysis, VJNCapital, JPATrades,
+#                                 DeepValueBagger, DefiWimar, TheStockWhale.
 # 1.5.0   2026-06-16  Alex Hind   CONFIRM_LONG mention → dossier read to #arw-claude-signals (user 2026-06-16): when a
 #                                 tracked X account flags a ticker and price action confirms long, post the HVF summary +
 #                                 technical read (instrument_dossier helpers) to #signals. Never auto-publishes to X.
@@ -92,6 +94,13 @@ TRACKED_ACCOUNTS = [
     {"handle": "BRICSinfo",         "name": "BRICSinfo",           "source": "X/@BRICSinfo"},
     {"handle": "WatcherGuru",       "name": "WatcherGuru",         "source": "X/@WatcherGuru"},
     {"handle": "TrendSpider",       "name": "TrendSpider",         "source": "X/@TrendSpider"},
+    # Added 2026-06-19 (user) — six more trusted pickers.
+    {"handle": "EchoAnalysis",      "name": "Echo Analysis",       "source": "X/@EchoAnalysis"},
+    {"handle": "VJNCapital",        "name": "VJN Capital",         "source": "X/@VJNCapital"},
+    {"handle": "JPATrades",         "name": "JPA Trades",          "source": "X/@JPATrades"},
+    {"handle": "DeepValueBagger",   "name": "Deep Value Bagger",   "source": "X/@DeepValueBagger"},
+    {"handle": "DefiWimar",         "name": "Defi Wimar",          "source": "X/@DefiWimar"},
+    {"handle": "TheStockWhale",     "name": "The Stock Whale",     "source": "X/@TheStockWhale"},
 ]
 
 # Known non-ticker uppercase words to ignore
