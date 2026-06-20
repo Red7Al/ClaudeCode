@@ -66,6 +66,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.22.0  2026-06-19  Alex Hind   Fix stale R:R-gate comment (said "= 2.5"; live HVF_MIN_RR is 3.0). Comment no longer
+#                                 hardcodes the number — it drifts (2.0 -> 2.5 -> 3.0). Comment-only; no behaviour change.
 # 1.21.0  2026-06-19  Alex Hind   analyse_price_action now returns current_price (user 2026-06-19) so consumers (e.g.
 #                                 social_monitor's mention line) can show "% from current price" without a second fetch.
 # 1.20.0  2026-06-19  Alex Hind   pct_from_current() canonical helper (user 2026-06-19): signed "% from current price" for a
@@ -1294,8 +1296,8 @@ def get_hvf_signal(ticker: str, lookback_days: int = 240,
         rr     = round(reward / risk, 2) if risk > 0 else 0.0
 
         # ── R:R gate (Pattern Checker criterion #5) ───────────────────────────────────────────────────────────────────
-        # Threshold imported from config.HVF_MIN_RR (= MIN_RISK_REWARD = 2.5).
-        # Single source of truth — do not hardcode here.
+        # Threshold imported from config.HVF_MIN_RR (aliased to MIN_RISK_REWARD).
+        # Single source of truth — do not hardcode the number here (it drifts; was 2.0 -> 2.5 -> 3.0).
         if rr < HVF_MIN_RR:
             log.info(f"HVF {ticker}: pattern found but R:R {rr} < {HVF_MIN_RR} — DEVELOPING (watch, not trade)")
             result.update({
