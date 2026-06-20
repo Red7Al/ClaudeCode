@@ -22,6 +22,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.1.0   2026-06-19  Alex Hind   SELF-HEAL empty scan window (user 2026-06-19): instead of reporting "UK_OPEN may not
+#                                 have run", run_session_scan("UK_OPEN") is invoked (scan-only — writes signal_log, never
+#                                 executes trades) and the window re-read (extended to a fresh now since the scan takes
+#                                 minutes). Skipped for fixed replay windows. See feedback_self_heal_stale_data.
 # 1.0.0   2026-06-03  Alex Hind   Initial build. UK morning brief covering 07:00–09:00 UTC window. Posts to
 #                                 #claude-trading-daily via SLACK_DAILY.
 # 1.0.1   2026-06-05  Alex Hind   Corrected SLACK_URL from SLACK_DAILY (was incorrectly set to SLACK_SIGNALS).
@@ -115,20 +119,41 @@ def main():
         }
 
     # ── Signal log for window ─────────────────────────────────────────────────────────────────────────────────────────
-    signal_rows = db.run(
-        """select ticker, session, primary_count, confirmation_count,
-                  direction, trade_triggered, pa_verdict,
-                  options_bias, bb_breakout_dir, cot_bias, adx_signal, volume_signal,
-                  director_signal, senate_signal, notable_investor, social_mention,
-                  session_time
-           from   signal_log
-           where  session_time >= :s
-             and  session_time <= :u
-           order  by primary_count desc nulls last,
-                     confirmation_count desc nulls last,
-                     session_time""",
-        s=since_ts, u=until_ts
-    )
+    def _load_signal_rows(u):
+        return db.run(
+            """select ticker, session, primary_count, confirmation_count,
+                      direction, trade_triggered, pa_verdict,
+                      options_bias, bb_breakout_dir, cot_bias, adx_signal, volume_signal,
+                      director_signal, senate_signal, notable_investor, social_mention,
+                      session_time
+               from   signal_log
+               where  session_time >= :s
+                 and  session_time <= :u
+               order  by primary_count desc nulls last,
+                         confirmation_count desc nulls last,
+                         session_time""",
+            s=since_ts, u=u
+        )
+
+    signal_rows = _load_signal_rows(until_ts)
+
+    # Self-heal (user 2026-06-19): an empty scan window almost always means UK_OPEN didn't run.
+    # Rather than reporting "may not have run", run the scan NOW and re-read. run_session_scan is
+    # the scan-only path — it writes signal_log via scan_instrument and NEVER executes trades
+    # (that is run_session_open's job), so the brief can never place a trade as a side effect.
+    # Skipped for fixed replay windows (replaying a past window must not trigger a fresh scan).
+    if not signal_rows and not (start_env and end_env):
+        log.warning("UK brief: no signals in window — running UK_OPEN scan to self-heal (scan only, no trades)")
+        try:
+            from signals import run_session_scan
+            run_session_scan("UK_OPEN")
+            # The scan takes minutes, so fresh rows carry a session_time AFTER the original
+            # `until` — extend the window to a fresh now so the re-read picks them up.
+            until_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            signal_rows = _load_signal_rows(until_ts)
+            log.info(f"UK brief self-heal: scan complete, {len(signal_rows)} signal(s) now in window")
+        except Exception as e:
+            log.error(f"UK brief self-heal scan failed: {e}")
 
     # ── Trades opened in window ───────────────────────────────────────────────────────────────────────────────────────
     trade_rows = db.run(
@@ -247,7 +272,8 @@ def main():
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn",
-                     "text": "_No instruments scanned in this window — UK_OPEN may not have run yet_"}
+                     "text": "_No instruments scanned in this window — a fresh UK_OPEN scan was attempted "
+                             "and still found nothing (likely an economic-calendar block or no candidates)._"}
         })
 
     blocks.append({"type": "divider"})
