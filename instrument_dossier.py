@@ -38,6 +38,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.11.0  2026-06-19  Alex Hind   Data-provenance note in the dossier (user 2026-06-19): names Yahoo as the automated source
+#                                 and the authoritative providers (quality_report.TRUSTED_DATA_SOURCES) that override on conflict.
 # 1.10.0  2026-06-19  Alex Hind   Narrative trade paragraph now states the expected time-to-target (user 2026-06-19) via
 #                                 price_action.target_horizon (dossier/Slack surface, not the X card).
 # 1.9.0   2026-06-19  Alex Hind   Plain-English 'Rolls-Royce style' narrative report (user 2026-06-19): _narrative_report
@@ -400,9 +402,19 @@ def build_dossier(ticker: str) -> str:
     narrative = _narrative_report(ticker, name, r)
     with open(os.path.join(out_dir, "narrative.txt"), "w", encoding="utf-8") as f:
         f.write(narrative + "\n")
+    # Data provenance (user 2026-06-19): automated figures are Yahoo Finance; the reputable
+    # providers below override on conflict (supply values in data/fundamentals_overrides.json).
+    try:
+        from quality_report import TRUSTED_DATA_SOURCES
+        _prov = ("Data provenance: automated figures from Yahoo Finance; authoritative references "
+                 "that override on conflict - " + ", ".join(TRUSTED_DATA_SOURCES)
+                 + " (overrides via data/fundamentals_overrides.json).")
+    except Exception:
+        _prov = ""
     manifest = [summary, "",
                 "PLAIN-ENGLISH REPORT (-> narrative.txt):", narrative, "",
-                _hvf_rules_block(r), "", _technical_block(ticker), ""]
+                _hvf_rules_block(r), "", _technical_block(ticker), "",
+                _prov, ""]
 
     has_pattern = bool(r.get("hvf_type"))
     ctx = _latest_signal_log(ticker)

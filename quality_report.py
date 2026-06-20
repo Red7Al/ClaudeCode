@@ -30,6 +30,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.10.0  2026-06-19  Alex Hind   Authoritative data-source overrides (user 2026-06-19): reputable providers (Bloomberg,
+#                                 Investing.com, S&P Global, Morningstar, FactSet) override the automated Yahoo figures on
+#                                 conflict. fundamentals() applies data/fundamentals_overrides.json (per ticker/field +
+#                                 source); build_report cites the source for any overridden figure. TRUSTED_DATA_SOURCES added.
 # 1.9.0   2026-06-19  Alex Hind   Large single holder made clear (user 2026-06-19): fundamentals() fetches the top
 #                                 institutional holder + %; build_report calls it out when >=LARGE_HOLDER_PCT (10%),
 #                                 "dominant/controlling-sized" at >=20% (e.g. a Berkshire-style stake). Flows into the
@@ -133,6 +137,31 @@ def _yearly_growth(vals_new_first):
 # >=20% is called out as "dominant / controlling-sized" (e.g. a Berkshire-style position).
 LARGE_HOLDER_PCT = 10.0
 
+# Authoritative external data sources (user 2026-06-19). The automated figures below come from
+# Yahoo Finance; these reputable providers are the references that OVERRIDE Yahoo on any conflict.
+# We do not have live API access to them, so an authoritative value is supplied manually in
+# data/fundamentals_overrides.json:
+#     { "OXY": { "target_pct": {"value": 18.0, "source": "Morningstar"}, ... }, ... }
+# fundamentals() applies any override (recording the source) and build_report cites it.
+TRUSTED_DATA_SOURCES = ["Bloomberg", "Investing.com", "S&P Global", "Morningstar", "FactSet"]
+_OVERRIDES_CACHE = None
+
+
+def _load_source_overrides() -> dict:
+    """Authoritative per-ticker fundamental overrides from data/fundamentals_overrides.json
+    (user 2026-06-19). Cached; returns {} when the file is absent or unreadable (never raises)."""
+    global _OVERRIDES_CACHE
+    if _OVERRIDES_CACHE is not None:
+        return _OVERRIDES_CACHE
+    import json
+    path = os.path.join(os.path.dirname(__file__), "data", "fundamentals_overrides.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            _OVERRIDES_CACHE = json.load(fh) or {}
+    except Exception:
+        _OVERRIDES_CACHE = {}
+    return _OVERRIDES_CACHE
+
 
 def fundamentals(ticker: str) -> dict:
     """Sector-aware fundamentals. Missing or sector-inappropriate factors come back None."""
@@ -226,6 +255,18 @@ def fundamentals(ticker: str) -> dict:
         td, tc, de = info.get("totalDebt"), info.get("totalCash"), info.get("debtToEquity")
         if td is not None and tc is not None:
             f["net_cash"], f["cash"], f["debt"], f["de"] = (tc > td), tc, td, de
+
+    # Authoritative overrides (user 2026-06-19): a reputable provider's figure takes precedence
+    # over the automated Yahoo value. Records which fields were overridden + their source so
+    # build_report can cite it.
+    ov = _load_source_overrides().get(ticker.upper(), {})
+    applied = {}
+    for field, spec in ov.items():
+        if isinstance(spec, dict) and "value" in spec:
+            f[field] = spec["value"]
+            applied[field] = spec.get("source", "external source")
+    if applied:
+        f["overrides"] = applied
     return f
 
 
@@ -447,6 +488,12 @@ def build_report(r: dict, change_note: str = None) -> tuple:
     if f.get("top_holder") and isinstance(thp, (int, float)) and thp >= LARGE_HOLDER_PCT:
         emph = " — a dominant, controlling-sized stake" if thp >= 20 else " — a notably concentrated stake"
         s.append(f"One holder stands out: {f['top_holder']} owns about {thp:.1f}% of the company{emph}.")
+
+    # Cite authoritative sources for any overridden figure (user 2026-06-19) — only when an
+    # override was actually applied, so the citation is always truthful.
+    if f.get("overrides"):
+        cites = ", ".join(f"{fld.replace('_', ' ')} per {src}" for fld, src in f["overrides"].items())
+        s.append(f"(Authoritative figures used: {cites} — these override the automated feed.)")
 
     fund  = " ".join(s) if s else f"Limited fundamental data available for {name}."
     chart = _chart_story(r, name, gbp)                       # public-safe "why the setup matters"
