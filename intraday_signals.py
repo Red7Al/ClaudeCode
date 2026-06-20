@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.22.0  2026-06-19  Alex Hind   Dossier (user 2026-06-19, Current #5): _generate_x_drafts collect dict now carries the FULL
+#                                 HVF confirmations list ("justifications") so the dossier can show every comment (the
+#                                 280-char tweet only fits a few). Rendered by instrument_dossier.
 # 1.21.0  2026-06-19  Alex Hind   Publication correctness (user 2026-06-19): changed-detection now keys on published LEVELS
 #                                 (entry/stop/target) not confirmations — _levels_fp/_parse_levels_fp/_levels_changes_line
 #                                 replace _draft_confirmations_fp. A republished seen-before instrument is tagged "👀 Seen
@@ -1773,6 +1776,9 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
                 "direction": direction, "signal": signal, "rr_str": rr_str,
                 "quality": quality, "tf_raw": tf_raw, "sig_desc": sig_desc,
                 "caution": caution,
+                # All HVF confirmations in full wording (user 2026-06-19, Current #5):
+                # the dossier shows every comment; the 280-char tweet only fits a few.
+                "justifications": [j[0] for j in justifications],
             })
         if not post:
             continue
