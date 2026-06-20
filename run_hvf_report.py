@@ -28,6 +28,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.16.0  2026-06-19  Alex Hind   Current price + % distance (user 2026-06-19): every TRADEABLE/DEVELOPING line now shows
+#                                 "Now <price>" and each level's % from the live price, via price_action.pct_from_current.
 # 1.15.0  2026-06-19  Alex Hind   D220 -> D240 (user 2026-06-19): scanner header + footer now read daily-240 (the
 #                                 long-term daily scan window changed in price_action 1.19.0).
 # 1.14.0  2026-06-19  Alex Hind   Report list correctness (user 2026-06-19): each per-market list is numbered from 1,
@@ -375,8 +377,17 @@ def _tradeable_line(r) -> str:
     stop   = _fmt_price(r.get("stop_level"))
     target = _fmt_price(r.get("target"))
     q      = r.get("pattern_quality", 0)
+    # Current price + % distance of each level from it (user 2026-06-19): every line that
+    # shows entry/stop/target also shows the live price and how far each level is from it.
+    from price_action import pct_from_current
+    cur    = r.get("current_price")
+    now    = _fmt_price(cur)
+    e_pct  = pct_from_current(r.get("h3_level"),   cur)
+    s_pct  = pct_from_current(r.get("stop_level"), cur)
+    t_pct  = pct_from_current(r.get("target"),     cur)
+    _wrap  = lambda p: f" ({p})" if p else ""
     line = (f"{d}{s} *{_label(t)}*  R:R {rr}  Q={q}  [{tf}] · {idx}\n"
-            f"    Entry {entry}  Stop {stop}  Target {target}")
+            f"    Now {now}  Entry {entry}{_wrap(e_pct)}  Stop {stop}{_wrap(s_pct)}  Target {target}{_wrap(t_pct)}")
     # Tight-stop label (backlog #9b): a funnel whose stop is < TIGHT_STOP_MIN_PCT of price
     # is structurally untradeable at IG intraday (spread + tick noise), so we DON'T trade it
     # — but it stays in the report, plainly labelled, because the pattern itself is valid
@@ -417,10 +428,17 @@ def _developing_line(r) -> str:
     entry  = _fmt_price(r.get("h3_level"))
     stop   = _fmt_price(r.get("stop_level"))
     target = _fmt_price(r.get("target"))
+    from price_action import pct_from_current
+    cur    = r.get("current_price")
+    now    = _fmt_price(cur)
+    _wrap  = lambda p: f" ({p})" if p else ""
+    e_pct  = _wrap(pct_from_current(r.get("h3_level"),   cur))
+    s_pct  = _wrap(pct_from_current(r.get("stop_level"), cur))
+    t_pct  = _wrap(pct_from_current(r.get("target"),     cur))
     others = _other_timeframes(r)
     also = ("  · also " + ", ".join(_tf_short(c.get("hvf_timeframe")) for c in others)) if others else ""
     return (f"{d}👀 *{_label(t)}*  R:R {rr}  [{tf}] · {idx}  "
-            f"Entry {entry}  Stop {stop}  Target {target}{also}")
+            f"Now {now}  Entry {entry}{e_pct}  Stop {stop}{s_pct}  Target {target}{t_pct}{also}")
 
 
 def build_slack_blocks(tradeable, developing, scan_time: str) -> list:

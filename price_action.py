@@ -66,6 +66,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.20.0  2026-06-19  Alex Hind   pct_from_current() canonical helper (user 2026-06-19): signed "% from current price" for a
+#                                 level, so every report printing entry/stop/target next to the live price uses one format.
 # 1.19.0  2026-06-19  Alex Hind   D220 -> D240 (user 2026-06-19, "global"): the long-term daily scan is now 240 bars,
 #                                 not 220 — scan tuple (240,"daily-240"), get_hvf_signal/_get_daily defaults, and the IG
 #                                 candle cap all 240. Historical war-story comments (RR.L/BP at 220) and test geometry
@@ -1551,6 +1553,17 @@ def hvf_weight(signal: str, quality, risk_reward=0.0) -> tuple:
     """
     rank = {"TRIGGERED": 0, "READY": 1, "DEVELOPING": 2}.get(signal, 3)
     return (-(risk_reward or 0), rank, -(quality or 0))
+
+
+def pct_from_current(level, current) -> str:
+    """Signed % a price level sits from the current price, e.g. '+3.2%' / '-8.1%'.
+    Returns '' when either value is missing/zero. CANONICAL helper (user 2026-06-19):
+    every report that prints entry/stop/target alongside the live price uses this, so
+    the "% from current price" wording is identical across X cards, the daily report,
+    the dossier, Slack alerts and email."""
+    if not isinstance(level, (int, float)) or not isinstance(current, (int, float)) or not current:
+        return ""
+    return f"{(level / current - 1) * 100:+.1f}%"
 
 
 def market_short(market_name) -> str:

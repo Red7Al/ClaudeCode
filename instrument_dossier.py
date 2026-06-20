@@ -37,6 +37,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.7.0   2026-06-19  Alex Hind   Current price + % distance (user 2026-06-19): _hvf_summary now shows "% from price" next to
+#                                 entry/stop/target (via price_action.pct_from_current); Now moved above the levels.
 # 1.6.0   2026-06-19  Alex Hind   All HVF comments (user 2026-06-19, Current #5): slack.txt + summary now list EVERY HVF
 #                                 confirmation in full wording (from the X-draft collect dict's "justifications"), not just
 #                                 the few that fit the 280-char tweet.
@@ -165,16 +167,20 @@ def _hvf_summary(ticker: str, name: str, r: dict) -> str:
     rr   = r.get("risk_reward")
     rr_s = f"{rr:.1f}:1" if isinstance(rr, (int, float)) and rr else "—"
     tf   = (r.get("hvf_timeframe", "") or "").replace("daily-", "d")
+    # % distance of each level from the current price (user 2026-06-19) — shared helper.
+    from price_action import pct_from_current
+    cur  = r.get("current_price")
+    _wr  = lambda lv: (f"   ({pct_from_current(lv, cur)} from price)" if pct_from_current(lv, cur) else "")
     lines = [
         f"{ticker} ({name})",
         f"  Direction : {direction}",
         f"  Signal    : {r.get('hvf_signal', '—')}  (best timeframe {tf or '—'})",
-        f"  Entry     : {_g(r.get('h3_level'))}   (break of H3)",
-        f"  Stop      : {_g(r.get('stop_level'))}",
-        f"  Target    : {_g(r.get('target'))}",
+        f"  Now       : {_g(cur)}",
+        f"  Entry     : {_g(r.get('h3_level'))}   (break of H3){_wr(r.get('h3_level'))}",
+        f"  Stop      : {_g(r.get('stop_level'))}{_wr(r.get('stop_level'))}",
+        f"  Target    : {_g(r.get('target'))}{_wr(r.get('target'))}",
         f"  R:R       : {rr_s}",
         f"  Quality   : {r.get('pattern_quality', '—')}/100",
-        f"  Now       : {_g(r.get('current_price'))}",
     ]
     # Full figures for EVERY timeframe the funnel appears on (user 2026-06-15), in
     # weight order. The primary (best) timeframe carries the AMP1-anchored / IG-
