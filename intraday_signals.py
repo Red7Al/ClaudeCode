@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.24.0  2026-06-19  Alex Hind   X card (user 2026-06-19): top levels line now shows Support/Resistance after R:R (recent
+#                                 ~20-bar swing low/high); the squeeze description carries the SECTOR name; and each
+#                                 right-edge Entry/Stop/Target label shows its % from the live price (pct_from_current).
 # 1.23.0  2026-06-19  Alex Hind   D220 -> D240 (user 2026-06-19): _tf_desc "long-term" key + the card timeframe-label
 #                                 example comment now read d240 (long-term daily scan window changed in price_action 1.19.0).
 # 1.22.0  2026-06-19  Alex Hind   Dossier (user 2026-06-19, Current #5): _generate_x_drafts collect dict now carries the FULL
@@ -1131,6 +1134,17 @@ def render_x_post_card(r: dict):
         # failed in run 27370959365.
         close = hist["Close"].squeeze()
 
+        # Standard trader support/resistance (user 2026-06-19): the recent swing low is
+        # support, the recent swing high is resistance, over the last ~20 sessions. Raw
+        # chart units here; ×ig_scale when displayed (same convention as "Now").
+        sup_raw = res_raw = None
+        try:
+            _rc = hist.tail(20)
+            sup_raw = float(_rc["Low"].squeeze().min())
+            res_raw = float(_rc["High"].squeeze().max())
+        except Exception:
+            pass
+
         # ig_scale normalisation
         ig_scale = 1.0
         if h3:
@@ -1199,12 +1213,21 @@ def render_x_post_card(r: dict):
         except Exception:
             pass
 
+        # Sector name on the card (user 2026-06-19) — from yfinance .info (cached);
+        # appended to the squeeze description. Omitted if unavailable.
+        _sector = ""
+        try:
+            _sector = (_yf_info(ticker).get("sector") or "").strip()
+        except Exception:
+            pass
+        _desc_line = f"Volatility squeeze {sig_desc} {dir_word}" + (f"   ·   {_sector}" if _sector else "")
+
         # Timeframe label (e.g. d240) deliberately NOT shown (user 2026-06-13).
         # No @EndToEndTrading handle on the card (user 2026-06-15: remove the brand text).
         hdr_lines = [
             (0.925, f"{dir_arrow} ${disp_ticker} ({name})",
                                          "#ffffff", 16, "bold",   "normal"),
-            (0.888, f"Volatility squeeze {sig_desc} {dir_word}",
+            (0.888, _desc_line,
                                          "#c9d1d9", 13, "normal", "normal"),
             # Levels line (y=0.852) is drawn separately below with per-marker colours.
             (0.818, wk52_str,            "#8b949e", 11, "normal", "normal"),
@@ -1224,6 +1247,10 @@ def render_x_post_card(r: dict):
         # emoji don't render in the card font). Segment widths are measured via the Agg
         # renderer to place them left-to-right (one fig.text can only be a single colour).
         _now_v = f"{float(close.iloc[-1]) * ig_scale:g}"
+        # Support/resistance after R:R on the top line (user 2026-06-19): support green,
+        # resistance red. '—' when the recent-swing fetch failed.
+        _sup_v = f"{sup_raw * ig_scale:g}" if sup_raw else "—"
+        _res_v = f"{res_raw * ig_scale:g}" if res_raw else "—"
         _level_segs = [
             (f"Now {_now_v}      ", "#c9d1d9"),
             (f"◎ Entry {h3_str}",   "#e3b341"),   # gold — matches the entry line
@@ -1233,6 +1260,10 @@ def render_x_post_card(r: dict):
             (f"▲ Target {tgt_str}", "#3fb950"),   # green
             ("      ",              "#c9d1d9"),
             (f"⚖ R:R {rr_str}",     "#c9d1d9"),
+            ("      ",              "#c9d1d9"),
+            (f"Sup {_sup_v}",       "#3fb950"),   # support green
+            ("    ",                "#c9d1d9"),
+            (f"Res {_res_v}",       "#f85149"),   # resistance red
         ]
         _lx = 0.05
         _renderer = fig.canvas.get_renderer()
@@ -1268,21 +1299,29 @@ def render_x_post_card(r: dict):
             ax.scatter(lx, ly, color="#3fb950", s=26, zorder=5, alpha=0.95)
 
         # ── Entry / stop / target: full-width lines + right-edge labels ───────────────────────────────────────────────
+        # Right-edge labels show the % from the live price (user 2026-06-19) — the numeric
+        # level is already on the top line, so showing the % here adds info without clipping
+        # the figure edge. Falls back to the value when the % can't be computed.
+        from price_action import pct_from_current
+        _cur_sig = float(close.iloc[-1]) * ig_scale
+        def _rl(name, p, val_str):
+            s = pct_from_current(p, _cur_sig)
+            return f"{name} {s}" if s else f"{name} {val_str}"
         trans = ax.get_yaxis_transform()
         if h3_p:
             ax.axhline(h3_p, color="#e3b341", linewidth=1.2,
                        linestyle="--", alpha=0.9, zorder=4)
-            ax.text(1.01, h3_p, f"Entry {h3_str}", transform=trans,
+            ax.text(1.01, h3_p, _rl("Entry", h3, h3_str), transform=trans,
                     color="#e3b341", fontsize=9, va="center")
         if stop_p:
             ax.axhline(stop_p, color="#f85149", linewidth=1.0,
                        linestyle=":", alpha=0.9, zorder=4)
-            ax.text(1.01, stop_p, f"Stop {stop_str}", transform=trans,
+            ax.text(1.01, stop_p, _rl("Stop", stop, stop_str), transform=trans,
                     color="#f85149", fontsize=9, va="center")
         if targ_p:
             ax.axhline(targ_p, color="#3fb950", linewidth=1.0,
                        linestyle=":", alpha=0.9, zorder=4)
-            ax.text(1.01, targ_p, f"Target {tgt_str}", transform=trans,
+            ax.text(1.01, targ_p, _rl("Target", target, tgt_str), transform=trans,
                     color="#3fb950", fontsize=9, va="center")
 
         # ── 52-week high gridline (user 2026-06-13): context for the target — shows
