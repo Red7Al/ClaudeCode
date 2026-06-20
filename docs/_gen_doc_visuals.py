@@ -15,6 +15,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.1.0   2026-06-19  Alex Hind   Decision flow: Slack now precedes X (user 2026-06-19) — Slack publishes first / more
+#                                 instruments, X then publishes the top subset.
 # 1.0.0   2026-06-19  Alex Hind   Initial build — funnel schematic, decision flow, weighting illustration.
 # ======================================================================================================================
 
@@ -95,18 +97,19 @@ def decision_flow():
     _box(ax, 8.0, 4.8, 3.4, 1.4, "Gates\nR:R >= 3 -> tradeable\nquality >= 70 -> publishable", GOLD)
     _box(ax, 4.0, 4.8, 3.0, 1.4, "Weighting / ordering\nR:R -> signal -> quality\n(hvf_weight)", GREEN)
     _box(ax, 0.4, 4.8, 2.6, 1.4, "Per-market grouping\ntop N of M candidates", BLUE)
-    _box(ax, 2.2, 2.0, 3.0, 1.5, "PUBLISH to X\ncard + short tweet + long thread\n(quality >= 70 only)", GREEN)
-    _box(ax, 6.6, 2.0, 3.2, 1.5, "PUBLISH to Slack\ndaily report - dossier - alerts\n(+ time-to-target, % from price)", BLUE)
+    # Slack publishes FIRST and shows MORE instruments; X then publishes the top subset
+    # (user 2026-06-19). Flow: grouping -> Slack -> X.
+    _box(ax, 1.4, 2.0, 3.7, 1.5, "1) PUBLISH to Slack\ndaily report - dossier - alerts\nMORE instruments + time-to-target, % from price", BLUE)
+    _box(ax, 6.7, 2.0, 3.4, 1.5, "2) then PUBLISH to X\ncard + short tweet + long thread\nTOP SUBSET (quality >= 70)", GREEN)
     _arrow(ax, 3.0, 8.2, 4.0, 8.2)
     _arrow(ax, 7.0, 8.2, 8.0, 8.2)
     _arrow(ax, 9.7, 7.5, 9.7, 6.2)
     _arrow(ax, 8.0, 5.5, 7.0, 5.5)
     _arrow(ax, 4.0, 5.5, 3.0, 5.5)
-    # Per-market grouping feeds BOTH publication outputs (parallel, not sequential).
-    _arrow(ax, 2.0, 4.8, 3.6, 3.55)
-    _arrow(ax, 2.8, 4.8, 6.9, 3.55)
-    ax.text(6.0, 0.9, "Same weight order (R:R first) drives every list; gates decide what is tradeable; "
-                      "X gets quality>=70 only.", color=MUTED, ha="center", fontsize=9)
+    _arrow(ax, 1.7, 4.8, 2.6, 3.55)      # grouping -> Slack (first)
+    _arrow(ax, 5.1, 2.75, 6.7, 2.75)     # Slack -> X (X is the narrower, later step)
+    ax.text(6.0, 0.9, "Same weight order (R:R first) drives every list. Slack publishes first and shows more "
+                      "instruments; X then publishes the top subset (quality>=70).", color=MUTED, ha="center", fontsize=9)
     ax.set_title("From scan to publication — how a signal becomes a decision", color=FG, fontsize=13, weight="bold")
     ax.axis("off")
     _save(fig, "decision_flow.png")

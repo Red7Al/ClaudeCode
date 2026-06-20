@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.26.0  2026-06-19  Alex Hind   (user 2026-06-19) P/E and insider-ownership added as lowest-priority tweet confirmations
+#                                 (from yfinance .info, cached) — appear only when the 280-char tweet has room; source
+#                                 provider never named in the tweet.
 # 1.25.0  2026-06-19  Alex Hind   Expected time-to-target in the X-draft Slack wrapper context line (user 2026-06-19) via
 #                                 price_action.target_horizon — Slack only; deliberately NOT in the tweet text or on the card.
 # 1.24.0  2026-06-19  Alex Hind   X card (user 2026-06-19): top levels line now shows Support/Resistance after R:R (recent
@@ -1723,6 +1726,21 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         if sec_d and _aligned(sec_d):
             justifications.append((f"Sector ({sec_e}) moving the same way",
                                    "Sector aligned"))
+        # Valuation + ownership context (user 2026-06-19) — LOWEST priority, appended last so
+        # the fitting loop includes them only when the 280-char tweet has room (they never crowd
+        # out the higher-priority signals above). From yfinance .info (cached; the card already
+        # fetched it). NB the source provider is NEVER named in the tweet (user 2026-06-19).
+        try:
+            _info_x = _yf_info(ticker)
+            _pe = _info_x.get("forwardPE") or _info_x.get("trailingPE")
+            if isinstance(_pe, (int, float)) and 0 < _pe < 200:
+                justifications.append((f"P/E {_pe:.1f}", f"P/E {_pe:.1f}"))
+            _ins = _info_x.get("heldPercentInsiders")
+            if isinstance(_ins, (int, float)) and _ins > 0:
+                justifications.append((f"Insider ownership {_ins * 100:.0f}%",
+                                       f"Insiders {_ins * 100:.0f}%"))
+        except Exception:
+            pass
 
         def _just_line(use_full: bool, n: int) -> str:
             idx = 0 if use_full else 1

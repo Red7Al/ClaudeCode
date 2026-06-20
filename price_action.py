@@ -66,6 +66,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.24.0  2026-06-19  Alex Hind   support_resistance() + near_support_resistance() helpers (user 2026-06-19): standard
+#                                 swing-low/high S/R and a "price near a level" check, so a setup near support/resistance
+#                                 gets extra consideration (from the OCDO support criticism).
 # 1.23.0  2026-06-19  Alex Hind   target_horizon() helper (user 2026-06-19): rough expected time-to-target from the funnel
 #                                 formation span (H1->H3), timeframe fallback. Slack-only consumers; never on the X card.
 # 1.22.0  2026-06-19  Alex Hind   Fix stale R:R-gate comment (said "= 2.5"; live HVF_MIN_RR is 3.0). Comment no longer
@@ -1570,6 +1573,35 @@ def pct_from_current(level, current) -> str:
     if not isinstance(level, (int, float)) or not isinstance(current, (int, float)) or not current:
         return ""
     return f"{(level / current - 1) * 100:+.1f}%"
+
+
+def support_resistance(ticker: str, lookback: int = 20):
+    """Standard trader support/resistance — the recent swing low (support) and swing high
+    (resistance) over the last `lookback` daily bars. Returns (support, resistance) or
+    (None, None). CANONICAL helper so the X card and the analysis agree."""
+    try:
+        df = _get_daily(ticker, days=max(lookback + 5, 40))
+        if df is None or df.empty:
+            return None, None
+        rc = df.tail(lookback)
+        return float(rc["Low"].squeeze().min()), float(rc["High"].squeeze().max())
+    except Exception:
+        return None, None
+
+
+def near_support_resistance(price, support, resistance, tol_pct: float = 2.5):
+    """Whether `price` sits within `tol_pct`% of support or resistance (user 2026-06-19: price
+    near a level needs extra consideration — a setup can bounce/reject right there). Returns
+    ('support'|'resistance'|None, distance_pct) for the nearer level inside tolerance, else (None, None)."""
+    if not isinstance(price, (int, float)) or not price:
+        return None, None
+    best, best_d = None, None
+    for label, lvl in (("support", support), ("resistance", resistance)):
+        if isinstance(lvl, (int, float)) and lvl:
+            d = abs(price / lvl - 1) * 100
+            if d <= tol_pct and (best_d is None or d < best_d):
+                best, best_d = label, d
+    return best, best_d
 
 
 def _humanize_days(days: int) -> str:

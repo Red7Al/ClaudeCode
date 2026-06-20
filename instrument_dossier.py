@@ -38,6 +38,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.12.0  2026-06-19  Alex Hind   (user 2026-06-19) narrative now adds an "extra consideration" paragraph when price is near
+#                                 support/resistance (price_action.near_support_resistance), weighted more when the level
+#                                 opposes the trade (the OCDO lesson); build_report called with cite_sources=True (Slack-only).
 # 1.11.0  2026-06-19  Alex Hind   Data-provenance note in the dossier (user 2026-06-19): names Yahoo as the automated source
 #                                 and the authoritative providers (quality_report.TRUSTED_DATA_SOURCES) that override on conflict.
 # 1.10.0  2026-06-19  Alex Hind   Narrative trade paragraph now states the expected time-to-target (user 2026-06-19) via
@@ -265,7 +268,7 @@ def _narrative_report(ticker: str, name: str, r: dict) -> str:
     # 2 — the why + quality angle (single source of this prose)
     try:
         from quality_report import build_report
-        _title, body = build_report(r)
+        _title, body = build_report(r, cite_sources=True)   # dossier is Slack/internal — citing OK (not X)
         if body:
             paras.append(body.strip())
     except Exception as e:
@@ -300,6 +303,31 @@ def _narrative_report(ticker: str, name: str, r: dict) -> str:
            else f", which is below the {HVF_MIN_RR:g}:1 floor, so it stays on the watch list rather than trading")
         + "." + _hz_txt
     )
+
+    # 4b — support/resistance proximity (user 2026-06-19, from the OCDO support criticism):
+    # whenever price is near a level it needs EXTRA consideration — a setup can bounce off
+    # support / reject at resistance right where it sits. Flag it, and weight it more when the
+    # level opposes the trade (a short into support, a long into resistance).
+    try:
+        from price_action import support_resistance, near_support_resistance
+        _sup, _res = support_resistance(ticker)
+        _lvl, _dist = near_support_resistance(cur, _sup, _res)
+    except Exception:
+        _lvl, _dist, _sup, _res = None, None, None, None
+    if _lvl:
+        _against = (_lvl == "support" and not up) or (_lvl == "resistance" and up)
+        lvl_px = _g(_sup if _lvl == "support" else _res)
+        if _against:
+            paras.append(
+                f"Extra consideration — price is sitting on {_lvl} near {lvl_px} (~{_dist:.1f}% away), and "
+                f"that level works AGAINST this {side}: a {side} can {'bounce off support' if not up else 'reject at resistance'} "
+                f"right here. Wait for a decisive break of {lvl_px} before trusting the {side}; a stall there is the warning."
+            )
+        else:
+            paras.append(
+                f"Extra consideration — price is near {_lvl} at {lvl_px} (~{_dist:.1f}% away), which sits in the "
+                f"trade's favour, but levels are where moves stall or accelerate, so size and timing around it deliberately."
+            )
 
     # 5 — the bottom line
     confirm = f"a clean break and close beyond {_g(entry)}"

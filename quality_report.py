@@ -30,6 +30,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.11.0  2026-06-19  Alex Hind   (user 2026-06-19) build_report cite_sources flag — source citation is Slack/dossier-only,
+#                                 NEVER in an X tweet (default False). Large-holder threshold lowered 10 -> 5%; the
+#                                 callout now shows the stake rising/falling/steady (institutional_holders pctChange).
 # 1.10.0  2026-06-19  Alex Hind   Authoritative data-source overrides (user 2026-06-19): reputable providers (Bloomberg,
 #                                 Investing.com, S&P Global, Morningstar, FactSet) override the automated Yahoo figures on
 #                                 conflict. fundamentals() applies data/fundamentals_overrides.json (per ticker/field +
@@ -133,9 +136,9 @@ def _yearly_growth(vals_new_first):
 # Sector-aware fundamentals (yfinance)
 # ----------------------------------------------------------------------------------------------------------------------
 
-# A single holder above this % is surfaced as a notable concentrated stake (user 2026-06-19);
-# >=20% is called out as "dominant / controlling-sized" (e.g. a Berkshire-style position).
-LARGE_HOLDER_PCT = 10.0
+# A single holder above this % is surfaced as a notable concentrated stake (user 2026-06-19:
+# lowered 10 -> 5); >=20% is still called out as "dominant / controlling-sized" (e.g. Berkshire).
+LARGE_HOLDER_PCT = 5.0
 
 # Authoritative external data sources (user 2026-06-19). The automated figures below come from
 # Yahoo Finance; these reputable providers are the references that OVERRIDE Yahoo on any conflict.
@@ -212,14 +215,16 @@ def fundamentals(ticker: str) -> dict:
     # owning >20%) is materially relevant and must be made clear. Surface the top
     # institutional holder + its %. yfinance column names vary across versions, so resolve
     # them defensively; fraction vs percent is normalised. Best-effort — never blocks.
-    f["top_holder"], f["top_holder_pct"] = None, None
+    f["top_holder"], f["top_holder_pct"], f["top_holder_change"] = None, None, None
     try:
         inst = t.institutional_holders
         if inst is not None and not inst.empty:
             cols = {str(c).lower(): c for c in inst.columns}
             hcol = next((cols[k] for k in cols if k in ("holder", "holders")), None)
-            pcol = next((cols[k] for k in cols
-                         if k in ("pctheld", "% out", "pct_held") or "pct" in k or "% out" in k), None)
+            # %held: prefer an exact pct-held column over the position-change column.
+            pcol = next((cols[k] for k in cols if k in ("pctheld", "% out", "pct_held")), None) \
+                or next((cols[k] for k in cols if "pct" in k and "change" not in k), None)
+            ccol = next((cols[k] for k in cols if "pctchange" in k or "pct_change" in k or k == "% change"), None)
             if hcol is not None and pcol is not None:
                 top = inst.iloc[0]
                 pct = float(top[pcol])
@@ -227,6 +232,13 @@ def fundamentals(ticker: str) -> dict:
                     pct *= 100
                 f["top_holder"] = str(top[hcol]).strip()
                 f["top_holder_pct"] = pct
+                # Direction of the stake (user 2026-06-19): pctChange is the position change
+                # this reporting period (fraction; +ve = adding, -ve = trimming).
+                if ccol is not None:
+                    try:
+                        f["top_holder_change"] = float(top[ccol]) * 100
+                    except Exception:
+                        pass
     except Exception:
         pass
 
@@ -428,9 +440,13 @@ def _chart_story(r: dict, name: str, gbp: bool) -> str:
     return " ".join(parts)
 
 
-def build_report(r: dict, change_note: str = None) -> tuple:
+def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -> tuple:
     """(title, prose_body) — plain English, one fact per short sentence, phrasing varied
-    per instrument so each report reads bespoke (user 2026-06-14)."""
+    per instrument so each report reads bespoke (user 2026-06-14).
+
+    cite_sources: include the authoritative-source citation for overridden figures. Default
+    FALSE because this body is published to X, and the source of info must NOT appear in an X
+    tweet (user 2026-06-19). Slack/dossier callers pass True."""
     from intraday_signals import _resolve_name
     tk = r["ticker"]
     gbp = tk.endswith(".L")
@@ -487,11 +503,19 @@ def build_report(r: dict, change_note: str = None) -> tuple:
     thp = f.get("top_holder_pct")
     if f.get("top_holder") and isinstance(thp, (int, float)) and thp >= LARGE_HOLDER_PCT:
         emph = " — a dominant, controlling-sized stake" if thp >= 20 else " — a notably concentrated stake"
+        # Rising/falling (user 2026-06-19): direction of the holder's stake this period.
+        chg = f.get("top_holder_change")
+        if isinstance(chg, (int, float)) and abs(chg) >= 0.5:
+            direction = "rising" if chg > 0 else "falling"
+            emph += f", and {direction} ({chg:+.1f}% this period)"
+        elif isinstance(chg, (int, float)):
+            emph += ", and holding steady"
         s.append(f"One holder stands out: {f['top_holder']} owns about {thp:.1f}% of the company{emph}.")
 
     # Cite authoritative sources for any overridden figure (user 2026-06-19) — only when an
-    # override was actually applied, so the citation is always truthful.
-    if f.get("overrides"):
+    # override was actually applied (so the citation is always truthful) AND only on Slack/
+    # dossier surfaces: the source of info must NEVER appear in an X tweet (user 2026-06-19, G).
+    if cite_sources and f.get("overrides"):
         cites = ", ".join(f"{fld.replace('_', ' ')} per {src}" for fld, src in f["overrides"].items())
         s.append(f"(Authoritative figures used: {cites} — these override the automated feed.)")
 
