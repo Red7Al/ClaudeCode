@@ -28,6 +28,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.14.0  2026-06-19  Alex Hind   Report list correctness (user 2026-06-19): each per-market list is numbered from 1,
+#                                 restarting per market (However #2), and the sub-header reads "top N of M candidates"
+#                                 (However #3) for both TRADEABLE and DEVELOPING. ("confirmed"/watch list numbering is
+#                                 handled where that report is built.)
 # 1.13.0  2026-06-17  Alex Hind   Morning live-X (user 2026-06-17): X drafts now changed_only (top X_DRAFT_PER_MARKET/market,
 #                                 re-shown only when confirmations change); the top X_PUBLISH_TOP_N/market of that changed
 #                                 set are auto-published LIVE to X (_publish_top_per_market_to_x -> publish_tickers_to_x,
@@ -455,9 +459,11 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
             blocks.append({
                 "type": "section",
                 "text": {"type": "mrkdwn",
-                         "text": f"*{_index_short(market)}* — {len(rows)} of {totals.get(market, len(rows))}"}
+                         "text": f"*{_index_short(market)}* — top {len(rows)} of {totals.get(market, len(rows))} candidates"}
             })
-            for blk in _chunk_lines([_tradeable_line(r) for r in rows]):
+            # However #2 (user 2026-06-19): number each list from 1, restarting per market.
+            _numbered = [f"{i}. {_tradeable_line(r)}" for i, r in enumerate(rows, 1)]
+            for blk in _chunk_lines(_numbered):
                 blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})
     else:
         blocks.append({
@@ -486,9 +492,11 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
             blocks.append({
                 "type": "section",
                 "text": {"type": "mrkdwn",
-                         "text": f"*{_index_short(market)}* — {len(rows)} of {totals.get(market, len(rows))}"}
+                         "text": f"*{_index_short(market)}* — top {len(rows)} of {totals.get(market, len(rows))} candidates"}
             })
-            for blk in _chunk_lines([_developing_line(r) for r in rows]):
+            # However #2 (user 2026-06-19): number each list from 1, restarting per market.
+            _numbered = [f"{i}. {_developing_line(r)}" for i, r in enumerate(rows, 1)]
+            for blk in _chunk_lines(_numbered):
                 blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})
     else:
         blocks.append({
