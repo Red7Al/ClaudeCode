@@ -66,6 +66,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.19.0  2026-06-19  Alex Hind   D220 -> D240 (user 2026-06-19, "global"): the long-term daily scan is now 240 bars,
+#                                 not 220 — scan tuple (240,"daily-240"), get_hvf_signal/_get_daily defaults, and the IG
+#                                 candle cap all 240. Historical war-story comments (RR.L/BP at 220) and test geometry
+#                                 (synthetic 220-bar frames; the 220.5 PRICE literal) left as-is on purpose.
 # 1.18.0  2026-06-19  Alex Hind   hvf_weight: R:R desc is now the PRIMARY sort (user 2026-06-19), then signal
 #                                 (TRIGGERED>READY>DEVELOPING), then quality. Was signal->quality->R:R. Callers must pass
 #                                 risk_reward for it to take effect.
@@ -251,7 +255,7 @@ def _sanitise_ohlc(df: pd.DataFrame, ticker: str = "") -> pd.DataFrame:
     return df
 
 
-def _get_daily(ticker: str, days: int = 220) -> pd.DataFrame:
+def _get_daily(ticker: str, days: int = 240) -> pd.DataFrame:
     """Fetch daily OHLCV data for a ticker, phantom wicks clipped. Empty DataFrame on failure."""
     yticker = YAHOO_MAP.get(ticker, ticker)
     try:
@@ -904,7 +908,7 @@ def _find_swing_highs_lows(hist: pd.DataFrame, n: int = 5) -> tuple:
     return swing_highs, swing_lows
 
 
-def get_hvf_signal(ticker: str, lookback_days: int = 220,
+def get_hvf_signal(ticker: str, lookback_days: int = 240,
                    trend_hint: dict = None) -> dict:
     """
     Detect a Hunt Volatility Funnel (HVF) continuation pattern.
@@ -979,7 +983,7 @@ def get_hvf_signal(ticker: str, lookback_days: int = 220,
             return result
 
         # ── Recent-trend override ─────────────────────────────────────────────────────────────────────────────────────
-        # The long-term 220-day trend can mask a post-peak reversal.
+        # The long-term 240-day trend can mask a post-peak reversal.
         # Example: BP rallied 355→609p (220-day = UPTREND) but then peaked at 609p
         # in March 2026 and has been printing lower highs ever since.  A bearish HVF
         # is forming but the dominant lookback never switches direction.
@@ -1384,9 +1388,9 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
     Run HVF detection across three timeframes and return the best result.
 
     Timeframes:
-      daily-220   Standard full-history scan — catches mature multi-month funnels
+      daily-240   Standard full-history scan — catches mature multi-month funnels
       daily-180   Six-month scan (user 2026-06-12) — funnels that formed after an
-                  H1 the 220-day window dates too early, without losing freshness
+                  H1 the 240-day window dates too early, without losing freshness
       daily-90    Shorter daily scan — catches post-peak reversals forming over
                   the last 3 months (e.g. a stock topping after a big rally)
       weekly      Weekly candles via a separate fetch — catches large-scale funnels
@@ -1399,8 +1403,8 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
 
     candidates = []
 
-    # ── daily-220, daily-180, daily-90, daily-60, daily-30 ────────────────────────────────────────────────────────────
-    for days, label in [(220, "daily-220"), (180, "daily-180"), (90, "daily-90"),
+    # ── daily-240, daily-180, daily-90, daily-60, daily-30 ────────────────────────────────────────────────────────────
+    for days, label in [(240, "daily-240"), (180, "daily-180"), (90, "daily-90"),
                         (60, "daily-60"),   (30, "daily-30")]:
         try:
             r = get_hvf_signal(ticker, lookback_days=days, trend_hint=trend_hint)
@@ -1816,7 +1820,7 @@ def validate_hvf_with_ig(ticker: str, result: dict, min_allowance: int = 1500) -
             log.info(f"IG validation {ticker}: no epic — skipped")
             return result
 
-        # Enough candles to reach back to H1 (+buffer), capped at 220
+        # Enough candles to reach back to H1 (+buffer), capped at 240
         pivot_dates = [result.get(k) for k in
                        ("h1_date", "h2_date", "h3_date", "l1_date", "l2_date", "l3_date")
                        if result.get(k)]
@@ -1824,7 +1828,7 @@ def validate_hvf_with_ig(ticker: str, result: dict, min_allowance: int = 1500) -
             return result
         oldest = min(pd.Timestamp(d) for d in pivot_dates)
         bars_needed = int((pd.Timestamp.now() - oldest).days * 0.72) + 15   # ~trading days
-        count = max(60, min(220, bars_needed))
+        count = max(60, min(240, bars_needed))
 
         ig_df, remaining = get_prices_df(epic, resolution="DAY", count=count)
         if remaining is not None and remaining < min_allowance:
@@ -2131,7 +2135,7 @@ def analyse_price_action(ticker: str) -> dict:
     ma_align    = get_ma_alignment(ticker)
     failed      = get_failed_break(ticker)
     candlestick = get_candlestick_pattern(ticker)
-    # HVF: multi-timeframe scan (daily-220/180/90/60/30, weekly) — best result wins
+    # HVF: multi-timeframe scan (daily-240/180/90/60/30, weekly) — best result wins
     hvf         = get_hvf_signal_mtf(ticker, trend_hint=trend)
 
     score, verdict = compute_price_action_score(range_bo, trend, atr_comp, ma_align, failed, candlestick)
@@ -2254,7 +2258,7 @@ def analyse_price_action(ticker: str) -> dict:
         "hvf_quality":       hvf.get("pattern_quality"),   # 0-100
         "hvf_convergence":   hvf.get("convergence"),       # funnel tightness
         "hvf_bars_since_h3": hvf.get("bars_since_h3"),    # freshness
-        "hvf_timeframe":     hvf.get("hvf_timeframe"),    # daily-220 / daily-90 / weekly
+        "hvf_timeframe":     hvf.get("hvf_timeframe"),    # daily-240 / daily-90 / weekly
         "hvf_volume_confirmed": hvf.get("volume_confirmed", False),
         # Tight-stop flag (backlog #9b) — carried through so the trade path can skip a
         # structurally-untradeable funnel silently (stop < TIGHT_STOP_MIN_PCT of price).

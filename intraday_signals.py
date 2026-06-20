@@ -23,6 +23,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.23.0  2026-06-19  Alex Hind   D220 -> D240 (user 2026-06-19): _tf_desc "long-term" key + the card timeframe-label
+#                                 example comment now read d240 (long-term daily scan window changed in price_action 1.19.0).
 # 1.22.0  2026-06-19  Alex Hind   Dossier (user 2026-06-19, Current #5): _generate_x_drafts collect dict now carries the FULL
 #                                 HVF confirmations list ("justifications") so the dossier can show every comment (the
 #                                 280-char tweet only fits a few). Rendered by instrument_dossier.
@@ -935,7 +937,7 @@ _NFA_DISCLAIMER = "\n\n" + _bold_italic("Not financial advice.")
 def _tf_desc(tf_raw: str) -> str:
     """Human-readable timeframe description for tweets and cards."""
     mapping = {"30d": "30-day", "60d": "60-day", "90d": "90-day",
-               "180d": "6-month", "220d": "long-term", "weekly": "weekly"}
+               "180d": "6-month", "240d": "long-term", "weekly": "weekly"}
     return mapping.get(tf_raw, tf_raw or "multi-month")
 
 
@@ -1197,7 +1199,7 @@ def render_x_post_card(r: dict):
         except Exception:
             pass
 
-        # Timeframe label (e.g. d220) deliberately NOT shown (user 2026-06-13).
+        # Timeframe label (e.g. d240) deliberately NOT shown (user 2026-06-13).
         # No @EndToEndTrading handle on the card (user 2026-06-15: remove the brand text).
         hdr_lines = [
             (0.925, f"{dir_arrow} ${disp_ticker} ({name})",
