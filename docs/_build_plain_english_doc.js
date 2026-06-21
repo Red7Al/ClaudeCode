@@ -97,6 +97,9 @@ const doc = new Document({
       p("Three things matter: the highs keep getting lower, the lows keep getting higher, and the gap between " +
         "them shrinks. That squeeze is the “wound spring.” The tighter it gets, the more meaningful the " +
         "eventual breakout."),
+      p("This works both ways. After a strong rise, a coil that breaks upward is a “bullish” setup; after a strong " +
+        "fall, the same coil breaking downward is a “bearish” one. The system only ever calls it in the direction " +
+        "the market is actually trending — it will not flag a bullish idea on a market that has been falling."),
 
       // ── 3 ──
       h1("3. What has to be true before a setup is flagged"),
@@ -121,10 +124,17 @@ const doc = new Document({
       caption("Reward-for-risk is the main driver; the signal’s readiness and the pattern’s quality settle ties."),
       p("Alongside the pattern itself, the system gathers supporting evidence to add confidence — for example:"),
       bullet("Analyst views — what professional analysts rate the share and their price targets."),
-      bullet("Insider and large-holder ownership — e.g. if a major investor such as Berkshire Hathaway holds a " +
-             "large stake, and whether they are adding to it or trimming."),
+      bullet("How it stacks up against its main rival — e.g. Nike versus Lululemon: which is outperforming over " +
+             "the last few months, plus recent news on that competition (why a rival may be taking market share)."),
+      bullet("Company insiders, and the largest institutional holder — e.g. a fund like BlackRock, or a major " +
+             "investor such as Berkshire Hathaway holding a large stake — and whether they are adding or trimming. " +
+             "(Insiders are the company’s own officers/directors; an institutional holder is an outside fund — two " +
+             "different things.)"),
       bullet("Market positioning — what the big “smart money” players are doing (the COT report)."),
-      bullet("Options activity, valuation (P/E), volume and trend strength."),
+      bullet("Valuation — the price-to-earnings (P/E) ratio, shown against the wider market so you can see at a " +
+             "glance whether it looks cheap or expensive."),
+      bullet("Options activity, volume, trend strength — and a three-year price history so the long-term backdrop " +
+             "is obvious (a name can be bouncing this month yet falling for years)."),
       bullet("Support and resistance — the price floors and ceilings traders watch; if price is sitting right on " +
              "one, the system gives that extra thought, because price can bounce or stall there."),
       p("These do not override the pattern — they add or subtract confidence around it. Where a figure comes from " +
@@ -136,6 +146,10 @@ const doc = new Document({
       bullet("Slack (internal) first — the full picture for the team: more instruments, with the live price, how " +
              "far each level is from it, the reward-to-risk and the expected time to target."),
       bullet("X / Twitter second — a curated, public-facing selection of only the very best, higher-quality ideas."),
+      p("Two filters keep the published list trustworthy. First, no chasing: if the price has already run too far " +
+        "past the entry, the idea is dropped — there is no point flagging a move you have missed. Second, a quality " +
+        "floor: only genuinely clean, high-scoring patterns make the headline list; weaker ones stay on the internal " +
+        "watch-list rather than being published."),
       img("decision_flow.png", 575, 300, "From scan to publication"),
       caption("The journey: scan every market → apply the five checks → rank by reward-for-risk → publish " +
               "to Slack (more) then X (the top few)."),
@@ -161,7 +175,11 @@ function glossary() {
     ["Support / Resistance", "Price levels where a market has tended to stop falling (support) or stop rising (resistance)."],
     ["The funnel (HVF)", "The coiling-spring pattern: smaller and smaller price swings after a strong trend, then a breakout."],
     ["Smart money (COT)", "What large professional hedgers are doing — often a useful tell on direction."],
-    ["Quality score", "A 0–100 mark for how clean and textbook the pattern looks."],
+    ["Quality score", "A 0–100 mark for how clean and textbook the pattern looks (weak ones aren’t published)."],
+    ["Peer / competitor", "The main rival (e.g. Lululemon for Nike) — how the two compare, and related news."],
+    ["Institutional holder", "An outside fund (e.g. BlackRock, Berkshire) that owns shares — not a company insider."],
+    ["P/E ratio", "Price versus earnings — a rough gauge of cheap vs expensive, shown against the wider market."],
+    ["3-year history", "A long-term price chart so you can see the multi-year trend behind a short-term move."],
   ];
   const border = { style: BorderStyle.SINGLE, size: 1, color: "DDDDDD" };
   const borders = { top: border, bottom: border, left: border, right: border };
