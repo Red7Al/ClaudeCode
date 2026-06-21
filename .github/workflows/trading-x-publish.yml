@@ -34,6 +34,11 @@ on:
         type: boolean
         required: false
         default: false
+      slack_only:
+        description: 'Post the Slack publication ONLY (card + 3yr PNG + long report), no X'
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   publish:
@@ -51,7 +56,7 @@ jobs:
           if [ "${{ inputs.top_per_market }}" != "0" ] && [ -n "${{ inputs.top_per_market }}" ]; then
             python publish_one_to_x.py --top-per-market=${{ inputs.top_per_market }} ${{ inputs.dry && '--dry' || '' }}
           else
-            python publish_one_to_x.py ${{ inputs.ticker }} ${{ inputs.dry && '--dry' || '' }} ${{ inputs.force && '--force' || '' }} ${{ inputs.no_register && '--no-register' || '' }}
+            python publish_one_to_x.py ${{ inputs.ticker }} ${{ inputs.dry && '--dry' || '' }} ${{ inputs.force && '--force' || '' }} ${{ inputs.no_register && '--no-register' || '' }} ${{ inputs.slack_only && '--slack-only' || '' }}
           fi
         env:
           X_API_KEY:            ${{ secrets.X_API_KEY }}

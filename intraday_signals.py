@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.36.0  2026-06-21  Alex Hind   render_3yr_history_card (user 2026-06-21): a standalone 3-YEAR price-history PNG (weekly
+#                                 closes, current + funnel levels marked) attached as an EXTRA Slack visual alongside the
+#                                 card — Slack only, never on X.
 # 1.35.0  2026-06-21  Alex Hind   Card prices to 2 decimal places (user 2026-06-21): Now/Entry/Stop/Target/Support/Resistance
 #                                 now :.2f (were :g, e.g. "Support 40.9833" -> "40.98").
 # 1.34.0  2026-06-21  Alex Hind   Competitor NEWS narrative (user 2026-06-21): _competitor_news surfaces a recent headline
@@ -1510,6 +1513,58 @@ def render_x_post_card(r: dict):
         return None
 
 
+def render_3yr_history_card(r: dict):
+    """Standalone 3-YEAR price-history PNG (user 2026-06-21) — an EXTRA visual for the SLACK
+    publication (not used on X). Weekly closes over ~3 years so the long-term trend is obvious,
+    with the current price marked and (if in range) the funnel entry/target for context. Returns
+    PNG bytes, or None on failure."""
+    ticker = r.get("ticker", "")
+    name   = r.get("name") or _resolve_name(ticker)
+    disp   = ticker[:-2] if ticker.endswith(".L") else ticker
+    try:
+        import io
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        import yfinance as _yf
+        c = _yf.Ticker(ticker).history(period="3y", interval="1wk")["Close"].dropna()
+        if c is None or len(c) < 8:
+            return None
+        pct = (float(c.iloc[-1]) / float(c.iloc[0]) - 1) * 100
+        col = "#3fb950" if pct >= 0 else "#f85149"
+        fig, ax = plt.subplots(figsize=(10, 4.4))
+        fig.patch.set_facecolor("#0d1117"); ax.set_facecolor("#0d1117")
+        ax.plot(c.index, c.values, color=col, linewidth=1.8, zorder=3)
+        ax.fill_between(c.index, c.values, float(c.min()), alpha=0.08, color=col, zorder=2)
+        # current price + (in-range) funnel entry/target context lines
+        ax.axhline(float(c.iloc[-1]), color="#c9d1d9", lw=0.9, ls="--", alpha=0.7)
+        _lo, _hi = float(c.min()), float(c.max())
+        for _lvl, _lc, _lab in ((r.get("h3_level"), "#e3b341", "entry"),
+                                (r.get("target"), "#58a6ff", "target")):
+            if isinstance(_lvl, (int, float)) and _lo <= _lvl <= _hi:
+                ax.axhline(_lvl, color=_lc, lw=0.9, ls=":", alpha=0.7)
+                ax.text(c.index[0], _lvl, f" {_lab} {_lvl:.2f}", color=_lc, fontsize=8, va="bottom")
+        ax.set_title(f"3-Year Price History  —  ${disp} ({name})   {pct:+.0f}%",
+                     color="#ffffff", fontsize=13, weight="bold")
+        ax.xaxis.set_major_locator(mdates.YearLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+        plt.setp(ax.get_xticklabels(), color="#8b949e", fontsize=9)
+        plt.setp(ax.get_yticklabels(), color="#8b949e", fontsize=9)
+        for sp in ax.spines.values():
+            sp.set_edgecolor("#30363d")
+        ax.tick_params(colors="#8b949e")
+        fig.text(0.5, 0.01, f"Current {float(c.iloc[-1]):.2f}  ·  3-yr range {_lo:.2f}–{_hi:.2f}",
+                 color="#8b949e", fontsize=9, ha="center")
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=140, facecolor="#0d1117", bbox_inches="tight")
+        plt.close(fig); buf.seek(0)
+        return buf.read()
+    except Exception as e:
+        log.warning(f"3yr history card render failed for {ticker}: {e}")
+        return None
+
+
 # ── X-draft changed-detection (user 2026-06-17) — only re-show an instrument when its
 # CONFIRMATIONS change. Fingerprint = direction + signal + the set of confirmation labels with
 # numbers stripped (so a value wiggle e.g. call/put 1.42->1.40 does NOT reshow, but an added /
@@ -2100,6 +2155,28 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
                          f"({len(png_bytes)} bytes → {channel_id})")
             except Exception as e:
                 log.error(f"X draft chart upload failed for {ticker}: {e}")
+
+        # Standalone 3-YEAR history PNG (user 2026-06-21) — an EXTRA Slack visual alongside the
+        # card (Slack only; never attached to an X tweet). Same external-upload flow.
+        if bot_token and channel_id:
+            try:
+                _hist_png = render_3yr_history_card(r)
+                if _hist_png:
+                    _hh = {"Authorization": f"Bearer {bot_token}"}
+                    _u1 = requests.post("https://slack.com/api/files.getUploadURLExternal", headers=_hh,
+                                        data={"filename": f"hist3yr_{ticker.replace('.', '_')}.png",
+                                              "length": len(_hist_png)}, timeout=10).json()
+                    if _u1.get("ok"):
+                        requests.post(_u1["upload_url"], data=_hist_png, timeout=30).raise_for_status()
+                        _u3 = requests.post("https://slack.com/api/files.completeUploadExternal",
+                                            headers={**_hh, "Content-Type": "application/json"},
+                                            json={"files": [{"id": _u1["file_id"],
+                                                             "title": f"3-year history — {ticker}"}],
+                                                  "channel_id": channel_id}, timeout=10).json()
+                        if _u3.get("ok"):
+                            log.info(f"3yr history PNG attached for {ticker} ({len(_hist_png)} bytes)")
+            except Exception as e:
+                log.error(f"3yr history PNG upload failed for {ticker}: {e}")
 
         # ── Component C: the long quality report (1/n thread) MUST accompany every published
         # instrument (user 2026-06-16). A publication = card + short tweet + long thread; short

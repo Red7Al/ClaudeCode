@@ -25,6 +25,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.5.0   2026-06-21  Alex Hind   --slack-only (user 2026-06-21): post the Slack publication ONLY (card + 3yr PNG + long
+#                                 report), skip X entirely. Wired into trading-x-publish.yml (slack_only input).
 # 1.4.0   2026-06-21  Alex Hind   --no-register TEST mode (user 2026-06-21): posts the full Slack draft (card+tweet+long
 #                                 report) AND live X, bypasses the dedup guard, and does NOT record to x_publications — for
 #                                 test publications that shouldn't count as "published". Wired into trading-x-publish.yml.
@@ -182,7 +184,8 @@ def main():
         pass
 
     dry   = "--dry" in sys.argv
-    no_register = "--no-register" in sys.argv       # TEST: post to Slack+X but DON'T record (user 2026-06-21)
+    slack_only  = "--slack-only" in sys.argv         # post the Slack draft ONLY, no X (user 2026-06-21)
+    no_register = "--no-register" in sys.argv or slack_only  # never record a test/slack-only post
     force = "--force" in sys.argv or no_register     # a test post bypasses the dedup guard too
     top_n = _top_per_market_arg()                   # batch: today's top-N/market tradeable
 
@@ -232,6 +235,12 @@ def main():
             log.info(f"{ticker}: TEST Slack draft posted (not registered).")
         except Exception as e:
             log.error(f"{ticker}: TEST Slack draft failed: {e}")
+
+    # --slack-only (user 2026-06-21): Slack draft (card + 3yr PNG + long report) is done above;
+    # stop here — do NOT post to X.
+    if slack_only and not dry:
+        log.info(f"{ticker}: --slack-only — Slack publication done, skipping X.")
+        return
 
     log.info(f"{ticker}: lead tweet {len(tweet)} chars, card {'present' if png else 'MISSING'}, "
              f"{len(thread)}-part thread")
