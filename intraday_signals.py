@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.37.0  2026-06-21  Alex Hind   FIX X 403 "max one cashtag": the competitor angle used a $PEER cashtag ($LULU) on top of the
+#                                 hook's $TICKER — X rejects 2 cashtags. Peer is now plain text ("ahead of LULU (3mo)"). This
+#                                 was the real cause of every NKE/MA live-X 403 since the angle was added (not the daily cap).
 # 1.36.0  2026-06-21  Alex Hind   render_3yr_history_card (user 2026-06-21): a standalone 3-YEAR price-history PNG (weekly
 #                                 closes, current + funnel levels marked) attached as an EXTRA Slack visual alongside the
 #                                 card — Slack only, never on X.
@@ -1018,7 +1021,8 @@ def _competitor_news(ticker: str, peer: str = None):
 def _competitor_angle(ticker: str):
     """Curated-peer competitive angle for the tweet (user 2026-06-21). Names the top peer (a
     COMPETITOR — not a data source, so allowed on X) with relative ~3-month performance, e.g.
-    'outpacing peer $LULU (+8% vs -3%, 3mo)'. Returns (full, short) or None. From config's
+    'outpacing peer LULU (+8% vs -3%, 3mo)'. Peer is NOT a $cashtag (X allows only one cashtag and
+    the hook already uses $TICKER). Returns (full, short) or None. From config's
     curated COMPETITOR_MAP + a price fetch — no news API (a headline layer can come later)."""
     from config import COMPETITOR_MAP
     peers = COMPETITOR_MAP.get((ticker or "").upper())
@@ -1038,9 +1042,12 @@ def _competitor_angle(ticker: str):
         rt, rp = _ret(ticker), _ret(peer)
         if rt is None or rp is None:
             return None
+        # NB: peer is written WITHOUT a $ cashtag. X allows only ONE cashtag per post, and the
+        # hook already uses $TICKER — a second cashtag ($PEER) makes X reject the tweet with
+        # "Posts are limited to a maximum of one cashtag" (the 2026-06-21 NKE 403s). Plain name only.
         peer_disp = peer[:-2] if peer.endswith(".L") else peer
-        full  = f"{'outpacing' if rt > rp else 'lagging'} peer ${peer_disp} ({rt:+.0f}% vs {rp:+.0f}%, 3mo)"
-        short = f"{'ahead of' if rt > rp else 'behind'} ${peer_disp} (3mo)"   # compact, survives the 280-char trim
+        full  = f"{'outpacing' if rt > rp else 'lagging'} peer {peer_disp} ({rt:+.0f}% vs {rp:+.0f}%, 3mo)"
+        short = f"{'ahead of' if rt > rp else 'behind'} {peer_disp} (3mo)"   # compact, survives the 280-char trim
         return (full, short)
     except Exception:
         return None
