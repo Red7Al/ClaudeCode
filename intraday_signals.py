@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.34.0  2026-06-21  Alex Hind   Competitor NEWS narrative (user 2026-06-21): _competitor_news surfaces a recent headline
+#                                 (preferring a peer mention) as a SLACK-ONLY block in the X-draft wrapper — never on the X
+#                                 tweet/card (may name the publisher; Slack is internal). Free yfinance .news feed.
 # 1.33.0  2026-06-21  Alex Hind   Card (user 2026-06-21): "Sup"/"Res" spelled out to "Support"/"Resistance" (spacers tightened
 #                                 to fit); added a 3-year weekly-close history inset (top-right, green/red by 3yr return) so
 #                                 the long-term trend is visible (e.g. NKE's multi-year path).
@@ -975,6 +978,36 @@ def _x_weighted_len(s: str) -> int:
 # Disclaimer in bold italic, preceded by a blank line (user 2026-06-13). Plain ASCII
 # is kept here for readability; rendered to Unicode bold-italic once at import.
 _NFA_DISCLAIMER = "\n\n" + _bold_italic("Not financial advice.")
+
+
+def _competitor_news(ticker: str, peer: str = None):
+    """Recent headline for the ticker (user 2026-06-21), PREFERRING one that mentions the peer/
+    competitor — the 'why is the rival taking share' narrative. SLACK-ONLY (internal): it may name
+    the publisher, and is never put on an X tweet. Returns 'headline — Publisher' or None. Uses the
+    free yfinance .news feed (format varies across versions, so resolve fields defensively)."""
+    try:
+        import yfinance as yf
+        items = yf.Ticker(ticker).news or []
+
+        def _fields(it):
+            c = it.get("content", it) if isinstance(it, dict) else {}
+            title = c.get("title") or ""
+            prov = c.get("provider")
+            pub = prov.get("displayName") if isinstance(prov, dict) else (c.get("publisher") or "")
+            return title.strip(), (pub or "").strip()
+
+        cands = [(_t, _p) for _t, _p in (_fields(i) for i in items) if _t]
+        if not cands:
+            return None
+        if peer:
+            pl = peer.lower()
+            for _t, _p in cands:
+                if pl in _t.lower():
+                    return f"{_t} — {_p}" if _p else _t
+        _t, _p = cands[0]
+        return f"{_t} — {_p}" if _p else _t
+    except Exception:
+        return None
 
 
 def _competitor_angle(ticker: str):
@@ -1995,6 +2028,17 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         if caution:
             blocks.insert(2, {"type": "section",
                               "text": {"type": "mrkdwn", "text": caution}})
+        # Competitor news (user 2026-06-21) — SLACK-ONLY narrative ("why the rival is taking
+        # share"); a recent headline preferring a competitor mention. Never on the X tweet/card.
+        try:
+            from config import COMPETITOR_MAP
+            _peers = COMPETITOR_MAP.get((ticker or "").upper())
+            _news = _competitor_news(ticker, _peers[0] if _peers else None)
+            if _news:
+                blocks.insert(2, {"type": "context",
+                                  "elements": [{"type": "mrkdwn", "text": f"📰 {_news}"}]})
+        except Exception:
+            pass
         # Seen-before delta (user 2026-06-19, Current #3): when a previously-published
         # instrument is republished because a level moved, show exactly what moved.
         if _changes_line:
