@@ -66,6 +66,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.25.0  2026-06-20  Alex Hind   entry_chase_pct() helper (user 2026-06-20): signed % price has run past entry, to drop
+#                                 missed-entry setups. support_resistance default window 20 -> 60 bars (a 20-bar S/R on a
+#                                 tight coil was an absurd ~1% band).
 # 1.24.0  2026-06-19  Alex Hind   support_resistance() + near_support_resistance() helpers (user 2026-06-19): standard
 #                                 swing-low/high S/R and a "price near a level" check, so a setup near support/resistance
 #                                 gets extra consideration (from the OCDO support criticism).
@@ -1575,12 +1578,14 @@ def pct_from_current(level, current) -> str:
     return f"{(level / current - 1) * 100:+.1f}%"
 
 
-def support_resistance(ticker: str, lookback: int = 20):
-    """Standard trader support/resistance — the recent swing low (support) and swing high
-    (resistance) over the last `lookback` daily bars. Returns (support, resistance) or
-    (None, None). CANONICAL helper so the X card and the analysis agree."""
+def support_resistance(ticker: str, lookback: int = 60):
+    """Standard trader support/resistance — the swing low (support) and swing high (resistance)
+    over the last `lookback` daily bars. Returns (support, resistance) or (None, None). CANONICAL
+    helper so the X card and the analysis agree. Default 60 bars (user 2026-06-20): a 20-bar
+    window on a tightly-coiled funnel gives an absurd ~1% S/R band; 60 bars reflects real
+    structural levels."""
     try:
-        df = _get_daily(ticker, days=max(lookback + 5, 40))
+        df = _get_daily(ticker, days=max(lookback + 10, 80))
         if df is None or df.empty:
             return None, None
         rc = df.tail(lookback)
@@ -1602,6 +1607,21 @@ def near_support_resistance(price, support, resistance, tol_pct: float = 2.5):
             if d <= tol_pct and (best_d is None or d < best_d):
                 best, best_d = label, d
     return best, best_d
+
+
+def entry_chase_pct(r: dict):
+    """How far price has run PAST the entry in the trade's direction, as a signed % (user
+    2026-06-20). Positive = price is beyond the entry (chasing / missed); <=0 = the entry is
+    still reachable. None when price or entry is missing. Used to drop 'missed by a mile'
+    setups (e.g. a TRIGGERED long whose price already ran +50% past the H3 break)."""
+    cur, entry, t = r.get("current_price"), r.get("h3_level"), r.get("hvf_type")
+    if not isinstance(cur, (int, float)) or not isinstance(entry, (int, float)) or not entry:
+        return None
+    if t == "BULLISH":
+        return (cur - entry) / entry * 100.0
+    if t == "BEARISH":
+        return (entry - cur) / entry * 100.0
+    return None
 
 
 def _humanize_days(days: int) -> str:

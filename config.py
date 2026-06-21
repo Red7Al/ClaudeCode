@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.17.0  2026-06-20  Alex Hind   MAX_ENTRY_CHASE_PCT=3.0 (user 2026-06-20): a TRIGGERED setup whose price already ran >3%
+#                                 past the entry is a MISSED entry (chasing) and is dropped from tradeable/publications.
 # 1.16.0  2026-06-19  Alex Hind   MIN_PUBLISH_QUALITY=70 (user 2026-06-19): instruments below 70/100 pattern quality are not
 #                                 published in the X drafts / live-X (analytical report + dossiers unaffected).
 # 1.15.0  2026-06-17  Alex Hind   X-draft caps split from the analytical report (user 2026-06-17): X_DRAFT_PER_MARKET=5
@@ -595,6 +597,12 @@ X_PUBLISH_TOP_N    = 2
 # Minimum pattern quality to PUBLISH (user 2026-06-19: don't show instruments below this in the
 # X drafts / live-X). The analytical HVF report and on-demand dossiers are NOT filtered by it.
 MIN_PUBLISH_QUALITY = 70
+
+# A TRIGGERED setup whose price has already run more than this % PAST the entry (in the trade's
+# direction) is treated as a MISSED entry — you'd be chasing — and is excluded from the tradeable
+# list / publications (user 2026-06-20: "$TATE has missed entry by a mile - why share now?").
+# READY (not-yet-triggered) setups are never "missed" — price hasn't reached the entry yet.
+MAX_ENTRY_CHASE_PCT = 3.0
 
 # Canonical market order for the grouped reports (matches run_hvf_report.UNIVERSE key order).
 # Markets not listed fall to the end, alphabetically (see price_action.group_by_market).

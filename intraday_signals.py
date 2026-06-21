@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.27.0  2026-06-20  Alex Hind   (user 2026-06-20) ABF duplicate fix — _levels_fp keyed on entry+stop only (target wobble
+#                                 from AMP1/IG was flipping the fingerprint every run). Card S/R window 20 -> 60 bars.
+#                                 Current price added to the X-draft Slack wrapper context line.
 # 1.26.0  2026-06-19  Alex Hind   (user 2026-06-19) P/E and insider-ownership added as lowest-priority tweet confirmations
 #                                 (from yfinance .info, cached) — appear only when the 280-char tweet has room; source
 #                                 provider never named in the tweet.
@@ -1139,12 +1142,13 @@ def render_x_post_card(r: dict):
         # failed in run 27370959365.
         close = hist["Close"].squeeze()
 
-        # Standard trader support/resistance (user 2026-06-19): the recent swing low is
-        # support, the recent swing high is resistance, over the last ~20 sessions. Raw
-        # chart units here; ×ig_scale when displayed (same convention as "Now").
+        # Standard trader support/resistance (user 2026-06-19; window widened to 60 bars
+        # 2026-06-20): the swing low is support, the swing high is resistance, over the last ~60
+        # sessions. A 20-bar window on a tight coil gave an absurd ~1% S/R band ("Sup 286 / Res
+        # 288.5"); 60 bars reflects real structural levels. Raw chart units; ×ig_scale to display.
         sup_raw = res_raw = None
         try:
-            _rc = hist.tail(20)
+            _rc = hist.tail(60)
             sup_raw = float(_rc["Low"].squeeze().min())
             res_raw = float(_rc["High"].squeeze().max())
         except Exception:
@@ -1396,15 +1400,16 @@ _X_DRAFT_STATE_SQL = ("create table if not exists x_draft_state "
                       "(ticker text primary key, fingerprint text, posted_at timestamptz default now())")
 
 
-def _levels_fp(h3, stop, target) -> str:
-    """Levels fingerprint for changed-detection (user 2026-06-19): republish a
-    seen-before instrument ONLY when a published LEVEL (entry/stop/target) moves.
-    Stored verbatim (not hashed) so the previous levels can be parsed back to show
-    the delta. '%g' matches the precision the tweet/card display, so sub-display
-    noise never triggers a republish. Superseded the confirmations fingerprint."""
+def _levels_fp(h3, stop, target=None) -> str:
+    """Changed-detection fingerprint, keyed on ENTRY + STOP only (user 2026-06-20). These are
+    the funnel's pivot-derived levels (H3 / L3-based) and are STABLE run-to-run. The TARGET is
+    deliberately EXCLUDED: the AMP1 exhaustion re-anchor + IG validation make it wobble slightly
+    on every scan, which was flipping the old E|S|T fingerprint and republishing the same setup
+    each run (the ABF duplicate). The user's rule is "republish only when the ENTRY changes".
+    Stored verbatim (not hashed) so previous levels can be parsed back to show the delta."""
     def _f(v):
         return f"{v:g}" if isinstance(v, (int, float)) else "—"
-    return f"E{_f(h3)}|S{_f(stop)}|T{_f(target)}"
+    return f"E{_f(h3)}|S{_f(stop)}"
 
 
 def _parse_levels_fp(fp: str) -> dict:
@@ -1880,9 +1885,10 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
                       "text": f"*Tweet ({len(tweet)} chars):*\n```{tweet}```"}},
             {"type": "context",
              "elements": [{"type": "mrkdwn",
-                            "text": (f"R:R {rr_str}"
+                            "text": ((f"Now {r.get('current_price'):g}  |  " if isinstance(r.get('current_price'), (int, float)) else "")
+                                     + f"R:R {rr_str}"
                                      + (f" · {_tgt_horizon} to target" if _tgt_horizon else "")
-                                     + f"  |  Quality: {quality or '—'}  |  "
+                                     + f"  |  Quality: {quality or '—'}/100  |  "
                                      f"{tf_raw or '—'}  |  "
                                      + datetime.now(timezone.utc).strftime("%d %b %H:%M UTC"))}]},
         ]

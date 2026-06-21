@@ -28,6 +28,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.18.0  2026-06-20  Alex Hind   (user 2026-06-20) categorise() drops missed-entry TRIGGERED setups (entry_chase_pct >
+#                                 MAX_ENTRY_CHASE_PCT); "Q=" relabelled "Quality N/100"; blank line between instruments.
 # 1.17.0  2026-06-19  Alex Hind   Expected time-to-target next to R:R on the TRADEABLE line (user 2026-06-19) via
 #                                 price_action.target_horizon — Slack only (#signals), never on the X card/tweet.
 # 1.16.0  2026-06-19  Alex Hind   Current price + % distance (user 2026-06-19): every TRADEABLE/DEVELOPING line now shows
@@ -253,14 +255,29 @@ def categorise(all_results: dict) -> tuple:
     tradeable  = []
     developing = []
 
+    from price_action import entry_chase_pct
+    from config import MAX_ENTRY_CHASE_PCT
+    _missed = 0
+
     for index_name, results in all_results.items():
         for r in results:
             sig = r.get("hvf_signal", "")
             rr  = r.get("risk_reward") or 0
             if sig in ("READY", "TRIGGERED") and rr >= HVF_MIN_RR:
+                # Missed-entry guard (user 2026-06-20): a TRIGGERED setup whose price has already
+                # run > MAX_ENTRY_CHASE_PCT past the entry is no longer actionable — don't publish
+                # it (would be chasing). READY setups haven't reached entry yet, so never "missed".
+                chase = entry_chase_pct(r)
+                if sig == "TRIGGERED" and chase is not None and chase > MAX_ENTRY_CHASE_PCT:
+                    _missed += 1
+                    continue
                 tradeable.append(r)
             elif sig == "DEVELOPING":
                 developing.append(r)
+
+    if _missed:
+        log.info(f"categorise: excluded {_missed} TRIGGERED setup(s) as missed entry "
+                 f"(> {MAX_ENTRY_CHASE_PCT}% past entry)")
 
     from price_action import hvf_weight
     tradeable.sort(key=lambda r: hvf_weight(
@@ -392,7 +409,7 @@ def _tradeable_line(r) -> str:
     # #signals; it never goes on the X card/tweet).
     _hz    = target_horizon(r)
     _hz_s  = f"  ·  {_hz} to target" if _hz else ""
-    line = (f"{d}{s} *{_label(t)}*  R:R {rr}{_hz_s}  Q={q}  [{tf}] · {idx}\n"
+    line = (f"{d}{s} *{_label(t)}*  R:R {rr}{_hz_s}  Quality {q}/100  [{tf}] · {idx}\n"
             f"    Now {now}  Entry {entry}{_wrap(e_pct)}  Stop {stop}{_wrap(s_pct)}  Target {target}{_wrap(t_pct)}")
     # Tight-stop label (backlog #9b): a funnel whose stop is < TIGHT_STOP_MIN_PCT of price
     # is structurally untradeable at IG intraday (spread + tick noise), so we DON'T trade it
@@ -488,7 +505,9 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
                          "text": f"*{_index_short(market)}* — top {len(rows)} of {totals.get(market, len(rows))} candidates"}
             })
             # However #2 (user 2026-06-19): number each list from 1, restarting per market.
-            _numbered = [f"{i}. {_tradeable_line(r)}" for i, r in enumerate(rows, 1)]
+            # Trailing newline per entry = a blank line between instruments (user 2026-06-20:
+            # "with so much detail a spaced line is needed between each instrument").
+            _numbered = [f"{i}. {_tradeable_line(r)}\n" for i, r in enumerate(rows, 1)]
             for blk in _chunk_lines(_numbered):
                 blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})
     else:
@@ -521,7 +540,8 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
                          "text": f"*{_index_short(market)}* — top {len(rows)} of {totals.get(market, len(rows))} candidates"}
             })
             # However #2 (user 2026-06-19): number each list from 1, restarting per market.
-            _numbered = [f"{i}. {_developing_line(r)}" for i, r in enumerate(rows, 1)]
+            # Blank line between instruments (user 2026-06-20).
+            _numbered = [f"{i}. {_developing_line(r)}\n" for i, r in enumerate(rows, 1)]
             for blk in _chunk_lines(_numbered):
                 blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": blk}})
     else:
