@@ -66,6 +66,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.29.0  2026-06-21  Alex Hind   FIX get_trend_structure misclassification (user 2026-06-21, from "NKE 3yr looks bearish —
+#                                 does it meet HVF?"): the classifier checked hh_hl thresholds BEFORE comparing to lh_ll, so a
+#                                 net-bearish name (NKE: hh_hl=3, lh_ll=6) was tagged UPTREND and admitted a BULLISH funnel on a
+#                                 multi-year downtrend. Now a trend requires its direction to outweigh the other; ties -> SIDEWAYS.
 # 1.28.0  2026-06-20  Alex Hind   DISABLE the prior-trend gate pending calibration (CI regression case 10 failed): at 20% it
 #                                 rejected the HIK.L frozen known-good (its prior impulse measures 12.5%) AND the MTF then
 #                                 surfaced a wrong-direction bearish override. Full suite back to 27/27. Helper kept; the
@@ -444,14 +448,18 @@ def get_trend_structure(ticker: str) -> dict:
     result["hh_hl_count"] = hh_hl
     result["lh_ll_count"] = lh_ll
 
-    # Classify
-    if hh_hl >= 5:
+    # Classify by the DOMINANT direction (user 2026-06-21 / fix). The old logic checked the
+    # hh_hl thresholds BEFORE comparing to lh_ll, so a net-BEARISH name (e.g. NKE: hh_hl=3 but
+    # lh_ll=6) was mislabelled UPTREND — which then admitted a BULLISH HVF on a stock in a
+    # multi-year DOWNTREND. An up/down-trend now requires its direction to actually outweigh the
+    # other (hh_hl > lh_ll for up, lh_ll > hh_hl for down); ties / weak structure = SIDEWAYS.
+    if hh_hl >= 5 and hh_hl > lh_ll:
         result["signal"] = "STRONG_UPTREND"
-    elif hh_hl >= 3:
+    elif hh_hl >= 3 and hh_hl > lh_ll:
         result["signal"] = "UPTREND"
-    elif lh_ll >= 5:
+    elif lh_ll >= 5 and lh_ll > hh_hl:
         result["signal"] = "STRONG_DOWNTREND"
-    elif lh_ll >= 3:
+    elif lh_ll >= 3 and lh_ll > hh_hl:
         result["signal"] = "DOWNTREND"
     else:
         result["signal"] = "SIDEWAYS"
