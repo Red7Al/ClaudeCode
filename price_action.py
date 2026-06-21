@@ -66,6 +66,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.26.0  2026-06-20  Alex Hind   Prior-trend magnitude gate (Rule 1, user 2026-06-20): get_hvf_signal rejects a funnel whose
+#                                 prior impulse (bounded ~120-bar run-up into H1/L1) is < MIN_PRIOR_TREND_PCT (20%).
+#                                 Skipped when <15 pre-pivot bars (can't measure); per-timeframe, so the MTF scan keeps a
+#                                 name if ANY timeframe has a valid >=20% impulse + funnel. Regression 19/0 (fixtures'
+#                                 funnels sit early -> gate skips them). Real-world cut ~20% (not the naive 73%).
 # 1.25.0  2026-06-20  Alex Hind   entry_chase_pct() helper (user 2026-06-20): signed % price has run past entry, to drop
 #                                 missed-entry setups. support_resistance default window 20 -> 60 bars (a 20-bar S/R on a
 #                                 tight coil was an absurd ~1% band).
@@ -216,7 +221,15 @@ import yfinance as yf
 
 from config import (YAHOO_MAP, HVF_MIN_RR, PA_CONFIRM_THRESHOLDS,
                     PA_CONFIRM_THRESHOLD_DEFAULT, HVF_LIQUIDITY_TIERS_GBP,
-                    TIGHT_STOP_MIN_PCT)
+                    TIGHT_STOP_MIN_PCT, MIN_PRIOR_TREND_PCT)
+
+# Rule 1 (prior trend): minimum bars of pre-pivot history in the window needed to MEASURE the
+# prior-trend magnitude. Below this we can't assess it, so the gate is skipped (the structural
+# trend gate still applies, and the longer-timeframe scan re-checks with full history).
+_MIN_PRIOR_BARS = 15
+# Measure the prior IMPULSE over a BOUNDED window before the pivot (not the entire history — an
+# ancient low would inflate the move and pass everything). ~120 bars = the recent run-up.
+_PRIOR_LOOKBACK = 120
 
 log = logging.getLogger("price_action")
 
@@ -1302,6 +1315,29 @@ def get_hvf_signal(ticker: str, lookback_days: int = 240,
         risk   = abs(entry_level - stop_price)
         reward = abs(target - entry_level)
         rr     = round(reward / risk, 2) if risk > 0 else 0.0
+
+        # ── Prior-trend magnitude gate (Rule 1, user 2026-06-20) ──────────────────────────────────────────────────────
+        # HVF is a CONTINUATION of a STRONG prior move. Require the impulse leg into the funnel to
+        # be >= MIN_PRIOR_TREND_PCT: bullish = rise from the lowest low before H1 up to H1; bearish
+        # = fall from the highest high before L1 down to L1. Skipped only when there's too little
+        # pre-pivot history in THIS window to measure it (short timeframes) — the longer-timeframe
+        # scan re-checks with full history. Rejected outright (no funnel), per Hunt/RW Rule 1.
+        try:
+            _pivot_bar = h1[0] if bullish else l1[0]
+            if _pivot_bar >= _MIN_PRIOR_BARS:
+                _lo = max(0, _pivot_bar - _PRIOR_LOOKBACK)   # bounded recent run-up, not all history
+                if bullish:
+                    _origin = float(hist["Low"].values[_lo:_pivot_bar].min())
+                    _prior_move = (h1[1] - _origin) / _origin * 100 if _origin > 0 else None
+                else:
+                    _origin = float(hist["High"].values[_lo:_pivot_bar].max())
+                    _prior_move = (_origin - l1[1]) / l1[1] * 100 if l1[1] > 0 else None
+                if _prior_move is not None and _prior_move < MIN_PRIOR_TREND_PCT:
+                    log.info(f"HVF {ticker}: prior move {_prior_move:.1f}% < {MIN_PRIOR_TREND_PCT}% "
+                             f"— not a strong-trend continuation, rejected")
+                    return result
+        except Exception:
+            pass   # never fail detection on the prior-trend measure
 
         # ── R:R gate (Pattern Checker criterion #5) ───────────────────────────────────────────────────────────────────
         # Threshold imported from config.HVF_MIN_RR (aliased to MIN_RISK_REWARD).

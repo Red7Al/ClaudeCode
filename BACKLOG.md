@@ -13,13 +13,13 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   **the source/provider name must never be in the tweet**; keep it lowest-priority so it only
   shows when the 280-char tweet has room. Decide news source + competitor-map source before build.
 
-- [ ] **Prior-trend ≥20% magnitude gate** (user 2026-06-20, item I). Shadow-diff (2026-06-20,
-  20-name sample) showed **~73% of current funnels have a prior move <20%** — adding RW/Hunt's
-  "strong directional move, min ~20%" floor is the single biggest quality lever. NOT yet
-  implemented: it's a DETECTION change (compute prior-impulse % in get_hvf_signal and gate on it),
-  so it must (a) keep test_hvf_method.py green — the synthetic fixtures may lack 20% prior moves,
-  so they'd likely need updating — and (b) ship with a full-universe shadow-diff. Decide hard-gate
-  vs quality-input first.
+- [x] **Prior-trend ≥20% magnitude gate** — DONE 2026-06-20 (config.MIN_PRIOR_TREND_PCT,
+  price_action 1.26.0). get_hvf_signal rejects a funnel whose bounded ~120-bar prior impulse is
+  <20%. Regression 19/0 (no fixture update needed — synthetic funnels sit too early to measure, so
+  the gate skips them). NOTE: real-world cut is ~20% on the sample, NOT the naive 73% — the MTF
+  scan keeps a name if ANY timeframe has a valid ≥20% impulse (e.g. NKE off a 3-month run on
+  daily-90). Tuning levers if more aggression wanted: raise MIN_PRIOR_TREND_PCT, shrink
+  _PRIOR_LOOKBACK, or require the impulse on the longest timeframe only.
 
 - [ ] **R:R sanity** — the displayed R:R reaches 20-67:1 on very tight coils (sub-1% stops). The
   daily report now flags "R:R inflated by the tiny stop" when tight_stop_intraday; consider also

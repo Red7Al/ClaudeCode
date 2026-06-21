@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.18.0  2026-06-20  Alex Hind   MIN_PRIOR_TREND_PCT=20.0 (user 2026-06-20): HVF Rule 1 magnitude floor — a funnel must
+#                                 follow a >=20% prior impulse or it's rejected at detection (price_action 1.26.0).
 # 1.17.0  2026-06-20  Alex Hind   MAX_ENTRY_CHASE_PCT=3.0 (user 2026-06-20): a TRIGGERED setup whose price already ran >3%
 #                                 past the entry is a MISSED entry (chasing) and is dropped from tradeable/publications.
 # 1.16.0  2026-06-19  Alex Hind   MIN_PUBLISH_QUALITY=70 (user 2026-06-19): instruments below 70/100 pattern quality are not
@@ -603,6 +605,12 @@ MIN_PUBLISH_QUALITY = 70
 # list / publications (user 2026-06-20: "$TATE has missed entry by a mile - why share now?").
 # READY (not-yet-triggered) setups are never "missed" — price hasn't reached the entry yet.
 MAX_ENTRY_CHASE_PCT = 3.0
+
+# HVF Rule 1 (prior trend) magnitude floor (user 2026-06-20). An HVF is a CONTINUATION of a
+# STRONG prior move — the impulse leg into the funnel must be at least this %, or the funnel is
+# rejected at detection (matches Francis Hunt / RW "strong directional move, min ~20%"). Shadow-
+# diff 2026-06-20: ~73% of previously-detected funnels came off <20% moves (weak drifts).
+MIN_PRIOR_TREND_PCT = 20.0
 
 # Canonical market order for the grouped reports (matches run_hvf_report.UNIVERSE key order).
 # Markets not listed fall to the end, alphabetically (see price_action.group_by_market).
