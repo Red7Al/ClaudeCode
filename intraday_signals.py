@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.33.0  2026-06-21  Alex Hind   Card (user 2026-06-21): "Sup"/"Res" spelled out to "Support"/"Resistance" (spacers tightened
+#                                 to fit); added a 3-year weekly-close history inset (top-right, green/red by 3yr return) so
+#                                 the long-term trend is visible (e.g. NKE's multi-year path).
 # 1.32.0  2026-06-21  Alex Hind   P/E in relation to the market (user 2026-06-21): the tweet justification + the card P/E now
 #                                 tag cheap/in-line/rich vs config.MARKET_PE (e.g. "P/E 24.9, rich vs ~21 mkt").
 # 1.31.0  2026-06-21  Alex Hind   Competitor angle: raised to HIGH priority (right after pattern quality) + a COMPACT short
@@ -1323,18 +1326,18 @@ def render_x_post_card(r: dict):
         _sup_v = f"{sup_raw * ig_scale:g}" if sup_raw else "—"
         _res_v = f"{res_raw * ig_scale:g}" if res_raw else "—"
         _level_segs = [
-            (f"Now {_now_v}      ", "#c9d1d9"),
+            (f"Now {_now_v}    ",   "#c9d1d9"),
             (f"◎ Entry {h3_str}",   "#e3b341"),   # gold — matches the entry line
-            ("      ",              "#c9d1d9"),
-            (f"● Stop {stop_str}",  "#f85149"),   # red
-            ("      ",              "#c9d1d9"),
-            (f"▲ Target {tgt_str}", "#3fb950"),   # green
-            ("      ",              "#c9d1d9"),
-            (f"⚖ R:R {rr_str}",     "#c9d1d9"),
-            ("      ",              "#c9d1d9"),
-            (f"Sup {_sup_v}",       "#3fb950"),   # support green
             ("    ",                "#c9d1d9"),
-            (f"Res {_res_v}",       "#f85149"),   # resistance red
+            (f"● Stop {stop_str}",  "#f85149"),   # red
+            ("    ",                "#c9d1d9"),
+            (f"▲ Target {tgt_str}", "#3fb950"),   # green
+            ("    ",                "#c9d1d9"),
+            (f"⚖ R:R {rr_str}",     "#c9d1d9"),
+            ("    ",                "#c9d1d9"),
+            (f"Support {_sup_v}",   "#3fb950"),   # support green (user 2026-06-21: full word)
+            ("    ",                "#c9d1d9"),
+            (f"Resistance {_res_v}", "#f85149"),  # resistance red (full word)
         ]
         _lx = 0.05
         _renderer = fig.canvas.get_renderer()
@@ -1415,6 +1418,25 @@ def render_x_post_card(r: dict):
             _ymin, _ymax = min(_ylevels), max(_ylevels)
             _pad = (_ymax - _ymin) * 0.06 or 1.0
             ax.set_ylim(_ymin - _pad, _ymax + _pad)
+
+        # ── 3-year history inset (user 2026-06-21: "show the 3yr price history ... gradually
+        # falling") — a small weekly-close sparkline so the long-term trend is visible at a glance.
+        # Top-right of the chart (empty space in a downtrend); green if up over 3yr, red if down.
+        try:
+            _h3 = _yf.Ticker(ticker).history(period="3y", interval="1wk")
+            _c3 = _h3["Close"].dropna() if _h3 is not None else None
+            if _c3 is not None and len(_c3) > 8:
+                _pct3 = (float(_c3.iloc[-1]) / float(_c3.iloc[0]) - 1) * 100
+                _axin = fig.add_axes([0.655, 0.595, 0.21, 0.072])
+                _axin.set_facecolor("#0d1117")
+                _axin.plot(range(len(_c3)), _c3.values,
+                           color="#3fb950" if _pct3 >= 0 else "#f85149", linewidth=1.1)
+                _axin.set_title(f"3-yr history  {_pct3:+.0f}%", color="#8b949e", fontsize=8, pad=2)
+                _axin.set_xticks([]); _axin.set_yticks([])
+                for _sp in _axin.spines.values():
+                    _sp.set_edgecolor("#30363d")
+        except Exception:
+            pass
 
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
         ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))

@@ -30,6 +30,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.13.0  2026-06-21  Alex Hind   (user 2026-06-21) Un-suppress the institutional holder — it's valuable validation, always
+#                                 shown (a big holder is further validation); kept the "institutional holder" label and
+#                                 accurate emphasis (dominant >=20% / notable >=15% / neutral below). Added a 3-year price
+#                                 context line to _chart_story (Slack long report + dossier).
 # 1.12.0  2026-06-21  Alex Hind   (user 2026-06-21) Fix misleading holder line: the top holder is labelled "largest
 #                                 institutional holder" (a fund, NOT a company insider — BlackRock 7.6% was reading as if it
 #                                 contradicted "insiders 1.5%"); passive index-fund giants (BlackRock/Vanguard/SSGA/Fidelity)
@@ -441,6 +445,21 @@ def _chart_story(r: dict, name: str, gbp: bool) -> str:
         if e_p: _bits.append(f"entry {e_p} away")
         if t_p: _bits.append(f"target {t_p} away")
         parts.append(_pick(_P_CHART_NOW, tk, "now").format(now=_lvl(cur), dist=", ".join(_bits)))
+    # 3-year context (user 2026-06-21: "show the 3yr history, e.g. NKE gradually falling") — the
+    # long-term backdrop the funnel sits in. Best-effort; omitted if the fetch fails.
+    try:
+        import yfinance as _yf
+        _h3 = _yf.Ticker(tk).history(period="3y", interval="1wk")["Close"].dropna()
+        if len(_h3) > 8:
+            _p3 = (float(_h3.iloc[-1]) / float(_h3.iloc[0]) - 1) * 100
+            if _p3 <= -15:
+                parts.append(f"Zooming out, the shares are down about {abs(_p3):.0f}% over three years — a long, grinding decline.")
+            elif _p3 >= 15:
+                parts.append(f"Zooming out, the shares are up about {_p3:.0f}% over three years — a strong multi-year uptrend.")
+            else:
+                parts.append(f"Over three years the shares are roughly flat ({_p3:+.0f}%).")
+    except Exception:
+        pass
     return " ".join(parts)
 
 
@@ -509,17 +528,21 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
     # State Street, Fidelity/Geode) hold ~5-10% of nearly EVERY large cap — that's normal, not a
     # standout — so they're only surfaced if the stake is unusually large (>=15%). A concentrated
     # ACTIVE holder (e.g. Berkshire) is always surfaced; "dominant/controlling-sized" at >=20%.
+    # ALWAYS show the largest institutional holder (user 2026-06-21: institutional ownership is
+    # valuable validation — do NOT suppress; a big holder is further validation). It's a FUND, not
+    # a company insider, so labelled "institutional holder" (never confused with the insiders line
+    # above). Emphasis only where it's genuinely a concentrated ACTIVE stake (>=20% dominant /
+    # >=15% notable); a normal index-fund level (e.g. BlackRock 7.6%) is just stated with direction.
     thp = f.get("top_holder_pct")
     th  = (f.get("top_holder") or "")
-    _passive = any(g in th.lower() for g in
-                   ("blackrock", "vanguard", "state street", "ssga", "geode", "fmr", "fidelity"))
-    if th and isinstance(thp, (int, float)) and thp >= LARGE_HOLDER_PCT and not (_passive and thp < 15):
-        emph = " — a dominant, controlling-sized stake" if thp >= 20 else " — a notably concentrated stake"
+    if th and isinstance(thp, (int, float)) and thp >= LARGE_HOLDER_PCT:
+        emph = (" — a dominant, controlling-sized stake" if thp >= 20
+                else (" — a notably concentrated stake" if thp >= 15 else ""))
         chg = f.get("top_holder_change")   # rising/falling direction this period (user 2026-06-19)
         if isinstance(chg, (int, float)) and abs(chg) >= 0.5:
-            emph += f", and {'rising' if chg > 0 else 'falling'} ({chg:+.1f}% this period)"
+            emph += f", {'rising' if chg > 0 else 'falling'} ({chg:+.1f}% this period)"
         elif isinstance(chg, (int, float)):
-            emph += ", and holding steady"
+            emph += ", holding steady"
         s.append(f"The largest institutional holder, {th}, owns about {thp:.1f}%{emph}.")
 
     # Cite authoritative sources for any overridden figure (user 2026-06-19) — only when an
