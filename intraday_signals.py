@@ -23,6 +23,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.35.0  2026-06-21  Alex Hind   Card prices to 2 decimal places (user 2026-06-21): Now/Entry/Stop/Target/Support/Resistance
+#                                 now :.2f (were :g, e.g. "Support 40.9833" -> "40.98").
 # 1.34.0  2026-06-21  Alex Hind   Competitor NEWS narrative (user 2026-06-21): _competitor_news surfaces a recent headline
 #                                 (preferring a peer mention) as a SLACK-ONLY block in the X-draft wrapper — never on the X
 #                                 tweet/card (may name the publisher; Slack is internal). Free yfinance .news feed.
@@ -1199,9 +1201,9 @@ def render_x_post_card(r: dict):
 
     dir_word  = "higher" if direction == "BULLISH" else "lower"
     rr_str    = f"{rr:.1f}:1" if rr else "—"
-    h3_str    = f"{h3:g}" if h3 else "—"
-    stop_str  = f"{stop:g}" if stop else "—"
-    tgt_str   = f"{target:g}" if target else "—"
+    h3_str    = f"{h3:.2f}" if h3 else "—"        # 2dp on the card (user 2026-06-21)
+    stop_str  = f"{stop:.2f}" if stop else "—"
+    tgt_str   = f"{target:.2f}" if target else "—"
     sig_desc  = _SIG_LABEL.get(signal, signal.lower())
 
     try:
@@ -1353,11 +1355,11 @@ def render_x_post_card(r: dict):
         # gold, ● stop red, ▲ target green, ⚖ R:R neutral (DejaVu-safe glyphs — colour
         # emoji don't render in the card font). Segment widths are measured via the Agg
         # renderer to place them left-to-right (one fig.text can only be a single colour).
-        _now_v = f"{float(close.iloc[-1]) * ig_scale:g}"
+        _now_v = f"{float(close.iloc[-1]) * ig_scale:.2f}"
         # Support/resistance after R:R on the top line (user 2026-06-19): support green,
         # resistance red. '—' when the recent-swing fetch failed.
-        _sup_v = f"{sup_raw * ig_scale:g}" if sup_raw else "—"
-        _res_v = f"{res_raw * ig_scale:g}" if res_raw else "—"
+        _sup_v = f"{sup_raw * ig_scale:.2f}" if sup_raw else "—"
+        _res_v = f"{res_raw * ig_scale:.2f}" if res_raw else "—"
         _level_segs = [
             (f"Now {_now_v}    ",   "#c9d1d9"),
             (f"◎ Entry {h3_str}",   "#e3b341"),   # gold — matches the entry line
