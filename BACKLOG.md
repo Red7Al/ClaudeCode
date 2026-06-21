@@ -13,13 +13,18 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   **the source/provider name must never be in the tweet**; keep it lowest-priority so it only
   shows when the 280-char tweet has room. Decide news source + competitor-map source before build.
 
-- [x] **Prior-trend ≥20% magnitude gate** — DONE 2026-06-20 (config.MIN_PRIOR_TREND_PCT,
-  price_action 1.26.0). get_hvf_signal rejects a funnel whose bounded ~120-bar prior impulse is
-  <20%. Regression 19/0 (no fixture update needed — synthetic funnels sit too early to measure, so
-  the gate skips them). NOTE: real-world cut is ~20% on the sample, NOT the naive 73% — the MTF
-  scan keeps a name if ANY timeframe has a valid ≥20% impulse (e.g. NKE off a 3-month run on
-  daily-90). Tuning levers if more aggression wanted: raise MIN_PRIOR_TREND_PCT, shrink
-  _PRIOR_LOOKBACK, or require the impulse on the longest timeframe only.
+- [ ] **Prior-trend magnitude gate — DISABLED 2026-06-20, needs a calibration DECISION.** Built
+  (config.MIN_PRIOR_TREND_PCT, shared price_action._prior_trend_pct, daily+weekly), then disabled
+  because at **20%** it broke CI regression case 10: the **HIK.L frozen known-good** has a prior
+  impulse of only **12.5%**, so the gate rejected a colleague-validated funnel AND the MTF then
+  surfaced a wrong-direction bearish override. This is the crux of the 20% question: RW/Hunt's
+  "~20%" is an interpretation (per the official-method audit), and a validated real setup (HIK.L)
+  sits at 12.5%. **Decision needed before re-enabling:** (a) lower the threshold (≈10-12% would keep
+  HIK.L; what does it cost in junk-cut?), (b) keep 20% and re-baseline the frozen fixtures
+  deliberately + handle the bearish-override side-effect, or (c) make it a quality-score input, not
+  a hard reject. Code is commented-out at both gate sites (get_hvf_signal + _run_hvf_on_hist),
+  re-enable both together. ALWAYS run the FULL `python test_hvf_method.py` (not --quick) for any
+  detection change — the frozen fixtures only run there + in CI.
 
 - [ ] **R:R sanity** — the displayed R:R reaches 20-67:1 on very tight coils (sub-1% stops). The
   daily report now flags "R:R inflated by the tiny stop" when tight_stop_intraday; consider also
