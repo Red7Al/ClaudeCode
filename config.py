@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.20.0  2026-06-21  Alex Hind   MARKET_PE=21.0 (user 2026-06-21): broad-market P/E benchmark to tag a stock's P/E
+#                                 cheap/in-line/rich on the tweet + card.
 # 1.19.0  2026-06-21  Alex Hind   COMPETITOR_MAP (user 2026-06-21): curated direct-competitor peers (NKE->LULU, ...) driving
 #                                 the competitive angle on X tweets (intraday_signals._competitor_angle).
 # 1.18.0  2026-06-20  Alex Hind   MIN_PRIOR_TREND_PCT=20.0 (user 2026-06-20): HVF Rule 1 magnitude floor — a funnel must
@@ -628,6 +630,11 @@ COMPETITOR_MAP = {
     "F":    ["GM"],            "GM":   ["F"],
     "PYPL": ["SQ"],            "DIS":  ["NFLX"],           "NFLX": ["DIS"],
 }
+
+# Rough broad-market P/E benchmark (user 2026-06-21: "discuss P/E in relation to market"). Used to
+# tag a stock's P/E cheap/in-line/rich (e.g. "P/E 24.9, rich vs ~21 mkt"). ~21 = S&P 500 long-run
+# average; tunable. Sector-relative would need a peer/sector P/E feed (BACKLOG).
+MARKET_PE = 21.0
 
 # Canonical market order for the grouped reports (matches run_hvf_report.UNIVERSE key order).
 # Markets not listed fall to the end, alphabetically (see price_action.group_by_market).

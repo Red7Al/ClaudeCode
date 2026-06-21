@@ -23,6 +23,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.32.0  2026-06-21  Alex Hind   P/E in relation to the market (user 2026-06-21): the tweet justification + the card P/E now
+#                                 tag cheap/in-line/rich vs config.MARKET_PE (e.g. "P/E 24.9, rich vs ~21 mkt").
 # 1.31.0  2026-06-21  Alex Hind   Competitor angle: raised to HIGH priority (right after pattern quality) + a COMPACT short
 #                                 form ("ahead of $LULU (3mo)") so it reliably survives the 280-char trim (the first NKE
 #                                 test trimmed the long form out). Verified NKE tweet now carries the $LULU angle.
@@ -1274,7 +1276,9 @@ def render_x_post_card(r: dict):
                 _info = _yf_info(ticker)
                 _pe = _info.get("forwardPE") or _info.get("trailingPE")
                 if isinstance(_pe, (int, float)) and _pe > 0:
-                    wk52_str = (wk52_str + "   " if wk52_str else "") + f"◆ P/E {_pe:.1f}"
+                    from config import MARKET_PE   # P/E vs broad market (user 2026-06-21)
+                    _pv = "rich" if _pe > MARKET_PE * 1.15 else ("cheap" if _pe < MARKET_PE * 0.85 else "in-line")
+                    wk52_str = (wk52_str + "   " if wk52_str else "") + f"◆ P/E {_pe:.1f} ({_pv} vs ~{MARKET_PE:g} mkt)"
             except Exception:
                 pass
         except Exception:
@@ -1808,7 +1812,12 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
             _info_x = _yf_info(ticker)
             _pe = _info_x.get("forwardPE") or _info_x.get("trailingPE")
             if isinstance(_pe, (int, float)) and 0 < _pe < 200:
-                justifications.append((f"P/E {_pe:.1f}", f"P/E {_pe:.1f}"))
+                # P/E relative to the broad market (user 2026-06-21): tag cheap/in-line/rich vs
+                # config.MARKET_PE so the number has context, not just a bare multiple.
+                from config import MARKET_PE
+                _val = "rich" if _pe > MARKET_PE * 1.15 else ("cheap" if _pe < MARKET_PE * 0.85 else "in-line")
+                justifications.append((f"P/E {_pe:.1f}, {_val} vs ~{MARKET_PE:g} mkt",
+                                       f"P/E {_pe:.1f} ({_val})"))
             _ins = _info_x.get("heldPercentInsiders")
             if isinstance(_ins, (int, float)) and _ins > 0:
                 justifications.append((f"Insider ownership {_ins * 100:.0f}%",

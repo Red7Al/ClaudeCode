@@ -30,6 +30,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.12.0  2026-06-21  Alex Hind   (user 2026-06-21) Fix misleading holder line: the top holder is labelled "largest
+#                                 institutional holder" (a fund, NOT a company insider — BlackRock 7.6% was reading as if it
+#                                 contradicted "insiders 1.5%"); passive index-fund giants (BlackRock/Vanguard/SSGA/Fidelity)
+#                                 below 15% are no longer flagged as a "standout" (they hold ~5-10% of every large cap).
 # 1.11.0  2026-06-19  Alex Hind   (user 2026-06-19) build_report cite_sources flag — source citation is Slack/dossier-only,
 #                                 NEVER in an X tweet (default False). Large-holder threshold lowered 10 -> 5%; the
 #                                 callout now shows the stake rising/falling/steady (institutional_holders pctChange).
@@ -498,19 +502,25 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
         s.append(_pick(_P_INSIDER, tk, "ins").format(value=_money(f["insider_value"], gbp), pct=f"{f['insider_pct']:.1f}"))
     elif f.get("insider_pct") is not None:
         s.append(f"Company insiders own about {f['insider_pct']:.1f}% of the shares.")
-    # Large single holder made clear (user 2026-06-19): a concentrated stake (e.g. Berkshire
-    # >20%) is materially relevant. Flag the top holder when notable; "dominant" at >=20%.
+    # Largest INSTITUTIONAL holder, made clear (user 2026-06-19; clarified 2026-06-21). This is a
+    # FUND, not a company insider — so it's labelled "institutional holder", never confused with the
+    # "Company insiders" (officers/directors) line above (user 2026-06-21: BlackRock 7.6% was reading
+    # as if it contradicted "insiders 1.5%"). And passive index-fund giants (BlackRock, Vanguard,
+    # State Street, Fidelity/Geode) hold ~5-10% of nearly EVERY large cap — that's normal, not a
+    # standout — so they're only surfaced if the stake is unusually large (>=15%). A concentrated
+    # ACTIVE holder (e.g. Berkshire) is always surfaced; "dominant/controlling-sized" at >=20%.
     thp = f.get("top_holder_pct")
-    if f.get("top_holder") and isinstance(thp, (int, float)) and thp >= LARGE_HOLDER_PCT:
+    th  = (f.get("top_holder") or "")
+    _passive = any(g in th.lower() for g in
+                   ("blackrock", "vanguard", "state street", "ssga", "geode", "fmr", "fidelity"))
+    if th and isinstance(thp, (int, float)) and thp >= LARGE_HOLDER_PCT and not (_passive and thp < 15):
         emph = " — a dominant, controlling-sized stake" if thp >= 20 else " — a notably concentrated stake"
-        # Rising/falling (user 2026-06-19): direction of the holder's stake this period.
-        chg = f.get("top_holder_change")
+        chg = f.get("top_holder_change")   # rising/falling direction this period (user 2026-06-19)
         if isinstance(chg, (int, float)) and abs(chg) >= 0.5:
-            direction = "rising" if chg > 0 else "falling"
-            emph += f", and {direction} ({chg:+.1f}% this period)"
+            emph += f", and {'rising' if chg > 0 else 'falling'} ({chg:+.1f}% this period)"
         elif isinstance(chg, (int, float)):
             emph += ", and holding steady"
-        s.append(f"One holder stands out: {f['top_holder']} owns about {thp:.1f}% of the company{emph}.")
+        s.append(f"The largest institutional holder, {th}, owns about {thp:.1f}%{emph}.")
 
     # Cite authoritative sources for any overridden figure (user 2026-06-19) — only when an
     # override was actually applied (so the citation is always truthful) AND only on Slack/
