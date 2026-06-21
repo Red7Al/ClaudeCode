@@ -23,6 +23,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.29.0  2026-06-20  Alex Hind   Code-review fix: _levels_changes_line iterates E,S only (target dropped from the fingerprint
+#                                 in 1.27.0) — avoids a spurious "Target X -> —" on the one-time E|S|T -> E|S migration.
 # 1.28.0  2026-06-20  Alex Hind   (user 2026-06-20) Copy-variety pass — _X_DESC pools expanded 10 -> 18 per key with more
 #                                 natural, less templated phrasing (the "Compression building..." repetition looked AI-
 #                                 generated). Repetition further cut by the new quality/missed-entry gates reducing volume.
@@ -1445,9 +1447,11 @@ def _levels_changes_line(prev_fp: str, h3, stop, target) -> str:
     seen-before instrument being republished because a level changed."""
     prev = _parse_levels_fp(prev_fp)
     cur  = _parse_levels_fp(_levels_fp(h3, stop, target))
-    labels = {"E": "Entry", "S": "Stop", "T": "Target"}
+    labels = {"E": "Entry", "S": "Stop"}
+    # Only E and S are in the fingerprint now (target excluded — it wobbles). Iterating "T" here
+    # would show a spurious "Target X -> —" on the one-time migration from the old E|S|T format.
     chips = [f"{labels[k]} {prev.get(k, '—')} → {cur.get(k, '—')}"
-             for k in ("E", "S", "T") if prev.get(k, "—") != cur.get(k, "—")]
+             for k in ("E", "S") if prev.get(k, "—") != cur.get(k, "—")]
     return "  ·  ".join(chips)
 
 

@@ -66,6 +66,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.27.0  2026-06-20  Alex Hind   Code-review fix: the prior-trend gate was only in get_hvf_signal (daily) — WEEKLY funnels
+#                                 (_run_hvf_on_hist) bypassed it. Extracted shared _prior_trend_pct and applied it to BOTH
+#                                 paths (weekly lookback 52 bars). No more gate drift between the two parallel detectors.
 # 1.26.0  2026-06-20  Alex Hind   Prior-trend magnitude gate (Rule 1, user 2026-06-20): get_hvf_signal rejects a funnel whose
 #                                 prior impulse (bounded ~120-bar run-up into H1/L1) is < MIN_PRIOR_TREND_PCT (20%).
 #                                 Skipped when <15 pre-pivot bars (can't measure); per-timeframe, so the MTF scan keeps a
@@ -228,8 +231,30 @@ from config import (YAHOO_MAP, HVF_MIN_RR, PA_CONFIRM_THRESHOLDS,
 # trend gate still applies, and the longer-timeframe scan re-checks with full history).
 _MIN_PRIOR_BARS = 15
 # Measure the prior IMPULSE over a BOUNDED window before the pivot (not the entire history — an
-# ancient low would inflate the move and pass everything). ~120 bars = the recent run-up.
+# ancient low would inflate the move and pass everything). Daily ~120 bars (~6mo run-up); weekly
+# ~52 bars (~1yr) — fewer bars, longer calendar, matched to each timeframe's scale.
 _PRIOR_LOOKBACK = 120
+_PRIOR_LOOKBACK_WEEKLY = 52
+
+
+def _prior_trend_pct(hist, pivot_bar, pivot_level, bullish, lookback):
+    """Prior-impulse magnitude (%) leading INTO the funnel (HVF Rule 1). Bullish: rise from the
+    lowest low in the `lookback` bars before H1 up to H1; bearish: fall from the highest high
+    before L1 down to L1. Returns None when there's too little pre-pivot history to measure (the
+    gate is then skipped). Bounded lookback so an ancient extreme can't inflate the move. SHARED
+    by the daily (get_hvf_signal) and weekly (_run_hvf_on_hist) paths so the gate can't drift
+    between the two parallel detectors."""
+    try:
+        if pivot_bar is None or pivot_bar < _MIN_PRIOR_BARS:
+            return None
+        lo = max(0, pivot_bar - lookback)
+        if bullish:
+            origin = float(hist["Low"].values[lo:pivot_bar].min())
+            return (pivot_level - origin) / origin * 100 if origin > 0 else None
+        origin = float(hist["High"].values[lo:pivot_bar].max())
+        return (origin - pivot_level) / pivot_level * 100 if pivot_level > 0 else None
+    except Exception:
+        return None
 
 log = logging.getLogger("price_action")
 
@@ -1317,27 +1342,16 @@ def get_hvf_signal(ticker: str, lookback_days: int = 240,
         rr     = round(reward / risk, 2) if risk > 0 else 0.0
 
         # ── Prior-trend magnitude gate (Rule 1, user 2026-06-20) ──────────────────────────────────────────────────────
-        # HVF is a CONTINUATION of a STRONG prior move. Require the impulse leg into the funnel to
-        # be >= MIN_PRIOR_TREND_PCT: bullish = rise from the lowest low before H1 up to H1; bearish
-        # = fall from the highest high before L1 down to L1. Skipped only when there's too little
-        # pre-pivot history in THIS window to measure it (short timeframes) — the longer-timeframe
-        # scan re-checks with full history. Rejected outright (no funnel), per Hunt/RW Rule 1.
-        try:
-            _pivot_bar = h1[0] if bullish else l1[0]
-            if _pivot_bar >= _MIN_PRIOR_BARS:
-                _lo = max(0, _pivot_bar - _PRIOR_LOOKBACK)   # bounded recent run-up, not all history
-                if bullish:
-                    _origin = float(hist["Low"].values[_lo:_pivot_bar].min())
-                    _prior_move = (h1[1] - _origin) / _origin * 100 if _origin > 0 else None
-                else:
-                    _origin = float(hist["High"].values[_lo:_pivot_bar].max())
-                    _prior_move = (_origin - l1[1]) / l1[1] * 100 if l1[1] > 0 else None
-                if _prior_move is not None and _prior_move < MIN_PRIOR_TREND_PCT:
-                    log.info(f"HVF {ticker}: prior move {_prior_move:.1f}% < {MIN_PRIOR_TREND_PCT}% "
-                             f"— not a strong-trend continuation, rejected")
-                    return result
-        except Exception:
-            pass   # never fail detection on the prior-trend measure
+        # HVF is a CONTINUATION of a STRONG prior move. Reject when the impulse into the funnel is
+        # < MIN_PRIOR_TREND_PCT. Shared with the weekly path via _prior_trend_pct (same gate, no
+        # drift). Skipped when too little pre-pivot history to measure (then the structural trend
+        # gate still applies). Rejected outright (no funnel), per Hunt/RW Rule 1.
+        _prior_move = _prior_trend_pct(hist, h1[0] if bullish else l1[0],
+                                       h1[1] if bullish else l1[1], bullish, _PRIOR_LOOKBACK)
+        if _prior_move is not None and _prior_move < MIN_PRIOR_TREND_PCT:
+            log.info(f"HVF {ticker}: prior move {_prior_move:.1f}% < {MIN_PRIOR_TREND_PCT}% "
+                     f"— not a strong-trend continuation, rejected")
+            return result
 
         # ── R:R gate (Pattern Checker criterion #5) ───────────────────────────────────────────────────────────────────
         # Threshold imported from config.HVF_MIN_RR (aliased to MIN_RISK_REWARD).
@@ -2210,6 +2224,16 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
 
         risk = abs(entry - stop)          # R:R from entry level, not current price
         rr   = round(abs(target - entry) / risk, 2) if risk > 0 else 0.0
+
+        # Prior-trend magnitude gate (Rule 1) — SAME gate as the daily path (get_hvf_signal), via
+        # the shared _prior_trend_pct helper, so weekly funnels can't bypass it (code-review
+        # 2026-06-20). Weekly uses a shorter bar lookback (longer calendar) for its scale.
+        _pm = _prior_trend_pct(hist, h1[0] if bullish else l1[0],
+                               h1[1] if bullish else l1[1], bullish, _PRIOR_LOOKBACK_WEEKLY)
+        if _pm is not None and _pm < MIN_PRIOR_TREND_PCT:
+            log.info(f"HVF weekly {ticker}: prior move {_pm:.1f}% < {MIN_PRIOR_TREND_PCT}% — rejected")
+            return result
+
         # R:R gate must apply BEFORE TRIGGERED — a pattern that has broken out
         # but has poor R:R (e.g. entry already far past H3) is DEVELOPING, not
         # TRIGGERED. Without this gate the weekly scan was promoting low-R:R
