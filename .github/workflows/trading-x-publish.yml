@@ -29,6 +29,11 @@ on:
         type: boolean
         required: false
         default: false
+      no_register:
+        description: 'TEST: post Slack draft + live X but do NOT record (dedup table untouched)'
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   publish:
@@ -46,7 +51,7 @@ jobs:
           if [ "${{ inputs.top_per_market }}" != "0" ] && [ -n "${{ inputs.top_per_market }}" ]; then
             python publish_one_to_x.py --top-per-market=${{ inputs.top_per_market }} ${{ inputs.dry && '--dry' || '' }}
           else
-            python publish_one_to_x.py ${{ inputs.ticker }} ${{ inputs.dry && '--dry' || '' }} ${{ inputs.force && '--force' || '' }}
+            python publish_one_to_x.py ${{ inputs.ticker }} ${{ inputs.dry && '--dry' || '' }} ${{ inputs.force && '--force' || '' }} ${{ inputs.no_register && '--no-register' || '' }}
           fi
         env:
           X_API_KEY:            ${{ secrets.X_API_KEY }}
@@ -55,4 +60,6 @@ jobs:
           X_ACCESS_SECRET:      ${{ secrets.X_ACCESS_SECRET }}
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SLACK_TWITTER:        ${{ secrets.SLACK_TWITTER }}   # confirmation of the X publication (user 2026-06-16)
+          SLACK_TWITTER:        ${{ secrets.SLACK_TWITTER }}   # X-draft + confirmation (user 2026-06-16)
+          SLACK_BOT_TOKEN:          ${{ secrets.SLACK_BOT_TOKEN }}          # card image upload to the Slack draft
+          SLACK_TWITTER_CHANNEL_ID: ${{ secrets.SLACK_TWITTER_CHANNEL_ID }}

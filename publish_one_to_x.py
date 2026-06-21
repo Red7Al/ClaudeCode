@@ -25,6 +25,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.4.0   2026-06-21  Alex Hind   --no-register TEST mode (user 2026-06-21): posts the full Slack draft (card+tweet+long
+#                                 report) AND live X, bypasses the dedup guard, and does NOT record to x_publications — for
+#                                 test publications that shouldn't count as "published". Wired into trading-x-publish.yml.
 # 1.3.0   2026-06-17  Alex Hind   Batch mode (user 2026-06-17): publish_tickers_to_x() posts several instruments to X spaced
 #                                 by _INTER_INSTRUMENT_DELAY (60s) so threads don't overlap; --top-per-market=N publishes
 #                                 today's top-N/market tradeable. Used by the morning report for the top-2/market live X.
@@ -179,7 +182,8 @@ def main():
         pass
 
     dry   = "--dry" in sys.argv
-    force = "--force" in sys.argv                   # override the dedup guard
+    no_register = "--no-register" in sys.argv       # TEST: post to Slack+X but DON'T record (user 2026-06-21)
+    force = "--force" in sys.argv or no_register     # a test post bypasses the dedup guard too
     top_n = _top_per_market_arg()                   # batch: today's top-N/market tradeable
 
     try:
@@ -219,6 +223,16 @@ def main():
         sys.exit(2)
     res, tweet, png, thread = pub
 
+    # TEST mode (user 2026-06-21): also post the FULL Slack draft (card + tweet + long report) to
+    # #claude-twitter so the test shows BOTH the Slack and X publications, without registering.
+    if no_register and not dry:
+        try:
+            from intraday_signals import _generate_x_drafts
+            _generate_x_drafts([res], post=True, changed_only=False)   # changed_only=False -> no fp registration
+            log.info(f"{ticker}: TEST Slack draft posted (not registered).")
+        except Exception as e:
+            log.error(f"{ticker}: TEST Slack draft failed: {e}")
+
     log.info(f"{ticker}: lead tweet {len(tweet)} chars, card {'present' if png else 'MISSING'}, "
              f"{len(thread)}-part thread")
     print("----- LEAD TWEET (+card) -----")
@@ -238,7 +252,10 @@ def main():
     if posted < 1:
         log.error("nothing was posted (X keys missing or API error) — see log above.")
         sys.exit(3)
-    _record_publication(ticker, lead_id)            # dedup record (user 2026-06-16)
+    if no_register:
+        log.info(f"{ticker}: --no-register TEST — NOT recording this publication (dedup table untouched).")
+    else:
+        _record_publication(ticker, lead_id)        # dedup record (user 2026-06-16)
     _confirm_to_slack(ticker, res.get("name", ticker), lead_id, posted, len(thread))
 
 

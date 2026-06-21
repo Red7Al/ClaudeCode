@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.19.0  2026-06-21  Alex Hind   COMPETITOR_MAP (user 2026-06-21): curated direct-competitor peers (NKE->LULU, ...) driving
+#                                 the competitive angle on X tweets (intraday_signals._competitor_angle).
 # 1.18.0  2026-06-20  Alex Hind   MIN_PRIOR_TREND_PCT=20.0 (user 2026-06-20): HVF Rule 1 magnitude floor — a funnel must
 #                                 follow a >=20% prior impulse or it's rejected at detection (price_action 1.26.0).
 # 1.17.0  2026-06-20  Alex Hind   MAX_ENTRY_CHASE_PCT=3.0 (user 2026-06-20): a TRIGGERED setup whose price already ran >3%
@@ -611,6 +613,21 @@ MAX_ENTRY_CHASE_PCT = 3.0
 # rejected at detection (matches Francis Hunt / RW "strong directional move, min ~20%"). Shadow-
 # diff 2026-06-20: ~73% of previously-detected funnels came off <20% moves (weak drifts).
 MIN_PRIOR_TREND_PCT = 20.0
+
+# Curated direct-competitor map (user 2026-06-21: "for $NKE look at competition e.g. Lululemon").
+# Top peer first. Drives the competitive angle on X tweets (intraday_signals._competitor_angle):
+# the peer is named (a competitor, NOT a data source, so it's allowed on X) with relative ~3-month
+# performance. Curated now; a live news-headline layer can be added later (see BACKLOG).
+COMPETITOR_MAP = {
+    "NKE":  ["LULU", "ADDYY"], "LULU": ["NKE", "ADDYY"], "ADDYY": ["NKE", "LULU"],
+    "KO":   ["PEP"],           "PEP":  ["KO"],
+    "MCD":  ["YUM", "SBUX"],   "SBUX": ["MCD"],           "YUM":  ["MCD"],
+    "V":    ["MA"],            "MA":   ["V"],
+    "HD":   ["LOW"],           "LOW":  ["HD"],
+    "AMD":  ["NVDA", "INTC"],  "INTC": ["AMD", "NVDA"],
+    "F":    ["GM"],            "GM":   ["F"],
+    "PYPL": ["SQ"],            "DIS":  ["NFLX"],           "NFLX": ["DIS"],
+}
 
 # Canonical market order for the grouped reports (matches run_hvf_report.UNIVERSE key order).
 # Markets not listed fall to the end, alphabetically (see price_action.group_by_market).

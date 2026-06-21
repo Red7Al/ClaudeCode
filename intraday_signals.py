@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.30.0  2026-06-21  Alex Hind   Competitor angle on X tweets (user 2026-06-21): _competitor_angle names the top curated peer
+#                                 + relative ~3mo performance ('outpacing peer $LULU (+8% vs -3%, 3mo)'); lowest-priority
+#                                 tweet confirmation. Names a competitor (not a data source) so X-safe.
 # 1.29.0  2026-06-20  Alex Hind   Code-review fix: _levels_changes_line iterates E,S only (target dropped from the fingerprint
 #                                 in 1.27.0) — avoids a spurious "Target X -> —" on the one-time E|S|T -> E|S migration.
 # 1.28.0  2026-06-20  Alex Hind   (user 2026-06-20) Copy-variety pass — _X_DESC pools expanded 10 -> 18 per key with more
@@ -966,6 +969,37 @@ def _x_weighted_len(s: str) -> int:
 _NFA_DISCLAIMER = "\n\n" + _bold_italic("Not financial advice.")
 
 
+def _competitor_angle(ticker: str):
+    """Curated-peer competitive angle for the tweet (user 2026-06-21). Names the top peer (a
+    COMPETITOR — not a data source, so allowed on X) with relative ~3-month performance, e.g.
+    'outpacing peer $LULU (+8% vs -3%, 3mo)'. Returns (full, short) or None. From config's
+    curated COMPETITOR_MAP + a price fetch — no news API (a headline layer can come later)."""
+    from config import COMPETITOR_MAP
+    peers = COMPETITOR_MAP.get((ticker or "").upper())
+    if not peers:
+        return None
+    peer = peers[0]
+    try:
+        import yfinance as yf
+        data = yf.download([ticker, peer], period="3mo", interval="1d",
+                           progress=False, auto_adjust=True)["Close"]
+        if data is None or data.empty:
+            return None
+
+        def _ret(col):
+            s = data[col].dropna()
+            return (s.iloc[-1] / s.iloc[0] - 1) * 100 if len(s) > 1 else None
+        rt, rp = _ret(ticker), _ret(peer)
+        if rt is None or rp is None:
+            return None
+        peer_disp = peer[:-2] if peer.endswith(".L") else peer
+        rel = "outpacing" if rt > rp else "lagging"
+        line = f"{rel} peer ${peer_disp} ({rt:+.0f}% vs {rp:+.0f}%, 3mo)"
+        return (line, line)
+    except Exception:
+        return None
+
+
 def _tf_desc(tf_raw: str) -> str:
     """Human-readable timeframe description for tweets and cards."""
     mapping = {"30d": "30-day", "60d": "60-day", "90d": "90-day",
@@ -1767,6 +1801,14 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
             if isinstance(_ins, (int, float)) and _ins > 0:
                 justifications.append((f"Insider ownership {_ins * 100:.0f}%",
                                        f"Insiders {_ins * 100:.0f}%"))
+        except Exception:
+            pass
+        # Direct-competitor angle (user 2026-06-21) — curated peer + relative 3mo performance.
+        # Lowest priority (appended last), so it only appears when the 280-char tweet has room.
+        try:
+            _ca = _competitor_angle(ticker)
+            if _ca:
+                justifications.append(_ca)
         except Exception:
             pass
 
