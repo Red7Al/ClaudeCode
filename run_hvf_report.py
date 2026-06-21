@@ -256,13 +256,14 @@ def categorise(all_results: dict) -> tuple:
     developing = []
 
     from price_action import entry_chase_pct
-    from config import MAX_ENTRY_CHASE_PCT
-    _missed = 0
+    from config import MAX_ENTRY_CHASE_PCT, MIN_PUBLISH_QUALITY
+    _missed = _subq = 0
 
     for index_name, results in all_results.items():
         for r in results:
             sig = r.get("hvf_signal", "")
             rr  = r.get("risk_reward") or 0
+            q   = r.get("pattern_quality") or 0
             if sig in ("READY", "TRIGGERED") and rr >= HVF_MIN_RR:
                 # Missed-entry guard (user 2026-06-20): a TRIGGERED setup whose price has already
                 # run > MAX_ENTRY_CHASE_PCT past the entry is no longer actionable — don't publish
@@ -271,13 +272,20 @@ def categorise(all_results: dict) -> tuple:
                 if sig == "TRIGGERED" and chase is not None and chase > MAX_ENTRY_CHASE_PCT:
                     _missed += 1
                     continue
+                # Quality gate (user 2026-06-20): the headline "tradeable" list is the DECENT
+                # setups only — sub-MIN_PUBLISH_QUALITY ones drop to the developing watch list so
+                # the per-market "N candidates" count is credible (was inflated by Q38/Q48 junk).
+                if q < MIN_PUBLISH_QUALITY:
+                    _subq += 1
+                    developing.append(r)
+                    continue
                 tradeable.append(r)
             elif sig == "DEVELOPING":
                 developing.append(r)
 
-    if _missed:
-        log.info(f"categorise: excluded {_missed} TRIGGERED setup(s) as missed entry "
-                 f"(> {MAX_ENTRY_CHASE_PCT}% past entry)")
+    if _missed or _subq:
+        log.info(f"categorise: excluded {_missed} missed-entry setup(s) (> {MAX_ENTRY_CHASE_PCT}% "
+                 f"past entry); demoted {_subq} sub-quality setup(s) (< {MIN_PUBLISH_QUALITY}) to developing")
 
     from price_action import hvf_weight
     tradeable.sort(key=lambda r: hvf_weight(
@@ -418,7 +426,7 @@ def _tradeable_line(r) -> str:
     if r.get("tight_stop_intraday"):
         sp = r.get("stop_pct")
         line += (f"\n    ⚠️ Stop only {sp}% of price — too tight for IG intraday "
-                 f"(spread + tick noise); not auto-traded.")
+                 f"(spread + tick noise); not auto-traded. The {rr} R:R is INFLATED by the tiny stop.")
     # One instrument, all timeframes (feedback_hvf_timeframe_grouping): list the other
     # timeframes the same funnel appears on — FULL figures per date range (user 2026-06-15).
     others = _other_timeframes(r)

@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.28.0  2026-06-20  Alex Hind   (user 2026-06-20) Copy-variety pass — _X_DESC pools expanded 10 -> 18 per key with more
+#                                 natural, less templated phrasing (the "Compression building..." repetition looked AI-
+#                                 generated). Repetition further cut by the new quality/missed-entry gates reducing volume.
 # 1.27.0  2026-06-20  Alex Hind   (user 2026-06-20) ABF duplicate fix — _levels_fp keyed on entry+stop only (target wobble
 #                                 from AMP1/IG was flipping the fingerprint every run). Card S/R window 20 -> 60 bars.
 #                                 Current price added to the X-draft Slack wrapper context line.
@@ -836,25 +839,41 @@ _X_DESC = {
         "Compression giving way — pushing higher", "Squeeze released, momentum turning up",
         "A long range just snapped to the upside", "Coiled tight, now breaking the ceiling",
         "Volatility squeeze resolving higher", "The lid's off — pushing higher",
-        "Pressure released to the upside", "Range broken, buyers in control"],
+        "Pressure released to the upside", "Range broken, buyers in control",
+        "The ceiling finally gave way", "Broke out of a long, quiet base",
+        "Buyers took the level — eyes on follow-through", "Cleared resistance as the squeeze let go",
+        "Months of coiling, now a clean break up", "Quiet accumulation, then a push through the top",
+        "Stepped out of the range to the upside", "Resolved up after a patient build"],
     ("BULLISH", "READY"):     [
         "Volatility squeeze coiled, ready higher", "Compression building — primed for an upside break",
         "Coiling tight, loaded to the upside", "Range tightening, leaning higher",
         "Winding into a tight spring, bias up", "Pressure building under the ceiling",
         "Squeezing tighter, upside break in view", "Energy coiling for a move higher",
-        "Narrowing range, watching for the pop", "Tightening up, ready to run higher"],
+        "Narrowing range, watching for the pop", "Tightening up, ready to run higher",
+        "Quiet base, coiled and leaning up", "Buyers absorbing supply under the ceiling",
+        "Higher lows pressing into resistance", "A spring winding just below a breakout line",
+        "Range contracting, demand quietly building", "Sitting under the lid, coiled to go",
+        "Patient base forming, bias to the upside", "Volatility drained — watching for the spark up"],
     ("BEARISH", "TRIGGERED"): [
         "Volatility squeeze breaking down lower", "Tight coil cracking to the downside",
         "Compression giving way — pressing lower", "Squeeze released, momentum turning down",
         "A long range just snapped to the downside", "Coiled tight, now losing the floor",
         "Volatility squeeze resolving lower", "Support's gone — pressing lower",
-        "Pressure released to the downside", "Range broken, sellers in control"],
+        "Pressure released to the downside", "Range broken, sellers in control",
+        "The floor finally gave way", "Broke down out of a long, quiet base",
+        "Sellers took the level — eyes on follow-through", "Lost support as the squeeze let go",
+        "Months of coiling, now a clean break down", "Quiet distribution, then a drop through support",
+        "Stepped out of the range to the downside", "Resolved down after a patient roll-over"],
     ("BEARISH", "READY"):     [
         "Volatility squeeze coiled, ready lower", "Compression building — primed for a downside break",
         "Coiling tight, loaded to the downside", "Range tightening, leaning lower",
         "Winding into a tight spring, bias down", "Pressure building under support",
         "Squeezing tighter, downside break in view", "Energy coiling for a move lower",
-        "Narrowing range, watching for the drop", "Tightening up, ready to roll lower"],
+        "Narrowing range, watching for the drop", "Tightening up, ready to roll lower",
+        "Quiet top, coiled and leaning down", "Sellers capping every bounce under resistance",
+        "Lower highs pressing toward support", "A spring winding just above a breakdown line",
+        "Range contracting, supply quietly building", "Sitting on the floor, coiled to drop",
+        "Patient top forming, bias to the downside", "Volatility drained — watching for the crack lower"],
 }
 # Plain-English explanation of the PRIMARY signal (the squeeze) so a reader with no
 # system knowledge understands what's happening — added to the tweet body (user

@@ -2,6 +2,29 @@
 
 Deferred items (not blocking). Add new items at the top of the relevant section.
 
+## Publication enrichment — added 2026-06-20
+
+- [ ] **Competitor / news context on X tweets** (user 2026-06-20: "for $NKE look at articles
+  mentioning direct competition e.g. Lululemon — do this for all X tweets going forward"). Scope:
+  (1) a per-ticker competitor map (NKE→LULU/ADDYY, etc.) — curated dict or a sector-peer lookup;
+  (2) a recent-headlines fetch (news API) to find a current competitive angle; (3) surface a
+  one-line "vs LULU" angle as a tweet confirmation candidate. Constraints: it's a new external
+  data source (needs an API key/rate budget); per the Slack/X rule the angle may appear on X but
+  **the source/provider name must never be in the tweet**; keep it lowest-priority so it only
+  shows when the 280-char tweet has room. Decide news source + competitor-map source before build.
+
+- [ ] **Prior-trend ≥20% magnitude gate** (user 2026-06-20, item I). Shadow-diff (2026-06-20,
+  20-name sample) showed **~73% of current funnels have a prior move <20%** — adding RW/Hunt's
+  "strong directional move, min ~20%" floor is the single biggest quality lever. NOT yet
+  implemented: it's a DETECTION change (compute prior-impulse % in get_hvf_signal and gate on it),
+  so it must (a) keep test_hvf_method.py green — the synthetic fixtures may lack 20% prior moves,
+  so they'd likely need updating — and (b) ship with a full-universe shadow-diff. Decide hard-gate
+  vs quality-input first.
+
+- [ ] **R:R sanity** — the displayed R:R reaches 20-67:1 on very tight coils (sub-1% stops). The
+  daily report now flags "R:R inflated by the tiny stop" when tight_stop_intraday; consider also
+  capping the value used for ordering/ranking so a tiny-stop artifact doesn't dominate hvf_weight.
+
 ## Epic resolution (`epic_lookup`) — deferred 2026-06-19
 
 Context: a wrong‑instrument audit (28 cached tickers mapped to the wrong IG instrument) was
