@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.31.0  2026-06-21  Alex Hind   Competitor angle: raised to HIGH priority (right after pattern quality) + a COMPACT short
+#                                 form ("ahead of $LULU (3mo)") so it reliably survives the 280-char trim (the first NKE
+#                                 test trimmed the long form out). Verified NKE tweet now carries the $LULU angle.
 # 1.30.0  2026-06-21  Alex Hind   Competitor angle on X tweets (user 2026-06-21): _competitor_angle names the top curated peer
 #                                 + relative ~3mo performance ('outpacing peer $LULU (+8% vs -3%, 3mo)'); lowest-priority
 #                                 tweet confirmation. Names a competitor (not a data source) so X-safe.
@@ -993,9 +996,9 @@ def _competitor_angle(ticker: str):
         if rt is None or rp is None:
             return None
         peer_disp = peer[:-2] if peer.endswith(".L") else peer
-        rel = "outpacing" if rt > rp else "lagging"
-        line = f"{rel} peer ${peer_disp} ({rt:+.0f}% vs {rp:+.0f}%, 3mo)"
-        return (line, line)
+        full  = f"{'outpacing' if rt > rp else 'lagging'} peer ${peer_disp} ({rt:+.0f}% vs {rp:+.0f}%, 3mo)"
+        short = f"{'ahead of' if rt > rp else 'behind'} ${peer_disp} (3mo)"   # compact, survives the 280-char trim
+        return (full, short)
     except Exception:
         return None
 
@@ -1736,6 +1739,15 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         if quality and isinstance(quality, (int, float)) and quality >= 60:
             justifications.append((f"Pattern quality {quality:.0f}/100",
                                    f"Quality {quality:.0f}/100"))
+        # Direct-competitor angle (user 2026-06-21: "do this for all X tweets") — HIGH priority
+        # (right after pattern quality) so it reliably survives the 280-char trim, ahead of the
+        # generic P/E / insider-ownership filler. Curated peer + relative 3mo performance.
+        try:
+            _ca = _competitor_angle(ticker)
+            if _ca:
+                justifications.append(_ca)
+        except Exception:
+            pass
         if obs_b and obs_b != "NEUTRAL" and _aligned(obs_b):
             bits_full, bits_short = [], []
             if cpr is not None:
@@ -1801,14 +1813,6 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
             if isinstance(_ins, (int, float)) and _ins > 0:
                 justifications.append((f"Insider ownership {_ins * 100:.0f}%",
                                        f"Insiders {_ins * 100:.0f}%"))
-        except Exception:
-            pass
-        # Direct-competitor angle (user 2026-06-21) — curated peer + relative 3mo performance.
-        # Lowest priority (appended last), so it only appears when the 280-char tweet has room.
-        try:
-            _ca = _competitor_angle(ticker)
-            if _ca:
-                justifications.append(_ca)
         except Exception:
             pass
 
