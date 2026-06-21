@@ -100,18 +100,25 @@ const doc = new Document({
       p("This works both ways. After a strong rise, a coil that breaks upward is a “bullish” setup; after a strong " +
         "fall, the same coil breaking downward is a “bearish” one. The system only ever calls it in the direction " +
         "the market is actually trending — it will not flag a bullish idea on a market that has been falling."),
+      h2("How far it could go — the target (AMP1)"),
+      p("Every funnel has a height: the distance from the first high to the first low of the squeeze. The method " +
+        "calls this the amplitude, or AMP1 (you can see it marked on the picture above). When the spring releases, " +
+        "the system projects that FULL height from the middle of the funnel, in the breakout direction, to set the " +
+        "target. It uses the full amplitude — not a watered-down version — which is deliberate, and it is why some " +
+        "setups show a large reward-to-risk."),
+      p("So the three trade levels come straight from the funnel: the entry is the breakout level itself (the third " +
+        "pivot); the safety exit (stop) sits just beyond the opposite side of the funnel; and the target is one full " +
+        "AMP1 away from the middle. Reward-to-risk is then simply the distance to the target divided by the distance " +
+        "to the stop."),
 
       // ── 3 ──
-      h1("3. What has to be true before a setup is flagged"),
-      p("Not every wobble counts. A setup must pass five plain checks before the system treats it as real:"),
-      bullet("A clear prior trend — the market must have been moving decisively first. No trend, no setup."),
-      bullet("Falling highs — each peak is lower than the last (the ceiling is coming down)."),
-      bullet("Rising lows — each dip is higher than the last (the floor is coming up)."),
-      bullet("A real squeeze — the funnel must have tightened by at least a third from where it began."),
-      bullet("Freshness — the breakout point must be recent, not weeks stale."),
-      p("Only when all five are true does the system measure up the trade. There is also a final money check: the " +
-        "potential reward must be at least three times the amount being risked (more on that next). If it is not, " +
-        "the idea goes on a watch-list rather than being recommended."),
+      h1("3. The rules and their thresholds"),
+      p("Not every wobble counts. A setup must pass five checks before the system treats it as real, then clear two " +
+        "more gates to be traded and published. The exact thresholds are below — these are the actual numbers the " +
+        "system uses, not approximations:"),
+      rulesTable(),
+      p("Only when all five rules pass does the system measure up the trade; the two gates then decide whether it is " +
+        "tradeable and whether it is published. Everything is checked the same way every time.", { spacing: { before: 160, after: 140 } }),
 
       // ── 4 ──
       h1("4. What goes into the decision"),
@@ -122,6 +129,15 @@ const doc = new Document({
         "pattern is. The picture below shows that order of priority:"),
       img("weighting.png", 520, 259, "How setups are ranked"),
       caption("Reward-for-risk is the main driver; the signal’s readiness and the pattern’s quality settle ties."),
+      h2("How the ranking is calculated"),
+      p("The ranking is a simple, fixed recipe — every idea is scored on three things, compared in this exact order:"),
+      bullet("Reward-to-risk, highest first — the single biggest driver."),
+      bullet("Signal readiness — already breaking out (“triggered”) ranks above armed-and-ready, which ranks above " +
+             "still-developing."),
+      bullet("Pattern quality (0–100), highest first — used to settle any remaining ties."),
+      p("In other words: sort everything by reward-to-risk; where two ideas are level, the more ready one wins; and " +
+        "where they are still level, the cleaner pattern wins. The same recipe orders every list — the daily Slack " +
+        "report, the drafts, and the public picks — so nothing is ranked differently in different places."),
       p("Alongside the pattern itself, the system gathers supporting evidence to add confidence — for example:"),
       bullet("Analyst views — what professional analysts rate the share and their price targets."),
       bullet("How it stacks up against its main rival — e.g. Nike versus Lululemon: which is outperforming over " +
@@ -167,6 +183,44 @@ const doc = new Document({
     ]
   }]
 });
+
+function twoColTable(rows, leftHdr, rightHdr, lw, rw) {
+  const border = { style: BorderStyle.SINGLE, size: 1, color: "DDDDDD" };
+  const borders = { top: border, bottom: border, left: border, right: border };
+  const head = new TableRow({ tableHeader: true, children: [
+    new TableCell({ borders, width: { size: lw, type: WidthType.DXA },
+      shading: { fill: ACCENT, type: ShadingType.CLEAR },
+      margins: { top: 70, bottom: 70, left: 120, right: 120 },
+      children: [new Paragraph({ children: [new TextRun({ text: leftHdr, bold: true, size: 20, color: "FFFFFF" })] })] }),
+    new TableCell({ borders, width: { size: rw, type: WidthType.DXA },
+      shading: { fill: ACCENT, type: ShadingType.CLEAR },
+      margins: { top: 70, bottom: 70, left: 120, right: 120 },
+      children: [new Paragraph({ children: [new TextRun({ text: rightHdr, bold: true, size: 20, color: "FFFFFF" })] })] }),
+  ]});
+  const body = rows.map(([a, b], i) => new TableRow({ children: [
+    new TableCell({ borders, width: { size: lw, type: WidthType.DXA },
+      shading: { fill: i % 2 ? "FFFFFF" : "F2F6FC", type: ShadingType.CLEAR },
+      margins: { top: 70, bottom: 70, left: 120, right: 120 },
+      children: [new Paragraph({ children: [new TextRun({ text: a, bold: true, size: 20 })] })] }),
+    new TableCell({ borders, width: { size: rw, type: WidthType.DXA },
+      shading: { fill: i % 2 ? "FFFFFF" : "F2F6FC", type: ShadingType.CLEAR },
+      margins: { top: 70, bottom: 70, left: 120, right: 120 },
+      children: [new Paragraph({ children: [new TextRun({ text: b, size: 20 })] })] }),
+  ]}));
+  return new Table({ width: { size: 9360, type: WidthType.DXA }, columnWidths: [lw, rw], rows: [head, ...body] });
+}
+
+function rulesTable() {
+  return twoColTable([
+    ["1. Prior trend", "A confirmed weekly trend in the trade's direction (up for a bullish funnel, down for bearish). Choppy/flat markets are rejected."],
+    ["2. Lower highs", "Three peaks, each lower than the last (H1 > H2 > H3) — the ceiling coming down."],
+    ["3. Higher lows", "Three dips, each higher than the last (L1 < L2 < L3) — the floor coming up."],
+    ["4. Real squeeze", "The funnel must tighten by at least 30% — its mouth shrinks to under 70% of its starting width."],
+    ["5. Fresh breakout", "The breakout pivot (H3 / L3) must have formed within the last 60 bars, not weeks ago."],
+    ["Tradeable gate", "Reward-to-risk must be at least 3 : 1, or the idea goes on the watch-list, not the trade list."],
+    ["Publish gate", "Pattern quality must be at least 70 / 100 to be published; weaker patterns stay internal."],
+  ], "Rule", "Threshold — what must be true", 2400, 6960);
+}
 
 function glossary() {
   const rows = [
