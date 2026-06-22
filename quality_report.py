@@ -30,6 +30,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.19.0  2026-06-22  Alex Hind   (user 2026-06-22) (E) analyst line reads "Of N analysts rating <TICKER>" (was "rating it").
+#                                 (F) a near-flat analyst target now reads "their average price target is roughly in line with
+#                                 the current price" (was the confusing "price targets sit about 0% below") — and it's framed as
+#                                 the ANALYST target, not the HVF trade target.
 # 1.18.0  2026-06-22  Alex Hind   (user 2026-06-22) Long report breaks onto a NEW LINE when the SUBJECT changes — business
 #                                 fundamentals | analysts | ownership are now separate paragraphs (grouped s/s_analyst/s_own/
 #                                 s_cite joined with blank lines), not one wall of text.
@@ -574,30 +578,36 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
             s.append(_pick(_P_DIV, tk, "div").format(streak=f["div_streak"]))
 
     if f.get("target_pct") is not None or f.get("analyst_rated"):
-        d   = "above" if (f.get("target_pct") or 0) >= 0 else "below"
-        pct = f"{abs(f['target_pct']):.0f}" if f.get("target_pct") is not None else None
         rec = f.get("analyst_rec")
         buys, holds, total = f.get("analyst_buys"), f.get("analyst_holds"), f.get("analyst_rated")
+        tp  = f.get("target_pct")
+        # The ANALYST consensus price target vs the current price (user 2026-06-22, F): a near-zero
+        # figure means analysts see the shares ~fairly valued (little up/downside) — it is NOT the
+        # HVF trade target being met. Phrase it as "their average price target" and, when ~flat, say
+        # "roughly in line with the current price" rather than the confusing "about 0% below".
+        def _target_clause():
+            if tp is None:
+                return ""
+            if abs(tp) < 1.5:
+                return "their average price target is roughly in line with the current price"
+            return f"their average price target is about {abs(tp):.0f}% {'above' if tp >= 0 else 'below'} the current price"
         # Prefer the ratings GRID so the count reconciles with the over-time trend below (user
-        # 2026-06-22: "19 analysts rate it Buy ... from 15 to 13 makes little sense" — that mixed
-        # the price-target count with the grid's buy count). Now total/buys/holds + the trend all
-        # come from the same grid; the buy count {buys} appears in BOTH the headline and the trend.
+        # 2026-06-22: "19 analysts rate it Buy ... from 15 to 13 makes little sense"). total/buys/
+        # holds + the trend all come from the same grid; "rating {disp}" names the instrument (E).
         if total:
-            _head = f"Of {total} analysts rating it, {buys} say Buy"
+            _head = f"Of {total} analysts rating {disp}, {buys} say Buy"
             if holds:
                 _head += f" and {holds} Hold"
             if rec:
                 _head += f" (consensus {rec})"
-            if pct is not None:
-                _head += f"; price targets sit about {pct}% {d}"
+            _tc = _target_clause()
+            if _tc:
+                _head += f"; {_tc}"
             s_analyst.append(_head + ".")
-        elif pct is not None:
-            # No ratings grid available — fall back to coverage count + consensus + target.
-            _recph = f'rate it "{rec}" and ' if rec else ""
-            if f.get("analyst_n"):
-                s_analyst.append(_pick(_P_ANALYST, tk, "an").format(n=f["analyst_n"], rec=_recph, pct=pct, dir=d))
-            else:
-                s_analyst.append(f"Analysts {_recph}on average see the shares worth about {pct}% {d} today's price.")
+        elif tp is not None:
+            # No ratings grid available — fall back to consensus + target.
+            _recph = f'rate {disp} "{rec}" and ' if rec else ""
+            s_analyst.append(f"Analysts {_recph}{_target_clause()}.")
         # Over-time drift (user 2026-06-22) — knits the bull/bear divergence. The end value {_cb}
         # equals {buys} in the grid headline above, so the two sentences now reconcile.
         _at = f.get("analyst_trend")

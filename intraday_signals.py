@@ -23,6 +23,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.41.0  2026-06-22  Alex Hind   (user 2026-06-22) Tweet head: (B) $cashtag and full name kept ADJACENT — the hook comment is
+#                                 tagged AFTER ("$NKE (NIKE, Inc.) winding tighter", not "$NKE winding tighter (NIKE, Inc.)").
+#                                 (C) the description + plain-English explainer are now ONE paragraph (related; no line break),
+#                                 with a full stop added to the description fragment.
 # 1.40.0  2026-06-22  Alex Hind   (user 2026-06-22) X-draft selection ordered by action_score (R:R ÷ distance-to-entry) so the
 #                                 top-N/market published per market are the highest-R:R, closest-to-trigger setups.
 # 1.39.0  2026-06-22  Alex Hind   (user 2026-06-22) (a) FIX missing 3-yr history on the X card: the 3-yr weekly data is now
@@ -2075,10 +2079,21 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         # Explicit BULL/BEAR at the very top of the tweet (user 2026-06-22) — the rotated hook
         # implies direction but doesn't state it; a clear tag leads every variant. No $cashtag.
         _dir_tag = "📉 BEARISH setup" if direction == "BEARISH" else "📈 BULLISH setup"
-        base_name_expl = f"{_dir_tag}\n{hook} ({name})\n\n{description}\n{explain}\n"
-        base_expl      = f"{_dir_tag}\n{hook}\n\n{description}\n{explain}\n"
-        base_with_name = f"{_dir_tag}\n{hook} ({name})\n\n{description}\n"
-        base_no_name   = f"{_dir_tag}\n{hook}\n\n{description}\n"
+        # Keep the $cashtag and the full name ADJACENT (user 2026-06-22): the rotated hook puts a
+        # comment around the cashtag (e.g. "⏳ $NKE winding tighter") — insert the name right AFTER
+        # the cashtag so it reads "$NKE (NIKE, Inc.) winding tighter", never "$NKE winding tighter
+        # (NIKE, Inc.)". The name is tagged on after the cashtag wherever the cashtag sits.
+        hook_named = hook.replace(f"${disp_ticker}", f"${disp_ticker} ({name})", 1)
+        # Description + explainer are RELATED → one paragraph (user 2026-06-22): no line break
+        # between them, and the description (a fragment) gets a full stop so they read as sentences.
+        _desc = description.rstrip()
+        if _desc and _desc[-1] not in ".!?":
+            _desc += "."
+        _desc_block = f"{_desc} {explain}".strip() if explain else _desc
+        base_name_expl = f"{_dir_tag}\n{hook_named}\n\n{_desc_block}\n"
+        base_expl      = f"{_dir_tag}\n{hook}\n\n{_desc_block}\n"
+        base_with_name = f"{_dir_tag}\n{hook_named}\n\n{_desc}\n"
+        base_no_name   = f"{_dir_tag}\n{hook}\n\n{_desc}\n"
         # "Not financial advice." — always appended (2026-06-11); now preceded by a
         # blank line and rendered in bold italic (user 2026-06-13).
         disclaimer = _NFA_DISCLAIMER
