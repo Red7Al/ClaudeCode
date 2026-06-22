@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.22.0  2026-06-22  Alex Hind   (user 2026-06-22) "Indices & FX" added to MARKET_ORDER (major indices + USDJPY in the HVF
+#                                 report universe — "where are JPN225 and USDJPY?").
 # 1.21.0  2026-06-22  Alex Hind   (user 2026-06-22) MAX_DEVELOPING_DISTANCE_PCT=10.0 (hide developing entries whose ENTRY is
 #                                 >10% from the live price — now-vs-entry is the relevance metric); Commodities added to
 #                                 MARKET_ORDER + YAHOO_MAP (COPPER/NATGAS/PLATINUM/PALLADIUM) for the HVF report commodities
@@ -647,7 +649,7 @@ MARKET_PE = 21.0
 
 # Canonical market order for the grouped reports (matches run_hvf_report.UNIVERSE key order).
 # Markets not listed fall to the end, alphabetically (see price_action.group_by_market).
-MARKET_ORDER = ["FTSE 100", "FTSE 250", "S&P 500", "Commodities"]
+MARKET_ORDER = ["FTSE 100", "FTSE 250", "S&P 500", "Commodities", "Indices & FX"]
 
 # DEVELOPING watch-list display distance (user 2026-06-22: "for developing don't bother to show
 # anything that is over 10% away on price"; the metric is NOW vs ENTRY). A developing pattern whose

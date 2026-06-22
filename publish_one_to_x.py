@@ -25,6 +25,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.6.0   2026-06-22  Alex Hind   (user 2026-06-22) build_publication now applies the SAME publish gate as the daily report:
+#                                 only READY/TRIGGERED + quality>=MIN_PUBLISH_QUALITY + entry within MAX_DEVELOPING_DISTANCE_PCT
+#                                 are published. Without it, force-publishing BTRW.L pushed a DEVELOPING weekly setup with the
+#                                 entry 36% from price (price already outside the funnel) to X.
 # 1.5.0   2026-06-21  Alex Hind   --slack-only (user 2026-06-21): post the Slack publication ONLY (card + 3yr PNG + long
 #                                 report), skip X entirely. Wired into trading-x-publish.yml (slack_only input).
 # 1.4.0   2026-06-21  Alex Hind   --no-register TEST mode (user 2026-06-21): posts the full Slack draft (card+tweet+long
@@ -64,6 +68,24 @@ def build_publication(ticker: str):
         return None
     res["ticker"] = ticker
     res.setdefault("name", _resolve_name(ticker))
+
+    # Publish gate (user 2026-06-22) — the single-ticker path must apply the SAME bar as the daily
+    # report's categorise, or a non-tradeable setup gets published. Without it, force-publishing
+    # BTRW.L pushed its WEEKLY result (DEVELOPING, entry 355.9 vs price 261 — price already BELOW
+    # the entry, i.e. outside the funnel) to X. Require: signal READY/TRIGGERED (not DEVELOPING),
+    # quality >= MIN_PUBLISH_QUALITY, and entry within MAX_DEVELOPING_DISTANCE_PCT of the live price.
+    from config import MAX_DEVELOPING_DISTANCE_PCT, MIN_PUBLISH_QUALITY
+    _sig   = res.get("hvf_signal")
+    _q     = res.get("pattern_quality") or 0
+    _cur   = res.get("current_price")
+    _entry = res.get("h3_level")
+    _entry_far = (isinstance(_cur, (int, float)) and _cur and isinstance(_entry, (int, float))
+                  and abs(_entry / _cur - 1) * 100 > MAX_DEVELOPING_DISTANCE_PCT)
+    if _sig not in ("READY", "TRIGGERED") or _q < MIN_PUBLISH_QUALITY or _entry_far:
+        _dist = (f"{abs(_entry / _cur - 1) * 100:.0f}%" if _entry_far else "ok")
+        log.info(f"{ticker}: not publishable — signal={_sig} quality={_q} entry_dist={_dist} "
+                 f"(need READY/TRIGGERED, quality>={MIN_PUBLISH_QUALITY}, entry<={MAX_DEVELOPING_DISTANCE_PCT}%). Skipped.")
+        return None
     drafts = _generate_x_drafts([res], post=False, collect=True) or []   # short tweet + card (no Slack post)
     if not drafts:
         return None

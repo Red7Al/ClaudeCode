@@ -31,6 +31,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.9.0   2026-06-22  Alex Hind   CONFIRM_SHORT now also triggers the dossier read to #arw-claude-signals (user 2026-06-22),
+#                                 mirroring CONFIRM_LONG. _run_dossier_to_signals takes the verdict (red/green header).
 # 1.8.0   2026-06-22  Alex Hind   Add @crypto_banter to TRACKED_ACCOUNTS (user 2026-06-22) — crypto/market commentary.
 # 1.7.0   2026-06-19  Alex Hind   X-mentions line now shows R:R + entry % from the live price when an HVF setup exists
 #                                 (user 2026-06-19), via price_action.pct_from_current. (CONFIRM_LONG dossier read already
@@ -367,19 +369,21 @@ def get_company_name(ticker: str) -> str:
     return ""
 
 
-def _run_dossier_to_signals(ticker: str, name: str, slack_url: str):
-    """A tracked X account flagged this ticker CONFIRM_LONG → run the system's dossier read and
-    post it to #arw-claude-signals so the operator gets the full picture (user 2026-06-16). Posts
-    the HVF summary + the technical read (reusing the dossier's own helpers); never auto-publishes
-    to X. Never raises — a failure must not break the mentions alert."""
+def _run_dossier_to_signals(ticker: str, name: str, slack_url: str, verdict: str = "CONFIRM_LONG"):
+    """A tracked X account flagged this ticker CONFIRM_LONG or CONFIRM_SHORT → run the system's
+    dossier read and post it to #arw-claude-signals so the operator gets the full picture (user
+    2026-06-16; CONFIRM_SHORT added 2026-06-22). Posts the HVF summary + the technical read (reusing
+    the dossier's own helpers); never auto-publishes to X. Never raises — a failure must not break
+    the mentions alert."""
     try:
         from price_action import get_hvf_signal_mtf, get_trend_structure
         from instrument_dossier import _hvf_summary, _technical_block
         r = get_hvf_signal_mtf(ticker, trend_hint=get_trend_structure(ticker))
         r["ticker"] = ticker
         summary = _hvf_summary(ticker, name, r)
+        _emoji = "🔴" if verdict == "CONFIRM_SHORT" else "🟢"
         blocks = [{"type": "section", "text": {"type": "mrkdwn",
-                   "text": f"🎯 *CONFIRM_LONG flagged by a tracked X account — dossier for "
+                   "text": f"{_emoji} *{verdict} flagged by a tracked X account — dossier for "
                            f"{ticker} ({name})*\n```{summary[:2900]}```"}}]
         try:
             tech = _technical_block(ticker)
@@ -388,7 +392,7 @@ def _run_dossier_to_signals(ticker: str, name: str, slack_url: str):
         except Exception:
             pass
         requests.post(slack_url, json={"blocks": blocks}, timeout=15)
-        log.info(f"dossier read posted to #arw-claude-signals for {ticker} (CONFIRM_LONG)")
+        log.info(f"dossier read posted to #arw-claude-signals for {ticker} ({verdict})")
     except Exception as e:
         log.warning(f"dossier-to-signals failed for {ticker}: {e}")
 
@@ -410,7 +414,7 @@ def alert_new_picks(new_picks: list):
 
     # Build pick list with PA verdict for sorting
     enriched = []
-    confirm_longs = []   # CONFIRM_LONG mentions → run the dossier into #signals (user 2026-06-16)
+    confirms = []   # CONFIRM_LONG/SHORT mentions → run the dossier into #signals (user 2026-06-16; SHORT 2026-06-22)
     for pick in new_picks:
         ticker   = pick["ticker"]
         # Use stored handle; fallback to investor_name. Always ensure @ prefix.
@@ -442,8 +446,8 @@ def alert_new_picks(new_picks: list):
         _ep = pct_from_current(h3, cur)
         if _ep:
             pa_str += f" | entry {_ep} from price"
-        if verdict == "CONFIRM_LONG":
-            confirm_longs.append((ticker, company or ticker))
+        if verdict in ("CONFIRM_LONG", "CONFIRM_SHORT"):
+            confirms.append((ticker, company or ticker, verdict))
 
         # Sort weight: CONFIRM first, then by score descending
         sort_key = (0 if "CONFIRM" in verdict else 1, -score)
@@ -474,10 +478,10 @@ def alert_new_picks(new_picks: list):
     except Exception as e:
         log.warning(f"Slack alert failed: {e}")
 
-    # A CONFIRM_LONG from a tracked account is a strong cue — run the dossier read into
-    # #arw-claude-signals for each (user 2026-06-16).
-    for _tk, _nm in confirm_longs:
-        _run_dossier_to_signals(_tk, _nm, slack_url)
+    # A CONFIRM_LONG or CONFIRM_SHORT from a tracked account is a strong cue — run the dossier read
+    # into #arw-claude-signals for each (user 2026-06-16; CONFIRM_SHORT added 2026-06-22).
+    for _tk, _nm, _vd in confirms:
+        _run_dossier_to_signals(_tk, _nm, slack_url, verdict=_vd)
 
 
 # ======================================================================================================================

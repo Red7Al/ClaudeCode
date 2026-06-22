@@ -29,6 +29,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.22.0  2026-06-22  Alex Hind   (user 2026-06-22) Add "Indices & FX" basket to UNIVERSE (SPX500/NASDAQ/UK100/JPN225/HK50 +
+#                                 USDJPY) — "where are JPN225 and USDJPY?". Sub-£1 FX (GBPUSD/EURUSD/AUDUSD) deferred until the
+#                                 report price format carries more decimals. MARKET_ORDER + "Scanned:" line updated.
 # 1.21.0  2026-06-22  Alex Hind   (user 2026-06-22) Report lines tag a PROLONGED consolidation ("coiling ~Nwk") when the
 #                                 funnel has been forming >=PROLONGED_FUNNEL_WEEKS (8wk, H1->H3) — recognise the long period.
 # 1.20.0  2026-06-22  Alex Hind   (user 2026-06-22) Entry-distance rule: a would-be TRADEABLE setup whose ENTRY is >10%
@@ -216,11 +219,24 @@ COMMODITIES = [
     "PALLADIUM", # Palladium  (PA=F)
 ]
 
+INDICES_FX = [
+    # Major indices + FX (user 2026-06-22: "where are JPN225 and USDJPY?"). Internal names resolved
+    # to Yahoo via config.YAHOO_MAP. Sub-£1 FX (GBPUSD/EURUSD/AUDUSD ~1.1-1.3) are deferred until the
+    # report price formatting carries enough decimals for them — they'd render as "1.3" today.
+    "SPX500",   # S&P 500 index (^GSPC)
+    "NASDAQ",   # Nasdaq 100   (^IXIC)
+    "UK100",    # FTSE 100     (^FTSE)
+    "JPN225",   # Nikkei 225   (^N225)
+    "HK50",     # Hang Seng    (^HSI)
+    "USDJPY",   # USD/JPY      (USDJPY=X) — priced ~161, formats fine
+]
+
 UNIVERSE = {
-    "FTSE 100":   FTSE100,
-    "FTSE 250":   FTSE250,
-    "S&P 500":    SP500,
+    "FTSE 100":    FTSE100,
+    "FTSE 250":    FTSE250,
+    "S&P 500":     SP500,
     "Commodities": COMMODITIES,   # user 2026-06-22 — metals + energy HVF scan
+    "Indices & FX": INDICES_FX,   # user 2026-06-22 — major indices + USD/JPY
     # DAX suspended 2026-06-05 — re-add when reinstated
 }
 
@@ -545,7 +561,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         "text": {"type": "mrkdwn",
                  "text": (f"*{len(tradeable)} tradeable* (READY/TRIGGERED ≥{HVF_MIN_RR}:1 R:R)  |  "
                           f"*{len(developing)} developing* (valid pattern, R:R < {HVF_MIN_RR}:1)\n"
-                          f"Scanned: FTSE 100 · FTSE 250 · S&P 500 · Commodities")}
+                          f"Scanned: FTSE 100 · FTSE 250 · S&P 500 · Commodities · Indices & FX")}
     })
     blocks.append({"type": "divider"})
 
