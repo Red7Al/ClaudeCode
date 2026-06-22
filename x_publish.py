@@ -26,6 +26,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 2.7.0   2026-06-22  Alex Hind   (user 2026-06-22) publish_thread_to_x returns ALL posted tweet ids (lead + every page) so
+#                                 they can be stored for a precise, enumeration-free delete; delete_thread takes an explicit
+#                                 ids list (X free tier 403s the reply read, so stored ids are the reliable delete path).
 # 2.6.0   2026-06-22  Alex Hind   (user 2026-06-22) (a) _post_one accepts MULTIPLE images (card + 3yr PNG on the lead).
 #                                 (b) delete_thread enumerates the reply chain via the v1.1 timeline + BFS (v2 read 401'd),
 #                                 so the whole thread (1/n..n/n) is removed, not just the lead.
@@ -110,46 +113,49 @@ def _post_one(api, client, text: str, png=None, in_reply_to: str = None):
         return None
 
 
-def delete_thread(lead_id: str) -> int:
+def delete_thread(lead_id: str, ids: list = None) -> int:
     """Delete a published thread (user 2026-06-22 — remove incorrect publications): the LEAD tweet
-    plus every reply/card in its conversation that WE posted. Returns the count deleted. Best-effort
-    — the lead is deleted first; replies are found from our own recent timeline (conversation_id ==
-    lead_id) and deleted too (if that enumeration fails, the lead is still deleted). No X keys → 0.
-    Deleting tweets is irreversible."""
+    plus every reply/card page. Returns the count deleted. Irreversible. No X keys → 0.
+
+    PRECISE path (preferred): pass `ids` = the stored tweet ids of the thread (recorded at publish
+    time) — every page is deleted, no read needed. FALLBACK (no stored ids): the lead is deleted and
+    we try to walk the reply chain from the v1.1 timeline — but X's free tier 403s that read, so in
+    practice only the lead goes. Hence storing ids at publish time is the reliable route."""
     api, client = _clients()
     if client is None:
         return 0
     lead_id = str(lead_id)
-    ids = [lead_id]
 
-    # Enumerate the rest of the thread (card + 1/n..n/n) so they go too, not just the lead. The v2
-    # get_users_tweets read 401'd on this account (2026-06-22), so walk the reply CHAIN from the
-    # v1.1 timeline: build child[in_reply_to] -> [ids] over our recent statuses, then BFS from the
-    # lead. Best-effort — if neither read works, the lead is still deleted.
-    try:
-        children: dict = {}
-        max_id = None
-        for _page in range(4):                       # ~4×200 = 800 recent statuses
-            kw = {"count": 200, "trim_user": True, "tweet_mode": "extended"}
-            if max_id:
-                kw["max_id"] = max_id
-            batch = api.user_timeline(**kw)
-            if not batch:
-                break
-            for st in batch:
-                parent = getattr(st, "in_reply_to_status_id_str", None)
-                if parent:
-                    children.setdefault(str(parent), []).append(str(st.id))
-            max_id = batch[-1].id - 1
-        # BFS from the (now-deleted) lead id down the chain.
-        queue, seen = [lead_id], {lead_id}
-        while queue:
-            pid = queue.pop(0)
-            for cid in children.get(pid, []):
-                if cid not in seen:
-                    seen.add(cid); ids.append(cid); queue.append(cid)
-    except Exception as e:
-        log.warning(f"delete_thread {lead_id}: reply enumeration failed ({e}) — deleting lead only")
+    if ids:
+        ids = [str(i) for i in ids if i]
+        if lead_id not in ids:
+            ids = [lead_id] + ids
+    else:
+        ids = [lead_id]
+        # No stored ids — best-effort chain walk (usually only the lead deletes, free-tier 403).
+        try:
+            children: dict = {}
+            max_id = None
+            for _page in range(4):
+                kw = {"count": 200, "trim_user": True, "tweet_mode": "extended"}
+                if max_id:
+                    kw["max_id"] = max_id
+                batch = api.user_timeline(**kw)
+                if not batch:
+                    break
+                for st in batch:
+                    parent = getattr(st, "in_reply_to_status_id_str", None)
+                    if parent:
+                        children.setdefault(str(parent), []).append(str(st.id))
+                max_id = batch[-1].id - 1
+            queue, seen = [lead_id], {lead_id}
+            while queue:
+                pid = queue.pop(0)
+                for cid in children.get(pid, []):
+                    if cid not in seen:
+                        seen.add(cid); ids.append(cid); queue.append(cid)
+        except Exception as e:
+            log.warning(f"delete_thread {lead_id}: reply enumeration failed ({e}) — deleting lead only")
     deleted = 0
     for tid in ids:
         try:
@@ -196,21 +202,24 @@ def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, lead_delay: int 
       4. parts 2/n..n/n thread beneath it as a CHAIN (each replies to the PREVIOUS page),
          spaced by `inter_delay`, so X renders them strictly in order — sibling replies to one
          parent display newest-first, which jumbled the order (user 2026-06-16).
-    Returns (lead_tweet_id, posted_count). No-op -> (None, 0) when the X_* keys are missing."""
+    Returns (lead_tweet_id, posted_count, all_tweet_ids). all_tweet_ids holds EVERY id posted
+    (lead + each thread page) so the caller can record them for a precise, enumeration-free delete
+    later (X's free tier 403s the reply-lookup). No-op -> (None, 0, []) when the X_* keys are missing."""
     api, client = _clients()
     if client is None:
-        return None, 0
+        return None, 0, []
     # 1) LEAD — short text + card. Must succeed before anything else goes out.
     try:
         lead_id = _post_one(api, client, lead_text, lead_png)
     except Exception as e:
         log.error(f"X lead (short+card) post failed — long report NOT posted: {e}")
-        return None, 0
+        return None, 0, []
     log.info(f"posted X lead tweet {lead_id} (+card)")
     posted = 1
+    all_ids = [lead_id]
     parts = parts or []
     if not parts:
-        return lead_id, posted
+        return lead_id, posted, all_ids
     # 2) wait so the short + card is fully published before the long report (user A)
     if lead_delay:
         time.sleep(lead_delay)
@@ -218,10 +227,11 @@ def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, lead_delay: int 
     try:
         main_id = _post_one(api, client, parts[0], None, in_reply_to=lead_id)
         posted += 1
+        all_ids.append(main_id)
         log.info(f"posted X long-report MAIN page 1/{len(parts)} ({main_id})")
     except Exception as e:
         log.error(f"X long-report main page (1/{len(parts)}) failed: {e}")
-        return lead_id, posted
+        return lead_id, posted, all_ids
     # 4) 2/n..n/n = the rest of the report, CHAINED — each replies to the PREVIOUS page, not all
     #    to 1/n. Sibling replies sharing one parent display newest-first on X (1/4, 4/4, 3/4, 2/4
     #    — user 2026-06-16); a chain renders strictly in order 1/n -> 2/n -> ... beneath the main
@@ -235,12 +245,13 @@ def publish_thread_to_x(lead_text: str, lead_png: bytes, parts, lead_delay: int 
         try:
             prev = _post_one(api, client, part, None, in_reply_to=prev) or prev
             posted += 1
+            all_ids.append(prev)
             log.info(f"posted X thread page {i}/{len(parts)} (chained, in order)")
         except Exception as e:
             log.error(f"X thread page {i}/{len(parts)} failed — chain stops here: {e}")
             break
     log.info(f"X publication complete: {posted} tweet(s) (lead + {posted - 1}-page thread in order)")
-    return lead_id, posted
+    return lead_id, posted, all_ids
 
 
 def verify() -> bool:

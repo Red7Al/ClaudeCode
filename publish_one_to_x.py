@@ -25,6 +25,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.9.0   2026-06-22  Alex Hind   (user 2026-06-22) Store EVERY thread tweet id at publish (x_publications.thread_ids) so a
+#                                 later --delete-leads removes the WHOLE thread precisely (no enumeration; X free tier 403s the
+#                                 reply read). delete path now passes the stored ids to delete_thread.
 # 1.8.0   2026-06-22  Alex Hind   (user 2026-06-22) build_publication attaches the 3-year history PNG to the X lead alongside
 #                                 the card (lead carries [card, 3yr] — X allows up to 4 images).
 # 1.7.0   2026-06-22  Alex Hind   (user 2026-06-22) --delete-leads=ID1,ID2,... mode: remove incorrect published threads via
@@ -153,15 +156,19 @@ def _recently_published(ticker: str) -> bool:
         return False
 
 
-def _record_publication(ticker: str, tweet_id):
-    """Record a live X publication so repeats are de-duplicated. Never raises."""
+def _record_publication(ticker: str, tweet_id, thread_ids=None):
+    """Record a live X publication so repeats are de-duplicated, and STORE every tweet id of the
+    thread (user 2026-06-22) so a later delete is precise + enumeration-free (X free tier 403s the
+    reply-lookup). Never raises."""
     try:
         from db_pool import get_db
         db = get_db()
         try:
             db.run(_PUB_TABLE_SQL)
-            db.run("insert into x_publications (ticker, tweet_id) values (:t, :i)",
-                   t=ticker, i=(str(tweet_id) if tweet_id else None))
+            db.run("alter table x_publications add column if not exists thread_ids text")
+            _tids = ",".join(str(i) for i in (thread_ids or []) if i) or None
+            db.run("insert into x_publications (ticker, tweet_id, thread_ids) values (:t, :i, :th)",
+                   t=ticker, i=(str(tweet_id) if tweet_id else None), th=_tids)
         finally:
             db.close()
     except Exception as e:
@@ -188,9 +195,9 @@ def publish_tickers_to_x(tickers, inter_instrument_delay: int = _INTER_INSTRUMEN
             log.info(f"{tk}: no tradeable funnel — skipped.")
         else:
             res, tweet, png, thread = pub
-            lead_id, n = publish_thread_to_x(tweet, png, thread)
+            lead_id, n, all_ids = publish_thread_to_x(tweet, png, thread)
             if n >= 1:
-                _record_publication(tk, lead_id)
+                _record_publication(tk, lead_id, all_ids)
                 _confirm_to_slack(tk, res.get("name", tk), lead_id, n, len(thread))
                 published += 1
                 log.info(f"{tk}: published {n} tweet(s) to X (lead {lead_id}).")
@@ -241,9 +248,25 @@ def main():
         from x_publish import delete_thread
         lead_ids = [s.strip() for s in _del_arg.split("=", 1)[1].split(",") if s.strip()]
         log.info(f"--delete-leads: deleting {len(lead_ids)} thread(s): {lead_ids}")
+        # Look up the STORED thread ids per lead (recorded at publish time) so the whole thread is
+        # removed precisely — no enumeration (X free tier 403s the reply read). Falls back to lead-only.
+        _stored = {}
+        try:
+            from db_pool import get_db
+            db = get_db()
+            try:
+                for lid in lead_ids:
+                    rows = db.run("select thread_ids from x_publications where tweet_id = :i "
+                                  "and thread_ids is not null order by published_at desc limit 1", i=lid)
+                    if rows and rows[0][0]:
+                        _stored[lid] = [s for s in str(rows[0][0]).split(",") if s]
+            finally:
+                db.close()
+        except Exception as e:
+            log.warning(f"--delete-leads: stored-id lookup failed ({e}) — deleting leads only")
         total = 0
         for lid in lead_ids:
-            total += delete_thread(lid)
+            total += delete_thread(lid, ids=_stored.get(lid))
         log.info(f"delete complete: {total} tweet(s) deleted across {len(lead_ids)} thread(s).")
         return
 
@@ -308,7 +331,7 @@ def main():
         return
 
     from x_publish import publish_thread_to_x
-    lead_id, posted = publish_thread_to_x(tweet, png, thread)   # lead + card, then replies
+    lead_id, posted, all_ids = publish_thread_to_x(tweet, png, thread)   # lead + card, then replies
     log.info(f"{ticker}: published {posted} tweet(s) to X (lead {lead_id}).")
     if posted < 1:
         log.error("nothing was posted (X keys missing or API error) — see log above.")
@@ -316,7 +339,7 @@ def main():
     if no_register:
         log.info(f"{ticker}: --no-register TEST — NOT recording this publication (dedup table untouched).")
     else:
-        _record_publication(ticker, lead_id)        # dedup record (user 2026-06-16)
+        _record_publication(ticker, lead_id, all_ids)   # dedup record + thread ids for clean delete
     _confirm_to_slack(ticker, res.get("name", ticker), lead_id, posted, len(thread))
 
 
