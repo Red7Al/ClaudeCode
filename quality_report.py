@@ -30,6 +30,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.16.0  2026-06-22  Alex Hind   (user 2026-06-22) FIX inconsistent analyst sentence ("19 analysts rate it Buy ... buys
+#                                 eased from 15 to 13"): the count now comes from the ratings GRID, not numberOfAnalystOpinions
+#                                 — "Of N analysts rating it, B say Buy and H Hold (consensus X); targets ~P% above", and the
+#                                 trend's end value equals B, so they reconcile. Falls back to the coverage count when no grid.
 # 1.15.0  2026-06-22  Alex Hind   (user 2026-06-22) _chart_story comments on a PROLONGED consolidation: when the funnel has
 #                                 been forming >=PROLONGED_FUNNEL_WEEKS (8wk, H1->H3) it adds "This range has been coiling for
 #                                 about N weeks — a prolonged consolidation". Public-safe wording.
@@ -219,11 +223,12 @@ def fundamentals(ticker: str) -> dict:
     f["analyst_rec"] = rk.title() if rk and rk != "none" else None
     f["target_pct"] = ((tgt - px) / px * 100) if (tgt and px) else None
 
-    # Analyst stance OVER TIME (user 2026-06-22: "analysts over time ... helps knit together the
-    # appearance of BULL and BEAR"). The DRIFT in the buy count over ~3 months turns the static
-    # "rated Buy" into a direction: a Buy rating that's COOLING reconciles with a bearish technical
-    # read. Best-effort; None (omitted) when coverage/history is absent or the count is steady.
-    f["analyst_trend"] = None
+    # Analyst RATINGS GRID (user 2026-06-22) — buy/hold/sell counts + the 3-month DRIFT, ALL from
+    # the recommendations grid so the sentence reconciles. Mixing numberOfAnalystOpinions (price-
+    # target providers, f["analyst_n"]) with the grid's buy count read as a contradiction
+    # ("19 analysts rate it Buy ... buys eased from 15 to 13"). The grid total / buys / holds and
+    # the trend now share one source. Best-effort; left None when coverage/history is absent.
+    f["analyst_buys"] = f["analyst_holds"] = f["analyst_rated"] = f["analyst_trend"] = None
     try:
         rec = t.recommendations
         if rec is not None and len(rec):
@@ -234,12 +239,17 @@ def fundamentals(ticker: str) -> dict:
             _cur, _old = _r("0m"), _r("-3m")
             if _cur is None: _cur = rec.iloc[0]
             if _old is None: _old = rec.iloc[-1]
-            _cb = int(_cur.get("strongBuy", 0) or 0) + int(_cur.get("buy", 0) or 0)
-            _ob = int(_old.get("strongBuy", 0) or 0) + int(_old.get("buy", 0) or 0)
+            def _b(row): return int(row.get("strongBuy", 0) or 0) + int(row.get("buy", 0) or 0)
+            def _h(row): return int(row.get("hold", 0) or 0)
+            def _s(row): return int(row.get("sell", 0) or 0) + int(row.get("strongSell", 0) or 0)
+            _cb, _ob = _b(_cur), _b(_old)
+            f["analyst_buys"]  = _cb
+            f["analyst_holds"] = _h(_cur)
+            f["analyst_rated"] = _cb + _h(_cur) + _s(_cur)   # grid total (raters), reconciles with buys
             if _cb != _ob:
                 f["analyst_trend"] = ("cooling", _ob, _cb) if _cb < _ob else ("strengthening", _ob, _cb)
     except Exception:
-        f["analyst_trend"] = None
+        f["analyst_buys"] = f["analyst_holds"] = f["analyst_rated"] = f["analyst_trend"] = None
     f["mcap"] = info.get("marketCap")
     f["industry"] = info.get("industry")
     ins = info.get("heldPercentInsiders")
@@ -548,16 +558,33 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
         if f.get("div_streak"):
             s.append(_pick(_P_DIV, tk, "div").format(streak=f["div_streak"]))
 
-    if f.get("target_pct") is not None:
-        d = "above" if f["target_pct"] >= 0 else "below"
-        rec = f'rate it "{f["analyst_rec"]}" and ' if f.get("analyst_rec") else ""
-        pct = f"{abs(f['target_pct']):.0f}"
-        if f.get("analyst_n"):
-            s.append(_pick(_P_ANALYST, tk, "an").format(n=f["analyst_n"], rec=rec, pct=pct, dir=d))
-        else:
-            s.append(f"Analysts {rec}on average see the shares worth about {pct}% {d} today's price.")
-        # Over-time drift (user 2026-06-22) — turns the static rating into a direction that knits
-        # the bull/bear divergence (a cooling Buy is consistent with a bearish technical read).
+    if f.get("target_pct") is not None or f.get("analyst_rated"):
+        d   = "above" if (f.get("target_pct") or 0) >= 0 else "below"
+        pct = f"{abs(f['target_pct']):.0f}" if f.get("target_pct") is not None else None
+        rec = f.get("analyst_rec")
+        buys, holds, total = f.get("analyst_buys"), f.get("analyst_holds"), f.get("analyst_rated")
+        # Prefer the ratings GRID so the count reconciles with the over-time trend below (user
+        # 2026-06-22: "19 analysts rate it Buy ... from 15 to 13 makes little sense" — that mixed
+        # the price-target count with the grid's buy count). Now total/buys/holds + the trend all
+        # come from the same grid; the buy count {buys} appears in BOTH the headline and the trend.
+        if total:
+            _head = f"Of {total} analysts rating it, {buys} say Buy"
+            if holds:
+                _head += f" and {holds} Hold"
+            if rec:
+                _head += f" (consensus {rec})"
+            if pct is not None:
+                _head += f"; price targets sit about {pct}% {d}"
+            s.append(_head + ".")
+        elif pct is not None:
+            # No ratings grid available — fall back to coverage count + consensus + target.
+            _recph = f'rate it "{rec}" and ' if rec else ""
+            if f.get("analyst_n"):
+                s.append(_pick(_P_ANALYST, tk, "an").format(n=f["analyst_n"], rec=_recph, pct=pct, dir=d))
+            else:
+                s.append(f"Analysts {_recph}on average see the shares worth about {pct}% {d} today's price.")
+        # Over-time drift (user 2026-06-22) — knits the bull/bear divergence. The end value {_cb}
+        # equals {buys} in the grid headline above, so the two sentences now reconcile.
         _at = f.get("analyst_trend")
         if _at:
             _word, _ob, _cb = _at
