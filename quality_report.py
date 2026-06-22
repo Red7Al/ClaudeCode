@@ -30,6 +30,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.14.0  2026-06-22  Alex Hind   (user 2026-06-22) Analyst stance OVER TIME in the long report: after the "rate it Buy /
+#                                 fair value +N%" sentence, add the 3-month DRIFT in the buy count ("conviction cooling —
+#                                 buy ratings eased 24->15") so a cooling Buy knits the bull(analysts)/bear(HVF) divergence.
+#                                 From t.recommendations; omitted when steady or coverage absent.
 # 1.13.0  2026-06-21  Alex Hind   (user 2026-06-21) Un-suppress the institutional holder — it's valuable validation, always
 #                                 shown (a big holder is further validation); kept the "institutional holder" label and
 #                                 accurate emphasis (dominant >=20% / notable >=15% / neutral below). Added a 3-year price
@@ -211,6 +215,28 @@ def fundamentals(ticker: str) -> dict:
     rk = info.get("recommendationKey")
     f["analyst_rec"] = rk.title() if rk and rk != "none" else None
     f["target_pct"] = ((tgt - px) / px * 100) if (tgt and px) else None
+
+    # Analyst stance OVER TIME (user 2026-06-22: "analysts over time ... helps knit together the
+    # appearance of BULL and BEAR"). The DRIFT in the buy count over ~3 months turns the static
+    # "rated Buy" into a direction: a Buy rating that's COOLING reconciles with a bearish technical
+    # read. Best-effort; None (omitted) when coverage/history is absent or the count is steady.
+    f["analyst_trend"] = None
+    try:
+        rec = t.recommendations
+        if rec is not None and len(rec):
+            rec = rec.reset_index(drop=True)
+            def _r(p):
+                m = rec[rec["period"] == p]
+                return m.iloc[0] if len(m) else None
+            _cur, _old = _r("0m"), _r("-3m")
+            if _cur is None: _cur = rec.iloc[0]
+            if _old is None: _old = rec.iloc[-1]
+            _cb = int(_cur.get("strongBuy", 0) or 0) + int(_cur.get("buy", 0) or 0)
+            _ob = int(_old.get("strongBuy", 0) or 0) + int(_old.get("buy", 0) or 0)
+            if _cb != _ob:
+                f["analyst_trend"] = ("cooling", _ob, _cb) if _cb < _ob else ("strengthening", _ob, _cb)
+    except Exception:
+        f["analyst_trend"] = None
     f["mcap"] = info.get("marketCap")
     f["industry"] = info.get("industry")
     ins = info.get("heldPercentInsiders")
@@ -517,6 +543,15 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
             s.append(_pick(_P_ANALYST, tk, "an").format(n=f["analyst_n"], rec=rec, pct=pct, dir=d))
         else:
             s.append(f"Analysts {rec}on average see the shares worth about {pct}% {d} today's price.")
+        # Over-time drift (user 2026-06-22) — turns the static rating into a direction that knits
+        # the bull/bear divergence (a cooling Buy is consistent with a bearish technical read).
+        _at = f.get("analyst_trend")
+        if _at:
+            _word, _ob, _cb = _at
+            if _word == "cooling":
+                s.append(f"Their conviction has been cooling, though — buy ratings eased from {_ob} to {_cb} over the past three months.")
+            else:
+                s.append(f"And their conviction is building — buy ratings rose from {_ob} to {_cb} over the past three months.")
     if f.get("insider_value") is not None:
         s.append(_pick(_P_INSIDER, tk, "ins").format(value=_money(f["insider_value"], gbp), pct=f"{f['insider_pct']:.1f}"))
     elif f.get("insider_pct") is not None:
