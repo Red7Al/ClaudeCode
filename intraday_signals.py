@@ -23,6 +23,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.39.0  2026-06-22  Alex Hind   (user 2026-06-22) (a) FIX missing 3-yr history on the X card: the 3-yr weekly data is now
+#                                 fetched once via cached _yf_weekly_3y (with one retry) and shared by the card inset + the
+#                                 standalone PNG — it was fetched 3x/publication and silently dropped to yfinance rate-limits.
+#                                 (b) Explicit BULL/BEAR at the TOP: card title shows "▼ BEARISH · $TICKER" coloured red/green;
+#                                 tweet leads every variant with "📉 BEARISH setup" / "📈 BULLISH setup".
 # 1.38.0  2026-06-22  Alex Hind   Analyst stance OVER TIME on the tweet (user 2026-06-22): _analyst_angle adds the current
 #                                 buy/hold split, the 3-month drift in the buy count, and the mean target vs spot — a HIGH-
 #                                 priority justification so the bull/bear divergence is knitted (e.g. BEARISH HVF on a name
@@ -1146,6 +1151,35 @@ def _yf_info(ticker: str) -> dict:
     return info
 
 
+_YF_3YW_CACHE: dict = {}   # ticker -> 3y weekly history DataFrame, fetched once per process
+
+
+def _yf_weekly_3y(ticker: str):
+    """3-year WEEKLY history, fetched ONCE per ticker per process with one retry (user 2026-06-22).
+
+    The 3-year price history is needed in three places per publication — the card's 3-yr inset, the
+    standalone 3-yr PNG, and the long-report chart story — and was being fetched separately each time.
+    Three (plus the detection weekly scan) yfinance round-trips per instrument is a rate-limit source,
+    which silently dropped the card's 3-yr inset (best-effort try/except). Caching to one shared fetch
+    (only SUCCESSES are cached, so a transient failure is retried by the next caller) restores it.
+    Returns a DataFrame (possibly None/empty) — never raises."""
+    if ticker in _YF_3YW_CACHE:
+        return _YF_3YW_CACHE[ticker]
+    df = None
+    for _attempt in range(2):
+        try:
+            import yfinance as _yf
+            df = _yf.Ticker(ticker).history(period="3y", interval="1wk")
+            if df is not None and not df.empty:
+                _YF_3YW_CACHE[ticker] = df   # cache successes only
+                return df
+        except Exception:
+            df = None
+        import time as _t
+        _t.sleep(1.0)
+    return df
+
+
 
 def _resolve_name(ticker: str) -> str:
     """
@@ -1363,6 +1397,9 @@ def render_x_post_card(r: dict):
         ax.set_facecolor("#0d1117")
 
         dir_arrow = "▲" if direction == "BULLISH" else "▼"
+        # Explicit BULL/BEAR at the top (user 2026-06-22) — the arrow alone wasn't clear enough.
+        dir_label = "BULLISH" if direction == "BULLISH" else "BEARISH"
+        dir_color = "#3fb950" if direction == "BULLISH" else "#f85149"
         # 52-week high/low for the card (user 2026-06-13) — prices live on the
         # PNG, not in the tweet. Dedicated 1y fetch; ×ig_scale to match the
         # level units (same convention as "Now").
@@ -1403,8 +1440,8 @@ def render_x_post_card(r: dict):
         # Timeframe label (e.g. d240) deliberately NOT shown (user 2026-06-13).
         # No @EndToEndTrading handle on the card (user 2026-06-15: remove the brand text).
         hdr_lines = [
-            (0.925, f"{dir_arrow} ${disp_ticker} ({name})",
-                                         "#ffffff", 16, "bold",   "normal"),
+            (0.925, f"{dir_arrow} {dir_label}  ·  ${disp_ticker} ({name})",
+                                         dir_color, 16, "bold",   "normal"),
             (0.888, _desc_line,
                                          "#c9d1d9", 13, "normal", "normal"),
             # Levels line (y=0.852) is drawn separately below with per-marker colours.
@@ -1527,8 +1564,8 @@ def render_x_post_card(r: dict):
         # falling") — a small weekly-close sparkline so the long-term trend is visible at a glance.
         # Top-right of the chart (empty space in a downtrend); green if up over 3yr, red if down.
         try:
-            _h3 = _yf.Ticker(ticker).history(period="3y", interval="1wk")
-            _c3 = _h3["Close"].dropna() if _h3 is not None else None
+            _h3 = _yf_weekly_3y(ticker)
+            _c3 = _h3["Close"].dropna() if _h3 is not None and not _h3.empty else None
             if _c3 is not None and len(_c3) > 8:
                 _pct3 = (float(_c3.iloc[-1]) / float(_c3.iloc[0]) - 1) * 100
                 _axin = fig.add_axes([0.655, 0.595, 0.21, 0.072])
@@ -1593,8 +1630,8 @@ def render_3yr_history_card(r: dict):
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
-        import yfinance as _yf
-        c = _yf.Ticker(ticker).history(period="3y", interval="1wk")["Close"].dropna()
+        _h = _yf_weekly_3y(ticker)   # shared cached fetch (user 2026-06-22)
+        c = _h["Close"].dropna() if _h is not None and not _h.empty else None
         if c is None or len(c) < 8:
             return None
         pct = (float(c.iloc[-1]) / float(c.iloc[0]) - 1) * 100
@@ -2035,10 +2072,13 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         # Blank line after the hook/company line (user 2026-06-16). The description and the
         # explainer stay together as ONE paragraph; the blank line before the confirmations
         # block is added in _build below.
-        base_name_expl = f"{hook} ({name})\n\n{description}\n{explain}\n"
-        base_expl      = f"{hook}\n\n{description}\n{explain}\n"
-        base_with_name = f"{hook} ({name})\n\n{description}\n"
-        base_no_name   = f"{hook}\n\n{description}\n"
+        # Explicit BULL/BEAR at the very top of the tweet (user 2026-06-22) — the rotated hook
+        # implies direction but doesn't state it; a clear tag leads every variant. No $cashtag.
+        _dir_tag = "📉 BEARISH setup" if direction == "BEARISH" else "📈 BULLISH setup"
+        base_name_expl = f"{_dir_tag}\n{hook} ({name})\n\n{description}\n{explain}\n"
+        base_expl      = f"{_dir_tag}\n{hook}\n\n{description}\n{explain}\n"
+        base_with_name = f"{_dir_tag}\n{hook} ({name})\n\n{description}\n"
+        base_no_name   = f"{_dir_tag}\n{hook}\n\n{description}\n"
         # "Not financial advice." — always appended (2026-06-11); now preceded by a
         # blank line and rendered in bold italic (user 2026-06-13).
         disclaimer = _NFA_DISCLAIMER
