@@ -66,6 +66,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.32.0  2026-06-22  Alex Hind   (user 2026-06-22) action_score upgraded to a quality-weighted blend: (R:R × quality/100) ÷
+#                                 max(distance%, 0.5) — folds in pattern reliability + a sane distance floor (was R:R ÷ dist).
 # 1.31.0  2026-06-22  Alex Hind   (user 2026-06-22) action_score(r) = R:R ÷ distance-to-entry — "most relevant for action
 #                                 now" rank (10@2%->5, 20@4%->5, 10@1%->10). Used to order each market in the HVF report + the
 #                                 X-draft selection. Display/ordering only — no detection change.
@@ -1634,18 +1636,24 @@ def hvf_weight(signal: str, quality, risk_reward=0.0) -> tuple:
 
 
 def action_score(r: dict) -> float:
-    """'Most relevant for action NOW' rank (user 2026-06-22): R:R divided by how far price is from
-    the entry, so a setup that is BOTH high-R:R AND close to triggering ranks top. Higher = better.
-        R:R 10 @ 2% from entry -> 5      R:R 20 @ 4% -> 5      R:R 10 @ 1% -> 10
-    A TRIGGERED setup (price ~at entry) gets a very high score (distance floored at 0.1% to avoid
-    divide-by-zero) — it's the closest thing to action. Falls back to R:R alone when the live price
-    or entry is missing. Used to order each market's list in the HVF report + X-draft selection."""
+    """'Most relevant for action NOW' rank (user 2026-06-22). Quality-weighted blend:
+
+        score = (R:R × quality/100) ÷ max(distance%, 0.5)
+
+    so a setup that is high-R:R, HIGH-QUALITY and close to triggering ranks top. Higher = better.
+    Adds pattern reliability (quality) and a 0.5% distance floor to the plain R:R/distance idea, so
+    a flimsy setup doesn't tie a strong one and a barely-triggered setup doesn't dwarf everything on
+    distance alone. At equal quality the original intuition holds: 10@2%->5, 20@4%->5, 10@1%->10.
+    Quality is treated as neutral (×1) when absent; falls back to R:R×quality when price/entry are
+    missing. Used to order each market's list in the HVF report + the X-draft selection."""
     rr = r.get("risk_reward") or 0
+    q  = r.get("pattern_quality")
+    qf = (q / 100.0) if isinstance(q, (int, float)) and q > 0 else 1.0   # quality factor (neutral if absent)
     cur, entry = r.get("current_price"), r.get("h3_level")
     if not (isinstance(cur, (int, float)) and cur and isinstance(entry, (int, float))):
-        return float(rr)
+        return float(rr) * qf
     dist = abs(entry / cur - 1) * 100
-    return float(rr) / max(dist, 0.1)
+    return float(rr) * qf / max(dist, 0.5)
 
 
 def pct_from_current(level, current) -> str:
