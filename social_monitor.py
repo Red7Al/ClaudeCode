@@ -24,12 +24,14 @@
 #   @BlackPantherCapital — Equity tips and trade setups
 #   @pdicarlotrader   — Active trader, equity and options picks
 #   @polymarketmoney  — Prediction market signals, event-driven equity tips
+#   @crypto_banter    — Crypto Banter (Ran Neuner), crypto/market commentary
 #
 # Nitter instances (tried in order until one works):
 #   nitter.net, nitter.poast.org, nitter.cz
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.8.0   2026-06-22  Alex Hind   Add @crypto_banter to TRACKED_ACCOUNTS (user 2026-06-22) — crypto/market commentary.
 # 1.7.0   2026-06-19  Alex Hind   X-mentions line now shows R:R + entry % from the live price when an HVF setup exists
 #                                 (user 2026-06-19), via price_action.pct_from_current. (CONFIRM_LONG dossier read already
 #                                 carries full % + R:R through _hvf_summary.)
@@ -104,6 +106,8 @@ TRACKED_ACCOUNTS = [
     {"handle": "DeepValueBagger",   "name": "Deep Value Bagger",   "source": "X/@DeepValueBagger"},
     {"handle": "DefiWimar",         "name": "Defi Wimar",          "source": "X/@DefiWimar"},
     {"handle": "TheStockWhale",     "name": "The Stock Whale",     "source": "X/@TheStockWhale"},
+    # Added 2026-06-22 (user) — crypto/market commentary.
+    {"handle": "crypto_banter",     "name": "Crypto Banter",       "source": "X/@crypto_banter"},
 ]
 
 # Known non-ticker uppercase words to ignore
