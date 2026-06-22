@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.42.0  2026-06-22  Alex Hind   (user 2026-06-22) Tweet head in WORDS, not icons ("this icon is not clear"): heading reads
+#                                 "BEARISH setup · not triggered yet" (state in words, no 📉/📈); the hook's leading ⏳/👀/🚨
+#                                 state icon is stripped to plain text.
 # 1.41.0  2026-06-22  Alex Hind   (user 2026-06-22) Tweet head: (B) $cashtag and full name kept ADJACENT — the hook comment is
 #                                 tagged AFTER ("$NKE (NIKE, Inc.) winding tighter", not "$NKE winding tighter (NIKE, Inc.)").
 #                                 (C) the description + plain-English explainer are now ONE paragraph (related; no line break),
@@ -2076,14 +2079,19 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         # Blank line after the hook/company line (user 2026-06-16). The description and the
         # explainer stay together as ONE paragraph; the blank line before the confirmations
         # block is added in _build below.
-        # Explicit BULL/BEAR at the very top of the tweet (user 2026-06-22) — the rotated hook
-        # implies direction but doesn't state it; a clear tag leads every variant. No $cashtag.
-        _dir_tag = "📉 BEARISH setup" if direction == "BEARISH" else "📈 BULLISH setup"
+        # Direction AND state at the very top, in WORDS (user 2026-06-22: the ⏳/👀 hook icon wasn't
+        # clear — "use words"). The heading states both; the hook's leading state icon is stripped to
+        # plain text so the tweet reads "BEARISH · not triggered yet / $NKE (NIKE, Inc.) winding tighter".
+        import re as _re
+        _state = "triggered now" if signal == "TRIGGERED" else "not triggered yet"
+        _dir_word = "BEARISH" if direction == "BEARISH" else "BULLISH"
+        _dir_tag = f"{_dir_word} setup · {_state}"
         # Keep the $cashtag and the full name ADJACENT (user 2026-06-22): the rotated hook puts a
-        # comment around the cashtag (e.g. "⏳ $NKE winding tighter") — insert the name right AFTER
-        # the cashtag so it reads "$NKE (NIKE, Inc.) winding tighter", never "$NKE winding tighter
-        # (NIKE, Inc.)". The name is tagged on after the cashtag wherever the cashtag sits.
+        # comment around the cashtag — insert the name right AFTER the cashtag so it reads
+        # "$NKE (NIKE, Inc.) winding tighter". Then strip the leading state ICON to plain words.
         hook_named = hook.replace(f"${disp_ticker}", f"${disp_ticker} ({name})", 1)
+        hook_named = _re.sub(r"^[^\w$#]+", "", hook_named)     # drop the leading ⏳/👀/🚨 icon → words
+        hook_plain = _re.sub(r"^[^\w$#]+", "", hook)
         # Description + explainer are RELATED → one paragraph (user 2026-06-22): no line break
         # between them, and the description (a fragment) gets a full stop so they read as sentences.
         _desc = description.rstrip()
@@ -2091,9 +2099,9 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
             _desc += "."
         _desc_block = f"{_desc} {explain}".strip() if explain else _desc
         base_name_expl = f"{_dir_tag}\n{hook_named}\n\n{_desc_block}\n"
-        base_expl      = f"{_dir_tag}\n{hook}\n\n{_desc_block}\n"
+        base_expl      = f"{_dir_tag}\n{hook_plain}\n\n{_desc_block}\n"
         base_with_name = f"{_dir_tag}\n{hook_named}\n\n{_desc}\n"
-        base_no_name   = f"{_dir_tag}\n{hook}\n\n{_desc}\n"
+        base_no_name   = f"{_dir_tag}\n{hook_plain}\n\n{_desc}\n"
         # "Not financial advice." — always appended (2026-06-11); now preceded by a
         # blank line and rendered in bold italic (user 2026-06-13).
         disclaimer = _NFA_DISCLAIMER
