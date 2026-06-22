@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.24.0  2026-06-22  Alex Hind   (user 2026-06-22) Slack-only mode: HVF_REPORT_SKIP_X / --no-x posts the analytical #signals
+#                                 report WITHOUT any X drafts or live-X publish — for reviewing the order without touching X.
 # 1.23.0  2026-06-22  Alex Hind   (user 2026-06-22) ALL markets: added Crypto basket + the rest of the major FX; the report
 #                                 now spans UK+US equities, commodities, indices, FX, crypto (FTSE/S&P were only examples).
 #                                 Each market ordered by action_score (R:R ÷ distance-to-entry, DESC). _fmt_price now scales
@@ -116,6 +118,7 @@
 # ======================================================================================================================
 
 import os
+import sys
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 import logging
 import time
@@ -768,11 +771,17 @@ def main():
     blocks = build_slack_blocks(tradeable, developing, scan_time)
     post_to_slack(blocks)
 
+    # Slack-only mode (user 2026-06-22: "show the HVF report to Slack, NOT X, so I can review the
+    # order"): HVF_REPORT_SKIP_X / --no-x skips BOTH the X-draft Slack posts AND the live-X publish,
+    # leaving just the analytical #signals report above. Nothing is posted to X.
+    _skip_x = (os.environ.get("HVF_REPORT_SKIP_X", "").strip().lower() in ("1", "true", "yes")
+               or "--no-x" in sys.argv)
+
     # X draft reports — one tweet-ready Slack post per tradeable instrument, top X_DRAFT_PER_MARKET
     # per market, ONLY re-shown when confirmations changed (user 2026-06-17). Then the top
     # X_PUBLISH_TOP_N per market OF THAT CHANGED SET are auto-published LIVE to X, spaced so the
     # threads don't overlap on the timeline.
-    if tradeable:
+    if tradeable and not _skip_x:
         posted = []
         try:
             from intraday_signals import _generate_x_drafts
@@ -783,6 +792,8 @@ def main():
             _publish_top_per_market_to_x(posted)
         except Exception as e:
             log.warning(f"live X publish failed (non-critical): {e}")
+    elif _skip_x:
+        log.info("HVF_REPORT_SKIP_X set — analytical Slack report only; no X drafts, no live X publish.")
 
     # Log to DB
     log_to_db(tradeable, developing, scan_time)
