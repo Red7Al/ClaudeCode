@@ -23,6 +23,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.43.0  2026-06-22  Alex Hind   (user 2026-06-22) Tweet head order: INSTRUMENT on the top line, the direction/state tag
+#                                 beneath it ("$NKE (NIKE, Inc.) winding tighter" / "BEARISH setup · not triggered yet").
 # 1.42.0  2026-06-22  Alex Hind   (user 2026-06-22) Tweet head in WORDS, not icons ("this icon is not clear"): heading reads
 #                                 "BEARISH setup · not triggered yet" (state in words, no 📉/📈); the hook's leading ⏳/👀/🚨
 #                                 state icon is stripped to plain text.
@@ -2098,10 +2100,11 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         if _desc and _desc[-1] not in ".!?":
             _desc += "."
         _desc_block = f"{_desc} {explain}".strip() if explain else _desc
-        base_name_expl = f"{_dir_tag}\n{hook_named}\n\n{_desc_block}\n"
-        base_expl      = f"{_dir_tag}\n{hook_plain}\n\n{_desc_block}\n"
-        base_with_name = f"{_dir_tag}\n{hook_named}\n\n{_desc}\n"
-        base_no_name   = f"{_dir_tag}\n{hook_plain}\n\n{_desc}\n"
+        # Instrument on the TOP line, the direction/state tag beneath it (user 2026-06-22).
+        base_name_expl = f"{hook_named}\n{_dir_tag}\n\n{_desc_block}\n"
+        base_expl      = f"{hook_plain}\n{_dir_tag}\n\n{_desc_block}\n"
+        base_with_name = f"{hook_named}\n{_dir_tag}\n\n{_desc}\n"
+        base_no_name   = f"{hook_plain}\n{_dir_tag}\n\n{_desc}\n"
         # "Not financial advice." — always appended (2026-06-11); now preceded by a
         # blank line and rendered in bold italic (user 2026-06-13).
         disclaimer = _NFA_DISCLAIMER

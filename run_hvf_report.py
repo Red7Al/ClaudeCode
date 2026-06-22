@@ -29,6 +29,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.25.0  2026-06-22  Alex Hind   (user 2026-06-22) HVF_REPORT_MODE: normal | slack_only | slack_png. slack_png posts the
+#                                 analytical report + Slack drafts WITH the card + 3yr PNGs for ALL tradeable, NO live X — for
+#                                 reviewing the full output (visuals included) without touching X.
 # 1.24.0  2026-06-22  Alex Hind   (user 2026-06-22) Slack-only mode: HVF_REPORT_SKIP_X / --no-x posts the analytical #signals
 #                                 report WITHOUT any X drafts or live-X publish — for reviewing the order without touching X.
 # 1.23.0  2026-06-22  Alex Hind   (user 2026-06-22) ALL markets: added Crypto basket + the rest of the major FX; the report
@@ -771,29 +774,34 @@ def main():
     blocks = build_slack_blocks(tradeable, developing, scan_time)
     post_to_slack(blocks)
 
-    # Slack-only mode (user 2026-06-22: "show the HVF report to Slack, NOT X, so I can review the
-    # order"): HVF_REPORT_SKIP_X / --no-x skips BOTH the X-draft Slack posts AND the live-X publish,
-    # leaving just the analytical #signals report above. Nothing is posted to X.
-    _skip_x = (os.environ.get("HVF_REPORT_SKIP_X", "").strip().lower() in ("1", "true", "yes")
-               or "--no-x" in sys.argv)
+    # Output mode (user 2026-06-22):
+    #   normal     — analytical #signals report + changed-only Slack drafts (with PNGs) + live X publish.
+    #   slack_only — analytical #signals report ONLY (review the order; no drafts, no X).
+    #   slack_png  — analytical report + Slack drafts WITH the card + 3yr PNGs for ALL tradeable, NO X.
+    _mode = os.environ.get("HVF_REPORT_MODE", "").strip().lower()
+    if not _mode and (os.environ.get("HVF_REPORT_SKIP_X", "").strip().lower() in ("1", "true", "yes")
+                      or "--no-x" in sys.argv):
+        _mode = "slack_only"        # back-compat with the earlier flag
 
-    # X draft reports — one tweet-ready Slack post per tradeable instrument, top X_DRAFT_PER_MARKET
-    # per market, ONLY re-shown when confirmations changed (user 2026-06-17). Then the top
-    # X_PUBLISH_TOP_N per market OF THAT CHANGED SET are auto-published LIVE to X, spaced so the
-    # threads don't overlap on the timeline.
-    if tradeable and not _skip_x:
+    # X-draft Slack posts (card + 3yr PNG per instrument, top X_DRAFT_PER_MARKET/market). These go to
+    # the Slack draft channel — NOT to X. The LIVE X publish is the separate step below, gated on mode.
+    if tradeable and _mode != "slack_only":
         posted = []
         try:
             from intraday_signals import _generate_x_drafts
-            posted = _generate_x_drafts(tradeable, changed_only=True) or []
+            # slack_png reviews EVERYTHING (not just changed); normal posts only changed instruments.
+            posted = _generate_x_drafts(tradeable, changed_only=(_mode != "slack_png")) or []
         except Exception as e:
             log.warning(f"X draft generation failed (non-critical): {e}")
-        try:
-            _publish_top_per_market_to_x(posted)
-        except Exception as e:
-            log.warning(f"live X publish failed (non-critical): {e}")
-    elif _skip_x:
-        log.info("HVF_REPORT_SKIP_X set — analytical Slack report only; no X drafts, no live X publish.")
+        if _mode in ("", "normal"):
+            try:
+                _publish_top_per_market_to_x(posted)   # the only step that posts to LIVE X
+            except Exception as e:
+                log.warning(f"live X publish failed (non-critical): {e}")
+        else:
+            log.info(f"HVF_REPORT_MODE={_mode}: Slack drafts posted WITH PNGs — no live X publish.")
+    elif _mode == "slack_only":
+        log.info("HVF_REPORT_MODE=slack_only — analytical #signals report only; no drafts, no X.")
 
     # Log to DB
     log_to_db(tradeable, developing, scan_time)

@@ -3,11 +3,11 @@ name: HVF Daily Report (2026-06-17)
 on:
   workflow_dispatch:           # also triggerable manually
     inputs:
-      slack_only:
-        description: 'Post the analytical HVF report to Slack ONLY — no X drafts, no live X publish'
-        type: boolean
-        required: false
-        default: false
+      report_mode:
+        description: 'normal (Slack + live X) | slack_only (report only, no X) | slack_png (Slack report + card/3yr PNG drafts, no X)'
+        type: choice
+        options: [normal, slack_only, slack_png]
+        default: normal
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -29,7 +29,7 @@ jobs:
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
       - run: python run_hvf_report.py
         env:
-          HVF_REPORT_SKIP_X:     ${{ inputs.slack_only }}   # slack_only -> no X drafts / no live X (user 2026-06-22)
+          HVF_REPORT_MODE:       ${{ inputs.report_mode }}  # normal | slack_only | slack_png (user 2026-06-22)
           SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
           SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
