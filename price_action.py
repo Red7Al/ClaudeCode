@@ -66,6 +66,14 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.33.0  2026-06-22  Alex Hind   (user 2026-06-22, ABF "align with colleague + funnel logic in ONE place") FIX wrong-
+#                                 direction on a counter-trend bounce: get_trend_structure now reconciles the 10-week swing
+#                                 structure with the ~6-month return (MEDIUM_TERM_REVERSAL_PCT) — a name down >=10% over 6mo
+#                                 but bouncing the last 10wk is DOWNTREND, not STRONG_UPTREND (ABF). BOTH detectors' recent-
+#                                 trend overrides now DEFER to that (rising highs can't flip a medium-term downtrend up), so the
+#                                 single trend call drives every report. NaN-safe medium-term return. Shadow-diff (recent
+#                                 tradeable): 7 BULLISH->BEARISH corrections (ABF/ADBE/ALFA.L/APD/AXP/BPT.L/BRBY.L), 0 bad
+#                                 reverse flips, 4 -> no-signal. Suite 27/27. ABF now BEARISH, matching RW.
 # 1.32.0  2026-06-22  Alex Hind   (user 2026-06-22) action_score upgraded to a quality-weighted blend: (R:R × quality/100) ÷
 #                                 max(distance%, 0.5) — folds in pattern reliability + a sane distance floor (was R:R ÷ dist).
 # 1.31.0  2026-06-22  Alex Hind   (user 2026-06-22) action_score(r) = R:R ÷ distance-to-entry — "most relevant for action
@@ -279,7 +287,15 @@ CONFIRM_SHORT_THRESHOLD = -40
 
 # Lookback periods
 RANGE_BREAKOUT_DAYS  = 60    # 3 months for range definition
-TREND_STRUCTURE_WKLY = 10    # 10 weekly candles for HH/HL analysis
+TREND_STRUCTURE_WKLY = 10    # 10 weekly candles for HH/HL analysis (recent swing structure)
+# Medium-term reconciliation (user 2026-06-22, ABF): the 10-week swing structure can read a recent
+# COUNTER-TREND bounce as a (strong) uptrend even when the stock is clearly down over ~6 months
+# (ABF: +2.5% 3mo bounce but -10.8% 6mo). The HVF "prior trend" must be the medium-term one, so
+# get_trend_structure flips an up/down classification that the ~6-month return contradicts by at
+# least MEDIUM_TERM_REVERSAL_PCT. This is the SINGLE place trend direction is decided — every report
+# (tweet, dossier, daily report) reads it via get_hvf_signal_mtf, so the fix applies everywhere.
+MEDIUM_TERM_WKLY        = 26     # ~6 months
+MEDIUM_TERM_REVERSAL_PCT = 10.0  # medium-term move that overrides a contradicting short-window structure
 MA_CROSSOVER_DAYS    = 210   # enough for 200 SMA
 FAILED_BREAK_DAYS    = 5     # candles to look back for failed break
 
@@ -426,11 +442,28 @@ def get_trend_structure(ticker: str) -> dict:
         "hh_hl_count":        0,
         "lh_ll_count":        0,
         "last_weekly_close":  None,
+        "medium_term_pct":    None,
     }
-    hist = _get_weekly(ticker, weeks=TREND_STRUCTURE_WKLY + 4)
-    if hist.empty or len(hist) < 4:
+    # Fetch enough for BOTH the recent swing structure AND the ~6-month return reconciliation.
+    hist_full = _get_weekly(ticker, weeks=max(TREND_STRUCTURE_WKLY, MEDIUM_TERM_WKLY) + 4)
+    if hist_full.empty or len(hist_full) < 4:
         return result
 
+    # Medium-term (~6-month) % return — the dominant trend the HVF continuation should follow.
+    # dropna FIRST: yfinance weekly series can carry NaN gaps (e.g. a forming week), and a NaN at the
+    # 26-week-ago slot silently defeated the reconciliation (ABF/BTRW read nan -> no flip).
+    closes_full = hist_full["Close"].dropna().values
+    mt_ret = None
+    if len(closes_full) > MEDIUM_TERM_WKLY:
+        base_close = float(closes_full[-MEDIUM_TERM_WKLY - 1])
+        last_close = float(closes_full[-1])
+        if base_close and base_close == base_close and last_close == last_close:   # both non-zero, non-NaN
+            mt_ret = (last_close / base_close - 1) * 100
+    result["medium_term_pct"] = round(mt_ret, 1) if mt_ret is not None else None
+
+    # Swing structure on the RECENT window only (unchanged behaviour — keeps hh_hl/lh_ll identical
+    # to before; the medium-term return is layered on top below).
+    hist = hist_full.tail(TREND_STRUCTURE_WKLY + 4)
     closes = hist["Close"].values
     highs  = hist["High"].values
     lows   = hist["Low"].values
@@ -461,16 +494,32 @@ def get_trend_structure(ticker: str) -> dict:
     # multi-year DOWNTREND. An up/down-trend now requires its direction to actually outweigh the
     # other (hh_hl > lh_ll for up, lh_ll > hh_hl for down); ties / weak structure = SIDEWAYS.
     if hh_hl >= 5 and hh_hl > lh_ll:
-        result["signal"] = "STRONG_UPTREND"
+        sig = "STRONG_UPTREND"
     elif hh_hl >= 3 and hh_hl > lh_ll:
-        result["signal"] = "UPTREND"
+        sig = "UPTREND"
     elif lh_ll >= 5 and lh_ll > hh_hl:
-        result["signal"] = "STRONG_DOWNTREND"
+        sig = "STRONG_DOWNTREND"
     elif lh_ll >= 3 and lh_ll > hh_hl:
-        result["signal"] = "DOWNTREND"
+        sig = "DOWNTREND"
     else:
-        result["signal"] = "SIDEWAYS"
+        sig = "SIDEWAYS"
 
+    # ── Medium-term reconciliation (user 2026-06-22, ABF) ─────────────────────────────────────────
+    # A recent COUNTER-TREND bounce can read as a (strong) UPTREND on the 10-week structure while the
+    # stock is clearly DOWN over ~6 months — and vice-versa. The HVF prior trend is the medium-term
+    # one, so flip an up/down call that the ~6-month return contradicts by >= MEDIUM_TERM_REVERSAL_PCT.
+    # (ABF: STRONG_UPTREND from a +2.5% 3mo bounce, but -10.8% 6mo -> DOWNTREND, matching RW's short.)
+    if mt_ret is not None:
+        if sig in ("UPTREND", "STRONG_UPTREND") and mt_ret <= -MEDIUM_TERM_REVERSAL_PCT:
+            sig = "DOWNTREND"
+            log.info(f"trend {ticker}: 10wk structure said up, but {MEDIUM_TERM_WKLY}wk return "
+                     f"{mt_ret:+.0f}% -> reclassified DOWNTREND (counter-trend bounce)")
+        elif sig in ("DOWNTREND", "STRONG_DOWNTREND") and mt_ret >= MEDIUM_TERM_REVERSAL_PCT:
+            sig = "UPTREND"
+            log.info(f"trend {ticker}: 10wk structure said down, but {MEDIUM_TERM_WKLY}wk return "
+                     f"{mt_ret:+.0f}% -> reclassified UPTREND (counter-trend dip)")
+
+    result["signal"] = sig
     return result
 
 
@@ -1114,7 +1163,11 @@ def get_hvf_signal(ticker: str, lookback_days: int = 240,
 
         if (strict_declining or peak_and_decline) and allow_bearish_override:
             effective_trend = "DOWNTREND"
-        elif recent_highs_rising:
+        elif recent_highs_rising and trend_signal not in ("DOWNTREND", "STRONG_DOWNTREND"):
+            # A recent run of rising highs must NOT flip a MEDIUM-TERM downtrend up (user 2026-06-22,
+            # ABF): that's a counter-trend bounce, not a new uptrend. get_trend_structure already
+            # reconciled the ~6-month direction, so honour it here rather than re-deriving from the
+            # last 3 swing highs (this is the second copy of the trend logic the override embodies).
             effective_trend = "UPTREND"
         else:
             effective_trend = trend_signal
@@ -2199,8 +2252,11 @@ def _run_hvf_on_hist(ticker: str, hist) -> dict:
         # bearish override — strict_dec / peak_dec should not flip a confirmed
         # strong uptrend into a DOWNTREND on historical replay.
         allow_bearish_override = trend_signal not in ("STRONG_UPTREND",)
+        # rising highs must NOT flip a medium-term downtrend up — counter-trend bounce (user 2026-06-22,
+        # ABF); mirrors get_hvf_signal so the daily + weekly detectors agree.
+        _rise_ok = rising and trend_signal not in ("DOWNTREND", "STRONG_DOWNTREND")
         effective_trend = ("DOWNTREND" if (strict_dec or peak_dec) and allow_bearish_override else
-                           "UPTREND"   if rising else trend_signal)
+                           "UPTREND"   if _rise_ok else trend_signal)
 
         if effective_trend not in ("STRONG_UPTREND", "UPTREND",
                                    "STRONG_DOWNTREND", "DOWNTREND"):
