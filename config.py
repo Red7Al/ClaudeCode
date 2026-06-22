@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.24.0  2026-06-22  Alex Hind   (user 2026-06-22) MIN_PUBLISH_QUALITY 70 -> 25 — promote middling-quality clean funnels
+#                                 (e.g. USDJPY q46) to tradeable/publishable; the clean RW rules already gate hard on structure.
 # 1.23.0  2026-06-22  Alex Hind   (user 2026-06-22) "Crypto" added to MARKET_ORDER — the HVF report now covers all asset
 #                                 classes (FTSE/S&P were only examples).
 # 1.22.0  2026-06-22  Alex Hind   (user 2026-06-22) "Indices & FX" added to MARKET_ORDER (major indices + USDJPY in the HVF
@@ -615,7 +617,10 @@ X_PUBLISH_TOP_N    = 2
 
 # Minimum pattern quality to PUBLISH (user 2026-06-19: don't show instruments below this in the
 # X drafts / live-X). The analytical HVF report and on-demand dossiers are NOT filtered by it.
-MIN_PUBLISH_QUALITY = 70
+# Lowered 70 -> 25 (user 2026-06-22) so middling-quality clean funnels (e.g. USDJPY q46) promote to
+# tradeable/publishable rather than sitting in developing — the clean RW rules already gate hard on
+# structure (strict swings, tightness<=35%, R:R>=3), so quality here is a softer ranking floor.
+MIN_PUBLISH_QUALITY = 25
 
 # A TRIGGERED setup whose price has already run more than this % PAST the entry (in the trade's
 # direction) is treated as a MISSED entry — you'd be chasing — and is excluded from the tradeable
