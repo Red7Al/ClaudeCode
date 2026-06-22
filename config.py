@@ -29,6 +29,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.21.0  2026-06-22  Alex Hind   (user 2026-06-22) MAX_DEVELOPING_DISTANCE_PCT=10.0 (hide developing entries whose ENTRY is
+#                                 >10% from the live price — now-vs-entry is the relevance metric); Commodities added to
+#                                 MARKET_ORDER + YAHOO_MAP (COPPER/NATGAS/PLATINUM/PALLADIUM) for the HVF report commodities
+#                                 scan. NB: entry→target distance is intentionally NOT gated (no R:R / target-distance cap) —
+#                                 HVF targets are meant to be large; far-target setups remain tradeable/publishable.
 # 1.20.0  2026-06-21  Alex Hind   MARKET_PE=21.0 (user 2026-06-21): broad-market P/E benchmark to tag a stock's P/E
 #                                 cheap/in-line/rich on the tweet + card.
 # 1.19.0  2026-06-21  Alex Hind   COMPETITOR_MAP (user 2026-06-21): curated direct-competitor peers (NKE->LULU, ...) driving
@@ -298,6 +303,10 @@ YAHOO_MAP = {
     "XAUUSD":  "GC=F",         # Gold futures (closest proxy for spot)
     "XAGUSD":  "SI=F",         # Silver futures
     "OIL":     "CL=F",         # WTI Crude futures
+    "COPPER":  "HG=F",         # Copper futures
+    "NATGAS":  "NG=F",         # Natural Gas futures
+    "PLATINUM":"PL=F",         # Platinum futures
+    "PALLADIUM":"PA=F",        # Palladium futures
 
     # FX
     "GBPUSD":  "GBPUSD=X",
@@ -638,7 +647,15 @@ MARKET_PE = 21.0
 
 # Canonical market order for the grouped reports (matches run_hvf_report.UNIVERSE key order).
 # Markets not listed fall to the end, alphabetically (see price_action.group_by_market).
-MARKET_ORDER = ["FTSE 100", "FTSE 250", "S&P 500"]
+MARKET_ORDER = ["FTSE 100", "FTSE 250", "S&P 500", "Commodities"]
+
+# DEVELOPING watch-list display distance (user 2026-06-22: "for developing don't bother to show
+# anything that is over 10% away on price"; the metric is NOW vs ENTRY). A developing pattern whose
+# ENTRY sits more than this % from the live price is too far away to watch usefully, so it is
+# dropped from the developing section of the daily report. Does NOT affect the tradeable section,
+# detection, or the entry→target distance (entry→target is intentionally left unfiltered — user
+# 2026-06-22: HVF targets are meant to be large, so no target-distance / R:R cap is applied).
+MAX_DEVELOPING_DISTANCE_PCT = 10.0
 
 # HVF liquidity quality penalty (user 2026-06-13): illiquid names must NOT rank high on
 # the list. Tiers of recent median DAILY turnover (Close × Volume, in GBP — ".L" prices

@@ -5,8 +5,9 @@
 #
 # Description:
 # ----------------------------------------------------------------------------------------------------------------------
-# Daily HVF Report — scans FTSE 100, FTSE 250 and S&P 500 constituents
-# for Hunt Volatility Funnel patterns and posts a structured report to Slack.
+# Daily HVF Report — scans FTSE 100, FTSE 250, S&P 500 constituents and a
+# Commodities basket (metals + energy) for Hunt Volatility Funnel patterns
+# and posts a structured report to Slack.
 #
 # Three sections:
 #   READY/TRIGGERED  — patterns meeting ≥2.5:1 R:R, tradeable now
@@ -28,6 +29,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.19.0  2026-06-22  Alex Hind   (user 2026-06-22) Commodities basket added to UNIVERSE (metals + energy via YAHOO_MAP);
+#                                 DEVELOPING section now hides setups whose ENTRY is >MAX_DEVELOPING_DISTANCE_PCT (10%) from
+#                                 the live price (now-vs-entry relevance filter); clearer section headers ("showing the top
+#                                 N per market (X shown of Y that qualify)" instead of "top 10/market · 28 of 49").
 # 1.18.0  2026-06-20  Alex Hind   (user 2026-06-20) categorise() drops missed-entry TRIGGERED setups (entry_chase_pct >
 #                                 MAX_ENTRY_CHASE_PCT); "Q=" relabelled "Quality N/100"; blank line between instruments.
 # 1.17.0  2026-06-19  Alex Hind   Expected time-to-target next to R:R on the TRADEABLE line (user 2026-06-19) via
@@ -193,10 +198,23 @@ SP500 = [
     "LIN", "APD", "NEE", "SO",
 ]
 
+COMMODITIES = [
+    # Internal names resolved to Yahoo futures via config.YAHOO_MAP (user 2026-06-22:
+    # "what about commodities?"). Metals + energy that the HVF detector can fetch daily.
+    "XAUUSD",    # Gold       (GC=F)
+    "XAGUSD",    # Silver     (SI=F)
+    "OIL",       # WTI Crude  (CL=F)
+    "COPPER",    # Copper     (HG=F)
+    "NATGAS",    # Nat Gas    (NG=F)
+    "PLATINUM",  # Platinum   (PL=F)
+    "PALLADIUM", # Palladium  (PA=F)
+]
+
 UNIVERSE = {
-    "FTSE 100":  FTSE100,
-    "FTSE 250":  FTSE250,
-    "S&P 500":   SP500,
+    "FTSE 100":   FTSE100,
+    "FTSE 250":   FTSE250,
+    "S&P 500":    SP500,
+    "Commodities": COMMODITIES,   # user 2026-06-22 — metals + energy HVF scan
     # DAX suspended 2026-06-05 — re-add when reinstated
 }
 
@@ -311,6 +329,21 @@ def categorise(all_results: dict) -> tuple:
         else:
             developing.append(r)   # demoted by IG mismatch
     tradeable = still_tradeable
+
+    # Developing relevance filter (user 2026-06-22): drop any developing setup whose ENTRY sits
+    # more than MAX_DEVELOPING_DISTANCE_PCT from the live price — too far away to be of interest
+    # to watch (the metric is now-vs-entry; entry→target distance is deliberately NOT filtered).
+    from config import MAX_DEVELOPING_DISTANCE_PCT
+    def _entry_within_watch(r):
+        cur, entry = r.get("current_price"), r.get("h3_level")
+        if not isinstance(cur, (int, float)) or not cur or not isinstance(entry, (int, float)):
+            return True   # unknown distance — keep (don't hide on missing data)
+        return abs(entry / cur - 1) * 100 <= MAX_DEVELOPING_DISTANCE_PCT
+    _before = len(developing)
+    developing = [r for r in developing if _entry_within_watch(r)]
+    if _before != len(developing):
+        log.info(f"categorise: hid {_before - len(developing)} developing setup(s) with entry "
+                 f"> {MAX_DEVELOPING_DISTANCE_PCT}% from price")
 
     developing.sort(key=lambda r: r.get("risk_reward") or 0, reverse=True)
     return tradeable, developing
@@ -487,7 +520,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         "text": {"type": "mrkdwn",
                  "text": (f"*{len(tradeable)} tradeable* (READY/TRIGGERED ≥{HVF_MIN_RR}:1 R:R)  |  "
                           f"*{len(developing)} developing* (valid pattern, R:R < {HVF_MIN_RR}:1)\n"
-                          f"Indices: FTSE 100 · FTSE 250 · S&P 500")}
+                          f"Scanned: FTSE 100 · FTSE 250 · S&P 500 · Commodities")}
     })
     blocks.append({"type": "divider"})
 
@@ -504,7 +537,8 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn",
-                     "text": f"*⚡ TRADEABLE — top {PER_MARKET_TOP_N}/market · {shown} of {len(tradeable)}*"}
+                     "text": (f"*⚡ TRADEABLE setups* — showing the top {PER_MARKET_TOP_N} per market "
+                              f"({shown} shown of {len(tradeable)} that qualify)")}
         })
         for market, rows in groups:
             blocks.append({
@@ -539,7 +573,8 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn",
-                     "text": f"*👀 DEVELOPING — top {PER_MARKET_TOP_N}/market · {shown} of {len(developing)} on watch*"}
+                     "text": (f"*👀 DEVELOPING (watch list)* — showing the top {PER_MARKET_TOP_N} per market "
+                              f"({shown} shown of {len(developing)} on watch)")}
         })
         for market, rows in groups:
             blocks.append({
