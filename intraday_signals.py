@@ -23,6 +23,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.38.0  2026-06-22  Alex Hind   Analyst stance OVER TIME on the tweet (user 2026-06-22): _analyst_angle adds the current
+#                                 buy/hold split, the 3-month drift in the buy count, and the mean target vs spot — a HIGH-
+#                                 priority justification so the bull/bear divergence is knitted (e.g. BEARISH HVF on a name
+#                                 analysts still rate buy but are cooling on). yfinance only; no $cashtag; US-equity coverage.
 # 1.37.0  2026-06-21  Alex Hind   FIX X 403 "max one cashtag": the competitor angle used a $PEER cashtag ($LULU) on top of the
 #                                 hook's $TICKER — X rejects 2 cashtags. Peer is now plain text ("ahead of LULU (3mo)"). This
 #                                 was the real cause of every NKE/MA live-X 403 since the angle was added (not the daily cap).
@@ -1053,6 +1057,61 @@ def _competitor_angle(ticker: str):
         return None
 
 
+def _analyst_angle(ticker: str, direction: str = ""):
+    """Analyst stance OVER TIME for the tweet (user 2026-06-22: "analysts over time ... helps knit
+    together the appearance of BULL and BEAR"). Shows the current buy/hold split, how the buy count
+    has MOVED over ~3 months, and the mean price target vs spot — so a BEARISH HVF on a name analysts
+    still rate 'buy' reads as a genuine, explained divergence (NKE: HVF bear, analysts cooling but
+    target still above). Returns (full, short) or None. yfinance only; no source named on X.
+
+    NB: no $cashtag (X allows one, used by the hook). US-equity-centric — returns None when a ticker
+    has no analyst coverage (UK .L, commodities, FX)."""
+    try:
+        import yfinance as yf
+        tk = yf.Ticker(ticker)
+        rec = tk.recommendations
+        if rec is None or len(rec) == 0:
+            return None
+        rec = rec.reset_index(drop=True)
+
+        def _row(period):
+            m = rec[rec["period"] == period]
+            return m.iloc[0] if len(m) else None
+        cur = _row("0m")
+        old = _row("-3m")
+        if cur is None:
+            cur = rec.iloc[0]
+        if old is None:
+            old = rec.iloc[-1]   # oldest available as the "3mo ago" baseline
+
+        def _buys(row): return int(row.get("strongBuy", 0) or 0) + int(row.get("buy", 0) or 0)
+        def _holds(row): return int(row.get("hold", 0) or 0)
+        def _sells(row): return int(row.get("sell", 0) or 0) + int(row.get("strongSell", 0) or 0)
+        cur_b, cur_h, cur_s = _buys(cur), _holds(cur), _sells(cur)
+        old_b = _buys(old)
+        if (cur_b + cur_h + cur_s) == 0:
+            return None
+
+        # Direction of the rating drift over the window (buys rising / cooling / steady).
+        if   cur_b > old_b: trend = f"strengthening (buys {old_b}→{cur_b}, 3mo)"
+        elif cur_b < old_b: trend = f"cooling (buys {old_b}→{cur_b}, 3mo)"
+        else:               trend = "steady (3mo)"
+
+        # Mean target vs spot — the bull case in one number.
+        info = _yf_info(ticker)
+        tgt  = info.get("targetMeanPrice")
+        px   = info.get("currentPrice") or info.get("regularMarketPrice")
+        tgt_str = ""
+        if isinstance(tgt, (int, float)) and isinstance(px, (int, float)) and px:
+            tgt_str = f"; avg target {(tgt/px - 1) * 100:+.0f}%"
+
+        full  = f"Analysts {cur_b} buy / {cur_h} hold, {trend}{tgt_str}"
+        short = f"Analysts {cur_b}B/{cur_h}H, {'cooling' if cur_b < old_b else ('rising' if cur_b > old_b else 'steady')}"
+        return (full, short)
+    except Exception:
+        return None
+
+
 def _tf_desc(tf_raw: str) -> str:
     """Human-readable timeframe description for tweets and cards."""
     mapping = {"30d": "30-day", "60d": "60-day", "90d": "90-day",
@@ -1869,6 +1928,15 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
             _ca = _competitor_angle(ticker)
             if _ca:
                 justifications.append(_ca)
+        except Exception:
+            pass
+        # Analyst stance OVER TIME (user 2026-06-22) — HIGH priority so it survives the trim. The
+        # buy/hold split + 3-month drift + mean target knits the bull/bear divergence (e.g. a
+        # BEARISH HVF on a name analysts still rate buy but are cooling on). yfinance; US-equity only.
+        try:
+            _aa = _analyst_angle(ticker, direction)
+            if _aa:
+                justifications.append(_aa)
         except Exception:
             pass
         if obs_b and obs_b != "NEUTRAL" and _aligned(obs_b):
