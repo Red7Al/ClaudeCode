@@ -39,6 +39,10 @@ on:
         type: boolean
         required: false
         default: false
+      delete_lead_ids:
+        description: 'DELETE mode: comma-separated lead tweet IDs to remove (lead + thread). Irreversible.'
+        required: false
+        default: ''
 
 jobs:
   publish:
@@ -53,7 +57,9 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Publish to X
         run: |
-          if [ "${{ inputs.top_per_market }}" != "0" ] && [ -n "${{ inputs.top_per_market }}" ]; then
+          if [ -n "${{ inputs.delete_lead_ids }}" ]; then
+            python publish_one_to_x.py --delete-leads=${{ inputs.delete_lead_ids }}
+          elif [ "${{ inputs.top_per_market }}" != "0" ] && [ -n "${{ inputs.top_per_market }}" ]; then
             python publish_one_to_x.py --top-per-market=${{ inputs.top_per_market }} ${{ inputs.dry && '--dry' || '' }}
           else
             python publish_one_to_x.py ${{ inputs.ticker }} ${{ inputs.dry && '--dry' || '' }} ${{ inputs.force && '--force' || '' }} ${{ inputs.no_register && '--no-register' || '' }} ${{ inputs.slack_only && '--slack-only' || '' }}

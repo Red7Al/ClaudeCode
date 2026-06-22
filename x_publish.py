@@ -26,6 +26,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 2.5.0   2026-06-22  Alex Hind   delete_thread(lead_id) (user 2026-06-22): remove an incorrect published thread — deletes
+#                                 the lead + every reply/card in its conversation that we posted. Irreversible; runs in CI.
 # 1.0.0   2026-06-14  Alex Hind   Initial build — cookie-based twikit publisher.
 # 2.4.0   2026-06-16  Alex Hind   Thread CHAIN, not siblings (user 2026-06-16: pages displayed 1/4, 4/4, 3/4, 2/4): 2/n..n/n
 #                                 now each reply to the PREVIOUS page (chain) so X renders them in order; replying all to
@@ -98,6 +100,37 @@ def _post_one(api, client, text: str, png: bytes = None, in_reply_to: str = None
         return resp.data["id"]
     except Exception:
         return None
+
+
+def delete_thread(lead_id: str) -> int:
+    """Delete a published thread (user 2026-06-22 — remove incorrect publications): the LEAD tweet
+    plus every reply/card in its conversation that WE posted. Returns the count deleted. Best-effort
+    — the lead is deleted first; replies are found from our own recent timeline (conversation_id ==
+    lead_id) and deleted too (if that enumeration fails, the lead is still deleted). No X keys → 0.
+    Deleting tweets is irreversible."""
+    api, client = _clients()
+    if client is None:
+        return 0
+    lead_id = str(lead_id)
+    ids = [lead_id]
+    try:
+        uid = client.get_me().data.id
+        resp = client.get_users_tweets(uid, max_results=100, tweet_fields=["conversation_id"])
+        for t in (resp.data or []):
+            if str(getattr(t, "conversation_id", "")) == lead_id and str(t.id) != lead_id:
+                ids.append(str(t.id))
+    except Exception as e:
+        log.warning(f"delete_thread {lead_id}: reply enumeration failed ({e}) — deleting lead only")
+    deleted = 0
+    for tid in ids:
+        try:
+            client.delete_tweet(tid)
+            deleted += 1
+            log.info(f"deleted tweet {tid}")
+        except Exception as e:
+            log.warning(f"delete tweet {tid} failed: {e}")
+    log.info(f"delete_thread {lead_id}: {deleted}/{len(ids)} tweet(s) deleted")
+    return deleted
 
 
 def publish_to_x(items, stagger: bool = True) -> int:

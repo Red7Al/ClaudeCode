@@ -25,6 +25,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.7.0   2026-06-22  Alex Hind   (user 2026-06-22) --delete-leads=ID1,ID2,... mode: remove incorrect published threads via
+#                                 x_publish.delete_thread (lead + conversation). Irreversible; x_publications rows kept.
 # 1.6.0   2026-06-22  Alex Hind   (user 2026-06-22) build_publication now applies the SAME publish gate as the daily report:
 #                                 only READY/TRIGGERED + quality>=MIN_PUBLISH_QUALITY + entry within MAX_DEVELOPING_DISTANCE_PCT
 #                                 are published. Without it, force-publishing BTRW.L pushed a DEVELOPING weekly setup with the
@@ -216,6 +218,21 @@ def main():
         load_dotenv(override=True)
     except Exception:
         pass
+
+    # ── Delete mode (user 2026-06-22): remove incorrect published threads by LEAD tweet id ──
+    #   python publish_one_to_x.py --delete-leads=ID1,ID2,...
+    # Deletes each lead + its conversation (x_publish.delete_thread). Irreversible. The
+    # x_publications rows are LEFT as a historical record (re-publish uses --force to bypass dedup).
+    _del_arg = next((a for a in sys.argv if a.startswith("--delete-leads=")), None)
+    if _del_arg:
+        from x_publish import delete_thread
+        lead_ids = [s.strip() for s in _del_arg.split("=", 1)[1].split(",") if s.strip()]
+        log.info(f"--delete-leads: deleting {len(lead_ids)} thread(s): {lead_ids}")
+        total = 0
+        for lid in lead_ids:
+            total += delete_thread(lid)
+        log.info(f"delete complete: {total} tweet(s) deleted across {len(lead_ids)} thread(s).")
+        return
 
     # ── Batch mode: publish today's top-N per market (from hvf_scan_log) to live X ──
     if top_n:
