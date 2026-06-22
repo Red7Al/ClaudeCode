@@ -27,6 +27,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 0.2.0   2026-06-22  Alex Hind   WIRED IN — get_hvf_signal_mtf now calls detect_hvf for every timeframe (price_action 1.34.0);
+#                                 the old daily/weekly detectors were deleted. Added volume_confirmed key for consumer parity.
 # 0.1.0   2026-06-22  Alex Hind   Initial clean-room build (standalone, not wired in). RW 5 rules + KLOS, no synthetic L3,
 #                                 no flat-top tolerance, no Method-A/B override; one detect() for daily + weekly.
 # ======================================================================================================================
@@ -49,7 +51,7 @@ def _empty():
         "hvf_type": None, "hvf_signal": None, "h3_level": None, "l3_level": None,
         "stop_level": None, "target": None, "risk_reward": None, "h1_level": None,
         "l1_level": None, "pattern_range": None, "bars_since_h3": None,
-        "pattern_quality": 0, "convergence": None, "tightness": None,
+        "pattern_quality": 0, "convergence": None, "tightness": None, "volume_confirmed": False,
         "current_price": None, "klos_low": None, "klos_high": None, "reject_reason": None,
     }
 

@@ -36,6 +36,10 @@
 # ----------------------------------------------------------------------------------------------------------------------
 # 1.1.0   2026-06-12  Alex Hind   Case 13 — official-method AMP1 exhaustion anchor (9a merged): re-anchors when the
 #                                 window clips the true top, no-op when it doesn't, entry/stop never move.
+# 1.1.0   2026-06-22  Alex Hind   Repointed to the clean RW engine (price_action 1.34.0): detect() runs hvf_clean via the
+#                                 get_hvf_signal shim; case 2 flat-top now expects REJECTION; case 8x rebuilt as a real clean
+#                                 bearish funnel (real L3); case 13 (exhaustion re-anchor) removed; frozen RR.L/HIK now expect
+#                                 rejection (flat-top / synthetic L3 no longer detect). 21/21.
 # 1.0.0   2026-06-12  Alex Hind   Initial build — cases covering every HVF defect found 2026-06-11/12.
 # ======================================================================================================================
 
@@ -116,15 +120,13 @@ def case_textbook():
 
 
 def case_flat_top():
-    # H3 (190.4) sits within 0.5% of H2 (190) — the RR.L flat-ceiling shape.
-    # Deep L1 keeps the projected R:R above the 3.0 gate. Current price held
-    # within 7% of the H1 peak so the peak-and-decline reversal override
-    # (≥7% off a dominant peak → bearish mode) does not flip the pattern —
-    # that override is part of the detector's contract (see case 2 history).
+    # H3 (190.4) sits ABOVE H2 (190) — a FLAT/rising ceiling, not three strictly lower highs.
+    # The clean RW ruleset (2026-06-22) requires strict H1>H2>H3 (the old flat-top tolerance is
+    # GONE), so this shape is correctly REJECTED — a flat top is not a converging funnel.
     pivots = [(70, 200), (78, 155), (88, 190), (96, 170), (106, 190.4), (114, 180)]
     f = build_frame(pivots, 126, end_level=187)
     r = detect(f)
-    check("2 flat-top funnel (H3 within 0.5% of H2) detected", r.get("hvf_type") == "BULLISH",
+    check("2 flat-top funnel REJECTED (clean rule: strict lower highs)", not r.get("hvf_type"),
           f"type={r.get('hvf_type')}")
 
 
@@ -182,12 +184,15 @@ def case_bearish():
     """
     import price_action as pa
     from price_action import check_hvf_invariants
-    # Downtrend 250→170, then funnel: lows descending-ish for entry at L3 break;
-    # geometry mirrors the bullish FUNNEL flipped around price 183.
-    pivots = [(70, 174), (78, 196), (88, 179.5), (96, 190), (106, 183), (114, 187.5)]
-    # Build: prior DOWNTREND from 250 into the funnel
+    # Downtrend 250→ into a converging funnel that ENDS with a REAL higher low L3 (the clean engine
+    # needs a real post-H3 swing low — no synthetic L3). Lower highs 196>190>186; higher lows
+    # 174<179<182; entry = break below L3 (182). AMP1 = 196-174 = 22; tightness (186-182)/22 = 0.18.
+    # Prior DOWNTREND 250->170 (bar 60), then a converging funnel that ALTERNATES so every pivot is a
+    # real swing: H1 196 (peak) / L1 174 / H2 190 / L2 179 / H3 186 / L3 182 (confirmed low, price
+    # rises to ~184 after it). Lower highs 196>190>186; higher lows 174<179<182; AMP1 22; tight 0.18.
+    pivots = [(60, 170), (70, 196), (78, 174), (88, 190), (98, 179), (108, 186), (118, 182)]
     pts = [(0, 250)] + pivots
-    f = build_frame(pts, 126, end_level=185)
+    f = build_frame(pts, 126, end_level=184)
     orig = pa._get_daily
     pa._get_daily = lambda ticker, days=220: pa._sanitise_ohlc(f.tail(days), ticker)
     try:
@@ -226,51 +231,6 @@ def case_absurd_target():
     ok = not r.get("hvf_type") or (r.get("target") or 1) > 0
     check("12 absurd bearish target (ETHUSD class) rejected at detection", ok,
           f"type={r.get('hvf_type')} target={r.get('target')}")
-
-
-def case_exhaustion_anchor():
-    """
-    9a (merged 2026-06-12): apply_exhaustion_amp1 re-anchors the target amplitude to the
-    prior trend's true exhaustion high when the detection window clipped it, and is a no-op
-    when the window already reached it. Entry/stop never move.
-    """
-    import price_action as pa
-    from price_action import apply_exhaustion_amp1, check_hvf_invariants
-
-    # Bullish result: window AMP1 = H1−L1 = 190−170 = 20; mid(H3,L3)=180.5; window target 200.5
-    base = dict(hvf_type="BULLISH", hvf_signal="READY",
-                h1_level=190.0, l1_level=170.0, h2_date="2026-04-15",
-                h3_level=183.0, l3_level=178.0, stop_level=177.6,
-                target=200.5, pattern_range=20.0, risk_reward=3.24, current_price=184.0)
-
-    def _frame(top_high):
-        idx = pd.bdate_range(end="2026-04-15", periods=120)
-        path = np.linspace(120, 185, 120)
-        df = pd.DataFrame({"Open": path, "High": path + 0.5, "Low": path - 0.5,
-                           "Close": path, "Volume": 1e6}, index=idx)
-        df.iloc[40, df.columns.get_loc("High")] = top_high   # the exhaustion candle
-        return df
-
-    orig = pa._get_daily
-    try:
-        # (a) true top 210 is ABOVE the detected H1 190 → re-anchor, target extends
-        pa._get_daily = lambda t, days=220: _frame(210.0)
-        r = apply_exhaustion_amp1("SYNTH", dict(base))
-        check("13a exhaustion above window → re-anchored", r.get("amp1_anchored") is True,
-              f"anchored={r.get('amp1_anchored')}")
-        check("13b target extended to exhaustion (210−170 from mid)", abs(r["target"] - 220.5) < 0.6,
-              f"target={r['target']}")
-        check("13c entry & stop unchanged", r["h3_level"] == 183.0 and r["stop_level"] == 177.6,
-              f"entry={r['h3_level']} stop={r['stop_level']}")
-        check("13d invariants clean after re-anchor", check_hvf_invariants(r) == [],
-              str(check_hvf_invariants(r)))
-        # (b) true top 186 is BELOW the detected H1 190 → no change
-        pa._get_daily = lambda t, days=220: _frame(186.0)
-        r2 = apply_exhaustion_amp1("SYNTH", dict(base))
-        check("13e exhaustion within window → no-op", r2.get("amp1_anchored") is False
-              and abs(r2["target"] - 200.5) < 0.01, f"anchored={r2.get('amp1_anchored')} target={r2['target']}")
-    finally:
-        pa._get_daily = orig
 
 
 def case_invariant_selftest():
@@ -313,23 +273,25 @@ def fixture_cases():
     try:
         from price_action import check_hvf_invariants
 
+        # Clean RW ruleset (2026-06-22): RR.L's frozen shape is a FLAT ceiling (1,328/1,330/1,337 —
+        # not three strictly lower highs), so it is correctly REJECTED — the old flat-top tolerance
+        # that detected it is gone.
         r = pa.get_hvf_signal_mtf("RR.L", trend_hint={"signal": "UPTREND"})
-        check("8a RR.L frozen: colleague's funnel detected", r.get("hvf_type") == "BULLISH",
-              f"type={r.get('hvf_type')}")
-        check("8b RR.L frozen: entry at the 1,330 ceiling",
-              r.get("h3_level") is not None and abs(r["h3_level"] - 1330.0) < 12,
-              f"entry={r.get('h3_level')}")
-        check("8c RR.L frozen: invariants clean", check_hvf_invariants(r) == [],
+        check("8a RR.L frozen: flat-top REJECTED (clean rule: strict lower highs)",
+              not r.get("hvf_type"), f"type={r.get('hvf_type')}")
+        check("8c RR.L frozen: invariants clean (empty result)", check_hvf_invariants(r) == [],
               str(check_hvf_invariants(r)))
 
         r = pa.get_hvf_signal_mtf("NVDA", trend_hint={"signal": "UPTREND"})
         check("9 NVDA frozen: false positive stays dead", not r.get("hvf_type"),
               f"type={r.get('hvf_type')}")
 
+        # Clean RW ruleset: HIK's frozen funnel relied on a SYNTHETIC L3 (no real post-H3 swing
+        # low), which the clean engine forbids → correctly REJECTED (a fabricated pivot is not a
+        # confirmed swing).
         r = pa.get_hvf_signal_mtf("HIK.L", trend_hint={"signal": "UPTREND"})
-        check("10 HIK.L frozen: known-good detection holds",
-              r.get("hvf_type") == "BULLISH" and r.get("hvf_signal") in ("TRIGGERED", "READY"),
-              f"type={r.get('hvf_type')} sig={r.get('hvf_signal')}")
+        check("10 HIK.L frozen: synthetic-L3 setup REJECTED (clean rule: real L3 only)",
+              not r.get("hvf_type"), f"type={r.get('hvf_type')} sig={r.get('hvf_signal')}")
 
         s = pa._sanitise_ohlc(daily["RR.L"].copy(), "RR.L")
         check("11a RR.L sanitiser: phantom 1,420 high clipped",
@@ -357,7 +319,6 @@ def main():
     case_stale_h3()
     case_bearish()
     case_absurd_target()
-    case_exhaustion_anchor()
     case_invariant_selftest()
     if not quick:
         print("— frozen fixture cases —")
