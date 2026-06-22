@@ -66,6 +66,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.30.0  2026-06-22  Alex Hind   (user 2026-06-22) funnel_span_weeks() + PROLONGED_FUNNEL_WEEKS (8): display-only helper to
+#                                 recognise + comment on a prolonged consolidation (H1->H3 span). No detection change.
 # 1.29.0  2026-06-21  Alex Hind   FIX get_trend_structure misclassification (user 2026-06-21, from "NKE 3yr looks bearish —
 #                                 does it meet HVF?"): the classifier checked hh_hl thresholds BEFORE comparing to lh_ll, so a
 #                                 net-bearish name (NKE: hh_hl=3, lh_ll=6) was tagged UPTREND and admitted a BULLISH funnel on a
@@ -1692,6 +1694,27 @@ def _humanize_days(days: int) -> str:
     if days < 70:
         return f"~{round(days / 7)} weeks"
     return f"~{round(days / 30)} months"
+
+
+# A funnel that has been forming this many CALENDAR weeks (H1 -> H3) or longer is a PROLONGED
+# consolidation worth flagging in the report/long-report narrative (user 2026-06-22). Display-only.
+PROLONGED_FUNNEL_WEEKS = 8
+
+
+def funnel_span_weeks(r: dict):
+    """Calendar weeks the funnel has been forming, H1 -> H3 (user 2026-06-22: recognise + comment on
+    a prolonged consolidation). Returns an int (rounded weeks) or None when the pivot dates are
+    absent. Display helper only — no effect on detection."""
+    from datetime import datetime
+    h1d, h3d = r.get("h1_date"), r.get("h3_date")
+    try:
+        if h1d and h3d:
+            days = (datetime.fromisoformat(str(h3d)[:10]) - datetime.fromisoformat(str(h1d)[:10])).days
+            if days > 0:
+                return round(days / 7)
+    except Exception:
+        pass
+    return None
 
 
 def target_horizon(r: dict) -> str:

@@ -30,6 +30,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.15.0  2026-06-22  Alex Hind   (user 2026-06-22) _chart_story comments on a PROLONGED consolidation: when the funnel has
+#                                 been forming >=PROLONGED_FUNNEL_WEEKS (8wk, H1->H3) it adds "This range has been coiling for
+#                                 about N weeks — a prolonged consolidation". Public-safe wording.
 # 1.14.0  2026-06-22  Alex Hind   (user 2026-06-22) Analyst stance OVER TIME in the long report: after the "rate it Buy /
 #                                 fair value +N%" sentence, add the 3-month DRIFT in the buy count ("conviction cooling —
 #                                 buy ratings eased 24->15") so a cooling Buy knits the bull(analysts)/bear(HVF) divergence.
@@ -471,6 +474,16 @@ def _chart_story(r: dict, name: str, gbp: bool) -> str:
         if e_p: _bits.append(f"entry {e_p} away")
         if t_p: _bits.append(f"target {t_p} away")
         parts.append(_pick(_P_CHART_NOW, tk, "now").format(now=_lvl(cur), dist=", ".join(_bits)))
+    # Prolonged-consolidation comment (user 2026-06-22: "recognise the prolonged period and make
+    # comment"). How long the range has been coiling (H1->H3). Public-safe wording (coil/range only).
+    try:
+        from price_action import funnel_span_weeks, PROLONGED_FUNNEL_WEEKS
+        _wks = funnel_span_weeks(r)
+        if _wks and _wks >= PROLONGED_FUNNEL_WEEKS:
+            parts.append(f"This range has been coiling for about {_wks} weeks — a prolonged consolidation, "
+                         f"so the breakout level has been building for a while.")
+    except Exception:
+        pass
     # 3-year context (user 2026-06-21: "show the 3yr history, e.g. NKE gradually falling") — the
     # long-term backdrop the funnel sits in. Best-effort; omitted if the fetch fails.
     try:

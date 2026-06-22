@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.21.0  2026-06-22  Alex Hind   (user 2026-06-22) Report lines tag a PROLONGED consolidation ("coiling ~Nwk") when the
+#                                 funnel has been forming >=PROLONGED_FUNNEL_WEEKS (8wk, H1->H3) — recognise the long period.
 # 1.20.0  2026-06-22  Alex Hind   (user 2026-06-22) Entry-distance rule: a would-be TRADEABLE setup whose ENTRY is >10%
 #                                 (MAX_DEVELOPING_DISTANCE_PCT) from the live price is MOVED to developing (not published) —
 #                                 not actionable now. Combined with the existing developing display filter, a >10% setup is
@@ -466,7 +468,11 @@ def _tradeable_line(r) -> str:
     # #signals; it never goes on the X card/tweet).
     _hz    = target_horizon(r)
     _hz_s  = f"  ·  {_hz} to target" if _hz else ""
-    line = (f"{d}{s} *{_label(t)}*  R:R {rr}{_hz_s}  Quality {q}/100  [{tf}] · {idx}\n"
+    # Prolonged-consolidation tag (user 2026-06-22): flag a funnel that has been forming a long time.
+    from price_action import funnel_span_weeks, PROLONGED_FUNNEL_WEEKS
+    _wks   = funnel_span_weeks(r)
+    _coil  = f"  ·  coiling ~{_wks}wk" if (_wks and _wks >= PROLONGED_FUNNEL_WEEKS) else ""
+    line = (f"{d}{s} *{_label(t)}*  R:R {rr}{_hz_s}  Quality {q}/100{_coil}  [{tf}] · {idx}\n"
             f"    Now {now}  Entry {entry}{_wrap(e_pct)}  Stop {stop}{_wrap(s_pct)}  Target {target}{_wrap(t_pct)}")
     # Tight-stop label (backlog #9b): a funnel whose stop is < TIGHT_STOP_MIN_PCT of price
     # is structurally untradeable at IG intraday (spread + tick noise), so we DON'T trade it
@@ -517,8 +523,11 @@ def _developing_line(r) -> str:
     t_pct  = _wrap(pct_from_current(r.get("target"),     cur))
     others = _other_timeframes(r)
     also = ("  · also " + ", ".join(_tf_short(c.get("hvf_timeframe")) for c in others)) if others else ""
+    from price_action import funnel_span_weeks, PROLONGED_FUNNEL_WEEKS
+    _wks  = funnel_span_weeks(r)
+    _coil = f"  · coiling ~{_wks}wk" if (_wks and _wks >= PROLONGED_FUNNEL_WEEKS) else ""
     return (f"{d}👀 *{_label(t)}*  R:R {rr}  [{tf}] · {idx}  "
-            f"Now {now}  Entry {entry}{e_pct}  Stop {stop}{s_pct}  Target {target}{t_pct}{also}")
+            f"Now {now}  Entry {entry}{e_pct}  Stop {stop}{s_pct}  Target {target}{t_pct}{_coil}{also}")
 
 
 def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
