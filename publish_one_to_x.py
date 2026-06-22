@@ -25,6 +25,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.8.0   2026-06-22  Alex Hind   (user 2026-06-22) build_publication attaches the 3-year history PNG to the X lead alongside
+#                                 the card (lead carries [card, 3yr] — X allows up to 4 images).
 # 1.7.0   2026-06-22  Alex Hind   (user 2026-06-22) --delete-leads=ID1,ID2,... mode: remove incorrect published threads via
 #                                 x_publish.delete_thread (lead + conversation). Irreversible; x_publications rows kept.
 # 1.6.0   2026-06-22  Alex Hind   (user 2026-06-22) build_publication now applies the SAME publish gate as the daily report:
@@ -93,7 +95,18 @@ def build_publication(ticker: str):
         return None
     d = drafts[0]
     long_thread = publish_long_report_for(res, post=False)               # the long 1/n parts (no post)
-    return res, d.get("tweet"), d.get("png"), long_thread
+    # Lead images: the card PLUS the standalone 3-year history PNG (user 2026-06-22: "add the 3yr
+    # PNG visual back into the X tweet"). Both attach to the lead (X allows up to 4 images).
+    lead_media = [d.get("png")]
+    try:
+        from intraday_signals import render_3yr_history_card
+        _png3 = render_3yr_history_card(res)
+        if _png3:
+            lead_media.append(_png3)
+    except Exception as e:
+        log.warning(f"{ticker}: 3yr history PNG render failed (lead will carry the card only): {e}")
+    lead_media = [m for m in lead_media if m]
+    return res, d.get("tweet"), lead_media, long_thread
 
 
 def _confirm_to_slack(ticker: str, name: str, lead_id, posted: int, n_parts: int):

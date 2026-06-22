@@ -30,6 +30,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.18.0  2026-06-22  Alex Hind   (user 2026-06-22) Long report breaks onto a NEW LINE when the SUBJECT changes — business
+#                                 fundamentals | analysts | ownership are now separate paragraphs (grouped s/s_analyst/s_own/
+#                                 s_cite joined with blank lines), not one wall of text.
 # 1.17.0  2026-06-22  Alex Hind   (user 2026-06-22) FIX confusing distance line: "entry +36.4% away, target -15.1% away"
 #                                 (signed % + "away" = contradictory, no prices) -> "It trades around 261p today — entry
 #                                 356p (36.4% above), target 221p (15.1% below)". Each level now shows its PRICE + abs%
@@ -532,7 +535,12 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
     name = r.get("name") or _resolve_name(tk)
     disp = tk[:-2] if tk.endswith(".L") else tk
     f = fundamentals(tk)
-    s = []
+    s = []            # business fundamentals (growth / profit / cash / balance sheet / ROE / dividend)
+    s_analyst = []    # analyst ratings + targets + 3-month drift
+    s_own = []        # insider + institutional ownership
+    s_cite = []       # source citations (Slack/dossier only)
+    # Grouped so the long report breaks onto a NEW LINE when the SUBJECT changes (user 2026-06-22):
+    # fundamentals | analysts | ownership read as separate paragraphs, not one wall of text.
 
     if f.get("financial"):
         s.append(_pick(_P_FIN_CAVEAT, tk, "cav").format(name=name, industry=(f.get("industry") or "financial services")))
@@ -582,27 +590,27 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
                 _head += f" (consensus {rec})"
             if pct is not None:
                 _head += f"; price targets sit about {pct}% {d}"
-            s.append(_head + ".")
+            s_analyst.append(_head + ".")
         elif pct is not None:
             # No ratings grid available — fall back to coverage count + consensus + target.
             _recph = f'rate it "{rec}" and ' if rec else ""
             if f.get("analyst_n"):
-                s.append(_pick(_P_ANALYST, tk, "an").format(n=f["analyst_n"], rec=_recph, pct=pct, dir=d))
+                s_analyst.append(_pick(_P_ANALYST, tk, "an").format(n=f["analyst_n"], rec=_recph, pct=pct, dir=d))
             else:
-                s.append(f"Analysts {_recph}on average see the shares worth about {pct}% {d} today's price.")
+                s_analyst.append(f"Analysts {_recph}on average see the shares worth about {pct}% {d} today's price.")
         # Over-time drift (user 2026-06-22) — knits the bull/bear divergence. The end value {_cb}
         # equals {buys} in the grid headline above, so the two sentences now reconcile.
         _at = f.get("analyst_trend")
         if _at:
             _word, _ob, _cb = _at
             if _word == "cooling":
-                s.append(f"Their conviction has been cooling, though — buy ratings eased from {_ob} to {_cb} over the past three months.")
+                s_analyst.append(f"Their conviction has been cooling, though — buy ratings eased from {_ob} to {_cb} over the past three months.")
             else:
-                s.append(f"And their conviction is building — buy ratings rose from {_ob} to {_cb} over the past three months.")
+                s_analyst.append(f"And their conviction is building — buy ratings rose from {_ob} to {_cb} over the past three months.")
     if f.get("insider_value") is not None:
-        s.append(_pick(_P_INSIDER, tk, "ins").format(value=_money(f["insider_value"], gbp), pct=f"{f['insider_pct']:.1f}"))
+        s_own.append(_pick(_P_INSIDER, tk, "ins").format(value=_money(f["insider_value"], gbp), pct=f"{f['insider_pct']:.1f}"))
     elif f.get("insider_pct") is not None:
-        s.append(f"Company insiders own about {f['insider_pct']:.1f}% of the shares.")
+        s_own.append(f"Company insiders own about {f['insider_pct']:.1f}% of the shares.")
     # Largest INSTITUTIONAL holder, made clear (user 2026-06-19; clarified 2026-06-21). This is a
     # FUND, not a company insider — so it's labelled "institutional holder", never confused with the
     # "Company insiders" (officers/directors) line above (user 2026-06-21: BlackRock 7.6% was reading
@@ -625,16 +633,19 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
             emph += f", {'rising' if chg > 0 else 'falling'} ({chg:+.1f}% this period)"
         elif isinstance(chg, (int, float)):
             emph += ", holding steady"
-        s.append(f"The largest institutional holder, {th}, owns about {thp:.1f}%{emph}.")
+        s_own.append(f"The largest institutional holder, {th}, owns about {thp:.1f}%{emph}.")
 
     # Cite authoritative sources for any overridden figure (user 2026-06-19) — only when an
     # override was actually applied (so the citation is always truthful) AND only on Slack/
     # dossier surfaces: the source of info must NEVER appear in an X tweet (user 2026-06-19, G).
     if cite_sources and f.get("overrides"):
         cites = ", ".join(f"{fld.replace('_', ' ')} per {src}" for fld, src in f["overrides"].items())
-        s.append(f"(Authoritative figures used: {cites} — these override the automated feed.)")
+        s_cite.append(f"(Authoritative figures used: {cites} — these override the automated feed.)")
 
-    fund  = " ".join(s) if s else f"Limited fundamental data available for {name}."
+    # Each subject group is its own paragraph; blank line BETWEEN groups so the subject change is
+    # visible (user 2026-06-22). Order: business fundamentals → analysts → ownership → citations.
+    _groups = [" ".join(g) for g in (s, s_analyst, s_own, s_cite) if g]
+    fund  = "\n\n".join(_groups) if _groups else f"Limited fundamental data available for {name}."
     chart = _chart_story(r, name, gbp)                       # public-safe "why the setup matters"
     body  = (chart + "\n\n" + fund) if chart else fund       # lead with the chart why-now, then the quality angle
     if change_note:

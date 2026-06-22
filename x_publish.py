@@ -26,6 +26,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 2.6.0   2026-06-22  Alex Hind   (user 2026-06-22) (a) _post_one accepts MULTIPLE images (card + 3yr PNG on the lead).
+#                                 (b) delete_thread enumerates the reply chain via the v1.1 timeline + BFS (v2 read 401'd),
+#                                 so the whole thread (1/n..n/n) is removed, not just the lead.
 # 2.5.0   2026-06-22  Alex Hind   delete_thread(lead_id) (user 2026-06-22): remove an incorrect published thread — deletes
 #                                 the lead + every reply/card in its conversation that we posted. Irreversible; runs in CI.
 # 1.0.0   2026-06-14  Alex Hind   Initial build — cookie-based twikit publisher.
@@ -77,21 +80,26 @@ def _clients():
     return api, client
 
 
-def _post_one(api, client, text: str, png: bytes = None, in_reply_to: str = None):
-    """Post one tweet (optional image, optional reply target). Returns the new tweet id."""
+def _post_one(api, client, text: str, png=None, in_reply_to: str = None):
+    """Post one tweet (optional image(s), optional reply target). Returns the new tweet id.
+    `png` may be a single bytes object OR a list of bytes — multiple images attach to the one
+    tweet (X allows up to 4), e.g. the card + the 3-year history PNG on the lead (user 2026-06-22)."""
     media_ids = None
-    if png:
-        fd, path = tempfile.mkstemp(suffix=".png")
-        try:
-            os.write(fd, png)
-            os.close(fd)
-            media = api.media_upload(filename=path)          # v1.1 media upload
-            media_ids = [media.media_id_string]
-        finally:
+    pngs = [p for p in (png if isinstance(png, (list, tuple)) else [png]) if p]
+    if pngs:
+        media_ids = []
+        for p in pngs[:4]:                                   # X allows max 4 images per tweet
+            fd, path = tempfile.mkstemp(suffix=".png")
             try:
-                os.remove(path)
-            except Exception:
-                pass
+                os.write(fd, p)
+                os.close(fd)
+                media = api.media_upload(filename=path)      # v1.1 media upload
+                media_ids.append(media.media_id_string)
+            finally:
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
     kwargs = {"text": text, "media_ids": media_ids}
     if in_reply_to:
         kwargs["in_reply_to_tweet_id"] = in_reply_to
@@ -113,12 +121,33 @@ def delete_thread(lead_id: str) -> int:
         return 0
     lead_id = str(lead_id)
     ids = [lead_id]
+
+    # Enumerate the rest of the thread (card + 1/n..n/n) so they go too, not just the lead. The v2
+    # get_users_tweets read 401'd on this account (2026-06-22), so walk the reply CHAIN from the
+    # v1.1 timeline: build child[in_reply_to] -> [ids] over our recent statuses, then BFS from the
+    # lead. Best-effort — if neither read works, the lead is still deleted.
     try:
-        uid = client.get_me().data.id
-        resp = client.get_users_tweets(uid, max_results=100, tweet_fields=["conversation_id"])
-        for t in (resp.data or []):
-            if str(getattr(t, "conversation_id", "")) == lead_id and str(t.id) != lead_id:
-                ids.append(str(t.id))
+        children: dict = {}
+        max_id = None
+        for _page in range(4):                       # ~4×200 = 800 recent statuses
+            kw = {"count": 200, "trim_user": True, "tweet_mode": "extended"}
+            if max_id:
+                kw["max_id"] = max_id
+            batch = api.user_timeline(**kw)
+            if not batch:
+                break
+            for st in batch:
+                parent = getattr(st, "in_reply_to_status_id_str", None)
+                if parent:
+                    children.setdefault(str(parent), []).append(str(st.id))
+            max_id = batch[-1].id - 1
+        # BFS from the (now-deleted) lead id down the chain.
+        queue, seen = [lead_id], {lead_id}
+        while queue:
+            pid = queue.pop(0)
+            for cid in children.get(pid, []):
+                if cid not in seen:
+                    seen.add(cid); ids.append(cid); queue.append(cid)
     except Exception as e:
         log.warning(f"delete_thread {lead_id}: reply enumeration failed ({e}) — deleting lead only")
     deleted = 0
