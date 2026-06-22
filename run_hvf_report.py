@@ -29,6 +29,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.23.0  2026-06-22  Alex Hind   (user 2026-06-22) ALL markets: added Crypto basket + the rest of the major FX; the report
+#                                 now spans UK+US equities, commodities, indices, FX, crypto (FTSE/S&P were only examples).
+#                                 Each market ordered by action_score (R:R ÷ distance-to-entry, DESC). _fmt_price now scales
+#                                 decimals to magnitude so FX/small crypto don't render as "1.3".
 # 1.22.0  2026-06-22  Alex Hind   (user 2026-06-22) Add "Indices & FX" basket to UNIVERSE (SPX500/NASDAQ/UK100/JPN225/HK50 +
 #                                 USDJPY) — "where are JPN225 and USDJPY?". Sub-£1 FX (GBPUSD/EURUSD/AUDUSD) deferred until the
 #                                 report price format carries more decimals. MARKET_ORDER + "Scanned:" line updated.
@@ -220,24 +224,40 @@ COMMODITIES = [
 ]
 
 INDICES_FX = [
-    # Major indices + FX (user 2026-06-22: "where are JPN225 and USDJPY?"). Internal names resolved
-    # to Yahoo via config.YAHOO_MAP. Sub-£1 FX (GBPUSD/EURUSD/AUDUSD ~1.1-1.3) are deferred until the
-    # report price formatting carries enough decimals for them — they'd render as "1.3" today.
+    # Major indices + FX (user 2026-06-22: the report is for ALL markets, not just equities).
+    # Internal names resolved to Yahoo via config.YAHOO_MAP. Sub-£1 FX now display correctly via
+    # the adaptive _fmt_price (more decimals on small prices).
     "SPX500",   # S&P 500 index (^GSPC)
     "NASDAQ",   # Nasdaq 100   (^IXIC)
     "UK100",    # FTSE 100     (^FTSE)
     "JPN225",   # Nikkei 225   (^N225)
     "HK50",     # Hang Seng    (^HSI)
-    "USDJPY",   # USD/JPY      (USDJPY=X) — priced ~161, formats fine
+    "USDJPY",   # USD/JPY      (USDJPY=X)
+    "GBPUSD",   # GBP/USD      (GBPUSD=X)
+    "EURUSD",   # EUR/USD      (EURUSD=X)
+    "AUDUSD",   # AUD/USD      (AUDUSD=X)
+]
+
+CRYPTO = [
+    # 24/7 crypto (user 2026-06-22: ALL markets). Resolved to Yahoo via config.YAHOO_MAP.
+    "BTCUSD",   # Bitcoin   (BTC-USD)
+    "ETHUSD",   # Ethereum  (ETH-USD)
+    "XRPUSD",   # XRP       (XRP-USD)
+    "SOLUSD",   # Solana    (SOL-USD)
+    "BNBUSD",   # BNB       (BNB-USD)
 ]
 
 UNIVERSE = {
-    "FTSE 100":    FTSE100,
-    "FTSE 250":    FTSE250,
-    "S&P 500":     SP500,
-    "Commodities": COMMODITIES,   # user 2026-06-22 — metals + energy HVF scan
-    "Indices & FX": INDICES_FX,   # user 2026-06-22 — major indices + USD/JPY
+    "FTSE 100":     FTSE100,
+    "FTSE 250":     FTSE250,
+    "S&P 500":      SP500,
+    "Commodities":  COMMODITIES,    # metals + energy
+    "Indices & FX": INDICES_FX,     # major indices + FX
+    "Crypto":       CRYPTO,         # top-5 by market cap
     # DAX suspended 2026-06-05 — re-add when reinstated
+    # NB (user 2026-06-22): FTSE 100/250 and S&P 500 are the EQUITY coverage — examples of markets,
+    # not the whole universe. The report spans all asset classes: UK + US equities, commodities,
+    # indices, FX and crypto. Widen the equity lists / add more US names here as needed.
 }
 
 
@@ -327,9 +347,11 @@ def categorise(all_results: dict) -> tuple:
         log.info(f"categorise: excluded {_missed} missed-entry setup(s) (> {MAX_ENTRY_CHASE_PCT}% "
                  f"past entry); demoted {_subq} sub-quality setup(s) (< {MIN_PUBLISH_QUALITY}) to developing")
 
-    from price_action import hvf_weight
-    tradeable.sort(key=lambda r: hvf_weight(
-        r.get("hvf_signal"), r.get("pattern_quality"), r.get("risk_reward")))
+    # Order by "most relevant for action now" (user 2026-06-22): R:R ÷ distance-to-entry, DESC —
+    # high R:R AND close to triggering ranks top (price_action.action_score). group_by_market keeps
+    # this order within each market.
+    from price_action import action_score
+    tradeable.sort(key=action_score, reverse=True)
 
     # ── IG validation for UK tradeable setups (user 2026-06-12: IG data is the
     # arbiter). Yahoo's LSE feed contains phantom prints, so every .L setup is
@@ -379,7 +401,7 @@ def categorise(all_results: dict) -> tuple:
         log.info(f"categorise: hid {_before - len(developing)} developing setup(s) with entry "
                  f"> {MAX_DEVELOPING_DISTANCE_PCT}% from price")
 
-    developing.sort(key=lambda r: r.get("risk_reward") or 0, reverse=True)
+    developing.sort(key=action_score, reverse=True)
     return tradeable, developing
 
 
@@ -388,10 +410,14 @@ def categorise(all_results: dict) -> tuple:
 # ----------------------------------------------------------------------------------------------------------------------
 
 def _fmt_price(p, suffix=""):
-    """Format price with appropriate decimal places."""
+    """Format price with decimals scaled to magnitude (user 2026-06-22: FX/small-cap crypto were
+    rendering as "1.3"). Small prices (FX ~1.13, XRP ~0.52) get 4 dp; mid prices 2 dp; large
+    (indices, BTC) 1 dp."""
     if p is None:
         return "-"
-    return f"{p:,.1f}{suffix}"
+    ap = abs(p)
+    dec = 4 if ap < 10 else (2 if ap < 1000 else 1)
+    return f"{p:,.{dec}f}{suffix}"
 
 
 def _rr(r):
@@ -561,7 +587,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         "text": {"type": "mrkdwn",
                  "text": (f"*{len(tradeable)} tradeable* (READY/TRIGGERED ≥{HVF_MIN_RR}:1 R:R)  |  "
                           f"*{len(developing)} developing* (valid pattern, R:R < {HVF_MIN_RR}:1)\n"
-                          f"Scanned: FTSE 100 · FTSE 250 · S&P 500 · Commodities · Indices & FX")}
+                          f"Scanned: FTSE 100 · FTSE 250 · S&P 500 · Commodities · Indices & FX · Crypto")}
     })
     blocks.append({"type": "divider"})
 

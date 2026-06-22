@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.15.0  2026-06-22  Alex Hind   (user 2026-06-22) (a) check_circuit_breakers(skip_spread=) — place_working_order (HVF path)
+#                                 now skips the spread-width check ("an HVF-triggered order has no need to check spread").
+#                                 (b) the price-outside-funnel / wrong-epic guards now alert SILENTLY (logged, not Slacked).
 # 1.14.0  2026-06-19  Alex Hind   FIX wrong-instrument epic resolution (user 2026-06-19, AXP→AXP Energy). (1) y_name was
 #                                 referenced but never assigned, so the identity guard NameError'd and never ran — now
 #                                 computed via _yahoo_name (memoised). (2) get_epic now validates identity on the cache HIT
@@ -794,7 +797,8 @@ def get_close_reason(deal_id: str) -> tuple[str, float]:
 # Enforced before every trade attempt. Blocks trades that violate risk rules.
 # ======================================================================================================================
 
-def check_circuit_breakers(user_id: str, ticker: str, session_name: str = None) -> tuple[bool, str]:
+def check_circuit_breakers(user_id: str, ticker: str, session_name: str = None,
+                           skip_spread: bool = False) -> tuple[bool, str]:
     """
     Run all circuit breaker checks for a user before placing a trade.
 
@@ -802,6 +806,10 @@ def check_circuit_breakers(user_id: str, ticker: str, session_name: str = None) 
         1. Daily loss limit — has the user hit their daily loss limit today?
         2. Max open positions — is the user already at their position limit?
         3. Spread width — is the current spread abnormally wide (> 0.5% of mid)?
+           SKIPPED when skip_spread=True (user 2026-06-22: "if an order is placed due to an HVF
+           trigger there is no need to check price spread"). HVF working orders are pending STOP
+           orders at the pattern's own entry/stop/target, so the spread at scan time doesn't gate
+           them — set by place_working_order (the HVF path).
 
     Returns:
         (True, "OK")           — trade is allowed
@@ -875,21 +883,22 @@ def check_circuit_breakers(user_id: str, ticker: str, session_name: str = None) 
     if open_count >= max_open_pos:
         return False, f"Max open positions reached ({open_count}/{max_open_pos})"
 
-    # Check 3 — spread width
-    try:
-        epic = get_epic(ticker)
-        if epic:
-            market = session.get(f"/markets/{epic}", version="3")
-            snap   = market.get("snapshot", {})
-            bid    = snap.get("bid", 0)
-            offer  = snap.get("offer", 0)
-            if bid and offer:
-                spread = offer - bid
-                mid    = (bid + offer) / 2
-                if mid > 0 and (spread / mid) > MAX_SPREAD_PCT:
-                    return False, f"Spread too wide: {spread:.4f} ({(spread/mid)*100:.2f}% of mid)"
-    except Exception as e:
-        log.warning(f"Spread check failed for {ticker}: {e}")
+    # Check 3 — spread width (skipped for HVF working orders — user 2026-06-22)
+    if not skip_spread:
+        try:
+            epic = get_epic(ticker)
+            if epic:
+                market = session.get(f"/markets/{epic}", version="3")
+                snap   = market.get("snapshot", {})
+                bid    = snap.get("bid", 0)
+                offer  = snap.get("offer", 0)
+                if bid and offer:
+                    spread = offer - bid
+                    mid    = (bid + offer) / 2
+                    if mid > 0 and (spread / mid) > MAX_SPREAD_PCT:
+                        return False, f"Spread too wide: {spread:.4f} ({(spread/mid)*100:.2f}% of mid)"
+        except Exception as e:
+            log.warning(f"Spread check failed for {ticker}: {e}")
 
     # Checks 4 & 5 — per-instrument and per-session daily trade caps.
     # Stops one instrument (e.g. 3x USDJPY) or one session (Asia) consuming the
@@ -1681,9 +1690,10 @@ def place_working_order(
                 existing["deal_id"], ticker, direction, entry_level, stop_level,
                 limit_level, existing, session_name, user_id, paper_trade=paper_trade)
 
-    # Step 1 — circuit breakers (daily loss, max positions, spread, daily caps).
-    # A working order consumes a trade slot the moment it is placed.
-    ok, reason = check_circuit_breakers(user_id, ticker, session_name)
+    # Step 1 — circuit breakers (daily loss, max positions, daily caps). Spread check SKIPPED:
+    # this is the HVF working-order path (pending STOP at the pattern's own entry/stop/target), and
+    # per user 2026-06-22 an HVF-triggered order doesn't gate on the scan-time spread.
+    ok, reason = check_circuit_breakers(user_id, ticker, session_name, skip_spread=True)
     if not ok:
         log.warning(f"Working order blocked — circuit breaker: {reason}")
         try:
@@ -1799,7 +1809,7 @@ def place_working_order(
         log.error(f"{ticker}: {msg}")
         try:
             from notify import alert_missed_trade
-            alert_missed_trade(ticker, direction, msg, signal_summary)
+            alert_missed_trade(ticker, direction, msg, signal_summary, silent=True)   # noise — log, don't Slack (user 2026-06-22)
         except Exception:
             pass
         return None
@@ -1819,7 +1829,7 @@ def place_working_order(
         log.error(f"{ticker}: {msg}")
         try:
             from notify import alert_missed_trade
-            alert_missed_trade(ticker, direction, msg, signal_summary)
+            alert_missed_trade(ticker, direction, msg, signal_summary, silent=True)   # noise — log, don't Slack (user 2026-06-22)
         except Exception:
             pass
         return None

@@ -21,6 +21,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.8.0   2026-06-22  Alex Hind   (user 2026-06-22) alert_missed_trade gains silent=True: record to missed_trade_log + log
+#                                 but DON'T post to Slack. Used for the "nonsensical order" guards (price outside the funnel /
+#                                 wrong-epic) which the operator does nothing with — kept for diagnostics, not shouted.
 # 1.0.0   2026-05-30  Alex Hind   Initial build. Four channels, Block Kit formatting, test harness included.
 # 1.1.0   2026-06-05  Alex Hind   Added HVF R:R field to signal_detail Slack block. Shows calculated ratio (e.g. 2.73:1)
 #                                 on every trade signal message.
@@ -862,10 +865,16 @@ def _classify_missed_trade(reason: str):
     return "OTHER", "Unclassified block reason — review manually."
 
 
-def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary: str = ""):
+def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary: str = "",
+                       silent: bool = False):
     """
     A TRADEABLE signal fired but the trade was NOT placed — surface it to #alerts
     so a missed opportunity is never silent. (User directive 2026-06-09.)
+
+    silent=True (user 2026-06-22): record to missed_trade_log (kept for diagnostics / auto-fix)
+    and log, but DO NOT post to Slack. Used for the "nonsensical order" guards (price outside the
+    funnel / wrong-epic) — the operator does nothing with those alerts, they're noise; the order is
+    still correctly blocked, it just isn't shouted about.
 
     Deduplicated (user 2026-06-11 — same blocked signal re-alerted every 5-min
     monitor cycle, flooding #alerts): the block reason is classified and upserted
@@ -903,6 +912,11 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
     if occurrences > 1:
         log.info(f"Missed trade {ticker} {direction} {reason_class} — "
                  f"occurrence #{occurrences} today, alert suppressed (deduped)")
+        return
+
+    if silent:
+        log.info(f"Missed trade (silent, logged not alerted) {ticker} {direction} "
+                 f"{reason_class}: {reason}")
         return
 
     fields = [

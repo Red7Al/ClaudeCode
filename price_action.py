@@ -66,6 +66,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.31.0  2026-06-22  Alex Hind   (user 2026-06-22) action_score(r) = R:R ÷ distance-to-entry — "most relevant for action
+#                                 now" rank (10@2%->5, 20@4%->5, 10@1%->10). Used to order each market in the HVF report + the
+#                                 X-draft selection. Display/ordering only — no detection change.
 # 1.30.0  2026-06-22  Alex Hind   (user 2026-06-22) funnel_span_weeks() + PROLONGED_FUNNEL_WEEKS (8): display-only helper to
 #                                 recognise + comment on a prolonged consolidation (H1->H3 span). No detection change.
 # 1.29.0  2026-06-21  Alex Hind   FIX get_trend_structure misclassification (user 2026-06-21, from "NKE 3yr looks bearish —
@@ -1628,6 +1631,21 @@ def hvf_weight(signal: str, quality, risk_reward=0.0) -> tuple:
     """
     rank = {"TRIGGERED": 0, "READY": 1, "DEVELOPING": 2}.get(signal, 3)
     return (-(risk_reward or 0), rank, -(quality or 0))
+
+
+def action_score(r: dict) -> float:
+    """'Most relevant for action NOW' rank (user 2026-06-22): R:R divided by how far price is from
+    the entry, so a setup that is BOTH high-R:R AND close to triggering ranks top. Higher = better.
+        R:R 10 @ 2% from entry -> 5      R:R 20 @ 4% -> 5      R:R 10 @ 1% -> 10
+    A TRIGGERED setup (price ~at entry) gets a very high score (distance floored at 0.1% to avoid
+    divide-by-zero) — it's the closest thing to action. Falls back to R:R alone when the live price
+    or entry is missing. Used to order each market's list in the HVF report + X-draft selection."""
+    rr = r.get("risk_reward") or 0
+    cur, entry = r.get("current_price"), r.get("h3_level")
+    if not (isinstance(cur, (int, float)) and cur and isinstance(entry, (int, float))):
+        return float(rr)
+    dist = abs(entry / cur - 1) * 100
+    return float(rr) / max(dist, 0.1)
 
 
 def pct_from_current(level, current) -> str:

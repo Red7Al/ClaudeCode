@@ -23,6 +23,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.40.0  2026-06-22  Alex Hind   (user 2026-06-22) X-draft selection ordered by action_score (R:R ÷ distance-to-entry) so the
+#                                 top-N/market published per market are the highest-R:R, closest-to-trigger setups.
 # 1.39.0  2026-06-22  Alex Hind   (user 2026-06-22) (a) FIX missing 3-yr history on the X card: the 3-yr weekly data is now
 #                                 fetched once via cached _yf_weekly_3y (with one retry) and shared by the card inset + the
 #                                 standalone PNG — it was fetched 3x/publication and silently dropped to yfinance rate-limits.
@@ -1785,12 +1787,10 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
     # grouped by market in MARKET_ORDER, capped at X_DRAFT_PER_MARKET each (user 2026-06-17:
     # X drafts are top-5/market, separate from the analytical report's PER_MARKET_TOP_N). Drafts
     # post in this order with a per-market header so the channel reads as grouped sections.
-    from price_action import hvf_weight, group_by_market
-    def _draft_weight(r):
-        return hvf_weight(r.get("hvf_signal"),
-                          r.get("hvf_quality") or r.get("pattern_quality"),
-                          r.get("risk_reward"))
-    _groups  = group_by_market(sorted(tradeable, key=_draft_weight),
+    # Order by "most relevant for action now" (user 2026-06-22): R:R ÷ distance-to-entry, DESC —
+    # so the top-N/market published per market are the highest-R:R, closest-to-trigger setups.
+    from price_action import action_score, group_by_market
+    _groups  = group_by_market(sorted(tradeable, key=action_score, reverse=True),
                                n=X_DRAFT_PER_MARKET, market_order=MARKET_ORDER)
     _ordered = [r for _, rows in _groups for r in rows]
     # Per-market draft numbering (user 2026-06-17): each market's instruments number from 1
