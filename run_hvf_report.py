@@ -29,6 +29,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.20.0  2026-06-22  Alex Hind   (user 2026-06-22) Entry-distance rule: a would-be TRADEABLE setup whose ENTRY is >10%
+#                                 (MAX_DEVELOPING_DISTANCE_PCT) from the live price is MOVED to developing (not published) —
+#                                 not actionable now. Combined with the existing developing display filter, a >10% setup is
+#                                 thus neither published nor shown. now-vs-entry is the relevance metric (entry→target unfiltered).
 # 1.19.0  2026-06-22  Alex Hind   (user 2026-06-22) Commodities basket added to UNIVERSE (metals + energy via YAHOO_MAP);
 #                                 DEVELOPING section now hides setups whose ENTRY is >MAX_DEVELOPING_DISTANCE_PCT (10%) from
 #                                 the live price (now-vs-entry relevance filter); clearer section headers ("showing the top
@@ -330,15 +334,27 @@ def categorise(all_results: dict) -> tuple:
             developing.append(r)   # demoted by IG mismatch
     tradeable = still_tradeable
 
-    # Developing relevance filter (user 2026-06-22): drop any developing setup whose ENTRY sits
-    # more than MAX_DEVELOPING_DISTANCE_PCT from the live price — too far away to be of interest
-    # to watch (the metric is now-vs-entry; entry→target distance is deliberately NOT filtered).
+    # ── Entry-distance rule (user 2026-06-22) — the now-vs-entry % is the key relevance filter ────
     from config import MAX_DEVELOPING_DISTANCE_PCT
     def _entry_within_watch(r):
         cur, entry = r.get("current_price"), r.get("h3_level")
         if not isinstance(cur, (int, float)) or not cur or not isinstance(entry, (int, float)):
-            return True   # unknown distance — keep (don't hide on missing data)
+            return True   # unknown distance — keep (don't move/hide on missing data)
         return abs(entry / cur - 1) * 100 <= MAX_DEVELOPING_DISTANCE_PCT
+
+    # (D) A would-be tradeable setup whose ENTRY is >MAX_DEVELOPING_DISTANCE_PCT (10%) from the live
+    # price is not actionable now — MOVE it from tradeable to the developing watch list (so it is
+    # NOT published), regardless of R:R / quality.
+    _far = [r for r in tradeable if not _entry_within_watch(r)]
+    if _far:
+        tradeable    = [r for r in tradeable if _entry_within_watch(r)]
+        developing.extend(_far)
+        log.info(f"categorise: moved {len(_far)} tradeable setup(s) with entry > "
+                 f"{MAX_DEVELOPING_DISTANCE_PCT}% from price to developing (not actionable now)")
+
+    # (E) Developing DISPLAY relevance: don't show developing setups whose entry is >10% from price
+    # (user 2026-06-22: "for developing don't bother to show anything that is over 10% away"). So a
+    # far setup is removed from publishing (D) AND from the watch-list display (E).
     _before = len(developing)
     developing = [r for r in developing if _entry_within_watch(r)]
     if _before != len(developing):
