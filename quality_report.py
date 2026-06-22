@@ -30,6 +30,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.17.0  2026-06-22  Alex Hind   (user 2026-06-22) FIX confusing distance line: "entry +36.4% away, target -15.1% away"
+#                                 (signed % + "away" = contradictory, no prices) -> "It trades around 261p today — entry
+#                                 356p (36.4% above), target 221p (15.1% below)". Each level now shows its PRICE + abs%
+#                                 + above/below. Removed the now-unused _P_CHART_NOW template.
 # 1.16.0  2026-06-22  Alex Hind   (user 2026-06-22) FIX inconsistent analyst sentence ("19 analysts rate it Buy ... buys
 #                                 eased from 15 to 13"): the count now comes from the ratings GRID, not numberOfAnalystOpinions
 #                                 — "Of N analysts rating it, B say Buy and H Hold (consensus X); targets ~P% above", and the
@@ -442,10 +446,6 @@ _P_CHART_RR = [
     "From there the path opens toward {target}, against risk back to {stop} — about {rr}x more reward than risk.",
     "If it plays out it targets {target} while risking back to {stop} — roughly {rr}x the reward for the risk.",
 ]
-_P_CHART_NOW = [
-    "It trades around {now} today ({dist} from here).",
-    "Right now it sits near {now} — {dist} from where it stands.",
-]
 
 
 def _chart_story(r: dict, name: str, gbp: bool) -> str:
@@ -474,16 +474,23 @@ def _chart_story(r: dict, name: str, gbp: bool) -> str:
         parts.append(_pick(_P_CHART_READY_UP if up else _P_CHART_READY_DOWN, tk, "rd").format(entry=entry))
     if rr and target and stop:
         parts.append(_pick(_P_CHART_RR, tk, "rr").format(target=target, stop=stop, rr=f"{rr:.0f}"))
-    # Current price + % distance to entry/target (user 2026-06-19) — same plain-English style.
-    from price_action import pct_from_current
+    # Current price + entry/target, each with its PRICE and a clear direction (user 2026-06-22).
+    # The old "entry +36.4% away, target -15.1% away" glued a SIGNED % to the word "away" (so
+    # "-15.1% away" was self-contradictory) and hid the actual prices. Now each level reads
+    # "<price> (<abs%> above/below)" so there is no ambiguity about which number is which.
     cur = r.get("current_price")
-    e_p = pct_from_current(r.get("h3_level"), cur)
-    t_p = pct_from_current(r.get("target"),   cur)
-    if cur and (e_p or t_p):
-        _bits = []
-        if e_p: _bits.append(f"entry {e_p} away")
-        if t_p: _bits.append(f"target {t_p} away")
-        parts.append(_pick(_P_CHART_NOW, tk, "now").format(now=_lvl(cur), dist=", ".join(_bits)))
+    if isinstance(cur, (int, float)) and cur:
+        def _dist(level):
+            if not isinstance(level, (int, float)) or not level:
+                return None
+            pct = (level / cur - 1) * 100
+            return f"{_lvl(level)} ({abs(pct):.1f}% {'above' if pct >= 0 else 'below'})"
+        _e, _t = _dist(r.get("h3_level")), _dist(r.get("target"))
+        _seg = []
+        if _e: _seg.append(f"entry {_e}")
+        if _t: _seg.append(f"target {_t}")
+        if _seg:
+            parts.append(f"It trades around {_lvl(cur)} today — " + ", ".join(_seg) + ".")
     # Prolonged-consolidation comment (user 2026-06-22: "recognise the prolonged period and make
     # comment"). How long the range has been coiling (H1->H3). Public-safe wording (coil/range only).
     try:
