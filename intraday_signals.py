@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.44.0  2026-06-23  Alex Hind   (user 2026-06-23) FIX no-graph on FX/index tweets (USDJPY): the card chart download, the
+#                                 52w fetch, _yf_weekly_3y and _yf_info now map the ticker via YAHOO_MAP (USDJPY->USDJPY=X,
+#                                 JPN225->^N225) — the raw symbol 404'd and the tweet went out with NO chart at all.
 # 1.43.0  2026-06-22  Alex Hind   (user 2026-06-22) Tweet head order: INSTRUMENT on the top line, the direction/state tag
 #                                 beneath it ("$NKE (NIKE, Inc.) winding tighter" / "BEARISH setup · not triggered yet").
 # 1.42.0  2026-06-22  Alex Hind   (user 2026-06-22) Tweet head in WORDS, not icons ("this icon is not clear"): heading reads
@@ -1155,7 +1158,7 @@ def _yf_info(ticker: str) -> dict:
     info = {}
     try:
         import yfinance as _yf
-        info = _yf.Ticker(ticker).info or {}
+        info = _yf.Ticker(YAHOO_MAP.get(ticker, ticker)).info or {}   # map FX/indices (user 2026-06-23)
     except Exception:
         pass
     _YF_INFO_CACHE[ticker] = info
@@ -1177,10 +1180,11 @@ def _yf_weekly_3y(ticker: str):
     if ticker in _YF_3YW_CACHE:
         return _YF_3YW_CACHE[ticker]
     df = None
+    _yt = YAHOO_MAP.get(ticker, ticker)   # FX/indices need the Yahoo symbol (USDJPY -> USDJPY=X)
     for _attempt in range(2):
         try:
             import yfinance as _yf
-            df = _yf.Ticker(ticker).history(period="3y", interval="1wk")
+            df = _yf.Ticker(_yt).history(period="3y", interval="1wk")
             if df is not None and not df.empty:
                 _YF_3YW_CACHE[ticker] = df   # cache successes only
                 return df
@@ -1342,7 +1346,10 @@ def render_x_post_card(r: dict):
             start_dt = min(start_dt, end_dt - timedelta(days=30))
         else:
             start_dt = end_dt - timedelta(days=90)
-        hist = _yf.download(ticker, start=start_dt.strftime("%Y-%m-%d"),
+        # Map to the Yahoo symbol (user 2026-06-23): FX/indices (USDJPY -> USDJPY=X, JPN225 -> ^N225)
+        # 404 on the raw ticker, which left those tweets with NO chart at all.
+        _yt = YAHOO_MAP.get(ticker, ticker)
+        hist = _yf.download(_yt, start=start_dt.strftime("%Y-%m-%d"),
                             end=end_dt.strftime("%Y-%m-%d"),
                             progress=False, auto_adjust=True)
         if hist is None or hist.empty:
@@ -1417,7 +1424,7 @@ def render_x_post_card(r: dict):
         wk52_str = ""
         wk52_high_raw = None   # chart-unit 52w high, for the gridline (user 2026-06-13)
         try:
-            _tk  = _yf.Ticker(ticker)
+            _tk  = _yf.Ticker(YAHOO_MAP.get(ticker, ticker))
             _y52 = _tk.history(period="1y", interval="1d")
             if _y52 is not None and not _y52.empty:
                 wk52_high_raw = float(_y52["High"].max())
