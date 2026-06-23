@@ -25,6 +25,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.11.0  2026-06-23  Alex Hind   (user 2026-06-23) The published-to-X summary now shows each instrument's MARKET (resolved
+#                                 from the report UNIVERSE via _market_of).
 # 1.10.0  2026-06-22  Alex Hind   (user 2026-06-22) After a batch's tweets are all posted, publish_tickers_to_x posts ONE
 #                                 consolidated summary to #arw-claude-twitter — each instrument with HVF status (direction ·
 #                                 signal · quality · R:R) + lead-tweet link (_summary_to_slack).
@@ -134,6 +136,21 @@ def _confirm_to_slack(ticker: str, name: str, lead_id, posted: int, n_parts: int
         log.error(f"X publication confirmation failed for {ticker}: {e}")
 
 
+def _market_of(ticker: str) -> str:
+    """Short market label (FTSE100 / S&P500 / Commodities / Indices & FX / Crypto) for a ticker,
+    resolved from the report UNIVERSE. Function-level import avoids a circular import (run_hvf_report
+    imports this module). Returns '' if the ticker isn't in any basket."""
+    try:
+        from run_hvf_report import UNIVERSE
+        from price_action import market_short
+        for mkt, tickers in UNIVERSE.items():
+            if ticker in tickers:
+                return market_short(mkt)
+    except Exception:
+        pass
+    return ""
+
+
 def _summary_to_slack(rows: list):
     """Post ONE consolidated 'published to X' summary to #arw-claude-twitter once a batch's tweets
     are all out (user 2026-06-22): each instrument with its HVF status — direction · signal ·
@@ -152,7 +169,8 @@ def _summary_to_slack(rows: list):
         rr   = f"{r['rr']:.1f}" if isinstance(r.get("rr"), (int, float)) else "—"
         q    = r.get("quality") if r.get("quality") is not None else "—"
         cash = f"<{link}|${disp}>" if link else f"${disp}"
-        lines.append(f"• *{cash}*{name} — {r.get('type','?')} · {r.get('signal','?')} · "
+        mkt  = f" · {r['market']}" if r.get("market") else ""
+        lines.append(f"• *{cash}*{name}{mkt} — {r.get('type','?')} · {r.get('signal','?')} · "
                      f"Q{q} · R:R {rr}")
     header = (f"*📋 Published to X — {len(rows)} instrument(s) · "
               f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}*")
@@ -235,6 +253,7 @@ def publish_tickers_to_x(tickers, inter_instrument_delay: int = _INTER_INSTRUMEN
                 _confirm_to_slack(tk, res.get("name", tk), lead_id, n, len(thread))
                 published += 1
                 _pub_rows.append({"ticker": tk, "name": res.get("name", tk), "lead_id": lead_id,
+                                  "market": res.get("index") or _market_of(tk),
                                   "type": res.get("hvf_type"), "signal": res.get("hvf_signal"),
                                   "quality": res.get("pattern_quality"), "rr": res.get("risk_reward")})
                 log.info(f"{tk}: published {n} tweet(s) to X (lead {lead_id}).")

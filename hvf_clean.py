@@ -27,6 +27,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 0.3.0   2026-06-23  Alex Hind   (user 2026-06-23) Emit the pivot DATES (h1_date..l3_date) + H2/L2 levels again — the X card
+#                                 needs them to draw the H1->H2->H3 / L1->L2->L3 funnel overlay (lost in the 0.2.0 cutover).
 # 0.2.0   2026-06-22  Alex Hind   WIRED IN — get_hvf_signal_mtf now calls detect_hvf for every timeframe (price_action 1.34.0);
 #                                 the old daily/weekly detectors were deleted. Added volume_confirmed key for consumer parity.
 # 0.1.0   2026-06-22  Alex Hind   Initial clean-room build (standalone, not wired in). RW 5 rules + KLOS, no synthetic L3,
@@ -50,9 +52,11 @@ def _empty():
     return {
         "hvf_type": None, "hvf_signal": None, "h3_level": None, "l3_level": None,
         "stop_level": None, "target": None, "risk_reward": None, "h1_level": None,
-        "l1_level": None, "pattern_range": None, "bars_since_h3": None,
-        "pattern_quality": 0, "convergence": None, "tightness": None, "volume_confirmed": False,
-        "current_price": None, "klos_low": None, "klos_high": None, "reject_reason": None,
+        "h2_level": None, "l1_level": None, "l2_level": None, "pattern_range": None,
+        "bars_since_h3": None, "pattern_quality": 0, "convergence": None, "tightness": None,
+        "volume_confirmed": False, "current_price": None, "klos_low": None, "klos_high": None,
+        "h1_date": None, "h2_date": None, "h3_date": None,
+        "l1_date": None, "l2_date": None, "l3_date": None, "reject_reason": None,
     }
 
 
@@ -164,11 +168,22 @@ def detect_hvf(ticker: str, hist, trend_signal: str, *, weekly: bool = False) ->
     rr = round(abs(target - entry) / risk, 2) if risk > 0 else 0.0
     signal = "DEVELOPING" if rr < MIN_RISK_REWARD else ("TRIGGERED" if triggered else "READY")
 
+    # Pivot DATES + the H2/L2 levels are needed by the X card to DRAW the H1->H2->H3 / L1->L2->L3
+    # funnel overlay (user 2026-06-22: the visual went missing when detection moved to the clean
+    # engine — it wasn't emitting these). Map each pivot's bar index back to its calendar date.
+    def _pdate(piv):
+        try:
+            return hist.index[piv[0]].strftime("%Y-%m-%d")
+        except Exception:
+            return None
     r.update({
         "hvf_type": hvf_type, "hvf_signal": signal, "h3_level": entry, "l3_level": round(l3[1], 6),
         "stop_level": stop, "target": target, "risk_reward": rr, "h1_level": round(h1[1], 6),
-        "l1_level": round(l1[1], 6), "pattern_range": round(amp1, 6), "bars_since_h3": best["bars_since_h3"],
+        "h2_level": round(h2[1], 6), "l1_level": round(l1[1], 6), "l2_level": round(l2[1], 6),
+        "pattern_range": round(amp1, 6), "bars_since_h3": best["bars_since_h3"],
         "pattern_quality": best["q"], "tightness": round(best["tightness"], 3),
         "convergence": round(best["tightness"], 3),
+        "h1_date": _pdate(h1), "h2_date": _pdate(h2), "h3_date": _pdate(h3),
+        "l1_date": _pdate(l1), "l2_date": _pdate(l2), "l3_date": _pdate(l3),
     })
     return r
