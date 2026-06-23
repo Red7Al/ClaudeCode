@@ -25,6 +25,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.10.0  2026-06-22  Alex Hind   (user 2026-06-22) After a batch's tweets are all posted, publish_tickers_to_x posts ONE
+#                                 consolidated summary to #arw-claude-twitter — each instrument with HVF status (direction ·
+#                                 signal · quality · R:R) + lead-tweet link (_summary_to_slack).
 # 1.9.0   2026-06-22  Alex Hind   (user 2026-06-22) Store EVERY thread tweet id at publish (x_publications.thread_ids) so a
 #                                 later --delete-leads removes the WHOLE thread precisely (no enumeration; X free tier 403s the
 #                                 reply read). delete path now passes the stored ids to delete_thread.
@@ -131,6 +134,36 @@ def _confirm_to_slack(ticker: str, name: str, lead_id, posted: int, n_parts: int
         log.error(f"X publication confirmation failed for {ticker}: {e}")
 
 
+def _summary_to_slack(rows: list):
+    """Post ONE consolidated 'published to X' summary to #arw-claude-twitter once a batch's tweets
+    are all out (user 2026-06-22): each instrument with its HVF status — direction · signal ·
+    quality · R:R — and a link to its lead tweet. Best-effort; never raises."""
+    import requests
+    from datetime import datetime, timezone
+    url = os.environ.get("SLACK_TWITTER", "")
+    if not url or not rows:
+        return
+    lines = []
+    for r in rows:
+        tk   = r.get("ticker", "")
+        disp = tk[:-2] if tk.endswith(".L") else tk
+        link = f"https://x.com/{X_HANDLE}/status/{r['lead_id']}" if r.get("lead_id") else ""
+        name = f" ({r['name']})" if r.get("name") and r.get("name") != tk else ""
+        rr   = f"{r['rr']:.1f}" if isinstance(r.get("rr"), (int, float)) else "—"
+        q    = r.get("quality") if r.get("quality") is not None else "—"
+        cash = f"<{link}|${disp}>" if link else f"${disp}"
+        lines.append(f"• *{cash}*{name} — {r.get('type','?')} · {r.get('signal','?')} · "
+                     f"Q{q} · R:R {rr}")
+    header = (f"*📋 Published to X — {len(rows)} instrument(s) · "
+              f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}*")
+    try:
+        requests.post(url, json={"blocks": [{"type": "section",
+                      "text": {"type": "mrkdwn", "text": header + "\n" + "\n".join(lines)}}]}, timeout=10)
+        log.info(f"published-to-X summary posted to #arw-claude-twitter ({len(rows)} instruments)")
+    except Exception as e:
+        log.error(f"published-to-X summary post failed: {e}")
+
+
 _DEDUP_HOURS = 12   # don't re-publish the same instrument to X within this window (user 2026-06-16)
 _PUB_TABLE_SQL = ("create table if not exists x_publications "
                   "(id bigserial primary key, ticker text not null, tweet_id text, "
@@ -186,6 +219,7 @@ def publish_tickers_to_x(tickers, inter_instrument_delay: int = _INTER_INSTRUMEN
     import time
     from x_publish import publish_thread_to_x
     published = 0
+    _pub_rows = []   # for the end-of-batch summary (user 2026-06-22)
     for i, tk in enumerate(tickers):
         try:
             pub = build_publication(tk)
@@ -200,6 +234,9 @@ def publish_tickers_to_x(tickers, inter_instrument_delay: int = _INTER_INSTRUMEN
                 _record_publication(tk, lead_id, all_ids)
                 _confirm_to_slack(tk, res.get("name", tk), lead_id, n, len(thread))
                 published += 1
+                _pub_rows.append({"ticker": tk, "name": res.get("name", tk), "lead_id": lead_id,
+                                  "type": res.get("hvf_type"), "signal": res.get("hvf_signal"),
+                                  "quality": res.get("pattern_quality"), "rr": res.get("risk_reward")})
                 log.info(f"{tk}: published {n} tweet(s) to X (lead {lead_id}).")
             else:
                 log.error(f"{tk}: nothing posted to X.")
@@ -207,6 +244,8 @@ def publish_tickers_to_x(tickers, inter_instrument_delay: int = _INTER_INSTRUMEN
             log.info(f"waiting {inter_instrument_delay}s before the next instrument (avoid overlap)…")
             time.sleep(inter_instrument_delay)
     log.info(f"live X batch complete: published {published}/{len(tickers)} instrument(s).")
+    # ONE consolidated summary to #arw-claude-twitter once all the tweets are out (user 2026-06-22).
+    _summary_to_slack(_pub_rows)
     return published
 
 
