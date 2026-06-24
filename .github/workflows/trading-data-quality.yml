@@ -10,6 +10,10 @@ on:
         description: 'Read-only: space-separated tickers to print IG /markets candidates for (epic pin decisions). Empty = run the normal audit.'
         required: false
         default: ''
+      verify_epics:
+        description: 'Read-only: space-separated tickers to resolve via get_epic and print the IG name at that epic (confirm pins). Empty = off.'
+        required: false
+        default: ''
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -37,7 +41,9 @@ jobs:
       - run: python run_schema.py
       - name: Audit or epic-lookup
         run: |
-          if [ -n "${{ inputs.lookup_epics }}" ]; then
+          if [ -n "${{ inputs.verify_epics }}" ]; then
+            python run_data_quality_audit.py --verify-epic ${{ inputs.verify_epics }}
+          elif [ -n "${{ inputs.lookup_epics }}" ]; then
             python run_data_quality_audit.py --lookup-epic ${{ inputs.lookup_epics }}
           else
             python run_data_quality_audit.py

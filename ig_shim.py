@@ -23,6 +23,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.17.0  2026-06-24  Alex Hind   (user 2026-06-24) get_epic Step 0: a ticker in _EPIC_VERIFIED_OVERRIDES now returns its
+#                                 epic DIRECTLY (authoritative pin) — bypasses cache/IG-search/identity-check. Pinned 9
+#                                 backlog tickers verified from a live IG /markets NAME lookup: PYPL/MSTR/SYM/FLY/FTAI/LUNR/
+#                                 QBTS/RGTI/GLD (several can't be auto-resolved — a ticker search returns the wrong YieldMax/
+#                                 Defiance ETF). Makes the real US equities tradeable; the 2 prior overrides (ETH/SPCX) now
+#                                 also return directly (was: validate-on-cache-hit only).
 # 1.16.0  2026-06-24  Alex Hind   (user 2026-06-24) calculate_position_size now records WHY it returned size 0 in the
 #                                 module-level LAST_SIZE_SKIP[epic] = (reason, needed_margin, available): ACCOUNT_TOO_SMALL
 #                                 (structural — min deal margin > available, e.g. crypto on a small account), or ERROR
@@ -534,9 +540,21 @@ def instrument_names_match(ticker: str, ig_name: str, yahoo_name: str) -> bool:
 
 _EPIC_VERIFIED_OVERRIDES = {
     # ticker -> epic that the name-matcher CANNOT confirm but a human has verified correct
-    # (user 2026-06-19). These bypass the identity check so they are never wrongly purged.
+    # (user 2026-06-19). get_epic returns these DIRECTLY (Step 0) — authoritative pins.
     "ETH":  "CS.D.ETHUSD.TODAY.IP",   # spot Ether; Yahoo 'ETH' returns a Grayscale ETF name
     "SPCX": "UD.D.SPCXUS.DAILY.IP",   # SpaceX vs 'Space Exploration Technologies Corp.'
+    # Pinned 2026-06-24 (user) from a verified IG /markets name lookup. Several CANNOT be
+    # auto-resolved — a ticker search returns the wrong instrument (e.g. "PYPL" -> a YieldMax ETF,
+    # "QBTS"/"RGTI" -> Defiance 2x-short ETFs), the real equity only surfaces on a NAME search.
+    "PYPL": "UC.D.PYPLVUS.DAILY.IP",  # PayPal Holdings Inc (24 Hours)   — NOT the YieldMax PYPL ETF
+    "MSTR": "UC.D.MSTR.DAILY.IP",     # Strategy Inc (ex-MicroStrategy)  — NOT the Morningstar AU ETF
+    "SYM":  "UD.D.SVFCUS.DAILY.IP",   # Symbotic Inc                     — NOT Symphony/Symrise
+    "FLY":  "UB.D.FLYUS.DAILY.IP",    # Firefly Aerospace Inc
+    "FTAI": "SC.D.FTAIUS.DAILY.IP",   # FTAI Aviation (IG: Fortress Transportation & Infrastructure)
+    "LUNR": "UB.D.LUNRUS.DAILY.IP",   # Intuitive Machines Inc
+    "QBTS": "SH.D.XPOAUUS.DAILY.IP",  # D-Wave Quantum Inc               — NOT the Defiance 2x short
+    "RGTI": "SG.D.SNIIUS.DAILY.IP",   # Rigetti Computing Inc            — NOT the Defiance 2x short
+    "GLD":  "SI.D.GLDUS.DAILY.IP",    # SPDR Gold Shares (US)            — NOT NewGold (JSE)
 }
 
 
@@ -580,6 +598,16 @@ def get_epic(ticker: str) -> Optional[str]:
     # EPIC_MAP and the DB are keyed without .L (LAND, BA., RR, BT-A).
     # Strip the trailing .L so the cache always hits the right key.
     normalized = ticker[:-2] if ticker.endswith('.L') and len(ticker) > 2 else ticker
+
+    # Step 0 — human-verified PIN (user 2026-06-24). A ticker in _EPIC_VERIFIED_OVERRIDES has a
+    # hand-verified epic; return it DIRECTLY, bypassing cache/IG-search/identity-check. This is what
+    # makes a pin authoritative — essential for tickers the auto-resolver CANNOT find (a "PYPL" search
+    # returns a YieldMax ETF, "QBTS"/"RGTI" return Defiance 2x-short ETFs; the real equity only
+    # surfaces on a name search). Checked on both the raw and .L-normalised key.
+    _pin = _EPIC_VERIFIED_OVERRIDES.get(ticker) or _EPIC_VERIFIED_OVERRIDES.get(normalized)
+    if _pin:
+        log.info(f"Epic pin (verified override): {ticker} → {_pin}")
+        return _pin
 
     # Yahoo company name for identity checks. (Bug fix, user 2026-06-19: y_name was referenced
     # below and on the miss path but NEVER assigned — the wrong-instrument guard NameError'd, so

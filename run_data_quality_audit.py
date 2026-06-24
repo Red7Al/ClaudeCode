@@ -35,6 +35,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.4.0   2026-06-24  Alex Hind   (user 2026-06-24) Added read-only `--verify-epic TICKER...`: resolves each ticker via
+#                                 get_epic() and prints the IG instrument NAME at that epic — confirms a pin maps to the
+#                                 intended company end-to-end. Wired into trading-data-quality.yml (verify_epics input).
 # 1.3.0   2026-06-24  Alex Hind   (user 2026-06-24) Added a read-only `--lookup-epic TICKER...` diagnostic: prints the IG
 #                                 /markets search candidates (epic, expiry, type, name) for tickers whose epic mapping needs
 #                                 a human pin decision (backlog: PYPL/MSTR/GLD/DJT + unmapped names). No pin, no trade — just
@@ -313,11 +316,33 @@ def _lookup_epics(tickers: list):
             log.error(f"{t}: IG /markets search failed — {e}")
 
 
+def _verify_epics(tickers: list):
+    """Read-only end-to-end pin check (user 2026-06-24): for each ticker, run get_epic() then read
+    the IG instrument NAME at that epic, so a pin is confirmed to resolve to the intended company.
+    No trade, no write."""
+    from ig_shim import get_epic, session
+    for t in tickers:
+        try:
+            epic = get_epic(t)
+            if not epic:
+                print(f"  {t:<8} -> (no epic resolved)")
+                continue
+            mkt  = session.get(f"/markets/{epic}", version="3")
+            name = (mkt.get("instrument", {}) or {}).get("name", "?")
+            status = (mkt.get("snapshot", {}) or {}).get("marketStatus", "?")
+            print(f"  {t:<8} -> {epic:<28} [{status}] {name}")
+        except Exception as e:
+            log.error(f"{t}: verify failed — {e}")
+
+
 def main():
     args = sys.argv[1:]
     # Epic-lookup diagnostic — run BEFORE the audit-batch parsing so it never triggers a price audit.
     if args and args[0] == "--lookup-epic":
         _lookup_epics(args[1:])
+        return
+    if args and args[0] == "--verify-epic":
+        _verify_epics(args[1:])
         return
     if args and not args[0].isdigit():
         batch = args
