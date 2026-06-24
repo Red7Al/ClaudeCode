@@ -25,6 +25,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.12.0  2026-06-24  Alex Hind   (user 2026-06-24) NEW --list-recent[=N] mode: prints the most recent X publications
+#                                 (ticker, lead tweet id, time, thread size, x.com URL) from x_publications so the correct
+#                                 lead ids can be picked for --delete-leads WITHOUT hand-copying X URLs. Closes the
+#                                 "I don't have the tweet ids" friction: list -> delete -> republish are all now driveable
+#                                 from the trading-x-publish workflow (the local machine has no X_*/SUPABASE_* creds, so
+#                                 listing must run on Actions). Wired into trading-x-publish.yml via the list_recent input.
 # 1.11.0  2026-06-23  Alex Hind   (user 2026-06-23) The published-to-X summary now shows each instrument's MARKET (resolved
 #                                 from the report UNIVERSE via _market_of).
 # 1.10.0  2026-06-22  Alex Hind   (user 2026-06-22) After a batch's tweets are all posted, publish_tickers_to_x posts ONE
@@ -296,6 +302,38 @@ def main():
         load_dotenv(override=True)
     except Exception:
         pass
+
+    # ── List-recent mode (user 2026-06-24): print recent publications so the correct LEAD ids can
+    #   be chosen for --delete-leads without hand-copying X URLs. Runs on Actions (SUPABASE_* set).
+    #     python publish_one_to_x.py --list-recent        (newest 20)
+    #     python publish_one_to_x.py --list-recent=40
+    _list_arg = next((a for a in sys.argv if a == "--list-recent" or a.startswith("--list-recent=")), None)
+    if _list_arg:
+        n = 20
+        if "=" in _list_arg:
+            try:
+                n = max(1, int(_list_arg.split("=", 1)[1]))
+            except ValueError:
+                pass
+        try:
+            from db_pool import get_db
+            db = get_db()
+            try:
+                rows = db.run(
+                    "select ticker, tweet_id, "
+                    "to_char(published_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI'), thread_ids "
+                    "from x_publications where tweet_id is not null "
+                    "order by published_at desc limit :n", n=n)
+            finally:
+                db.close()
+            log.info(f"--list-recent: {len(rows)} publication(s), newest first:")
+            for tk, tid, when, tids in rows:
+                n_thread = len([s for s in str(tids or "").split(",") if s])
+                print(f"{when} UTC  {tk:<10} lead={tid}  thread={n_thread}  "
+                      f"https://x.com/{X_HANDLE}/status/{tid}")
+        except Exception as e:
+            log.error(f"--list-recent failed: {e}")
+        return
 
     # ── Delete mode (user 2026-06-22): remove incorrect published threads by LEAD tweet id ──
     #   python publish_one_to_x.py --delete-leads=ID1,ID2,...

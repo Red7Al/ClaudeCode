@@ -21,6 +21,13 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.9.0   2026-06-24  Alex Hind   (user 2026-06-24) STOP flooding #alerts with un-actionable size/margin skips (SOLUSD /
+#                                 XRPUSD / BTCUSD "calculated size is zero" every rescan). alert_missed_trade now
+#                                 auto-silences the SIZE_ZERO class (_SILENT_MISSED_TRADE_CLASSES): the block is still
+#                                 recorded to missed_trade_log and rolled into the once-a-day summarize_missed_trades()
+#                                 digest, but no per-occurrence Slack post. The operator gets ONE daily summary line
+#                                 ("SIZE_ZERO x N") instead of an alert per crypto per cycle. Single-source — every caller
+#                                 (session-open + monitor-rescan) inherits it; no call-site changes needed.
 # 1.8.0   2026-06-22  Alex Hind   (user 2026-06-22) alert_missed_trade gains silent=True: record to missed_trade_log + log
 #                                 but DON'T post to Slack. Used for the "nonsensical order" guards (price outside the funnel /
 #                                 wrong-epic) which the operator does nothing with — kept for diagnostics, not shouted.
@@ -856,6 +863,14 @@ _MISSED_TRADE_CLASSES = [
 ]
 
 
+# Block classes that are NOISE per-occurrence — the operator cannot act on each one in real time
+# (user 2026-06-24). They are recorded to missed_trade_log and surfaced ONCE in the end-of-day
+# summarize_missed_trades() digest, but never paged to #alerts individually. SIZE_ZERO = "the account
+# is too small to size this instrument at the intended risk" (SOLUSD/XRPUSD/BTCUSD every rescan) — a
+# standing account fact, not a per-cycle event.
+_SILENT_MISSED_TRADE_CLASSES = {"SIZE_ZERO"}
+
+
 def _classify_missed_trade(reason: str):
     """Return (reason_class, corrective_action) for a block reason string."""
     r = (reason or "").lower()
@@ -885,6 +900,11 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
     the alert posts anyway (fail-open — never silent).
     """
     reason_class, corrective = _classify_missed_trade(reason)
+
+    # Auto-silence noise classes (user 2026-06-24): record + roll into the daily digest, never page
+    # #alerts per occurrence. The operator asked NOT to receive each size/margin skip individually.
+    if reason_class in _SILENT_MISSED_TRADE_CLASSES:
+        silent = True
 
     occurrences = 1
     try:

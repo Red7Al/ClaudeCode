@@ -43,6 +43,10 @@ on:
         description: 'DELETE mode: comma-separated lead tweet IDs to remove (lead + thread). Irreversible.'
         required: false
         default: ''
+      list_recent:
+        description: 'LIST mode: print the N most recent publications (ticker, lead id, URL) to pick delete IDs. 0 = off.'
+        required: false
+        default: '0'
 
 jobs:
   publish:
@@ -57,7 +61,9 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Publish to X
         run: |
-          if [ -n "${{ inputs.delete_lead_ids }}" ]; then
+          if [ "${{ inputs.list_recent }}" != "0" ] && [ -n "${{ inputs.list_recent }}" ]; then
+            python publish_one_to_x.py --list-recent=${{ inputs.list_recent }}
+          elif [ -n "${{ inputs.delete_lead_ids }}" ]; then
             python publish_one_to_x.py --delete-leads=${{ inputs.delete_lead_ids }}
           elif [ "${{ inputs.top_per_market }}" != "0" ] && [ -n "${{ inputs.top_per_market }}" ]; then
             python publish_one_to_x.py --top-per-market=${{ inputs.top_per_market }} ${{ inputs.dry && '--dry' || '' }}

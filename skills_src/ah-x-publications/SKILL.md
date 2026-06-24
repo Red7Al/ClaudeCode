@@ -183,7 +183,9 @@ widths measured via the Agg renderer) because a single text call is one colour.
   aggressive → confirms the long" (bearish: "below … — sellers pressing, demand weak →
   confirms the short"). Sourced from `signal_log.vwap_position` — the same value as the
   tweet's short tag, so card and tweet always agree. Absent position → no caption.
-- History window: from 14 days before the oldest pivot (capped 365d, min 30d)
+- History window: from 14 days before the oldest pivot — ALWAYS reaches the oldest pivot so the
+  price line fills to the funnel jaws (no left-edge white space); single absolute cap 1500d, min 30d.
+  (Was a timeframe-gated 365d/1150d cap that truncated daily setups with old pivots — fixed 2026-06-24.)
 - Data must be SANITISED before plotting (phantom exchange wicks clipped) and pivots
   must be the detector's, never hand-drawn — the funnel sits on real swing points
 
@@ -207,6 +209,30 @@ widths measured via the Agg renderer) because a single text call is one colour.
    (identical renderer to the Slack pipeline)
 4. If automating publication later: X API pay-per-use ≈ $0.015 per media post without
    URLs (verified June 2026) — keep URLs out of post text, they cost $0.20/post
+
+## Fixing live tweets — list → delete → republish (operator runbook)
+
+**X posting/deleting is GitHub-Actions ONLY.** The local machine has no `X_*` / `SUPABASE_*`
+creds and never posts (memory: `secrets_and_x_delivery`). So every step below runs via the
+`trading-x-publish.yml` workflow (`gh workflow run …` or the Actions UI). The lead tweet ids
+live in the `x_publications` Supabase table — you cannot read them locally; use list mode.
+
+1. **Find the bad tweets' lead ids** (no more hand-copying X URLs):
+   `gh workflow run trading-x-publish.yml -f list_recent=20`
+   then read the run log — each line is `<time> <ticker> lead=<ID> thread=<n> <x.com URL>`.
+   (`publish_one_to_x.py --list-recent[=N]`.)
+2. **Delete the wrong ones** (lead + its whole thread, irreversible):
+   `gh workflow run trading-x-publish.yml -f delete_lead_ids=ID1,ID2,...`
+   The `x_publications` rows are LEFT as history (republish uses `force` to bypass dedup).
+3. **Deploy the fix FIRST if the content was wrong** — the workflow checks out committed code,
+   so a code fix must be on the default branch before republishing or the new tweet repeats the bug.
+4. **Republish** with the fix:
+   - single: `gh workflow run trading-x-publish.yml -f ticker=SBUX -f force=true`
+   - batch:  `gh workflow run trading-x-publish.yml -f top_per_market=2`
+   A republish only fires if the ticker STILL has a live tradeable HVF funnel today
+   (`build_publication` returns nothing otherwise — by design, not a failure).
+
+The workflow input precedence is `list_recent` → `delete_lead_ids` → `top_per_market` → single ticker.
 
 ## Reference files
 
