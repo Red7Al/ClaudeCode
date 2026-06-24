@@ -23,6 +23,29 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.46.0  2026-06-24  Alex Hind   (user 2026-06-24) Three fixes:
+#                                 (A) FIX full company name vanishing from the lead tweet ($SBUX went out with no
+#                                     "(Starbucks Corporation)"): the 280-char fitter ranked the NO-NAME explainer base
+#                                     above the named base, so the name was the first thing trimmed. The name is now
+#                                     NON-NEGOTIABLE — _bases lists ONLY named variants (name+explainer, then name+desc),
+#                                     so confirmations are trimmed first and the explainer next, the $cashtag's adjacent
+#                                     full name is ALWAYS kept. Full detail (explainer + every confirmation) still rides
+#                                     the long-report thread posted beneath the lead. base_no_name kept only as the
+#                                     pathological absolute fallback (line ~2205).
+#                                 (C) FIX $LAND card left-edge white space remaining after 1.45: the price fetch was
+#                                     capped at 365d for any setup NOT tagged "weekly*", so a daily setup with ~22-month-old
+#                                     funnel pivots drew the jaws far left of the price line. Cap is now a single absolute
+#                                     safety (1500d) and the start always reaches the oldest pivot regardless of timeframe
+#                                     label, so the price line fills to the funnel (user: old pivots are valid HVF points).
+#                                 (D) FIX bogus spikes on the 3-yr history (e.g. $JIGI/JII.L popping ~+20% for one week then
+#                                     fully reversing — yfinance bad prints on illiquid UK-trust holiday/quarter-end weeks):
+#                                     _yf_weekly_3y now median-despikes the weekly series (a bar > 15% from BOTH neighbours
+#                                     in the same direction is replaced with the neighbour average) before caching.
+# 1.45.0  2026-06-23  Alex Hind   (user 2026-06-23) FIX USDJPY card left-edge white space: weekly setups span 1-2+ yrs but
+#                                 the chart fetch capped at 365d, so the funnel jaws drew far left of the price line. Cap is
+#                                 now timeframe-aware (1150d weekly / 365d daily) + adaptive month-tick density/format.
+#                                 Extracted upload_png_to_slack() (single source for the Slack external-upload flow) and
+#                                 deduped the two inline copies in _generate_x_drafts (card + 3yr history).
 # 1.44.0  2026-06-23  Alex Hind   (user 2026-06-23) FIX no-graph on FX/index tweets (USDJPY): the card chart download, the
 #                                 52w fetch, _yf_weekly_3y and _yf_info now map the ticker via YAHOO_MAP (USDJPY->USDJPY=X,
 #                                 JPN225->^N225) — the raw symbol 404'd and the tweet went out with NO chart at all.
@@ -1168,6 +1191,46 @@ def _yf_info(ticker: str) -> dict:
 _YF_3YW_CACHE: dict = {}   # ticker -> 3y weekly history DataFrame, fetched once per process
 
 
+def _despike_weekly(df, thresh: float = 0.15):
+    """Remove ISOLATED bad weekly prints from a yfinance history DataFrame before it is plotted.
+
+    Illiquid UK investment trusts (e.g. $JIGI / JII.L) get spurious yfinance weekly bars — a single
+    week pops ~+20% then fully reverses the next, typically on holiday / quarter-end low-liquidity
+    weeks. A NAV-tracking trust does not make 20% weekly round-trips, so these are data artifacts that
+    made the 3-yr history look wildly volatile (user 2026-06-24). A bar whose Close deviates by more
+    than `thresh` from BOTH neighbours in the SAME direction is treated as a spike and its OHLC is
+    replaced with the neighbour average. Edge bars (first/last) are left as-is. Never raises — returns
+    the input unchanged on any error or when nothing looks spiky."""
+    try:
+        if df is None or getattr(df, "empty", True) or len(df) < 3:
+            return df
+        import numpy as _np
+        vals = df["Close"].squeeze().astype(float).to_numpy()
+        bad = _np.zeros(len(vals), dtype=bool)
+        for i in range(1, len(vals) - 1):
+            p, c, n = vals[i - 1], vals[i], vals[i + 1]
+            if p <= 0 or n <= 0 or c <= 0:
+                continue
+            dp = c / p - 1.0
+            dn = c / n - 1.0
+            if (dp > thresh and dn > thresh) or (dp < -thresh and dn < -thresh):
+                bad[i] = True
+        if not bad.any():
+            return df
+        out = df.copy()
+        idx = out.index
+        _price_fields = ("Open", "High", "Low", "Close")
+        for pos in _np.where(bad)[0]:
+            lbl, plbl, nlbl = idx[pos], idx[pos - 1], idx[pos + 1]
+            for col in out.columns:
+                field = col[0] if isinstance(col, tuple) else col
+                if field in _price_fields:
+                    out.loc[lbl, col] = (out.loc[plbl, col] + out.loc[nlbl, col]) / 2.0
+        return out
+    except Exception:
+        return df
+
+
 def _yf_weekly_3y(ticker: str):
     """3-year WEEKLY history, fetched ONCE per ticker per process with one retry (user 2026-06-22).
 
@@ -1186,6 +1249,7 @@ def _yf_weekly_3y(ticker: str):
             import yfinance as _yf
             df = _yf.Ticker(_yt).history(period="3y", interval="1wk")
             if df is not None and not df.empty:
+                df = _despike_weekly(df)     # strip isolated bad weekly prints (user 2026-06-24)
                 _YF_3YW_CACHE[ticker] = df   # cache successes only
                 return df
         except Exception:
@@ -1280,6 +1344,46 @@ def _x_market_tags(r: dict) -> str:
     return f"{_exchange_tag(r.get('ticker') or '')} #USA"
 
 
+def upload_png_to_slack(png_bytes: bytes, filename: str, title: str,
+                        channel_id: str, bot_token: str = "") -> bool:
+    """SINGLE SOURCE OF TRUTH for posting a PNG into a Slack channel via the
+    current external-upload flow (legacy files.upload was retired 2025):
+      1. files.getUploadURLExternal  → one-time upload URL + file id
+      2. POST raw bytes to that URL
+      3. files.completeUploadExternal → finalise + share into the channel
+    Returns True on success; never raises (logged). bot_token defaults to the
+    SLACK_BOT_TOKEN env var. Used by _generate_x_drafts (card + 3yr history) and
+    social_monitor._run_dossier_to_signals (dossier card)."""
+    bot_token = bot_token or os.environ.get("SLACK_BOT_TOKEN", "")
+    if not (png_bytes and bot_token and channel_id):
+        return False
+    try:
+        hdrs = {"Authorization": f"Bearer {bot_token}"}
+        r1 = requests.post(
+            "https://slack.com/api/files.getUploadURLExternal",
+            headers=hdrs,
+            data={"filename": filename, "length": len(png_bytes)},
+            timeout=10,
+        ).json()
+        if not r1.get("ok"):
+            raise RuntimeError(f"getUploadURLExternal: {r1.get('error')}")
+        requests.post(r1["upload_url"], data=png_bytes, timeout=30).raise_for_status()
+        r3 = requests.post(
+            "https://slack.com/api/files.completeUploadExternal",
+            headers={**hdrs, "Content-Type": "application/json"},
+            json={"files": [{"id": r1["file_id"], "title": title}],
+                  "channel_id": channel_id},
+            timeout=10,
+        ).json()
+        if not r3.get("ok"):
+            raise RuntimeError(f"completeUploadExternal: {r3.get('error')}")
+        log.info(f"PNG attached to Slack ({len(png_bytes)} bytes -> {channel_id}): {filename}")
+        return True
+    except Exception as e:
+        log.error(f"Slack PNG upload failed ({filename}): {e}")
+        return False
+
+
 def render_x_post_card(r: dict):
     """
     Render the user-approved X post card (2026-06-10) for one tradeable HVF row
@@ -1341,8 +1445,15 @@ def render_x_post_card(r: dict):
             if _oldest_pivot_date.tzinfo is None:
                 _oldest_pivot_date = _oldest_pivot_date.tz_localize("UTC")
             start_dt = _oldest_pivot_date - timedelta(days=14)
-            # Cap at 365 days to avoid huge downloads; minimum 30 days
-            start_dt = max(start_dt, end_dt - timedelta(days=365))
+            # Always fetch back to the OLDEST pivot so the price line reaches the funnel jaws — old
+            # pivots are valid HVF points (user 2026-06-24), so a price line that stops short of them
+            # leaves empty axis on the left ($LAND: a daily setup with ~22-month-old pivots). The old
+            # timeframe-gated cap (1150d weekly / 365d else) truncated any non-"weekly"-tagged setup to
+            # 365d while still plotting 22-month-old pivots -> left-edge white space. Now a SINGLE
+            # absolute safety cap (1500d ~ 4y, daily downloads are cheap) bounds huge fetches without
+            # cutting before the oldest pivot. Minimum 30 days.
+            _ABS_CAP_DAYS = 1500
+            start_dt = max(start_dt, end_dt - timedelta(days=_ABS_CAP_DAYS))
             start_dt = min(start_dt, end_dt - timedelta(days=30))
         else:
             start_dt = end_dt - timedelta(days=90)
@@ -1597,8 +1708,14 @@ def render_x_post_card(r: dict):
         except Exception:
             pass
 
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
-        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+        # Adaptive tick density: a multi-month/year window (weekly setups) with a
+        # 1-month locator crowds 24+ labels. Scale the interval to the span so a
+        # ~2-year weekly chart shows readable quarterly-ish ticks (user 2026-06-23).
+        _span_days = max(1, (dates[-1] - dates[0]).days)
+        _mo_interval = 1 if _span_days <= 200 else (2 if _span_days <= 450 else 3)
+        ax.xaxis.set_major_formatter(
+            mdates.DateFormatter("%b %d" if _span_days <= 200 else "%b %y"))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=_mo_interval))
         plt.setp(ax.get_xticklabels(), rotation=0,
                  color="#8b949e", fontsize=9)
         plt.setp(ax.get_yticklabels(), color="#8b949e", fontsize=9)
@@ -2081,10 +2198,15 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         # Prices (Now/Entry/Stop/Target/R:R) and the HVF timeframe are NOT in the
         # tweet text — they live on the attached PNG card. The tweet is hook +
         # description + clear-English confirmations only.
-        # Base variants in PRIORITY order (user 2026-06-13): keep the plain-English
-        # explainer line AND the company name; drop them only if the tweet won't fit
-        # 280 otherwise. The explainer is dropped before the name is kept (explanation
-        # matters more than the long name).
+        # Base variants in PRIORITY order: the company name is NON-NEGOTIABLE (user 2026-06-24:
+        # "$SBUX" went out with no "(Starbucks Corporation)"). It stays adjacent to the $cashtag on
+        # EVERY primary variant, so to fit 280 we trim CONFIRMATIONS first (the n_just loop below),
+        # then the explainer (base_with_name) — never the name. (This reverses the old "explanation
+        # matters more than the long name" rule, which let the fitter silently strip the name on any
+        # longer tweet.) Whatever the lead can't fit — the explainer and the dropped confirmations —
+        # still rides the long-report thread that publishes beneath the lead, so no detail is lost.
+        # The nameless base_no_name survives only as the pathological absolute fallback below (used
+        # only if even name+desc cannot fit 280).
         # Blank line after the hook/company line (user 2026-06-16). The description and the
         # explainer stay together as ONE paragraph; the blank line before the confirmations
         # block is added in _build below.
@@ -2108,10 +2230,9 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
             _desc += "."
         _desc_block = f"{_desc} {explain}".strip() if explain else _desc
         # Instrument on the TOP line, the direction/state tag beneath it (user 2026-06-22).
-        base_name_expl = f"{hook_named}\n{_dir_tag}\n\n{_desc_block}\n"
-        base_expl      = f"{hook_plain}\n{_dir_tag}\n\n{_desc_block}\n"
-        base_with_name = f"{hook_named}\n{_dir_tag}\n\n{_desc}\n"
-        base_no_name   = f"{hook_plain}\n{_dir_tag}\n\n{_desc}\n"
+        base_name_expl = f"{hook_named}\n{_dir_tag}\n\n{_desc_block}\n"   # name + explainer (preferred)
+        base_with_name = f"{hook_named}\n{_dir_tag}\n\n{_desc}\n"         # name, explainer dropped to fit
+        base_no_name   = f"{hook_plain}\n{_dir_tag}\n\n{_desc}\n"         # ABSOLUTE fallback only (no name)
         # "Not financial advice." — always appended (2026-06-11); now preceded by a
         # blank line and rendered in bold italic (user 2026-06-13).
         disclaimer = _NFA_DISCLAIMER
@@ -2127,7 +2248,10 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         # Within each base, keep as MANY confirmations as possible (n_just descending),
         # full wording before short. The explainer-bearing bases come first so the
         # primary-signal explanation is preferred over extra confirmations / the name.
-        _bases = ([base_name_expl, base_expl] if explain else []) + [base_with_name, base_no_name]
+        # Name-bearing variants ONLY (user 2026-06-24): keep name+explainer if it fits, else
+        # name+desc — never a nameless primary variant. The nameless base_no_name is the absolute
+        # fallback below, reached only if even name+desc cannot fit 280.
+        _bases = ([base_name_expl] if explain else []) + [base_with_name]
         tweet = None
         for base in _bases:
             for n_just in range(len(justifications), -1, -1):
@@ -2266,65 +2390,28 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         except Exception as e:
             log.error(f"X draft Slack post failed (SLACK_TWITTER) for {ticker}: {e}")
 
-        # ── Attach the post card image via Slack external upload flow ─────────────────────────────────────────────────
-        # Legacy files.upload is retired (2025) — the current flow is:
-        # 1. files.getUploadURLExternal  → one-time upload URL + file id
-        # 2. POST raw bytes to that URL
-        # 3. files.completeUploadExternal → finalise + share into the channel
+        # ── Attach the post card image + 3yr history via the shared Slack upload helper ───────────────────────────────
+        # (Both used to be inline copies of the external-upload flow; deduped into
+        # upload_png_to_slack 2026-06-23.)
         if chart_b64 and bot_token and channel_id:
-            try:
-                png_bytes = base64.b64decode(chart_b64)
-                fname     = f"x_post_{ticker.replace('.', '_')}.png"
-                hdrs      = {"Authorization": f"Bearer {bot_token}"}
-
-                r1 = requests.post(
-                    "https://slack.com/api/files.getUploadURLExternal",
-                    headers=hdrs,
-                    data={"filename": fname, "length": len(png_bytes)},
-                    timeout=10,
-                ).json()
-                if not r1.get("ok"):
-                    raise RuntimeError(f"getUploadURLExternal: {r1.get('error')}")
-
-                r2 = requests.post(r1["upload_url"], data=png_bytes, timeout=30)
-                r2.raise_for_status()
-
-                r3 = requests.post(
-                    "https://slack.com/api/files.completeUploadExternal",
-                    headers={**hdrs, "Content-Type": "application/json"},
-                    json={"files": [{"id": r1["file_id"],
-                                     "title": f"X post card — {ticker} ({name})"}],
-                          "channel_id": channel_id},
-                    timeout=10,
-                ).json()
-                if not r3.get("ok"):
-                    raise RuntimeError(f"completeUploadExternal: {r3.get('error')}")
-                log.info(f"X draft chart attached for {ticker} "
-                         f"({len(png_bytes)} bytes → {channel_id})")
-            except Exception as e:
-                log.error(f"X draft chart upload failed for {ticker}: {e}")
+            upload_png_to_slack(base64.b64decode(chart_b64),
+                                f"x_post_{ticker.replace('.', '_')}.png",
+                                f"X post card — {ticker} ({name})",
+                                channel_id, bot_token)
 
         # Standalone 3-YEAR history PNG (user 2026-06-21) — an EXTRA Slack visual alongside the
-        # card (Slack only; never attached to an X tweet). Same external-upload flow.
+        # card (Slack only; never attached to an X tweet).
         if bot_token and channel_id:
             try:
                 _hist_png = render_3yr_history_card(r)
-                if _hist_png:
-                    _hh = {"Authorization": f"Bearer {bot_token}"}
-                    _u1 = requests.post("https://slack.com/api/files.getUploadURLExternal", headers=_hh,
-                                        data={"filename": f"hist3yr_{ticker.replace('.', '_')}.png",
-                                              "length": len(_hist_png)}, timeout=10).json()
-                    if _u1.get("ok"):
-                        requests.post(_u1["upload_url"], data=_hist_png, timeout=30).raise_for_status()
-                        _u3 = requests.post("https://slack.com/api/files.completeUploadExternal",
-                                            headers={**_hh, "Content-Type": "application/json"},
-                                            json={"files": [{"id": _u1["file_id"],
-                                                             "title": f"3-year history — {ticker}"}],
-                                                  "channel_id": channel_id}, timeout=10).json()
-                        if _u3.get("ok"):
-                            log.info(f"3yr history PNG attached for {ticker} ({len(_hist_png)} bytes)")
             except Exception as e:
-                log.error(f"3yr history PNG upload failed for {ticker}: {e}")
+                _hist_png = None
+                log.error(f"3yr history PNG render failed for {ticker}: {e}")
+            if _hist_png:
+                upload_png_to_slack(_hist_png,
+                                    f"hist3yr_{ticker.replace('.', '_')}.png",
+                                    f"3-year history — {ticker}",
+                                    channel_id, bot_token)
 
         # ── Component C: the long quality report (1/n thread) MUST accompany every published
         # instrument (user 2026-06-16). A publication = card + short tweet + long thread; short

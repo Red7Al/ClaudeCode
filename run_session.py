@@ -23,6 +23,14 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.9.0   2026-06-24  Alex Hind   (user 2026-06-24) FIX noisy + mislabelled "Circuit Breaker Triggered" on an unaffordable
+#                                 instrument (SOLUSD SELL, every monitor rescan): a size<=0 skip is a MISSED TRADE, not a
+#                                 circuit-breaker event, and alert_circuit_breaker has NO dedup so it re-fired every 5-min
+#                                 cycle. The monitor-rescan path now uses alert_missed_trade() — same as the session-open
+#                                 size<=0 path — which dedups per (day, ticker, direction, reason class), posts the FIRST
+#                                 occurrence WITH a corrective action, and silently bumps a counter on repeats. Resolves the
+#                                 repeat-error spam at source rather than tolerating it. (Supersedes the 1.2.0 choice of
+#                                 alert_circuit_breaker for size==0, which predated alert_missed_trade's dedup.)
 # 1.8.0   2026-06-15  Alex Hind   run_session_close holds HVF SWING positions overnight (user 2026-06-15: "hold positions
 #                                 overnight to meet HVF target price"). They carry their own IG limit (AMP1 target) + stop,
 #                                 so the generic 1.5×-risk session-close profit-lock no longer force-closes them; identified
@@ -654,15 +662,22 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                                 log.warning(f"Monitor size calc failed for {ticker}: {e}")
 
                             if size <= 0:
+                                # A size<=0 skip is a MISSED TRADE, not a circuit-breaker event
+                                # (user 2026-06-24). Route through alert_missed_trade so it dedups
+                                # per (day, ticker, direction, reason class) — SOLUSD and any other
+                                # structurally-unaffordable instrument alerts ONCE with a corrective
+                                # action, not on every monitor rescan. Mirrors the session-open path.
                                 msg = (
                                     f"{ticker} ({sig['direction']}) — monitor rescan trade "
                                     f"skipped: calculated size is zero. "
                                     f"Likely cause: margin too small for IG minimum deal size."
                                 )
                                 log.warning(msg)
-                                alert_circuit_breaker(
-                                    profile["name"], ticker, msg
-                                )
+                                alert_missed_trade(
+                                    ticker, sig["direction"],
+                                    "calculated size is 0 — account margin too small for IG min deal "
+                                    "size, or a wrong/404 epic. Review balance / risk_per_trade / epic.",
+                                    sig.get("signal_summary", f"[{session_name} rescan]"))
                                 continue
 
                             from signals import conf_names

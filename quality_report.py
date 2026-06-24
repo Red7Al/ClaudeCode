@@ -30,6 +30,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.20.0  2026-06-24  Alex Hind   (user 2026-06-24) Reworded a chart-open variant that didn't read well ("The chart adds the
+#                                 why-now.") -> "Now the timing." — same intent (the chart explains why this is a NOW setup)
+#                                 in plain English.
 # 1.19.0  2026-06-22  Alex Hind   (user 2026-06-22) (E) analyst line reads "Of N analysts rating <TICKER>" (was "rating it").
 #                                 (F) a near-flat analyst target now reads "their average price target is roughly in line with
 #                                 the current price" (was the confusing "price targets sit about 0% below") — and it's framed as
@@ -426,7 +429,7 @@ def _pick(pool, ticker, salt):
 _P_CHART_OPEN = [
     "Now the chart. {name} has spent months winding into a tighter and tighter range.",
     "Here's the timing too: on the chart, {name} has coiled for months into a steadily narrowing range.",
-    "The chart adds the why-now. {name} has been squeezing into an ever-narrower range for months.",
+    "Now the timing. {name} has been squeezing into an ever-narrower range for months.",
 ]
 _P_CHART_SQUEEZE = [
     "The rallies kept getting capped while the dips held higher, tightening the range to about {pct} of its original width.",
