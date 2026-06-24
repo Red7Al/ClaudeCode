@@ -38,21 +38,38 @@ new `get_epic` identity guard (so they cannot be wrong‑traded). The items belo
 that need a human decision or a manual IG lookup. None is a trade risk while purged (the guard
 refuses an unverified ticker rather than trade it).
 
-- [ ] **PYPL (PayPal)** — IG lists *two* "PayPal Holdings Inc" lines (US + a foreign listing).
-  Decide which (likely the US DFB) and pin it.
-- [ ] **MSTR (Strategy / ex‑MicroStrategy)** — Yahoo renamed it "Strategy Inc"; IG still shows
-  "MicroStrategy Inc", so the name‑matcher can't link the rename. Pin manually (verify the IG
-  "MicroStrategy" epic) or add a rename alias.
-- [ ] **SYM, MP, FLY, FTAI, LUNR, QBTS, RGTI** — IG search didn't surface a plain‑equity epic
-  (Symbotic, MP Materials, Firefly Aerospace, FTAI Aviation, Intuitive Machines, D‑Wave, Rigetti).
-  Confirm whether IG lists each; pin if so, otherwise drop from the scan universe.
-- [ ] **SPCH, SPCL, SPCU, MSTY, NVDS** — these are **leveraged/inverse ETFs**, not equities (e.g.
-  "Defiance Daily 2X …", "YieldMax …", "Tradr 1.5X Short NVDA"). Decide whether to remove them
-  from the scan universe entirely (they shouldn't be traded as shares).
-- [ ] **GLD** — cached a JSE "NewGold Issuer" ETF vs Yahoo "SPDR Gold Shares" (US GLD). Decide
-  intended instrument and pin.
-- [ ] **DJT** — cached the Dow index ("Wall Street") vs Yahoo "Trump Media & Technology Group".
-  Decide intended instrument and pin.
+IG /markets candidates retrieved 2026-06-24 via `run_data_quality_audit.py --lookup-epic`
+(trading-data-quality workflow). Each epic below verified by IG INSTRUMENT NAME. NOT YET PINNED —
+pinning = upsert `epic_lookup` (correct epic+description) so get_epic returns it by name match, plus
+an `ig_shim._EPIC_VERIFIED_OVERRIDES` entry where the IG/Yahoo names differ. Money-path: confirm
+before writing.
+
+RESOLVED epics (ready to pin):
+- [ ] **PYPL** → `UC.D.PYPLVUS.DAILY.IP` "PayPal Holdings Inc (24 Hours)" (US DFB). NB a "PYPL"
+  ticker search returns the *YieldMax PYPL ETF* (SI.D.PYPYUS) — the right epic only surfaces on a
+  "PayPal" name search, so PYPL MUST be pinned (auto-resolve can't find it).
+- [ ] **MSTR** → `UC.D.MSTR.DAILY.IP` "Strategy Inc (24 Hours)". IG has adopted the rename, so the
+  name-matcher should link now; pin to be safe (avoid the AB.D.MSTRAU Morningstar ETF).
+- [ ] **SYM** → `UD.D.SVFCUS.DAILY.IP` "Symbotic Inc" (epic body ≠ ticker → must pin).
+- [ ] **FLY** → `UB.D.FLYUS.DAILY.IP` "Firefly Aerospace Inc".
+- [ ] **FTAI** → `SC.D.FTAIUS.DAILY.IP` "Fortress Transportation and Infrastructure Investors LLC"
+  (= FTAI Aviation, pre-rename). Distinct from UB.D.FIPUS "FTAI Infrastructure" (FIP).
+- [ ] **LUNR** → `UB.D.LUNRUS.DAILY.IP` "Intuitive Machines Inc".
+- [ ] **QBTS** → `SH.D.XPOAUUS.DAILY.IP` "D Wave Quantum Inc" (ticker search returns only the
+  Defiance 2X Short QBTS ETF → must pin to the name-search epic).
+- [ ] **RGTI** → `SG.D.SNIIUS.DAILY.IP` "Rigetti Computing Inc" (ticker search returns only the
+  Defiance 2X Short RGTI ETF → must pin).
+- [ ] **GLD** → `SI.D.GLDUS.DAILY.IP` "SPDR Gold Shares (24 Hours)" (US). Avoid AR.D.GLDSJ NewGold
+  (JSE) and AG.D.GLDSP (EDITS_ONLY).
+
+STILL UNRESOLVED:
+- [ ] **DJT (Trump Media)** — neither "DJT" nor "TrumpMedia" returns it; IG may list it as
+  "Trump Media & Technology". Needs a multi-word search (the lookup tool currently splits on spaces).
+- [ ] **MP (MP Materials)** — "MP" returns MPLX / Mpact / Mpac / MP Evans, not MP Materials. Needs a
+  multi-word "MP Materials" search. Drop from universe if IG genuinely doesn't list it.
+- [ ] **SPCH, SPCL, SPCU, MSTY, NVDS** — **leveraged/inverse ETFs**, not equities (Defiance 2X /
+  YieldMax / Tradr 1.5X Short NVDA). Recommend REMOVE from the scan universe (shouldn't trade as
+  shares). Same class as the leveraged-ETF tickers above that returned only Defiance/YieldMax lines.
 
 Done in the same effort (for reference): AXP→American Express `SA.D.AXP.DAILY.IP`,
 AXP.AX→AXP Energy `AB.D.AKKAU.DAILY.IP`, SPGI, BMY, TGT, WDC, BSX, SMR, COHR, BKSY, HMC pinned;
