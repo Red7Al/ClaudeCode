@@ -35,6 +35,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.0   2026-06-24  Alex Hind   (user 2026-06-24) Added a read-only `--lookup-epic TICKER...` diagnostic: prints the IG
+#                                 /markets search candidates (epic, expiry, type, name) for tickers whose epic mapping needs
+#                                 a human pin decision (backlog: PYPL/MSTR/GLD/DJT + unmapped names). No pin, no trade — just
+#                                 surfaces the options so the correct epic can be added to ig_shim._EPIC_VERIFIED_OVERRIDES.
+#                                 Wired into trading-data-quality.yml via the lookup_epics input.
 # 1.2.0   2026-06-12  Alex Hind   Phase 2: full-cache identity sweep EVERY night — every cached epic (all markets,
 #                                 zero IG allowance) verified via ig_shim.instrument_names_match (shared with get_epic
 #                                 so the rule cannot drift). Closes the ASX gap: the UK-only identity check left US/AU
@@ -290,8 +295,30 @@ def _identity_sweep_all_cached() -> list:
     return findings
 
 
+def _lookup_epics(tickers: list):
+    """Read-only IG /markets search (user 2026-06-24): print every candidate market for each ticker
+    so the correct epic can be picked for a human pin (ig_shim._EPIC_VERIFIED_OVERRIDES). Never trades,
+    never writes. The same scoring get_epic uses is shown so the auto-pick is visible alongside."""
+    from ig_shim import session
+    for t in tickers:
+        try:
+            data = session.get("/markets", params={"searchTerm": t}, version="1")
+            mkts = data.get("markets", [])
+            log.info(f"=== {t}: {len(mkts)} IG candidate(s) (showing up to 15) ===")
+            for m in mkts[:15]:
+                print(f"  {t:<8} epic={str(m.get('epic')):<30} expiry={str(m.get('expiry','?')):<6} "
+                      f"type={str(m.get('instrumentType','?')):<12} "
+                      f"status={str(m.get('marketStatus','?')):<10} {m.get('instrumentName','')}")
+        except Exception as e:
+            log.error(f"{t}: IG /markets search failed — {e}")
+
+
 def main():
     args = sys.argv[1:]
+    # Epic-lookup diagnostic — run BEFORE the audit-batch parsing so it never triggers a price audit.
+    if args and args[0] == "--lookup-epic":
+        _lookup_epics(args[1:])
+        return
     if args and not args[0].isdigit():
         batch = args
     else:

@@ -5,6 +5,11 @@ name: Data Quality Audit (nightly — 2026-06-12)
 # schedule: block (GitHub-native cron is banned, user directive 2026-06-07).
 on:
   workflow_dispatch:
+    inputs:
+      lookup_epics:
+        description: 'Read-only: space-separated tickers to print IG /markets candidates for (epic pin decisions). Empty = run the normal audit.'
+        required: false
+        default: ''
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -30,4 +35,10 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
       - run: python run_schema.py
-      - run: python run_data_quality_audit.py
+      - name: Audit or epic-lookup
+        run: |
+          if [ -n "${{ inputs.lookup_epics }}" ]; then
+            python run_data_quality_audit.py --lookup-epic ${{ inputs.lookup_epics }}
+          else
+            python run_data_quality_audit.py
+          fi
