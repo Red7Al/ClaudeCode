@@ -24,6 +24,11 @@ jobs:
       SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
       SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
       SLACK_TWITTER:         ${{ secrets.SLACK_TWITTER }}
+      # Needed to attach the HVF card PNG to the dossier post (user 2026-06-23).
+      # SLACK_SIGNALS_CHANNEL_ID = the #signals channel id; SLACK_BOT_TOKEN must
+      # have files:write. Absent -> dossier still posts text, just no PNG.
+      SLACK_BOT_TOKEN:          ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_SIGNALS_CHANNEL_ID: ${{ secrets.SLACK_SIGNALS_CHANNEL_ID }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
