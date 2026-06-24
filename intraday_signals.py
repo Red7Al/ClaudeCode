@@ -23,6 +23,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.48.0  2026-06-24  Alex Hind   (user 2026-06-24) Single source of truth for the instrument NAME: _resolve_name now
+#                                 delegates to the new instrument_name.company_name (yfinance-first). Removes the duplicate
+#                                 resolver that disagreed with social_monitor/notify (the MSTR -> "Morningstar AU ETF" vs
+#                                 "Strategy Inc" split). _RESOLVED_NAMES cache removed (the shared module caches).
 # 1.47.0  2026-06-24  Alex Hind   (user 2026-06-24) Tweet punctuation/casing: (B) the hook line now ends with a full stop
 #                                 (the JIGI "rounding over" hook had none) — _full_stop() unless it already ends . ! or ?.
 #                                 (C) each confirmation in the justification line is now sentence-cased ("ahead of MCD" ->
@@ -1169,7 +1173,6 @@ def _tf_desc(tf_raw: str) -> str:
     return mapping.get(tf_raw, tf_raw or "multi-month")
 
 
-_RESOLVED_NAMES: dict = {}   # ticker -> full name, cached per process
 _YF_INFO_CACHE: dict = {}    # ticker -> yfinance .info, fetched once per process
 
 
@@ -1269,56 +1272,12 @@ def _yf_weekly_3y(ticker: str):
 
 
 def _resolve_name(ticker: str) -> str:
-    """
-    Full instrument name for a ticker (memory/feedback_instrument_names: always
-    show the full name - scanner rows carry no name, which produced
-    "$BRGE.L (BRGE.L)" in tweets). Sources in order (user 2026-06-19):
-    1. yfinance longName/shortName for the EXACT Yahoo ticker the scanner used — the
-       authoritative company name for the publication.
-    2. notify's epic_lookup cache — FALLBACK only (it can carry a wrong-instrument name,
-       e.g. AXP -> "AXP Energy Limited" instead of NYSE American Express).
-    Cached per process; falls back to the bare ticker.
-    """
-    if ticker in _RESOLVED_NAMES:
-        return _RESOLVED_NAMES[ticker]
-    name = None
-    # 1. yfinance longName/shortName for the EXACT Yahoo ticker the scanner used — the
-    #    authoritative company name for the publication. notify's epic_lookup can carry a
-    #    WRONG-INSTRUMENT name (AXP -> "AXP Energy Limited" instead of NYSE American Express,
-    #    user 2026-06-19), so it is only a FALLBACK now.
-    try:
-        import re as _re
-        info = _yf_info(ticker)
-        # Prefer longName (properly cased, e.g. "HSBC Holdings plc") over shortName (ALL CAPS +
-        # share-class noise). NEVER .title() the whole name — that mangles acronyms (HSBC → Hsbc).
-        name = info.get("longName") or info.get("shortName")
-        if name:
-            name = name.split(" ORD")[0].split(" REIT")[0].strip()
-            # A trailing standalone "Or"/"Ord"/"Ordinary" token is share-class noise (user 2026-06-15).
-            name = _re.sub(r"\s+Or(?:d(?:inary)?)?\s*$", "", name, flags=_re.I).strip()
-            # Normalise the legal-form suffix to "PLC" (spelled-out form, then plc/p.l.c./Plc).
-            name = _re.sub(r"\s+Public\s+Limited\s+Company\s*$", " PLC", name, flags=_re.I).strip()
-            name = _re.sub(r"[\s.]*[Pp]\.?[Ll]\.?[Cc]\.?\s*$", " PLC", name).strip()
-            # A shortName STILL all-caps → title-case, keeping short (<=4 char) tokens as acronyms.
-            if name.isupper():
-                name = " ".join(w if len(w) <= 4 else w.capitalize()
-                                for w in name.split())
-    except Exception:
-        name = None
-    # 2. Fallback: notify's epic_lookup cache (instruments the system has traded) — only when
-    #    yfinance has no name. (It can be wrong-instrument, so never preferred over yfinance.)
-    if not name:
-        try:
-            from notify import fmt
-            for key in ([ticker, ticker[:-2]] if ticker.endswith(".L") else [ticker]):
-                s = fmt(key)
-                if s.endswith(")") and "(" in s:
-                    name = s[s.index("(") + 1:-1]
-                    break
-        except Exception:
-            pass
-    _RESOLVED_NAMES[ticker] = name or ticker
-    return _RESOLVED_NAMES[ticker]
+    """Full instrument name for a ticker — delegates to the SINGLE source of truth
+    instrument_name.company_name (user 2026-06-24: "the correct name should only be in one place").
+    Falls back to the bare ticker. (Was a separate yfinance-first resolver; consolidated so the
+    dossier / tweets / alerts can no longer disagree — e.g. MSTR showing the Morningstar AU ETF.)"""
+    from instrument_name import company_name
+    return company_name(ticker) or ticker
 
 
 _EXCHANGE_TAGS: dict = {}

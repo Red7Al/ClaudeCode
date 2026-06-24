@@ -21,6 +21,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.12.0  2026-06-24  Alex Hind   (user 2026-06-24) Single source of truth for the instrument NAME: fmt()/_instrument_name
+#                                 now resolve via instrument_name.company_name (yfinance-first) instead of the local
+#                                 epic_lookup cache, which could serve a stale wrong-instrument name (MSTR -> Morningstar AU
+#                                 ETF). Removed the now-duplicate _load_names / _clean_name / _NAME_CACHE.
 # 1.11.0  2026-06-24  Alex Hind   (user 2026-06-24) INSUFFICIENT_FUNDS is now auto-silenced too (daily summary only, not
 #                                 paged per occurrence): "DO NOT REPORT THESE INDIVIDUALLY — a daily summary is fine". Same
 #                                 standing-account-fact class as ACCOUNT_TOO_SMALL; its summarize_missed_trades() line keeps
@@ -165,44 +169,6 @@ _SIGNAL_KEY = ("PA = price action · BB = Bollinger Bands · COT = Commitment of
                "HVF = Hunt Volatility Funnel · Confs = confirmations · R:R = risk:reward")
 
 
-_NAME_CACHE = None   # ticker -> clean name, loaded once per process
-
-
-def _clean_name(desc: str) -> str:
-    """
-    Reduce an IG market description to the bare instrument/company name.
-        'CleanSpark Inc (24 Hours)'                       -> 'CleanSpark Inc'
-        'Nebius Group NV (24 Hours) - uses old Yandex epic'-> 'Nebius Group NV'
-        'GBP/USD'                                          -> 'GBP/USD'
-    """
-    if not desc:
-        return ""
-    name = desc.split(" - ")[0]                    # drop editorial " - ..." notes
-    name = re.sub(r"\s*\([^)]*\)\s*$", "", name)   # drop trailing "(24 Hours)" etc.
-    return name.strip()
-
-
-def _load_names() -> dict:
-    """
-    Load and cache the ticker -> clean-name map from epic_lookup. One query per
-    process (not one per message), so a session summary listing many instruments
-    no longer opens a DB connection per ticker. Falls back to an empty map (so
-    fmt() degrades to the bare ticker) if the DB is unreachable.
-    """
-    global _NAME_CACHE
-    if _NAME_CACHE is not None:
-        return _NAME_CACHE
-    cache = {}
-    try:
-        conn = _pool_get_db()
-        for tk, desc in conn.run("select ticker, description from epic_lookup"):
-            cache[tk] = _clean_name(desc)
-        conn.close()
-    except Exception as e:
-        log.warning(f"instrument-name cache load failed (using bare tickers): {e}")
-    _NAME_CACHE = cache
-    return cache
-
 
 def fmt(ticker: str) -> str:
     """
@@ -213,16 +179,24 @@ def fmt(ticker: str) -> str:
     just the ticker when no name is known.
         fmt('CLSK')   -> 'CLSK (CleanSpark Inc)'
         fmt('XAUUSD') -> 'XAUUSD (Spot Gold)'
+
+    The name comes from instrument_name.company_name — the SINGLE source of truth (user 2026-06-24:
+    "the correct name should only be in one place"). It is yfinance-first, so a stale wrong
+    epic_lookup row can no longer mislabel an instrument (e.g. MSTR -> "Morningstar ... ETF").
     """
     if not ticker:
         return ticker or ""
-    name = _load_names().get(ticker, "")
+    name = _instrument_name(ticker)
     return f"{ticker} ({name})" if name and name != ticker else ticker
 
 
 def _instrument_name(ticker: str) -> str:
-    """Backwards-compatible: clean name only (no ticker prefix). Prefer fmt()."""
-    return _load_names().get(ticker, "") or ticker
+    """Clean name only (no ticker prefix), from the single source of truth. Prefer fmt()."""
+    try:
+        from instrument_name import company_name
+        return company_name(ticker) or ticker
+    except Exception:
+        return ticker
 
 
 def should_post_summary(min_hours: int = 2) -> bool:

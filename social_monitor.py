@@ -31,6 +31,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.14.0  2026-06-24  Alex Hind   (user 2026-06-24) get_company_name now delegates to instrument_name.company_name (the
+#                                 single source of truth, yfinance-first). It used to prefer epic_lookup.description — the
+#                                 stale wrong MSTR row — which is why the dossier read "MSTR (Morningstar International
+#                                 Shares Active ETF)" while the trade used Strategy Inc.
 # 1.13.0  2026-06-24  Alex Hind   (user 2026-06-24) Cross-account sub-lines now carry a clickable tweet link + the stored
 #                                 sentiment: "↳ @pelositracker SHORT (24/06) 🔗". New notable_investors.post_url column
 #                                 stores each account's durable x.com tweet link (legacy rows fall back to the URL embedded
@@ -355,40 +359,13 @@ def save_new_pick(ticker: str, investor_name: str, source: str, post_url: str):
 # ======================================================================================================================
 
 def get_company_name(ticker: str) -> str:
-    """
-    Look up the full company name for a ticker.
-    1. Tries epic_lookup.description (IG name, stripped of suffix)
-    2. Falls back to Yahoo Finance shortName
-    Returns empty string if both fail.
-    """
-    # Try epic_lookup first
-    try:
-        conn = _pool_get_db()
-        rows = conn.run(
-            "select description from epic_lookup where ticker = :t limit 1", t=ticker
-        )
-        conn.close()
-        if rows and rows[0][0]:
-            name = rows[0][0]
-            # Strip IG suffix patterns like "(24 Hours)", "(Daily)", etc.
-            import re
-            name = re.sub(r'\s*\(.*?(Hours|Daily|DFB|Spot).*?\)\s*$', '', name, flags=re.IGNORECASE).strip()
-            if name and name != ticker:
-                return name
-    except Exception:
-        pass
-
-    # Fallback: Yahoo Finance
-    try:
-        import yfinance as yf
-        info = yf.Ticker(ticker).info
-        name = info.get("shortName") or info.get("longName", "")
-        if name and name != ticker:
-            return name
-    except Exception:
-        pass
-
-    return ""
+    """Full company name for a ticker — delegates to the SINGLE source of truth
+    instrument_name.company_name (user 2026-06-24: "the correct name should only be in one place").
+    Previously this preferred epic_lookup.description, which is exactly how the dossier showed
+    "MSTR (Morningstar International Shares Active ETF)" — a stale wrong cache row — while the trade
+    used Strategy Inc. Now yfinance-first like everything else. Returns '' if unknown."""
+    from instrument_name import company_name
+    return company_name(ticker)
 
 
 def _run_dossier_to_signals(ticker: str, name: str, slack_url: str, verdict: str = "CONFIRM_LONG"):
