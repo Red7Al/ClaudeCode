@@ -38,28 +38,27 @@ new `get_epic` identity guard (so they cannot be wrong‑traded). The items belo
 that need a human decision or a manual IG lookup. None is a trade risk while purged (the guard
 refuses an unverified ticker rather than trade it).
 
-IG /markets candidates retrieved 2026-06-24 via `run_data_quality_audit.py --lookup-epic`
-(trading-data-quality workflow). Each epic below verified by IG INSTRUMENT NAME. NOT YET PINNED —
-pinning = upsert `epic_lookup` (correct epic+description) so get_epic returns it by name match, plus
-an `ig_shim._EPIC_VERIFIED_OVERRIDES` entry where the IG/Yahoo names differ. Money-path: confirm
-before writing.
+IG /markets candidates retrieved 2026-06-24 via `run_data_quality_audit.py --lookup-epic`. The 9
+below are now **PINNED + verified** (ig_shim 1.17.0 `_EPIC_VERIFIED_OVERRIDES` + get_epic Step 0);
+`--verify-epic` confirmed each resolves TRADEABLE to the right IG company on 2026-06-24. No further
+action — they are tradeable.
 
-RESOLVED epics (ready to pin):
-- [ ] **PYPL** → `UC.D.PYPLVUS.DAILY.IP` "PayPal Holdings Inc (24 Hours)" (US DFB). NB a "PYPL"
+PINNED 2026-06-24 (done):
+- [x] **PYPL** → `UC.D.PYPLVUS.DAILY.IP` "PayPal Holdings Inc (24 Hours)" (US DFB). NB a "PYPL"
   ticker search returns the *YieldMax PYPL ETF* (SI.D.PYPYUS) — the right epic only surfaces on a
   "PayPal" name search, so PYPL MUST be pinned (auto-resolve can't find it).
-- [ ] **MSTR** → `UC.D.MSTR.DAILY.IP` "Strategy Inc (24 Hours)". IG has adopted the rename, so the
+- [x] **MSTR** → `UC.D.MSTR.DAILY.IP` "Strategy Inc (24 Hours)". IG has adopted the rename, so the
   name-matcher should link now; pin to be safe (avoid the AB.D.MSTRAU Morningstar ETF).
-- [ ] **SYM** → `UD.D.SVFCUS.DAILY.IP` "Symbotic Inc" (epic body ≠ ticker → must pin).
-- [ ] **FLY** → `UB.D.FLYUS.DAILY.IP` "Firefly Aerospace Inc".
-- [ ] **FTAI** → `SC.D.FTAIUS.DAILY.IP` "Fortress Transportation and Infrastructure Investors LLC"
+- [x] **SYM** → `UD.D.SVFCUS.DAILY.IP` "Symbotic Inc" (epic body ≠ ticker → must pin).
+- [x] **FLY** → `UB.D.FLYUS.DAILY.IP` "Firefly Aerospace Inc".
+- [x] **FTAI** → `SC.D.FTAIUS.DAILY.IP` "Fortress Transportation and Infrastructure Investors LLC"
   (= FTAI Aviation, pre-rename). Distinct from UB.D.FIPUS "FTAI Infrastructure" (FIP).
-- [ ] **LUNR** → `UB.D.LUNRUS.DAILY.IP` "Intuitive Machines Inc".
-- [ ] **QBTS** → `SH.D.XPOAUUS.DAILY.IP` "D Wave Quantum Inc" (ticker search returns only the
+- [x] **LUNR** → `UB.D.LUNRUS.DAILY.IP` "Intuitive Machines Inc".
+- [x] **QBTS** → `SH.D.XPOAUUS.DAILY.IP` "D Wave Quantum Inc" (ticker search returns only the
   Defiance 2X Short QBTS ETF → must pin to the name-search epic).
-- [ ] **RGTI** → `SG.D.SNIIUS.DAILY.IP` "Rigetti Computing Inc" (ticker search returns only the
+- [x] **RGTI** → `SG.D.SNIIUS.DAILY.IP` "Rigetti Computing Inc" (ticker search returns only the
   Defiance 2X Short RGTI ETF → must pin).
-- [ ] **GLD** → `SI.D.GLDUS.DAILY.IP` "SPDR Gold Shares (24 Hours)" (US). Avoid AR.D.GLDSJ NewGold
+- [x] **GLD** → `SI.D.GLDUS.DAILY.IP` "SPDR Gold Shares (24 Hours)" (US). Avoid AR.D.GLDSJ NewGold
   (JSE) and AG.D.GLDSP (EDITS_ONLY).
 
 STILL UNRESOLVED:
