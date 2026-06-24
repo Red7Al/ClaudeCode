@@ -2,6 +2,22 @@
 
 Deferred items (not blocking). Add new items at the top of the relevant section.
 
+## Trades failing to be placed — added 2026-06-24
+
+- [ ] **Working-order size=0 still pages individually** (e.g. *IREN (IREN Limited) BUY — "[working
+  order] calculated size is 0 — balance too small for IG min deal size, or margin/epic problem"*).
+  This is the THIRD size-zero path. The 2026-06-24 ACCOUNT_TOO_SMALL work only covered run_session's
+  two paths (session-open + monitor-rescan); the working-order path was missed
+  (`ig_shim.py::place_hvf_order_from_sig`, the `if size <= 0` alert ~line 2521). Its hardcoded reason
+  contains "calculated size is 0" → `_classify_missed_trade` returns **SIZE_ZERO (paged)**, not the
+  silenced **ACCOUNT_TOO_SMALL (daily summary)** — so unaffordable working orders still flood #alerts.
+  **Fix (low-risk, consistent):** that path already calls `calculate_position_size`, so
+  `ig_shim.LAST_SIZE_SKIP[epic]` is populated — classify the alert from it exactly like
+  `run_session._size_skip_reason()`: `ACCOUNT_TOO_SMALL` → funding-gap reason (silenced + summarised),
+  otherwise the generic SIZE_ZERO. Then IREN-type skips roll into the once-a-day summary like the
+  other paths. Same root cause as the crypto skips — account too small (user chose to fund), see
+  the ACCOUNT_TOO_SMALL handling in notify.py/run_session.py/ig_shim.py.
+
 ## Publication enrichment — added 2026-06-20
 
 - [ ] **Competitor / news context on X tweets** (user 2026-06-20: "for $NKE look at articles
