@@ -31,6 +31,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.13.0  2026-06-24  Alex Hind   (user 2026-06-24) Cross-account sub-lines now carry a clickable tweet link + the stored
+#                                 sentiment: "↳ @pelositracker SHORT (24/06) 🔗". New notable_investors.post_url column
+#                                 stores each account's durable x.com tweet link (legacy rows fall back to the URL embedded
+#                                 in notes). Direction shows where stored, "—" otherwise ("sentiment if you have it").
 # 1.12.0  2026-06-24  Alex Hind   (user 2026-06-24) Added 3 tracked X accounts: @investingvisual, @brikka_trading,
 #                                 @sam_Badawi.
 # 1.11.0  2026-06-24  Alex Hind   (user 2026-06-24) X-mentions alert: (A) each line now carries a clickable durable x.com
@@ -308,13 +312,15 @@ def is_new_ticker(ticker: str, investor_name: str) -> bool:
 
 def save_new_pick(ticker: str, investor_name: str, source: str, post_url: str):
     """Save a newly discovered ticker pick to Supabase and look up IG epic."""
+    _ensure_direction_column()                       # make sure post_url column exists
+    _url = _canonical_x_url(post_url)                # durable x.com link (user 2026-06-24)
     db_run(
         """insert into notable_investors
-           (investor_name, ticker, action, source, disclosed_at, notes)
-           values (:v_investor, :v_ticker, 'NEW', :v_source, current_date, :v_notes)
+           (investor_name, ticker, action, source, disclosed_at, notes, post_url)
+           values (:v_investor, :v_ticker, 'NEW', :v_source, current_date, :v_notes, :v_url)
            on conflict do nothing""",
         v_investor=investor_name, v_ticker=ticker, v_source=source,
-        v_notes=f"Discovered via RSS monitoring | {post_url}"
+        v_notes=f"Discovered via RSS monitoring | {post_url}", v_url=_url
     )
     log.info(f"New pick saved: {ticker} from {investor_name}")
 
@@ -440,16 +446,17 @@ _INVESTOR_HANDLE = {a["name"]: a["handle"] for a in TRACKED_ACCOUNTS}
 
 
 def _ensure_direction_column():
-    """Add notable_investors.direction once, idempotently (user 2026-06-24). Stores the system read
-    (LONG/SHORT/WATCH) at the moment each account flags a ticker, so a new mention can show every
-    account's latest position on that instrument."""
+    """Add notable_investors.direction + post_url once, idempotently (user 2026-06-24). direction =
+    the system read (LONG/SHORT/WATCH) when each account flagged the ticker; post_url = that account's
+    tweet link. Both let a new mention show every account's latest position AND a link to their tweet."""
     global _DIRECTION_COLUMN_READY
     if _DIRECTION_COLUMN_READY:
         return
-    try:
-        db_run("alter table notable_investors add column if not exists direction text")
-    except Exception as e:
-        log.debug(f"direction column ensure skipped: {e}")
+    for _col in ("direction text", "post_url text"):
+        try:
+            db_run(f"alter table notable_investors add column if not exists {_col}")
+        except Exception as e:
+            log.debug(f"column ensure skipped ({_col}): {e}")
     _DIRECTION_COLUMN_READY = True
 
 
@@ -474,21 +481,27 @@ def _canonical_x_url(link: str) -> str:
 
 def _other_account_positions(ticker: str, exclude_name: str) -> list:
     """Other tracked accounts that have flagged this ticker — latest row per account, newest first.
-    Returns [(handle, direction_or_dash, 'DD/MM')]. Best-effort; [] on any DB error."""
+    Returns [(handle, direction_or_dash, 'DD/MM', tweet_url)]. The tweet URL comes from the post_url
+    column, falling back to the link embedded in the legacy notes ('... | <url>'). Best-effort; [] on
+    any DB error."""
     try:
         rows = db_run(
-            "select investor_name, coalesce(direction, '—'), to_char(disclosed_at, 'DD/MM') "
-            "from notable_investors where ticker = :t and investor_name != :i "
+            "select investor_name, coalesce(direction, '—'), to_char(disclosed_at, 'DD/MM'), "
+            "post_url, notes from notable_investors where ticker = :t and investor_name != :i "
             "order by disclosed_at desc, recorded_at desc", t=ticker, i=exclude_name)
     except Exception as e:
         log.debug(f"cross-account lookup failed for {ticker}: {e}")
         return []
     seen, out = set(), []
-    for name, direction, dt in rows:
+    for name, direction, dt, post_url, notes in rows:
         if name in seen:
             continue
         seen.add(name)
-        out.append((_handle_for_investor(name), direction, dt))
+        url = post_url or ""
+        if not url and notes:                       # legacy rows stored the link in notes
+            m = re.search(r"https?://\S+", notes)
+            url = m.group(0) if m else ""
+        out.append((_handle_for_investor(name), direction, dt, _canonical_x_url(url)))
     return out
 
 
@@ -572,9 +585,11 @@ def alert_new_picks(new_picks: list):
             lines += "\n"
         link = f"  <{url}|🔗 tweet>" if url else ""
         lines += f"• *{label}* via {handle} — {pa_str}{link}\n"
-        # Other tracked accounts' latest position on the SAME instrument (user 2026-06-24).
-        for _oh, _od, _odt in _other_account_positions(ticker, inv_name):
-            lines += f"        ↳ {_oh} {_od} ({_odt})\n"
+        # Other tracked accounts' latest position on the SAME instrument, each with a tweet link
+        # and (where stored) their sentiment (user 2026-06-24).
+        for _oh, _od, _odt, _ourl in _other_account_positions(ticker, inv_name):
+            _olink = f"  <{_ourl}|🔗>" if _ourl else ""
+            lines += f"        ↳ {_oh} {_od} ({_odt}){_olink}\n"
         prev_group = group
 
     blocks = [

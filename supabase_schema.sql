@@ -253,9 +253,11 @@ create table if not exists notable_investors (
     quarter         text,
     notes           text,
     direction       text,           -- system read (LONG/SHORT/WATCH) at the moment this account flagged the ticker (2026-06-24)
+    post_url        text,           -- the account's tweet link for this pick (2026-06-24)
     recorded_at     timestamptz default now()
 );
 alter table notable_investors add column if not exists direction text;
+alter table notable_investors add column if not exists post_url text;
 
 
 -- ---------------------------------------------------------------------------
