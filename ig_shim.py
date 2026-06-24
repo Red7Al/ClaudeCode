@@ -23,6 +23,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.16.0  2026-06-24  Alex Hind   (user 2026-06-24) calculate_position_size now records WHY it returned size 0 in the
+#                                 module-level LAST_SIZE_SKIP[epic] = (reason, needed_margin, available): ACCOUNT_TOO_SMALL
+#                                 (structural — min deal margin > available, e.g. crypto on a small account), or ERROR
+#                                 (exception). Lets callers distinguish an EXPECTED unaffordable skip (summarise the funding
+#                                 gap, don't page per cycle) from a genuine fixable size=0 (real missed trade -> alert).
+#                                 Cleared on a successful size. No change to the size value or any trade decision.
 # 1.15.0  2026-06-22  Alex Hind   (user 2026-06-22) (a) check_circuit_breakers(skip_spread=) — place_working_order (HVF path)
 #                                 now skips the spread-width check ("an HVF-triggered order has no need to check spread").
 #                                 (b) the price-outside-funnel / wrong-epic guards now alert SILENTLY (logged, not Slacked).
@@ -342,6 +348,14 @@ session = IGSession()
 # Account
 # ======================================================================================================================
 
+# Records WHY the last size calc returned 0 for an epic, so callers can resolve the right response
+# (user 2026-06-24). ACCOUNT_TOO_SMALL = the account cannot meet IG's minimum deal margin for this
+# instrument (a STANDING fact for the current balance — e.g. crypto minimums vs a small account), to be
+# summarised with its funding gap, not paged every cycle. ERROR = an exception (genuine missed trade).
+# Keyed by epic; (reason, needed_margin_gbp, available_gbp). Cleared when a real size is produced.
+LAST_SIZE_SKIP: dict = {}
+
+
 def calculate_position_size(epic: str, stop_distance: float,
                             risk_amount: float,
                             available_funds: float = None) -> tuple[float, float]:
@@ -432,23 +446,31 @@ def calculate_position_size(epic: str, stop_distance: float,
                     f"Actual risk: {actual_risk_currency} ({actual_risk_pct:.2f}% of available). "
                     f"Margin cost: {min_size_margin_cost:.2f} vs available: {available:.2f}"
                 )
+                LAST_SIZE_SKIP.pop(epic, None)
                 return min_size, stop_distance
 
             else:
-                # Account cannot afford even the minimum deal margin — skip.
+                # Account cannot afford even the minimum deal margin — skip. STRUCTURAL, not
+                # transient: it recurs every cycle until the balance rises or the instrument is
+                # removed from the universe. Record the funding gap so the caller summarises it
+                # (once/day, with the gap) rather than paging an un-actionable alert each cycle.
                 log.warning(
                     f"{epic}: calculated size {size:.4f} below IG minimum {min_size} "
                     f"AND minimum margin cost ({min_size_margin_cost:.2f}) exceeds "
                     f"available funds ({available:.2f}) — skipping trade"
                 )
+                LAST_SIZE_SKIP[epic] = ("ACCOUNT_TOO_SMALL",
+                                        round(min_size_margin_cost, 2), round(available, 2))
                 return 0.0, stop_distance
 
         log.info(f"{epic}: size={size} (risk={risk_size:.3f} margin={margin_size:.3f}) "
                  f"stop={stop_distance} margin_factor={margin_factor*100:.0f}%")
+        LAST_SIZE_SKIP.pop(epic, None)
         return size, stop_distance
 
     except Exception as e:
         log.warning(f"Position size calculation failed for {epic}: {e}")
+        LAST_SIZE_SKIP[epic] = ("ERROR", None, None)
         return 0.0, stop_distance   # skip trade on error — 0.5 fallback was unsafe
 
 

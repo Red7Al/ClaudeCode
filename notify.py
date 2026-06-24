@@ -21,6 +21,13 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.10.0  2026-06-24  Alex Hind   (user 2026-06-24) RESOLVE (not just silence) the size/margin skips. New ACCOUNT_TOO_SMALL
+#                                 class = the account structurally cannot meet IG's minimum deal margin for an instrument
+#                                 (crypto on a small account). It is the ONLY auto-silenced class now — its end-of-day
+#                                 summary line carries the FUNDING GAP (needs £X, have £Y) and a concrete resolution (fund
+#                                 to £X or drop the instrument from the universe). SIZE_ZERO from any OTHER cause is no
+#                                 longer silenced — it pages as a genuine missed trade again (reverts the over-broad 1.9.0
+#                                 blanket silence the operator pushed back on).
 # 1.9.0   2026-06-24  Alex Hind   (user 2026-06-24) STOP flooding #alerts with un-actionable size/margin skips (SOLUSD /
 #                                 XRPUSD / BTCUSD "calculated size is zero" every rescan). alert_missed_trade now
 #                                 auto-silences the SIZE_ZERO class (_SILENT_MISSED_TRADE_CLASSES): the block is still
@@ -846,11 +853,22 @@ _MISSED_TRADE_CLASSES = [
      "The account's free margin cannot cover this position — open positions are "
      "already using it (a half-size retry was attempted and also failed). Fix: add "
      "funds, close an existing position, or accept fewer concurrent trades."),
+    # NB: ACCOUNT_TOO_SMALL must precede SIZE_ZERO — its reason can also contain "size is 0", and
+    # _classify_missed_trade returns the FIRST matching needle. ACCOUNT_TOO_SMALL is the STRUCTURAL
+    # "can't even afford the IG minimum deal margin" case (recurs every cycle); SIZE_ZERO is any other
+    # zero-size cause (e.g. a bad/zero stop distance, a 404 epic) that may be transient/fixable.
+    ("ACCOUNT_TOO_SMALL", "account too small",
+     "The account cannot meet IG's MINIMUM deal margin for this instrument — it recurs every scan "
+     "until resolved (this is what fires for crypto: BTCUSD/ETHUSD/XRPUSD/SOLUSD minimums dwarf a "
+     "small balance). The daily summary shows the exact gap (needs vs available). Resolve it ONCE: "
+     "either fund the account to that margin, or remove this instrument from the scan universe "
+     "(run_hvf_report.UNIVERSE) so it is published but never trade-attempted here."),
     ("SIZE_ZERO", "calculated size is 0",
      "The risk-based position size (2% of available balance ÷ stop distance) came "
-     "out below IG's minimum bet size for this instrument — the account is too "
-     "small to trade it at the intended risk. Fix: add funds, or remove this "
-     "instrument from the session list."),
+     "out below IG's minimum bet size for this instrument — likely a zero/garbage stop "
+     "distance or a wrong epic rather than pure affordability. Review the stop distance "
+     "and the epic; if the account is simply too small this should surface as "
+     "ACCOUNT_TOO_SMALL instead."),
     ("CAP", "cap",
      "The configured maximum number of trades for this session/day was already "
      "reached when this valid signal fired. The cap limits how much can be risked "
@@ -865,10 +883,11 @@ _MISSED_TRADE_CLASSES = [
 
 # Block classes that are NOISE per-occurrence — the operator cannot act on each one in real time
 # (user 2026-06-24). They are recorded to missed_trade_log and surfaced ONCE in the end-of-day
-# summarize_missed_trades() digest, but never paged to #alerts individually. SIZE_ZERO = "the account
-# is too small to size this instrument at the intended risk" (SOLUSD/XRPUSD/BTCUSD every rescan) — a
-# standing account fact, not a per-cycle event.
-_SILENT_MISSED_TRADE_CLASSES = {"SIZE_ZERO"}
+# summarize_missed_trades() digest (which prints the funding gap + resolution), never paged to #alerts
+# individually. ONLY the structural ACCOUNT_TOO_SMALL class is silenced — a standing account fact, not
+# a per-cycle event. Every OTHER block class (incl. a genuine SIZE_ZERO from a bad stop/epic) still
+# pages, so we never hide a fixable failure (user pushed back on blanket silencing 2026-06-24).
+_SILENT_MISSED_TRADE_CLASSES = {"ACCOUNT_TOO_SMALL"}
 
 
 def _classify_missed_trade(reason: str):

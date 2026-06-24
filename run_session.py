@@ -23,6 +23,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.10.0  2026-06-24  Alex Hind   (user 2026-06-24) RESOLVE size/margin skips instead of silencing. Both size<=0 sites
+#                                 (session-open + monitor-rescan) now classify via ig_shim.LAST_SIZE_SKIP through the shared
+#                                 _size_skip_reason(): a structural ACCOUNT_TOO_SMALL skip reports the FUNDING GAP (needs vs
+#                                 have) and the concrete resolution (fund, or drop the instrument from the universe) into the
+#                                 daily summary; any other zero-size still pages as a genuine missed trade. epic/epic_code are
+#                                 pre-initialised so the lookup is NameError-safe when the balance fetch throws.
 # 1.9.0   2026-06-24  Alex Hind   (user 2026-06-24) FIX noisy + mislabelled "Circuit Breaker Triggered" on an unaffordable
 #                                 instrument (SOLUSD SELL, every monitor rescan): a size<=0 skip is a MISSED TRADE, not a
 #                                 circuit-breaker event, and alert_circuit_breaker has NO dedup so it re-fired every 5-min
@@ -104,6 +110,24 @@ log = logging.getLogger("run_session")
 
 
 OWNER_USER_ID = "770a76b5-0e84-460b-b575-186c724dabdd"
+
+
+def _size_skip_reason(epic, ticker: str) -> str:
+    """Build the missed-trade reason for a size<=0 skip, classified from ig_shim.LAST_SIZE_SKIP
+    (user 2026-06-24). ACCOUNT_TOO_SMALL = the account structurally can't meet IG's minimum deal
+    margin (e.g. crypto on a small balance) — the reason carries the funding GAP and is routed to
+    the daily summary (silenced per-occurrence in notify). Anything else reads as a genuine,
+    possibly-fixable SIZE_ZERO that still pages #alerts. RESOLVES rather than hides: the gap tells
+    the operator exactly what to fund or which instrument to drop from the universe."""
+    from ig_shim import LAST_SIZE_SKIP
+    skip = LAST_SIZE_SKIP.get(epic or "")
+    if skip and skip[0] == "ACCOUNT_TOO_SMALL":
+        _need, _have = skip[1], skip[2]
+        return (f"account too small to meet IG minimum deal margin for {ticker} "
+                f"(needs ~£{_need}, have ~£{_have}) — fund to that margin, or remove {ticker} from "
+                f"the scan universe so it is still published but not trade-attempted on this account")
+    return ("calculated size is 0 — likely a zero/garbage stop distance or a wrong/404 epic, not "
+            "pure affordability. Review the stop distance and the epic")
 
 
 def already_ran_today(session_name: str) -> bool:
@@ -287,6 +311,7 @@ def run_session_open(session_name: str):
 
         # Size: margin-aware, uses risk_per_trade from user profile.
         # Apply stress multiplier if SPX is in a down day (1.0–2.5% drop).
+        epic = None   # defined before the try so the size<=0 reason lookup is safe
         try:
             bal         = get_account_balance()
             available   = bal["available"]
@@ -314,18 +339,12 @@ def run_session_open(session_name: str):
 
         if size <= 0:
             # Trade was triggered by signals but blocked at execution — NOT a silent skip.
-            # Alert to Slack so the user can see which trades were ready but couldn't fire.
-            msg = (
-                f"{ticker} ({direction}) — trade triggered by signals but skipped: "
-                f"calculated size is zero. Likely cause: account available balance is "
-                f"too small to meet IG's minimum deal size for this instrument. "
-                f"Review account balance or reduce risk_per_trade in user_profiles."
-            )
-            log.warning(msg)
-            alert_missed_trade(ticker, direction,
-                               "calculated size is 0 — account balance too small for IG min deal "
-                               "size, or a wrong/404 epic. Review balance / risk_per_trade / epic.",
-                               signal_str)
+            # Classify via LAST_SIZE_SKIP (user 2026-06-24): a structural ACCOUNT_TOO_SMALL skip is
+            # summarised daily with its funding gap (resolve once); any other zero-size is a genuine
+            # missed trade that still pages.
+            reason = _size_skip_reason(epic, ticker)
+            log.warning(f"{ticker} ({direction}) — trade skipped at execution: {reason}")
+            alert_missed_trade(ticker, direction, reason, signal_str)
             continue
 
         trade_result = open_trade(
@@ -638,6 +657,7 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
                             # Now mirrors run_session_open exactly — reads the risk %
                             # from the user profile so Wife/Son profiles are respected.
                             size = 0.0
+                            epic_code = None   # defined before the try so the size<=0 reason lookup is safe
                             try:
                                 bal         = get_account_balance()
                                 available   = bal["available"]
@@ -663,20 +683,15 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
 
                             if size <= 0:
                                 # A size<=0 skip is a MISSED TRADE, not a circuit-breaker event
-                                # (user 2026-06-24). Route through alert_missed_trade so it dedups
-                                # per (day, ticker, direction, reason class) — SOLUSD and any other
-                                # structurally-unaffordable instrument alerts ONCE with a corrective
-                                # action, not on every monitor rescan. Mirrors the session-open path.
-                                msg = (
-                                    f"{ticker} ({sig['direction']}) — monitor rescan trade "
-                                    f"skipped: calculated size is zero. "
-                                    f"Likely cause: margin too small for IG minimum deal size."
-                                )
-                                log.warning(msg)
+                                # (user 2026-06-24). Classify via LAST_SIZE_SKIP: a structural
+                                # ACCOUNT_TOO_SMALL skip (crypto on a small account) is summarised
+                                # daily with its funding gap (resolve once — fund or drop from the
+                                # universe), not paged every rescan; any other zero-size still pages.
+                                reason = _size_skip_reason(epic_code, ticker)
+                                log.warning(f"{ticker} ({sig['direction']}) — monitor rescan trade "
+                                            f"skipped: {reason}")
                                 alert_missed_trade(
-                                    ticker, sig["direction"],
-                                    "calculated size is 0 — account margin too small for IG min deal "
-                                    "size, or a wrong/404 epic. Review balance / risk_per_trade / epic.",
+                                    ticker, sig["direction"], reason,
                                     sig.get("signal_summary", f"[{session_name} rescan]"))
                                 continue
 
