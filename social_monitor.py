@@ -31,6 +31,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.12.0  2026-06-24  Alex Hind   (user 2026-06-24) Added 3 tracked X accounts: @investingvisual, @brikka_trading,
+#                                 @sam_Badawi.
 # 1.11.0  2026-06-24  Alex Hind   (user 2026-06-24) X-mentions alert: (A) each line now carries a clickable durable x.com
 #                                 tweet link (nitter RSS link rewritten to https://x.com/<handle>/status/<id> so it still
 #                                 resolves days/weeks later). (C) under each new mention, the OTHER tracked accounts that
@@ -120,6 +122,10 @@ TRACKED_ACCOUNTS = [
     {"handle": "TheStockWhale",     "name": "The Stock Whale",     "source": "X/@TheStockWhale"},
     # Added 2026-06-22 (user) — crypto/market commentary.
     {"handle": "crypto_banter",     "name": "Crypto Banter",       "source": "X/@crypto_banter"},
+    # Added 2026-06-24 (user).
+    {"handle": "investingvisual",   "name": "Investing Visual",    "source": "X/@investingvisual"},
+    {"handle": "brikka_trading",    "name": "Brikka Trading",      "source": "X/@brikka_trading"},
+    {"handle": "sam_Badawi",        "name": "Sam Badawi",          "source": "X/@sam_Badawi"},
 ]
 
 # Known non-ticker uppercase words to ignore

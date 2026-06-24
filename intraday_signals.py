@@ -23,6 +23,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.47.0  2026-06-24  Alex Hind   (user 2026-06-24) Tweet punctuation/casing: (B) the hook line now ends with a full stop
+#                                 (the JIGI "rounding over" hook had none) — _full_stop() unless it already ends . ! or ?.
+#                                 (C) each confirmation in the justification line is now sentence-cased ("ahead of MCD" ->
+#                                 "Ahead of MCD") via _just_line, and the competitor angle says WHAT the comparison is on —
+#                                 "ahead of MCD on 3-mo price" / "outpacing peer MCD on 3-mo price (+8% vs -3%)" (was the
+#                                 ambiguous "ahead of MCD (3mo)").
 # 1.46.0  2026-06-24  Alex Hind   (user 2026-06-24) Three fixes:
 #                                 (A) FIX full company name vanishing from the lead tweet ($SBUX went out with no
 #                                     "(Starbucks Corporation)"): the 280-char fitter ranked the NO-NAME explainer base
@@ -1092,8 +1098,10 @@ def _competitor_angle(ticker: str):
         # hook already uses $TICKER — a second cashtag ($PEER) makes X reject the tweet with
         # "Posts are limited to a maximum of one cashtag" (the 2026-06-21 NKE 403s). Plain name only.
         peer_disp = peer[:-2] if peer.endswith(".L") else peer
-        full  = f"{'outpacing' if rt > rp else 'lagging'} peer {peer_disp} ({rt:+.0f}% vs {rp:+.0f}%, 3mo)"
-        short = f"{'ahead of' if rt > rp else 'behind'} {peer_disp} (3mo)"   # compact, survives the 280-char trim
+        # Say WHAT the comparison is ON (user 2026-06-24: "ahead of them on what?") — 3-month share
+        # price performance. (Capitalisation is applied later in _just_line.)
+        full  = f"{'outpacing' if rt > rp else 'lagging'} peer {peer_disp} on 3-mo price ({rt:+.0f}% vs {rp:+.0f}%)"
+        short = f"{'ahead of' if rt > rp else 'behind'} {peer_disp} on 3-mo price"   # compact, survives the 280-char trim
         return (full, short)
     except Exception:
         return None
@@ -2184,7 +2192,11 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
 
         def _just_line(use_full: bool, n: int) -> str:
             idx = 0 if use_full else 1
-            return "  ·  ".join(j[idx] for j in justifications[:n])
+            # Each confirmation reads as its own sentence — capitalise the first letter (user
+            # 2026-06-24: "ahead of MCD" should be "Ahead of MCD"). Leaves digits/$cashtags as-is.
+            def _cap(s: str) -> str:
+                return s[0].upper() + s[1:] if s else s
+            return "  ·  ".join(_cap(j[idx]) for j in justifications[:n])
 
         # Changed-detection (user 2026-06-19, Current #3): the _publish set was already
         # filtered to new/changed instruments above. Here we just pull this ticker's state
@@ -2223,6 +2235,13 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
         hook_named = hook.replace(f"${disp_ticker}", f"${disp_ticker} ({name})", 1)
         hook_named = _re.sub(r"^[^\w$#]+", "", hook_named)     # drop the leading ⏳/👀/🚨 icon → words
         hook_plain = _re.sub(r"^[^\w$#]+", "", hook)
+        # End the hook line with a full stop so it reads as a sentence (user 2026-06-24: the JIGI
+        # "rounding over" hook had no punctuation). Skip if it already ends in . ! or ?.
+        def _full_stop(s: str) -> str:
+            s = s.rstrip()
+            return s if (s and s[-1] in ".!?") else f"{s}."
+        hook_named = _full_stop(hook_named)
+        hook_plain = _full_stop(hook_plain)
         # Description + explainer are RELATED → one paragraph (user 2026-06-22): no line break
         # between them, and the description (a fragment) gets a full stop so they read as sentences.
         _desc = description.rstrip()
