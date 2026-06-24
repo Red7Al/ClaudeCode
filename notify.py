@@ -21,6 +21,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.11.0  2026-06-24  Alex Hind   (user 2026-06-24) INSUFFICIENT_FUNDS is now auto-silenced too (daily summary only, not
+#                                 paged per occurrence): "DO NOT REPORT THESE INDIVIDUALLY — a daily summary is fine". Same
+#                                 standing-account-fact class as ACCOUNT_TOO_SMALL; its summarize_missed_trades() line keeps
+#                                 the corrective action. Any genuinely fixable block class still pages.
 # 1.10.0  2026-06-24  Alex Hind   (user 2026-06-24) RESOLVE (not just silence) the size/margin skips. New ACCOUNT_TOO_SMALL
 #                                 class = the account structurally cannot meet IG's minimum deal margin for an instrument
 #                                 (crypto on a small account). It is the ONLY auto-silenced class now — its end-of-day
@@ -884,10 +888,11 @@ _MISSED_TRADE_CLASSES = [
 # Block classes that are NOISE per-occurrence — the operator cannot act on each one in real time
 # (user 2026-06-24). They are recorded to missed_trade_log and surfaced ONCE in the end-of-day
 # summarize_missed_trades() digest (which prints the funding gap + resolution), never paged to #alerts
-# individually. ONLY the structural ACCOUNT_TOO_SMALL class is silenced — a standing account fact, not
-# a per-cycle event. Every OTHER block class (incl. a genuine SIZE_ZERO from a bad stop/epic) still
-# pages, so we never hide a fixable failure (user pushed back on blanket silencing 2026-06-24).
-_SILENT_MISSED_TRADE_CLASSES = {"ACCOUNT_TOO_SMALL"}
+# individually. The standing-account-fact classes are silenced — ACCOUNT_TOO_SMALL (can't meet IG min
+# deal margin) and INSUFFICIENT_FUNDS (free margin already used) — both recur every cycle and the
+# operator asked not to be paged per occurrence. Every OTHER block class (incl. a genuine SIZE_ZERO
+# from a bad stop/epic) still pages, so we never hide a fixable failure.
+_SILENT_MISSED_TRADE_CLASSES = {"ACCOUNT_TOO_SMALL", "INSUFFICIENT_FUNDS"}
 
 
 def _classify_missed_trade(reason: str):

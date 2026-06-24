@@ -252,8 +252,10 @@ create table if not exists notable_investors (
     disclosed_at    date not null,
     quarter         text,
     notes           text,
+    direction       text,           -- system read (LONG/SHORT/WATCH) at the moment this account flagged the ticker (2026-06-24)
     recorded_at     timestamptz default now()
 );
+alter table notable_investors add column if not exists direction text;
 
 
 -- ---------------------------------------------------------------------------

@@ -31,6 +31,16 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.11.0  2026-06-24  Alex Hind   (user 2026-06-24) X-mentions alert: (A) each line now carries a clickable durable x.com
+#                                 tweet link (nitter RSS link rewritten to https://x.com/<handle>/status/<id> so it still
+#                                 resolves days/weeks later). (C) under each new mention, the OTHER tracked accounts that
+#                                 have flagged the same instrument are listed with their position + date (e.g. "@TrendSpider
+#                                 LONG (16/06)"). New notable_investors.direction column stores the system read (LONG/SHORT/
+#                                 WATCH) at the moment an account flags a ticker; _other_account_positions() reads the latest
+#                                 per account.
+# 1.10.0  2026-06-23  Alex Hind   (user 2026-06-23) The CONFIRM_LONG/SHORT dossier post now ATTACHES the HVF card PNG
+#                                 (render_x_post_card via the shared upload_png_to_slack helper) when our engine found a
+#                                 funnel — needs SLACK_BOT_TOKEN + SLACK_SIGNALS_CHANNEL_ID (no-op note if unset).
 # 1.9.0   2026-06-22  Alex Hind   CONFIRM_SHORT now also triggers the dossier read to #arw-claude-signals (user 2026-06-22),
 #                                 mirroring CONFIRM_LONG. _run_dossier_to_signals takes the verdict (red/green header).
 # 1.8.0   2026-06-22  Alex Hind   Add @crypto_banter to TRACKED_ACCOUNTS (user 2026-06-22) — crypto/market commentary.
@@ -393,18 +403,100 @@ def _run_dossier_to_signals(ticker: str, name: str, slack_url: str, verdict: str
             pass
         requests.post(slack_url, json={"blocks": blocks}, timeout=15)
         log.info(f"dossier read posted to #arw-claude-signals for {ticker} ({verdict})")
+
+        # Attach the same HVF post-card PNG the X publication uses (user 2026-06-23) so the
+        # dossier carries the funnel visual, not just text. Needs a bot token + the signals
+        # channel id (separate from the webhook URL); a no-op with a note when either is unset.
+        # Only attach when our engine actually found a funnel (h3_level present) — otherwise
+        # the card has no jaws to draw and the text dossier stands alone.
+        try:
+            if r.get("h3_level"):
+                from intraday_signals import render_x_post_card, upload_png_to_slack
+                r.setdefault("name", name)
+                _ch = os.environ.get("SLACK_SIGNALS_CHANNEL_ID", "")
+                _bt = os.environ.get("SLACK_BOT_TOKEN", "")
+                if _ch and _bt:
+                    _png = render_x_post_card(r)
+                    if _png:
+                        upload_png_to_slack(_png, f"dossier_{ticker.replace('.', '_')}.png",
+                                            f"HVF card — {ticker} ({name})", _ch, _bt)
+                else:
+                    log.info("dossier card PNG skipped — SLACK_SIGNALS_CHANNEL_ID / "
+                             "SLACK_BOT_TOKEN not set")
+        except Exception as e:
+            log.warning(f"dossier card PNG failed for {ticker}: {e}")
     except Exception as e:
         log.warning(f"dossier-to-signals failed for {ticker}: {e}")
+
+
+_DIRECTION_COLUMN_READY = False
+_INVESTOR_HANDLE = {a["name"]: a["handle"] for a in TRACKED_ACCOUNTS}
+
+
+def _ensure_direction_column():
+    """Add notable_investors.direction once, idempotently (user 2026-06-24). Stores the system read
+    (LONG/SHORT/WATCH) at the moment each account flags a ticker, so a new mention can show every
+    account's latest position on that instrument."""
+    global _DIRECTION_COLUMN_READY
+    if _DIRECTION_COLUMN_READY:
+        return
+    try:
+        db_run("alter table notable_investors add column if not exists direction text")
+    except Exception as e:
+        log.debug(f"direction column ensure skipped: {e}")
+    _DIRECTION_COLUMN_READY = True
+
+
+def _simplify_verdict(verdict: str) -> str:
+    return {"CONFIRM_LONG": "LONG", "CONFIRM_SHORT": "SHORT"}.get(verdict, "WATCH")
+
+
+def _handle_for_investor(name: str) -> str:
+    """Map a stored investor_name back to its @handle (TRACKED_ACCOUNTS), @-prefixed."""
+    h = _INVESTOR_HANDLE.get(name, name)
+    return h if h.startswith("@") else f"@{h}"
+
+
+def _canonical_x_url(link: str) -> str:
+    """Rewrite a nitter RSS post link to a durable https://x.com/<handle>/status/<id> URL so it still
+    resolves days/weeks later (nitter instances are short-lived). Returns the input on no match."""
+    if not link:
+        return ""
+    m = re.search(r"/([^/]+)/status/(\d+)", link)
+    return f"https://x.com/{m.group(1)}/status/{m.group(2)}" if m else link
+
+
+def _other_account_positions(ticker: str, exclude_name: str) -> list:
+    """Other tracked accounts that have flagged this ticker — latest row per account, newest first.
+    Returns [(handle, direction_or_dash, 'DD/MM')]. Best-effort; [] on any DB error."""
+    try:
+        rows = db_run(
+            "select investor_name, coalesce(direction, '—'), to_char(disclosed_at, 'DD/MM') "
+            "from notable_investors where ticker = :t and investor_name != :i "
+            "order by disclosed_at desc, recorded_at desc", t=ticker, i=exclude_name)
+    except Exception as e:
+        log.debug(f"cross-account lookup failed for {ticker}: {e}")
+        return []
+    seen, out = set(), []
+    for name, direction, dt in rows:
+        if name in seen:
+            continue
+        seen.add(name)
+        out.append((_handle_for_investor(name), direction, dt))
+    return out
 
 
 def alert_new_picks(new_picks: list):
     """
     Run price action on newly discovered tickers and send Slack alert.
-    new_picks: list of {ticker, investor_name, source, post_content}
+    new_picks: list of {ticker, investor_name, source, post_content, url}
     A CONFIRM_LONG mention also triggers a dossier read to #arw-claude-signals (user 2026-06-16).
+    Each line carries a durable x.com tweet link, and lists other tracked accounts' latest positions
+    on the same instrument (user 2026-06-24).
     """
     if not new_picks:
         return
+    _ensure_direction_column()
 
     # RSS mention alerts go to #signals. SLACK_TWITTER is reserved for content
     # published TO Twitter/X — do not use it for monitoring notifications.
@@ -449,20 +541,34 @@ def alert_new_picks(new_picks: list):
         if verdict in ("CONFIRM_LONG", "CONFIRM_SHORT"):
             confirms.append((ticker, company or ticker, verdict))
 
+        # Store THIS account's position now, so a future mention of the same ticker can show it
+        # as a cross-account line (user 2026-06-24). Best-effort — never block the alert.
+        try:
+            db_run("update notable_investors set direction = :d "
+                   "where ticker = :t and investor_name = :i",
+                   d=_simplify_verdict(verdict), t=ticker, i=pick.get("investor_name"))
+        except Exception as e:
+            log.debug(f"store direction failed for {ticker}/{pick.get('investor_name')}: {e}")
+
         # Sort weight: CONFIRM first, then by score descending
         sort_key = (0 if "CONFIRM" in verdict else 1, -score)
-        enriched.append((sort_key, label, handle, pa_str))
+        enriched.append((sort_key, label, handle, pa_str,
+                         _canonical_x_url(pick.get("url", "")), ticker, pick.get("investor_name")))
 
     enriched.sort(key=lambda x: x[0])
     # One blank line between the CONFIRM block and the WAIT block (user 2026-06-16).
     # sort_key[0]: 0 = CONFIRM_LONG/SHORT, 1 = WAIT — insert the gap at that boundary.
     lines = ""
     prev_group = None
-    for sort_key, label, handle, pa_str in enriched:
+    for sort_key, label, handle, pa_str, url, ticker, inv_name in enriched:
         group = sort_key[0]
         if prev_group is not None and group != prev_group:
             lines += "\n"
-        lines += f"• *{label}* via {handle} — {pa_str}\n"
+        link = f"  <{url}|🔗 tweet>" if url else ""
+        lines += f"• *{label}* via {handle} — {pa_str}{link}\n"
+        # Other tracked accounts' latest position on the SAME instrument (user 2026-06-24).
+        for _oh, _od, _odt in _other_account_positions(ticker, inv_name):
+            lines += f"        ↳ {_oh} {_od} ({_odt})\n"
         prev_group = group
 
     blocks = [
@@ -520,6 +626,7 @@ def scan_social_feeds(max_age_hours: int = 24) -> list:
                         "handle":       handle,
                         "source":       source,
                         "post_content": post["title"][:100],
+                        "url":          post.get("url", ""),   # tweet link (user 2026-06-24)
                     })
 
     if all_new_picks:
