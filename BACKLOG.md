@@ -2,6 +2,34 @@
 
 Deferred items (not blocking). Add new items at the top of the relevant section.
 
+## New feature requests — added 2026-06-26 (user batch)
+
+- [ ] **(I) Weekly sector report to X** — turn the monthly sector report (@TheProfInvestor,
+  https://x.com/TheProfInvestor/status/2070168387687424030) into our own WEEKLY X reports. Needs:
+  ingest the source (read the tweet/thread), pick the sector rotation angle, render a weekly summary
+  card + thread in house style (Slack/X rule: never name the source on the public tweet).
+- [ ] **(F) More KPIs on the X tweet / report** — add: ROIC, FCF, FCF growth, insider-holdings change
+  over 9 months, revenue growth, debt up/down, Net Debt/EBITDA, buybacks, net margin, P/E, dividend
+  growth rate, sector competitors, market share, + other KPIs. Source mostly yfinance + the existing
+  fundamentals path (quality_report). Keep the 280-char tweet lean — most KPIs go in the threaded
+  long report; only the strongest 1-2 ride the tweet. Decide the priority/wording per KPI.
+- [ ] **(E) Urgent EMAIL alert on a bounce in a recently-sold instrument** — if an instrument we SOLD
+  within the last 48h bounces (e.g. Japan 225), send an URGENT email (not just Slack). Needs: a
+  recently-closed-trades lookup (last 48h, SELL side), a "bounce" definition (e.g. price back above
+  the exit by X% / N bars), and an email path flagged URGENT. Guard against spam (one alert per
+  instrument per bounce).
+- [ ] **(C) HVF Daily Report -> extra Slack channel** — also publish the HVF Daily Report to an
+  additional Slack channel (new SLACK_* webhook / channel id). Small once the channel is decided.
+- [ ] **(D) HVF Daily Report: hide DEVELOPING when >10 tradeable in a market** — if a market already
+  has >10 tradeable setups, drop the DEVELOPING rows for that market (only show tradeable). Per-market
+  count gate in the daily report builder.
+- [ ] **(J) Sanity-gate nonsensical TRIGGERED setups** — ARM showed weekly TRIGGERED with Entry 134.25
+  vs Now 347.71 (entry -61% BELOW price). A real TRIGGERED long has price AT/just above the H3 entry;
+  entry far below price means a STALE funnel (triggered long ago) or a current-price/level source
+  mismatch (same class as the MSTR wrong-instrument bug). Add a gate: reject/flag any TRIGGERED long
+  whose entry is more than ~X% below the live price (and the mirror for shorts). Relatedly verify the
+  weekly current-price and the funnel levels come from the SAME instrument/units. See J diagnosis.
+
 ## Trades failing to be placed — added 2026-06-24
 
 - [x] **DONE 2026-06-26 (ig_shim 1.18.0).** Working-order size=0 now classifies via LAST_SIZE_SKIP —
