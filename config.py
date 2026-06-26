@@ -301,6 +301,7 @@ YAHOO_MAP = {
     "SPX500":  "^GSPC",
     "NASDAQ":  "^IXIC",
     "UK100":   "^FTSE",
+    "UK250":   "^FTMC",     # FTSE 250 (was unmapped → "UK250" 404'd on Yahoo every run, fixed 2026-06-26)
     "MSCI_EAFE": "EFA",     # iShares MSCI EAFE ETF — price proxy for EAFE COT divergence calc
     "JPN225":  "^N225",
     "HK50":    "^HSI",
