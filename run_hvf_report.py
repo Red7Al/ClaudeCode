@@ -29,6 +29,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.26.0  2026-06-26  Alex Hind   (user 2026-06-26) Daily report hides a market's DEVELOPING watch list once that market
+#                                 already has > DEVELOPING_HIDE_IF_TRADEABLE_OVER (10) TRADEABLE setups — plenty to act on,
+#                                 so the watch list is noise. The DEVELOPING header notes which markets were hidden.
 # 1.25.0  2026-06-22  Alex Hind   (user 2026-06-22) HVF_REPORT_MODE: normal | slack_only | slack_png. slack_png posts the
 #                                 analytical report + Slack drafts WITH the card + 3yr PNGs for ALL tradeable, NO live X — for
 #                                 reviewing the full output (visuals included) without touching X.
@@ -129,7 +132,8 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-from config import HVF_MIN_RR, PER_MARKET_TOP_N, MARKET_ORDER, X_PUBLISH_TOP_N   # single source of truth for thresholds/limits
+from config import (HVF_MIN_RR, PER_MARKET_TOP_N, MARKET_ORDER, X_PUBLISH_TOP_N,
+                    DEVELOPING_HIDE_IF_TRADEABLE_OVER)   # single source of truth for thresholds/limits
 # Display labels go through _label() (yfinance-backed) — notify.fmt() alone only
 # knows the ~76 epic_lookup names, so scanned constituents showed a bare ticker.
 
@@ -641,13 +645,21 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         from collections import Counter
         from price_action import group_by_market
         totals = Counter(r.get("index") for r in developing)
+        # Hide a market's DEVELOPING watch list when it ALREADY has more than 10 tradeable setups
+        # (user 2026-06-26): there's plenty to act on in that market, so the watch list is just noise.
+        _trd_by_mkt = Counter(r.get("index") for r in tradeable)
         groups = group_by_market(developing, n=PER_MARKET_TOP_N, market_order=MARKET_ORDER)
+        _hidden_mkts = [m for m, _ in groups if _trd_by_mkt.get(m, 0) > DEVELOPING_HIDE_IF_TRADEABLE_OVER]
+        groups = [(m, rs) for m, rs in groups if _trd_by_mkt.get(m, 0) <= DEVELOPING_HIDE_IF_TRADEABLE_OVER]
         shown  = sum(len(rs) for _, rs in groups)
+        _hidden_note = (f"  ·  hidden for {len(_hidden_mkts)} market(s) with >"
+                        f"{DEVELOPING_HIDE_IF_TRADEABLE_OVER} tradeable: "
+                        f"{', '.join(_index_short(m) for m in _hidden_mkts)}") if _hidden_mkts else ""
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn",
                      "text": (f"*👀 DEVELOPING (watch list)* — showing the top {PER_MARKET_TOP_N} per market "
-                              f"({shown} shown of {len(developing)} on watch)")}
+                              f"({shown} shown of {len(developing)} on watch){_hidden_note}")}
         })
         for market, rows in groups:
             blocks.append({

@@ -607,6 +607,10 @@ HVF_MIN_RR = MIN_RISK_REWARD
 # order applies (price_action.hvf_weight).
 PER_MARKET_TOP_N = 10
 
+# Daily report: hide a market's DEVELOPING watch list once it already has more than this many
+# TRADEABLE setups (user 2026-06-26) — plenty to act on there, so the watch list is just noise.
+DEVELOPING_HIDE_IF_TRADEABLE_OVER = 10
+
 # X-draft caps (user 2026-06-17). The X publication drafts (#arw-claude-twitter) are capped
 # SEPARATELY from the analytical report above:
 #   X_DRAFT_PER_MARKET — top N per market SHOWN as drafts, and only re-shown when an
