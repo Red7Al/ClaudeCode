@@ -4,7 +4,9 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
 
 ## Trades failing to be placed — added 2026-06-24
 
-- [ ] **Working-order size=0 still pages individually** (e.g. *IREN (IREN Limited) BUY — "[working
+- [x] **DONE 2026-06-26 (ig_shim 1.18.0).** Working-order size=0 now classifies via LAST_SIZE_SKIP —
+  ACCOUNT_TOO_SMALL is summarised daily (with the funding gap), not paged. Original item below.
+- [ ] ~~**Working-order size=0 still pages individually**~~ (e.g. *IREN (IREN Limited) BUY — "[working
   order] calculated size is 0 — balance too small for IG min deal size, or margin/epic problem"*).
   This is the THIRD size-zero path. The 2026-06-24 ACCOUNT_TOO_SMALL work only covered run_session's
   two paths (session-open + monitor-rescan); the working-order path was missed

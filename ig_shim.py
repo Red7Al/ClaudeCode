@@ -23,6 +23,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.18.0  2026-06-26  Alex Hind   (user 2026-06-26) place_hvf_order_from_sig size<=0 (working-order path) now classifies via
+#                                 LAST_SIZE_SKIP — a structural ACCOUNT_TOO_SMALL skip (e.g. IREN) reports the funding gap
+#                                 and is summarised daily instead of paging #alerts every cycle, matching the run_session
+#                                 paths. (Closes the BACKLOG "working-order size=0 still pages individually" item.) epic
+#                                 pre-initialised so the lookup is NameError-safe.
 # 1.17.0  2026-06-24  Alex Hind   (user 2026-06-24) get_epic Step 0: a ticker in _EPIC_VERIFIED_OVERRIDES now returns its
 #                                 epic DIRECTLY (authoritative pin) — bypasses cache/IG-search/identity-check. Pinned 9
 #                                 backlog tickers verified from a live IG /markets NAME lookup: PYPL/MSTR/SYM/FLY/FTAI/LUNR/
@@ -2483,6 +2488,7 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
     entry, stop, target = float(entry), float(stop), float(target)
 
     size = 0.0
+    epic = None   # defined before the try so the size<=0 reason lookup is NameError-safe
     try:
         epic = get_epic(ticker)
         if not epic:
@@ -2519,11 +2525,20 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         log.warning(f"Working-order size calc failed for {ticker}: {e}")
 
     if size <= 0:
+        # Classify the skip from LAST_SIZE_SKIP (set by calculate_position_size) so a structural
+        # ACCOUNT_TOO_SMALL working order (e.g. IREN on a small account) is summarised daily with its
+        # funding gap, not paged every cycle — same as the run_session paths (user 2026-06-26).
+        _skip = LAST_SIZE_SKIP.get(epic or "")
+        if _skip and _skip[0] == "ACCOUNT_TOO_SMALL":
+            _reason = (f"account too small to meet IG minimum deal margin for {ticker} "
+                       f"(needs ~£{_skip[1]}, have ~£{_skip[2]}) — fund to that margin, or remove "
+                       f"{ticker} from the scan universe so it is still published but not trade-attempted")
+        else:
+            _reason = ("[working order] calculated size is 0 — likely a zero/garbage stop distance or a "
+                       "wrong/404 epic (not pure affordability). Review the stop distance and the epic")
         try:
             from notify import alert_missed_trade
-            alert_missed_trade(ticker, direction,
-                               "[working order] calculated size is 0 — balance too small for IG "
-                               "min deal size, or margin/epic problem", str(sig.get("primaries_fired") or ""))
+            alert_missed_trade(ticker, direction, _reason, str(sig.get("primaries_fired") or ""))
         except Exception:
             pass
         return None
