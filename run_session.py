@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.11.0  2026-06-26  Alex Hind   (user 2026-06-26) _size_skip_reason now delegates to ig_shim.describe_size_skip (single
+#                                 source) for the better, context-aware Slack wording (margin deficit vs IG-minimum
+#                                 unaffordable vs generic zero-size).
 # 1.10.0  2026-06-24  Alex Hind   (user 2026-06-24) RESOLVE size/margin skips instead of silencing. Both size<=0 sites
 #                                 (session-open + monitor-rescan) now classify via ig_shim.LAST_SIZE_SKIP through the shared
 #                                 _size_skip_reason(): a structural ACCOUNT_TOO_SMALL skip reports the FUNDING GAP (needs vs
@@ -113,21 +116,13 @@ OWNER_USER_ID = "770a76b5-0e84-460b-b575-186c724dabdd"
 
 
 def _size_skip_reason(epic, ticker: str) -> str:
-    """Build the missed-trade reason for a size<=0 skip, classified from ig_shim.LAST_SIZE_SKIP
-    (user 2026-06-24). ACCOUNT_TOO_SMALL = the account structurally can't meet IG's minimum deal
-    margin (e.g. crypto on a small balance) — the reason carries the funding GAP and is routed to
-    the daily summary (silenced per-occurrence in notify). Anything else reads as a genuine,
-    possibly-fixable SIZE_ZERO that still pages #alerts. RESOLVES rather than hides: the gap tells
-    the operator exactly what to fund or which instrument to drop from the universe."""
-    from ig_shim import LAST_SIZE_SKIP
-    skip = LAST_SIZE_SKIP.get(epic or "")
-    if skip and skip[0] == "ACCOUNT_TOO_SMALL":
-        _need, _have = skip[1], skip[2]
-        return (f"account too small to meet IG minimum deal margin for {ticker} "
-                f"(needs ~£{_need}, have ~£{_have}) — fund to that margin, or remove {ticker} from "
-                f"the scan universe so it is still published but not trade-attempted on this account")
-    return ("calculated size is 0 — likely a zero/garbage stop distance or a wrong/404 epic, not "
-            "pure affordability. Review the stop distance and the epic")
+    """Missed-trade reason for a size<=0 skip — delegates to the single source
+    ig_shim.describe_size_skip (user 2026-06-26: better, context-aware Slack wording). It distinguishes
+    a margin DEFICIT (negative balance) from an IG-minimum-unaffordable instrument from a generic
+    zero-size, and keeps the needles notify uses to class ACCOUNT_TOO_SMALL (silenced -> daily summary)
+    vs SIZE_ZERO (paged)."""
+    from ig_shim import describe_size_skip
+    return describe_size_skip(ticker, epic)
 
 
 def already_ran_today(session_name: str) -> bool:

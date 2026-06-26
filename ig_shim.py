@@ -23,6 +23,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.19.0  2026-06-26  Alex Hind   (user 2026-06-26) New describe_size_skip() — THE single source for the size<=0 Slack
+#                                 wording ("give a better explanation in slack"). Distinguishes a margin DEFICIT (free
+#                                 balance < 0 → nothing trades until a position closes / funds added) from an IG-minimum
+#                                 unaffordable instrument (needs ~£X free MARGIN — a deposit, not trade value) from a generic
+#                                 zero-size (stop/epic). Keeps the needles notify classes on. Working-order path + run_session
+#                                 both delegate here.
 # 1.18.0  2026-06-26  Alex Hind   (user 2026-06-26) place_hvf_order_from_sig size<=0 (working-order path) now classifies via
 #                                 LAST_SIZE_SKIP — a structural ACCOUNT_TOO_SMALL skip (e.g. IREN) reports the funding gap
 #                                 and is summarised daily instead of paging #alerts every cycle, matching the run_session
@@ -483,6 +489,32 @@ def calculate_position_size(epic: str, stop_distance: float,
         log.warning(f"Position size calculation failed for {epic}: {e}")
         LAST_SIZE_SKIP[epic] = ("ERROR", None, None)
         return 0.0, stop_distance   # skip trade on error — 0.5 fallback was unsafe
+
+
+def describe_size_skip(ticker: str, epic: str) -> str:
+    """Plain-English Slack explanation for a size<=0 skip, from LAST_SIZE_SKIP (user 2026-06-26:
+    "give a better explanation in slack"). THE single source for the wording, used by every size<=0
+    path. Each ACCOUNT_TOO_SMALL branch keeps the literal "account too small" so notify still classes
+    it ACCOUNT_TOO_SMALL (silenced -> daily summary); the generic branch keeps "calculated size is 0"
+    so it classes SIZE_ZERO (paged). Distinguishes three cases:
+      • margin DEFICIT (free balance < 0)  • IG-minimum unaffordable  • generic zero-size."""
+    skip = LAST_SIZE_SKIP.get(epic or "")
+    if skip and skip[0] == "ACCOUNT_TOO_SMALL":
+        needed, have = skip[1], skip[2]
+        if isinstance(have, (int, float)) and have < 0:
+            return (f"{ticker}: account too small — in fact in MARGIN DEFICIT (only £{have:.2f} free). "
+                    f"Open positions are using more margin than the balance, so NO new trade can be "
+                    f"placed on ANY instrument until it recovers. Fix: close a position or add funds.")
+        _n = f"£{needed:.2f}" if isinstance(needed, (int, float)) else "the IG minimum"
+        _h = f"£{have:.2f}"   if isinstance(have, (int, float)) else "the free balance"
+        return (f"{ticker}: account too small for IG's minimum deal. Its smallest allowed position "
+                f"(0.01) needs ~{_n} of FREE MARGIN (a deposit to hold the trade, not the trade's "
+                f"value), but only {_h} is free. This is IG's minimum bet size, not our 2% risk rule, "
+                f"and recurs every scan until the balance covers it. Fix: fund above {_n} (+ a "
+                f"buffer), or remove {ticker} from the trade universe (publishing is unaffected).")
+    return (f"{ticker}: calculated size is 0 — most likely a zero/garbage stop distance or a wrong/404 "
+            f"epic (a units mismatch can inflate the stop so the risk-based size collapses to ~0), not "
+            f"pure affordability. Review the stop distance and the epic.")
 
 
 def get_account_balance() -> dict:
@@ -2525,17 +2557,9 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         log.warning(f"Working-order size calc failed for {ticker}: {e}")
 
     if size <= 0:
-        # Classify the skip from LAST_SIZE_SKIP (set by calculate_position_size) so a structural
-        # ACCOUNT_TOO_SMALL working order (e.g. IREN on a small account) is summarised daily with its
-        # funding gap, not paged every cycle — same as the run_session paths (user 2026-06-26).
-        _skip = LAST_SIZE_SKIP.get(epic or "")
-        if _skip and _skip[0] == "ACCOUNT_TOO_SMALL":
-            _reason = (f"account too small to meet IG minimum deal margin for {ticker} "
-                       f"(needs ~£{_skip[1]}, have ~£{_skip[2]}) — fund to that margin, or remove "
-                       f"{ticker} from the scan universe so it is still published but not trade-attempted")
-        else:
-            _reason = ("[working order] calculated size is 0 — likely a zero/garbage stop distance or a "
-                       "wrong/404 epic (not pure affordability). Review the stop distance and the epic")
+        # Plain-English, context-aware reason from the single source (user 2026-06-26). A structural
+        # ACCOUNT_TOO_SMALL / margin-deficit skip is summarised daily; a generic zero-size pages.
+        _reason = describe_size_skip(ticker, epic)
         try:
             from notify import alert_missed_trade
             alert_missed_trade(ticker, direction, _reason, str(sig.get("primaries_fired") or ""))

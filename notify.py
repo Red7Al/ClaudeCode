@@ -21,6 +21,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.13.0  2026-06-26  Alex Hind   (user 2026-06-26) Clearer ACCOUNT_TOO_SMALL corrective action in the daily missed-trade
+#                                 digest: explains the £ is FREE MARGIN for IG's minimum 0.01 size (not our risk rule), that
+#                                 a NEGATIVE free figure = margin deficit (nothing trades until a position closes / funds
+#                                 added), and the fund-or-remove fix. Pairs with ig_shim.describe_size_skip.
 # 1.12.0  2026-06-24  Alex Hind   (user 2026-06-24) Single source of truth for the instrument NAME: fmt()/_instrument_name
 #                                 now resolve via instrument_name.company_name (yfinance-first) instead of the local
 #                                 epic_lookup cache, which could serve a stale wrong-instrument name (MSTR -> Morningstar AU
@@ -836,11 +840,12 @@ _MISSED_TRADE_CLASSES = [
     # "can't even afford the IG minimum deal margin" case (recurs every cycle); SIZE_ZERO is any other
     # zero-size cause (e.g. a bad/zero stop distance, a 404 epic) that may be transient/fixable.
     ("ACCOUNT_TOO_SMALL", "account too small",
-     "The account cannot meet IG's MINIMUM deal margin for this instrument — it recurs every scan "
-     "until resolved (this is what fires for crypto: BTCUSD/ETHUSD/XRPUSD/SOLUSD minimums dwarf a "
-     "small balance). The daily summary shows the exact gap (needs vs available). Resolve it ONCE: "
-     "either fund the account to that margin, or remove this instrument from the scan universe "
-     "(run_hvf_report.UNIVERSE) so it is published but never trade-attempted here."),
+     "The £ figure is the FREE MARGIN (a deposit to hold the position) IG needs to open its smallest "
+     "allowed size (0.01) — IG's minimum bet size, NOT our 2% risk rule — so it recurs every scan "
+     "until the free balance covers it. A NEGATIVE free figure means the account is in margin DEFICIT "
+     "(open positions use more margin than the balance) — nothing can trade on ANY instrument until "
+     "you close a position or add funds. Otherwise: fund above the largest gap (+ a buffer), or remove "
+     "the instrument from the trade universe (it still publishes). NB Bitcoin's minimum alone is ~£600."),
     ("SIZE_ZERO", "calculated size is 0",
      "The risk-based position size (2% of available balance ÷ stop distance) came "
      "out below IG's minimum bet size for this instrument — likely a zero/garbage stop "
@@ -872,6 +877,13 @@ _SILENT_MISSED_TRADE_CLASSES = {"ACCOUNT_TOO_SMALL", "INSUFFICIENT_FUNDS"}
 def _classify_missed_trade(reason: str):
     """Return (reason_class, corrective_action) for a block reason string."""
     r = (reason or "").lower()
+    # ACCOUNT_TOO_SMALL is the standing-account class and its message is long plain English — match
+    # it FIRST so an incidental word can't collide with an earlier class's needle (e.g. "still" in
+    # SPREAD_VS_STOP), which would un-silence it and spam #alerts (user 2026-06-26).
+    if "account too small" in r:
+        for cls, needle, action in _MISSED_TRADE_CLASSES:
+            if cls == "ACCOUNT_TOO_SMALL":
+                return cls, action
     for cls, needle, action in _MISSED_TRADE_CLASSES:
         if needle.lower() in r:
             return cls, action
