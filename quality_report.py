@@ -30,6 +30,13 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.21.0  2026-06-26  Alex Hind   (user 2026-06-26, F) New _kpi_block() "Key numbers" paragraph in the long report:
+#                                 P/E (trailing + forward), net margin, return on assets (≈ROIC proxy), revenue growth, free
+#                                 cash flow, net debt/EBITDA, buybacks, dividend + its growth rate (+ payout-above-profit
+#                                 flag). yfinance-only, best-effort, never names the source (X rule). Two bugs caught in test
+#                                 + fixed: per-share dividend was abbreviated to "$0m" by _money (now direct format); the
+#                                 div-growth calc included the current PARTIAL year and read "-17%" (now complete years only,
+#                                 shown only when actually positive). Market share omitted (not in the feed).
 # 1.20.0  2026-06-24  Alex Hind   (user 2026-06-24) Reworded a chart-open variant that didn't read well ("The chart adds the
 #                                 why-now.") -> "Now the timing." — same intent (the chart explains why this is a NOW setup)
 #                                 in plain English.
@@ -529,6 +536,91 @@ def _chart_story(r: dict, name: str, gbp: bool) -> str:
     return " ".join(parts)
 
 
+def _kpi_block(ticker: str, gbp: bool) -> str:
+    """Compact "Key numbers" KPI paragraph for the long report (user 2026-06-26, F): valuation (P/E),
+    profitability (net margin, return on assets ≈ ROIC proxy), revenue growth, free cash flow,
+    net debt/EBITDA, buybacks, dividend + its growth rate (+ a payout-above-profit flag). yfinance
+    only; best-effort — every KPI is independently guarded, a missing one is just omitted. NEVER names
+    the data source (X rule). Returns "" if nothing usable. (Market share intentionally omitted — not
+    in the feed; ROIC approximated by return-on-assets.)"""
+    try:
+        import yfinance as yf
+        try:
+            from config import YAHOO_MAP
+        except Exception:
+            YAHOO_MAP = {}
+        t = yf.Ticker(YAHOO_MAP.get(ticker, ticker))
+        info = t.info or {}
+    except Exception:
+        return ""
+
+    bits = []
+
+    def _pct(v, dp=0):
+        return f"{v * 100:.{dp}f}%" if isinstance(v, (int, float)) else None
+
+    pe, fpe = info.get("trailingPE"), info.get("forwardPE")
+    if isinstance(pe, (int, float)) and pe > 0:
+        _v = f"valued on about {pe:.0f}x earnings"
+        if isinstance(fpe, (int, float)) and fpe > 0:
+            _v += f" ({fpe:.0f}x forward)"
+        bits.append(_v.capitalize() + ".")
+
+    nm, roa = info.get("profitMargins"), info.get("returnOnAssets")
+    prof = []
+    if isinstance(nm, (int, float)):
+        prof.append(f"net margin {_pct(nm, 1)}")
+    if isinstance(roa, (int, float)):
+        prof.append(f"return on assets ~{_pct(roa, 0)}")
+    if prof:
+        bits.append("Profitability: " + ", ".join(prof) + ".")
+
+    rg = info.get("revenueGrowth")
+    if isinstance(rg, (int, float)):
+        bits.append(f"Revenue {'up' if rg >= 0 else 'down'} {_pct(abs(rg), 0)} on the year.")
+
+    fcf = info.get("freeCashflow")
+    if isinstance(fcf, (int, float)):
+        bits.append(f"Free cash flow {_money(fcf, gbp)}" + (" (negative)" if fcf < 0 else "") + ".")
+
+    td, tc, eb = info.get("totalDebt"), info.get("totalCash"), info.get("ebitda")
+    if all(isinstance(x, (int, float)) for x in (td, tc, eb)) and eb:
+        bits.append(f"Net debt about {(td - tc) / eb:.1f}x EBITDA.")
+
+    try:
+        cf = t.cashflow
+        if "Repurchase Of Capital Stock" in cf.index:
+            rep = cf.loc["Repurchase Of Capital Stock"].dropna()
+            if len(rep) and abs(float(rep.values[0])) > 1e6:
+                bits.append(f"Bought back {_money(abs(float(rep.values[0])), gbp)} of stock last year.")
+    except Exception:
+        pass
+
+    dr = info.get("dividendRate")
+    if isinstance(dr, (int, float)) and dr > 0:
+        # NB a per-share dividend is a small number — format it directly, NOT via _money (which
+        # abbreviates to $Xbn/$Xm and rendered $2.48 as "$0m").
+        _d = f"Pays a {'£' if gbp else '$'}{dr:.2f} dividend"
+        try:
+            import datetime as _dt
+            d = t.dividends
+            _this_year = _dt.datetime.now(_dt.timezone.utc).year
+            # COMPLETE years only — the current year is partial and dragged growth negative.
+            ann = [float(v) for y, v in d.groupby(d.index.year).sum().items() if y < _this_year][-4:]
+            if len(ann) >= 3 and ann[0] > 0:
+                _g = (ann[-1] / ann[0]) ** (1 / (len(ann) - 1)) - 1
+                if _g > 0.005:                       # only claim growth when it actually grew
+                    _d += f", growing about {_g * 100:.0f}% a year"
+        except Exception:
+            pass
+        pr = info.get("payoutRatio")
+        if isinstance(pr, (int, float)) and pr > 1:
+            _d += f" (payout ~{pr * 100:.0f}% of earnings — funded beyond profit)"
+        bits.append(_d + ".")
+
+    return ("Key numbers — " + " ".join(bits)) if bits else ""
+
+
 def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -> tuple:
     """(title, prose_body) — plain English, one fact per short sentence, phrasing varied
     per instrument so each report reads bespoke (user 2026-06-14).
@@ -657,7 +749,11 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
 
     # Each subject group is its own paragraph; blank line BETWEEN groups so the subject change is
     # visible (user 2026-06-22). Order: business fundamentals → analysts → ownership → citations.
-    _groups = [" ".join(g) for g in (s, s_analyst, s_own, s_cite) if g]
+    # KPI "Key numbers" block (user 2026-06-26, F) — its own paragraph after the fundamentals
+    # narrative. Public-safe (never names the data source). Best-effort: "" when no KPIs resolve.
+    _kpis = _kpi_block(tk, gbp)
+    _text_groups = [" ".join(s), " ".join(s_analyst), _kpis, " ".join(s_own), " ".join(s_cite)]
+    _groups = [g for g in _text_groups if g and g.strip()]
     fund  = "\n\n".join(_groups) if _groups else f"Limited fundamental data available for {name}."
     chart = _chart_story(r, name, gbp)                       # public-safe "why the setup matters"
     body  = (chart + "\n\n" + fund) if chart else fund       # lead with the chart why-now, then the quality angle
