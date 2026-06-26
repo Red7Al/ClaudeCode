@@ -8,7 +8,10 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   https://x.com/TheProfInvestor/status/2070168387687424030) into our own WEEKLY X reports. Needs:
   ingest the source (read the tweet/thread), pick the sector rotation angle, render a weekly summary
   card + thread in house style (Slack/X rule: never name the source on the public tweet).
-- [ ] **(F) More KPIs on the X tweet / report** — add: ROIC, FCF, FCF growth, insider-holdings change
+- [x] **(F) DONE 2026-06-26 (quality_report 1.21.0)** — _kpi_block "Key numbers" paragraph: P/E, net
+  margin, ROA(~ROIC), revenue growth, FCF, net debt/EBITDA, buybacks, dividend + growth + payout flag.
+  Market share omitted (not in feed); insider Δ9mo not yet added. Original item below.
+- [ ] ~~**(F) More KPIs on the X tweet / report**~~ — add: ROIC, FCF, FCF growth, insider-holdings change
   over 9 months, revenue growth, debt up/down, Net Debt/EBITDA, buybacks, net margin, P/E, dividend
   growth rate, sector competitors, market share, + other KPIs. Source mostly yfinance + the existing
   fundamentals path (quality_report). Keep the 280-char tweet lean — most KPIs go in the threaded
@@ -20,9 +23,8 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   instrument per bounce).
 - [ ] **(C) HVF Daily Report -> extra Slack channel** — also publish the HVF Daily Report to an
   additional Slack channel (new SLACK_* webhook / channel id). Small once the channel is decided.
-- [ ] **(D) HVF Daily Report: hide DEVELOPING when >10 tradeable in a market** — if a market already
-  has >10 tradeable setups, drop the DEVELOPING rows for that market (only show tradeable). Per-market
-  count gate in the daily report builder.
+- [x] **(D) DONE 2026-06-26 (run_hvf_report 1.26.0)** — hides a market's DEVELOPING watch list when it
+  already has > DEVELOPING_HIDE_IF_TRADEABLE_OVER (10) tradeable setups; header notes hidden markets.
 - [ ] **(J) Sanity-gate nonsensical TRIGGERED setups** — ARM showed weekly TRIGGERED with Entry 134.25
   vs Now 347.71 (entry -61% BELOW price). A real TRIGGERED long has price AT/just above the H3 entry;
   entry far below price means a STALE funnel (triggered long ago) or a current-price/level source
