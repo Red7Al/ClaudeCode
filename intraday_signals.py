@@ -23,6 +23,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.49.0  2026-06-26  Alex Hind   (user 2026-06-26) FIX dossier/card PNG never uploading: upload_png_to_slack (extracted in
+#                                 1.45.0) used `requests` but the module has NO top-level requests import — every call died
+#                                 with "name 'requests' is not defined" (seen in social-monitor logs: dossier_XPEV.png).
+#                                 Added the import inside the function. This also unbreaks the X-draft card + 3yr PNG uploads
+#                                 that route through the same helper.
 # 1.48.0  2026-06-24  Alex Hind   (user 2026-06-24) Single source of truth for the instrument NAME: _resolve_name now
 #                                 delegates to the new instrument_name.company_name (yfinance-first). Removes the duplicate
 #                                 resolver that disagreed with social_monitor/notify (the MSTR -> "Morningstar AU ETF" vs
@@ -1321,6 +1326,7 @@ def upload_png_to_slack(png_bytes: bytes, filename: str, title: str,
     Returns True on success; never raises (logged). bot_token defaults to the
     SLACK_BOT_TOKEN env var. Used by _generate_x_drafts (card + 3yr history) and
     social_monitor._run_dossier_to_signals (dossier card)."""
+    import requests   # module has no top-level requests import; needed since this fn was extracted
     bot_token = bot_token or os.environ.get("SLACK_BOT_TOKEN", "")
     if not (png_bytes and bot_token and channel_id):
         return False
