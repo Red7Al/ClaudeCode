@@ -4,6 +4,14 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
 
 ## New feature requests — added 2026-06-26 (user batch)
 
+- [ ] **HVF site: exact triggered date** (user 2026-06-27, "do date exact tomorrow"). The site's
+  "Triggered" column currently shows a PROXY — the last pivot date (l3 for a long / h3 for a short),
+  computed client-side in `hvf_web/index.html::augment`. Make it EXACT: in `hvf_web/build_snapshot.py`,
+  for each TRIGGERED record fetch the daily history and find the first session AFTER h3_date where the
+  close crossed the entry (bull: close >= entry; bear: close <= entry); store `triggered_date` on the
+  record; have the UI prefer it over the proxy. Needs a snapshot rebuild (so it needs disk headroom —
+  host was 100% full 2026-06-27, freed to ~3GB).
+
 - [ ] **UK holder data from the FCA NSM (TR-1)** — added 2026-06-27. yfinance UK holder data is
   index-ETF noise, so the institutional-holder line is now SUPPRESSED for `.L` tickers (quality_report
   1.24.0). Proper source = FCA National Storage Mechanism DTR5/TR-1 "notification of major holdings"
