@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<!-- HVF website UI (user 2026-06-27). Single file. Client-side filtering of /api/records;
+     PNGs from /api/card, /api/pricewin (date-reactive), /api/hist3yr (fixed 3y). v1.0.0 -->
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HVF Scanner</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --fg:#c9d1d9; --muted:#8b949e; --line:#30363d;
+  --accent:#58a6ff; --bull:#3fb950; --bear:#f85149; --chip:#21262d;
+}
+:root.light{
+  --bg:#f6f8fa; --panel:#ffffff; --fg:#24292f; --muted:#57606a; --line:#d0d7de;
+  --accent:#0969da; --bull:#1a7f37; --bear:#cf222e; --chip:#eaeef2;
+}
+*{box-sizing:border-box} body{margin:0;font:14px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+header h1{font-size:16px;margin:0} .grow{flex:1}
+.btn{background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+.layout{display:flex;gap:0;min-height:calc(100vh - 49px)}
+aside{width:270px;flex:none;border-right:1px solid var(--line);padding:12px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px}
+aside h3{font-size:11px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;letter-spacing:.04em}
+.f{margin-bottom:8px} label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+select,input{width:100%;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:5px}
+.row2{display:flex;gap:6px} .row2 input{width:50%}
+main{flex:1;display:flex;flex-direction:column;min-width:0}
+.count{padding:8px 16px;color:var(--muted);font-size:12px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{position:sticky;top:0;background:var(--panel);cursor:pointer;color:var(--muted);font-size:11px;text-transform:uppercase}
+tbody tr{cursor:pointer} tbody tr:hover{background:var(--chip)} tr.sel{background:var(--chip)}
+.tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
+.bull{background:rgba(63,185,80,.15);color:var(--bull)} .bear{background:rgba(248,81,73,.15);color:var(--bear)}
+.tablewrap{overflow:auto;flex:1}
+#detail{width:560px;flex:none;border-left:1px solid var(--line);padding:14px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px}
+#detail.hidden{display:none}
+#detail h2{margin:0 0 2px;font-size:18px} .sub{color:var(--muted);font-size:12px;margin-bottom:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:12px}
+.card h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;color:var(--muted)}
+img{max-width:100%;border-radius:6px;display:block}
+.rule{display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line);font-size:13px}
+.v{font-weight:700;font-size:11px;padding:1px 6px;border-radius:4px}
+.PASS{background:rgba(63,185,80,.15);color:var(--bull)} .FAIL{background:rgba(248,81,73,.15);color:var(--bear)}
+.DEVELOPING{background:rgba(210,153,34,.18);color:#d29922}
+.tweet{white-space:pre-wrap;font-size:13px;background:var(--bg);border:1px dashed var(--line);border-radius:6px;padding:8px}
+.kv{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:3px 0;font-size:13px}
+.slider{display:flex;align-items:center;gap:8px} .slider input{flex:1}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>HVF Scanner</h1>
+  <span class="count" id="gen"></span>
+  <span class="grow"></span>
+  <button class="btn" id="theme">🌙 Dark</button>
+  <button class="btn" id="reset">Reset filters</button>
+</header>
+<div class="layout">
+  <aside>
+    <h3>Direction & place</h3>
+    <div class="f"><label>Direction</label><select id="f_dir"><option value="">Any</option><option>BULL</option><option>BEAR</option></select></div>
+    <div class="f"><label>Location</label><select id="f_loc"><option value="">Any</option></select></div>
+    <div class="f"><label>Market</label><select id="f_mkt"><option value="">Any</option></select></div>
+    <div class="f"><label>Sector</label><select id="f_sec"><option value="">Any</option></select></div>
+    <h3>HVF</h3>
+    <div class="f"><label>Status</label><select id="f_stat"><option value="">Any</option><option>TRIGGERED</option><option>READY</option><option>DEVELOPING</option></select></div>
+    <div class="f"><label>Timeframe</label><select id="f_tf"><option value="">Any</option></select></div>
+    <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
+    <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" placeholder="3.0"><input id="f_rrmax" type="number" step="0.1" placeholder="3.99"></div></div>
+    <div class="f"><label>Months-to-go range</label><div class="row2"><input id="f_mmin" type="number" step="0.5" placeholder="min"><input id="f_mmax" type="number" step="0.5" placeholder="max"></div></div>
+    <h3>Fundamentals</h3>
+    <div class="f"><label>P/E range</label><div class="row2"><input id="f_pemin" type="number" placeholder="min"><input id="f_pemax" type="number" placeholder="max"></div></div>
+    <div class="f"><label>Insider % range</label><div class="row2"><input id="f_inmin" type="number" step="0.1" placeholder="min"><input id="f_inmax" type="number" step="0.1" placeholder="max"></div></div>
+    <h3>Date window</h3>
+    <div class="f"><label>Setup within last <span id="dlbl">3650</span> days</label>
+      <div class="slider"><input id="f_days" type="range" min="30" max="3650" step="10" value="3650"></div></div>
+    <small style="color:var(--muted)">Also drives the price chart window. 3-yr chart is always 3 years.</small>
+  </aside>
+
+  <main>
+    <div class="count" id="count"></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th data-k="ticker">Ticker</th><th data-k="direction">Dir</th><th data-k="market">Market</th>
+          <th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="quality">Q</th>
+          <th data-k="rr">R:R</th><th data-k="pe">P/E</th><th data-k="timeframe">TF</th><th data-k="months_to_go">Mo→</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <section id="detail" class="hidden"></section>
+</div>
+
+<script>
+let DATA=[], SEL=null, sortK="quality", sortDir=-1;
+const $=id=>document.getElementById(id);
+const F=["f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
+         "f_mmin","f_mmax","f_pemin","f_pemax","f_inmin","f_inmax","f_days"];
+
+function uniq(k){return [...new Set(DATA.map(r=>r[k]).filter(x=>x!=null))].sort();}
+function fillSel(id,k){const s=$(id);uniq(k).forEach(v=>{const o=document.createElement("option");o.value=o.textContent=v;s.appendChild(o);});}
+const num=v=>v===""||v==null?null:parseFloat(v);
+
+function daysSince(d){if(!d)return 1e9;const t=Date.parse(d);if(isNaN(t))return 1e9;return (Date.now()-t)/864e5;}
+
+function pass(r){
+  const g=id=>$(id).value;
+  if(g("f_dir")&&r.direction!==g("f_dir"))return false;
+  if(g("f_loc")&&r.location!==g("f_loc"))return false;
+  if(g("f_mkt")&&r.market!==g("f_mkt"))return false;
+  if(g("f_sec")&&r.sector!==g("f_sec"))return false;
+  if(g("f_stat")&&r.status!==g("f_stat"))return false;
+  if(g("f_tf")&&r.timeframe!==g("f_tf"))return false;
+  const rng=(v,lo,hi)=>{const a=num(g(lo)),b=num(g(hi));if(a!=null&&(v==null||v<a))return false;if(b!=null&&(v==null||v>b))return false;return true;};
+  if(!rng(r.quality,"f_qmin","f_qmax"))return false;
+  if(!rng(r.rr,"f_rrmin","f_rrmax"))return false;
+  if(!rng(r.months_to_go,"f_mmin","f_mmax"))return false;
+  if(!rng(r.pe,"f_pemin","f_pemax"))return false;
+  if(!rng(r.insider_pct,"f_inmin","f_inmax"))return false;
+  const days=+$("f_days").value;
+  if(days<3650 && daysSince(r.h3_date)>days)return false;
+  return true;
+}
+
+function render(){
+  const rows=DATA.filter(pass).sort((a,b)=>{
+    const x=a[sortK],y=b[sortK];const av=x==null?-1e9:x,bv=y==null?-1e9:y;
+    return (av<bv?-1:av>bv?1:0)*sortDir;});
+  $("count").textContent=`${rows.length} of ${DATA.length} setups`;
+  $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
+    <td><b>${r.ticker}</b></td>
+    <td><span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></td>
+    <td>${r.market||''}</td><td>${r.sector||''}</td><td>${r.status||''}</td>
+    <td>${r.quality??''}</td><td>${r.rr!=null?r.rr.toFixed(1):''}</td><td>${r.pe??''}</td>
+    <td>${(r.timeframe||'').replace('daily-','D')}</td><td>${r.months_to_go??''}</td></tr>`).join("")
+    || `<tr><td colspan="10" class="empty">No setups match the filters.</td></tr>`;
+  document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>showDetail(tr.dataset.t));
+}
+
+function showDetail(t){
+  SEL=t; render();
+  const r=DATA.find(x=>x.ticker===t); if(!r){return;}
+  const days=+$("f_days").value;
+  const rules=(r.rules||[]).map(u=>`<div class="rule"><span class="v ${u.verdict}">${u.verdict}</span>
+     <b>Rule ${u.n} — ${u.name}</b><span style="color:var(--muted);margin-left:auto">${u.note||''}</span></div>`).join("");
+  let broker="<span style='color:var(--muted)'>no broker data</span>";
+  if(r.broker){const b=r.broker;let tr="";
+    if(b.trend&&b.trend.length===3){tr=` · buys ${b.trend[0]}→${b.trend[1]} (${b.trend[1]>b.trend[0]?'strengthening':'cooling'}) over ~3mo`;}
+    broker=`${b.buys??'?'} Buy / ${b.holds??'?'} Hold of ${b.rated??'?'} rated${tr}`;}
+  $("detail").classList.remove("hidden");
+  $("detail").innerHTML=`
+    <h2>${r.ticker} <span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></h2>
+    <div class="sub">${r.name||''} · ${r.market||''} · ${r.sector||''} · ${r.status} · Q${r.quality??'?'} · R:R ${r.rr!=null?r.rr.toFixed(2):'?'} · ${(r.timeframe||'').replace('daily-','D')}</div>
+    <div class="card"><h4>X post card</h4><img loading="lazy" src="/api/card/${r.ticker}"></div>
+    <div class="card"><h4>Price — last ${days} days (filter-reactive)</h4>
+      <img id="pw" src="/api/pricewin/${r.ticker}?days=${days}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}"></div>
+    <div class="card"><h4>3-year price history (always 3y)</h4><img loading="lazy" src="/api/hist3yr/${r.ticker}"></div>
+    <div class="card"><h4>RW Rules 1–5</h4>${rules}</div>
+    <div class="card"><h4>Levels</h4>
+      <div class="kv"><span>Now</span><b>${r.current_price??'?'}</b></div>
+      <div class="kv"><span>Entry</span><b>${r.entry??'?'}</b></div>
+      <div class="kv"><span>Stop</span><b>${r.stop??'?'}</b></div>
+      <div class="kv"><span>Target</span><b>${r.target??'?'}</b></div>
+      <div class="kv"><span>P/E</span><b>${r.pe??'?'}</b></div>
+      <div class="kv"><span>Insider %</span><b>${r.insider_pct!=null?r.insider_pct.toFixed(2)+'%':'?'}</b></div></div>
+    <div class="card"><h4>Broker analysis</h4>${broker}</div>
+    <div class="card"><h4>X tweet text</h4><div class="tweet" id="tweetbox">loading…</div></div>`;
+  fetch(`/api/tweet/${r.ticker}`).then(x=>x.json()).then(j=>{
+    const el=document.getElementById("tweetbox");
+    if(el&&SEL===r.ticker) el.textContent=j.tweet||"(no tweet — not a publishable setup)";
+  }).catch(()=>{});
+}
+
+function applyAll(){render(); if(SEL&&!$("detail").classList.contains("hidden")){const r=DATA.find(x=>x.ticker===SEL);if(r&&pass(r))showDetail(SEL);else{$("detail").classList.add("hidden");SEL=null;}}}
+
+document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=(sortK===k)?-sortDir:-1;sortK=k;render();});
+F.forEach(id=>{const e=$(id);e.addEventListener("input",()=>{if(id==="f_days")$("dlbl").textContent=$("f_days").value;applyAll();});});
+$("reset").onclick=()=>{F.forEach(id=>{const e=$(id);if(e.tagName==="SELECT")e.value="";else if(e.type==="range")e.value=3650;else e.value="";});$("dlbl").textContent=3650;applyAll();};
+$("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light");$("theme").textContent=l?"☀️ Light":"🌙 Dark";if(SEL)showDetail(SEL);};
+
+fetch("/api/records").then(r=>r.json()).then(j=>{
+  DATA=j.records||[];
+  $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
+  fillSel("f_loc","location");fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");
+  render();
+});
+</script>
+</body>
+</html>
