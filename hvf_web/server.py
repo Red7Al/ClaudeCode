@@ -15,6 +15,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.2.0   2026-06-27  Alex Hind   (user 2026-06-27) /api/thread (ALL publication pages — lead + numbered long report),
+#                                 /api/rules (Rolls-Royce-style per-rule justification with the numbers), /api/positions
+#                                 (live open IG positions per instrument via epic_lookup). Supports the rebuilt UI.
 # 1.1.0   2026-06-27  Alex Hind   (user 2026-06-27) /api/links/<ticker> — OUR latest X publication (x_publications) + every
 #                                 tracked account that posted the instrument (notable_investors.post_url), fetched at
 #                                 selection time. 12-hour snapshot auto-refresh thread (rebuild + cache clear); threaded serve.
@@ -148,6 +151,107 @@ def api_tweet(ticker):
             log.warning(f"tweet render failed for {ticker}: {e}")
         _PNG_CACHE[key] = txt
     return jsonify({"ticker": ticker, "tweet": _PNG_CACHE[key]})
+
+
+@app.route("/api/thread/<ticker>")
+def api_thread(ticker):
+    """ALL pages of the X publication for one instrument (user 2026-06-27 'not showing all pages
+    6/7'): the lead short tweet + every numbered long-report part (1/n..n/n). One render = low mem."""
+    key = f"thread:{ticker}"
+    if key not in _PNG_CACHE:
+        rec = _record(ticker)
+        card = dict(rec.get("_card") or {})
+        card["name"] = rec.get("name"); card["index"] = rec.get("market")
+        parts = []
+        try:
+            from intraday_signals import _generate_x_drafts
+            drafts = _generate_x_drafts([card], post=False, collect=True)
+            if drafts and drafts[0].get("tweet"):
+                parts.append(drafts[0]["tweet"])
+        except Exception as e:
+            log.warning(f"thread lead failed for {ticker}: {e}")
+        try:
+            from quality_report import publish_long_report_for
+            parts += [p for p in (publish_long_report_for(card, post=False) or []) if p]
+        except Exception as e:
+            log.warning(f"thread report failed for {ticker}: {e}")
+        _PNG_CACHE[key] = parts
+    return jsonify({"ticker": ticker, "parts": _PNG_CACHE[key]})
+
+
+def _rule_detail(rec: dict) -> list:
+    """Rolls-Royce-style per-rule justification (user 2026-06-27) with the actual numbers, so each
+    of the 5 RW rules is explained, not just PASS/FAIL."""
+    c = rec.get("_card") or {}
+    bull = rec.get("direction") == "BULL"
+    g = lambda k: c.get(k)
+    h1, h2, h3 = g("h1_level"), g("h2_level"), g("h3_level")
+    l1, l2, l3 = g("l1_level"), g("l2_level"), g("l3_level")
+    entry, stop, target, rr = rec.get("entry"), rec.get("stop"), rec.get("target"), rec.get("rr")
+    out, base = [], {u["n"]: u for u in (rec.get("rules") or [])}
+
+    def add(n, name, verdict, detail):
+        out.append({"n": n, "name": name, "verdict": (base.get(n) or {}).get("verdict", verdict), "detail": detail})
+
+    add(1, "Prior trend", "PASS",
+        f"The funnel trades in the direction of the prior trend ({'BULLISH long' if bull else 'BEARISH short'}). "
+        f"RW Rule 1 needs a clear, recent move of the same direction before the coil forms.")
+    if None not in (h1, h2, h3, l1, l2, l3):
+        add(2, "Three swings", "PASS",
+            f"Lower highs  H1 {h1:g} ({g('h1_date')}) > H2 {h2:g} > H3 {h3:g} ({g('h3_date')}); "
+            f"higher lows  L1 {l1:g} ({g('l1_date')}) < L2 {l2:g} < L3 {l3:g} ({g('l3_date')}). "
+            f"Three real, alternating candle swings converging — the HVF pattern.")
+    else:
+        add(2, "Three swings", "DEVELOPING", "Not all three alternating swings are confirmed yet.")
+    if None not in (h1, h3, l1, l3) and (h1 - l1):
+        amp1 = h1 - l1; tight = (h3 - l3) / amp1 * 100
+        add(3, "Tightness ≤35%", "PASS" if tight <= 35 else "FAIL",
+            f"Current funnel range (H3−L3 = {h3 - l3:g}) vs the first amplitude (AMP1 = H1−L1 = {amp1:g}) "
+            f"= {tight:.0f}%. RW compresses to ≤35% — tighter coil, tighter stop.")
+        mid = (h3 + l3) / 2
+        add(4, "Levels & target", "PASS" if (target and target > 0) else "FAIL",
+            f"AMP1 = {amp1:g}; midpoint (H3+L3)/2 = {mid:g}. Entry = {entry:g} (break of the 3rd "
+            f"{'high' if bull else 'low'}); stop beyond the opposite pivot = {stop:g}; "
+            f"target = mid {'+' if bull else '−'} AMP1 = {target:g}.")
+    if isinstance(rr, (int, float)):
+        risk = abs((entry or 0) - (stop or 0)); reward = abs((target or 0) - (entry or 0))
+        add(5, "R:R ≥ 3:1", "PASS" if rr >= 3 else "DEVELOPING",
+            f"Reward {reward:g} ÷ risk {risk:g} = {rr:.2f}:1 (RW floor 3:1).")
+    return out
+
+
+@app.route("/api/rules/<ticker>")
+def api_rules(ticker):
+    return jsonify({"ticker": ticker, "rules": _rule_detail(_record(ticker))})
+
+
+@app.route("/api/positions")
+def api_positions():
+    """Live count of OPEN IG positions per instrument (user 2026-06-27). Best-effort: needs IG env +
+    epic_lookup; returns {} on any failure so the page still loads."""
+    counts = {}
+    try:
+        import ig_shim
+        epic2tk = {}
+        try:
+            from db_pool import get_db
+            db = get_db()
+            try:
+                for row in (db.run("select ticker, epic from epic_lookup") or []):
+                    if row[1]:
+                        epic2tk[str(row[1])] = row[0]
+            finally:
+                db.close()
+        except Exception:
+            pass
+        for pos in (ig_shim.get_open_positions() or []):
+            mk = pos.get("market", {}) or {}
+            tk = epic2tk.get(str(mk.get("epic"))) or mk.get("instrumentName") or mk.get("epic")
+            if tk:
+                counts[tk] = counts.get(tk, 0) + 1
+    except Exception as e:
+        log.warning(f"positions lookup failed: {e}")
+    return jsonify({"positions": counts})
 
 
 def _render_price_window(rec: dict, days: int, theme: str) -> bytes:
