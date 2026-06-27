@@ -30,6 +30,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.24.0  2026-06-27  Alex Hind   (user 2026-06-27) Suppress the institutional-holder line for UK (.L) tickers — yfinance
+#                                 UK holder data is index-ETF noise (HSBC FTSE 250 ETF / Pacer ~0%), not real DTR5 holders.
+#                                 Proper UK source = FCA NSM TR-1 filings (BACKLOG). US holder feeds reliable, kept.
 # 1.23.0  2026-06-27  Alex Hind   (user 2026-06-27) FIX implausible published figures. (1) Investment trusts / closed-end
 #                                 funds (MYI = Murray International Trust / BlackRock MuniYield): _kpi_block suppressed via
 #                                 _looks_like_fund — operating KPIs (net margin 94.4%, revenue +444%, P/E 6x) are garbage
@@ -296,7 +299,10 @@ def fundamentals(ticker: str) -> dict:
     # them defensively; fraction vs percent is normalised. Best-effort — never blocks.
     f["top_holder"], f["top_holder_pct"], f["top_holder_change"] = None, None, None
     try:
-        inst = t.institutional_holders
+        # UK (.L) holder data from yfinance is index-ETF NOISE (e.g. HSBC FTSE 250 ETF / Pacer at
+        # ~0.0%), not the real DTR5 major holders — so it is suppressed for UK until sourced from the
+        # FCA National Storage Mechanism (TR-1 filings; see BACKLOG). US feeds are reliable, kept.
+        inst = None if str(ticker).upper().endswith(".L") else t.institutional_holders
         if inst is not None and not inst.empty:
             cols = {str(c).lower(): c for c in inst.columns}
             hcol = next((cols[k] for k in cols if k in ("holder", "holders")), None)

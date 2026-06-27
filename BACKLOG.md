@@ -4,6 +4,17 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
 
 ## New feature requests — added 2026-06-26 (user batch)
 
+- [ ] **UK holder data from the FCA NSM (TR-1)** — added 2026-06-27. yfinance UK holder data is
+  index-ETF noise, so the institutional-holder line is now SUPPRESSED for `.L` tickers (quality_report
+  1.24.0). Proper source = FCA National Storage Mechanism DTR5/TR-1 "notification of major holdings"
+  (data.fca.org.uk): authoritative, free, only lists >3% holders (the material ones). Verified an
+  individual TR-1 artefact (e.g. /artefacts/NSM/RNS/<id>.html) is fetchable (HTTP 200 with a browser
+  UA) and parseable (Issuer / shareholder / "% of voting rights"). **Blocker:** no public search API —
+  my endpoint guesses 403'd; the FCA directs API requests to email support. Need to (a) discover the
+  NSM search backend (reverse-engineer the data.fca.org.uk SPA's network call — browser devtools, or
+  the operator pastes a sample search URL), (b) query TR-1s by issuer name/LEI, (c) keep the latest
+  TR-1 per holder, parse the resulting %, surface the top holder. investing.com considered but rejected
+  (no free API; scraping brittle + ToS). See [[feedback_validate_published_figures]].
 - [ ] **(I) Weekly sector report to X** — turn the monthly sector report (@TheProfInvestor,
   https://x.com/TheProfInvestor/status/2070168387687424030) into our own WEEKLY X reports. Needs:
   ingest the source (read the tweet/thread), pick the sector rotation angle, render a weekly summary
