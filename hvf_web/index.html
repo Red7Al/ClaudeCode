@@ -169,11 +169,23 @@ function showDetail(t){
       <div class="kv"><span>P/E</span><b>${r.pe??'?'}</b></div>
       <div class="kv"><span>Insider %</span><b>${r.insider_pct!=null?r.insider_pct.toFixed(2)+'%':'?'}</b></div></div>
     <div class="card"><h4>Broker analysis</h4>${broker}</div>
+    <div class="card"><h4>On X</h4><div id="xlinks">loading…</div></div>
     <div class="card"><h4>X tweet text</h4><div class="tweet" id="tweetbox">loading…</div></div>`;
   fetch(`/api/tweet/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("tweetbox");
     if(el&&SEL===r.ticker) el.textContent=j.tweet||"(no tweet — not a publishable setup)";
   }).catch(()=>{});
+  fetch(`/api/links/${r.ticker}`).then(x=>x.json()).then(j=>{
+    const el=document.getElementById("xlinks"); if(!el||SEL!==r.ticker)return;
+    let h="";
+    if(j.ours) h+=`<div class="kv"><span>Our latest post</span><a href="${j.ours.url}" target="_blank" rel="noopener">view on X →</a></div>`;
+    else h+=`<div class="kv"><span>Our latest post</span><span style="color:var(--muted)">not yet published</span></div>`;
+    if(j.mentions&&j.mentions.length){
+      h+=`<div style="margin-top:6px;color:var(--muted);font-size:12px">Tracked accounts on $${(r.ticker||'').replace('.L','')}:</div>`;
+      h+=j.mentions.map(m=>`<div class="kv"><a href="${m.url}" target="_blank" rel="noopener">@${(m.account||'').replace(/^@/,'')}</a><span style="color:var(--muted)">${m.date?m.date.slice(0,10):''}</span></div>`).join("");
+    } else { h+=`<div style="color:var(--muted);font-size:12px;margin-top:4px">No tracked-account mentions.</div>`; }
+    el.innerHTML=h;
+  }).catch(()=>{document.getElementById("xlinks")&&(document.getElementById("xlinks").textContent="links unavailable");});
 }
 
 function applyAll(){render(); if(SEL&&!$("detail").classList.contains("hidden")){const r=DATA.find(x=>x.ticker===SEL);if(r&&pass(r))showDetail(SEL);else{$("detail").classList.add("hidden");SEL=null;}}}

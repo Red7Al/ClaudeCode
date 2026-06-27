@@ -15,6 +15,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.1.0   2026-06-27  Alex Hind   (user 2026-06-27) /api/links/<ticker> — OUR latest X publication (x_publications) + every
+#                                 tracked account that posted the instrument (notable_investors.post_url), fetched at
+#                                 selection time. 12-hour snapshot auto-refresh thread (rebuild + cache clear); threaded serve.
 # 1.0.0   2026-06-27  Alex Hind   Initial build.
 # ======================================================================================================================
 
@@ -33,6 +36,7 @@ SNAPSHOT = os.path.join(_HERE, "snapshot.json")
 
 app = Flask(__name__)
 _PNG_CACHE: dict = {}
+_X_HANDLE = "SqueezeSignals"   # our X account (config.py / publish_one_to_x X_HANDLE)
 
 
 def _load_snapshot() -> dict:
@@ -92,6 +96,36 @@ def api_hist3yr(ticker):
         _PNG_CACHE[key] = render_3yr_history_card(card) or b""
     png = _PNG_CACHE[key]
     return _png_response(png) if png else ("no 3yr chart", 404)
+
+
+@app.route("/api/links/<ticker>")
+def api_links(ticker):
+    """On-demand X links for an instrument (user 2026-06-27): OUR latest publication (x_publications)
+    and every tracked account we follow that posted about it (notable_investors.post_url). Queried
+    live at selection time so the links are always current; never raises."""
+    ours, mentions = None, []
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            rows = db.run("select tweet_id from x_publications where ticker = :t and tweet_id is not null "
+                          "order by published_at desc limit 1", t=ticker)
+            if rows:
+                tid = rows[0][0]
+                ours = {"tweet_id": str(tid), "url": f"https://x.com/{_X_HANDLE}/status/{tid}"}
+            mrows = db.run("select investor_name, post_url, disclosed_at from notable_investors "
+                           "where ticker = :t and post_url is not null order by disclosed_at desc limit 15", t=ticker)
+            seen = set()
+            for inv, url, dt in (mrows or []):
+                if not url or url in seen:
+                    continue
+                seen.add(url)
+                mentions.append({"account": inv, "url": url, "date": str(dt) if dt else None})
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"links lookup failed for {ticker}: {e}")
+    return jsonify({"ticker": ticker, "ours": ours, "mentions": mentions})
 
 
 @app.route("/api/tweet/<ticker>")
@@ -184,6 +218,36 @@ def api_pricewin(ticker):
     return _png_response(_render_price_window(rec, days, theme))
 
 
+def _refresh_loop():
+    """Rebuild the snapshot every 12h (user 2026-06-27) — and once on startup if it's missing or
+    already older than 12h. The build is light (no PNG rendering — those are lazy), so running it
+    in-process is fine; the PNG/tweet/links caches are cleared after each rebuild. Checks every 6h."""
+    import time as _t
+    from datetime import datetime, timezone
+    while True:
+        try:
+            need = True
+            snap = _load_snapshot()
+            gen = snap.get("generated_utc")
+            if gen:
+                try:
+                    age = (datetime.now(timezone.utc) - datetime.fromisoformat(gen)).total_seconds()
+                    need = age >= 12 * 3600
+                except Exception:
+                    need = True
+            if need:
+                log.info("snapshot refresh: building ...")
+                from hvf_web.build_snapshot import build
+                build()
+                _PNG_CACHE.clear()
+                log.info("snapshot refresh: done; caches cleared")
+        except Exception as e:
+            log.warning(f"snapshot refresh failed (will retry): {e}")
+        _t.sleep(6 * 3600)
+
+
 if __name__ == "__main__":
+    import threading
+    threading.Thread(target=_refresh_loop, daemon=True).start()
     log.info("HVF site on http://127.0.0.1:5057  (ngrok http 5057 to share)")
-    app.run(host="0.0.0.0", port=5057, debug=False)
+    app.run(host="0.0.0.0", port=5057, debug=False, threaded=True)

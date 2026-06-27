@@ -34,8 +34,12 @@ drives the price chart. Dark/light toggle, top-right. Click any row for the deta
 
 ## Notes
 
-- The snapshot is a point-in-time scan; refresh it by re-running `build_snapshot`. The header shows
-  the snapshot time.
+- The server **auto-refreshes the snapshot every 12 hours** (and on startup if it's missing or
+  already >12h old), clearing the PNG/tweet caches each time. You can still force a refresh by
+  re-running `build_snapshot`. The header shows the snapshot time.
+- The detail panel's **On X** card is fetched live per instrument: our latest publication link
+  (x_publications) plus every tracked account that posted about it (notable_investors). Needs the
+  Supabase env vars (`SUPABASE_USER` / `SUPABASE_DB_PASSWORD`).
 - The 3-year chart is always 3 years (never affected by the date filter); the "Price — last N days"
   chart re-renders as the date window changes.
 - PNGs are cached per ticker for the process lifetime; restart the server after a fresh snapshot.
