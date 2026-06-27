@@ -29,6 +29,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.27.0  2026-06-26  Alex Hind   (user 2026-06-26, C) post_to_slack now also posts the report to the SLACK_RW_HVF webhook
+#                                 (extra HVF-report channel) alongside SLACK_SIGNALS; each webhook is independent (a missing
+#                                 or failing one doesn't stop the others). Secret added to trading-hvf-report.yml.
 # 1.26.0  2026-06-26  Alex Hind   (user 2026-06-26) Daily report hides a market's DEVELOPING watch list once that market
 #                                 already has > DEVELOPING_HIDE_IF_TRADEABLE_OVER (10) TRADEABLE setups — plenty to act on,
 #                                 so the watch list is noise. The DEVELOPING header notes which markets were hidden.
@@ -698,16 +701,28 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
 
 
 def post_to_slack(blocks: list):
+    # Post the same report to the primary channel AND any additional channels (user 2026-06-26, C):
+    # SLACK_RW_HVF is an extra HVF-report channel. Each is an independent webhook; a missing/failed
+    # one doesn't stop the others.
     import requests
-    url = os.environ.get("SLACK_SIGNALS", "")
-    if not url:
-        log.warning("SLACK_SIGNALS not set — skipping Slack post")
-        return
-    resp = requests.post(url, json={"blocks": blocks}, timeout=15)
-    if resp.status_code != 200:
-        log.error(f"Slack post failed: {resp.status_code} {resp.text[:200]}")
-    else:
-        log.info("HVF report posted to #claude-trading-signals")
+    targets = [("SLACK_SIGNALS", True), ("SLACK_RW_HVF", False)]   # (env var, warn-if-missing)
+    posted_any = False
+    for env_name, warn_missing in targets:
+        url = os.environ.get(env_name, "")
+        if not url:
+            if warn_missing:
+                log.warning(f"{env_name} not set — skipping Slack post")
+            continue
+        try:
+            resp = requests.post(url, json={"blocks": blocks}, timeout=15)
+            if resp.status_code != 200:
+                log.error(f"Slack post failed ({env_name}): {resp.status_code} {resp.text[:200]}")
+            else:
+                posted_any = True
+                log.info(f"HVF report posted ({env_name})")
+        except Exception as e:
+            log.error(f"Slack post error ({env_name}): {e}")
+    return posted_any
 
 
 # ----------------------------------------------------------------------------------------------------------------------

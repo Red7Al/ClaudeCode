@@ -33,6 +33,7 @@ jobs:
           SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
           SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
+          SLACK_RW_HVF:          ${{ secrets.SLACK_RW_HVF }}   # extra HVF-report channel (user 2026-06-26, C)
           SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
           SLACK_TWITTER:         ${{ secrets.SLACK_TWITTER }}
           SLACK_BOT_TOKEN:       ${{ secrets.SLACK_BOT_TOKEN }}

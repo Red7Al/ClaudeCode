@@ -33,8 +33,10 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   recently-closed-trades lookup (last 48h, SELL side), a "bounce" definition (e.g. price back above
   the exit by X% / N bars), and an email path flagged URGENT. Guard against spam (one alert per
   instrument per bounce).
-- [ ] **(C) HVF Daily Report -> extra Slack channel** — also publish the HVF Daily Report to an
-  additional Slack channel (new SLACK_* webhook / channel id). Small once the channel is decided.
+- [x] **(C) DONE 2026-06-26 (run_hvf_report 1.27.0)** — post_to_slack also posts the report to the
+  `SLACK_RW_HVF` webhook (user-chosen extra channel; secret already set 2026-06-22) alongside
+  SLACK_SIGNALS; webhooks are independent (a missing/failing one doesn't stop the others). Secret
+  wired into trading-hvf-report.yml.
 - [x] **(D) DONE 2026-06-26 (run_hvf_report 1.26.0)** — hides a market's DEVELOPING watch list when it
   already has > DEVELOPING_HIDE_IF_TRADEABLE_OVER (10) tradeable setups; header notes hidden markets.
 - [x] **(J) DONE 2026-06-26 (price_action 1.35.0 / config 1.25.0)** — `get_hvf_signal_mtf` now drops a
