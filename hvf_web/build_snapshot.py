@@ -79,13 +79,18 @@ def _derive_rules(r: dict) -> list:
 
 
 def _months_to_go(r: dict):
-    """Rough funnel duration estimate: weeks of span already formed vs an ~12-week typical apex.
-    Returns a float 'months to go' (>=0) or None."""
-    span = r.get("funnel_span_weeks")
-    if not isinstance(span, (int, float)):
+    """Funnel age in months — the H1 pivot date to now (how long the coil has been forming). The old
+    funnel_span_weeks field the engine never set, so this was empty across the board (user 2026-06-27)."""
+    h1 = r.get("h1_date")
+    if not h1:
         return None
-    remaining_weeks = max(0.0, 12.0 - float(span))
-    return round(remaining_weeks / 4.33, 1)
+    try:
+        from datetime import datetime, timezone
+        d = datetime.fromisoformat(str(h1)[:10]).replace(tzinfo=timezone.utc)
+        days = (datetime.now(timezone.utc) - d).days
+        return round(days / 30.44, 1) if days >= 0 else None
+    except Exception:
+        return None
 
 
 def build():

@@ -80,7 +80,7 @@ a{color:var(--accent)}
     <div class="f"><label>Timeframe</label><select id="f_tf"><option value="">Any</option></select></div>
     <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
     <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" placeholder="3.0"><input id="f_rrmax" type="number" step="0.1" placeholder="3.99"></div></div>
-    <div class="f"><label>Months-to-go range</label><div class="row2"><input id="f_mmin" type="number" step="0.5" placeholder="min"><input id="f_mmax" type="number" step="0.5" placeholder="max"></div></div>
+    <div class="f"><label>Funnel age (months) range</label><div class="row2"><input id="f_mmin" type="number" step="0.5" placeholder="min"><input id="f_mmax" type="number" step="0.5" placeholder="max"></div></div>
     <div class="f"><label>Dist to entry % range</label><div class="row2"><input id="f_demin" type="number" step="0.1" placeholder="min"><input id="f_demax" type="number" step="0.1" placeholder="max"></div></div>
     <div class="f"><label>Days since setup range</label><div class="row2"><input id="f_dsmin" type="number" placeholder="min"><input id="f_dsmax" type="number" placeholder="max"></div></div>
     <h3>Fundamentals</h3>
@@ -98,11 +98,12 @@ a{color:var(--accent)}
     <div class="tablewrap">
       <table>
         <thead><tr>
-          <th data-k="ticker">Instrument</th><th data-k="direction">Dir</th><th data-k="location">Location</th>
+          <th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <th data-k="market">Market</th><th data-k="sector">Sector</th><th data-k="status">Status</th>
           <th data-k="trig_date">Triggered</th><th data-k="quality">Q</th><th data-k="rr">R:R</th>
           <th data-k="dist_entry">Dist→Entry</th><th data-k="days_since">Days</th>
-          <th data-k="open_pos">#Open</th><th data-k="pe">P/E</th><th data-k="timeframe">TF</th><th data-k="months_to_go">Mo→</th>
+          <th data-k="open_pos">#Open</th><th data-k="months_to_go">Funnel mo</th>
+          <th data-k="pe">P/E</th><th data-k="timeframe">TF</th><th data-k="location">Location</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -130,6 +131,10 @@ function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return
 function augment(r){
   r.dist_entry=(r.entry!=null&&r.current_price)? +(((r.entry-r.current_price)/r.current_price)*100).toFixed(2):null;
   r.days_since=daysSince(r.h3_date);
+  // Funnel age = months the coil has been forming (H1 -> now). The snapshot's months_to_go was
+  // empty (engine has no funnel_span_weeks), so compute it here from the H1 pivot date.
+  const d1=daysSince(r.h1_date);
+  r.months_to_go=(d1!=null)? +(d1/30.44).toFixed(1):null;
   r.trig_date=(r.status==="TRIGGERED")?((r.direction==="BULL"?r.l3_date:r.h3_date)||r.l3_date||r.h3_date):null;
   r.open_pos=POS[r.ticker]??POS[disp(r.ticker)]??0;
 }
@@ -186,18 +191,18 @@ function render(){
   const rows=DATA.filter(pass).sort((a,b)=>{
     const x=a[sortK],y=b[sortK];const av=x==null?-1e9:x,bv=y==null?-1e9:y;
     return (av<bv?-1:av>bv?1:0)*sortDir;});
-  $("count").textContent=`${rows.length} of ${DATA.length} setups`;
+  $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} total</span>`;
   renderViz(rows);
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
-    <td><b>${disp(r.ticker)}</b> <span class="muted">${r.name||''}</span></td>
+    <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td><span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></td>
-    <td>${locName(r.location)}</td><td>${r.market||''}</td><td>${r.sector||''}</td><td>${r.status||''}</td>
+    <td>${r.market||''}</td><td>${r.sector||''}</td><td>${r.status||''}</td>
     <td>${r.trig_date?r.trig_date.slice(0,10):''}</td>
     <td>${r.quality??''}</td><td>${r.rr!=null?r.rr.toFixed(1):''}</td>
     <td>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':''}</td>
-    <td>${r.days_since??''}</td><td>${r.open_pos||''}</td>
-    <td>${r.pe??''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${r.months_to_go??''}</td></tr>`).join("")
-    || `<tr><td colspan="15" class="empty">No setups match the filters.</td></tr>`;
+    <td>${r.days_since??''}</td><td>${r.open_pos||''}</td><td>${r.months_to_go??''}</td>
+    <td>${r.pe??''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${locName(r.location)}</td></tr>`).join("")
+    || `<tr><td colspan="16" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>showDetail(tr.dataset.t));
 }
 
