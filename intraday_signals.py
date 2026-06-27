@@ -23,6 +23,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.50.0  2026-06-27  Alex Hind   (user 2026-06-27) Card "Now" price uses the last NON-NaN close — a forming/holiday NaN bar
+#                                 rendered as "Now nan" on the SBUX card. Both _now_v and _cur_sig now dropna() first.
 # 1.49.0  2026-06-26  Alex Hind   (user 2026-06-26) FIX dossier/card PNG never uploading: upload_png_to_slack (extracted in
 #                                 1.45.0) used `requests` but the module has NO top-level requests import — every call died
 #                                 with "name 'requests' is not defined" (seen in social-monitor logs: dossier_XPEV.png).
@@ -1563,7 +1565,7 @@ def render_x_post_card(r: dict):
         # gold, ● stop red, ▲ target green, ⚖ R:R neutral (DejaVu-safe glyphs — colour
         # emoji don't render in the card font). Segment widths are measured via the Agg
         # renderer to place them left-to-right (one fig.text can only be a single colour).
-        _now_v = f"{float(close.iloc[-1]) * ig_scale:.2f}"
+        _now_v = f"{float(close.dropna().iloc[-1]) * ig_scale:.2f}"   # last non-NaN (user 2026-06-27: SBUX now=nan)
         # Support/resistance after R:R on the top line (user 2026-06-19): support green,
         # resistance red. '—' when the recent-swing fetch failed.
         _sup_v = f"{sup_raw * ig_scale:.2f}" if sup_raw else "—"
@@ -1620,7 +1622,7 @@ def render_x_post_card(r: dict):
         # level is already on the top line, so showing the % here adds info without clipping
         # the figure edge. Falls back to the value when the % can't be computed.
         from price_action import pct_from_current
-        _cur_sig = float(close.iloc[-1]) * ig_scale
+        _cur_sig = float(close.dropna().iloc[-1]) * ig_scale   # last non-NaN (user 2026-06-27: SBUX now=nan)
         def _rl(name, p, val_str):
             s = pct_from_current(p, _cur_sig)
             return f"{name} {s}" if s else f"{name} {val_str}"

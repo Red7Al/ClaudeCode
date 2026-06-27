@@ -27,6 +27,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 0.4.0   2026-06-27  Alex Hind   (user 2026-06-27) current_price now uses the last NON-NaN close — a forming/holiday bar
+#                                 came back NaN and was published as SBUX "now: nan". Rejects if no valid closes.
 # 0.3.0   2026-06-23  Alex Hind   (user 2026-06-23) Emit the pivot DATES (h1_date..l3_date) + H2/L2 levels again — the X card
 #                                 needs them to draw the H1->H2->H3 / L1->L2->L3 funnel overlay (lost in the 0.2.0 cutover).
 # 0.2.0   2026-06-22  Alex Hind   WIRED IN — get_hvf_signal_mtf now calls detect_hvf for every timeframe (price_action 1.34.0);
@@ -71,7 +73,13 @@ def detect_hvf(ticker: str, hist, trend_signal: str, *, weekly: bool = False) ->
         r["reject_reason"] = "insufficient history"
         return r
 
-    current = float(hist["Close"].iloc[-1])
+    # Last NON-NaN close — a forming/holiday bar can be NaN (user 2026-06-27: SBUX "now" = nan);
+    # iloc[-1] alone published that NaN as the current price.
+    _closes = hist["Close"].dropna()
+    if _closes.empty:
+        r["reject_reason"] = "no valid close prices"
+        return r
+    current = float(_closes.iloc[-1])
     r["current_price"] = round(current, 6)
 
     # KLOS — 52-week (≈52 weekly / 252 daily) low & high. Key levels of significance.

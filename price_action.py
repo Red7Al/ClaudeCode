@@ -66,6 +66,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.36.0  2026-06-27  Alex Hind   (user 2026-06-27) FIX NaN "now" price (SBUX): _sanitise_ohlc drops NaN-Close bars (yfinance
+#                                 forming/holiday session), so the daily path no longer carries a NaN last bar (weekly already
+#                                 dropna'd). check_hvf_invariants now also REJECTS a NaN current_price — the price audit had
+#                                 no such check, which is why nan reached the card/report.
 # 1.35.0  2026-06-26  Alex Hind   (user 2026-06-26, backlog J) Stale-TRIGGERED gate in get_hvf_signal_mtf: drop a TRIGGERED
 #                                 candidate whose live price ran past the target or >STALE_TRIGGER_MAX_PCT (20%) beyond the
 #                                 entry (ARM weekly: entry 134 vs price 334) BEFORE picking best, so a fresh lower-timeframe
@@ -333,6 +337,12 @@ def _sanitise_ohlc(df: pd.DataFrame, ticker: str = "") -> pd.DataFrame:
     if df is None or df.empty or not {"Open", "High", "Low", "Close"}.issubset(df.columns):
         return df
     df = df.copy()
+    # Drop bars with no Close: yfinance emits a NaN-Close row for a forming/holiday session, which
+    # otherwise becomes the "current price" as NaN downstream (user 2026-06-27: SBUX "now" = nan —
+    # 2026-06-26 came back NaN while 06-25 was 103.16). The weekly path already dropna'd; daily didn't.
+    df = df[df["Close"].notna()]
+    if df.empty:
+        return df
     body_hi = df[["Open", "Close"]].max(axis=1)
     body_lo = df[["Open", "Close"]].min(axis=1)
     rng_med = (df["High"] - df["Low"]).rolling(20, min_periods=5).median()
@@ -1472,6 +1482,11 @@ def check_hvf_invariants(r: dict) -> list:
     v = []
     if not r or not r.get("hvf_type"):
         return v
+    # current_price must be a usable number — a NaN reached the SBUX card/report as "now: nan"
+    # (user 2026-06-27) and nothing here caught it. NaN != NaN, so this also rejects it.
+    cp = r.get("current_price")
+    if isinstance(cp, float) and cp != cp:
+        v.append("current_price is NaN")
     h1, h3 = r.get("h1_level"), r.get("h3_level")
     l1, l3 = r.get("l1_level"), r.get("l3_level")
     entry  = h3 if r["hvf_type"] == "BULLISH" else l3
