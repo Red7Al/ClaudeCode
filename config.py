@@ -613,6 +613,13 @@ PER_MARKET_TOP_N = 10
 # TRADEABLE setups (user 2026-06-26) — plenty to act on there, so the watch list is just noise.
 DEVELOPING_HIDE_IF_TRADEABLE_OVER = 10
 
+# Bounce alert (user 2026-06-26, backlog E). If an instrument we SOLD in the last
+# BOUNCE_LOOKBACK_HOURS bounces back UP to >= sold_level * (1 + BOUNCE_ALERT_PCT), fire an URGENT
+# email (e.g. Japan 225 sold, then reverses up). Reads the shared IG account's /history/activity,
+# so it sees sells placed by either system. One email per sell per bounce (spam-guarded).
+BOUNCE_ALERT_PCT     = 0.02   # 2% recovery above the sell level (user 2026-06-26)
+BOUNCE_LOOKBACK_HOURS = 48     # only watch sells from the last 48h
+
 # Stale-TRIGGERED gate (user 2026-06-26, backlog J). A TRIGGERED HVF means price has JUST broken
 # the entry pivot, so the live price should sit AT/just beyond the published entry. If price has
 # instead run more than this fraction beyond the entry (or all the way past the target), the funnel

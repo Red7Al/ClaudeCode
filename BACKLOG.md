@@ -16,7 +16,17 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   growth rate, sector competitors, market share, + other KPIs. Source mostly yfinance + the existing
   fundamentals path (quality_report). Keep the 280-char tweet lean — most KPIs go in the threaded
   long report; only the strongest 1-2 ride the tweet. Decide the priority/wording per KPI.
-- [ ] **(E) Urgent EMAIL alert on a bounce in a recently-sold instrument** — if an instrument we SOLD
+- [x] **(E) DONE 2026-06-26 (bounce_monitor 1.0.0)** — URGENT email when an instrument SOLD in the last
+  `BOUNCE_LOOKBACK_HOURS` (48h) bounces back to `>= sold_level*(1+BOUNCE_ALERT_PCT)` (2%, user choice).
+  Decision (user 2026-06-26): EndToEndTrading + TradingViewWebhook share ONE IG account, so it reads
+  `/history/activity` here and sees sells from either system. Pure logic (recent_sells / is_bounce /
+  spam-guard, one alert per sell per bounce) unit-tested in `test_bounce_monitor.py` (20/20); URGENT
+  mail via `trade_email.send_simple_email`; entrypoint `run_bounce_alert.py` + workflow
+  `trading-bounce-alert.yml` (workflow_dispatch — wire a cron-job.org schedule, suggest every 15 min).
+  **TODO on first live run:** validate the IG `/history/activity` record shape against `_sold_from_activity`
+  (direction/level/epic/date) — modelled on `ig_shim.get_close_reason` but not yet seen against a real
+  recent SELL. Original item below.
+- [ ] ~~**(E) Urgent EMAIL alert on a bounce in a recently-sold instrument**~~ — if an instrument we SOLD
   within the last 48h bounces (e.g. Japan 225), send an URGENT email (not just Slack). Needs: a
   recently-closed-trades lookup (last 48h, SELL side), a "bounce" definition (e.g. price back above
   the exit by X% / N bars), and an email path flagged URGENT. Guard against spam (one alert per

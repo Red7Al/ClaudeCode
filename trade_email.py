@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.12.0  2026-06-26  Alex Hind   (user 2026-06-26, backlog E) Add send_simple_email(subject, text, html) — a lightweight
+#                                 sender reusing the existing Resend/Yahoo provider plumbing (no investment-case template),
+#                                 for the bounce-alert URGENT email. Single source for provider selection.
 # 1.11.0  2026-06-19  Alex Hind   Current price + % distance on every trade email (user 2026-06-19): the live price is now
 #                                 always shown (was working-orders only) and Entry/Stop/Target each carry their % from the
 #                                 live price, via price_action.pct_from_current.
@@ -602,6 +605,31 @@ def _send_via_yahoo(subject, text, html, charts, rcpts) -> bool:
         s.send_message(msg)
     log.info(f"Trade email sent via Yahoo SMTP to {rcpts} ({len(charts)} charts)")
     return True
+
+
+def send_simple_email(subject: str, text: str, html: str = None,
+                      recipients=None) -> bool:
+    """Lightweight email (no investment-case template / charts), reusing the SAME
+    Resend-then-Yahoo provider selection as send_trade_email. For ad-hoc alerts
+    such as the bounce-alert URGENT mail (backlog E). FAIL-SAFE: returns False and
+    logs on any problem; never raises into the caller."""
+    try:
+        try:
+            from config import EMAIL_RECIPIENTS
+        except Exception:
+            EMAIL_RECIPIENTS = ["eahind@yahoo.co.uk"]
+        rcpts = recipients or EMAIL_RECIPIENTS
+        if not rcpts:
+            return False
+        if os.environ.get("RESEND_API_KEY"):
+            return _send_via_resend(subject, text, html or f"<pre>{text}</pre>", [], rcpts)
+        if os.environ.get("YAHOO_USER") and os.environ.get("YAHOO_APP_PASSWORD"):
+            return _send_via_yahoo(subject, text, html or f"<pre>{text}</pre>", [], rcpts)
+        log.warning("No email sender configured (RESEND_API_KEY or YAHOO_*) — simple email skipped")
+        return False
+    except Exception as e:
+        log.error(f"Simple email failed ({subject!r}): {type(e).__name__}: {e!r}")
+        return False
 
 
 def send_trade_email(ticker: str, direction: str, sig: dict, trade: dict,
