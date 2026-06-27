@@ -120,8 +120,13 @@ def build():
         if f.get("analyst_rated"):
             broker = {"buys": f.get("analyst_buys"), "holds": f.get("analyst_holds"),
                       "rated": f.get("analyst_rated"), "trend": f.get("analyst_trend")}
+        try:
+            from instrument_name import company_name
+            _nm = company_name(tk) or tk
+        except Exception:
+            _nm = f.get("name") or r.get("name") or tk
         out.append({
-            "ticker": tk, "name": f.get("name") or r.get("name") or tk,
+            "ticker": tk, "name": _nm,
             "direction": "BULL" if r.get("hvf_type") == "BULLISH" else "BEAR",
             "location": _location_of(tk),
             "market": r.get("index"),
