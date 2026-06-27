@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.25.0  2026-06-26  Alex Hind   (user 2026-06-26, backlog J) STALE_TRIGGER_MAX_PCT=0.20 — get_hvf_signal_mtf drops a
+#                                 TRIGGERED setup whose live price ran >20% beyond entry / past target (stale resolved funnel).
 # 1.24.0  2026-06-22  Alex Hind   (user 2026-06-22) MIN_PUBLISH_QUALITY 70 -> 25 — promote middling-quality clean funnels
 #                                 (e.g. USDJPY q46) to tradeable/publishable; the clean RW rules already gate hard on structure.
 # 1.23.0  2026-06-22  Alex Hind   (user 2026-06-22) "Crypto" added to MARKET_ORDER — the HVF report now covers all asset
@@ -610,6 +612,13 @@ PER_MARKET_TOP_N = 10
 # Daily report: hide a market's DEVELOPING watch list once it already has more than this many
 # TRADEABLE setups (user 2026-06-26) — plenty to act on there, so the watch list is just noise.
 DEVELOPING_HIDE_IF_TRADEABLE_OVER = 10
+
+# Stale-TRIGGERED gate (user 2026-06-26, backlog J). A TRIGGERED HVF means price has JUST broken
+# the entry pivot, so the live price should sit AT/just beyond the published entry. If price has
+# instead run more than this fraction beyond the entry (or all the way past the target), the funnel
+# resolved long ago and the entry is unreachable — e.g. ARM weekly TRIGGERED entry 134 vs price 334
+# (+149%). get_hvf_signal_mtf drops such candidates so a still-fresh lower-timeframe setup can win.
+STALE_TRIGGER_MAX_PCT = 0.20
 
 # X-draft caps (user 2026-06-17). The X publication drafts (#arw-claude-twitter) are capped
 # SEPARATELY from the analytical report above:

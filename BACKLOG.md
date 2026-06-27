@@ -25,7 +25,16 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   additional Slack channel (new SLACK_* webhook / channel id). Small once the channel is decided.
 - [x] **(D) DONE 2026-06-26 (run_hvf_report 1.26.0)** — hides a market's DEVELOPING watch list when it
   already has > DEVELOPING_HIDE_IF_TRADEABLE_OVER (10) tradeable setups; header notes hidden markets.
-- [ ] **(J) Sanity-gate nonsensical TRIGGERED setups** — ARM showed weekly TRIGGERED with Entry 134.25
+- [x] **(J) DONE 2026-06-26 (price_action 1.35.0 / config 1.25.0)** — `get_hvf_signal_mtf` now drops a
+  TRIGGERED candidate whose live price ran past the target or more than `STALE_TRIGGER_MAX_PCT` (20%)
+  beyond the entry, BEFORE picking best, so a fresh lower-timeframe setup can still win; if none
+  survive the instrument is suppressed + logged to `hvf_suppressed_log`. Verified: ARM (weekly entry
+  134 vs price 334) now returns empty; USDJPY/ABF.L TRIGGERED retained (within 20%). Kept OUT of
+  `check_hvf_invariants` (that stays pure-geometry). Investigation showed ARM's levels were NOT a
+  unit/instrument mismatch — yfinance confirmed ARM really was ~134 in Feb 2026 and has since run to
+  334, i.e. a genuinely resolved funnel, not the MSTR-class bug. NaN current_price (transient yfinance)
+  is safely ignored by the gate rather than dropped. Suite green (21/21). Original item below.
+- [ ] ~~**(J) Sanity-gate nonsensical TRIGGERED setups**~~ — ARM showed weekly TRIGGERED with Entry 134.25
   vs Now 347.71 (entry -61% BELOW price). A real TRIGGERED long has price AT/just above the H3 entry;
   entry far below price means a STALE funnel (triggered long ago) or a current-price/level source
   mismatch (same class as the MSTR wrong-instrument bug). Add a gate: reject/flag any TRIGGERED long

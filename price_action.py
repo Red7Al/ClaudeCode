@@ -66,6 +66,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.35.0  2026-06-26  Alex Hind   (user 2026-06-26, backlog J) Stale-TRIGGERED gate in get_hvf_signal_mtf: drop a TRIGGERED
+#                                 candidate whose live price ran past the target or >STALE_TRIGGER_MAX_PCT (20%) beyond the
+#                                 entry (ARM weekly: entry 134 vs price 334) BEFORE picking best, so a fresh lower-timeframe
+#                                 setup can still win; all-stale -> suppressed + logged. Deduped the 3 empty-result returns
+#                                 into _empty_mtf_result(). NOT added to check_hvf_invariants (kept pure-geometry).
 # 1.34.0  2026-06-22  Alex Hind   (user 2026-06-22 "rebuild to the clean RW ruleset", "funnel logic in ONE place") CUT OVER
 #                                 to hvf_clean.detect_hvf — the single clean engine for every timeframe. get_hvf_signal_mtf now
 #                                 calls it (no exhaustion-AMP1 re-anchor); get_hvf_signal is a thin delegating shim; DELETED the
@@ -253,7 +258,7 @@ import yfinance as yf
 
 from config import (YAHOO_MAP, HVF_MIN_RR, PA_CONFIRM_THRESHOLDS,
                     PA_CONFIRM_THRESHOLD_DEFAULT, HVF_LIQUIDITY_TIERS_GBP,
-                    TIGHT_STOP_MIN_PCT, MIN_PRIOR_TREND_PCT)
+                    TIGHT_STOP_MIN_PCT, MIN_PRIOR_TREND_PCT, STALE_TRIGGER_MAX_PCT)
 
 # Rule 1 (prior trend): minimum bars of pre-pivot history in the window needed to MEASURE the
 # prior-trend magnitude. Below this we can't assess it, so the gate is skipped (the structural
@@ -1080,6 +1085,19 @@ def _liquidity_penalty(ticker: str) -> int:
         return 0
 
 
+def _empty_mtf_result() -> dict:
+    """The canonical 'no HVF setup' result dict returned by get_hvf_signal_mtf
+    (no candidates, all suppressed, or all stale). Single source so the several
+    early-return sites can't drift apart."""
+    empty = {k: None for k in (
+        "hvf_type", "hvf_signal", "h3_level", "l3_level", "stop_level",
+        "target", "risk_reward", "h1_level", "l1_level", "pattern_range",
+        "bars_since_h3", "pattern_quality", "convergence", "volume_confirmed", "current_price",
+    )}
+    empty["hvf_timeframe"] = None
+    return empty
+
+
 def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
     """
     Run HVF detection across three timeframes and return the best result.
@@ -1129,13 +1147,53 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
         log.debug(f"HVF weekly failed for {ticker}: {e}")
 
     if not candidates:
-        empty = {k: None for k in [
-            "hvf_type", "hvf_signal", "h3_level", "l3_level", "stop_level",
-            "target", "risk_reward", "h1_level", "l1_level", "pattern_range",
-            "bars_since_h3", "pattern_quality", "convergence", "volume_confirmed", "current_price",
-        ]}
-        empty["hvf_timeframe"] = None
-        return empty
+        return _empty_mtf_result()
+
+    # ── Stale-TRIGGERED gate (user 2026-06-26, backlog J) ─────────────────────────────────────────────────────────────
+    # A TRIGGERED setup means price JUST broke the entry pivot, so the live price should sit at/just
+    # beyond the published entry. If price has run past the target, or more than STALE_TRIGGER_MAX_PCT
+    # beyond the entry, the funnel resolved long ago and the entry is unreachable (ARM weekly: entry
+    # 134 vs price 334, +149%). Drop such candidates BEFORE picking best, so a still-fresh lower-
+    # timeframe setup can win; if none survive the instrument has no current setup. The geometry is
+    # internally valid here, so this is deliberately NOT a check_hvf_invariants rule (that stays
+    # pure-geometry) — it's a freshness/tradeability gate against the live price.
+    def _is_stale_triggered(c):
+        if c.get("hvf_signal") != "TRIGGERED":
+            return False
+        entry, target, cur = c.get("h3_level"), c.get("target"), c.get("current_price")
+        if cur is None or not entry:
+            return False
+        if c.get("hvf_type") == "BULLISH":
+            if target is not None and cur >= target:                 # whole move already gone
+                return True
+            return cur > entry * (1 + STALE_TRIGGER_MAX_PCT)         # entry unreachable
+        if target is not None and cur <= target:                     # BEARISH
+            return True
+        return cur < entry * (1 - STALE_TRIGGER_MAX_PCT)
+
+    _stale = [c for c in candidates if _is_stale_triggered(c)]
+    if _stale:
+        for c in _stale:
+            log.info(f"HVF stale-TRIGGERED dropped {ticker} [{c.get('hvf_timeframe')}]: entry "
+                     f"{c.get('h3_level')} vs price {c.get('current_price')} (target {c.get('target')})")
+        candidates = [c for c in candidates if not _is_stale_triggered(c)]
+    if not candidates:
+        # Every candidate was a stale/resolved funnel — record it (like the invariant guard) and
+        # return empty so the dead setup never reaches Slack or a trade.
+        try:
+            from db_pool import get_db as _gdb
+            _sdb = _gdb()
+            _sdb.run("""insert into hvf_suppressed_log
+                        (ticker, hvf_timeframe, hvf_type, risk_reward, violations)
+                        values (:t, :tf, :ht, :rr, :v)""",
+                     t=ticker, tf=_stale[0].get("hvf_timeframe"), ht=_stale[0].get("hvf_type"),
+                     rr=_stale[0].get("risk_reward"),
+                     v="stale TRIGGERED: live price past target / >%.0f%% beyond entry"
+                       % (STALE_TRIGGER_MAX_PCT * 100))
+            _sdb.close()
+        except Exception as e:
+            log.warning(f"hvf_suppressed_log insert (stale) failed (non-critical): {e}")
+        return _empty_mtf_result()
 
     # Pick best: TRIGGERED > READY > DEVELOPING, then quality
     signal_rank = {"TRIGGERED": 3, "READY": 2, "DEVELOPING": 1}
@@ -1164,13 +1222,7 @@ def get_hvf_signal_mtf(ticker: str, trend_hint: dict = None) -> dict:
             _sdb.close()
         except Exception as e:
             log.warning(f"hvf_suppressed_log insert failed (non-critical): {e}")
-        empty = {k: None for k in [
-            "hvf_type", "hvf_signal", "h3_level", "l3_level", "stop_level",
-            "target", "risk_reward", "h1_level", "l1_level", "pattern_range",
-            "bars_since_h3", "pattern_quality", "convergence", "volume_confirmed", "current_price",
-        ]}
-        empty["hvf_timeframe"] = None
-        return empty
+        return _empty_mtf_result()
 
     # ── Liquidity penalty (user 2026-06-13): demote illiquid names so thin small
     # trusts can't top the list. Applied to the chosen result's quality SCORE only —
