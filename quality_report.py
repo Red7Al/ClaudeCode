@@ -30,6 +30,13 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.23.0  2026-06-27  Alex Hind   (user 2026-06-27) FIX implausible published figures. (1) Investment trusts / closed-end
+#                                 funds (MYI = Murray International Trust / BlackRock MuniYield): _kpi_block suppressed via
+#                                 _looks_like_fund — operating KPIs (net margin 94.4%, revenue +444%, P/E 6x) are garbage
+#                                 for funds. (2) Per-value sanity guards: net margin kept only -100%..60%, revenue growth
+#                                 only |<=200%|. (3) Largest-holder % now Shares/sharesOutstanding (SBUX/Capital World was
+#                                 74% from yfinance's bogus pctHeld; true ~9%), implausible >100% dropped. SBUX payout 188%
+#                                 confirmed REAL (TTM EPS 1.31 vs $2.48 div) — left as-is.
 # 1.22.0  2026-06-26  Alex Hind   (user 2026-06-26, F leftover) _kpi_block now adds insider-holdings change over ~9 months —
 #                                 net open-market shares BOUGHT minus SOLD (grants/awards/exercises ignored). Best-effort,
 #                                 omitted on any gap. (Market share still omitted — no clean free source.)
@@ -125,6 +132,7 @@
 
 import os
 import io
+import re
 import sys
 import datetime
 import logging
@@ -296,13 +304,27 @@ def fundamentals(ticker: str) -> dict:
             pcol = next((cols[k] for k in cols if k in ("pctheld", "% out", "pct_held")), None) \
                 or next((cols[k] for k in cols if "pct" in k and "change" not in k), None)
             ccol = next((cols[k] for k in cols if "pctchange" in k or "pct_change" in k or k == "% change"), None)
-            if hcol is not None and pcol is not None:
+            scol = next((cols[k] for k in cols if k == "shares"), None)
+            if hcol is not None:
                 top = inst.iloc[0]
-                pct = float(top[pcol])
-                if pct <= 1.0:          # some versions report a fraction (0.21), others a percent (21.0)
-                    pct *= 100
-                f["top_holder"] = str(top[hcol]).strip()
-                f["top_holder_pct"] = pct
+                # yfinance's pctHeld is UNRELIABLE — e.g. SBUX/Capital World reported pctHeld=0.74
+                # while the true stake is ~9% (Shares 103.3M / sharesOutstanding 1.14bn). Prefer
+                # Shares/sharesOutstanding; fall back to pctHeld only when shares data is missing,
+                # and DROP an implausible (>100%) result rather than publish "owns 74%".
+                shares_out = info.get("sharesOutstanding")
+                pct = None
+                if scol is not None and shares_out:
+                    try:
+                        pct = float(top[scol]) / float(shares_out) * 100
+                    except (ValueError, TypeError, ZeroDivisionError):
+                        pct = None
+                if pct is None and pcol is not None:
+                    pct = float(top[pcol])
+                    if pct <= 1.0:      # some versions report a fraction (0.21), others a percent (21.0)
+                        pct *= 100
+                if pct is not None and 0 < pct <= 100:
+                    f["top_holder"] = str(top[hcol]).strip()
+                    f["top_holder_pct"] = pct
                 # Direction of the stake (user 2026-06-19): pctChange is the position change
                 # this reporting period (fraction; +ve = adding, -ve = trimming).
                 if ccol is not None:
@@ -539,6 +561,25 @@ def _chart_story(r: dict, name: str, gbp: bool) -> str:
     return " ".join(parts)
 
 
+# Investment trusts / closed-end funds report meaningless operating KPIs (yfinance gave MYI net margin
+# 94.4% / revenue +444%), so the "Key numbers" block is suppressed for them. Name-based (quoteType /
+# category / fundFamily are all None for UK trusts); markers chosen NOT to catch operating companies
+# like "Northern Trust Corporation" (ends "Corporation", no marker) — user 2026-06-27.
+_FUND_NAME_RE = re.compile(
+    r"\b(INVESTMENT TRUST|INVESTMENT COMPANY|INVESTMENT FUND|MUNIYIELD|MUNI|UCITS|ICVC|SICAV|"
+    r"CLOSED.?END|VCT|ETF|FUND)\b", re.I)
+
+
+def _looks_like_fund(name: str) -> bool:
+    """True if the instrument name is an investment trust / closed-end fund / ETF, for which the
+    operating KPIs (margin, revenue growth, P/E, FCF) are meaningless. Conservative: 'Northern Trust
+    Corporation' (a bank) is NOT a fund — it lacks a marker and ends 'Corporation', not 'Trust PLC'."""
+    if not name:
+        return False
+    n = name.strip().upper()
+    return bool(_FUND_NAME_RE.search(n)) or n.endswith("TRUST PLC")
+
+
 def _kpi_block(ticker: str, gbp: bool) -> str:
     """Compact "Key numbers" KPI paragraph for the long report (user 2026-06-26, F): valuation (P/E),
     profitability (net margin, return on assets ≈ ROIC proxy), revenue growth, free cash flow,
@@ -557,6 +598,11 @@ def _kpi_block(ticker: str, gbp: bool) -> str:
     except Exception:
         return ""
 
+    # Suppress operating KPIs for investment trusts / closed-end funds (user 2026-06-27): they are
+    # meaningless and yfinance returns garbage (MYI net margin 94.4% / revenue +444% / P/E 6x).
+    if _looks_like_fund(info.get("shortName") or info.get("longName") or ""):
+        return ""
+
     bits = []
 
     def _pct(v, dp=0):
@@ -569,17 +615,19 @@ def _kpi_block(ticker: str, gbp: bool) -> str:
             _v += f" ({fpe:.0f}x forward)"
         bits.append(_v.capitalize() + ".")
 
+    # Sanity guards (user 2026-06-27): drop implausible values that are almost always a data artifact
+    # rather than reality — a >60% net margin or a >200% YoY revenue swing on an established name.
     nm, roa = info.get("profitMargins"), info.get("returnOnAssets")
     prof = []
-    if isinstance(nm, (int, float)):
+    if isinstance(nm, (int, float)) and -1.0 <= nm <= 0.6:
         prof.append(f"net margin {_pct(nm, 1)}")
-    if isinstance(roa, (int, float)):
+    if isinstance(roa, (int, float)) and -1.0 <= roa <= 1.0:
         prof.append(f"return on assets ~{_pct(roa, 0)}")
     if prof:
         bits.append("Profitability: " + ", ".join(prof) + ".")
 
     rg = info.get("revenueGrowth")
-    if isinstance(rg, (int, float)):
+    if isinstance(rg, (int, float)) and abs(rg) <= 2.0:
         bits.append(f"Revenue {'up' if rg >= 0 else 'down'} {_pct(abs(rg), 0)} on the year.")
 
     fcf = info.get("freeCashflow")
