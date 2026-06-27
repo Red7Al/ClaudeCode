@@ -8,9 +8,11 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   https://x.com/TheProfInvestor/status/2070168387687424030) into our own WEEKLY X reports. Needs:
   ingest the source (read the tweet/thread), pick the sector rotation angle, render a weekly summary
   card + thread in house style (Slack/X rule: never name the source on the public tweet).
-- [x] **(F) DONE 2026-06-26 (quality_report 1.21.0)** — _kpi_block "Key numbers" paragraph: P/E, net
-  margin, ROA(~ROIC), revenue growth, FCF, net debt/EBITDA, buybacks, dividend + growth + payout flag.
-  Market share omitted (not in feed); insider Δ9mo not yet added. Original item below.
+- [x] **(F) DONE 2026-06-26 (quality_report 1.21.0 + 1.22.0)** — _kpi_block "Key numbers" paragraph: P/E, net
+  margin, ROA(~ROIC), revenue growth, FCF, net debt/EBITDA, buybacks, dividend + growth + payout flag, AND
+  (1.22.0) insider Δ over ~9 months — net open-market shares bought minus sold (verified live: NKE +61.8k,
+  AAPL -625.9k, TSLA -205.3k). **Market share dropped** — no clean free data source (ROIC remains the ROA
+  proxy). All requested KPIs now covered except market share. Original item below.
 - [ ] ~~**(F) More KPIs on the X tweet / report**~~ — add: ROIC, FCF, FCF growth, insider-holdings change
   over 9 months, revenue growth, debt up/down, Net Debt/EBITDA, buybacks, net margin, P/E, dividend
   growth rate, sector competitors, market share, + other KPIs. Source mostly yfinance + the existing

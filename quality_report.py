@@ -30,6 +30,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.22.0  2026-06-26  Alex Hind   (user 2026-06-26, F leftover) _kpi_block now adds insider-holdings change over ~9 months —
+#                                 net open-market shares BOUGHT minus SOLD (grants/awards/exercises ignored). Best-effort,
+#                                 omitted on any gap. (Market share still omitted — no clean free source.)
 # 1.21.0  2026-06-26  Alex Hind   (user 2026-06-26, F) New _kpi_block() "Key numbers" paragraph in the long report:
 #                                 P/E (trailing + forward), net margin, return on assets (≈ROIC proxy), revenue growth, free
 #                                 cash flow, net debt/EBITDA, buybacks, dividend + its growth rate (+ payout-above-profit
@@ -617,6 +620,45 @@ def _kpi_block(ticker: str, gbp: bool) -> str:
         if isinstance(pr, (int, float)) and pr > 1:
             _d += f" (payout ~{pr * 100:.0f}% of earnings — funded beyond profit)"
         bits.append(_d + ".")
+
+    # Insider holdings change over ~9 months (user 2026-06-26, F leftover): net shares insiders
+    # BOUGHT minus SOLD on the open market in the window — direction is the sentiment signal. Grants /
+    # awards / option exercises are ignored (not open-market conviction). Best-effort; omitted on any gap.
+    def _shares_fmt(n):
+        for div, suf in ((1e9, "bn"), (1e6, "m"), (1e3, "k")):
+            if n >= div:
+                return f"{n / div:.1f}{suf}"
+        return f"{n:.0f}"
+    try:
+        import datetime as _dt2
+        import pandas as _pd
+        itx = t.insider_transactions
+        if itx is not None and not itx.empty:
+            _cols = {c.lower(): c for c in itx.columns}
+            date_col   = next((_cols[k] for k in _cols if "date" in k), None)
+            shares_col = next((_cols[k] for k in _cols if "share" in k), None)
+            type_col   = next((_cols[k] for k in _cols if "transaction" in k or k == "text"), None)
+            if date_col and shares_col and type_col:
+                cutoff = _dt2.datetime.now() - _dt2.timedelta(days=270)
+                net = 0.0
+                for _, row in itx.iterrows():
+                    try:
+                        d = _pd.to_datetime(row[date_col])
+                        if _pd.isna(d) or d.to_pydatetime().replace(tzinfo=None) < cutoff:
+                            continue
+                        sh = abs(float(row[shares_col]))
+                        ttype = str(row[type_col]).lower()
+                        if any(w in ttype for w in ("purchas", "buy")):
+                            net += sh
+                        elif any(w in ttype for w in ("sale", "sell", "dispos")):
+                            net -= sh
+                    except Exception:
+                        continue
+                if abs(net) >= 1000:
+                    bits.append(f"Insiders net {'bought' if net > 0 else 'sold'} "
+                                f"~{_shares_fmt(abs(net))} shares over the past 9 months.")
+    except Exception:
+        pass
 
     return ("Key numbers — " + " ".join(bits)) if bits else ""
 
