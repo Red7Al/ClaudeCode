@@ -577,7 +577,9 @@ def _looks_like_fund(name: str) -> bool:
     if not name:
         return False
     n = name.strip().upper()
-    return bool(_FUND_NAME_RE.search(n)) or n.endswith("TRUST PLC")
+    # "TRUST PLC" as a SUBSTRING — yfinance appends share-class suffixes ("MURRAY INCOME TRUST PLC
+    # ORD 25"), so endswith() missed real trusts. "Northern Trust Corporation" has no "TRUST PLC".
+    return bool(_FUND_NAME_RE.search(n)) or "TRUST PLC" in n
 
 
 def _kpi_block(ticker: str, gbp: bool) -> str:
