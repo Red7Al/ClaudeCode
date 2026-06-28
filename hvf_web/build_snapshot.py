@@ -15,6 +15,9 @@
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-27  Alex Hind   Initial build.
+# 1.1.0   2026-06-28  Alex Hind   (user 2026-06-28) Full universe + has_signal flag; months_to_go = funnel age from H1;
+#                                 persistent name cache (name_cache.json) so each refresh only looks up NEW tickers
+#                                 instead of all ~424 every time.
 # ======================================================================================================================
 
 import os
@@ -27,6 +30,7 @@ log = logging.getLogger("hvf_web.build")
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 SNAPSHOT = os.path.join(_HERE, "snapshot.json")
+NAME_CACHE = os.path.join(_HERE, "name_cache.json")   # ticker -> company name; names don't change, look up once
 
 
 def _location_of(ticker: str) -> str:
@@ -113,16 +117,35 @@ def build():
     except Exception:
         company_name = lambda t: t
 
+    # Persistent name cache (user 2026-06-28: 'the name will not change each time so look up once'). The
+    # first build resolves all ~424 names (slow, network-bound); every later refresh only looks up tickers
+    # not already cached, so it's fast. New names are written back at the end.
+    try:
+        with open(NAME_CACHE, encoding="utf-8") as fh:
+            _names = json.load(fh)
+    except Exception:
+        _names = {}
+    _names_dirty = False
+
+    def _resolve_name(tk):
+        nonlocal _names_dirty
+        if tk in _names and _names[tk]:
+            return _names[tk]
+        try:
+            nm = company_name(tk) or tk
+        except Exception:
+            nm = tk
+        _names[tk] = nm
+        _names_dirty = True
+        return nm
+
     # Every monitored instrument gets a record (user 2026-06-28: 'see all items, toggle on/off if there
     # is a Squeeze signal'). has_signal distinguishes them; no-signal rows carry name/market/location
     # only (no fundamentals/engine fields). Card PNGs/tweets stay lazy (server-rendered).
     out = []
     for market, tickers in UNIVERSE.items():
         for tk in tickers:
-            try:
-                _nm = company_name(tk) or tk
-            except Exception:
-                _nm = tk
+            _nm = _resolve_name(tk)
             r = sig.get(tk)
             if not (r and r.get("hvf_type")):
                 out.append({"ticker": tk, "name": _nm, "market": market, "location": _location_of(tk),
@@ -168,6 +191,14 @@ def build():
                     "risk_reward", "h1_level", "h2_level", "l1_level", "l2_level", "l3_level",
                     "h1_date", "h2_date", "h3_date", "l1_date", "l2_date", "l3_date", "current_price")},
             })
+
+    if _names_dirty:
+        try:
+            with open(NAME_CACHE, "w", encoding="utf-8") as fh:
+                json.dump(_names, fh, indent=2, ensure_ascii=False)
+            log.info(f"name cache updated ({len(_names)} names)")
+        except Exception as e:
+            log.warning(f"could not write name cache: {e}")
 
     snapshot = {"generated_utc": datetime.now(timezone.utc).isoformat(),
                 "count": len(out), "records": out}
