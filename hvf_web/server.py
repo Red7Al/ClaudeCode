@@ -72,7 +72,12 @@ def api_records():
 
 
 def _png_response(png: bytes):
-    return send_file(io.BytesIO(png), mimetype="image/png")
+    # no-store so the browser never serves a stale image — UK cards rendered broken (16KB) while the
+    # host disk was full and browsers cached that; without this they keep showing the empty one
+    # (user 2026-06-27 "X post card still empty" even after the disk was freed).
+    resp = send_file(io.BytesIO(png), mimetype="image/png")
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
 
 
 @app.route("/api/card/<ticker>")
@@ -252,6 +257,40 @@ def api_positions():
     except Exception as e:
         log.warning(f"positions lookup failed: {e}")
     return jsonify({"positions": counts})
+
+
+@app.route("/api/broker/<ticker>")
+def api_broker(ticker):
+    """Change in broker coverage over the last 6 and 12 months (user 2026-06-27): net analyst
+    upgrades vs downgrades from yfinance upgrades_downgrades. Live per-ticker; graceful if Yahoo is
+    unreachable (available=False)."""
+    res = {"up6": 0, "down6": 0, "up12": 0, "down12": 0, "available": False}
+    try:
+        import yfinance as yf, pandas as pd
+        try:
+            from config import YAHOO_MAP
+        except Exception:
+            YAHOO_MAP = {}
+        ud = yf.Ticker(YAHOO_MAP.get(ticker, ticker)).upgrades_downgrades
+        if ud is not None and not ud.empty:
+            res["available"] = True
+            now = pd.Timestamp.now(tz="UTC")
+            for dt, row in ud.iterrows():
+                try:
+                    d = pd.Timestamp(dt)
+                    d = d.tz_localize("UTC") if d.tzinfo is None else d.tz_convert("UTC")
+                except Exception:
+                    continue
+                months = (now - d).days / 30.44
+                act = str(row.get("Action", "")).lower()
+                if 0 <= months <= 12:
+                    if act == "up":
+                        res["up12"] += 1; res["up6"] += (months <= 6)
+                    elif act == "down":
+                        res["down12"] += 1; res["down6"] += (months <= 6)
+    except Exception as e:
+        log.warning(f"broker history failed for {ticker}: {e}")
+    return jsonify({"ticker": ticker, **{k: int(v) if isinstance(v, bool) else v for k, v in res.items()}})
 
 
 def _render_price_window(rec: dict, days: int, theme: str) -> bytes:

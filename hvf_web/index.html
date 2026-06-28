@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HVF Scanner</title>
+<title>Squeeze Scanner</title>
 <style>
 :root{
   --bg:#0d1117; --panel:#161b22; --fg:#c9d1d9; --muted:#8b949e; --line:#30363d;
@@ -58,37 +58,39 @@ img{max-width:100%;border-radius:6px;display:block}
 .slider{display:flex;align-items:center;gap:8px} .slider input{flex:1}
 .empty{padding:40px;text-align:center;color:var(--muted)}
 a{color:var(--accent)}
+.clk{cursor:pointer} .clk:hover{opacity:.75}
+aside.collapsed{display:none}
 </style>
 </head>
 <body>
 <header>
-  <h1>HVF Scanner</h1>
+  <h1>Squeeze Scanner</h1>
   <span class="count" id="gen"></span>
   <span class="grow"></span>
+  <button class="btn" id="togglefilters">☰ Filters</button>
   <button class="btn" id="theme">🌙 Dark</button>
   <button class="btn" id="reset">Reset filters</button>
 </header>
 <div class="layout">
-  <aside>
+  <aside id="aside">
     <h3>Direction & place</h3>
     <div class="f"><label>Direction</label><select id="f_dir"><option value="">Any</option><option>BULL</option><option>BEAR</option></select></div>
-    <div class="f"><label>Location</label><select id="f_loc"><option value="">Any</option></select></div>
+    <div class="f"><label>Location (Geography)</label><select id="f_loc"><option value="">Any</option></select></div>
     <div class="f"><label>Market</label><select id="f_mkt"><option value="">Any</option></select></div>
     <div class="f"><label>Sector</label><select id="f_sec"><option value="">Any</option></select></div>
-    <h3>HVF</h3>
+    <h3>Squeeze</h3>
     <div class="f"><label>Status</label><select id="f_stat"><option value="">Any</option><option>TRIGGERED</option><option>READY</option><option>DEVELOPING</option></select></div>
     <div class="f"><label>Timeframe</label><select id="f_tf"><option value="">Any</option></select></div>
-    <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
-    <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" placeholder="3.0"><input id="f_rrmax" type="number" step="0.1" placeholder="3.99"></div></div>
-    <div class="f"><label>Funnel age (months) range</label><div class="row2"><input id="f_mmin" type="number" step="0.5" placeholder="min"><input id="f_mmax" type="number" step="0.5" placeholder="max"></div></div>
-    <div class="f"><label>Dist to entry % range</label><div class="row2"><input id="f_demin" type="number" step="0.1" placeholder="min"><input id="f_demax" type="number" step="0.1" placeholder="max"></div></div>
+    <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" value="60" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
+    <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" placeholder="min"><input id="f_rrmax" type="number" step="0.1" placeholder="max"></div></div>
+    <div class="f"><label>Dist to entry % range</label><div class="row2"><input id="f_demin" type="number" step="0.1" value="-5" placeholder="min"><input id="f_demax" type="number" step="0.1" value="5" placeholder="max"></div></div>
     <div class="f"><label>Days since setup range</label><div class="row2"><input id="f_dsmin" type="number" placeholder="min"><input id="f_dsmax" type="number" placeholder="max"></div></div>
     <h3>Fundamentals</h3>
     <div class="f"><label>P/E range</label><div class="row2"><input id="f_pemin" type="number" placeholder="min"><input id="f_pemax" type="number" placeholder="max"></div></div>
     <div class="f"><label>Insider % range</label><div class="row2"><input id="f_inmin" type="number" step="0.1" placeholder="min"><input id="f_inmax" type="number" step="0.1" placeholder="max"></div></div>
     <h3>Chart window</h3>
-    <div class="f"><label>Price chart: last <span id="dlbl">365</span> days</label>
-      <div class="slider"><input id="f_days" type="range" min="30" max="1095" step="5" value="365"></div></div>
+    <div class="f"><label>Price chart: last <span id="dlbl">730</span> days</label>
+      <div class="slider"><input id="f_days" type="range" min="30" max="1095" step="5" value="730"></div></div>
     <small class="muted">Drives the "Price — last N days" chart only.</small>
   </aside>
 
@@ -99,11 +101,11 @@ a{color:var(--accent)}
       <table>
         <thead><tr>
           <th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
-          <th data-k="market">Market</th><th data-k="sector">Sector</th><th data-k="status">Status</th>
+          <th data-k="sector">Sector</th><th data-k="status">Status</th>
           <th data-k="trig_date">Triggered</th><th data-k="quality">Q</th><th data-k="rr">R:R</th>
           <th data-k="dist_entry">Dist→Entry</th><th data-k="days_since">Days</th>
-          <th data-k="open_pos">#Open</th><th data-k="months_to_go">Funnel mo</th>
-          <th data-k="pe">P/E</th><th data-k="timeframe">TF</th><th data-k="location">Location</th>
+          <th data-k="open_pos">#Open</th><th data-k="pe">P/E</th><th data-k="timeframe">TF</th>
+          <th data-k="market">Market</th><th data-k="location">Location</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -117,7 +119,7 @@ a{color:var(--accent)}
 let DATA=[], SEL=null, sortK="quality", sortDir=-1, POS={};
 const $=id=>document.getElementById(id);
 const F=["f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
-         "f_mmin","f_mmax","f_demin","f_demax","f_dsmin","f_dsmax","f_pemin","f_pemax","f_inmin","f_inmax"];
+         "f_demin","f_demax","f_dsmin","f_dsmax","f_pemin","f_pemax","f_inmin","f_inmax"];
 const LOC={UK:"United Kingdom",US:"United States",FX:"FX / Indices"};
 const locName=v=>LOC[v]||v||"";
 const f2=v=>(v==null||v==="")?"":(+v).toFixed(2);
@@ -131,10 +133,6 @@ function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return
 function augment(r){
   r.dist_entry=(r.entry!=null&&r.current_price)? +(((r.entry-r.current_price)/r.current_price)*100).toFixed(2):null;
   r.days_since=daysSince(r.h3_date);
-  // Funnel age = months the coil has been forming (H1 -> now). The snapshot's months_to_go was
-  // empty (engine has no funnel_span_weeks), so compute it here from the H1 pivot date.
-  const d1=daysSince(r.h1_date);
-  r.months_to_go=(d1!=null)? +(d1/30.44).toFixed(1):null;
   r.trig_date=(r.status==="TRIGGERED")?((r.direction==="BULL"?r.l3_date:r.h3_date)||r.l3_date||r.h3_date):null;
   r.open_pos=POS[r.ticker]??POS[disp(r.ticker)]??0;
 }
@@ -150,7 +148,6 @@ function pass(r){
   const rng=(v,lo,hi)=>{const a=num(g(lo)),b=num(g(hi));if(a!=null&&(v==null||v<a))return false;if(b!=null&&(v==null||v>b))return false;return true;};
   if(!rng(r.quality,"f_qmin","f_qmax"))return false;
   if(!rng(r.rr,"f_rrmin","f_rrmax"))return false;
-  if(!rng(r.months_to_go,"f_mmin","f_mmax"))return false;
   if(!rng(r.dist_entry,"f_demin","f_demax"))return false;
   if(!rng(r.days_since,"f_dsmin","f_dsmax"))return false;
   if(!rng(r.pe,"f_pemin","f_pemax"))return false;
@@ -158,14 +155,14 @@ function pass(r){
   return true;
 }
 
-function barChart(title,counts,colorFn){
+function barChart(title,counts,fk,colorFn){
   const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const max=Math.max(1,...entries.map(e=>e[1]));
-  const rows=entries.map(([k,n])=>`<div class="bar"><span class="tk" title="${k}">${k}</span>
+  const rows=entries.map(([k,n])=>`<div class="bar clk" data-fk="${fk}" data-fv="${k==='—'?'':k}" title="click to filter ${k}"><span class="tk">${k}</span>
     <span class="fill" style="width:${Math.round(n/max*90)}px;background:${colorFn?colorFn(k):'var(--accent)'}"></span><span class="n">${n}</span></div>`).join("");
   return `<div class="vizbox"><h5>${title}</h5><div class="bars">${rows}</div></div>`;
 }
-function pieChart(title,counts){
+function pieChart(title,counts,fk){
   const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
   const total=entries.reduce((s,e)=>s+e[1],0)||1;
   const cols=["#58a6ff","#3fb950","#f85149","#d29922","#a371f7","#db61a2","#e3b341","#79c0ff","#56d364","#ff7b72"];
@@ -173,18 +170,18 @@ function pieChart(title,counts){
   entries.forEach(([k,n],i)=>{const frac=n/total,a2=a+frac*2*Math.PI;
     const x1=20+18*Math.cos(a-Math.PI/2),y1=20+18*Math.sin(a-Math.PI/2);
     const x2=20+18*Math.cos(a2-Math.PI/2),y2=20+18*Math.sin(a2-Math.PI/2);
-    seg+=`<path d="M20,20 L${x1.toFixed(2)},${y1.toFixed(2)} A18,18 0 ${frac>0.5?1:0},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${cols[i%cols.length]}"></path>`;a=a2;});
-  const legend=entries.slice(0,8).map(([k,n],i)=>`<div class="bar"><span class="fill" style="width:10px;background:${cols[i%cols.length]}"></span><span class="tk" style="text-align:left;width:auto" title="${k}">${k} (${n})</span></div>`).join("");
+    seg+=`<path class="clk" data-fk="${fk}" data-fv="${k==='—'?'':k}" d="M20,20 L${x1.toFixed(2)},${y1.toFixed(2)} A18,18 0 ${frac>0.5?1:0},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${cols[i%cols.length]}"><title>click to filter ${k}</title></path>`;a=a2;});
+  const legend=entries.slice(0,8).map(([k,n],i)=>`<div class="bar clk" data-fk="${fk}" data-fv="${k==='—'?'':k}"><span class="fill" style="width:10px;background:${cols[i%cols.length]}"></span><span class="tk" style="text-align:left;width:auto" title="click to filter ${k}">${k} (${n})</span></div>`).join("");
   return `<div class="vizbox"><h5>${title}</h5><div style="display:flex;gap:8px;align-items:center">
     <svg viewBox="0 0 40 40" width="86" height="86">${seg}</svg><div class="bars" style="min-width:120px">${legend}</div></div></div>`;
 }
 function renderViz(rows){
   const by=k=>rows.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
   $("viz").innerHTML=
-    pieChart("Sector",by("sector"))+
-    barChart("Direction",by("direction"),k=>k==="BULL"?"var(--bull)":"var(--bear)")+
-    barChart("Status",by("status"),k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
-    barChart("Market",by("market"));
+    barChart("Direction",by("direction"),"f_dir",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
+    barChart("Status",by("status"),"f_stat",k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
+    barChart("Market",by("market"),"f_mkt")+
+    pieChart("Sector",by("sector"),"f_sec");
 }
 
 function render(){
@@ -196,13 +193,13 @@ function render(){
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td><span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></td>
-    <td>${r.market||''}</td><td>${r.sector||''}</td><td>${r.status||''}</td>
+    <td>${r.sector||''}</td><td>${r.status||''}</td>
     <td>${r.trig_date?r.trig_date.slice(0,10):''}</td>
     <td>${r.quality??''}</td><td>${r.rr!=null?r.rr.toFixed(1):''}</td>
     <td>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':''}</td>
-    <td>${r.days_since??''}</td><td>${r.open_pos||''}</td><td>${r.months_to_go??''}</td>
-    <td>${r.pe??''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${locName(r.location)}</td></tr>`).join("")
-    || `<tr><td colspan="16" class="empty">No setups match the filters.</td></tr>`;
+    <td>${r.days_since??''}</td><td>${r.open_pos||''}</td>
+    <td>${r.pe??''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${r.market||''}</td><td>${locName(r.location)}</td></tr>`).join("")
+    || `<tr><td colspan="15" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>showDetail(tr.dataset.t));
 }
 
@@ -233,7 +230,7 @@ function showDetail(t){
       <div class="kv"><span>Open positions</span><b>${r.open_pos||0}</b></div></div>
     <div class="card"><h4>Quality (${r.quality??'?'}/100) — how it's scored</h4>
       <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the funnel is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric funnel; a low Q means a loose, older, or lopsided one.</div></div>
-    <div class="card"><h4>Broker analysis</h4>${broker}</div>
+    <div class="card"><h4>Broker analysis</h4>${broker}<div id="brokerchg" class="muted" style="margin-top:6px">loading 6–12mo change…</div></div>
     <div class="card"><h4>On X</h4><div id="xlinks">loading…</div></div>
     <div class="card"><h4>X thread (all pages)</h4><div class="tweet" id="tweetbox">loading…</div></div>`;
   fetch(`/api/thread/${r.ticker}`).then(x=>x.json()).then(j=>{
@@ -241,6 +238,12 @@ function showDetail(t){
     const parts=j.parts||[]; if(!parts.length){el.textContent="(no thread — not a publishable setup)";return;}
     el.innerHTML=parts.map((p,i)=>`<div style="padding:6px 0;border-top:${i?'1px solid var(--line)':'none'}">${(p||'').replace(/</g,'&lt;').replace(/(https?:\/\/\S+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>')}</div>`).join("");
   }).catch(()=>{});
+  fetch(`/api/broker/${r.ticker}`).then(x=>x.json()).then(j=>{
+    const el=document.getElementById("brokerchg"); if(!el||SEL!==r.ticker)return;
+    if(!j.available){el.textContent="6–12mo change: no analyst upgrade/downgrade history";return;}
+    const net=(u,d)=>`${u-d>=0?'+':''}${u-d} net (${u}↑ / ${d}↓)`;
+    el.innerHTML=`Coverage change — last 6mo: <b>${net(j.up6,j.down6)}</b> · last 12mo: <b>${net(j.up12,j.down12)}</b>`;
+  }).catch(()=>{const el=document.getElementById("brokerchg");if(el)el.textContent="6–12mo change unavailable";});
   fetch(`/api/rules/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("rulesbox"); if(!el||SEL!==r.ticker)return;
     el.innerHTML=(j.rules||[]).map(u=>`<div class="rule"><div class="top"><span class="v ${u.verdict}">${u.verdict}</span><b>Rule ${u.n} — ${u.name}</b></div><div class="why">${(u.detail||u.note||'').replace(/</g,'&lt;')}</div></div>`).join("")
@@ -263,8 +266,12 @@ function applyAll(){render(); if(SEL&&!$("detail").classList.contains("hidden"))
 
 document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=(sortK===k)?-sortDir:-1;sortK=k;render();});
 F.forEach(id=>$(id).addEventListener("input",applyAll));
+// Click a chart bar / pie slice to set that filter (toggle off if already set) — user 2026-06-27.
+$("viz").addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(!el)return;
+  const f=$(el.dataset.fk); if(!f)return; f.value=(f.value===el.dataset.fv)?"":el.dataset.fv; applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
-$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
+$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});$("f_qmin").value=60;$("f_demin").value=-5;$("f_demax").value=5;$("f_days").value=730;$("dlbl").textContent=730;applyAll();};
+$("togglefilters").onclick=()=>$("aside").classList.toggle("collapsed");
 $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light");$("theme").textContent=l?"☀️ Light":"🌙 Dark";if(SEL)showDetail(SEL);};
 
 Promise.all([fetch("/api/records").then(r=>r.json()), fetch("/api/positions").then(r=>r.json()).catch(()=>({positions:{}}))])
