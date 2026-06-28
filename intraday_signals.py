@@ -320,6 +320,9 @@
 # 1.3.3   2026-06-28  Alex Hind   (user 2026-06-28 "x post card still empty") render_x_post_card: retry the price
 #                                 download once on a transient empty/throttled response, and return None on a price-less
 #                                 frame (Close all-NaN) instead of drawing a blank axes-only card.
+# 1.3.4   2026-06-28  Alex Hind   (user 2026-06-28 "is price history not held in the database?") Persist each good
+#                                 price download to data/price_cache/<sym>.pkl and fall back to the last good one when
+#                                 the live fetch is empty — the card no longer blanks on a Yahoo throttle.
 # ======================================================================================================================
 
 import os
@@ -1452,6 +1455,24 @@ def render_x_post_card(r: dict):
             import time as _t
             _t.sleep(1.5)
             hist = _dl()
+        # Price history is not stored anywhere (user 2026-06-28: "is price history not held in the
+        # database?"), so a transient Yahoo throttle would blank the card. Persist each good download
+        # and fall back to the last good one when the live fetch comes back empty.
+        import os as _os
+        _pc_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "price_cache")
+        _pc_file = _os.path.join(_pc_dir, _yt.replace("/", "_").replace("^", "_").replace("=", "_") + ".pkl")
+        if hist is not None and not hist.empty:
+            try:
+                _os.makedirs(_pc_dir, exist_ok=True)
+                hist.to_pickle(_pc_file)
+            except Exception:
+                pass
+        elif _os.path.exists(_pc_file):
+            try:
+                hist = pd.read_pickle(_pc_file)
+                log.info(f"X card {ticker}: live price empty — using cached price history")
+            except Exception:
+                hist = None
         if hist is None or hist.empty:
             return None
 

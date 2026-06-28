@@ -25,7 +25,8 @@ select,input{width:100%;background:var(--panel);color:var(--fg);border:1px solid
 .row2{display:flex;gap:6px} .row2 input{width:50%}
 main{flex:1;display:flex;flex-direction:column;min-width:0}
 .count{padding:8px 16px;color:var(--muted);font-size:12px}
-.viz{display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:flex-start}
+.viz{display:flex;flex-direction:column;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line)}
+.vizrow{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
 .vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 .vizbox h5{margin:0 0 6px;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}
 .bars{display:flex;flex-direction:column;gap:3px;min-width:150px}
@@ -192,12 +193,16 @@ function pieChart(title,counts,fk){
 }
 function renderViz(rows){
   const by=k=>rows.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
+  // Bars wrap among themselves in the top row; the Sector pie gets its own row so nothing ever
+  // stacks directly above or below it (user 2026-06-28).
   $("viz").innerHTML=
-    barChart("Direction",by("direction"),"f_dir",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
-    barChart("Status",by("status"),"f_stat",k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
-    barChart("Market",by("market"),"f_mkt")+
-    barChart("Timeframe",by("timeframe"),"f_tf")+
-    pieChart("Sector",by("sector"),"f_sec");
+    `<div class="vizrow">`+
+      barChart("Direction",by("direction"),"f_dir",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
+      barChart("Status",by("status"),"f_stat",k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
+      barChart("Market",by("market"),"f_mkt")+
+      barChart("Timeframe",by("timeframe"),"f_tf")+
+    `</div>`+
+    `<div class="vizrow">`+pieChart("Sector",by("sector"),"f_sec")+`</div>`;
 }
 
 function render(){

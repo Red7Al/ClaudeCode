@@ -15,6 +15,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.2   2026-06-28  Alex Hind   (user 2026-06-28) pricewin chart gets the same disk price cache as the X card
+#                                 (data/price_cache/win_<sym>_<days>.pkl) — falls back to last-good on a Yahoo throttle.
 # 1.3.1   2026-06-28  Alex Hind   (user 2026-06-28 "x post card still empty") api_card now caches ONLY successful
 #                                 renders — a transient yfinance throttle no longer sticks an empty card in the cache;
 #                                 failed renders 404 and retry on the next load.
@@ -359,11 +361,27 @@ def _render_price_window(rec: dict, days: int, theme: str) -> bytes:
     card = rec.get("_card") or {}
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=max(20, days))
+    _yt = YAHOO_MAP.get(tk, tk)
     try:
-        hist = yf.download(YAHOO_MAP.get(tk, tk), start=start.strftime("%Y-%m-%d"),
+        hist = yf.download(_yt, start=start.strftime("%Y-%m-%d"),
                            end=end.strftime("%Y-%m-%d"), progress=False, auto_adjust=True)
     except Exception:
         hist = None
+    # Same price cache as the X card (user 2026-06-28): persist good downloads, fall back to the last
+    # good one when Yahoo is throttled, so the chart never blanks. Cache key includes the day span.
+    import pandas as _pd
+    _pc_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "price_cache")
+    _pc_file = os.path.join(_pc_dir, f"win_{_yt}_{int(days)}".replace("/", "_").replace("^", "_").replace("=", "_") + ".pkl")
+    if hist is not None and not hist.empty:
+        try:
+            os.makedirs(_pc_dir, exist_ok=True); hist.to_pickle(_pc_file)
+        except Exception:
+            pass
+    elif os.path.exists(_pc_file):
+        try:
+            hist = _pd.read_pickle(_pc_file)
+        except Exception:
+            hist = None
     fig = plt.figure(figsize=(9, 4.2)); fig.patch.set_facecolor(bg)
     ax = fig.add_axes([0.08, 0.12, 0.88, 0.80]); ax.set_facecolor(bg)
     if hist is None or hist.empty:
