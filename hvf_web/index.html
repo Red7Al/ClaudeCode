@@ -27,7 +27,7 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 .count{padding:8px 16px;color:var(--muted);font-size:12px}
 .viz{display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:flex-start}
 .vizsector{flex:none}
-.vizbars{display:flex;gap:14px;flex-wrap:wrap;flex:1;min-width:0;align-items:flex-start}
+.vizbars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;flex:1;min-width:0;align-items:start}
 .vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 .vizbox h5{margin:0 0 6px;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}
 .bars{display:flex;flex-direction:column;gap:3px;min-width:150px}
@@ -82,12 +82,12 @@ aside.collapsed{display:none}
 <div class="layout">
   <aside id="aside">
     <h3>Direction & place</h3>
-    <div class="f"><label>Direction</label><select id="f_dir"><option value="">Any</option><option>BULL</option><option>BEAR</option></select></div>
+    <div class="f"><label>Direction</label><select id="f_dir"><option value="">Any</option><option>BULL</option><option>BEAR</option><option value="—">— (none)</option></select></div>
     <div class="f"><label>Location (Geography)</label><select id="f_loc"><option value="">Any</option></select></div>
     <div class="f"><label>Market</label><select id="f_mkt"><option value="">Any</option></select></div>
     <div class="f"><label>Sector</label><select id="f_sec"><option value="">Any</option></select></div>
     <h3>Squeeze</h3>
-    <div class="f"><label>Status</label><select id="f_stat"><option value="">Any</option><option>TRIGGERED</option><option>READY</option><option>DEVELOPING</option></select></div>
+    <div class="f"><label>Status</label><select id="f_stat"><option value="">Any</option><option>TRIGGERED</option><option>READY</option><option>DEVELOPING</option><option value="—">— (none)</option></select></div>
     <div class="f"><label>Timeframe</label><select id="f_tf"><option value="">Any</option></select></div>
     <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" value="45" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
     <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" placeholder="min"><input id="f_rrmax" type="number" step="0.1" placeholder="max"></div></div>
@@ -136,7 +136,8 @@ const disp=t=>(t||"").replace(/\.L$/,"");
 const qcol=q=>q>=70?"var(--bull)":q>=50?"#d29922":"var(--bear)";   // quality colour: green / amber / red
 
 function uniq(k){return [...new Set(DATA.map(r=>r[k]).filter(x=>x!=null))].sort();}
-function fillSel(id,k,label){const s=$(id);uniq(k).forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=label?label(v):v;s.appendChild(o);});}
+function fillSel(id,k,label){const s=$(id);uniq(k).forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=label?label(v):v;s.appendChild(o);});
+  if(DATA.some(r=>!r[k])){const o=document.createElement("option");o.value="—";o.textContent="— (none)";s.appendChild(o);}}
 const num=v=>v===""||v==null?null:parseFloat(v);
 function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return null;return Math.round((Date.now()-t)/864e5);}
 
@@ -151,12 +152,15 @@ function augment(r){
 function pass(r){
   if(signalOnly && r.has_signal===false)return false;
   const g=id=>$(id).value;
-  if(g("f_dir")&&r.direction!==g("f_dir"))return false;
-  if(g("f_loc")&&r.location!==g("f_loc"))return false;
-  if(g("f_mkt")&&r.market!==g("f_mkt"))return false;
-  if(g("f_sec")&&r.sector!==g("f_sec"))return false;
-  if(g("f_stat")&&r.status!==g("f_stat"))return false;
-  if(g("f_tf")&&r.timeframe!==g("f_tf"))return false;
+  // "—" is the missing-value bucket from the charts (no-signal rows have null direction/status/etc.):
+  // selecting it filters to rows where that field is empty (user 2026-06-28).
+  const sel=(v,id)=>{const f=g(id);return !f || (f==="—" ? !v : v===f);};
+  if(!sel(r.direction,"f_dir"))return false;
+  if(!sel(r.location,"f_loc"))return false;
+  if(!sel(r.market,"f_mkt"))return false;
+  if(!sel(r.sector,"f_sec"))return false;
+  if(!sel(r.status,"f_stat"))return false;
+  if(!sel(r.timeframe,"f_tf"))return false;
   // null value passes a range (a no-signal / missing-field row is never excluded by a numeric range —
   // so toggling "Squeeze only" off shows the whole monitored universe).
   const rng=(v,lo,hi)=>{const a=num(g(lo)),b=num(g(hi));if(v==null)return true;if(a!=null&&v<a)return false;if(b!=null&&v>b)return false;return true;};
@@ -174,7 +178,7 @@ function barChart(title,counts,fk,colorFn){
   const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const max=Math.max(1,...entries.map(e=>e[1]));
   const rows=entries.map(([k,n])=>{const on=active&&String(k)===active;
-    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k==='—'?'':k}" title="click to filter ${k}"><span class="tk">${on?'● ':''}${k}</span>
+    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}" title="click to filter ${k}"><span class="tk">${on?'● ':''}${k}</span>
     <span class="fill" style="width:${Math.round(n/max*90)}px;background:${colorFn?colorFn(k):'var(--accent)'};opacity:${active&&!on?0.4:1}"></span><span class="n">${n}</span></div>`;}).join("");
   return `<div class="vizbox${active?' filtered':''}"><h5>${title}${active?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${active} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
 }
@@ -187,9 +191,9 @@ function pieChart(title,counts,fk){
   entries.forEach(([k,n],i)=>{const frac=n/total,a2=a+frac*2*Math.PI;const on=active&&String(k)===active;
     const x1=20+18*Math.cos(a-Math.PI/2),y1=20+18*Math.sin(a-Math.PI/2);
     const x2=20+18*Math.cos(a2-Math.PI/2),y2=20+18*Math.sin(a2-Math.PI/2);
-    seg+=`<path class="clk" data-fk="${fk}" data-fv="${k==='—'?'':k}" d="M20,20 L${x1.toFixed(2)},${y1.toFixed(2)} A18,18 0 ${frac>0.5?1:0},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${cols[i%cols.length]}" stroke="${on?'var(--fg)':'none'}" stroke-width="${on?1.5:0}" opacity="${active&&!on?0.4:1}"><title>click to filter ${k}</title></path>`;a=a2;});
+    seg+=`<path class="clk" data-fk="${fk}" data-fv="${k}" d="M20,20 L${x1.toFixed(2)},${y1.toFixed(2)} A18,18 0 ${frac>0.5?1:0},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${cols[i%cols.length]}" stroke="${on?'var(--fg)':'none'}" stroke-width="${on?1.5:0}" opacity="${active&&!on?0.4:1}"><title>click to filter ${k}</title></path>`;a=a2;});
   const legend=entries.slice(0,8).map(([k,n],i)=>{const on=active&&String(k)===active;
-    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k==='—'?'':k}"><span class="fill" style="width:10px;background:${cols[i%cols.length]}"></span><span class="tk" style="text-align:left;width:auto" title="click to filter ${k}">${on?'● ':''}${k} (${n})</span></div>`;}).join("");
+    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}"><span class="fill" style="width:10px;background:${cols[i%cols.length]}"></span><span class="tk" style="text-align:left;width:auto" title="click to filter ${k}">${on?'● ':''}${k} (${n})</span></div>`;}).join("");
   return `<div class="vizbox${active?' filtered':''}"><h5>${title}${active?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${active} ✕</span>`:''}</h5><div style="display:flex;gap:8px;align-items:center">
     <svg viewBox="0 0 40 40" width="86" height="86">${seg}</svg><div class="bars" style="min-width:120px">${legend}</div></div></div>`;
 }
