@@ -247,6 +247,7 @@ function showDetail(t){
     <button class="btn" onclick="closeDetail()" style="float:right">✕ Close (back to list)</button>
     <h2>${disp(r.ticker)} <span class="muted" style="font-size:13px">${r.name||''}</span> <span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></h2>
     <div class="sub">${locName(r.location)} · ${r.market||''} · ${r.sector||''} · ${r.status} · Q${r.quality??'?'} · R:R ${r.rr!=null?r.rr.toFixed(2):'?'} · ${(r.timeframe||'').replace('daily-','D')}</div>
+    <div class="card"><h4>Fundamentals — key metrics</h4><div id="fundbox">loading…</div></div>
     <div class="card"><h4>Squeeze Rules 1–5 — justification</h4><div id="rulesbox">loading…</div></div>
     <div class="card"><h4>Quality (${r.quality??'?'}/100) — how it's scored</h4>
       <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the funnel is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric funnel; a low Q means a loose, older, or lopsided one.</div></div>
@@ -269,6 +270,30 @@ function showDetail(t){
     const parts=j.parts||[]; if(!parts.length){el.textContent="(no thread — not a publishable setup)";return;}
     el.innerHTML=parts.map((p,i)=>`<div style="padding:6px 0;border-top:${i?'1px solid var(--line)':'none'}">${(p||'').replace(/</g,'&lt;').replace(/(https?:\/\/\S+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>')}</div>`).join("");
   }).catch(()=>{});
+  fetch(`/api/fundamentals/${r.ticker}`).then(x=>x.json()).then(j=>{
+    const el=document.getElementById("fundbox"); if(!el||SEL!==r.ticker)return;
+    const k=j.kpis||{}, sym=({GBp:"£",GBP:"£",USD:"$",EUR:"€"})[j.currency]||"";
+    const money=v=>{if(v==null)return null;const a=Math.abs(v),s=v<0?"-":"";
+      return a>=1e9?`${s}${sym}${(a/1e9).toFixed(2)}bn`:a>=1e6?`${s}${sym}${(a/1e6).toFixed(1)}m`:a>=1e3?`${s}${sym}${(a/1e3).toFixed(0)}k`:`${s}${sym}${a.toFixed(0)}`;};
+    const pct=v=>v==null?null:(v*100).toFixed(1)+"%", rat=v=>v==null?null:(+v).toFixed(2), cash=v=>v==null?null:sym+rat(v);
+    const rows=[
+      ["Market cap",money(k.marketCap)],["Revenue (ttm)",money(k.totalRevenue)],["EBITDA",money(k.ebitda)],
+      ["P/E (trailing)",rat(k.trailingPE)],["P/E (forward)",rat(k.forwardPE)],["PEG",rat(k.pegRatio)],
+      ["Price / Book",rat(k.priceToBook)],["Price / Sales",rat(k.priceToSales)],["EV / EBITDA",rat(k.evToEbitda)],
+      ["EPS (ttm)",cash(k.trailingEps)],["EPS (forward)",cash(k.forwardEps)],
+      ["Dividend yield",pct(k.dividendYield)],["Dividend / share",cash(k.dividendRate)],["Payout ratio",pct(k.payoutRatio)],
+      ["Free cash flow",money(k.freeCashflow)],["Operating cash flow",money(k.operatingCashflow)],
+      ["Gross margin",pct(k.grossMargin)],["Operating margin",pct(k.operatingMargin)],["Profit margin",pct(k.profitMargin)],
+      ["Return on equity",pct(k.roe)],["Return on assets",pct(k.roa)],
+      ["Revenue growth",pct(k.revenueGrowth)],["Earnings growth",pct(k.earningsGrowth)],
+      ["Debt / Equity",rat(k.debtToEquity)],["Current ratio",rat(k.currentRatio)],["Quick ratio",rat(k.quickRatio)],
+      ["Beta",rat(k.beta)],
+      ["52-week range",(k.fiftyTwoWeekLow!=null&&k.fiftyTwoWeekHigh!=null)?`${sym}${rat(k.fiftyTwoWeekLow)} – ${sym}${rat(k.fiftyTwoWeekHigh)}`:null],
+    ].filter(x=>x[1]!=null);
+    el.innerHTML=rows.length?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">`+
+      rows.map(([lab,val])=>`<div class="kv"><span>${lab}</span><b>${val}</b></div>`).join("")+`</div>`
+      :"no fundamentals available (often the case for funds / indices)";
+  }).catch(()=>{const el=document.getElementById("fundbox");if(el)el.textContent="fundamentals unavailable";});
   fetch(`/api/broker/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("brokerchg"); if(!el||SEL!==r.ticker)return;
     if(!j.available){el.textContent="6–12mo change: no analyst upgrade/downgrade history";return;}

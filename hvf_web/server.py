@@ -15,6 +15,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.5   2026-06-28  Alex Hind   (user 2026-06-28) /api/fundamentals/<ticker> — company KPIs from yfinance .info
+#                                 (P/E, FCF, dividends, margins, growth, leverage, 52w) for the new detail KPI card.
+#                                 Dividend yield uses yfinance's own field to dodge the .L pence/pounds unit mismatch.
 # 1.3.4   2026-06-28  Alex Hind   (user 2026-06-28 "ABF.L still empty") Root cause: matplotlib pyplot is not
 #                                 thread-safe + threaded=True, so the card and price-window renders fired concurrently
 #                                 and produced a blank card. All chart renders now serialised through _RENDER_LOCK.
@@ -340,6 +343,53 @@ def api_status():
     snap = _load_snapshot()
     return jsonify({"refreshing": _REFRESHING["on"], "generated_utc": snap.get("generated_utc"),
                     "count": snap.get("count")})
+
+
+@app.route("/api/fundamentals/<ticker>")
+def api_fundamentals(ticker):
+    """Company KPIs straight from yfinance .info (user 2026-06-28): P/E, FCF, dividends, margins, growth,
+    leverage, etc. Live per-ticker; graceful (empty kpis) if Yahoo is unreachable."""
+    out = {}
+    cur = None
+    try:
+        import yfinance as yf
+        try:
+            from config import YAHOO_MAP
+        except Exception:
+            YAHOO_MAP = {}
+        info = yf.Ticker(YAHOO_MAP.get(ticker, ticker)).info or {}
+        cur = info.get("currency") or ("GBp" if ticker.endswith(".L") else "USD")
+
+        def n(k):
+            v = info.get(k)
+            return v if isinstance(v, (int, float)) else None
+        price = n("currentPrice") or n("regularMarketPrice")
+        drate = n("dividendRate")
+        # Use yfinance's own yield (it handles the .L pence/pounds units); only fall back to rate/price
+        # when it's missing. Normalise the percent-vs-fraction quirk (some versions give 2.9, some 0.029).
+        dyield = n("dividendYield")
+        if dyield is None and drate and price:
+            dyield = drate / price
+        if isinstance(dyield, (int, float)) and dyield > 1.5:
+            dyield = dyield / 100.0
+        out = {
+            "marketCap": n("marketCap"), "totalRevenue": n("totalRevenue"), "ebitda": n("ebitda"),
+            "trailingPE": n("trailingPE"), "forwardPE": n("forwardPE"),
+            "pegRatio": n("trailingPegRatio") or n("pegRatio"), "priceToBook": n("priceToBook"),
+            "evToEbitda": n("enterpriseToEbitda"), "priceToSales": n("priceToSalesTrailing12Months"),
+            "trailingEps": n("trailingEps"), "forwardEps": n("forwardEps"),
+            "dividendRate": drate, "dividendYield": dyield, "payoutRatio": n("payoutRatio"),
+            "freeCashflow": n("freeCashflow"), "operatingCashflow": n("operatingCashflow"),
+            "profitMargin": n("profitMargins"), "operatingMargin": n("operatingMargins"),
+            "grossMargin": n("grossMargins"), "roe": n("returnOnEquity"), "roa": n("returnOnAssets"),
+            "revenueGrowth": n("revenueGrowth"), "earningsGrowth": n("earningsGrowth"),
+            "debtToEquity": n("debtToEquity"), "currentRatio": n("currentRatio"),
+            "quickRatio": n("quickRatio"), "beta": n("beta"),
+            "fiftyTwoWeekHigh": n("fiftyTwoWeekHigh"), "fiftyTwoWeekLow": n("fiftyTwoWeekLow"),
+        }
+    except Exception as e:
+        log.warning(f"fundamentals lookup failed for {ticker}: {e}")
+    return jsonify({"ticker": ticker, "currency": cur, "kpis": out})
 
 
 @app.route("/api/broker/<ticker>")
