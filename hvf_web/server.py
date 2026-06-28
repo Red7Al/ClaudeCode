@@ -15,6 +15,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.1   2026-06-28  Alex Hind   (user 2026-06-28 "x post card still empty") api_card now caches ONLY successful
+#                                 renders — a transient yfinance throttle no longer sticks an empty card in the cache;
+#                                 failed renders 404 and retry on the next load.
 # 1.3.0   2026-06-28  Alex Hind   (user 2026-06-28) /api/refresh + /api/status (manual snapshot rebuild in a guarded
 #                                 background thread, shared with the 12h loop); /api/broker (6/12-mo analyst up/downgrade
 #                                 change). Per-rule justification de-RW-branded ("minimum 3:1", "Rule 1", "Compresses").
@@ -86,13 +89,15 @@ def _png_response(png: bytes):
 @app.route("/api/card/<ticker>")
 def api_card(ticker):
     key = f"card:{ticker}"
-    if key not in _PNG_CACHE:
-        from intraday_signals import render_x_post_card
-        rec = _record(ticker)
+    png = _PNG_CACHE.get(key)
+    if not png:                        # cache only SUCCESSFUL renders — a transient yfinance throttle
+        from intraday_signals import render_x_post_card   # must not stick an empty card in the cache
+        rec = _record(ticker)          # (user 2026-06-28: "x post card still empty"); failures retry next load
         card = dict(rec.get("_card") or {})
         card["name"] = rec.get("name")
-        _PNG_CACHE[key] = render_x_post_card(card) or b""
-    png = _PNG_CACHE[key]
+        png = render_x_post_card(card) or b""
+        if png:
+            _PNG_CACHE[key] = png
     return _png_response(png) if png else ("no card", 404)
 
 

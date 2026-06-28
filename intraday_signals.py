@@ -317,6 +317,9 @@
 #                                 tweet instead.
 # 1.3.2   2026-06-28  Alex Hind   (user 2026-06-28) Label each funnel pivot on the X post card — H1/H2/H3 above the
 #                                 red upper jaw, L1/L2/L3 below the green lower jaw — so the funnel structure is clear.
+# 1.3.3   2026-06-28  Alex Hind   (user 2026-06-28 "x post card still empty") render_x_post_card: retry the price
+#                                 download once on a transient empty/throttled response, and return None on a price-less
+#                                 frame (Close all-NaN) instead of drawing a blank axes-only card.
 # ======================================================================================================================
 
 import os
@@ -1437,9 +1440,18 @@ def render_x_post_card(r: dict):
         # Map to the Yahoo symbol (user 2026-06-23): FX/indices (USDJPY -> USDJPY=X, JPN225 -> ^N225)
         # 404 on the raw ticker, which left those tweets with NO chart at all.
         _yt = YAHOO_MAP.get(ticker, ticker)
-        hist = _yf.download(_yt, start=start_dt.strftime("%Y-%m-%d"),
-                            end=end_dt.strftime("%Y-%m-%d"),
-                            progress=False, auto_adjust=True)
+        # One retry on a transient empty/throttled response (user 2026-06-28: a momentary yfinance
+        # throttle produced a blank-axes card that then got cached and "stuck" empty). Returning None
+        # below (rather than a price-less chart) keeps the bad render OUT of the server's card cache.
+        def _dl():
+            return _yf.download(_yt, start=start_dt.strftime("%Y-%m-%d"),
+                                end=end_dt.strftime("%Y-%m-%d"),
+                                progress=False, auto_adjust=True)
+        hist = _dl()
+        if hist is None or hist.empty:
+            import time as _t
+            _t.sleep(1.5)
+            hist = _dl()
         if hist is None or hist.empty:
             return None
 
@@ -1448,6 +1460,13 @@ def render_x_post_card(r: dict):
         # float(DataFrame.median()) raised TypeError and every chart
         # failed in run 27370959365.
         close = hist["Close"].squeeze()
+        # Guard a price-less frame (index present but Close all-NaN): drawing it yields a blank
+        # axes-only card. Treat as "no card" so the server retries on the next load instead of caching it.
+        try:
+            if close is None or close.dropna().shape[0] < 5:
+                return None
+        except Exception:
+            return None
 
         # Standard trader support/resistance (user 2026-06-19; window widened to 60 bars
         # 2026-06-20): the swing low is support, the swing high is resistance, over the last ~60
