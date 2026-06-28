@@ -259,6 +259,45 @@ def api_positions():
     return jsonify({"positions": counts})
 
 
+_REFRESHING = {"on": False}
+
+
+def _do_rebuild() -> bool:
+    """Rebuild the snapshot (shared by the 12h loop + the manual refresh button). Guards against a
+    concurrent rebuild and clears the PNG/tweet/links caches afterwards."""
+    if _REFRESHING["on"]:
+        return False
+    _REFRESHING["on"] = True
+    try:
+        from hvf_web.build_snapshot import build
+        build()
+        _PNG_CACHE.clear()
+        log.info("snapshot rebuilt; caches cleared")
+        return True
+    except Exception as e:
+        log.error(f"snapshot rebuild failed: {e}")
+        return False
+    finally:
+        _REFRESHING["on"] = False
+
+
+@app.route("/api/refresh", methods=["POST", "GET"])
+def api_refresh():
+    """Trigger an on-demand snapshot rebuild in a background thread (user 2026-06-28)."""
+    if _REFRESHING["on"]:
+        return jsonify({"started": False, "busy": True})
+    import threading
+    threading.Thread(target=_do_rebuild, daemon=True).start()
+    return jsonify({"started": True})
+
+
+@app.route("/api/status")
+def api_status():
+    snap = _load_snapshot()
+    return jsonify({"refreshing": _REFRESHING["on"], "generated_utc": snap.get("generated_utc"),
+                    "count": snap.get("count")})
+
+
 @app.route("/api/broker/<ticker>")
 def api_broker(ticker):
     """Change in broker coverage over the last 6 and 12 months (user 2026-06-27): net analyst
@@ -379,11 +418,8 @@ def _refresh_loop():
                 except Exception:
                     need = True
             if need:
-                log.info("snapshot refresh: building ...")
-                from hvf_web.build_snapshot import build
-                build()
-                _PNG_CACHE.clear()
-                log.info("snapshot refresh: done; caches cleared")
+                log.info("snapshot refresh (12h): building ...")
+                _do_rebuild()
         except Exception as e:
             log.warning(f"snapshot refresh failed (will retry): {e}")
         _t.sleep(6 * 3600)

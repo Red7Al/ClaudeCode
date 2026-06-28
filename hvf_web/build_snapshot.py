@@ -103,58 +103,71 @@ def build():
         YAHOO_MAP = {}
 
     log.info("scanning universe ...")
+    from run_hvf_report import UNIVERSE
     scan = scan_universe()
-    records = [r for results in scan.values() for r in results]
-    log.info(f"{len(records)} HVF patterns found; enriching ...")
+    sig = {r.get("ticker"): r for results in scan.values() for r in results if r.get("hvf_type")}
+    total = sum(len(t) for t in UNIVERSE.values())
+    log.info(f"{len(sig)} signals of {total} monitored instruments; building full-universe records ...")
+    try:
+        from instrument_name import company_name
+    except Exception:
+        company_name = lambda t: t
 
-    # NB tweet text + card PNGs are rendered LAZILY by the server (per ticker, on demand) — NOT here.
-    # Rendering all ~150 cards in the build blew OpenBLAS memory (collect-mode _generate_x_drafts).
+    # Every monitored instrument gets a record (user 2026-06-28: 'see all items, toggle on/off if there
+    # is a Squeeze signal'). has_signal distinguishes them; no-signal rows carry name/market/location
+    # only (no fundamentals/engine fields). Card PNGs/tweets stay lazy (server-rendered).
     out = []
-    for r in records:
-        tk = r.get("ticker")
-        try:
-            f = fundamentals(tk)
-        except Exception:
-            f = {}
-        try:
-            info = yf.Ticker(YAHOO_MAP.get(tk, tk)).info or {}
-        except Exception:
-            info = {}
-        pe = info.get("trailingPE") or info.get("forwardPE")
-        broker = None
-        if f.get("analyst_rated"):
-            broker = {"buys": f.get("analyst_buys"), "holds": f.get("analyst_holds"),
-                      "rated": f.get("analyst_rated"), "trend": f.get("analyst_trend")}
-        try:
-            from instrument_name import company_name
-            _nm = company_name(tk) or tk
-        except Exception:
-            _nm = f.get("name") or r.get("name") or tk
-        out.append({
-            "ticker": tk, "name": _nm,
-            "direction": "BULL" if r.get("hvf_type") == "BULLISH" else "BEAR",
-            "location": _location_of(tk),
-            "market": r.get("index"),
-            "sector": f.get("sector"),
-            "status": r.get("hvf_signal"),
-            "quality": r.get("pattern_quality"),
-            "pe": round(pe, 1) if isinstance(pe, (int, float)) and pe > 0 else None,
-            "timeframe": r.get("hvf_timeframe"),
-            "months_to_go": _months_to_go(r),
-            "rr": r.get("risk_reward"),
-            "insider_pct": f.get("insider_pct"),
-            "entry": r.get("h3_level"), "stop": r.get("stop_level"), "target": r.get("target"),
-            "current_price": r.get("current_price"),
-            "h3_date": r.get("h3_date"), "l3_date": r.get("l3_date"), "h1_date": r.get("h1_date"),
-            "rules": _derive_rules(r),
-            "tweet": None,            # rendered lazily by the server (/api/tweet/<ticker>)
-            "broker": broker,
-            # raw fields the server needs to re-render the card PNG
-            "_card": {k: r.get(k) for k in (
-                "ticker", "hvf_type", "hvf_signal", "hvf_timeframe", "h3_level", "stop_level", "target",
-                "risk_reward", "h1_level", "h2_level", "l1_level", "l2_level", "l3_level",
-                "h1_date", "h2_date", "h3_date", "l1_date", "l2_date", "l3_date", "current_price")},
-        })
+    for market, tickers in UNIVERSE.items():
+        for tk in tickers:
+            try:
+                _nm = company_name(tk) or tk
+            except Exception:
+                _nm = tk
+            r = sig.get(tk)
+            if not (r and r.get("hvf_type")):
+                out.append({"ticker": tk, "name": _nm, "market": market, "location": _location_of(tk),
+                            "has_signal": False, "direction": None, "sector": None, "status": None,
+                            "quality": None, "pe": None, "timeframe": None, "rr": None, "insider_pct": None,
+                            "entry": None, "stop": None, "target": None, "current_price": None,
+                            "h3_date": None, "l3_date": None, "h1_date": None, "rules": [],
+                            "tweet": None, "broker": None, "_card": {}})
+                continue
+            try:
+                f = fundamentals(tk)
+            except Exception:
+                f = {}
+            try:
+                info = yf.Ticker(YAHOO_MAP.get(tk, tk)).info or {}
+            except Exception:
+                info = {}
+            pe = info.get("trailingPE") or info.get("forwardPE")
+            broker = None
+            if f.get("analyst_rated"):
+                broker = {"buys": f.get("analyst_buys"), "holds": f.get("analyst_holds"),
+                          "rated": f.get("analyst_rated"), "trend": f.get("analyst_trend")}
+            out.append({
+                "ticker": tk, "name": _nm, "has_signal": True,
+                "direction": "BULL" if r.get("hvf_type") == "BULLISH" else "BEAR",
+                "location": _location_of(tk), "market": market,
+                "sector": f.get("sector"),
+                "status": r.get("hvf_signal"),
+                "quality": r.get("pattern_quality"),
+                "pe": round(pe, 1) if isinstance(pe, (int, float)) and pe > 0 else None,
+                "timeframe": r.get("hvf_timeframe"),
+                "months_to_go": _months_to_go(r),
+                "rr": r.get("risk_reward"),
+                "insider_pct": f.get("insider_pct"),
+                "entry": r.get("h3_level"), "stop": r.get("stop_level"), "target": r.get("target"),
+                "current_price": r.get("current_price"),
+                "h3_date": r.get("h3_date"), "l3_date": r.get("l3_date"), "h1_date": r.get("h1_date"),
+                "rules": _derive_rules(r),
+                "tweet": None,
+                "broker": broker,
+                "_card": {k: r.get(k) for k in (
+                    "ticker", "hvf_type", "hvf_signal", "hvf_timeframe", "h3_level", "stop_level", "target",
+                    "risk_reward", "h1_level", "h2_level", "l1_level", "l2_level", "l3_level",
+                    "h1_date", "h2_date", "h3_date", "l1_date", "l2_date", "l3_date", "current_price")},
+            })
 
     snapshot = {"generated_utc": datetime.now(timezone.utc).isoformat(),
                 "count": len(out), "records": out}

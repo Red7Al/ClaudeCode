@@ -70,6 +70,8 @@ aside.collapsed{display:none}
   <h1>Squeeze Scanner</h1>
   <span class="count" id="gen"></span>
   <span class="grow"></span>
+  <button class="btn" id="signalonly">Squeeze only ✓</button>
+  <button class="btn" id="refresh">↻ Refresh data</button>
   <button class="btn" id="togglefilters">☰ Filters</button>
   <button class="btn" id="theme">🌙 Dark</button>
   <button class="btn" id="reset">Reset filters</button>
@@ -84,7 +86,7 @@ aside.collapsed{display:none}
     <h3>Squeeze</h3>
     <div class="f"><label>Status</label><select id="f_stat"><option value="">Any</option><option>TRIGGERED</option><option>READY</option><option>DEVELOPING</option></select></div>
     <div class="f"><label>Timeframe</label><select id="f_tf"><option value="">Any</option></select></div>
-    <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" value="60" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
+    <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" value="45" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
     <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" placeholder="min"><input id="f_rrmax" type="number" step="0.1" placeholder="max"></div></div>
     <div class="f"><label>Dist to entry % range</label><div class="row2"><input id="f_demin" type="number" step="0.1" value="-5" placeholder="min"><input id="f_demax" type="number" step="0.1" value="5" placeholder="max"></div></div>
     <div class="f"><label>Days since setup range</label><div class="row2"><input id="f_dsmin" type="number" placeholder="min"><input id="f_dsmax" type="number" placeholder="max"></div></div>
@@ -105,7 +107,7 @@ aside.collapsed{display:none}
         <thead><tr>
           <th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <th data-k="sector">Sector</th><th data-k="status">Status</th>
-          <th data-k="trig_date">Triggered</th><th data-k="quality">Q</th><th data-k="rr">R:R</th>
+          <th data-k="trig_date">Triggered</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
           <th data-k="dist_entry">Dist→Entry</th><th data-k="days_since">Days</th>
           <th data-k="open_pos">#Open</th><th data-k="pe">P/E</th><th data-k="timeframe">TF</th>
           <th data-k="market">Market</th><th data-k="location">Location</th>
@@ -119,7 +121,7 @@ aside.collapsed{display:none}
 </div>
 
 <script>
-let DATA=[], SEL=null, sortK="quality", sortDir=-1, POS={};
+let DATA=[], SEL=null, sortK="quality", sortDir=-1, POS={}, signalOnly=true;
 const $=id=>document.getElementById(id);
 const F=["f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
          "f_demin","f_demax","f_dsmin","f_dsmax","f_pemin","f_pemax","f_inmin","f_inmax"];
@@ -141,6 +143,7 @@ function augment(r){
 }
 
 function pass(r){
+  if(signalOnly && r.has_signal===false)return false;
   const g=id=>$(id).value;
   if(g("f_dir")&&r.direction!==g("f_dir"))return false;
   if(g("f_loc")&&r.location!==g("f_loc"))return false;
@@ -148,7 +151,9 @@ function pass(r){
   if(g("f_sec")&&r.sector!==g("f_sec"))return false;
   if(g("f_stat")&&r.status!==g("f_stat"))return false;
   if(g("f_tf")&&r.timeframe!==g("f_tf"))return false;
-  const rng=(v,lo,hi)=>{const a=num(g(lo)),b=num(g(hi));if(a!=null&&(v==null||v<a))return false;if(b!=null&&(v==null||v>b))return false;return true;};
+  // null value passes a range (a no-signal / missing-field row is never excluded by a numeric range —
+  // so toggling "Squeeze only" off shows the whole monitored universe).
+  const rng=(v,lo,hi)=>{const a=num(g(lo)),b=num(g(hi));if(v==null)return true;if(a!=null&&v<a)return false;if(b!=null&&v>b)return false;return true;};
   if(!rng(r.quality,"f_qmin","f_qmax"))return false;
   if(!rng(r.rr,"f_rrmin","f_rrmax"))return false;
   if(!rng(r.dist_entry,"f_demin","f_demax"))return false;
@@ -277,8 +282,13 @@ F.forEach(id=>$(id).addEventListener("input",applyAll));
 $("viz").addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(!el)return;
   const f=$(el.dataset.fk); if(!f)return; f.value=(f.value===el.dataset.fv)?"":el.dataset.fv; applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
-$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});$("f_qmin").value=60;$("f_demin").value=-5;$("f_demax").value=5;$("f_days").value=730;$("dlbl").textContent=730;applyAll();};
+$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});$("f_qmin").value=45;$("f_demin").value=-5;$("f_demax").value=5;$("f_days").value=730;$("dlbl").textContent=730;applyAll();};
 $("togglefilters").onclick=()=>$("aside").classList.toggle("collapsed");
+$("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").textContent="Squeeze only "+(signalOnly?"✓":"✗");applyAll();};
+$("refresh").onclick=()=>{ if(!confirm("Rebuild the snapshot now? Scans ~400 instruments — takes a few minutes. The page keeps working with current data; reload when done."))return;
+  $("refresh").textContent="↻ Refreshing…";
+  fetch("/api/refresh",{method:"POST"}).then(x=>x.json()).then(j=>{$("refresh").textContent=j.busy?"↻ Already refreshing…":"↻ Refreshing… reload in ~5 min";})
+    .catch(()=>$("refresh").textContent="↻ Refresh failed");};
 $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light");$("theme").textContent=l?"☀️ Light":"🌙 Dark";if(SEL)showDetail(SEL);};
 
 Promise.all([fetch("/api/records").then(r=>r.json()), fetch("/api/positions").then(r=>r.json()).catch(()=>({positions:{}}))])
