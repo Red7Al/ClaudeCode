@@ -4,6 +4,16 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
 
 ## New feature requests — added 2026-06-26 (user batch)
 
+- [ ] **Move price history into the database** (user 2026-06-28, "change to db in 3 days" → target
+  **~2026-07-01**). Today a transient Yahoo throttle is handled by a lightweight per-ticker disk cache
+  (`data/price_cache/<sym>.pkl` for the X card via `intraday_signals.render_x_post_card`;
+  `hvf_web/data/price_cache/win_<sym>_<days>.pkl` for the price-window chart via
+  `hvf_web/server.py::_render_price_window`). That's resilience only — NOT queryable/auditable. Replace
+  with a proper `price_history` (daily OHLC) table in the monitoring SQLite: populate it during the
+  snapshot build (`hvf_web/build_snapshot.py`, which already downloads all ~424 instruments through the
+  engine), and have the card + price chart read from the DB with Yahoo as the fallback. One source of
+  truth for engine + charts + reports. Retire the `.pkl` fallback once the DB read path is verified.
+
 - [ ] **HVF site: exact triggered date** (user 2026-06-27, "do date exact tomorrow"). The site's
   "Triggered" column currently shows a PROXY — the last pivot date (l3 for a long / h3 for a short),
   computed client-side in `hvf_web/index.html::augment`. Make it EXACT: in `hvf_web/build_snapshot.py`,
