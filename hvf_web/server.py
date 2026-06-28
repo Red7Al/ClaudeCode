@@ -15,6 +15,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.0   2026-06-28  Alex Hind   (user 2026-06-28) /api/refresh + /api/status (manual snapshot rebuild in a guarded
+#                                 background thread, shared with the 12h loop); /api/broker (6/12-mo analyst up/downgrade
+#                                 change). Per-rule justification de-RW-branded ("minimum 3:1", "Rule 1", "Compresses").
 # 1.2.0   2026-06-27  Alex Hind   (user 2026-06-27) /api/thread (ALL publication pages — lead + numbered long report),
 #                                 /api/rules (Rolls-Royce-style per-rule justification with the numbers), /api/positions
 #                                 (live open IG positions per instrument via epic_lookup). Supports the rebuilt UI.

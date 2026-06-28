@@ -315,6 +315,8 @@
 #                                 signal dict. History window now spans from 14 days before oldest pivot date (not fixed
 #                                 180 days). Legend and R:R removed from chart — shown in Slack context block below the
 #                                 tweet instead.
+# 1.3.2   2026-06-28  Alex Hind   (user 2026-06-28) Label each funnel pivot on the X post card — H1/H2/H3 above the
+#                                 red upper jaw, L1/L2/L3 below the green lower jaw — so the funnel structure is clear.
 # ======================================================================================================================
 
 import os
@@ -1598,24 +1600,35 @@ def render_x_post_card(r: dict):
                         color="#58a6ff", zorder=2)
 
         # ── Funnel: upper jaw H1→H2→H3 (red), lower jaw L1→L2→L3 (green) ──────────────────────────────────────────────
-        upper_pts = [(dt, lv) for dt, lv in
-                     [(h1_dt, h1_p), (h2_dt, h2_p), (h3_dt, h3_p)]
+        # Each pivot is labelled H1/H2/H3 (above) and L1/L2/L3 (below) so the funnel structure is
+        # explicit on the card (user 2026-06-28). Labels carry their own pivot id so a missing pivot
+        # never mislabels the rest.
+        upper_pts = [(dt, lv, lab) for (dt, lv), lab in
+                     zip([(h1_dt, h1_p), (h2_dt, h2_p), (h3_dt, h3_p)], ("H1", "H2", "H3"))
                      if dt is not None and lv is not None]
-        lower_pts = [(dt, lv) for dt, lv in
-                     [(l1_dt, l1_p), (l2_dt, l2_p), (l3_dt, l3_p)]
+        lower_pts = [(dt, lv, lab) for (dt, lv), lab in
+                     zip([(l1_dt, l1_p), (l2_dt, l2_p), (l3_dt, l3_p)], ("L1", "L2", "L3"))
                      if dt is not None and lv is not None]
 
         if len(upper_pts) >= 2:
-            ux, uy = zip(*upper_pts)
+            ux, uy = [p[0] for p in upper_pts], [p[1] for p in upper_pts]
             ax.plot(ux, uy, color="#f85149", linewidth=1.4,
                     linestyle="--", alpha=0.9, zorder=4)
             ax.scatter(ux, uy, color="#f85149", s=26, zorder=5, alpha=0.95)
+            for dt, lv, lab in upper_pts:
+                ax.annotate(lab, (dt, lv), textcoords="offset points", xytext=(0, 8),
+                            ha="center", va="bottom", color="#f85149", fontsize=9,
+                            fontweight="bold", zorder=6)
 
         if len(lower_pts) >= 2:
-            lx, ly = zip(*lower_pts)
+            lx, ly = [p[0] for p in lower_pts], [p[1] for p in lower_pts]
             ax.plot(lx, ly, color="#3fb950", linewidth=1.4,
                     linestyle="--", alpha=0.9, zorder=4)
             ax.scatter(lx, ly, color="#3fb950", s=26, zorder=5, alpha=0.95)
+            for dt, lv, lab in lower_pts:
+                ax.annotate(lab, (dt, lv), textcoords="offset points", xytext=(0, -8),
+                            ha="center", va="top", color="#3fb950", fontsize=9,
+                            fontweight="bold", zorder=6)
 
         # ── Entry / stop / target: full-width lines + right-edge labels ───────────────────────────────────────────────
         # Right-edge labels show the % from the live price (user 2026-06-19) — the numeric
