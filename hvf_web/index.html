@@ -73,7 +73,7 @@ aside.collapsed{display:none}
   <span class="grow"></span>
   <button class="btn" id="signalonly">Squeeze only ✓</button>
   <button class="btn" id="refresh">↻ Refresh data</button>
-  <button class="btn" id="togglefilters">☰ Filters</button>
+  <button class="btn" id="togglefilters">☰ Filters (Toggle)</button>
   <button class="btn" id="reset">Reset filters</button>
   <button class="btn" id="showall">Remove all filters (show all)</button>
   <button class="btn" id="theme">🌙 Dark</button>
@@ -90,7 +90,7 @@ aside.collapsed{display:none}
     <div class="f"><label>Timeframe</label><select id="f_tf"><option value="">Any</option></select></div>
     <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" value="45" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
     <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" placeholder="min"><input id="f_rrmax" type="number" step="0.1" placeholder="max"></div></div>
-    <div class="f"><label>Dist to entry % range</label><div class="row2"><input id="f_demin" type="number" step="0.1" value="-5" placeholder="min"><input id="f_demax" type="number" step="0.1" value="5" placeholder="max"></div></div>
+    <div class="f"><label>Dist to entry % range</label><div class="row2"><input id="f_demin" type="number" step="0.1" value="-10" placeholder="min"><input id="f_demax" type="number" step="0.1" value="10" placeholder="max"></div></div>
     <div class="f"><label>Days since setup range</label><div class="row2"><input id="f_dsmin" type="number" placeholder="min"><input id="f_dsmax" type="number" placeholder="max"></div></div>
     <h3>Fundamentals</h3>
     <div class="f"><label>P/E range</label><div class="row2"><input id="f_pemin" type="number" placeholder="min"><input id="f_pemax" type="number" placeholder="max"></div></div>
@@ -293,7 +293,7 @@ F.forEach(id=>$(id).addEventListener("input",applyAll));
 $("viz").addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(!el)return;
   const f=$(el.dataset.fk); if(!f)return; f.value=(f.value===el.dataset.fv)?"":el.dataset.fv; applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
-$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});$("f_qmin").value=45;$("f_demin").value=-5;$("f_demax").value=5;$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
+$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});$("f_qmin").value=45;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
 $("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});signalOnly=false;$("signalonly").textContent="Squeeze only ✗";$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
 $("togglefilters").onclick=()=>$("aside").classList.toggle("collapsed");
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").textContent="Squeeze only "+(signalOnly?"✓":"✗");applyAll();};
