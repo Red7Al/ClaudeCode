@@ -15,6 +15,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.4   2026-06-28  Alex Hind   (user 2026-06-28 "ABF.L still empty") Root cause: matplotlib pyplot is not
+#                                 thread-safe + threaded=True, so the card and price-window renders fired concurrently
+#                                 and produced a blank card. All chart renders now serialised through _RENDER_LOCK.
 # 1.3.3   2026-06-28  Alex Hind   (user 2026-06-28) /api/pubcounts — count of X posts published per instrument
 #                                 (x_publications) for the new main-list 'X posts' column.
 # 1.3.2   2026-06-28  Alex Hind   (user 2026-06-28) pricewin chart gets the same disk price cache as the X card
@@ -50,6 +53,13 @@ SNAPSHOT = os.path.join(_HERE, "snapshot.json")
 app = Flask(__name__)
 _PNG_CACHE: dict = {}
 _X_HANDLE = "SqueezeSignals"   # our X account (config.py / publish_one_to_x X_HANDLE)
+
+# matplotlib pyplot is NOT thread-safe and the server is threaded=True. The detail panel fires the
+# card + price-window renders in the same instant, so two concurrent plt.figure/savefig calls stomped
+# on pyplot's global state and produced a blank card (user 2026-06-28 "ABF.L still empty"). Serialise
+# every chart render through one lock.
+import threading as _threading
+_RENDER_LOCK = _threading.Lock()
 
 
 def _load_snapshot() -> dict:
@@ -99,7 +109,8 @@ def api_card(ticker):
         rec = _record(ticker)          # (user 2026-06-28: "x post card still empty"); failures retry next load
         card = dict(rec.get("_card") or {})
         card["name"] = rec.get("name")
-        png = render_x_post_card(card) or b""
+        with _RENDER_LOCK:
+            png = render_x_post_card(card) or b""
         if png:
             _PNG_CACHE[key] = png
     return _png_response(png) if png else ("no card", 404)
@@ -113,7 +124,8 @@ def api_hist3yr(ticker):
         rec = _record(ticker)
         card = dict(rec.get("_card") or {})
         card["name"] = rec.get("name")
-        _PNG_CACHE[key] = render_3yr_history_card(card) or b""
+        with _RENDER_LOCK:
+            _PNG_CACHE[key] = render_3yr_history_card(card) or b""
     png = _PNG_CACHE[key]
     return _png_response(png) if png else ("no 3yr chart", 404)
 
@@ -445,7 +457,9 @@ def api_pricewin(ticker):
     rec = _record(ticker)
     if not rec:
         return ("unknown ticker", 404)
-    return _png_response(_render_price_window(rec, days, theme))
+    with _RENDER_LOCK:
+        png = _render_price_window(rec, days, theme)
+    return _png_response(png)
 
 
 def _refresh_loop():
