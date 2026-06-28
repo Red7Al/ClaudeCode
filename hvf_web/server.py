@@ -200,7 +200,7 @@ def _rule_detail(rec: dict) -> list:
 
     add(1, "Prior trend", "PASS",
         f"The funnel trades in the direction of the prior trend ({'BULLISH long' if bull else 'BEARISH short'}). "
-        f"RW Rule 1 needs a clear, recent move of the same direction before the coil forms.")
+        f"A clear, recent move of the same direction is needed before the coil forms.")
     if None not in (h1, h2, h3, l1, l2, l3):
         add(2, "Three swings", "PASS",
             f"Lower highs  H1 {h1:g} ({g('h1_date')}) > H2 {h2:g} > H3 {h3:g} ({g('h3_date')}); "
@@ -212,7 +212,7 @@ def _rule_detail(rec: dict) -> list:
         amp1 = h1 - l1; tight = (h3 - l3) / amp1 * 100
         add(3, "Tightness ≤35%", "PASS" if tight <= 35 else "FAIL",
             f"Current funnel range (H3−L3 = {h3 - l3:g}) vs the first amplitude (AMP1 = H1−L1 = {amp1:g}) "
-            f"= {tight:.0f}%. RW compresses to ≤35% — tighter coil, tighter stop.")
+            f"= {tight:.0f}%. Compresses to ≤35% — tighter coil, tighter stop.")
         mid = (h3 + l3) / 2
         add(4, "Levels & target", "PASS" if (target and target > 0) else "FAIL",
             f"AMP1 = {amp1:g}; midpoint (H3+L3)/2 = {mid:g}. Entry = {entry:g} (break of the 3rd "
@@ -221,7 +221,7 @@ def _rule_detail(rec: dict) -> list:
     if isinstance(rr, (int, float)):
         risk = abs((entry or 0) - (stop or 0)); reward = abs((target or 0) - (entry or 0))
         add(5, "R:R ≥ 3:1", "PASS" if rr >= 3 else "DEVELOPING",
-            f"Reward {reward:g} ÷ risk {risk:g} = {rr:.2f}:1 (RW floor 3:1).")
+            f"Reward {reward:g} ÷ risk {risk:g} = {rr:.2f}:1 (minimum 3:1).")
     return out
 
 
