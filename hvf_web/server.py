@@ -15,6 +15,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.3   2026-06-28  Alex Hind   (user 2026-06-28) /api/pubcounts — count of X posts published per instrument
+#                                 (x_publications) for the new main-list 'X posts' column.
 # 1.3.2   2026-06-28  Alex Hind   (user 2026-06-28) pricewin chart gets the same disk price cache as the X card
 #                                 (data/price_cache/win_<sym>_<days>.pkl) — falls back to last-good on a Yahoo throttle.
 # 1.3.1   2026-06-28  Alex Hind   (user 2026-06-28 "x post card still empty") api_card now caches ONLY successful
@@ -267,6 +269,26 @@ def api_positions():
     except Exception as e:
         log.warning(f"positions lookup failed: {e}")
     return jsonify({"positions": counts})
+
+
+@app.route("/api/pubcounts")
+def api_pubcounts():
+    """Number of X posts we've published per instrument (user 2026-06-28) — one row per publication in
+    x_publications. Fetched once for the whole list; never raises."""
+    counts = {}
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            for row in (db.run("select ticker, count(*) from x_publications "
+                               "where tweet_id is not null group by ticker") or []):
+                if row[0]:
+                    counts[row[0]] = row[1]
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"pubcounts lookup failed: {e}")
+    return jsonify({"pubcounts": counts})
 
 
 _REFRESHING = {"on": False}

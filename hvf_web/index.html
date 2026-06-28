@@ -25,8 +25,9 @@ select,input{width:100%;background:var(--panel);color:var(--fg);border:1px solid
 .row2{display:flex;gap:6px} .row2 input{width:50%}
 main{flex:1;display:flex;flex-direction:column;min-width:0}
 .count{padding:8px 16px;color:var(--muted);font-size:12px}
-.viz{display:flex;flex-direction:column;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line)}
-.vizrow{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+.viz{display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:flex-start}
+.vizsector{flex:none}
+.vizbars{display:flex;gap:14px;flex-wrap:wrap;flex:1;min-width:0;align-items:flex-start}
 .vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 .vizbox h5{margin:0 0 6px;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}
 .bars{display:flex;flex-direction:column;gap:3px;min-width:150px}
@@ -109,7 +110,7 @@ aside.collapsed{display:none}
         <thead><tr>
           <th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <th data-k="days_since" title="Days since the setup's 3rd swing (H3) formed">Days since</th>
-          <th data-k="sector">Sector</th><th data-k="status">Status</th>
+          <th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th data-k="trig_date">Triggered</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
           <th data-k="dist_entry">Dist→Entry</th>
           <th data-k="pe">P/E</th><th data-k="timeframe">TF</th>
@@ -124,7 +125,7 @@ aside.collapsed{display:none}
 </div>
 
 <script>
-let DATA=[], SEL=null, sortK="trig_date", sortDir=-1, POS={}, signalOnly=true;
+let DATA=[], SEL=null, sortK="trig_date", sortDir=-1, POS={}, PUB={}, signalOnly=true;
 const $=id=>document.getElementById(id);
 const F=["f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
          "f_demin","f_demax","f_dsmin","f_dsmax","f_pemin","f_pemax","f_inmin","f_inmax"];
@@ -144,6 +145,7 @@ function augment(r){
   r.days_since=daysSince(r.h3_date);
   r.trig_date=(r.status==="TRIGGERED")?((r.direction==="BULL"?r.l3_date:r.h3_date)||r.l3_date||r.h3_date):null;
   r.open_pos=POS[r.ticker]??POS[disp(r.ticker)]??0;
+  r.x_posts=PUB[r.ticker]??PUB[disp(r.ticker)]??0;
 }
 
 function pass(r){
@@ -195,14 +197,16 @@ function renderViz(rows){
   const by=k=>rows.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
   // Bars wrap among themselves in the top row; the Sector pie gets its own row so nothing ever
   // stacks directly above or below it (user 2026-06-28).
+  // Sector pie is its OWN left column; the bar charts wrap among themselves to the right — so the
+  // sector chart never sits below (or above) another chart (user 2026-06-28).
   $("viz").innerHTML=
-    `<div class="vizrow">`+
+    `<div class="vizsector">`+pieChart("Sector",by("sector"),"f_sec")+`</div>`+
+    `<div class="vizbars">`+
       barChart("Direction",by("direction"),"f_dir",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
       barChart("Status",by("status"),"f_stat",k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
       barChart("Market",by("market"),"f_mkt")+
       barChart("Timeframe",by("timeframe"),"f_tf")+
-    `</div>`+
-    `<div class="vizrow">`+pieChart("Sector",by("sector"),"f_sec")+`</div>`;
+    `</div>`;
 }
 
 function render(){
@@ -215,12 +219,12 @@ function render(){
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td><span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></td>
     <td>${r.days_since??''}</td>
-    <td>${r.sector||''}</td><td>${r.status||''}</td>
+    <td>${r.sector||''}</td><td>${r.status||''}</td><td>${r.x_posts?`<b>${r.x_posts}</b>`:''}</td>
     <td>${r.trig_date?r.trig_date.slice(0,10):''}</td>
     <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td><td>${r.rr!=null?r.rr.toFixed(1):''}</td>
     <td>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':''}</td>
     <td>${r.pe??''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${r.market||''}</td><td>${locName(r.location)}</td></tr>`).join("")
-    || `<tr><td colspan="14" class="empty">No setups match the filters.</td></tr>`;
+    || `<tr><td colspan="15" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
 }
 
@@ -303,9 +307,11 @@ $("refresh").onclick=()=>{ if(!confirm("Rebuild the snapshot now? Scans ~400 ins
     .catch(()=>$("refresh").textContent="↻ Refresh failed");};
 $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light");$("theme").textContent=l?"☀️ Light":"🌙 Dark";if(SEL)showDetail(SEL);};
 
-Promise.all([fetch("/api/records").then(r=>r.json()), fetch("/api/positions").then(r=>r.json()).catch(()=>({positions:{}}))])
-  .then(([j,p])=>{
-    POS=p.positions||{};
+Promise.all([fetch("/api/records").then(r=>r.json()),
+             fetch("/api/positions").then(r=>r.json()).catch(()=>({positions:{}})),
+             fetch("/api/pubcounts").then(r=>r.json()).catch(()=>({pubcounts:{}}))])
+  .then(([j,p,pc])=>{
+    POS=p.positions||{}; PUB=pc.pubcounts||{};
     DATA=j.records||[]; DATA.forEach(augment);
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");
