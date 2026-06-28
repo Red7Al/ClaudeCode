@@ -60,6 +60,9 @@ img{max-width:100%;border-radius:6px;display:block}
 a{color:var(--accent)}
 .clk{cursor:pointer} .clk:hover{opacity:.75}
 aside.collapsed{display:none}
+.vizbox.filtered{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.afilt{color:var(--accent);font-size:10px;font-weight:700;cursor:pointer}
+.bar.active .tk{color:var(--fg);font-weight:700}
 </style>
 </head>
 <body>
@@ -156,23 +159,27 @@ function pass(r){
 }
 
 function barChart(title,counts,fk,colorFn){
+  const active=($(fk)||{}).value||"";
   const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const max=Math.max(1,...entries.map(e=>e[1]));
-  const rows=entries.map(([k,n])=>`<div class="bar clk" data-fk="${fk}" data-fv="${k==='—'?'':k}" title="click to filter ${k}"><span class="tk">${k}</span>
-    <span class="fill" style="width:${Math.round(n/max*90)}px;background:${colorFn?colorFn(k):'var(--accent)'}"></span><span class="n">${n}</span></div>`).join("");
-  return `<div class="vizbox"><h5>${title}</h5><div class="bars">${rows}</div></div>`;
+  const rows=entries.map(([k,n])=>{const on=active&&String(k)===active;
+    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k==='—'?'':k}" title="click to filter ${k}"><span class="tk">${on?'● ':''}${k}</span>
+    <span class="fill" style="width:${Math.round(n/max*90)}px;background:${colorFn?colorFn(k):'var(--accent)'};opacity:${active&&!on?0.4:1}"></span><span class="n">${n}</span></div>`;}).join("");
+  return `<div class="vizbox${active?' filtered':''}"><h5>${title}${active?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${active} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
 }
 function pieChart(title,counts,fk){
+  const active=($(fk)||{}).value||"";
   const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
   const total=entries.reduce((s,e)=>s+e[1],0)||1;
   const cols=["#58a6ff","#3fb950","#f85149","#d29922","#a371f7","#db61a2","#e3b341","#79c0ff","#56d364","#ff7b72"];
   let a=0,seg="";
-  entries.forEach(([k,n],i)=>{const frac=n/total,a2=a+frac*2*Math.PI;
+  entries.forEach(([k,n],i)=>{const frac=n/total,a2=a+frac*2*Math.PI;const on=active&&String(k)===active;
     const x1=20+18*Math.cos(a-Math.PI/2),y1=20+18*Math.sin(a-Math.PI/2);
     const x2=20+18*Math.cos(a2-Math.PI/2),y2=20+18*Math.sin(a2-Math.PI/2);
-    seg+=`<path class="clk" data-fk="${fk}" data-fv="${k==='—'?'':k}" d="M20,20 L${x1.toFixed(2)},${y1.toFixed(2)} A18,18 0 ${frac>0.5?1:0},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${cols[i%cols.length]}"><title>click to filter ${k}</title></path>`;a=a2;});
-  const legend=entries.slice(0,8).map(([k,n],i)=>`<div class="bar clk" data-fk="${fk}" data-fv="${k==='—'?'':k}"><span class="fill" style="width:10px;background:${cols[i%cols.length]}"></span><span class="tk" style="text-align:left;width:auto" title="click to filter ${k}">${k} (${n})</span></div>`).join("");
-  return `<div class="vizbox"><h5>${title}</h5><div style="display:flex;gap:8px;align-items:center">
+    seg+=`<path class="clk" data-fk="${fk}" data-fv="${k==='—'?'':k}" d="M20,20 L${x1.toFixed(2)},${y1.toFixed(2)} A18,18 0 ${frac>0.5?1:0},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${cols[i%cols.length]}" stroke="${on?'var(--fg)':'none'}" stroke-width="${on?1.5:0}" opacity="${active&&!on?0.4:1}"><title>click to filter ${k}</title></path>`;a=a2;});
+  const legend=entries.slice(0,8).map(([k,n],i)=>{const on=active&&String(k)===active;
+    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k==='—'?'':k}"><span class="fill" style="width:10px;background:${cols[i%cols.length]}"></span><span class="tk" style="text-align:left;width:auto" title="click to filter ${k}">${on?'● ':''}${k} (${n})</span></div>`;}).join("");
+  return `<div class="vizbox${active?' filtered':''}"><h5>${title}${active?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${active} ✕</span>`:''}</h5><div style="display:flex;gap:8px;align-items:center">
     <svg viewBox="0 0 40 40" width="86" height="86">${seg}</svg><div class="bars" style="min-width:120px">${legend}</div></div></div>`;
 }
 function renderViz(rows){
