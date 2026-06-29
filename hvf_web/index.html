@@ -27,12 +27,12 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 .count{padding:8px 16px;color:var(--muted);font-size:12px}
 .viz{display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:flex-start}
 .vizsector{flex:none}
-.vizbars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;flex:1;min-width:0;align-items:start}
+.vizbars{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px 12px;flex:1;min-width:0;align-items:start}
 .vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 .vizbox h5{margin:0 0 6px;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}
-.bars{display:flex;flex-direction:column;gap:3px;min-width:150px}
+.bars{display:flex;flex-direction:column;gap:3px;min-width:120px}
 .bar{display:flex;align-items:center;gap:6px;font-size:11px}
-.bar .tk{width:62px;color:var(--muted);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .tk{width:48px;color:var(--muted);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px}
 .bar .fill{height:11px;border-radius:2px;background:var(--accent)}
 .bar .n{color:var(--muted)}
 table{border-collapse:collapse;width:100%;font-size:13px}
@@ -183,7 +183,7 @@ function barChart(title,counts,fk,colorFn){
   const max=Math.max(1,...entries.map(e=>e[1]));
   const rows=entries.map(([k,n])=>{const on=active&&String(k)===active;
     return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}" title="click to filter ${k}"><span class="tk">${on?'● ':''}${k}</span>
-    <span class="fill" style="width:${Math.round(n/max*90)}px;background:${colorFn?colorFn(k):'var(--accent)'};opacity:${active&&!on?0.4:1}"></span><span class="n">${n}</span></div>`;}).join("");
+    <span class="fill" style="width:${Math.round(n/max*52)}px;background:${colorFn?colorFn(k):'var(--accent)'};opacity:${active&&!on?0.4:1}"></span><span class="n">${n}</span></div>`;}).join("");
   return `<div class="vizbox${active?' filtered':''}"><h5>${title}${active?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${active} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
 }
 function pieChart(title,counts,fk){
