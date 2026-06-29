@@ -43,7 +43,7 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--chip)} tr.sel{backgroun
 .bull{background:rgba(63,185,80,.15);color:var(--bull)} .bear{background:rgba(248,81,73,.15);color:var(--bear)}
 .muted{color:var(--muted);font-size:11px}
 .tablewrap{overflow:auto;flex:1}
-#detail{width:560px;flex:none;border-left:1px solid var(--line);padding:14px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px}
+#detail{width:760px;flex:none;border-left:2px solid var(--accent);padding:16px 20px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px;box-shadow:-10px 0 28px rgba(0,0,0,.4);background:var(--bg)}
 #detail.hidden{display:none}
 #detail h2{margin:0 0 2px;font-size:18px} .sub{color:var(--muted);font-size:12px;margin-bottom:10px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:12px}
@@ -250,7 +250,6 @@ function showDetail(t){
     <div class="card"><h4>Squeeze Rules 1–5 — justification</h4><div id="rulesbox">loading…</div></div>
     <div class="card"><h4>Quality (${r.quality??'?'}/100) — how it's scored</h4>
       <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the funnel is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric funnel; a low Q means a loose, older, or lopsided one.</div></div>
-    <div class="card"><h4>Fundamentals — key metrics</h4><div id="fundbox">loading…</div></div>
     <div class="card"><h4>Price — last ${days} days (filter-reactive)</h4>
       <img id="pw" src="/api/pricewin/${r.ticker}?days=${days}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}"></div>
     <div class="card"><h4>X post card</h4><img loading="lazy" src="/api/card/${r.ticker}"></div>
@@ -262,6 +261,7 @@ function showDetail(t){
       <div class="kv"><span>Dist to entry</span><b>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'?'}</b></div>
       <div class="kv"><span>P/E</span><b>${r.pe??'?'}</b></div>
       <div class="kv"><span>Insider %</span><b>${r.insider_pct!=null?r.insider_pct.toFixed(2)+'%':'?'}</b></div></div>
+    <div class="card"><h4>Fundamentals — key metrics</h4><div id="fundbox">loading…</div></div>
     <div class="card"><h4>Broker analysis</h4>${broker}<div id="brokerchg" class="muted" style="margin-top:6px">loading 6–12mo change…</div></div>
     <div class="card"><h4>On X</h4><div id="xlinks">loading…</div></div>
     <div class="card"><h4>X thread (all pages)</h4><div class="tweet" id="tweetbox">loading…</div></div>`;

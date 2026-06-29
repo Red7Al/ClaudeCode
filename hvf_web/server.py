@@ -15,6 +15,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.6   2026-06-29  Alex Hind   (user 2026-06-29 "X post card is empty for ABF.L") /api/thread ALSO renders a card
+#                                 PNG via matplotlib (collect=True) and was OUTSIDE _RENDER_LOCK, so it raced /api/card
+#                                 and both blanked. Wrapped the _generate_x_drafts render in the lock. Card now stays
+#                                 full (168KB) when /api/card + /api/thread + /api/pricewin fire together.
 # 1.3.5   2026-06-28  Alex Hind   (user 2026-06-28) /api/fundamentals/<ticker> — company KPIs from yfinance .info
 #                                 (P/E, FCF, dividends, margins, growth, leverage, 52w) for the new detail KPI card.
 #                                 Dividend yield uses yfinance's own field to dodge the .L pence/pounds unit mismatch.
@@ -197,7 +201,10 @@ def api_thread(ticker):
         parts = []
         try:
             from intraday_signals import _generate_x_drafts
-            drafts = _generate_x_drafts([card], post=False, collect=True)
+            # collect=True renders the card PNG via matplotlib (pyplot) — must share the render lock or it
+            # races /api/card and both come out blank (user 2026-06-29 "X post card is empty for ABF.L").
+            with _RENDER_LOCK:
+                drafts = _generate_x_drafts([card], post=False, collect=True)
             if drafts and drafts[0].get("tweet"):
                 parts.append(drafts[0]["tweet"])
         except Exception as e:
