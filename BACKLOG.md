@@ -4,10 +4,10 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
 
 ## New feature requests — added 2026-06-26 (user batch)
 
-- [ ] **Add NASDAQ instruments to the universe** (user 2026-06-28, "on Monday afternoon" → target
-  **2026-06-29 PM**). Extend the monitored universe in `run_hvf_report.py::UNIVERSE` with NASDAQ names
-  (confirm scope with the user: NASDAQ-100? a curated liquid subset? full listed set is too large for
-  the per-instrument yfinance build). After adding, run a snapshot rebuild — the persistent name cache
+- [ ] **Add NASDAQ-100 instruments to the universe** (user 2026-06-28, "on Monday afternoon" → target
+  **2026-06-29 PM**; scope confirmed **NASDAQ-100**). Extend the monitored universe in
+  `run_hvf_report.py::UNIVERSE` with the NASDAQ-100 constituents (~100 names). After adding, run a
+  snapshot rebuild — the persistent name cache
   (`hvf_web/name_cache.json`) means only the NEW tickers get a name lookup. Verify the new names appear
   with `has_signal` flags and that the build time stays reasonable.
 

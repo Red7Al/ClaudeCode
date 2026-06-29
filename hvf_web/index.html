@@ -247,10 +247,10 @@ function showDetail(t){
     <button class="btn" onclick="closeDetail()" style="float:right">✕ Close (back to list)</button>
     <h2>${disp(r.ticker)} <span class="muted" style="font-size:13px">${r.name||''}</span> <span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></h2>
     <div class="sub">${locName(r.location)} · ${r.market||''} · ${r.sector||''} · ${r.status} · Q${r.quality??'?'} · R:R ${r.rr!=null?r.rr.toFixed(2):'?'} · ${(r.timeframe||'').replace('daily-','D')}</div>
-    <div class="card"><h4>Fundamentals — key metrics</h4><div id="fundbox">loading…</div></div>
     <div class="card"><h4>Squeeze Rules 1–5 — justification</h4><div id="rulesbox">loading…</div></div>
     <div class="card"><h4>Quality (${r.quality??'?'}/100) — how it's scored</h4>
       <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the funnel is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric funnel; a low Q means a loose, older, or lopsided one.</div></div>
+    <div class="card"><h4>Fundamentals — key metrics</h4><div id="fundbox">loading…</div></div>
     <div class="card"><h4>Price — last ${days} days (filter-reactive)</h4>
       <img id="pw" src="/api/pricewin/${r.ticker}?days=${days}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}"></div>
     <div class="card"><h4>X post card</h4><img loading="lazy" src="/api/card/${r.ticker}"></div>
@@ -276,29 +276,46 @@ function showDetail(t){
     const money=v=>{if(v==null)return null;const a=Math.abs(v),s=v<0?"-":"";
       return a>=1e9?`${s}${sym}${(a/1e9).toFixed(2)}bn`:a>=1e6?`${s}${sym}${(a/1e6).toFixed(1)}m`:a>=1e3?`${s}${sym}${(a/1e3).toFixed(0)}k`:`${s}${sym}${a.toFixed(0)}`;};
     const pct=v=>v==null?null:(v*100).toFixed(1)+"%", rat=v=>v==null?null:(+v).toFixed(2), cash=v=>v==null?null:sym+rat(v);
+    // Colour-code anything concerning/bad (user 2026-06-28): red = poor, amber = watch, green = strong.
+    const C={r:"var(--bear)",a:"#d29922",g:"var(--bull)"};
+    const grade={
+      trailingPE:v=>v<0?'r':v>80?'r':v>40?'a':null, forwardPE:v=>v<0?'r':v>80?'r':v>40?'a':null,
+      pegRatio:v=>v<0?'a':v>3?'r':v>2?'a':(v>0&&v<1?'g':null),
+      priceToBook:v=>v<0?'r':v>10?'a':null, priceToSales:v=>v>20?'a':null, evToEbitda:v=>v<0?'r':v>20?'a':null,
+      trailingEps:v=>v<0?'r':null, forwardEps:v=>v<0?'a':null,
+      dividendYield:v=>v>0.10?'a':null, payoutRatio:v=>v<0?'a':v>1?'r':v>0.8?'a':null,
+      freeCashflow:v=>v<0?'r':null, operatingCashflow:v=>v<0?'a':null,
+      grossMargin:v=>v<0?'r':null, operatingMargin:v=>v<0?'r':v<0.05?'a':v>0.2?'g':null, profitMargin:v=>v<0?'r':v<0.05?'a':v>0.2?'g':null,
+      roe:v=>v<0?'r':v>0.15?'g':null, roa:v=>v<0?'a':null,
+      revenueGrowth:v=>v<-0.10?'r':v<0?'a':v>0.10?'g':null, earningsGrowth:v=>v<-0.20?'r':v<0?'a':v>0.15?'g':null,
+      debtToEquity:v=>v>200?'r':v>100?'a':null, currentRatio:v=>v<1?'r':v<1.5?'a':v>2?'g':null, quickRatio:v=>v<1?'a':null,
+      beta:v=>v>2?'a':null,
+    };
+    const col=key=>{if(!key||k[key]==null||!grade[key])return"var(--fg)";const g=grade[key](k[key]);return g?C[g]:"var(--fg)";};
     const rows=[
       ["Market cap",money(k.marketCap)],["Revenue (ttm)",money(k.totalRevenue)],["EBITDA",money(k.ebitda)],
-      ["P/E (trailing)",rat(k.trailingPE)],["P/E (forward)",rat(k.forwardPE)],["PEG",rat(k.pegRatio)],
-      ["Price / Book",rat(k.priceToBook)],["Price / Sales",rat(k.priceToSales)],["EV / EBITDA",rat(k.evToEbitda)],
-      ["EPS (ttm)",cash(k.trailingEps)],["EPS (forward)",cash(k.forwardEps)],
-      ["Dividend yield",pct(k.dividendYield)],["Dividend / share",cash(k.dividendRate)],["Payout ratio",pct(k.payoutRatio)],
-      ["Free cash flow",money(k.freeCashflow)],["Operating cash flow",money(k.operatingCashflow)],
-      ["Gross margin",pct(k.grossMargin)],["Operating margin",pct(k.operatingMargin)],["Profit margin",pct(k.profitMargin)],
-      ["Return on equity",pct(k.roe)],["Return on assets",pct(k.roa)],
-      ["Revenue growth",pct(k.revenueGrowth)],["Earnings growth",pct(k.earningsGrowth)],
-      ["Debt / Equity",rat(k.debtToEquity)],["Current ratio",rat(k.currentRatio)],["Quick ratio",rat(k.quickRatio)],
-      ["Beta",rat(k.beta)],
+      ["P/E (trailing)",rat(k.trailingPE),"trailingPE"],["P/E (forward)",rat(k.forwardPE),"forwardPE"],["PEG",rat(k.pegRatio),"pegRatio"],
+      ["Price / Book",rat(k.priceToBook),"priceToBook"],["Price / Sales",rat(k.priceToSales),"priceToSales"],["EV / EBITDA",rat(k.evToEbitda),"evToEbitda"],
+      ["EPS (ttm)",cash(k.trailingEps),"trailingEps"],["EPS (forward)",cash(k.forwardEps),"forwardEps"],
+      ["Dividend yield",pct(k.dividendYield),"dividendYield"],["Dividend / share",cash(k.dividendRate)],["Payout ratio",pct(k.payoutRatio),"payoutRatio"],
+      ["Free cash flow",money(k.freeCashflow),"freeCashflow"],["Operating cash flow",money(k.operatingCashflow),"operatingCashflow"],
+      ["Gross margin",pct(k.grossMargin),"grossMargin"],["Operating margin",pct(k.operatingMargin),"operatingMargin"],["Profit margin",pct(k.profitMargin),"profitMargin"],
+      ["Return on equity",pct(k.roe),"roe"],["Return on assets",pct(k.roa),"roa"],
+      ["Revenue growth",pct(k.revenueGrowth),"revenueGrowth"],["Earnings growth",pct(k.earningsGrowth),"earningsGrowth"],
+      ["Debt / Equity",rat(k.debtToEquity),"debtToEquity"],["Current ratio",rat(k.currentRatio),"currentRatio"],["Quick ratio",rat(k.quickRatio),"quickRatio"],
+      ["Beta",rat(k.beta),"beta"],
       ["52-week range",(k.fiftyTwoWeekLow!=null&&k.fiftyTwoWeekHigh!=null)?`${sym}${rat(k.fiftyTwoWeekLow)} – ${sym}${rat(k.fiftyTwoWeekHigh)}`:null],
     ].filter(x=>x[1]!=null);
     el.innerHTML=rows.length?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">`+
-      rows.map(([lab,val])=>`<div class="kv"><span>${lab}</span><b>${val}</b></div>`).join("")+`</div>`
+      rows.map(([lab,val,key])=>`<div class="kv"><span>${lab}</span><b style="color:${col(key)}">${val}</b></div>`).join("")+`</div>`
+      +`<div class="muted" style="font-size:11px;margin-top:6px"><span style="color:var(--bear)">red</span> = poor · <span style="color:#d29922">amber</span> = watch · <span style="color:var(--bull)">green</span> = strong</div>`
       :"no fundamentals available (often the case for funds / indices)";
   }).catch(()=>{const el=document.getElementById("fundbox");if(el)el.textContent="fundamentals unavailable";});
   fetch(`/api/broker/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("brokerchg"); if(!el||SEL!==r.ticker)return;
     if(!j.available){el.textContent="6–12mo change: no analyst upgrade/downgrade history";return;}
     const net=(u,d)=>`${u-d>=0?'+':''}${u-d} net (${u}↑ / ${d}↓)`;
-    el.innerHTML=`Coverage change — last 6mo: <b>${net(j.up6,j.down6)}</b> · last 12mo: <b>${net(j.up12,j.down12)}</b>`;
+    el.innerHTML=`Coverage change — 0–6 mo: <b>${net(j.up6,j.down6)}</b> · 0–12 mo: <b>${net(j.up12,j.down12)}</b>`;
   }).catch(()=>{const el=document.getElementById("brokerchg");if(el)el.textContent="6–12mo change unavailable";});
   fetch(`/api/rules/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("rulesbox"); if(!el||SEL!==r.ticker)return;
