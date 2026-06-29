@@ -348,8 +348,15 @@ def api_refresh():
 @app.route("/api/status")
 def api_status():
     snap = _load_snapshot()
-    return jsonify({"refreshing": _REFRESHING["on"], "generated_utc": snap.get("generated_utc"),
-                    "count": snap.get("count")})
+    resp = {"refreshing": _REFRESHING["on"], "generated_utc": snap.get("generated_utc"),
+            "count": snap.get("count")}
+    if _REFRESHING["on"]:                     # live "34/424" progress while a build runs (user 2026-06-29)
+        try:
+            from hvf_web.build_snapshot import PROGRESS
+            resp["progress"] = {"done": PROGRESS.get("done", 0), "total": PROGRESS.get("total", 0)}
+        except Exception:
+            pass
+    return jsonify(resp)
 
 
 @app.route("/api/fundamentals/<ticker>")

@@ -23,6 +23,12 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      # IG creds — the daily audit prefers IG as the truth (user 2026-06-29); without these it falls back
+      # to YF-only (the IG cross-check is wrapped so a missing/failed IG session never breaks the audit).
+      IG_API_KEY:           ${{ secrets.IG_API_KEY }}
+      IG_USERNAME:          ${{ secrets.IG_USERNAME }}
+      IG_PASSWORD:          ${{ secrets.IG_PASSWORD }}
+      IG_ACCOUNT_ID:        ${{ secrets.IG_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

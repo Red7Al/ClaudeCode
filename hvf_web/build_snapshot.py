@@ -30,6 +30,10 @@ log = logging.getLogger("hvf_web.build")
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 SNAPSHOT = os.path.join(_HERE, "snapshot.json")
+
+# Live progress of an in-flight build, read by the server's /api/status so the UI can show "34/424"
+# while data is refreshing (user 2026-06-29). Updated each instrument; reset when the build finishes.
+PROGRESS = {"done": 0, "total": 0}
 NAME_CACHE = os.path.join(_HERE, "name_cache.json")   # ticker -> company name; names don't change, look up once
 
 
@@ -108,7 +112,8 @@ def build():
 
     log.info("scanning universe ...")
     from run_hvf_report import UNIVERSE
-    scan = scan_universe()
+    PROGRESS.update(done=0, total=sum(len(t) for t in UNIVERSE.values()))
+    scan = scan_universe(progress_cb=lambda d, t: PROGRESS.update(done=d, total=t))
     sig = {r.get("ticker"): r for results in scan.values() for r in results if r.get("hvf_type")}
     total = sum(len(t) for t in UNIVERSE.values())
     log.info(f"{len(sig)} signals of {total} monitored instruments; building full-universe records ...")

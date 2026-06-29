@@ -347,10 +347,16 @@ $("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});$("f_qmin").value=45;$(
 $("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});signalOnly=false;$("signalonly").textContent="Squeeze only ✗";$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
 $("togglefilters").onclick=()=>$("aside").classList.toggle("collapsed");
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").textContent="Squeeze only "+(signalOnly?"✓":"✗");applyAll();};
-$("refresh").onclick=()=>{ if(!confirm("Rebuild the snapshot now? Scans ~400 instruments — takes a few minutes. The page keeps working with current data; reload when done."))return;
-  $("refresh").textContent="↻ Refreshing…";
-  fetch("/api/refresh",{method:"POST"}).then(x=>x.json()).then(j=>{$("refresh").textContent=j.busy?"↻ Already refreshing…":"↻ Refreshing… reload in ~5 min";})
+$("refresh").onclick=()=>{ if(!confirm("Rebuild the snapshot now? Scans ~424 instruments — takes a few minutes. The page keeps working with current data and reloads automatically when done."))return;
+  $("refresh").textContent="↻ Starting…";
+  fetch("/api/refresh",{method:"POST"}).then(x=>x.json()).then(j=>{ if(j.busy)$("refresh").textContent="↻ Already refreshing…"; pollRefresh(); })
     .catch(()=>$("refresh").textContent="↻ Refresh failed");};
+function pollRefresh(){
+  fetch("/api/status").then(x=>x.json()).then(s=>{
+    if(s.refreshing){const p=s.progress||{}; $("refresh").textContent=p.total?`↻ ${p.done}/${p.total}`:"↻ Refreshing…"; setTimeout(pollRefresh,3000);}
+    else {$("refresh").textContent="↻ Done — reloading…"; setTimeout(()=>location.reload(),800);}
+  }).catch(()=>setTimeout(pollRefresh,5000));
+}
 $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light");$("theme").textContent=l?"☀️ Light":"🌙 Dark";if(SEL)showDetail(SEL);};
 
 Promise.all([fetch("/api/records").then(r=>r.json()),

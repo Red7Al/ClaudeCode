@@ -278,10 +278,11 @@ UNIVERSE = {
 # Scan
 # ----------------------------------------------------------------------------------------------------------------------
 
-def scan_universe() -> dict:
+def scan_universe(progress_cb=None) -> dict:
     """
     Scan all instruments in all indices.
     Returns dict keyed by index name, each value a list of HVF result dicts.
+    progress_cb(done, total) is called after each instrument (user 2026-06-29: live refresh progress).
     """
     from price_action import get_hvf_signal_mtf, get_trend_structure
 
@@ -305,6 +306,11 @@ def scan_universe() -> dict:
             except Exception as e:
                 log.warning(f"  {ticker} failed: {e}")
             done += 1
+            if progress_cb:
+                try:
+                    progress_cb(done, total)
+                except Exception:
+                    pass
             if done % 20 == 0:
                 log.info(f"  {done}/{total} done")
 

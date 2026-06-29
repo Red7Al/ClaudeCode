@@ -35,23 +35,29 @@ log = logging.getLogger("price_store")
 
 _DDL = [
     """create table if not exists price_history (
-        ticker      text             not null,
-        bar_date    date             not null,
-        open        double precision,
-        high        double precision,
-        low         double precision,
-        close       double precision,
-        volume      bigint,
-        source      text             not null,
-        recorded_at timestamptz      not null default now(),
-        updated_at  timestamptz      not null default now(),
+        ticker         text             not null,
+        bar_date       date             not null,
+        open           double precision,
+        high           double precision,
+        low            double precision,
+        close          double precision,
+        volume         bigint,
+        source         text             not null,
+        double_checked boolean          not null default false,
+        recorded_at    timestamptz      not null default now(),
+        updated_at     timestamptz      not null default now(),
         primary key (ticker, bar_date)
     )""",
+    # double_checked may be missing on a table created before 2026-06-29 — add it idempotently.
+    "alter table price_history add column if not exists double_checked boolean not null default false",
     # (ticker, bar_date desc) — fast "latest N bars for one instrument" + range scans for the charts.
     "create index if not exists idx_price_history_ticker_date on price_history (ticker, bar_date desc)",
     # (bar_date) — the daily audit scans every instrument for a given day.
     "create index if not exists idx_price_history_bar_date on price_history (bar_date)",
 ]
+
+# How much history to keep (user 2026-06-29: record 3 years; delete anything older).
+RETENTION_YEARS = 3
 
 _OHLCV = ("Open", "High", "Low", "Close", "Volume")
 _schema_ready = False
@@ -171,6 +177,45 @@ def latest_bar_date(ticker, db=None):
         if own:
             db.close()
     return r[0][0] if (r and r[0]) else None
+
+
+def set_double_checked(ticker, bar_dates, db=None):
+    """Flag bars as verified by >1 source (user 2026-06-29). `bar_dates` is an iterable of date/'YYYY-MM-DD'."""
+    dates = [str(d) for d in bar_dates]
+    if not dates:
+        return 0
+    own = db is None
+    if own:
+        db = get_db()
+    try:
+        ensure_schema(db)
+        params = {"t": ticker}
+        ph = []
+        for i, d in enumerate(dates):
+            params[f"d{i}"] = d
+            ph.append(f":d{i}")
+        db.run("update price_history set double_checked=true, updated_at=now() "
+               f"where ticker=:t and bar_date in ({','.join(ph)})", **params)
+    finally:
+        if own:
+            db.close()
+    return len(dates)
+
+
+def prune_older_than(years=RETENTION_YEARS, db=None):
+    """Delete bars older than `years` (user 2026-06-29: keep 3y, drop the rest). Returns rows deleted."""
+    own = db is None
+    if own:
+        db = get_db()
+    try:
+        ensure_schema(db)
+        before = db.run("select count(*) from price_history "
+                        "where bar_date < (current_date - make_interval(years => :y))", y=years)[0][0]
+        db.run("delete from price_history where bar_date < (current_date - make_interval(years => :y))", y=years)
+    finally:
+        if own:
+            db.close()
+    return int(before or 0)
 
 
 def get_bars_or_fetch(ticker, yahoo_symbol, start, end, source="YF", stale_days=5):

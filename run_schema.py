@@ -384,12 +384,17 @@ MIGRATIONS = [
             high        double precision,
             low         double precision,
             close       double precision,
-            volume      bigint,
-            source      text             NOT NULL,
-            recorded_at timestamptz      NOT NULL DEFAULT now(),
-            updated_at  timestamptz      NOT NULL DEFAULT now(),
+            volume         bigint,
+            source         text             NOT NULL,
+            double_checked boolean          NOT NULL DEFAULT false,
+            recorded_at    timestamptz      NOT NULL DEFAULT now(),
+            updated_at     timestamptz      NOT NULL DEFAULT now(),
             PRIMARY KEY (ticker, bar_date)
         )"""
+    ),
+    (
+        "price_history: add double_checked (legacy tables)",
+        "ALTER TABLE price_history ADD COLUMN IF NOT EXISTS double_checked boolean NOT NULL DEFAULT false"
     ),
     (
         "price_history: index on ticker + date desc",
