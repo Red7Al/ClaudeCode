@@ -74,13 +74,13 @@ aside.collapsed{display:none}
   <span class="grow"></span>
   <button class="btn" id="signalonly">Squeeze only ✓</button>
   <button class="btn" id="refresh">↻ Refresh data</button>
-  <button class="btn" id="togglefilters">☰ Filters (Toggle)</button>
+  <button class="btn" id="togglefilters">☰ Filters (Show)</button>
   <button class="btn" id="reset">Reset filters</button>
   <button class="btn" id="showall">Remove all filters (show all)</button>
   <button class="btn" id="theme">🌙 Dark</button>
 </header>
 <div class="layout">
-  <aside id="aside">
+  <aside id="aside" class="collapsed">
     <h3>Direction & place</h3>
     <div class="f"><label>Direction</label><select id="f_dir"><option value="">Any</option><option>BULL</option><option>BEAR</option><option value="—">— (none)</option></select></div>
     <div class="f"><label>Location (Geography)</label><select id="f_loc"><option value="">Any</option></select></div>
@@ -112,7 +112,7 @@ aside.collapsed{display:none}
           <th data-k="days_since" title="Days since the setup's 3rd swing (H3) formed">Days since</th>
           <th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th data-k="trig_date">Triggered</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
-          <th data-k="dist_entry">Dist→Entry</th>
+          <th data-k="dist_entry">Dist→Entry</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th>
           <th data-k="pe">P/E</th><th data-k="timeframe">TF</th>
           <th data-k="market">Market</th><th data-k="location">Location</th>
         </tr></thead>
@@ -134,6 +134,8 @@ const locName=v=>LOC[v]||v||"";
 const f2=v=>(v==null||v==="")?"":(+v).toFixed(2);
 const disp=t=>(t||"").replace(/\.L$/,"");
 const qcol=q=>q>=70?"var(--bull)":q>=50?"#d29922":"var(--bear)";   // quality colour: green / amber / red
+// "since trig" colour: green when price has moved in the trade's favour, red against.
+const trigCol=r=>{const c=r.chg_since_trig;if(c==null||Math.abs(c)<0.05)return"var(--fg)";const fav=(r.direction==="BULL")?c>0:c<0;return fav?"var(--bull)":"var(--bear)";};
 
 function uniq(k){return [...new Set(DATA.map(r=>r[k]).filter(x=>x!=null))].sort();}
 function fillSel(id,k,label){const s=$(id);uniq(k).forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=label?label(v):v;s.appendChild(o);});
@@ -143,6 +145,8 @@ function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return
 
 function augment(r){
   r.dist_entry=(r.entry!=null&&r.current_price)? +(((r.entry-r.current_price)/r.current_price)*100).toFixed(2):null;
+  // Price move since it triggered, vs the entry (trigger) level. Only meaningful for TRIGGERED rows.
+  r.chg_since_trig=(r.status==="TRIGGERED"&&r.entry&&r.current_price)? +(((r.current_price-r.entry)/r.entry)*100).toFixed(1):null;
   r.days_since=daysSince(r.h3_date);
   r.trig_date=(r.status==="TRIGGERED")?((r.direction==="BULL"?r.l3_date:r.h3_date)||r.l3_date||r.h3_date):null;
   r.open_pos=POS[r.ticker]??POS[disp(r.ticker)]??0;
@@ -227,8 +231,9 @@ function render(){
     <td>${r.trig_date?r.trig_date.slice(0,10):''}</td>
     <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td><td>${r.rr!=null?r.rr.toFixed(1):''}</td>
     <td>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':''}</td>
+    <td>${r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:''}</td>
     <td>${r.pe??''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${r.market||''}</td><td>${locName(r.location)}</td></tr>`).join("")
-    || `<tr><td colspan="15" class="empty">No setups match the filters.</td></tr>`;
+    || `<tr><td colspan="16" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
 }
 
@@ -345,16 +350,25 @@ $("viz").addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
 $("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});$("f_qmin").value=45;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
 $("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});signalOnly=false;$("signalonly").textContent="Squeeze only ✗";$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
-$("togglefilters").onclick=()=>$("aside").classList.toggle("collapsed");
+$("togglefilters").onclick=()=>{const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").textContent="☰ Filters ("+(hidden?"Show":"Hide")+")";};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").textContent="Squeeze only "+(signalOnly?"✓":"✗");applyAll();};
+let _refStart=0, _lastTens=-1;
 $("refresh").onclick=()=>{ if(!confirm("Rebuild the snapshot now? Scans ~424 instruments — takes a few minutes. The page keeps working with current data and reloads automatically when done."))return;
-  $("refresh").textContent="↻ Starting…";
+  $("refresh").textContent="↻ Starting…"; _refStart=Date.now(); _lastTens=-1;
   fetch("/api/refresh",{method:"POST"}).then(x=>x.json()).then(j=>{ if(j.busy)$("refresh").textContent="↻ Already refreshing…"; pollRefresh(); })
     .catch(()=>$("refresh").textContent="↻ Refresh failed");};
 function pollRefresh(){
   fetch("/api/status").then(x=>x.json()).then(s=>{
-    if(s.refreshing){const p=s.progress||{}; $("refresh").textContent=p.total?`↻ ${p.done}/${p.total}`:"↻ Refreshing…"; setTimeout(pollRefresh,3000);}
-    else {$("refresh").textContent="↻ Done — reloading…"; setTimeout(()=>location.reload(),800);}
+    if(s.refreshing){
+      const p=s.progress||{}, done=p.done||0, total=p.total||0;
+      let eta="";
+      if(_refStart&&done>0&&total>0){const rate=done/((Date.now()-_refStart)/1000); if(rate>0){const mins=Math.max(1,Math.ceil((total-done)/rate/60)); eta=` · ~${mins} min to complete`;}}
+      $("refresh").textContent=total?`↻ ${done}/${total}${eta}`:"↻ Refreshing…";
+      // Flash green for a second each time another 10 instruments complete (user 2026-06-29).
+      const tens=Math.floor(done/10);
+      if(tens>_lastTens){_lastTens=tens;$("refresh").style.color="var(--bull)";setTimeout(()=>{$("refresh").style.color="";},1000);}
+      setTimeout(pollRefresh,3000);
+    } else {$("refresh").style.color="";$("refresh").textContent="↻ Done — reloading…"; setTimeout(()=>location.reload(),800);}
   }).catch(()=>setTimeout(pollRefresh,5000));
 }
 $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light");$("theme").textContent=l?"☀️ Light":"🌙 Dark";if(SEL)showDetail(SEL);};
