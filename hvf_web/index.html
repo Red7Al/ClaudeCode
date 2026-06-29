@@ -208,10 +208,11 @@ function renderViz(rows){
   // Sector pie is its OWN left column; the bar charts wrap among themselves to the right — so the
   // sector chart never sits below (or above) another chart (user 2026-06-28).
   $("viz").innerHTML=
-    `<div class="vizsector" style="display:flex;gap:14px">`+pieChart("Sector",by("sector"),"f_sec")+pieChart("Location",by("location"),"f_loc")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",by("sector"),"f_sec")+`</div>`+
     `<div class="vizbars">`+
       barChart("Direction",by("direction"),"f_dir",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
       barChart("Status",by("status"),"f_stat",k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
+      barChart("Location",by("location"),"f_loc")+
       barChart("Market",by("market"),"f_mkt")+
       barChart("Timeframe",by("timeframe"),"f_tf")+
     `</div>`;
