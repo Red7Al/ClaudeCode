@@ -203,25 +203,36 @@ FTSE250 = [
     "XPS.L", "ZIG.L",
 ]
 
+# Top ~100 S&P 500 by market cap (user 2026-06-29). Yahoo symbols (BRK-B not BRK.B). Overlaps with the
+# NASDAQ 100 list below are de-duplicated at scan time, so a name is only scanned/recorded once.
 SP500 = [
-    # Mega-cap tech
-    "AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMZN", "TSLA", "AVGO",
-    # Financials
-    "JPM", "BAC", "GS", "MS", "WFC", "BLK", "AXP",
-    # Healthcare
-    "LLY", "UNH", "JNJ", "PFE", "MRK", "ABBV", "TMO",
-    # Consumer
-    "WMT", "COST", "HD", "MCD", "NKE", "SBUX",
-    # Energy
-    "XOM", "CVX", "COP",
-    # Industrials
-    "CAT", "DE", "HON", "RTX", "LMT", "GE",
-    # Tech (broader)
-    "AMD", "INTC", "ORCL", "CRM", "ADBE", "NOW", "PLTR", "CRWD",
-    # Communication
-    "NFLX", "DIS", "T", "VZ",
-    # Materials / Utilities
-    "LIN", "APD", "NEE", "SO",
+    "NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "GOOG", "META", "AVGO", "BRK-B", "TSLA",
+    "LLY", "JPM", "WMT", "V", "ORCL", "MA", "UNH", "XOM", "COST", "NFLX",
+    "JNJ", "HD", "PG", "ABBV", "BAC", "PLTR", "KO", "CVX", "TMUS", "CRM",
+    "WFC", "CSCO", "PM", "IBM", "ABT", "MCD", "GE", "LIN", "MRK", "NOW",
+    "ACN", "PEP", "AXP", "ISRG", "T", "DIS", "INTU", "GS", "RTX", "VZ",
+    "AMD", "TXN", "MS", "CAT", "BKNG", "QCOM", "ADBE", "BSX", "SPGI", "BLK",
+    "NEE", "PGR", "HON", "AMGN", "TJX", "SYK", "UNP", "LOW", "GILD", "ETN",
+    "C", "ADP", "DE", "BX", "COP", "VRTX", "MMC", "CB", "FI", "MDT",
+    "ADI", "LMT", "BMY", "PANW", "MU", "AMAT", "PLD", "SBUX", "KKR", "ANET",
+    "MO", "SO", "INTC", "NKE", "ICE", "GEV", "CME", "DUK", "SHW", "WM",
+    "TMO", "PFE", "DHR",
+]
+
+# NASDAQ 100 constituents (user 2026-06-29). Yahoo symbols; overlaps with the S&P 500 list above are
+# de-duplicated at scan time. Index membership drifts over time — invalid/delisted names are skipped
+# gracefully by the engine and flagged by the price audit.
+NASDAQ100 = [
+    "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "GOOG", "META", "AVGO", "TSLA", "NFLX",
+    "COST", "TMUS", "CSCO", "PEP", "AMD", "ADBE", "TXN", "QCOM", "INTU", "AMAT",
+    "AMGN", "ISRG", "BKNG", "HON", "CMCSA", "ADP", "VRTX", "GILD", "MU", "ADI",
+    "LRCX", "PANW", "REGN", "MELI", "KLAC", "SBUX", "SNPS", "CDNS", "CRWD", "MDLZ",
+    "CTAS", "MAR", "ORLY", "ABNB", "CSX", "MRVL", "NXPI", "FTNT", "DASH", "ADSK",
+    "ROP", "WDAY", "PCAR", "TTD", "MNST", "AEP", "PAYX", "KDP", "ODFL", "FAST",
+    "ROST", "CPRT", "EA", "BKR", "VRSK", "EXC", "XEL", "CTSH", "GEHC", "KHC",
+    "DDOG", "IDXX", "DXCM", "TTWO", "CCEP", "ANSS", "ON", "CDW", "BIIB", "ZS",
+    "GFS", "MDB", "ARM", "WBD", "APP", "MSTR", "PLTR", "LIN", "PYPL", "LULU",
+    "FANG", "AXON", "PDD", "TEAM",
 ]
 
 COMMODITIES = [
@@ -263,6 +274,7 @@ CRYPTO = [
 UNIVERSE = {
     "FTSE 100":     FTSE100,
     "FTSE 250":     FTSE250,
+    "NASDAQ 100":   NASDAQ100,       # listed before S&P 500 so dual-listed mega-caps file under NASDAQ
     "S&P 500":      SP500,
     "Commodities":  COMMODITIES,    # metals + energy
     "Indices & FX": INDICES_FX,     # major indices + FX
@@ -287,13 +299,19 @@ def scan_universe(progress_cb=None) -> dict:
     from price_action import get_hvf_signal_mtf, get_trend_structure
 
     results = {}
-    total   = sum(len(v) for v in UNIVERSE.values())
+    # De-dup across markets (user 2026-06-29: NASDAQ 100 + S&P 500 overlap heavily) — a ticker is scanned
+    # once, attributed to the first market that lists it.
+    total   = len({t for v in UNIVERSE.values() for t in v})
     done    = 0
+    seen    = set()
 
     for index_name, tickers in UNIVERSE.items():
         index_results = []
         log.info(f"Scanning {index_name} ({len(tickers)} tickers)...")
         for ticker in tickers:
+            if ticker in seen:
+                continue
+            seen.add(ticker)
             try:
                 trend = get_trend_structure(ticker)
                 hvf   = get_hvf_signal_mtf(ticker, trend_hint=trend)

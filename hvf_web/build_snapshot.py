@@ -148,8 +148,12 @@ def build():
     # is a Squeeze signal'). has_signal distinguishes them; no-signal rows carry name/market/location
     # only (no fundamentals/engine fields). Card PNGs/tweets stay lazy (server-rendered).
     out = []
+    _seen = set()                    # de-dup across markets (NASDAQ 100 / S&P 500 overlap) — first wins
     for market, tickers in UNIVERSE.items():
         for tk in tickers:
+            if tk in _seen:
+                continue
+            _seen.add(tk)
             _nm = _resolve_name(tk)
             r = sig.get(tk)
             if not (r and r.get("hvf_type")):
