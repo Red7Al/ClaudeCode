@@ -370,6 +370,51 @@ MIGRATIONS = [
         "CREATE INDEX IF NOT EXISTS idx_x_pub_ticker_time ON x_publications(ticker, published_at DESC)"
     ),
 
+    # ── price_history — golden daily OHLCV per instrument (added 2026-06-29) ──
+    # The authoritative price store. price_store.py + price_audit.py also create these defensively, so
+    # they work even if this migration hasn't been run. (ticker, bar_date) PK serves the charts'
+    # single-instrument range scans AND the audit's per-day cross-instrument scans; source + recorded_at
+    # / updated_at make every price traceable.
+    (
+        "create price_history",
+        """CREATE TABLE IF NOT EXISTS price_history (
+            ticker      text             NOT NULL,
+            bar_date    date             NOT NULL,
+            open        double precision,
+            high        double precision,
+            low         double precision,
+            close       double precision,
+            volume      bigint,
+            source      text             NOT NULL,
+            recorded_at timestamptz      NOT NULL DEFAULT now(),
+            updated_at  timestamptz      NOT NULL DEFAULT now(),
+            PRIMARY KEY (ticker, bar_date)
+        )"""
+    ),
+    (
+        "price_history: index on ticker + date desc",
+        "CREATE INDEX IF NOT EXISTS idx_price_history_ticker_date ON price_history(ticker, bar_date DESC)"
+    ),
+    (
+        "price_history: index on bar_date",
+        "CREATE INDEX IF NOT EXISTS idx_price_history_bar_date ON price_history(bar_date)"
+    ),
+    (
+        "create price_audit_log",
+        """CREATE TABLE IF NOT EXISTS price_audit_log (
+            id              bigserial primary key,
+            run_at          timestamptz not null default now(),
+            mode            text        not null,
+            source          text        not null,
+            tickers_checked int         not null,
+            bars_written    int         not null,
+            discrepancies   int         not null,
+            max_drift_pct   double precision,
+            duration_s      double precision,
+            notes           text
+        )"""
+    ),
+
 ]
 
 

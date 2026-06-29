@@ -11,7 +11,13 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   (`hvf_web/name_cache.json`) means only the NEW tickers get a name lookup. Verify the new names appear
   with `has_signal` flags and that the build time stays reasonable.
 
-- [ ] **Move price history into the database** (user 2026-06-28, "change to db in 3 days" → target
+- [x] **Move price history into the database** — DONE 2026-06-29 (Supabase, ahead of the 3-day target).
+  `price_store.py` (golden `price_history` table: PK (ticker,bar_date), source + recorded_at/updated_at,
+  bulk UPSERT, read, read-or-fetch-write-through). Charts (`render_x_post_card`, `_render_price_window`)
+  read Supabase first, YF on miss. `price_audit.py` + `trading-price-audit.yml` run the daily golden audit
+  (re-fetch / compare / correct, logged to `price_audit_log`); `--backfill` for the one-off deep populate.
+  Schema also in `run_schema.py`. Source is YF today; IG can be added (source column is free-form).
+  ~~(user 2026-06-28, "change to db in 3 days" → target~~
   **~2026-07-01**). Today a transient Yahoo throttle is handled by a lightweight per-ticker disk cache
   (`data/price_cache/<sym>.pkl` for the X card via `intraday_signals.render_x_post_card`;
   `hvf_web/data/price_cache/win_<sym>_<days>.pkl` for the price-window chart via

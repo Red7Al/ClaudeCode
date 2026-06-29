@@ -1443,18 +1443,14 @@ def render_x_post_card(r: dict):
         # Map to the Yahoo symbol (user 2026-06-23): FX/indices (USDJPY -> USDJPY=X, JPN225 -> ^N225)
         # 404 on the raw ticker, which left those tweets with NO chart at all.
         _yt = YAHOO_MAP.get(ticker, ticker)
-        # One retry on a transient empty/throttled response (user 2026-06-28: a momentary yfinance
-        # throttle produced a blank-axes card that then got cached and "stuck" empty). Returning None
-        # below (rather than a price-less chart) keeps the bad render OUT of the server's card cache.
-        def _dl():
-            return _yf.download(_yt, start=start_dt.strftime("%Y-%m-%d"),
-                                end=end_dt.strftime("%Y-%m-%d"),
-                                progress=False, auto_adjust=True)
-        hist = _dl()
-        if hist is None or hist.empty:
-            import time as _t
-            _t.sleep(1.5)
-            hist = _dl()
+        # Supabase price_history is the golden source (user 2026-06-29). get_bars_or_fetch reads it first
+        # and only hits yfinance on a miss/stale bar (writing the result back), so a transient Yahoo
+        # throttle no longer blanks the card. The pkl block below stays as a last-ditch fallback.
+        try:
+            import price_store
+            hist = price_store.get_bars_or_fetch(ticker, _yt, start_dt, end_dt)
+        except Exception:
+            hist = None
         # Price history is not stored anywhere (user 2026-06-28: "is price history not held in the
         # database?"), so a transient Yahoo throttle would blank the card. Persist each good download
         # and fall back to the last good one when the live fetch comes back empty.

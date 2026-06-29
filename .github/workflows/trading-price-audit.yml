@@ -1,0 +1,42 @@
+name: Price History Audit (daily golden-dataset — 2026-06-29)
+
+# Daily audit + backfill of the Supabase price_history golden dataset (user 2026-06-29): re-fetch each
+# instrument's recent OHLCV from the source, compare to what is stored, record discrepancies, and UPSERT
+# so the stored series stays correct. Triggered by cron-job.org via workflow_dispatch — NEVER add a
+# schedule: block (GitHub-native cron is banned, user directive 2026-06-07).
+on:
+  workflow_dispatch:
+    inputs:
+      backfill_days:
+        description: 'One-off deep backfill window in days (e.g. 1100 ~ 3y) to populate full history. Empty = normal daily audit (last 30 days).'
+        required: false
+        default: ''
+      tickers:
+        description: 'Comma-separated subset to audit. Empty = whole universe.'
+        required: false
+        default: ''
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_schema.py
+      - name: Audit or backfill
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.tickers }}" ]; then ARGS="$ARGS --tickers ${{ inputs.tickers }}"; fi
+          if [ -n "${{ inputs.backfill_days }}" ]; then
+            python price_audit.py --backfill ${{ inputs.backfill_days }} $ARGS
+          else
+            python price_audit.py $ARGS
+          fi

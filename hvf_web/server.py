@@ -453,13 +453,14 @@ def _render_price_window(rec: dict, days: int, theme: str) -> bytes:
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=max(20, days))
     _yt = YAHOO_MAP.get(tk, tk)
+    # Supabase price_history is the golden source (user 2026-06-29); get_bars_or_fetch reads it first and
+    # only hits yfinance on a miss/stale bar (writing the result back). The pkl below stays as a last-ditch
+    # fallback for when both Supabase and yfinance are unreachable.
     try:
-        hist = yf.download(_yt, start=start.strftime("%Y-%m-%d"),
-                           end=end.strftime("%Y-%m-%d"), progress=False, auto_adjust=True)
+        import price_store
+        hist = price_store.get_bars_or_fetch(tk, _yt, start, end)
     except Exception:
         hist = None
-    # Same price cache as the X card (user 2026-06-28): persist good downloads, fall back to the last
-    # good one when Yahoo is throttled, so the chart never blanks. Cache key includes the day span.
     import pandas as _pd
     _pc_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "price_cache")
     _pc_file = os.path.join(_pc_dir, f"win_{_yt}_{int(days)}".replace("/", "_").replace("^", "_").replace("=", "_") + ".pkl")
