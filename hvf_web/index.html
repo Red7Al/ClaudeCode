@@ -112,9 +112,8 @@ aside.collapsed{display:none}
           <th data-k="days_since" title="Days since the setup's 3rd swing (H3) formed">Days since</th>
           <th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
-          <th data-k="dist_entry">Dist→Entry</th>
           <th data-k="pe">P/E</th><th data-k="timeframe">TF</th>
-          <th data-k="market">Market</th><th data-k="location">Location</th>
+          <th data-k="market">Market</th><th data-k="location">Location</th><th data-k="dist_entry">Dist→Entry</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -232,8 +231,7 @@ function render(){
     <td>${r.trig_date?r.trig_date.slice(0,10):''}</td>
     <td>${r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:''}</td>
     <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td><td>${r.rr!=null?r.rr.toFixed(1):''}</td>
-    <td>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':''}</td>
-    <td>${r.pe??''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${r.market||''}</td><td>${locName(r.location)}</td></tr>`).join("")
+    <td>${r.pe??''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${r.market||''}</td><td>${locName(r.location)}</td><td>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':''}</td></tr>`).join("")
     || `<tr><td colspan="16" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
 }
