@@ -69,12 +69,12 @@ aside.collapsed{display:none}
 </head>
 <body>
 <header>
+  <button class="btn" id="togglefilters">☰ Filters (Show)</button>
   <h1>Squeeze Scanner</h1>
   <span class="count" id="gen"></span>
   <span class="grow"></span>
   <button class="btn" id="signalonly">Squeeze only ✓</button>
   <button class="btn" id="refresh">↻ Refresh data</button>
-  <button class="btn" id="togglefilters">☰ Filters (Show)</button>
   <button class="btn" id="reset">Reset filters</button>
   <button class="btn" id="showall">Remove all filters (show all)</button>
   <button class="btn" id="theme">🌙 Dark</button>
@@ -111,8 +111,8 @@ aside.collapsed{display:none}
           <th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <th data-k="days_since" title="Days since the setup's 3rd swing (H3) formed">Days since</th>
           <th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
-          <th data-k="trig_date">Triggered</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
-          <th data-k="dist_entry">Dist→Entry</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th>
+          <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
+          <th data-k="dist_entry">Dist→Entry</th>
           <th data-k="pe">P/E</th><th data-k="timeframe">TF</th>
           <th data-k="market">Market</th><th data-k="location">Location</th>
         </tr></thead>
@@ -135,7 +135,7 @@ const f2=v=>(v==null||v==="")?"":(+v).toFixed(2);
 const disp=t=>(t||"").replace(/\.L$/,"");
 const qcol=q=>q>=70?"var(--bull)":q>=50?"#d29922":"var(--bear)";   // quality colour: green / amber / red
 // "since trig" colour: green when price has moved in the trade's favour, red against.
-const trigCol=r=>{const c=r.chg_since_trig;if(c==null||Math.abs(c)<0.05)return"var(--fg)";const fav=(r.direction==="BULL")?c>0:c<0;return fav?"var(--bull)":"var(--bear)";};
+const trigCol=r=>{const c=r.chg_since_trig;if(c==null)return"var(--fg)";return c<0?"var(--bear)":c>0?"var(--bull)":"var(--fg)";};  // red when negative
 
 function uniq(k){return [...new Set(DATA.map(r=>r[k]).filter(x=>x!=null))].sort();}
 function fillSel(id,k,label){const s=$(id);uniq(k).forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=label?label(v):v;s.appendChild(o);});
@@ -229,9 +229,9 @@ function render(){
     <td>${r.days_since??''}</td>
     <td>${r.sector||''}</td><td>${r.status||''}</td><td>${r.x_posts?`<b>${r.x_posts}</b>`:''}</td>
     <td>${r.trig_date?r.trig_date.slice(0,10):''}</td>
+    <td>${r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:''}</td>
     <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td><td>${r.rr!=null?r.rr.toFixed(1):''}</td>
     <td>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':''}</td>
-    <td>${r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:''}</td>
     <td>${r.pe??''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${r.market||''}</td><td>${locName(r.location)}</td></tr>`).join("")
     || `<tr><td colspan="16" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});

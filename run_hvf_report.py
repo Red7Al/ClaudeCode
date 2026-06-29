@@ -245,6 +245,25 @@ COMMODITIES = [
     "NATGAS",    # Nat Gas    (NG=F)
     "PLATINUM",  # Platinum   (PL=F)
     "PALLADIUM", # Palladium  (PA=F)
+    # Broader commodity coverage (user 2026-06-29: "add all commodities") as raw Yahoo futures symbols.
+    "BZ=F",   # Brent Crude
+    "RB=F",   # RBOB Gasoline
+    "HO=F",   # Heating Oil
+    "ZC=F",   # Corn
+    "ZW=F",   # Wheat
+    "ZS=F",   # Soybeans
+    "ZM=F",   # Soybean Meal
+    "ZL=F",   # Soybean Oil
+    "KC=F",   # Coffee
+    "SB=F",   # Sugar
+    "CT=F",   # Cotton
+    "CC=F",   # Cocoa
+    "OJ=F",   # Orange Juice
+    "LE=F",   # Live Cattle
+    "HE=F",   # Lean Hogs
+    "GF=F",   # Feeder Cattle
+    "ZO=F",   # Oats
+    "ZR=F",   # Rough Rice
 ]
 
 INDICES_FX = [
@@ -260,6 +279,32 @@ INDICES_FX = [
     "GBPUSD",   # GBP/USD      (GBPUSD=X)
     "EURUSD",   # EUR/USD      (EURUSD=X)
     "AUDUSD",   # AUD/USD      (AUDUSD=X)
+    # All major market indices (user 2026-06-29) as raw Yahoo symbols (resolve via YAHOO_MAP fallback).
+    "^DJI",       # Dow Jones Industrial Average
+    "^RUT",       # Russell 2000
+    "^GDAXI",     # DAX (Germany)
+    "^FCHI",      # CAC 40 (France)
+    "^STOXX50E",  # Euro Stoxx 50
+    "^FTMC",      # FTSE 250
+    "^AEX",       # AEX (Netherlands)
+    "^IBEX",      # IBEX 35 (Spain)
+    "^SSMI",      # SMI (Switzerland)
+    "^AXJO",      # ASX 200 (Australia)
+    "^GSPTSE",    # S&P/TSX (Canada)
+    "^BSESN",     # BSE Sensex (India)
+    "^NSEI",      # Nifty 50 (India)
+    "^KS11",      # KOSPI (S. Korea)
+    "^TWII",      # Taiwan Weighted
+    "^STI",       # Straits Times (Singapore)
+    "^BVSP",      # Bovespa (Brazil)
+    "^MXX",       # IPC (Mexico)
+    "000001.SS",  # Shanghai Composite
+    # All major + cross currency pairs (user 2026-06-29) as raw Yahoo FX symbols.
+    "USDCAD=X", "USDCHF=X", "NZDUSD=X", "EURGBP=X", "EURJPY=X", "GBPJPY=X",
+    "EURCHF=X", "AUDJPY=X", "CADJPY=X", "CHFJPY=X", "NZDJPY=X", "EURAUD=X",
+    "GBPAUD=X", "EURCAD=X", "GBPCAD=X", "AUDNZD=X", "AUDCAD=X", "EURNZD=X",
+    "USDSGD=X", "USDHKD=X", "USDNOK=X", "USDSEK=X", "USDMXN=X", "USDZAR=X",
+    "USDCNY=X", "USDINR=X", "USDTRY=X", "USDPLN=X",
 ]
 
 CRYPTO = [
