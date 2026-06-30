@@ -110,7 +110,7 @@ aside.collapsed{display:none}
       <table>
         <thead><tr>
           <th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
-          <th data-k="days_since" title="Days since the setup's 3rd swing (H3) formed">Days since</th>
+          <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
           <th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
           <th data-k="pe">P/E</th><th data-k="timeframe">TF</th>
@@ -147,8 +147,11 @@ function augment(r){
   r.dist_entry=(r.entry!=null&&r.current_price)? +(((r.entry-r.current_price)/r.current_price)*100).toFixed(2):null;
   // Price move since it triggered, vs the entry (trigger) level. Only meaningful for TRIGGERED rows.
   r.chg_since_trig=(r.status==="TRIGGERED"&&r.entry&&r.current_price)? +(((r.current_price-r.entry)/r.entry)*100).toFixed(1):null;
-  r.days_since=daysSince(r.h3_date);
-  r.trig_date=(r.status==="TRIGGERED")?((r.direction==="BULL"?r.l3_date:r.h3_date)||r.l3_date||r.h3_date):null;
+  // "Days since" and "Triggered" now share ONE date (the trigger pivot: L3 for a long, H3 for a short),
+  // so they're always in sync — Days since = today minus the date shown in the Triggered column.
+  const _trigref=(r.direction==="BULL"?r.l3_date:r.h3_date)||r.l3_date||r.h3_date;
+  r.days_since=daysSince(_trigref);
+  r.trig_date=(r.status==="TRIGGERED")?_trigref:null;
   r.open_pos=POS[r.ticker]??POS[disp(r.ticker)]??0;
   r.x_posts=PUB[r.ticker]??PUB[disp(r.ticker)]??0;
 }
