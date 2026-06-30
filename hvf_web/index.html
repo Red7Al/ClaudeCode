@@ -18,6 +18,10 @@ header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:
 header h1{font-size:16px;margin:0} .grow{flex:1}
 .btn{background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
 .btn:disabled{cursor:not-allowed;opacity:.7}
+.tabs{display:flex;gap:4px;padding:6px 16px 0;border-bottom:1px solid var(--line)}
+.tab{background:none;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;color:var(--muted);padding:6px 16px;cursor:pointer;font-size:13px}
+.tab.active{background:var(--panel);color:var(--fg);font-weight:600}
+#view-preorders{padding:10px 16px}
 .layout{display:flex;gap:0;min-height:calc(100vh - 49px)}
 aside{width:270px;flex:none;border-right:1px solid var(--line);padding:12px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px}
 aside h3{font-size:11px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;letter-spacing:.04em}
@@ -46,6 +50,7 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--chip)} tr.sel{backgroun
 .tablewrap{overflow:auto;flex:1}
 #detail{width:760px;flex:none;border-left:2px solid var(--accent);padding:16px 20px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px;box-shadow:-10px 0 28px rgba(0,0,0,.4);background:var(--bg)}
 #detail.hidden{display:none}
+.hidden{display:none}
 #detail h2{margin:0 0 2px;font-size:18px} .sub{color:var(--muted);font-size:12px;margin-bottom:10px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:12px}
 .card h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;color:var(--muted)}
@@ -80,8 +85,13 @@ aside.collapsed{display:none}
   <button class="btn" id="showall">Remove all filters (show all)</button>
   <button class="btn" id="theme">🌙 Dark</button>
 </header>
-<div class="layout">
+<div class="tabs">
+  <button class="tab active" id="tab-scanner" onclick="showTab('scanner')">Scanner</button>
+  <button class="tab" id="tab-preorders" onclick="showTab('preorders')">Pre-orders <span id="potab-count"></span></button>
+</div>
+<div class="layout" id="view-scanner">
   <aside id="aside" class="collapsed">
+    <div class="f"><label>Search name / ticker</label><input id="f_search" type="text" placeholder="e.g. Howden, ABF, gold"></div>
     <h3>Direction & place</h3>
     <div class="f"><label>Direction</label><select id="f_dir"><option value="">Any</option><option>BULL</option><option>BEAR</option><option value="—">— (none)</option></select></div>
     <div class="f"><label>Location (Geography)</label><select id="f_loc"><option value="">Any</option></select></div>
@@ -124,10 +134,23 @@ aside.collapsed{display:none}
   <section id="detail" class="hidden"></section>
 </div>
 
+<div id="view-preorders" class="hidden">
+  <div class="count" id="po-count"></div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th>Ticker</th><th>Name</th><th>Dir</th><th>Status</th><th>Market</th>
+        <th>Entry</th><th>Stop</th><th>Target</th><th>Now</th><th>Dist→Entry</th><th>R:R</th><th>Quality</th><th>TF</th>
+      </tr></thead>
+      <tbody id="po-rows"></tbody>
+    </table>
+  </div>
+</div>
+
 <script>
 let DATA=[], SEL=null, sortK="trig_date", sortDir=-1, POS={}, PUB={}, signalOnly=true;
 const $=id=>document.getElementById(id);
-const F=["f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
+const F=["f_search","f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
          "f_demin","f_demax","f_dsmin","f_dsmax","f_pemin","f_pemax","f_inmin","f_inmax"];
 const LOC={UK:"United Kingdom",US:"United States",FX:"FX / Indices"};
 const locName=v=>LOC[v]||v||"";
@@ -157,6 +180,8 @@ function augment(r){
 }
 
 function pass(r){
+  const _q=($("f_search").value||"").trim().toLowerCase();
+  if(_q && !((r.ticker||"").toLowerCase().includes(_q) || (r.name||"").toLowerCase().includes(_q)))return false;
   if(signalOnly && r.has_signal===false)return false;
   const g=id=>$(id).value;
   // "—" is the missing-value bucket from the charts (no-signal rows have null direction/status/etc.):
@@ -377,6 +402,35 @@ function pollRefresh(){
 }
 $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light");$("theme").textContent=l?"☀️ Light":"🌙 Dark";if(SEL)showDetail(SEL);};
 
+// ── Tabs: Scanner | Pre-orders ───────────────────────────────────────────────────────────────────
+const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING");   // signal, not yet triggered
+function showTab(name){
+  const sc=name==="scanner";
+  $("view-scanner").classList.toggle("hidden",!sc);
+  $("view-preorders").classList.toggle("hidden",sc);
+  $("tab-scanner").classList.toggle("active",sc);
+  $("tab-preorders").classList.toggle("active",!sc);
+  if(!sc)renderPreorders();
+}
+function renderPreorders(){
+  const po=DATA.filter(isPreorder);
+  const ad=r=>r.dist_entry==null?1e9:Math.abs(r.dist_entry);
+  po.sort((a,b)=>((a.status==="READY"?0:1)-(b.status==="READY"?0:1))||(ad(a)-ad(b)));
+  const nR=po.filter(r=>r.status==="READY").length;
+  $("po-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${po.length}</b> instruments with a pre-order — waiting for the entry to trigger <span class="muted">(${nR} READY · ${po.length-nR} DEVELOPING). Click a row to open its detail.</span>`;
+  $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
+    return `<tr data-t="${r.ticker}"><td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
+      <td><span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></td>
+      <td>${r.status}</td><td>${r.market||''}</td>
+      <td><b>${f2(r.entry)}</b></td><td style="color:var(--bear)">${f2(r.stop)}</td><td style="color:var(--bull)">${f2(r.target)}</td><td>${f2(r.current_price)}</td>
+      <td>${d!=null?(d>0?'+':'')+d+'%':''}</td>
+      <td>${r.rr!=null?r.rr.toFixed(1):''}</td>
+      <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td>
+      <td>${(r.timeframe||'').replace('daily-','D')}</td></tr>`;}).join("")
+    || `<tr><td colspan="13" class="empty">No pre-orders right now.</td></tr>`;
+  document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=()=>{showTab('scanner');showDetail(tr.dataset.t);});
+}
+
 Promise.all([fetch("/api/records").then(r=>r.json()),
              fetch("/api/positions").then(r=>r.json()).catch(()=>({positions:{}})),
              fetch("/api/pubcounts").then(r=>r.json()).catch(()=>({pubcounts:{}}))])
@@ -386,6 +440,7 @@ Promise.all([fetch("/api/records").then(r=>r.json()),
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");
     render();
+    $("potab-count").textContent="("+DATA.filter(isPreorder).length+")";
     // If a refresh is already running (started elsewhere), disable the button and show its progress.
     fetch("/api/status").then(x=>x.json()).then(s=>{if(s.refreshing){$("refresh").disabled=true;_refStart=Date.now();pollRefresh();}}).catch(()=>{});
   });
