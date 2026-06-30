@@ -25,6 +25,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.13.0  2026-06-29  Alex Hind   (user 2026-06-29 "limit to 5 per day") publish_tickers_to_x now enforces a daily cap
+#                                 (config.X_MAX_PER_DAY=5): counts today's x_publications and stops once the budget is hit.
 # 1.12.0  2026-06-24  Alex Hind   (user 2026-06-24) NEW --list-recent[=N] mode: prints the most recent X publications
 #                                 (ticker, lead tweet id, time, thread size, x.com URL) from x_publications so the correct
 #                                 lead ids can be picked for --delete-leads WITHOUT hand-copying X URLs. Closes the
@@ -213,6 +215,23 @@ def _recently_published(ticker: str) -> bool:
         return False
 
 
+def _published_today_count() -> int:
+    """Number of X publications recorded so far today (UTC) — for the daily cap (user 2026-06-29:
+    'limit to 5 per day'). Best-effort: on a DB error returns 0 so a flaky DB never blocks publishing."""
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            db.run(_PUB_TABLE_SQL)
+            rows = db.run("select count(*) from x_publications where published_at >= date_trunc('day', now())")
+            return int(rows[0][0]) if rows else 0
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"daily-count check failed (proceeding): {e}")
+        return 0
+
+
 def _record_publication(ticker: str, tweet_id, thread_ids=None):
     """Record a live X publication so repeats are de-duplicated, and STORE every tweet id of the
     thread (user 2026-06-22) so a later delete is precise + enumeration-free (X free tier 403s the
@@ -242,9 +261,23 @@ def publish_tickers_to_x(tickers, inter_instrument_delay: int = _INTER_INSTRUMEN
     so NO 12h dedup is applied here; each is recorded + confirmed. Returns the count published."""
     import time
     from x_publish import publish_thread_to_x
+    from config import X_MAX_PER_DAY
     published = 0
     _pub_rows = []   # for the end-of-batch summary (user 2026-06-22)
+    # Daily cap (user 2026-06-29: "limit to 5 per day"). Count what's already gone out today and only
+    # publish up to the remaining budget — the highest-priority candidates come first in `tickers`.
+    _already = _published_today_count()
+    _budget = max(0, X_MAX_PER_DAY - _already)
+    if _budget <= 0:
+        log.info(f"daily X cap reached ({_already}/{X_MAX_PER_DAY}) — nothing published.")
+        return 0
+    if len(tickers) > _budget:
+        log.info(f"daily X cap: {_already} already published today; publishing up to {_budget} more "
+                 f"(of {len(tickers)} candidates).")
     for i, tk in enumerate(tickers):
+        if published >= _budget:
+            log.info(f"daily X cap of {X_MAX_PER_DAY} reached — stopping after {published} this run.")
+            break
         try:
             pub = build_publication(tk)
         except Exception as e:
