@@ -17,6 +17,7 @@
 header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
 header h1{font-size:16px;margin:0} .grow{flex:1}
 .btn{background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+.btn:disabled{cursor:not-allowed;opacity:.7}
 .layout{display:flex;gap:0;min-height:calc(100vh - 49px)}
 aside{width:270px;flex:none;border-right:1px solid var(--line);padding:12px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px}
 aside h3{font-size:11px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;letter-spacing:.04em}
@@ -352,10 +353,11 @@ $("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});signalOnly=false;$("s
 $("togglefilters").onclick=()=>{const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").textContent="☰ Filters ("+(hidden?"Show":"Hide")+")";};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").textContent="Squeeze only "+(signalOnly?"✓":"✗");applyAll();};
 let _refStart=0, _lastTens=-1;
-$("refresh").onclick=()=>{ if(!confirm("Rebuild the snapshot now? Scans ~424 instruments — takes a few minutes. The page keeps working with current data and reloads automatically when done."))return;
-  $("refresh").textContent="↻ Starting…"; _refStart=Date.now(); _lastTens=-1;
-  fetch("/api/refresh",{method:"POST"}).then(x=>x.json()).then(j=>{ if(j.busy)$("refresh").textContent="↻ Already refreshing…"; pollRefresh(); })
-    .catch(()=>$("refresh").textContent="↻ Refresh failed");};
+$("refresh").onclick=()=>{ if($("refresh").disabled)return;
+  if(!confirm(`Rebuild the snapshot now? Scans the full universe (${DATA.length} instruments) — takes a few minutes. The page keeps working with current data and reloads automatically when done.`))return;
+  $("refresh").disabled=true; $("refresh").textContent="↻ Starting…"; _refStart=Date.now(); _lastTens=-1;
+  fetch("/api/refresh",{method:"POST"}).then(x=>x.json()).then(j=>{ pollRefresh(); })
+    .catch(()=>{$("refresh").textContent="↻ Refresh failed";$("refresh").disabled=false;});};
 function pollRefresh(){
   fetch("/api/status").then(x=>x.json()).then(s=>{
     if(s.refreshing){
@@ -381,6 +383,8 @@ Promise.all([fetch("/api/records").then(r=>r.json()),
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");
     render();
+    // If a refresh is already running (started elsewhere), disable the button and show its progress.
+    fetch("/api/status").then(x=>x.json()).then(s=>{if(s.refreshing){$("refresh").disabled=true;_refStart=Date.now();pollRefresh();}}).catch(()=>{});
   });
 </script>
 </body>
