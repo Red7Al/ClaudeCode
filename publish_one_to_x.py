@@ -134,8 +134,8 @@ def _confirm_to_slack(ticker: str, name: str, lead_id, posted: int, n_parts: int
         return
     disp = ticker[:-2] if ticker.endswith(".L") else ticker
     link = f"https://x.com/{X_HANDLE}/status/{lead_id}" if lead_id else "(tweet id unavailable)"
-    text = (f"✅ *Published to X* — ${disp} ({name})\n"
-            f"Lead tweet + card + {n_parts}-part thread  ·  {posted} tweet(s) total\n{link}")
+    # Just the tweet link, not the HVF details (user 2026-06-29).
+    text = f"✅ *${disp}* — {link}"
     try:
         requests.post(url, json={"blocks": [{"type": "section",
                       "text": {"type": "mrkdwn", "text": text}}]}, timeout=10)
@@ -174,12 +174,9 @@ def _summary_to_slack(rows: list):
         disp = tk[:-2] if tk.endswith(".L") else tk
         link = f"https://x.com/{X_HANDLE}/status/{r['lead_id']}" if r.get("lead_id") else ""
         name = f" ({r['name']})" if r.get("name") and r.get("name") != tk else ""
-        rr   = f"{r['rr']:.1f}" if isinstance(r.get("rr"), (int, float)) else "—"
-        q    = r.get("quality") if r.get("quality") is not None else "—"
+        # Just the linked ticker (+ name) — not the HVF details (user 2026-06-29).
         cash = f"<{link}|${disp}>" if link else f"${disp}"
-        mkt  = f" · {r['market']}" if r.get("market") else ""
-        lines.append(f"• *{cash}*{name}{mkt} — {r.get('type','?')} · {r.get('signal','?')} · "
-                     f"Q{q} · R:R {rr}")
+        lines.append(f"• {cash}{name}")
     header = (f"*📋 Published to X — {len(rows)} instrument(s) · "
               f"{datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}*")
     try:

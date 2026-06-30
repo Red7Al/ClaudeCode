@@ -22,6 +22,9 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .tab{background:none;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;color:var(--muted);padding:6px 16px;cursor:pointer;font-size:13px}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
 #view-preorders{padding:10px 16px}
+.gloss .card>div>div{padding:5px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.45}
+.gloss .card>div>div:last-child{border-bottom:none}
+.gloss .card b{color:var(--fg)}
 .layout{display:flex;gap:0;min-height:calc(100vh - 49px)}
 aside{width:270px;flex:none;border-right:1px solid var(--line);padding:12px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px}
 aside h3{font-size:11px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;letter-spacing:.04em}
@@ -88,6 +91,8 @@ aside.collapsed{display:none}
 <div class="tabs">
   <button class="tab active" id="tab-scanner" onclick="showTab('scanner')">Scanner</button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')">Pre-orders <span id="potab-count"></span></button>
+  <button class="tab" id="tab-intro" onclick="showTab('intro')">Introduction</button>
+  <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
 </div>
 <div class="layout" id="view-scanner">
   <aside id="aside" class="collapsed">
@@ -101,9 +106,9 @@ aside.collapsed{display:none}
     <div class="f"><label>Status</label><select id="f_stat"><option value="">Any</option><option>TRIGGERED</option><option>READY</option><option>DEVELOPING</option><option value="—">— (none)</option></select></div>
     <div class="f"><label>Timeframe</label><select id="f_tf"><option value="">Any</option></select></div>
     <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" value="45" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
-    <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" placeholder="min"><input id="f_rrmax" type="number" step="0.1" placeholder="max"></div></div>
+    <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" value="3.1" placeholder="min"><input id="f_rrmax" type="number" step="0.1" placeholder="max"></div></div>
     <div class="f"><label>Dist to entry % range</label><div class="row2"><input id="f_demin" type="number" step="0.1" value="-10" placeholder="min"><input id="f_demax" type="number" step="0.1" value="10" placeholder="max"></div></div>
-    <div class="f"><label>Days since setup range</label><div class="row2"><input id="f_dsmin" type="number" placeholder="min"><input id="f_dsmax" type="number" placeholder="max"></div></div>
+    <div class="f"><label>Days since setup range</label><div class="row2"><input id="f_dsmin" type="number" placeholder="min"><input id="f_dsmax" type="number" value="90" placeholder="max"></div></div>
     <h3>Fundamentals</h3>
     <div class="f"><label>P/E range</label><div class="row2"><input id="f_pemin" type="number" placeholder="min"><input id="f_pemax" type="number" placeholder="max"></div></div>
     <div class="f"><label>Insider % range</label><div class="row2"><input id="f_inmin" type="number" step="0.1" placeholder="min"><input id="f_inmax" type="number" step="0.1" placeholder="max"></div></div>
@@ -145,6 +150,104 @@ aside.collapsed{display:none}
       <tbody id="po-rows"></tbody>
     </table>
   </div>
+</div>
+
+<div id="view-intro" class="hidden" style="padding:18px 22px;max-width:1080px">
+  <h2 style="margin:0 0 4px">What the Squeeze Scanner does</h2>
+  <p class="muted" style="font-size:13px;margin:0 0 14px">A purpose-built tool for finding high-probability breakout setups across ~600 instruments (FTSE 100/250, NASDAQ 100, S&amp;P 500, world indices, FX, commodities, crypto).</p>
+
+  <div class="card"><h4>The idea — a "squeeze"</h4>
+    <p style="font-size:13px">A squeeze (a <b>volatility funnel</b>) is when price coils into an ever-tighter range: each swing high is a little lower (the <span style="color:var(--bear)">red upper jaw</span> H1→H2→H3) and each swing low is a little higher (the <span style="color:var(--bull)">green lower jaw</span> L1→L2→L3). The market is compressing — like a spring. When price finally breaks out of the funnel it tends to move fast and far. The scanner finds these funnels and tells you the exact <b>entry</b>, <b>stop</b> and <b>target</b>.</p>
+    <svg viewBox="0 0 560 300" style="width:100%;max-width:560px;background:var(--panel);border-radius:6px">
+      <!-- target / stop / entry guide lines -->
+      <line x1="40" y1="55"  x2="540" y2="55"  stroke="var(--bull)" stroke-dasharray="4 4" opacity=".6"/>
+      <text x="544" y="59" fill="var(--bull)" font-size="11">Target</text>
+      <line x1="40" y1="128" x2="540" y2="128" stroke="#e3b341" stroke-dasharray="4 4" opacity=".8"/>
+      <text x="544" y="132" fill="#e3b341" font-size="11">Entry</text>
+      <line x1="40" y1="172" x2="540" y2="172" stroke="var(--bear)" stroke-dasharray="4 4" opacity=".6"/>
+      <text x="544" y="176" fill="var(--bear)" font-size="11">Stop</text>
+      <!-- upper jaw (red, descending highs) -->
+      <polyline points="70,75 240,105 410,128" fill="none" stroke="var(--bear)" stroke-width="1.6" stroke-dasharray="5 4"/>
+      <circle cx="70" cy="75" r="4" fill="var(--bear)"/><text x="58" y="68" fill="var(--bear)" font-size="11">H1</text>
+      <circle cx="240" cy="105" r="4" fill="var(--bear)"/><text x="232" y="98" fill="var(--bear)" font-size="11">H2</text>
+      <circle cx="410" cy="128" r="4" fill="var(--bear)"/><text x="402" y="121" fill="var(--bear)" font-size="11">H3</text>
+      <!-- lower jaw (green, ascending lows) -->
+      <polyline points="70,245 240,200 410,165" fill="none" stroke="var(--bull)" stroke-width="1.6" stroke-dasharray="5 4"/>
+      <circle cx="70" cy="245" r="4" fill="var(--bull)"/><text x="58" y="262" fill="var(--bull)" font-size="11">L1</text>
+      <circle cx="240" cy="200" r="4" fill="var(--bull)"/><text x="232" y="217" fill="var(--bull)" font-size="11">L2</text>
+      <circle cx="410" cy="165" r="4" fill="var(--bull)"/><text x="402" y="182" fill="var(--bull)" font-size="11">L3</text>
+      <!-- price line coiling then breaking out up through entry -->
+      <polyline points="70,90 130,230 190,120 250,195 310,135 360,170 410,128 470,80 510,50" fill="none" stroke="var(--accent)" stroke-width="1.8"/>
+      <text x="470" y="40" fill="var(--accent)" font-size="11">breakout →</text>
+      <!-- AMP1 brace at the mouth -->
+      <line x1="48" y1="75" x2="48" y2="245" stroke="var(--muted)" stroke-width="1"/>
+      <text x="10" y="165" fill="var(--muted)" font-size="11">AMP1</text>
+    </svg>
+    <p class="muted" style="font-size:12px">The funnel's mouth (H1−L1) is <b>AMP1</b>; the scanner projects the target one AMP1 beyond the midpoint, and the stop just past the opposite jaw — that's how the R:R is computed.</p>
+  </div>
+
+  <div class="card"><h4>How to use it</h4>
+    <div style="font-size:13px;line-height:1.6">
+      • <b>Scanner</b> tab — the full table. Each row is one instrument's best setup. Use the <b>Filters</b> (top-left) or the <b>Search</b> box to narrow it; click a column header to sort.<br>
+      • Click any row to open the <b>detail panel</b>: the live price chart, the X post card, the rule-by-rule justification, fundamentals, broker trend and the published X thread.<br>
+      • <b>Pre-orders</b> tab — every setup that hasn't triggered yet (your pending watchlist) with entry / stop / target laid out.<br>
+      • Colours: <span style="color:var(--bull)">green = good / in favour</span>, <span style="color:#d29922">amber = watch</span>, <span style="color:var(--bear)">red = poor / against</span>.<br>
+      • <b>Refresh data</b> re-scans the whole universe (a few minutes); the page reloads itself when done.
+    </div>
+  </div>
+  <p class="muted" style="font-size:12px">Not financial advice — a research tool. See the <b>Appendix</b> tab for every term explained.</p>
+</div>
+
+<div id="view-appendix" class="hidden gloss" style="padding:18px 22px;max-width:1080px">
+  <h2 style="margin:0 0 12px">Appendix — glossary of terms</h2>
+  <div class="card"><h4>The pattern</h4><div>
+    <div><b>Squeeze / HVF funnel</b> — Higher-Velocity Funnel: a volatility contraction where price coils between converging highs and lows before a momentum breakout.</div>
+    <div><b>Upper jaw / Lower jaw</b> — the line through the swing highs (descending) and the line through the swing lows (ascending). They converge to form the funnel.</div>
+    <div><b>H1, H2, H3</b> — the three successive swing <b>highs</b> (each lower than the last) that define the upper jaw. H3 is the most recent.</div>
+    <div><b>L1, L2, L3</b> — the three successive swing <b>lows</b> (each higher than the last) that define the lower jaw. L3 is the most recent.</div>
+    <div><b>AMP1</b> — "first amplitude" = H1 − L1, the height of the funnel's mouth. The target is projected one AMP1 beyond the midpoint.</div>
+  </div></div>
+  <div class="card"><h4>Levels &amp; the trade</h4><div>
+    <div><b>Entry</b> — the break level that triggers the setup: H3 for a long, L3 for a short.</div>
+    <div><b>Stop</b> — protective exit just beyond the opposite jaw.</div>
+    <div><b>Target</b> — projected objective: funnel midpoint ± AMP1.</div>
+    <div><b>R:R (Reward : Risk)</b> — (target − entry) ÷ (entry − stop). We look for ≥ 3 : 1.</div>
+    <div><b>Dist→Entry</b> — how far (%) the current price is from the entry level.</div>
+    <div><b>Since trig</b> — price change since it triggered, measured from the entry level (green = in the trade's favour).</div>
+  </div></div>
+  <div class="card"><h4>Status &amp; timing</h4><div>
+    <div><b>TRIGGERED</b> — price has crossed the entry; actionable now.</div>
+    <div><b>READY</b> — funnel complete, waiting for price to cross the entry (a "pre-order").</div>
+    <div><b>DEVELOPING</b> — the funnel is still forming.</div>
+    <div><b>Triggered (date)</b> — the date the trigger pivot (L3 long / H3 short) formed.</div>
+    <div><b>Days since</b> — days since that trigger date.</div>
+    <div><b>Timeframe (D240 / D180 / D90 / weekly …)</b> — the chart window the funnel was found on. The engine scans several and reports only the strongest one per instrument.</div>
+    <div><b>Pre-order</b> — a READY / DEVELOPING setup that hasn't triggered, so no order exists yet.</div>
+    <div><b>#Open / X posts</b> — open IG positions in that name / how many X posts we've published for it.</div>
+  </div></div>
+  <div class="card"><h4>Quality score</h4><div>
+    <div><b>Quality (0–100)</b> — combines <b>tightness</b> (up to 50: how compressed the funnel is vs AMP1), <b>freshness</b> (up to 30: how recently H3 formed) and <b>symmetry</b> (up to 20: how evenly the swings are spaced). 100 = very tight, fresh and symmetric.</div>
+  </div></div>
+  <div class="card"><h4>Fundamentals (per company)</h4><div>
+    <div><b>P/E (trailing / forward)</b> — share price ÷ earnings per share (historic / forecast).</div>
+    <div><b>PEG</b> — P/E relative to earnings growth (≈1 = fairly priced for its growth).</div>
+    <div><b>Price/Book · Price/Sales · EV/EBITDA</b> — valuation multiples vs book value, revenue, and enterprise value/earnings.</div>
+    <div><b>EPS</b> — earnings per share (trailing / forward).</div>
+    <div><b>Dividend yield / rate / payout ratio</b> — annual dividend as a % of price / per share / as a % of earnings.</div>
+    <div><b>FCF · OCF</b> — Free Cash Flow (cash left after capex) · Operating Cash Flow.</div>
+    <div><b>Gross / Operating / Profit margin</b> — profit at each level as a % of revenue.</div>
+    <div><b>ROE / ROA</b> — return on equity / on assets.</div>
+    <div><b>Revenue / Earnings growth</b> — year-on-year growth rates.</div>
+    <div><b>Debt/Equity · Current ratio · Quick ratio</b> — leverage and short-term liquidity.</div>
+    <div><b>Beta</b> — volatility relative to the market (1 = moves with it, &gt;1 = more).</div>
+    <div><b>Market cap · Revenue · EBITDA · 52-week range</b> — size and trading range.</div>
+  </div></div>
+  <div class="card"><h4>Broker &amp; data</h4><div>
+    <div><b>Broker analysis</b> — analyst Buy/Hold counts plus the net upgrades − downgrades over the last 6 and 12 months.</div>
+    <div><b>Source (YF / IG)</b> — where a stored price came from. IG (the broker feed) is treated as the truth and overrides Yahoo on disagreement.</div>
+    <div><b>double_checked</b> — a stored daily price that a second source confirmed (IG agreeing with Yahoo).</div>
+    <div><b>Golden dataset</b> — the audited, corrected price history kept in the database and verified daily.</div>
+  </div></div>
 </div>
 
 <script>
@@ -376,7 +479,7 @@ F.forEach(id=>$(id).addEventListener("input",applyAll));
 $("viz").addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(!el)return;
   const f=$(el.dataset.fk); if(!f)return; f.value=(f.value===el.dataset.fv)?"":el.dataset.fv; applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
-$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});$("f_qmin").value=45;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
+$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});$("f_qmin").value=45;$("f_rrmin").value=3.1;$("f_dsmax").value=90;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
 $("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});signalOnly=false;$("signalonly").textContent="Squeeze only ✗";$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
 $("togglefilters").onclick=()=>{const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").textContent="☰ Filters ("+(hidden?"Show":"Hide")+")";};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").textContent="Squeeze only "+(signalOnly?"✓":"✗");applyAll();};
@@ -404,13 +507,10 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 
 // ── Tabs: Scanner | Pre-orders ───────────────────────────────────────────────────────────────────
 const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING");   // signal, not yet triggered
+const TABS=["scanner","preorders","intro","appendix"];
 function showTab(name){
-  const sc=name==="scanner";
-  $("view-scanner").classList.toggle("hidden",!sc);
-  $("view-preorders").classList.toggle("hidden",sc);
-  $("tab-scanner").classList.toggle("active",sc);
-  $("tab-preorders").classList.toggle("active",!sc);
-  if(!sc)renderPreorders();
+  TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",t!==name);if(b)b.classList.toggle("active",t===name);});
+  if(name==="preorders")renderPreorders();
 }
 function renderPreorders(){
   const po=DATA.filter(isPreorder);
