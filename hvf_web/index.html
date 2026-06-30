@@ -158,31 +158,8 @@ aside.collapsed{display:none}
 
   <div class="card"><h4>The idea — a "squeeze"</h4>
     <p style="font-size:13px">A squeeze (a <b>volatility funnel</b>) is when price coils into an ever-tighter range: each swing high is a little lower (the <span style="color:var(--bear)">red upper jaw</span> H1→H2→H3) and each swing low is a little higher (the <span style="color:var(--bull)">green lower jaw</span> L1→L2→L3). The market is compressing — like a spring. When price finally breaks out of the funnel it tends to move fast and far. The scanner finds these funnels and tells you the exact <b>entry</b>, <b>stop</b> and <b>target</b>.</p>
-    <svg viewBox="0 0 560 300" style="width:100%;max-width:560px;background:var(--panel);border-radius:6px">
-      <!-- target / stop / entry guide lines -->
-      <line x1="40" y1="55"  x2="540" y2="55"  stroke="var(--bull)" stroke-dasharray="4 4" opacity=".6"/>
-      <text x="544" y="59" fill="var(--bull)" font-size="11">Target</text>
-      <line x1="40" y1="128" x2="540" y2="128" stroke="#e3b341" stroke-dasharray="4 4" opacity=".8"/>
-      <text x="544" y="132" fill="#e3b341" font-size="11">Entry</text>
-      <line x1="40" y1="172" x2="540" y2="172" stroke="var(--bear)" stroke-dasharray="4 4" opacity=".6"/>
-      <text x="544" y="176" fill="var(--bear)" font-size="11">Stop</text>
-      <!-- upper jaw (red, descending highs) -->
-      <polyline points="70,75 240,105 410,128" fill="none" stroke="var(--bear)" stroke-width="1.6" stroke-dasharray="5 4"/>
-      <circle cx="70" cy="75" r="4" fill="var(--bear)"/><text x="58" y="68" fill="var(--bear)" font-size="11">H1</text>
-      <circle cx="240" cy="105" r="4" fill="var(--bear)"/><text x="232" y="98" fill="var(--bear)" font-size="11">H2</text>
-      <circle cx="410" cy="128" r="4" fill="var(--bear)"/><text x="402" y="121" fill="var(--bear)" font-size="11">H3</text>
-      <!-- lower jaw (green, ascending lows) -->
-      <polyline points="70,245 240,200 410,165" fill="none" stroke="var(--bull)" stroke-width="1.6" stroke-dasharray="5 4"/>
-      <circle cx="70" cy="245" r="4" fill="var(--bull)"/><text x="58" y="262" fill="var(--bull)" font-size="11">L1</text>
-      <circle cx="240" cy="200" r="4" fill="var(--bull)"/><text x="232" y="217" fill="var(--bull)" font-size="11">L2</text>
-      <circle cx="410" cy="165" r="4" fill="var(--bull)"/><text x="402" y="182" fill="var(--bull)" font-size="11">L3</text>
-      <!-- price line coiling then breaking out up through entry -->
-      <polyline points="70,90 130,230 190,120 250,195 310,135 360,170 410,128 470,80 510,50" fill="none" stroke="var(--accent)" stroke-width="1.8"/>
-      <text x="470" y="40" fill="var(--accent)" font-size="11">breakout →</text>
-      <!-- AMP1 brace at the mouth -->
-      <line x1="48" y1="75" x2="48" y2="245" stroke="var(--muted)" stroke-width="1"/>
-      <text x="10" y="165" fill="var(--muted)" font-size="11">AMP1</text>
-    </svg>
+    <img id="intro-card" loading="lazy" alt="real funnel example" onerror="this.style.display='none'" style="width:100%;max-width:780px;border-radius:6px;display:block">
+    <p class="muted" id="intro-card-cap" style="font-size:12px;margin:5px 0 0">A real setup. The chart marks the three swing highs <span style="color:var(--bear)">H1·H2·H3</span> (red upper jaw) and three swing lows <span style="color:var(--bull)">L1·L2·L3</span> (green lower jaw) converging into the funnel, with the Entry / Stop / Target levels labelled on the right.</p>
     <p class="muted" style="font-size:12px">The funnel's mouth (H1−L1) is <b>AMP1</b>; the scanner projects the target one AMP1 beyond the midpoint, and the stop just past the opposite jaw — that's how the R:R is computed.</p>
   </div>
 
@@ -506,7 +483,8 @@ function pollRefresh(){
 $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light");$("theme").textContent=l?"☀️ Light":"🌙 Dark";if(SEL)showDetail(SEL);};
 
 // ── Tabs: Scanner | Pre-orders ───────────────────────────────────────────────────────────────────
-const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING");   // signal, not yet triggered
+// signal, not yet triggered, and quality >= 25 (user 2026-06-29: drop the low-quality noise)
+const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25);
 const TABS=["scanner","preorders","intro","appendix"];
 function showTab(name){
   TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",t!==name);if(b)b.classList.toggle("active",t===name);});
@@ -541,6 +519,9 @@ Promise.all([fetch("/api/records").then(r=>r.json()),
     fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");
     render();
     $("potab-count").textContent="("+DATA.filter(isPreorder).length+")";
+    // Introduction example: a real funnel card — Howden if it's a current setup, else the best triggered name.
+    const _ex=(DATA.some(r=>r.ticker==="HWDN.L"&&r.has_signal))?"HWDN.L":((DATA.filter(r=>r.has_signal&&r.status==="TRIGGERED").sort((a,b)=>(b.quality||0)-(a.quality||0))[0]||{}).ticker);
+    if(_ex&&$("intro-card")){$("intro-card").src="/api/card/"+_ex;$("intro-card-cap").innerHTML="A real setup ("+disp(_ex)+"). "+$("intro-card-cap").innerHTML;}
     // If a refresh is already running (started elsewhere), disable the button and show its progress.
     fetch("/api/status").then(x=>x.json()).then(s=>{if(s.refreshing){$("refresh").disabled=true;_refStart=Date.now();pollRefresh();}}).catch(()=>{});
   });
