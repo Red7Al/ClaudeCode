@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.51.0  2026-06-29  Alex Hind   (user 2026-06-29) X-publication ORDER now prioritises trigger recency: per-market top-N
+#                                 sorts by (TRIGGERED>READY, most-recently-triggered, then action_score) so the many
+#                                 recently-triggered setups get the slots instead of older higher-R:R names.
 # 1.50.0  2026-06-27  Alex Hind   (user 2026-06-27) Card "Now" price uses the last NON-NaN close — a forming/holiday NaN bar
 #                                 rendered as "Now nan" on the SBUX card. Both _now_v and _cur_sig now dropna() first.
 # 1.49.0  2026-06-26  Alex Hind   (user 2026-06-26) FIX dossier/card PNG never uploading: upload_png_to_slack (extracted in
@@ -1944,10 +1947,24 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
     # grouped by market in MARKET_ORDER, capped at X_DRAFT_PER_MARKET each (user 2026-06-17:
     # X drafts are top-5/market, separate from the analytical report's PER_MARKET_TOP_N). Drafts
     # post in this order with a per-market header so the channel reads as grouped sections.
-    # Order by "most relevant for action now" (user 2026-06-22): R:R ÷ distance-to-entry, DESC —
-    # so the top-N/market published per market are the highest-R:R, closest-to-trigger setups.
+    # Order by RECENCY-OF-TRIGGER first (user 2026-06-29: many recently-triggered setups were going
+    # unpublished because the top-N/market slots went to older but higher-R:R names). Keep TRIGGERED
+    # ahead of READY, then most-recently-triggered, then the existing action_score (R:R / distance-to-
+    # entry) as the tiebreak — so each market's top-N are the freshest, highest-R:R actionable setups.
     from price_action import action_score, group_by_market
-    _groups  = group_by_market(sorted(tradeable, key=action_score, reverse=True),
+    _PUB_RANK = {"TRIGGERED": 3, "READY": 2, "DEVELOPING": 1}
+
+    def _trig_recency(r):
+        ds = [r.get(k) for k in ("h3_date", "l3_date") if r.get(k)]
+        try:
+            return max(pd.Timestamp(d).timestamp() for d in ds) if ds else 0.0
+        except Exception:
+            return 0.0
+
+    def _pub_key(r):
+        return (_PUB_RANK.get(r.get("hvf_signal", ""), 0), _trig_recency(r), action_score(r))
+
+    _groups  = group_by_market(sorted(tradeable, key=_pub_key, reverse=True),
                                n=X_DRAFT_PER_MARKET, market_order=MARKET_ORDER)
     _ordered = [r for _, rows in _groups for r in rows]
     # Per-market draft numbering (user 2026-06-17): each market's instruments number from 1
