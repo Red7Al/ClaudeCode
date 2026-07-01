@@ -228,7 +228,7 @@ aside.collapsed{display:none}
 </div>
 
 <script>
-let DATA=[], SEL=null, sortK="trig_date", sortDir=-1, POS={}, PUB={}, signalOnly=true;
+let DATA=[], SEL=null, sortK="trig_date", sortDir=-1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;
 const $=id=>document.getElementById(id);
 const F=["f_search","f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
          "f_demin","f_demax","f_dsmin","f_dsmax","f_pemin","f_pemax","f_inmin","f_inmax"];
@@ -484,7 +484,8 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 
 // ── Tabs: Scanner | Pre-orders ───────────────────────────────────────────────────────────────────
 // signal, not yet triggered, and quality >= 25 (user 2026-06-29: drop the low-quality noise)
-const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25);
+// signal, not yet triggered, Q>=25, and NOT already placed on IG (removed once it's a live working order).
+const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker));
 const TABS=["scanner","preorders","intro","appendix"];
 function showTab(name){
   TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",t!==name);if(b)b.classList.toggle("active",t===name);});
@@ -511,9 +512,10 @@ function renderPreorders(){
 
 Promise.all([fetch("/api/records").then(r=>r.json()),
              fetch("/api/positions").then(r=>r.json()).catch(()=>({positions:{}})),
-             fetch("/api/pubcounts").then(r=>r.json()).catch(()=>({pubcounts:{}}))])
-  .then(([j,p,pc])=>{
-    POS=p.positions||{}; PUB=pc.pubcounts||{};
+             fetch("/api/pubcounts").then(r=>r.json()).catch(()=>({pubcounts:{}})),
+             fetch("/api/working-orders").then(r=>r.json()).catch(()=>({tickers:[]}))])
+  .then(([j,p,pc,wo])=>{
+    POS=p.positions||{}; PUB=pc.pubcounts||{}; IGWO=new Set(wo.tickers||[]);
     DATA=j.records||[]; DATA.forEach(augment);
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");

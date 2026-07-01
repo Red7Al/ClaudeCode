@@ -313,6 +313,25 @@ def api_pubcounts():
     return jsonify({"pubcounts": counts})
 
 
+@app.route("/api/working-orders")
+def api_working_orders():
+    """Tickers that already have a LIVE IG working order (working_orders.status='PENDING'), so the web
+    Pre-orders tab can drop them once they've moved to IG (user 2026-06-29: "remove from the database once
+    in IG"). Best-effort; returns [] on any DB/table error so the page still loads."""
+    tickers = []
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            rows = db.run("select distinct ticker from working_orders where status = 'PENDING'")
+            tickers = [r[0] for r in (rows or []) if r[0]]
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"working-orders lookup failed: {e}")
+    return jsonify({"tickers": tickers})
+
+
 _REFRESHING = {"on": False}
 
 
