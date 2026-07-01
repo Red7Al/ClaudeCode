@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.20.0  2026-06-29  Alex Hind   (user 2026-06-29) Bridge tuning: WO_PROXIMITY_PCT 1.0 -> 1.5 (place the IG working
+#                                 order once price is within 1.5% of entry) and a new WO_MIN_QUALITY=50 floor in
+#                                 place_hvf_order_from_sig — a setup only becomes a live IG order when Quality > 50.
 # 1.19.0  2026-06-26  Alex Hind   (user 2026-06-26) New describe_size_skip() — THE single source for the size<=0 Slack
 #                                 wording ("give a better explanation in slack"). Distinguishes a margin DEFICIT (free
 #                                 balance < 0 → nothing trades until a position closes / funds added) from an IG-minimum
@@ -1563,8 +1566,12 @@ WO_UPDATE_THRESHOLD_PCT = 0.25
 #   WO_CANCEL_BAND_PCT — cancel an existing PENDING order when price has drifted
 #                        beyond this % from entry (capital no longer committed
 #                        to a setup that is now remote).
-WO_PROXIMITY_PCT   = 1.0
+WO_PROXIMITY_PCT   = 1.5    # user 2026-06-29: place the IG order once price is within 1.5% of entry
 WO_CANCEL_BAND_PCT = 2.5
+# Only promote a scanned setup to a live IG working order when its pattern Quality exceeds this
+# (user 2026-06-29: "ONLY if Q is over 50"). Below the floor the funnel is shown in the report but
+# never becomes an order.
+WO_MIN_QUALITY = 50
 
 
 def _round_level(value, decimals: int):
@@ -2494,6 +2501,15 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
     stop      = sig.get("hvf_stop_level")
     target    = sig.get("hvf_target")
     if not all((ticker, direction, entry, stop, target)):
+        return None
+
+    # Quality floor (user 2026-06-29): only route a setup to a LIVE IG working order when its pattern
+    # Quality is over WO_MIN_QUALITY (50). Below that it stays report-only — never becomes an order.
+    _q = sig.get("hvf_quality")
+    if _q is None:
+        _q = sig.get("pattern_quality")
+    if not isinstance(_q, (int, float)) or _q <= WO_MIN_QUALITY:
+        log.info(f"{ticker}: HVF quality {_q} not > {WO_MIN_QUALITY} — no working order (below quality floor).")
         return None
 
     # Tight-stop skip (backlog #9b): a funnel whose stop is closer than
