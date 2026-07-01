@@ -87,6 +87,11 @@ from datetime import datetime, timezone, timedelta
 
 log = logging.getLogger("social_monitor")
 
+# Suppress low-conviction WAIT signals from the #arw-signals-from-feeds channel (user 2026-06-29:
+# "do not show WAIT (-25) or 25 and below"). A WAIT whose |pa_score| is at or below this is neutral
+# noise; strongly-leaning WAITs (|score| > 25) still post.
+WAIT_SUPPRESS_ABS_SCORE = 25
+
 SUPABASE_HOST = "aws-0-eu-west-1.pooler.supabase.com"
 SUPABASE_USER = os.environ["SUPABASE_USER"]
 SUPABASE_PASS = os.environ["SUPABASE_DB_PASSWORD"]
@@ -545,6 +550,11 @@ def alert_new_picks(new_picks: list):
                    d=_simplify_verdict(verdict), t=ticker, i=pick.get("investor_name"))
         except Exception as e:
             log.debug(f"store direction failed for {ticker}/{pick.get('investor_name')}: {e}")
+
+        # Suppress low-conviction WAIT lines from the feed (user 2026-06-29): a WAIT with |score| <= 25
+        # is neutral noise. CONFIRM_LONG/SHORT always show; strongly-leaning WAITs (|score| > 25) still show.
+        if verdict == "WAIT" and abs(score) <= WAIT_SUPPRESS_ABS_SCORE:
+            continue
 
         # Sort weight: CONFIRM first, then by score descending
         sort_key = (0 if "CONFIRM" in verdict else 1, -score)
