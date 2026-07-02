@@ -29,6 +29,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.28.0  2026-06-30  Alex Hind   (user 2026-06-29) HVF Slack report horizon cap: setups whose expected time-to-target
+#                                 (target_horizon_days, the H1->H3 span) exceeds 9 months are dropped from the Slack
+#                                 blocks (both tradeable + developing) — e.g. MDLZ "~19 months to target" no longer shows.
 # 1.27.0  2026-06-26  Alex Hind   (user 2026-06-26, C) post_to_slack now also posts the report to the SLACK_RW_HVF webhook
 #                                 (extra HVF-report channel) alongside SLACK_SIGNALS; each webhook is independent (a missing
 #                                 or failing one doesn't stop the others). Secret added to trading-hvf-report.yml.
@@ -656,6 +659,16 @@ def _developing_line(r) -> str:
 
 def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
     """Build Slack Block Kit message for the daily HVF report."""
+    # Horizon cap (user 2026-06-29): do NOT show anything longer than 9 months to target in the HVF
+    # Slack channel. target_horizon_days = the funnel's H1->H3 span (the expected time-to-target);
+    # 9 months ~ 274 days. Applied here so it only affects this Slack report, not the web app / X.
+    from price_action import target_horizon_days
+    def _within_horizon(r):
+        _d = target_horizon_days(r)
+        return not (_d and _d / 30.44 > 9)
+    tradeable  = [r for r in tradeable if _within_horizon(r)]
+    developing = [r for r in developing if _within_horizon(r)]
+
     blocks = []
 
     # Header

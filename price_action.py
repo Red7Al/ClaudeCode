@@ -66,6 +66,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.37.0  2026-06-30  Alex Hind   (user 2026-06-29) target_horizon_days() extracted from target_horizon — exposes the
+#                                 numeric days-to-target so run_hvf_report can cap the Slack report at 9 months.
 # 1.36.0  2026-06-27  Alex Hind   (user 2026-06-27) FIX NaN "now" price (SBUX): _sanitise_ohlc drops NaN-Close bars (yfinance
 #                                 forming/holiday session), so the daily path no longer carries a NaN last bar (weekly already
 #                                 dropna'd). check_hvf_invariants now also REJECTS a NaN current_price — the price audit had
@@ -1417,11 +1419,10 @@ def funnel_span_weeks(r: dict):
     return None
 
 
-def target_horizon(r: dict) -> str:
-    """Rough EXPECTED time to reach target (user 2026-06-19) — Slack only, never on the X
-    card/tweet. Heuristic: a measured move tends to play out over a time similar to the
-    funnel's formation span (H1 -> H3); falls back to the scan timeframe when pivot dates are
-    absent. Returns '' if nothing usable. CANONICAL so every Slack report phrases it the same."""
+def target_horizon_days(r: dict):
+    """Numeric expected days-to-target — the funnel's formation span (H1 -> H3), or a timeframe
+    fallback when pivot dates are absent. None if nothing usable. Shared by target_horizon (display)
+    and the report's horizon filter so both use the SAME number."""
     from datetime import datetime
     days = None
     h1d, h3d = r.get("h1_date"), r.get("h3_date")
@@ -1435,9 +1436,16 @@ def target_horizon(r: dict) -> str:
     if not days or days <= 0:
         days = {"daily-30": 21, "daily-60": 42, "daily-90": 63,
                 "daily-180": 120, "daily-240": 160, "weekly": 180}.get(r.get("hvf_timeframe") or "")
-    if not days or days <= 0:
-        return ""
-    return _humanize_days(days)
+    return days if (days and days > 0) else None
+
+
+def target_horizon(r: dict) -> str:
+    """Rough EXPECTED time to reach target (user 2026-06-19) — Slack only, never on the X
+    card/tweet. Heuristic: a measured move tends to play out over a time similar to the
+    funnel's formation span (H1 -> H3). Returns '' if nothing usable. CANONICAL so every Slack
+    report phrases it the same."""
+    days = target_horizon_days(r)
+    return _humanize_days(days) if days else ""
 
 
 def market_short(market_name) -> str:
