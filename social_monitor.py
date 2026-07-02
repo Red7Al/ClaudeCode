@@ -31,6 +31,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.16.0  2026-06-30  Alex Hind   (user 2026-06-30) TRACKED_ACCOUNTS += @CyclesFan, @CapfFlowsData, @Rektfence,
+#                                 @MR_Derivatives, @BrownMoose, @PreetKailon, @ecommerceshares, @Shanaka86
+#                                 (@JPATrades was already tracked).
+# 1.15.0  2026-06-29  Alex Hind   (user 2026-06-29) Suppress low-conviction WAIT lines (|pa_score| <= 25) from the
+#                                 #arw-signals-from-feeds channel; direction still stored to the DB first.
 # 1.14.0  2026-06-24  Alex Hind   (user 2026-06-24) get_company_name now delegates to instrument_name.company_name (the
 #                                 single source of truth, yfinance-first). It used to prefer epic_lookup.description — the
 #                                 stale wrong MSTR row — which is why the dossier read "MSTR (Morningstar International
@@ -139,6 +144,15 @@ TRACKED_ACCOUNTS = [
     {"handle": "investingvisual",   "name": "Investing Visual",    "source": "X/@investingvisual"},
     {"handle": "brikka_trading",    "name": "Brikka Trading",      "source": "X/@brikka_trading"},
     {"handle": "sam_Badawi",        "name": "Sam Badawi",          "source": "X/@sam_Badawi"},
+    # Added 2026-06-30 (user) — eight more (@JPATrades was already tracked above).
+    {"handle": "CyclesFan",         "name": "CyclesFan",           "source": "X/@CyclesFan"},
+    {"handle": "CapfFlowsData",     "name": "CapfFlowsData",       "source": "X/@CapfFlowsData"},
+    {"handle": "Rektfence",         "name": "Rektfence",           "source": "X/@Rektfence"},
+    {"handle": "MR_Derivatives",    "name": "MR Derivatives",      "source": "X/@MR_Derivatives"},
+    {"handle": "BrownMoose",        "name": "BrownMoose",          "source": "X/@BrownMoose"},
+    {"handle": "PreetKailon",       "name": "Preet Kailon",        "source": "X/@PreetKailon"},
+    {"handle": "ecommerceshares",   "name": "Ecommerce Shares",    "source": "X/@ecommerceshares"},
+    {"handle": "Shanaka86",         "name": "Shanaka",             "source": "X/@Shanaka86"},
 ]
 
 # Known non-ticker uppercase words to ignore
