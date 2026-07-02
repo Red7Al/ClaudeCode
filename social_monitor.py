@@ -31,6 +31,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.16.1  2026-06-30  Alex Hind   (user 2026-06-30) alert_new_picks: skip the Slack post entirely when the WAIT-noise
+#                                 filter suppressed every line — no more bare "New X mentions" header with no details.
 # 1.16.0  2026-06-30  Alex Hind   (user 2026-06-30) TRACKED_ACCOUNTS += @CyclesFan, @CapfFlowsData, @Rektfence,
 #                                 @MR_Derivatives, @BrownMoose, @PreetKailon, @ecommerceshares, @Shanaka86
 #                                 (@JPATrades was already tracked).
@@ -574,6 +576,12 @@ def alert_new_picks(new_picks: list):
         sort_key = (0 if "CONFIRM" in verdict else 1, -score)
         enriched.append((sort_key, label, handle, pa_str,
                          _canonical_x_url(pick.get("url", "")), ticker, pick.get("investor_name")))
+
+    # If the WAIT-noise filter suppressed EVERY line, don't post at all — a bare "New X mentions"
+    # header with no details is worse than silence (user 2026-06-30).
+    if not enriched:
+        log.info(f"Slack alert skipped: all {len(new_picks)} new pick(s) suppressed (low-conviction WAIT)")
+        return
 
     enriched.sort(key=lambda x: x[0])
     # One blank line between the CONFIRM block and the WAIT block (user 2026-06-16).
