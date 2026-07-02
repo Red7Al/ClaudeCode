@@ -541,6 +541,10 @@ function showTab(name){
   const locked=!AUTH && (name==="scanner"||name==="preorders"||name==="activity"||name==="orderops");
   TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",locked||t!==name);if(b)b.classList.toggle("active",t===name);});
   $("loginpanel").classList.toggle("hidden",!locked);
+  // The header controls are Scanner tools (filters / Squeeze-only / refresh) — hide them on other
+  // tabs where they're irrelevant (user 2026-06-30). Theme + Log out stay global.
+  const sc=(name==="scanner")&&!locked;
+  ["togglefilters","signalonly","refresh","reset","showall"].forEach(id=>{const b=$(id);if(b)b.style.display=sc?"":"none";});
   if(!locked&&name==="preorders")renderPreorders();
   if(!locked&&name==="activity")renderActivity();
   if(!locked&&name==="orderops")renderOrderOps();
