@@ -613,8 +613,51 @@ def _refresh_loop():
         _t.sleep(6 * 3600)
 
 
+def _bridge_loop():
+    """Database -> IG order bridge every BRIDGE_INTERVAL_H hours (user 2026-06-30, Orders A/B):
+    READY snapshot setups with quality > 50 within 1.5% of entry go to the guarded IG order path
+    (hvf_web/order_bridge.py). First pass ~2 min after startup so a restart re-checks promptly."""
+    import time as _t
+    _t.sleep(120)
+    interval_h = 2
+    while True:
+        try:
+            from hvf_web.order_bridge import run_bridge, BRIDGE_INTERVAL_H
+            interval_h = BRIDGE_INTERVAL_H
+            run_bridge()
+        except Exception as e:
+            log.warning(f"order bridge pass failed (will retry): {e}")
+        _t.sleep(interval_h * 3600)
+
+
+@app.route("/api/order-ops")
+def api_order_ops():
+    """Operational record of database -> IG order moves (user 2026-06-30): the working_orders rows,
+    newest first. Login-gated like /api/records."""
+    if request.headers.get("X-Auth") not in _wu.valid_tokens():
+        return jsonify({"error": "login required"}), 401
+    rows = []
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            for r in (db.run(
+                    "select placed_at::timestamp(0), updated_at::timestamp(0), ticker, direction, "
+                    "entry_level, stop_level, limit_level, size, status, session, notes "
+                    "from working_orders order by coalesce(updated_at, placed_at) desc limit 200") or []):
+                rows.append({"placed_at": str(r[0] or ""), "updated_at": str(r[1] or ""), "ticker": r[2],
+                             "direction": r[3], "entry": r[4], "stop": r[5], "target": r[6],
+                             "size": r[7], "status": r[8], "session": r[9], "notes": r[10] or ""})
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"order-ops lookup failed: {e}")
+    return jsonify({"rows": rows})
+
+
 if __name__ == "__main__":
     import threading
     threading.Thread(target=_refresh_loop, daemon=True).start()
+    threading.Thread(target=_bridge_loop, daemon=True).start()
     log.info("HVF site on http://127.0.0.1:5057  (ngrok http 5057 to share)")
     app.run(host="0.0.0.0", port=5057, debug=False, threaded=True)

@@ -93,6 +93,7 @@ aside.collapsed{display:none}
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
   <button class="tab active" id="tab-scanner" onclick="showTab('scanner')">Scanner</button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')">Pre-orders <span id="potab-count"></span></button>
+  <button class="tab" id="tab-orderops" onclick="showTab('orderops')">Order ops</button>
   <button class="tab" id="tab-activity" onclick="showTab('activity')">My activity</button>
   <span class="grow"></span>
   <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
@@ -167,12 +168,21 @@ aside.collapsed{display:none}
   <div class="tablewrap">
     <table>
       <thead><tr>
-        <th>Ticker</th><th>Name</th><th>Dir</th><th>Status</th><th>Market</th>
-        <th>Entry</th><th>Stop</th><th>Target</th><th>Now</th><th>Dist→Entry</th><th>R:R</th><th>Quality</th><th>TF</th>
+        <th data-pk="ticker">Ticker</th><th data-pk="name">Name</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
+        <th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="current_price">Now</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
       </tr></thead>
       <tbody id="po-rows"></tbody>
     </table>
   </div>
+</div>
+
+<div id="view-orderops" class="hidden" style="padding:18px 22px">
+  <h2 style="margin:0 0 4px">Order operations — database → IG</h2>
+  <p class="muted" style="font-size:12px;margin:0 0 14px">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Placed</th><th>Updated</th><th>Ticker</th><th>Dir</th><th>Entry</th><th>Stop</th><th>Target</th><th>Size</th><th>Status</th><th>Source</th><th>Notes</th></tr></thead>
+    <tbody id="oo-rows"></tbody>
+  </table></div>
 </div>
 
 <div id="view-activity" class="hidden" style="padding:18px 22px;max-width:760px">
@@ -488,6 +498,7 @@ function showDetail(t){
 function applyAll(){render(); if(SEL&&!$("detail").classList.contains("hidden")){const r=DATA.find(x=>x.ticker===SEL);if(r&&pass(r))showDetail(SEL);else{$("detail").classList.add("hidden");SEL=null;}}}
 
 document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=(sortK===k)?-sortDir:-1;sortK=k;render();});
+document.querySelectorAll("th[data-pk]").forEach(th=>th.onclick=()=>{const k=th.dataset.pk;poSortDir=(poSortK===k)?-poSortDir:1;poSortK=k;renderPreorders();});
 F.forEach(id=>$(id).addEventListener("input",applyAll));
 // Click a chart bar / pie slice to set that filter (toggle off if already set) — user 2026-06-27.
 $("viz").addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(!el)return;
@@ -523,15 +534,28 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 // signal, not yet triggered, and quality >= 25 (user 2026-06-29: drop the low-quality noise)
 // signal, not yet triggered, Q>=25, and NOT already placed on IG (removed once it's a live working order).
 const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker));
-const TABS=["scanner","preorders","activity","intro","appendix"];
+const TABS=["scanner","preorders","orderops","activity","intro","appendix"];
 let AUTH=localStorage.getItem("sq_auth")||"";
 function showTab(name){
-  // Scanner + Pre-orders + My-activity are login-gated (user 2026-06-30): when locked they show the login panel.
-  const locked=!AUTH && (name==="scanner"||name==="preorders"||name==="activity");
+  // All data tabs are login-gated (user 2026-06-30): when locked they show the login panel.
+  const locked=!AUTH && (name==="scanner"||name==="preorders"||name==="activity"||name==="orderops");
   TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",locked||t!==name);if(b)b.classList.toggle("active",t===name);});
   $("loginpanel").classList.toggle("hidden",!locked);
   if(!locked&&name==="preorders")renderPreorders();
   if(!locked&&name==="activity")renderActivity();
+  if(!locked&&name==="orderops")renderOrderOps();
+}
+function renderOrderOps(){
+  fetch("/api/order-ops",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(j=>{const st=s=>s==="PENDING"?"var(--accent)":s==="FILLED"?"var(--bull)":s==="WATCHING"?"#d29922":"var(--muted)";
+      $("oo-rows").innerHTML=(j.rows||[]).map(r=>`<tr>
+        <td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td><b>${r.ticker||''}</b></td>
+        <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
+        <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td><td>${r.size??''}</td>
+        <td><b style="color:${st(r.status)}">${r.status||''}</b></td><td>${r.session||''}</td>
+        <td class="muted" style="white-space:normal;max-width:280px">${(r.notes||'').replace(/</g,'&lt;')}</td></tr>`).join("")
+      || `<tr><td colspan="11" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;})
+    .catch(()=>{$("oo-rows").innerHTML=`<tr><td colspan="11" class="empty">Could not load — try logging in again.</td></tr>`;});
 }
 function renderActivity(){
   fetch("/api/userlog",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
@@ -554,10 +578,15 @@ function doReset(){
       if(r.ok){el.style.color="var(--bull)";el.textContent="Password updated — log in above with the new password.";}
       else{el.style.color="var(--bear)";el.textContent="Name and email do not match an account (or password too short).";}});
 }
+let poSortK="dist_entry", poSortDir=1;   // default sort: Dist->Entry, closest first (user 2026-06-30)
 function renderPreorders(){
   const po=DATA.filter(isPreorder);
-  const ad=r=>r.dist_entry==null?1e9:Math.abs(r.dist_entry);
-  po.sort((a,b)=>((a.status==="READY"?0:1)-(b.status==="READY"?0:1))||(ad(a)-ad(b)));
+  // Click a column header to sort (user 2026-06-30). Dist->Entry sorts on |distance| (closest first);
+  // other columns sort on their raw value; nulls always sink to the bottom.
+  const val=r=>{const v=r[poSortK];if(v==null)return null;return poSortK==="dist_entry"?Math.abs(v):v;};
+  po.sort((a,b)=>{const x=val(a),y=val(b);
+    if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1;
+    return (x<y?-1:x>y?1:0)*poSortDir;});
   const nR=po.filter(r=>r.status==="READY").length;
   $("po-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${po.length}</b> instruments with a pre-order — waiting for the entry to trigger <span class="muted">(${nR} READY · ${po.length-nR} DEVELOPING). Click a row to open its detail.</span>`;
   $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
