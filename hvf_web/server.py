@@ -82,18 +82,30 @@ def api_login():
     body = request.get_json(silent=True) or {}
     name, pwd = (body.get("name") or "").strip(), body.get("pwd") or ""
     if _wu.verify(name, pwd):
+        _wu.log_event(name, f"Logged in (from {request.remote_addr})")
         return jsonify({"ok": True, "token": _wu.token_for(name), "name": name})
     return jsonify({"ok": False}), 401
 
 
 @app.route("/api/reset-password", methods=["POST"])
 def api_reset_password():
-    """Password reset gated on the email REGISTERED to the account (user 2026-06-30)."""
+    """Password reset gated on the email REGISTERED to the account (user 2026-06-30). On success the
+    user is emailed a change notification with a not-you warning, and the event is logged."""
     body = request.get_json(silent=True) or {}
     ok = _wu.reset_password((body.get("name") or "").strip(), body.get("email") or "",
-                            body.get("new_pwd") or "")
+                            body.get("new_pwd") or "", ip=request.remote_addr or "")
     return (jsonify({"ok": True}) if ok
             else (jsonify({"ok": False, "error": "name/email do not match an account (or password too short)"}), 400))
+
+
+@app.route("/api/userlog")
+def api_userlog():
+    """The logged-in user's OWN operational log (user 2026-06-30) — token identifies the user, so
+    each user only ever sees their own entries."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    return jsonify({"name": name, "log": _wu.get_log(name)})
 
 
 def _load_snapshot() -> dict:

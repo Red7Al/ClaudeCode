@@ -21,6 +21,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.2.0   2026-06-30  Alex Hind   (user 2026-06-30) Per-user operational log (log_event/get_log, capped 100, shown in
+#                                 the web app's Activity tab); password-change email to the registered address with a
+#                                 not-you warning (trade_email.send_simple_email); name_for_token for per-user APIs.
 # 1.1.0   2026-06-30  Alex Hind   (user 2026-06-30 "Passwords must NOT be in GIT") Seed carries names+emails only;
 #                                 fresh accounts start LOCKED and are activated via the email-gated reset flow.
 # 1.0.0   2026-06-30  Alex Hind   Initial build — PBKDF2 password store, Fernet secret store, email-gated reset.
@@ -105,20 +108,97 @@ def valid_tokens() -> set:
     return {token_for(n) for n in _ensure_seeded()}
 
 
-def reset_password(name: str, email: str, new_pwd: str) -> bool:
+def log_event(name: str, event: str):
+    """Append to the user's operational log (user 2026-06-30) — shown to THAT user only in the
+    Activity tab. Capped at the most recent 100 entries. Never raises."""
+    from datetime import datetime, timezone
+    try:
+        with _LOCK:
+            users = _load()
+            u = users.get(name)
+            if not u:
+                return
+            u.setdefault("log", []).append(
+                {"ts": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"), "event": event})
+            u["log"] = u["log"][-100:]
+            _save(users)
+    except Exception as e:
+        log.warning(f"log_event failed for {name}: {e}")
+
+
+def get_log(name: str) -> list:
+    u = _ensure_seeded().get(name)
+    return list(reversed((u or {}).get("log") or []))   # newest first
+
+
+def name_for_token(token: str) -> str:
+    for n in _ensure_seeded():
+        if token and token == token_for(n):
+            return n
+    return ""
+
+
+def _send_pwd_change_email(name: str, email: str):
+    """Notify the registered address that the password changed, with a NOT-YOU warning
+    (user 2026-06-30). Best-effort — an email failure never blocks the reset."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    subject = "Squeeze Scanner - your password was changed"
+    text = (f"Hello {name},\n\n"
+            f"The password on your Squeeze Scanner account was changed at {ts}.\n\n"
+            f"If YOU made this change, no action is needed.\n\n"
+            f"IF YOU DID NOT CHANGE IT, your account may be compromised - act now:\n"
+            f"  1. Open the Squeeze Scanner login page and click 'Forgot password?'.\n"
+            f"  2. Enter your account name and THIS registered email address, and set a new password\n"
+            f"     immediately (this locks out whoever changed it).\n"
+            f"  3. Tell the operator (Alex) so the activity log can be reviewed.\n\n"
+            f"This notification is sent to the registered address on every password change.\n")
+    try:
+        from trade_email import send_simple_email
+        if send_simple_email(subject, text, recipients=[email]):
+            log.info(f"password-change email sent to {email}")
+            return
+        log.info("Resend/Yahoo not configured - trying the local Gmail fallback")
+    except Exception as e:
+        log.warning(f"send_simple_email failed for {name}: {e}")
+    # Local fallback: the _TVW_EMAIL Gmail creds present on this machine (Actions uses Resend/Yahoo).
+    try:
+        import smtplib
+        from email.message import EmailMessage
+        user = os.environ.get("_TVW_EMAIL_USERNAME", "").strip()
+        pw = os.environ.get("_TVW_EMAIL_PASSWORD", "").replace(" ", "").strip()
+        if not (user and pw):
+            log.warning(f"password-change email NOT sent to {email} (no provider configured)")
+            return
+        msg = EmailMessage()
+        msg["Subject"], msg["From"], msg["To"] = subject, user, email
+        msg.set_content(text)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as s:
+            s.login(user, pw)
+            s.send_message(msg)
+        log.info(f"password-change email sent to {email} (Gmail fallback)")
+    except Exception as e:
+        log.warning(f"password-change email failed for {name}: {e}")
+
+
+def reset_password(name: str, email: str, new_pwd: str, ip: str = "") -> bool:
     """Reset gated on the REGISTERED email (user 2026-06-30). False when the account is unknown,
-    the email doesn't match, or the new password is too short."""
+    the email doesn't match, or the new password is too short. On success: logs the event to the
+    user's operational log and emails the registered address with a not-you warning."""
     if not new_pwd or len(new_pwd) < 4:
         return False
+    name = (name or "").strip()
     with _LOCK:
         users = _load()
-        u = users.get((name or "").strip())
+        u = users.get(name)
         if not u or (email or "").strip().lower() != (u.get("email") or "").lower():
             return False
         u["salt"] = _secrets.token_hex(16)
         u["pwd_hash"] = _hash_pwd(new_pwd, u["salt"])
         _save(users)
     log.info(f"password reset for {name}")
+    log_event(name, f"Password changed (email-verified reset{', from ' + ip if ip else ''})")
+    _send_pwd_change_email(name, u.get("email") or email)
     return True
 
 
@@ -152,6 +232,7 @@ def set_secret(name: str, key: str, value: str) -> bool:
             return False
         u.setdefault("secrets", {})[key] = base64.b64encode(f.encrypt(value.encode())).decode()
         _save(users)
+    log_event(name, f"Secure setting '{key}' updated")
     return True
 
 

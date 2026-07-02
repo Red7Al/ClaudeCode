@@ -93,6 +93,7 @@ aside.collapsed{display:none}
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
   <button class="tab active" id="tab-scanner" onclick="showTab('scanner')">Scanner</button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')">Pre-orders <span id="potab-count"></span></button>
+  <button class="tab" id="tab-activity" onclick="showTab('activity')">My activity</button>
   <span class="grow"></span>
   <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
 </div>
@@ -172,6 +173,15 @@ aside.collapsed{display:none}
       <tbody id="po-rows"></tbody>
     </table>
   </div>
+</div>
+
+<div id="view-activity" class="hidden" style="padding:18px 22px;max-width:760px">
+  <h2 style="margin:0 0 4px">My activity</h2>
+  <p class="muted" style="font-size:12px;margin:0 0 14px">Your account's operational log — logins, password changes and secure-setting updates. You only ever see your own entries.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>When (UTC)</th><th>Event</th></tr></thead>
+    <tbody id="act-rows"></tbody>
+  </table></div>
 </div>
 
 <div id="view-intro" class="hidden" style="padding:18px 22px;max-width:1080px">
@@ -508,14 +518,21 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 // signal, not yet triggered, and quality >= 25 (user 2026-06-29: drop the low-quality noise)
 // signal, not yet triggered, Q>=25, and NOT already placed on IG (removed once it's a live working order).
 const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker));
-const TABS=["scanner","preorders","intro","appendix"];
+const TABS=["scanner","preorders","activity","intro","appendix"];
 let AUTH=localStorage.getItem("sq_auth")||"";
 function showTab(name){
-  // Scanner + Pre-orders are login-gated (user 2026-06-30): when locked, those tabs show the login panel.
-  const locked=!AUTH && (name==="scanner"||name==="preorders");
+  // Scanner + Pre-orders + My-activity are login-gated (user 2026-06-30): when locked they show the login panel.
+  const locked=!AUTH && (name==="scanner"||name==="preorders"||name==="activity");
   TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",locked||t!==name);if(b)b.classList.toggle("active",t===name);});
   $("loginpanel").classList.toggle("hidden",!locked);
   if(!locked&&name==="preorders")renderPreorders();
+  if(!locked&&name==="activity")renderActivity();
+}
+function renderActivity(){
+  fetch("/api/userlog",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(j=>{$("act-rows").innerHTML=(j.log||[]).map(e=>`<tr><td>${e.ts}</td><td>${(e.event||"").replace(/</g,"&lt;")}</td></tr>`).join("")
+      || `<tr><td colspan="2" class="empty">No activity recorded yet.</td></tr>`;})
+    .catch(()=>{$("act-rows").innerHTML=`<tr><td colspan="2" class="empty">Could not load your activity — try logging in again.</td></tr>`;});
 }
 function doLogin(){
   fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},
