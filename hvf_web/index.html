@@ -180,7 +180,7 @@ aside.collapsed{display:none}
   <h2 style="margin:0 0 4px">Order operations — database → IG</h2>
   <p class="muted" style="font-size:12px;margin:0 0 14px">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
   <div class="tablewrap"><table>
-    <thead><tr><th>Placed</th><th>Updated</th><th>Ticker</th><th>Dir</th><th>Entry</th><th>Stop</th><th>Target</th><th>Size</th><th>Status</th><th>Source</th><th>Notes</th></tr></thead>
+    <thead><tr><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
     <tbody id="oo-rows"></tbody>
   </table></div>
 </div>
@@ -189,7 +189,7 @@ aside.collapsed{display:none}
   <h2 style="margin:0 0 4px">My activity</h2>
   <p class="muted" style="font-size:12px;margin:0 0 14px">Your account's operational log — logins, password changes and secure-setting updates. You only ever see your own entries.</p>
   <div class="tablewrap"><table>
-    <thead><tr><th>When (UTC)</th><th>Event</th></tr></thead>
+    <thead><tr><th data-ak="ts">When (UTC)</th><th data-ak="event">Event</th></tr></thead>
     <tbody id="act-rows"></tbody>
   </table></div>
 </div>
@@ -499,6 +499,8 @@ function applyAll(){render(); if(SEL&&!$("detail").classList.contains("hidden"))
 
 document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=(sortK===k)?-sortDir:-1;sortK=k;render();});
 document.querySelectorAll("th[data-pk]").forEach(th=>th.onclick=()=>{const k=th.dataset.pk;poSortDir=(poSortK===k)?-poSortDir:1;poSortK=k;renderPreorders();});
+document.querySelectorAll("th[data-ok]").forEach(th=>th.onclick=()=>{const k=th.dataset.ok;ooSortDir=(ooSortK===k)?-ooSortDir:-1;ooSortK=k;paintOrderOps();});
+document.querySelectorAll("th[data-ak]").forEach(th=>th.onclick=()=>{const k=th.dataset.ak;acSortDir=(acSortK===k)?-acSortDir:-1;acSortK=k;paintActivity();});
 F.forEach(id=>$(id).addEventListener("input",applyAll));
 // Click a chart bar / pie slice to set that filter (toggle off if already set) — user 2026-06-27.
 $("viz").addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(!el)return;
@@ -549,22 +551,38 @@ function showTab(name){
   if(!locked&&name==="activity")renderActivity();
   if(!locked&&name==="orderops")renderOrderOps();
 }
+// Generic column sort for the simple tables (user 2026-06-30: "allow click on title ... any table"):
+// nulls sink, numbers compare numerically, everything else as strings.
+function genSort(rows,k,dir){
+  return rows.slice().sort((a,b)=>{const x=a[k],y=b[k];
+    if(x==null&&y==null)return 0; if(x==null||x==="")return 1; if(y==null||y==="")return -1;
+    if(typeof x==="number"&&typeof y==="number")return (x-y)*dir;
+    return String(x).localeCompare(String(y))*dir;});
+}
+let OO_ROWS=[], ooSortK="updated_at", ooSortDir=-1;
+function paintOrderOps(){
+  const st=s=>s==="PENDING"?"var(--accent)":s==="FILLED"?"var(--bull)":s==="WATCHING"?"#d29922":"var(--muted)";
+  $("oo-rows").innerHTML=genSort(OO_ROWS,ooSortK,ooSortDir).map(r=>`<tr>
+    <td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td><b>${r.ticker||''}</b></td>
+    <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
+    <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td><td>${r.size??''}</td>
+    <td><b style="color:${st(r.status)}">${r.status||''}</b></td><td>${r.session||''}</td>
+    <td class="muted" style="white-space:normal;max-width:280px">${(r.notes||'').replace(/</g,'&lt;')}</td></tr>`).join("")
+  || `<tr><td colspan="11" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
+}
 function renderOrderOps(){
   fetch("/api/order-ops",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{const st=s=>s==="PENDING"?"var(--accent)":s==="FILLED"?"var(--bull)":s==="WATCHING"?"#d29922":"var(--muted)";
-      $("oo-rows").innerHTML=(j.rows||[]).map(r=>`<tr>
-        <td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td><b>${r.ticker||''}</b></td>
-        <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
-        <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td><td>${r.size??''}</td>
-        <td><b style="color:${st(r.status)}">${r.status||''}</b></td><td>${r.session||''}</td>
-        <td class="muted" style="white-space:normal;max-width:280px">${(r.notes||'').replace(/</g,'&lt;')}</td></tr>`).join("")
-      || `<tr><td colspan="11" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;})
+    .then(j=>{OO_ROWS=j.rows||[];paintOrderOps();})
     .catch(()=>{$("oo-rows").innerHTML=`<tr><td colspan="11" class="empty">Could not load — try logging in again.</td></tr>`;});
+}
+let AC_ROWS=[], acSortK="ts", acSortDir=-1;
+function paintActivity(){
+  $("act-rows").innerHTML=genSort(AC_ROWS,acSortK,acSortDir).map(e=>`<tr><td>${e.ts}</td><td>${(e.event||"").replace(/</g,"&lt;")}</td></tr>`).join("")
+    || `<tr><td colspan="2" class="empty">No activity recorded yet.</td></tr>`;
 }
 function renderActivity(){
   fetch("/api/userlog",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{$("act-rows").innerHTML=(j.log||[]).map(e=>`<tr><td>${e.ts}</td><td>${(e.event||"").replace(/</g,"&lt;")}</td></tr>`).join("")
-      || `<tr><td colspan="2" class="empty">No activity recorded yet.</td></tr>`;})
+    .then(j=>{AC_ROWS=j.log||[];paintActivity();})
     .catch(()=>{$("act-rows").innerHTML=`<tr><td colspan="2" class="empty">Could not load your activity — try logging in again.</td></tr>`;});
 }
 function doLogin(){
