@@ -1,0 +1,47 @@
+name: X Hot-Stock Take (daily three-topic tweet — 2026-06-30)
+
+# Daily opinion tweet (user 2026-06-30): picks the equity in our table with the most engagement
+# potential (tracked-account chatter + momentum + live HVF signal) and posts ONE tweet covering
+# three topics — chart, value, street — in our own voice, never referencing articles or sources.
+# Respects the X_MAX_PER_DAY cap and the recent-publication dedup.
+#
+# Triggered by cron-job.org via workflow_dispatch (once daily, e.g. 13:30 UTC pre-US-open buzz) —
+# NEVER add a schedule: block (GitHub-native cron is banned, user directive 2026-06-07).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: 'Force a specific ticker (empty = engagement-scored pick)'
+        required: false
+        default: ''
+      dry:
+        description: 'Dry run (build + print the tweet, post NOTHING)'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Hot-stock tweet
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.ticker }}" ]; then ARGS="$ARGS --ticker ${{ inputs.ticker }}"; fi
+          python hot_stock_tweet.py $ARGS ${{ inputs.dry && '--dry' || '' }}
+        env:
+          X_API_KEY:            ${{ secrets.X_API_KEY }}
+          X_API_SECRET:         ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN:       ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET:      ${{ secrets.X_ACCESS_SECRET }}
+          SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_TWITTER:        ${{ secrets.SLACK_TWITTER }}
