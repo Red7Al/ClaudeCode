@@ -404,10 +404,10 @@ function showDetail(t){
       <div class="kv"><span>Stop</span><b>${f2(r.stop)}</b></div>
       <div class="kv"><span>Target</span><b>${f2(r.target)}</b></div>
       <div class="kv"><span>Dist to entry</span><b>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'?'}</b></div>
-      <div class="kv"><span>P/E</span><b>${r.pe??'?'}</b></div>
-      <div class="kv"><span>Insider %</span><b>${r.insider_pct!=null?r.insider_pct.toFixed(2)+'%':'?'}</b></div></div>
+      ${r.pe!=null?`<div class="kv"><span>P/E</span><b>${r.pe}</b></div>`:''}
+      ${r.insider_pct!=null?`<div class="kv"><span>Insider %</span><b>${r.insider_pct.toFixed(2)}%</b></div>`:''}</div>
     <div class="card"><h4>Fundamentals — key metrics</h4><div id="fundbox">loading…</div></div>
-    <div class="card"><h4>Broker analysis</h4>${broker}<div id="brokerchg" class="muted" style="margin-top:6px">loading 6–12mo change…</div></div>
+    <div class="card" id="brokercard" style="${r.broker?'':'display:none'}"><h4>Broker analysis</h4><span id="brokerbase">${broker}</span><div id="brokerchg" class="muted" style="margin-top:6px">loading 6–12mo change…</div></div>
     <div class="card"><h4>On X</h4><div id="xlinks">loading…</div></div>
     <div class="card"><h4>X thread (all pages)</h4><div class="tweet" id="tweetbox">loading…</div></div>`;
   fetch(`/api/thread/${r.ticker}`).then(x=>x.json()).then(j=>{
@@ -457,11 +457,16 @@ function showDetail(t){
       :"no fundamentals available (often the case for funds / indices)";
   }).catch(()=>{const el=document.getElementById("fundbox");if(el)el.textContent="fundamentals unavailable";});
   fetch(`/api/broker/${r.ticker}`).then(x=>x.json()).then(j=>{
-    const el=document.getElementById("brokerchg"); if(!el||SEL!==r.ticker)return;
-    if(!j.available){el.textContent="6–12mo change: no analyst upgrade/downgrade history";return;}
+    // No placeholder noise (user 2026-06-30): hide the change line when there's no history, hide the
+    // WHOLE card when there's neither rating data nor history; show the card when either exists.
+    const el=document.getElementById("brokerchg"), card=document.getElementById("brokercard");
+    if(!el||SEL!==r.ticker)return;
+    if(!j.available){el.style.display="none"; if(!r.broker&&card)card.style.display="none"; return;}
     const net=(u,d)=>`${u-d>=0?'+':''}${u-d} net (${u}↑ / ${d}↓)`;
     el.innerHTML=`Coverage change — 0–6 mo: <b>${net(j.up6,j.down6)}</b> · 0–12 mo: <b>${net(j.up12,j.down12)}</b>`;
-  }).catch(()=>{const el=document.getElementById("brokerchg");if(el)el.textContent="6–12mo change unavailable";});
+    if(card)card.style.display="";
+    if(!r.broker){const b=document.getElementById("brokerbase");if(b)b.style.display="none";}
+  }).catch(()=>{const el=document.getElementById("brokerchg");if(el)el.style.display="none";});
   fetch(`/api/rules/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("rulesbox"); if(!el||SEL!==r.ticker)return;
     el.innerHTML=(j.rules||[]).map(u=>`<div class="rule"><div class="top"><span class="v ${u.verdict}">${u.verdict}</span><b>Rule ${u.n} — ${u.name}</b></div><div class="why">${(u.detail||u.note||'').replace(/</g,'&lt;')}</div></div>`).join("")
