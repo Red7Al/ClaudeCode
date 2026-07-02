@@ -17,6 +17,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.1.0   2026-06-30  Alex Hind   (user 2026-06-30) Curated index names ("DAX (Deutscher Aktienindex, Germany 40)" not
+#                                 "DAX P") + FX-pair rule: both-legs-ISO-currency tickers render ALL-CAPS "GBP/CAD"
+#                                 (the old title-caser produced "Gbp/cad"). XAUUSD/BTCUSD excluded via _FX_CCY.
 # 1.0.0   2026-06-24  Alex Hind   (user 2026-06-24) Initial — consolidates _resolve_name / get_company_name / notify name
 #                                 lookup into one company_name(). Fixes MSTR showing the Morningstar AU ETF in the dossier.
 # ======================================================================================================================
@@ -92,11 +95,52 @@ def _from_epic_lookup(ticker: str) -> str:
     return ""
 
 
+# Curated display names (user 2026-06-30): indices need a PRODUCT explanation, not yfinance's raw
+# shortName ("DAX P"); checked before any lookup so they always win. FX pairs are handled by rule below.
+_CURATED_NAMES = {
+    "^DJI":      "Dow Jones Industrial Average (US 30 blue-chips)",
+    "^RUT":      "Russell 2000 (US small-cap index)",
+    "^GDAXI":    "DAX (Deutscher Aktienindex, Germany 40)",
+    "^FCHI":     "CAC 40 (France blue-chip index)",
+    "^STOXX50E": "Euro Stoxx 50 (Eurozone blue-chips)",
+    "^FTMC":     "FTSE 250 (UK mid-cap index)",
+    "^AEX":      "AEX (Amsterdam Exchange Index, Netherlands)",
+    "^IBEX":     "IBEX 35 (Spain blue-chip index)",
+    "^SSMI":     "SMI (Swiss Market Index)",
+    "^AXJO":     "S&P/ASX 200 (Australia)",
+    "^GSPTSE":   "S&P/TSX Composite (Canada)",
+    "^BSESN":    "S&P BSE Sensex (Bombay Stock Exchange, India)",
+    "^NSEI":     "Nifty 50 (National Stock Exchange, India)",
+    "^KS11":     "KOSPI (Korea Composite Index)",
+    "^TWII":     "TAIEX (Taiwan Weighted Index)",
+    "^STI":      "Straits Times Index (Singapore)",
+    "^BVSP":     "Bovespa (Brazil benchmark index)",
+    "^MXX":      "IPC (Mexico benchmark index)",
+    "000001.SS": "Shanghai Composite (China)",
+    "SPX500":    "S&P 500 (US large-cap index)",
+    "NASDAQ":    "Nasdaq Composite (US tech-heavy index)",
+    "UK100":     "FTSE 100 (UK blue-chip index)",
+    "JPN225":    "Nikkei 225 (Japan)",
+    "HK50":      "Hang Seng (Hong Kong)",
+}
+_FX_RE = re.compile(r"^([A-Z]{3})([A-Z]{3})(=X)?$")
+# Both legs must be REAL currency codes so XAUUSD (gold), BTCUSD (crypto) etc. fall through to the
+# normal resolvers instead of reading "XAU/USD".
+_FX_CCY = {"USD", "GBP", "EUR", "AUD", "NZD", "CAD", "CHF", "JPY", "CNY", "INR",
+           "HKD", "NOK", "SEK", "MXN", "ZAR", "TRY", "PLN", "SGD"}
+
+
 def company_name(ticker: str) -> str:
-    """The full company/instrument name for a ticker — THE single source of truth. yfinance first
-    (authoritative), then the IG epic_lookup description (FX/indices/commodities), else ''. Cached."""
+    """The full company/instrument name for a ticker — THE single source of truth. Curated names
+    (indices) and the FX-pair rule first, then yfinance (authoritative), then the IG epic_lookup
+    description (commodities), else ''. Cached."""
     if not ticker:
         return ""
+    if ticker in _CURATED_NAMES:
+        return _CURATED_NAMES[ticker]
+    _fx = _FX_RE.match(ticker)
+    if _fx and _fx.group(1) in _FX_CCY and _fx.group(2) in _FX_CCY:
+        return f"{_fx.group(1)}/{_fx.group(2)}"   # ALL-CAPS pairs: GBPCAD=X -> "GBP/CAD" (user 2026-06-30)
     if ticker in _NAME_CACHE:
         return _NAME_CACHE[ticker]
     name = ""
