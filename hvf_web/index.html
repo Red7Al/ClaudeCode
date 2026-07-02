@@ -89,10 +89,32 @@ aside.collapsed{display:none}
   <button class="btn" id="theme">🌙 Dark</button>
 </header>
 <div class="tabs">
-  <button class="tab active" id="tab-scanner" onclick="showTab('scanner')">Scanner</button>
-  <button class="tab" id="tab-preorders" onclick="showTab('preorders')">Pre-orders <span id="potab-count"></span></button>
   <button class="tab" id="tab-intro" onclick="showTab('intro')">Introduction</button>
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
+  <button class="tab active" id="tab-scanner" onclick="showTab('scanner')">Scanner</button>
+  <button class="tab" id="tab-preorders" onclick="showTab('preorders')">Pre-orders <span id="potab-count"></span></button>
+  <span class="grow"></span>
+  <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
+</div>
+
+<div id="loginpanel" class="hidden" style="max-width:360px;margin:60px auto;text-align:center">
+  <div class="card" style="padding:22px">
+    <h3 style="margin:0 0 4px">Log in</h3>
+    <p class="muted" style="font-size:12px;margin:0 0 14px">The Scanner and Pre-orders tabs need a login. Introduction and Appendix are open.</p>
+    <div class="f" style="text-align:left"><label>Name</label><input id="li_name" type="text" autocomplete="username"></div>
+    <div class="f" style="text-align:left"><label>Password</label><input id="li_pwd" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="btn" style="width:100%;margin-top:8px" onclick="doLogin()">Log in</button>
+    <div id="li_err" style="color:var(--bear);font-size:12px;margin-top:8px"></div>
+    <a href="#" class="muted" style="font-size:12px" onclick="$('resetbox').classList.toggle('hidden');return false">Forgot password?</a>
+    <div id="resetbox" class="hidden" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+      <p class="muted" style="font-size:12px;margin:0 0 10px">Enter the email registered to your account to set a new password.</p>
+      <div class="f" style="text-align:left"><label>Name</label><input id="rp_name" type="text"></div>
+      <div class="f" style="text-align:left"><label>Registered email</label><input id="rp_email" type="email"></div>
+      <div class="f" style="text-align:left"><label>New password</label><input id="rp_pwd" type="password"></div>
+      <button class="btn" style="width:100%;margin-top:8px" onclick="doReset()">Reset password</button>
+      <div id="rp_msg" style="font-size:12px;margin-top:8px"></div>
+    </div>
+  </div>
 </div>
 <div class="layout" id="view-scanner">
   <aside id="aside" class="collapsed">
@@ -487,9 +509,28 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 // signal, not yet triggered, Q>=25, and NOT already placed on IG (removed once it's a live working order).
 const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker));
 const TABS=["scanner","preorders","intro","appendix"];
+let AUTH=localStorage.getItem("sq_auth")||"";
 function showTab(name){
-  TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",t!==name);if(b)b.classList.toggle("active",t===name);});
-  if(name==="preorders")renderPreorders();
+  // Scanner + Pre-orders are login-gated (user 2026-06-30): when locked, those tabs show the login panel.
+  const locked=!AUTH && (name==="scanner"||name==="preorders");
+  TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",locked||t!==name);if(b)b.classList.toggle("active",t===name);});
+  $("loginpanel").classList.toggle("hidden",!locked);
+  if(!locked&&name==="preorders")renderPreorders();
+}
+function doLogin(){
+  fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name:$("li_name").value,pwd:$("li_pwd").value})})
+    .then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(j=>{localStorage.setItem("sq_auth",j.token);location.reload();})
+    .catch(()=>{$("li_err").textContent="Wrong name or password.";});
+}
+function doLogout(){localStorage.removeItem("sq_auth");location.reload();}
+function doReset(){
+  fetch("/api/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name:$("rp_name").value,email:$("rp_email").value,new_pwd:$("rp_pwd").value})})
+    .then(r=>{const el=$("rp_msg");
+      if(r.ok){el.style.color="var(--bull)";el.textContent="Password updated — log in above with the new password.";}
+      else{el.style.color="var(--bear)";el.textContent="Name and email do not match an account (or password too short).";}});
 }
 function renderPreorders(){
   const po=DATA.filter(isPreorder);
@@ -510,7 +551,8 @@ function renderPreorders(){
   document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=()=>{showTab('scanner');showDetail(tr.dataset.t);});
 }
 
-Promise.all([fetch("/api/records").then(r=>r.json()),
+if(AUTH)$("logout").style.display="";
+Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.status===401)throw "auth";return r.json();}),
              fetch("/api/positions").then(r=>r.json()).catch(()=>({positions:{}})),
              fetch("/api/pubcounts").then(r=>r.json()).catch(()=>({pubcounts:{}})),
              fetch("/api/working-orders").then(r=>r.json()).catch(()=>({tickers:[]}))])
@@ -526,6 +568,9 @@ Promise.all([fetch("/api/records").then(r=>r.json()),
     if(_ex&&$("intro-card")){$("intro-card").src="/api/card/"+_ex;$("intro-card-cap").innerHTML="A real setup ("+disp(_ex)+"). "+$("intro-card-cap").innerHTML;}
     // If a refresh is already running (started elsewhere), disable the button and show its progress.
     fetch("/api/status").then(x=>x.json()).then(s=>{if(s.refreshing){$("refresh").disabled=true;_refStart=Date.now();pollRefresh();}}).catch(()=>{});
+  })
+  .catch(e=>{ // 401 = no/stale login: clear the token and show the login panel over the Scanner tab.
+    if(e==="auth"){AUTH="";localStorage.removeItem("sq_auth");$("logout").style.display="none";showTab("scanner");}
   });
 </script>
 </body>

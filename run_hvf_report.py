@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.29.0  2026-06-30  Alex Hind   (user 2026-06-30) UNIVERSE: 'Indices & FX' split into separate 'Indices' (24) and
+#                                 'FX' (32) markets; INDICES_FX kept as a legacy alias. Report header updated.
 # 1.28.0  2026-06-30  Alex Hind   (user 2026-06-29) HVF Slack report horizon cap: setups whose expected time-to-target
 #                                 (target_horizon_days, the H1->H3 span) exceeds 9 months are dropped from the Slack
 #                                 blocks (both tradeable + developing) — e.g. MDLZ "~19 months to target" no longer shows.
@@ -269,20 +271,14 @@ COMMODITIES = [
     "ZR=F",   # Rough Rice
 ]
 
-INDICES_FX = [
-    # Major indices + FX (user 2026-06-22: the report is for ALL markets, not just equities).
-    # Internal names resolved to Yahoo via config.YAHOO_MAP. Sub-£1 FX now display correctly via
-    # the adaptive _fmt_price (more decimals on small prices).
+# Split into separate markets (user 2026-06-30) — INDICES and FX were one "Indices & FX" basket.
+INDICES = [
+    # Major market indices. Internal names resolved via config.YAHOO_MAP; raw Yahoo symbols pass through.
     "SPX500",   # S&P 500 index (^GSPC)
     "NASDAQ",   # Nasdaq 100   (^IXIC)
     "UK100",    # FTSE 100     (^FTSE)
     "JPN225",   # Nikkei 225   (^N225)
     "HK50",     # Hang Seng    (^HSI)
-    "USDJPY",   # USD/JPY      (USDJPY=X)
-    "GBPUSD",   # GBP/USD      (GBPUSD=X)
-    "EURUSD",   # EUR/USD      (EURUSD=X)
-    "AUDUSD",   # AUD/USD      (AUDUSD=X)
-    # All major market indices (user 2026-06-29) as raw Yahoo symbols (resolve via YAHOO_MAP fallback).
     "^DJI",       # Dow Jones Industrial Average
     "^RUT",       # Russell 2000
     "^GDAXI",     # DAX (Germany)
@@ -302,13 +298,23 @@ INDICES_FX = [
     "^BVSP",      # Bovespa (Brazil)
     "^MXX",       # IPC (Mexico)
     "000001.SS",  # Shanghai Composite
-    # All major + cross currency pairs (user 2026-06-29) as raw Yahoo FX symbols.
+]
+
+FX = [
+    # Majors (internal names via YAHOO_MAP) + crosses (raw Yahoo =X symbols). Sub-£1 FX display
+    # correctly via the adaptive _fmt_price (more decimals on small prices).
+    "USDJPY",   # USD/JPY      (USDJPY=X)
+    "GBPUSD",   # GBP/USD      (GBPUSD=X)
+    "EURUSD",   # EUR/USD      (EURUSD=X)
+    "AUDUSD",   # AUD/USD      (AUDUSD=X)
     "USDCAD=X", "USDCHF=X", "NZDUSD=X", "EURGBP=X", "EURJPY=X", "GBPJPY=X",
     "EURCHF=X", "AUDJPY=X", "CADJPY=X", "CHFJPY=X", "NZDJPY=X", "EURAUD=X",
     "GBPAUD=X", "EURCAD=X", "GBPCAD=X", "AUDNZD=X", "AUDCAD=X", "EURNZD=X",
     "USDSGD=X", "USDHKD=X", "USDNOK=X", "USDSEK=X", "USDMXN=X", "USDZAR=X",
     "USDCNY=X", "USDINR=X", "USDTRY=X", "USDPLN=X",
 ]
+
+INDICES_FX = INDICES + FX   # legacy alias — anything still importing the combined list keeps working
 
 CRYPTO = [
     # 24/7 crypto (user 2026-06-22: ALL markets). Resolved to Yahoo via config.YAHOO_MAP.
@@ -325,7 +331,8 @@ UNIVERSE = {
     "NASDAQ 100":   NASDAQ100,       # listed before S&P 500 so dual-listed mega-caps file under NASDAQ
     "S&P 500":      SP500,
     "Commodities":  COMMODITIES,    # metals + energy
-    "Indices & FX": INDICES_FX,     # major indices + FX
+    "Indices":      INDICES,        # major market indices (split from "Indices & FX", user 2026-06-30)
+    "FX":           FX,             # currency pairs (split from "Indices & FX", user 2026-06-30)
     "Crypto":       CRYPTO,         # top-5 by market cap
     # DAX suspended 2026-06-05 — re-add when reinstated
     # NB (user 2026-06-22): FTSE 100/250 and S&P 500 are the EQUITY coverage — examples of markets,
@@ -682,7 +689,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         "text": {"type": "mrkdwn",
                  "text": (f"*{len(tradeable)} tradeable* (READY/TRIGGERED ≥{HVF_MIN_RR}:1 R:R)  |  "
                           f"*{len(developing)} developing* (valid pattern, R:R < {HVF_MIN_RR}:1)\n"
-                          f"Scanned: FTSE 100 · FTSE 250 · S&P 500 · Commodities · Indices & FX · Crypto")}
+                          f"Scanned: FTSE 100 · FTSE 250 · NASDAQ 100 · S&P 500 · Commodities · Indices · FX · Crypto")}
     })
     blocks.append({"type": "divider"})
 

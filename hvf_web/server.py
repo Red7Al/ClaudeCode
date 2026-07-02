@@ -15,6 +15,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.4.0   2026-06-30  Alex Hind   (user 2026-06-30) Login: /api/login (Alex/Rich shared-secret, sha256 token) and
+#                                 /api/records now requires X-Auth — gates the Scanner + Pre-orders tabs.
 # 1.3.6   2026-06-29  Alex Hind   (user 2026-06-29 "X post card is empty for ABF.L") /api/thread ALSO renders a card
 #                                 PNG via matplotlib (collect=True) and was OUTSIDE _RENDER_LOCK, so it raced /api/card
 #                                 and both blanked. Wrapped the _generate_x_drafts render in the lock. Card now stays
@@ -68,6 +70,31 @@ _X_HANDLE = "SqueezeSignals"   # our X account (config.py / publish_one_to_x X_H
 import threading as _threading
 _RENDER_LOCK = _threading.Lock()
 
+# ── Login (user 2026-06-30): the Scanner + Pre-orders tabs need a login; Intro/Appendix stay open. ──
+# Credentials live in the SECURE store (hvf_web/web_users.py): PBKDF2-hashed passwords + Fernet-encrypted
+# per-user secrets in gitignored data/web_users.json — nothing in source (user 2026-06-30: settings are
+# private, IG credentials coming). Tokens rotate automatically when a password changes.
+from hvf_web import web_users as _wu
+
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    body = request.get_json(silent=True) or {}
+    name, pwd = (body.get("name") or "").strip(), body.get("pwd") or ""
+    if _wu.verify(name, pwd):
+        return jsonify({"ok": True, "token": _wu.token_for(name), "name": name})
+    return jsonify({"ok": False}), 401
+
+
+@app.route("/api/reset-password", methods=["POST"])
+def api_reset_password():
+    """Password reset gated on the email REGISTERED to the account (user 2026-06-30)."""
+    body = request.get_json(silent=True) or {}
+    ok = _wu.reset_password((body.get("name") or "").strip(), body.get("email") or "",
+                            body.get("new_pwd") or "")
+    return (jsonify({"ok": True}) if ok
+            else (jsonify({"ok": False, "error": "name/email do not match an account (or password too short)"}), 400))
+
 
 def _load_snapshot() -> dict:
     try:
@@ -92,6 +119,9 @@ def index():
 
 @app.route("/api/records")
 def api_records():
+    # Gated (user 2026-06-30): the Scanner/Pre-orders data requires a valid login token.
+    if request.headers.get("X-Auth") not in _wu.valid_tokens():
+        return jsonify({"error": "login required"}), 401
     snap = _load_snapshot()
     # Strip the heavy _card blob from the list payload (only needed for PNG rendering).
     recs = [{k: v for k, v in r.items() if k != "_card"} for r in snap.get("records", [])]

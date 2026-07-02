@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.26.0  2026-06-30  Alex Hind   (user 2026-06-30) MARKET_ORDER: 'Indices & FX' split into 'Indices' + 'FX';
+#                                 'NASDAQ 100' added to the order.
 # 1.25.0  2026-06-26  Alex Hind   (user 2026-06-26, backlog J) STALE_TRIGGER_MAX_PCT=0.20 — get_hvf_signal_mtf drops a
 #                                 TRIGGERED setup whose live price ran >20% beyond entry / past target (stale resolved funnel).
 # 1.24.0  2026-06-22  Alex Hind   (user 2026-06-22) MIN_PUBLISH_QUALITY 70 -> 25 — promote middling-quality clean funnels
@@ -678,7 +680,7 @@ MARKET_PE = 21.0
 
 # Canonical market order for the grouped reports (matches run_hvf_report.UNIVERSE key order).
 # Markets not listed fall to the end, alphabetically (see price_action.group_by_market).
-MARKET_ORDER = ["FTSE 100", "FTSE 250", "S&P 500", "Commodities", "Indices & FX", "Crypto"]
+MARKET_ORDER = ["FTSE 100", "FTSE 250", "NASDAQ 100", "S&P 500", "Commodities", "Indices", "FX", "Crypto"]
 
 # DEVELOPING watch-list display distance (user 2026-06-22: "for developing don't bother to show
 # anything that is over 10% away on price"; the metric is NOW vs ENTRY). A developing pattern whose
