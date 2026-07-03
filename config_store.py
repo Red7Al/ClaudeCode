@@ -118,13 +118,25 @@ def trade_allowed(direction: str = None, market: str = None, location: str = Non
     return True, ""
 
 
+# Regional locations for index tickers (mirror hvf_web/build_snapshot._INDEX_REGION), user 2026-07-03.
+_INDEX_REGION = {
+    "SPX500": "US", "NASDAQ": "US", "^DJI": "US", "^RUT": "US", "^GSPTSE": "US", "^BVSP": "US", "^MXX": "US",
+    "UK100": "Western Europe", "^FTMC": "Western Europe", "^GDAXI": "Western Europe", "^FCHI": "Western Europe",
+    "^STOXX50E": "Western Europe", "^AEX": "Western Europe", "^IBEX": "Western Europe", "^SSMI": "Western Europe",
+    "JPN225": "Asia", "HK50": "Asia", "^AXJO": "Asia", "^BSESN": "Asia", "^NSEI": "Asia", "^KS11": "Asia",
+    "^TWII": "Asia", "^STI": "Asia", "000001.SS": "Asia",
+}
+
+
 def location_of_ticker(ticker: str) -> str:
-    """Coarse location (matches the web app's UK/US/FX buckets) for tickers seen at the order layer."""
+    """Location bucket matching the web app (UK / US / FX / regional-index) for tickers at the order layer."""
     t = ticker or ""
-    if t.endswith(".L"):
-        return "UK"
+    if ticker in _INDEX_REGION:
+        return _INDEX_REGION[ticker]
     if "=X" in t or t in ("USDJPY", "GBPUSD", "EURUSD", "AUDUSD"):
         return "FX"
+    if t.endswith(".L"):
+        return "UK"
     return "US"
 
 

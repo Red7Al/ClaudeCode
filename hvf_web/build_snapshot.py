@@ -37,12 +37,25 @@ PROGRESS = {"done": 0, "total": 0}
 NAME_CACHE = os.path.join(_HERE, "name_cache.json")   # ticker -> company name; names don't change, look up once
 
 
-def _location_of(ticker: str) -> str:
-    t = ticker.upper()
+# Regional location for index tickers (user 2026-07-03: Indices by location — US, Western Europe,
+# Eastern Europe, Asia, and other). FX is its OWN location, separate from Indices.
+_INDEX_REGION = {
+    "SPX500": "US", "NASDAQ": "US", "^DJI": "US", "^RUT": "US", "^GSPTSE": "US", "^BVSP": "US", "^MXX": "US",
+    "UK100": "Western Europe", "^FTMC": "Western Europe", "^GDAXI": "Western Europe", "^FCHI": "Western Europe",
+    "^STOXX50E": "Western Europe", "^AEX": "Western Europe", "^IBEX": "Western Europe", "^SSMI": "Western Europe",
+    "JPN225": "Asia", "HK50": "Asia", "^AXJO": "Asia", "^BSESN": "Asia", "^NSEI": "Asia", "^KS11": "Asia",
+    "^TWII": "Asia", "^STI": "Asia", "000001.SS": "Asia",
+}
+
+
+def _location_of(ticker: str, market: str = "") -> str:
+    t = (ticker or "").upper()
+    if market == "FX" or t.endswith("=X") or t in ("USDJPY", "EURUSD", "GBPUSD", "AUDUSD"):
+        return "FX"
+    if market == "Indices":
+        return _INDEX_REGION.get(ticker, "Other")
     if t.endswith(".L"):
         return "UK"
-    if t.endswith("=X") or t in ("USDJPY", "EURUSD", "GBPUSD"):
-        return "FX"
     return "US"
 
 
@@ -164,7 +177,7 @@ def build():
             _nm = _resolve_name(tk)
             r = sig.get(tk)
             if not (r and r.get("hvf_type")):
-                out.append({"ticker": tk, "name": _nm, "market": market, "location": _location_of(tk),
+                out.append({"ticker": tk, "name": _nm, "market": market, "location": _location_of(tk, market),
                             "has_signal": False, "direction": None, "sector": None, "status": None,
                             "quality": None, "pe": None, "timeframe": None, "rr": None, "insider_pct": None,
                             "entry": None, "stop": None, "target": None, "current_price": None,
@@ -187,7 +200,7 @@ def build():
             out.append({
                 "ticker": tk, "name": _nm, "has_signal": True,
                 "direction": "BULL" if r.get("hvf_type") == "BULLISH" else "BEAR",
-                "location": _location_of(tk), "market": market,
+                "location": _location_of(tk, market), "market": market,
                 "sector": f.get("sector"),
                 "status": r.get("hvf_signal"),
                 "quality": r.get("pattern_quality"),
