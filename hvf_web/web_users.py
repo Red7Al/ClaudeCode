@@ -21,6 +21,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.3.0   2026-07-03  Alex Hind   (user 2026-07-03) get_settings/set_settings — per-user plain preferences (filter
+#                                 defaults for the Config tab); secrets remain in the encrypted store.
 # 1.2.0   2026-06-30  Alex Hind   (user 2026-06-30) Per-user operational log (log_event/get_log, capped 100, shown in
 #                                 the web app's Activity tab); password-change email to the registered address with a
 #                                 not-you warning (trade_email.send_simple_email); name_for_token for per-user APIs.
@@ -208,6 +210,23 @@ def add_user(name: str, pwd: str, email: str):
         salt = _secrets.token_hex(16)
         users[name] = {"salt": salt, "pwd_hash": _hash_pwd(pwd, salt), "email": email, "secrets": {}}
         _save(users)
+
+
+# ── Per-user application settings (Config tab, user 2026-07-03) — plain (non-secret) preferences ──────
+def get_settings(name: str) -> dict:
+    u = _ensure_seeded().get(name)
+    return dict((u or {}).get("settings") or {})
+
+
+def set_settings(name: str, settings: dict) -> bool:
+    with _LOCK:
+        users = _load()
+        u = users.get(name)
+        if not u:
+            return False
+        u["settings"] = settings or {}
+        _save(users)
+    return True
 
 
 # ── Per-user encrypted secrets (for the coming IG credentials) ────────────────────────────────────────

@@ -15,6 +15,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.5.0   2026-07-03  Alex Hind   (user 2026-07-03) Configuration tab APIs: /api/config GET/POST (per-user filter
+#                                 defaults + shared per-source execution switches via config_store, changes logged to
+#                                 the user's activity); /api/preorder-delete; /api/refresh gated + logged.
 # 1.4.0   2026-06-30  Alex Hind   (user 2026-06-30) Login: /api/login (Alex/Rich shared-secret, sha256 token) and
 #                                 /api/records now requires X-Auth — gates the Scanner + Pre-orders tabs.
 # 1.3.6   2026-06-29  Alex Hind   (user 2026-06-29 "X post card is empty for ABF.L") /api/thread ALSO renders a card
@@ -96,6 +99,33 @@ def api_reset_password():
                             body.get("new_pwd") or "", ip=request.remote_addr or "")
     return (jsonify({"ok": True}) if ok
             else (jsonify({"ok": False, "error": "name/email do not match an account (or password too short)"}), 400))
+
+
+@app.route("/api/config", methods=["GET", "POST"])
+def api_config():
+    """Per-user application configuration (user 2026-07-03, Config tab): the user's own filter
+    defaults (stored in their web_users record) + the SHARED trade-execution toggles per source
+    (Supabase app_config — one trading account, so the switches are global; every change records
+    who flipped it and lands in their activity log)."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    import config_store as _cs
+    if request.method == "GET":
+        return jsonify({"name": name, "filters": _wu.get_settings(name).get("filters", {}),
+                        "exec": _cs.get_exec_flags(), "exec_sources": _cs.EXEC_SOURCES})
+    body = request.get_json(silent=True) or {}
+    if "filters" in body:
+        s = _wu.get_settings(name)
+        s["filters"] = {k: v for k, v in (body["filters"] or {}).items() if isinstance(k, str)}
+        _wu.set_settings(name, s)
+        _wu.log_event(name, "Saved filter defaults (Config)")
+    if "exec" in body:
+        for src, on in (body["exec"] or {}).items():
+            if src in _cs.EXEC_SOURCES:
+                _cs.set_value(f"exec_{src}", "true" if on else "false", updated_by=name)
+                _wu.log_event(name, f"Trade execution for {src} switched {'ON' if on else 'OFF'}")
+    return jsonify({"ok": True})
 
 
 @app.route("/api/userlog")

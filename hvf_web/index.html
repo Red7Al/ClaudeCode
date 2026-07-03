@@ -95,6 +95,7 @@ aside.collapsed{display:none}
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')">Pre-orders <span id="potab-count"></span></button>
   <button class="tab" id="tab-orderops" onclick="showTab('orderops')">Order (Operations)</button>
   <button class="tab" id="tab-activity" onclick="showTab('activity')">My activity</button>
+  <button class="tab" id="tab-config" onclick="showTab('config')">Configuration</button>
   <span class="grow"></span>
   <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
 </div>
@@ -187,6 +188,25 @@ aside.collapsed{display:none}
     <thead><tr><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
     <tbody id="oo-rows"></tbody>
   </table></div>
+</div>
+
+<div id="view-config" class="hidden" style="padding:18px 22px;max-width:760px">
+  <h2 style="margin:0 0 4px">Configuration</h2>
+  <p class="muted" style="font-size:12px;margin:0 0 14px">Your personal defaults plus the shared trade-execution switches. Every change is recorded in your activity log.</p>
+
+  <div class="card"><h4>My filter defaults</h4>
+    <p class="muted" style="font-size:12px">Set the Scanner filters exactly how you like them, then save — they'll be applied automatically every time <b>you</b> log in (and "Reset filters" returns to them). Each user has their own.</p>
+    <div id="cfg-defaults" class="muted" style="font-size:12px;margin:8px 0">loading…</div>
+    <button class="btn" onclick="saveFilterDefaults()">Save current filters as my defaults</button>
+    <button class="btn" onclick="clearFilterDefaults()">Clear my defaults</button>
+  </div>
+
+  <div class="card"><h4>Trade execution by source</h4>
+    <p class="muted" style="font-size:12px">Yes = that source may place live IG trades/orders; No = it scans and reports but places <b>nothing</b>. These switches are shared (one trading account) — the change is attributed to you.</p>
+    <div id="cfg-exec">loading…</div>
+    <button class="btn" style="margin-top:8px" onclick="saveExec()">Save execution switches</button>
+    <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
+  </div>
 </div>
 
 <div id="view-activity" class="hidden" style="padding:18px 22px;max-width:760px">
@@ -510,7 +530,10 @@ F.forEach(id=>$(id).addEventListener("input",applyAll));
 $("viz").addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(!el)return;
   const f=$(el.dataset.fk); if(!f)return; f.value=(f.value===el.dataset.fv)?"":el.dataset.fv; applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
-$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});$("f_qmin").value=45;$("f_rrmin").value=3.1;$("f_dsmax").value=90;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
+$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});
+  // Built-in defaults first, then the user's OWN saved defaults on top (Config tab, user 2026-07-03).
+  $("f_qmin").value=45;$("f_rrmin").value=3.1;$("f_dsmax").value=90;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;
+  applyUserDefaults();applyAll();};
 $("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});signalOnly=false;$("signalonly").textContent="Squeeze only ✗";$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
 $("togglefilters").onclick=()=>{const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").textContent="☰ Filters ("+(hidden?"Show":"Hide")+")";};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").textContent="Squeeze only "+(signalOnly?"✓":"✗");applyAll();};
@@ -540,11 +563,11 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 // signal, not yet triggered, and quality >= 25 (user 2026-06-29: drop the low-quality noise)
 // signal, not yet triggered, Q>=25, and NOT already placed on IG (removed once it's a live working order).
 const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker));
-const TABS=["scanner","preorders","orderops","activity","intro","appendix"];
+const TABS=["scanner","preorders","orderops","activity","config","intro","appendix"];
 let AUTH=localStorage.getItem("sq_auth")||"";
 function showTab(name){
   // All data tabs are login-gated (user 2026-06-30): when locked they show the login panel.
-  const locked=!AUTH && (name==="scanner"||name==="preorders"||name==="activity"||name==="orderops");
+  const locked=!AUTH && (name==="scanner"||name==="preorders"||name==="activity"||name==="orderops"||name==="config");
   TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",locked||t!==name);if(b)b.classList.toggle("active",t===name);});
   $("loginpanel").classList.toggle("hidden",!locked);
   // The header controls are Scanner tools (filters / Squeeze-only / refresh) — hide them on other
@@ -554,6 +577,42 @@ function showTab(name){
   if(!locked&&name==="preorders")renderPreorders();
   if(!locked&&name==="activity")renderActivity();
   if(!locked&&name==="orderops")renderOrderOps();
+  if(!locked&&name==="config")renderConfig();
+}
+// ── Configuration tab (user 2026-07-03): per-user filter defaults + shared execution switches ──────
+let USER_FILTERS={};
+const FILTER_IDS=()=>F.concat(["f_days"]);
+function applyUserDefaults(){
+  Object.entries(USER_FILTERS).forEach(([k,v])=>{const el=$(k);if(el&&v!=null&&v!=="")el.value=v;});
+  if(USER_FILTERS.f_days){$("dlbl").textContent=USER_FILTERS.f_days;}
+}
+function renderConfig(){
+  fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(j=>{
+      USER_FILTERS=j.filters||{};
+      const n=Object.keys(USER_FILTERS).length;
+      $("cfg-defaults").textContent=n?("Saved defaults: "+Object.entries(USER_FILTERS).map(([k,v])=>`${k.replace('f_','')}=${v}`).join(" · ")):"No saved defaults yet — using the built-in ones.";
+      $("cfg-exec").innerHTML=(j.exec_sources||[]).map(s=>{const on=(j.exec||{})[s]!==false;
+        return `<div class="kv"><span>${s}</span><label style="cursor:pointer"><input type="checkbox" class="cfg-ex" data-s="${s}" ${on?"checked":""}> ${on?"Yes":"No"}</label></div>`;}).join("");
+      document.querySelectorAll(".cfg-ex").forEach(c=>c.onchange=()=>{c.parentElement.lastChild.textContent=" "+(c.checked?"Yes":"No");});
+    })
+    .catch(()=>{$("cfg-exec").textContent="Could not load — try logging in again.";});
+}
+function saveFilterDefaults(){
+  const f={};FILTER_IDS().forEach(k=>{const el=$(k);if(el&&el.value!=="")f[k]=el.value;});
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({filters:f})})
+    .then(r=>{if(!r.ok)throw 0;USER_FILTERS=f;$("cfg-msg").style.color="var(--bull)";$("cfg-msg").textContent="Filter defaults saved.";renderConfig();})
+    .catch(()=>{$("cfg-msg").style.color="var(--bear)";$("cfg-msg").textContent="Save failed.";});
+}
+function clearFilterDefaults(){
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({filters:{}})})
+    .then(()=>{USER_FILTERS={};renderConfig();});
+}
+function saveExec(){
+  const ex={};document.querySelectorAll(".cfg-ex").forEach(c=>ex[c.dataset.s]=c.checked);
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({exec:ex})})
+    .then(r=>{if(!r.ok)throw 0;$("cfg-msg").style.color="var(--bull)";$("cfg-msg").textContent="Execution switches saved.";})
+    .catch(()=>{$("cfg-msg").style.color="var(--bear)";$("cfg-msg").textContent="Save failed.";});
 }
 // Generic column sort for the simple tables (user 2026-06-30: "allow click on title ... any table"):
 // nulls sink, numbers compare numerically, everything else as strings.
@@ -665,9 +724,11 @@ if(AUTH)$("logout").style.display="";
 Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.status===401)throw "auth";return r.json();}),
              fetch("/api/positions").then(r=>r.json()).catch(()=>({positions:{}})),
              fetch("/api/pubcounts").then(r=>r.json()).catch(()=>({pubcounts:{}})),
-             fetch("/api/working-orders").then(r=>r.json()).catch(()=>({tickers:[]}))])
-  .then(([j,p,pc,wo])=>{
+             fetch("/api/working-orders").then(r=>r.json()).catch(()=>({tickers:[]})),
+             fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({}))])
+  .then(([j,p,pc,wo,cfg])=>{
     POS=p.positions||{}; PUB=pc.pubcounts||{}; IGWO=new Set(wo.tickers||[]);
+    USER_FILTERS=(cfg&&cfg.filters)||{}; applyUserDefaults();   // the user's own saved defaults (Config tab)
     DATA=j.records||[]; DATA.forEach(augment);
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");

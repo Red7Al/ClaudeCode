@@ -23,6 +23,9 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.21.0  2026-07-03  Alex Hind   (user 2026-07-03, Config tab) Per-source trade-execution toggles: open_trade and
+#                                 place_hvf_order_from_sig check config_store.monitor_enabled(session) — a source
+#                                 switched off scans/reports but places nothing. Gate fails OPEN on config errors.
 # 1.20.0  2026-06-29  Alex Hind   (user 2026-06-29) Bridge tuning: WO_PROXIMITY_PCT 1.0 -> 1.5 (place the IG working
 #                                 order once price is within 1.5% of entry) and a new WO_MIN_QUALITY=50 floor in
 #                                 place_hvf_order_from_sig — a setup only becomes a live IG order when Quality > 50.
@@ -1076,6 +1079,16 @@ def open_trade(
         deal_id (str) on success
         None on failure or circuit breaker block
     """
+
+    # Step 0 — Per-source execution toggle (user 2026-07-03, Config tab): a source switched off in
+    # app_config scans/reports but places NO trades. Fails OPEN on any config error.
+    try:
+        from config_store import monitor_enabled
+        if not monitor_enabled(session_name):
+            log.info(f"{ticker}: trade execution for {session_name} is switched OFF (Config) — trade not placed.")
+            return None
+    except Exception:
+        pass
 
     # Step 1 — Circuit breakers (session_name enables per-session + per-instrument caps)
     ok, reason = check_circuit_breakers(user_id, ticker, session_name)
@@ -2502,6 +2515,16 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
     target    = sig.get("hvf_target")
     if not all((ticker, direction, entry, stop, target)):
         return None
+
+    # Per-source execution toggle (user 2026-07-03, Config tab): a source switched off in app_config
+    # scans/reports but places NO orders.
+    try:
+        from config_store import monitor_enabled
+        if not monitor_enabled(session_name):
+            log.info(f"{ticker}: trade execution for {session_name} is switched OFF (Config) — no working order.")
+            return None
+    except Exception:
+        pass   # gate fails OPEN — a config error must never stop trading
 
     # Quality floor (user 2026-06-29): only route a setup to a LIVE IG working order when its pattern
     # Quality is over WO_MIN_QUALITY (50). Below that it stays report-only — never becomes an order.
