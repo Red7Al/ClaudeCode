@@ -365,7 +365,10 @@ def api_working_orders():
         from db_pool import get_db
         db = get_db()
         try:
-            rows = db.run("select distinct ticker from working_orders where status = 'PENDING'")
+            # PENDING = live on IG; DELETED (last 30 days) = dismissed from Pre-orders by a user
+            # (user 2026-07-03) — hidden for a month so a future NEW funnel can resurface.
+            rows = db.run("select distinct ticker from working_orders where status = 'PENDING' "
+                          "or (status = 'DELETED' and updated_at > now() - interval '30 days')")
             tickers = [r[0] for r in (rows or []) if r[0]]
         finally:
             db.close()
@@ -628,6 +631,45 @@ def _bridge_loop():
         except Exception as e:
             log.warning(f"order bridge pass failed (will retry): {e}")
         _t.sleep(interval_h * 3600)
+
+
+@app.route("/api/preorder-delete", methods=["POST"])
+def api_preorder_delete():
+    """Delete (dismiss) one or more pre-orders (user 2026-07-03): records a DELETED row in
+    working_orders — visible in Order (Operations) — and hides the ticker from Pre-orders for 30
+    days. Login-gated; the acting user is recorded on the row and in their activity log."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    body = request.get_json(silent=True) or {}
+    tickers = [t for t in (body.get("tickers") or []) if isinstance(t, str) and t.strip()][:50]
+    if not tickers:
+        return jsonify({"ok": False, "error": "no tickers"}), 400
+    snap = {r.get("ticker"): r for r in _load_snapshot().get("records", [])}
+    deleted = []
+    try:
+        from db_pool import get_db
+        import time as _t
+        db = get_db()
+        try:
+            for tk in tickers:
+                r = snap.get(tk) or {}
+                db.run("insert into working_orders (deal_ref, user_id, ticker, epic, direction, size, "
+                       "entry_level, stop_level, limit_level, otype, hvf_type, status, session, notes) "
+                       "values (:ref,:uid,:tk,:epic,:dir,0,:entry,:stop,:tgt,'STOP',:ht,'DELETED','WEB_USER',:no)",
+                       ref=f"WEBDEL-{tk}-{int(_t.time())}", uid=name, tk=tk, epic=tk,
+                       dir=("BUY" if r.get("direction") == "BULL" else "SELL"),
+                       entry=float(r.get("entry") or 0), stop=r.get("stop"), tgt=r.get("target"),
+                       ht=("BULLISH" if r.get("direction") == "BULL" else "BEARISH"),
+                       no=f"Deleted from Pre-orders by {name}")
+                deleted.append(tk)
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"preorder-delete failed: {e}")
+        return jsonify({"ok": False, "error": "database error", "deleted": deleted}), 500
+    _wu.log_event(name, f"Deleted pre-order(s): {', '.join(deleted)}")
+    return jsonify({"ok": True, "deleted": deleted})
 
 
 @app.route("/api/order-ops")

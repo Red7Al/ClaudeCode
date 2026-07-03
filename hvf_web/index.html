@@ -93,7 +93,7 @@ aside.collapsed{display:none}
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
   <button class="tab active" id="tab-scanner" onclick="showTab('scanner')">Scanner</button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')">Pre-orders <span id="potab-count"></span></button>
-  <button class="tab" id="tab-orderops" onclick="showTab('orderops')">Order ops</button>
+  <button class="tab" id="tab-orderops" onclick="showTab('orderops')">Order (Operations)</button>
   <button class="tab" id="tab-activity" onclick="showTab('activity')">My activity</button>
   <span class="grow"></span>
   <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
@@ -164,10 +164,13 @@ aside.collapsed{display:none}
 </div>
 
 <div id="view-preorders" class="hidden">
-  <div class="count" id="po-count"></div>
+  <div class="viz" id="po-viz" style="border-bottom:none;padding:10px 16px 0"></div>
+  <div class="count" id="po-count" style="display:flex;align-items:center;gap:14px"><span id="po-count-text"></span><span class="grow"></span>
+    <button class="btn" id="po-delete" onclick="deletePreorders()" disabled>Delete selected</button></div>
   <div class="tablewrap">
     <table>
       <thead><tr>
+        <th style="cursor:default"><input type="checkbox" id="po-all" onclick="poToggleAll(this)"></th>
         <th data-pk="ticker">Ticker</th><th data-pk="name">Name</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
         <th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="current_price">Now</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
       </tr></thead>
@@ -177,8 +180,9 @@ aside.collapsed{display:none}
 </div>
 
 <div id="view-orderops" class="hidden" style="padding:18px 22px">
-  <h2 style="margin:0 0 4px">Order operations — database → IG</h2>
-  <p class="muted" style="font-size:12px;margin:0 0 14px">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
+  <h2 style="margin:0 0 4px">Order (Operations) — database → IG</h2>
+  <p class="muted" style="font-size:12px;margin:0 0 14px">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
+  <div class="viz" id="oo-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <div class="tablewrap"><table>
     <thead><tr><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
     <tbody id="oo-rows"></tbody>
@@ -562,6 +566,15 @@ function genSort(rows,k,dir){
 let OO_ROWS=[], ooSortK="updated_at", ooSortDir=-1;
 function paintOrderOps(){
   const st=s=>s==="PENDING"?"var(--accent)":s==="FILLED"?"var(--bull)":s==="WATCHING"?"#d29922":"var(--muted)";
+  // Chart visuals (user 2026-07-03): the operational mix at a glance. Non-filtering (dummy keys).
+  const oby=k=>OO_ROWS.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
+  $("oo-viz").innerHTML=
+    `<div class="vizbars">`+
+      barChart("Status",oby("status"),"oo_x",k=>k==="PENDING"?"var(--accent)":k==="FILLED"?"var(--bull)":k==="WATCHING"?"#d29922":"var(--bear)")+
+      barChart("Direction",oby("direction"),"oo_x",k=>k==="BUY"?"var(--bull)":"var(--bear)")+
+      barChart("Source",oby("session"),"oo_x")+
+      barChart("Ticker",oby("ticker"),"oo_x")+
+    `</div>`;
   $("oo-rows").innerHTML=genSort(OO_ROWS,ooSortK,ooSortDir).map(r=>`<tr>
     <td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td><b>${r.ticker||''}</b></td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
@@ -610,9 +623,21 @@ function renderPreorders(){
     if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1;
     return (x<y?-1:x>y?1:0)*poSortDir;});
   const nR=po.filter(r=>r.status==="READY").length;
-  $("po-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${po.length}</b> instruments with a pre-order — waiting for the entry to trigger <span class="muted">(${nR} READY · ${po.length-nR} DEVELOPING). Click a row to open its detail.</span>`;
+  $("po-count-text").innerHTML=`<b style="font-size:15px;color:var(--fg)">${po.length}</b> instruments with a pre-order — waiting for the entry to trigger <span class="muted">(${nR} READY · ${po.length-nR} DEVELOPING). Click a row for detail; tick + Delete selected to dismiss.</span>`;
+  // Chart visuals, same set as the Scanner (user 2026-07-03). Non-filtering here (dummy filter keys).
+  const pby=k=>po.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
+  $("po-viz").innerHTML=
+    `<div class="vizsector">`+pieChart("Sector",pby("sector"),"po_x")+`</div>`+
+    `<div class="vizbars">`+
+      barChart("Direction",pby("direction"),"po_x",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
+      barChart("Status",pby("status"),"po_x",k=>k==="READY"?"var(--accent)":"#d29922")+
+      barChart("Location",pby("location"),"po_x")+
+      barChart("Market",pby("market"),"po_x")+
+      barChart("Timeframe",pby("timeframe"),"po_x")+
+    `</div>`;
   $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
-    return `<tr data-t="${r.ticker}"><td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
+    return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
+      <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
       <td><span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></td>
       <td>${r.status}</td><td>${r.market||''}</td>
       <td><b>${f2(r.entry)}</b></td><td style="color:var(--bear)">${f2(r.stop)}</td><td style="color:var(--bull)">${f2(r.target)}</td><td>${f2(r.current_price)}</td>
@@ -620,8 +645,20 @@ function renderPreorders(){
       <td>${r.rr!=null?r.rr.toFixed(1):''}</td>
       <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td>
       <td>${(r.timeframe||'').replace('daily-','D')}</td></tr>`;}).join("")
-    || `<tr><td colspan="13" class="empty">No pre-orders right now.</td></tr>`;
-  document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=()=>{showTab('scanner');showDetail(tr.dataset.t);});
+    || `<tr><td colspan="14" class="empty">No pre-orders right now.</td></tr>`;
+  document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=e=>{if(e.target.type==="checkbox")return;showTab('scanner');showDetail(tr.dataset.t);});
+  poUpdateBtn();
+}
+function poSelected(){return [...document.querySelectorAll(".po-sel:checked")].map(c=>c.dataset.t);}
+function poUpdateBtn(){const n=poSelected().length;const b=$("po-delete");b.disabled=!n;b.textContent=n?`Delete selected (${n})`:"Delete selected";}
+function poToggleAll(cb){document.querySelectorAll(".po-sel").forEach(c=>c.checked=cb.checked);poUpdateBtn();}
+function deletePreorders(){
+  const tks=poSelected(); if(!tks.length)return;
+  if(!confirm(`Delete ${tks.length} pre-order(s)? They move to Order (Operations) as DELETED and stay hidden from this list for 30 days.`))return;
+  fetch("/api/preorder-delete",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({tickers:tks})})
+    .then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(()=>{tks.forEach(t=>IGWO.add(t));$("po-all").checked=false;renderPreorders();})
+    .catch(()=>alert("Delete failed — try logging in again."));
 }
 
 if(AUTH)$("logout").style.display="";
