@@ -518,7 +518,7 @@ let _refStart=0, _lastTens=-1;
 $("refresh").onclick=()=>{ if($("refresh").disabled)return;
   if(!confirm(`Rebuild the snapshot now? Scans the full universe (${DATA.length} instruments) — takes a few minutes. The page keeps working with current data and reloads automatically when done.`))return;
   $("refresh").disabled=true; $("refresh").textContent="↻ Starting…"; _refStart=Date.now(); _lastTens=-1;
-  fetch("/api/refresh",{method:"POST"}).then(x=>x.json()).then(j=>{ pollRefresh(); })
+  fetch("/api/refresh",{method:"POST",headers:{"X-Auth":AUTH}}).then(x=>x.json()).then(j=>{ pollRefresh(); })
     .catch(()=>{$("refresh").textContent="↻ Refresh failed";$("refresh").disabled=false;});};
 function pollRefresh(){
   fetch("/api/status").then(x=>x.json()).then(s=>{

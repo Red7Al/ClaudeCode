@@ -401,9 +401,15 @@ def _do_rebuild() -> bool:
 
 @app.route("/api/refresh", methods=["POST", "GET"])
 def api_refresh():
-    """Trigger an on-demand snapshot rebuild in a background thread (user 2026-06-28)."""
+    """Trigger an on-demand snapshot rebuild in a background thread (user 2026-06-28). Login-gated,
+    and the request is recorded in the acting user's activity log (user 2026-07-03)."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
     if _REFRESHING["on"]:
+        _wu.log_event(name, "Requested data refresh (one already running)")
         return jsonify({"started": False, "busy": True})
+    _wu.log_event(name, "Requested data refresh (full universe rebuild)")
     import threading
     threading.Thread(target=_do_rebuild, daemon=True).start()
     return jsonify({"started": True})
