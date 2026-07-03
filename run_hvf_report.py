@@ -872,6 +872,12 @@ def main():
     log.info(f"HVF Daily Report starting — {scan_time} UTC")
 
     all_results = scan_universe()
+    # Record every TRIGGERED funnel to Supabase for performance tracking (user 2026-06-30, HVF status).
+    try:
+        from hvf_recorder import record_triggers
+        record_triggers([r for res in all_results.values() for r in res], "daily_report")
+    except Exception as _e:
+        log.warning(f"hvf_triggers recording skipped: {_e}")
     tradeable, developing = categorise(all_results)
 
     # Summary to stdout

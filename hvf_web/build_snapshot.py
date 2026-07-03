@@ -114,6 +114,13 @@ def build():
     from run_hvf_report import UNIVERSE
     PROGRESS.update(done=0, total=sum(len(t) for t in UNIVERSE.values()))
     scan = scan_universe(progress_cb=lambda d, t: PROGRESS.update(done=d, total=t))
+    # Record every TRIGGERED funnel to Supabase for performance tracking (user 2026-06-30, HVF status).
+    # Deduped per funnel instance inside the recorder; a failure never blocks the build.
+    try:
+        from hvf_recorder import record_triggers
+        record_triggers([r for res in scan.values() for r in res], "snapshot_build")
+    except Exception as _e:
+        log.warning(f"hvf_triggers recording skipped: {_e}")
     sig = {r.get("ticker"): r for results in scan.values() for r in results if r.get("hvf_type")}
     total = sum(len(t) for t in UNIVERSE.values())
     log.info(f"{len(sig)} signals of {total} monitored instruments; building full-universe records ...")
