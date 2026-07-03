@@ -255,6 +255,12 @@ aside.collapsed{display:none}
     <button class="btn" onclick="clearFilterDefaults()">Clear my defaults</button>
   </div>
 
+  <div class="card"><h4>Trade filters — direction, market, location</h4>
+    <p class="muted" style="font-size:12px">Only ticked values may be traded. Ticking everything (or nothing) in a group = no restriction. Shared switches; changes are attributed to you and checked live before every trade.</p>
+    <div id="cfg-trade">loading…</div>
+    <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
+  </div>
+
   <div class="card"><h4>Trade execution by source</h4>
     <p class="muted" style="font-size:12px">Yes = that source may place live IG trades/orders; No = it scans and reports but places <b>nothing</b>. These switches are shared (one trading account) — the change is attributed to you.</p>
     <div id="cfg-exec">loading…</div>
@@ -665,6 +671,12 @@ function renderConfig(){
       $("cfg-exec").innerHTML=(j.exec_sources||[]).map(s=>{const on=(j.exec||{})[s]!==false;
         return `<div class="kv"><span>${s}</span><label style="cursor:pointer"><input type="checkbox" class="cfg-ex" data-s="${s}" ${on?"checked":""}> ${on?"Yes":"No"}</label></div>`;}).join("");
       document.querySelectorAll(".cfg-ex").forEach(c=>c.onchange=()=>{c.parentElement.lastChild.textContent=" "+(c.checked?"Yes":"No");});
+      // Trade filters (user 2026-07-03): direction / market / location allow-lists. Empty stored = all allowed.
+      const tf=j.trade||{}, groups=[["directions",["BULL","BEAR"]],["markets",uniq("market")],["locations",uniq("location")]];
+      $("cfg-trade").innerHTML=groups.map(([g,opts])=>{
+        const allowed=tf[g]||[];
+        return `<div style="margin:6px 0"><b style="font-size:12px;text-transform:uppercase;color:var(--muted)">${g}</b><div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px">`+
+          opts.map(o=>`<label style="cursor:pointer;font-size:13px"><input type="checkbox" class="cfg-tf" data-g="${g}" data-v="${o}" ${(!allowed.length||allowed.includes(o))?"checked":""}> ${g==="locations"?locName(o):o}</label>`).join("")+`</div></div>`;}).join("");
     })
     .catch(()=>{$("cfg-exec").textContent="Could not load — try logging in again.";});
 }
@@ -677,6 +689,16 @@ function saveFilterDefaults(){
 function clearFilterDefaults(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({filters:{}})})
     .then(()=>{USER_FILTERS={};renderConfig();});
+}
+function saveTradeFilters(){
+  const t={directions:[],markets:[],locations:[]};
+  document.querySelectorAll(".cfg-tf:checked").forEach(c=>t[c.dataset.g].push(c.dataset.v));
+  // A fully-ticked group = no restriction (send empty so the engine stores ALL).
+  const totals={directions:2,markets:uniq("market").length,locations:uniq("location").length};
+  Object.keys(t).forEach(g=>{if(t[g].length===totals[g]||t[g].length===0)t[g]=[];});
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({trade:t})})
+    .then(r=>{if(!r.ok)throw 0;$("cfg-msg").style.color="var(--bull)";$("cfg-msg").textContent="Trade filters saved.";})
+    .catch(()=>{$("cfg-msg").style.color="var(--bear)";$("cfg-msg").textContent="Save failed.";});
 }
 function saveExec(){
   const ex={};document.querySelectorAll(".cfg-ex").forEach(c=>ex[c.dataset.s]=c.checked);

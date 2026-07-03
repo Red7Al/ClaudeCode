@@ -1080,12 +1080,18 @@ def open_trade(
         None on failure or circuit breaker block
     """
 
-    # Step 0 — Per-source execution toggle (user 2026-07-03, Config tab): a source switched off in
-    # app_config scans/reports but places NO trades. Fails OPEN on any config error.
+    # Step 0 — Per-source execution toggle + trade filters (user 2026-07-03, Config tab). CHECKED
+    # LIVE on every trade (fresh DB read — the config can change while a user is online). Fails OPEN
+    # on any config error.
     try:
-        from config_store import monitor_enabled
+        from config_store import monitor_enabled, trade_allowed, location_of_ticker
         if not monitor_enabled(session_name):
             log.info(f"{ticker}: trade execution for {session_name} is switched OFF (Config) — trade not placed.")
+            return None
+        _ok, _why = trade_allowed(direction=("BULL" if direction == "BUY" else "BEAR"),
+                                  location=location_of_ticker(ticker))
+        if not _ok:
+            log.info(f"{ticker}: blocked by trade filters (Config) — {_why}.")
             return None
     except Exception:
         pass
@@ -2516,12 +2522,18 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
     if not all((ticker, direction, entry, stop, target)):
         return None
 
-    # Per-source execution toggle (user 2026-07-03, Config tab): a source switched off in app_config
-    # scans/reports but places NO orders.
+    # Per-source execution toggle + trade filters (user 2026-07-03, Config tab): a source switched
+    # off, or a direction/market/location outside the configured allow-lists, places NO orders.
     try:
-        from config_store import monitor_enabled
+        from config_store import monitor_enabled, trade_allowed, location_of_ticker
         if not monitor_enabled(session_name):
             log.info(f"{ticker}: trade execution for {session_name} is switched OFF (Config) — no working order.")
+            return None
+        _dir = "BULL" if sig.get("hvf_type") == "BULLISH" else "BEAR"
+        _ok, _why = trade_allowed(direction=_dir, market=sig.get("index"),
+                                  location=sig.get("location") or location_of_ticker(ticker))
+        if not _ok:
+            log.info(f"{ticker}: blocked by trade filters (Config) — {_why}.")
             return None
     except Exception:
         pass   # gate fails OPEN — a config error must never stop trading

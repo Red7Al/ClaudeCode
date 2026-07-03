@@ -113,8 +113,17 @@ def api_config():
     import config_store as _cs
     if request.method == "GET":
         return jsonify({"name": name, "filters": _wu.get_settings(name).get("filters", {}),
-                        "exec": _cs.get_exec_flags(), "exec_sources": _cs.EXEC_SOURCES})
+                        "exec": _cs.get_exec_flags(), "exec_sources": _cs.EXEC_SOURCES,
+                        "trade": _cs.get_trade_filters()})
     body = request.get_json(silent=True) or {}
+    if "trade" in body:
+        t = body["trade"] or {}
+        for fname, key in _cs.TRADE_FILTER_KEYS.items():
+            vals = [str(x) for x in (t.get(fname) or []) if isinstance(x, str)]
+            _cs.set_value(key, ",".join(vals) if vals else "ALL", updated_by=name)
+        _wu.log_event(name, "Saved trade filters (Config): " +
+                      "; ".join(f"{k}={','.join(v) if v else 'ALL'}" for k, v in
+                                ((k2, t.get(k2) or []) for k2 in _cs.TRADE_FILTER_KEYS)))
     if "filters" in body:
         s = _wu.get_settings(name)
         s["filters"] = {k: v for k, v in (body["filters"] or {}).items() if isinstance(k, str)}

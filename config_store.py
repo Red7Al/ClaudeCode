@@ -89,6 +89,45 @@ def get_exec_flags() -> dict:
     return flags
 
 
+TRADE_FILTER_KEYS = {"directions": "trade_directions", "markets": "trade_markets", "locations": "trade_locations"}
+
+
+def get_trade_filters() -> dict:
+    """{directions:[...], markets:[...], locations:[...]} — empty list = no restriction (all allowed)."""
+    out = {}
+    for name, key in TRADE_FILTER_KEYS.items():
+        v = get_value(key, "")
+        out[name] = [x.strip() for x in v.split(",") if x.strip()] if (v and v != "ALL") else []
+    return out
+
+
+def trade_allowed(direction: str = None, market: str = None, location: str = None) -> tuple:
+    """Trade-filter gate (user 2026-07-03, Config tab): direction is BULL/BEAR; market/location as in
+    the scanner. A missing/empty stored filter = allow all; unknown attribute values pass (fail OPEN).
+    Returns (allowed, reason)."""
+    try:
+        f = get_trade_filters()
+        if direction and f["directions"] and direction not in f["directions"]:
+            return False, f"direction {direction} not in allowed {f['directions']}"
+        if market and f["markets"] and market not in f["markets"]:
+            return False, f"market {market} not in allowed {f['markets']}"
+        if location and f["locations"] and location not in f["locations"]:
+            return False, f"location {location} not in allowed {f['locations']}"
+    except Exception as e:
+        log.warning(f"trade filters read failed (allowing): {e}")
+    return True, ""
+
+
+def location_of_ticker(ticker: str) -> str:
+    """Coarse location (matches the web app's UK/US/FX buckets) for tickers seen at the order layer."""
+    t = ticker or ""
+    if t.endswith(".L"):
+        return "UK"
+    if "=X" in t or t in ("USDJPY", "GBPUSD", "EURUSD", "AUDUSD"):
+        return "FX"
+    return "US"
+
+
 def monitor_enabled(session_name: str) -> bool:
     """The trade-execution gate for a source (session). Unknown/unset sources are ENABLED, and any
     DB failure fails OPEN — a config read error must never silently stop trading."""

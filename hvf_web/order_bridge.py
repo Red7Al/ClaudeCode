@@ -46,7 +46,9 @@ def _candidates() -> list:
         return []
     out = []
     for r in records:
-        if not r.get("has_signal") or r.get("status") != "READY":
+        # READY and TRIGGERED both qualify (user 2026-07-03) — a fresh trigger still within 1.5% of
+        # entry is pre-orderable at the same levels.
+        if not r.get("has_signal") or r.get("status") not in ("READY", "TRIGGERED"):
             continue
         q, e, p = r.get("quality"), r.get("entry"), r.get("current_price")
         if not (isinstance(q, (int, float)) and q > 50 and e and p):
@@ -102,6 +104,7 @@ def run_bridge() -> dict:
             "hvf_h3_level": r.get("entry"), "hvf_stop_level": r.get("stop"), "hvf_target": r.get("target"),
             "hvf_quality": r.get("quality"), "hvf_risk_reward": r.get("rr"),
             "hvf_timeframe": r.get("timeframe"),
+            "index": r.get("market"), "location": r.get("location"),   # for the Config trade filters
         }
         summary["attempted"] += 1
         try:
