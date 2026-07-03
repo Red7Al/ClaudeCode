@@ -168,15 +168,22 @@ def index():
         return Response(f.read(), mimetype="text/html")
 
 
+# Fields a LOGGED-OUT visitor may see (user 2026-07-03: first 5 Scanner columns; the rest obfuscated).
+_PUBLIC_FIELDS = ("ticker", "name", "direction", "h3_date", "l3_date", "sector", "has_signal", "status")
+
+
 @app.route("/api/records")
 def api_records():
-    # Gated (user 2026-06-30): the Scanner/Pre-orders data requires a valid login token.
-    if request.headers.get("X-Auth") not in _wu.valid_tokens():
-        return jsonify({"error": "login required"}), 401
     snap = _load_snapshot()
-    # Strip the heavy _card blob from the list payload (only needed for PNG rendering).
-    recs = [{k: v for k, v in r.items() if k != "_card"} for r in snap.get("records", [])]
-    return jsonify({"generated_utc": snap.get("generated_utc"), "count": len(recs), "records": recs})
+    authed = request.headers.get("X-Auth") in _wu.valid_tokens()
+    if authed:
+        recs = [{k: v for k, v in r.items() if k != "_card"} for r in snap.get("records", [])]
+    else:
+        # Teaser mode (user 2026-07-03): only the first-5-column fields leave the server — the rest
+        # are stripped HERE, not hidden client-side, so logged-out users cannot fetch them at all.
+        recs = [{k: r.get(k) for k in _PUBLIC_FIELDS} for r in snap.get("records", [])]
+    return jsonify({"generated_utc": snap.get("generated_utc"), "count": len(recs),
+                    "records": recs, "limited": not authed})
 
 
 def _png_response(png: bytes):
@@ -404,10 +411,13 @@ def api_working_orders():
         from db_pool import get_db
         db = get_db()
         try:
-            # PENDING = live on IG; DELETED (last 30 days) = dismissed from Pre-orders by a user
-            # (user 2026-07-03) — hidden for a month so a future NEW funnel can resurface.
+            # PENDING = live on IG (hidden for everyone — one trading account); DELETED (30 days) is
+            # PER-USER (user 2026-07-03: each login has their own data set) — a delete by Rich only
+            # hides the setup for Rich.
+            _name = _wu.name_for_token(request.headers.get("X-Auth") or "")
             rows = db.run("select distinct ticker from working_orders where status = 'PENDING' "
-                          "or (status = 'DELETED' and updated_at > now() - interval '30 days')")
+                          "or (status = 'DELETED' and user_id = :u and updated_at > now() - interval '30 days')",
+                          u=_name or "-")
             tickers = [r[0] for r in (rows or []) if r[0]]
         finally:
             db.close()
@@ -721,17 +731,22 @@ def api_preorder_delete():
 def api_order_ops():
     """Operational record of database -> IG order moves (user 2026-06-30): the working_orders rows,
     newest first. Login-gated like /api/records."""
-    if request.headers.get("X-Auth") not in _wu.valid_tokens():
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
         return jsonify({"error": "login required"}), 401
     rows = []
     try:
         from db_pool import get_db
         db = get_db()
         try:
+            # Per-user visibility (user 2026-07-03): Alex (the account owner) sees everything incl.
+            # the system sessions' rows; any other login sees ONLY rows recorded under their name.
+            _where = "" if name == "Alex" else "where user_id = :u "
             for r in (db.run(
                     "select placed_at::timestamp(0), updated_at::timestamp(0), ticker, direction, "
                     "entry_level, stop_level, limit_level, size, status, session, notes "
-                    "from working_orders order by coalesce(updated_at, placed_at) desc limit 200") or []):
+                    f"from working_orders {_where}order by coalesce(updated_at, placed_at) desc limit 200",
+                    **({} if name == "Alex" else {"u": name})) or []):
                 rows.append({"placed_at": str(r[0] or ""), "updated_at": str(r[1] or ""), "ticker": r[2],
                              "direction": r[3], "entry": r[4], "stop": r[5], "target": r[6],
                              "size": r[7], "status": r[8], "session": r[9], "notes": r[10] or ""})

@@ -467,20 +467,22 @@ function render(){
   const rows=DATA.filter(pass).sort((a,b)=>{
     const x=a[sortK],y=b[sortK];const av=x==null?-1e9:x,bv=y==null?-1e9:y;
     return (av<bv?-1:av>bv?1:0)*sortDir;});
-  $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} total</span>`;
+  $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} total</span>`+(LIMITED?` <b style="color:#d29922">· log in to unlock the full data</b>`:"");
   $("sctab-count").textContent=`(${rows.length})`;
   renderViz(rows);
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td><span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></td>
     <td>${r.days_since??''}</td>
-    <td>${r.sector||''}</td><td>${r.status||''}</td><td>${r.tgt_str||''}</td><td>${r.x_posts?`<b>${r.x_posts}</b>`:''}</td>
-    <td>${r.trig_date?r.trig_date.slice(0,10):''}</td>
-    <td>${r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:''}</td>
-    <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td><td>${r.rr!=null?r.rr.toFixed(1):''}</td>
-    <td>${r.pe??''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${r.market||''}</td><td>${locName(r.location)}</td><td>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':''}</td></tr>`).join("")
+    <td>${r.sector||''}</td><td>${ob(r.status||'')}</td><td>${ob(r.tgt_str||'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
+    <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td>
+    <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
+    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td>
+    <td>${ob(r.pe??'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(r.market||'')}</td><td>${ob(locName(r.location))}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td></tr>`).join("")
     || `<tr><td colspan="17" class="empty">No setups match the filters.</td></tr>`;
-  document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
+  document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
+    if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
+    tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
 }
 
 function closeDetail(){SEL=null;$("detail").classList.add("hidden");render();}
@@ -642,8 +644,9 @@ const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING"
 const TABS=["welcome","scanner","preorders","orderops","activity","config","intro","appendix"];
 let AUTH=localStorage.getItem("sq_auth")||"";
 function showTab(name){
-  // All data tabs are login-gated (user 2026-06-30): when locked they show the login panel.
-  const locked=!AUTH && (name==="scanner"||name==="preorders"||name==="activity"||name==="orderops"||name==="config");
+  // Data tabs are login-gated; the Scanner is VIEWABLE logged-out in teaser mode (first 5 columns
+  // real, the rest obfuscated — user 2026-07-03). Pre-orders/Orders/Activity/Config stay locked.
+  const locked=!AUTH && (name==="preorders"||name==="activity"||name==="orderops"||name==="config");
   TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",locked||t!==name);if(b)b.classList.toggle("active",t===name);});
   $("loginpanel").classList.toggle("hidden",!locked);
   // The header controls are Scanner tools (filters / Squeeze-only / refresh) — hide them on other
@@ -657,7 +660,7 @@ function showTab(name){
 }
 // ── Configuration tab (user 2026-07-03): per-user filter defaults + shared execution switches ──────
 let USER_FILTERS={};
-const FILTER_IDS=()=>F.concat(["f_days"]);
+const FILTER_IDS=()=>F.concat(["f_days","pof_direction","pof_status","pof_location","pof_market","pof_timeframe","pof_sector"]);   // incl. the per-user Pre-orders filters
 function applyUserDefaults(){
   Object.entries(USER_FILTERS).forEach(([k,v])=>{const el=$(k);if(el&&v!=null&&v!=="")el.value=v;});
   if(USER_FILTERS.f_days){$("dlbl").textContent=USER_FILTERS.f_days;}
@@ -838,6 +841,8 @@ function deletePreorders(){
 
 showTab("welcome");   // Introduction is the default tab (user 2026-07-03)
 if(AUTH)$("logout").style.display="";
+let LIMITED=false;
+const ob=h=>LIMITED?'<span class="muted">•••</span>':h;   // obfuscated cell for logged-out visitors
 Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.status===401)throw "auth";return r.json();}),
              fetch("/api/positions").then(r=>r.json()).catch(()=>({positions:{}})),
              fetch("/api/pubcounts").then(r=>r.json()).catch(()=>({pubcounts:{}})),
@@ -845,6 +850,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
              fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({}))])
   .then(([j,p,pc,wo,cfg])=>{
     POS=p.positions||{}; PUB=pc.pubcounts||{}; IGWO=new Set(wo.tickers||[]);
+    LIMITED=!!j.limited;   // logged out: only the first 5 columns are real; the rest render obfuscated
     USER_FILTERS=(cfg&&cfg.filters)||{}; applyUserDefaults();   // the user's own saved defaults (Config tab)
     DATA=j.records||[]; DATA.forEach(augment);
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
