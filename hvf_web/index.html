@@ -89,9 +89,10 @@ aside.collapsed{display:none}
   <button class="btn" id="theme">🌙 Dark</button>
 </header>
 <div class="tabs">
-  <button class="tab" id="tab-intro" onclick="showTab('intro')">Introduction</button>
+  <button class="tab active" id="tab-welcome" onclick="showTab('welcome')">Introduction</button>
+  <button class="tab" id="tab-intro" onclick="showTab('intro')">How it works</button>
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
-  <button class="tab active" id="tab-scanner" onclick="showTab('scanner')">Scanner</button>
+  <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner <span id="sctab-count"></span></button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')">Pre-orders <span id="potab-count"></span></button>
   <button class="tab" id="tab-orderops" onclick="showTab('orderops')">Order (Operations)</button>
   <button class="tab" id="tab-activity" onclick="showTab('activity')">My activity</button>
@@ -119,6 +120,55 @@ aside.collapsed{display:none}
     </div>
   </div>
 </div>
+<div id="view-welcome" style="padding:22px;max-width:980px">
+  <h2 style="margin:0 0 6px">Welcome to the Squeeze Scanner</h2>
+  <p style="font-size:14px;max-width:760px">This tool hunts one specific, high-probability chart pattern — the <b>squeeze</b> — across
+  <b>600+ instruments</b>: UK and US shares (FTSE 100/250, NASDAQ 100, S&amp;P 500), world indices, currencies, commodities and crypto.
+  When a market coils into an ever-tighter range, the eventual breakout tends to be fast and far. We find those coils early,
+  score them, and tell you the exact <b>entry</b>, <b>stop</b> and <b>target</b> — before the move happens.</p>
+
+  <svg viewBox="0 0 940 150" style="width:100%;max-width:940px;margin:10px 0">
+    <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--muted)"/></marker></defs>
+    <g font-size="12" text-anchor="middle">
+      <rect x="10" y="35" width="150" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+      <text x="85" y="62" fill="var(--fg)" font-weight="bold">1 · Scan</text>
+      <text x="85" y="82" fill="var(--muted)">600+ instruments, daily</text>
+      <rect x="200" y="35" width="150" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+      <text x="275" y="62" fill="var(--fg)" font-weight="bold">2 · Detect</text>
+      <text x="275" y="82" fill="var(--muted)">the squeeze pattern</text>
+      <rect x="390" y="35" width="150" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+      <text x="465" y="62" fill="var(--fg)" font-weight="bold">3 · Score</text>
+      <text x="465" y="82" fill="var(--muted)">Quality 0–100 · R:R</text>
+      <rect x="580" y="35" width="150" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+      <text x="655" y="62" fill="var(--fg)" font-weight="bold">4 · Pre-order</text>
+      <text x="655" y="82" fill="var(--muted)">entry · stop · target</text>
+      <rect x="770" y="35" width="150" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+      <text x="845" y="62" fill="var(--fg)" font-weight="bold">5 · Execute</text>
+      <text x="845" y="82" fill="var(--muted)">IG working order</text>
+      <line x1="160" y1="70" x2="196" y2="70" stroke="var(--muted)" marker-end="url(#arr)"/>
+      <line x1="350" y1="70" x2="386" y2="70" stroke="var(--muted)" marker-end="url(#arr)"/>
+      <line x1="540" y1="70" x2="576" y2="70" stroke="var(--muted)" marker-end="url(#arr)"/>
+      <line x1="730" y1="70" x2="766" y2="70" stroke="var(--muted)" marker-end="url(#arr)"/>
+    </g>
+  </svg>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
+    <div class="card"><h4>What you'll see</h4><div style="font-size:13px;line-height:1.6">
+      <b>Scanner</b> — every instrument, one line each: the setup, its Quality score, reward-vs-risk and how close it is to firing.<br>
+      <b>Pre-orders</b> — setups waiting for their trigger, with exact levels.<br>
+      <b>Order (Operations)</b> — the audit trail as setups become real IG orders.</div></div>
+    <div class="card"><h4>How to read a setup</h4><div style="font-size:13px;line-height:1.6">
+      <span style="color:var(--bull)">▲ BULL</span> = breakout expected upward · <span style="color:var(--bear)">▼ BEAR</span> = downward.<br>
+      <b>Quality</b> (<span style="color:var(--bull)">70+</span>/<span style="color:#d29922">50+</span>/<span style="color:var(--bear)">&lt;50</span>) — how tight, fresh and symmetric the coil is.<br>
+      <b>R:R</b> — potential reward per unit of risk; we require at least 3:1.</div></div>
+    <div class="card"><h4>Get started</h4><div style="font-size:13px;line-height:1.6">
+      1. <b>Log in</b> (Scanner tab) — data tabs need an account.<br>
+      2. Skim the <b>Scanner</b>, click any row for the full picture: chart, rules, fundamentals, broker view.<br>
+      3. Read <b>How it works</b> for the pattern itself, and the <b>Appendix</b> for every term.<br>
+      <span class="muted">Research tool — not financial advice.</span></div></div>
+  </div>
+</div>
+
 <div class="layout" id="view-scanner">
   <aside id="aside" class="collapsed">
     <div class="f"><label>Search name / ticker</label><input id="f_search" type="text" placeholder="e.g. Howden, ABF, gold"></div>
@@ -151,7 +201,7 @@ aside.collapsed{display:none}
         <thead><tr>
           <th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
-          <th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
+          <th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
           <th data-k="pe">P/E</th><th data-k="timeframe">TF</th>
           <th data-k="market">Market</th><th data-k="location">Location</th><th data-k="dist_entry">Dist→Entry</th>
@@ -165,6 +215,7 @@ aside.collapsed{display:none}
 </div>
 
 <div id="view-preorders" class="hidden">
+  <input type="hidden" id="pof_direction"><input type="hidden" id="pof_status"><input type="hidden" id="pof_location"><input type="hidden" id="pof_market"><input type="hidden" id="pof_timeframe"><input type="hidden" id="pof_sector">
   <div class="viz" id="po-viz" style="border-bottom:none;padding:10px 16px 0"></div>
   <div class="count" id="po-count" style="display:flex;align-items:center;gap:14px"><span id="po-count-text"></span><span class="grow"></span>
     <button class="btn" id="po-delete" onclick="deletePreorders()" disabled>Delete selected</button></div>
@@ -174,6 +225,7 @@ aside.collapsed{display:none}
         <th style="cursor:default"><input type="checkbox" id="po-all" onclick="poToggleAll(this)"></th>
         <th data-pk="ticker">Ticker</th><th data-pk="name">Name</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
         <th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="current_price">Now</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
+        <th data-pk="added" title="When the setup completed and joined the dataset">Added</th><th data-pk="source">Source</th>
       </tr></thead>
       <tbody id="po-rows"></tbody>
     </table>
@@ -181,9 +233,11 @@ aside.collapsed{display:none}
 </div>
 
 <div id="view-orderops" class="hidden" style="padding:18px 22px">
+  <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
   <h2 style="margin:0 0 4px">Order (Operations) — database → IG</h2>
   <p class="muted" style="font-size:12px;margin:0 0 14px">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
   <div class="viz" id="oo-viz" style="border-bottom:none;padding:0 0 10px"></div>
+  <div class="count" id="oo-count" style="padding-left:0"></div>
   <div class="tablewrap"><table>
     <thead><tr><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
     <tbody id="oo-rows"></tbody>
@@ -211,9 +265,11 @@ aside.collapsed{display:none}
 
 <div id="view-activity" class="hidden" style="padding:18px 22px;max-width:760px">
   <h2 style="margin:0 0 4px">My activity</h2>
-  <p class="muted" style="font-size:12px;margin:0 0 14px">Your account's operational log — logins, password changes and secure-setting updates. You only ever see your own entries.</p>
+  <p class="muted" style="font-size:12px;margin:0 0 14px">Your account's operational log. You only ever see your own entries.</p>
+  <div class="count" style="padding-left:0;display:flex;gap:14px;align-items:center"><span id="act-count"></span><span class="grow"></span>
+    <label class="muted" style="font-size:12px">Category <select id="act-cat" onchange="paintActivity()" style="width:auto"><option value="">All</option><option>Login</option><option>Password</option><option>Pre-orders</option><option>Data</option><option>Configuration</option><option>Security</option><option>Other</option></select></label></div>
   <div class="tablewrap"><table>
-    <thead><tr><th data-ak="ts">When (UTC)</th><th data-ak="event">Event</th></tr></thead>
+    <thead><tr><th data-ak="ts">When (UTC)</th><th data-ak="cat">Category</th><th data-ak="event">Event</th></tr></thead>
     <tbody id="act-rows"></tbody>
   </table></div>
 </div>
@@ -321,6 +377,13 @@ function augment(r){
   const _trigref=(r.direction==="BULL"?r.l3_date:r.h3_date)||r.l3_date||r.h3_date;
   r.days_since=daysSince(_trigref);
   r.trig_date=(r.status==="TRIGGERED")?_trigref:null;
+  r.added=_trigref?String(_trigref).slice(0,10):null;   // when the setup completed (joined the dataset)
+  // Expected time-to-target = the funnel's H1->H3 formation span (same heuristic as the Slack report).
+  if(r.h1_date&&r.h3_date){const _sp=Math.round((Date.parse(r.h3_date)-Date.parse(r.h1_date))/864e5);
+    r.tgt_months=_sp>0? +(_sp/30.44).toFixed(1):null;
+    r.tgt_str=_sp>0?(_sp<63?`~${Math.max(1,Math.round(_sp/7))}wk`:`~${Math.round(_sp/30.44)}mo`):null;
+  } else {r.tgt_months=null;r.tgt_str=null;}
+  r.source="Scan "+((r.timeframe||"").replace("daily-","D")||"?");   // what put it in the dataset
   r.open_pos=POS[r.ticker]??POS[disp(r.ticker)]??0;
   r.x_posts=PUB[r.ticker]??PUB[disp(r.ticker)]??0;
 }
@@ -381,15 +444,17 @@ function renderViz(rows){
   // stacks directly above or below it (user 2026-06-28).
   // Sector pie is its OWN left column; the bar charts wrap among themselves to the right — so the
   // sector chart never sits below (or above) another chart (user 2026-06-28).
+  // Sector pie and the Market chart each get their OWN column — nothing may stack above or below
+  // the Market chart on any page (user 2026-07-03: it will have many entries).
   $("viz").innerHTML=
     `<div class="vizsector">`+pieChart("Sector",by("sector"),"f_sec")+`</div>`+
     `<div class="vizbars">`+
       barChart("Direction",by("direction"),"f_dir",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
       barChart("Status",by("status"),"f_stat",k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
       barChart("Location",by("location"),"f_loc")+
-      barChart("Market",by("market"),"f_mkt")+
       barChart("Timeframe",by("timeframe"),"f_tf")+
-    `</div>`;
+    `</div>`+
+    `<div class="vizsector">`+barChart("Market",by("market"),"f_mkt")+`</div>`;
 }
 
 function render(){
@@ -397,17 +462,18 @@ function render(){
     const x=a[sortK],y=b[sortK];const av=x==null?-1e9:x,bv=y==null?-1e9:y;
     return (av<bv?-1:av>bv?1:0)*sortDir;});
   $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} total</span>`;
+  $("sctab-count").textContent=`(${rows.length})`;
   renderViz(rows);
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td><span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></td>
     <td>${r.days_since??''}</td>
-    <td>${r.sector||''}</td><td>${r.status||''}</td><td>${r.x_posts?`<b>${r.x_posts}</b>`:''}</td>
+    <td>${r.sector||''}</td><td>${r.status||''}</td><td>${r.tgt_str||''}</td><td>${r.x_posts?`<b>${r.x_posts}</b>`:''}</td>
     <td>${r.trig_date?r.trig_date.slice(0,10):''}</td>
     <td>${r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:''}</td>
     <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td><td>${r.rr!=null?r.rr.toFixed(1):''}</td>
     <td>${r.pe??''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${r.market||''}</td><td>${locName(r.location)}</td><td>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':''}</td></tr>`).join("")
-    || `<tr><td colspan="16" class="empty">No setups match the filters.</td></tr>`;
+    || `<tr><td colspan="17" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
 }
 
@@ -528,7 +594,11 @@ document.querySelectorAll("th[data-ak]").forEach(th=>th.onclick=()=>{const k=th.
 F.forEach(id=>$(id).addEventListener("input",applyAll));
 // Click a chart bar / pie slice to set that filter (toggle off if already set) — user 2026-06-27.
 $("viz").addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(!el)return;
-  const f=$(el.dataset.fk); if(!f)return; f.value=(f.value===el.dataset.fv)?"":el.dataset.fv; applyAll();});
+  const f=$(el.dataset.fk); if(!f)return; f.value=(f.value===el.dataset.fv)?"":el.dataset.fv;
+  // Route to the tab the chart belongs to (user 2026-07-03: po/oo charts filter their own tables).
+  if(el.dataset.fk.startsWith("pof_"))renderPreorders();
+  else if(el.dataset.fk.startsWith("oof_"))paintOrderOps();
+  else applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
 $("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});
   // Built-in defaults first, then the user's OWN saved defaults on top (Config tab, user 2026-07-03).
@@ -563,7 +633,7 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 // signal, not yet triggered, and quality >= 25 (user 2026-06-29: drop the low-quality noise)
 // signal, not yet triggered, Q>=25, and NOT already placed on IG (removed once it's a live working order).
 const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker));
-const TABS=["scanner","preorders","orderops","activity","config","intro","appendix"];
+const TABS=["welcome","scanner","preorders","orderops","activity","config","intro","appendix"];
 let AUTH=localStorage.getItem("sq_auth")||"";
 function showTab(name){
   // All data tabs are login-gated (user 2026-06-30): when locked they show the login panel.
@@ -625,16 +695,20 @@ function genSort(rows,k,dir){
 let OO_ROWS=[], ooSortK="updated_at", ooSortDir=-1;
 function paintOrderOps(){
   const st=s=>s==="PENDING"?"var(--accent)":s==="FILLED"?"var(--bull)":s==="WATCHING"?"#d29922":"var(--muted)";
-  // Chart visuals (user 2026-07-03): the operational mix at a glance. Non-filtering (dummy keys).
+  // Chart-click filters (user 2026-07-03) apply to the table; the charts show the full mix.
+  let rows=OO_ROWS;
+  [["oof_status","status"],["oof_direction","direction"],["oof_session","session"],["oof_ticker","ticker"]].forEach(([id,k])=>{
+    const v=$(id).value; if(v)rows=rows.filter(r=>v==="—"?!r[k]:r[k]===v);});
+  $("oo-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> order operation records${rows.length!==OO_ROWS.length?` <span class="muted">of ${OO_ROWS.length}</span>`:""}`;
   const oby=k=>OO_ROWS.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
   $("oo-viz").innerHTML=
     `<div class="vizbars">`+
-      barChart("Status",oby("status"),"oo_x",k=>k==="PENDING"?"var(--accent)":k==="FILLED"?"var(--bull)":k==="WATCHING"?"#d29922":"var(--bear)")+
-      barChart("Direction",oby("direction"),"oo_x",k=>k==="BUY"?"var(--bull)":"var(--bear)")+
-      barChart("Source",oby("session"),"oo_x")+
-      barChart("Ticker",oby("ticker"),"oo_x")+
+      barChart("Status",oby("status"),"oof_status",k=>k==="PENDING"?"var(--accent)":k==="FILLED"?"var(--bull)":k==="WATCHING"?"#d29922":"var(--bear)")+
+      barChart("Direction",oby("direction"),"oof_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+
+      barChart("Source",oby("session"),"oof_session")+
+      barChart("Ticker",oby("ticker"),"oof_ticker")+
     `</div>`;
-  $("oo-rows").innerHTML=genSort(OO_ROWS,ooSortK,ooSortDir).map(r=>`<tr>
+  $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>
     <td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td><b>${r.ticker||''}</b></td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
     <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td><td>${r.size??''}</td>
@@ -648,9 +722,24 @@ function renderOrderOps(){
     .catch(()=>{$("oo-rows").innerHTML=`<tr><td colspan="11" class="empty">Could not load — try logging in again.</td></tr>`;});
 }
 let AC_ROWS=[], acSortK="ts", acSortDir=-1;
+// Category derived from the event text (user 2026-07-03) so the log is easy to filter.
+function actCat(ev){
+  ev=(ev||"").toLowerCase();
+  if(ev.startsWith("logged in"))return "Login";
+  if(ev.includes("password"))return "Password";
+  if(ev.includes("pre-order"))return "Pre-orders";
+  if(ev.includes("data refresh"))return "Data";
+  if(ev.includes("config")||ev.includes("filter defaults")||ev.includes("execution")||ev.includes("switched"))return "Configuration";
+  if(ev.includes("secure setting")||ev.includes("credential"))return "Security";
+  return "Other";
+}
 function paintActivity(){
-  $("act-rows").innerHTML=genSort(AC_ROWS,acSortK,acSortDir).map(e=>`<tr><td>${e.ts}</td><td>${(e.event||"").replace(/</g,"&lt;")}</td></tr>`).join("")
-    || `<tr><td colspan="2" class="empty">No activity recorded yet.</td></tr>`;
+  AC_ROWS.forEach(e=>e.cat=e.cat||actCat(e.event));
+  const cat=$("act-cat").value;
+  const rows=genSort(AC_ROWS.filter(e=>!cat||e.cat===cat),acSortK,acSortDir);
+  $("act-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> activity records${cat?` <span class="muted">(${cat})</span>`:""}`;
+  $("act-rows").innerHTML=rows.map(e=>`<tr><td>${e.ts}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.cat}</span></td><td>${(e.event||"").replace(/</g,"&lt;")}</td></tr>`).join("")
+    || `<tr><td colspan="3" class="empty">No activity recorded yet.</td></tr>`;
 }
 function renderActivity(){
   fetch("/api/userlog",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
@@ -674,7 +763,11 @@ function doReset(){
 }
 let poSortK="dist_entry", poSortDir=1;   // default sort: Dist->Entry, closest first (user 2026-06-30)
 function renderPreorders(){
-  const po=DATA.filter(isPreorder);
+  let po=DATA.filter(isPreorder);
+  // Chart-click filters (user 2026-07-03): each pof_* holds a selected value ("—" = field empty).
+  [["pof_direction","direction"],["pof_status","status"],["pof_location","location"],
+   ["pof_market","market"],["pof_timeframe","timeframe"],["pof_sector","sector"]].forEach(([id,k])=>{
+    const v=$(id).value; if(v)po=po.filter(r=>v==="—"?!r[k]:r[k]===v);});
   // Click a column header to sort (user 2026-06-30). Dist->Entry sorts on |distance| (closest first);
   // other columns sort on their raw value; nulls always sink to the bottom.
   const val=r=>{const v=r[poSortK];if(v==null)return null;return poSortK==="dist_entry"?Math.abs(v):v;};
@@ -686,14 +779,14 @@ function renderPreorders(){
   // Chart visuals, same set as the Scanner (user 2026-07-03). Non-filtering here (dummy filter keys).
   const pby=k=>po.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
   $("po-viz").innerHTML=
-    `<div class="vizsector">`+pieChart("Sector",pby("sector"),"po_x")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",pby("sector"),"pof_sector")+`</div>`+
     `<div class="vizbars">`+
-      barChart("Direction",pby("direction"),"po_x",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
-      barChart("Status",pby("status"),"po_x",k=>k==="READY"?"var(--accent)":"#d29922")+
-      barChart("Location",pby("location"),"po_x")+
-      barChart("Market",pby("market"),"po_x")+
-      barChart("Timeframe",pby("timeframe"),"po_x")+
-    `</div>`;
+      barChart("Direction",pby("direction"),"pof_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
+      barChart("Status",pby("status"),"pof_status",k=>k==="READY"?"var(--accent)":"#d29922")+
+      barChart("Location",pby("location"),"pof_location")+
+      barChart("Timeframe",pby("timeframe"),"pof_timeframe")+
+    `</div>`+
+    `<div class="vizsector">`+barChart("Market",pby("market"),"pof_market")+`</div>`;
   $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
     return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
       <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
@@ -703,8 +796,9 @@ function renderPreorders(){
       <td>${d!=null?(d>0?'+':'')+d+'%':''}</td>
       <td>${r.rr!=null?r.rr.toFixed(1):''}</td>
       <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td>
-      <td>${(r.timeframe||'').replace('daily-','D')}</td></tr>`;}).join("")
-    || `<tr><td colspan="14" class="empty">No pre-orders right now.</td></tr>`;
+      <td>${(r.timeframe||'').replace('daily-','D')}</td>
+      <td>${r.added||''}</td><td>${r.source||''}</td></tr>`;}).join("")
+    || `<tr><td colspan="16" class="empty">No pre-orders right now.</td></tr>`;
   document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=e=>{if(e.target.type==="checkbox")return;showTab('scanner');showDetail(tr.dataset.t);});
   poUpdateBtn();
 }
@@ -720,6 +814,7 @@ function deletePreorders(){
     .catch(()=>alert("Delete failed — try logging in again."));
 }
 
+showTab("welcome");   // Introduction is the default tab (user 2026-07-03)
 if(AUTH)$("logout").style.display="";
 Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.status===401)throw "auth";return r.json();}),
              fetch("/api/positions").then(r=>r.json()).catch(()=>({positions:{}})),
@@ -740,8 +835,8 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     // If a refresh is already running (started elsewhere), disable the button and show its progress.
     fetch("/api/status").then(x=>x.json()).then(s=>{if(s.refreshing){$("refresh").disabled=true;_refStart=Date.now();pollRefresh();}}).catch(()=>{});
   })
-  .catch(e=>{ // 401 = no/stale login: clear the token and show the login panel over the Scanner tab.
-    if(e==="auth"){AUTH="";localStorage.removeItem("sq_auth");$("logout").style.display="none";showTab("scanner");}
+  .catch(e=>{ // 401 = no/stale login: clear the token; the login panel appears when a data tab is opened.
+    if(e==="auth"){AUTH="";localStorage.removeItem("sq_auth");$("logout").style.display="none";}
   });
 </script>
 </body>
