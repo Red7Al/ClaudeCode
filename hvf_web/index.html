@@ -189,13 +189,13 @@ a{transition:color .15s ease}
   <button class="tab active" id="tab-welcome" onclick="showTab('welcome')">Introduction</button>
   <button class="tab" id="tab-intro" onclick="showTab('intro')">How it works</button>
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
-  <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner <span id="sctab-count"></span></button>
-  <button class="tab" id="tab-preorders" onclick="showTab('preorders')" style="display:none">Pre-orders <span id="potab-count"></span></button>
+  <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner (Report) <span id="sctab-count"></span></button>
+  <button class="tab" id="tab-preorders" onclick="showTab('preorders')" style="display:none">My Pre-orders <span id="potab-count"></span></button>
   <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Order (Operations)</button>
-  <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My activity</button>
+  <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My Activity</button>
   <button class="tab" id="tab-batch" onclick="showTab('batch')" style="display:none">Batch Activity</button>
-  <button class="tab" id="tab-config" onclick="showTab('config')" style="display:none">Configuration</button>
   <button class="tab" id="tab-users" onclick="showTab('users')" style="display:none">User Management</button>
+  <button class="tab" id="tab-config" onclick="showTab('config')" style="display:none">Configuration</button>
   <button class="tab" id="tab-version" onclick="showTab('version')" style="display:none">Version History</button>
   <span class="grow"></span>
   <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
@@ -332,16 +332,21 @@ a{transition:color .15s ease}
   </div>
 </div>
 
-<div id="view-orderops" class="hidden" style="padding:18px 22px">
+<div id="view-orderops" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
-  <h2 style="margin:0 0 4px">Order (Operations) — database → IG</h2>
-  <p class="muted" style="font-size:12px;margin:0 0 14px">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
-  <div class="viz" id="oo-viz" style="border-bottom:none;padding:0 0 10px"></div>
-  <div class="count" id="oo-count" style="padding-left:0"></div>
-  <div class="tablewrap"><table>
-    <thead><tr><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
-    <tbody id="oo-rows"></tbody>
-  </table></div>
+  <span class="eyebrow">Trading</span>
+  <h1>Order (Operations)</h1>
+  <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <section class="gsec" style="border-left-color:var(--accent);flex:1 1 700px;min-width:0">
+      <div class="count" id="oo-count" style="padding-left:0"></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
+        <tbody id="oo-rows"></tbody>
+      </table></div>
+    </section>
+    <div class="viz" id="oo-viz" style="border-bottom:none;padding:0;flex:0 0 auto;flex-direction:column"></div>
+  </div>
 </div>
 
 <div id="view-config" class="hidden doc" style="max-width:840px">
@@ -352,7 +357,8 @@ a{transition:color .15s ease}
   <!-- Card navigation (user 2026-07-03): keeps config sections separate; one panel visible at a time. -->
   <nav class="confnav" id="confnav">
     <button class="pill active" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
-    <button class="pill" data-panel="trading" onclick="confShow('trading')">📈 Trading</button>
+    <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>
+    <button class="pill" data-panel="trading_mo" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
     <button class="pill" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
     <!-- credential-section pills (Supabase/X/Slack/Server/Email) are injected here by renderCredentials -->
   </nav>
@@ -374,21 +380,27 @@ a{transition:color .15s ease}
   </div>
 
   <!-- Trading panel — completely separate from everything else (user 2026-07-03), warning-tinted -->
-  <div class="confpanel hidden" data-panel="trading">
-    <div>
-      <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">Trading configuration — affects live orders</h3>
-      <p class="muted" style="font-size:12px;margin:0 0 14px">These settings decide whether and what is traded on the live IG account. They are kept entirely separate from your preferences and credentials.</p>
-      <div class="card"><h4>Trade filters — direction, market, location</h4>
-        <p class="muted" style="font-size:12px">Only ticked values may be traded. Ticking everything (or nothing) in a group = no restriction. Shared switches; changes are attributed to you and checked live before every trade.</p>
-        <div id="cfg-trade">loading…</div>
-        <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
-      </div>
-      <div class="card" style="margin-bottom:0"><h4>Trade execution by source</h4>
-        <p class="muted" style="font-size:12px">Yes = that source may place live IG trades/orders; No = it scans and reports but places <b>nothing</b>. These switches are shared (one trading account) — the change is attributed to you.</p>
-        <div id="cfg-exec">loading…</div>
-        <button class="btn" style="margin-top:8px" onclick="saveExec()">Save execution switches</button>
-        <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
-      </div>
+  <!-- Trading (Squeeze) — the trade filters that gate squeeze-setup orders (user 2026-07-03 split) -->
+  <div class="confpanel hidden" data-panel="trading_sq">
+    <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">Trading (Squeeze) — affects live orders</h3>
+    <p class="muted" style="font-size:12px;margin:0 0 14px">Which squeeze setups may be traded on the live IG account.</p>
+    <div class="card" style="margin-bottom:0"><h4>Trade filters — direction, market, location</h4>
+      <p class="muted" style="font-size:12px">Only ticked values may be traded. Ticking everything (or nothing) in a group = no restriction. Shared switches; changes are attributed to you and checked live before every trade.</p>
+      <div id="cfg-trade">loading…</div>
+      <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
+      <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- Trading (Momentum) — the per-source execution switches (the "bottom 4" options) -->
+  <div class="confpanel hidden" data-panel="trading_mo">
+    <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">Trading (Momentum) — affects live orders</h3>
+    <p class="muted" style="font-size:12px;margin:0 0 14px">Which monitor sources may place live orders.</p>
+    <div class="card" style="margin-bottom:0"><h4>Trade execution by source</h4>
+      <p class="muted" style="font-size:12px">Yes = that source may place live IG trades/orders; No = it scans and reports but places <b>nothing</b>. These switches are shared (one trading account) — the change is attributed to you.</p>
+      <div id="cfg-exec">loading…</div>
+      <button class="btn" style="margin-top:8px" onclick="saveExec()">Save execution switches</button>
+      <div id="cfg-msg2" style="font-size:12px;margin-top:8px"></div>
     </div>
   </div>
 
@@ -396,7 +408,7 @@ a{transition:color .15s ease}
   <div id="cfg-creds">loading…</div>
 </div>
 
-<div id="view-batch" class="hidden doc" style="max-width:900px">
+<div id="view-batch" class="hidden doc" style="max-width:1240px">
   <span class="eyebrow">Admin</span>
   <h1>Batch Activity</h1>
   <p class="lede">Execution log of the scheduled cron-job.org runs and the manual "Refresh data" button.</p>
@@ -427,13 +439,13 @@ a{transition:color .15s ease}
   </section>
 </div>
 
-<div id="view-version" class="hidden doc" style="max-width:960px">
+<div id="view-version" class="hidden doc" style="max-width:1240px">
   <span class="eyebrow">Admin</span>
   <h1>Version History</h1>
   <p class="lede">A log of changes to the application — date, version and a summary.</p>
-  <input type="hidden" id="vcf_category">
+  <input type="hidden" id="vcf_category"><input type="hidden" id="vmf_month">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-    <section class="gsec" style="border-left-color:var(--accent);flex:1 1 520px;min-width:0">
+    <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
       <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px"><span id="ver-count"></span><span class="grow"></span>
         <label class="muted" style="font-size:12px">Category <select id="ver-cat" onchange="paintVersion()" style="width:auto"><option value="">All</option><option>Data</option><option>Security</option><option>Presentation</option><option>Bug fix</option><option>Feature</option></select></label></div>
       <div class="tablewrap"><table>
@@ -441,11 +453,11 @@ a{transition:color .15s ease}
         <tbody id="ver-rows"></tbody>
       </table></div>
     </section>
-    <div class="viz" id="ver-viz" style="border-bottom:none;padding:0;flex:0 0 auto"></div>
+    <div class="viz" id="ver-viz" style="border-bottom:none;padding:0;flex:0 0 auto;flex-direction:column"></div>
   </div>
 </div>
 
-<div id="view-activity" class="hidden doc" style="max-width:840px">
+<div id="view-activity" class="hidden doc" style="max-width:1240px">
   <span class="eyebrow">Account</span>
   <h1>My activity</h1>
   <p class="lede">Your account's operational log — logins, password changes, pre-order actions, data refreshes and configuration changes. You only ever see your own entries.</p>
@@ -811,6 +823,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   else if(el.dataset.fk.startsWith("oof_"))paintOrderOps();
   else if(el.dataset.fk==="acf_cat"){$("act-cat").value=(f.value&&f.value!=="—")?f.value:"";paintActivity();}
   else if(el.dataset.fk==="vcf_category"){$("ver-cat").value=(f.value&&f.value!=="—")?f.value:"";paintVersion();}
+  else if(el.dataset.fk==="vmf_month")paintVersion();
   else if(el.dataset.fk.startsWith("bcf_"))paintBatch();
   else applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
@@ -847,7 +860,7 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 // signal, not yet triggered, and quality >= 25 (user 2026-06-29: drop the low-quality noise)
 // signal, not yet triggered, Q>=25, and NOT already placed on IG (removed once it's a live working order).
 const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker));
-const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","config","users","version"];
+const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","config","version"];
 const PUBLIC_TABS=["welcome","intro","appendix","scanner"];   // visible when logged out
 const ADMIN_TABS=["batch","users","version"];                 // admin only
 let AUTH=localStorage.getItem("sq_auth")||"";
@@ -901,9 +914,9 @@ function showTab(name){
   if(name==="batch")renderBatch();
 }
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
-const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner",
-  preorders:"Pre-orders",orderops:"Order (Operations)",activity:"My activity",batch:"Batch Activity",
-  config:"Configuration",users:"User Management",version:"Version History",tabvis:"Tab Visibility"};
+const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner (Report)",
+  preorders:"My Pre-orders",orderops:"Order (Operations)",activity:"My Activity",batch:"Batch Activity",
+  config:"Configuration",users:"User Management",version:"Version History"};
 function renderUsers(){
   fetch("/api/users",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{const subs=j.subscriptions||["gold","silver","guest"];
@@ -922,12 +935,15 @@ function saveUser(name,patch){
     .catch(()=>{$("users-msg").style.color="var(--bear)";$("users-msg").textContent="Update failed.";});
 }
 let VER_ROWS=[], verSortK="date", verSortDir=-1;
+const _vmonth=e=>(e.date||'').slice(0,7);   // YYYY-MM
 function paintVersion(){
   const cats=VER_ROWS.reduce((m,e)=>{m[e.category||'Feature']=(m[e.category||'Feature']||0)+1;return m;},{});
-  $("ver-viz").innerHTML=`<div class="vizsector">`+barChart("By category",cats,"vcf_category")+`</div>`;
-  const cf=$("ver-cat").value;
-  const rows=genSort(VER_ROWS.filter(e=>!cf||(e.category||'Feature')===cf),verSortK,verSortDir);
-  $("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> changes${cf?` <span class="muted">(${cf})</span>`:` of ${VER_ROWS.length}`}`;
+  const months=VER_ROWS.reduce((m,e)=>{const v=_vmonth(e)||'—';m[v]=(m[v]||0)+1;return m;},{});
+  $("ver-viz").innerHTML=`<div class="vizsector">`+barChart("By category",cats,"vcf_category")+`</div>`+
+    `<div class="vizsector">`+barChart("By month",months,"vmf_month")+`</div>`;
+  const cf=$("ver-cat").value, mf=$("vmf_month").value;
+  const rows=genSort(VER_ROWS.filter(e=>(!cf||(e.category||'Feature')===cf)&&(!mf||_vmonth(e)===mf)),verSortK,verSortDir);
+  $("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> changes${(cf||mf)?` <span class="muted">(${[cf,mf].filter(Boolean).join(', ')})</span>`:` of ${VER_ROWS.length}`}`;
   $("ver-rows").innerHTML=rows.map(e=>`<tr><td>${e.date}</td><td><code>${e.version}</code></td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||'Feature'}</span></td><td>${(e.summary||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 function renderVersion(){fetch("/api/version-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{VER_ROWS=j.entries||[];paintVersion();}).catch(()=>{$("ver-rows").innerHTML=`<tr><td colspan="3" class="empty">Could not load (admin only).</td></tr>`;});}
 let BATCH_ROWS=[], batchSortK="ts", batchSortDir=-1;
@@ -990,15 +1006,18 @@ function renderCredentials(){
         return `<div class="confpanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"${amber}><h4>${sec.id} credentials${sec.admin_only?' <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span>':sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
           <p class="muted" style="font-size:12px;margin:0 0 8px">${sec.note}</p>${rows}${btn}
           <div id="cred-msg-${sec.id}" style="font-size:12px;margin-top:6px"></div></div></div>`;}).join("");
-      // Inject a nav pill per credential section (amber for admin-only), after the fixed pills.
+      // Inject a nav pill per credential section (amber for admin-only). Non-admin shared sections
+      // (Email (Yahoo)) go right after Preferences; admin-only ones append at the end (user 2026-07-03).
       document.querySelectorAll("#confnav .pill.credpill").forEach(p=>p.remove());
       const icons={IG:"🔑",Supabase:"🗄️",X:"𝕏",Slack:"💬",Server:"🖥️","Email (Yahoo)":"✉️"};
+      const prefPill=document.querySelector('#confnav .pill[data-panel="preferences"]');
       (j.sections||[]).filter(s=>s.scope==="app").forEach(s=>{
         const b=document.createElement("button");
         b.className="pill credpill"+(s.admin_only?" adminpill":"");
         b.dataset.panel=s.id; b.textContent=`${icons[s.id]||"🧩"} ${s.id}`;
         b.onclick=()=>confShow(s.id);
-        $("confnav").appendChild(b);
+        if(!s.admin_only && prefPill) prefPill.after(b);    // Email (Yahoo) next to Preferences
+        else $("confnav").appendChild(b);
       });
       confShow(document.querySelector("#confnav .pill.active")?.dataset.panel||"IG");
     })
@@ -1078,19 +1097,19 @@ function paintOrderOps(){
   $("oo-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> order operation records${rows.length!==OO_ROWS.length?` <span class="muted">of ${OO_ROWS.length}</span>`:""}`;
   const oby=k=>OO_ROWS.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
   $("oo-viz").innerHTML=
-    `<div class="vizbars">`+
-      barChart("Status",oby("status"),"oof_status",k=>k==="PENDING"?"var(--accent)":k==="FILLED"?"var(--bull)":k==="WATCHING"?"#d29922":"var(--bear)")+
-      barChart("Direction",oby("direction"),"oof_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+
-      barChart("Source",oby("session"),"oof_session")+
-      barChart("Ticker",oby("ticker"),"oof_ticker")+
-    `</div>`;
+    `<div class="vizsector">`+barChart("Status",oby("status"),"oof_status",k=>k==="PENDING"?"var(--accent)":k==="FILLED"?"var(--bull)":k==="WATCHING"?"#d29922":"var(--bear)")+`</div>`+
+    `<div class="vizsector">`+barChart("Direction",oby("direction"),"oof_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`+
+    `<div class="vizsector">`+barChart("Source",oby("session"),"oof_session")+`</div>`+
+    `<div class="vizsector">`+barChart("Ticker",oby("ticker"),"oof_ticker")+`</div>`;
+  // Resolve instrument name from the loaded snapshot (user 2026-07-03: name next to Ticker).
+  const nm=t=>{const r=DATA.find(x=>x.ticker===t||disp(x.ticker)===t);return r?(r.name||''):'';};
   $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>
-    <td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td><b>${r.ticker||''}</b></td>
+    <td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td><b>${disp(r.ticker||'')}</b></td><td>${nm(r.ticker)}</td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
     <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td><td>${r.size??''}</td>
     <td><b style="color:${st(r.status)}">${r.status||''}</b></td><td>${r.session||''}</td>
     <td class="muted" style="white-space:normal;max-width:280px">${(r.notes||'').replace(/</g,'&lt;')}</td></tr>`).join("")
-  || `<tr><td colspan="11" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
+  || `<tr><td colspan="12" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
 }
 function renderOrderOps(){
   fetch("/api/order-ops",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
@@ -1195,7 +1214,8 @@ function deletePreorders(){
 
 // Resolve role first (user 2026-07-03) so tab visibility is correct on first paint.
 fetch("/api/me",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(m=>{
-  ROLE=m.role||"guest"; IS_ADMIN=!!m.is_admin;
+  ROLE=m.subscription||"guest"; IS_ADMIN=!!m.is_admin;
+  if(m.name)$("logout").textContent=`${m.name}${m.is_admin?" (admin)":""} · Log out`;   // who's logged in
   return AUTH?fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({})):{};
 }).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[];})
   .catch(()=>{}).finally(()=>{applyTabVisibility();showTab("welcome");});

@@ -640,6 +640,12 @@ def instrument_names_match(ticker: str, ig_name: str, yahoo_name: str) -> bool:
     return False
 
 
+# Search-term aliases (user 2026-07-03): some index tickers can't be found by their raw symbol at IG.
+# get_epic tries these name terms in order when the ticker matches. e.g. ^NSEI: try "India 50" then "NIFTY".
+_SEARCH_TERM_ALIASES = {
+    "^NSEI": ["India 50", "NIFTY"],
+}
+
 _EPIC_VERIFIED_OVERRIDES = {
     # ticker -> epic that the name-matcher CANNOT confirm but a human has verified correct
     # (user 2026-06-19). get_epic returns these DIRECTLY (Step 0) — authoritative pins.
@@ -756,12 +762,20 @@ def get_epic(ticker: str) -> Optional[str]:
             log.warning(f"get_epic {ticker}: could not purge bad cache row: {e}")
         # fall through to Step 2 (IG search, now with a working identity guard)
 
-    # Step 2 — Cache miss: search IG using the normalized ticker
-    log.info(f"Epic cache miss for {ticker} — searching IG markets (term='{normalized}')...")
-    data    = session.get("/markets", params={"searchTerm": normalized}, version="1")
-    markets = data.get("markets", [])
+    # Step 2 — Cache miss: search IG. Try any human-provided name aliases first (user 2026-07-03),
+    # then the normalized ticker — the first term that returns markets wins.
+    _terms = (_SEARCH_TERM_ALIASES.get(ticker) or _SEARCH_TERM_ALIASES.get(normalized) or []) + [normalized]
+    markets = []
+    for _term in _terms:
+        log.info(f"Epic cache miss for {ticker} — searching IG markets (term='{_term}')...")
+        data = session.get("/markets", params={"searchTerm": _term}, version="1")
+        markets = data.get("markets", [])
+        if markets:
+            if _term != normalized:
+                log.info(f"{ticker}: found via alias search term '{_term}'")
+            break
     if not markets:
-        log.warning(f"No IG market found for ticker: {ticker}")
+        log.warning(f"No IG market found for ticker: {ticker} (tried {_terms})")
         return None
 
     # ── Pick the RIGHT market, not the first one (user 2026-06-12: search for
