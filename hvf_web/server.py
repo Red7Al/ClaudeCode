@@ -238,7 +238,8 @@ def api_config():
         return jsonify({"name": name, "filters": s.get("filters", {}),
                         "exec": _cs.get_exec_flags(), "exec_sources": _cs.EXEC_SOURCES,
                         "trade": _cs.get_trade_filters(),
-                        "hidden_tabs": s.get("hidden_tabs", []), "leverage": lev})
+                        "hidden_tabs": s.get("hidden_tabs", []), "leverage": lev,
+                        "pinned_preorders": s.get("pinned_preorders", [])})
     body = request.get_json(silent=True) or {}
     if "trade" in body:
         t = body["trade"] or {}
@@ -977,6 +978,77 @@ def api_preorder_delete():
         return jsonify({"ok": False, "error": "database error", "deleted": deleted}), 500
     _wu.log_event(name, f"Deleted pre-order(s): {', '.join(deleted)}")
     return jsonify({"ok": True, "deleted": deleted})
+
+
+@app.route("/api/preorder-pin", methods=["POST"])
+def api_preorder_pin():
+    """Push a Scanner instrument into (or out of) the user's pinned pre-orders (user 2026-07-03) —
+    forces it into My Pre-orders even if it wouldn't naturally qualify. Per-user, stored in settings."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    if _wu.get_subscription(name) == "guest" and not _wu.is_admin(name):
+        return jsonify({"ok": False, "error": "your subscription has no pre-orders"}), 403
+    body = request.get_json(silent=True) or {}
+    tk = (body.get("ticker") or "").strip()
+    if not tk:
+        return jsonify({"ok": False, "error": "no ticker"}), 400
+    s = _wu.get_settings(name)
+    pinned = set(s.get("pinned_preorders") or [])
+    on = bool(body.get("on", True))
+    pinned.add(tk) if on else pinned.discard(tk)
+    s["pinned_preorders"] = sorted(pinned)
+    _wu.set_settings(name, s)
+    _wu.log_event(name, f"{'Pinned' if on else 'Unpinned'} pre-order: {tk}")
+    return jsonify({"ok": True, "pinned": s["pinned_preorders"]})
+
+
+def _sig_from_snapshot(tk):
+    """Build an engine sig dict from a snapshot record, for manual order placement."""
+    r = _record(tk)
+    if not (r and r.get("has_signal")):
+        return None
+    card = r.get("_card") or {}
+    return {"ticker": tk, "direction": "BUY" if r.get("direction") == "BULL" else "SELL",
+            "hvf_type": card.get("hvf_type") or ("BULLISH" if r.get("direction") == "BULL" else "BEARISH"),
+            "hvf_signal": r.get("status"), "hvf_h3_level": r.get("entry"),
+            "hvf_stop_level": r.get("stop"), "hvf_target": r.get("target"),
+            "hvf_quality": r.get("quality"), "hvf_risk_reward": r.get("rr"),
+            "hvf_timeframe": r.get("timeframe"), "index": r.get("market"), "location": r.get("location")}
+
+
+@app.route("/api/place-order", methods=["POST"])
+def api_place_order():
+    """Manually place a pre-order as a live IG working order NOW (user 2026-07-03), instead of waiting
+    for the 2-hour bridge. MONEY PATH: subscription must allow pre-orders; the order uses the user's
+    OWN IG account (owner = env creds; a non-owner must have supplied their own IG credentials — else
+    blocked so no one trades on another account). Goes through the same guarded place_hvf_order_from_sig."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    if _wu.get_subscription(name) == "guest" and not _wu.is_admin(name):
+        return jsonify({"ok": False, "error": "your subscription cannot place orders"}), 403
+    try:
+        import ig_shim
+        if ig_shim.session_for(name) is None:    # non-owner without their own IG creds
+            return jsonify({"ok": False, "error": "no IG credentials of your own — set them in Configuration → IG"}), 403
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"IG session error: {e}"}), 500
+    body = request.get_json(silent=True) or {}
+    tk = (body.get("ticker") or "").strip()
+    sig = _sig_from_snapshot(tk)
+    if not sig:
+        return jsonify({"ok": False, "error": "no signal for that instrument"}), 400
+    try:
+        from run_session import get_user_profile
+        from ig_shim import place_hvf_order_from_sig
+        wo = place_hvf_order_from_sig(sig, get_user_profile(), "WEB_MANUAL", 1.0)
+    except Exception as e:
+        log.warning(f"manual place-order {tk} failed: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+    _wu.log_event(name, f"Manually placed order: {tk}" + (f" ({wo.get('status')})" if wo else " (not placed)"))
+    _append_batch("Manual (web)", f"Placed {tk} order", by=name)
+    return jsonify({"ok": bool(wo), "status": (wo or {}).get("status"), "placed": bool(wo)})
 
 
 @app.route("/api/order-ops")
