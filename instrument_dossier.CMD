@@ -17,6 +17,8 @@ REM pause
 @ECHO ON
 python instrument_dossier.py --check-slack
 
-python instrument_dossier.py TLN
-python instrument_dossier.py COHR
+python instrument_dossier.py ABF
+python instrument_dossier.py XAUUSD
+REM python instrument_dossier.py TLN
+REM python instrument_dossier.py COHR
 pause

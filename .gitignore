@@ -54,3 +54,6 @@ Thumbs.db
 # of the repo, see memory secrets_and_x_delivery). instrument_dossier.CMD is tracked but holds
 # NO secrets — it CALLs this file, which each operator creates locally.
 launcher_secrets.cmd
+
+# local run logs
+hvf_web/run.log
