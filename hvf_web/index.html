@@ -147,6 +147,16 @@ a{transition:color .15s ease}
   color:var(--muted);cursor:pointer;transition:all .15s ease;display:flex;align-items:center;gap:7px}
 .confnav .pill:hover{border-color:var(--accent);color:var(--fg)}
 .confnav .pill.active{background:var(--grad);color:#fff;border-color:transparent;box-shadow:var(--sh-sm)}
+/* Credential rows — readable current value (user 2026-07-03: grey/small was hard to read) */
+.credrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line)}
+.credrow:first-of-type{border-top:none}
+.credrow .clabel{flex:1 1 180px;font-size:14px;font-weight:500;color:var(--fg)}
+.credrow .cval{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;color:var(--fg);
+  background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:5px 10px;letter-spacing:.02em}
+.credrow .cval.unset{color:var(--muted);font-style:italic;font-family:var(--font)}
+.credrow input.cred-in{flex:1 1 220px;max-width:340px;font-size:14px;padding:8px 10px;border-radius:8px}
+.credrow .cstate{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.credrow .cstate.on{color:var(--bull)} .credrow .cstate.off{color:var(--muted)}
 .confpanel{animation:fadeIn .2s ease}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
@@ -374,17 +384,20 @@ a{transition:color .15s ease}
   <div id="cfg-creds">loading…</div>
 </div>
 
-<div id="view-activity" class="hidden" style="padding:18px 22px;max-width:760px">
-  <h2 style="margin:0 0 4px">My activity</h2>
-  <p class="muted" style="font-size:12px;margin:0 0 14px">Your account's operational log. You only ever see your own entries.</p>
+<div id="view-activity" class="hidden doc" style="max-width:840px">
+  <span class="eyebrow">Account</span>
+  <h1>My activity</h1>
+  <p class="lede">Your account's operational log — logins, password changes, pre-order actions, data refreshes and configuration changes. You only ever see your own entries.</p>
   <input type="hidden" id="acf_cat">
-  <div class="viz" id="act-viz" style="border-bottom:none;padding:0 0 10px"></div>
-  <div class="count" style="padding-left:0;display:flex;gap:14px;align-items:center"><span id="act-count"></span><span class="grow"></span>
-    <label class="muted" style="font-size:12px">Category <select id="act-cat" onchange="paintActivity()" style="width:auto"><option value="">All</option><option>Login</option><option>Password</option><option>Pre-orders</option><option>Data</option><option>Configuration</option><option>Security</option><option>Other</option></select></label></div>
-  <div class="tablewrap"><table>
-    <thead><tr><th data-ak="ts">When (UTC)</th><th data-ak="cat">Category</th><th data-ak="event">Event</th></tr></thead>
-    <tbody id="act-rows"></tbody>
-  </table></div>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <div class="viz" id="act-viz" style="border-bottom:none;padding:0 0 12px"></div>
+    <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px"><span id="act-count"></span><span class="grow"></span>
+      <label class="muted" style="font-size:12px">Category <select id="act-cat" onchange="paintActivity()" style="width:auto"><option value="">All</option><option>Login</option><option>Password</option><option>Pre-orders</option><option>Data</option><option>Configuration</option><option>Security</option><option>Other</option></select></label></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th data-ak="ts">When (UTC)</th><th data-ak="cat">Category</th><th data-ak="event">Event</th></tr></thead>
+      <tbody id="act-rows"></tbody>
+    </table></div>
+  </section>
 </div>
 
 <div id="view-intro" class="hidden doc">
@@ -819,10 +832,12 @@ function renderCredentials(){
       $("cfg-creds").innerHTML=(j.sections||[]).map(sec=>{
         const ro=!sec.editable;
         const rows=sec.fields.map(f=>{
-          const hint=f.set?`<span class="muted" style="font-size:11px">set (${f.masked})</span>`:`<span class="muted" style="font-size:11px">not set</span>`;
-          const input=ro?`<span class="muted">${f.set?f.masked:"—"}</span>`
-            :`<input type="password" class="cred-in" data-sec="${sec.id}" data-key="${f.key}" placeholder="${f.set?'leave blank to keep':'enter value'}" autocomplete="new-password" style="max-width:320px">`;
-          return `<div class="kv" style="align-items:center"><span>${f.label} ${hint}</span>${input}</div>`;})
+          const state=f.set?`<span class="cstate on">Set</span>`:`<span class="cstate off">Not set</span>`;
+          const valchip=`<span class="cval${f.set?'':' unset'}" title="current value (last 4 shown)">${f.set?f.masked:'not set'}</span>`;
+          // Read-only: show the value chip. Editable: show the current value chip + an input to change it.
+          const right=ro?valchip
+            :`${valchip}<input type="password" class="cred-in" data-sec="${sec.id}" data-key="${f.key}" placeholder="${f.set?'change…':'enter value'}" autocomplete="new-password">`;
+          return `<div class="credrow"><span class="clabel">${f.label} ${state}</span>${right}</div>`;})
           .join("");
         const btn=ro?`<span class="muted" style="font-size:12px">🔒 Read-only — managed in GitHub Secrets.</span>`
           :`<button class="btn" style="margin-top:6px" onclick="saveCreds('${sec.id}')">Save ${sec.id} credentials</button>`;
