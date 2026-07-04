@@ -232,10 +232,13 @@ def api_config():
     import config_store as _cs
     if request.method == "GET":
         s = _wu.get_settings(name)
+        # Per-user broker leverage by instrument type (user 2026-07-03; defaults FX 100, else 10).
+        lev = {"fx": 100, "equities": 10, "commodities": 10, "indices": 10}
+        lev.update({k: v for k, v in (s.get("leverage") or {}).items() if k in lev})
         return jsonify({"name": name, "filters": s.get("filters", {}),
                         "exec": _cs.get_exec_flags(), "exec_sources": _cs.EXEC_SOURCES,
                         "trade": _cs.get_trade_filters(),
-                        "hidden_tabs": s.get("hidden_tabs", [])})
+                        "hidden_tabs": s.get("hidden_tabs", []), "leverage": lev})
     body = request.get_json(silent=True) or {}
     if "trade" in body:
         t = body["trade"] or {}
@@ -256,6 +259,16 @@ def api_config():
         s["hidden_tabs"] = [t for t in (body["hidden_tabs"] or []) if isinstance(t, str) and t != "config"]
         _wu.set_settings(name, s)
         _wu.log_event(name, "Saved tab visibility (Config)")
+    if "leverage" in body:
+        s = _wu.get_settings(name)
+        cur = s.get("leverage") or {}
+        for k in ("fx", "equities", "commodities", "indices"):
+            v = (body["leverage"] or {}).get(k)
+            if isinstance(v, (int, float)) and v > 0:
+                cur[k] = float(v)
+        s["leverage"] = cur
+        _wu.set_settings(name, s)
+        _wu.log_event(name, "Saved broker leverage (Config)")
     if "exec" in body:
         for src, on in (body["exec"] or {}).items():
             if src in _cs.EXEC_SOURCES:

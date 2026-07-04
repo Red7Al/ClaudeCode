@@ -303,7 +303,7 @@ a{transition:color .15s ease}
         <thead><tr>
           <th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
-          <th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
+          <th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
           <th data-k="pe">P/E</th><th data-k="timeframe">TF</th>
           <th data-k="market">Market</th><th data-k="location">Location</th><th data-k="dist_entry">Dist→Entry</th>
@@ -362,6 +362,7 @@ a{transition:color .15s ease}
     <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>
     <button class="pill" data-panel="trading_mo" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
     <button class="pill" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
+    <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>
     <!-- credential-section pills (Supabase/X/Slack/Server/Email) are injected here by renderCredentials -->
   </nav>
 
@@ -378,6 +379,19 @@ a{transition:color .15s ease}
       <div id="tabvis-list" style="display:flex;flex-wrap:wrap;gap:6px 14px">loading…</div>
       <button class="btn" style="margin-top:10px" onclick="saveTabVis()">Save tab visibility</button>
       <span id="tabvis-msg" style="font-size:12px;margin-left:8px"></span>
+    </div>
+  </div>
+
+  <!-- Leverage (Broker) panel — per-user leverage by instrument type (user 2026-07-03), all users -->
+  <div class="confpanel hidden" data-panel="leverage">
+    <div class="card" style="margin-bottom:0"><h4>Leverage (Broker) — by instrument type</h4>
+      <p class="muted" style="font-size:12px">Your broker's leverage for each instrument type. Shown as the <b>Leverage</b> column in the Scanner. Defaults: FX 100, Equities 10, Commodities 10, Indices 10.</p>
+      <div class="credrow"><span class="clabel">FX</span><input type="number" min="1" step="1" id="lev-fx" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Equities</span><input type="number" min="1" step="1" id="lev-equities" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Commodities</span><input type="number" min="1" step="1" id="lev-commodities" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Indices</span><input type="number" min="1" step="1" id="lev-indices" style="max-width:120px"></div>
+      <button class="btn" style="margin-top:10px" onclick="saveLeverage()">Save leverage</button>
+      <span id="lev-msg" style="font-size:12px;margin-left:8px"></span>
     </div>
   </div>
 
@@ -580,6 +594,10 @@ const F=["f_search","f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_
 const LOC={UK:"United Kingdom",US:"United States",FX:"FX",
   "Europe (West)":"Europe (West)","Europe (East)":"Europe (East)","Asia":"Asia","Other":"Other"};
 const locName=v=>LOC[v]||v||"";
+// Broker leverage by instrument type (user 2026-07-03). Type derived from the instrument's market.
+let LEVERAGE={fx:100,equities:10,commodities:10,indices:10};
+function levType(r){const m=r.market||"";if(m==="FX")return"fx";if(m==="Indices")return"indices";if(m==="Commodities")return"commodities";if(m==="Crypto")return"equities";return"equities";}
+const levOf=r=>LEVERAGE[levType(r)];
 const f2=v=>(v==null||v==="")?"":(+v).toFixed(2);
 const disp=t=>(t||"").replace(/\.L$/,"");
 const qcol=q=>q>=70?"var(--bull)":q>=50?"#d29922":"var(--bear)";   // quality colour: green / amber / red
@@ -718,12 +736,12 @@ function render(){
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td><span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></td>
     <td>${r.days_since??''}</td>
-    <td>${r.sector||''}</td><td>${ob(r.status||'')}</td><td>${ob(r.tgt_str||'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
+    <td>${r.sector||''}</td><td>${ob(r.status||'')}</td><td>${ob(r.tgt_str||'')}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td>
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td>
     <td>${ob(r.pe??'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(r.market||'')}</td><td>${ob(locName(r.location))}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td></tr>`).join("")
-    || `<tr><td colspan="17" class="empty">No setups match the filters.</td></tr>`;
+    || `<tr><td colspan="18" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
     tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
@@ -1074,6 +1092,7 @@ function renderConfig(){
     .then(j=>{
       USER_FILTERS=j.filters||{};
       HIDDEN_TABS=j.hidden_tabs||[]; renderTabVis(HIDDEN_TABS);   // tab-visibility card (user 2026-07-03)
+      if(j.leverage){LEVERAGE=j.leverage;["fx","equities","commodities","indices"].forEach(k=>{if($("lev-"+k))$("lev-"+k).value=j.leverage[k];});}
       const n=Object.keys(USER_FILTERS).length;
       $("cfg-defaults").textContent=n?("Saved defaults: "+Object.entries(USER_FILTERS).map(([k,v])=>`${k.replace('f_','')}=${v}`).join(" · ")):"No saved defaults yet — using the built-in ones.";
       $("cfg-exec").innerHTML=(j.exec_sources||[]).map(s=>{const on=(j.exec||{})[s]!==false;
@@ -1097,6 +1116,12 @@ function saveFilterDefaults(){
 function clearFilterDefaults(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({filters:{}})})
     .then(()=>{USER_FILTERS={};renderConfig();});
+}
+function saveLeverage(){
+  const lev={};["fx","equities","commodities","indices"].forEach(k=>{const v=parseFloat($("lev-"+k).value);if(v>0)lev[k]=v;});
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({leverage:lev})})
+    .then(r=>{if(!r.ok)throw 0;LEVERAGE={...LEVERAGE,...lev};render();$("lev-msg").style.color="var(--bull)";$("lev-msg").textContent="Leverage saved.";})
+    .catch(()=>{$("lev-msg").style.color="var(--bear)";$("lev-msg").textContent="Save failed.";});
 }
 function saveTradeFilters(){
   const t={directions:[],markets:[],locations:[]};
@@ -1257,7 +1282,7 @@ fetch("/api/me",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(m=>{
   ROLE=m.subscription||"guest"; IS_ADMIN=!!m.is_admin;
   if(m.name)$("logout").textContent=`${m.name}${m.is_admin?" (admin)":""} · Log out`;   // who's logged in
   return AUTH?fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({})):{};
-}).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[];})
+}).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[]; if(cfg&&cfg.leverage)LEVERAGE=cfg.leverage;})
   .catch(()=>{}).finally(()=>{applyTabVisibility();showTab("welcome");});
 if(AUTH)$("logout").style.display="";
 let LIMITED=false;
