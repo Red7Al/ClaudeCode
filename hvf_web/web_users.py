@@ -55,6 +55,17 @@ _SEED = [
     ("Rich", "richard.williams@aztecsolarenergy.co.uk"),
 ]
 
+# Roles (user 2026-07-03). admin = full access incl. user maintenance, admin tabs, shared config,
+# data refresh. gold = read/write incl. pre-orders + monitor exec. silver = read/write incl.
+# pre-orders. guest = read-only (incl. configuration), no pre-orders.
+ROLES = ["admin", "gold", "silver", "guest"]
+_SEED_ADMINS = {"Alex", "Rich"}
+_DEFAULT_ROLE = "guest"
+
+
+def _default_role(name: str) -> str:
+    return "admin" if name in _SEED_ADMINS else _DEFAULT_ROLE
+
 
 def _hash_pwd(pwd: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", pwd.encode(), bytes.fromhex(salt), _PBKDF2_ITERS).hex()
@@ -84,9 +95,17 @@ def _ensure_seeded() -> dict:
             if name not in users:
                 salt = _secrets.token_hex(16)
                 users[name] = {"salt": salt, "pwd_hash": _hash_pwd(_secrets.token_hex(24), salt),
-                               "email": email, "secrets": {}}   # LOCKED until an email-gated reset
+                               "email": email, "secrets": {},
+                               "role": _default_role(name), "enabled": True}   # LOCKED until reset
                 changed = True
                 log.info(f"web_users: '{name}' seeded LOCKED - set a password via the reset (email) flow")
+        # Backfill role/enabled on any legacy login record (not the "__app__" secrets record).
+        for n, u in users.items():
+            if isinstance(u, dict) and "pwd_hash" in u:
+                if "role" not in u:
+                    u["role"] = _default_role(n); changed = True
+                if "enabled" not in u:
+                    u["enabled"] = True; changed = True
         if changed:
             _save(users)
             log.info(f"web_users seeded ({_USERS_FILE})")
@@ -95,7 +114,54 @@ def _ensure_seeded() -> dict:
 
 def verify(name: str, pwd: str) -> bool:
     u = _ensure_seeded().get(name)
-    return bool(u) and _secrets.compare_digest(u["pwd_hash"], _hash_pwd(pwd or "", u["salt"]))
+    if not u or not u.get("enabled", True):     # disabled accounts cannot log in (user 2026-07-03)
+        return False
+    return _secrets.compare_digest(u["pwd_hash"], _hash_pwd(pwd or "", u["salt"]))
+
+
+# ── Roles & account status (user 2026-07-03) ─────────────────────────────────────────────────────────
+def get_role(name: str) -> str:
+    u = _ensure_seeded().get(name)
+    return (u or {}).get("role", _default_role(name))
+
+
+def is_admin(name: str) -> bool:
+    return get_role(name) == "admin"
+
+
+def is_enabled(name: str) -> bool:
+    return bool((_ensure_seeded().get(name) or {}).get("enabled", True))
+
+
+def list_users() -> list:
+    """[{name, email, role, enabled}] for the user-maintenance area (admin only)."""
+    return [{"name": n, "email": u.get("email", ""), "role": u.get("role", _default_role(n)),
+             "enabled": bool(u.get("enabled", True))}
+            for n, u in _ensure_seeded().items() if isinstance(u, dict) and "pwd_hash" in u]
+
+
+def set_role(name: str, role: str) -> bool:
+    if role not in ROLES:
+        return False
+    with _LOCK:
+        users = _load()
+        u = users.get(name)
+        if not u or "pwd_hash" not in u:
+            return False
+        u["role"] = role
+        _save(users)
+    return True
+
+
+def set_enabled(name: str, enabled: bool) -> bool:
+    with _LOCK:
+        users = _load()
+        u = users.get(name)
+        if not u or "pwd_hash" not in u:
+            return False
+        u["enabled"] = bool(enabled)
+        _save(users)
+    return True
 
 
 def token_for(name: str) -> str:

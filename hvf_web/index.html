@@ -41,7 +41,7 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 .vizbox h5{margin:0 0 6px;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}
 .bars{display:flex;flex-direction:column;gap:3px;min-width:120px}
 .bar{display:flex;align-items:center;gap:6px;font-size:11px}
-.bar .tk{width:48px;color:var(--muted);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px}
+.bar .tk{width:auto;min-width:48px;max-width:170px;color:var(--muted);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px}
 .bar .fill{height:11px;border-radius:2px;background:var(--accent)}
 .bar .n{color:var(--muted)}
 table{border-collapse:collapse;width:100%;font-size:13px}
@@ -153,10 +153,12 @@ a{transition:color .15s ease}
 .credrow .clabel{flex:1 1 180px;font-size:14px;font-weight:500;color:var(--fg)}
 .credrow .cval{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;color:var(--fg);
   background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:5px 10px;letter-spacing:.02em}
-.credrow .cval.unset{color:var(--muted);font-style:italic;font-family:var(--font)}
+.credrow .cval.unset{color:var(--bear);font-style:italic;font-family:var(--font)}   /* "Not set" is red */
 .credrow input.cred-in{flex:1 1 220px;max-width:340px;font-size:14px;padding:8px 10px;border-radius:8px}
 .credrow .cstate{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
-.credrow .cstate.on{color:var(--bull)} .credrow .cstate.off{color:var(--muted)}
+.credrow .cstate.on{color:var(--bull)} .credrow .cstate.off{color:var(--bear)}                /* "Not set" red */
+.confnav .adminpill{border-color:#d29922}
+.confnav .adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a);border-color:transparent}
 .confpanel{animation:fadeIn .2s ease}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
@@ -187,7 +189,11 @@ a{transition:color .15s ease}
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')">Pre-orders <span id="potab-count"></span></button>
   <button class="tab" id="tab-orderops" onclick="showTab('orderops')">Order (Operations)</button>
   <button class="tab" id="tab-activity" onclick="showTab('activity')">My activity</button>
+  <button class="tab" id="tab-batch" onclick="showTab('batch')">Batch Activity</button>
   <button class="tab" id="tab-config" onclick="showTab('config')">Configuration</button>
+  <button class="tab" id="tab-users" onclick="showTab('users')">User Management</button>
+  <button class="tab" id="tab-version" onclick="showTab('version')">Version History</button>
+  <button class="tab" id="tab-tabvis" onclick="showTab('tabvis')">Tab Visibility</button>
   <span class="grow"></span>
   <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
 </div>
@@ -345,10 +351,7 @@ a{transition:color .15s ease}
     <button class="pill active" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
     <button class="pill" data-panel="trading" onclick="confShow('trading')">📈 Trading</button>
     <button class="pill" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
-    <button class="pill" data-panel="Supabase" onclick="confShow('Supabase')">🗄️ Supabase</button>
-    <button class="pill" data-panel="X" onclick="confShow('X')">𝕏 X</button>
-    <button class="pill" data-panel="Slack" onclick="confShow('Slack')">💬 Slack</button>
-    <button class="pill" data-panel="Other" onclick="confShow('Other')">🧩 Other</button>
+    <!-- credential-section pills (Supabase/X/Slack/Server/Email) are injected here by renderCredentials -->
   </nav>
 
   <!-- Preferences panel (hidden by default — IG is the leftmost/default panel, user 2026-07-03) -->
@@ -382,6 +385,56 @@ a{transition:color .15s ease}
 
   <!-- Credential panels — one per section; renderCredentials() populates #cfg-creds with a panel each -->
   <div id="cfg-creds">loading…</div>
+</div>
+
+<div id="view-batch" class="hidden doc" style="max-width:900px">
+  <span class="eyebrow">Admin</span>
+  <h1>Batch Activity</h1>
+  <p class="lede">Execution log of the scheduled cron-job.org runs and the manual "Refresh data" button.</p>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <div class="count" style="padding-left:0"><span id="batch-count"></span></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th data-bk="ts">When (UTC)</th><th data-bk="source">Source</th><th data-bk="event">Event</th><th data-bk="by">By</th></tr></thead>
+      <tbody id="batch-rows"></tbody>
+    </table></div>
+  </section>
+</div>
+
+<div id="view-users" class="hidden doc" style="max-width:840px">
+  <span class="eyebrow">Admin</span>
+  <h1>User Management</h1>
+  <p class="lede">Manage logins — assign a subscription role and enable or disable accounts. Roles: <b>Admin</b> (full access), <b>Gold</b> (read/write incl. pre-orders + monitor exec), <b>Silver</b> (read/write incl. pre-orders), <b>Guest</b> (read-only, no pre-orders).</p>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <div class="tablewrap"><table>
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+      <tbody id="users-rows"></tbody>
+    </table></div>
+    <div id="users-msg" style="font-size:12px;margin-top:8px"></div>
+  </section>
+</div>
+
+<div id="view-version" class="hidden doc" style="max-width:960px">
+  <span class="eyebrow">Admin</span>
+  <h1>Version History</h1>
+  <p class="lede">A log of changes to the application — date, version and a summary.</p>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <div class="count" style="padding-left:0"><span id="ver-count"></span></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th data-vk="date">Date</th><th data-vk="version">Version</th><th data-vk="summary">Summary</th></tr></thead>
+      <tbody id="ver-rows"></tbody>
+    </table></div>
+  </section>
+</div>
+
+<div id="view-tabvis" class="hidden doc" style="max-width:680px">
+  <span class="eyebrow">Admin</span>
+  <h1>Tab Visibility</h1>
+  <p class="lede">Choose which tabs are shown. Configuration is always visible so these settings stay reachable.</p>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <div id="tabvis-list">loading…</div>
+    <button class="btn" style="margin-top:10px" onclick="saveTabVis()">Save tab visibility</button>
+    <div id="tabvis-msg" style="font-size:12px;margin-top:8px"></div>
+  </section>
 </div>
 
 <div id="view-activity" class="hidden doc" style="max-width:840px">
@@ -501,7 +554,7 @@ const $=id=>document.getElementById(id);
 const F=["f_search","f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
          "f_demin","f_demax","f_dsmin","f_dsmax","f_pemin","f_pemax","f_inmin","f_inmax"];
 const LOC={UK:"United Kingdom",US:"United States",FX:"FX",
-  "Western Europe":"Western Europe","Eastern Europe":"Eastern Europe","Asia":"Asia","Other":"Other"};
+  "Europe (West)":"Europe (West)","Europe (East)":"Europe (East)","Asia":"Asia","Other":"Other"};
 const locName=v=>LOC[v]||v||"";
 const f2=v=>(v==null||v==="")?"":(+v).toFixed(2);
 const disp=t=>(t||"").replace(/\.L$/,"");
@@ -742,7 +795,8 @@ document.querySelectorAll("th[data-ok]").forEach(th=>th.onclick=()=>{const k=th.
 document.querySelectorAll("th[data-ak]").forEach(th=>th.onclick=()=>{const k=th.dataset.ak;acSortDir=(acSortK===k)?-acSortDir:-1;acSortK=k;paintActivity();});
 F.forEach(id=>$(id).addEventListener("input",applyAll));
 // Click a chart bar / pie slice to set that filter (toggle off if already set) — user 2026-06-27.
-$("viz").addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(!el)return;
+// Delegated so EVERY chart on EVERY tab filters (user 2026-07-03), not just the Scanner's #viz.
+document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(!el)return;
   const f=$(el.dataset.fk); if(!f)return; f.value=(f.value===el.dataset.fv)?"":el.dataset.fv;
   // Route to the tab the chart belongs to (user 2026-07-03: po/oo charts filter their own tables).
   if(el.dataset.fk.startsWith("pof_"))renderPreorders();
@@ -783,8 +837,25 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 // signal, not yet triggered, and quality >= 25 (user 2026-06-29: drop the low-quality noise)
 // signal, not yet triggered, Q>=25, and NOT already placed on IG (removed once it's a live working order).
 const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker));
-const TABS=["welcome","scanner","preorders","orderops","activity","config","intro","appendix"];
+const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","config","users","version","tabvis"];
+const PUBLIC_TABS=["welcome","intro","appendix","scanner"];   // visible when logged out
+const ADMIN_TABS=["batch","users","version","tabvis"];        // admin role only
 let AUTH=localStorage.getItem("sq_auth")||"";
+let ROLE="guest", IS_ADMIN=false, HIDDEN_TABS=[];
+// Which tabs the current session may see (login + role + per-user tab-visibility choices).
+function tabAllowed(t){
+  if(t==="config")return !!AUTH;                       // config always available once logged in
+  if(ADMIN_TABS.includes(t))return IS_ADMIN;
+  if(!PUBLIC_TABS.includes(t)&&!AUTH)return false;      // login-required tab, not logged in
+  if(HIDDEN_TABS.includes(t))return false;              // user chose to hide it (Tab Visibility)
+  return true;
+}
+function applyTabVisibility(){
+  TABS.forEach(t=>{const b=$("tab-"+t);if(b)b.style.display=tabAllowed(t)?"":"none";});
+  // Refresh is admin-only (user 2026-07-03); other Scanner controls stay as they were.
+  const rb=$("refresh"); if(rb) rb.dataset.adminonly="1";
+  colorTabs();
+}
 // Each tab a progressively darker shade of grey, left -> right (user 2026-07-03). Light text keeps
 // the darker right-hand tabs readable in both themes; the active tab gets a bright accent underline.
 function colorTabs(){
@@ -801,21 +872,69 @@ function colorTabs(){
   });
 }
 function showTab(name){
-  // Data tabs are login-gated; the Scanner is VIEWABLE logged-out in teaser mode (first 5 columns
-  // real, the rest obfuscated — user 2026-07-03). Pre-orders/Orders/Activity/Config stay locked.
-  const locked=!AUTH && (name==="preorders"||name==="activity"||name==="orderops"||name==="config");
+  if(!tabAllowed(name))name="welcome";                  // never open a tab this session can't see
+  // Login-required tabs show the login panel when logged out; Scanner is a teaser (first 5 cols).
+  const locked=!AUTH && !PUBLIC_TABS.includes(name);
   TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",locked||t!==name);if(b)b.classList.toggle("active",t===name);});
   colorTabs();
   $("loginpanel").classList.toggle("hidden",!locked);
-  // The header controls are Scanner tools (filters / Squeeze-only / refresh) — hide them on other
-  // tabs where they're irrelevant (user 2026-06-30). Theme + Log out stay global.
+  // Header controls are Scanner tools; Refresh is admin-only (user 2026-07-03).
   const sc=(name==="scanner")&&!locked;
-  ["togglefilters","signalonly","refresh","reset","showall"].forEach(id=>{const b=$(id);if(b)b.style.display=sc?"":"none";});
+  ["togglefilters","signalonly","reset","showall"].forEach(id=>{const b=$(id);if(b)b.style.display=sc?"":"none";});
+  const rb=$("refresh"); if(rb) rb.style.display=(sc&&IS_ADMIN)?"":"none";
   if(!locked&&name==="preorders")renderPreorders();
   if(!locked&&name==="activity")renderActivity();
   if(!locked&&name==="orderops")renderOrderOps();
   if(!locked&&name==="config")renderConfig();
+  if(name==="users")renderUsers();
+  if(name==="version")renderVersion();
+  if(name==="batch")renderBatch();
+  if(name==="tabvis")renderTabVis();
 }
+// ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
+const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner",
+  preorders:"Pre-orders",orderops:"Order (Operations)",activity:"My activity",batch:"Batch Activity",
+  config:"Configuration",users:"User Management",version:"Version History",tabvis:"Tab Visibility"};
+function renderUsers(){
+  fetch("/api/users",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(j=>{const roles=j.roles||["admin","gold","silver","guest"];
+      $("users-rows").innerHTML=(j.users||[]).map(u=>`<tr>
+        <td><b>${u.name}</b></td><td>${u.email||''}</td>
+        <td><select onchange="saveUser('${u.name}',{role:this.value})" style="width:auto">${roles.map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join("")}</select></td>
+        <td><button class="btn" onclick="saveUser('${u.name}',{enabled:${!u.enabled}})">${u.enabled?'<span style="color:var(--bull)">Enabled</span> — disable':'<span style="color:var(--bear)">Disabled</span> — enable'}</button></td></tr>`).join("");})
+    .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});
+}
+function saveUser(name,patch){
+  fetch("/api/users",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({name,...patch})})
+    .then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(()=>{$("users-msg").style.color="var(--bull)";$("users-msg").textContent=`Updated ${name}.`;renderUsers();})
+    .catch(()=>{$("users-msg").style.color="var(--bear)";$("users-msg").textContent="Update failed.";});
+}
+let VER_ROWS=[], verSortK="date", verSortDir=-1;
+function paintVersion(){$("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${VER_ROWS.length}</b> changes`;
+  $("ver-rows").innerHTML=genSort(VER_ROWS,verSortK,verSortDir).map(e=>`<tr><td>${e.date}</td><td><code>${e.version}</code></td><td>${(e.summary||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="3" class="empty">No entries.</td></tr>`;}
+function renderVersion(){fetch("/api/version-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{VER_ROWS=j.entries||[];paintVersion();}).catch(()=>{$("ver-rows").innerHTML=`<tr><td colspan="3" class="empty">Could not load (admin only).</td></tr>`;});}
+let BATCH_ROWS=[], batchSortK="ts", batchSortDir=-1;
+function paintBatch(){$("batch-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${BATCH_ROWS.length}</b> batch runs`;
+  $("batch-rows").innerHTML=genSort(BATCH_ROWS,batchSortK,batchSortDir).map(e=>`<tr><td>${e.ts||''}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.source||''}</span></td><td>${(e.event||'').replace(/</g,"&lt;")}</td><td>${e.by||''}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
+function renderBatch(){fetch("/api/batch-activity",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{BATCH_ROWS=j.entries||[];paintBatch();}).catch(()=>{$("batch-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});}
+function renderTabVis(){
+  fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(j=>{
+    const hidden=new Set(j.hidden_tabs||[]);
+    // Every tab the user can otherwise see is toggleable, except Configuration (forced on).
+    const list=TABS.filter(t=>t!=="config"&&(PUBLIC_TABS.includes(t)||AUTH)&&(!ADMIN_TABS.includes(t)||IS_ADMIN));
+    $("tabvis-list").innerHTML=`<label class="credrow" style="opacity:.7"><input type="checkbox" checked disabled> Configuration <span class="muted">(always visible)</span></label>`+
+      list.map(t=>`<label class="credrow"><input type="checkbox" class="tv" data-t="${t}" ${hidden.has(t)?'':'checked'}> ${TAB_LABELS[t]||t}</label>`).join("");
+  });
+}
+function saveTabVis(){
+  const hidden=[...document.querySelectorAll(".tv")].filter(c=>!c.checked).map(c=>c.dataset.t);
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({hidden_tabs:hidden})})
+    .then(r=>{if(!r.ok)throw 0;HIDDEN_TABS=hidden;applyTabVisibility();$("tabvis-msg").style.color="var(--bull)";$("tabvis-msg").textContent="Saved.";})
+    .catch(()=>{$("tabvis-msg").style.color="var(--bear)";$("tabvis-msg").textContent="Save failed.";});
+}
+document.querySelectorAll("th[data-vk]").forEach(th=>th.onclick=()=>{const k=th.dataset.vk;verSortDir=(verSortK===k)?-verSortDir:-1;verSortK=k;paintVersion();});
+document.querySelectorAll("th[data-bk]").forEach(th=>th.onclick=()=>{const k=th.dataset.bk;batchSortDir=(batchSortK===k)?-batchSortDir:-1;batchSortK=k;paintBatch();});
 // ── Configuration tab (user 2026-07-03): per-user filter defaults + shared execution switches ──────
 let USER_FILTERS={};
 const FILTER_IDS=()=>F.concat(["f_days","pof_direction","pof_status","pof_location","pof_market","pof_timeframe","pof_sector"]);   // incl. the per-user Pre-orders filters
@@ -843,10 +962,21 @@ function renderCredentials(){
           .join("");
         const btn=ro?`<span class="muted" style="font-size:12px">🔒 Read-only — the administrator manages these shared credentials.</span>`
           :`<button class="btn" style="margin-top:6px" onclick="saveCreds('${sec.id}')">Save ${sec.id} credentials</button>`;
-        return `<div class="confpanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"><h4>${sec.id} credentials${sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
+        const amber=sec.admin_only?' style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"':'';
+        return `<div class="confpanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"${amber}><h4>${sec.id} credentials${sec.admin_only?' <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span>':sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
           <p class="muted" style="font-size:12px;margin:0 0 8px">${sec.note}</p>${rows}${btn}
           <div id="cred-msg-${sec.id}" style="font-size:12px;margin-top:6px"></div></div></div>`;}).join("");
-      confShow(document.querySelector("#confnav .pill.active")?.dataset.panel||"preferences");
+      // Inject a nav pill per credential section (amber for admin-only), after the fixed pills.
+      document.querySelectorAll("#confnav .pill.credpill").forEach(p=>p.remove());
+      const icons={IG:"🔑",Supabase:"🗄️",X:"𝕏",Slack:"💬",Server:"🖥️","Email (Yahoo)":"✉️"};
+      (j.sections||[]).filter(s=>s.scope==="app").forEach(s=>{
+        const b=document.createElement("button");
+        b.className="pill credpill"+(s.admin_only?" adminpill":"");
+        b.dataset.panel=s.id; b.textContent=`${icons[s.id]||"🧩"} ${s.id}`;
+        b.onclick=()=>confShow(s.id);
+        $("confnav").appendChild(b);
+      });
+      confShow(document.querySelector("#confnav .pill.active")?.dataset.panel||"IG");
     })
     .catch(()=>{$("cfg-creds").innerHTML=`<div class="muted">Could not load credentials — try logging in again.</div>`;});
 }
@@ -1038,7 +1168,12 @@ function deletePreorders(){
     .catch(()=>alert("Delete failed — try logging in again."));
 }
 
-showTab("welcome");   // Introduction is the default tab (user 2026-07-03)
+// Resolve role first (user 2026-07-03) so tab visibility is correct on first paint.
+fetch("/api/me",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(m=>{
+  ROLE=m.role||"guest"; IS_ADMIN=!!m.is_admin;
+  return AUTH?fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({})):{};
+}).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[];})
+  .catch(()=>{}).finally(()=>{applyTabVisibility();showTab("welcome");});
 if(AUTH)$("logout").style.display="";
 let LIMITED=false;
 const ob=h=>LIMITED?'<span class="muted">•••</span>':h;   // obfuscated cell for logged-out visitors

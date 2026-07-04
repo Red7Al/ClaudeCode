@@ -90,6 +90,81 @@ def api_login():
     return jsonify({"ok": False}), 401
 
 
+_DATA_DIR = os.path.join(os.path.dirname(_HERE), "data")
+_VERSION_FILE = os.path.join(_DATA_DIR, "version_history.json")
+_BATCH_FILE = os.path.join(_DATA_DIR, "batch_activity.json")
+
+
+def _read_json_entries(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return (json.load(fh) or {}).get("entries", [])
+    except Exception:
+        return []
+
+
+def _append_batch(source, event, by="system"):
+    """Append a batch-execution record (cron-job.org / Refresh button) — user 2026-07-03."""
+    from datetime import datetime, timezone
+    try:
+        entries = _read_json_entries(_BATCH_FILE)
+        entries.insert(0, {"ts": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+                           "source": source, "event": event, "by": by})
+        os.makedirs(_DATA_DIR, exist_ok=True)
+        with open(_BATCH_FILE, "w", encoding="utf-8") as fh:
+            json.dump({"entries": entries[:500]}, fh, indent=1)
+    except Exception as e:
+        log.warning(f"batch log append failed: {e}")
+
+
+@app.route("/api/version-history")
+def api_version_history():
+    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+        return jsonify({"error": "admin only"}), 403
+    return jsonify({"entries": _read_json_entries(_VERSION_FILE)})
+
+
+@app.route("/api/batch-activity")
+def api_batch_activity():
+    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+        return jsonify({"error": "admin only"}), 403
+    return jsonify({"entries": _read_json_entries(_BATCH_FILE)})
+
+
+@app.route("/api/me")
+def api_me():
+    """The logged-in user's identity + role, for client-side gating (user 2026-07-03)."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"name": None, "role": "guest", "is_admin": False})
+    return jsonify({"name": name, "role": _wu.get_role(name), "is_admin": _wu.is_admin(name)})
+
+
+@app.route("/api/users", methods=["GET", "POST"])
+def api_users():
+    """User maintenance (admin only, user 2026-07-03): list logins, set role / enabled status."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    if not _wu.is_admin(name):
+        return jsonify({"error": "admin only"}), 403
+    if request.method == "GET":
+        return jsonify({"users": _wu.list_users(), "roles": _wu.ROLES})
+    body = request.get_json(silent=True) or {}
+    target = (body.get("name") or "").strip()
+    if not target:
+        return jsonify({"ok": False, "error": "no user"}), 400
+    changed = []
+    if "role" in body and _wu.set_role(target, body["role"]):
+        changed.append(f"role={body['role']}")
+    if "enabled" in body and target != name and _wu.set_enabled(target, bool(body["enabled"])):
+        # guard: an admin can't disable their own account and lock themselves out
+        changed.append(f"enabled={bool(body['enabled'])}")
+    if changed:
+        _wu.log_event(name, f"User maintenance: {target} → {', '.join(changed)}")
+    return jsonify({"ok": True, "changed": changed, "users": _wu.list_users()})
+
+
 @app.route("/api/reset-password", methods=["POST"])
 def api_reset_password():
     """Password reset gated on the email REGISTERED to the account (user 2026-06-30). On success the
@@ -112,9 +187,11 @@ def api_config():
         return jsonify({"error": "login required"}), 401
     import config_store as _cs
     if request.method == "GET":
-        return jsonify({"name": name, "filters": _wu.get_settings(name).get("filters", {}),
+        s = _wu.get_settings(name)
+        return jsonify({"name": name, "filters": s.get("filters", {}),
                         "exec": _cs.get_exec_flags(), "exec_sources": _cs.EXEC_SOURCES,
-                        "trade": _cs.get_trade_filters()})
+                        "trade": _cs.get_trade_filters(),
+                        "hidden_tabs": s.get("hidden_tabs", [])})
     body = request.get_json(silent=True) or {}
     if "trade" in body:
         t = body["trade"] or {}
@@ -129,6 +206,12 @@ def api_config():
         s["filters"] = {k: v for k, v in (body["filters"] or {}).items() if isinstance(k, str)}
         _wu.set_settings(name, s)
         _wu.log_event(name, "Saved filter defaults (Config)")
+    if "hidden_tabs" in body:
+        s = _wu.get_settings(name)
+        # Configuration can never be hidden (user 2026-07-03: must stay reachable to change this).
+        s["hidden_tabs"] = [t for t in (body["hidden_tabs"] or []) if isinstance(t, str) and t != "config"]
+        _wu.set_settings(name, s)
+        _wu.log_event(name, "Saved tab visibility (Config)")
     if "exec" in body:
         for src, on in (body["exec"] or {}).items():
             if src in _cs.EXEC_SOURCES:
@@ -143,25 +226,29 @@ _OWNER = "Alex"   # the account owner / administrator (also used by /api/order-o
 # Secrets are only the one-off SEED (import_credentials_from_env below). IG is per-user (each login
 # edits their own account); Supabase/X/Slack/Other are shared (owner edits, others masked read-only).
 # Each field: (store_key, label, ENV_VAR_NAME) — the env name is used only for the one-off seed.
+# admin_only sections are hidden from non-admins entirely (user 2026-07-03: only admins see X /
+# Supabase / Slack / Server config). IG + Email(Yahoo) are visible to all (IG editable own; shared
+# sections admin-editable, non-admins masked read-only).
 CRED_SECTIONS = [
-    {"id": "IG", "scope": "ig", "note": "Your own IG account — each user trades their own account.",
+    {"id": "IG", "scope": "ig", "admin_only": False, "note": "Your own IG account — each user trades their own account.",
      "fields": [("ig_api_key", "IG API key", "IG_API_KEY"), ("ig_username", "IG username", "IG_USERNAME"),
                 ("ig_password", "IG password", "IG_PASSWORD"), ("ig_account_id", "IG account ID", "IG_ACCOUNT_ID")]},
-    {"id": "Supabase", "scope": "app", "note": "Shared database credentials.",
+    {"id": "Supabase", "scope": "app", "admin_only": True, "note": "Shared database credentials.",
      "fields": [("supabase_user", "Supabase user", "SUPABASE_USER"),
                 ("supabase_db_password", "Supabase DB password", "SUPABASE_DB_PASSWORD")]},
-    {"id": "X", "scope": "app", "note": "Shared X (Twitter) API credentials.",
+    {"id": "X", "scope": "app", "admin_only": True, "note": "Shared X (Twitter) API credentials.",
      "fields": [("x_api_key", "API key", "X_API_KEY"), ("x_api_secret", "API secret", "X_API_SECRET"),
                 ("x_access_token", "Access token", "X_ACCESS_TOKEN"), ("x_access_secret", "Access secret", "X_ACCESS_SECRET")]},
-    {"id": "Slack", "scope": "app", "note": "Shared Slack incoming-webhook URLs.",
+    {"id": "Slack", "scope": "app", "admin_only": True, "note": "Shared Slack incoming-webhook URLs.",
      "fields": [("slack_alerts", "#alerts webhook", "SLACK_ALERTS"), ("slack_daily", "#daily webhook", "SLACK_DAILY"),
                 ("slack_signals", "#signals webhook", "SLACK_SIGNALS"), ("slack_trades", "#trades webhook", "SLACK_TRADES"),
                 ("slack_weekly", "#weekly webhook", "SLACK_WEEKLY")]},
-    {"id": "Other", "scope": "app", "note": "Other shared API keys.",
+    {"id": "Server", "scope": "app", "admin_only": True, "note": "Server-side data API keys.",
      "fields": [("fred_api_key", "FRED API key", "FRED_API_KEY"), ("eia_api_key", "EIA API key", "EIA_API_KEY"),
                 ("quiver_quant_api_key", "Quiver Quant API key", "QUIVER_QUANT_API_KEY"),
-                ("yahoo_user", "Yahoo user", "YAHOO_USER"), ("yahoo_app_password", "Yahoo app password", "YAHOO_APP_PASSWORD"),
                 ("cronjob_api_key", "cron-job.org API key", "CRONJOB_API_KEY")]},
+    {"id": "Email (Yahoo)", "scope": "app", "admin_only": False, "note": "Yahoo SMTP account for outbound email.",
+     "fields": [("yahoo_user", "Yahoo user", "YAHOO_USER"), ("yahoo_app_password", "Yahoo app password", "YAHOO_APP_PASSWORD")]},
 ]
 
 
@@ -203,19 +290,21 @@ def api_credentials():
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
     if not name:
         return jsonify({"error": "login required"}), 401
-    is_owner = (name == _OWNER)
+    is_admin = _wu.is_admin(name)
 
     if request.method == "GET":
         sections = []
         for sec in CRED_SECTIONS:
-            editable = True if sec["scope"] == "ig" else is_owner   # IG: own; shared: owner only
+            if sec.get("admin_only") and not is_admin:
+                continue                                # hidden entirely from non-admins
+            editable = True if sec["scope"] == "ig" else is_admin   # IG: own; shared: admin only
             fields = []
             for key, label, env in sec["fields"]:
                 val = _wu.get_secret(name, key) if sec["scope"] == "ig" else _wu.get_app_secret(key)
                 fields.append({"key": key, "label": label, "set": bool(val), "masked": _mask(val)})
             sections.append({"id": sec["id"], "scope": sec["scope"], "note": sec["note"],
-                             "editable": editable, "fields": fields})
-        return jsonify({"name": name, "is_owner": is_owner, "sections": sections})
+                             "admin_only": bool(sec.get("admin_only")), "editable": editable, "fields": fields})
+        return jsonify({"name": name, "is_admin": is_admin, "sections": sections})
 
     body = request.get_json(silent=True) or {}
     sec_id = body.get("section")
@@ -223,8 +312,8 @@ def api_credentials():
     sec = next((s for s in CRED_SECTIONS if s["id"] == sec_id), None)
     if not sec:
         return jsonify({"ok": False, "error": "unknown section"}), 400
-    if sec["scope"] == "app" and not is_owner:
-        return jsonify({"ok": False, "error": "only the administrator can edit shared credentials"}), 403
+    if sec["scope"] == "app" and not is_admin:
+        return jsonify({"ok": False, "error": "only an administrator can edit shared credentials"}), 403
     valid_keys = {k for k, _, _ in sec["fields"]}
     saved = []
     for key, val in values.items():
@@ -436,13 +525,13 @@ def _rule_detail(rec: dict) -> list:
     if None not in (h1, h3, l1, l3) and (h1 - l1):
         amp1 = h1 - l1; tight = (h3 - l3) / amp1 * 100
         add(3, "Tightness ≤35%", "PASS" if tight <= 35 else "FAIL",
-            f"Current funnel range (H3−L3 = {h3 - l3:g}) vs the first amplitude (AMP1 = H1−L1 = {amp1:g}) "
+            f"Current funnel range (H3−L3 = {h3 - l3:g}) vs the funnel mouth (FNM1 = H1−L1 = {amp1:g}) "
             f"= {tight:.0f}%. Compresses to ≤35% — tighter coil, tighter stop.")
         mid = (h3 + l3) / 2
         add(4, "Levels & target", "PASS" if (target and target > 0) else "FAIL",
-            f"AMP1 = {amp1:g}; midpoint (H3+L3)/2 = {mid:g}. Entry = {entry:g} (break of the 3rd "
+            f"FNM1 = {amp1:g}; midpoint (H3+L3)/2 = {mid:g}. Entry = {entry:g} (break of the 3rd "
             f"{'high' if bull else 'low'}); stop beyond the opposite pivot = {stop:g}; "
-            f"target = mid {'+' if bull else '−'} AMP1 = {target:g}.")
+            f"target = mid {'+' if bull else '−'} FNM1 = {target:g}.")
     if isinstance(rr, (int, float)):
         risk = abs((entry or 0) - (stop or 0)); reward = abs((target or 0) - (entry or 0))
         add(5, "R:R ≥ 3:1", "PASS" if rr >= 3 else "DEVELOPING",
@@ -558,10 +647,13 @@ def api_refresh():
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
     if not name:
         return jsonify({"error": "login required"}), 401
+    if not _wu.is_admin(name):                     # admin-only (user 2026-07-03)
+        return jsonify({"error": "admin only"}), 403
     if _REFRESHING["on"]:
         _wu.log_event(name, "Requested data refresh (one already running)")
         return jsonify({"started": False, "busy": True})
     _wu.log_event(name, "Requested data refresh (full universe rebuild)")
+    _append_batch("Refresh button", "Full universe snapshot rebuild started", by=name)
     import threading
     threading.Thread(target=_do_rebuild, daemon=True).start()
     return jsonify({"started": True})

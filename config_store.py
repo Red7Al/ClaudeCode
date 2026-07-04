@@ -121,8 +121,8 @@ def trade_allowed(direction: str = None, market: str = None, location: str = Non
 # Regional locations for index tickers (mirror hvf_web/build_snapshot._INDEX_REGION), user 2026-07-03.
 _INDEX_REGION = {
     "SPX500": "US", "NASDAQ": "US", "^DJI": "US", "^RUT": "US", "^GSPTSE": "US", "^BVSP": "US", "^MXX": "US",
-    "UK100": "Western Europe", "^FTMC": "Western Europe", "^GDAXI": "Western Europe", "^FCHI": "Western Europe",
-    "^STOXX50E": "Western Europe", "^AEX": "Western Europe", "^IBEX": "Western Europe", "^SSMI": "Western Europe",
+    "UK100": "Europe (West)", "^FTMC": "Europe (West)", "^GDAXI": "Europe (West)", "^FCHI": "Europe (West)",
+    "^STOXX50E": "Europe (West)", "^AEX": "Europe (West)", "^IBEX": "Europe (West)", "^SSMI": "Europe (West)",
     "JPN225": "Asia", "HK50": "Asia", "^AXJO": "Asia", "^BSESN": "Asia", "^NSEI": "Asia", "^KS11": "Asia",
     "^TWII": "Asia", "^STI": "Asia", "000001.SS": "Asia",
 }

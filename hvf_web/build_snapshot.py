@@ -41,8 +41,8 @@ NAME_CACHE = os.path.join(_HERE, "name_cache.json")   # ticker -> company name; 
 # Eastern Europe, Asia, and other). FX is its OWN location, separate from Indices.
 _INDEX_REGION = {
     "SPX500": "US", "NASDAQ": "US", "^DJI": "US", "^RUT": "US", "^GSPTSE": "US", "^BVSP": "US", "^MXX": "US",
-    "UK100": "Western Europe", "^FTMC": "Western Europe", "^GDAXI": "Western Europe", "^FCHI": "Western Europe",
-    "^STOXX50E": "Western Europe", "^AEX": "Western Europe", "^IBEX": "Western Europe", "^SSMI": "Western Europe",
+    "UK100": "Europe (West)", "^FTMC": "Europe (West)", "^GDAXI": "Europe (West)", "^FCHI": "Europe (West)",
+    "^STOXX50E": "Europe (West)", "^AEX": "Europe (West)", "^IBEX": "Europe (West)", "^SSMI": "Europe (West)",
     "JPN225": "Asia", "HK50": "Asia", "^AXJO": "Asia", "^BSESN": "Asia", "^NSEI": "Asia", "^KS11": "Asia",
     "^TWII": "Asia", "^STI": "Asia", "000001.SS": "Asia",
 }
@@ -125,8 +125,10 @@ def build():
 
     log.info("scanning universe ...")
     from run_hvf_report import UNIVERSE
-    PROGRESS.update(done=0, total=sum(len(t) for t in UNIVERSE.values()))
-    scan = scan_universe(progress_cb=lambda d, t: PROGRESS.update(done=d, total=t))
+    # Total = ALL universe entries (633), not the de-duplicated scan count (~600) — user 2026-07-03.
+    _total = sum(len(t) for t in UNIVERSE.values())
+    PROGRESS.update(done=0, total=_total)
+    scan = scan_universe(progress_cb=lambda d, t: PROGRESS.update(done=d, total=_total))
     # Record every TRIGGERED funnel to Supabase for performance tracking (user 2026-06-30, HVF status).
     # Deduped per funnel instance inside the recorder; a failure never blocks the build.
     try:
