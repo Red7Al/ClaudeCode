@@ -388,21 +388,23 @@ _SESSION_POOL: dict = {}       # login -> IGSession (lazy, kept for the process 
 
 
 def _resolve_ig_creds(login: str):
-    """Return that web login's own IG credentials, or None if they haven't set them.
-    Owner / None -> the process env creds (unchanged single-trader behaviour)."""
-    if not login or login == _OWNER_LOGIN:
-        return {"api_key": IG_API_KEY, "username": IG_USERNAME,
-                "password": IG_PASSWORD, "account_id": IG_ACCOUNT_ID}
+    """Return that web login's own IG credentials. The app's encrypted store is the source of truth
+    (seeded once from GitHub Secrets, then editable); the owner falls back to process env creds when
+    the store isn't populated (e.g. inside GitHub Actions, which has no local store). Returns None for
+    a non-owner who hasn't supplied their own creds — they must not trade on anyone else's account."""
     try:
         from hvf_web import web_users as _wu
-        api = _wu.get_secret(login, "ig_api_key")
-        usr = _wu.get_secret(login, "ig_username")
-        pwd = _wu.get_secret(login, "ig_password")
-        acct = _wu.get_secret(login, "ig_account_id")
+        api = _wu.get_secret(login or _OWNER_LOGIN, "ig_api_key")
+        usr = _wu.get_secret(login or _OWNER_LOGIN, "ig_username")
+        pwd = _wu.get_secret(login or _OWNER_LOGIN, "ig_password")
+        acct = _wu.get_secret(login or _OWNER_LOGIN, "ig_account_id")
         if api and usr and pwd:
-            return {"api_key": api, "username": usr, "password": pwd, "account_id": acct}
+            return {"api_key": api, "username": usr, "password": pwd, "account_id": acct or IG_ACCOUNT_ID}
     except Exception as e:
         log.warning(f"IG credential lookup failed for {login}: {e}")
+    if not login or login == _OWNER_LOGIN:
+        return {"api_key": IG_API_KEY, "username": IG_USERNAME,
+                "password": IG_PASSWORD, "account_id": IG_ACCOUNT_ID}   # owner env fallback
     return None
 
 

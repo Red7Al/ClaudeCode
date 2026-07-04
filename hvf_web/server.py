@@ -139,32 +139,53 @@ def api_config():
 
 _OWNER = "Alex"   # the account owner / administrator (also used by /api/order-ops)
 
-# Credential sections (user 2026-07-03). The SOURCE OF TRUTH is GitHub Secrets — at runtime the app
-# reads these from environment variables (populated from GitHub Secrets in Actions; mirrored via .env
-# locally). So the shared sections (Supabase/X/Slack/Other) are READ-ONLY here — "managed in GitHub
-# Secrets", never stored by the app. IG is per-user: the owner's come from Secrets too (read-only);
-# only a NON-owner (a second trader) enters their own IG creds, which can't be a single global Secret.
-# Each field: (store_key, label, ENV_VAR_NAME).
+# Credential sections (user 2026-07-03). Stored ENCRYPTED in the app and fully EDITABLE here; GitHub
+# Secrets are only the one-off SEED (import_credentials_from_env below). IG is per-user (each login
+# edits their own account); Supabase/X/Slack/Other are shared (owner edits, others masked read-only).
+# Each field: (store_key, label, ENV_VAR_NAME) — the env name is used only for the one-off seed.
 CRED_SECTIONS = [
-    {"id": "IG", "scope": "ig", "note": "IG account. The owner's credentials come from GitHub Secrets; a second user enters their own account here.",
+    {"id": "IG", "scope": "ig", "note": "Your own IG account — each user trades their own account.",
      "fields": [("ig_api_key", "IG API key", "IG_API_KEY"), ("ig_username", "IG username", "IG_USERNAME"),
                 ("ig_password", "IG password", "IG_PASSWORD"), ("ig_account_id", "IG account ID", "IG_ACCOUNT_ID")]},
-    {"id": "Supabase", "scope": "app", "note": "Managed in GitHub Secrets.",
+    {"id": "Supabase", "scope": "app", "note": "Shared database credentials.",
      "fields": [("supabase_user", "Supabase user", "SUPABASE_USER"),
                 ("supabase_db_password", "Supabase DB password", "SUPABASE_DB_PASSWORD")]},
-    {"id": "X", "scope": "app", "note": "Managed in GitHub Secrets. Live X posting runs in GitHub Actions.",
+    {"id": "X", "scope": "app", "note": "Shared X (Twitter) API credentials.",
      "fields": [("x_api_key", "API key", "X_API_KEY"), ("x_api_secret", "API secret", "X_API_SECRET"),
                 ("x_access_token", "Access token", "X_ACCESS_TOKEN"), ("x_access_secret", "Access secret", "X_ACCESS_SECRET")]},
-    {"id": "Slack", "scope": "app", "note": "Managed in GitHub Secrets (incoming-webhook URLs).",
+    {"id": "Slack", "scope": "app", "note": "Shared Slack incoming-webhook URLs.",
      "fields": [("slack_alerts", "#alerts webhook", "SLACK_ALERTS"), ("slack_daily", "#daily webhook", "SLACK_DAILY"),
                 ("slack_signals", "#signals webhook", "SLACK_SIGNALS"), ("slack_trades", "#trades webhook", "SLACK_TRADES"),
                 ("slack_weekly", "#weekly webhook", "SLACK_WEEKLY")]},
-    {"id": "Other", "scope": "app", "note": "Managed in GitHub Secrets.",
+    {"id": "Other", "scope": "app", "note": "Other shared API keys.",
      "fields": [("fred_api_key", "FRED API key", "FRED_API_KEY"), ("eia_api_key", "EIA API key", "EIA_API_KEY"),
                 ("quiver_quant_api_key", "Quiver Quant API key", "QUIVER_QUANT_API_KEY"),
                 ("yahoo_user", "Yahoo user", "YAHOO_USER"), ("yahoo_app_password", "Yahoo app password", "YAHOO_APP_PASSWORD"),
                 ("cronjob_api_key", "cron-job.org API key", "CRONJOB_API_KEY")]},
 ]
+
+
+def import_credentials_from_env(owner: str = None):
+    """One-off SEED (user 2026-07-03): populate the encrypted store from GitHub Secrets / env, once.
+    IG -> the owner's per-user store; shared sections -> the app store. Only fills fields that are not
+    already set (never clobbers an in-app edit). Safe to call on startup."""
+    import os as _os
+    owner = owner or _OWNER
+    seeded = 0
+    for sec in CRED_SECTIONS:
+        for key, _label, env in sec["fields"]:
+            val = (_os.environ.get(env) or "").strip()
+            if not val:
+                continue
+            if sec["scope"] == "ig":
+                if not _wu.get_secret(owner, key):
+                    _wu.set_secret(owner, key, val); seeded += 1
+            else:
+                if not _wu.get_app_secret(key):
+                    _wu.set_app_secret(key, val); seeded += 1
+    if seeded:
+        log.info(f"credential store seeded from env/GitHub Secrets ({seeded} field(s))")
+    return seeded
 
 
 def _mask(v: str) -> str:
@@ -175,11 +196,10 @@ def _mask(v: str) -> str:
 
 @app.route("/api/credentials", methods=["GET", "POST"])
 def api_credentials():
-    """Credentials view. Source of truth is GitHub Secrets (read at runtime from the environment) —
-    shared sections are READ-ONLY here. Full values are NEVER sent to the browser (masked last-4 only).
-    The only writable case is a NON-owner's own IG credentials (their own account, can't be a global
-    Secret); the owner's IG also comes from Secrets."""
-    import os as _os
+    """Credentials — stored ENCRYPTED in the app (seeded once from GitHub Secrets, then fully editable
+    here; user 2026-07-03). Full values are NEVER sent to the browser (masked last-4 only). IG is
+    per-user (each login edits their own account). Supabase/X/Slack/Other are shared: the OWNER edits
+    them, other users see them masked read-only."""
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
     if not name:
         return jsonify({"error": "login required"}), 401
@@ -188,16 +208,13 @@ def api_credentials():
     if request.method == "GET":
         sections = []
         for sec in CRED_SECTIONS:
-            # IG is user-entered ONLY for a non-owner; everything else comes from GitHub Secrets (env).
-            from_secrets = (sec["scope"] == "app") or (sec["scope"] == "ig" and is_owner)
-            editable = (sec["scope"] == "ig" and not is_owner)
+            editable = True if sec["scope"] == "ig" else is_owner   # IG: own; shared: owner only
             fields = []
             for key, label, env in sec["fields"]:
-                val = _os.environ.get(env, "") if from_secrets else _wu.get_secret(name, key)
+                val = _wu.get_secret(name, key) if sec["scope"] == "ig" else _wu.get_app_secret(key)
                 fields.append({"key": key, "label": label, "set": bool(val), "masked": _mask(val)})
-            note = sec["note"] + (" (from GitHub Secrets — read-only)" if from_secrets else "")
-            sections.append({"id": sec["id"], "scope": sec["scope"], "note": note,
-                             "editable": editable, "from_secrets": from_secrets, "fields": fields})
+            sections.append({"id": sec["id"], "scope": sec["scope"], "note": sec["note"],
+                             "editable": editable, "fields": fields})
         return jsonify({"name": name, "is_owner": is_owner, "sections": sections})
 
     body = request.get_json(silent=True) or {}
@@ -206,18 +223,20 @@ def api_credentials():
     sec = next((s for s in CRED_SECTIONS if s["id"] == sec_id), None)
     if not sec:
         return jsonify({"ok": False, "error": "unknown section"}), 400
-    # Only a non-owner's own IG credentials are writable in-app; all else lives in GitHub Secrets.
-    if not (sec["scope"] == "ig" and not is_owner):
-        return jsonify({"ok": False, "error": "managed in GitHub Secrets — not editable here"}), 403
+    if sec["scope"] == "app" and not is_owner:
+        return jsonify({"ok": False, "error": "only the administrator can edit shared credentials"}), 403
     valid_keys = {k for k, _, _ in sec["fields"]}
     saved = []
     for key, val in values.items():
         if key not in valid_keys or not isinstance(val, str) or val == "":
             continue    # empty = leave unchanged
-        _wu.set_secret(name, key, val)
+        if sec["scope"] == "ig":
+            _wu.set_secret(name, key, val)
+        else:
+            _wu.set_app_secret(key, val)
         saved.append(key)
     if saved:
-        _wu.log_event(name, f"Updated own IG credentials ({len(saved)} field(s))")
+        _wu.log_event(name, f"Updated {sec_id} credentials ({len(saved)} field(s))")
     return jsonify({"ok": True, "saved": saved})
 
 
@@ -843,6 +862,10 @@ def api_order_ops():
 
 if __name__ == "__main__":
     import threading
+    try:
+        import_credentials_from_env()   # one-off seed of the encrypted store from GitHub Secrets/env
+    except Exception as _e:
+        log.warning(f"credential seed skipped: {_e}")
     threading.Thread(target=_refresh_loop, daemon=True).start()
     threading.Thread(target=_bridge_loop, daemon=True).start()
     log.info("HVF site on http://127.0.0.1:5057  (ngrok http 5057 to share)")
