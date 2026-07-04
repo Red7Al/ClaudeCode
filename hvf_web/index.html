@@ -136,7 +136,9 @@ a{transition:color .15s ease}
 .gsec{break-inside:avoid;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;margin:0 0 16px;box-shadow:var(--sh-sm);
   border-left:3px solid var(--accent);transition:box-shadow .18s ease,transform .18s ease}
 .gsec:hover{box-shadow:var(--sh);transform:translateY(-2px)}
-.gsec h3{margin:0 0 12px;font-size:14px;font-weight:700;letter-spacing:.01em}
+.gsec h3{margin:-2px -4px 12px;font-size:16px;font-weight:800;letter-spacing:-.01em;color:var(--accent);
+  padding-bottom:8px;border-bottom:2px solid color-mix(in srgb,var(--accent) 30%,transparent);display:flex;align-items:center;gap:8px}
+.gsec h3::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--grad);display:inline-block}
 .gsec dl{margin:0} .gsec .term{padding:8px 0;border-top:1px solid var(--line)} .gsec .term:first-of-type{border-top:none;padding-top:0}
 .gsec .term dt{font-weight:600;font-size:13.5px;color:var(--fg);margin-bottom:2px}
 .gsec .term dd{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}
@@ -220,14 +222,12 @@ a{transition:color .15s ease}
     </div>
   </div>
 </div>
-<div id="view-welcome" style="padding:22px;max-width:980px">
-  <h2 style="margin:0 0 6px">Welcome to the Squeeze Scanner</h2>
-  <p style="font-size:14px;max-width:760px">This tool hunts one specific, high-probability chart pattern — the <b>squeeze</b> — across
-  <b>600+ instruments</b>: UK and US shares (FTSE 100/250, NASDAQ 100, S&amp;P 500), world indices, currencies, commodities and crypto.
-  When a market coils into an ever-tighter range, the eventual breakout tends to be fast and far. We find those coils early,
-  score them, and tell you the exact <b>entry</b>, <b>stop</b> and <b>target</b> — before the move happens.</p>
+<div id="view-welcome" class="doc">
+  <span class="eyebrow">Squeeze Scanner</span>
+  <h1>Find the coil before the breakout</h1>
+  <p class="lede">This tool hunts one specific, high-probability chart pattern — the <b>squeeze</b> — across <b>600+ instruments</b>: UK &amp; US shares (FTSE 100/250, NASDAQ 100, S&amp;P 500), world indices, currencies, commodities and crypto. When a market coils into an ever-tighter range, the breakout tends to be fast and far. We find those coils early, score them, and give you the exact <b>entry</b>, <b>stop</b> and <b>target</b> — before the move happens.</p>
 
-  <svg viewBox="0 0 940 150" style="width:100%;max-width:940px;margin:10px 0">
+  <svg viewBox="0 0 940 150" style="width:100%;max-width:940px;margin:10px 0 24px">
     <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--muted)"/></marker></defs>
     <g font-size="12" text-anchor="middle">
       <rect x="10" y="35" width="150" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
@@ -252,16 +252,17 @@ a{transition:color .15s ease}
     </g>
   </svg>
 
-  <div class="cardrow">
-    <div class="card"><h4>What you'll see</h4><div style="font-size:13px;line-height:1.6">
-      <b>Scanner</b> — every instrument, one line each: the setup, its Quality score, reward-vs-risk and how close it is to firing.<br>
-      <b>Pre-orders</b> — setups waiting for their trigger, with exact levels.<br>
+  <h2 class="sec">Get oriented</h2>
+  <div class="fgrid">
+    <div class="fcard"><div class="ic">📋</div><h3>What you'll see</h3><div class="body">
+      <b>Scanner (Report)</b> — every instrument, one line each: the setup, Quality score, reward-vs-risk and how close it is to firing.<br>
+      <b>My Pre-orders</b> — setups waiting for their trigger, with exact levels.<br>
       <b>Order (Operations)</b> — the audit trail as setups become real IG orders.</div></div>
-    <div class="card"><h4>How to read a setup</h4><div style="font-size:13px;line-height:1.6">
+    <div class="fcard"><div class="ic">🎯</div><h3>How to read a setup</h3><div class="body">
       <span style="color:var(--bull)">▲ BULL</span> = breakout expected upward · <span style="color:var(--bear)">▼ BEAR</span> = downward.<br>
       <b>Quality</b> (<span style="color:var(--bull)">70+</span>/<span style="color:#d29922">50+</span>/<span style="color:var(--bear)">&lt;50</span>) — how tight, fresh and symmetric the coil is.<br>
       <b>R:R</b> — potential reward per unit of risk; we require at least 3:1.</div></div>
-    <div class="card"><h4>Get started</h4><div style="font-size:13px;line-height:1.6">
+    <div class="fcard"><div class="ic">🚀</div><h3>Get started</h3><div class="body">
       1. <b>Log in</b> (Scanner tab) — data tabs need an account.<br>
       2. Skim the <b>Scanner</b>, click any row for the full picture: chart, rules, fundamentals, broker view.<br>
       3. Read <b>How it works</b> for the pattern itself, and the <b>Appendix</b> for every term.<br>
@@ -1324,7 +1325,9 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     render();
     $("potab-count").textContent="("+DATA.filter(isPreorder).length+")";
     // Introduction example: a real funnel card — Howden if it's a current setup, else the best triggered name.
-    const _ex=(DATA.some(r=>r.ticker==="HWDN.L"&&r.has_signal))?"HWDN.L":((DATA.filter(r=>r.has_signal&&r.status==="TRIGGERED").sort((a,b)=>(b.quality||0)-(a.quality||0))[0]||{}).ticker);
+    // Use an EQUITY as the worked example, never an index/FX/commodity (user 2026-07-03).
+    const _isEq=r=>["FTSE 100","FTSE 250","NASDAQ 100","S&P 500"].includes(r.market);
+    const _ex=(DATA.some(r=>r.ticker==="HWDN.L"&&r.has_signal))?"HWDN.L":((DATA.filter(r=>r.has_signal&&r.status==="TRIGGERED"&&_isEq(r)).sort((a,b)=>(b.quality||0)-(a.quality||0))[0]||{}).ticker);
     if(_ex&&$("intro-card")){$("intro-card").src="/api/card/"+_ex;$("intro-card-cap").innerHTML="A real setup ("+disp(_ex)+"). "+$("intro-card-cap").innerHTML;}
     // If a refresh is already running (started elsewhere), disable the button and show its progress.
     fetch("/api/status").then(x=>x.json()).then(s=>{if(s.refreshing){$("refresh").disabled=true;_refStart=Date.now();pollRefresh();}}).catch(()=>{});
