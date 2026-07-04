@@ -386,7 +386,7 @@ a{transition:color .15s ease}
   <div class="confpanel hidden" data-panel="trading_sq">
     <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">Trading (Squeeze) — affects live orders</h3>
     <p class="muted" style="font-size:12px;margin:0 0 14px">Which squeeze setups may be traded on the live IG account.</p>
-    <div class="card" style="margin-bottom:0"><h4>Trade filters — direction, market, location</h4>
+    <div class="card" style="margin-bottom:0"><h4>Trade filters — direction, market</h4>
       <p class="muted" style="font-size:12px">Only ticked values may be traded. Ticking everything (or nothing) in a group = no restriction. Shared switches; changes are attributed to you and checked live before every trade.</p>
       <div id="cfg-trade">loading…</div>
       <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
@@ -1080,7 +1080,7 @@ function renderConfig(){
         return `<div class="kv"><span>${s}</span><label style="cursor:pointer"><input type="checkbox" class="cfg-ex" data-s="${s}" ${on?"checked":""}> ${on?"Yes":"No"}</label></div>`;}).join("");
       document.querySelectorAll(".cfg-ex").forEach(c=>c.onchange=()=>{c.parentElement.lastChild.textContent=" "+(c.checked?"Yes":"No");});
       // Trade filters (user 2026-07-03): direction / market / location allow-lists. Empty stored = all allowed.
-      const tf=j.trade||{}, groups=[["directions",["BULL","BEAR"]],["markets",uniq("market")],["locations",uniq("location")]];
+      const tf=j.trade||{}, groups=[["directions",["BULL","BEAR"]],["markets",uniq("market")]];   // location removed (user 2026-07-03)
       $("cfg-trade").innerHTML=groups.map(([g,opts])=>{
         const allowed=tf[g]||[];
         return `<div style="margin:6px 0"><b style="font-size:12px;text-transform:uppercase;color:var(--muted)">${g}</b><div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px">`+
