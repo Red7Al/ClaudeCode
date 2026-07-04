@@ -101,13 +101,19 @@ def verify(name: str, pwd: str) -> bool:
 def token_for(name: str) -> str:
     """Session token — derived from the pwd hash, so changing the password rotates it."""
     u = _ensure_seeded().get(name)
-    if not u:
+    if not u or "pwd_hash" not in u:          # e.g. the "__app__" secrets record — not a login
         return ""
     return hashlib.sha256(f"{name}:{u['pwd_hash']}:{u['salt']}".encode()).hexdigest()
 
 
+def _login_names(users: dict = None) -> list:
+    """Real login accounts (excludes the "__app__" shared-secrets record)."""
+    return [n for n, u in (users or _ensure_seeded()).items()
+            if isinstance(u, dict) and "pwd_hash" in u]
+
+
 def valid_tokens() -> set:
-    return {token_for(n) for n in _ensure_seeded()}
+    return {token_for(n) for n in _login_names()}
 
 
 def log_event(name: str, event: str):
@@ -134,7 +140,7 @@ def get_log(name: str) -> list:
 
 
 def name_for_token(token: str) -> str:
-    for n in _ensure_seeded():
+    for n in _login_names():
         if token and token == token_for(n):
             return n
     return ""
@@ -263,4 +269,31 @@ def get_secret(name: str, key: str) -> str:
         return _fernet().decrypt(base64.b64decode(u["secrets"][key])).decode()
     except Exception as e:
         log.warning(f"secret decrypt failed for {name}/{key}: {e}")
+        return ""
+
+
+# ── Application-level (shared) secrets — Supabase / X / Slack / Other (user 2026-07-03) ────────────────
+# One trading system, so these are shared: stored ONCE (under the "__app__" record), Fernet-encrypted.
+# The owner (Alex) may edit them; everyone else sees them masked, read-only.
+_APP_KEY = "__app__"
+
+
+def set_app_secret(key: str, value: str) -> bool:
+    f = _fernet()
+    with _LOCK:
+        users = _load()
+        rec = users.setdefault(_APP_KEY, {"secrets": {}})
+        rec.setdefault("secrets", {})[key] = base64.b64encode(f.encrypt(value.encode())).decode()
+        _save(users)
+    return True
+
+
+def get_app_secret(key: str) -> str:
+    rec = _load().get(_APP_KEY) or {}
+    if key not in (rec.get("secrets") or {}):
+        return ""
+    try:
+        return _fernet().decrypt(base64.b64decode(rec["secrets"][key])).decode()
+    except Exception as e:
+        log.warning(f"app secret decrypt failed for {key}: {e}")
         return ""

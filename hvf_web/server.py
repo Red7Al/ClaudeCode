@@ -137,6 +137,82 @@ def api_config():
     return jsonify({"ok": True})
 
 
+_OWNER = "Alex"   # the account owner / administrator (also used by /api/order-ops)
+
+# Credential sections (user 2026-07-03). scope "user" = per-login (each user their own, e.g. IG);
+# scope "app" = shared application secret (stored once, editable by the owner, masked read-only to others).
+CRED_SECTIONS = [
+    {"id": "IG", "scope": "user", "note": "Your own IG account — each user trades their own account.",
+     "fields": [("ig_api_key", "IG API key"), ("ig_username", "IG username"),
+                ("ig_password", "IG password"), ("ig_account_id", "IG account ID")]},
+    {"id": "Supabase", "scope": "app", "note": "Shared database credentials.",
+     "fields": [("supabase_user", "Supabase user"), ("supabase_db_password", "Supabase DB password")]},
+    {"id": "X", "scope": "app", "note": "Shared X (Twitter) API credentials. Live posting runs in GitHub Actions from GitHub Secrets — these are for reference/local use.",
+     "fields": [("x_api_key", "API key"), ("x_api_secret", "API secret"),
+                ("x_access_token", "Access token"), ("x_access_secret", "Access secret")]},
+    {"id": "Slack", "scope": "app", "note": "Shared Slack incoming-webhook URLs (channels/pages).",
+     "fields": [("slack_alerts", "#alerts webhook"), ("slack_daily", "#daily webhook"),
+                ("slack_signals", "#signals webhook"), ("slack_trades", "#trades webhook"),
+                ("slack_weekly", "#weekly webhook")]},
+    {"id": "Other", "scope": "app", "note": "Other shared API keys.",
+     "fields": [("fred_api_key", "FRED API key"), ("eia_api_key", "EIA API key"),
+                ("quiver_quant_api_key", "Quiver Quant API key"), ("yahoo_user", "Yahoo user"),
+                ("yahoo_app_password", "Yahoo app password"), ("cronjob_api_key", "cron-job.org API key")]},
+]
+
+
+def _mask(v: str) -> str:
+    if not v:
+        return ""
+    return ("••••" + v[-4:]) if len(v) > 4 else "••••"
+
+
+@app.route("/api/credentials", methods=["GET", "POST"])
+def api_credentials():
+    """Per-user IG credentials + shared app credentials (user 2026-07-03). Full secret values are
+    NEVER sent to the browser — only a masked hint (last 4 chars) + whether a value is set. The owner
+    (Alex) may edit app-scope secrets; other users see them masked read-only. Every user edits their
+    own IG credentials."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    is_owner = (name == _OWNER)
+
+    if request.method == "GET":
+        sections = []
+        for sec in CRED_SECTIONS:
+            editable = True if sec["scope"] == "user" else is_owner
+            fields = []
+            for key, label in sec["fields"]:
+                val = _wu.get_secret(name, key) if sec["scope"] == "user" else _wu.get_app_secret(key)
+                fields.append({"key": key, "label": label, "set": bool(val), "masked": _mask(val)})
+            sections.append({"id": sec["id"], "scope": sec["scope"], "note": sec["note"],
+                             "editable": editable, "fields": fields})
+        return jsonify({"name": name, "is_owner": is_owner, "sections": sections})
+
+    body = request.get_json(silent=True) or {}
+    sec_id = body.get("section")
+    values = body.get("values") or {}
+    sec = next((s for s in CRED_SECTIONS if s["id"] == sec_id), None)
+    if not sec:
+        return jsonify({"ok": False, "error": "unknown section"}), 400
+    if sec["scope"] == "app" and not is_owner:
+        return jsonify({"ok": False, "error": "only the owner can edit shared credentials"}), 403
+    valid_keys = {k for k, _ in sec["fields"]}
+    saved = []
+    for key, val in values.items():
+        if key not in valid_keys or not isinstance(val, str) or val == "":
+            continue    # empty = leave unchanged
+        if sec["scope"] == "user":
+            _wu.set_secret(name, key, val)
+        else:
+            _wu.set_app_secret(key, val)
+        saved.append(key)
+    if saved:
+        _wu.log_event(name, f"Updated {sec_id} credentials ({len(saved)} field(s))")
+    return jsonify({"ok": True, "saved": saved})
+
+
 @app.route("/api/userlog")
 def api_userlog():
     """The logged-in user's OWN operational log (user 2026-06-30) — token identifies the user, so
