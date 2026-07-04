@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<!-- HVF website UI (user 2026-06-27). Single file. v1.2.0 -->
+<!-- Squeeze Scanner UI (user 2026-06-27). Single file. v1.3.0 — modern SaaS redesign of Introduction/
+     How-it-works/Appendix + Configuration card navigation (user 2026-07-03). Functionality unchanged. -->
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -77,6 +78,83 @@ aside.collapsed{display:none}
 .vizbox.filtered{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .afilt{color:var(--accent);font-size:10px;font-weight:700;cursor:pointer}
 .bar.active .tk{color:var(--fg);font-weight:700}
+
+/* ============================================================================================
+   Modern SaaS design layer (user 2026-07-03: redesign Introduction + Appendix + Config nav).
+   8px spacing grid, Inter typography, soft shadows, 10-14px radii, smooth transitions, a11y.
+   Functionality is unchanged — this is presentation only.
+   ============================================================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+:root{
+  --font:'Inter',-apple-system,Segoe UI,Roboto,sans-serif;
+  --r-sm:8px; --r:12px; --r-lg:16px;
+  --sh-sm:0 1px 2px rgba(0,0,0,.28); --sh:0 4px 16px rgba(0,0,0,.28); --sh-lg:0 12px 32px rgba(0,0,0,.34);
+  --accent-2:#7c5cff;                 /* secondary accent for gradients */
+  --grad:linear-gradient(135deg,var(--accent),var(--accent-2));
+}
+:root.light{--sh-sm:0 1px 2px rgba(16,24,40,.06); --sh:0 4px 16px rgba(16,24,40,.08); --sh-lg:0 16px 40px rgba(16,24,40,.12);}
+body{font-family:var(--font);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.btn{transition:background .15s ease,border-color .15s ease,transform .08s ease,box-shadow .15s ease;font-family:var(--font);font-weight:500}
+.btn:hover:not(:disabled){border-color:var(--accent);box-shadow:var(--sh-sm);transform:translateY(-1px)}
+.btn:active:not(:disabled){transform:translateY(0)}
+.tab{transition:background .15s ease,color .15s ease}
+a{transition:color .15s ease}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}   /* keyboard a11y */
+
+/* Document pages (Introduction / How it works / Appendix) */
+.doc{padding:40px 32px;max-width:1120px;margin:0 auto}
+.doc .eyebrow{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);padding:5px 12px;border-radius:999px;margin-bottom:16px}
+.doc h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:0 0 12px}
+.doc .lede{font-size:17px;line-height:1.55;color:var(--muted);max-width:720px;margin:0 0 32px}
+.doc h2.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  margin:40px 0 16px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+
+/* Feature cards */
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;align-items:stretch}
+.fcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;box-shadow:var(--sh-sm);
+  display:flex;flex-direction:column;gap:8px;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.fcard:hover{transform:translateY(-3px);box-shadow:var(--sh-lg);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+.fcard .ic{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;font-size:20px;color:#fff;background:var(--grad);box-shadow:var(--sh-sm)}
+.fcard h3{margin:4px 0 0;font-size:16px;font-weight:700;letter-spacing:-.01em}
+.fcard p,.fcard div.body{margin:0;font-size:14px;line-height:1.55;color:var(--muted)}
+.fcard .body b,.fcard p b{color:var(--fg)}
+
+/* Hero panel with the funnel illustration */
+.hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:28px;box-shadow:var(--sh);
+  display:grid;grid-template-columns:1.1fr 1fr;gap:28px;align-items:center;margin-bottom:8px}
+.hero .htext h3{font-size:20px;font-weight:800;letter-spacing:-.01em;margin:0 0 10px}
+.hero .htext p{font-size:14.5px;line-height:1.6;color:var(--muted);margin:0 0 8px}
+.hero img{border-radius:var(--r);box-shadow:var(--sh)}
+.pipeline{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0}
+.step{display:flex;align-items:center;gap:8px;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600}
+.step .dot{width:22px;height:22px;border-radius:50%;background:var(--grad);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700}
+.step .arw{color:var(--muted)}
+
+/* Glossary (Appendix) */
+.gcols{columns:2;column-gap:16px}
+.gsec{break-inside:avoid;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;margin:0 0 16px;box-shadow:var(--sh-sm);
+  border-left:3px solid var(--accent);transition:box-shadow .18s ease,transform .18s ease}
+.gsec:hover{box-shadow:var(--sh);transform:translateY(-2px)}
+.gsec h3{margin:0 0 12px;font-size:14px;font-weight:700;letter-spacing:.01em}
+.gsec dl{margin:0} .gsec .term{padding:8px 0;border-top:1px solid var(--line)} .gsec .term:first-of-type{border-top:none;padding-top:0}
+.gsec .term dt{font-weight:600;font-size:13.5px;color:var(--fg);margin-bottom:2px}
+.gsec .term dd{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}
+
+/* Configuration card navigation (user 2026-07-03) */
+.confnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
+.confnav .pill{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;
+  color:var(--muted);cursor:pointer;transition:all .15s ease;display:flex;align-items:center;gap:7px}
+.confnav .pill:hover{border-color:var(--accent);color:var(--fg)}
+.confnav .pill.active{background:var(--grad);color:#fff;border-color:transparent;box-shadow:var(--sh-sm)}
+.confpanel{animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+@media(max-width:820px){
+  .doc{padding:28px 18px} .doc h1{font-size:26px} .hero{grid-template-columns:1fr;padding:20px}
+  .gcols{columns:1} .confnav{gap:6px}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
@@ -247,39 +325,52 @@ aside.collapsed{display:none}
   </table></div>
 </div>
 
-<div id="view-config" class="hidden" style="padding:18px 22px;max-width:760px">
-  <h2 style="margin:0 0 4px">Configuration</h2>
-  <p class="muted" style="font-size:12px;margin:0 0 14px">Your personal defaults plus the shared trade-execution switches. Every change is recorded in your activity log.</p>
+<div id="view-config" class="hidden doc" style="max-width:840px">
+  <span class="eyebrow">Settings</span>
+  <h1>Configuration</h1>
+  <p class="lede">Your personal preferences, the shared trading controls, and credentials — each on its own card. Every change is recorded in your activity log.</p>
 
-  <!-- General / preferences configuration -->
-  <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:4px;margin:6px 0 10px">Preferences</h3>
-  <div class="card"><h4>My filter defaults</h4>
-    <p class="muted" style="font-size:12px">Set the Scanner filters exactly how you like them, then save — they'll be applied automatically every time <b>you</b> log in (and "Reset filters" returns to them). Each user has their own.</p>
-    <div id="cfg-defaults" class="muted" style="font-size:12px;margin:8px 0">loading…</div>
-    <button class="btn" onclick="saveFilterDefaults()">Save current filters as my defaults</button>
-    <button class="btn" onclick="clearFilterDefaults()">Clear my defaults</button>
-  </div>
+  <!-- Card navigation (user 2026-07-03): keeps config sections separate; one panel visible at a time. -->
+  <nav class="confnav" id="confnav">
+    <button class="pill active" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
+    <button class="pill" data-panel="trading" onclick="confShow('trading')">📈 Trading</button>
+    <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
+    <button class="pill" data-panel="Supabase" onclick="confShow('Supabase')">🗄️ Supabase</button>
+    <button class="pill" data-panel="X" onclick="confShow('X')">𝕏 X</button>
+    <button class="pill" data-panel="Slack" onclick="confShow('Slack')">💬 Slack</button>
+    <button class="pill" data-panel="Other" onclick="confShow('Other')">🧩 Other</button>
+  </nav>
 
-  <!-- TRADING configuration — completely separate from everything else (user 2026-07-03), boxed + warning-tinted -->
-  <div style="border:1px solid var(--bear);border-radius:10px;padding:12px 14px;margin-top:22px;background:color-mix(in srgb,var(--bear) 6%,transparent)">
-    <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--bear);margin:0 0 4px">⚠ Trading configuration — affects live orders</h3>
-    <p class="muted" style="font-size:12px;margin:0 0 12px">These settings decide whether and what is traded on the live IG account. They are kept entirely separate from your preferences and credentials.</p>
-    <div class="card"><h4>Trade filters — direction, market, location</h4>
-      <p class="muted" style="font-size:12px">Only ticked values may be traded. Ticking everything (or nothing) in a group = no restriction. Shared switches; changes are attributed to you and checked live before every trade.</p>
-      <div id="cfg-trade">loading…</div>
-      <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
-    </div>
-    <div class="card" style="margin-bottom:0"><h4>Trade execution by source</h4>
-      <p class="muted" style="font-size:12px">Yes = that source may place live IG trades/orders; No = it scans and reports but places <b>nothing</b>. These switches are shared (one trading account) — the change is attributed to you.</p>
-      <div id="cfg-exec">loading…</div>
-      <button class="btn" style="margin-top:8px" onclick="saveExec()">Save execution switches</button>
-      <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
+  <!-- Preferences panel -->
+  <div class="confpanel" data-panel="preferences">
+    <div class="card"><h4>My filter defaults</h4>
+      <p class="muted" style="font-size:12px">Set the Scanner filters exactly how you like them, then save — they'll be applied automatically every time <b>you</b> log in (and "Reset filters" returns to them). Each user has their own.</p>
+      <div id="cfg-defaults" class="muted" style="font-size:12px;margin:8px 0">loading…</div>
+      <button class="btn" onclick="saveFilterDefaults()">Save current filters as my defaults</button>
+      <button class="btn" onclick="clearFilterDefaults()">Clear my defaults</button>
     </div>
   </div>
 
-  <!-- Credentials — kept completely separate from Preferences and Trading (user 2026-07-03) -->
-  <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:4px;margin:22px 0 4px">Credentials</h3>
-  <p class="muted" style="font-size:12px;margin:0 0 10px">Stored encrypted. Full values are never shown — only the last 4 characters as a hint. Leave a field blank to keep the current value. <b>IG</b> is your own account; <b>Supabase / X / Slack / Other</b> are shared and editable only by the administrator (others see them masked, read-only).</p>
+  <!-- Trading panel — completely separate from everything else (user 2026-07-03), warning-tinted -->
+  <div class="confpanel hidden" data-panel="trading">
+    <div style="border:1px solid var(--bear);border-radius:var(--r);padding:16px 18px;background:color-mix(in srgb,var(--bear) 6%,transparent)">
+      <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--bear);margin:0 0 4px">⚠ Trading configuration — affects live orders</h3>
+      <p class="muted" style="font-size:12px;margin:0 0 14px">These settings decide whether and what is traded on the live IG account. They are kept entirely separate from your preferences and credentials.</p>
+      <div class="card"><h4>Trade filters — direction, market, location</h4>
+        <p class="muted" style="font-size:12px">Only ticked values may be traded. Ticking everything (or nothing) in a group = no restriction. Shared switches; changes are attributed to you and checked live before every trade.</p>
+        <div id="cfg-trade">loading…</div>
+        <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
+      </div>
+      <div class="card" style="margin-bottom:0"><h4>Trade execution by source</h4>
+        <p class="muted" style="font-size:12px">Yes = that source may place live IG trades/orders; No = it scans and reports but places <b>nothing</b>. These switches are shared (one trading account) — the change is attributed to you.</p>
+        <div id="cfg-exec">loading…</div>
+        <button class="btn" style="margin-top:8px" onclick="saveExec()">Save execution switches</button>
+        <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credential panels — one per section; renderCredentials() populates #cfg-creds with a panel each -->
   <div id="cfg-creds">loading…</div>
 </div>
 
@@ -296,79 +387,97 @@ aside.collapsed{display:none}
   </table></div>
 </div>
 
-<div id="view-intro" class="hidden" style="padding:18px 22px;max-width:1080px">
-  <h2 style="margin:0 0 4px">What the Squeeze Scanner does</h2>
-  <p class="muted" style="font-size:13px;margin:0 0 14px">A purpose-built tool for finding high-probability breakout setups across ~600 instruments (FTSE 100/250, NASDAQ 100, S&amp;P 500, world indices, FX, commodities, crypto).</p>
+<div id="view-intro" class="hidden doc">
+  <span class="eyebrow">How it works</span>
+  <h1>Find the coil before the breakout</h1>
+  <p class="lede">The Squeeze Scanner hunts one high-probability pattern across ~600 instruments — FTSE 100/250, NASDAQ 100, S&amp;P 500, world indices, FX, commodities and crypto — and hands you the exact entry, stop and target before the move happens.</p>
 
-  <div class="card"><h4>The idea — a "squeeze"</h4>
-    <p style="font-size:13px">A squeeze (a <b>volatility funnel</b>) is when price coils into an ever-tighter range: each swing high is a little lower (the <span style="color:var(--bear)">red upper jaw</span> H1→H2→H3) and each swing low is a little higher (the <span style="color:var(--bull)">green lower jaw</span> L1→L2→L3). The market is compressing — like a spring. When price finally breaks out of the funnel it tends to move fast and far. The scanner finds these funnels and tells you the exact <b>entry</b>, <b>stop</b> and <b>target</b>.</p>
-    <img id="intro-card" loading="lazy" alt="real funnel example" onerror="this.style.display='none'" style="width:100%;max-width:780px;border-radius:6px;display:block">
-    <p class="muted" id="intro-card-cap" style="font-size:12px;margin:5px 0 0">A real setup. The chart marks the three swing highs <span style="color:var(--bear)">H1·H2·H3</span> (red upper jaw) and three swing lows <span style="color:var(--bull)">L1·L2·L3</span> (green lower jaw) converging into the funnel, with the Entry / Stop / Target levels labelled on the right.</p>
-    <p class="muted" style="font-size:12px">The funnel's mouth (H1−L1) is <b>FNM1</b>; the scanner projects the target one FNM1 beyond the midpoint, and the stop just past the opposite jaw — that's how the R:R is computed.</p>
-  </div>
-
-  <div class="card"><h4>How to use it</h4>
-    <div style="font-size:13px;line-height:1.6">
-      • <b>Scanner</b> tab — the full table. Each row is one instrument's best setup. Use the <b>Filters</b> (top-left) or the <b>Search</b> box to narrow it; click a column header to sort.<br>
-      • Click any row to open the <b>detail panel</b>: the live price chart, the X post card, the rule-by-rule justification, fundamentals, broker trend and the published X thread.<br>
-      • <b>Pre-orders</b> tab — every setup that hasn't triggered yet (your pending watchlist) with entry / stop / target laid out.<br>
-      • Colours: <span style="color:var(--bull)">green = good / in favour</span>, <span style="color:#d29922">amber = watch</span>, <span style="color:var(--bear)">red = poor / against</span>.<br>
-      • <b>Refresh data</b> re-scans the whole universe (a few minutes); the page reloads itself when done.
+  <div class="hero">
+    <div class="htext">
+      <h3>The idea — a "squeeze"</h3>
+      <p>Price coils into an ever-tighter range: each swing high sits a little lower (the <span style="color:var(--bear)">red upper jaw</span> H1→H2→H3) and each swing low a little higher (the <span style="color:var(--bull)">green lower jaw</span> L1→L2→L3). The market is compressing like a spring.</p>
+      <p>When price finally breaks out, it tends to move <b>fast and far</b>. The scanner finds these funnels and computes the <b>entry</b>, <b>stop</b> and <b>target</b> for you.</p>
+      <p style="font-size:13px">The funnel's mouth (H1−L1) is <b>FNM1</b>; the target is projected one FNM1 beyond the midpoint and the stop just past the opposite jaw — that's the R:R.</p>
+    </div>
+    <div>
+      <img id="intro-card" loading="lazy" alt="real funnel example" onerror="this.style.display='none'" style="width:100%">
+      <p class="muted" id="intro-card-cap" style="font-size:12px;margin:8px 0 0">A real setup — swing highs <span style="color:var(--bear)">H1·H2·H3</span> and lows <span style="color:var(--bull)">L1·L2·L3</span> converging into the funnel, with Entry / Stop / Target labelled.</p>
     </div>
   </div>
-  <p class="muted" style="font-size:12px">Not financial advice — a research tool. See the <b>Appendix</b> tab for every term explained.</p>
+
+  <div class="pipeline">
+    <span class="step"><span class="dot">1</span>Scan 600+</span><span class="arw">→</span>
+    <span class="step"><span class="dot">2</span>Detect the squeeze</span><span class="arw">→</span>
+    <span class="step"><span class="dot">3</span>Score quality &amp; R:R</span><span class="arw">→</span>
+    <span class="step"><span class="dot">4</span>Pre-order levels</span><span class="arw">→</span>
+    <span class="step"><span class="dot">5</span>IG working order</span>
+  </div>
+
+  <h2 class="sec">Using the app</h2>
+  <div class="fgrid">
+    <div class="fcard"><div class="ic">🔍</div><h3>Scanner</h3><div class="body">The full table — one row per instrument's best setup. Narrow it with the <b>Filters</b> or <b>Search</b>, and click any column header to sort.</div></div>
+    <div class="fcard"><div class="ic">📊</div><h3>Detail panel</h3><div class="body">Click a row for the live price chart, the X post card, rule-by-rule justification, fundamentals, broker trend and the published X thread.</div></div>
+    <div class="fcard"><div class="ic">⏳</div><h3>Pre-orders</h3><div class="body">Every setup that hasn't triggered yet — your pending watchlist — with entry, stop and target laid out and ready.</div></div>
+    <div class="fcard"><div class="ic">🎨</div><h3>Reading colours</h3><div class="body"><span style="color:var(--bull)">Green</span> = good / in favour · <span style="color:#d29922">amber</span> = watch · <span style="color:var(--bear)">red</span> = poor / against.</div></div>
+    <div class="fcard"><div class="ic">↻</div><h3>Refresh data</h3><div class="body">Re-scans the whole universe (a few minutes); the page reloads itself automatically when the new snapshot is ready.</div></div>
+    <div class="fcard"><div class="ic">📖</div><h3>Every term</h3><div class="body">The <b>Appendix</b> tab defines every metric, level and status used across the app. Not financial advice — a research tool.</div></div>
+  </div>
 </div>
 
-<div id="view-appendix" class="hidden gloss" style="padding:18px 22px;max-width:1080px">
-  <h2 style="margin:0 0 12px">Appendix — glossary of terms</h2>
-  <div class="card"><h4>The pattern</h4><div>
-    <div><b>Squeeze</b> — a volatility contraction where price coils between converging highs and lows before a momentum breakout.</div>
-    <div><b>Upper jaw / Lower jaw</b> — the line through the swing highs (descending) and the line through the swing lows (ascending). They converge to form the funnel.</div>
-    <div><b>H1, H2, H3</b> — the three successive swing <b>highs</b> (each lower than the last) that define the upper jaw. H3 is the most recent.</div>
-    <div><b>L1, L2, L3</b> — the three successive swing <b>lows</b> (each higher than the last) that define the lower jaw. L3 is the most recent.</div>
-    <div><b>FNM1</b> — "funnel mouth 1" = H1 − L1, the height of the funnel's mouth. The target is projected one FNM1 beyond the midpoint.</div>
-  </div></div>
-  <div class="card"><h4>Levels &amp; the trade</h4><div>
-    <div><b>Entry</b> — the break level that triggers the setup: H3 for a long, L3 for a short.</div>
-    <div><b>Stop</b> — protective exit just beyond the opposite jaw.</div>
-    <div><b>Target</b> — projected objective: funnel midpoint ± FNM1.</div>
-    <div><b>R:R (Reward : Risk)</b> — (target − entry) ÷ (entry − stop). We look for ≥ 3 : 1.</div>
-    <div><b>Dist→Entry</b> — how far (%) the current price is from the entry level.</div>
-    <div><b>Since trig</b> — price change since it triggered, measured from the entry level (green = in the trade's favour).</div>
-  </div></div>
-  <div class="card"><h4>Status &amp; timing</h4><div>
-    <div><b>TRIGGERED</b> — price has crossed the entry; actionable now.</div>
-    <div><b>READY</b> — funnel complete, waiting for price to cross the entry (a "pre-order").</div>
-    <div><b>DEVELOPING</b> — the funnel is still forming.</div>
-    <div><b>Triggered (date)</b> — the date the trigger pivot (L3 long / H3 short) formed.</div>
-    <div><b>Days since</b> — days since that trigger date.</div>
-    <div><b>Timeframe (D240 / D180 / D90 / weekly …)</b> — the chart window the funnel was found on. The engine scans several and reports only the strongest one per instrument.</div>
-    <div><b>Pre-order</b> — a READY / DEVELOPING setup that hasn't triggered, so no order exists yet.</div>
-    <div><b>#Open / X posts</b> — open IG positions in that name / how many X posts we've published for it.</div>
-  </div></div>
-  <div class="card"><h4>Quality score</h4><div>
-    <div><b>Quality (0–100)</b> — combines <b>tightness</b> (up to 50: how compressed the funnel is vs FNM1), <b>freshness</b> (up to 30: how recently H3 formed) and <b>symmetry</b> (up to 20: how evenly the swings are spaced). 100 = very tight, fresh and symmetric.</div>
-  </div></div>
-  <div class="card"><h4>Fundamentals (per company)</h4><div>
-    <div><b>P/E (trailing / forward)</b> — share price ÷ earnings per share (historic / forecast).</div>
-    <div><b>PEG</b> — P/E relative to earnings growth (≈1 = fairly priced for its growth).</div>
-    <div><b>Price/Book · Price/Sales · EV/EBITDA</b> — valuation multiples vs book value, revenue, and enterprise value/earnings.</div>
-    <div><b>EPS</b> — earnings per share (trailing / forward).</div>
-    <div><b>Dividend yield / rate / payout ratio</b> — annual dividend as a % of price / per share / as a % of earnings.</div>
-    <div><b>FCF · OCF</b> — Free Cash Flow (cash left after capex) · Operating Cash Flow.</div>
-    <div><b>Gross / Operating / Profit margin</b> — profit at each level as a % of revenue.</div>
-    <div><b>ROE / ROA</b> — return on equity / on assets.</div>
-    <div><b>Revenue / Earnings growth</b> — year-on-year growth rates.</div>
-    <div><b>Debt/Equity · Current ratio · Quick ratio</b> — leverage and short-term liquidity.</div>
-    <div><b>Beta</b> — volatility relative to the market (1 = moves with it, &gt;1 = more).</div>
-    <div><b>Market cap · Revenue · EBITDA · 52-week range</b> — size and trading range.</div>
-  </div></div>
-  <div class="card"><h4>Broker &amp; data</h4><div>
-    <div><b>Broker analysis</b> — analyst Buy/Hold counts plus the net upgrades − downgrades over the last 6 and 12 months.</div>
-    <div><b>Source (YF / IG)</b> — where a stored price came from. IG (the broker feed) is treated as the truth and overrides Yahoo on disagreement.</div>
-    <div><b>double_checked</b> — a stored daily price that a second source confirmed (IG agreeing with Yahoo).</div>
-    <div><b>Golden dataset</b> — the audited, corrected price history kept in the database and verified daily.</div>
-  </div></div>
+<div id="view-appendix" class="hidden doc">
+  <span class="eyebrow">Reference</span>
+  <h1>Appendix &amp; glossary</h1>
+  <p class="lede">Every term, level, status and metric used across the Squeeze Scanner, defined in one place.</p>
+  <div class="gcols">
+    <section class="gsec"><h3>The pattern</h3><dl>
+      <div class="term"><dt>Squeeze</dt><dd>A volatility contraction where price coils between converging highs and lows before a momentum breakout.</dd></div>
+      <div class="term"><dt>Upper jaw / Lower jaw</dt><dd>The line through the swing highs (descending) and through the swing lows (ascending). They converge to form the funnel.</dd></div>
+      <div class="term"><dt>H1, H2, H3</dt><dd>The three successive swing <b>highs</b> (each lower than the last) that define the upper jaw. H3 is the most recent.</dd></div>
+      <div class="term"><dt>L1, L2, L3</dt><dd>The three successive swing <b>lows</b> (each higher than the last) that define the lower jaw. L3 is the most recent.</dd></div>
+      <div class="term"><dt>FNM1</dt><dd>"Funnel mouth 1" = H1 − L1, the height of the funnel's mouth. The target is projected one FNM1 beyond the midpoint.</dd></div>
+    </dl></section>
+    <section class="gsec"><h3>Levels &amp; the trade</h3><dl>
+      <div class="term"><dt>Entry</dt><dd>The break level that triggers the setup: H3 for a long, L3 for a short.</dd></div>
+      <div class="term"><dt>Stop</dt><dd>Protective exit just beyond the opposite jaw.</dd></div>
+      <div class="term"><dt>Target</dt><dd>Projected objective: funnel midpoint ± FNM1.</dd></div>
+      <div class="term"><dt>R:R (Reward : Risk)</dt><dd>(target − entry) ÷ (entry − stop). We look for ≥ 3 : 1.</dd></div>
+      <div class="term"><dt>Dist→Entry</dt><dd>How far (%) the current price is from the entry level.</dd></div>
+      <div class="term"><dt>Since trig</dt><dd>Price change since it triggered, from the entry level (green = in the trade's favour).</dd></div>
+    </dl></section>
+    <section class="gsec"><h3>Status &amp; timing</h3><dl>
+      <div class="term"><dt>TRIGGERED</dt><dd>Price has crossed the entry; actionable now.</dd></div>
+      <div class="term"><dt>READY</dt><dd>Funnel complete, waiting for price to cross the entry (a "pre-order").</dd></div>
+      <div class="term"><dt>DEVELOPING</dt><dd>The funnel is still forming.</dd></div>
+      <div class="term"><dt>Triggered (date)</dt><dd>The date the trigger pivot (L3 long / H3 short) formed.</dd></div>
+      <div class="term"><dt>Days since</dt><dd>Days since that trigger date.</dd></div>
+      <div class="term"><dt>Timeframe (D240 / D180 / D90 / weekly …)</dt><dd>The chart window the funnel was found on. The engine scans several and reports only the strongest per instrument.</dd></div>
+      <div class="term"><dt>Pre-order</dt><dd>A READY / DEVELOPING setup that hasn't triggered, so no order exists yet.</dd></div>
+      <div class="term"><dt>#Open / X posts</dt><dd>Open IG positions in that name / how many X posts we've published for it.</dd></div>
+    </dl></section>
+    <section class="gsec"><h3>Quality score</h3><dl>
+      <div class="term"><dt>Quality (0–100)</dt><dd>Combines <b>tightness</b> (up to 50: how compressed vs FNM1), <b>freshness</b> (up to 30: how recently H3 formed) and <b>symmetry</b> (up to 20: how evenly the swings are spaced). 100 = very tight, fresh and symmetric.</dd></div>
+    </dl></section>
+    <section class="gsec"><h3>Fundamentals (per company)</h3><dl>
+      <div class="term"><dt>P/E (trailing / forward)</dt><dd>Share price ÷ earnings per share (historic / forecast).</dd></div>
+      <div class="term"><dt>PEG</dt><dd>P/E relative to earnings growth (≈1 = fairly priced for its growth).</dd></div>
+      <div class="term"><dt>Price/Book · Price/Sales · EV/EBITDA</dt><dd>Valuation multiples vs book value, revenue, and enterprise value/earnings.</dd></div>
+      <div class="term"><dt>EPS</dt><dd>Earnings per share (trailing / forward).</dd></div>
+      <div class="term"><dt>Dividend yield / rate / payout ratio</dt><dd>Annual dividend as a % of price / per share / as a % of earnings.</dd></div>
+      <div class="term"><dt>FCF · OCF</dt><dd>Free Cash Flow (cash after capex) · Operating Cash Flow.</dd></div>
+      <div class="term"><dt>Gross / Operating / Profit margin</dt><dd>Profit at each level as a % of revenue.</dd></div>
+      <div class="term"><dt>ROE / ROA</dt><dd>Return on equity / on assets.</dd></div>
+      <div class="term"><dt>Revenue / Earnings growth</dt><dd>Year-on-year growth rates.</dd></div>
+      <div class="term"><dt>Debt/Equity · Current ratio · Quick ratio</dt><dd>Leverage and short-term liquidity.</dd></div>
+      <div class="term"><dt>Beta</dt><dd>Volatility relative to the market (1 = moves with it, &gt;1 = more).</dd></div>
+      <div class="term"><dt>Market cap · Revenue · EBITDA · 52-week range</dt><dd>Size and trading range.</dd></div>
+    </dl></section>
+    <section class="gsec"><h3>Broker &amp; data</h3><dl>
+      <div class="term"><dt>Broker analysis</dt><dd>Analyst Buy/Hold counts plus net upgrades − downgrades over the last 6 and 12 months.</dd></div>
+      <div class="term"><dt>Source (YF / IG)</dt><dd>Where a stored price came from. IG (the broker feed) is the truth and overrides Yahoo on disagreement.</dd></div>
+      <div class="term"><dt>double_checked</dt><dd>A stored daily price a second source confirmed (IG agreeing with Yahoo).</dd></div>
+      <div class="term"><dt>Golden dataset</dt><dd>The audited, corrected price history kept in the database and verified daily.</dd></div>
+    </dl></section>
+  </div>
 </div>
 
 <script>
@@ -699,6 +808,11 @@ function applyUserDefaults(){
   Object.entries(USER_FILTERS).forEach(([k,v])=>{const el=$(k);if(el&&v!=null&&v!=="")el.value=v;});
   if(USER_FILTERS.f_days){$("dlbl").textContent=USER_FILTERS.f_days;}
 }
+// Configuration card navigation (user 2026-07-03): show one config panel at a time.
+function confShow(panel){
+  document.querySelectorAll("#view-config .confpanel").forEach(p=>p.classList.toggle("hidden",p.dataset.panel!==panel));
+  document.querySelectorAll("#confnav .pill").forEach(b=>b.classList.toggle("active",b.dataset.panel===panel));
+}
 function renderCredentials(){
   fetch("/api/credentials",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
@@ -712,9 +826,10 @@ function renderCredentials(){
           .join("");
         const btn=ro?`<span class="muted" style="font-size:12px">Read-only — administrator manages these.</span>`
           :`<button class="btn" style="margin-top:6px" onclick="saveCreds('${sec.id}')">Save ${sec.id} credentials</button>`;
-        return `<div class="card"><h4>${sec.id}${sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
+        return `<div class="confpanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"><h4>${sec.id} credentials${sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
           <p class="muted" style="font-size:12px;margin:0 0 8px">${sec.note}</p>${rows}${btn}
-          <div id="cred-msg-${sec.id}" style="font-size:12px;margin-top:6px"></div></div>`;}).join("");
+          <div id="cred-msg-${sec.id}" style="font-size:12px;margin-top:6px"></div></div></div>`;}).join("");
+      confShow(document.querySelector("#confnav .pill.active")?.dataset.panel||"preferences");
     })
     .catch(()=>{$("cfg-creds").innerHTML=`<div class="muted">Could not load credentials — try logging in again.</div>`;});
 }

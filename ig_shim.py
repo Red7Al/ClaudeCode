@@ -23,6 +23,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.22.0  2026-07-03  Alex Hind   (user 2026-07-03 "each user must use their own IG credentials") IGSession is now
+#                                 credential-parameterizable (defaults to env creds — global singleton byte-identical);
+#                                 _resolve_ig_creds(login) reads a login's own IG creds from web_users; session_for(login)
+#                                 pools a per-login session and returns None for a non-owner with no creds (won't trade on
+#                                 another account). Enabling layer only — live bridge/monitor routing + demo test still to do.
 # 1.21.0  2026-07-03  Alex Hind   (user 2026-07-03, Config tab) Per-source trade-execution toggles: open_trade and
 #                                 place_hvf_order_from_sig check config_store.monitor_enabled(session) — a source
 #                                 switched off scans/reports but places nothing. Gate fails OPEN on config errors.
@@ -261,7 +266,15 @@ class IGSession:
     # IG sessions expire after 6 hours — refresh at 5.5 hours to be safe
     SESSION_TTL = IG_SESSION_TTL_SECONDS
 
-    def __init__(self):
+    def __init__(self, api_key: str = None, username: str = None, password: str = None,
+                 account_id: str = None, login: str = None):
+        # Per-user IG credentials (user 2026-07-03 — "each user must use their own IG credentials").
+        # Defaults to the process env creds, so the existing global singleton is byte-for-byte unchanged.
+        self._api_key    = api_key    or IG_API_KEY
+        self._username   = username   or IG_USERNAME
+        self._password   = password   or IG_PASSWORD
+        self._account_id = account_id or IG_ACCOUNT_ID
+        self._login      = login                       # which web login this session belongs to (or None=global)
         self._token: Optional[str] = None
         self._cst: Optional[str] = None
         self._authenticated_at: Optional[float] = None
@@ -273,7 +286,7 @@ class IGSession:
         h = {
             "Content-Type": "application/json",
             "Accept":       "application/json; charset=UTF-8",
-            "X-IG-API-KEY": IG_API_KEY,
+            "X-IG-API-KEY": self._api_key,
             "Version":      version,
         }
         if self._token:
@@ -285,13 +298,13 @@ class IGSession:
 
     def authenticate(self):
         """Authenticate with IG and store session tokens."""
-        log.info("Authenticating with IG API...")
+        log.info(f"Authenticating with IG API...{f' (login={self._login})' if self._login else ''}")
         resp = requests.post(
             f"{IG_BASE_URL}/session",
             headers=self._headers("2"),
             json={
-                "identifier":        IG_USERNAME,
-                "password":          IG_PASSWORD,
+                "identifier":        self._username,
+                "password":          self._password,
                 "encryptedPassword": False
             },
             timeout=15
@@ -365,6 +378,50 @@ class IGSession:
 # Singleton session instance — shared across all calls in this process
 # ----------------------------------------------------------------------------------------------------------------------
 session = IGSession()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Per-user IG credentials (user 2026-07-03 — "each user must use their own IG credentials — imperative")
+# ----------------------------------------------------------------------------------------------------------------------
+_OWNER_LOGIN = "Alex"          # owner's stored IG creds == process env creds (verified byte-identical)
+_SESSION_POOL: dict = {}       # login -> IGSession (lazy, kept for the process lifetime)
+
+
+def _resolve_ig_creds(login: str):
+    """Return that web login's own IG credentials, or None if they haven't set them.
+    Owner / None -> the process env creds (unchanged single-trader behaviour)."""
+    if not login or login == _OWNER_LOGIN:
+        return {"api_key": IG_API_KEY, "username": IG_USERNAME,
+                "password": IG_PASSWORD, "account_id": IG_ACCOUNT_ID}
+    try:
+        from hvf_web import web_users as _wu
+        api = _wu.get_secret(login, "ig_api_key")
+        usr = _wu.get_secret(login, "ig_username")
+        pwd = _wu.get_secret(login, "ig_password")
+        acct = _wu.get_secret(login, "ig_account_id")
+        if api and usr and pwd:
+            return {"api_key": api, "username": usr, "password": pwd, "account_id": acct}
+    except Exception as e:
+        log.warning(f"IG credential lookup failed for {login}: {e}")
+    return None
+
+
+def session_for(login: str = None) -> Optional["IGSession"]:
+    """Pooled IGSession authenticated with THAT login's own IG credentials. Returns None when a
+    non-owner login has not supplied their own credentials — the caller must then NOT trade on
+    anyone else's account (imperative). Owner/None returns the shared global session."""
+    if not login or login == _OWNER_LOGIN:
+        return session
+    if login in _SESSION_POOL:
+        return _SESSION_POOL[login]
+    creds = _resolve_ig_creds(login)
+    if not creds:
+        log.warning(f"{login} has no IG credentials of their own — no session created (will not trade).")
+        return None
+    s = IGSession(api_key=creds["api_key"], username=creds["username"],
+                  password=creds["password"], account_id=creds["account_id"], login=login)
+    _SESSION_POOL[login] = s
+    return s
 
 
 # ======================================================================================================================
