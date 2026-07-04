@@ -342,17 +342,17 @@ a{transition:color .15s ease}
 
   <!-- Card navigation (user 2026-07-03): keeps config sections separate; one panel visible at a time. -->
   <nav class="confnav" id="confnav">
-    <button class="pill active" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
+    <button class="pill active" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
     <button class="pill" data-panel="trading" onclick="confShow('trading')">📈 Trading</button>
-    <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
+    <button class="pill" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
     <button class="pill" data-panel="Supabase" onclick="confShow('Supabase')">🗄️ Supabase</button>
     <button class="pill" data-panel="X" onclick="confShow('X')">𝕏 X</button>
     <button class="pill" data-panel="Slack" onclick="confShow('Slack')">💬 Slack</button>
     <button class="pill" data-panel="Other" onclick="confShow('Other')">🧩 Other</button>
   </nav>
 
-  <!-- Preferences panel -->
-  <div class="confpanel" data-panel="preferences">
+  <!-- Preferences panel (hidden by default — IG is the leftmost/default panel, user 2026-07-03) -->
+  <div class="confpanel hidden" data-panel="preferences">
     <div class="card"><h4>My filter defaults</h4>
       <p class="muted" style="font-size:12px">Set the Scanner filters exactly how you like them, then save — they'll be applied automatically every time <b>you</b> log in (and "Reset filters" returns to them). Each user has their own.</p>
       <div id="cfg-defaults" class="muted" style="font-size:12px;margin:8px 0">loading…</div>
@@ -363,8 +363,8 @@ a{transition:color .15s ease}
 
   <!-- Trading panel — completely separate from everything else (user 2026-07-03), warning-tinted -->
   <div class="confpanel hidden" data-panel="trading">
-    <div style="border:1px solid var(--bear);border-radius:var(--r);padding:16px 18px;background:color-mix(in srgb,var(--bear) 6%,transparent)">
-      <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--bear);margin:0 0 4px">⚠ Trading configuration — affects live orders</h3>
+    <div>
+      <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">Trading configuration — affects live orders</h3>
       <p class="muted" style="font-size:12px;margin:0 0 14px">These settings decide whether and what is traded on the live IG account. They are kept entirely separate from your preferences and credentials.</p>
       <div class="card"><h4>Trade filters — direction, market, location</h4>
         <p class="muted" style="font-size:12px">Only ticked values may be traded. Ticking everything (or nothing) in a group = no restriction. Shared switches; changes are attributed to you and checked live before every trade.</p>
@@ -389,15 +389,17 @@ a{transition:color .15s ease}
   <h1>My activity</h1>
   <p class="lede">Your account's operational log — logins, password changes, pre-order actions, data refreshes and configuration changes. You only ever see your own entries.</p>
   <input type="hidden" id="acf_cat">
-  <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="viz" id="act-viz" style="border-bottom:none;padding:0 0 12px"></div>
-    <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px"><span id="act-count"></span><span class="grow"></span>
-      <label class="muted" style="font-size:12px">Category <select id="act-cat" onchange="paintActivity()" style="width:auto"><option value="">All</option><option>Login</option><option>Password</option><option>Pre-orders</option><option>Data</option><option>Configuration</option><option>Security</option><option>Other</option></select></label></div>
-    <div class="tablewrap"><table>
-      <thead><tr><th data-ak="ts">When (UTC)</th><th data-ak="cat">Category</th><th data-ak="event">Event</th></tr></thead>
-      <tbody id="act-rows"></tbody>
-    </table></div>
-  </section>
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <section class="gsec" style="border-left-color:var(--accent);flex:1 1 480px;min-width:0">
+      <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px"><span id="act-count"></span><span class="grow"></span>
+        <label class="muted" style="font-size:12px">Category <select id="act-cat" onchange="paintActivity()" style="width:auto"><option value="">All</option><option>Login</option><option>Password</option><option>Pre-orders</option><option>Data</option><option>Configuration</option><option>Security</option><option>Other</option></select></label></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th data-ak="ts">When (UTC)</th><th data-ak="cat">Category</th><th data-ak="event">Event</th></tr></thead>
+        <tbody id="act-rows"></tbody>
+      </table></div>
+    </section>
+    <div class="viz" id="act-viz" style="border-bottom:none;padding:0;flex:0 0 auto"></div>
+  </div>
 </div>
 
 <div id="view-intro" class="hidden doc">
@@ -790,7 +792,7 @@ function colorTabs(){
   const n=btns.length;
   btns.forEach((b,i)=>{
     const t=i/(n-1||1);                 // 0..1 left->right
-    const lum=Math.round(78-58*t);      // grey lightness 78% -> 20%
+    const lum=Math.round(20+58*t);      // grey lightness 20% -> 78% (dark left -> light right)
     b.style.background=`hsl(210 8% ${lum}%)`;
     b.style.color=lum<50?"#e8edf2":"#1b1f24";
     b.style.borderColor="transparent";
