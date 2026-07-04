@@ -824,7 +824,7 @@ function renderCredentials(){
             :`<input type="password" class="cred-in" data-sec="${sec.id}" data-key="${f.key}" placeholder="${f.set?'leave blank to keep':'enter value'}" autocomplete="new-password" style="max-width:320px">`;
           return `<div class="kv" style="align-items:center"><span>${f.label} ${hint}</span>${input}</div>`;})
           .join("");
-        const btn=ro?`<span class="muted" style="font-size:12px">Read-only — administrator manages these.</span>`
+        const btn=ro?`<span class="muted" style="font-size:12px">🔒 Read-only — managed in GitHub Secrets.</span>`
           :`<button class="btn" style="margin-top:6px" onclick="saveCreds('${sec.id}')">Save ${sec.id} credentials</button>`;
         return `<div class="confpanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"><h4>${sec.id} credentials${sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
           <p class="muted" style="font-size:12px;margin:0 0 8px">${sec.note}</p>${rows}${btn}

@@ -139,25 +139,31 @@ def api_config():
 
 _OWNER = "Alex"   # the account owner / administrator (also used by /api/order-ops)
 
-# Credential sections (user 2026-07-03). scope "user" = per-login (each user their own, e.g. IG);
-# scope "app" = shared application secret (stored once, editable by the owner, masked read-only to others).
+# Credential sections (user 2026-07-03). The SOURCE OF TRUTH is GitHub Secrets — at runtime the app
+# reads these from environment variables (populated from GitHub Secrets in Actions; mirrored via .env
+# locally). So the shared sections (Supabase/X/Slack/Other) are READ-ONLY here — "managed in GitHub
+# Secrets", never stored by the app. IG is per-user: the owner's come from Secrets too (read-only);
+# only a NON-owner (a second trader) enters their own IG creds, which can't be a single global Secret.
+# Each field: (store_key, label, ENV_VAR_NAME).
 CRED_SECTIONS = [
-    {"id": "IG", "scope": "user", "note": "Your own IG account — each user trades their own account.",
-     "fields": [("ig_api_key", "IG API key"), ("ig_username", "IG username"),
-                ("ig_password", "IG password"), ("ig_account_id", "IG account ID")]},
-    {"id": "Supabase", "scope": "app", "note": "Shared database credentials.",
-     "fields": [("supabase_user", "Supabase user"), ("supabase_db_password", "Supabase DB password")]},
-    {"id": "X", "scope": "app", "note": "Shared X (Twitter) API credentials. Live posting runs in GitHub Actions from GitHub Secrets — these are for reference/local use.",
-     "fields": [("x_api_key", "API key"), ("x_api_secret", "API secret"),
-                ("x_access_token", "Access token"), ("x_access_secret", "Access secret")]},
-    {"id": "Slack", "scope": "app", "note": "Shared Slack incoming-webhook URLs (channels/pages).",
-     "fields": [("slack_alerts", "#alerts webhook"), ("slack_daily", "#daily webhook"),
-                ("slack_signals", "#signals webhook"), ("slack_trades", "#trades webhook"),
-                ("slack_weekly", "#weekly webhook")]},
-    {"id": "Other", "scope": "app", "note": "Other shared API keys.",
-     "fields": [("fred_api_key", "FRED API key"), ("eia_api_key", "EIA API key"),
-                ("quiver_quant_api_key", "Quiver Quant API key"), ("yahoo_user", "Yahoo user"),
-                ("yahoo_app_password", "Yahoo app password"), ("cronjob_api_key", "cron-job.org API key")]},
+    {"id": "IG", "scope": "ig", "note": "IG account. The owner's credentials come from GitHub Secrets; a second user enters their own account here.",
+     "fields": [("ig_api_key", "IG API key", "IG_API_KEY"), ("ig_username", "IG username", "IG_USERNAME"),
+                ("ig_password", "IG password", "IG_PASSWORD"), ("ig_account_id", "IG account ID", "IG_ACCOUNT_ID")]},
+    {"id": "Supabase", "scope": "app", "note": "Managed in GitHub Secrets.",
+     "fields": [("supabase_user", "Supabase user", "SUPABASE_USER"),
+                ("supabase_db_password", "Supabase DB password", "SUPABASE_DB_PASSWORD")]},
+    {"id": "X", "scope": "app", "note": "Managed in GitHub Secrets. Live X posting runs in GitHub Actions.",
+     "fields": [("x_api_key", "API key", "X_API_KEY"), ("x_api_secret", "API secret", "X_API_SECRET"),
+                ("x_access_token", "Access token", "X_ACCESS_TOKEN"), ("x_access_secret", "Access secret", "X_ACCESS_SECRET")]},
+    {"id": "Slack", "scope": "app", "note": "Managed in GitHub Secrets (incoming-webhook URLs).",
+     "fields": [("slack_alerts", "#alerts webhook", "SLACK_ALERTS"), ("slack_daily", "#daily webhook", "SLACK_DAILY"),
+                ("slack_signals", "#signals webhook", "SLACK_SIGNALS"), ("slack_trades", "#trades webhook", "SLACK_TRADES"),
+                ("slack_weekly", "#weekly webhook", "SLACK_WEEKLY")]},
+    {"id": "Other", "scope": "app", "note": "Managed in GitHub Secrets.",
+     "fields": [("fred_api_key", "FRED API key", "FRED_API_KEY"), ("eia_api_key", "EIA API key", "EIA_API_KEY"),
+                ("quiver_quant_api_key", "Quiver Quant API key", "QUIVER_QUANT_API_KEY"),
+                ("yahoo_user", "Yahoo user", "YAHOO_USER"), ("yahoo_app_password", "Yahoo app password", "YAHOO_APP_PASSWORD"),
+                ("cronjob_api_key", "cron-job.org API key", "CRONJOB_API_KEY")]},
 ]
 
 
@@ -169,10 +175,11 @@ def _mask(v: str) -> str:
 
 @app.route("/api/credentials", methods=["GET", "POST"])
 def api_credentials():
-    """Per-user IG credentials + shared app credentials (user 2026-07-03). Full secret values are
-    NEVER sent to the browser — only a masked hint (last 4 chars) + whether a value is set. The owner
-    (Alex) may edit app-scope secrets; other users see them masked read-only. Every user edits their
-    own IG credentials."""
+    """Credentials view. Source of truth is GitHub Secrets (read at runtime from the environment) —
+    shared sections are READ-ONLY here. Full values are NEVER sent to the browser (masked last-4 only).
+    The only writable case is a NON-owner's own IG credentials (their own account, can't be a global
+    Secret); the owner's IG also comes from Secrets."""
+    import os as _os
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
     if not name:
         return jsonify({"error": "login required"}), 401
@@ -181,13 +188,16 @@ def api_credentials():
     if request.method == "GET":
         sections = []
         for sec in CRED_SECTIONS:
-            editable = True if sec["scope"] == "user" else is_owner
+            # IG is user-entered ONLY for a non-owner; everything else comes from GitHub Secrets (env).
+            from_secrets = (sec["scope"] == "app") or (sec["scope"] == "ig" and is_owner)
+            editable = (sec["scope"] == "ig" and not is_owner)
             fields = []
-            for key, label in sec["fields"]:
-                val = _wu.get_secret(name, key) if sec["scope"] == "user" else _wu.get_app_secret(key)
+            for key, label, env in sec["fields"]:
+                val = _os.environ.get(env, "") if from_secrets else _wu.get_secret(name, key)
                 fields.append({"key": key, "label": label, "set": bool(val), "masked": _mask(val)})
-            sections.append({"id": sec["id"], "scope": sec["scope"], "note": sec["note"],
-                             "editable": editable, "fields": fields})
+            note = sec["note"] + (" (from GitHub Secrets — read-only)" if from_secrets else "")
+            sections.append({"id": sec["id"], "scope": sec["scope"], "note": note,
+                             "editable": editable, "from_secrets": from_secrets, "fields": fields})
         return jsonify({"name": name, "is_owner": is_owner, "sections": sections})
 
     body = request.get_json(silent=True) or {}
@@ -196,20 +206,18 @@ def api_credentials():
     sec = next((s for s in CRED_SECTIONS if s["id"] == sec_id), None)
     if not sec:
         return jsonify({"ok": False, "error": "unknown section"}), 400
-    if sec["scope"] == "app" and not is_owner:
-        return jsonify({"ok": False, "error": "only the owner can edit shared credentials"}), 403
-    valid_keys = {k for k, _ in sec["fields"]}
+    # Only a non-owner's own IG credentials are writable in-app; all else lives in GitHub Secrets.
+    if not (sec["scope"] == "ig" and not is_owner):
+        return jsonify({"ok": False, "error": "managed in GitHub Secrets — not editable here"}), 403
+    valid_keys = {k for k, _, _ in sec["fields"]}
     saved = []
     for key, val in values.items():
         if key not in valid_keys or not isinstance(val, str) or val == "":
             continue    # empty = leave unchanged
-        if sec["scope"] == "user":
-            _wu.set_secret(name, key, val)
-        else:
-            _wu.set_app_secret(key, val)
+        _wu.set_secret(name, key, val)
         saved.append(key)
     if saved:
-        _wu.log_event(name, f"Updated {sec_id} credentials ({len(saved)} field(s))")
+        _wu.log_event(name, f"Updated own IG credentials ({len(saved)} field(s))")
     return jsonify({"ok": True, "saved": saved})
 
 
