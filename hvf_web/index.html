@@ -294,6 +294,8 @@ a{transition:color .15s ease}
   </aside>
 
   <main>
+    <!-- Scanner chart multi-select filter inputs (separate from the sidebar single-select dropdowns) -->
+    <input type="hidden" id="mf_sector"><input type="hidden" id="mf_direction"><input type="hidden" id="mf_status"><input type="hidden" id="mf_location"><input type="hidden" id="mf_market"><input type="hidden" id="mf_timeframe">
     <div class="viz" id="viz"></div>
     <div class="count" id="count"></div>
     <div class="tablewrap">
@@ -339,7 +341,7 @@ a{transition:color .15s ease}
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 700px;min-width:0">
-      <div class="count" id="oo-count" style="padding-left:0"></div>
+      <div class="count" style="padding-left:0;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span id="oo-count"></span><span class="grow"></span><span id="oo-datebar"></span></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
         <tbody id="oo-rows"></tbody>
@@ -415,7 +417,7 @@ a{transition:color .15s ease}
   <input type="hidden" id="bcf_source"><input type="hidden" id="bcf_by"><input type="hidden" id="bcf_month">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 520px;min-width:0">
-      <div class="count" style="padding-left:0"><span id="batch-count"></span></div>
+      <div class="count" style="padding-left:0;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span id="batch-count"></span><span class="grow"></span><span id="batch-datebar"></span></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-bk="ts">When (UTC)</th><th data-bk="source">Source</th><th data-bk="event">Event</th><th data-bk="by">By</th></tr></thead>
         <tbody id="batch-rows"></tbody>
@@ -446,8 +448,9 @@ a{transition:color .15s ease}
   <input type="hidden" id="vcf_category"><input type="hidden" id="vmf_month">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
-      <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px"><span id="ver-count"></span><span class="grow"></span>
-        <label class="muted" style="font-size:12px">Category <select id="ver-cat" onchange="paintVersion()" style="width:auto"><option value="">All</option><option>Data</option><option>Security</option><option>Presentation</option><option>Bug fix</option><option>Feature</option></select></label></div>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><span id="ver-count"></span><span class="grow"></span>
+        <label class="muted" style="font-size:12px">Category <select id="ver-cat" onchange="$('vcf_category').value=this.value;paintVersion()" style="width:auto"><option value="">All</option><option>Data</option><option>Security</option><option>Presentation</option><option>Bug fix</option><option>Feature</option></select></label>
+        <span id="ver-datebar"></span></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-vk="date">Date</th><th data-vk="version">Version</th><th data-vk="category">Category</th><th data-vk="summary">Summary</th></tr></thead>
         <tbody id="ver-rows"></tbody>
@@ -464,8 +467,9 @@ a{transition:color .15s ease}
   <input type="hidden" id="acf_cat">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 480px;min-width:0">
-      <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px"><span id="act-count"></span><span class="grow"></span>
-        <label class="muted" style="font-size:12px">Category <select id="act-cat" onchange="paintActivity()" style="width:auto"><option value="">All</option><option>Login</option><option>Password</option><option>Pre-orders</option><option>Data</option><option>Configuration</option><option>Security</option><option>Other</option></select></label></div>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><span id="act-count"></span><span class="grow"></span>
+        <label class="muted" style="font-size:12px">Category <select id="act-cat" onchange="$('acf_cat').value=this.value;paintActivity()" style="width:auto"><option value="">All</option><option>Login</option><option>Password</option><option>Pre-orders</option><option>Data</option><option>Configuration</option><option>Security</option><option>Other</option></select></label>
+        <span id="act-datebar"></span></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-ak="ts">When (UTC)</th><th data-ak="cat">Category</th><th data-ak="event">Event</th></tr></thead>
         <tbody id="act-rows"></tbody>
@@ -613,15 +617,16 @@ function pass(r){
   if(_q && !((r.ticker||"").toLowerCase().includes(_q) || (r.name||"").toLowerCase().includes(_q)))return false;
   if(signalOnly && r.has_signal===false)return false;
   const g=id=>$(id).value;
-  // "—" is the missing-value bucket from the charts (no-signal rows have null direction/status/etc.):
-  // selecting it filters to rows where that field is empty (user 2026-06-28).
+  // Each field is gated by BOTH the sidebar dropdown (single) AND the chart multi-select set (mf_*).
+  // "—" is the missing-value bucket (no-signal rows have null direction/status/etc.).
   const sel=(v,id)=>{const f=g(id);return !f || (f==="—" ? !v : v===f);};
-  if(!sel(r.direction,"f_dir"))return false;
-  if(!sel(r.location,"f_loc"))return false;
-  if(!sel(r.market,"f_mkt"))return false;
-  if(!sel(r.sector,"f_sec"))return false;
-  if(!sel(r.status,"f_stat"))return false;
-  if(!sel(r.timeframe,"f_tf"))return false;
+  const dm=(v,id,mfid)=>sel(v,id) && inSet(mfid,v);
+  if(!dm(r.direction,"f_dir","mf_direction"))return false;
+  if(!dm(r.location,"f_loc","mf_location"))return false;
+  if(!dm(r.market,"f_mkt","mf_market"))return false;
+  if(!dm(r.sector,"f_sec","mf_sector"))return false;
+  if(!dm(r.status,"f_stat","mf_status"))return false;
+  if(!dm(r.timeframe,"f_tf","mf_timeframe"))return false;
   // null value passes a range (a no-signal / missing-field row is never excluded by a numeric range —
   // so toggling "Squeeze only" off shows the whole monitored universe).
   const rng=(v,lo,hi)=>{const a=num(g(lo)),b=num(g(hi));if(v==null)return true;if(a!=null&&v<a)return false;if(b!=null&&v>b)return false;return true;};
@@ -634,28 +639,51 @@ function pass(r){
   return true;
 }
 
+// ── Multi-select chart filters (user 2026-07-03): a filter input holds a SET of selected values,
+// so clicking several bars (e.g. DELETED + PENDING) keeps them all. SEP is a control char that never
+// appears in a value. Chart-only filter inputs are hidden <input>s; the Scanner uses mf_* hidden
+// inputs alongside its single-select sidebar dropdowns.
+const SEP="~|~";
+function setOf(id){const el=$(id);if(!el)return null;const v=el.value||"";return v?new Set(v.split(SEP)):null;}
+function inSet(id,val){const s=setOf(id);return !s||s.has(val==null||val===""?"—":String(val));}
+function toggleIn(id,val){const el=$(id);if(!el)return;
+  if(val===""){el.value="";return;}                       // clear
+  const s=new Set((el.value||"").split(SEP).filter(Boolean));const k=String(val);
+  s.has(k)?s.delete(k):s.add(k); el.value=[...s].join(SEP);}
+// Date-range filter (user 2026-07-03): each dated table has <prefix>-from / <prefix>-to date inputs.
+function dateActive(pfx){return !!((($(pfx+"-from")||{}).value)||(($(pfx+"-to")||{}).value));}
+function applyDateFilter(pfx,rows,getTs){
+  const from=(($(pfx+"-from")||{}).value)||null, to=(($(pfx+"-to")||{}).value)||null;
+  if(!from&&!to)return rows;
+  return rows.filter(r=>{const d=(getTs(r)||"").slice(0,10); if(!d)return true;
+    if(from&&d<from)return false; if(to&&d>to)return false; return true;});
+}
+function dateFilterBar(pfx,painter){
+  return `<label class="muted" style="font-size:12px">From <input type="date" id="${pfx}-from" onchange="${painter}" style="width:auto"></label>`+
+         `<label class="muted" style="font-size:12px">To <input type="date" id="${pfx}-to" onchange="${painter}" style="width:auto"></label>`;
+}
 function barChart(title,counts,fk,colorFn){
-  const active=($(fk)||{}).value||"";
+  const sel=setOf(fk), nsel=sel?sel.size:0;
   const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const max=Math.max(1,...entries.map(e=>e[1]));
-  const rows=entries.map(([k,n])=>{const on=active&&String(k)===active;
+  const rows=entries.map(([k,n])=>{const on=sel&&sel.has(String(k));
     return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}" title="click to filter ${k}"><span class="tk">${on?'● ':''}${k}</span>
-    <span class="fill" style="width:${Math.round(n/max*52)}px;background:${colorFn?colorFn(k):'var(--accent)'};opacity:${active&&!on?0.4:1}"></span><span class="n">${n}</span></div>`;}).join("");
-  return `<div class="vizbox${active?' filtered':''}"><h5>${title}${active?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${active} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
+    <span class="fill" style="width:${Math.round(n/max*52)}px;background:${colorFn?colorFn(k):'var(--accent)'};opacity:${nsel&&!on?0.4:1}"></span><span class="n">${n}</span></div>`;}).join("");
+  return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
 }
 function pieChart(title,counts,fk){
-  const active=($(fk)||{}).value||"";
+  const sel=setOf(fk), nsel=sel?sel.size:0, has=k=>sel&&sel.has(String(k));
   const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
   const total=entries.reduce((s,e)=>s+e[1],0)||1;
   const cols=["#58a6ff","#3fb950","#f85149","#d29922","#a371f7","#db61a2","#e3b341","#79c0ff","#56d364","#ff7b72"];
   let a=0,seg="";
-  entries.forEach(([k,n],i)=>{const frac=n/total,a2=a+frac*2*Math.PI;const on=active&&String(k)===active;
+  entries.forEach(([k,n],i)=>{const frac=n/total,a2=a+frac*2*Math.PI;const on=has(k);
     const x1=20+18*Math.cos(a-Math.PI/2),y1=20+18*Math.sin(a-Math.PI/2);
     const x2=20+18*Math.cos(a2-Math.PI/2),y2=20+18*Math.sin(a2-Math.PI/2);
-    seg+=`<path class="clk" data-fk="${fk}" data-fv="${k}" d="M20,20 L${x1.toFixed(2)},${y1.toFixed(2)} A18,18 0 ${frac>0.5?1:0},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${cols[i%cols.length]}" stroke="${on?'var(--fg)':'none'}" stroke-width="${on?1.5:0}" opacity="${active&&!on?0.4:1}"><title>click to filter ${k}</title></path>`;a=a2;});
-  const legend=entries.slice(0,8).map(([k,n],i)=>{const on=active&&String(k)===active;
+    seg+=`<path class="clk" data-fk="${fk}" data-fv="${k}" d="M20,20 L${x1.toFixed(2)},${y1.toFixed(2)} A18,18 0 ${frac>0.5?1:0},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${cols[i%cols.length]}" stroke="${on?'var(--fg)':'none'}" stroke-width="${on?1.5:0}" opacity="${nsel&&!on?0.4:1}"><title>click to filter ${k}</title></path>`;a=a2;});
+  const legend=entries.slice(0,8).map(([k,n],i)=>{const on=has(k);
     return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}"><span class="fill" style="width:10px;background:${cols[i%cols.length]}"></span><span class="tk" style="text-align:left;width:auto" title="click to filter ${k}">${on?'● ':''}${k} (${n})</span></div>`;}).join("");
-  return `<div class="vizbox${active?' filtered':''}"><h5>${title}${active?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${active} ✕</span>`:''}</h5><div style="display:flex;gap:8px;align-items:center">
+  return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div style="display:flex;gap:8px;align-items:center">
     <svg viewBox="0 0 40 40" width="86" height="86">${seg}</svg><div class="bars" style="min-width:120px">${legend}</div></div></div>`;
 }
 function renderViz(rows){
@@ -666,15 +694,17 @@ function renderViz(rows){
   // sector chart never sits below (or above) another chart (user 2026-06-28).
   // Sector pie and the Market chart each get their OWN column — nothing may stack above or below
   // the Market chart on any page (user 2026-07-03: it will have many entries).
+  // Scanner charts use mf_* multi-select inputs (user 2026-07-03) — separate from the single-select
+  // sidebar dropdowns; pass() honours both.
   $("viz").innerHTML=
-    `<div class="vizsector">`+pieChart("Sector",by("sector"),"f_sec")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",by("sector"),"mf_sector")+`</div>`+
     `<div class="vizbars">`+
-      barChart("Direction",by("direction"),"f_dir",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
-      barChart("Status",by("status"),"f_stat",k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
-      barChart("Location",by("location"),"f_loc")+
-      barChart("Timeframe",by("timeframe"),"f_tf")+
+      barChart("Direction",by("direction"),"mf_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
+      barChart("Status",by("status"),"mf_status",k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
+      barChart("Location",by("location"),"mf_location")+
+      barChart("Timeframe",by("timeframe"),"mf_timeframe")+
     `</div>`+
-    `<div class="vizsector">`+barChart("Market",by("market"),"f_mkt")+`</div>`;
+    `<div class="vizsector">`+barChart("Market",by("market"),"mf_market")+`</div>`;
 }
 
 function render(){
@@ -817,21 +847,21 @@ F.forEach(id=>$(id).addEventListener("input",applyAll));
 // Click a chart bar / pie slice to set that filter (toggle off if already set) — user 2026-06-27.
 // Delegated so EVERY chart on EVERY tab filters (user 2026-07-03), not just the Scanner's #viz.
 document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(!el)return;
-  const f=$(el.dataset.fk); if(!f)return; f.value=(f.value===el.dataset.fv)?"":el.dataset.fv;
-  // Route to the tab the chart belongs to (user 2026-07-03: po/oo charts filter their own tables).
-  if(el.dataset.fk.startsWith("pof_"))renderPreorders();
-  else if(el.dataset.fk.startsWith("oof_"))paintOrderOps();
-  else if(el.dataset.fk==="acf_cat"){$("act-cat").value=(f.value&&f.value!=="—")?f.value:"";paintActivity();}
-  else if(el.dataset.fk==="vcf_category"){$("ver-cat").value=(f.value&&f.value!=="—")?f.value:"";paintVersion();}
-  else if(el.dataset.fk==="vmf_month")paintVersion();
-  else if(el.dataset.fk.startsWith("bcf_"))paintBatch();
+  const k=el.dataset.fk; if(!$(k))return;
+  toggleIn(k, el.dataset.fv);          // multi-select: toggle this value in the set ("" = clear all)
+  if(k.startsWith("pof_"))renderPreorders();
+  else if(k.startsWith("oof_"))paintOrderOps();
+  else if(k==="acf_cat")paintActivity();
+  else if(k==="vcf_category"||k==="vmf_month")paintVersion();
+  else if(k.startsWith("bcf_"))paintBatch();
   else applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
-$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});
+const MF_IDS=["mf_sector","mf_direction","mf_status","mf_location","mf_market","mf_timeframe"];
+$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");
   // Built-in defaults first, then the user's OWN saved defaults on top (Config tab, user 2026-07-03).
   $("f_qmin").value=45;$("f_rrmin").value=3.1;$("f_dsmax").value=90;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;
   applyUserDefaults();applyAll();};
-$("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});signalOnly=false;$("signalonly").textContent="Show Squeeze Only ✗";$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
+$("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");signalOnly=false;$("signalonly").textContent="Show Squeeze Only ✗";$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
 $("togglefilters").onclick=()=>{const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").textContent="☰ Filters ("+(hidden?"Show":"Hide")+")";};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").textContent="Show Squeeze Only "+(signalOnly?"✓":"✗");applyAll();};
 let _refStart=0, _lastTens=-1;
@@ -941,9 +971,12 @@ function paintVersion(){
   const months=VER_ROWS.reduce((m,e)=>{const v=_vmonth(e)||'—';m[v]=(m[v]||0)+1;return m;},{});
   $("ver-viz").innerHTML=`<div class="vizsector">`+barChart("By category",cats,"vcf_category")+`</div>`+
     `<div class="vizsector">`+barChart("By month",months,"vmf_month")+`</div>`;
-  const cf=$("ver-cat").value, mf=$("vmf_month").value;
-  const rows=genSort(VER_ROWS.filter(e=>(!cf||(e.category||'Feature')===cf)&&(!mf||_vmonth(e)===mf)),verSortK,verSortDir);
-  $("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> changes${(cf||mf)?` <span class="muted">(${[cf,mf].filter(Boolean).join(', ')})</span>`:` of ${VER_ROWS.length}`}`;
+  if($("ver-datebar")&&!$("ver-datebar").innerHTML)$("ver-datebar").innerHTML=dateFilterBar("ver","paintVersion()");
+  let rows=VER_ROWS.filter(e=>inSet("vcf_category",e.category||'Feature')&&inSet("vmf_month",_vmonth(e)));
+  rows=applyDateFilter("ver",rows,e=>e.date);
+  rows=genSort(rows,verSortK,verSortDir);
+  const filt=(setOf("vcf_category")||setOf("vmf_month")||dateActive("ver"));
+  $("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> changes${filt?` <span class="muted">of ${VER_ROWS.length}</span>`:''}`;
   $("ver-rows").innerHTML=rows.map(e=>`<tr><td>${e.date}</td><td><code>${e.version}</code></td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||'Feature'}</span></td><td>${(e.summary||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 function renderVersion(){fetch("/api/version-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{VER_ROWS=j.entries||[];paintVersion();}).catch(()=>{$("ver-rows").innerHTML=`<tr><td colspan="3" class="empty">Could not load (admin only).</td></tr>`;});}
 let BATCH_ROWS=[], batchSortK="ts", batchSortDir=-1;
@@ -955,9 +988,11 @@ function paintBatch(){
     `<div class="vizsector">`+barChart("Source",by(e=>e.source),"bcf_source")+`</div>`+
     `<div class="vizsector">`+barChart("By",by(e=>e.by),"bcf_by")+`</div>`+
     `<div class="vizsector">`+barChart("Month",by(_bmonth),"bcf_month")+`</div>`;
+  if($("batch-datebar")&&!$("batch-datebar").innerHTML)$("batch-datebar").innerHTML=dateFilterBar("batch","paintBatch()");
   let rows=BATCH_ROWS;
   [["bcf_source",e=>e.source],["bcf_by",e=>e.by],["bcf_month",_bmonth]].forEach(([id,fn])=>{
-    const v=$(id).value; if(v)rows=rows.filter(e=>(fn(e)||'—')===v);});
+    rows=rows.filter(e=>inSet(id,fn(e)));});
+  rows=applyDateFilter("batch",rows,e=>e.ts);
   $("batch-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> batch runs${rows.length!==BATCH_ROWS.length?` <span class="muted">of ${BATCH_ROWS.length}</span>`:''}`;
   $("batch-rows").innerHTML=genSort(rows,batchSortK,batchSortDir).map(e=>`<tr><td>${e.ts||''}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.source||''}</span></td><td>${(e.event||'').replace(/</g,"&lt;")}</td><td>${e.by||''}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 function renderBatch(){fetch("/api/batch-activity",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{BATCH_ROWS=j.entries||[];paintBatch();}).catch(()=>{$("batch-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});}
@@ -1093,7 +1128,9 @@ function paintOrderOps(){
   // Chart-click filters (user 2026-07-03) apply to the table; the charts show the full mix.
   let rows=OO_ROWS;
   [["oof_status","status"],["oof_direction","direction"],["oof_session","session"],["oof_ticker","ticker"]].forEach(([id,k])=>{
-    const v=$(id).value; if(v)rows=rows.filter(r=>v==="—"?!r[k]:r[k]===v);});
+    rows=rows.filter(r=>inSet(id,r[k]));});
+  rows=applyDateFilter("oo",rows,r=>r.updated_at||r.placed_at);   // date filter on Updated
+  if($("oo-datebar")&&!$("oo-datebar").innerHTML)$("oo-datebar").innerHTML=dateFilterBar("oo","paintOrderOps()");
   $("oo-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> order operation records${rows.length!==OO_ROWS.length?` <span class="muted">of ${OO_ROWS.length}</span>`:""}`;
   const oby=k=>OO_ROWS.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
   $("oo-viz").innerHTML=
@@ -1133,9 +1170,12 @@ function paintActivity(){
   // Category bar chart (user 2026-07-03) — a sorted bar per Zebra BI guide; click a bar to filter.
   const counts=AC_ROWS.reduce((m,e)=>{m[e.cat]=(m[e.cat]||0)+1;return m;},{});
   $("act-viz").innerHTML=`<div class="vizsector">`+barChart("Activity by category",counts,"acf_cat")+`</div>`;
-  const cat=$("act-cat").value;
-  const rows=genSort(AC_ROWS.filter(e=>!cat||e.cat===cat),acSortK,acSortDir);
-  $("act-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> activity records${cat?` <span class="muted">(${cat})</span>`:""}`;
+  if($("act-datebar")&&!$("act-datebar").innerHTML)$("act-datebar").innerHTML=dateFilterBar("act","paintActivity()");
+  let rows=AC_ROWS.filter(e=>inSet("acf_cat",e.cat));
+  rows=applyDateFilter("act",rows,e=>e.ts);
+  rows=genSort(rows,acSortK,acSortDir);
+  const nsel=(setOf("acf_cat")||{}).size||0;
+  $("act-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> activity records${(nsel||dateActive("act"))?` <span class="muted">of ${AC_ROWS.length}</span>`:""}`;
   $("act-rows").innerHTML=rows.map(e=>`<tr><td>${e.ts}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.cat}</span></td><td>${(e.event||"").replace(/</g,"&lt;")}</td></tr>`).join("")
     || `<tr><td colspan="3" class="empty">No activity recorded yet.</td></tr>`;
 }
@@ -1162,10 +1202,10 @@ function doReset(){
 let poSortK="dist_entry", poSortDir=1;   // default sort: Dist->Entry, closest first (user 2026-06-30)
 function renderPreorders(){
   let po=DATA.filter(isPreorder);
-  // Chart-click filters (user 2026-07-03): each pof_* holds a selected value ("—" = field empty).
+  // Chart-click filters (user 2026-07-03): each pof_* holds a SET of selected values (multi-select).
   [["pof_direction","direction"],["pof_status","status"],["pof_location","location"],
    ["pof_market","market"],["pof_timeframe","timeframe"],["pof_sector","sector"]].forEach(([id,k])=>{
-    const v=$(id).value; if(v)po=po.filter(r=>v==="—"?!r[k]:r[k]===v);});
+    po=po.filter(r=>inSet(id,r[k]));});
   // Click a column header to sort (user 2026-06-30). Dist->Entry sorts on |distance| (closest first);
   // other columns sort on their raw value; nulls always sink to the bottom.
   const val=r=>{const v=r[poSortK];if(v==null)return null;return poSortK==="dist_entry"?Math.abs(v):v;};
