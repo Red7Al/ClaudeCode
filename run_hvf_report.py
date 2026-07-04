@@ -664,8 +664,10 @@ def _developing_line(r) -> str:
             f"Now {now}  Entry {entry}{e_pct}  Stop {stop}{s_pct}  Target {target}{t_pct}{_coil}{also}")
 
 
-def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
-    """Build Slack Block Kit message for the daily HVF report."""
+def build_slack_blocks(tradeable, developing, scan_time: str, per_market_n: int = None) -> list:
+    """Build Slack Block Kit message for the daily HVF report. per_market_n overrides how many
+    setups to show per market (user 2026-07-03: arw-rw-hvf wants the top 3, not 10)."""
+    _pm = per_market_n or PER_MARKET_TOP_N
     # Horizon cap (user 2026-06-29): do NOT show anything longer than 9 months to target in the HVF
     # Slack channel. target_horizon_days = the funnel's H1->H3 span (the expected time-to-target);
     # 9 months ~ 274 days. Applied here so it only affects this Slack report, not the web app / X.
@@ -701,12 +703,12 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         from collections import Counter
         from price_action import group_by_market
         totals = Counter(r.get("index") for r in tradeable)
-        groups = group_by_market(tradeable, n=PER_MARKET_TOP_N, market_order=MARKET_ORDER)
+        groups = group_by_market(tradeable, n=_pm, market_order=MARKET_ORDER)
         shown  = sum(len(rs) for _, rs in groups)
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn",
-                     "text": (f"*⚡ TRADEABLE setups* — showing the top {PER_MARKET_TOP_N} per market "
+                     "text": (f"*⚡ TRADEABLE setups* — showing the top {_pm} per market "
                               f"({shown} shown of {len(tradeable)} that qualify)")}
         })
         for market, rows in groups:
@@ -740,7 +742,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         # Hide a market's DEVELOPING watch list when it ALREADY has more than 10 tradeable setups
         # (user 2026-06-26): there's plenty to act on in that market, so the watch list is just noise.
         _trd_by_mkt = Counter(r.get("index") for r in tradeable)
-        groups = group_by_market(developing, n=PER_MARKET_TOP_N, market_order=MARKET_ORDER)
+        groups = group_by_market(developing, n=_pm, market_order=MARKET_ORDER)
         _hidden_mkts = [m for m, _ in groups if _trd_by_mkt.get(m, 0) > DEVELOPING_HIDE_IF_TRADEABLE_OVER]
         groups = [(m, rs) for m, rs in groups if _trd_by_mkt.get(m, 0) <= DEVELOPING_HIDE_IF_TRADEABLE_OVER]
         shown  = sum(len(rs) for _, rs in groups)
@@ -750,7 +752,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn",
-                     "text": (f"*👀 DEVELOPING (watch list)* — showing the top {PER_MARKET_TOP_N} per market "
+                     "text": (f"*👀 DEVELOPING (watch list)* — showing the top {_pm} per market "
                               f"({shown} shown of {len(developing)} on watch){_hidden_note}")}
         })
         for market, rows in groups:
@@ -789,21 +791,22 @@ def build_slack_blocks(tradeable, developing, scan_time: str) -> list:
     return blocks
 
 
-def post_to_slack(blocks: list):
-    # Post the same report to the primary channel AND any additional channels (user 2026-06-26, C):
+def post_to_slack(blocks: list, rw_blocks: list = None):
+    # Post the report to the primary channel AND any additional channels (user 2026-06-26, C):
     # SLACK_RW_HVF is an extra HVF-report channel. Each is an independent webhook; a missing/failed
-    # one doesn't stop the others.
+    # one doesn't stop the others. rw_blocks (top-3-per-market) is used for SLACK_RW_HVF when given
+    # (user 2026-07-03); #signals always gets the full `blocks`.
     import requests
-    targets = [("SLACK_SIGNALS", True), ("SLACK_RW_HVF", False)]   # (env var, warn-if-missing)
+    targets = [("SLACK_SIGNALS", True, blocks), ("SLACK_RW_HVF", False, rw_blocks or blocks)]
     posted_any = False
-    for env_name, warn_missing in targets:
+    for env_name, warn_missing, _blocks in targets:
         url = os.environ.get(env_name, "")
         if not url:
             if warn_missing:
                 log.warning(f"{env_name} not set — skipping Slack post")
             continue
         try:
-            resp = requests.post(url, json={"blocks": blocks}, timeout=15)
+            resp = requests.post(url, json={"blocks": _blocks}, timeout=15)
             if resp.status_code != 200:
                 log.error(f"Slack post failed ({env_name}): {resp.status_code} {resp.text[:200]}")
             else:
@@ -894,7 +897,9 @@ def main():
 
     # Post to Slack
     blocks = build_slack_blocks(tradeable, developing, scan_time)
-    post_to_slack(blocks)
+    # arw-rw-hvf gets the top 3 per market (user 2026-07-03: 10 is too much); #signals keeps the full set.
+    rw_blocks = build_slack_blocks(tradeable, developing, scan_time, per_market_n=3)
+    post_to_slack(blocks, rw_blocks=rw_blocks)
 
     # Output mode (user 2026-06-22):
     #   normal     — analytical #signals report + changed-only Slack drafts (with PNGs) + live X publish.

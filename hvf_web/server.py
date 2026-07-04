@@ -117,11 +117,53 @@ def _append_batch(source, event, by="system"):
         log.warning(f"batch log append failed: {e}")
 
 
+_REPO_ROOT = os.path.dirname(_HERE)
+
+
+def _version_category(summary: str) -> str:
+    """Categorise a change from its summary (user 2026-07-03)."""
+    s = (summary or "").lower()
+    if any(w in s for w in ("secur", "password", "credential", "role", "admin", "login", "auth", "encrypt", "gitleak")):
+        return "Security"
+    if any(w in s for w in ("fix", "bug", "correct", "revert", "repair", "root cause", "regression")):
+        return "Bug fix"
+    if any(w in s for w in ("redesign", "styl", "ui", "css", "layout", "chart", "tab", "colour", "color",
+                            "card", "visual", "label", "format", "prominence", "doc")):
+        return "Presentation"
+    if any(w in s for w in ("data", "supabase", "snapshot", "universe", "ledger", "record", "etl",
+                            "price", "location", "instrument", "trigger")):
+        return "Data"
+    return "Feature"
+
+
+def _version_entries():
+    """Version history built LIVE from git log so it's always current (user 2026-07-03), with a
+    file fallback. Categorised."""
+    entries = []
+    try:
+        import subprocess
+        out = subprocess.check_output(
+            ["git", "-C", _REPO_ROOT, "log", "--date=short", "--pretty=format:%ad|%h|%s"],
+            text=True, encoding="utf-8", errors="replace", timeout=20)
+        for ln in out.splitlines():
+            if not ln.strip():
+                continue
+            date, ver, summ = ln.split("|", 2)
+            entries.append({"date": date, "version": ver, "summary": summ.strip(),
+                            "category": _version_category(summ)})
+    except Exception as e:
+        log.warning(f"version history from git failed ({e}); using file")
+        entries = _read_json_entries(_VERSION_FILE)
+        for e2 in entries:
+            e2.setdefault("category", _version_category(e2.get("summary", "")))
+    return entries
+
+
 @app.route("/api/version-history")
 def api_version_history():
     if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
         return jsonify({"error": "admin only"}), 403
-    return jsonify({"entries": _read_json_entries(_VERSION_FILE)})
+    return jsonify({"entries": _version_entries()})
 
 
 @app.route("/api/batch-activity")
@@ -136,8 +178,8 @@ def api_me():
     """The logged-in user's identity + role, for client-side gating (user 2026-07-03)."""
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
     if not name:
-        return jsonify({"name": None, "role": "guest", "is_admin": False})
-    return jsonify({"name": name, "role": _wu.get_role(name), "is_admin": _wu.is_admin(name)})
+        return jsonify({"name": None, "subscription": "guest", "is_admin": False})
+    return jsonify({"name": name, "subscription": _wu.get_subscription(name), "is_admin": _wu.is_admin(name)})
 
 
 @app.route("/api/users", methods=["GET", "POST"])
@@ -149,16 +191,18 @@ def api_users():
     if not _wu.is_admin(name):
         return jsonify({"error": "admin only"}), 403
     if request.method == "GET":
-        return jsonify({"users": _wu.list_users(), "roles": _wu.ROLES})
+        return jsonify({"users": _wu.list_users(), "subscriptions": _wu.SUBSCRIPTIONS})
     body = request.get_json(silent=True) or {}
     target = (body.get("name") or "").strip()
     if not target:
         return jsonify({"ok": False, "error": "no user"}), 400
     changed = []
-    if "role" in body and _wu.set_role(target, body["role"]):
-        changed.append(f"role={body['role']}")
+    if "subscription" in body and _wu.set_subscription(target, body["subscription"]):
+        changed.append(f"subscription={body['subscription']}")
+    if "admin" in body and target != name and _wu.set_admin(target, bool(body["admin"])):
+        # guard: an admin can't remove their own admin and lock themselves out of maintenance
+        changed.append(f"admin={bool(body['admin'])}")
     if "enabled" in body and target != name and _wu.set_enabled(target, bool(body["enabled"])):
-        # guard: an admin can't disable their own account and lock themselves out
         changed.append(f"enabled={bool(body['enabled'])}")
     if changed:
         _wu.log_event(name, f"User maintenance: {target} → {', '.join(changed)}")

@@ -193,7 +193,6 @@ a{transition:color .15s ease}
   <button class="tab" id="tab-config" onclick="showTab('config')">Configuration</button>
   <button class="tab" id="tab-users" onclick="showTab('users')">User Management</button>
   <button class="tab" id="tab-version" onclick="showTab('version')">Version History</button>
-  <button class="tab" id="tab-tabvis" onclick="showTab('tabvis')">Tab Visibility</button>
   <span class="grow"></span>
   <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
 </div>
@@ -362,6 +361,12 @@ a{transition:color .15s ease}
       <button class="btn" onclick="saveFilterDefaults()">Save current filters as my defaults</button>
       <button class="btn" onclick="clearFilterDefaults()">Clear my defaults</button>
     </div>
+    <div class="card"><h4>Tab visibility</h4>
+      <p class="muted" style="font-size:12px;margin:0 0 8px">Tick the tabs you want to see. Configuration always stays visible.</p>
+      <div id="tabvis-list" style="display:flex;flex-wrap:wrap;gap:6px 14px">loading…</div>
+      <button class="btn" style="margin-top:10px" onclick="saveTabVis()">Save tab visibility</button>
+      <span id="tabvis-msg" style="font-size:12px;margin-left:8px"></span>
+    </div>
   </div>
 
   <!-- Trading panel — completely separate from everything else (user 2026-07-03), warning-tinted -->
@@ -391,13 +396,17 @@ a{transition:color .15s ease}
   <span class="eyebrow">Admin</span>
   <h1>Batch Activity</h1>
   <p class="lede">Execution log of the scheduled cron-job.org runs and the manual "Refresh data" button.</p>
-  <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0"><span id="batch-count"></span></div>
-    <div class="tablewrap"><table>
-      <thead><tr><th data-bk="ts">When (UTC)</th><th data-bk="source">Source</th><th data-bk="event">Event</th><th data-bk="by">By</th></tr></thead>
-      <tbody id="batch-rows"></tbody>
-    </table></div>
-  </section>
+  <input type="hidden" id="bcf_source"><input type="hidden" id="bcf_by"><input type="hidden" id="bcf_month">
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <section class="gsec" style="border-left-color:var(--accent);flex:1 1 520px;min-width:0">
+      <div class="count" style="padding-left:0"><span id="batch-count"></span></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th data-bk="ts">When (UTC)</th><th data-bk="source">Source</th><th data-bk="event">Event</th><th data-bk="by">By</th></tr></thead>
+        <tbody id="batch-rows"></tbody>
+      </table></div>
+    </section>
+    <div class="viz" id="batch-viz" style="border-bottom:none;padding:0;flex:0 0 auto;flex-direction:column"></div>
+  </div>
 </div>
 
 <div id="view-users" class="hidden doc" style="max-width:840px">
@@ -405,8 +414,9 @@ a{transition:color .15s ease}
   <h1>User Management</h1>
   <p class="lede">Manage logins — assign a subscription role and enable or disable accounts. Roles: <b>Admin</b> (full access), <b>Gold</b> (read/write incl. pre-orders + monitor exec), <b>Silver</b> (read/write incl. pre-orders), <b>Guest</b> (read-only, no pre-orders).</p>
   <section class="gsec" style="border-left-color:var(--accent)">
+    <div class="count" style="padding-left:0"><span id="users-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th></tr></thead>
       <tbody id="users-rows"></tbody>
     </table></div>
     <div id="users-msg" style="font-size:12px;margin-top:8px"></div>
@@ -417,24 +427,18 @@ a{transition:color .15s ease}
   <span class="eyebrow">Admin</span>
   <h1>Version History</h1>
   <p class="lede">A log of changes to the application — date, version and a summary.</p>
-  <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0"><span id="ver-count"></span></div>
-    <div class="tablewrap"><table>
-      <thead><tr><th data-vk="date">Date</th><th data-vk="version">Version</th><th data-vk="summary">Summary</th></tr></thead>
-      <tbody id="ver-rows"></tbody>
-    </table></div>
-  </section>
-</div>
-
-<div id="view-tabvis" class="hidden doc" style="max-width:680px">
-  <span class="eyebrow">Admin</span>
-  <h1>Tab Visibility</h1>
-  <p class="lede">Choose which tabs are shown. Configuration is always visible so these settings stay reachable.</p>
-  <section class="gsec" style="border-left-color:var(--accent)">
-    <div id="tabvis-list">loading…</div>
-    <button class="btn" style="margin-top:10px" onclick="saveTabVis()">Save tab visibility</button>
-    <div id="tabvis-msg" style="font-size:12px;margin-top:8px"></div>
-  </section>
+  <input type="hidden" id="vcf_category">
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <section class="gsec" style="border-left-color:var(--accent);flex:1 1 520px;min-width:0">
+      <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px"><span id="ver-count"></span><span class="grow"></span>
+        <label class="muted" style="font-size:12px">Category <select id="ver-cat" onchange="paintVersion()" style="width:auto"><option value="">All</option><option>Data</option><option>Security</option><option>Presentation</option><option>Bug fix</option><option>Feature</option></select></label></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th data-vk="date">Date</th><th data-vk="version">Version</th><th data-vk="category">Category</th><th data-vk="summary">Summary</th></tr></thead>
+        <tbody id="ver-rows"></tbody>
+      </table></div>
+    </section>
+    <div class="viz" id="ver-viz" style="border-bottom:none;padding:0;flex:0 0 auto"></div>
+  </div>
 </div>
 
 <div id="view-activity" class="hidden doc" style="max-width:840px">
@@ -802,6 +806,8 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   if(el.dataset.fk.startsWith("pof_"))renderPreorders();
   else if(el.dataset.fk.startsWith("oof_"))paintOrderOps();
   else if(el.dataset.fk==="acf_cat"){$("act-cat").value=(f.value&&f.value!=="—")?f.value:"";paintActivity();}
+  else if(el.dataset.fk==="vcf_category"){$("ver-cat").value=(f.value&&f.value!=="—")?f.value:"";paintVersion();}
+  else if(el.dataset.fk.startsWith("bcf_"))paintBatch();
   else applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
 $("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});
@@ -837,9 +843,9 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 // signal, not yet triggered, and quality >= 25 (user 2026-06-29: drop the low-quality noise)
 // signal, not yet triggered, Q>=25, and NOT already placed on IG (removed once it's a live working order).
 const isPreorder=r=>r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker));
-const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","config","users","version","tabvis"];
+const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","config","users","version"];
 const PUBLIC_TABS=["welcome","intro","appendix","scanner"];   // visible when logged out
-const ADMIN_TABS=["batch","users","version","tabvis"];        // admin role only
+const ADMIN_TABS=["batch","users","version"];                 // admin only
 let AUTH=localStorage.getItem("sq_auth")||"";
 let ROLE="guest", IS_ADMIN=false, HIDDEN_TABS=[];
 // Which tabs the current session may see (login + role + per-user tab-visibility choices).
@@ -889,7 +895,6 @@ function showTab(name){
   if(name==="users")renderUsers();
   if(name==="version")renderVersion();
   if(name==="batch")renderBatch();
-  if(name==="tabvis")renderTabVis();
 }
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
 const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner",
@@ -897,12 +902,14 @@ const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix
   config:"Configuration",users:"User Management",version:"Version History",tabvis:"Tab Visibility"};
 function renderUsers(){
   fetch("/api/users",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{const roles=j.roles||["admin","gold","silver","guest"];
+    .then(j=>{const subs=j.subscriptions||["gold","silver","guest"];
+      $("users-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${(j.users||[]).length}</b> accounts`;
       $("users-rows").innerHTML=(j.users||[]).map(u=>`<tr>
         <td><b>${u.name}</b></td><td>${u.email||''}</td>
-        <td><select onchange="saveUser('${u.name}',{role:this.value})" style="width:auto">${roles.map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join("")}</select></td>
+        <td><label style="cursor:pointer;font-size:13px"><input type="checkbox" ${u.admin?'checked':''} onchange="saveUser('${u.name}',{admin:this.checked})"> Admin</label></td>
+        <td><select onchange="saveUser('${u.name}',{subscription:this.value})" style="width:auto">${subs.map(s=>`<option ${u.subscription===s?'selected':''}>${s}</option>`).join("")}</select></td>
         <td><button class="btn" onclick="saveUser('${u.name}',{enabled:${!u.enabled}})">${u.enabled?'<span style="color:var(--bull)">Enabled</span> — disable':'<span style="color:var(--bear)">Disabled</span> — enable'}</button></td></tr>`).join("");})
-    .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});
+    .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="5" class="empty">Could not load (admin only).</td></tr>`;});
 }
 function saveUser(name,patch){
   fetch("/api/users",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({name,...patch})})
@@ -911,21 +918,34 @@ function saveUser(name,patch){
     .catch(()=>{$("users-msg").style.color="var(--bear)";$("users-msg").textContent="Update failed.";});
 }
 let VER_ROWS=[], verSortK="date", verSortDir=-1;
-function paintVersion(){$("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${VER_ROWS.length}</b> changes`;
-  $("ver-rows").innerHTML=genSort(VER_ROWS,verSortK,verSortDir).map(e=>`<tr><td>${e.date}</td><td><code>${e.version}</code></td><td>${(e.summary||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="3" class="empty">No entries.</td></tr>`;}
+function paintVersion(){
+  const cats=VER_ROWS.reduce((m,e)=>{m[e.category||'Feature']=(m[e.category||'Feature']||0)+1;return m;},{});
+  $("ver-viz").innerHTML=`<div class="vizsector">`+barChart("By category",cats,"vcf_category")+`</div>`;
+  const cf=$("ver-cat").value;
+  const rows=genSort(VER_ROWS.filter(e=>!cf||(e.category||'Feature')===cf),verSortK,verSortDir);
+  $("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> changes${cf?` <span class="muted">(${cf})</span>`:` of ${VER_ROWS.length}`}`;
+  $("ver-rows").innerHTML=rows.map(e=>`<tr><td>${e.date}</td><td><code>${e.version}</code></td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||'Feature'}</span></td><td>${(e.summary||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 function renderVersion(){fetch("/api/version-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{VER_ROWS=j.entries||[];paintVersion();}).catch(()=>{$("ver-rows").innerHTML=`<tr><td colspan="3" class="empty">Could not load (admin only).</td></tr>`;});}
 let BATCH_ROWS=[], batchSortK="ts", batchSortDir=-1;
-function paintBatch(){$("batch-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${BATCH_ROWS.length}</b> batch runs`;
-  $("batch-rows").innerHTML=genSort(BATCH_ROWS,batchSortK,batchSortDir).map(e=>`<tr><td>${e.ts||''}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.source||''}</span></td><td>${(e.event||'').replace(/</g,"&lt;")}</td><td>${e.by||''}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
+const _bmonth=e=>(e.ts||'').slice(0,7);   // YYYY-MM (date range chart)
+function paintBatch(){
+  // Charts (user 2026-07-03): Source, By, and month (date range) — all click-to-filter.
+  const by=(fn)=>BATCH_ROWS.reduce((m,e)=>{const v=fn(e)||'—';m[v]=(m[v]||0)+1;return m;},{});
+  $("batch-viz").innerHTML=
+    `<div class="vizsector">`+barChart("Source",by(e=>e.source),"bcf_source")+`</div>`+
+    `<div class="vizsector">`+barChart("By",by(e=>e.by),"bcf_by")+`</div>`+
+    `<div class="vizsector">`+barChart("Month",by(_bmonth),"bcf_month")+`</div>`;
+  let rows=BATCH_ROWS;
+  [["bcf_source",e=>e.source],["bcf_by",e=>e.by],["bcf_month",_bmonth]].forEach(([id,fn])=>{
+    const v=$(id).value; if(v)rows=rows.filter(e=>(fn(e)||'—')===v);});
+  $("batch-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> batch runs${rows.length!==BATCH_ROWS.length?` <span class="muted">of ${BATCH_ROWS.length}</span>`:''}`;
+  $("batch-rows").innerHTML=genSort(rows,batchSortK,batchSortDir).map(e=>`<tr><td>${e.ts||''}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.source||''}</span></td><td>${(e.event||'').replace(/</g,"&lt;")}</td><td>${e.by||''}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 function renderBatch(){fetch("/api/batch-activity",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{BATCH_ROWS=j.entries||[];paintBatch();}).catch(()=>{$("batch-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});}
-function renderTabVis(){
-  fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(j=>{
-    const hidden=new Set(j.hidden_tabs||[]);
-    // Every tab the user can otherwise see is toggleable, except Configuration (forced on).
-    const list=TABS.filter(t=>t!=="config"&&(PUBLIC_TABS.includes(t)||AUTH)&&(!ADMIN_TABS.includes(t)||IS_ADMIN));
-    $("tabvis-list").innerHTML=`<label class="credrow" style="opacity:.7"><input type="checkbox" checked disabled> Configuration <span class="muted">(always visible)</span></label>`+
-      list.map(t=>`<label class="credrow"><input type="checkbox" class="tv" data-t="${t}" ${hidden.has(t)?'':'checked'}> ${TAB_LABELS[t]||t}</label>`).join("");
-  });
+function renderTabVis(hidden){
+  hidden=new Set(hidden||HIDDEN_TABS||[]);
+  const list=TABS.filter(t=>t!=="config"&&(PUBLIC_TABS.includes(t)||AUTH)&&(!ADMIN_TABS.includes(t)||IS_ADMIN));
+  const chip=(t,checked,dis)=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:${dis?'default':'pointer'};${dis?'opacity:.6':''}"><input type="checkbox" ${dis?'class="" disabled':'class="tv"'} data-t="${t}" ${checked?'checked':''}> ${TAB_LABELS[t]||t}</label>`;
+  $("tabvis-list").innerHTML=chip("config",true,true)+list.map(t=>chip(t,!hidden.has(t),false)).join("");
 }
 function saveTabVis(){
   const hidden=[...document.querySelectorAll(".tv")].filter(c=>!c.checked).map(c=>c.dataset.t);
@@ -995,6 +1015,7 @@ function renderConfig(){
   fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       USER_FILTERS=j.filters||{};
+      HIDDEN_TABS=j.hidden_tabs||[]; renderTabVis(HIDDEN_TABS);   // tab-visibility card (user 2026-07-03)
       const n=Object.keys(USER_FILTERS).length;
       $("cfg-defaults").textContent=n?("Saved defaults: "+Object.entries(USER_FILTERS).map(([k,v])=>`${k.replace('f_','')}=${v}`).join(" · ")):"No saved defaults yet — using the built-in ones.";
       $("cfg-exec").innerHTML=(j.exec_sources||[]).map(s=>{const on=(j.exec||{})[s]!==false;

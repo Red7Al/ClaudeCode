@@ -55,16 +55,20 @@ _SEED = [
     ("Rich", "richard.williams@aztecsolarenergy.co.uk"),
 ]
 
-# Roles (user 2026-07-03). admin = full access incl. user maintenance, admin tabs, shared config,
-# data refresh. gold = read/write incl. pre-orders + monitor exec. silver = read/write incl.
-# pre-orders. guest = read-only (incl. configuration), no pre-orders.
-ROLES = ["admin", "gold", "silver", "guest"]
+# Access model (user 2026-07-03): two independent axes.
+#   admin (bool)  — full access: user maintenance, admin tabs, shared config, data refresh.
+#   subscription  — gold: read/write incl. pre-orders + monitor exec · silver: read/write incl.
+#                   pre-orders · guest: read-only (incl. configuration), no pre-orders.
+SUBSCRIPTIONS = ["gold", "silver", "guest"]
 _SEED_ADMINS = {"Alex", "Rich"}
-_DEFAULT_ROLE = "guest"
 
 
-def _default_role(name: str) -> str:
-    return "admin" if name in _SEED_ADMINS else _DEFAULT_ROLE
+def _default_admin(name: str) -> bool:
+    return name in _SEED_ADMINS
+
+
+def _default_subscription(name: str) -> str:
+    return "gold" if name in _SEED_ADMINS else "guest"   # new accounts default to guest, no admin
 
 
 def _hash_pwd(pwd: str, salt: str) -> str:
@@ -95,17 +99,22 @@ def _ensure_seeded() -> dict:
             if name not in users:
                 salt = _secrets.token_hex(16)
                 users[name] = {"salt": salt, "pwd_hash": _hash_pwd(_secrets.token_hex(24), salt),
-                               "email": email, "secrets": {},
-                               "role": _default_role(name), "enabled": True}   # LOCKED until reset
+                               "email": email, "secrets": {}, "admin": _default_admin(name),
+                               "subscription": _default_subscription(name), "enabled": True}
                 changed = True
                 log.info(f"web_users: '{name}' seeded LOCKED - set a password via the reset (email) flow")
-        # Backfill role/enabled on any legacy login record (not the "__app__" secrets record).
+        # Backfill admin/subscription/enabled; migrate the old single 'role' field if present.
         for n, u in users.items():
             if isinstance(u, dict) and "pwd_hash" in u:
-                if "role" not in u:
-                    u["role"] = _default_role(n); changed = True
+                old = u.pop("role", None)     # legacy: role held admin OR a subscription level
+                if "admin" not in u:
+                    u["admin"] = (old == "admin") or _default_admin(n); changed = True
+                if "subscription" not in u:
+                    u["subscription"] = old if old in SUBSCRIPTIONS else _default_subscription(n); changed = True
                 if "enabled" not in u:
                     u["enabled"] = True; changed = True
+                if old is not None:
+                    changed = True
         if changed:
             _save(users)
             log.info(f"web_users seeded ({_USERS_FILE})")
@@ -119,14 +128,15 @@ def verify(name: str, pwd: str) -> bool:
     return _secrets.compare_digest(u["pwd_hash"], _hash_pwd(pwd or "", u["salt"]))
 
 
-# ── Roles & account status (user 2026-07-03) ─────────────────────────────────────────────────────────
-def get_role(name: str) -> str:
-    u = _ensure_seeded().get(name)
-    return (u or {}).get("role", _default_role(name))
-
-
+# ── Admin flag, subscription & account status (user 2026-07-03) ───────────────────────────────────────
 def is_admin(name: str) -> bool:
-    return get_role(name) == "admin"
+    u = _ensure_seeded().get(name)
+    return bool((u or {}).get("admin", _default_admin(name)))
+
+
+def get_subscription(name: str) -> str:
+    u = _ensure_seeded().get(name)
+    return (u or {}).get("subscription", _default_subscription(name))
 
 
 def is_enabled(name: str) -> bool:
@@ -134,34 +144,34 @@ def is_enabled(name: str) -> bool:
 
 
 def list_users() -> list:
-    """[{name, email, role, enabled}] for the user-maintenance area (admin only)."""
-    return [{"name": n, "email": u.get("email", ""), "role": u.get("role", _default_role(n)),
+    """[{name, email, admin, subscription, enabled}] for the user-maintenance area (admin only)."""
+    return [{"name": n, "email": u.get("email", ""), "admin": bool(u.get("admin", _default_admin(n))),
+             "subscription": u.get("subscription", _default_subscription(n)),
              "enabled": bool(u.get("enabled", True))}
             for n, u in _ensure_seeded().items() if isinstance(u, dict) and "pwd_hash" in u]
 
 
-def set_role(name: str, role: str) -> bool:
-    if role not in ROLES:
-        return False
+def _set_field(name: str, field: str, value) -> bool:
     with _LOCK:
         users = _load()
         u = users.get(name)
         if not u or "pwd_hash" not in u:
             return False
-        u["role"] = role
+        u[field] = value
         _save(users)
     return True
+
+
+def set_admin(name: str, admin: bool) -> bool:
+    return _set_field(name, "admin", bool(admin))
+
+
+def set_subscription(name: str, sub: str) -> bool:
+    return sub in SUBSCRIPTIONS and _set_field(name, "subscription", sub)
 
 
 def set_enabled(name: str, enabled: bool) -> bool:
-    with _LOCK:
-        users = _load()
-        u = users.get(name)
-        if not u or "pwd_hash" not in u:
-            return False
-        u["enabled"] = bool(enabled)
-        _save(users)
-    return True
+    return _set_field(name, "enabled", bool(enabled))
 
 
 def token_for(name: str) -> str:
@@ -276,11 +286,15 @@ def reset_password(name: str, email: str, new_pwd: str, ip: str = "") -> bool:
     return True
 
 
-def add_user(name: str, pwd: str, email: str):
+def add_user(name: str, pwd: str, email: str, admin: bool = False, subscription: str = "guest"):
+    """Create a login. New accounts default to NO admin, guest subscription (user 2026-07-03)."""
     with _LOCK:
         users = _load()
         salt = _secrets.token_hex(16)
-        users[name] = {"salt": salt, "pwd_hash": _hash_pwd(pwd, salt), "email": email, "secrets": {}}
+        users[name] = {"salt": salt, "pwd_hash": _hash_pwd(pwd, salt), "email": email, "secrets": {},
+                       "admin": bool(admin),
+                       "subscription": subscription if subscription in SUBSCRIPTIONS else "guest",
+                       "enabled": True}
         _save(users)
 
 
