@@ -104,15 +104,10 @@ def _read_json_entries(path):
 
 
 def _append_batch(source, event, by="system"):
-    """Append a batch-execution record (cron-job.org / Refresh button) — user 2026-07-03."""
-    from datetime import datetime, timezone
+    """Append a batch-execution record to Supabase (user 2026-07-03: data rows -> Supabase)."""
     try:
-        entries = _read_json_entries(_BATCH_FILE)
-        entries.insert(0, {"ts": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-                           "source": source, "event": event, "by": by})
-        os.makedirs(_DATA_DIR, exist_ok=True)
-        with open(_BATCH_FILE, "w", encoding="utf-8") as fh:
-            json.dump({"entries": entries[:500]}, fh, indent=1)
+        import web_store
+        web_store.append_batch(source, event, by)
     except Exception as e:
         log.warning(f"batch log append failed: {e}")
 
@@ -170,7 +165,12 @@ def api_version_history():
 def api_batch_activity():
     if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
         return jsonify({"error": "admin only"}), 403
-    return jsonify({"entries": _read_json_entries(_BATCH_FILE)})
+    try:
+        import web_store
+        entries = web_store.list_batch()
+    except Exception:
+        entries = _read_json_entries(_BATCH_FILE)      # fallback to legacy file
+    return jsonify({"entries": entries})
 
 
 @app.route("/api/me")
@@ -1002,6 +1002,12 @@ if __name__ == "__main__":
         import_credentials_from_env()   # one-off seed of the encrypted store from GitHub Secrets/env
     except Exception as _e:
         log.warning(f"credential seed skipped: {_e}")
+    try:
+        import web_store                 # one-off migration of legacy JSON rows -> Supabase
+        web_store.migrate_from_files(batch_file=_BATCH_FILE,
+                                     users_file=os.path.join(_DATA_DIR, "web_users.json"))
+    except Exception as _e:
+        log.warning(f"web_store migration skipped: {_e}")
     threading.Thread(target=_refresh_loop, daemon=True).start()
     threading.Thread(target=_bridge_loop, daemon=True).start()
     log.info("HVF site on http://127.0.0.1:5057  (ngrok http 5057 to share)")

@@ -194,7 +194,14 @@ def valid_tokens() -> set:
 
 def log_event(name: str, event: str):
     """Append to the user's operational log (user 2026-06-30) — shown to THAT user only in the
-    Activity tab. Capped at the most recent 100 entries. Never raises."""
+    Activity tab. Writes to Supabase (user 2026-07-03: data rows -> DB), falling back to the local
+    JSON store if the DB is unavailable. Never raises."""
+    try:
+        import web_store
+        if web_store.append_activity(name, event):
+            return
+    except Exception as e:
+        log.warning(f"activity DB write failed for {name} ({e}); using local store")
     from datetime import datetime, timezone
     try:
         with _LOCK:
@@ -211,8 +218,15 @@ def log_event(name: str, event: str):
 
 
 def get_log(name: str) -> list:
+    try:
+        import web_store
+        rows = web_store.list_activity(name)
+        if rows:
+            return rows                                  # already newest-first
+    except Exception as e:
+        log.warning(f"activity DB read failed for {name} ({e}); using local store")
     u = _ensure_seeded().get(name)
-    return list(reversed((u or {}).get("log") or []))   # newest first
+    return list(reversed((u or {}).get("log") or []))   # newest first (local fallback)
 
 
 def name_for_token(token: str) -> str:

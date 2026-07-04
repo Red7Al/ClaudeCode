@@ -157,6 +157,10 @@ a{transition:color .15s ease}
 .credrow input.cred-in{flex:1 1 220px;max-width:340px;font-size:14px;padding:8px 10px;border-radius:8px}
 .credrow .cstate{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
 .credrow .cstate.on{color:var(--bull)} .credrow .cstate.off{color:var(--bear)}                /* "Not set" red */
+/* Doc-page tables (activity/batch/version/users) wrap text so there's no horizontal scroll bar
+   even when a charts column sits alongside (user 2026-07-03). */
+.doc .tablewrap{overflow-x:visible}
+.doc .tablewrap table th,.doc .tablewrap table td{white-space:normal;word-break:break-word}
 .confnav .adminpill{border-color:#d29922}
 .confnav .adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a);border-color:transparent}
 .confpanel{animation:fadeIn .2s ease}
@@ -186,13 +190,13 @@ a{transition:color .15s ease}
   <button class="tab" id="tab-intro" onclick="showTab('intro')">How it works</button>
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
   <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner <span id="sctab-count"></span></button>
-  <button class="tab" id="tab-preorders" onclick="showTab('preorders')">Pre-orders <span id="potab-count"></span></button>
-  <button class="tab" id="tab-orderops" onclick="showTab('orderops')">Order (Operations)</button>
-  <button class="tab" id="tab-activity" onclick="showTab('activity')">My activity</button>
-  <button class="tab" id="tab-batch" onclick="showTab('batch')">Batch Activity</button>
-  <button class="tab" id="tab-config" onclick="showTab('config')">Configuration</button>
-  <button class="tab" id="tab-users" onclick="showTab('users')">User Management</button>
-  <button class="tab" id="tab-version" onclick="showTab('version')">Version History</button>
+  <button class="tab" id="tab-preorders" onclick="showTab('preorders')" style="display:none">Pre-orders <span id="potab-count"></span></button>
+  <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Order (Operations)</button>
+  <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My activity</button>
+  <button class="tab" id="tab-batch" onclick="showTab('batch')" style="display:none">Batch Activity</button>
+  <button class="tab" id="tab-config" onclick="showTab('config')" style="display:none">Configuration</button>
+  <button class="tab" id="tab-users" onclick="showTab('users')" style="display:none">User Management</button>
+  <button class="tab" id="tab-version" onclick="showTab('version')" style="display:none">Version History</button>
   <span class="grow"></span>
   <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
 </div>
@@ -850,10 +854,10 @@ let AUTH=localStorage.getItem("sq_auth")||"";
 let ROLE="guest", IS_ADMIN=false, HIDDEN_TABS=[];
 // Which tabs the current session may see (login + role + per-user tab-visibility choices).
 function tabAllowed(t){
-  if(t==="config")return !!AUTH;                       // config always available once logged in
-  if(ADMIN_TABS.includes(t))return IS_ADMIN;
+  if(ADMIN_TABS.includes(t)&&!IS_ADMIN)return false;    // admin tabs require admin
   if(!PUBLIC_TABS.includes(t)&&!AUTH)return false;      // login-required tab, not logged in
-  if(HIDDEN_TABS.includes(t))return false;              // user chose to hide it (Tab Visibility)
+  if(t==="config")return true;                          // config always available once logged in
+  if(HIDDEN_TABS.includes(t))return false;              // user chose to hide it (Tab Visibility) — applies to admin tabs too
   return true;
 }
 function applyTabVisibility(){
