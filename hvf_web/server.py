@@ -239,7 +239,8 @@ def api_config():
                         "exec": _cs.get_exec_flags(), "exec_sources": _cs.EXEC_SOURCES,
                         "trade": _cs.get_trade_filters(),
                         "hidden_tabs": s.get("hidden_tabs", []), "leverage": lev,
-                        "pinned_preorders": s.get("pinned_preorders", [])})
+                        "pinned_preorders": s.get("pinned_preorders", []),
+                        "engine": _cs.get_engine_settings(), "is_admin": _wu.is_admin(name)})
     body = request.get_json(silent=True) or {}
     if "trade" in body:
         t = body["trade"] or {}
@@ -260,6 +261,14 @@ def api_config():
         s["hidden_tabs"] = [t for t in (body["hidden_tabs"] or []) if isinstance(t, str) and t != "config"]
         _wu.set_settings(name, s)
         _wu.log_event(name, "Saved tab visibility (Config)")
+    if "engine" in body:
+        if not _wu.is_admin(name):
+            return jsonify({"ok": False, "error": "admin only"}), 403
+        for k in _cs.APP_ENGINE_KEYS:
+            v = (body["engine"] or {}).get(k)
+            if isinstance(v, (int, float)) and v >= 0:
+                _cs.set_value(k, str(v), updated_by=name)
+        _wu.log_event(name, "Saved engine settings (Config)")
     if "leverage" in body:
         s = _wu.get_settings(name)
         cur = s.get("leverage") or {}

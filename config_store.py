@@ -72,6 +72,40 @@ def set_value(key: str, value: str, updated_by: str = "") -> bool:
         return False
 
 
+def get_num(key: str, fallback):
+    """Read a numeric app-config value (Supabase), falling back to the given default. So the engine —
+    local AND GitHub Actions — reads the same value (user 2026-07-03 config-to-DB migration)."""
+    v = get_value(key, "")
+    if v == "":
+        return fallback
+    try:
+        f = float(v)
+        return int(f) if float(f).is_integer() else f
+    except Exception:
+        return fallback
+
+
+# App-wide engine settings migrated from config.py (user 2026-07-03). key -> config.py fallback name.
+# Read at the use sites via cfg_num(); editable in Configuration → Engine (admin).
+APP_ENGINE_KEYS = {
+    "wo_lifespan_days": 28,          # IG working-order lifespan (was good_till_days=4)
+    "x_max_per_day": 5,
+    "superinvestor_lookback_days": 90,
+    "min_senator_trades": 1,
+    "spread_retry_attempts": 3,
+    "spread_retry_wait_secs": 2,
+}
+
+
+def cfg_num(key: str, fallback=None):
+    """App-wide engine setting with a code fallback (default from APP_ENGINE_KEYS if not given)."""
+    return get_num(key, fallback if fallback is not None else APP_ENGINE_KEYS.get(key))
+
+
+def get_engine_settings() -> dict:
+    return {k: get_num(k, d) for k, d in APP_ENGINE_KEYS.items()}
+
+
 def get_exec_flags() -> dict:
     """{source: bool} for every EXEC_SOURCES entry (missing key = enabled)."""
     flags = {s: True for s in EXEC_SOURCES}

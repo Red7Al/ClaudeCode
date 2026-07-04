@@ -258,7 +258,12 @@ def publish_tickers_to_x(tickers, inter_instrument_delay: int = _INTER_INSTRUMEN
     so NO 12h dedup is applied here; each is recorded + confirmed. Returns the count published."""
     import time
     from x_publish import publish_thread_to_x
-    from config import X_MAX_PER_DAY
+    from config import X_MAX_PER_DAY as _X_DEFAULT
+    try:   # DB-first (Config → Engine), config.py fallback (user 2026-07-03)
+        from config_store import cfg_num
+        X_MAX_PER_DAY = int(cfg_num("x_max_per_day", _X_DEFAULT))
+    except Exception:
+        X_MAX_PER_DAY = _X_DEFAULT
     published = 0
     _pub_rows = []   # for the end-of-batch summary (user 2026-06-22)
     # Daily cap (user 2026-06-29: "limit to 5 per day"). Count what's already gone out today and only

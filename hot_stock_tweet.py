@@ -216,7 +216,12 @@ def main():
     a = ap.parse_args()
 
     from publish_one_to_x import _published_today_count, _record_publication, _confirm_to_slack
-    from config import X_MAX_PER_DAY
+    from config import X_MAX_PER_DAY as _X_DEFAULT
+    try:
+        from config_store import cfg_num
+        X_MAX_PER_DAY = int(cfg_num("x_max_per_day", _X_DEFAULT))
+    except Exception:
+        X_MAX_PER_DAY = _X_DEFAULT
     if not a.dry and _published_today_count() >= X_MAX_PER_DAY:
         log.info(f"daily X cap ({X_MAX_PER_DAY}) already reached — hot-stock tweet skipped.")
         return

@@ -1811,7 +1811,7 @@ def place_working_order(
     session_name:   str,
     signal_summary: str,
     paper_trade:    bool = False,
-    good_till_days: int = 4,        # HVF freshness window — stale setups expire
+    good_till_days: int = None,     # None -> configured lifespan (config_store wo_lifespan_days, default 28)
     hvf_type:       str = None,
     max_entry_distance_pct: float = 0.90,   # sanity guard: entry vs current price (after unit conversion)
 ) -> Optional[dict]:
@@ -1831,6 +1831,15 @@ def place_working_order(
     Returns dict {deal_id, deal_ref, level, stop_level, limit_level, otype,
     working_order: True, updated: bool} on success, None when blocked/rejected/skipped.
     """
+    # Working-order lifespan (user 2026-07-03): configurable via config_store (default 28 days),
+    # so it's the same for the local bridge and the GitHub-Actions monitors. Fails safe to 28.
+    if good_till_days is None:
+        try:
+            from config_store import cfg_num
+            good_till_days = int(cfg_num("wo_lifespan_days", 28))
+        except Exception:
+            good_till_days = 28
+
     # Step 0a — an open position on this ticker already carries the exposure;
     # do not stack a pending order on top of it.
     try:

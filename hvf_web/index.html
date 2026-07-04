@@ -364,6 +364,7 @@ a{transition:color .15s ease}
     <button class="pill" data-panel="trading_mo" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
     <button class="pill" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
     <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>
+    <button class="pill adminpill" id="pill-engine" data-panel="engine" onclick="confShow('engine')" style="display:none">🛠️ Engine</button>
     <!-- credential-section pills (Supabase/X/Slack/Server/Email) are injected here by renderCredentials -->
   </nav>
 
@@ -393,6 +394,21 @@ a{transition:color .15s ease}
       <div class="credrow"><span class="clabel">Indices</span><input type="number" min="1" step="1" id="lev-indices" style="max-width:120px"></div>
       <button class="btn" style="margin-top:10px" onclick="saveLeverage()">Save leverage</button>
       <span id="lev-msg" style="font-size:12px;margin-left:8px"></span>
+    </div>
+  </div>
+
+  <!-- Engine settings panel (admin only) — app-wide values migrated from config.py (user 2026-07-03) -->
+  <div class="confpanel hidden" data-panel="engine">
+    <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+      <p class="muted" style="font-size:12px">Application-wide trading/engine values (shared, one account). Read DB-first by the engine (local + GitHub Actions) with a code fallback.</p>
+      <div class="credrow"><span class="clabel">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="eng-wo_lifespan_days" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">X posts per day (max)</span><input type="number" min="0" step="1" id="eng-x_max_per_day" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Superinvestor lookback (days)</span><input type="number" min="1" step="1" id="eng-superinvestor_lookback_days" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Min senator trades</span><input type="number" min="1" step="1" id="eng-min_senator_trades" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Spread retry attempts</span><input type="number" min="0" step="1" id="eng-spread_retry_attempts" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Spread retry wait (secs)</span><input type="number" min="0" step="1" id="eng-spread_retry_wait_secs" style="max-width:120px"></div>
+      <button class="btn" style="margin-top:10px" onclick="saveEngine()">Save engine settings</button>
+      <span id="eng-msg" style="font-size:12px;margin-left:8px"></span>
     </div>
   </div>
 
@@ -1097,6 +1113,9 @@ function renderConfig(){
       USER_FILTERS=j.filters||{};
       HIDDEN_TABS=j.hidden_tabs||[]; renderTabVis(HIDDEN_TABS);   // tab-visibility card (user 2026-07-03)
       if(j.leverage){LEVERAGE=j.leverage;["fx","equities","commodities","indices"].forEach(k=>{if($("lev-"+k))$("lev-"+k).value=j.leverage[k];});}
+      // Engine settings (admin only): show the pill + fill inputs.
+      if($("pill-engine"))$("pill-engine").style.display=j.is_admin?"":"none";
+      if(j.engine)Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});
       const n=Object.keys(USER_FILTERS).length;
       $("cfg-defaults").textContent=n?("Saved defaults: "+Object.entries(USER_FILTERS).map(([k,v])=>`${k.replace('f_','')}=${v}`).join(" · ")):"No saved defaults yet — using the built-in ones.";
       $("cfg-exec").innerHTML=(j.exec_sources||[]).map(s=>{const on=(j.exec||{})[s]!==false;
@@ -1120,6 +1139,12 @@ function saveFilterDefaults(){
 function clearFilterDefaults(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({filters:{}})})
     .then(()=>{USER_FILTERS={};renderConfig();});
+}
+function saveEngine(){
+  const eng={};["wo_lifespan_days","x_max_per_day","superinvestor_lookback_days","min_senator_trades","spread_retry_attempts","spread_retry_wait_secs"].forEach(k=>{const v=parseFloat($("eng-"+k).value);if(v>=0)eng[k]=v;});
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({engine:eng})})
+    .then(r=>{if(!r.ok)throw 0;$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="Engine settings saved.";})
+    .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});
 }
 function saveLeverage(){
   const lev={};["fx","equities","commodities","indices"].forEach(k=>{const v=parseFloat($("lev-"+k).value);if(v>0)lev[k]=v;});
