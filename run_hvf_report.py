@@ -900,6 +900,11 @@ def main():
     # arw-rw-hvf gets the top 3 per market (user 2026-07-03: 10 is too much); #signals keeps the full set.
     rw_blocks = build_slack_blocks(tradeable, developing, scan_time, per_market_n=3)
     post_to_slack(blocks, rw_blocks=rw_blocks)
+    try:   # record this run in the web app's Batch Activity (user 2026-07-03)
+        from web_store import append_batch
+        append_batch("cron-job.org", f"HVF report — {len(tradeable)} tradeable / {len(developing)} developing", by="cron")
+    except Exception:
+        pass
 
     # Output mode (user 2026-06-22):
     #   normal     — analytical #signals report + changed-only Slack drafts (with PNGs) + live X publish.

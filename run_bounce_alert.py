@@ -27,6 +27,13 @@ def main():
         log.info(f"bounce alerts fired for: {', '.join(s.epic for s in alerted)}")
     else:
         log.info("no bounce alerts this run")
+    # Record this scheduled run in Batch Activity (user 2026-07-03). Never blocks the job.
+    try:
+        from web_store import append_batch
+        n = len(alerted or [])
+        append_batch("cron-job.org", f"Bounce check — {n} alert(s)" if n else "Bounce check — no bounces", by="cron")
+    except Exception as _e:
+        log.warning(f"batch log skipped: {_e}")
 
 
 if __name__ == "__main__":
