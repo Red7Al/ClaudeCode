@@ -221,6 +221,15 @@ a{transition:color .15s ease}
       <button class="btn" style="width:100%;margin-top:8px" onclick="doReset()">Reset password</button>
       <div id="rp_msg" style="font-size:12px;margin-top:8px"></div>
     </div>
+    <div style="margin-top:10px"><a href="#" class="muted" style="font-size:12px" onclick="$('reqbox').classList.toggle('hidden');return false">Don't have an account? Request one →</a></div>
+    <div id="reqbox" class="hidden" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+      <p class="muted" style="font-size:12px;margin:0 0 10px">Request an account — an administrator will review it.</p>
+      <div class="f" style="text-align:left"><label>Your name (login)</label><input id="rq_name" type="text"></div>
+      <div class="f" style="text-align:left"><label>Email</label><input id="rq_email" type="email"></div>
+      <div class="f" style="text-align:left"><label>Note (optional)</label><input id="rq_note" type="text" placeholder="who you are / why"></div>
+      <button class="btn" style="width:100%;margin-top:8px" onclick="doRequestAccount()">Send request</button>
+      <div id="rq_msg" style="font-size:12px;margin-top:8px"></div>
+    </div>
   </div>
 </div>
 <div id="view-welcome" class="doc">
@@ -460,6 +469,13 @@ a{transition:color .15s ease}
   <span class="eyebrow">Admin</span>
   <h1>User Management</h1>
   <p class="lede">Manage logins — assign a subscription role and enable or disable accounts. Roles: <b>Admin</b> (full access), <b>Gold</b> (read/write incl. pre-orders + monitor exec), <b>Silver</b> (read/write incl. pre-orders), <b>Guest</b> (read-only, no pre-orders).</p>
+  <section class="gsec" id="req-section" style="border-left-color:#d29922;display:none">
+    <h3 style="color:#d29922">Pending account requests <span id="req-count" class="muted" style="font-size:12px;font-weight:400"></span></h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Requested</th><th>Name</th><th>Email</th><th>Note</th><th>Action</th></tr></thead>
+      <tbody id="req-rows"></tbody>
+    </table></div>
+  </section>
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="users-count"></span></div>
     <div class="tablewrap"><table>
@@ -1014,8 +1030,23 @@ function renderUsers(){
         <td><b>${u.name}</b></td><td>${u.email||''}</td>
         <td><label style="cursor:pointer;font-size:13px"><input type="checkbox" ${u.admin?'checked':''} onchange="saveUser('${u.name}',{admin:this.checked})"> Admin</label></td>
         <td><select onchange="saveUser('${u.name}',{subscription:this.value})" style="width:auto">${subs.map(s=>`<option ${u.subscription===s?'selected':''}>${s}</option>`).join("")}</select></td>
-        <td><button class="btn" onclick="saveUser('${u.name}',{enabled:${!u.enabled}})">${u.enabled?'<span style="color:var(--bull)">Enabled</span> — disable':'<span style="color:var(--bear)">Disabled</span> — enable'}</button></td></tr>`).join("");})
+        <td><button class="btn" onclick="saveUser('${u.name}',{enabled:${!u.enabled}})">${u.enabled?'<span style="color:var(--bull)">Enabled</span> — disable':'<span style="color:var(--bear)">Disabled</span> — enable'}</button></td></tr>`).join("");
+      paintRequests(j.requests||[]);})
     .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="5" class="empty">Could not load (admin only).</td></tr>`;});
+}
+function paintRequests(reqs){
+  $("req-section").style.display=reqs.length?"":"none";
+  $("req-count").textContent=reqs.length?`(${reqs.length})`:"";
+  $("req-rows").innerHTML=reqs.map(r=>`<tr>
+    <td>${r.ts||''}</td><td><b>${r.name}</b></td><td>${r.email||''}</td><td class="muted" style="white-space:normal;max-width:260px">${(r.note||'').replace(/</g,"&lt;")}</td>
+    <td><button class="btn" style="padding:3px 8px" onclick="reqAction('${r.name}','approve')">✓ Approve</button> <button class="btn" style="padding:3px 8px" onclick="reqAction('${r.name}','reject')">✕ Reject</button></td></tr>`).join("");
+}
+function reqAction(name,action){
+  if(action==="approve"&&!confirm(`Approve '${name}'? Creates a guest account (locked). They set their password via 'Forgot password?' with their registered email.`))return;
+  fetch("/api/users",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({name,action})})
+    .then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(()=>{$("users-msg").style.color="var(--bull)";$("users-msg").textContent=`${action==='approve'?'Approved':'Rejected'} ${name}.`;renderUsers();})
+    .catch(()=>{$("users-msg").style.color="var(--bear)";$("users-msg").textContent="Action failed.";});
 }
 function saveUser(name,patch){
   fetch("/api/users",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({name,...patch})})
@@ -1274,6 +1305,13 @@ function doLogin(){
     .catch(()=>{$("li_err").textContent="Wrong name or password.";});
 }
 function doLogout(){localStorage.removeItem("sq_auth");location.reload();}
+function doRequestAccount(){
+  const m=$("rq_msg");
+  fetch("/api/request-account",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name:$("rq_name").value,email:$("rq_email").value,note:$("rq_note").value})})
+    .then(r=>{if(r.ok){m.style.color="var(--bull)";m.textContent="Request sent — an administrator will review it.";$("rq_name").value=$("rq_email").value=$("rq_note").value="";}
+      else{m.style.color="var(--bear)";m.textContent="Could not send — check the details (name may be taken or already requested).";}});
+}
 function doReset(){
   fetch("/api/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({name:$("rp_name").value,email:$("rp_email").value,new_pwd:$("rp_pwd").value})})

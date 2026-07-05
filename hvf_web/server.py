@@ -182,20 +182,43 @@ def api_me():
     return jsonify({"name": name, "subscription": _wu.get_subscription(name), "is_admin": _wu.is_admin(name)})
 
 
+@app.route("/api/request-account", methods=["POST"])
+def api_request_account():
+    """PUBLIC (unauthenticated) account request (user 2026-07-03). Stores a pending request for an
+    admin to approve — never creates a login directly."""
+    body = request.get_json(silent=True) or {}
+    ok = _wu.add_request((body.get("name") or "").strip(), (body.get("email") or "").strip(),
+                         (body.get("note") or "").strip())
+    return (jsonify({"ok": True}) if ok
+            else (jsonify({"ok": False, "error": "invalid, duplicate, or name already taken"}), 400))
+
+
 @app.route("/api/users", methods=["GET", "POST"])
 def api_users():
-    """User maintenance (admin only, user 2026-07-03): list logins, set role / enabled status."""
+    """User maintenance (admin only, user 2026-07-03): list logins + pending requests, set role /
+    enabled status, approve / reject account requests."""
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
     if not name:
         return jsonify({"error": "login required"}), 401
     if not _wu.is_admin(name):
         return jsonify({"error": "admin only"}), 403
     if request.method == "GET":
-        return jsonify({"users": _wu.list_users(), "subscriptions": _wu.SUBSCRIPTIONS})
+        return jsonify({"users": _wu.list_users(), "subscriptions": _wu.SUBSCRIPTIONS,
+                        "requests": _wu.list_requests()})
     body = request.get_json(silent=True) or {}
     target = (body.get("name") or "").strip()
     if not target:
         return jsonify({"ok": False, "error": "no user"}), 400
+    # Approve / reject a pending account request.
+    if body.get("action") == "approve":
+        ok = _wu.approve_request(target)
+        if ok:
+            _wu.log_event(name, f"Approved account request: {target}")
+        return jsonify({"ok": ok, "users": _wu.list_users(), "requests": _wu.list_requests()})
+    if body.get("action") == "reject":
+        _wu.reject_request(target)
+        _wu.log_event(name, f"Rejected account request: {target}")
+        return jsonify({"ok": True, "users": _wu.list_users(), "requests": _wu.list_requests()})
     changed = []
     if "subscription" in body and _wu.set_subscription(target, body["subscription"]):
         changed.append(f"subscription={body['subscription']}")

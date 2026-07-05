@@ -300,6 +300,72 @@ def reset_password(name: str, email: str, new_pwd: str, ip: str = "") -> bool:
     return True
 
 
+# ── Account requests (user 2026-07-03): the public can REQUEST an account; an admin approves. ─────────
+_REQ_KEY = "__requests__"
+
+
+def add_request(name: str, email: str, note: str = "") -> bool:
+    """Store a public account request (unauthenticated). Deduped by name; capped. Never creates a login."""
+    from datetime import datetime, timezone
+    name = (name or "").strip()
+    email = (email or "").strip()
+    if not name or "@" not in email:
+        return False
+    with _LOCK:
+        users = _load()
+        if name in users:                       # a real login already has this name
+            return False
+        reqs = users.get(_REQ_KEY)
+        if not isinstance(reqs, list):
+            reqs = []
+        if any(r.get("name") == name for r in reqs) or len(reqs) >= 100:
+            return False
+        reqs.append({"name": name, "email": email, "note": (note or "")[:200],
+                     "ts": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")})
+        users[_REQ_KEY] = reqs
+        _save(users)
+    log.info(f"account request stored: {name}")
+    return True
+
+
+def list_requests() -> list:
+    r = _load().get(_REQ_KEY)
+    return list(r) if isinstance(r, list) else []
+
+
+def _remove_request(name: str, users: dict):
+    reqs = users.get(_REQ_KEY)
+    if isinstance(reqs, list):
+        users[_REQ_KEY] = [r for r in reqs if r.get("name") != name]
+
+
+def approve_request(name: str) -> bool:
+    """Approve a request → create a LOCKED (no usable password), enabled, guest, non-admin account.
+    The new user sets their password via the email-gated 'Forgot password?' flow."""
+    with _LOCK:
+        users = _load()
+        reqs = users.get(_REQ_KEY) or []
+        req = next((r for r in reqs if r.get("name") == name), None)
+        if not req or name in users:
+            return False
+        salt = _secrets.token_hex(16)
+        users[name] = {"salt": salt, "pwd_hash": _hash_pwd(_secrets.token_hex(24), salt),
+                       "email": req.get("email", ""), "secrets": {}, "admin": False,
+                       "subscription": "guest", "enabled": True}
+        _remove_request(name, users)
+        _save(users)
+    log.info(f"account request approved: {name}")
+    return True
+
+
+def reject_request(name: str) -> bool:
+    with _LOCK:
+        users = _load()
+        _remove_request(name, users)
+        _save(users)
+    return True
+
+
 def add_user(name: str, pwd: str, email: str, admin: bool = False, subscription: str = "guest"):
     """Create a login. New accounts default to NO admin, guest subscription (user 2026-07-03)."""
     with _LOCK:
