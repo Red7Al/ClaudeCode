@@ -232,15 +232,24 @@ def api_users():
     return jsonify({"ok": True, "changed": changed, "users": _wu.list_users()})
 
 
+@app.route("/api/request-reset-code", methods=["POST"])
+def api_request_reset_code():
+    """Step 1 of the secure reset (user 2026-07-03): email a one-time code to the REGISTERED address.
+    Always returns ok:true (generic) so the response can't be used to enumerate accounts/emails."""
+    body = request.get_json(silent=True) or {}
+    _wu.request_reset_code((body.get("name") or "").strip(), body.get("email") or "")
+    return jsonify({"ok": True})
+
+
 @app.route("/api/reset-password", methods=["POST"])
 def api_reset_password():
-    """Password reset gated on the email REGISTERED to the account (user 2026-06-30). On success the
-    user is emailed a change notification with a not-you warning, and the event is logged."""
+    """Step 2 of the secure reset (user 2026-07-03): verify the emailed CODE + set the new password.
+    Checks the code hash, 10-minute expiry and a 5-attempt limit; single-use. On success the user is
+    emailed a change notification and the event is logged."""
     body = request.get_json(silent=True) or {}
-    ok = _wu.reset_password((body.get("name") or "").strip(), body.get("email") or "",
-                            body.get("new_pwd") or "", ip=request.remote_addr or "")
-    return (jsonify({"ok": True}) if ok
-            else (jsonify({"ok": False, "error": "name/email do not match an account (or password too short)"}), 400))
+    ok, err = _wu.reset_password_with_code((body.get("name") or "").strip(), body.get("code") or "",
+                                           body.get("new_pwd") or "", ip=request.remote_addr or "")
+    return jsonify({"ok": True}) if ok else (jsonify({"ok": False, "error": err}), 400)
 
 
 @app.route("/api/config", methods=["GET", "POST"])

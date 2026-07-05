@@ -279,6 +279,59 @@ def _send_pwd_change_email(name: str, email: str):
         log.warning(f"password-change email failed for {name}: {e}")
 
 
+def _send_reset_code_email(name: str, email: str, code: str) -> bool:
+    """Email a one-time reset code to the registered address (user 2026-07-03). Best-effort."""
+    subject = "Squeeze Scanner - your password reset code"
+    text = (f"Hello {name},\n\n"
+            f"Your password reset code is:  {code}\n\n"
+            f"Enter it in the app within 10 minutes to set a new password. It can be used once.\n\n"
+            f"If you did NOT request this, ignore this email — your password is unchanged.\n")
+    try:
+        from trade_email import send_simple_email
+        if send_simple_email(subject, text, recipients=[email]):
+            return True
+    except Exception as e:
+        log.warning(f"reset-code email via provider failed: {e}")
+    try:    # local Gmail fallback (same as the change-notification email)
+        import smtplib
+        from email.message import EmailMessage
+        user = os.environ.get("_TVW_EMAIL_USERNAME", "").strip()
+        pw = os.environ.get("_TVW_EMAIL_PASSWORD", "").replace(" ", "").strip()
+        if not (user and pw):
+            return False
+        msg = EmailMessage()
+        msg["Subject"], msg["From"], msg["To"] = subject, user, email
+        msg.set_content(text)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as s:
+            s.login(user, pw)
+            s.send_message(msg)
+        return True
+    except Exception as e:
+        log.warning(f"reset-code email failed for {name}: {e}")
+        return False
+
+
+def request_reset_code(name: str, email: str) -> bool:
+    """Generate a 6-digit reset code, store its hash with a 10-minute expiry, and email it to the
+    REGISTERED address (user 2026-07-03). Returns True only when the email was actually sent (name +
+    registered email matched and delivery succeeded). Callers should show a generic message either way
+    to avoid account enumeration."""
+    import time as _t
+    with _LOCK:
+        users = _load()
+        u = users.get((name or "").strip())
+        if not u or (email or "").strip().lower() != (u.get("email") or "").lower():
+            return False
+        code = f"{_secrets.randbelow(1000000):06d}"
+        u["reset"] = {"code_hash": _hash_pwd(code, u["salt"]), "expires": _t.time() + 600, "attempts": 0}
+        _save(users)
+    ok = _send_reset_code_email(name, u.get("email") or email, code)
+    if ok:
+        log.info(f"reset code emailed to {name}")
+        log_event(name, "Password reset code requested (emailed)")
+    return ok
+
+
 def reset_password(name: str, email: str, new_pwd: str, ip: str = "") -> bool:
     """Reset gated on the REGISTERED email (user 2026-06-30). False when the account is unknown,
     the email doesn't match, or the new password is too short. On success: logs the event to the
@@ -298,6 +351,40 @@ def reset_password(name: str, email: str, new_pwd: str, ip: str = "") -> bool:
     log_event(name, f"Password changed (email-verified reset{', from ' + ip if ip else ''})")
     _send_pwd_change_email(name, u.get("email") or email)
     return True
+
+
+def reset_password_with_code(name: str, code: str, new_pwd: str, ip: str = "") -> tuple:
+    """Reset the password using the one-time CODE emailed by request_reset_code (user 2026-07-03).
+    Checks the code hash, 10-minute expiry and a 5-attempt limit. Single-use. Returns (ok, error)."""
+    import time as _t
+    if not new_pwd or len(new_pwd) < 4:
+        return False, "new password too short (min 4 characters)"
+    name = (name or "").strip()
+    with _LOCK:
+        users = _load()
+        u = users.get(name)
+        if not u:
+            return False, "invalid name or code"
+        rst = u.get("reset") or {}
+        if not rst or _t.time() > rst.get("expires", 0):
+            u.pop("reset", None); _save(users)
+            return False, "no code requested, or it has expired — request a new one"
+        if rst.get("attempts", 0) >= 5:
+            u.pop("reset", None); _save(users)
+            return False, "too many attempts — request a new code"
+        if not _secrets.compare_digest(rst.get("code_hash", ""), _hash_pwd((code or "").strip(), u["salt"])):
+            rst["attempts"] = rst.get("attempts", 0) + 1
+            u["reset"] = rst; _save(users)
+            return False, "incorrect code"
+        # Valid — set the new password (new salt), invalidate the code and all existing sessions.
+        u["salt"] = _secrets.token_hex(16)
+        u["pwd_hash"] = _hash_pwd(new_pwd, u["salt"])
+        u.pop("reset", None)
+        _save(users)
+    log.info(f"password reset (code) for {name}")
+    log_event(name, f"Password changed (email-code reset{', from ' + ip if ip else ''})")
+    _send_pwd_change_email(name, u.get("email") or "")
+    return True, ""
 
 
 # ── Account requests (user 2026-07-03): the public can REQUEST an account; an admin approves. ─────────

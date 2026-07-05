@@ -214,11 +214,14 @@ a{transition:color .15s ease}
     <div id="li_err" style="color:var(--bear);font-size:12px;margin-top:8px"></div>
     <a href="#" class="muted" style="font-size:12px" onclick="$('resetbox').classList.toggle('hidden');return false">Forgot password?</a>
     <div id="resetbox" class="hidden" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
-      <p class="muted" style="font-size:12px;margin:0 0 10px">Enter the email registered to your account to set a new password.</p>
+      <p class="muted" style="font-size:12px;margin:0 0 10px"><b>Step 1:</b> we email a one-time code to your registered address.</p>
       <div class="f" style="text-align:left"><label>Name</label><input id="rp_name" type="text"></div>
       <div class="f" style="text-align:left"><label>Registered email</label><input id="rp_email" type="email"></div>
+      <button class="btn" style="width:100%;margin-top:4px" onclick="doRequestCode()">Email me a code</button>
+      <p class="muted" style="font-size:12px;margin:14px 0 10px"><b>Step 2:</b> enter the code (valid 10 min) and your new password.</p>
+      <div class="f" style="text-align:left"><label>Code from email</label><input id="rp_code" type="text" inputmode="numeric" autocomplete="one-time-code"></div>
       <div class="f" style="text-align:left"><label>New password</label><input id="rp_pwd" type="password"></div>
-      <button class="btn" style="width:100%;margin-top:8px" onclick="doReset()">Reset password</button>
+      <button class="btn" style="width:100%;margin-top:4px" onclick="doReset()">Set new password</button>
       <div id="rp_msg" style="font-size:12px;margin-top:8px"></div>
     </div>
     <div style="margin-top:10px"><a href="#" class="muted" style="font-size:12px" onclick="$('reqbox').classList.toggle('hidden');return false">Don't have an account? Request one →</a></div>
@@ -1312,12 +1315,19 @@ function doRequestAccount(){
     .then(r=>{if(r.ok){m.style.color="var(--bull)";m.textContent="Request sent — an administrator will review it.";$("rq_name").value=$("rq_email").value=$("rq_note").value="";}
       else{m.style.color="var(--bear)";m.textContent="Could not send — check the details (name may be taken or already requested).";}});
 }
+function doRequestCode(){
+  const el=$("rp_msg");
+  fetch("/api/request-reset-code",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name:$("rp_name").value,email:$("rp_email").value})})
+    .then(()=>{el.style.color="var(--muted)";el.textContent="If those details match an account, a code has been emailed. It's valid for 10 minutes.";});
+}
 function doReset(){
   fetch("/api/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({name:$("rp_name").value,email:$("rp_email").value,new_pwd:$("rp_pwd").value})})
-    .then(r=>{const el=$("rp_msg");
-      if(r.ok){el.style.color="var(--bull)";el.textContent="Password updated — log in above with the new password.";}
-      else{el.style.color="var(--bear)";el.textContent="Name and email do not match an account (or password too short).";}});
+    body:JSON.stringify({name:$("rp_name").value,code:$("rp_code").value,new_pwd:$("rp_pwd").value})})
+    .then(r=>r.json().then(j=>({ok:r.ok,j})))
+    .then(({ok,j})=>{const el=$("rp_msg");
+      if(ok){el.style.color="var(--bull)";el.textContent="Password updated — log in above with the new password.";}
+      else{el.style.color="var(--bear)";el.textContent=j.error||"Reset failed.";}});
 }
 let poSortK="dist_entry", poSortDir=1;   // default sort: Dist->Entry, closest first (user 2026-06-30)
 function renderPreorders(){
