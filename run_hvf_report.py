@@ -374,6 +374,60 @@ HONGKONG = [
     "1128.HK", "0880.HK", "2007.HK", "2202.HK", "0817.HK", "1918.HK",
 ]
 
+
+JAPAN = [
+    # Top Japanese equities (Nikkei constituents, .T) by market cap — Yahoo-verified (user 2026-07-04).
+    "7203.T", "6758.T", "9984.T", "6861.T", "8306.T", "9432.T", "9433.T", "4063.T",
+    "8035.T", "6098.T", "9983.T", "8058.T", "8001.T", "8031.T", "7974.T", "4519.T",
+    "4568.T", "6501.T", "6902.T", "6367.T", "6594.T", "7267.T", "7201.T", "7751.T",
+    "6971.T", "6503.T", "8316.T", "8411.T", "8766.T", "8750.T", "2914.T", "4502.T",
+    "4503.T", "4523.T", "6273.T", "6301.T", "6326.T", "6857.T", "6954.T", "6981.T",
+    "7011.T", "7013.T", "7012.T", "7269.T", "7270.T", "7733.T", "7741.T", "8002.T",
+    "8053.T", "8591.T", "8604.T", "8801.T", "8802.T", "9020.T", "9022.T", "9101.T",
+    "9104.T", "9107.T", "9201.T", "9202.T", "9501.T", "9735.T", "9766.T", "2502.T",
+    "2503.T", "2802.T", "3382.T", "4452.T", "4901.T", "4911.T", "5108.T", "5401.T",
+    "5713.T", "6178.T", "6752.T", "6762.T", "6920.T", "6963.T", "6988.T", "7182.T",
+    "7309.T", "7532.T", "7832.T", "7936.T", "8015.T", "8113.T", "8267.T", "8630.T",
+    "8725.T", "8830.T", "9021.T", "9434.T", "9843.T", "4661.T", "4543.T", "4578.T",
+    "6146.T", "6723.T", "3659.T", "2413.T", "4307.T", "4684.T", "6702.T", "6504.T",
+    "5802.T", "5019.T", "5020.T", "1605.T", "8697.T", "4188.T", "4005.T", "3407.T",
+]
+
+AUSTRALIA = [
+    # Top Australian equities (S&P/ASX, .AX) by market cap — Yahoo-verified (user 2026-07-04).
+    "BHP.AX", "CBA.AX", "CSL.AX", "NAB.AX", "WBC.AX", "ANZ.AX", "WES.AX", "MQG.AX",
+    "GMG.AX", "FMG.AX", "RIO.AX", "TLS.AX", "WOW.AX", "TCL.AX", "ALL.AX", "WDS.AX",
+    "REA.AX", "COL.AX", "QBE.AX", "SUN.AX", "XRO.AX", "CPU.AX", "RMD.AX", "STO.AX",
+    "ORG.AX", "AMC.AX", "SHL.AX", "JHX.AX", "IAG.AX", "BXB.AX", "S32.AX", "NST.AX",
+    "EVN.AX", "MIN.AX", "PLS.AX", "WTC.AX", "CAR.AX", "SEK.AX", "ASX.AX", "APA.AX",
+    "MPL.AX", "TWE.AX", "COH.AX", "RHC.AX", "SGP.AX", "MGR.AX", "GPT.AX", "DXS.AX",
+    "VCX.AX", "SCG.AX", "LLC.AX", "QAN.AX", "ALD.AX", "AGL.AX", "ORI.AX", "CTD.AX",
+    "FLT.AX", "JBH.AX", "HVN.AX", "PMV.AX", "BRG.AX", "DMP.AX", "TAH.AX", "TLC.AX",
+    "A2M.AX", "ELD.AX", "GNC.AX", "NUF.AX", "ALQ.AX", "CWY.AX", "BSL.AX", "SGM.AX",
+    "ILU.AX", "LYC.AX", "IGO.AX", "LTR.AX", "SFR.AX", "WHC.AX", "NHC.AX", "YAL.AX",
+    "PDN.AX", "BOE.AX", "CMM.AX", "RRL.AX", "PRU.AX", "NXT.AX", "MP1.AX", "TNE.AX",
+    "PME.AX", "WOR.AX", "SOL.AX", "BEN.AX", "BOQ.AX", "HUB.AX", "NWL.AX", "AMP.AX",
+    "CGF.AX", "ASB.AX", "CDA.AX", "QUB.AX", "AZJ.AX", "CHC.AX", "BWP.AX", "EDV.AX",
+    "MTS.AX", "BAP.AX", "ARB.AX", "NCK.AX", "LOV.AX",
+]
+
+INDIA = [
+    # Top Indian equities (NIFTY 100, .NS) by market cap — Yahoo-verified (user 2026-07-04).
+    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "BHARTIARTL.NS", "SBIN.NS", "LICI.NS",
+    "ITC.NS", "HINDUNILVR.NS", "LT.NS", "KOTAKBANK.NS", "AXISBANK.NS", "MARUTI.NS", "SUNPHARMA.NS", "BAJFINANCE.NS",
+    "TITAN.NS", "ULTRACEMCO.NS", "ASIANPAINT.NS", "NTPC.NS", "ONGC.NS", "ADANIENT.NS", "ADANIPORTS.NS", "POWERGRID.NS",
+    "M&M.NS", "TATASTEEL.NS", "WIPRO.NS", "HCLTECH.NS", "COALINDIA.NS", "JSWSTEEL.NS", "BAJAJFINSV.NS", "NESTLEIND.NS",
+    "GRASIM.NS", "HINDALCO.NS", "DRREDDY.NS", "CIPLA.NS", "APOLLOHOSP.NS", "DIVISLAB.NS", "EICHERMOT.NS", "BRITANNIA.NS",
+    "TECHM.NS", "INDUSINDBK.NS", "HEROMOTOCO.NS", "BAJAJ-AUTO.NS", "TATACONSUM.NS", "SBILIFE.NS", "HDFCLIFE.NS", "BPCL.NS",
+    "IOC.NS", "SHRIRAMFIN.NS", "PIDILITIND.NS", "SIEMENS.NS", "DLF.NS", "VBL.NS", "TRENT.NS", "HAL.NS",
+    "BEL.NS", "VEDL.NS", "GAIL.NS", "AMBUJACEM.NS", "DABUR.NS", "GODREJCP.NS", "MARICO.NS", "BERGEPAINT.NS",
+    "COLPAL.NS", "MUTHOOTFIN.NS", "BAJAJHLDNG.NS", "ICICIPRULI.NS", "ICICIGI.NS", "SBICARD.NS", "INDIGO.NS", "DMART.NS",
+    "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "IRCTC.NS", "IRFC.NS", "PFC.NS", "RECLTD.NS", "NHPC.NS",
+    "TATAPOWER.NS", "ADANIGREEN.NS", "ADANIPOWER.NS", "JIOFIN.NS", "NAUKRI.NS", "TVSMOTOR.NS", "MOTHERSON.NS", "BOSCHLTD.NS",
+    "ABB.NS", "CGPOWER.NS", "HAVELLS.NS", "TORNTPHARM.NS", "LUPIN.NS", "AUROPHARMA.NS", "ZYDUSLIFE.NS", "SHREECEM.NS",
+    "ACC.NS", "JSWENERGY.NS", "INDHOTEL.NS", "GODREJPROP.NS", "CHOLAFIN.NS", "IDFCFIRSTB.NS", "YESBANK.NS", "BANDHANBNK.NS",
+]
+
 UNIVERSE = {
     "FTSE 100":     FTSE100,
     "FTSE 250":     FTSE250,
@@ -382,6 +436,9 @@ UNIVERSE = {
     "Germany":      GERMANY,        # DAX 40 + MDAX (user 2026-07-03)
     "Shanghai":     SHANGHAI,       # top Shanghai-listed equities (user 2026-07-03)
     "Hong Kong":    HONGKONG,       # top Hong Kong equities (user 2026-07-03)
+    "Japan":        JAPAN,          # Nikkei top equities (user 2026-07-04)
+    "Australia":    AUSTRALIA,      # S&P/ASX top equities (user 2026-07-04)
+    "India":        INDIA,          # NIFTY 100 (user 2026-07-04)
     "Commodities":  COMMODITIES,    # metals + energy
     "Indices":      INDICES,        # major market indices (split from "Indices & FX", user 2026-06-30)
     "FX":           FX,             # currency pairs (split from "Indices & FX", user 2026-06-30)
@@ -743,7 +800,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str, per_market_n: int 
         "text": {"type": "mrkdwn",
                  "text": (f"*{len(tradeable)} tradeable* (READY/TRIGGERED ≥{HVF_MIN_RR}:1 R:R)  |  "
                           f"*{len(developing)} developing* (valid pattern, R:R < {HVF_MIN_RR}:1)\n"
-                          f"Scanned: FTSE 100 · FTSE 250 · NASDAQ 100 · S&P 500 · Germany · Shanghai · Hong Kong · Commodities · Indices · FX · Crypto")}
+                          f"Scanned: FTSE 100 · FTSE 250 · NASDAQ 100 · S&P 500 · Germany · Shanghai · Hong Kong · Japan · Australia · India · Commodities · Indices · FX · Crypto")}
     })
     blocks.append({"type": "divider"})
 

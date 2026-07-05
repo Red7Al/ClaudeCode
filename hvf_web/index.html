@@ -203,6 +203,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="tab" id="tab-xposts" onclick="showTab('xposts')" style="display:none">X Posts</button>
   <button class="tab" id="tab-config" onclick="showTab('config')" style="display:none">Configuration</button>
   <button class="tab" id="tab-version" onclick="showTab('version')" style="display:none">Version History</button>
+  <button class="tab" id="tab-syslogs" onclick="showTab('syslogs')" style="display:none">System Logs</button>
+  <button class="tab" id="tab-sysdocs" onclick="showTab('sysdocs')" style="display:none">How it works (System)</button>
   <span class="grow"></span>
   <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
 </div>
@@ -514,6 +516,69 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       </table></div>
     </section>
     <div class="viz" id="ver-viz" style="border-bottom:none;padding:0;flex:0 0 auto;flex-direction:column"></div>
+  </div>
+</div>
+
+<div id="view-syslogs" class="hidden doc" style="max-width:1240px">
+  <input type="hidden" id="slf_level"><input type="hidden" id="slf_logger"><input type="hidden" id="slf_hour">
+  <span class="eyebrow">Admin</span>
+  <h1>System Logs</h1>
+  <p class="lede">Live server health and the most recent log records from this web-server process. Click a chart to filter the log table.</p>
+  <div class="fgrid" id="sl-health" style="margin-bottom:16px"></div>
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
+      <div class="count" style="padding-left:0"><span id="sl-count"></span></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th data-sk="ts">Time</th><th data-sk="level">Level</th><th data-sk="logger">Module</th><th data-sk="message">Message</th></tr></thead>
+        <tbody id="sl-rows"></tbody>
+      </table></div>
+    </section>
+    <div class="viz" id="sl-viz" style="border-bottom:none;padding:0;flex:0 0 auto;flex-direction:column"></div>
+  </div>
+</div>
+
+<div id="view-sysdocs" class="hidden doc" style="max-width:1120px">
+  <span class="eyebrow">Admin</span>
+  <h1>How it works (System)</h1>
+  <p class="lede">The plumbing behind the product: where code runs, how the external services connect, and how the system is patched, secured and restarted.</p>
+
+  <svg viewBox="0 0 940 260" style="width:100%;max-width:940px;margin:8px 0 24px">
+    <defs><marker id="sarr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--muted)"/></marker></defs>
+    <g font-size="11" text-anchor="middle">
+      <rect x="10" y="20" width="180" height="60" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+      <text x="100" y="45" fill="var(--fg)" font-weight="bold">This laptop</text><text x="100" y="62" fill="var(--muted)">Flask web app + ngrok</text>
+      <rect x="10" y="170" width="180" height="60" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+      <text x="100" y="195" fill="var(--fg)" font-weight="bold">cron-job.org</text><text x="100" y="212" fill="var(--muted)">schedules (no GitHub cron)</text>
+      <rect x="260" y="170" width="180" height="60" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+      <text x="350" y="195" fill="var(--fg)" font-weight="bold">GitHub Actions</text><text x="350" y="212" fill="var(--muted)">monitors, reports, X posts</text>
+      <rect x="380" y="20" width="180" height="60" rx="10" fill="var(--panel)" stroke="#d29922"/>
+      <text x="470" y="45" fill="var(--fg)" font-weight="bold">Supabase (Postgres)</text><text x="470" y="62" fill="var(--muted)">shared data + config</text>
+      <rect x="700" y="10" width="220" height="50" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+      <text x="810" y="30" fill="var(--fg)" font-weight="bold">IG Markets REST API</text><text x="810" y="46" fill="var(--muted)">orders, positions, prices</text>
+      <rect x="700" y="105" width="220" height="50" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+      <text x="810" y="125" fill="var(--fg)" font-weight="bold">X (Twitter) API</text><text x="810" y="141" fill="var(--muted)">tweepy, Actions only</text>
+      <rect x="700" y="200" width="220" height="50" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+      <text x="810" y="220" fill="var(--fg)" font-weight="bold">Slack webhooks</text><text x="810" y="236" fill="var(--muted)">signals, alerts, reports</text>
+      <line x1="190" y1="50" x2="376" y2="50" stroke="var(--muted)" marker-end="url(#sarr)"/>
+      <line x1="190" y1="200" x2="256" y2="200" stroke="var(--muted)" marker-end="url(#sarr)"/>
+      <line x1="440" y1="185" x2="470" y2="84" stroke="var(--muted)" marker-end="url(#sarr)"/>
+      <line x1="560" y1="45" x2="696" y2="35" stroke="var(--muted)" marker-end="url(#sarr)"/>
+      <line x1="440" y1="190" x2="696" y2="130" stroke="var(--muted)" marker-end="url(#sarr)"/>
+      <line x1="440" y1="210" x2="696" y2="222" stroke="var(--muted)" marker-end="url(#sarr)"/>
+      <line x1="140" y1="80" x2="700" y2="28" stroke="var(--muted)" stroke-dasharray="4 3" marker-end="url(#sarr)"/>
+    </g>
+  </svg>
+
+  <div class="fgrid">
+    <div class="fcard"><div class="ic">IG</div><h3>IG Markets</h3><div class="body">REST API at api.ig.com. Each session logs in with an API key + username + password and holds CST/security tokens (~6h, auto-refreshed). <b>Per-user credentials</b>: the owner uses the environment credentials; another trader must store their own in Configuration &gt; IG — orders are placed under the acting user&#39;s own session (never someone else&#39;s). Working orders carry a configurable lifespan (default 28 days).</div></div>
+    <div class="fcard"><div class="ic">DB</div><h3>Supabase</h3><div class="body">Shared Postgres reached via the session pooler (pg8000). Key tables: <code>price_history</code> (golden OHLC), <code>working_orders</code>, <code>hvf_triggers</code> (performance tracking), <code>x_publications</code>, <code>signal_log</code>, <code>app_config</code> (runtime switches), <code>web_batch_activity</code> + <code>web_activity_log</code>. The laptop and GitHub Actions read/write the SAME database — that&#39;s how one config switch controls both.</div></div>
+    <div class="fcard"><div class="ic">X</div><h3>X (Twitter)</h3><div class="body">Posting uses tweepy with keys held ONLY in GitHub Secrets — the laptop never posts. Live posting runs inside GitHub Actions workflows, capped per day (Configuration &gt; X settings), deduped via <code>x_publications</code>. The X Posts tab reads that table.</div></div>
+    <div class="fcard"><div class="ic">S</div><h3>Slack</h3><div class="body">Simple incoming-webhook URLs per channel (signals, alerts, daily, trades, weekly + arw-rw-hvf). Reports post independently to each webhook — one failing never blocks the others.</div></div>
+    <div class="fcard"><div class="ic">PY</div><h3>Python execution</h3><div class="body"><b>Laptop:</b> this Flask app (port 5057, shared via ngrok) with two background threads — a 12-hour snapshot rebuild and the 2-hour order bridge. <b>Cloud:</b> GitHub Actions runners (Python 3.12) execute the session monitors, HVF report, bounce alert etc., triggered by cron-job.org hitting workflow_dispatch (GitHub-native cron is deliberately not used).</div></div>
+    <div class="fcard"><div class="ic">GIT</div><h3>Patching &amp; releases</h3><div class="body">Code lives in the GitHub repo. A change is committed + pushed; Actions jobs pick it up on their next run automatically. The laptop app picks up changes when restarted (run.bat / Restart-Web.bat). Every commit appears automatically in the Version History tab (generated live from git).</div></div>
+    <div class="fcard"><div class="ic">SEC</div><h3>Security</h3><div class="body">Passwords: PBKDF2-HMAC-SHA256, 200k iterations, per-user salt — never stored or committed. Secrets: Fernet-encrypted at rest, masked to last-4 in the UI, never sent in full to a browser. Access: admin flag + subscription levels; admin-only tabs/endpoints return 403 otherwise; logged-out visitors get a stripped teaser Scanner. Password reset = emailed one-time code (10-min expiry, single use). Every sensitive action lands in the per-user activity log.</div></div>
+    <div class="fcard"><div class="ic">RB</div><h3>Reboots &amp; recovery</h3><div class="body">A Startup-folder shortcut relaunches the web server + ngrok after a reboot (run_quick.bat skips the slow rebuild). The 12h/2h background threads restart with the process. GitHub Actions is independent of the laptop — monitors and reports keep running even when the laptop is off; only the website itself needs the laptop up.</div></div>
+    <div class="fcard"><div class="ic">FLOW</div><h3>Data flow (one cycle)</h3><div class="body">Scan the universe &gt; engine detects squeezes &gt; snapshot.json feeds the Scanner &gt; READY setups within 1.5% + Quality &gt; 50 flow through the bridge (or a manual Place-on-IG) &gt; IG working order (28-day life) &gt; fills tracked in <code>working_orders</code> &gt; outcomes measured against <code>hvf_triggers</code>.</div></div>
   </div>
 </div>
 
@@ -916,6 +981,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   else if(k.startsWith("vcf_")||k.startsWith("vmf_"))paintVersion();
   else if(k.startsWith("bcf_"))paintBatch();
   else if(k.startsWith("xf_"))paintXposts();
+  else if(k.startsWith("slf_"))paintSyslogs();
   else applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
 const MF_IDS=["mf_sector","mf_direction","mf_status","mf_location","mf_market","mf_timeframe"];
@@ -954,9 +1020,9 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 let PINNED=new Set();   // tickers the user pushed to Pre-orders from the Scanner (user 2026-07-03)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","xposts","config","version"];
+const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","xposts","config","version","syslogs","sysdocs"];
 const PUBLIC_TABS=["welcome","intro","appendix","scanner"];   // visible when logged out
-const ADMIN_TABS=["batch","users","version","xposts"];        // admin only (xposts also admin, user 2026-07-03)
+const ADMIN_TABS=["batch","users","version","xposts","syslogs","sysdocs"];        // admin only (xposts also admin, user 2026-07-03)
 const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
 let FEATURES={xposts:false};
 let AUTH=localStorage.getItem("sq_auth")||"";
@@ -1008,6 +1074,7 @@ function showTab(name){
   if(!locked&&name==="xposts")renderXposts();
   if(!locked&&name==="config")renderConfig();
   if(name==="users")renderUsers();
+  if(name==="syslogs")renderSyslogs();
   if(name==="version")renderVersion();
   if(name==="batch")renderBatch();
 }
@@ -1033,7 +1100,35 @@ document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
 const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner Report",xposts:"X Posts",
   preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
-  config:"Configuration",users:"User Management",version:"Version History"};
+  config:"Configuration",users:"User Management",version:"Version History",syslogs:"System Logs",sysdocs:"How it works (System)"};
+// ── System Logs (admin, user 2026-07-04): health cards + log table + clickable charts ──────────────
+let SL_ROWS=[], slSortK="ts", slSortDir=-1;
+function paintSyslogs(){
+  const by=fn=>SL_ROWS.reduce((m,e)=>{const v=fn(e)||'—';m[v]=(m[v]||0)+1;return m;},{});
+  const lvlCol=k=>k==="ERROR"?"var(--bear)":k==="WARNING"?"#d29922":k==="INFO"?"var(--accent)":"var(--muted)";
+  $("sl-viz").innerHTML=
+    `<div class="vizsector">`+barChart("Level",by(e=>e.level),"slf_level",lvlCol)+`</div>`+
+    `<div class="vizsector">`+barChart("Module",by(e=>e.logger),"slf_logger")+`</div>`+
+    `<div class="vizsector">`+barChart("Hour",by(e=>(e.ts||'').slice(11,13)+":00"),"slf_hour")+`</div>`;
+  let rows=SL_ROWS.filter(e=>inSet("slf_level",e.level)&&inSet("slf_logger",e.logger)&&inSet("slf_hour",(e.ts||'').slice(11,13)+":00"));
+  rows=genSort(rows,slSortK,slSortDir);
+  $("sl-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> log records${rows.length!==SL_ROWS.length?` <span class="muted">of ${SL_ROWS.length}</span>`:''}`;
+  $("sl-rows").innerHTML=rows.slice(0,400).map(e=>`<tr><td style="white-space:nowrap">${e.ts||''}</td><td><b style="color:${lvlCol(e.level)}">${e.level||''}</b></td><td>${e.logger||''}</td><td class="muted" style="white-space:normal;word-break:break-word">${(e.message||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No log records yet.</td></tr>`;
+}
+function renderSyslogs(){
+  fetch("/api/system-logs",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(j=>{
+      const h=j.health||{},c=h.db_counts||{};
+      const card=(icon,title,val,sub)=>`<div class="fcard"><div class="ic">${icon}</div><h3>${title}</h3><div class="body" style="font-size:20px;font-weight:700;color:var(--fg)">${val}</div><div class="muted" style="font-size:12px">${sub||''}</div></div>`;
+      $("sl-health").innerHTML=
+        card("⏱️","Uptime",`${h.uptime_mins??'?'} min`,`started ${h.server_started||'?'} · Python ${h.python||'?'}`)+
+        card("🗄️","Database",h.db_ping_ms!=null?`${h.db_ping_ms} ms`:"unreachable",h.db_error?h.db_error:`orders ${c.working_orders??'?'} · triggers ${c.hvf_triggers??'?'} · tweets ${c.x_publications??'?'}`)+
+        card("📊","Snapshot",`${h.snapshot_count??'?'} instruments`,`generated ${(h.snapshot_generated||'?').slice(0,16)}${h.refreshing?' · REFRESHING NOW':''}`)+
+        card("📋","Logs held",`${(j.logs||[]).length}`,`batch rows ${c.batch_activity??'?'} · activity rows ${c.activity_log??'?'}`);
+      SL_ROWS=j.logs||[];paintSyslogs();})
+    .catch(()=>{$("sl-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});
+}
+document.querySelectorAll("th[data-sk]").forEach(th=>th.onclick=()=>{const k=th.dataset.sk;slSortDir=(slSortK===k)?-slSortDir:-1;slSortK=k;paintSyslogs();});
 function renderUsers(){
   fetch("/api/users",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{const subs=j.subscriptions||["gold","silver","guest"];

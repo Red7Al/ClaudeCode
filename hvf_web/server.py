@@ -73,6 +73,26 @@ _X_HANDLE = "SqueezeSignals"   # our X account (config.py / publish_one_to_x X_H
 import threading as _threading
 _RENDER_LOCK = _threading.Lock()
 
+# ── System Logs (user 2026-07-04): keep the last 800 log records in memory for the admin tab. ─────────
+import collections as _collections
+import time as _time
+_SERVER_STARTED = _time.time()
+_LOG_RING = _collections.deque(maxlen=800)
+
+
+class _RingHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            _LOG_RING.append({
+                "ts": _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(record.created)),
+                "level": record.levelname, "logger": record.name,
+                "message": record.getMessage()[:400]})
+        except Exception:
+            pass
+
+
+logging.getLogger().addHandler(_RingHandler())
+
 # ── Login (user 2026-06-30): the Scanner + Pre-orders tabs need a login; Intro/Appendix stay open. ──
 # Credentials live in the SECURE store (hvf_web/web_users.py): PBKDF2-hashed passwords + Fernet-encrypted
 # per-user secrets in gitignored data/web_users.json — nothing in source (user 2026-06-30: settings are
@@ -158,6 +178,45 @@ def _version_entries():
         for e2 in entries:
             e2.setdefault("category", _version_category(e2.get("summary", "")))
     return entries
+
+
+@app.route("/api/system-logs")
+def api_system_logs():
+    """System health + recent server log records (user 2026-07-04, admin System Logs tab)."""
+    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+        return jsonify({"error": "admin only"}), 403
+    import sys as _sys
+    from datetime import datetime, timezone
+    snap = _load_snapshot()
+    health = {
+        "server_started": _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(_SERVER_STARTED)),
+        "uptime_mins": round((_time.time() - _SERVER_STARTED) / 60, 1),
+        "python": _sys.version.split()[0],
+        "snapshot_generated": snap.get("generated_utc"), "snapshot_count": snap.get("count"),
+        "refreshing": _REFRESHING.get("on", False),
+    }
+    try:
+        from db_pool import get_db
+        t0 = _time.time(); db = get_db()
+        try:
+            counts = {}
+            for label, q in (("working_orders", "select count(*) from working_orders"),
+                             ("x_publications", "select count(*) from x_publications"),
+                             ("batch_activity", "select count(*) from web_batch_activity"),
+                             ("activity_log", "select count(*) from web_activity_log"),
+                             ("hvf_triggers", "select count(*) from hvf_triggers")):
+                try:
+                    counts[label] = db.run(q)[0][0]
+                except Exception:
+                    counts[label] = None
+        finally:
+            db.close()
+        health["db_ping_ms"] = round((_time.time() - t0) * 1000)
+        health["db_counts"] = counts
+    except Exception as e:
+        health["db_ping_ms"] = None
+        health["db_error"] = str(e)[:120]
+    return jsonify({"health": health, "logs": list(_LOG_RING)[::-1]})
 
 
 @app.route("/api/version-history")

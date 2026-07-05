@@ -43,7 +43,7 @@ _INDEX_REGION = {
     "SPX500": "US", "NASDAQ": "US", "^DJI": "US", "^RUT": "US", "^GSPTSE": "US", "^BVSP": "US", "^MXX": "US",
     "UK100": "Europe (West)", "^FTMC": "Europe (West)", "^GDAXI": "Europe (West)", "^FCHI": "Europe (West)",
     "^STOXX50E": "Europe (West)", "^AEX": "Europe (West)", "^IBEX": "Europe (West)", "^SSMI": "Europe (West)",
-    "JPN225": "Asia", "HK50": "Asia", "^AXJO": "Asia", "^BSESN": "Asia", "^NSEI": "Asia", "^KS11": "Asia",
+    "JPN225": "Asia", "HK50": "Asia", "^AXJO": "Oceania", "^BSESN": "Asia", "^NSEI": "Asia", "^KS11": "Asia",
     "^TWII": "Asia", "^STI": "Asia", "000001.SS": "Asia",
 }
 
@@ -58,8 +58,10 @@ def _location_of(ticker: str, market: str = "") -> str:
         return "UK"
     if t.endswith(".DE"):                 # German equities (user 2026-07-03)
         return "Europe (West)"
-    if t.endswith(".SS") or t.endswith(".HK"):   # Shanghai / Hong Kong equities
+    if t.endswith(".SS") or t.endswith(".HK") or t.endswith(".T") or t.endswith(".NS"):   # Shanghai / Hong Kong equities
         return "Asia"
+    if t.endswith(".AX"):
+        return "Oceania"
     return "US"
 
 
