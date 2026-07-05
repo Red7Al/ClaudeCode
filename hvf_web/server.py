@@ -661,7 +661,9 @@ def api_positions():
                 db.close()
         except Exception:
             pass
-        for pos in (ig_shim.get_open_positions() or []):
+        with ig_shim._IG_LOCK:      # serialise vs a per-user place-order session swap (user 2026-07-03)
+            _positions = ig_shim.get_open_positions() or []
+        for pos in _positions:
             mk = pos.get("market", {}) or {}
             tk = epic2tk.get(str(mk.get("epic"))) or mk.get("instrumentName") or mk.get("epic")
             if tk:
@@ -1081,8 +1083,11 @@ def api_place_order():
         return jsonify({"ok": False, "error": "no signal for that instrument"}), 400
     try:
         from run_session import get_user_profile
-        from ig_shim import place_hvf_order_from_sig
-        wo = place_hvf_order_from_sig(sig, get_user_profile(), "WEB_MANUAL", 1.0)
+        import ig_shim
+        # Place using the ACTING user's OWN IG session (user 2026-07-03): owner -> env creds; a
+        # non-owner -> their own credentials (or blocked above). The swap is serialised under _IG_LOCK.
+        with ig_shim.acting_session(name):
+            wo = ig_shim.place_hvf_order_from_sig(sig, get_user_profile(), "WEB_MANUAL", 1.0)
     except Exception as e:
         log.warning(f"manual place-order {tk} failed: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500

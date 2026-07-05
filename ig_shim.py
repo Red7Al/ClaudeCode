@@ -23,6 +23,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.23.0  2026-07-03  Alex Hind   (user 2026-07-03, #11) Per-user live routing for the LOCAL web server: acting_session
+#                                 (login) context manager swaps the module-global `session` to that login's own session
+#                                 under _IG_LOCK for one operation (owner = no-op; non-owner w/o creds RAISES). /api/place-
+#                                 order wraps placement in it; /api/positions read serialised under the same lock. Actions
+#                                 monitors (separate process) unaffected. Remaining: per-login engine config + a real 2nd-
+#                                 account demo test before enabling a second live trader.
 # 1.22.0  2026-07-03  Alex Hind   (user 2026-07-03 "each user must use their own IG credentials") IGSession is now
 #                                 credential-parameterizable (defaults to env creds — global singleton byte-identical);
 #                                 _resolve_ig_creds(login) reads a login's own IG creds from web_users; session_for(login)
@@ -424,6 +430,35 @@ def session_for(login: str = None) -> Optional["IGSession"]:
                   password=creds["password"], account_id=creds["account_id"], login=login)
     _SESSION_POOL[login] = s
     return s
+
+
+# All local (web-server) IG access is serialised through this lock so the module-global `session`
+# can be temporarily swapped to a specific user's session for the duration of one operation without
+# leaking to a concurrent request/thread (user 2026-07-03, per-user live routing). The GitHub-Actions
+# monitors run in a separate process with only the global session, so they're unaffected.
+import threading as _threading
+_IG_LOCK = _threading.RLock()
+
+
+import contextlib as _contextlib
+
+
+@_contextlib.contextmanager
+def acting_session(login: str = None):
+    """Run an IG operation as `login`: swap the module-global `session` to that login's own session
+    for the duration, under _IG_LOCK. Owner/None is a no-op swap (already the global). Raises if a
+    non-owner has no credentials of their own — so an order is NEVER placed on someone else's account."""
+    global session
+    s = session_for(login)
+    if s is None:
+        raise RuntimeError(f"{login} has no IG credentials of their own")
+    with _IG_LOCK:
+        orig = session
+        session = s
+        try:
+            yield s
+        finally:
+            session = orig
 
 
 # ======================================================================================================================
