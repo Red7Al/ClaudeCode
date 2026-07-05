@@ -1070,10 +1070,10 @@ def api_place_order():
 
 @app.route("/api/x-posts")
 def api_x_posts():
-    """All tweets we've published (user 2026-07-03, X tab). Login-gated. Each row carries the tweet
+    """All tweets we've published (user 2026-07-03, X tab). ADMIN-only. Each row carries the tweet
     URL, thread size, and the instrument name/market from the snapshot for filtering."""
-    if request.headers.get("X-Auth") not in _wu.valid_tokens():
-        return jsonify({"error": "login required"}), 401
+    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+        return jsonify({"error": "admin only"}), 403
     snap = {r.get("ticker"): r for r in _load_snapshot().get("records", [])}
     rows = []
     try:

@@ -950,7 +950,7 @@ const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
 const TABS=["welcome","intro","appendix","scanner","preorders","orderops","xposts","activity","batch","users","config","version"];
 const PUBLIC_TABS=["welcome","intro","appendix","scanner"];   // visible when logged out
-const ADMIN_TABS=["batch","users","version"];                 // admin only
+const ADMIN_TABS=["batch","users","version","xposts"];        // admin only (xposts also admin, user 2026-07-03)
 const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
 let FEATURES={xposts:false};
 let AUTH=localStorage.getItem("sq_auth")||"";
