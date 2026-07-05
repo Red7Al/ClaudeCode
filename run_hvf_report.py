@@ -325,11 +325,63 @@ CRYPTO = [
     "BNBUSD",   # BNB       (BNB-USD)
 ]
 
+
+GERMANY = [
+    # Top German equities (DAX 40 + MDAX, .DE) by market cap — Yahoo-verified (user 2026-07-03).
+    "SAP.DE", "SIE.DE", "ALV.DE", "DTE.DE", "AIR.DE", "MBG.DE", "BMW.DE", "VOW3.DE",
+    "BAS.DE", "BAYN.DE", "ADS.DE", "MUV2.DE", "DHL.DE", "IFX.DE", "DB1.DE", "EOAN.DE",
+    "RWE.DE", "HEN3.DE", "MRK.DE", "DBK.DE", "VNA.DE", "BEI.DE", "HEI.DE", "FRE.DE",
+    "CON.DE", "PAH3.DE", "PUM.DE", "QIA.DE", "RHM.DE", "SRT3.DE", "SHL.DE", "SY1.DE",
+    "ZAL.DE", "ENR.DE", "MTX.DE", "BNR.DE", "CBK.DE", "HNR1.DE", "DTG.DE", "P911.DE",
+    "AFX.DE", "BC8.DE", "BOSS.DE", "EVK.DE", "EVT.DE", "FRA.DE", "HFG.DE", "JUN3.DE",
+    "KGX.DE", "KRN.DE", "LEG.DE", "LHA.DE", "LXS.DE", "NDA.DE", "NEM.DE", "PSM.DE",
+    "RAA.DE", "SDF.DE", "TEG.DE", "TKA.DE", "UTDI.DE", "WCH.DE", "G1A.DE", "AIXA.DE",
+    "DUE.DE", "FPE3.DE", "FIE.DE", "GXI.DE", "HLE.DE", "SAX.DE", "SZG.DE", "COK.DE",
+    "TLX.DE", "G24.DE", "NDX1.DE", "PBB.DE", "S92.DE", "BFSA.DE", "ADN1.DE", "DBAN.DE",
+    "DEQ.DE", "DWNI.DE", "ELG.DE", "GBF.DE", "HAB.DE", "INH.DE", "KWS.DE", "NOEJ.DE",
+    "PFV.DE", "SFQ.DE", "STO3.DE", "TTK.DE", "WAF.DE", "WSU.DE",
+]
+
+SHANGHAI = [
+    # Top Shanghai-listed equities (.SS: 600/601/603/605/688 boards) by market cap — Yahoo-verified.
+    "600519.SS", "601398.SS", "601288.SS", "601857.SS", "600036.SS", "601988.SS", "600028.SS", "601318.SS",
+    "600030.SS", "600276.SS", "600887.SS", "601668.SS", "600900.SS", "601628.SS", "600016.SS", "601166.SS",
+    "600000.SS", "601088.SS", "600809.SS", "603288.SS", "688981.SS", "601012.SS", "600585.SS", "601390.SS",
+    "601601.SS", "600309.SS", "603259.SS", "600438.SS", "601336.SS", "601899.SS", "601138.SS", "600690.SS",
+    "600104.SS", "601111.SS", "600050.SS", "601818.SS", "601066.SS", "601211.SS", "601688.SS", "600745.SS",
+    "603501.SS", "688111.SS", "688012.SS", "600031.SS", "600406.SS", "601225.SS", "601985.SS", "601998.SS",
+    "600048.SS", "601009.SS", "601377.SS", "600588.SS", "600570.SS", "600346.SS", "603986.SS", "600011.SS",
+    "600362.SS", "600018.SS", "601186.SS", "601800.SS", "601328.SS", "601169.SS", "600919.SS", "603260.SS",
+    "688036.SS", "688169.SS", "600893.SS", "600703.SS", "600760.SS", "601633.SS", "600886.SS", "601238.SS",
+    "601607.SS", "603799.SS", "600460.SS", "688396.SS", "600426.SS", "603195.SS", "605499.SS", "600089.SS",
+    "600009.SS", "601319.SS", "601360.SS", "601995.SS", "688008.SS", "600732.SS", "600233.SS", "600183.SS",
+    "600522.SS", "600845.SS", "600741.SS", "601618.SS", "601728.SS", "600583.SS", "601788.SS", "600157.SS",
+]
+
+HONGKONG = [
+    # Top Hong Kong equities (.HK) by market cap — Yahoo-verified (user 2026-07-03).
+    "0700.HK", "0941.HK", "1299.HK", "0005.HK", "9988.HK", "3690.HK", "0939.HK", "1398.HK",
+    "0883.HK", "2318.HK", "0388.HK", "1810.HK", "0016.HK", "0001.HK", "2628.HK", "0027.HK",
+    "0002.HK", "0003.HK", "0006.HK", "0012.HK", "0066.HK", "0175.HK", "1211.HK", "2020.HK",
+    "2269.HK", "0288.HK", "0669.HK", "1024.HK", "9618.HK", "9999.HK", "3988.HK", "0762.HK",
+    "0857.HK", "0386.HK", "0688.HK", "0960.HK", "1109.HK", "0968.HK", "2382.HK", "0981.HK",
+    "1177.HK", "2331.HK", "2015.HK", "9868.HK", "1088.HK", "0836.HK", "0267.HK", "0322.HK",
+    "0291.HK", "0151.HK", "1928.HK", "0019.HK", "0017.HK", "0101.HK", "0083.HK", "1113.HK",
+    "0004.HK", "0345.HK", "6862.HK", "9633.HK", "2313.HK", "1044.HK", "1876.HK", "2319.HK",
+    "0868.HK", "6098.HK", "1997.HK", "0777.HK", "3968.HK", "1093.HK", "1099.HK", "6618.HK",
+    "9961.HK", "2359.HK", "1801.HK", "6160.HK", "2196.HK", "9926.HK", "0241.HK", "3692.HK",
+    "9922.HK", "0013.HK", "0992.HK", "0384.HK", "0270.HK", "1038.HK", "6823.HK", "2688.HK",
+    "1128.HK", "0880.HK", "2007.HK", "2202.HK", "0817.HK", "1918.HK",
+]
+
 UNIVERSE = {
     "FTSE 100":     FTSE100,
     "FTSE 250":     FTSE250,
     "NASDAQ 100":   NASDAQ100,       # listed before S&P 500 so dual-listed mega-caps file under NASDAQ
     "S&P 500":      SP500,
+    "Germany":      GERMANY,        # DAX 40 + MDAX (user 2026-07-03)
+    "Shanghai":     SHANGHAI,       # top Shanghai-listed equities (user 2026-07-03)
+    "Hong Kong":    HONGKONG,       # top Hong Kong equities (user 2026-07-03)
     "Commodities":  COMMODITIES,    # metals + energy
     "Indices":      INDICES,        # major market indices (split from "Indices & FX", user 2026-06-30)
     "FX":           FX,             # currency pairs (split from "Indices & FX", user 2026-06-30)
@@ -691,7 +743,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str, per_market_n: int 
         "text": {"type": "mrkdwn",
                  "text": (f"*{len(tradeable)} tradeable* (READY/TRIGGERED ≥{HVF_MIN_RR}:1 R:R)  |  "
                           f"*{len(developing)} developing* (valid pattern, R:R < {HVF_MIN_RR}:1)\n"
-                          f"Scanned: FTSE 100 · FTSE 250 · NASDAQ 100 · S&P 500 · Commodities · Indices · FX · Crypto")}
+                          f"Scanned: FTSE 100 · FTSE 250 · NASDAQ 100 · S&P 500 · Germany · Shanghai · Hong Kong · Commodities · Indices · FX · Crypto")}
     })
     blocks.append({"type": "divider"})
 

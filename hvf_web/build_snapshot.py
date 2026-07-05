@@ -56,6 +56,10 @@ def _location_of(ticker: str, market: str = "") -> str:
         return _INDEX_REGION.get(ticker, "Other")
     if t.endswith(".L"):
         return "UK"
+    if t.endswith(".DE"):                 # German equities (user 2026-07-03)
+        return "Europe (West)"
+    if t.endswith(".SS") or t.endswith(".HK"):   # Shanghai / Hong Kong equities
+        return "Asia"
     return "US"
 
 

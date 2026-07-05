@@ -171,6 +171,10 @@ def location_of_ticker(ticker: str) -> str:
         return "FX"
     if t.endswith(".L"):
         return "UK"
+    if t.endswith(".DE"):
+        return "Europe (West)"
+    if t.endswith(".SS") or t.endswith(".HK"):
+        return "Asia"
     return "US"
 
 
