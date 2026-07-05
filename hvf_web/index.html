@@ -194,6 +194,7 @@ a{transition:color .15s ease}
   <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner (Report) <span id="sctab-count"></span></button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')" style="display:none">My Pre-orders <span id="potab-count"></span></button>
   <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Order (Operations)</button>
+  <button class="tab" id="tab-xposts" onclick="showTab('xposts')" style="display:none">X Posts</button>
   <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My Activity</button>
   <button class="tab" id="tab-batch" onclick="showTab('batch')" style="display:none">Batch Activity</button>
   <button class="tab" id="tab-users" onclick="showTab('users')" style="display:none">User Management</button>
@@ -352,6 +353,23 @@ a{transition:color .15s ease}
   </div>
 </div>
 
+<div id="view-xposts" class="hidden doc" style="max-width:1240px">
+  <input type="hidden" id="xf_ticker"><input type="hidden" id="xf_market"><input type="hidden" id="xf_month">
+  <span class="eyebrow">Publishing</span>
+  <h1>X Posts</h1>
+  <p class="lede">Every tweet we've published, newest first. Click a chart to filter; click a row's link to open the tweet on X.</p>
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
+      <div class="count" style="padding-left:0;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span id="x-count"></span><span class="grow"></span><span id="x-datebar"></span></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th data-xk="published_at">Published (UTC)</th><th data-xk="ticker">Ticker</th><th data-xk="name">Name</th><th data-xk="market">Market</th><th data-xk="thread">Thread</th><th style="cursor:default">Link</th></tr></thead>
+        <tbody id="x-rows"></tbody>
+      </table></div>
+    </section>
+    <div class="viz" id="x-viz" style="border-bottom:none;padding:0;flex:0 0 auto;flex-direction:column"></div>
+  </div>
+</div>
+
 <div id="view-config" class="hidden doc" style="max-width:840px">
   <span class="eyebrow">Settings</span>
   <h1>Configuration</h1>
@@ -407,6 +425,7 @@ a{transition:color .15s ease}
       <div class="credrow"><span class="clabel">Min senator trades</span><input type="number" min="1" step="1" id="eng-min_senator_trades" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Spread retry attempts</span><input type="number" min="0" step="1" id="eng-spread_retry_attempts" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Spread retry wait (secs)</span><input type="number" min="0" step="1" id="eng-spread_retry_wait_secs" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Show "X Posts" tab (all users)</span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="feat-xposts" onchange="saveFeatures()"> Enabled</label></div>
       <button class="btn" style="margin-top:10px" onclick="saveEngine()">Save engine settings</button>
       <span id="eng-msg" style="font-size:12px;margin-left:8px"></span>
     </div>
@@ -890,6 +909,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   else if(k==="acf_cat")paintActivity();
   else if(k==="vcf_category"||k==="vmf_month")paintVersion();
   else if(k.startsWith("bcf_"))paintBatch();
+  else if(k.startsWith("xf_"))paintXposts();
   else applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
 const MF_IDS=["mf_sector","mf_direction","mf_status","mf_location","mf_market","mf_timeframe"];
@@ -928,13 +948,16 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 let PINNED=new Set();   // tickers the user pushed to Pre-orders from the Scanner (user 2026-07-03)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","config","version"];
+const TABS=["welcome","intro","appendix","scanner","preorders","orderops","xposts","activity","batch","users","config","version"];
 const PUBLIC_TABS=["welcome","intro","appendix","scanner"];   // visible when logged out
 const ADMIN_TABS=["batch","users","version"];                 // admin only
+const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
+let FEATURES={xposts:false};
 let AUTH=localStorage.getItem("sq_auth")||"";
 let ROLE="guest", IS_ADMIN=false, HIDDEN_TABS=[];
 // Which tabs the current session may see (login + role + per-user tab-visibility choices).
 function tabAllowed(t){
+  if(FEATURE_TABS.includes(t)&&!FEATURES[t])return false;   // feature tab off by default (user 2026-07-03)
   if(ADMIN_TABS.includes(t)&&!IS_ADMIN)return false;    // admin tabs require admin
   if(!PUBLIC_TABS.includes(t)&&!AUTH)return false;      // login-required tab, not logged in
   if(t==="config")return true;                          // config always available once logged in
@@ -976,13 +999,32 @@ function showTab(name){
   if(!locked&&name==="preorders")renderPreorders();
   if(!locked&&name==="activity")renderActivity();
   if(!locked&&name==="orderops")renderOrderOps();
+  if(!locked&&name==="xposts")renderXposts();
   if(!locked&&name==="config")renderConfig();
   if(name==="users")renderUsers();
   if(name==="version")renderVersion();
   if(name==="batch")renderBatch();
 }
+// ── X Posts tab (user 2026-07-03): all published tweets + charts, click-to-filter, sortable. ──
+let X_ROWS=[], xSortK="published_at", xSortDir=-1;
+const _xmonth=e=>(e.published_at||'').slice(0,7);
+function paintXposts(){
+  const by=fn=>X_ROWS.reduce((m,e)=>{const v=fn(e)||'—';m[v]=(m[v]||0)+1;return m;},{});
+  $("x-viz").innerHTML=
+    `<div class="vizsector">`+barChart("Ticker",by(e=>disp(e.ticker)),"xf_ticker")+`</div>`+
+    `<div class="vizsector">`+barChart("Market",by(e=>e.market),"xf_market")+`</div>`+
+    `<div class="vizsector">`+barChart("Month",by(_xmonth),"xf_month")+`</div>`;
+  if($("x-datebar")&&!$("x-datebar").innerHTML)$("x-datebar").innerHTML=dateFilterBar("x","paintXposts()");
+  let rows=X_ROWS.filter(e=>inSet("xf_ticker",disp(e.ticker))&&inSet("xf_market",e.market)&&inSet("xf_month",_xmonth(e)));
+  rows=applyDateFilter("x",rows,e=>e.published_at);
+  rows=genSort(rows,xSortK,xSortDir);
+  $("x-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> tweets${rows.length!==X_ROWS.length?` <span class="muted">of ${X_ROWS.length}</span>`:''}`;
+  $("x-rows").innerHTML=rows.map(e=>`<tr><td>${e.published_at||''}</td><td><b>${disp(e.ticker)}</b></td><td>${e.name||''}</td><td>${e.market||''}</td><td>${e.thread>1?e.thread+' pts':'1'}</td><td><a href="${e.url}" target="_blank" rel="noopener">open ↗</a></td></tr>`).join("")||`<tr><td colspan="6" class="empty">No tweets yet.</td></tr>`;
+}
+function renderXposts(){fetch("/api/x-posts",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{X_ROWS=j.rows||[];paintXposts();}).catch(()=>{$("x-rows").innerHTML=`<tr><td colspan="6" class="empty">Could not load — try logging in again.</td></tr>`;});}
+document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.dataset.xk;xSortDir=(xSortK===k)?-xSortDir:-1;xSortK=k;paintXposts();});
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
-const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner (Report)",
+const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner (Report)",xposts:"X Posts",
   preorders:"My Pre-orders",orderops:"Order (Operations)",activity:"My Activity",batch:"Batch Activity",
   config:"Configuration",users:"User Management",version:"Version History"};
 function renderUsers(){
@@ -1116,6 +1158,7 @@ function renderConfig(){
       // Engine settings (admin only): show the pill + fill inputs.
       if($("pill-engine"))$("pill-engine").style.display=j.is_admin?"":"none";
       if(j.engine)Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});
+      if(j.features){FEATURES=j.features;if($("feat-xposts"))$("feat-xposts").checked=!!j.features.xposts;}
       const n=Object.keys(USER_FILTERS).length;
       $("cfg-defaults").textContent=n?("Saved defaults: "+Object.entries(USER_FILTERS).map(([k,v])=>`${k.replace('f_','')}=${v}`).join(" · ")):"No saved defaults yet — using the built-in ones.";
       $("cfg-exec").innerHTML=(j.exec_sources||[]).map(s=>{const on=(j.exec||{})[s]!==false;
@@ -1139,6 +1182,12 @@ function saveFilterDefaults(){
 function clearFilterDefaults(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({filters:{}})})
     .then(()=>{USER_FILTERS={};renderConfig();});
+}
+function saveFeatures(){
+  const feat={xposts:$("feat-xposts").checked};
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({features:feat})})
+    .then(r=>{if(!r.ok)throw 0;FEATURES=feat;applyTabVisibility();$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="Feature saved.";})
+    .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});
 }
 function saveEngine(){
   const eng={};["wo_lifespan_days","x_max_per_day","superinvestor_lookback_days","min_senator_trades","spread_retry_attempts","spread_retry_wait_secs"].forEach(k=>{const v=parseFloat($("eng-"+k).value);if(v>=0)eng[k]=v;});
@@ -1330,7 +1379,7 @@ fetch("/api/me",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(m=>{
   ROLE=m.subscription||"guest"; IS_ADMIN=!!m.is_admin;
   if(m.name)$("logout").textContent=`${m.name}${m.is_admin?" (admin)":""} · Log out`;   // who's logged in
   return AUTH?fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({})):{};
-}).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[]; if(cfg&&cfg.leverage)LEVERAGE=cfg.leverage; PINNED=new Set((cfg&&cfg.pinned_preorders)||[]);})
+}).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[]; if(cfg&&cfg.leverage)LEVERAGE=cfg.leverage; PINNED=new Set((cfg&&cfg.pinned_preorders)||[]); if(cfg&&cfg.features)FEATURES=cfg.features;})
   .catch(()=>{}).finally(()=>{applyTabVisibility();showTab("welcome");});
 if(AUTH)$("logout").style.display="";
 let LIMITED=false;

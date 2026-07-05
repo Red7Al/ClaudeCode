@@ -240,7 +240,8 @@ def api_config():
                         "trade": _cs.get_trade_filters(),
                         "hidden_tabs": s.get("hidden_tabs", []), "leverage": lev,
                         "pinned_preorders": s.get("pinned_preorders", []),
-                        "engine": _cs.get_engine_settings(), "is_admin": _wu.is_admin(name)})
+                        "engine": _cs.get_engine_settings(), "is_admin": _wu.is_admin(name),
+                        "features": {"xposts": _cs.get_value("feature_xposts", "false") == "true"}})
     body = request.get_json(silent=True) or {}
     if "trade" in body:
         t = body["trade"] or {}
@@ -261,6 +262,13 @@ def api_config():
         s["hidden_tabs"] = [t for t in (body["hidden_tabs"] or []) if isinstance(t, str) and t != "config"]
         _wu.set_settings(name, s)
         _wu.log_event(name, "Saved tab visibility (Config)")
+    if "features" in body:
+        if not _wu.is_admin(name):
+            return jsonify({"ok": False, "error": "admin only"}), 403
+        for k in ("xposts",):
+            if k in (body["features"] or {}):
+                _cs.set_value(f"feature_{k}", "true" if body["features"][k] else "false", updated_by=name)
+        _wu.log_event(name, "Saved feature toggles (Config)")
     if "engine" in body:
         if not _wu.is_admin(name):
             return jsonify({"ok": False, "error": "admin only"}), 403
@@ -1058,6 +1066,34 @@ def api_place_order():
     _wu.log_event(name, f"Manually placed order: {tk}" + (f" ({wo.get('status')})" if wo else " (not placed)"))
     _append_batch("Manual (web)", f"Placed {tk} order", by=name)
     return jsonify({"ok": bool(wo), "status": (wo or {}).get("status"), "placed": bool(wo)})
+
+
+@app.route("/api/x-posts")
+def api_x_posts():
+    """All tweets we've published (user 2026-07-03, X tab). Login-gated. Each row carries the tweet
+    URL, thread size, and the instrument name/market from the snapshot for filtering."""
+    if request.headers.get("X-Auth") not in _wu.valid_tokens():
+        return jsonify({"error": "login required"}), 401
+    snap = {r.get("ticker"): r for r in _load_snapshot().get("records", [])}
+    rows = []
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            for r in (db.run("select ticker, tweet_id, published_at::timestamp(0), thread_ids "
+                             "from x_publications order by published_at desc limit 500") or []):
+                tk, tid, pub, thread = r[0], r[1], str(r[2] or ""), (r[3] or "")
+                srec = snap.get(tk) or {}
+                n = len([x for x in thread.split(",") if x.strip()]) if thread else 1
+                rows.append({"ticker": tk, "name": srec.get("name") or "",
+                             "market": srec.get("market") or "", "sector": srec.get("sector") or "",
+                             "published_at": pub, "tweet_id": tid, "thread": n,
+                             "url": f"https://x.com/{_X_HANDLE}/status/{tid}"})
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"x-posts lookup failed: {e}")
+    return jsonify({"rows": rows})
 
 
 @app.route("/api/order-ops")
