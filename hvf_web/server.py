@@ -131,9 +131,12 @@ def _version_category(summary: str) -> str:
     return "Feature"
 
 
+_VERSION_FLOOR = "2026-06-04"   # project started 4 June 2026 — hide anything on/before 3 June (user 2026-07-04)
+
+
 def _version_entries():
     """Version history built LIVE from git log so it's always current (user 2026-07-03), with a
-    file fallback. Categorised."""
+    file fallback. Categorised. Entries before the project start are hidden."""
     entries = []
     try:
         import subprocess
@@ -144,11 +147,14 @@ def _version_entries():
             if not ln.strip():
                 continue
             date, ver, summ = ln.split("|", 2)
+            if date <= _VERSION_FLOOR:
+                continue                     # before project start — hidden
             entries.append({"date": date, "version": ver, "summary": summ.strip(),
                             "category": _version_category(summ)})
     except Exception as e:
         log.warning(f"version history from git failed ({e}); using file")
-        entries = _read_json_entries(_VERSION_FILE)
+        entries = [e2 for e2 in _read_json_entries(_VERSION_FILE)
+                   if (e2.get("date") or "") > _VERSION_FLOOR]
         for e2 in entries:
             e2.setdefault("category", _version_category(e2.get("summary", "")))
     return entries

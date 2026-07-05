@@ -36,7 +36,7 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 .count{padding:8px 16px;color:var(--muted);font-size:12px}
 .viz{display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:stretch}
 .vizsector{flex:none}
-.vizbars{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px 12px;flex:1;min-width:0;align-items:stretch}
+.vizbars{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:10px 12px;flex:1;min-width:0;align-items:stretch}
 .vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;height:100%}
 .vizbox h5{margin:0 0 6px;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}
 .bars{display:flex;flex-direction:column;gap:3px;min-width:120px}
@@ -333,9 +333,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <div id="view-orderops" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
   <span class="eyebrow">Trading</span>
-  <h1>Pre-orders to my IG</h1>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><h1 style="margin:0 0 12px">Pre-orders to my IG</h1><span class="grow"></span><span style="font-size:18px">📅</span><span id="oo-datebar"></span></div>
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
-  <div class="filterbar">📅 <span id="oo-datebar"></span></div>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 700px;min-width:0">
       <div class="count" style="padding-left:0"><span id="oo-count"></span></div>
@@ -349,11 +348,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <div id="view-xposts" class="hidden doc" style="max-width:1240px">
-  <input type="hidden" id="xf_ticker"><input type="hidden" id="xf_market"><input type="hidden" id="xf_month">
+  <input type="hidden" id="xf_ticker"><input type="hidden" id="xf_market"><input type="hidden" id="xf_month"><input type="hidden" id="xf_mweek">
   <span class="eyebrow">Publishing</span>
-  <h1>X Posts</h1>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><h1 style="margin:0 0 12px">X Posts</h1><span class="grow"></span><span style="font-size:18px">📅</span><span id="x-datebar"></span></div>
   <p class="lede">Every tweet we've published, newest first. Click a chart to filter; click a row's link to open the tweet on X.</p>
-  <div class="filterbar">📅 <span id="x-datebar"></span></div>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
       <div class="count" style="padding-left:0"><span id="x-count"></span></div>
@@ -417,8 +415,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
       <p class="muted" style="font-size:12px">Application-wide trading/engine values (shared, one account). Read DB-first by the engine (local + GitHub Actions) with a code fallback.</p>
       <div class="credrow"><span class="clabel">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="eng-wo_lifespan_days" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">Spread retry attempts</span><input type="number" min="0" step="1" id="eng-spread_retry_attempts" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">Spread retry wait (secs)</span><input type="number" min="0" step="1" id="eng-spread_retry_wait_secs" style="max-width:120px"></div>
       <button class="btn" style="margin-top:10px" onclick="saveEngine()">Save engine settings</button>
       <span id="eng-msg" style="font-size:12px;margin-left:8px"></span>
     </div>
@@ -446,6 +442,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="confpanel hidden" data-panel="trading_mo">
     <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">Trading (Momentum) — affects live orders</h3>
     <p class="muted" style="font-size:12px;margin:0 0 14px">Which monitor sources may place live orders.</p>
+    <div class="card"><h4>Spread retries <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+      <p class="muted" style="font-size:12px">When the quoted spread is too wide, how often and how long to retry before skipping the trade.</p>
+      <div class="credrow"><span class="clabel">Spread retry attempts</span><input type="number" min="0" step="1" id="eng-spread_retry_attempts" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Spread retry wait (secs)</span><input type="number" min="0" step="1" id="eng-spread_retry_wait_secs" style="max-width:120px"></div>
+      <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save spread retries</button>
+    </div>
     <div class="card" style="margin-bottom:0"><h4>Trade execution by source</h4>
       <p class="muted" style="font-size:12px">Yes = that source may place live IG trades/orders; No = it scans and reports but places <b>nothing</b>. These switches are shared (one trading account) — the change is attributed to you.</p>
       <div id="cfg-exec">loading…</div>
@@ -460,10 +462,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-batch" class="hidden doc" style="max-width:1240px">
   <span class="eyebrow">Admin</span>
-  <h1>Batch Activity</h1>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><h1 style="margin:0 0 12px">Batch Activity</h1><span class="grow"></span><span style="font-size:18px">📅</span><span id="batch-datebar"></span></div>
   <p class="lede">Execution log of the scheduled cron-job.org runs and the manual "Refresh data" button.</p>
-  <div class="filterbar">📅 <span id="batch-datebar"></span></div>
-  <input type="hidden" id="bcf_source"><input type="hidden" id="bcf_by"><input type="hidden" id="bcf_month">
+  <input type="hidden" id="bcf_source"><input type="hidden" id="bcf_by"><input type="hidden" id="bcf_month"><input type="hidden" id="bcf_mweek">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 520px;min-width:0">
       <div class="count" style="padding-left:0"><span id="batch-count"></span></div>
@@ -499,13 +500,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-version" class="hidden doc" style="max-width:1240px">
   <span class="eyebrow">Admin</span>
-  <h1>Version History</h1>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><h1 style="margin:0 0 12px">Version History</h1><span class="grow"></span><span style="font-size:18px">📅</span><span id="ver-datebar"></span></div>
   <p class="lede">A log of changes to the application — date, version and a summary.</p>
-  <div class="filterbar">📅 <span id="ver-datebar"></span></div>
-  <input type="hidden" id="vcf_category"><input type="hidden" id="vmf_month">
+  <input type="hidden" id="vcf_category"><input type="hidden" id="vmf_month"><input type="hidden" id="vmf_mweek">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
       <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><span id="ver-count"></span><span class="grow"></span>
+        <input id="ver-search" type="text" placeholder="Search summary…" oninput="paintVersion()" style="width:200px">
         <label class="muted" style="font-size:12px">Category <select id="ver-cat" onchange="$('vcf_category').value=this.value;paintVersion()" style="width:auto"><option value="">All</option><option>Data</option><option>Security</option><option>Presentation</option><option>Bug fix</option><option>Feature</option></select></label></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-vk="date" style="min-width:96px">Date</th><th data-vk="version" style="min-width:80px">Version</th><th data-vk="category" style="min-width:110px">Category</th><th data-vk="summary">Summary</th></tr></thead>
@@ -518,10 +519,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-activity" class="hidden doc" style="max-width:1240px">
   <span class="eyebrow">Account</span>
-  <h1>My Activity</h1>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><h1 style="margin:0 0 12px">My Activity</h1><span class="grow"></span><span style="font-size:18px">📅</span><span id="act-datebar"></span></div>
   <p class="lede">Your account's operational log — logins, password changes, pre-order actions, data refreshes and configuration changes. You only ever see your own entries.</p>
-  <div class="filterbar">📅 <span id="act-datebar"></span></div>
-  <input type="hidden" id="acf_cat">
+  <input type="hidden" id="acf_cat"><input type="hidden" id="acf_month"><input type="hidden" id="acf_mweek">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 480px;min-width:0">
       <div class="count" style="padding-left:0"><span id="act-count"></span></div>
@@ -912,8 +912,8 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   toggleIn(k, el.dataset.fv);          // multi-select: toggle this value in the set ("" = clear all)
   if(k.startsWith("pof_"))renderPreorders();
   else if(k.startsWith("oof_"))paintOrderOps();
-  else if(k==="acf_cat")paintActivity();
-  else if(k==="vcf_category"||k==="vmf_month")paintVersion();
+  else if(k.startsWith("acf_"))paintActivity();
+  else if(k.startsWith("vcf_")||k.startsWith("vmf_"))paintVersion();
   else if(k.startsWith("bcf_"))paintBatch();
   else if(k.startsWith("xf_"))paintXposts();
   else applyAll();});
@@ -1019,9 +1019,10 @@ function paintXposts(){
   $("x-viz").innerHTML=
     `<div class="vizsector">`+barChart("Ticker",by(e=>disp(e.ticker)),"xf_ticker")+`</div>`+
     `<div class="vizsector">`+barChart("Market",by(e=>e.market),"xf_market")+`</div>`+
-    `<div class="vizsector">`+barChart("Month",by(_xmonth),"xf_month")+`</div>`;
+    `<div class="vizsector">`+barChart("Month",by(_xmonth),"xf_month")+`</div>`+
+    `<div class="vizsector">`+barChart("Month-Week",by(e=>_mw(e.published_at)),"xf_mweek")+`</div>`;
   if($("x-datebar")&&!$("x-datebar").innerHTML)$("x-datebar").innerHTML=dateFilterBar("x","paintXposts()");
-  let rows=X_ROWS.filter(e=>inSet("xf_ticker",disp(e.ticker))&&inSet("xf_market",e.market)&&inSet("xf_month",_xmonth(e)));
+  let rows=X_ROWS.filter(e=>inSet("xf_ticker",disp(e.ticker))&&inSet("xf_market",e.market)&&inSet("xf_month",_xmonth(e))&&inSet("xf_mweek",_mw(e.published_at)));
   rows=applyDateFilter("x",rows,e=>e.published_at);
   rows=genSort(rows,xSortK,xSortDir);
   $("x-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> tweets${rows.length!==X_ROWS.length?` <span class="muted">of ${X_ROWS.length}</span>`:''}`;
@@ -1071,9 +1072,11 @@ function paintVersion(){
   const cats=VER_ROWS.reduce((m,e)=>{m[e.category||'Feature']=(m[e.category||'Feature']||0)+1;return m;},{});
   const months=VER_ROWS.reduce((m,e)=>{const v=_vmonth(e)||'—';m[v]=(m[v]||0)+1;return m;},{});
   $("ver-viz").innerHTML=`<div class="vizsector">`+barChart("By category",cats,"vcf_category")+`</div>`+
-    `<div class="vizsector">`+barChart("By month",months,"vmf_month")+`</div>`;
+    `<div class="vizsector">`+barChart("By month",months,"vmf_month")+`</div>`+
+    `<div class="vizsector">`+barChart("Month-Week",VER_ROWS.reduce((m,e)=>{const v=_mw(e.date);m[v]=(m[v]||0)+1;return m;},{}),"vmf_mweek")+`</div>`;
   if($("ver-datebar")&&!$("ver-datebar").innerHTML)$("ver-datebar").innerHTML=dateFilterBar("ver","paintVersion()");
-  let rows=VER_ROWS.filter(e=>inSet("vcf_category",e.category||'Feature')&&inSet("vmf_month",_vmonth(e)));
+  const _vq=(($("ver-search")||{}).value||"").trim().toLowerCase();
+  let rows=VER_ROWS.filter(e=>inSet("vcf_category",e.category||'Feature')&&inSet("vmf_month",_vmonth(e))&&inSet("vmf_mweek",_mw(e.date))&&(!_vq||(e.summary||'').toLowerCase().includes(_vq)));
   rows=applyDateFilter("ver",rows,e=>e.date);
   rows=genSort(rows,verSortK,verSortDir);
   const filt=(setOf("vcf_category")||setOf("vmf_month")||dateActive("ver"));
@@ -1088,10 +1091,11 @@ function paintBatch(){
   $("batch-viz").innerHTML=
     `<div class="vizsector">`+barChart("Source",by(e=>e.source),"bcf_source")+`</div>`+
     `<div class="vizsector">`+barChart("By",by(e=>e.by),"bcf_by")+`</div>`+
-    `<div class="vizsector">`+barChart("Month",by(_bmonth),"bcf_month")+`</div>`;
+    `<div class="vizsector">`+barChart("Month",by(_bmonth),"bcf_month")+`</div>`+
+    `<div class="vizsector">`+barChart("Month-Week",by(e=>_mw(e.ts)),"bcf_mweek")+`</div>`;
   if($("batch-datebar")&&!$("batch-datebar").innerHTML)$("batch-datebar").innerHTML=dateFilterBar("batch","paintBatch()");
   let rows=BATCH_ROWS;
-  [["bcf_source",e=>e.source],["bcf_by",e=>e.by],["bcf_month",_bmonth]].forEach(([id,fn])=>{
+  [["bcf_source",e=>e.source],["bcf_by",e=>e.by],["bcf_month",_bmonth],["bcf_mweek",e=>_mw(e.ts)]].forEach(([id,fn])=>{
     rows=rows.filter(e=>inSet(id,fn(e)));});
   rows=applyDateFilter("batch",rows,e=>e.ts);
   $("batab-count").textContent=`(${BATCH_ROWS.length})`;
@@ -1260,6 +1264,7 @@ function genSort(rows,k,dir){
     if(typeof x==="number"&&typeof y==="number")return (x-y)*dir;
     return String(x).localeCompare(String(y))*dir;});
 }
+const _mw=d=>{if(!d)return'—';const day=+String(d).slice(8,10)||1;return String(d).slice(0,7)+' W'+Math.min(5,Math.ceil(day/7));};   // Month-Week bucket
 let OO_ROWS=[], ooSortK="updated_at", ooSortDir=-1;
 function paintOrderOps(){
   const st=s=>s==="PENDING"?"var(--accent)":s==="FILLED"?"var(--bull)":s==="WATCHING"?"#d29922":"var(--muted)";
@@ -1307,9 +1312,12 @@ function paintActivity(){
   AC_ROWS.forEach(e=>e.cat=e.cat||actCat(e.event));
   // Category bar chart (user 2026-07-03) — a sorted bar per Zebra BI guide; click a bar to filter.
   const counts=AC_ROWS.reduce((m,e)=>{m[e.cat]=(m[e.cat]||0)+1;return m;},{});
-  $("act-viz").innerHTML=`<div class="vizsector">`+barChart("Activity by category",counts,"acf_cat")+`</div>`;
+  const _aby=fn=>AC_ROWS.reduce((m,e)=>{const v=fn(e)||'—';m[v]=(m[v]||0)+1;return m;},{});
+  $("act-viz").innerHTML=`<div class="vizsector">`+barChart("Activity by category",counts,"acf_cat")+`</div>`+
+    `<div class="vizsector">`+barChart("Month",_aby(e=>(e.ts||'').slice(0,7)),"acf_month")+`</div>`+
+    `<div class="vizsector">`+barChart("Month-Week",_aby(e=>_mw(e.ts)),"acf_mweek")+`</div>`;
   if($("act-datebar")&&!$("act-datebar").innerHTML)$("act-datebar").innerHTML=dateFilterBar("act","paintActivity()");
-  let rows=AC_ROWS.filter(e=>inSet("acf_cat",e.cat));
+  let rows=AC_ROWS.filter(e=>inSet("acf_cat",e.cat)&&inSet("acf_month",(e.ts||'').slice(0,7))&&inSet("acf_mweek",_mw(e.ts)));
   rows=applyDateFilter("act",rows,e=>e.ts);
   rows=genSort(rows,acSortK,acSortDir);
   const nsel=(setOf("acf_cat")||{}).size||0;
