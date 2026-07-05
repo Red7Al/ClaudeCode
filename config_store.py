@@ -28,8 +28,14 @@ _DDL = ("create table if not exists app_config ("
         "updated_by text, updated_at timestamptz not null default now())")
 _schema_ready = False
 
-# The trade-execution sources the Config tab offers (any *_MONITOR + the web bridge).
-EXEC_SOURCES = ["AUS_MONITOR", "UK_MONITOR", "US_MONITOR", "WEB_BRIDGE"]
+# The momentum trade-execution sources the Config tab offers (the *_MONITOR sessions). The squeeze
+# bridge (WEB_BRIDGE) is gated separately in Trading (Squeeze) — user 2026-07-03: not in Momentum.
+EXEC_SOURCES = ["AUS_MONITOR", "UK_MONITOR", "US_MONITOR"]
+EXEC_DESCRIPTIONS = {
+    "AUS_MONITOR": "Automatic trading in the Australian session (AUS equity market + overnight FX/commodities)",
+    "UK_MONITOR":  "Automatic trading in the UK session (FTSE 100/250 equities)",
+    "US_MONITOR":  "Automatic trading in the US session (NASDAQ / S&P 500 equities, every 5 minutes)",
+}
 
 
 def _ensure(db):

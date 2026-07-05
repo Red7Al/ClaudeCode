@@ -34,10 +34,10 @@ select,input{width:100%;background:var(--panel);color:var(--fg);border:1px solid
 .row2{display:flex;gap:6px} .row2 input{width:50%}
 main{flex:1;display:flex;flex-direction:column;min-width:0}
 .count{padding:8px 16px;color:var(--muted);font-size:12px}
-.viz{display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:flex-start}
+.viz{display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:stretch}
 .vizsector{flex:none}
-.vizbars{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px 12px;flex:1;min-width:0;align-items:start}
-.vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.vizbars{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px 12px;flex:1;min-width:0;align-items:stretch}
+.vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;height:100%}
 .vizbox h5{margin:0 0 6px;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}
 .bars{display:flex;flex-direction:column;gap:3px;min-width:120px}
 .bar{display:flex;align-items:center;gap:6px;font-size:11px}
@@ -100,13 +100,16 @@ body{font-family:var(--font);-webkit-font-smoothing:antialiased;text-rendering:o
 .tab{transition:background .15s ease,color .15s ease}
 a{transition:color .15s ease}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}   /* keyboard a11y */
+input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-family:var(--font)}
+:root.light input[type="date"]{color-scheme:light}
+.filterbar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 14px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;max-width:fit-content}
 
 /* Document pages (Introduction / How it works / Appendix) */
 .doc{padding:40px 32px;max-width:1120px;margin:0 auto}
 .doc .eyebrow{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);padding:5px 12px;border-radius:999px;margin-bottom:16px}
 .doc h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:0 0 12px}
-.doc .lede{font-size:17px;line-height:1.55;color:var(--muted);max-width:720px;margin:0 0 32px}
+.doc .lede{font-size:17px;line-height:1.55;color:var(--muted);max-width:none;margin:0 0 32px}
 .doc h2.sec{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
   margin:40px 0 16px;padding-bottom:8px;border-bottom:1px solid var(--line)}
 
@@ -181,7 +184,7 @@ a{transition:color .15s ease}
   <span class="count" id="gen"></span>
   <span class="grow"></span>
   <button class="btn" id="togglefilters">☰ Filters (Show)</button>
-  <button class="btn" id="signalonly">Show Squeeze Only ✓</button>
+  <button class="btn" id="signalonly">Show Squeeze Only <span style="color:var(--bull)">✓</span></button>
   <button class="btn" id="refresh">↻ Refresh data</button>
   <button class="btn" id="reset">Reset filters</button>
   <button class="btn" id="showall">Remove all filters (show all)</button>
@@ -191,13 +194,13 @@ a{transition:color .15s ease}
   <button class="tab active" id="tab-welcome" onclick="showTab('welcome')">Introduction</button>
   <button class="tab" id="tab-intro" onclick="showTab('intro')">How it works</button>
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
-  <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner (Report) <span id="sctab-count"></span></button>
+  <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner Report <span id="sctab-count"></span></button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')" style="display:none">My Pre-orders <span id="potab-count"></span></button>
-  <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Order (Operations)</button>
-  <button class="tab" id="tab-xposts" onclick="showTab('xposts')" style="display:none">X Posts</button>
-  <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My Activity</button>
-  <button class="tab" id="tab-batch" onclick="showTab('batch')" style="display:none">Batch Activity</button>
+  <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Pre-orders to my IG</button>
+  <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My Activity <span id="actab-count"></span></button>
+  <button class="tab" id="tab-batch" onclick="showTab('batch')" style="display:none">Batch Activity <span id="batab-count"></span></button>
   <button class="tab" id="tab-users" onclick="showTab('users')" style="display:none">User Management</button>
+  <button class="tab" id="tab-xposts" onclick="showTab('xposts')" style="display:none">X Posts</button>
   <button class="tab" id="tab-config" onclick="showTab('config')" style="display:none">Configuration</button>
   <button class="tab" id="tab-version" onclick="showTab('version')" style="display:none">Version History</button>
   <span class="grow"></span>
@@ -330,11 +333,12 @@ a{transition:color .15s ease}
 <div id="view-orderops" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
   <span class="eyebrow">Trading</span>
-  <h1>Order (Operations)</h1>
+  <h1>Pre-orders to my IG</h1>
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
+  <div class="filterbar">📅 <span id="oo-datebar"></span></div>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 700px;min-width:0">
-      <div class="count" style="padding-left:0;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span id="oo-count"></span><span class="grow"></span><span id="oo-datebar"></span></div>
+      <div class="count" style="padding-left:0"><span id="oo-count"></span></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
         <tbody id="oo-rows"></tbody>
@@ -349,9 +353,10 @@ a{transition:color .15s ease}
   <span class="eyebrow">Publishing</span>
   <h1>X Posts</h1>
   <p class="lede">Every tweet we've published, newest first. Click a chart to filter; click a row's link to open the tweet on X.</p>
+  <div class="filterbar">📅 <span id="x-datebar"></span></div>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
-      <div class="count" style="padding-left:0;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span id="x-count"></span><span class="grow"></span><span id="x-datebar"></span></div>
+      <div class="count" style="padding-left:0"><span id="x-count"></span></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-xk="published_at">Published (UTC)</th><th data-xk="ticker">Ticker</th><th data-xk="name">Name</th><th data-xk="market">Market</th><th data-xk="thread">Thread</th><th style="cursor:default">Link</th></tr></thead>
         <tbody id="x-rows"></tbody>
@@ -388,6 +393,7 @@ a{transition:color .15s ease}
     <div class="card"><h4>Tab visibility</h4>
       <p class="muted" style="font-size:12px;margin:0 0 8px">Tick the tabs you want to see. Configuration always stays visible.</p>
       <div id="tabvis-list" style="display:flex;flex-wrap:wrap;gap:6px 14px">loading…</div>
+      <div class="credrow" id="featrow-xposts" style="display:none"><span class="clabel">Show "X Posts" tab <span class="muted">(admin feature, applies to all admins)</span></span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="feat-xposts" onchange="saveFeatures()"> Enabled</label></div>
       <button class="btn" style="margin-top:10px" onclick="saveTabVis()">Save tab visibility</button>
       <span id="tabvis-msg" style="font-size:12px;margin-left:8px"></span>
     </div>
@@ -396,7 +402,7 @@ a{transition:color .15s ease}
   <!-- Leverage (Broker) panel — per-user leverage by instrument type (user 2026-07-03), all users -->
   <div class="confpanel hidden" data-panel="leverage">
     <div class="card" style="margin-bottom:0"><h4>Leverage (Broker) — by instrument type</h4>
-      <p class="muted" style="font-size:12px">Your broker's leverage for each instrument type. Shown as the <b>Leverage</b> column in the Scanner. Defaults: FX 100, Equities 10, Commodities 10, Indices 10.</p>
+      <p class="muted" style="font-size:12px">Your broker's leverage for each instrument type. Shown as the <b>Leverage</b> column in the Scanner. Defaults: FX 30, Equities 10, Commodities 10, Indices 10.</p>
       <div class="credrow"><span class="clabel">FX</span><input type="number" min="1" step="1" id="lev-fx" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Equities</span><input type="number" min="1" step="1" id="lev-equities" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Commodities</span><input type="number" min="1" step="1" id="lev-commodities" style="max-width:120px"></div>
@@ -411,12 +417,8 @@ a{transition:color .15s ease}
     <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
       <p class="muted" style="font-size:12px">Application-wide trading/engine values (shared, one account). Read DB-first by the engine (local + GitHub Actions) with a code fallback.</p>
       <div class="credrow"><span class="clabel">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="eng-wo_lifespan_days" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">X posts per day (max)</span><input type="number" min="0" step="1" id="eng-x_max_per_day" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">Superinvestor lookback (days)</span><input type="number" min="1" step="1" id="eng-superinvestor_lookback_days" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">Min senator trades</span><input type="number" min="1" step="1" id="eng-min_senator_trades" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Spread retry attempts</span><input type="number" min="0" step="1" id="eng-spread_retry_attempts" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Spread retry wait (secs)</span><input type="number" min="0" step="1" id="eng-spread_retry_wait_secs" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">Show "X Posts" tab (all users)</span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="feat-xposts" onchange="saveFeatures()"> Enabled</label></div>
       <button class="btn" style="margin-top:10px" onclick="saveEngine()">Save engine settings</button>
       <span id="eng-msg" style="font-size:12px;margin-left:8px"></span>
     </div>
@@ -427,6 +429,11 @@ a{transition:color .15s ease}
   <div class="confpanel hidden" data-panel="trading_sq">
     <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">Trading (Squeeze) — affects live orders</h3>
     <p class="muted" style="font-size:12px;margin:0 0 14px">Which squeeze setups may be traded on the live IG account.</p>
+    <div class="card"><h4>Automatic bridge execution</h4>
+      <p class="muted" style="font-size:12px">Yes = the 2-hourly bridge (and 28-day lifespan orders) may place squeeze setups as live IG working orders. No = the bridge scans and reports but places nothing.</p>
+      <div class="credrow"><span class="clabel">Bridge may place orders</span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="cfg-bridge" onchange="saveBridge()"> Yes</label></div>
+      <span id="bridge-msg" style="font-size:12px"></span>
+    </div>
     <div class="card" style="margin-bottom:0"><h4>Trade filters — direction, market</h4>
       <p class="muted" style="font-size:12px">Only ticked values may be traded. Ticking everything (or nothing) in a group = no restriction. Shared switches; changes are attributed to you and checked live before every trade.</p>
       <div id="cfg-trade">loading…</div>
@@ -455,10 +462,11 @@ a{transition:color .15s ease}
   <span class="eyebrow">Admin</span>
   <h1>Batch Activity</h1>
   <p class="lede">Execution log of the scheduled cron-job.org runs and the manual "Refresh data" button.</p>
+  <div class="filterbar">📅 <span id="batch-datebar"></span></div>
   <input type="hidden" id="bcf_source"><input type="hidden" id="bcf_by"><input type="hidden" id="bcf_month">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 520px;min-width:0">
-      <div class="count" style="padding-left:0;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span id="batch-count"></span><span class="grow"></span><span id="batch-datebar"></span></div>
+      <div class="count" style="padding-left:0"><span id="batch-count"></span></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-bk="ts">When (UTC)</th><th data-bk="source">Source</th><th data-bk="event">Event</th><th data-bk="by">By</th></tr></thead>
         <tbody id="batch-rows"></tbody>
@@ -493,14 +501,14 @@ a{transition:color .15s ease}
   <span class="eyebrow">Admin</span>
   <h1>Version History</h1>
   <p class="lede">A log of changes to the application — date, version and a summary.</p>
+  <div class="filterbar">📅 <span id="ver-datebar"></span></div>
   <input type="hidden" id="vcf_category"><input type="hidden" id="vmf_month">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
       <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><span id="ver-count"></span><span class="grow"></span>
-        <label class="muted" style="font-size:12px">Category <select id="ver-cat" onchange="$('vcf_category').value=this.value;paintVersion()" style="width:auto"><option value="">All</option><option>Data</option><option>Security</option><option>Presentation</option><option>Bug fix</option><option>Feature</option></select></label>
-        <span id="ver-datebar"></span></div>
+        <label class="muted" style="font-size:12px">Category <select id="ver-cat" onchange="$('vcf_category').value=this.value;paintVersion()" style="width:auto"><option value="">All</option><option>Data</option><option>Security</option><option>Presentation</option><option>Bug fix</option><option>Feature</option></select></label></div>
       <div class="tablewrap"><table>
-        <thead><tr><th data-vk="date">Date</th><th data-vk="version">Version</th><th data-vk="category">Category</th><th data-vk="summary">Summary</th></tr></thead>
+        <thead><tr><th data-vk="date" style="min-width:96px">Date</th><th data-vk="version" style="min-width:80px">Version</th><th data-vk="category" style="min-width:110px">Category</th><th data-vk="summary">Summary</th></tr></thead>
         <tbody id="ver-rows"></tbody>
       </table></div>
     </section>
@@ -510,14 +518,13 @@ a{transition:color .15s ease}
 
 <div id="view-activity" class="hidden doc" style="max-width:1240px">
   <span class="eyebrow">Account</span>
-  <h1>My activity</h1>
+  <h1>My Activity</h1>
   <p class="lede">Your account's operational log — logins, password changes, pre-order actions, data refreshes and configuration changes. You only ever see your own entries.</p>
+  <div class="filterbar">📅 <span id="act-datebar"></span></div>
   <input type="hidden" id="acf_cat">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 480px;min-width:0">
-      <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><span id="act-count"></span><span class="grow"></span>
-        <label class="muted" style="font-size:12px">Category <select id="act-cat" onchange="$('acf_cat').value=this.value;paintActivity()" style="width:auto"><option value="">All</option><option>Login</option><option>Password</option><option>Pre-orders</option><option>Data</option><option>Configuration</option><option>Security</option><option>Other</option></select></label>
-        <span id="act-datebar"></span></div>
+      <div class="count" style="padding-left:0"><span id="act-count"></span></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-ak="ts">When (UTC)</th><th data-ak="cat">Category</th><th data-ak="event">Event</th></tr></thead>
         <tbody id="act-rows"></tbody>
@@ -629,7 +636,7 @@ const LOC={UK:"United Kingdom",US:"United States",FX:"FX",
   "Europe (West)":"Europe (West)","Europe (East)":"Europe (East)","Asia":"Asia","Other":"Other"};
 const locName=v=>LOC[v]||v||"";
 // Broker leverage by instrument type (user 2026-07-03). Type derived from the instrument's market.
-let LEVERAGE={fx:100,equities:10,commodities:10,indices:10};
+let LEVERAGE={fx:30,equities:10,commodities:10,indices:10};
 function levType(r){const m=r.market||"";if(m==="FX")return"fx";if(m==="Indices")return"indices";if(m==="Commodities")return"commodities";if(m==="Crypto")return"equities";return"equities";}
 const levOf=r=>LEVERAGE[levType(r)];
 const f2=v=>(v==null||v==="")?"":(+v).toFixed(2);
@@ -763,12 +770,13 @@ function render(){
   const rows=DATA.filter(pass).sort((a,b)=>{
     const x=a[sortK],y=b[sortK];const av=x==null?-1e9:x,bv=y==null?-1e9:y;
     return (av<bv?-1:av>bv?1:0)*sortDir;});
-  $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} total</span>`+(LIMITED?` <b style="color:#d29922">· log in to unlock the full data</b>`:"");
+  const _nT=rows.filter(r=>r.status==="TRIGGERED").length,_nR=rows.filter(r=>r.status==="READY").length,_nD=rows.filter(r=>r.status==="DEVELOPING").length;
+  $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} scanned (${_nT} TRIGGERED · ${_nR} READY · ${_nD} DEVELOPING). Click a row to open its detail; use Filters or the charts to narrow.</span>`+(LIMITED?` <b style="color:#d29922">· log in to unlock the full data</b>`:"");
   $("sctab-count").textContent=`(${rows.length})`;
   renderViz(rows);
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
-    <td><span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></td>
+    <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
     <td>${r.days_since??''}</td>
     <td>${r.sector||''}</td><td>${ob(r.status||'')}</td><td>${ob(r.tgt_str||'')}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td>
@@ -796,7 +804,7 @@ function showDetail(t){
     <button class="btn" onclick="closeDetail()" style="float:right">✕ Close (back to list)</button>
     ${AUTH&&r.has_signal?`<button class="btn" onclick="pushToPreorder('${r.ticker}')" style="float:right;margin-right:8px">${(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker)))?'✓ In Pre-orders':'➕ Push to Pre-orders'}</button>`:''}
     <h2>${disp(r.ticker)} <span class="muted" style="font-size:13px">${r.name||''}</span> <span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></h2>
-    <div class="sub">${locName(r.location)} · ${r.market||''} · ${r.sector||''} · ${r.status} · Q${r.quality??'?'} · R:R ${r.rr!=null?r.rr.toFixed(2):'?'} · ${(r.timeframe||'').replace('daily-','D')}</div>
+    <div class="sub">${locName(r.location)} · ${r.market||''} · ${r.sector||''} · ${r.status||''} · Q${r.quality??'?'} · R:R ${r.rr!=null?r.rr.toFixed(2):'?'} · ${(r.timeframe||'').replace('daily-','D')}</div>
     <div class="card"><h4>Squeeze Rules 1–5 — justification</h4><div id="rulesbox">loading…</div></div>
     <div class="card"><h4>Quality (${r.quality??'?'}/100) — how it's scored</h4>
       <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the funnel is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric funnel; a low Q means a loose, older, or lopsided one.</div></div>
@@ -915,12 +923,12 @@ $("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id
   // Built-in defaults first, then the user's OWN saved defaults on top (Config tab, user 2026-07-03).
   $("f_qmin").value=45;$("f_rrmin").value=3.1;$("f_dsmax").value=90;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;
   applyUserDefaults();applyAll();};
-$("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");signalOnly=false;$("signalonly").textContent="Show Squeeze Only ✗";$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
+$("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");signalOnly=false;$("signalonly").innerHTML='Show Squeeze Only <span style="color:var(--bear)">✗</span>';$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
 $("togglefilters").onclick=()=>{const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").textContent="☰ Filters ("+(hidden?"Show":"Hide")+")";};
-$("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").textContent="Show Squeeze Only "+(signalOnly?"✓":"✗");applyAll();};
+$("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").innerHTML="Show Squeeze Only "+(signalOnly?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');applyAll();};
 let _refStart=0, _lastTens=-1;
 $("refresh").onclick=()=>{ if($("refresh").disabled)return;
-  if(!confirm(`Rebuild the snapshot now? Scans the full universe (${DATA.length} instruments) — takes a few minutes. The page keeps working with current data and reloads automatically when done.`))return;
+  if(!confirm(`Rebuild the snapshot now? Scans the full universe (${DATA.length||'884+'} instruments) — takes a few minutes. The page keeps working with current data and reloads automatically when done.`))return;
   $("refresh").disabled=true; $("refresh").textContent="↻ Starting…"; _refStart=Date.now(); _lastTens=-1;
   fetch("/api/refresh",{method:"POST",headers:{"X-Auth":AUTH}}).then(x=>x.json()).then(j=>{ pollRefresh(); })
     .catch(()=>{$("refresh").textContent="↻ Refresh failed";$("refresh").disabled=false;});};
@@ -946,7 +954,7 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 let PINNED=new Set();   // tickers the user pushed to Pre-orders from the Scanner (user 2026-07-03)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","intro","appendix","scanner","preorders","orderops","xposts","activity","batch","users","config","version"];
+const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","xposts","config","version"];
 const PUBLIC_TABS=["welcome","intro","appendix","scanner"];   // visible when logged out
 const ADMIN_TABS=["batch","users","version","xposts"];        // admin only (xposts also admin, user 2026-07-03)
 const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
@@ -1022,8 +1030,8 @@ function paintXposts(){
 function renderXposts(){fetch("/api/x-posts",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{X_ROWS=j.rows||[];paintXposts();}).catch(()=>{$("x-rows").innerHTML=`<tr><td colspan="6" class="empty">Could not load — try logging in again.</td></tr>`;});}
 document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.dataset.xk;xSortDir=(xSortK===k)?-xSortDir:-1;xSortK=k;paintXposts();});
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
-const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner (Report)",xposts:"X Posts",
-  preorders:"My Pre-orders",orderops:"Order (Operations)",activity:"My Activity",batch:"Batch Activity",
+const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner Report",xposts:"X Posts",
+  preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
   config:"Configuration",users:"User Management",version:"Version History"};
 function renderUsers(){
   fetch("/api/users",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
@@ -1070,7 +1078,7 @@ function paintVersion(){
   rows=genSort(rows,verSortK,verSortDir);
   const filt=(setOf("vcf_category")||setOf("vmf_month")||dateActive("ver"));
   $("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> changes${filt?` <span class="muted">of ${VER_ROWS.length}</span>`:''}`;
-  $("ver-rows").innerHTML=rows.map(e=>`<tr><td>${e.date}</td><td><code>${e.version}</code></td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||'Feature'}</span></td><td>${(e.summary||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
+  $("ver-rows").innerHTML=rows.map(e=>`<tr><td style="white-space:nowrap">${e.date||''}</td><td style="white-space:nowrap"><code>${e.version}</code></td><td style="white-space:nowrap"><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||'Feature'}</span></td><td>${(e.summary||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 function renderVersion(){fetch("/api/version-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{VER_ROWS=j.entries||[];paintVersion();}).catch(()=>{$("ver-rows").innerHTML=`<tr><td colspan="3" class="empty">Could not load (admin only).</td></tr>`;});}
 let BATCH_ROWS=[], batchSortK="ts", batchSortDir=-1;
 const _bmonth=e=>(e.ts||'').slice(0,7);   // YYYY-MM (date range chart)
@@ -1086,6 +1094,7 @@ function paintBatch(){
   [["bcf_source",e=>e.source],["bcf_by",e=>e.by],["bcf_month",_bmonth]].forEach(([id,fn])=>{
     rows=rows.filter(e=>inSet(id,fn(e)));});
   rows=applyDateFilter("batch",rows,e=>e.ts);
+  $("batab-count").textContent=`(${BATCH_ROWS.length})`;
   $("batch-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> batch runs${rows.length!==BATCH_ROWS.length?` <span class="muted">of ${BATCH_ROWS.length}</span>`:''}`;
   $("batch-rows").innerHTML=genSort(rows,batchSortK,batchSortDir).map(e=>`<tr><td>${e.ts||''}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.source||''}</span></td><td>${(e.event||'').replace(/</g,"&lt;")}</td><td>${e.by||''}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 function renderBatch(){fetch("/api/batch-activity",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{BATCH_ROWS=j.entries||[];paintBatch();}).catch(()=>{$("batch-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});}
@@ -1131,9 +1140,14 @@ function renderCredentials(){
         const btn=ro?`<span class="muted" style="font-size:12px">🔒 Read-only — the administrator manages these shared credentials.</span>`
           :`<button class="btn" style="margin-top:6px" onclick="saveCreds('${sec.id}')">Save ${sec.id} credentials</button>`;
         const amber=sec.admin_only?' style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"':'';
+        const xsettings=sec.id==="X"&&!ro?`<div class="card" style="margin-top:12px;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>X settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+          <div class="credrow"><span class="clabel">X posts per day (max)</span><input type="number" min="0" step="1" id="eng-x_max_per_day" style="max-width:120px"></div>
+          <div class="credrow"><span class="clabel">Superinvestor lookback (days)</span><input type="number" min="1" step="1" id="eng-superinvestor_lookback_days" style="max-width:120px"></div>
+          <div class="credrow"><span class="clabel">Min senator trades</span><input type="number" min="1" step="1" id="eng-min_senator_trades" style="max-width:120px"></div>
+          <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save X settings</button></div>`:"";
         return `<div class="confpanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"${amber}><h4>${sec.id} credentials${sec.admin_only?' <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span>':sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
           <p class="muted" style="font-size:12px;margin:0 0 8px">${sec.note}</p>${rows}${btn}
-          <div id="cred-msg-${sec.id}" style="font-size:12px;margin-top:6px"></div></div></div>`;}).join("");
+          <div id="cred-msg-${sec.id}" style="font-size:12px;margin-top:6px"></div></div>${xsettings}</div>`;}).join("");
       // Inject a nav pill per credential section (amber for admin-only). Non-admin shared sections
       // (Email (Yahoo)) go right after Preferences; admin-only ones append at the end (user 2026-07-03).
       document.querySelectorAll("#confnav .pill.credpill").forEach(p=>p.remove());
@@ -1147,6 +1161,7 @@ function renderCredentials(){
         if(!s.admin_only && prefPill) prefPill.after(b);    // Email (Yahoo) next to Preferences
         else $("confnav").appendChild(b);
       });
+      if(window.ENGINE_VALS)Object.entries(ENGINE_VALS).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});
       confShow(document.querySelector("#confnav .pill.active")?.dataset.panel||"IG");
     })
     .catch(()=>{$("cfg-creds").innerHTML=`<div class="muted">Could not load credentials — try logging in again.</div>`;});
@@ -1170,12 +1185,15 @@ function renderConfig(){
       if(j.leverage){LEVERAGE=j.leverage;["fx","equities","commodities","indices"].forEach(k=>{if($("lev-"+k))$("lev-"+k).value=j.leverage[k];});}
       // Engine settings (admin only): show the pill + fill inputs.
       if($("pill-engine"))$("pill-engine").style.display=j.is_admin?"":"none";
-      if(j.engine)Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});
+      if(j.engine){window.ENGINE_VALS=j.engine;Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});}
+      if($("cfg-bridge"))$("cfg-bridge").checked=!!j.bridge;
+      if($("featrow-xposts"))$("featrow-xposts").style.display=j.is_admin?"":"none";
       if(j.features){FEATURES=j.features;if($("feat-xposts"))$("feat-xposts").checked=!!j.features.xposts;}
       const n=Object.keys(USER_FILTERS).length;
       $("cfg-defaults").textContent=n?("Saved defaults: "+Object.entries(USER_FILTERS).map(([k,v])=>`${k.replace('f_','')}=${v}`).join(" · ")):"No saved defaults yet — using the built-in ones.";
+      const _xd=j.exec_descriptions||{};
       $("cfg-exec").innerHTML=(j.exec_sources||[]).map(s=>{const on=(j.exec||{})[s]!==false;
-        return `<div class="kv"><span>${s}</span><label style="cursor:pointer"><input type="checkbox" class="cfg-ex" data-s="${s}" ${on?"checked":""}> ${on?"Yes":"No"}</label></div>`;}).join("");
+        return `<div class="kv" style="align-items:flex-start"><span><b>${s}</b><br><span class="muted" style="font-size:12px">${_xd[s]||''}</span></span><label style="cursor:pointer;white-space:nowrap"><input type="checkbox" class="cfg-ex" data-s="${s}" ${on?"checked":""}> ${on?"Yes":"No"}</label></div>`;}).join("");
       document.querySelectorAll(".cfg-ex").forEach(c=>c.onchange=()=>{c.parentElement.lastChild.textContent=" "+(c.checked?"Yes":"No");});
       // Trade filters (user 2026-07-03): direction / market / location allow-lists. Empty stored = all allowed.
       const tf=j.trade||{}, groups=[["directions",["BULL","BEAR"]],["markets",uniq("market")]];   // location removed (user 2026-07-03)
@@ -1202,8 +1220,12 @@ function saveFeatures(){
     .then(r=>{if(!r.ok)throw 0;FEATURES=feat;applyTabVisibility();$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="Feature saved.";})
     .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});
 }
+function saveBridge(){
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({bridge:$("cfg-bridge").checked})})
+    .then(r=>{const el=$("bridge-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Bridge setting saved.";}else{el.style.color="var(--bear)";el.textContent="Save failed.";}});
+}
 function saveEngine(){
-  const eng={};["wo_lifespan_days","x_max_per_day","superinvestor_lookback_days","min_senator_trades","spread_retry_attempts","spread_retry_wait_secs"].forEach(k=>{const v=parseFloat($("eng-"+k).value);if(v>=0)eng[k]=v;});
+  const eng={};["wo_lifespan_days","x_max_per_day","superinvestor_lookback_days","min_senator_trades","spread_retry_attempts","spread_retry_wait_secs"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({engine:eng})})
     .then(r=>{if(!r.ok)throw 0;$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="Engine settings saved.";})
     .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});
@@ -1291,8 +1313,9 @@ function paintActivity(){
   rows=applyDateFilter("act",rows,e=>e.ts);
   rows=genSort(rows,acSortK,acSortDir);
   const nsel=(setOf("acf_cat")||{}).size||0;
+  $("actab-count").textContent=`(${AC_ROWS.length})`;
   $("act-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> activity records${(nsel||dateActive("act"))?` <span class="muted">of ${AC_ROWS.length}</span>`:""}`;
-  $("act-rows").innerHTML=rows.map(e=>`<tr><td>${e.ts}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.cat}</span></td><td>${(e.event||"").replace(/</g,"&lt;")}</td></tr>`).join("")
+  $("act-rows").innerHTML=rows.map(e=>`<tr><td>${e.ts||''}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.cat}</span></td><td>${(e.event||"").replace(/</g,"&lt;")}</td></tr>`).join("")
     || `<tr><td colspan="3" class="empty">No activity recorded yet.</td></tr>`;
 }
 function renderActivity(){
@@ -1358,7 +1381,7 @@ function renderPreorders(){
   $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
     return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
       <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
-      <td><span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></td>
+      <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
       <td>${r.status}</td><td>${r.market||''}</td>
       <td><b>${f2(r.entry)}</b></td><td style="color:var(--bear)">${f2(r.stop)}</td><td style="color:var(--bull)">${f2(r.target)}</td><td>${f2(r.current_price)}</td>
       <td>${d!=null?(d>0?'+':'')+d+'%':''}</td>

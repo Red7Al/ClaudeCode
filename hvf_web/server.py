@@ -265,10 +265,12 @@ def api_config():
     if request.method == "GET":
         s = _wu.get_settings(name)
         # Per-user broker leverage by instrument type (user 2026-07-03; defaults FX 100, else 10).
-        lev = {"fx": 100, "equities": 10, "commodities": 10, "indices": 10}
+        lev = {"fx": 30, "equities": 10, "commodities": 10, "indices": 10}   # FX 100 -> 30 (user 2026-07-03)
         lev.update({k: v for k, v in (s.get("leverage") or {}).items() if k in lev})
         return jsonify({"name": name, "filters": s.get("filters", {}),
                         "exec": _cs.get_exec_flags(), "exec_sources": _cs.EXEC_SOURCES,
+                        "exec_descriptions": _cs.EXEC_DESCRIPTIONS,
+                        "bridge": _cs.get_value("exec_WEB_BRIDGE", "false") == "true",
                         "trade": _cs.get_trade_filters(),
                         "hidden_tabs": s.get("hidden_tabs", []), "leverage": lev,
                         "pinned_preorders": s.get("pinned_preorders", []),
@@ -324,6 +326,10 @@ def api_config():
             if src in _cs.EXEC_SOURCES:
                 _cs.set_value(f"exec_{src}", "true" if on else "false", updated_by=name)
                 _wu.log_event(name, f"Trade execution for {src} switched {'ON' if on else 'OFF'}")
+    if "bridge" in body:
+        # Squeeze bridge (WEB_BRIDGE) execution — gated from Trading (Squeeze), user 2026-07-03.
+        _cs.set_value("exec_WEB_BRIDGE", "true" if body["bridge"] else "false", updated_by=name)
+        _wu.log_event(name, f"Squeeze bridge execution switched {'ON' if body['bridge'] else 'OFF'}")
     return jsonify({"ok": True})
 
 
