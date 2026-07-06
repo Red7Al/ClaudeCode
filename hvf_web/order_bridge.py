@@ -44,6 +44,11 @@ def _candidates() -> list:
     except Exception as e:
         log.warning(f"bridge: snapshot unreadable: {e}")
         return []
+    try:
+        from config_store import cfg_num
+        _minq = float(cfg_num("bridge_min_quality", 50))
+    except Exception:
+        _minq = 50
     out = []
     for r in records:
         # READY and TRIGGERED both qualify (user 2026-07-03) — a fresh trigger still within 1.5% of
@@ -51,7 +56,7 @@ def _candidates() -> list:
         if not r.get("has_signal") or r.get("status") not in ("READY", "TRIGGERED"):
             continue
         q, e, p = r.get("quality"), r.get("entry"), r.get("current_price")
-        if not (isinstance(q, (int, float)) and q > 50 and e and p):
+        if not (isinstance(q, (int, float)) and q > _minq and e and p):
             continue
         if abs(e / p - 1) * 100 > 1.5:
             continue

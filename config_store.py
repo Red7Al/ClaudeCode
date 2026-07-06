@@ -16,6 +16,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.1.0   2026-07-06  Alex Hind   (user 2026-07-06) get_x_hvf_markets (morning HVF tweet markets); .DE + ^GDAXI
+#                                 Location -> Germany. (Scanner-hide filter reverted same day: filters gate trading only.)
 # 1.0.0   2026-07-03  Alex Hind   Initial build — app_config table, get/set, monitor_enabled gate.
 # ======================================================================================================================
 
@@ -100,6 +102,7 @@ APP_ENGINE_KEYS = {
     "min_senator_trades": 1,
     "spread_retry_attempts": 3,
     "spread_retry_wait_secs": 2,
+    "bridge_min_quality": 50,        # min pattern Quality for the bridge to auto-load a setup
 }
 
 
@@ -161,7 +164,7 @@ def trade_allowed(direction: str = None, market: str = None, location: str = Non
 # Regional locations for index tickers (mirror hvf_web/build_snapshot._INDEX_REGION), user 2026-07-03.
 _INDEX_REGION = {
     "SPX500": "US", "NASDAQ": "US", "^DJI": "US", "^RUT": "US", "^GSPTSE": "US", "^BVSP": "US", "^MXX": "US",
-    "UK100": "Europe (West)", "^FTMC": "Europe (West)", "^GDAXI": "Europe (West)", "^FCHI": "Europe (West)",
+    "UK100": "Europe (West)", "^FTMC": "Europe (West)", "^GDAXI": "Germany", "^FCHI": "Europe (West)",
     "^STOXX50E": "Europe (West)", "^AEX": "Europe (West)", "^IBEX": "Europe (West)", "^SSMI": "Europe (West)",
     "JPN225": "Asia", "HK50": "Asia", "^AXJO": "Oceania", "^BSESN": "Asia", "^NSEI": "Asia", "^KS11": "Asia",
     "^TWII": "Asia", "^STI": "Asia", "000001.SS": "Asia",
@@ -178,7 +181,7 @@ def location_of_ticker(ticker: str) -> str:
     if t.endswith(".L"):
         return "UK"
     if t.endswith(".DE"):
-        return "Europe (West)"
+        return "Germany"          # German equities (user 2026-07-06: Location = Germany, Market = DAX)
     if t.endswith(".SS") or t.endswith(".HK") or t.endswith(".T") or t.endswith(".NS"):
         return "Asia"
     if t.endswith(".AX"):
@@ -192,3 +195,17 @@ def monitor_enabled(session_name: str) -> bool:
     if not session_name:
         return True
     return get_value(f"exec_{session_name}", "true").lower() != "false"
+
+
+# Markets whose setups may be tweeted in the MORNING HVF batch (user 2026-07-06). Config -> X Posts.
+X_HVF_MARKETS_DEFAULT = ["FTSE 100", "FTSE 250", "NASDAQ 100", "S&P 500"]
+
+
+def get_x_hvf_markets() -> list:
+    """Allowed markets for the morning HVF tweets. Unset (or a save that clears every box) falls back
+    to the four defaults so the batch can never accidentally go silent (user 2026-07-06)."""
+    v = get_value("x_hvf_markets", "")
+    if v == "":
+        return list(X_HVF_MARKETS_DEFAULT)
+    picked = [x.strip() for x in v.split(",") if x.strip()]
+    return picked or list(X_HVF_MARKETS_DEFAULT)

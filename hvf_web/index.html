@@ -30,6 +30,9 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 aside{width:270px;flex:none;border-right:1px solid var(--line);padding:12px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px}
 aside h3{font-size:11px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;letter-spacing:.04em}
 .f{margin-bottom:8px} label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+.f select[multiple]{width:100%;height:auto;padding:2px 4px;font-size:12px}   /* multi-select filters (user 2026-07-06) */
+.f select[multiple] option{padding:2px 4px}
+.f select[multiple] option:checked{background:linear-gradient(var(--accent),var(--accent));color:#fff}
 select,input{width:100%;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:5px}
 .row2{display:flex;gap:6px} .row2 input{width:50%}
 main{flex:1;display:flex;flex-direction:column;min-width:0}
@@ -37,7 +40,7 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 .viz{display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:stretch}
 .vizsector{flex:none}
 .vizbars{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:10px 12px;flex:1;min-width:0;align-items:stretch}
-.vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;height:100%}
+.vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;height:100%;max-width:360px}   /* cap width so vertically-stacked charts don't leave a wide empty gutter (user 2026-07-06) */
 .vizbox h5{margin:0 0 6px;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}
 .bars{display:flex;flex-direction:column;gap:3px;min-width:120px}
 .bar{display:flex;align-items:center;gap:6px;font-size:11px}
@@ -164,8 +167,19 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .credrow .cstate.on{color:var(--bull)} .credrow .cstate.off{color:var(--bear)}                /* "Not set" red */
 /* Doc-page tables (activity/batch/version/users) wrap text so there's no horizontal scroll bar
    even when a charts column sits alongside (user 2026-07-03). */
-.doc .tablewrap{overflow-x:visible}
+.doc .tablewrap{overflow-x:auto}
 .doc .tablewrap table th,.doc .tablewrap table td{white-space:normal;word-break:break-word}
+.datecard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 12px;box-shadow:var(--sh-sm);display:inline-flex;align-items:center;gap:8px;font-size:13px}
+/* Admin pages get the amber treatment (user 2026-07-04) */
+#view-batch .gsec,#view-users .gsec,#view-version .gsec,#view-syslogs .gsec,#view-xposts .gsec,#view-jobs .gsec{border-left-color:#d29922}
+#view-batch .eyebrow,#view-users .eyebrow,#view-version .eyebrow,#view-syslogs .eyebrow,#view-xposts .eyebrow,#view-sysdocs .eyebrow,#view-jobs .eyebrow{color:#d29922;background:color-mix(in srgb,#d29922 14%,transparent)}
+/* Pre-orders-to-my-IG + System Logs: nowrap all columns except the last (notes/message) */
+#view-orderops td,#view-syslogs td{white-space:nowrap;vertical-align:top}   /* top-align so a long note doesn't float short cells (user 2026-07-06) */
+#view-orderops td:last-child,#view-syslogs td:last-child{white-space:normal;word-break:break-word}
+#view-orderops td:last-child{max-width:460px}   /* wider notes -> fewer wrapped lines, shorter rows (user 2026-07-06) */
+#view-preorders td,#view-preorders th{white-space:nowrap}   /* no wrap; the table scrolls sideways instead (user 2026-07-06) */
+#view-activity td{white-space:nowrap}#view-activity td:last-child{white-space:normal;word-break:break-word}   /* only Event wraps (user 2026-07-06) */
+#view-jobs td{white-space:nowrap}
 .confnav .adminpill{border-color:#d29922}
 .confnav .adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a);border-color:transparent}
 .confpanel{animation:fadeIn .2s ease}
@@ -183,7 +197,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <h1>Squeeze Scanner</h1>
   <span class="count" id="gen"></span>
   <span class="grow"></span>
-  <button class="btn" id="togglefilters">☰ Filters (Show)</button>
+  <button class="btn" id="togglefilters">Show Filters <span style="color:var(--bear)">✗</span></button>
   <button class="btn" id="signalonly">Show Squeeze Only <span style="color:var(--bull)">✓</span></button>
   <button class="btn" id="refresh">↻ Refresh data</button>
   <button class="btn" id="reset">Reset filters</button>
@@ -200,10 +214,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My Activity <span id="actab-count"></span></button>
   <button class="tab" id="tab-batch" onclick="showTab('batch')" style="display:none">Batch Activity <span id="batab-count"></span></button>
   <button class="tab" id="tab-users" onclick="showTab('users')" style="display:none">User Management</button>
-  <button class="tab" id="tab-xposts" onclick="showTab('xposts')" style="display:none">X Posts</button>
+  <button class="tab" id="tab-xposts" onclick="showTab('xposts')" style="display:none">X Posts <span id="xtab-count"></span></button>
   <button class="tab" id="tab-config" onclick="showTab('config')" style="display:none">Configuration</button>
-  <button class="tab" id="tab-version" onclick="showTab('version')" style="display:none">Version History</button>
+  <button class="tab" id="tab-version" onclick="showTab('version')" style="display:none">Version History <span id="vertab-count"></span></button>
   <button class="tab" id="tab-syslogs" onclick="showTab('syslogs')" style="display:none">System Logs</button>
+  <button class="tab" id="tab-jobs" onclick="showTab('jobs')" style="display:none">Scheduled Jobs</button>
   <button class="tab" id="tab-sysdocs" onclick="showTab('sysdocs')" style="display:none">How it works (System)</button>
   <span class="grow"></span>
   <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
@@ -270,14 +285,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <div class="layout" id="view-scanner">
   <aside id="aside" class="collapsed">
     <div class="f"><label>Search name / ticker</label><input id="f_search" type="text" placeholder="e.g. Howden, ABF, gold"></div>
-    <h3>Direction & place</h3>
-    <div class="f"><label>Direction</label><select id="f_dir"><option value="">Any</option><option>BULL</option><option>BEAR</option><option value="—">— (none)</option></select></div>
-    <div class="f"><label>Location (Geography)</label><select id="f_loc"><option value="">Any</option></select></div>
-    <div class="f"><label>Market</label><select id="f_mkt"><option value="">Any</option></select></div>
-    <div class="f"><label>Sector</label><select id="f_sec"><option value="">Any</option></select></div>
+    <h3>Direction & place <span class="muted" style="font-weight:400;font-size:10px;text-transform:none;letter-spacing:0">(ctrl/⌘-click for several)</span></h3>
+    <div class="f"><label>Direction</label><select id="f_dir" multiple size="3"><option>BULL</option><option>BEAR</option><option value="—">— (none)</option></select></div>
+    <div class="f"><label>Location (Geography)</label><select id="f_loc" multiple size="4"></select></div>
+    <div class="f"><label>Market</label><select id="f_mkt" multiple size="5"></select></div>
+    <div class="f"><label>Sector</label><select id="f_sec" multiple size="5"></select></div>
     <h3>Squeeze</h3>
-    <div class="f"><label>Status</label><select id="f_stat"><option value="">Any</option><option>TRIGGERED</option><option>READY</option><option>DEVELOPING</option><option value="—">— (none)</option></select></div>
-    <div class="f"><label>Timeframe</label><select id="f_tf"><option value="">Any</option></select></div>
+    <div class="f"><label>Status</label><select id="f_stat" multiple size="4"><option>TRIGGERED</option><option>READY</option><option>DEVELOPING</option><option value="—">— (none)</option></select></div>
+    <div class="f"><label>Timeframe</label><select id="f_tf" multiple size="4"></select></div>
     <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" value="45" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
     <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" value="3.1" placeholder="min"><input id="f_rrmax" type="number" step="0.1" placeholder="max"></div></div>
     <div class="f"><label>Dist to entry % range</label><div class="row2"><input id="f_demin" type="number" step="0.1" value="-10" placeholder="min"><input id="f_demax" type="number" step="0.1" value="10" placeholder="max"></div></div>
@@ -301,10 +316,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <thead><tr>
           <th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
-          <th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
+          <th data-k="market">Market</th><th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
           <th data-k="pe">P/E</th><th data-k="timeframe">TF</th>
-          <th data-k="market">Market</th><th data-k="location">Location</th><th data-k="dist_entry">Dist→Entry</th>
+          <th data-k="location">Location</th><th data-k="dist_entry">Dist→Entry</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -334,8 +349,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-orderops" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
-  <span class="eyebrow">Trading</span>
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><h1 style="margin:0 0 12px">Pre-orders to my IG</h1><span class="grow"></span><span style="font-size:18px">📅</span><span id="oo-datebar"></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><span class="datecard">📅 <span id="oo-datebar"></span></span></div>
+  <h1>Pre-orders to my IG</h1>
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 700px;min-width:0">
@@ -351,8 +366,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-xposts" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="xf_ticker"><input type="hidden" id="xf_market"><input type="hidden" id="xf_month"><input type="hidden" id="xf_mweek">
-  <span class="eyebrow">Publishing</span>
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><h1 style="margin:0 0 12px">X Posts</h1><span class="grow"></span><span style="font-size:18px">📅</span><span id="x-datebar"></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Publishing</span><span class="grow"></span><input id="x-search" placeholder="Search name…" oninput="paintXposts()" style="padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);font-size:13px"><span class="datecard">📅 <span id="x-datebar"></span></span></div>
+  <h1>X Posts</h1>
   <p class="lede">Every tweet we've published, newest first. Click a chart to filter; click a row's link to open the tweet on X.</p>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
@@ -427,16 +442,21 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="confpanel hidden" data-panel="trading_sq">
     <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">Trading (Squeeze) — affects live orders</h3>
     <p class="muted" style="font-size:12px;margin:0 0 14px">Which squeeze setups may be traded on the live IG account.</p>
+    <div class="card" ><h4>Trade filters — direction, market</h4>
+      <p class="muted" style="font-size:12px">Only ticked values may be traded. Ticking everything (or nothing) in a group = no restriction. Shared switches; changes are attributed to you and checked live before every trade.</p>
+      <div id="cfg-trade">loading…</div>
+      <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
+      <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
+    </div>
     <div class="card"><h4>Automatic bridge execution</h4>
       <p class="muted" style="font-size:12px">Yes = the 2-hourly bridge (and 28-day lifespan orders) may place squeeze setups as live IG working orders. No = the bridge scans and reports but places nothing.</p>
       <div class="credrow"><span class="clabel">Bridge may place orders</span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="cfg-bridge" onchange="saveBridge()"> Yes</label></div>
       <span id="bridge-msg" style="font-size:12px"></span>
     </div>
-    <div class="card" style="margin-bottom:0"><h4>Trade filters — direction, market</h4>
-      <p class="muted" style="font-size:12px">Only ticked values may be traded. Ticking everything (or nothing) in a group = no restriction. Shared switches; changes are attributed to you and checked live before every trade.</p>
-      <div id="cfg-trade">loading…</div>
-      <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
-      <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
+    <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Bridge quality floor <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+      <p class="muted" style="font-size:12px">Minimum pattern Quality (0–100) a setup needs before the bridge auto-loads it as a pre-order / IG working order.</p>
+      <div class="credrow"><span class="clabel">Minimum Quality (Q)</span><input type="number" min="0" max="100" step="1" id="eng-bridge_min_quality" style="max-width:120px"></div>
+      <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save quality floor</button>
     </div>
   </div>
 
@@ -463,15 +483,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <div id="view-batch" class="hidden doc" style="max-width:1240px">
-  <span class="eyebrow">Admin</span>
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><h1 style="margin:0 0 12px">Batch Activity</h1><span class="grow"></span><span style="font-size:18px">📅</span><span id="batch-datebar"></span></div>
-  <p class="lede">Execution log of the scheduled cron-job.org runs and the manual "Refresh data" button.</p>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><span class="datecard">📅 <span id="batch-datebar"></span></span></div>
+  <h1>Batch Activity</h1>
+  <p class="lede">Execution log of the scheduled cron-job.org runs and the manual "Refresh data" button. High-frequency jobs that run every 5 minutes (e.g. the US monitor) are deliberately excluded to keep this readable.</p>
   <input type="hidden" id="bcf_source"><input type="hidden" id="bcf_by"><input type="hidden" id="bcf_month"><input type="hidden" id="bcf_mweek">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 520px;min-width:0">
       <div class="count" style="padding-left:0"><span id="batch-count"></span></div>
       <div class="tablewrap"><table>
-        <thead><tr><th data-bk="ts">When (UTC)</th><th data-bk="source">Source</th><th data-bk="event">Event</th><th data-bk="by">By</th></tr></thead>
+        <thead><tr><th data-bk="ts">When (UTC)</th><th data-bk="source">Source</th><th data-bk="event">Event</th><th data-bk="by">Operator</th></tr></thead>
         <tbody id="batch-rows"></tbody>
       </table></div>
     </section>
@@ -482,7 +502,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <div id="view-users" class="hidden doc" style="max-width:840px">
   <span class="eyebrow">Admin</span>
   <h1>User Management</h1>
-  <p class="lede">Manage logins — assign a subscription role and enable or disable accounts. Roles: <b>Admin</b> (full access), <b>Gold</b> (read/write incl. pre-orders + monitor exec), <b>Silver</b> (read/write incl. pre-orders), <b>Guest</b> (read-only, no pre-orders).</p>
+  <p class="lede">Manage logins — assign a subscription role and enable or disable accounts. Roles: <b>Admin</b> (full access), <b>Gold</b> (read/write incl. pre-orders + multi factor momentum trading), <b>Silver</b> (read/write incl. pre-orders), <b>Guest</b> (read-only, no pre-orders).</p>
   <section class="gsec" id="req-section" style="border-left-color:#d29922;display:none">
     <h3 style="color:#d29922">Pending account requests <span id="req-count" class="muted" style="font-size:12px;font-weight:400"></span></h3>
     <div class="tablewrap"><table>
@@ -501,8 +521,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <div id="view-version" class="hidden doc" style="max-width:1240px">
-  <span class="eyebrow">Admin</span>
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><h1 style="margin:0 0 12px">Version History</h1><span class="grow"></span><span style="font-size:18px">📅</span><span id="ver-datebar"></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><span class="datecard">📅 <span id="ver-datebar"></span></span></div>
+  <h1>Version History</h1>
   <p class="lede">A log of changes to the application — date, version and a summary.</p>
   <input type="hidden" id="vcf_category"><input type="hidden" id="vmf_month"><input type="hidden" id="vmf_mweek">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
@@ -520,8 +540,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <div id="view-syslogs" class="hidden doc" style="max-width:1240px">
-  <input type="hidden" id="slf_level"><input type="hidden" id="slf_logger"><input type="hidden" id="slf_hour">
-  <span class="eyebrow">Admin</span>
+  <input type="hidden" id="slf_level"><input type="hidden" id="slf_logger"><input type="hidden" id="slf_hour"><input type="hidden" id="slf_month"><input type="hidden" id="slf_mweek">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><span class="datecard">📅 <span id="sl-datebar"></span></span></div>
   <h1>System Logs</h1>
   <p class="lede">Live server health and the most recent log records from this web-server process. Click a chart to filter the log table.</p>
   <div class="fgrid" id="sl-health" style="margin-bottom:16px"></div>
@@ -534,6 +554,24 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       </table></div>
     </section>
     <div class="viz" id="sl-viz" style="border-bottom:none;padding:0;flex:0 0 auto;flex-direction:column"></div>
+  </div>
+</div>
+
+<div id="view-jobs" class="hidden doc" style="max-width:1240px">
+  <input type="hidden" id="jf_cat"><input type="hidden" id="jf_status"><input type="hidden" id="jf_none">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderJobs(true)" style="font-size:12px">↻ Refresh stats</button></div>
+  <h1>Scheduled Jobs</h1>
+  <p class="lede">Every scheduled job that drives the system — its cadence, category and recent GitHub&nbsp;Actions run history. Definitions come from the cron registry; run stats from the Actions API (cached ~30&nbsp;min). Click a chart to filter the table.</p>
+  <div class="fgrid" id="jobs-health" style="margin-bottom:16px"></div>
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <section class="gsec" style="border-left-color:var(--accent);flex:1 1 680px;min-width:0">
+      <div class="count" style="padding-left:0"><span id="jobs-count"></span></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th data-jk="title">Job</th><th data-jk="category">Category</th><th data-jk="frequency">Frequency (UTC)</th><th data-jk="last_status">Last status</th><th data-jk="last_time">Last run</th><th data-jk="executions">Runs</th><th data-jk="failures">Failures</th><th data-jk="workflow">Workflow</th></tr></thead>
+        <tbody id="jobs-rows"></tbody>
+      </table></div>
+    </section>
+    <div class="viz" id="jobs-viz" style="border-bottom:none;padding:0;flex:0 0 auto;flex-direction:column"></div>
   </div>
 </div>
 
@@ -583,8 +621,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <div id="view-activity" class="hidden doc" style="max-width:1240px">
-  <span class="eyebrow">Account</span>
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><h1 style="margin:0 0 12px">My Activity</h1><span class="grow"></span><span style="font-size:18px">📅</span><span id="act-datebar"></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Account</span><span class="grow"></span><span class="datecard">📅 <span id="act-datebar"></span></span></div>
+  <h1>My Activity</h1>
   <p class="lede">Your account's operational log — logins, password changes, pre-order actions, data refreshes and configuration changes. You only ever see your own entries.</p>
   <input type="hidden" id="acf_cat"><input type="hidden" id="acf_month"><input type="hidden" id="acf_mweek">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
@@ -595,7 +633,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <tbody id="act-rows"></tbody>
       </table></div>
     </section>
-    <div class="viz" id="act-viz" style="border-bottom:none;padding:0;flex:0 0 auto"></div>
+    <div class="viz" id="act-viz" style="border-bottom:none;padding:0;flex:0 0 auto;flex-direction:column"></div>
   </div>
 </div>
 
@@ -743,7 +781,10 @@ function pass(r){
   const g=id=>$(id).value;
   // Each field is gated by BOTH the sidebar dropdown (single) AND the chart multi-select set (mf_*).
   // "—" is the missing-value bucket (no-signal rows have null direction/status/etc.).
-  const sel=(v,id)=>{const f=g(id);return !f || (f==="—" ? !v : v===f);};
+  // A multi-select dropdown (user 2026-07-06): no selection = no restriction; else the row value
+  // (or "—" when it is missing) must be among the picked options.
+  const sel=(v,id)=>{const opts=[...$(id).selectedOptions].map(o=>o.value).filter(x=>x!=="");
+    if(!opts.length)return true; return opts.includes((v==null||v==="")?"—":v);};
   const dm=(v,id,mfid)=>sel(v,id) && inSet(mfid,v);
   if(!dm(r.direction,"f_dir","mf_direction"))return false;
   if(!dm(r.location,"f_loc","mf_location"))return false;
@@ -786,13 +827,13 @@ function dateFilterBar(pfx,painter){
   return `<label class="muted" style="font-size:12px">From <input type="date" id="${pfx}-from" onchange="${painter}" style="width:auto"></label>`+
          `<label class="muted" style="font-size:12px">To <input type="date" id="${pfx}-to" onchange="${painter}" style="width:auto"></label>`;
 }
-function barChart(title,counts,fk,colorFn){
+function barChart(title,counts,fk,colorFn,labelDesc){
   const sel=setOf(fk), nsel=sel?sel.size:0;
-  const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const entries=Object.entries(counts).sort(labelDesc?((a,b)=>String(b[0]).localeCompare(String(a[0]))):((a,b)=>b[1]-a[1])).slice(0,8);
   const max=Math.max(1,...entries.map(e=>e[1]));
   const rows=entries.map(([k,n])=>{const on=sel&&sel.has(String(k));
     return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}" title="click to filter ${k}"><span class="tk">${on?'● ':''}${k}</span>
-    <span class="fill" style="width:${Math.round(n/max*52)}px;background:${colorFn?colorFn(k):'var(--accent)'};opacity:${nsel&&!on?0.4:1}"></span><span class="n">${n}</span></div>`;}).join("");
+    <span class="fill" style="width:${Math.round(n/max*72)}px;background:${colorFn?colorFn(k):'var(--accent)'};opacity:${nsel&&!on?0.4:1}"></span><span class="n">${n}</span></div>`;}).join("");
   return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
 }
 function pieChart(title,counts,fk){
@@ -843,11 +884,11 @@ function render(){
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
     <td>${r.days_since??''}</td>
-    <td>${r.sector||''}</td><td>${ob(r.status||'')}</td><td>${ob(r.tgt_str||'')}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
+    <td>${ob(r.market||'')}</td><td>${r.sector||''}</td><td>${ob(r.status||'')}</td><td>${ob(r.tgt_str||'')}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td>
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td>
-    <td>${ob(r.pe??'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(r.market||'')}</td><td>${ob(locName(r.location))}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td></tr>`).join("")
+    <td>${ob(r.pe??'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td></tr>`).join("")
     || `<tr><td colspan="18" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
@@ -990,7 +1031,7 @@ $("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id
   $("f_qmin").value=45;$("f_rrmin").value=3.1;$("f_dsmax").value=90;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;
   applyUserDefaults();applyAll();};
 $("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");signalOnly=false;$("signalonly").innerHTML='Show Squeeze Only <span style="color:var(--bear)">✗</span>';$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
-$("togglefilters").onclick=()=>{const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").textContent="☰ Filters ("+(hidden?"Show":"Hide")+")";};
+$("togglefilters").onclick=()=>{const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").innerHTML="Show Filters "+(hidden?'<span style="color:var(--bear)">✗</span>':'<span style="color:var(--bull)">✓</span>');};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").innerHTML="Show Squeeze Only "+(signalOnly?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');applyAll();};
 let _refStart=0, _lastTens=-1;
 $("refresh").onclick=()=>{ if($("refresh").disabled)return;
@@ -1017,12 +1058,12 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 // ── Tabs: Scanner | Pre-orders ───────────────────────────────────────────────────────────────────
 // signal, not yet triggered, and quality >= 25 (user 2026-06-29: drop the low-quality noise)
 // signal, not yet triggered, Q>=25, and NOT already placed on IG (removed once it's a live working order).
-let PINNED=new Set();   // tickers the user pushed to Pre-orders from the Scanner (user 2026-07-03)
+let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/target overrides (user 2026-07-03/04)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","xposts","config","version","syslogs","sysdocs"];
+const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","xposts","config","version","syslogs","jobs","sysdocs"];
 const PUBLIC_TABS=["welcome","intro","appendix","scanner"];   // visible when logged out
-const ADMIN_TABS=["batch","users","version","xposts","syslogs","sysdocs"];        // admin only (xposts also admin, user 2026-07-03)
+const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs"];        // admin only (xposts also admin, user 2026-07-03)
 const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
 let FEATURES={xposts:false};
 let AUTH=localStorage.getItem("sq_auth")||"";
@@ -1075,6 +1116,7 @@ function showTab(name){
   if(!locked&&name==="config")renderConfig();
   if(name==="users")renderUsers();
   if(name==="syslogs")renderSyslogs();
+  if(name==="jobs")renderJobs();
   if(name==="version")renderVersion();
   if(name==="batch")renderBatch();
 }
@@ -1086,12 +1128,15 @@ function paintXposts(){
   $("x-viz").innerHTML=
     `<div class="vizsector">`+barChart("Ticker",by(e=>disp(e.ticker)),"xf_ticker")+`</div>`+
     `<div class="vizsector">`+barChart("Market",by(e=>e.market),"xf_market")+`</div>`+
-    `<div class="vizsector">`+barChart("Month",by(_xmonth),"xf_month")+`</div>`+
-    `<div class="vizsector">`+barChart("Month-Week",by(e=>_mw(e.published_at)),"xf_mweek")+`</div>`;
+    `<div class="vizsector">`+barChart("Month",by(_xmonth),"xf_month",null,true)+`</div>`+
+    `<div class="vizsector">`+barChart("Month-Week",by(e=>_mw(e.published_at)),"xf_mweek",null,true)+`</div>`;
   if($("x-datebar")&&!$("x-datebar").innerHTML)$("x-datebar").innerHTML=dateFilterBar("x","paintXposts()");
+  const _xq=(($("x-search")||{}).value||"").toLowerCase().trim();
   let rows=X_ROWS.filter(e=>inSet("xf_ticker",disp(e.ticker))&&inSet("xf_market",e.market)&&inSet("xf_month",_xmonth(e))&&inSet("xf_mweek",_mw(e.published_at)));
+  if(_xq)rows=rows.filter(e=>(e.name||"").toLowerCase().includes(_xq)||disp(e.ticker).toLowerCase().includes(_xq));
   rows=applyDateFilter("x",rows,e=>e.published_at);
   rows=genSort(rows,xSortK,xSortDir);
+  $("xtab-count").textContent=`(${X_ROWS.length})`;
   $("x-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> tweets${rows.length!==X_ROWS.length?` <span class="muted">of ${X_ROWS.length}</span>`:''}`;
   $("x-rows").innerHTML=rows.map(e=>`<tr><td>${e.published_at||''}</td><td><b>${disp(e.ticker)}</b></td><td>${e.name||''}</td><td>${e.market||''}</td><td>${e.thread>1?e.thread+' pts':'1'}</td><td><a href="${e.url}" target="_blank" rel="noopener">open ↗</a></td></tr>`).join("")||`<tr><td colspan="6" class="empty">No tweets yet.</td></tr>`;
 }
@@ -1100,7 +1145,7 @@ document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
 const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner Report",xposts:"X Posts",
   preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
-  config:"Configuration",users:"User Management",version:"Version History",syslogs:"System Logs",sysdocs:"How it works (System)"};
+  config:"Configuration",users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)"};
 // ── System Logs (admin, user 2026-07-04): health cards + log table + clickable charts ──────────────
 let SL_ROWS=[], slSortK="ts", slSortDir=-1;
 function paintSyslogs(){
@@ -1109,13 +1154,52 @@ function paintSyslogs(){
   $("sl-viz").innerHTML=
     `<div class="vizsector">`+barChart("Level",by(e=>e.level),"slf_level",lvlCol)+`</div>`+
     `<div class="vizsector">`+barChart("Module",by(e=>e.logger),"slf_logger")+`</div>`+
-    `<div class="vizsector">`+barChart("Hour",by(e=>(e.ts||'').slice(11,13)+":00"),"slf_hour")+`</div>`;
-  let rows=SL_ROWS.filter(e=>inSet("slf_level",e.level)&&inSet("slf_logger",e.logger)&&inSet("slf_hour",(e.ts||'').slice(11,13)+":00"));
+    `<div class="vizsector">`+barChart("Hour",by(e=>(e.ts||'').slice(11,13)+":00"),"slf_hour")+`</div>`+
+    `<div class="vizsector">`+barChart("Month",by(e=>(e.ts||'').slice(0,7)),"slf_month",null,true)+`</div>`+
+    `<div class="vizsector">`+barChart("Month-Week",by(e=>_mw(e.ts)),"slf_mweek",null,true)+`</div>`;
+  if($("sl-datebar")&&!$("sl-datebar").innerHTML)$("sl-datebar").innerHTML=dateFilterBar("sl","paintSyslogs()");
+  let rows=SL_ROWS.filter(e=>inSet("slf_level",e.level)&&inSet("slf_logger",e.logger)&&inSet("slf_hour",(e.ts||'').slice(11,13)+":00")&&inSet("slf_month",(e.ts||'').slice(0,7))&&inSet("slf_mweek",_mw(e.ts)));
+  rows=applyDateFilter("sl",rows,e=>e.ts);
   rows=genSort(rows,slSortK,slSortDir);
   $("sl-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> log records${rows.length!==SL_ROWS.length?` <span class="muted">of ${SL_ROWS.length}</span>`:''}`;
   $("sl-rows").innerHTML=rows.slice(0,400).map(e=>`<tr><td style="white-space:nowrap">${e.ts||''}</td><td><b style="color:${lvlCol(e.level)}">${e.level||''}</b></td><td>${e.logger||''}</td><td class="muted" style="white-space:normal;word-break:break-word">${(e.message||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No log records yet.</td></tr>`;
 }
+// ── Scheduled Jobs tab (admin, user 2026-07-06): cron definitions + GitHub Actions run stats ──
+let JOB_ROWS=[], jSortK="category", jSortDir=1;
+function _jstCol(k){return k==="success"?"var(--bull)":(k==="failure"||k==="timed_out"||k==="startup_failure")?"var(--bear)":(k==="in_progress"||k==="queued")?"var(--accent)":"var(--muted)";}
+function paintJobs(){
+  const by=fn=>JOB_ROWS.reduce((m,e)=>{const v=fn(e)||"—";m[v]=(m[v]||0)+1;return m;},{});
+  const failByJob=JOB_ROWS.reduce((m,e)=>{if(e.failures)m[e.title]=e.failures;return m;},{});
+  $("jobs-viz").innerHTML=
+    `<div class="vizsector">`+barChart("Category",by(e=>e.category),"jf_cat")+`</div>`+
+    `<div class="vizsector">`+barChart("Last status",by(e=>e.last_status),"jf_status",_jstCol)+`</div>`+
+    `<div class="vizsector">`+barChart("Recent failures",failByJob,"jf_none",()=>"var(--bear)")+`</div>`;
+  let rows=JOB_ROWS.filter(e=>inSet("jf_cat",e.category)&&inSet("jf_status",e.last_status));
+  rows=genSort(rows,jSortK,jSortDir);
+  const totF=JOB_ROWS.reduce((s,e)=>s+(e.failures||0),0);
+  $("jobs-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> scheduled jobs${rows.length!==JOB_ROWS.length?` <span class="muted">of ${JOB_ROWS.length}</span>`:""} <span class="muted">· ${totF} recent failure(s)</span>`;
+  $("jobs-rows").innerHTML=rows.map(e=>`<tr>
+    <td><b>${e.title||""}</b></td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||""}</span></td>
+    <td>${e.frequency||e.cron||""}</td>
+    <td><b style="color:${_jstCol(e.last_status)}">${e.last_status||"—"}</b></td>
+    <td>${e.last_time?e.last_time.replace("T"," ").replace("Z",""):""}</td>
+    <td>${e.executions!=null?e.executions:""}</td>
+    <td>${e.failures!=null?`<b style="color:${e.failures?"var(--bear)":"var(--muted)"}">${e.failures}</b>${e.failures_window?` <span class="muted" style="font-size:11px">/${e.failures_window}</span>`:""}`:""}</td>
+    <td class="muted" style="font-size:12px">${e.workflow||""}</td></tr>`).join("")||`<tr><td colspan="8" class="empty">No scheduled jobs found.</td></tr>`;
+}
+function renderJobs(force){
+  $("jobs-rows").innerHTML=`<tr><td colspan="8" class="empty">Loading run stats…</td></tr>`;
+  fetch("/api/scheduled-jobs"+(force?"?refresh=1":""),{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(j=>{JOB_ROWS=j.jobs||[];
+      const totF=JOB_ROWS.reduce((s,e)=>s+(e.failures||0),0);
+      const cards=[["Jobs",JOB_ROWS.length],["Categories",new Set(JOB_ROWS.map(e=>e.category)).size],["Recent failures",totF],["Stats",j.stats_source?"GitHub API":"definitions only"]];
+      $("jobs-health").innerHTML=cards.map(([k,v])=>`<div class="fcard"><div class="body"><div class="muted" style="font-size:12px">${k}</div><div style="font-size:20px;font-weight:800">${v}</div></div></div>`).join("")+(j.generated_utc?`<div class="fcard"><div class="body"><div class="muted" style="font-size:12px">As of</div><div style="font-size:13px">${j.generated_utc} UTC</div>${j.error?`<div style="color:#d29922;font-size:11px;margin-top:4px">${j.error}</div>`:""}</div></div>`:"");
+      paintJobs();})
+    .catch(()=>{$("jobs-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not load — admin only; try logging in again.</td></tr>`;});
+}
+document.querySelectorAll("th[data-jk]").forEach(th=>th.onclick=()=>{const k=th.dataset.jk;jSortDir=(jSortK===k)?-jSortDir:1;jSortK=k;paintJobs();});
 function renderSyslogs(){
+  if(!($("slf_level")||{}).value)$("slf_level").value="ERROR"+SEP+"WARNING";   // default to problems only (user 2026-07-06)
   fetch("/api/system-logs",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       const h=j.health||{},c=h.db_counts||{};
@@ -1167,14 +1251,15 @@ function paintVersion(){
   const cats=VER_ROWS.reduce((m,e)=>{m[e.category||'Feature']=(m[e.category||'Feature']||0)+1;return m;},{});
   const months=VER_ROWS.reduce((m,e)=>{const v=_vmonth(e)||'—';m[v]=(m[v]||0)+1;return m;},{});
   $("ver-viz").innerHTML=`<div class="vizsector">`+barChart("By category",cats,"vcf_category")+`</div>`+
-    `<div class="vizsector">`+barChart("By month",months,"vmf_month")+`</div>`+
-    `<div class="vizsector">`+barChart("Month-Week",VER_ROWS.reduce((m,e)=>{const v=_mw(e.date);m[v]=(m[v]||0)+1;return m;},{}),"vmf_mweek")+`</div>`;
+    `<div class="vizsector">`+barChart("By month",months,"vmf_month",null,true)+`</div>`+
+    `<div class="vizsector">`+barChart("Month-Week",VER_ROWS.reduce((m,e)=>{const v=_mw(e.date);m[v]=(m[v]||0)+1;return m;},{}),"vmf_mweek",null,true)+`</div>`;
   if($("ver-datebar")&&!$("ver-datebar").innerHTML)$("ver-datebar").innerHTML=dateFilterBar("ver","paintVersion()");
   const _vq=(($("ver-search")||{}).value||"").trim().toLowerCase();
   let rows=VER_ROWS.filter(e=>inSet("vcf_category",e.category||'Feature')&&inSet("vmf_month",_vmonth(e))&&inSet("vmf_mweek",_mw(e.date))&&(!_vq||(e.summary||'').toLowerCase().includes(_vq)));
   rows=applyDateFilter("ver",rows,e=>e.date);
   rows=genSort(rows,verSortK,verSortDir);
   const filt=(setOf("vcf_category")||setOf("vmf_month")||dateActive("ver"));
+  $("vertab-count").textContent=`(${VER_ROWS.length})`;
   $("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> changes${filt?` <span class="muted">of ${VER_ROWS.length}</span>`:''}`;
   $("ver-rows").innerHTML=rows.map(e=>`<tr><td style="white-space:nowrap">${e.date||''}</td><td style="white-space:nowrap"><code>${e.version}</code></td><td style="white-space:nowrap"><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||'Feature'}</span></td><td>${(e.summary||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 function renderVersion(){fetch("/api/version-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{VER_ROWS=j.entries||[];paintVersion();}).catch(()=>{$("ver-rows").innerHTML=`<tr><td colspan="3" class="empty">Could not load (admin only).</td></tr>`;});}
@@ -1185,9 +1270,9 @@ function paintBatch(){
   const by=(fn)=>BATCH_ROWS.reduce((m,e)=>{const v=fn(e)||'—';m[v]=(m[v]||0)+1;return m;},{});
   $("batch-viz").innerHTML=
     `<div class="vizsector">`+barChart("Source",by(e=>e.source),"bcf_source")+`</div>`+
-    `<div class="vizsector">`+barChart("By",by(e=>e.by),"bcf_by")+`</div>`+
-    `<div class="vizsector">`+barChart("Month",by(_bmonth),"bcf_month")+`</div>`+
-    `<div class="vizsector">`+barChart("Month-Week",by(e=>_mw(e.ts)),"bcf_mweek")+`</div>`;
+    `<div class="vizsector">`+barChart("Operator",by(e=>e.by),"bcf_by")+`</div>`+
+    `<div class="vizsector">`+barChart("Month",by(_bmonth),"bcf_month",null,true)+`</div>`+
+    `<div class="vizsector">`+barChart("Month-Week",by(e=>_mw(e.ts)),"bcf_mweek",null,true)+`</div>`;
   if($("batch-datebar")&&!$("batch-datebar").innerHTML)$("batch-datebar").innerHTML=dateFilterBar("batch","paintBatch()");
   let rows=BATCH_ROWS;
   [["bcf_source",e=>e.source],["bcf_by",e=>e.by],["bcf_month",_bmonth],["bcf_mweek",e=>_mw(e.ts)]].forEach(([id,fn])=>{
@@ -1239,18 +1324,21 @@ function renderCredentials(){
         const btn=ro?`<span class="muted" style="font-size:12px">🔒 Read-only — the administrator manages these shared credentials.</span>`
           :`<button class="btn" style="margin-top:6px" onclick="saveCreds('${sec.id}')">Save ${sec.id} credentials</button>`;
         const amber=sec.admin_only?' style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"':'';
-        const xsettings=sec.id==="X"&&!ro?`<div class="card" style="margin-top:12px;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>X settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+        const xsettings=sec.id==="X Credentials"&&!ro?`</div><div class="confpanel hidden" data-panel="X Posts"><div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>X Posts settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+          <p class="muted" style="font-size:12px">Publishing behaviour for the X account (credentials live in X Credentials).</p>
           <div class="credrow"><span class="clabel">X posts per day (max)</span><input type="number" min="0" step="1" id="eng-x_max_per_day" style="max-width:120px"></div>
           <div class="credrow"><span class="clabel">Superinvestor lookback (days)</span><input type="number" min="1" step="1" id="eng-superinvestor_lookback_days" style="max-width:120px"></div>
           <div class="credrow"><span class="clabel">Min senator trades</span><input type="number" min="1" step="1" id="eng-min_senator_trades" style="max-width:120px"></div>
-          <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save X settings</button></div>`:"";
-        return `<div class="confpanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"${amber}><h4>${sec.id} credentials${sec.admin_only?' <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span>':sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
+          <div style="margin-top:12px"><span class="clabel" style="display:block;margin-bottom:6px">Morning HVF tweets — markets to publish <span class="muted" style="font-weight:400">(default FTSE 100, FTSE 250, NASDAQ 100, S&amp;P 500)</span></span>
+          <div id="xhvf-markets" style="display:flex;flex-wrap:wrap;gap:8px">loading…</div></div>
+          <button class="btn" style="margin-top:10px" onclick="saveXPosts()">Save X Posts settings</button></div>`:"";
+        return `<div class="confpanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"${amber}><h4>${sec.id}${sec.admin_only?' <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span>':sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
           <p class="muted" style="font-size:12px;margin:0 0 8px">${sec.note}</p>${rows}${btn}
           <div id="cred-msg-${sec.id}" style="font-size:12px;margin-top:6px"></div></div>${xsettings}</div>`;}).join("");
       // Inject a nav pill per credential section (amber for admin-only). Non-admin shared sections
       // (Email (Yahoo)) go right after Preferences; admin-only ones append at the end (user 2026-07-03).
       document.querySelectorAll("#confnav .pill.credpill").forEach(p=>p.remove());
-      const icons={IG:"🔑",Supabase:"🗄️",X:"𝕏",Slack:"💬",Server:"🖥️","Email (Yahoo)":"✉️"};
+      const icons={IG:"🔑",Supabase:"🗄️","X Credentials":"𝕏",Slack:"💬",Server:"🖥️","Email (Yahoo)":"✉️","X Posts":"🐦"};
       const prefPill=document.querySelector('#confnav .pill[data-panel="preferences"]');
       (j.sections||[]).filter(s=>s.scope==="app").forEach(s=>{
         const b=document.createElement("button");
@@ -1285,6 +1373,10 @@ function renderConfig(){
       // Engine settings (admin only): show the pill + fill inputs.
       if($("pill-engine"))$("pill-engine").style.display=j.is_admin?"":"none";
       if(j.engine){window.ENGINE_VALS=j.engine;Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});}
+      // Morning HVF tweet markets (admin, user 2026-07-06): checkbox chips over the universe's markets.
+      if($("xhvf-markets")){const picked=new Set(j.x_hvf_markets||[]);const mkts=uniq("market");
+        $("xhvf-markets").innerHTML=(mkts.length?mkts:[...picked]).map(m=>{const on=picked.has(m);
+          return `<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;background:${on?'color-mix(in srgb,var(--accent) 14%,transparent)':'var(--chip)'};border:1px solid ${on?'var(--accent)':'var(--line)'};border-radius:999px;padding:6px 12px;cursor:pointer"><input type="checkbox" class="xhvf-mk" data-v="${m}" ${on?"checked":""} onchange="this.parentElement.style.background=this.checked?'color-mix(in srgb,var(--accent) 14%,transparent)':'var(--chip)';this.parentElement.style.borderColor=this.checked?'var(--accent)':'var(--line)'"> ${m}</label>`;}).join("");}
       if($("cfg-bridge"))$("cfg-bridge").checked=!!j.bridge;
       if($("featrow-xposts"))$("featrow-xposts").style.display=j.is_admin?"":"none";
       if(j.features){FEATURES=j.features;if($("feat-xposts"))$("feat-xposts").checked=!!j.features.xposts;}
@@ -1292,14 +1384,15 @@ function renderConfig(){
       $("cfg-defaults").textContent=n?("Saved defaults: "+Object.entries(USER_FILTERS).map(([k,v])=>`${k.replace('f_','')}=${v}`).join(" · ")):"No saved defaults yet — using the built-in ones.";
       const _xd=j.exec_descriptions||{};
       $("cfg-exec").innerHTML=(j.exec_sources||[]).map(s=>{const on=(j.exec||{})[s]!==false;
-        return `<div class="kv" style="align-items:flex-start"><span><b>${s}</b><br><span class="muted" style="font-size:12px">${_xd[s]||''}</span></span><label style="cursor:pointer;white-space:nowrap"><input type="checkbox" class="cfg-ex" data-s="${s}" ${on?"checked":""}> ${on?"Yes":"No"}</label></div>`;}).join("");
-      document.querySelectorAll(".cfg-ex").forEach(c=>c.onchange=()=>{c.parentElement.lastChild.textContent=" "+(c.checked?"Yes":"No");});
+        return `<div class="kv" style="align-items:flex-start"><span><b>${s}</b><br><span class="muted" style="font-size:12px">${_xd[s]||''}</span></span><label style="cursor:pointer;white-space:nowrap"><span class="yn">${on?"Yes":"No"}</span> <input type="checkbox" class="cfg-ex" data-s="${s}" ${on?"checked":""}></label></div>`;}).join("");
+      document.querySelectorAll(".cfg-ex").forEach(c=>c.onchange=()=>{const yn=c.parentElement.querySelector(".yn");if(yn)yn.textContent=c.checked?"Yes":"No";});
       // Trade filters (user 2026-07-03): direction / market / location allow-lists. Empty stored = all allowed.
       const tf=j.trade||{}, groups=[["directions",["BULL","BEAR"]],["markets",uniq("market")]];   // location removed (user 2026-07-03)
       $("cfg-trade").innerHTML=groups.map(([g,opts])=>{
         const allowed=tf[g]||[];
-        return `<div style="margin:6px 0"><b style="font-size:12px;text-transform:uppercase;color:var(--muted)">${g}</b><div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px">`+
-          opts.map(o=>`<label style="cursor:pointer;font-size:13px"><input type="checkbox" class="cfg-tf" data-g="${g}" data-v="${o}" ${(!allowed.length||allowed.includes(o))?"checked":""}> ${g==="locations"?locName(o):o}</label>`).join("")+`</div></div>`;}).join("");
+        return `<div style="margin:10px 0"><b style="font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em">${g}</b><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">`+
+          opts.map(o=>{const on=(!allowed.length||allowed.includes(o));
+            return `<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;background:${on?'color-mix(in srgb,var(--accent) 14%,transparent)':'var(--chip)'};border:1px solid ${on?'var(--accent)':'var(--line)'};border-radius:999px;padding:6px 12px;cursor:pointer"><input type="checkbox" class="cfg-tf" data-g="${g}" data-v="${o}" ${on?"checked":""} onchange="this.parentElement.style.background=this.checked?'color-mix(in srgb,var(--accent) 14%,transparent)':'var(--chip)';this.parentElement.style.borderColor=this.checked?'var(--accent)':'var(--line)'"> ${o}</label>`;}).join("")+`</div></div>`;}).join("");
     })
     .catch(()=>{$("cfg-exec").textContent="Could not load — try logging in again.";});
 }
@@ -1324,9 +1417,17 @@ function saveBridge(){
     .then(r=>{const el=$("bridge-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Bridge setting saved.";}else{el.style.color="var(--bear)";el.textContent="Save failed.";}});
 }
 function saveEngine(){
-  const eng={};["wo_lifespan_days","x_max_per_day","superinvestor_lookback_days","min_senator_trades","spread_retry_attempts","spread_retry_wait_secs"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});
+  const eng={};["wo_lifespan_days","x_max_per_day","superinvestor_lookback_days","min_senator_trades","spread_retry_attempts","spread_retry_wait_secs","bridge_min_quality"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({engine:eng})})
     .then(r=>{if(!r.ok)throw 0;$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="Engine settings saved.";})
+    .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});
+}
+function saveXPosts(){
+  // X Posts panel: numeric publishing settings + morning HVF tweet markets (user 2026-07-06).
+  const eng={};["x_max_per_day","superinvestor_lookback_days","min_senator_trades"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});
+  const mk=[...document.querySelectorAll(".xhvf-mk:checked")].map(c=>c.dataset.v);
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({engine:eng,x_hvf_markets:mk})})
+    .then(r=>{if(!r.ok)throw 0;$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="X Posts settings saved.";})
     .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});
 }
 function saveLeverage(){
@@ -1383,7 +1484,7 @@ function paintOrderOps(){
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
     <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td><td>${r.size??''}</td>
     <td><b style="color:${st(r.status)}">${r.status||''}</b></td><td>${r.session||''}</td>
-    <td class="muted" style="white-space:normal;max-width:280px">${(r.notes||'').replace(/</g,'&lt;')}</td></tr>`).join("")
+    <td class="muted" style="white-space:normal;max-width:460px">${(r.notes||'').replace(/</g,'&lt;')}</td></tr>`).join("")
   || `<tr><td colspan="12" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
 }
 function renderOrderOps(){
@@ -1409,8 +1510,8 @@ function paintActivity(){
   const counts=AC_ROWS.reduce((m,e)=>{m[e.cat]=(m[e.cat]||0)+1;return m;},{});
   const _aby=fn=>AC_ROWS.reduce((m,e)=>{const v=fn(e)||'—';m[v]=(m[v]||0)+1;return m;},{});
   $("act-viz").innerHTML=`<div class="vizsector">`+barChart("Activity by category",counts,"acf_cat")+`</div>`+
-    `<div class="vizsector">`+barChart("Month",_aby(e=>(e.ts||'').slice(0,7)),"acf_month")+`</div>`+
-    `<div class="vizsector">`+barChart("Month-Week",_aby(e=>_mw(e.ts)),"acf_mweek")+`</div>`;
+    `<div class="vizsector">`+barChart("Month",_aby(e=>(e.ts||'').slice(0,7)),"acf_month",null,true)+`</div>`+
+    `<div class="vizsector">`+barChart("Month-Week",_aby(e=>_mw(e.ts)),"acf_mweek",null,true)+`</div>`;
   if($("act-datebar")&&!$("act-datebar").innerHTML)$("act-datebar").innerHTML=dateFilterBar("act","paintActivity()");
   let rows=AC_ROWS.filter(e=>inSet("acf_cat",e.cat)&&inSet("acf_month",(e.ts||'').slice(0,7))&&inSet("acf_mweek",_mw(e.ts)));
   rows=applyDateFilter("act",rows,e=>e.ts);
@@ -1486,7 +1587,7 @@ function renderPreorders(){
       <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
       <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
       <td>${r.status}</td><td>${r.market||''}</td>
-      <td><b>${f2(r.entry)}</b></td><td style="color:var(--bear)">${f2(r.stop)}</td><td style="color:var(--bull)">${f2(r.target)}</td><td>${f2(r.current_price)}</td>
+      <td><b>${f2((OVERRIDES[r.ticker]||{}).entry??r.entry)}${(OVERRIDES[r.ticker]||{}).entry!=null&&OVERRIDES[r.ticker].entry!==r.entry?' ✎':''}</b></td><td style="color:var(--bear)">${f2((OVERRIDES[r.ticker]||{}).stop??r.stop)}</td><td style="color:var(--bull)">${f2((OVERRIDES[r.ticker]||{}).target??r.target)}</td><td>${f2(r.current_price)}</td>
       <td>${d!=null?(d>0?'+':'')+d+'%':''}</td>
       <td>${r.rr!=null?r.rr.toFixed(1):''}</td>
       <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td>
@@ -1495,6 +1596,7 @@ function renderPreorders(){
       <td><button class="btn" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();placeOnIG('${r.ticker}')" title="Place this pre-order as a live IG working order now">↗ Place on IG</button></td></tr>`;}).join("")
     || `<tr><td colspan="17" class="empty">No pre-orders right now.</td></tr>`;
   document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=e=>{if(e.target.type==="checkbox")return;showTab('scanner');showDetail(tr.dataset.t);});
+  $("potab-count").textContent="("+DATA.filter(isPreorder).length+")";   // keep tab count in sync after delete (user 2026-07-06)
   poUpdateBtn();
 }
 function poSelected(){return [...document.querySelectorAll(".po-sel:checked")].map(c=>c.dataset.t);}
@@ -1511,9 +1613,17 @@ function deletePreorders(){
 // Push a Scanner instrument into My Pre-orders (pin), or unpin it (user 2026-07-03).
 function pushToPreorder(tk){
   const on=!(PINNED.has(tk)||PINNED.has(disp(tk)));
-  fetch("/api/preorder-pin",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({ticker:tk,on})})
+  let levels=null;
+  if(on){const r=DATA.find(x=>x.ticker===tk)||{};
+    const inp=prompt("Entry, Stop, Target — edit any value before it goes to Pre-orders (changes are recorded in My Activity):",
+                     `${r.entry??''}, ${r.stop??''}, ${r.target??''}`);
+    if(inp===null)return;
+    const parts=inp.split(",").map(x=>parseFloat(x));
+    if(parts.length===3&&parts.every(v=>isFinite(v)&&v>0))levels={entry:parts[0],stop:parts[1],target:parts[2]};
+  }
+  fetch("/api/preorder-pin",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({ticker:tk,on,levels})})
     .then(r=>{if(!r.ok)return r.json().then(j=>{throw j.error||"failed";});return r.json();})
-    .then(j=>{PINNED=new Set(j.pinned||[]);render();if(SEL===tk)showDetail(tk);})
+    .then(j=>{PINNED=new Set(j.pinned||[]);OVERRIDES=j.overrides||{};render();renderPreorders&&renderPreorders();if(SEL===tk)showDetail(tk);})
     .catch(e=>alert("Could not update pre-orders: "+e));
 }
 // Place a pre-order as a live IG working order now (money path) — confirm first.
@@ -1532,7 +1642,7 @@ fetch("/api/me",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(m=>{
   ROLE=m.subscription||"guest"; IS_ADMIN=!!m.is_admin;
   if(m.name)$("logout").textContent=`${m.name}${m.is_admin?" (admin)":""} · Log out`;   // who's logged in
   return AUTH?fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({})):{};
-}).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[]; if(cfg&&cfg.leverage)LEVERAGE=cfg.leverage; PINNED=new Set((cfg&&cfg.pinned_preorders)||[]); if(cfg&&cfg.features)FEATURES=cfg.features;})
+}).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[]; if(cfg&&cfg.leverage)LEVERAGE=cfg.leverage; PINNED=new Set((cfg&&cfg.pinned_preorders)||[]); OVERRIDES=(cfg&&cfg.pinned_overrides)||{}; if(cfg&&cfg.features)FEATURES=cfg.features;})
   .catch(()=>{}).finally(()=>{applyTabVisibility();showTab("welcome");});
 if(AUTH)$("logout").style.display="";
 let LIMITED=false;

@@ -681,6 +681,56 @@ _SEARCH_TERM_ALIASES = {
     "^NSEI": ["India 50", "NIFTY"],
 }
 
+# Heuristic Yahoo->IG epic mapping (user 2026-07-04). FX "<PAIR>=X" maps to CS.D.<PAIR>.CFD.IP;
+# indices use IG's known IX.D.* epics. UNLIKE the human-verified pins below, each heuristic pin is
+# VALIDATED against IG (/markets/{epic} must answer) the first time it's used — on failure we fall
+# through to the normal search, so a wrong guess can never route to the wrong instrument.
+def _fx_heuristics():
+    m = {}
+    for pair in ("EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "NZDUSD", "USDCAD",
+                 "EURGBP", "EURJPY", "GBPJPY", "EURCHF", "AUDJPY", "CADJPY", "CHFJPY",
+                 "NZDJPY", "EURAUD", "GBPAUD", "EURCAD", "GBPCAD", "AUDNZD", "AUDCAD",
+                 "EURNZD", "USDSGD", "USDHKD", "USDNOK", "USDSEK", "USDMXN", "USDZAR",
+                 "USDCNY", "USDINR", "USDTRY", "USDPLN"):
+        m[pair] = m[pair + "=X"] = f"CS.D.{pair}.CFD.IP"
+    return m
+
+
+_EPIC_HEURISTIC_PINS = {
+    **_fx_heuristics(),
+    # Indices (user-supplied + IG-standard epics)
+    "^GSPC": "IX.D.SPTRD.CASH.IP", "SPX500": "IX.D.SPTRD.CASH.IP",     # S&P 500
+    "^DJI": "IX.D.DOW.DAILY.IP",                                        # Dow
+    "^IXIC": "IX.D.NASDAQ.CASH.IP", "NASDAQ": "IX.D.NASDAQ.CASH.IP",   # Nasdaq
+    "^FTSE": "IX.D.FTSE.CASH.IP", "UK100": "IX.D.FTSE.CASH.IP",        # FTSE 100
+    "^GDAXI": "IX.D.DAX.CASH.IP",                                       # DAX
+    "^FCHI": "IX.D.CAC.CASH.IP",                                        # CAC 40
+    "JPN225": "IX.D.NIKKEI.CASH.IP", "^N225": "IX.D.NIKKEI.CASH.IP",   # Nikkei
+    "HK50": "IX.D.HANGSENG.CASH.IP", "^HSI": "IX.D.HANGSENG.CASH.IP",  # Hang Seng
+    "^AXJO": "IX.D.ASX.CASH.IP",                                        # ASX 200
+    "^STOXX50E": "IX.D.STXE.CASH.IP",                                   # Euro Stoxx 50
+}
+_HEURISTIC_VALIDATED: dict = {}    # epic -> True/False after the one-time IG check
+
+
+def _heuristic_epic(ticker: str):
+    """Return a VALIDATED heuristic epic for the ticker, or None (then normal search applies)."""
+    epic = _EPIC_HEURISTIC_PINS.get(ticker)
+    if not epic:
+        return None
+    if epic in _HEURISTIC_VALIDATED:
+        return epic if _HEURISTIC_VALIDATED[epic] else None
+    try:
+        session.get(f"/markets/{epic}", version="3")
+        _HEURISTIC_VALIDATED[epic] = True
+        log.info(f"Heuristic epic validated: {ticker} -> {epic}")
+        return epic
+    except Exception as e:
+        _HEURISTIC_VALIDATED[epic] = False
+        log.warning(f"Heuristic epic REJECTED by IG ({ticker} -> {epic}): {e} — falling back to search")
+        return None
+
+
 _EPIC_VERIFIED_OVERRIDES = {
     # ticker -> epic that the name-matcher CANNOT confirm but a human has verified correct
     # (user 2026-06-19). get_epic returns these DIRECTLY (Step 0) — authoritative pins.
@@ -751,6 +801,11 @@ def get_epic(ticker: str) -> Optional[str]:
     if _pin:
         log.info(f"Epic pin (verified override): {ticker} → {_pin}")
         return _pin
+
+    # Step 0b — heuristic Yahoo->IG mapping (FX =X pairs, indices), validated against IG on first use.
+    _h = _heuristic_epic(ticker) or _heuristic_epic(normalized)
+    if _h:
+        return _h
 
     # Yahoo company name for identity checks. (Bug fix, user 2026-06-19: y_name was referenced
     # below and on the miss path but NEVER assigned — the wrong-instrument guard NameError'd, so
@@ -2660,8 +2715,13 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
     _q = sig.get("hvf_quality")
     if _q is None:
         _q = sig.get("pattern_quality")
-    if not isinstance(_q, (int, float)) or _q <= WO_MIN_QUALITY:
-        log.info(f"{ticker}: HVF quality {_q} not > {WO_MIN_QUALITY} — no working order (below quality floor).")
+    try:
+        from config_store import cfg_num
+        _minq = float(cfg_num("bridge_min_quality", WO_MIN_QUALITY))
+    except Exception:
+        _minq = WO_MIN_QUALITY
+    if not isinstance(_q, (int, float)) or _q <= _minq:
+        log.info(f"{ticker}: HVF quality {_q} not > {_minq} — no working order (below quality floor).")
         return None
 
     # Tight-stop skip (backlog #9b): a funnel whose stop is closer than

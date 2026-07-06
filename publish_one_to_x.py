@@ -25,6 +25,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.14.0  2026-07-06  Alex Hind   (user 2026-07-06) Morning HVF batch restricted to Config -> X Posts markets
+#                                 (get_x_hvf_markets; default FTSE 100 / FTSE 250 / NASDAQ 100 / S&P 500).
 # 1.13.0  2026-06-29  Alex Hind   (user 2026-06-29 "limit to 5 per day") publish_tickers_to_x now enforces a daily cap
 #                                 (config.X_MAX_PER_DAY=5): counts today's x_publications and stops once the budget is hit.
 # 1.12.0  2026-06-24  Alex Hind   (user 2026-06-24) NEW --list-recent[=N] mode: prints the most recent X publications
@@ -405,6 +407,19 @@ def main():
     if top_n:
         from quality_report import _today_top
         tks = [tk for tk, _ in _today_top(top_n)]   # top N per market, market order
+        # Restrict the morning HVF tweets to the markets chosen in Config -> X Posts (user 2026-07-06;
+        # default FTSE 100 / FTSE 250 / NASDAQ 100 / S&P 500). Fail-open on any error.
+        try:
+            from config_store import get_x_hvf_markets
+            from run_hvf_report import UNIVERSE
+            _allowed = set(get_x_hvf_markets())
+            _mkt_of = {tk: mkt for mkt, lst in UNIVERSE.items() for tk in lst}
+            _before = len(tks)
+            tks = [tk for tk in tks if _mkt_of.get(tk) in _allowed]
+            if _before != len(tks):
+                log.info(f"X HVF market filter ({sorted(_allowed)}): {_before} -> {len(tks)} instrument(s).")
+        except Exception as e:
+            log.warning(f"X HVF market filter skipped ({e}) - publishing all markets.")
         if not tks:
             log.info("No tradeable setups today — nothing to publish.")
             return

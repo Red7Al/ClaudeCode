@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.27.0  2026-07-06  Alex Hind   (user 2026-07-06) MARKET_ORDER market renames: Germany->DAX, Shanghai->SSE (Shanghai),
+#                                 Japan->Nikkei 225, Australia->ASX, India->NSE (India). Locations unchanged (country).
 # 1.26.0  2026-06-30  Alex Hind   (user 2026-06-30) MARKET_ORDER: 'Indices & FX' split into 'Indices' + 'FX';
 #                                 'NASDAQ 100' added to the order.
 # 1.25.0  2026-06-26  Alex Hind   (user 2026-06-26, backlog J) STALE_TRIGGER_MAX_PCT=0.20 — get_hvf_signal_mtf drops a
@@ -680,8 +682,8 @@ MARKET_PE = 21.0
 
 # Canonical market order for the grouped reports (matches run_hvf_report.UNIVERSE key order).
 # Markets not listed fall to the end, alphabetically (see price_action.group_by_market).
-MARKET_ORDER = ["FTSE 100", "FTSE 250", "NASDAQ 100", "S&P 500", "Germany", "Shanghai", "Hong Kong",
-                "Japan", "Australia", "India", "Commodities", "Indices", "FX", "Crypto"]
+MARKET_ORDER = ["FTSE 100", "FTSE 250", "NASDAQ 100", "S&P 500", "DAX", "SSE (Shanghai)", "Hong Kong",
+                "Nikkei 225", "ASX", "NSE (India)", "Commodities", "Indices", "FX", "Crypto"]
 
 # DEVELOPING watch-list display distance (user 2026-06-22: "for developing don't bother to show
 # anything that is over 10% away on price"; the metric is NOW vs ENTRY). A developing pattern whose

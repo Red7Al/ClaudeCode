@@ -15,6 +15,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.6.0   2026-07-06  Alex Hind   (user 2026-07-06) /api/config GET/POST for x_hvf_markets (morning HVF tweet markets,
+#                                 admin); NEW /api/scheduled-jobs (admin Scheduled Jobs tab — cron defs + Actions run
+#                                 stats). The Scanner shows the FULL universe: trade filters gate trading only, never
+#                                 what is shown (an earlier same-day /api/records hide was reverted per user).
 # 1.5.0   2026-07-03  Alex Hind   (user 2026-07-03) Configuration tab APIs: /api/config GET/POST (per-user filter
 #                                 defaults + shared per-source execution switches via config_store, changes logged to
 #                                 the user's activity); /api/preorder-delete; /api/refresh gated + logged.
@@ -180,6 +184,16 @@ def _version_entries():
     return entries
 
 
+@app.route("/api/scheduled-jobs")
+def api_scheduled_jobs():
+    """Scheduled-job definitions + GitHub Actions run stats (user 2026-07-06, admin Scheduled Jobs tab).
+    ?refresh=1 bypasses the 30-min cache."""
+    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+        return jsonify({"error": "admin only"}), 403
+    from hvf_web import scheduled_jobs as _sj
+    return jsonify(_sj.get_jobs(force=(request.args.get("refresh") == "1")))
+
+
 @app.route("/api/system-logs")
 def api_system_logs():
     """System health + recent server log records (user 2026-07-04, admin System Logs tab)."""
@@ -339,7 +353,9 @@ def api_config():
                         "trade": _cs.get_trade_filters(),
                         "hidden_tabs": s.get("hidden_tabs", []), "leverage": lev,
                         "pinned_preorders": s.get("pinned_preorders", []),
+                        "pinned_overrides": s.get("pinned_overrides", {}),
                         "engine": _cs.get_engine_settings(), "is_admin": _wu.is_admin(name),
+                        "x_hvf_markets": _cs.get_x_hvf_markets(),
                         "features": {"xposts": _cs.get_value("feature_xposts", "false") == "true"}})
     body = request.get_json(silent=True) or {}
     if "trade" in body:
@@ -361,6 +377,12 @@ def api_config():
         s["hidden_tabs"] = [t for t in (body["hidden_tabs"] or []) if isinstance(t, str) and t != "config"]
         _wu.set_settings(name, s)
         _wu.log_event(name, "Saved tab visibility (Config)")
+    if "x_hvf_markets" in body:
+        if not _wu.is_admin(name):
+            return jsonify({"ok": False, "error": "admin only"}), 403
+        vals = [str(x) for x in (body["x_hvf_markets"] or []) if isinstance(x, str)]
+        _cs.set_value("x_hvf_markets", ",".join(vals), updated_by=name)
+        _wu.log_event(name, "Saved X HVF tweet markets: " + (", ".join(vals) or "(default four)"))
     if "features" in body:
         if not _wu.is_admin(name):
             return jsonify({"ok": False, "error": "admin only"}), 403
@@ -414,7 +436,7 @@ CRED_SECTIONS = [
     {"id": "Supabase", "scope": "app", "admin_only": True, "note": "Shared database credentials.",
      "fields": [("supabase_user", "Supabase user", "SUPABASE_USER"),
                 ("supabase_db_password", "Supabase DB password", "SUPABASE_DB_PASSWORD")]},
-    {"id": "X", "scope": "app", "admin_only": True, "note": "Shared X (Twitter) API credentials.",
+    {"id": "X Credentials", "scope": "app", "admin_only": True, "note": "Shared X (Twitter) API credentials.",
      "fields": [("x_api_key", "API key", "X_API_KEY"), ("x_api_secret", "API secret", "X_API_SECRET"),
                 ("x_access_token", "Access token", "X_ACCESS_TOKEN"), ("x_access_secret", "Access secret", "X_ACCESS_SECRET")]},
     {"id": "Slack", "scope": "app", "admin_only": True, "note": "Shared Slack incoming-webhook URLs.",
@@ -546,6 +568,8 @@ _PUBLIC_FIELDS = ("ticker", "name", "direction", "h3_date", "l3_date", "sector",
 def api_records():
     snap = _load_snapshot()
     authed = request.headers.get("X-Auth") in _wu.valid_tokens()
+    # The Scanner shows the FULL universe to every user — the Config trade filters gate only what the
+    # operator TRADES (enforced in ig_shim at order time), never what is shown (user 2026-07-06).
     if authed:
         recs = [{k: v for k, v in r.items() if k != "_card"} for r in snap.get("records", [])]
     else:
@@ -1120,21 +1144,45 @@ def api_preorder_pin():
     on = bool(body.get("on", True))
     pinned.add(tk) if on else pinned.discard(tk)
     s["pinned_preorders"] = sorted(pinned)
+    # Optional level overrides (user 2026-07-04): entry/stop/target may be edited on the way from the
+    # Scanner to My Pre-orders. Any CHANGE vs the setup's own levels is recorded in My Activity.
+    ov = s.get("pinned_overrides") or {}
+    if on and isinstance(body.get("levels"), dict):
+        rec = _record(tk) or {}
+        lv, diffs = {}, []
+        for k in ("entry", "stop", "target"):
+            v = body["levels"].get(k)
+            if isinstance(v, (int, float)) and v > 0:
+                lv[k] = float(v)
+                orig = rec.get(k)
+                if orig is not None and abs(float(orig) - float(v)) > 1e-9:
+                    diffs.append(f"{k} {orig:g} → {v:g}")
+        if lv:
+            ov[tk] = lv
+        if diffs:
+            _wu.log_event(name, f"Pre-order {tk}: levels adjusted ({'; '.join(diffs)})")
+    if not on:
+        ov.pop(tk, None)
+    s["pinned_overrides"] = ov
     _wu.set_settings(name, s)
     _wu.log_event(name, f"{'Pinned' if on else 'Unpinned'} pre-order: {tk}")
-    return jsonify({"ok": True, "pinned": s["pinned_preorders"]})
+    return jsonify({"ok": True, "pinned": s["pinned_preorders"], "overrides": ov})
 
 
-def _sig_from_snapshot(tk):
-    """Build an engine sig dict from a snapshot record, for manual order placement."""
+def _sig_from_snapshot(tk, user=None):
+    """Build an engine sig dict from a snapshot record, for manual order placement. If the user has
+    edited entry/stop/target when pinning (user 2026-07-04), THEIR levels are used."""
     r = _record(tk)
     if not (r and r.get("has_signal")):
         return None
     card = r.get("_card") or {}
+    ov = {}
+    if user:
+        ov = (_wu.get_settings(user).get("pinned_overrides") or {}).get(tk) or {}
     return {"ticker": tk, "direction": "BUY" if r.get("direction") == "BULL" else "SELL",
             "hvf_type": card.get("hvf_type") or ("BULLISH" if r.get("direction") == "BULL" else "BEARISH"),
-            "hvf_signal": r.get("status"), "hvf_h3_level": r.get("entry"),
-            "hvf_stop_level": r.get("stop"), "hvf_target": r.get("target"),
+            "hvf_signal": r.get("status"), "hvf_h3_level": ov.get("entry", r.get("entry")),
+            "hvf_stop_level": ov.get("stop", r.get("stop")), "hvf_target": ov.get("target", r.get("target")),
             "hvf_quality": r.get("quality"), "hvf_risk_reward": r.get("rr"),
             "hvf_timeframe": r.get("timeframe"), "index": r.get("market"), "location": r.get("location")}
 
@@ -1158,7 +1206,7 @@ def api_place_order():
         return jsonify({"ok": False, "error": f"IG session error: {e}"}), 500
     body = request.get_json(silent=True) or {}
     tk = (body.get("ticker") or "").strip()
-    sig = _sig_from_snapshot(tk)
+    sig = _sig_from_snapshot(tk, user=name)
     if not sig:
         return jsonify({"ok": False, "error": "no signal for that instrument"}), 400
     try:

@@ -29,6 +29,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.30.0  2026-07-06  Alex Hind   (user 2026-07-06) UNIVERSE market renames: Germany->DAX, Shanghai->SSE (Shanghai),
+#                                 Japan->Nikkei 225, Australia->ASX, India->NSE (India). Locations unchanged (country).
 # 1.29.0  2026-06-30  Alex Hind   (user 2026-06-30) UNIVERSE: 'Indices & FX' split into separate 'Indices' (24) and
 #                                 'FX' (32) markets; INDICES_FX kept as a legacy alias. Report header updated.
 # 1.28.0  2026-06-30  Alex Hind   (user 2026-06-29) HVF Slack report horizon cap: setups whose expected time-to-target
@@ -433,12 +435,12 @@ UNIVERSE = {
     "FTSE 250":     FTSE250,
     "NASDAQ 100":   NASDAQ100,       # listed before S&P 500 so dual-listed mega-caps file under NASDAQ
     "S&P 500":      SP500,
-    "Germany":      GERMANY,        # DAX 40 + MDAX (user 2026-07-03)
-    "Shanghai":     SHANGHAI,       # top Shanghai-listed equities (user 2026-07-03)
+    "DAX":          GERMANY,        # DAX 40 + MDAX equities; Location "Germany" (user 2026-07-06)
+    "SSE (Shanghai)": SHANGHAI,     # Shanghai Stock Exchange equities; Location China (user 2026-07-06)
     "Hong Kong":    HONGKONG,       # top Hong Kong equities (user 2026-07-03)
-    "Japan":        JAPAN,          # Nikkei top equities (user 2026-07-04)
-    "Australia":    AUSTRALIA,      # S&P/ASX top equities (user 2026-07-04)
-    "India":        INDIA,          # NIFTY 100 (user 2026-07-04)
+    "Nikkei 225":   JAPAN,          # Nikkei 225 equities; Location Japan (user 2026-07-06)
+    "ASX":          AUSTRALIA,      # ASX equities; Location Australia (user 2026-07-06)
+    "NSE (India)":  INDIA,          # NSE / NIFTY equities; Location India (user 2026-07-06)
     "Commodities":  COMMODITIES,    # metals + energy
     "Indices":      INDICES,        # major market indices (split from "Indices & FX", user 2026-06-30)
     "FX":           FX,             # currency pairs (split from "Indices & FX", user 2026-06-30)
@@ -800,7 +802,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str, per_market_n: int 
         "text": {"type": "mrkdwn",
                  "text": (f"*{len(tradeable)} tradeable* (READY/TRIGGERED ≥{HVF_MIN_RR}:1 R:R)  |  "
                           f"*{len(developing)} developing* (valid pattern, R:R < {HVF_MIN_RR}:1)\n"
-                          f"Scanned: FTSE 100 · FTSE 250 · NASDAQ 100 · S&P 500 · Germany · Shanghai · Hong Kong · Japan · Australia · India · Commodities · Indices · FX · Crypto")}
+                          f"Scanned: FTSE 100 · FTSE 250 · NASDAQ 100 · S&P 500 · DAX · SSE (Shanghai) · Hong Kong · Nikkei 225 · ASX · NSE (India) · Commodities · Indices · FX · Crypto")}
     })
     blocks.append({"type": "divider"})
 

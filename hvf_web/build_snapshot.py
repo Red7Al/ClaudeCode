@@ -18,6 +18,7 @@
 # 1.1.0   2026-06-28  Alex Hind   (user 2026-06-28) Full universe + has_signal flag; months_to_go = funnel age from H1;
 #                                 persistent name cache (name_cache.json) so each refresh only looks up NEW tickers
 #                                 instead of all ~424 every time.
+# 1.2.0   2026-07-06  Alex Hind   (user 2026-07-06) German equities (.DE) + ^GDAXI Location -> 'Germany' (Market = DAX).
 # ======================================================================================================================
 
 import os
@@ -41,7 +42,7 @@ NAME_CACHE = os.path.join(_HERE, "name_cache.json")   # ticker -> company name; 
 # Eastern Europe, Asia, and other). FX is its OWN location, separate from Indices.
 _INDEX_REGION = {
     "SPX500": "US", "NASDAQ": "US", "^DJI": "US", "^RUT": "US", "^GSPTSE": "US", "^BVSP": "US", "^MXX": "US",
-    "UK100": "Europe (West)", "^FTMC": "Europe (West)", "^GDAXI": "Europe (West)", "^FCHI": "Europe (West)",
+    "UK100": "Europe (West)", "^FTMC": "Europe (West)", "^GDAXI": "Germany", "^FCHI": "Europe (West)",
     "^STOXX50E": "Europe (West)", "^AEX": "Europe (West)", "^IBEX": "Europe (West)", "^SSMI": "Europe (West)",
     "JPN225": "Asia", "HK50": "Asia", "^AXJO": "Oceania", "^BSESN": "Asia", "^NSEI": "Asia", "^KS11": "Asia",
     "^TWII": "Asia", "^STI": "Asia", "000001.SS": "Asia",
@@ -56,8 +57,8 @@ def _location_of(ticker: str, market: str = "") -> str:
         return _INDEX_REGION.get(ticker, "Other")
     if t.endswith(".L"):
         return "UK"
-    if t.endswith(".DE"):                 # German equities (user 2026-07-03)
-        return "Europe (West)"
+    if t.endswith(".DE"):                 # German equities (user 2026-07-06: DAX / Germany)
+        return "Germany"
     if t.endswith(".SS") or t.endswith(".HK") or t.endswith(".T") or t.endswith(".NS"):   # Shanghai / Hong Kong equities
         return "Asia"
     if t.endswith(".AX"):
