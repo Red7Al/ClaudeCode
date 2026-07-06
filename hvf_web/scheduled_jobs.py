@@ -13,6 +13,7 @@
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-07-06  Alex Hind   Initial build — JOBS + cron-to-human + GitHub Actions run stats, 30-min cache.
+# 1.1.0   2026-07-06  Alex Hind   (user 2026-07-06) trading_style per job (Multi-factor momentum / Squeeze / Support).
 # ======================================================================================================================
 
 import os
@@ -112,6 +113,22 @@ def _cron_human(cron: str) -> str:
     return ", ".join(p for p in parts if p)
 
 
+# Which trading STYLE a job serves (user 2026-07-06). The session monitors/opens place multi-factor
+# momentum trades; the HVF jobs run the squeeze pipeline; the rest are support/ops (reports, health).
+_MOMENTUM_JOBS = {"AUS Open", "AUS Monitor", "Commodity Monitor AM", "Commodity Monitor PM",
+                  "UK Open", "UK Monitor", "US Open", "US Monitor"}
+_SQUEEZE_JOBS = {"HVF Daily Report", "HVF Orders", "UK HVF Watch", "US HVF Watch",
+                 "Sunday Pre-Open Commodity Scan"}
+
+
+def _trading_style(title: str) -> str:
+    if title in _MOMENTUM_JOBS:
+        return "Multi-factor momentum"
+    if title in _SQUEEZE_JOBS:
+        return "Squeeze"
+    return "Support / ops"
+
+
 def _category(title: str) -> str:
     t = title.lower()
     if "monitor" in t:
@@ -165,7 +182,8 @@ def get_jobs(force: bool = False) -> dict:
         return {"jobs": [], "error": "job registry (setup_cronjobs.JOBS) unreadable"}
 
     jobs = [{"title": ti, "cron": cr, "workflow": wf,
-             "frequency": _cron_human(cr), "category": _category(ti)}
+             "frequency": _cron_human(cr), "category": _category(ti),
+             "trading_style": _trading_style(ti)}
             for (ti, cr, wf) in JOBS]
 
     error = None
