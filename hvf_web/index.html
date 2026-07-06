@@ -514,7 +514,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="users-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords">Password</th></tr></thead>
       <tbody id="users-rows"></tbody>
     </table></div>
     <div id="users-msg" style="font-size:12px;margin-top:8px"></div>
@@ -1223,6 +1223,13 @@ function renderSyslogs(){
     .catch(()=>{$("sl-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});
 }
 document.querySelectorAll("th[data-sk]").forEach(th=>th.onclick=()=>{const k=th.dataset.sk;slSortDir=(slSortK===k)?-slSortDir:-1;slSortK=k;paintSyslogs();});
+function pwStrength(s){
+  // Password complexity badge (user 2026-07-06). "unknown" = set before this was tracked; "Locked" =
+  // seeded account that has never set a password. Colour: Strong green, Fair amber, Weak red.
+  const col={Strong:"var(--bull)",Fair:"#d29922",Weak:"var(--bear)",Locked:"var(--muted)"}[s]||"var(--muted)";
+  const lbl=s||"unknown";
+  return `<span class="tag" style="background:var(--chip);color:${col};font-weight:700">${lbl}</span>`;
+}
 function renderUsers(){
   fetch("/api/users",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{const subs=j.subscriptions||["gold","silver","guest"];
@@ -1231,9 +1238,10 @@ function renderUsers(){
         <td><b>${u.name}</b></td><td>${u.email||''}</td>
         <td><label style="cursor:pointer;font-size:13px"><input type="checkbox" ${u.admin?'checked':''} onchange="saveUser('${u.name}',{admin:this.checked})"> Admin</label></td>
         <td><select onchange="saveUser('${u.name}',{subscription:this.value})" style="width:auto">${subs.map(s=>`<option ${u.subscription===s?'selected':''}>${s}</option>`).join("")}</select></td>
-        <td><button class="btn" onclick="saveUser('${u.name}',{enabled:${!u.enabled}})">${u.enabled?'<span style="color:var(--bull)">Enabled</span> — disable':'<span style="color:var(--bear)">Disabled</span> — enable'}</button></td></tr>`).join("");
+        <td><button class="btn" onclick="saveUser('${u.name}',{enabled:${!u.enabled}})">${u.enabled?'<span style="color:var(--bull)">Enabled</span> — disable':'<span style="color:var(--bear)">Disabled</span> — enable'}</button></td>
+        <td>${pwStrength(u.pwd_strength)}</td></tr>`).join("");
       paintRequests(j.requests||[]);})
-    .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="5" class="empty">Could not load (admin only).</td></tr>`;});
+    .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="6" class="empty">Could not load (admin only).</td></tr>`;});
 }
 function paintRequests(reqs){
   $("req-section").style.display=reqs.length?"":"none";
@@ -1607,7 +1615,7 @@ function renderPreorders(){
       <td><button class="btn" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();placeOnIG('${r.ticker}')" title="Place this pre-order as a live IG working order now">↗ Place on IG</button></td></tr>`;}).join("")
     || `<tr><td colspan="17" class="empty">No pre-orders right now.</td></tr>`;
   document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=e=>{if(e.target.type==="checkbox")return;showTab('scanner');showDetail(tr.dataset.t);});
-  $("potab-count").textContent="("+DATA.filter(isPreorder).length+")";   // keep tab count in sync after delete (user 2026-07-06)
+  $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)   // keep tab count in sync after delete (user 2026-07-06)
   poUpdateBtn();
 }
 function poSelected(){return [...document.querySelectorAll(".po-sel:checked")].map(c=>c.dataset.t);}
@@ -1672,7 +1680,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");
     render();
-    $("potab-count").textContent="("+DATA.filter(isPreorder).length+")";
+    $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)
     // Introduction example: a real funnel card — Howden if it's a current setup, else the best triggered name.
     // Use an EQUITY as the worked example, never an index/FX/commodity (user 2026-07-03).
     const _isEq=r=>["FTSE 100","FTSE 250","NASDAQ 100","S&P 500"].includes(r.market);

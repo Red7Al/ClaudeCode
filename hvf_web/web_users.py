@@ -21,6 +21,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.4.0   2026-07-06  Alex Hind   (user 2026-07-06) pwd_strength recorded at set-time (Weak/Fair/Strong) and shown in
+#                                 User Management; seeded-but-never-set accounts show 'Locked'. Never derived from the hash.
 # 1.3.0   2026-07-03  Alex Hind   (user 2026-07-03) get_settings/set_settings — per-user plain preferences (filter
 #                                 defaults for the Config tab); secrets remain in the encrypted store.
 # 1.2.0   2026-06-30  Alex Hind   (user 2026-06-30) Per-user operational log (log_event/get_log, capped 100, shown in
@@ -75,6 +77,21 @@ def _hash_pwd(pwd: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", pwd.encode(), bytes.fromhex(salt), _PBKDF2_ITERS).hex()
 
 
+def _pwd_strength(pwd: str) -> str:
+    """Rate a plaintext password's complexity at set-time (user 2026-07-06). We can NEVER derive this
+    from the stored PBKDF2 hash, so it is computed here (the only place the plaintext exists) and saved
+    alongside the hash. Buckets: Weak / Fair / Strong, by length + character-class variety."""
+    import re
+    pwd = pwd or ""
+    classes = sum(bool(re.search(p, pwd)) for p in (r"[a-z]", r"[A-Z]", r"\d", r"[^A-Za-z0-9]"))
+    n = len(pwd)
+    if n >= 12 and classes >= 3:
+        return "Strong"
+    if n >= 8 and classes >= 2:
+        return "Fair"
+    return "Weak"
+
+
 def _load() -> dict:
     try:
         with open(_USERS_FILE, encoding="utf-8") as fh:
@@ -100,7 +117,8 @@ def _ensure_seeded() -> dict:
                 salt = _secrets.token_hex(16)
                 users[name] = {"salt": salt, "pwd_hash": _hash_pwd(_secrets.token_hex(24), salt),
                                "email": email, "secrets": {}, "admin": _default_admin(name),
-                               "subscription": _default_subscription(name), "enabled": True}
+                               "subscription": _default_subscription(name), "enabled": True,
+                               "locked": True}   # no real password yet -> shows "Locked" until reset
                 changed = True
                 log.info(f"web_users: '{name}' seeded LOCKED - set a password via the reset (email) flow")
         # Backfill admin/subscription/enabled; migrate the old single 'role' field if present.
@@ -147,7 +165,8 @@ def list_users() -> list:
     """[{name, email, admin, subscription, enabled}] for the user-maintenance area (admin only)."""
     return [{"name": n, "email": u.get("email", ""), "admin": bool(u.get("admin", _default_admin(n))),
              "subscription": u.get("subscription", _default_subscription(n)),
-             "enabled": bool(u.get("enabled", True))}
+             "enabled": bool(u.get("enabled", True)),
+             "pwd_strength": (u.get("pwd_strength") or ("Locked" if u.get("locked") else "unknown"))}
             for n, u in _ensure_seeded().items() if isinstance(u, dict) and "pwd_hash" in u]
 
 
@@ -346,6 +365,7 @@ def reset_password(name: str, email: str, new_pwd: str, ip: str = "") -> bool:
             return False
         u["salt"] = _secrets.token_hex(16)
         u["pwd_hash"] = _hash_pwd(new_pwd, u["salt"])
+        u["pwd_strength"] = _pwd_strength(new_pwd)
         _save(users)
     log.info(f"password reset for {name}")
     log_event(name, f"Password changed (email-verified reset{', from ' + ip if ip else ''})")
@@ -379,6 +399,7 @@ def reset_password_with_code(name: str, code: str, new_pwd: str, ip: str = "") -
         # Valid — set the new password (new salt), invalidate the code and all existing sessions.
         u["salt"] = _secrets.token_hex(16)
         u["pwd_hash"] = _hash_pwd(new_pwd, u["salt"])
+        u["pwd_strength"] = _pwd_strength(new_pwd)
         u.pop("reset", None)
         _save(users)
     log.info(f"password reset (code) for {name}")
@@ -458,7 +479,7 @@ def add_user(name: str, pwd: str, email: str, admin: bool = False, subscription:
     with _LOCK:
         users = _load()
         salt = _secrets.token_hex(16)
-        users[name] = {"salt": salt, "pwd_hash": _hash_pwd(pwd, salt), "email": email, "secrets": {},
+        users[name] = {"salt": salt, "pwd_hash": _hash_pwd(pwd, salt), "pwd_strength": _pwd_strength(pwd), "email": email, "secrets": {},
                        "admin": bool(admin),
                        "subscription": subscription if subscription in SUBSCRIPTIONS else "guest",
                        "enabled": True}
