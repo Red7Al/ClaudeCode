@@ -774,10 +774,16 @@ function augment(r){
   r.x_posts=PUB[r.ticker]??PUB[disp(r.ticker)]??0;
 }
 
+let TRADE_HIDE={};   // per-user Trading (Squeeze) allow-lists {directions,markets,locations}; empty list = no restriction (user 2026-07-06)
+function tradeVisible(r){
+  const ok=(v,key)=>{const a=TRADE_HIDE[key];if(!a||!a.length)return true;if(v==null)return true;return a.includes(v);};
+  return ok(r.direction,"directions")&&ok(r.market,"markets")&&ok(r.location,"locations");
+}
 function pass(r){
   const _q=($("f_search").value||"").trim().toLowerCase();
   if(_q && !((r.ticker||"").toLowerCase().includes(_q) || (r.name||"").toLowerCase().includes(_q)))return false;
   if(signalOnly && r.has_signal===false)return false;
+  if(!tradeVisible(r))return false;   // per-user Trading (Squeeze) market/direction/location filter (user 2026-07-06)
   const g=id=>$(id).value;
   // Each field is gated by BOTH the sidebar dropdown (single) AND the chart multi-select set (mf_*).
   // "—" is the missing-value bucket (no-signal rows have null direction/status/etc.).
@@ -1388,6 +1394,7 @@ function renderConfig(){
       document.querySelectorAll(".cfg-ex").forEach(c=>c.onchange=()=>{const yn=c.parentElement.querySelector(".yn");if(yn)yn.textContent=c.checked?"Yes":"No";});
       // Trade filters (user 2026-07-03): direction / market / location allow-lists. Empty stored = all allowed.
       const tf=j.trade||{}, groups=[["directions",["BULL","BEAR"]],["markets",uniq("market")]];   // location removed (user 2026-07-03)
+      TRADE_HIDE=tf;   // sync per-user hide (user 2026-07-06)
       $("cfg-trade").innerHTML=groups.map(([g,opts])=>{
         const allowed=tf[g]||[];
         return `<div style="margin:10px 0"><b style="font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em">${g}</b><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">`+
@@ -1443,7 +1450,7 @@ function saveTradeFilters(){
   const totals={directions:2,markets:uniq("market").length,locations:uniq("location").length};
   Object.keys(t).forEach(g=>{if(t[g].length===totals[g]||t[g].length===0)t[g]=[];});
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({trade:t})})
-    .then(r=>{if(!r.ok)throw 0;$("cfg-msg").style.color="var(--bull)";$("cfg-msg").textContent="Trade filters saved.";})
+    .then(r=>{if(!r.ok)throw 0;TRADE_HIDE=t;render();renderPreorders&&renderPreorders();$("cfg-msg").style.color="var(--bull)";$("cfg-msg").textContent="Trade filters saved.";})
     .catch(()=>{$("cfg-msg").style.color="var(--bear)";$("cfg-msg").textContent="Save failed.";});
 }
 function saveExec(){
@@ -1558,7 +1565,7 @@ function doReset(){
 }
 let poSortK="dist_entry", poSortDir=1;   // default sort: Dist->Entry, closest first (user 2026-06-30)
 function renderPreorders(){
-  let po=DATA.filter(isPreorder);
+  let po=DATA.filter(r=>isPreorder(r)&&tradeVisible(r));   // hide the user's excluded markets (user 2026-07-06)
   // Chart-click filters (user 2026-07-03): each pof_* holds a SET of selected values (multi-select).
   [["pof_direction","direction"],["pof_status","status"],["pof_location","location"],
    ["pof_market","market"],["pof_timeframe","timeframe"],["pof_sector","sector"]].forEach(([id,k])=>{
@@ -1656,6 +1663,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     POS=p.positions||{}; PUB=pc.pubcounts||{}; IGWO=new Set(wo.tickers||[]);
     LIMITED=!!j.limited;   // logged out: only the first 5 columns are real; the rest render obfuscated
     USER_FILTERS=(cfg&&cfg.filters)||{}; applyUserDefaults();   // the user's own saved defaults (Config tab)
+    TRADE_HIDE=(cfg&&cfg.trade)||{};   // per-user Trading (Squeeze) filter -> hides excluded markets (user 2026-07-06)
     DATA=j.records||[]; DATA.forEach(augment);
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");

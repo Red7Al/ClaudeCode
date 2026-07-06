@@ -15,6 +15,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.7.0   2026-07-06  Alex Hind   (user 2026-07-06) Trade filters are now PER-USER: stored in the user's settings,
+#                                 hide excluded markets/dirs/locations from THAT user's Scanner + Pre-orders (client)
+#                                 and block their pin/place (_user_trade_allows). Owner mirrors to global app_config so
+#                                 the shared engine gate (ig_shim / bridge) stays in sync. Others' views unaffected.
 # 1.6.0   2026-07-06  Alex Hind   (user 2026-07-06) /api/config GET/POST for x_hvf_markets (morning HVF tweet markets,
 #                                 admin); NEW /api/scheduled-jobs (admin Scheduled Jobs tab — cron defs + Actions run
 #                                 stats). The Scanner shows the FULL universe: trade filters gate trading only, never
@@ -350,7 +354,8 @@ def api_config():
                         "exec": _cs.get_exec_flags(), "exec_sources": _cs.EXEC_SOURCES,
                         "exec_descriptions": _cs.EXEC_DESCRIPTIONS,
                         "bridge": _cs.get_value("exec_WEB_BRIDGE", "false") == "true",
-                        "trade": _cs.get_trade_filters(),
+                        "trade": (s.get("trade_filters") if s.get("trade_filters") is not None
+                                  else _cs.get_trade_filters()),
                         "hidden_tabs": s.get("hidden_tabs", []), "leverage": lev,
                         "pinned_preorders": s.get("pinned_preorders", []),
                         "pinned_overrides": s.get("pinned_overrides", {}),
@@ -359,13 +364,21 @@ def api_config():
                         "features": {"xposts": _cs.get_value("feature_xposts", "false") == "true"}})
     body = request.get_json(silent=True) or {}
     if "trade" in body:
+        # Trade filters are PER-USER (user 2026-07-06): they hide the excluded markets/directions/
+        # locations from THIS user's Scanner + Pre-orders and block their pin/place — without affecting
+        # what any other user sees. The OWNER's selection additionally mirrors to the global app_config
+        # so the shared engine gate (ig_shim.trade_allowed / the squeeze bridge) stays in sync.
         t = body["trade"] or {}
-        for fname, key in _cs.TRADE_FILTER_KEYS.items():
-            vals = [str(x) for x in (t.get(fname) or []) if isinstance(x, str)]
-            _cs.set_value(key, ",".join(vals) if vals else "ALL", updated_by=name)
+        tf = {fname: [str(x) for x in (t.get(fname) or []) if isinstance(x, str)]
+              for fname in _cs.TRADE_FILTER_KEYS}
+        s = _wu.get_settings(name)
+        s["trade_filters"] = tf
+        _wu.set_settings(name, s)
+        if name == _OWNER:
+            for fname, key in _cs.TRADE_FILTER_KEYS.items():
+                _cs.set_value(key, ",".join(tf[fname]) if tf[fname] else "ALL", updated_by=name)
         _wu.log_event(name, "Saved trade filters (Config): " +
-                      "; ".join(f"{k}={','.join(v) if v else 'ALL'}" for k, v in
-                                ((k2, t.get(k2) or []) for k2 in _cs.TRADE_FILTER_KEYS)))
+                      "; ".join(f"{k}={','.join(v) if v else 'ALL'}" for k, v in tf.items()))
     if "filters" in body:
         s = _wu.get_settings(name)
         s["filters"] = {k: v for k, v in (body["filters"] or {}).items() if isinstance(k, str)}
@@ -418,6 +431,25 @@ def api_config():
         _cs.set_value("exec_WEB_BRIDGE", "true" if body["bridge"] else "false", updated_by=name)
         _wu.log_event(name, f"Squeeze bridge execution switched {'ON' if body['bridge'] else 'OFF'}")
     return jsonify({"ok": True})
+
+
+def _user_trade_allows(name: str, rec: dict) -> bool:
+    """PER-USER trade-filter gate (user 2026-07-06): does this user's own market/direction/location
+    selection allow the given snapshot record? An empty list for a field = no restriction; a missing
+    field value never blocks. Used to keep filtered-out markets out of the user's pin/place path."""
+    if not rec:
+        return True
+    import config_store as _cs
+    s = _wu.get_settings(name)
+    tf = s.get("trade_filters")
+    if tf is None:
+        tf = _cs.get_trade_filters()                     # seed from legacy global for pre-migration users
+    for key, field in (("directions", "direction"), ("markets", "market"), ("locations", "location")):
+        allowed = tf.get(key) or []
+        v = rec.get(field)
+        if allowed and v is not None and v not in allowed:
+            return False
+    return True
 
 
 _OWNER = "Alex"   # the account owner / administrator (also used by /api/order-ops)
@@ -1139,6 +1171,8 @@ def api_preorder_pin():
     tk = (body.get("ticker") or "").strip()
     if not tk:
         return jsonify({"ok": False, "error": "no ticker"}), 400
+    if bool(body.get("on", True)) and not _user_trade_allows(name, _record(tk)):
+        return jsonify({"ok": False, "error": "that market/direction is excluded in your Trading (Squeeze) filters"}), 403
     s = _wu.get_settings(name)
     pinned = set(s.get("pinned_preorders") or [])
     on = bool(body.get("on", True))
@@ -1206,6 +1240,8 @@ def api_place_order():
         return jsonify({"ok": False, "error": f"IG session error: {e}"}), 500
     body = request.get_json(silent=True) or {}
     tk = (body.get("ticker") or "").strip()
+    if not _user_trade_allows(name, _record(tk)):
+        return jsonify({"ok": False, "error": "that market/direction is excluded in your Trading (Squeeze) filters"}), 403
     sig = _sig_from_snapshot(tk, user=name)
     if not sig:
         return jsonify({"ok": False, "error": "no signal for that instrument"}), 400
