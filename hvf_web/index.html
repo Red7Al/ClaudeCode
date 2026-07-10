@@ -1779,6 +1779,7 @@ function doReset(){
 let poSortK="dist_entry", poSortDir=1;   // default sort: Dist->Entry, closest first (user 2026-06-30)
 function renderPreorders(){
   let po=DATA.filter(r=>isPreorder(r)&&tradeVisible(r));   // hide the user's excluded markets (user 2026-07-06)
+  {const _seen=new Set();po=po.filter(r=>{const k=disp(r.ticker);if(_seen.has(k))return false;_seen.add(k);return true;});}   // no duplicate rows (user 2026-07-10)
   // Chart-click filters (user 2026-07-03): each pof_* holds a SET of selected values (multi-select).
   [["pof_direction","direction"],["pof_status","status"],["pof_location","location"],
    ["pof_market","market"],["pof_timeframe","timeframe"],["pof_sector","sector"]].forEach(([id,k])=>{
@@ -1830,7 +1831,7 @@ function deletePreorders(){
   if(!confirm(`Delete ${tks.length} pre-order(s)? They move to Order (Operations) as DELETED and stay hidden from this list for 30 days.`))return;
   fetch("/api/preorder-delete",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({tickers:tks})})
     .then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(()=>{tks.forEach(t=>IGWO.add(t));$("po-all").checked=false;renderPreorders();})
+    .then(()=>{tks.forEach(t=>{IGWO.add(t);PINNED.delete(t);PINNED.delete(disp(t));});$("po-all").checked=false;renderPreorders();})
     .catch(()=>alert("Delete failed — try logging in again."));
 }
 // Push a Scanner instrument into My Pre-orders (pin), or unpin it (user 2026-07-03).

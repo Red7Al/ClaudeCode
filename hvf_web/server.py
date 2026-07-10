@@ -1161,6 +1161,19 @@ def api_preorder_delete():
     except Exception as e:
         log.warning(f"preorder-delete failed: {e}")
         return jsonify({"ok": False, "error": "database error", "deleted": deleted}), 500
+    # Also UNPIN any deleted ticker (user 2026-07-10 bug): a pinned pre-order stayed pinned, so
+    # isPreorder() kept it in the list — the row never disappeared and returned on reload. Removing it
+    # from the user's pins (and any level overrides) makes Delete actually delete it.
+    try:
+        s = _wu.get_settings(name)
+        pins = [t for t in (s.get("pinned_preorders") or []) if t not in tickers]
+        ov = {k: v for k, v in (s.get("pinned_overrides") or {}).items() if k not in tickers}
+        if pins != (s.get("pinned_preorders") or []) or ov != (s.get("pinned_overrides") or {}):
+            s["pinned_preorders"] = pins
+            s["pinned_overrides"] = ov
+            _wu.set_settings(name, s)
+    except Exception as e:
+        log.warning(f"preorder-delete unpin failed: {e}")
     _wu.log_event(name, f"Deleted pre-order(s): {', '.join(deleted)}")
     return jsonify({"ok": True, "deleted": deleted})
 
@@ -1252,6 +1265,24 @@ def api_place_order():
     sig = _sig_from_snapshot(tk, user=name)
     if not sig:
         return jsonify({"ok": False, "error": "no signal for that instrument"}), 400
+    # Capture the log lines emitted DURING placement so a "not placed" (place_hvf_order_from_sig returns
+    # None for many reasons — quality below floor, tight stop, direction conflict, trade filters, no epic
+    # — each only log.info'd) reports the actual reason instead of a useless "unknown" (user 2026-07-10).
+    import logging as _logging
+    _cap = []
+    _sigtk = str(sig.get("ticker") or tk)
+
+    class _CapH(_logging.Handler):
+        def emit(self, rec):
+            try:
+                m = rec.getMessage()
+                if _sigtk in m or tk in m:
+                    _cap.append(m)
+            except Exception:
+                pass
+
+    _h = _CapH(); _h.setLevel(_logging.INFO)
+    _root = _logging.getLogger(); _root.addHandler(_h)
     try:
         from run_session import get_user_profile
         import ig_shim
@@ -1260,11 +1291,18 @@ def api_place_order():
         with ig_shim.acting_session(name):
             wo = ig_shim.place_hvf_order_from_sig(sig, get_user_profile(), "WEB_MANUAL", 1.0)
     except Exception as e:
-        log.warning(f"manual place-order {tk} failed: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False, "error": str(e) or f"{tk}: IG rejected the order"}), 500
+    finally:
+        _root.removeHandler(_h)
     _wu.log_event(name, f"Manually placed order: {tk}" + (f" ({wo.get('status')})" if wo else " (not placed)"))
     _append_batch("Manual (web)", f"Placed {tk} order", by=name)
-    return jsonify({"ok": bool(wo), "status": (wo or {}).get("status"), "placed": bool(wo)})
+    if not wo:
+        reason = (_cap[-1].split(": ", 1)[-1] if _cap else
+                  "IG did not accept the order — likely the pattern Quality is below the floor, the stop "
+                  "is too tight, the direction conflicts, or a circuit breaker (daily loss / max positions "
+                  "/ spread) blocked it. See System Logs for detail.")
+        return jsonify({"ok": False, "error": reason, "placed": False}), 200
+    return jsonify({"ok": True, "status": wo.get("status"), "placed": True})
 
 
 @app.route("/api/x-posts")
