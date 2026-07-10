@@ -189,7 +189,9 @@ def _summary_to_slack(rows: list):
         log.error(f"published-to-X summary post failed: {e}")
 
 
-_DEDUP_HOURS = 12   # don't re-publish the same instrument to X within this window (user 2026-06-16)
+_DEDUP_HOURS = 48   # don't re-publish the same instrument to X within this window (user 2026-06-16;
+                    # raised 12 -> 48 on 2026-07-10: SBUX & co. were re-published too often. The hot-stock
+                    # path already excludes names tweeted in the last 72h — this narrows the HVF gap.)
 _PUB_TABLE_SQL = ("create table if not exists x_publications "
                   "(id bigserial primary key, ticker text not null, tweet_id text, "
                   "published_at timestamptz default now())")
