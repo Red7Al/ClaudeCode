@@ -181,6 +181,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-preorders td,#view-preorders th{white-space:nowrap}   /* no wrap; the table scrolls sideways instead (user 2026-07-06) */
 #view-activity td{white-space:nowrap}#view-activity td:last-child{white-space:normal;word-break:break-word}   /* only Event wraps (user 2026-07-06) */
 #view-jobs td{white-space:nowrap}
+#view-jobs table th{white-space:nowrap}   /* header no longer wraps "Last status Last run Runs Failures" (user 2026-07-10) */
+/* User Management: don't wrap any column — widen the page as needed (user 2026-07-10) */
+#view-users{max-width:1100px}
+#view-users table th,#view-users table td{white-space:nowrap;word-break:normal}
 .confnav .adminpill{border-color:#d29922}
 .confnav .adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a);border-color:transparent}
 .confpanel{animation:fadeIn .2s ease}
@@ -211,7 +215,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
   <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner Report <span id="sctab-count"></span></button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')" style="display:none">My Pre-orders <span id="potab-count"></span></button>
-  <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Pre-orders to my IG</button>
+  <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Pre-orders to my IG <span id="ootab-count"></span></button>
   <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My Activity <span id="actab-count"></span></button>
   <button class="tab" id="tab-batch" onclick="showTab('batch')" style="display:none">Batch Activity <span id="batab-count"></span></button>
   <button class="tab" id="tab-users" onclick="showTab('users')" style="display:none">User Management</button>
@@ -221,6 +225,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="tab" id="tab-syslogs" onclick="showTab('syslogs')" style="display:none">System Logs</button>
   <button class="tab" id="tab-jobs" onclick="showTab('jobs')" style="display:none">Scheduled Jobs</button>
   <button class="tab" id="tab-sysdocs" onclick="showTab('sysdocs')" style="display:none">How it works (System)</button>
+  <button class="tab" id="tab-markets" onclick="showTab('markets')" style="display:none">Markets <span id="mktab-count"></span></button>
+  <button class="tab" id="tab-performance" onclick="showTab('performance')" style="display:none">Performance <span id="pftab-count"></span></button>
+  <button class="tab" id="tab-mfm" onclick="showTab('mfm')" style="display:none">Trading (Multi-Factor Momentum)</button>
+  <button class="tab" id="tab-changereq" onclick="showTab('changereq')" style="display:none">Change Requests <span id="crtab-count"></span></button>
   <span class="grow"></span>
   <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
 </div>
@@ -316,10 +324,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <table>
         <thead><tr>
           <th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
+          <th data-k="market">Market</th><th data-k="sector">Sector</th><th data-k="status">Status</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
-          <th data-k="market">Market</th><th data-k="sector">Sector</th><th data-k="status">Status</th><th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
+          <th data-k="current_price" title="Latest price">Now</th>
+          <th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
+          <th style="cursor:default" title="Whether this instrument is already in your My Pre-orders">In Pre-orders?</th>
           <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
-          <th data-k="pe">P/E</th><th data-k="timeframe">TF</th>
+          <th data-k="pe">P/E</th><th data-k="insider_pct" title="Insider ownership %">Insider %</th><th data-k="timeframe">TF</th>
           <th data-k="location">Location</th><th data-k="dist_entry">Dist→Entry</th>
         </tr></thead>
         <tbody id="rows"></tbody>
@@ -334,13 +345,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <input type="hidden" id="pof_direction"><input type="hidden" id="pof_status"><input type="hidden" id="pof_location"><input type="hidden" id="pof_market"><input type="hidden" id="pof_timeframe"><input type="hidden" id="pof_sector">
   <div class="viz" id="po-viz" style="border-bottom:none;padding:10px 16px 0"></div>
   <div class="count" id="po-count" style="display:flex;align-items:center;gap:14px"><span id="po-count-text"></span><span class="grow"></span>
+    <input id="po-search" placeholder="Search name / ticker…" oninput="renderPreorders()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px">
     <button class="btn" id="po-delete" onclick="deletePreorders()" disabled>Delete selected</button></div>
   <div class="tablewrap">
     <table>
       <thead><tr>
         <th style="cursor:default"><input type="checkbox" id="po-all" onclick="poToggleAll(this)"></th>
         <th data-pk="ticker">Ticker</th><th data-pk="name">Name</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
-        <th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="current_price">Now</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
+        <th data-pk="current_price">Now</th><th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
         <th data-pk="added" title="When the setup completed and joined the dataset">Added</th><th data-pk="source">Source</th><th style="cursor:default">Action</th>
       </tr></thead>
       <tbody id="po-rows"></tbody>
@@ -350,7 +362,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-orderops" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><span class="datecard">📅 <span id="oo-datebar"></span></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);font-size:13px"><span class="datecard">📅 <span id="oo-datebar"></span></span></div>
   <h1>Pre-orders to my IG</h1>
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
@@ -514,7 +526,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="users-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords">Password</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords">Password Complexity</th></tr></thead>
       <tbody id="users-rows"></tbody>
     </table></div>
     <div id="users-msg" style="font-size:12px;margin-top:8px"></div>
@@ -731,6 +743,100 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
 </div>
 
+<!-- Markets (all users, user 2026-07-10) — one row per market with live coverage from the snapshot. -->
+<div id="view-markets" class="hidden doc" style="max-width:1120px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Coverage</span><span class="grow"></span><button class="btn" onclick="renderMarkets()">↻ Refresh</button></div>
+  <h1>Markets</h1>
+  <p class="lede">Every market we scan, with its live coverage from the current snapshot — how many instruments it holds and how many have a squeeze setup right now. Click a market to filter the Scanner to it.</p>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <div class="count" style="padding-left:0"><span id="mk-count"></span></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th data-mk="market">Market</th><th data-mk="total">Instruments</th><th data-mk="signal">With signal</th><th data-mk="triggered">Triggered</th><th data-mk="ready">Ready</th><th data-mk="developing">Developing</th><th data-mk="avgq">Avg Quality</th></tr></thead>
+      <tbody id="mk-rows"></tbody>
+    </table></div>
+  </section>
+  <p class="muted" style="font-size:12px">Per-market data import and HVF-report processing controls live in <b>Markets (Admin)</b> (admin only) — coming in a later delivery.</p>
+</div>
+
+<!-- Performance (all users, user 2026-07-10) — triggered setups + best Quality/R:R combinations. -->
+<div id="view-performance" class="hidden doc" style="max-width:1180px">
+  <span class="eyebrow">Results</span>
+  <h1>Performance</h1>
+  <p class="lede">How triggered setups have performed since they fired. "Return" is direction-aware — a BULL setup gains when price rises, a BEAR setup gains when price falls — so a positive number is always a win.</p>
+  <h2 class="sec">Top 5 Quality / R:R combinations</h2>
+  <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return. Only buckets with at least 3 triggered setups are shown.</p>
+  <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
+  <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
+  <h2 class="sec">Every triggered setup</h2>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <div class="count" style="padding-left:0"><span id="pf-count"></span></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th data-pf="ticker">Ticker</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th></tr></thead>
+      <tbody id="pf-rows"></tbody>
+    </table></div>
+  </section>
+</div>
+
+<!-- Trading (Multi-Factor Momentum) (all users, default hidden, user 2026-07-10) — from commodity_fundamentals.md -->
+<div id="view-mfm" class="hidden doc" style="max-width:1000px">
+  <span class="eyebrow">Trading method</span>
+  <h1>Trading — Multi-Factor Momentum</h1>
+  <p class="lede">The commodity engine doesn't trade on price patterns alone. It stacks three layers of fundamentals — macro drivers, positioning, and physical supply/demand — so a momentum trade is only taken when the underlying economics agree with the chart. This is how we stay in structurally-supported trends and avoid fading moves that are backed by real forces.</p>
+
+  <h2 class="sec">Layer 1 — Macro drivers</h2>
+  <div class="fgrid two">
+    <div class="fcard"><div class="ic">💵</div><h3>USD strength</h3><div class="body">Most commodities are priced in dollars. A <b>weak USD</b> is bullish (gold, oil, metals); a strong USD is bearish. Measured by DXY vs its 20-week average + 4-week rate of change.</div></div>
+    <div class="fcard"><div class="ic">📉</div><h3>Real yields (10Y TIPS)</h3><div class="body"><b>Falling</b> real yields lower the opportunity cost of holding non-yielding assets → bullish gold &amp; silver. Rising real yields are bearish precious metals. Source: FRED DFII10.</div></div>
+    <div class="fcard"><div class="ic">🔥</div><h3>Inflation expectations</h3><div class="body">The 5-year breakeven. <b>Rising</b> → bullish energy, industrial metals, agriculture. Falling → broadly bearish. Source: FRED T5YIE.</div></div>
+    <div class="fcard"><div class="ic">🌐</div><h3>Global growth cycle</h3><div class="body"><b>Expansion</b> lifts industrial commodities (copper, oil); <b>contraction</b> favours precious metals as a haven. Proxied by the 10Y-2Y yield curve and manufacturing employment.</div></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h4>Instrument-specific weightings</h4>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Instrument</th><th>USD</th><th>Real Yield</th><th>Inflation</th><th>Growth</th></tr></thead>
+      <tbody>
+        <tr><td>Gold (XAUUSD)</td><td>30%</td><td>40%</td><td>20%</td><td>10%</td></tr>
+        <tr><td>Silver (XAGUSD)</td><td>25%</td><td>30%</td><td>20%</td><td>25%</td></tr>
+        <tr><td>Oil (OIL)</td><td>20%</td><td>10%</td><td>35%</td><td>35%</td></tr>
+        <tr><td>Copper</td><td>20%</td><td>5%</td><td>20%</td><td>55%</td></tr>
+      </tbody>
+    </table></div></div>
+
+  <h2 class="sec">Layer 2 — COT (Commitment of Traders)</h2>
+  <p style="font-size:15px;line-height:1.6">The CFTC's weekly positioning data is the most reliable lead indicator for turning points. <b>Commercial hedgers</b> (producers/consumers) are the smart money — extreme net-long positioning flags a bullish turn, extreme net-short a bearish one. <b>Managed money</b> (hedge funds) is right mid-trend but wrong at extremes, so a crowded net-long is a contrarian bearish signal.</p>
+  <div class="card"><h4>Open-interest signal</h4>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Price</th><th>Open interest</th><th>Signal</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>Rising</td><td>Rising</td><td>REAL_MONEY_BUY</td><td>New longs entering — strong</td></tr>
+        <tr><td>Rising</td><td>Falling</td><td>SHORT_COVERING</td><td>Shorts exiting — weaker</td></tr>
+        <tr><td>Falling</td><td>Rising</td><td>REAL_MONEY_SELL</td><td>New shorts entering — strong</td></tr>
+        <tr><td>Falling</td><td>Falling</td><td>LONG_LIQUIDATION</td><td>Longs exiting — may exhaust</td></tr>
+      </tbody>
+    </table></div></div>
+
+  <h2 class="sec">Layer 3 — Supply &amp; demand</h2>
+  <p style="font-size:15px;line-height:1.6"><b>Falling inventories + rising demand → bullish; rising inventories + weak demand → bearish.</b> Oil leans on the EIA weekly petroleum report (a draw &gt; 2M barrels is bullish, four consecutive draws strongly so); precious &amp; industrial metals on COMEX/LME warehouse stocks. A geopolitical-risk factor (OPEC+ decisions, mining strikes, weather) acts as an amplifier — it widens stops and trims size rather than blocking a trade.</p>
+
+  <h2 class="sec">How a trade is explained</h2>
+  <div class="card"><div class="tweet">XAUUSD BUY: Real yields falling (−0.12% 4wk), USD mildly strong headwind. COT +43.4 — commercials covering (bullish divergence), MM neutral. Options BULLISH (ratio 2.1), BB breakout confirmed. Stop: 1.5×ATR (11.7pts). R:R: 2:1.</div></div>
+  <p class="muted" style="font-size:12px;margin-top:14px">Source: <b>docs/commodity_fundamentals.md</b> (Layers implemented in commodity_macro.py, cot_analysis.py, commodity_supply_demand.py).</p>
+</div>
+
+<!-- Change Requests (admin, default hidden, user 2026-07-10) — parses ChangeRequests/*.txt -->
+<div id="view-changereq" class="hidden doc" style="max-width:1240px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderCR()">↻ Refresh</button></div>
+  <h1>Change Requests</h1>
+  <p class="lede">Every change-request file in <b>ChangeRequests/</b>, parsed into individual requirements. Each file shows its total actions and how many are Completed, In Progress, Not Started or Cancelled. Click a row to read the full breakdown.</p>
+  <section class="gsec" id="cr-section" style="border-left-color:#d29922">
+    <div class="count" style="padding-left:0"><span id="cr-count"></span></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th data-crk="name">File</th><th data-crk="created">Created</th><th data-crk="updated">Last updated</th><th data-crk="total">Actions</th><th>Completed</th><th>In&nbsp;Progress</th><th>Not&nbsp;Started</th><th>Cancelled</th></tr></thead>
+      <tbody id="cr-rows"></tbody>
+    </table></div>
+  </section>
+  <section class="gsec hidden" id="cr-detail" style="border-left-color:var(--accent)"></section>
+</div>
+
 <script>
 let DATA=[], SEL=null, sortK="trig_date", sortDir=-1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;
 const $=id=>document.getElementById(id);
@@ -884,19 +990,22 @@ function render(){
     const x=a[sortK],y=b[sortK];const av=x==null?-1e9:x,bv=y==null?-1e9:y;
     return (av<bv?-1:av>bv?1:0)*sortDir;});
   const _nT=rows.filter(r=>r.status==="TRIGGERED").length,_nR=rows.filter(r=>r.status==="READY").length,_nD=rows.filter(r=>r.status==="DEVELOPING").length;
-  $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} scanned (${_nT} TRIGGERED · ${_nR} READY · ${_nD} DEVELOPING). Click a row to open its detail; use Filters or the charts to narrow.</span>`+(LIMITED?` <b style="color:#d29922">· log in to unlock the full data</b>`:"");
+  $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} scanned (${_nT} TRIGGERED · ${_nR} READY · ${_nD} DEVELOPING). Click a row to open its detail; use Filters or the charts to narrow.</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("sctab-count").textContent=`(${rows.length})`;
   renderViz(rows);
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
+    <td>${ob(r.market||'')}</td><td>${r.sector||''}</td><td>${ob(r.status||'')}</td>
     <td>${r.days_since??''}</td>
-    <td>${ob(r.market||'')}</td><td>${r.sector||''}</td><td>${ob(r.status||'')}</td><td>${ob(r.tgt_str||'')}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
+    <td>${ob(f2(r.current_price))}</td>
+    <td>${ob(r.tgt_str||'')}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
+    <td>${AUTH&&isPreorder(r)?'<span style="color:var(--bull)" title="In your My Pre-orders">✓</span>':''}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td>
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td>
-    <td>${ob(r.pe??'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td></tr>`).join("")
-    || `<tr><td colspan="18" class="empty">No setups match the filters.</td></tr>`;
+    <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td></tr>`).join("")
+    || `<tr><td colspan="21" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
     tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
@@ -1068,18 +1177,21 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/target overrides (user 2026-07-03/04)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","xposts","config","version","syslogs","jobs","sysdocs"];
+const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","xposts","config","version","syslogs","jobs","sysdocs","markets","performance","mfm","changereq"];
 const PUBLIC_TABS=["welcome","intro","appendix","scanner"];   // visible when logged out
-const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs"];        // admin only (xposts also admin, user 2026-07-03)
+const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq"];        // admin only (xposts also admin, user 2026-07-03)
 const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
+// Tabs hidden by DEFAULT (user 2026-07-10): visible only once the user opts in via Tab Visibility.
+const DEFAULT_HIDDEN=new Set(["mfm","changereq"]);
 let FEATURES={xposts:false};
 let AUTH=localStorage.getItem("sq_auth")||"";
-let ROLE="guest", IS_ADMIN=false, HIDDEN_TABS=[];
+let ROLE="guest", IS_ADMIN=false, HIDDEN_TABS=[], SHOWN_TABS=[];
 // Which tabs the current session may see (login + role + per-user tab-visibility choices).
 function tabAllowed(t){
   if(FEATURE_TABS.includes(t)&&!FEATURES[t])return false;   // feature tab off by default (user 2026-07-03)
   if(ADMIN_TABS.includes(t)&&!IS_ADMIN)return false;    // admin tabs require admin
   if(!PUBLIC_TABS.includes(t)&&!AUTH)return false;      // login-required tab, not logged in
+  if(DEFAULT_HIDDEN.has(t)&&!SHOWN_TABS.includes(t))return false;   // default-hidden unless opted in (user 2026-07-10)
   if(t==="config")return true;                          // config always available once logged in
   if(HIDDEN_TABS.includes(t))return false;              // user chose to hide it (Tab Visibility) — applies to admin tabs too
   return true;
@@ -1126,6 +1238,9 @@ function showTab(name){
   if(name==="jobs")renderJobs();
   if(name==="version")renderVersion();
   if(name==="batch")renderBatch();
+  if(!locked&&name==="markets")renderMarkets();
+  if(!locked&&name==="performance")renderPerformance();
+  if(name==="changereq")renderCR();
 }
 // ── X Posts tab (user 2026-07-03): all published tweets + charts, click-to-filter, sortable. ──
 let X_ROWS=[], xSortK="published_at", xSortDir=-1;
@@ -1152,7 +1267,8 @@ document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
 const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner Report",xposts:"X Posts",
   preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
-  config:"Configuration",users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)"};
+  config:"Configuration",users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)",
+  markets:"Markets",performance:"Performance",mfm:"Trading (Multi-Factor Momentum)",changereq:"Change Requests"};
 // ── System Logs (admin, user 2026-07-04): health cards + log table + clickable charts ──────────────
 let SL_ROWS=[], slSortK="ts", slSortDir=-1;
 function paintSyslogs(){
@@ -1304,12 +1420,15 @@ function renderTabVis(hidden){
   hidden=new Set(hidden||HIDDEN_TABS||[]);
   const list=TABS.filter(t=>t!=="config"&&(PUBLIC_TABS.includes(t)||AUTH)&&(!ADMIN_TABS.includes(t)||IS_ADMIN));
   const chip=(t,checked,dis)=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:${dis?'default':'pointer'};${dis?'opacity:.6':''}"><input type="checkbox" ${dis?'class="" disabled':'class="tv"'} data-t="${t}" ${checked?'checked':''}> ${TAB_LABELS[t]||t}</label>`;
-  $("tabvis-list").innerHTML=chip("config",true,true)+list.map(t=>chip(t,!hidden.has(t),false)).join("");
+  // Default-hidden tabs show as ticked only when the user has opted in (SHOWN_TABS); others tick unless hidden.
+  $("tabvis-list").innerHTML=chip("config",true,true)+list.map(t=>chip(t,DEFAULT_HIDDEN.has(t)?SHOWN_TABS.includes(t):!hidden.has(t),false)).join("");
 }
 function saveTabVis(){
-  const hidden=[...document.querySelectorAll(".tv")].filter(c=>!c.checked).map(c=>c.dataset.t);
-  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({hidden_tabs:hidden})})
-    .then(r=>{if(!r.ok)throw 0;HIDDEN_TABS=hidden;applyTabVisibility();$("tabvis-msg").style.color="var(--bull)";$("tabvis-msg").textContent="Saved.";})
+  const boxes=[...document.querySelectorAll(".tv")];
+  const hidden=boxes.filter(c=>!c.checked).map(c=>c.dataset.t);
+  const shown=boxes.filter(c=>c.checked&&DEFAULT_HIDDEN.has(c.dataset.t)).map(c=>c.dataset.t);   // opt-in for default-hidden tabs
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({hidden_tabs:hidden,shown_tabs:shown})})
+    .then(r=>{if(!r.ok)throw 0;HIDDEN_TABS=hidden;SHOWN_TABS=shown;applyTabVisibility();$("tabvis-msg").style.color="var(--bull)";$("tabvis-msg").textContent="Saved.";})
     .catch(()=>{$("tabvis-msg").style.color="var(--bear)";$("tabvis-msg").textContent="Save failed.";});
 }
 document.querySelectorAll("th[data-vk]").forEach(th=>th.onclick=()=>{const k=th.dataset.vk;verSortDir=(verSortK===k)?-verSortDir:-1;verSortK=k;paintVersion();});
@@ -1488,8 +1607,13 @@ function paintOrderOps(){
   [["oof_status","status"],["oof_direction","direction"],["oof_session","session"],["oof_ticker","ticker"]].forEach(([id,k])=>{
     rows=rows.filter(r=>inSet(id,r[k]));});
   rows=applyDateFilter("oo",rows,r=>r.updated_at||r.placed_at);   // date filter on Updated
+  // Free-text search by name / ticker (user 2026-07-10).
+  const _ooq=(($("oo-search")||{}).value||"").trim().toLowerCase();
+  if(_ooq){const _snm=t=>{const r=DATA.find(x=>x.ticker===t||disp(x.ticker)===t);return r?(r.name||''):'';};
+    rows=rows.filter(r=>(_snm(r.ticker)+' '+disp(r.ticker||'')+' '+(r.ticker||'')).toLowerCase().includes(_ooq));}
   if($("oo-datebar")&&!$("oo-datebar").innerHTML)$("oo-datebar").innerHTML=dateFilterBar("oo","paintOrderOps()");
   $("oo-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> order operation records${rows.length!==OO_ROWS.length?` <span class="muted">of ${OO_ROWS.length}</span>`:""}`;
+  $("ootab-count").textContent="("+OO_ROWS.length+")";
   const oby=k=>OO_ROWS.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
   $("oo-viz").innerHTML=
     `<div class="vizsector">`+barChart("Status",oby("status"),"oof_status",k=>k==="PENDING"?"var(--accent)":k==="FILLED"?"var(--bull)":k==="WATCHING"?"#d29922":"var(--bear)")+`</div>`+
@@ -1546,6 +1670,81 @@ function renderActivity(){
     .then(j=>{AC_ROWS=j.log||[];paintActivity();})
     .catch(()=>{$("act-rows").innerHTML=`<tr><td colspan="2" class="empty">Could not load your activity — try logging in again.</td></tr>`;});
 }
+// ── Markets tab (user 2026-07-10): live per-market coverage computed from the loaded snapshot ──
+let mkSortK="total", mkSortDir=-1;
+function renderMarkets(){
+  const g={};
+  DATA.forEach(r=>{const m=r.market||"—";const o=(g[m]=g[m]||{market:m,total:0,signal:0,triggered:0,ready:0,developing:0,qsum:0,qn:0});
+    o.total++; if(r.has_signal)o.signal++;
+    if(r.status==="TRIGGERED")o.triggered++; else if(r.status==="READY")o.ready++; else if(r.status==="DEVELOPING")o.developing++;
+    if(r.quality!=null){o.qsum+=r.quality;o.qn++;}});
+  let rows=Object.values(g).map(o=>({...o,avgq:o.qn?Math.round(o.qsum/o.qn):null}));
+  rows.sort((a,b)=>{const x=a[mkSortK],y=b[mkSortK];const av=x==null?-1e9:x,bv=y==null?-1e9:y;return (av<bv?-1:av>bv?1:0)*mkSortDir;});
+  $("mk-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments scanned</span>`;
+  $("mktab-count").textContent=`(${rows.length})`;
+  $("mk-rows").innerHTML=rows.map(o=>`<tr class="clk" onclick="mkFilter('${(o.market||'').replace(/'/g,'')}')" title="Filter the Scanner to ${o.market}">
+    <td><b>${o.market}</b></td><td>${o.total}</td><td>${o.signal}</td>
+    <td>${o.triggered?`<b style="color:var(--bull)">${o.triggered}</b>`:'0'}</td><td>${o.ready?`<b style="color:var(--accent)">${o.ready}</b>`:'0'}</td><td>${o.developing||0}</td>
+    <td>${o.avgq!=null?`<b style="color:${qcol(o.avgq)}">${o.avgq}</b>`:''}</td></tr>`).join("")
+    ||`<tr><td colspan="7" class="empty">No market data yet — open the Scanner first.</td></tr>`;
+}
+function mkFilter(m){const el=$("mf_market");if(el)el.value=m;showTab("scanner");render();}
+document.querySelectorAll("th[data-mk]").forEach(th=>th.onclick=()=>{const k=th.dataset.mk;mkSortDir=(mkSortK===k)?-mkSortDir:-1;mkSortK=k;renderMarkets();});
+// ── Performance tab (user 2026-07-10): triggered setups + best Quality/R:R combinations ──
+let pfSortK="perf", pfSortDir=-1;
+const _pfPerf=r=>{const c=r.chg_since_trig;return c==null?null:(r.direction==="BEAR"?-c:c);};   // direction-aware return
+function renderPerformance(){
+  const trg=DATA.filter(r=>r.status==="TRIGGERED"&&r.chg_since_trig!=null).map(r=>({...r,perf:_pfPerf(r)}));
+  const buckets={};
+  trg.forEach(r=>{if(r.quality==null||r.rr==null)return;const qb=Math.floor(r.quality/10)*10,rb=Math.floor(r.rr);
+    const o=(buckets[qb+"|"+rb]=buckets[qb+"|"+rb]||{qb,rb,n:0,sum:0});o.n++;o.sum+=r.perf;});
+  const combos=Object.values(buckets).filter(b=>b.n>=3).map(b=>({...b,avg:b.sum/b.n})).sort((a,b)=>b.avg-a.avg).slice(0,5);
+  $("pf-combos").innerHTML=combos.length?combos.map((b,i)=>`<div class="fcard"><div class="ic">${i+1}</div>
+      <h3>Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)}</h3>
+      <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggered setups.</div></div>`).join("")
+    :`<p class="muted">Not enough triggered setups yet to rank Quality/R:R buckets (need at least 3 per bucket).</p>`;
+  const rows=genSort(trg,pfSortK,pfSortDir);
+  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${trg.length}</b> triggered setups`;
+  $("pftab-count").textContent=`(${trg.length})`;
+  $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="showTab('scanner');showDetail('${r.ticker}')">
+    <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
+    <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
+    <td>${r.market||''}</td><td>${r.sector||''}</td><td>${r.trig_date?r.trig_date.slice(0,10):''}</td>
+    <td>${f2(r.entry)}</td><td>${f2(r.current_price)}</td>
+    <td><b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b></td>
+    <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td><td>${r.rr!=null?r.rr.toFixed(1):''}</td></tr>`).join("")
+    ||`<tr><td colspan="11" class="empty">No triggered setups in the current snapshot.</td></tr>`;
+}
+document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();});
+// ── Change Requests tab (admin, user 2026-07-10): parses ChangeRequests/*.txt via /api/change-requests ──
+let CR_FILES=[], crSortK="created", crSortDir=-1, CR_SEL=null;
+function renderCR(){
+  fetch("/api/change-requests",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(j=>{CR_FILES=j.files||[];paintCR();}).catch(()=>{$("cr-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not load (admin only).</td></tr>`;});
+}
+function paintCR(){
+  const rows=genSort(CR_FILES.slice(),crSortK,crSortDir);
+  $("cr-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${CR_FILES.length}</b> change-request files`;
+  $("crtab-count").textContent=`(${CR_FILES.length})`;
+  const c=(o,k,col)=>{const n=(o.counts||{})[k]||0;return n?`<b style="color:${col}">${n}</b>`:'0';};
+  $("cr-rows").innerHTML=rows.map(o=>`<tr class="clk ${CR_SEL===o.file?'sel':''}" onclick="crOpen('${o.file}')">
+    <td><b>${o.name}</b></td><td>${o.created||''}</td><td>${o.updated||''}</td><td><b>${o.total}</b></td>
+    <td>${c(o,'Completed','var(--bull)')}</td><td>${c(o,'In Progress','var(--accent)')}</td><td>${c(o,'Not Started','var(--muted)')}</td><td>${c(o,'Cancelled','var(--bear)')}</td></tr>`).join("")
+    ||`<tr><td colspan="8" class="empty">No change-request files found.</td></tr>`;
+}
+function crOpen(file){
+  CR_SEL=file;paintCR();
+  fetch("/api/change-requests?file="+encodeURIComponent(file),{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(d=>{
+      const sc={Completed:'var(--bull)','In Progress':'var(--accent)','Not Started':'var(--muted)',Cancelled:'var(--bear)',Requested:'#d29922'};
+      const reqs=(d.requirements||[]).map(q=>`<tr><td>${q.working_area||'—'}</td><td>${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td></tr>`).join("");
+      $("cr-detail").classList.remove("hidden");
+      $("cr-detail").innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">${d.name}</h3><span class="grow"></span><span class="muted" style="font-size:12px">Created ${d.created||'?'} · Updated ${d.updated||'?'} · ${d.total} actions</span><button class="btn" onclick="$('cr-detail').classList.add('hidden');CR_SEL=null;paintCR()">✕ Close</button></div>
+        <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Working Area</th><th>Scope</th><th>Requirement</th><th>Status</th></tr></thead><tbody>${reqs||'<tr><td colspan="4" class="empty">No requirements parsed.</td></tr>'}</tbody></table></div>`;
+      $("cr-detail").scrollIntoView({behavior:"smooth",block:"nearest"});
+    }).catch(()=>{$("cr-detail").classList.remove("hidden");$("cr-detail").innerHTML='<p class="empty">Could not load file.</p>';});
+}
+document.querySelectorAll("th[data-crk]").forEach(th=>th.onclick=()=>{const k=th.dataset.crk;crSortDir=(crSortK===k)?-crSortDir:-1;crSortK=k;paintCR();});
 function doLogin(){
   fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({name:$("li_name").value,pwd:$("li_pwd").value})})
@@ -1554,6 +1753,8 @@ function doLogin(){
     .catch(()=>{$("li_err").textContent="Wrong name or password.";});
 }
 function doLogout(){localStorage.removeItem("sq_auth");location.reload();}
+// Open the login panel from the "log in to unlock" teaser link (user 2026-07-10).
+function showLogin(){$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");window.scrollTo(0,0);const n=$("li_name");if(n)n.focus();}
 function doRequestAccount(){
   const m=$("rq_msg");
   fetch("/api/request-account",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -1582,6 +1783,9 @@ function renderPreorders(){
   [["pof_direction","direction"],["pof_status","status"],["pof_location","location"],
    ["pof_market","market"],["pof_timeframe","timeframe"],["pof_sector","sector"]].forEach(([id,k])=>{
     po=po.filter(r=>inSet(id,r[k]));});
+  // Free-text search by name / ticker (user 2026-07-10).
+  const _poq=(($("po-search")||{}).value||"").trim().toLowerCase();
+  if(_poq)po=po.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(_poq));
   // Click a column header to sort (user 2026-06-30). Dist->Entry sorts on |distance| (closest first);
   // other columns sort on their raw value; nulls always sink to the bottom.
   const val=r=>{const v=r[poSortK];if(v==null)return null;return poSortK==="dist_entry"?Math.abs(v):v;};
@@ -1606,7 +1810,7 @@ function renderPreorders(){
       <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
       <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
       <td>${r.status}</td><td>${r.market||''}</td>
-      <td><b>${f2((OVERRIDES[r.ticker]||{}).entry??r.entry)}${(OVERRIDES[r.ticker]||{}).entry!=null&&OVERRIDES[r.ticker].entry!==r.entry?' ✎':''}</b></td><td style="color:var(--bear)">${f2((OVERRIDES[r.ticker]||{}).stop??r.stop)}</td><td style="color:var(--bull)">${f2((OVERRIDES[r.ticker]||{}).target??r.target)}</td><td>${f2(r.current_price)}</td>
+      <td>${f2(r.current_price)}</td><td><b>${f2((OVERRIDES[r.ticker]||{}).entry??r.entry)}${(OVERRIDES[r.ticker]||{}).entry!=null&&OVERRIDES[r.ticker].entry!==r.entry?' ✎':''}</b></td><td style="color:var(--bear)">${f2((OVERRIDES[r.ticker]||{}).stop??r.stop)}</td><td style="color:var(--bull)">${f2((OVERRIDES[r.ticker]||{}).target??r.target)}</td>
       <td>${d!=null?(d>0?'+':'')+d+'%':''}</td>
       <td>${r.rr!=null?r.rr.toFixed(1):''}</td>
       <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td>
@@ -1661,7 +1865,7 @@ fetch("/api/me",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(m=>{
   ROLE=m.subscription||"guest"; IS_ADMIN=!!m.is_admin;
   if(m.name)$("logout").textContent=`${m.name}${m.is_admin?" (admin)":""} · Log out`;   // who's logged in
   return AUTH?fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({})):{};
-}).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[]; if(cfg&&cfg.leverage)LEVERAGE=cfg.leverage; PINNED=new Set((cfg&&cfg.pinned_preorders)||[]); OVERRIDES=(cfg&&cfg.pinned_overrides)||{}; if(cfg&&cfg.features)FEATURES=cfg.features;})
+}).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[]; SHOWN_TABS=(cfg&&cfg.shown_tabs)||[]; if(cfg&&cfg.leverage)LEVERAGE=cfg.leverage; PINNED=new Set((cfg&&cfg.pinned_preorders)||[]); OVERRIDES=(cfg&&cfg.pinned_overrides)||{}; if(cfg&&cfg.features)FEATURES=cfg.features;})
   .catch(()=>{}).finally(()=>{applyTabVisibility();showTab("welcome");});
 if(AUTH)$("logout").style.display="";
 let LIMITED=false;
@@ -1685,7 +1889,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     // Use an EQUITY as the worked example, never an index/FX/commodity (user 2026-07-03).
     const _isEq=r=>["FTSE 100","FTSE 250","NASDAQ 100","S&P 500"].includes(r.market);
     const _ex=(DATA.some(r=>r.ticker==="HWDN.L"&&r.has_signal))?"HWDN.L":((DATA.filter(r=>r.has_signal&&r.status==="TRIGGERED"&&_isEq(r)).sort((a,b)=>(b.quality||0)-(a.quality||0))[0]||{}).ticker);
-    if(_ex&&$("intro-card")){$("intro-card").src="/api/card/"+_ex;$("intro-card-cap").innerHTML="A real setup ("+disp(_ex)+"). "+$("intro-card-cap").innerHTML;}
+    if(_ex&&$("intro-card")){$("intro-card").src="/api/card/"+_ex;$("intro-card-cap").innerHTML=$("intro-card-cap").innerHTML.replace(/^A real setup/,"A real setup ("+disp(_ex)+")");}
     // If a refresh is already running (started elsewhere), disable the button and show its progress.
     fetch("/api/status").then(x=>x.json()).then(s=>{if(s.refreshing){$("refresh").disabled=true;_refStart=Date.now();pollRefresh();}}).catch(()=>{});
   })

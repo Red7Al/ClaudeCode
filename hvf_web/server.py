@@ -84,6 +84,7 @@ _RENDER_LOCK = _threading.Lock()
 # ── System Logs (user 2026-07-04): keep the last 800 log records in memory for the admin tab. ─────────
 import collections as _collections
 import time as _time
+import re as _re
 _SERVER_STARTED = _time.time()
 _LOG_RING = _collections.deque(maxlen=800)
 
@@ -356,7 +357,7 @@ def api_config():
                         "bridge": _cs.get_value("exec_WEB_BRIDGE", "false") == "true",
                         "trade": (s.get("trade_filters") if s.get("trade_filters") is not None
                                   else _cs.get_trade_filters()),
-                        "hidden_tabs": s.get("hidden_tabs", []), "leverage": lev,
+                        "hidden_tabs": s.get("hidden_tabs", []), "shown_tabs": s.get("shown_tabs", []), "leverage": lev,
                         "pinned_preorders": s.get("pinned_preorders", []),
                         "pinned_overrides": s.get("pinned_overrides", {}),
                         "engine": _cs.get_engine_settings(), "is_admin": _wu.is_admin(name),
@@ -390,6 +391,12 @@ def api_config():
         s["hidden_tabs"] = [t for t in (body["hidden_tabs"] or []) if isinstance(t, str) and t != "config"]
         _wu.set_settings(name, s)
         _wu.log_event(name, "Saved tab visibility (Config)")
+    if "shown_tabs" in body:
+        # Opt-in list for tabs that are hidden by DEFAULT (user 2026-07-10): a default-hidden tab is
+        # only visible if the user has explicitly enabled it here.
+        s = _wu.get_settings(name)
+        s["shown_tabs"] = [t for t in (body["shown_tabs"] or []) if isinstance(t, str)]
+        _wu.set_settings(name, s)
     if "x_hvf_markets" in body:
         if not _wu.is_admin(name):
             return jsonify({"ok": False, "error": "admin only"}), 403
@@ -1316,6 +1323,114 @@ def api_order_ops():
     except Exception as e:
         log.warning(f"order-ops lookup failed: {e}")
     return jsonify({"rows": rows})
+
+
+_CR_DIR = os.path.join(_REPO_ROOT, "ChangeRequests")
+# Status a requirement line can carry (user 2026-07-10, Change Requests tab). A line is Completed/In
+# Progress/Cancelled/Requested when it ends with a bracketed marker (e.g. "[Completed]") or carries a
+# short leading tag ([x] done, [~] wip, [-] cancelled, [?] requested); otherwise it is Not Started.
+_CR_TAIL = _re.compile(r"\[(completed|in[\s-]?progress|not[\s-]?started|cancelled|canceled|requested)\]\s*$", _re.I)
+_CR_LEAD = {"[x]": "Completed", "[X]": "Completed", "[~]": "In Progress",
+            "[-]": "Cancelled", "[?]": "Requested"}
+
+
+def _cr_status(line: str) -> str:
+    s = line.strip()
+    for tag, st in _CR_LEAD.items():
+        if s.startswith("* " + tag) or s.startswith(tag):
+            return st
+    m = _CR_TAIL.search(s)
+    if m:
+        v = m.group(1).lower().replace("-", " ").replace("inprogress", "in progress")
+        return {"completed": "Completed", "in progress": "In Progress", "not started": "Not Started",
+                "cancelled": "Cancelled", "canceled": "Cancelled", "requested": "Requested"}.get(v, "Not Started")
+    return "Not Started"
+
+
+def _cr_parse(path: str) -> dict:
+    """Parse one ChangeRequests/*.txt into a summary + requirement list. A requirement is any line whose
+    trimmed form starts with '*'. The nearest preceding 'Application Focus - X' header is its Working
+    Area; a '- NEW DELIVERY' suffix on that header is the Scope."""
+    fn = os.path.basename(path)
+    stem = fn[:-4] if fn.lower().endswith(".txt") else fn      # drop .txt
+    name = stem.replace("-Claude", "").replace("-claude", "")  # drop -Claude (user 2026-07-10)
+    created = ""
+    _m = _re.match(r"(\d{4})(\d{2})(\d{2})", stem)             # YYYYMMDD filename prefix -> Date Created
+    if _m:
+        created = f"{_m.group(1)}-{_m.group(2)}-{_m.group(3)}"
+    try:
+        updated = _time.strftime("%Y-%m-%d", _time.localtime(os.path.getmtime(path)))
+    except Exception:
+        updated = ""
+    area, scope, reqs = "", "", []
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except Exception:
+        lines = []
+    for raw in lines:
+        s = raw.strip()
+        if s.startswith("Application Focus"):
+            a = s.split("-", 1)[1].strip() if "-" in s else s
+            if a.upper().endswith("NEW DELIVERY"):
+                scope = "NEW DELIVERY"
+                a = a[:-len("NEW DELIVERY")].rstrip(" -").strip()
+            else:
+                scope = ""
+            area = a
+            continue
+        if s.startswith("*"):
+            text = s.lstrip("* ").strip()
+            text = _CR_TAIL.sub("", text).strip()
+            for tag in _CR_LEAD:
+                if text.startswith(tag):
+                    text = text[len(tag):].strip()
+            if not text:
+                continue
+            reqs.append({"text": text, "working_area": area, "scope": scope, "status": _cr_status(raw)})
+    counts = {"Completed": 0, "In Progress": 0, "Not Started": 0, "Cancelled": 0, "Requested": 0}
+    for r in reqs:
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+    return {"name": name, "file": fn, "created": created, "updated": updated,
+            "total": len(reqs), "counts": counts, "requirements": reqs}
+
+
+@app.route("/api/change-requests")
+def api_change_requests():
+    """List (and optionally detail one of) the ChangeRequests/*.txt files (user 2026-07-10). Admin only.
+    Without ?file= returns a summary row per file (totals + status counts + created/updated); with
+    ?file=<filename> returns that file's parsed requirements and raw text."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    if not _wu.is_admin(name):
+        return jsonify({"error": "admin only"}), 403
+    try:
+        files = sorted(f for f in os.listdir(_CR_DIR) if f.lower().endswith(".txt"))
+    except Exception as e:
+        log.warning(f"change-requests dir unreadable: {e}")
+        return jsonify({"files": []})
+    want = request.args.get("file")
+    if want:
+        want = os.path.basename(want)   # never traverse outside the dir
+        if want not in files:
+            return jsonify({"error": "not found"}), 404
+        path = os.path.join(_CR_DIR, want)
+        d = _cr_parse(path)
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                d["raw"] = f.read()
+        except Exception:
+            d["raw"] = ""
+        return jsonify(d)
+    out = []
+    for f in files:
+        try:
+            out.append({k: v for k, v in _cr_parse(os.path.join(_CR_DIR, f)).items() if k != "requirements"})
+        except Exception as e:
+            log.warning(f"change-request parse failed for {f}: {e}")
+    out.sort(key=lambda r: (r.get("created") or "", r.get("file") or ""), reverse=True)
+    return jsonify({"files": out})
 
 
 if __name__ == "__main__":
