@@ -182,8 +182,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-activity td{white-space:nowrap}#view-activity td:last-child{white-space:normal;word-break:break-word}   /* only Event wraps (user 2026-07-06) */
 #view-jobs td{white-space:nowrap}
 #view-jobs table th{white-space:nowrap}   /* header no longer wraps "Last status Last run Runs Failures" (user 2026-07-10) */
-/* User Management: don't wrap any column — widen the page as needed (user 2026-07-10) */
-#view-users{max-width:1100px}
+/* User Management + Performance: snug tables + cards that hug their content — removes the stretched-
+   column white space and the spurious horizontal scrollbar (user 2026-07-10). */
+#view-users table,#view-performance table{width:auto;max-width:100%}
+#view-users .gsec,#view-performance .gsec{width:fit-content;max-width:100%}
+#view-users .tablewrap,#view-performance .tablewrap{overflow-x:visible}
 #view-users table th,#view-users table td{white-space:nowrap;word-break:normal}
 .confnav .adminpill{border-color:#d29922}
 .confnav .adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a);border-color:transparent}

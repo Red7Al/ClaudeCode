@@ -11,6 +11,10 @@ REM ============================================================================
 
 cd /d "%~dp0.."
 
+REM Keep Python's __pycache__ OUT of the OneDrive-synced repo (user 2026-07-10) — write it to TEMP
+REM instead, so OneDrive stops churning on bytecode files. Inherited by the child cmd windows below.
+set PYTHONPYCACHEPREFIX=%TEMP%\hvf_pycache
+
 echo Starting the Squeeze web server on http://127.0.0.1:5057 ...
 start "Squeeze Server" cmd /k python -m hvf_web.server
 
@@ -18,7 +22,7 @@ REM give the server a few seconds to bind port 5057 before ngrok connects
 timeout /t 5 >nul
 
 echo Starting ngrok public share on port 5057 ...
-start "ngrok share" cmd /k C:\ProgramData\chocolatey\bin\ngrok http 5057
+start "ngrok share" cmd /k ngrok http 5057
 
 echo.
 echo ============================================================
