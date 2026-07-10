@@ -6,6 +6,13 @@ Audited 2026-06-12 against Francis Hunt's publicly documented HVF rules. Sources
 - public consensus write-ups ("The Hunt Volatility Funnel" PDF; "HVF Method Under the
   Microscope")
 
+> **Update 2026-06-22 — clean RW cut-over.** Since this audit the engine was rebuilt onto a single
+> clean ruleset (`hvf_clean.detect_hvf`): strict swings, a real L3, no flat-top tolerance, no
+> Method-A/B override, **tightness ≤ 35%**, **R:R ≥ 3** (~74% stricter, 0 wrong-direction flips).
+> This **resolves item 3** (tightness now matches RW's ≤35%), **re-opens item 1** (the
+> exhaustion-AMP1 re-anchor was removed), and **bounds item 2** (the override was dropped / now
+> defers to the medium-term trend — the ABF fix). Per-item notes below are annotated accordingly.
+
 IMPORTANT: Hunt teaches the precise thresholds (tightness %, stop/weekly-close rules,
 the trade stages, KLOS, R:R minimum) only inside his PAID platform. They are NOT in any
 free official source. So any specific number for those is an interpretation (ours, or the
@@ -44,7 +51,7 @@ Net: definition matches across all three; neither RW's examples nor our daily wi
 reliably anchor where Hunt says. RW errs deep (52wk low → inflated AMP1); we err shallow
 (in-window → understated AMP1). The official anchor sits between.
 
-### 1. AMP1 exhaustion anchor — ✅ MERGED 2026-06-12 (apply_exhaustion_amp1)
+### 1. AMP1 exhaustion anchor — ⚠️ RE-OPENED 2026-06-22 (re-anchor removed in the clean cut-over)
 Hunt is explicit: AMP1 is dictated by "the extremities of the price action in its INITIAL
 EXHAUSTION" — i.e. the actual top of the prior trend (H1) and its first natural-support
 pullback low (L1). Our scanner picks H1/L1 as swing pivots inside a FIXED LOOKBACK WINDOW
@@ -55,9 +62,10 @@ daily windows clip; only the weekly path sees it.
 - Mitigation already present: the weekly timeframe reaches ~3 years, so a true multi-month
   funnel is caught there.
 - Residual risk: daily-timeframe HVFs on instruments with a >7-month-old exhaustion top
-  use a clipped AMP1. **DONE:** apply_exhaustion_amp1 re-anchors ONLY the clipped exhaustion extreme to full
-  history (keeps the funnel's own first-pullback pivot — avoids RW's 52wk over-extension);
-  recomputes target+R:R, re-applies the R:R gate; entry/stop unchanged. Suite case 13.
+  use a clipped AMP1. The 2026-06-12 `apply_exhaustion_amp1` re-anchor was **removed** in the
+  2026-06-22 clean cut-over ("funnel logic in ONE place"): `hvf_clean.detect_hvf` now uses the
+  funnel's own in-window pivots on every timeframe. Mitigation reverts to the weekly path's ~3-year
+  reach; the daily-window clip is a known, accepted limitation again — the one open detection item.
 
 ### 2. Continuation-only vs our recent-trend override
 Hunt's HVF is strictly a CONTINUATION pattern. Our `recent-trend override` re-classifies a
@@ -66,10 +74,16 @@ a philosophical DEPARTURE — Hunt would treat a fresh reversal as not-yet-an-HV
 it (disabled in STRONG_UPTREND), but it can manufacture "continuation" setups the purist
 method would not recognise. **Decision for the user:** keep (pragmatic, catches real tops)
 or restrict further.
+**Update 2026-06-22:** the clean ruleset dropped the Method-A/B override, and both detectors'
+recent-trend overrides now DEFER to the medium-term trend — a name down ≥10% over ~6 months but
+bouncing the last 10 weeks reads as DOWNTREND, not STRONG_UPTREND (the ABF fix, v1.33.0). Rising
+recent highs can no longer flip a medium-term downtrend up, so the manufactured-continuation risk
+is much reduced.
 
 ### 3. Numbers we present that are NOT official
-- Funnel tightness `convergence < 0.70`: OUR tuning. Hunt publishes no number; the RW skill
-  uses ≤35%. 0.70 accepts funnels twice as wide as RW — looser stops, lower realised R:R.
+- Funnel tightness: **RESOLVED 2026-06-22** — the clean ruleset adopts RW's **≤ 35%** tightness gate
+  (`hvf_clean.detect_hvf`). The old `convergence < 0.70` house tuning (which accepted funnels ~twice
+  as wide as RW) is no longer the effective gate.
 - R:R floor `3.0`: OUR/refined rule. Public Hunt EXAMPLES show R:R 9.9–13.5; one
   independent trader runs 1.5 R:R at 60% win. 3.0 is a defensible house minimum, not
   "official". Skill text must not imply these are Hunt's published thresholds.
@@ -81,8 +95,9 @@ monitor-managed stops would honour the method; broker stops cap disaster risk.
 
 ## Net
 
-The engine implements Hunt's pattern and target mathematics faithfully. The attention
-items are (1) the AMP1 exhaustion-anchor on daily timeframes [highest value], (2) the
-continuation-vs-override philosophy, (3) labelling tightness/R:R honestly as house tunings,
-(4) weekly-close stops. Items 1, 2 and 4 are detection/behaviour changes — each needs the
-regression suite green and a universe shadow-diff before merging.
+The engine implements Hunt's pattern and target mathematics faithfully. After the 2026-06-22 clean
+cut-over: (3) tightness now matches RW's ≤35% and (2) the continuation override is dropped / defers
+to the medium-term trend — both largely resolved. (1) The AMP1 exhaustion-anchor was **removed** with
+the cut-over, so daily windows can again clip an old exhaustion top (the weekly path mitigates) — the
+one open detection question. (4) weekly-close vs a hard broker stop remains a risk-appetite decision.
+Any change to (1) or (4) still needs the regression suite green and a universe shadow-diff first.
