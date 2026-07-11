@@ -639,7 +639,7 @@ STALE_TRIGGER_MAX_PCT = 0.20
 #                        to X (@SqueezeSignals) by the morning report (run_hvf_report).
 X_DRAFT_PER_MARKET = 5
 X_PUBLISH_TOP_N    = 2
-X_MAX_PER_DAY      = 5    # hard cap on live X publications per calendar day (UTC) — user 2026-06-29
+X_MAX_PER_DAY      = 2    # hard cap on live X publications per calendar day (UTC) — user 2026-06-29 (5 -> 2 on 2026-07-10)
 
 # Minimum pattern quality to PUBLISH (user 2026-06-19: don't show instruments below this in the
 # X drafts / live-X). The analytical HVF report and on-demand dossiers are NOT filtered by it.
