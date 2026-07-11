@@ -23,7 +23,7 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .tab{background:none;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;color:var(--muted);padding:6px 16px;cursor:pointer;font-size:13px}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
 /* Operations / Settings sub-navigation (user 2026-07-10) */
-.subnav{display:flex;gap:6px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;align-items:center;position:sticky;top:49px;z-index:4}
+.subnav{display:flex;gap:6px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;align-items:center;justify-content:center;position:sticky;top:49px;z-index:4}
 .subnav .subpill{background:var(--chip);border:1px solid var(--line);border-radius:6px;color:var(--muted);padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600}
 .subnav .subpill:hover{color:var(--fg);border-color:var(--accent)}
 .subnav .subpill.active{background:var(--grad);color:#fff;border-color:transparent}
@@ -158,7 +158,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .gsec .term dd{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}
 
 /* Configuration card navigation (user 2026-07-03) */
-.confnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
+.confnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;justify-content:center}
 .confnav .pill{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;
   color:var(--muted);cursor:pointer;transition:all .15s ease;display:flex;align-items:center;gap:7px}
 .confnav .pill:hover{border-color:var(--accent);color:var(--fg)}
@@ -412,6 +412,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="pill" data-panel="trading_mo" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
     <button class="pill" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
     <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>
+    <button class="pill" data-panel="tabvis" onclick="confShow('tabvis')">👁️ Tab visibility</button>
     <!-- Admin-only engine settings moved to the "Configuration (Admin)" tab (user 2026-07-10). -->
     <!-- credential-section pills (Supabase/X/Slack/Server/Email) are injected here by renderCredentials -->
   </nav>
@@ -423,13 +424,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div id="cfg-defaults" class="muted" style="font-size:12px;margin:8px 0">loading…</div>
       <button class="btn" onclick="saveFilterDefaults()">Save current filters as my defaults</button>
       <button class="btn" onclick="clearFilterDefaults()">Clear my defaults</button>
-    </div>
-    <div class="card"><h4>Tab visibility</h4>
-      <p class="muted" style="font-size:12px;margin:0 0 8px">Tick the tabs you want to see. Configuration always stays visible.</p>
-      <div id="tabvis-list" style="display:flex;flex-wrap:wrap;gap:6px 14px">loading…</div>
-      <div class="credrow" id="featrow-xposts" style="display:none"><span class="clabel">Show "X Posts" tab <span class="muted">(admin feature, applies to all admins)</span></span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="feat-xposts" onchange="saveFeatures()"> Enabled</label></div>
-      <button class="btn" style="margin-top:10px" onclick="saveTabVis()">Save tab visibility</button>
-      <span id="tabvis-msg" style="font-size:12px;margin-left:8px"></span>
     </div>
     <div class="card"><h4>My trading limits</h4>
       <p class="muted" style="font-size:12px">Your personal floors. <b>R:R</b> and <b>Quality</b> are enforced on <b>your own</b> manual actions — pushing a setup to Pre-orders or placing it on IG is blocked below these. The rest are stored against your login. The shared automated engine (one IG account, run by GitHub Actions) keeps using the system baseline.</p>
@@ -445,6 +439,17 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
 
   <!-- Leverage (Broker) panel — per-user leverage by instrument type (user 2026-07-03), all users -->
+  <!-- Tab visibility — its own panel (user 2026-07-11) -->
+  <div class="confpanel hidden" data-panel="tabvis">
+    <div class="card" style="margin-bottom:0"><h4>Tab visibility</h4>
+      <p class="muted" style="font-size:12px;margin:0 0 8px">Tick the tabs you want to see. Configuration always stays visible.</p>
+      <div id="tabvis-list" style="display:flex;flex-wrap:wrap;gap:6px 14px">loading…</div>
+      <div class="credrow" id="featrow-xposts" style="display:none"><span class="clabel">Show "X Posts" tab <span class="muted">(admin feature, applies to all admins)</span></span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="feat-xposts" onchange="saveFeatures()"> Enabled</label></div>
+      <button class="btn" style="margin-top:10px" onclick="saveTabVis()">Save tab visibility</button>
+      <span id="tabvis-msg" style="font-size:12px;margin-left:8px"></span>
+    </div>
+  </div>
+
   <div class="confpanel hidden" data-panel="leverage">
     <div class="card" style="margin-bottom:0"><h4>Leverage (Broker) — by instrument type</h4>
       <p class="muted" style="font-size:12px">Your broker's leverage for each instrument type. Shown as the <b>Leverage</b> column in the Scanner. Defaults: FX 30, Equities 10, Commodities 10, Indices 10.</p>
@@ -747,7 +752,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="mk-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th data-mk="market">Market</th><th data-mk="total">Instruments</th><th data-mk="signal">With signal</th><th data-mk="triggered">Triggered</th><th data-mk="ready">Ready</th><th data-mk="developing">Developing</th><th data-mk="avgq">Avg Quality</th></tr></thead>
+      <thead><tr><th data-mk="market">Market</th><th data-mk="incl">Included?</th><th data-mk="total">Instruments</th><th data-mk="signal">With signal</th><th data-mk="triggered">Triggered</th><th data-mk="ready">Ready</th><th data-mk="developing">Developing</th><th data-mk="avgq">Avg Quality</th></tr></thead>
       <tbody id="mk-rows"></tbody>
     </table></div>
   </section>
@@ -820,7 +825,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <!-- Change Requests (admin, default hidden, user 2026-07-10) — parses ChangeRequests/*.txt -->
 <div id="view-changereq" class="hidden doc" style="max-width:1240px">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderCR()">↻ Refresh</button></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderCR(event)">↻ Refresh</button></div>
   <h1>Change Requests</h1>
   <p class="lede">Every change-request file in <b>ChangeRequests/</b>, parsed into individual requirements. Each file shows its total actions and how many are Completed, In Progress, Not Started or Cancelled. Click a row to read the full breakdown.</p>
   <section class="gsec" id="cr-section" style="border-left-color:#d29922">
@@ -875,7 +880,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="ma-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Market</th><th>Instruments</th><th>With signal</th><th>Triggered</th><th>Ready</th><th>Developing</th><th>Avg Quality</th></tr></thead>
+      <thead><tr><th data-ma="market">Market</th><th data-ma="incl">Included?</th><th data-ma="total">Instruments</th><th data-ma="signal">With signal</th><th data-ma="triggered">Triggered</th><th data-ma="ready">Ready</th><th data-ma="developing">Developing</th><th data-ma="avgq">Avg Quality</th></tr></thead>
       <tbody id="ma-rows"></tbody>
     </table></div>
   </section>
@@ -1230,8 +1235,8 @@ const FEATURE_TABS=["xposts"];                                // off by default,
 const DEFAULT_HIDDEN=new Set(["mfm"]);
 // Parent tabs (user 2026-07-10): the grouped children are reached through a sub-nav. Operations =
 // admin operations; Settings = config + markets (its admin children are gated by role).
-const TAB_GROUPS={operations:["batch","xposts","changereq","syslogs","jobs","version","users"],
-                  settings:["config","configadmin","markets","marketsadmin"]};
+const TAB_GROUPS={operations:["users","batch","xposts","changereq","syslogs","jobs","version"],
+                  settings:["config","markets","configadmin","marketsadmin"]};   // user buttons left, admin right
 const parentOf=t=>{for(const p in TAB_GROUPS)if(TAB_GROUPS[p].includes(t))return p;return null;};
 let FEATURES={xposts:false};
 let AUTH=localStorage.getItem("sq_auth")||"";
@@ -1243,6 +1248,7 @@ function tabAllowed(t){
   if(!PUBLIC_TABS.includes(t)&&!AUTH)return false;      // login-required tab, not logged in
   if(DEFAULT_HIDDEN.has(t)&&!SHOWN_TABS.includes(t))return false;   // default-hidden unless opted in (user 2026-07-10)
   if(t==="config")return true;                          // config always available once logged in
+  if(t==="users"&&IS_ADMIN)return true;                 // admins ALWAYS keep User Management (user 2026-07-11) — can't be hidden
   if(HIDDEN_TABS.includes(t))return false;              // user chose to hide it (Tab Visibility) — applies to admin tabs too
   return true;
 }
@@ -1322,8 +1328,8 @@ document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
 const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner Report",xposts:"X Posts",
   preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
-  config:"Configuration",users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)",
-  markets:"Markets (User)",marketsadmin:"Markets (Admin)",configadmin:"Configuration (Admin)",
+  users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)",
+  config:"Configuration (User)",markets:"Markets (User)",marketsadmin:"Markets (Admin)",configadmin:"Configuration (Admin)",
   performance:"Performance",mfm:"Trading (Multi-Factor Momentum)",changereq:"Change Requests"};
 // ── System Logs (admin, user 2026-07-04): health cards + log table + clickable charts ──────────────
 let SL_ROWS=[], slSortK="ts", slSortDir=-1;
@@ -1344,7 +1350,7 @@ function paintSyslogs(){
   $("sl-rows").innerHTML=rows.slice(0,400).map(e=>`<tr><td style="white-space:nowrap">${e.ts||''}</td><td><b style="color:${lvlCol(e.level)}">${e.level||''}</b></td><td>${e.logger||''}</td><td class="muted" style="white-space:normal;word-break:break-word">${(e.message||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No log records yet.</td></tr>`;
 }
 // ── Scheduled Jobs tab (admin, user 2026-07-06): cron definitions + GitHub Actions run stats ──
-let JOB_ROWS=[], jSortK="category", jSortDir=1;
+let JOB_ROWS=[], jSortK="last_time", jSortDir=-1;   // default: last run, newest first (user 2026-07-11)
 function _jstCol(k){return k==="success"?"var(--bull)":(k==="failure"||k==="timed_out"||k==="startup_failure")?"var(--bear)":(k==="in_progress"||k==="queued")?"var(--accent)":"var(--muted)";}
 function _jstyleCol(k){return k==="Multi-factor momentum"?"var(--accent)":k==="Squeeze"?"var(--bull)":"var(--muted)";}
 function paintJobs(){
@@ -1374,7 +1380,7 @@ function renderJobs(force){
   fetch("/api/scheduled-jobs"+(force?"?refresh=1":""),{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{JOB_ROWS=j.jobs||[];
       const totF=JOB_ROWS.reduce((s,e)=>s+(e.failures||0),0);
-      const cards=[["Jobs",JOB_ROWS.length],["Categories",new Set(JOB_ROWS.map(e=>e.category)).size],["Recent failures",totF],["Stats",j.stats_source?"GitHub API":"definitions only"]];
+      const cards=[["Jobs",JOB_ROWS.length],["Categories",new Set(JOB_ROWS.map(e=>e.category)).size],["Recent failures",totF]];   // "Stats/GitHub API" card removed (user 2026-07-11)
       $("jobs-health").innerHTML=cards.map(([k,v])=>`<div class="fcard"><div class="body"><div class="muted" style="font-size:12px">${k}</div><div style="font-size:20px;font-weight:800">${v}</div></div></div>`).join("")+(j.generated_utc?`<div class="fcard"><div class="body"><div class="muted" style="font-size:12px">As of</div><div style="font-size:13px">${j.generated_utc} UTC</div>${j.error?`<div style="color:#d29922;font-size:11px;margin-top:4px">${j.error}</div>`:""}</div></div>`:"");
       paintJobs();})
     .catch(()=>{$("jobs-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not load — admin only; try logging in again.</td></tr>`;});
@@ -1479,13 +1485,17 @@ function renderTabVis(hidden){
   // Default-hidden tabs tick only when opted in (SHOWN_TABS); others tick unless hidden.
   const chipFor=t=>chip(t,DEFAULT_HIDDEN.has(t)?SHOWN_TABS.includes(t):!hidden.has(t),false);
   const head=x=>`<div class="muted" style="width:100%;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:12px 0 2px">${x}</div>`;
-  const grouped=new Set([].concat(...Object.values(TAB_GROUPS)));
-  // Grouped under Settings / Operations, then everything else together (user 2026-07-10).
+  const INSTR=["performance","scanner","preorders","orderops"];   // Instrument Operations group (user 2026-07-11)
+  const grouped=new Set([].concat(...Object.values(TAB_GROUPS),INSTR));
+  // Settings, Instrument Operations, Application Operations, then everything else (user 2026-07-11).
   const setg=TAB_GROUPS.settings.filter(t=>t!=="config"&&allow(t));
   const ops=TAB_GROUPS.operations.filter(allow);
+  const instr=INSTR.filter(allow);
   const rest=TABS.filter(t=>t!=="config"&&!grouped.has(t)&&allow(t));
+  const chipUsers=t=>(t==="users"&&IS_ADMIN)?chip(t,true,true):chipFor(t);   // admins can't disable User Management
   let html=head("Settings")+chip("config",true,true)+setg.map(chipFor).join("");
-  if(ops.length)html+=head("Operations")+ops.map(chipFor).join("");
+  if(instr.length)html+=head("Instrument Operations")+instr.map(chipFor).join("");
+  if(ops.length)html+=head("Application Operations")+ops.map(chipUsers).join("");
   html+=head("Other")+rest.map(chipFor).join("");
   $("tabvis-list").innerHTML=html;
 }
@@ -1747,38 +1757,39 @@ function renderActivity(){
     .catch(()=>{$("act-rows").innerHTML=`<tr><td colspan="2" class="empty">Could not load your activity — try logging in again.</td></tr>`;});
 }
 // ── Markets tab (user 2026-07-10): live per-market coverage computed from the loaded snapshot ──
-let mkSortK="total", mkSortDir=-1;
-function renderMarkets(){
+// "Included?" = whether any instrument in that market is visible to you (passes your market filter).
+const _mkIncl=b=>b?'<span style="color:var(--bull);font-weight:700" title="Included in your processing">🟢 Included</span>':'<span class="muted" title="Excluded by your market filter — Configuration → Trading (Squeeze)">⚪ Excluded</span>';
+function _mkAgg(){
   const g={};
-  DATA.forEach(r=>{const m=r.market||"—";const o=(g[m]=g[m]||{market:m,total:0,signal:0,triggered:0,ready:0,developing:0,qsum:0,qn:0});
-    o.total++; if(r.has_signal)o.signal++;
+  DATA.forEach(r=>{const m=r.market||"—";const o=(g[m]=g[m]||{market:m,total:0,signal:0,triggered:0,ready:0,developing:0,qsum:0,qn:0,incl:false});
+    o.total++; if(r.has_signal)o.signal++; if(tradeVisible(r))o.incl=true;
     if(r.status==="TRIGGERED")o.triggered++; else if(r.status==="READY")o.ready++; else if(r.status==="DEVELOPING")o.developing++;
     if(r.quality!=null){o.qsum+=r.quality;o.qn++;}});
-  let rows=Object.values(g).map(o=>({...o,avgq:o.qn?Math.round(o.qsum/o.qn):null}));
-  rows.sort((a,b)=>{const x=a[mkSortK],y=b[mkSortK];const av=x==null?-1e9:x,bv=y==null?-1e9:y;return (av<bv?-1:av>bv?1:0)*mkSortDir;});
+  return Object.values(g).map(o=>({...o,avgq:o.qn?Math.round(o.qsum/o.qn):null,incl:o.incl?1:0}));
+}
+const _mkSort=(rows,k,dir)=>rows.sort((a,b)=>{const x=a[k],y=b[k];const av=x==null?-1e9:x,bv=y==null?-1e9:y;return (av<bv?-1:av>bv?1:0)*dir;});
+const _mkCells=o=>`<td>${_mkIncl(o.incl)}</td><td>${o.total}</td><td>${o.signal}</td>
+    <td>${o.triggered?`<b style="color:var(--bull)">${o.triggered}</b>`:'0'}</td><td>${o.ready?`<b style="color:var(--accent)">${o.ready}</b>`:'0'}</td><td>${o.developing||0}</td>
+    <td>${o.avgq!=null?`<b style="color:${qcol(o.avgq)}">${o.avgq}</b>`:''}</td>`;
+let mkSortK="total", mkSortDir=-1;
+function renderMarkets(){
+  const rows=_mkSort(_mkAgg(),mkSortK,mkSortDir);
   $("mk-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments scanned</span>`;
   $("mktab-count")&&($("mktab-count").textContent=`(${rows.length})`);
   $("mk-rows").innerHTML=rows.map(o=>`<tr class="clk" onclick="mkFilter('${(o.market||'').replace(/'/g,'')}')" title="Filter the Scanner to ${o.market}">
-    <td><b>${o.market}</b></td><td>${o.total}</td><td>${o.signal}</td>
-    <td>${o.triggered?`<b style="color:var(--bull)">${o.triggered}</b>`:'0'}</td><td>${o.ready?`<b style="color:var(--accent)">${o.ready}</b>`:'0'}</td><td>${o.developing||0}</td>
-    <td>${o.avgq!=null?`<b style="color:${qcol(o.avgq)}">${o.avgq}</b>`:''}</td></tr>`).join("")
-    ||`<tr><td colspan="7" class="empty">No market data yet — open the Scanner first.</td></tr>`;
+    <td><b>${o.market}</b></td>${_mkCells(o)}</tr>`).join("")
+    ||`<tr><td colspan="8" class="empty">No market data yet — open the Scanner first.</td></tr>`;
 }
 function mkFilter(m){const el=$("mf_market");if(el)el.value=m;showTab("scanner");render();}
 document.querySelectorAll("th[data-mk]").forEach(th=>th.onclick=()=>{const k=th.dataset.mk;mkSortDir=(mkSortK===k)?-mkSortDir:-1;mkSortK=k;renderMarkets();});
 // ── Markets (Admin) tab (admin, user 2026-07-10): per-market coverage + full data-import rebuild ──
+let maSortK="total", maSortDir=-1;
 function renderMarketsAdmin(){
-  const g={};
-  DATA.forEach(r=>{const m=r.market||"—";const o=(g[m]=g[m]||{market:m,total:0,signal:0,triggered:0,ready:0,developing:0,qsum:0,qn:0});
-    o.total++; if(r.has_signal)o.signal++;
-    if(r.status==="TRIGGERED")o.triggered++; else if(r.status==="READY")o.ready++; else if(r.status==="DEVELOPING")o.developing++;
-    if(r.quality!=null){o.qsum+=r.quality;o.qn++;}});
-  const rows=Object.values(g).map(o=>({...o,avgq:o.qn?Math.round(o.qsum/o.qn):null})).sort((a,b)=>b.total-a.total);
+  const rows=_mkSort(_mkAgg(),maSortK,maSortDir);
   $("ma-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments</span>`;
-  $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${o.total}</td><td>${o.signal}</td>
-    <td>${o.triggered?`<b style="color:var(--bull)">${o.triggered}</b>`:'0'}</td><td>${o.ready?`<b style="color:var(--accent)">${o.ready}</b>`:'0'}</td><td>${o.developing||0}</td>
-    <td>${o.avgq!=null?`<b style="color:${qcol(o.avgq)}">${o.avgq}</b>`:''}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">No market data.</td></tr>`;
+  $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td>${_mkCells(o)}</tr>`).join("")||`<tr><td colspan="8" class="empty">No market data.</td></tr>`;
 }
+document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();});
 function maRebuild(){
   if(!confirm("Rebuild the snapshot now? This rescans the whole universe (a few minutes) and refreshes the data for everyone."))return;
   const b=$("ma-rebuild"),m=$("ma-msg");b.disabled=true;m.style.color="var(--muted)";m.textContent="Rebuild starting…";
@@ -1819,9 +1830,16 @@ function renderPerformance(){
 document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();});
 // ── Change Requests tab (admin, user 2026-07-10): parses ChangeRequests/*.txt via /api/change-requests ──
 let CR_FILES=[], crSortK="created", crSortDir=-1, CR_SEL=null;
-function renderCR(){
+function renderCR(ev){
+  // Visible feedback on refresh (user 2026-07-11): spin the button + show a loading row.
+  const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
+  if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
+  $("cr-count").innerHTML='<span class="muted">Loading…</span>';
+  $("cr-rows").innerHTML=`<tr><td colspan="8" class="empty">Loading change-request files…</td></tr>`;
   fetch("/api/change-requests",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{CR_FILES=j.files||[];paintCR();}).catch(()=>{$("cr-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not load (admin only).</td></tr>`;});
+    .then(j=>{CR_FILES=j.files||[];paintCR();})
+    .catch(()=>{$("cr-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not load (admin only).</td></tr>`;})
+    .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
 function paintCR(){
   const rows=genSort(CR_FILES.slice(),crSortK,crSortDir);
