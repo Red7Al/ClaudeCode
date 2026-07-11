@@ -392,6 +392,8 @@ def api_config():
                                   else _cs.get_trade_filters()),
                         "hidden_tabs": s.get("hidden_tabs", []), "shown_tabs": s.get("shown_tabs", []), "leverage": lev,
                         "limits": _user_limits(s),
+                        "markets_disabled": [m for m in _cs.get_value("markets_disabled", "").split(",") if m],
+                        "markets_off": s.get("markets_off", []),
                         "pinned_preorders": s.get("pinned_preorders", []),
                         "pinned_overrides": s.get("pinned_overrides", {}),
                         "engine": _cs.get_engine_settings(), "is_admin": _wu.is_admin(name),
@@ -451,6 +453,21 @@ def api_config():
         s["limits"] = cur
         _wu.set_settings(name, s)
         _wu.log_event(name, "Saved personal trading limits (Config)")
+    if "markets_disabled" in body:
+        # APP-LEVEL market on/off (user 2026-07-11, Markets Admin switch): a disabled market is hidden
+        # from everyone's Scanner/Pre-orders and forced OFF for each user. Admin only.
+        if not _wu.is_admin(name):
+            return jsonify({"ok": False, "error": "admin only"}), 403
+        vals = sorted({str(m).strip() for m in (body["markets_disabled"] or []) if str(m).strip()})
+        _cs.set_value("markets_disabled", ",".join(vals), updated_by=name)
+        _wu.log_event(name, "Saved disabled markets (Markets Admin): " + (", ".join(vals) or "(none)"))
+    if "markets_off" in body:
+        # PER-USER market on/off (user 2026-07-11, Markets User switch) — hides those markets from THIS
+        # user's Scanner/Pre-orders only.
+        s = _wu.get_settings(name)
+        s["markets_off"] = sorted({str(m).strip() for m in (body["markets_off"] or []) if str(m).strip()})
+        _wu.set_settings(name, s)
+        _wu.log_event(name, "Saved my hidden markets (Markets)")
     if "x_hvf_markets" in body:
         if not _wu.is_admin(name):
             return jsonify({"ok": False, "error": "admin only"}), 403
