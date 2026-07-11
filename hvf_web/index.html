@@ -368,7 +368,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-orderops" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);font-size:13px"><span class="datecard">📅 <span id="oo-datebar"></span></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="oo-showclosed" onchange="paintOrderOps()"> Show closed (deleted / expired / cancelled)</label><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);font-size:13px"><span class="datecard">📅 <span id="oo-datebar"></span></span></div>
   <h1>Pre-orders to my IG</h1>
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
@@ -1046,8 +1046,8 @@ function render(){
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
-    <td>${ob(r.market||'')}</td><td>${r.sector||''}</td><td>${ob(r.status||'')}</td>
-    <td>${r.days_since??''}</td>
+    <td>${ob(r.market||'')}</td><td>${ob(r.sector||'')}</td><td>${ob(r.status||'')}</td>
+    <td>${ob(r.days_since??'')}</td>
     <td>${ob(f2(r.current_price))}</td>
     <td>${ob(r.tgt_str||'')}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
     <td>${AUTH&&isPreorder(r)?'<span style="color:var(--bull)" title="In your My Pre-orders">✓</span>':''}</td>
@@ -1586,6 +1586,9 @@ function saveCreds(secId){
 }
 function renderConfig(){
   renderCredentials();
+  // Trading (Momentum) is a Gold-tier feature (user 2026-07-11): hide the pill for Silver/Guest.
+  const _tm=document.querySelector('#confnav .pill[data-panel="trading_mo"]');
+  if(_tm)_tm.style.display=(ROLE==="gold"||IS_ADMIN)?"":"none";
   fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       USER_FILTERS=j.filters||{};
@@ -1700,6 +1703,9 @@ function paintOrderOps(){
   let rows=OO_ROWS;
   [["oof_status","status"],["oof_direction","direction"],["oof_session","session"],["oof_ticker","ticker"]].forEach(([id,k])=>{
     rows=rows.filter(r=>inSet(id,r[k]));});
+  // Default view excludes closed states (user 2026-07-11) — tick "Show closed" to include them.
+  if(!(($("oo-showclosed")||{}).checked)){const _closed=new Set(["DELETED","EXPIRED","CANCELLED","CANCELED"]);
+    rows=rows.filter(r=>!_closed.has(String(r.status||"").toUpperCase()));}
   rows=applyDateFilter("oo",rows,r=>r.updated_at||r.placed_at);   // date filter on Updated
   // Free-text search by name / ticker (user 2026-07-10).
   const _ooq=(($("oo-search")||{}).value||"").trim().toLowerCase();
