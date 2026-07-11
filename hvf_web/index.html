@@ -211,6 +211,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <header>
   <h1>Squeeze Scanner</h1>
   <span class="count" id="gen"></span>
+  <button class="btn" id="nav-back" onclick="tabHistGo(-1)" title="Back" style="padding:6px 9px">◀</button>
+  <button class="btn" id="nav-fwd" onclick="tabHistGo(1)" title="Forward" style="padding:6px 9px">▶</button>
   <span class="grow"></span>
   <button class="btn" id="togglefilters">Show Filters <span style="color:var(--bear)">✗</span></button>
   <button class="btn" id="signalonly">Show Squeeze Only <span style="color:var(--bull)">✓</span></button>
@@ -408,12 +410,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
   <!-- Card navigation (user 2026-07-03): keeps config sections separate; one panel visible at a time. -->
   <nav class="confnav" id="confnav">
-    <button class="pill active" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
+    <button class="pill active" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
+    <button class="pill" data-panel="tabvis" onclick="confShow('tabvis')">👁️ Tab visibility</button>
+    <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
     <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>
     <button class="pill" data-panel="trading_mo" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
-    <button class="pill" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
     <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>
-    <button class="pill" data-panel="tabvis" onclick="confShow('tabvis')">👁️ Tab visibility</button>
     <!-- Admin-only engine settings moved to the "Configuration (Admin)" tab (user 2026-07-10). -->
     <!-- credential-section pills (Supabase/X/Slack/Server/Email) are injected here by renderCredentials -->
   </nav>
@@ -1069,7 +1071,7 @@ function render(){
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
-    <td>${ob(r.market||'')}</td><td>${ob(r.sector||'')}</td><td>${ob(r.status||'')}</td>
+    <td>${r.market||''}</td><td>${r.sector||''}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.days_since??'')}</td>
     <td>${ob(f2(r.current_price))}</td>
     <td>${ob(r.tgt_str||'')}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
@@ -1255,7 +1257,7 @@ const PUBLIC_TABS=["welcome","intro","appendix","scanner","performance"];   // v
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin"];  // admin only
 const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
 // Tabs hidden by DEFAULT (user 2026-07-10): visible only once the user opts in via Tab Visibility.
-const DEFAULT_HIDDEN=new Set(["mfm","igaccount"]);
+const DEFAULT_HIDDEN=new Set(["mfm"]);   // IG Account is now default-visible (user 2026-07-11)
 // Parent tabs (user 2026-07-10): the grouped children are reached through a sub-nav. Operations =
 // admin operations; Settings = config + markets (its admin children are gated by role).
 const TAB_GROUPS={operations:["users","batch","xposts","changereq","syslogs","jobs","version"],
@@ -1268,6 +1270,7 @@ let ROLE="guest", IS_ADMIN=false, HIDDEN_TABS=[], SHOWN_TABS=[];
 function tabAllowed(t){
   if(FEATURE_TABS.includes(t)&&!FEATURES[t])return false;   // feature tab off by default (user 2026-07-03)
   if(ADMIN_TABS.includes(t)&&!IS_ADMIN)return false;    // admin tabs require admin
+  if(t==="mfm"&&!(ROLE==="gold"||IS_ADMIN))return false;   // Multi-Factor Momentum is Gold-tier (user 2026-07-11)
   if(!PUBLIC_TABS.includes(t)&&!AUTH)return false;      // login-required tab, not logged in
   if(DEFAULT_HIDDEN.has(t)&&!SHOWN_TABS.includes(t))return false;   // default-hidden unless opted in (user 2026-07-10)
   if(t==="config")return true;                          // config always available once logged in
@@ -1312,9 +1315,15 @@ function renderSubnav(parent,active){
   sn.style.display="flex";
   sn.innerHTML=kids.map(c=>`<button class="subpill${ADMIN_TABS.includes(c)?' adminpill':''}${c===active?' active':''}" onclick="showTab('${c}')">${TAB_LABELS[c]||c}</button>`).join("");
 }
+// Tab-visit history for the header ◀ ▶ buttons (user 2026-07-11).
+let TAB_HIST=[], TAB_HI=-1, _navFromHist=false;
+function _updateNavBtns(){const b=$("nav-back"),f=$("nav-fwd");if(b)b.disabled=TAB_HI<=0;if(f)f.disabled=TAB_HI>=TAB_HIST.length-1;}
+function tabHistGo(dir){const ni=TAB_HI+dir;if(ni<0||ni>=TAB_HIST.length)return;TAB_HI=ni;_navFromHist=true;showTab(TAB_HIST[ni]);_navFromHist=false;}
 function showTab(name){
   if(TAB_GROUPS[name]){const kids=TAB_GROUPS[name].filter(tabAllowed);name=kids[0]||"welcome";}   // parent -> first child
   if(!tabAllowed(name))name="welcome";                  // never open a tab this session can't see
+  if(!_navFromHist && TAB_HIST[TAB_HI]!==name){TAB_HIST=TAB_HIST.slice(0,TAB_HI+1);TAB_HIST.push(name);TAB_HI=TAB_HIST.length-1;}
+  _updateNavBtns();
   const locked=!AUTH && !PUBLIC_TABS.includes(name);    // login-required tab, not logged in -> login panel
   const parent=parentOf(name);
   TABS.forEach(t=>{const v=$("view-"+t);if(v)v.classList.toggle("hidden",locked||t!==name);});
@@ -1516,7 +1525,7 @@ function renderTabVis(hidden){
   // Default-hidden tabs tick only when opted in (SHOWN_TABS); others tick unless hidden.
   const chipFor=t=>chip(t,DEFAULT_HIDDEN.has(t)?SHOWN_TABS.includes(t):!hidden.has(t),false);
   const head=x=>`<div class="muted" style="width:100%;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:12px 0 2px">${x}</div>`;
-  const INSTR=["performance","scanner","preorders","orderops"];   // Instrument Operations group (user 2026-07-11)
+  const INSTR=["performance","scanner","preorders","orderops","igaccount"];   // Instrument Operations group (user 2026-07-11)
   const grouped=new Set([].concat(...Object.values(TAB_GROUPS),INSTR));
   // Settings, Instrument Operations, Application Operations, then everything else (user 2026-07-11).
   const setg=TAB_GROUPS.settings.filter(t=>t!=="config"&&allow(t));
@@ -1804,17 +1813,17 @@ function _mkAgg(){
     if(r.quality!=null){o.qsum+=r.quality;o.qn++;}});
   return Object.values(g).map(o=>({...o,avgq:o.qn?Math.round(o.qsum/o.qn):null,incl:o.incl?1:0}));
 }
-const _mkSort=(rows,k,dir)=>rows.sort((a,b)=>{const x=a[k],y=b[k];const av=x==null?-1e9:x,bv=y==null?-1e9:y;return (av<bv?-1:av>bv?1:0)*dir;});
+const _mkSort=(rows,k,dir)=>rows.sort((a,b)=>{const x=a[k],y=b[k];const av=x==null?-1e9:x,bv=y==null?-1e9:y;const c=(av<bv?-1:av>bv?1:0)*dir;return c||String(a.market||'').localeCompare(String(b.market||''));});   // Market tiebreak (user 2026-07-11)
 const _mkCells=o=>`<td>${_mkIncl(o.incl)}</td><td>${o.total}</td><td>${o.signal}</td>
     <td>${o.triggered?`<b style="color:var(--bull)">${o.triggered}</b>`:'0'}</td><td>${o.ready?`<b style="color:var(--accent)">${o.ready}</b>`:'0'}</td><td>${o.developing||0}</td>
     <td>${o.avgq!=null?`<b style="color:${qcol(o.avgq)}">${o.avgq}</b>`:''}</td>`;
-let mkSortK="total", mkSortDir=-1;
+let mkSortK="incl", mkSortDir=-1;   // default: Included? first, then Market (user 2026-07-11)
 function renderMarkets(){
   const rows=_mkSort(_mkAgg(),mkSortK,mkSortDir);
   $("mk-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments scanned</span>`;
   $("mktab-count")&&($("mktab-count").textContent=`(${rows.length})`);
-  $("mk-rows").innerHTML=rows.map(o=>`<tr class="clk" onclick="mkFilter('${(o.market||'').replace(/'/g,'')}')" title="Filter the Scanner to ${o.market}">
-    <td><b>${o.market}</b></td>${_mkCells(o)}</tr>`).join("")
+  // No click-through to the Scanner (user 2026-07-11) — this is a coverage view.
+  $("mk-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td>${_mkCells(o)}</tr>`).join("")
     ||`<tr><td colspan="8" class="empty">No market data yet — open the Scanner first.</td></tr>`;
 }
 function mkFilter(m){const el=$("mf_market");if(el)el.value=m;showTab("scanner");render();}
