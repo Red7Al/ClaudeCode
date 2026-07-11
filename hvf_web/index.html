@@ -838,11 +838,18 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="credrow"><span class="clabel">Minimum Quality (Q)</span><input type="number" min="0" max="100" step="1" id="eng-bridge_min_quality" style="max-width:120px"></div>
     <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save quality floor</button>
   </div>
-  <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Spread retries <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+  <div class="card" style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Spread retries <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
     <p class="muted" style="font-size:12px">When the quoted spread is too wide, how often and how long to retry before skipping the trade.</p>
     <div class="credrow"><span class="clabel">Spread retry attempts</span><input type="number" min="0" step="1" id="eng-spread_retry_attempts" style="max-width:120px"></div>
     <div class="credrow"><span class="clabel">Spread retry wait (secs)</span><input type="number" min="0" step="1" id="eng-spread_retry_wait_secs" style="max-width:120px"></div>
     <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save spread retries</button>
+  </div>
+  <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>X publishing <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+    <p class="muted" style="font-size:12px">Application-wide X-publishing limits, stored in the database and read by the publisher on both the local server and GitHub Actions (code fallback if the DB is unreachable).</p>
+    <div class="credrow"><span class="clabel">Max X publications per day (UTC)</span><input type="number" min="0" step="1" id="eng-x_max_per_day" style="max-width:120px"></div>
+    <div class="credrow"><span class="clabel">Superinvestor lookback (days)</span><input type="number" min="0" step="1" id="eng-superinvestor_lookback_days" style="max-width:120px"></div>
+    <div class="credrow"><span class="clabel">Min senator trades <span class="muted" style="font-weight:400">(not currently consumed by the engine)</span></span><input type="number" min="0" step="1" id="eng-min_senator_trades" style="max-width:120px"></div>
+    <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save X publishing settings</button>
   </div>
 </div>
 

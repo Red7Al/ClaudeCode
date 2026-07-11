@@ -97,7 +97,7 @@ def get_num(key: str, fallback):
 # Read at the use sites via cfg_num(); editable in Configuration → Engine (admin).
 APP_ENGINE_KEYS = {
     "wo_lifespan_days": 28,          # IG working-order lifespan (was good_till_days=4)
-    "x_max_per_day": 5,
+    "x_max_per_day": 2,              # live X publications per UTC day (user 2026-07-10: 5 -> 2)
     "superinvestor_lookback_days": 90,
     "min_senator_trades": 1,
     "spread_retry_attempts": 3,
