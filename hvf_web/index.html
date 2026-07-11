@@ -1265,13 +1265,21 @@ function colorTabs(){
   const btns=[...document.querySelectorAll(".tabs .tab")].filter(b=>b.id!=="logout");
   const n=btns.length;
   btns.forEach((b,i)=>{
+    const active=b.classList.contains("active");
     const t=i/(n-1||1);                 // 0..1 left->right
     const lum=Math.round(20+58*t);      // grey lightness 20% -> 78% (dark left -> light right)
-    b.style.background=`hsl(210 8% ${lum}%)`;
-    b.style.color=lum<50?"#e8edf2":"#1b1f24";
     b.style.borderColor="transparent";
-    b.style.borderBottom=b.classList.contains("active")?"3px solid var(--accent)":"3px solid transparent";
-    b.style.fontWeight=b.classList.contains("active")?"700":"500";
+    if(active){                          // selected main tab -> green (user 2026-07-11)
+      b.style.background="var(--bull)";
+      b.style.color="#ffffff";
+      b.style.borderBottom="3px solid var(--bull)";
+      b.style.fontWeight="700";
+    } else {
+      b.style.background=`hsl(210 8% ${lum}%)`;
+      b.style.color=lum<50?"#e8edf2":"#1b1f24";
+      b.style.borderBottom="3px solid transparent";
+      b.style.fontWeight="500";
+    }
   });
 }
 function renderSubnav(parent,active){
