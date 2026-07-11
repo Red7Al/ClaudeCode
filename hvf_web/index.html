@@ -22,6 +22,13 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .tabs{display:flex;gap:4px;padding:6px 16px 0;border-bottom:1px solid var(--line)}
 .tab{background:none;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;color:var(--muted);padding:6px 16px;cursor:pointer;font-size:13px}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
+/* Operations / Settings sub-navigation (user 2026-07-10) */
+.subnav{display:flex;gap:6px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;align-items:center;position:sticky;top:49px;z-index:4}
+.subnav .subpill{background:var(--chip);border:1px solid var(--line);border-radius:6px;color:var(--muted);padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600}
+.subnav .subpill:hover{color:var(--fg);border-color:var(--accent)}
+.subnav .subpill.active{background:var(--grad);color:#fff;border-color:transparent}
+.subnav .subpill.adminpill{border-color:#d29922}
+.subnav .subpill.adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a)}
 #view-preorders{padding:10px 16px}
 .gloss .card>div>div{padding:5px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.45}
 .gloss .card>div>div:last-child{border-bottom:none}
@@ -211,30 +218,26 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="btn" id="reset">Reset filters</button>
   <button class="btn" id="showall">Remove all filters (show all)</button>
   <button class="btn" id="theme">🌙 Dark</button>
+  <button class="btn" id="logout" onclick="doLogout()" style="display:none">Log out</button>
 </header>
 <div class="tabs">
   <button class="tab active" id="tab-welcome" onclick="showTab('welcome')">Introduction</button>
   <button class="tab" id="tab-intro" onclick="showTab('intro')">How it works</button>
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
+  <button class="tab" id="tab-performance" onclick="showTab('performance')" style="display:none">Performance <span id="pftab-count"></span></button>
   <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner Report <span id="sctab-count"></span></button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')" style="display:none">My Pre-orders <span id="potab-count"></span></button>
   <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Pre-orders to my IG <span id="ootab-count"></span></button>
   <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My Activity <span id="actab-count"></span></button>
-  <button class="tab" id="tab-batch" onclick="showTab('batch')" style="display:none">Batch Activity <span id="batab-count"></span></button>
-  <button class="tab" id="tab-users" onclick="showTab('users')" style="display:none">User Management</button>
-  <button class="tab" id="tab-xposts" onclick="showTab('xposts')" style="display:none">X Posts <span id="xtab-count"></span></button>
-  <button class="tab" id="tab-config" onclick="showTab('config')" style="display:none">Configuration</button>
-  <button class="tab" id="tab-version" onclick="showTab('version')" style="display:none">Version History <span id="vertab-count"></span></button>
-  <button class="tab" id="tab-syslogs" onclick="showTab('syslogs')" style="display:none">System Logs</button>
-  <button class="tab" id="tab-jobs" onclick="showTab('jobs')" style="display:none">Scheduled Jobs</button>
-  <button class="tab" id="tab-sysdocs" onclick="showTab('sysdocs')" style="display:none">How it works (System)</button>
-  <button class="tab" id="tab-markets" onclick="showTab('markets')" style="display:none">Markets <span id="mktab-count"></span></button>
-  <button class="tab" id="tab-performance" onclick="showTab('performance')" style="display:none">Performance <span id="pftab-count"></span></button>
   <button class="tab" id="tab-mfm" onclick="showTab('mfm')" style="display:none">Trading (Multi-Factor Momentum)</button>
-  <button class="tab" id="tab-changereq" onclick="showTab('changereq')" style="display:none">Change Requests <span id="crtab-count"></span></button>
+  <button class="tab" id="tab-sysdocs" onclick="showTab('sysdocs')" style="display:none">How it works (System)</button>
+  <!-- grouped children (Batch/Users/X Posts/Version/System Logs/Scheduled Jobs/Change Requests, and
+       Config/Config-Admin/Markets/Markets-Admin) live under the Operations / Settings parents below. -->
   <span class="grow"></span>
-  <button class="tab" id="logout" onclick="doLogout()" style="display:none">Log out</button>
+  <button class="tab" id="tab-operations" onclick="showTab('operations')" style="display:none">🛠️ Operations</button>
+  <button class="tab" id="tab-settings" onclick="showTab('settings')" style="display:none">⚙️ Settings</button>
 </div>
+<div class="subnav" id="subnav" style="display:none"></div>
 
 <div id="loginpanel" class="hidden" style="max-width:360px;margin:60px auto;text-align:center">
   <div class="card" style="padding:22px">
@@ -382,12 +385,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-xposts" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="xf_ticker"><input type="hidden" id="xf_market"><input type="hidden" id="xf_month"><input type="hidden" id="xf_mweek">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Publishing</span><span class="grow"></span><input id="x-search" placeholder="Search name…" oninput="paintXposts()" style="padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);font-size:13px"><span class="datecard">📅 <span id="x-datebar"></span></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Publishing</span><span class="grow"></span><span class="datecard">📅 <span id="x-datebar"></span></span></div>
   <h1>X Posts</h1>
   <p class="lede">Every tweet we've published, newest first. Click a chart to filter; click a row's link to open the tweet on X.</p>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
-      <div class="count" style="padding-left:0"><span id="x-count"></span></div>
+      <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="x-count"></span><span class="grow"></span><input id="x-search" placeholder="Search name…" oninput="paintXposts()" style="width:180px;padding:4px 8px;font-size:12px"></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-xk="published_at">Published (UTC)</th><th data-xk="ticker">Ticker</th><th data-xk="name">Name</th><th data-xk="market">Market</th><th data-xk="thread">Thread</th><th style="cursor:default">Link</th></tr></thead>
         <tbody id="x-rows"></tbody>
@@ -409,7 +412,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="pill" data-panel="trading_mo" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
     <button class="pill" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
     <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>
-    <button class="pill adminpill" id="pill-engine" data-panel="engine" onclick="confShow('engine')" style="display:none">🛠️ Engine</button>
+    <!-- Admin-only engine settings moved to the "Configuration (Admin)" tab (user 2026-07-10). -->
     <!-- credential-section pills (Supabase/X/Slack/Server/Email) are injected here by renderCredentials -->
   </nav>
 
@@ -443,16 +446,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
   </div>
 
-  <!-- Engine settings panel (admin only) — app-wide values migrated from config.py (user 2026-07-03) -->
-  <div class="confpanel hidden" data-panel="engine">
-    <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
-      <p class="muted" style="font-size:12px">Application-wide trading/engine values (shared, one account). Read DB-first by the engine (local + GitHub Actions) with a code fallback.</p>
-      <div class="credrow"><span class="clabel">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="eng-wo_lifespan_days" style="max-width:120px"></div>
-      <button class="btn" style="margin-top:10px" onclick="saveEngine()">Save engine settings</button>
-      <span id="eng-msg" style="font-size:12px;margin-left:8px"></span>
-    </div>
-  </div>
-
   <!-- Trading panel — completely separate from everything else (user 2026-07-03), warning-tinted -->
   <!-- Trading (Squeeze) — the trade filters that gate squeeze-setup orders (user 2026-07-03 split) -->
   <div class="confpanel hidden" data-panel="trading_sq">
@@ -469,23 +462,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div class="credrow"><span class="clabel">Bridge may place orders</span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="cfg-bridge" onchange="saveBridge()"> Yes</label></div>
       <span id="bridge-msg" style="font-size:12px"></span>
     </div>
-    <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Bridge quality floor <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
-      <p class="muted" style="font-size:12px">Minimum pattern Quality (0–100) a setup needs before the bridge auto-loads it as a pre-order / IG working order.</p>
-      <div class="credrow"><span class="clabel">Minimum Quality (Q)</span><input type="number" min="0" max="100" step="1" id="eng-bridge_min_quality" style="max-width:120px"></div>
-      <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save quality floor</button>
-    </div>
   </div>
 
   <!-- Trading (Momentum) — the per-source execution switches (the "bottom 4" options) -->
   <div class="confpanel hidden" data-panel="trading_mo">
     <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">Trading (Momentum) — affects live orders</h3>
     <p class="muted" style="font-size:12px;margin:0 0 14px">Which monitor sources may place live orders.</p>
-    <div class="card"><h4>Spread retries <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
-      <p class="muted" style="font-size:12px">When the quoted spread is too wide, how often and how long to retry before skipping the trade.</p>
-      <div class="credrow"><span class="clabel">Spread retry attempts</span><input type="number" min="0" step="1" id="eng-spread_retry_attempts" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">Spread retry wait (secs)</span><input type="number" min="0" step="1" id="eng-spread_retry_wait_secs" style="max-width:120px"></div>
-      <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save spread retries</button>
-    </div>
     <div class="card" style="margin-bottom:0"><h4>Trade execution by source</h4>
       <p class="muted" style="font-size:12px">Yes = that source may place live IG trades/orders; No = it scans and reports but places <b>nothing</b>. These switches are shared (one trading account) — the change is attributed to you.</p>
       <div id="cfg-exec">loading…</div>
@@ -840,6 +822,48 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec hidden" id="cr-detail" style="border-left-color:var(--accent)"></section>
 </div>
 
+<!-- Configuration (Admin) (admin, default hidden, user 2026-07-10) — admin-only engine settings moved out of Configuration. -->
+<div id="view-configadmin" class="hidden doc" style="max-width:840px">
+  <span class="eyebrow" style="color:#d29922;background:color-mix(in srgb,#d29922 14%,transparent)">Admin</span>
+  <h1>Configuration (Admin)</h1>
+  <p class="lede">Application-wide engine settings — shared across the one trading account, read DB-first by the engine (local + GitHub Actions) with a code fallback. Admin only; every change is recorded in your activity log.</p>
+  <div class="card" style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+    <p class="muted" style="font-size:12px">Application-wide trading/engine values (shared, one account).</p>
+    <div class="credrow"><span class="clabel">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="eng-wo_lifespan_days" style="max-width:120px"></div>
+    <button class="btn" style="margin-top:10px" onclick="saveEngine()">Save engine settings</button>
+    <span id="eng-msg" style="font-size:12px;margin-left:8px"></span>
+  </div>
+  <div class="card" style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Bridge quality floor <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+    <p class="muted" style="font-size:12px">Minimum pattern Quality (0–100) a setup needs before the 2-hourly bridge auto-loads it as a pre-order / IG working order.</p>
+    <div class="credrow"><span class="clabel">Minimum Quality (Q)</span><input type="number" min="0" max="100" step="1" id="eng-bridge_min_quality" style="max-width:120px"></div>
+    <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save quality floor</button>
+  </div>
+  <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Spread retries <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+    <p class="muted" style="font-size:12px">When the quoted spread is too wide, how often and how long to retry before skipping the trade.</p>
+    <div class="credrow"><span class="clabel">Spread retry attempts</span><input type="number" min="0" step="1" id="eng-spread_retry_attempts" style="max-width:120px"></div>
+    <div class="credrow"><span class="clabel">Spread retry wait (secs)</span><input type="number" min="0" step="1" id="eng-spread_retry_wait_secs" style="max-width:120px"></div>
+    <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save spread retries</button>
+  </div>
+</div>
+
+<!-- Markets (Admin) (admin, default hidden, user 2026-07-10) — per-market coverage + data-import reprocessing. -->
+<div id="view-marketsadmin" class="hidden doc" style="max-width:1120px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow" style="color:#d29922;background:color-mix(in srgb,#d29922 14%,transparent)">Admin</span><span class="grow"></span>
+    <button class="btn" onclick="renderMarketsAdmin()">↻ Refresh view</button>
+    <button class="btn" id="ma-rebuild" onclick="maRebuild()" style="border-color:#d29922">⚙️ Rebuild snapshot (data import)</button></div>
+  <h1>Markets (Admin)</h1>
+  <p class="lede">Admin view of every scanned market with its live coverage, plus data-import processing. Rebuilding rescans the universe and refreshes the snapshot that feeds the Scanner, Pre-orders and reports.</p>
+  <div id="ma-msg" style="font-size:12px;margin-bottom:10px"></div>
+  <section class="gsec" style="border-left-color:#d29922">
+    <div class="count" style="padding-left:0"><span id="ma-count"></span></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Market</th><th>Instruments</th><th>With signal</th><th>Triggered</th><th>Ready</th><th>Developing</th><th>Avg Quality</th></tr></thead>
+      <tbody id="ma-rows"></tbody>
+    </table></div>
+  </section>
+  <p class="muted" style="font-size:12px">Rebuild currently reprocesses the <b>whole universe</b> in one pass (the engine builds every market together). Per-market isolation and a separate HVF-report run are a planned enhancement.</p>
+</div>
+
 <script>
 let DATA=[], SEL=null, sortK="trig_date", sortDir=-1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;
 const $=id=>document.getElementById(id);
@@ -1180,12 +1204,17 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/target overrides (user 2026-07-03/04)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","xposts","config","version","syslogs","jobs","sysdocs","markets","performance","mfm","changereq"];
-const PUBLIC_TABS=["welcome","intro","appendix","scanner"];   // visible when logged out
-const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq"];        // admin only (xposts also admin, user 2026-07-03)
+const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","mfm","changereq"];
+const PUBLIC_TABS=["welcome","intro","appendix","scanner","performance"];   // visible when logged out (Performance blurs all but ticker/name/return)
+const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin"];  // admin only
 const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
 // Tabs hidden by DEFAULT (user 2026-07-10): visible only once the user opts in via Tab Visibility.
-const DEFAULT_HIDDEN=new Set(["mfm","changereq"]);
+const DEFAULT_HIDDEN=new Set(["mfm"]);
+// Parent tabs (user 2026-07-10): the grouped children are reached through a sub-nav. Operations =
+// admin operations; Settings = config + markets (its admin children are gated by role).
+const TAB_GROUPS={operations:["batch","xposts","changereq","syslogs","jobs","version","users"],
+                  settings:["config","configadmin","markets","marketsadmin"]};
+const parentOf=t=>{for(const p in TAB_GROUPS)if(TAB_GROUPS[p].includes(t))return p;return null;};
 let FEATURES={xposts:false};
 let AUTH=localStorage.getItem("sq_auth")||"";
 let ROLE="guest", IS_ADMIN=false, HIDDEN_TABS=[], SHOWN_TABS=[];
@@ -1200,8 +1229,9 @@ function tabAllowed(t){
   return true;
 }
 function applyTabVisibility(){
-  TABS.forEach(t=>{const b=$("tab-"+t);if(b)b.style.display=tabAllowed(t)?"":"none";});
-  // Refresh is admin-only (user 2026-07-03); other Scanner controls stay as they were.
+  TABS.forEach(t=>{const b=$("tab-"+t);if(b)b.style.display=tabAllowed(t)?"":"none";});   // top-level buttons; grouped children have none
+  // Parent tabs (Operations/Settings) show when the session can reach at least one of their children.
+  Object.keys(TAB_GROUPS).forEach(p=>{const b=$("tab-"+p);if(b)b.style.display=TAB_GROUPS[p].some(tabAllowed)?"":"none";});
   const rb=$("refresh"); if(rb) rb.dataset.adminonly="1";
   colorTabs();
 }
@@ -1220,30 +1250,34 @@ function colorTabs(){
     b.style.fontWeight=b.classList.contains("active")?"700":"500";
   });
 }
+function renderSubnav(parent,active){
+  const sn=$("subnav"); if(!sn)return;
+  const kids=parent?TAB_GROUPS[parent].filter(tabAllowed):[];
+  if(!kids.length){sn.style.display="none";sn.innerHTML="";return;}
+  sn.style.display="flex";
+  sn.innerHTML=kids.map(c=>`<button class="subpill${ADMIN_TABS.includes(c)?' adminpill':''}${c===active?' active':''}" onclick="showTab('${c}')">${TAB_LABELS[c]||c}</button>`).join("");
+}
 function showTab(name){
+  if(TAB_GROUPS[name]){const kids=TAB_GROUPS[name].filter(tabAllowed);name=kids[0]||"welcome";}   // parent -> first child
   if(!tabAllowed(name))name="welcome";                  // never open a tab this session can't see
-  // Login-required tabs show the login panel when logged out; Scanner is a teaser (first 5 cols).
-  const locked=!AUTH && !PUBLIC_TABS.includes(name);
-  TABS.forEach(t=>{const v=$("view-"+t),b=$("tab-"+t);if(v)v.classList.toggle("hidden",locked||t!==name);if(b)b.classList.toggle("active",t===name);});
+  const locked=!AUTH && !PUBLIC_TABS.includes(name);    // login-required tab, not logged in -> login panel
+  const parent=parentOf(name);
+  TABS.forEach(t=>{const v=$("view-"+t);if(v)v.classList.toggle("hidden",locked||t!==name);});
+  [...TABS,...Object.keys(TAB_GROUPS)].forEach(t=>{const b=$("tab-"+t);if(b)b.classList.remove("active");});
+  const ab=parent?$("tab-"+parent):$("tab-"+name); if(ab)ab.classList.add("active");   // highlight the parent for grouped children
+  renderSubnav(locked?null:parent,name);
   colorTabs();
   $("loginpanel").classList.toggle("hidden",!locked);
   // Header controls are Scanner tools; Refresh is admin-only (user 2026-07-03).
   const sc=(name==="scanner")&&!locked;
   ["togglefilters","signalonly","reset","showall"].forEach(id=>{const b=$(id);if(b)b.style.display=sc?"":"none";});
   const rb=$("refresh"); if(rb) rb.style.display=(sc&&IS_ADMIN)?"":"none";
-  if(!locked&&name==="preorders")renderPreorders();
-  if(!locked&&name==="activity")renderActivity();
-  if(!locked&&name==="orderops")renderOrderOps();
-  if(!locked&&name==="xposts")renderXposts();
-  if(!locked&&name==="config")renderConfig();
-  if(name==="users")renderUsers();
-  if(name==="syslogs")renderSyslogs();
-  if(name==="jobs")renderJobs();
-  if(name==="version")renderVersion();
-  if(name==="batch")renderBatch();
-  if(!locked&&name==="markets")renderMarkets();
-  if(!locked&&name==="performance")renderPerformance();
-  if(name==="changereq")renderCR();
+  if(locked)return;
+  const R={preorders:renderPreorders,activity:renderActivity,orderops:renderOrderOps,xposts:renderXposts,
+    config:renderConfig,configadmin:renderConfig,users:renderUsers,syslogs:renderSyslogs,jobs:renderJobs,
+    version:renderVersion,batch:renderBatch,markets:renderMarkets,marketsadmin:renderMarketsAdmin,
+    performance:renderPerformance,changereq:renderCR};
+  if(R[name])R[name]();
 }
 // ── X Posts tab (user 2026-07-03): all published tweets + charts, click-to-filter, sortable. ──
 let X_ROWS=[], xSortK="published_at", xSortDir=-1;
@@ -1271,7 +1305,8 @@ document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.
 const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner Report",xposts:"X Posts",
   preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
   config:"Configuration",users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)",
-  markets:"Markets",performance:"Performance",mfm:"Trading (Multi-Factor Momentum)",changereq:"Change Requests"};
+  markets:"Markets (User)",marketsadmin:"Markets (Admin)",configadmin:"Configuration (Admin)",
+  performance:"Performance",mfm:"Trading (Multi-Factor Momentum)",changereq:"Change Requests"};
 // ── System Logs (admin, user 2026-07-04): health cards + log table + clickable charts ──────────────
 let SL_ROWS=[], slSortK="ts", slSortDir=-1;
 function paintSyslogs(){
@@ -1421,10 +1456,20 @@ function paintBatch(){
 function renderBatch(){fetch("/api/batch-activity",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{BATCH_ROWS=j.entries||[];paintBatch();}).catch(()=>{$("batch-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});}
 function renderTabVis(hidden){
   hidden=new Set(hidden||HIDDEN_TABS||[]);
-  const list=TABS.filter(t=>t!=="config"&&(PUBLIC_TABS.includes(t)||AUTH)&&(!ADMIN_TABS.includes(t)||IS_ADMIN));
+  const allow=t=>(PUBLIC_TABS.includes(t)||AUTH)&&(!ADMIN_TABS.includes(t)||IS_ADMIN);
   const chip=(t,checked,dis)=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:${dis?'default':'pointer'};${dis?'opacity:.6':''}"><input type="checkbox" ${dis?'class="" disabled':'class="tv"'} data-t="${t}" ${checked?'checked':''}> ${TAB_LABELS[t]||t}</label>`;
-  // Default-hidden tabs show as ticked only when the user has opted in (SHOWN_TABS); others tick unless hidden.
-  $("tabvis-list").innerHTML=chip("config",true,true)+list.map(t=>chip(t,DEFAULT_HIDDEN.has(t)?SHOWN_TABS.includes(t):!hidden.has(t),false)).join("");
+  // Default-hidden tabs tick only when opted in (SHOWN_TABS); others tick unless hidden.
+  const chipFor=t=>chip(t,DEFAULT_HIDDEN.has(t)?SHOWN_TABS.includes(t):!hidden.has(t),false);
+  const head=x=>`<div class="muted" style="width:100%;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:12px 0 2px">${x}</div>`;
+  const grouped=new Set([].concat(...Object.values(TAB_GROUPS)));
+  // Grouped under Settings / Operations, then everything else together (user 2026-07-10).
+  const setg=TAB_GROUPS.settings.filter(t=>t!=="config"&&allow(t));
+  const ops=TAB_GROUPS.operations.filter(allow);
+  const rest=TABS.filter(t=>t!=="config"&&!grouped.has(t)&&allow(t));
+  let html=head("Settings")+chip("config",true,true)+setg.map(chipFor).join("");
+  if(ops.length)html+=head("Operations")+ops.map(chipFor).join("");
+  html+=head("Other")+rest.map(chipFor).join("");
+  $("tabvis-list").innerHTML=html;
 }
 function saveTabVis(){
   const boxes=[...document.querySelectorAll(".tv")];
@@ -1693,29 +1738,54 @@ function renderMarkets(){
 }
 function mkFilter(m){const el=$("mf_market");if(el)el.value=m;showTab("scanner");render();}
 document.querySelectorAll("th[data-mk]").forEach(th=>th.onclick=()=>{const k=th.dataset.mk;mkSortDir=(mkSortK===k)?-mkSortDir:-1;mkSortK=k;renderMarkets();});
+// ── Markets (Admin) tab (admin, user 2026-07-10): per-market coverage + full data-import rebuild ──
+function renderMarketsAdmin(){
+  const g={};
+  DATA.forEach(r=>{const m=r.market||"—";const o=(g[m]=g[m]||{market:m,total:0,signal:0,triggered:0,ready:0,developing:0,qsum:0,qn:0});
+    o.total++; if(r.has_signal)o.signal++;
+    if(r.status==="TRIGGERED")o.triggered++; else if(r.status==="READY")o.ready++; else if(r.status==="DEVELOPING")o.developing++;
+    if(r.quality!=null){o.qsum+=r.quality;o.qn++;}});
+  const rows=Object.values(g).map(o=>({...o,avgq:o.qn?Math.round(o.qsum/o.qn):null})).sort((a,b)=>b.total-a.total);
+  $("ma-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments</span>`;
+  $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${o.total}</td><td>${o.signal}</td>
+    <td>${o.triggered?`<b style="color:var(--bull)">${o.triggered}</b>`:'0'}</td><td>${o.ready?`<b style="color:var(--accent)">${o.ready}</b>`:'0'}</td><td>${o.developing||0}</td>
+    <td>${o.avgq!=null?`<b style="color:${qcol(o.avgq)}">${o.avgq}</b>`:''}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">No market data.</td></tr>`;
+}
+function maRebuild(){
+  if(!confirm("Rebuild the snapshot now? This rescans the whole universe (a few minutes) and refreshes the data for everyone."))return;
+  const b=$("ma-rebuild"),m=$("ma-msg");b.disabled=true;m.style.color="var(--muted)";m.textContent="Rebuild starting…";
+  fetch("/api/refresh",{method:"POST",headers:{"X-Auth":AUTH}}).then(r=>r.json().then(j=>({ok:r.ok,j})))
+    .then(({ok,j})=>{if(ok&&j.started){m.style.color="var(--bull)";m.textContent="Rebuild running in the background — reload in a few minutes to see fresh data.";}
+      else if(ok&&j.busy){m.style.color="#d29922";m.textContent="A rebuild is already running — try again shortly.";}
+      else{m.style.color="var(--bear)";m.textContent=(j&&j.error)||"Could not start the rebuild.";}b.disabled=false;})
+    .catch(()=>{m.style.color="var(--bear)";m.textContent="Could not start the rebuild.";b.disabled=false;});
+}
 // ── Performance tab (user 2026-07-10): triggered setups + best Quality/R:R combinations ──
 let pfSortK="perf", pfSortDir=-1;
 const _pfPerf=r=>{const c=r.chg_since_trig;return c==null?null:(r.direction==="BEAR"?-c:c);};   // direction-aware return
 function renderPerformance(){
   const trg=DATA.filter(r=>r.status==="TRIGGERED"&&r.chg_since_trig!=null).map(r=>({...r,perf:_pfPerf(r)}));
+  // Top Quality/R:R buckets — responsive count: 8 on a wide screen, 4 on laptop/tablet, 3 on small.
+  const N=innerWidth>=1400?8:innerWidth>=900?4:3;
   const buckets={};
   trg.forEach(r=>{if(r.quality==null||r.rr==null)return;const qb=Math.floor(r.quality/10)*10,rb=Math.floor(r.rr);
     const o=(buckets[qb+"|"+rb]=buckets[qb+"|"+rb]||{qb,rb,n:0,sum:0});o.n++;o.sum+=r.perf;});
-  const combos=Object.values(buckets).filter(b=>b.n>=3).map(b=>({...b,avg:b.sum/b.n})).sort((a,b)=>b.avg-a.avg).slice(0,5);
-  $("pf-combos").innerHTML=combos.length?combos.map((b,i)=>`<div class="fcard"><div class="ic">${i+1}</div>
+  const combos=Object.values(buckets).filter(b=>b.n>=3).map(b=>({...b,avg:b.sum/b.n})).sort((a,b)=>b.avg-a.avg).slice(0,N);
+  $("pf-combos").innerHTML=LIMITED?`<p class="muted">🔒 <a href="#" onclick="showLogin();return false">Log in</a> to see the best Quality / R:R combinations.</p>`
+    :combos.length?combos.map((b,i)=>`<div class="fcard"><div class="ic">${i+1}</div>
       <h3>Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)}</h3>
       <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggered setups.</div></div>`).join("")
     :`<p class="muted">Not enough triggered setups yet to rank Quality/R:R buckets (need at least 3 per bucket).</p>`;
   const rows=genSort(trg,pfSortK,pfSortDir);
-  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${trg.length}</b> triggered setups`;
+  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${trg.length}</b> triggered setups`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("pftab-count").textContent=`(${trg.length})`;
-  $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="showTab('scanner');showDetail('${r.ticker}')">
+  $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`showTab('scanner');showDetail('${r.ticker}')`}">
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
-    <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
-    <td>${r.market||''}</td><td>${r.sector||''}</td><td>${r.trig_date?r.trig_date.slice(0,10):''}</td>
-    <td>${f2(r.entry)}</td><td>${f2(r.current_price)}</td>
+    <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
+    <td>${ob(r.market||'')}</td><td>${ob(r.sector||'')}</td><td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td>
+    <td>${ob(f2(r.entry))}</td><td>${ob(f2(r.current_price))}</td>
     <td><b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b></td>
-    <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td><td>${r.rr!=null?r.rr.toFixed(1):''}</td></tr>`).join("")
+    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td></tr>`).join("")
     ||`<tr><td colspan="11" class="empty">No triggered setups in the current snapshot.</td></tr>`;
 }
 document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();});
