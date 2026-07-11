@@ -357,9 +357,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <table>
       <thead><tr>
         <th style="cursor:default"><input type="checkbox" id="po-all" onclick="poToggleAll(this)"></th>
-        <th data-pk="ticker">Ticker</th><th data-pk="name">Name</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
+        <th data-pk="ticker">Ticker</th><th data-pk="name">Name</th><th style="cursor:default">Action</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
         <th data-pk="current_price">Now</th><th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
-        <th data-pk="added" title="When the setup completed and joined the dataset">Added</th><th data-pk="source">Source</th><th style="cursor:default">Action</th>
+        <th data-pk="added" title="When the setup completed and joined the dataset">Added</th><th data-pk="source">Source</th>
       </tr></thead>
       <tbody id="po-rows"></tbody>
     </table>
@@ -1942,6 +1942,7 @@ function renderPreorders(){
   $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
     return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
       <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
+      <td><button class="btn" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();placeOnIG('${r.ticker}')" title="Place this pre-order as a live IG working order now">↗ Place on IG</button></td>
       <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
       <td>${r.status}</td><td>${r.market||''}</td>
       <td>${f2(r.current_price)}</td><td><b>${f2((OVERRIDES[r.ticker]||{}).entry??r.entry)}${(OVERRIDES[r.ticker]||{}).entry!=null&&OVERRIDES[r.ticker].entry!==r.entry?' ✎':''}</b></td><td style="color:var(--bear)">${f2((OVERRIDES[r.ticker]||{}).stop??r.stop)}</td><td style="color:var(--bull)">${f2((OVERRIDES[r.ticker]||{}).target??r.target)}</td>
@@ -1949,8 +1950,7 @@ function renderPreorders(){
       <td>${r.rr!=null?r.rr.toFixed(1):''}</td>
       <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td>
       <td>${(r.timeframe||'').replace('daily-','D')}</td>
-      <td>${r.added||''}</td><td>${r.source||''}</td>
-      <td><button class="btn" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();placeOnIG('${r.ticker}')" title="Place this pre-order as a live IG working order now">↗ Place on IG</button></td></tr>`;}).join("")
+      <td>${r.added||''}</td><td>${r.source||''}</td></tr>`;}).join("")
     || `<tr><td colspan="17" class="empty">No pre-orders right now.</td></tr>`;
   document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=e=>{if(e.target.type==="checkbox")return;showTab('scanner');showDetail(tr.dataset.t);});
   $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)   // keep tab count in sync after delete (user 2026-07-06)
