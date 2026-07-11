@@ -1921,7 +1921,7 @@ function renderPerformance(){
 }
 document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();});
 // ── Change Requests tab (admin, user 2026-07-10): parses ChangeRequests/*.txt via /api/change-requests ──
-let CR_FILES=[], crSortK="created", crSortDir=-1, CR_SEL=null;
+let CR_FILES=[], crSortK="created", crSortDir=-1, CR_SEL=null, CR_DETAIL=null, crDetailStatus="All";
 function renderCR(ev){
   // Visible feedback on refresh (user 2026-07-11): spin the button + show a loading row.
   const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
@@ -1946,14 +1946,23 @@ function paintCR(){
 function crOpen(file){
   CR_SEL=file;paintCR();
   fetch("/api/change-requests?file="+encodeURIComponent(file),{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(d=>{
-      const sc={Completed:'var(--bull)','In Progress':'var(--accent)','Not Started':'var(--muted)',Cancelled:'var(--bear)',Requested:'#d29922'};
-      const reqs=(d.requirements||[]).map(q=>`<tr><td>${q.working_area||'—'}</td><td>${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td></tr>`).join("");
-      $("cr-detail").classList.remove("hidden");
-      $("cr-detail").innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">${d.name}</h3><span class="grow"></span><span class="muted" style="font-size:12px">Created ${d.created||'?'} · Updated ${d.updated||'?'} · ${d.total} actions</span><button class="btn" onclick="$('cr-detail').classList.add('hidden');CR_SEL=null;paintCR()">✕ Close</button></div>
-        <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Working Area</th><th>Scope</th><th>Requirement</th><th>Status</th></tr></thead><tbody>${reqs||'<tr><td colspan="4" class="empty">No requirements parsed.</td></tr>'}</tbody></table></div>`;
-      $("cr-detail").scrollIntoView({behavior:"smooth",block:"nearest"});
-    }).catch(()=>{$("cr-detail").classList.remove("hidden");$("cr-detail").innerHTML='<p class="empty">Could not load file.</p>';});
+    .then(d=>{CR_DETAIL=d;crDetailStatus="All";$("cr-detail").classList.remove("hidden");paintCRDetail();$("cr-detail").scrollIntoView({behavior:"smooth",block:"nearest"});})
+    .catch(()=>{$("cr-detail").classList.remove("hidden");$("cr-detail").innerHTML='<p class="empty">Could not load file.</p>';});
+}
+function crStatusFilter(s){crDetailStatus=s;paintCRDetail();}
+function paintCRDetail(){
+  const d=CR_DETAIL; if(!d)return;
+  const sc={Completed:'var(--bull)','In Progress':'var(--accent)','Not Started':'var(--muted)',Cancelled:'var(--bear)',Requested:'#d29922'};
+  const all=d.requirements||[], counts=all.reduce((m,q)=>{m[q.status]=(m[q.status]||0)+1;return m;},{});
+  // Status filter (user 2026-07-11): click a status to show only those requirements.
+  const pills=["All","Completed","In Progress","Not Started","Cancelled","Requested"].map(s=>{
+    const n=s==="All"?all.length:(counts[s]||0);
+    return `<button class="subpill${crDetailStatus===s?' active':''}" onclick="crStatusFilter('${s}')" style="font-size:11px">${s} (${n})</button>`;}).join("");
+  const shown=crDetailStatus==="All"?all:all.filter(q=>q.status===crDetailStatus);
+  const reqs=shown.map(q=>`<tr><td>${q.working_area||'—'}</td><td>${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td></tr>`).join("");
+  $("cr-detail").innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">${d.name}</h3><span class="grow"></span><span class="muted" style="font-size:12px">Created ${d.created||'?'} · Updated ${d.updated||'?'} · ${d.total} actions</span><button class="btn" onclick="$('cr-detail').classList.add('hidden');CR_SEL=null;paintCR()">✕ Close</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${pills}</div>
+    <div class="tablewrap"><table><thead><tr><th>Working Area</th><th>Scope</th><th>Requirement</th><th>Status</th></tr></thead><tbody>${reqs||'<tr><td colspan="4" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
 }
 document.querySelectorAll("th[data-crk]").forEach(th=>th.onclick=()=>{const k=th.dataset.crk;crSortDir=(crSortK===k)?-crSortDir:-1;crSortK=k;paintCR();});
 function doLogin(){
