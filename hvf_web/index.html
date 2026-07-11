@@ -431,6 +431,17 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <button class="btn" style="margin-top:10px" onclick="saveTabVis()">Save tab visibility</button>
       <span id="tabvis-msg" style="font-size:12px;margin-left:8px"></span>
     </div>
+    <div class="card"><h4>My trading limits</h4>
+      <p class="muted" style="font-size:12px">Your personal floors. <b>R:R</b> and <b>Quality</b> are enforced on <b>your own</b> manual actions — pushing a setup to Pre-orders or placing it on IG is blocked below these. The rest are stored against your login. The shared automated engine (one IG account, run by GitHub Actions) keeps using the system baseline.</p>
+      <div class="credrow"><span class="clabel">Minimum R:R</span><input type="number" min="0" step="0.1" id="lim-min_risk_reward" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Minimum Quality (Q)</span><input type="number" min="0" max="100" step="1" id="lim-min_quality" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Max trades per instrument / day</span><input type="number" min="0" step="1" id="lim-max_trades_per_instrument_per_day" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Bounce alert (fraction — 0.02 = 2%)</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Bounce lookback (hours)</span><input type="number" min="0" step="1" id="lim-bounce_lookback_hours" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Email recipients (comma-separated)</span><input type="text" id="lim-email_recipients" class="cred-in" style="flex:1 1 260px"></div>
+      <button class="btn" style="margin-top:10px" onclick="saveLimits()">Save my trading limits</button>
+      <span id="lim-msg" style="font-size:12px;margin-left:8px"></span>
+    </div>
   </div>
 
   <!-- Leverage (Broker) panel — per-user leverage by instrument type (user 2026-07-03), all users -->
@@ -1562,6 +1573,7 @@ function renderConfig(){
       USER_FILTERS=j.filters||{};
       HIDDEN_TABS=j.hidden_tabs||[]; renderTabVis(HIDDEN_TABS);   // tab-visibility card (user 2026-07-03)
       if(j.leverage){LEVERAGE=j.leverage;["fx","equities","commodities","indices"].forEach(k=>{if($("lev-"+k))$("lev-"+k).value=j.leverage[k];});}
+      if(j.limits){Object.entries(j.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el)el.value=Array.isArray(v)?v.join(", "):v;});}
       // Engine settings (admin only) now live on the Configuration (Admin) tab; just fill the inputs.
       if(j.engine){window.ENGINE_VALS=j.engine;Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});}
       // Morning HVF tweet markets (admin, user 2026-07-06): checkbox chips over the universe's markets.
@@ -1627,6 +1639,16 @@ function saveLeverage(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({leverage:lev})})
     .then(r=>{if(!r.ok)throw 0;LEVERAGE={...LEVERAGE,...lev};render();$("lev-msg").style.color="var(--bull)";$("lev-msg").textContent="Leverage saved.";})
     .catch(()=>{$("lev-msg").style.color="var(--bear)";$("lev-msg").textContent="Save failed.";});
+}
+function saveLimits(){
+  const num=(id,int)=>{const v=(int?parseInt:parseFloat)($("lim-"+id).value);return isFinite(v)&&v>=0?v:undefined;};
+  const lim={};
+  [["min_risk_reward",0],["bounce_alert_pct",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
+  [["min_quality",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
+  lim.email_recipients=($("lim-email_recipients").value||"").split(",").map(x=>x.trim()).filter(Boolean);
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
+    .then(r=>{const el=$("lim-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Saved.";}else{el.style.color="var(--bear)";el.textContent="Save failed.";}})
+    .catch(()=>{const el=$("lim-msg");el.style.color="var(--bear)";el.textContent="Save failed.";});
 }
 function saveTradeFilters(){
   const t={directions:[],markets:[],locations:[]};

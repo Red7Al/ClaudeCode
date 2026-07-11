@@ -336,6 +336,39 @@ def api_reset_password():
     return jsonify({"ok": True}) if ok else (jsonify({"ok": False, "error": err}), 400)
 
 
+def _limit_defaults() -> dict:
+    """Code defaults for a user's PERSONAL trading limits (user 2026-07-10), sourced from config.py so
+    they track the shared engine's baseline. Per-user overrides layer on top."""
+    import config as _cfg
+    return {"min_risk_reward": float(getattr(_cfg, "MIN_RISK_REWARD", 3.0)),
+            "min_quality": int(getattr(_cfg, "MIN_PUBLISH_QUALITY", 25)),
+            "max_trades_per_instrument_per_day": int(getattr(_cfg, "MAX_TRADES_PER_INSTRUMENT_PER_DAY", 5)),
+            "bounce_alert_pct": float(getattr(_cfg, "BOUNCE_ALERT_PCT", 0.02)),
+            "bounce_lookback_hours": int(getattr(_cfg, "BOUNCE_LOOKBACK_HOURS", 48)),
+            "email_recipients": list(getattr(_cfg, "EMAIL_RECIPIENTS", []))}
+
+
+def _user_limits(s: dict) -> dict:
+    d = _limit_defaults()
+    d.update({k: v for k, v in (s.get("limits") or {}).items() if k in d})
+    return d
+
+
+def _limit_block(name: str, tk: str, on: bool = True) -> str:
+    """If the acting user's personal R:R / Quality floor excludes this setup, return a reason; else ''.
+    Gates the user's OWN manual actions only (user 2026-07-10) — never the shared automated engine."""
+    if not on:
+        return ""
+    rec = _record(tk) or {}
+    lim = _user_limits(_wu.get_settings(name))
+    rr, q = rec.get("rr"), rec.get("quality")
+    if isinstance(rr, (int, float)) and rr < lim["min_risk_reward"]:
+        return f"R:R {rr} is below your personal floor of {lim['min_risk_reward']:g} (Configuration → My trading limits)"
+    if isinstance(q, (int, float)) and q < lim["min_quality"]:
+        return f"Quality {q} is below your personal floor of {lim['min_quality']} (Configuration → My trading limits)"
+    return ""
+
+
 @app.route("/api/config", methods=["GET", "POST"])
 def api_config():
     """Per-user application configuration (user 2026-07-03, Config tab): the user's own filter
@@ -358,6 +391,7 @@ def api_config():
                         "trade": (s.get("trade_filters") if s.get("trade_filters") is not None
                                   else _cs.get_trade_filters()),
                         "hidden_tabs": s.get("hidden_tabs", []), "shown_tabs": s.get("shown_tabs", []), "leverage": lev,
+                        "limits": _user_limits(s),
                         "pinned_preorders": s.get("pinned_preorders", []),
                         "pinned_overrides": s.get("pinned_overrides", {}),
                         "engine": _cs.get_engine_settings(), "is_admin": _wu.is_admin(name),
@@ -397,6 +431,26 @@ def api_config():
         s = _wu.get_settings(name)
         s["shown_tabs"] = [t for t in (body["shown_tabs"] or []) if isinstance(t, str)]
         _wu.set_settings(name, s)
+    if "limits" in body:
+        # PER-USER trading limits (user 2026-07-10): stored on the user's record. They gate THIS user's
+        # own web actions (manual place-on-IG / pin-to-pre-orders) and their view — the shared automated
+        # engine + detection keep using the config.py baseline (one scan, one IG account).
+        s = _wu.get_settings(name)
+        cur = s.get("limits") or {}
+        b = body["limits"] or {}
+        for k in ("min_risk_reward", "bounce_alert_pct"):
+            v = b.get(k)
+            if isinstance(v, (int, float)) and v >= 0:
+                cur[k] = float(v)
+        for k in ("min_quality", "max_trades_per_instrument_per_day", "bounce_lookback_hours"):
+            v = b.get(k)
+            if isinstance(v, (int, float)) and v >= 0:
+                cur[k] = int(v)
+        if isinstance(b.get("email_recipients"), list):
+            cur["email_recipients"] = [str(x).strip() for x in b["email_recipients"] if str(x).strip()]
+        s["limits"] = cur
+        _wu.set_settings(name, s)
+        _wu.log_event(name, "Saved personal trading limits (Config)")
     if "x_hvf_markets" in body:
         if not _wu.is_admin(name):
             return jsonify({"ok": False, "error": "admin only"}), 403
@@ -1193,6 +1247,9 @@ def api_preorder_pin():
         return jsonify({"ok": False, "error": "no ticker"}), 400
     if bool(body.get("on", True)) and not _user_trade_allows(name, _record(tk)):
         return jsonify({"ok": False, "error": "that market/direction is excluded in your Trading (Squeeze) filters"}), 403
+    _lb = _limit_block(name, tk, on=bool(body.get("on", True)))
+    if _lb:
+        return jsonify({"ok": False, "error": _lb}), 403
     s = _wu.get_settings(name)
     pinned = set(s.get("pinned_preorders") or [])
     on = bool(body.get("on", True))
@@ -1262,6 +1319,9 @@ def api_place_order():
     tk = (body.get("ticker") or "").strip()
     if not _user_trade_allows(name, _record(tk)):
         return jsonify({"ok": False, "error": "that market/direction is excluded in your Trading (Squeeze) filters"}), 403
+    _lb = _limit_block(name, tk)
+    if _lb:
+        return jsonify({"ok": False, "error": _lb, "placed": False}), 200
     sig = _sig_from_snapshot(tk, user=name)
     if not sig:
         return jsonify({"ok": False, "error": "no signal for that instrument"}), 400
