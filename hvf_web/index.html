@@ -327,8 +327,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <main>
     <!-- Scanner chart multi-select filter inputs (separate from the sidebar single-select dropdowns) -->
     <input type="hidden" id="mf_sector"><input type="hidden" id="mf_direction"><input type="hidden" id="mf_status"><input type="hidden" id="mf_location"><input type="hidden" id="mf_market"><input type="hidden" id="mf_timeframe">
+    <div class="doc" style="max-width:none;margin:0;padding:24px 16px 0">
+      <span class="eyebrow">Scanner</span>
+      <h1 style="margin:6px 0 4px">Scanner Report</h1>
+      <p class="lede" style="margin:0">Every instrument we scan across shares, indices, FX and commodities — funnels spotted early, with the exact levels to act on. Use the charts or <b>Filters</b> to narrow; click a row for full detail.</p>
+    </div>
     <div class="viz" id="viz"></div>
     <div class="count" id="count"></div>
+    <section class="gsec" style="border-left-color:var(--accent);margin:0 16px 16px">
     <div class="tablewrap">
       <table>
         <thead><tr>
@@ -345,15 +351,20 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <tbody id="rows"></tbody>
       </table>
     </div>
+    </section>
   </main>
 
   <section id="detail" class="hidden"></section>
 </div>
 
-<div id="view-preorders" class="hidden">
+<div id="view-preorders" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="pof_direction"><input type="hidden" id="pof_status"><input type="hidden" id="pof_location"><input type="hidden" id="pof_market"><input type="hidden" id="pof_timeframe"><input type="hidden" id="pof_sector">
-  <div class="viz" id="po-viz" style="border-bottom:none;padding:10px 16px 0"></div>
-  <div class="count" id="po-count" style="display:flex;align-items:center;gap:14px"><span id="po-count-text"></span><span class="grow"></span>
+  <span class="eyebrow">Trading</span>
+  <h1>My Pre-orders</h1>
+  <p class="lede">Instruments with a pre-order — waiting for the entry to trigger. Click a row for detail; tick rows then <b>Delete</b> to dismiss, or <b>Place on IG</b> to send one to your account now.</p>
+  <div class="viz" id="po-viz" style="border-bottom:none;padding:0 0 10px"></div>
+  <section class="gsec" style="border-left-color:var(--accent)">
+  <div class="count" id="po-count" style="padding-left:0;display:flex;align-items:center;gap:14px"><span id="po-count-text"></span><span class="grow"></span>
     <input id="po-search" placeholder="Search name / ticker…" oninput="renderPreorders()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px">
     <button class="btn" id="po-delete" onclick="deletePreorders()" disabled>Delete selected</button></div>
   <div class="tablewrap">
@@ -367,6 +378,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <tbody id="po-rows"></tbody>
     </table>
   </div>
+  </section>
 </div>
 
 <div id="view-orderops" class="hidden doc" style="max-width:1240px">
