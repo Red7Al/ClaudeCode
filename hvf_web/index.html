@@ -1295,7 +1295,7 @@ function paintXposts(){
   if(_xq)rows=rows.filter(e=>(e.name||"").toLowerCase().includes(_xq)||disp(e.ticker).toLowerCase().includes(_xq));
   rows=applyDateFilter("x",rows,e=>e.published_at);
   rows=genSort(rows,xSortK,xSortDir);
-  $("xtab-count").textContent=`(${X_ROWS.length})`;
+  $("xtab-count")&&($("xtab-count").textContent=`(${X_ROWS.length})`);
   $("x-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> tweets${rows.length!==X_ROWS.length?` <span class="muted">of ${X_ROWS.length}</span>`:''}`;
   $("x-rows").innerHTML=rows.map(e=>`<tr><td>${e.published_at||''}</td><td><b>${disp(e.ticker)}</b></td><td>${e.name||''}</td><td>${e.market||''}</td><td>${e.thread>1?e.thread+' pts':'1'}</td><td><a href="${e.url}" target="_blank" rel="noopener">open ↗</a></td></tr>`).join("")||`<tr><td colspan="6" class="empty">No tweets yet.</td></tr>`;
 }
@@ -1431,7 +1431,7 @@ function paintVersion(){
   rows=applyDateFilter("ver",rows,e=>e.date);
   rows=genSort(rows,verSortK,verSortDir);
   const filt=(setOf("vcf_category")||setOf("vmf_month")||dateActive("ver"));
-  $("vertab-count").textContent=`(${VER_ROWS.length})`;
+  $("vertab-count")&&($("vertab-count").textContent=`(${VER_ROWS.length})`);
   $("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> changes${filt?` <span class="muted">of ${VER_ROWS.length}</span>`:''}`;
   $("ver-rows").innerHTML=rows.map(e=>`<tr><td style="white-space:nowrap">${e.date||''}</td><td style="white-space:nowrap"><code>${e.version}</code></td><td style="white-space:nowrap"><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||'Feature'}</span></td><td>${(e.summary||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 function renderVersion(){fetch("/api/version-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{VER_ROWS=j.entries||[];paintVersion();}).catch(()=>{$("ver-rows").innerHTML=`<tr><td colspan="3" class="empty">Could not load (admin only).</td></tr>`;});}
@@ -1450,7 +1450,7 @@ function paintBatch(){
   [["bcf_source",e=>e.source],["bcf_by",e=>e.by],["bcf_month",_bmonth],["bcf_mweek",e=>_mw(e.ts)]].forEach(([id,fn])=>{
     rows=rows.filter(e=>inSet(id,fn(e)));});
   rows=applyDateFilter("batch",rows,e=>e.ts);
-  $("batab-count").textContent=`(${BATCH_ROWS.length})`;
+  $("batab-count")&&($("batab-count").textContent=`(${BATCH_ROWS.length})`);
   $("batch-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> batch runs${rows.length!==BATCH_ROWS.length?` <span class="muted">of ${BATCH_ROWS.length}</span>`:''}`;
   $("batch-rows").innerHTML=genSort(rows,batchSortK,batchSortDir).map(e=>`<tr><td>${e.ts||''}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.source||''}</span></td><td>${(e.event||'').replace(/</g,"&lt;")}</td><td>${e.by||''}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 function renderBatch(){fetch("/api/batch-activity",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{BATCH_ROWS=j.entries||[];paintBatch();}).catch(()=>{$("batch-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});}
@@ -1728,7 +1728,7 @@ function renderMarkets(){
   let rows=Object.values(g).map(o=>({...o,avgq:o.qn?Math.round(o.qsum/o.qn):null}));
   rows.sort((a,b)=>{const x=a[mkSortK],y=b[mkSortK];const av=x==null?-1e9:x,bv=y==null?-1e9:y;return (av<bv?-1:av>bv?1:0)*mkSortDir;});
   $("mk-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments scanned</span>`;
-  $("mktab-count").textContent=`(${rows.length})`;
+  $("mktab-count")&&($("mktab-count").textContent=`(${rows.length})`);
   $("mk-rows").innerHTML=rows.map(o=>`<tr class="clk" onclick="mkFilter('${(o.market||'').replace(/'/g,'')}')" title="Filter the Scanner to ${o.market}">
     <td><b>${o.market}</b></td><td>${o.total}</td><td>${o.signal}</td>
     <td>${o.triggered?`<b style="color:var(--bull)">${o.triggered}</b>`:'0'}</td><td>${o.ready?`<b style="color:var(--accent)">${o.ready}</b>`:'0'}</td><td>${o.developing||0}</td>
@@ -1797,7 +1797,7 @@ function renderCR(){
 function paintCR(){
   const rows=genSort(CR_FILES.slice(),crSortK,crSortDir);
   $("cr-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${CR_FILES.length}</b> change-request files`;
-  $("crtab-count").textContent=`(${CR_FILES.length})`;
+  $("crtab-count")&&($("crtab-count").textContent=`(${CR_FILES.length})`);
   const c=(o,k,col)=>{const n=(o.counts||{})[k]||0;return n?`<b style="color:${col}">${n}</b>`:'0';};
   $("cr-rows").innerHTML=rows.map(o=>`<tr class="clk ${CR_SEL===o.file?'sel':''}" onclick="crOpen('${o.file}')">
     <td><b>${o.name}</b></td><td>${o.created||''}</td><td>${o.updated||''}</td><td><b>${o.total}</b></td>
