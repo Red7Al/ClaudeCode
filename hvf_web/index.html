@@ -228,6 +228,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner Report <span id="sctab-count"></span></button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')" style="display:none">My Pre-orders <span id="potab-count"></span></button>
   <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Pre-orders to my IG <span id="ootab-count"></span></button>
+  <button class="tab" id="tab-igaccount" onclick="showTab('igaccount')" style="display:none">IG Account</button>
   <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My Activity <span id="actab-count"></span></button>
   <button class="tab" id="tab-mfm" onclick="showTab('mfm')" style="display:none">Trading (Multi-Factor Momentum)</button>
   <button class="tab" id="tab-sysdocs" onclick="showTab('sysdocs')" style="display:none">How it works (System)</button>
@@ -887,6 +888,28 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <p class="muted" style="font-size:12px">Rebuild currently reprocesses the <b>whole universe</b> in one pass (the engine builds every market together). Per-market isolation and a separate HVF-report run are a planned enhancement.</p>
 </div>
 
+<!-- IG Account (all users, default hidden, user 2026-07-10) — the acting user's own IG positions + orders. -->
+<div id="view-igaccount" class="hidden doc" style="max-width:1120px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><button class="btn" id="ig-refresh" onclick="renderIgAccount(event)">↻ Refresh</button></div>
+  <h1>IG Account</h1>
+  <p class="lede">Your own IG account — live open positions and working orders. Shown for the account whose credentials you use (owner uses the shared account; others use their own from Configuration → IG).</p>
+  <div id="ig-note" style="font-size:12px;margin-bottom:10px"></div>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <div class="count" style="padding-left:0"><span id="ig-pos-count"></span></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Instrument</th><th>Dir</th><th>Size</th><th>Level</th><th>Stop</th><th>Limit</th><th>Ccy</th><th>Opened (UTC)</th></tr></thead>
+      <tbody id="ig-pos-rows"></tbody>
+    </table></div>
+  </section>
+  <section class="gsec" style="border-left-color:#d29922">
+    <div class="count" style="padding-left:0"><span id="ig-ord-count"></span></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Instrument</th><th>Dir</th><th>Size</th><th>Level</th><th>Type</th><th>Source</th><th>Good&nbsp;till (UTC)</th></tr></thead>
+      <tbody id="ig-ord-rows"></tbody>
+    </table></div>
+  </section>
+</div>
+
 <script>
 let DATA=[], SEL=null, sortK="trig_date", sortDir=-1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;
 const $=id=>document.getElementById(id);
@@ -1227,12 +1250,12 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/target overrides (user 2026-07-03/04)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","intro","appendix","scanner","preorders","orderops","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","mfm","changereq"];
+const TABS=["welcome","intro","appendix","scanner","preorders","orderops","igaccount","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","mfm","changereq"];
 const PUBLIC_TABS=["welcome","intro","appendix","scanner","performance"];   // visible when logged out (Performance blurs all but ticker/name/return)
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin"];  // admin only
 const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
 // Tabs hidden by DEFAULT (user 2026-07-10): visible only once the user opts in via Tab Visibility.
-const DEFAULT_HIDDEN=new Set(["mfm"]);
+const DEFAULT_HIDDEN=new Set(["mfm","igaccount"]);
 // Parent tabs (user 2026-07-10): the grouped children are reached through a sub-nav. Operations =
 // admin operations; Settings = config + markets (its admin children are gated by role).
 const TAB_GROUPS={operations:["users","batch","xposts","changereq","syslogs","jobs","version"],
@@ -1308,7 +1331,7 @@ function showTab(name){
   const R={preorders:renderPreorders,activity:renderActivity,orderops:renderOrderOps,xposts:renderXposts,
     config:renderConfig,configadmin:renderConfig,users:renderUsers,syslogs:renderSyslogs,jobs:renderJobs,
     version:renderVersion,batch:renderBatch,markets:renderMarkets,marketsadmin:renderMarketsAdmin,
-    performance:renderPerformance,changereq:renderCR};
+    performance:renderPerformance,changereq:renderCR,igaccount:renderIgAccount};
   if(R[name])R[name]();
 }
 // ── X Posts tab (user 2026-07-03): all published tweets + charts, click-to-filter, sortable. ──
@@ -1338,7 +1361,7 @@ const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix
   preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
   users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)",
   config:"Configuration (User)",markets:"Markets (User)",marketsadmin:"Markets (Admin)",configadmin:"Configuration (Admin)",
-  performance:"Performance",mfm:"Trading (Multi-Factor Momentum)",changereq:"Change Requests"};
+  performance:"Performance",mfm:"Trading (Multi-Factor Momentum)",changereq:"Change Requests",igaccount:"IG Account"};
 // ── System Logs (admin, user 2026-07-04): health cards + log table + clickable charts ──────────────
 let SL_ROWS=[], slSortK="ts", slSortDir=-1;
 function paintSyslogs(){
@@ -1804,6 +1827,26 @@ function renderMarketsAdmin(){
   $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td>${_mkCells(o)}</tr>`).join("")||`<tr><td colspan="8" class="empty">No market data.</td></tr>`;
 }
 document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();});
+// ── IG Account tab (user 2026-07-10): the acting user's own IG open positions + working orders ──
+function renderIgAccount(ev){
+  const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
+  if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
+  $("ig-note").textContent="";
+  $("ig-pos-rows").innerHTML=`<tr><td colspan="8" class="empty">Loading…</td></tr>`;
+  $("ig-ord-rows").innerHTML=`<tr><td colspan="7" class="empty">Loading…</td></tr>`;
+  const dtag=d=>d?`<span class="tag ${d==='BUY'?'bull':'bear'}">${d}</span>`:'';
+  fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(j=>{
+      const pos=j.positions||[], ord=j.orders||[];
+      $("ig-note").innerHTML=j.note?`<span class="muted">🔒 ${j.note}</span>`:"";
+      $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${pos.length}</b> open position${pos.length===1?'':'s'}`;
+      $("ig-ord-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${ord.length}</b> working order${ord.length===1?'':'s'}`;
+      $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td><b>${p.name||p.epic||''}</b></td><td>${dtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td></tr>`).join("")||`<tr><td colspan="8" class="empty">No open positions.</td></tr>`;
+      $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td><b>${o.name||o.epic||''}</b></td><td>${dtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${o.source||'—'}</td><td>${o.good_till||''}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">No working orders.</td></tr>`;
+    })
+    .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="8" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="7" class="empty">—</td></tr>`;})
+    .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
+}
 function maRebuild(){
   if(!confirm("Rebuild the snapshot now? This rescans the whole universe (a few minutes) and refreshes the data for everyone."))return;
   const b=$("ma-rebuild"),m=$("ma-msg");b.disabled=true;m.style.color="var(--muted)";m.textContent="Rebuild starting…";

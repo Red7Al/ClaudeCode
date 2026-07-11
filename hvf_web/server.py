@@ -1531,6 +1531,69 @@ def api_change_requests():
     return jsonify({"files": out})
 
 
+@app.route("/api/ig-account")
+def api_ig_account():
+    """The acting user's OWN IG account (user 2026-07-10, IG Account tab): open positions + working
+    orders. Best-effort — returns a note (not an error) when the user has no IG session, so the page
+    always renders. The order 'source' (AUS_MONITOR / Squeeze / WEB_MANUAL …) comes from the DB
+    working_orders.session matched by epic."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    out = {"positions": [], "orders": [], "note": ""}
+    try:
+        import ig_shim
+        if ig_shim.session_for(name) is None:
+            out["note"] = "No IG credentials of your own — set them in Configuration → IG to see your account."
+            return jsonify(out)
+    except Exception as e:
+        out["note"] = f"IG session unavailable: {e}"
+        return jsonify(out)
+    epic2tk, epic2src = {}, {}
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            for row in (db.run("select ticker, epic from epic_lookup") or []):
+                if row[1]:
+                    epic2tk[str(row[1])] = row[0]
+            for row in (db.run("select epic, session from working_orders where status = 'PENDING'") or []):
+                if row[0]:
+                    epic2src[str(row[0])] = row[1]
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"ig-account DB maps failed: {e}")
+    try:
+        with ig_shim._IG_LOCK, ig_shim.acting_session(name):
+            positions = ig_shim.get_open_positions() or []
+            orders = ig_shim.get_working_orders() or []
+    except Exception as e:
+        log.warning(f"ig-account read failed for {name}: {e}")
+        out["note"] = "Could not read your IG account right now — try Refresh."
+        return jsonify(out)
+
+    def _nm(mk):
+        return epic2tk.get(str(mk.get("epic"))) or mk.get("instrumentName") or mk.get("epic") or ""
+
+    for p in positions:
+        pos, mk = (p.get("position") or {}), (p.get("market") or {})
+        out["positions"].append({
+            "name": _nm(mk), "epic": mk.get("epic"), "direction": pos.get("direction"),
+            "size": pos.get("size"), "level": pos.get("level") or pos.get("openLevel"),
+            "currency": pos.get("currency"), "stop": pos.get("stopLevel"), "limit": pos.get("limitLevel"),
+            "opened": str(pos.get("createdDateUTC") or pos.get("createdDate") or "")[:19]})
+    for w in orders:
+        od, mk = (w.get("workingOrderData") or {}), (w.get("marketData") or {})
+        epic = od.get("epic") or mk.get("epic")
+        out["orders"].append({
+            "name": _nm(mk) or epic2tk.get(str(epic)) or epic, "epic": epic,
+            "direction": od.get("direction"), "size": od.get("orderSize") or od.get("size"),
+            "level": od.get("orderLevel") or od.get("level"), "type": od.get("orderType"),
+            "good_till": str(od.get("goodTillDate") or "")[:19], "source": epic2src.get(str(epic)) or "—"})
+    return jsonify(out)
+
+
 if __name__ == "__main__":
     import threading
     try:
