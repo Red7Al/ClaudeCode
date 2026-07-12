@@ -633,7 +633,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <line x1="560" y1="45" x2="696" y2="35" stroke="var(--muted)" marker-end="url(#sarr)"/>
       <line x1="440" y1="190" x2="696" y2="130" stroke="var(--muted)" marker-end="url(#sarr)"/>
       <line x1="440" y1="210" x2="696" y2="222" stroke="var(--muted)" marker-end="url(#sarr)"/>
-      <line x1="140" y1="80" x2="700" y2="28" stroke="var(--muted)" stroke-dasharray="4 3" marker-end="url(#sarr)"/>
+      <path d="M130,82 C 300,150 550,150 700,58" fill="none" stroke="var(--muted)" stroke-dasharray="4 3" marker-end="url(#sarr)"/>
     </g>
   </svg>
 
@@ -646,7 +646,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="fcard"><div class="ic">GIT</div><h3>Patching &amp; releases</h3><div class="body">Code lives in the GitHub repo. A change is committed + pushed; Actions jobs pick it up on their next run automatically. The laptop app picks up changes when restarted (run.bat / Restart-Web.bat). Every commit appears automatically in the Version History tab (generated live from git).</div></div>
     <div class="fcard"><div class="ic">SEC</div><h3>Security</h3><div class="body">Passwords: PBKDF2-HMAC-SHA256, 200k iterations, per-user salt — never stored or committed. Secrets: Fernet-encrypted at rest, masked to last-4 in the UI, never sent in full to a browser. Access: admin flag + subscription levels; admin-only tabs/endpoints return 403 otherwise; logged-out visitors get a stripped teaser Scanner. Password reset = emailed one-time code (10-min expiry, single use). Every sensitive action lands in the per-user activity log.</div></div>
     <div class="fcard"><div class="ic">RB</div><h3>Reboots &amp; recovery</h3><div class="body">A Startup-folder shortcut relaunches the web server + ngrok after a reboot (run_quick.bat skips the slow rebuild). The 12h/2h background threads restart with the process. GitHub Actions is independent of the laptop — monitors and reports keep running even when the laptop is off; only the website itself needs the laptop up.</div></div>
-    <div class="fcard"><div class="ic">FLOW</div><h3>Data flow (one cycle)</h3><div class="body">Scan the universe &gt; engine detects squeezes &gt; snapshot.json feeds the Scanner &gt; READY setups within 1.5% + Quality &gt; 50 flow through the bridge (or a manual Place-on-IG) &gt; IG working order (28-day life) &gt; fills tracked in <code>working_orders</code> &gt; outcomes measured against <code>hvf_triggers</code>.</div></div>
+    <div class="fcard"><div class="ic">🔄</div><h3>Data flow (one cycle)</h3><div class="body">Scan the universe &gt; engine detects squeezes &gt; snapshot.json feeds the Scanner &gt; READY setups within 1.5% + Quality &gt; 50 flow through the bridge (or a manual Place-on-IG) &gt; IG working order (28-day life) &gt; fills tracked in <code>working_orders</code> &gt; outcomes measured against <code>hvf_triggers</code>.</div></div>
   </div>
 </div>
 
