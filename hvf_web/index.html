@@ -804,11 +804,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <!-- Performance (all users, user 2026-07-10) — triggered setups + best Quality/R:R combinations. -->
 <div id="view-performance" class="hidden doc" style="max-width:1180px">
+  <input type="hidden" id="pff_sector"><input type="hidden" id="pff_market"><input type="hidden" id="pff_month">
   <span class="eyebrow">Results</span>
   <h1>Performance</h1>
   <p class="lede">How triggered setups have performed since they fired. "Return" is direction-aware — a BULL setup gains when price rises, a BEAR setup gains when price falls — so a positive number is always a win.</p>
+  <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <h2 class="sec">Top 5 Quality / R:R combinations</h2>
-  <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return. Only buckets with at least 3 triggered setups are shown.</p>
+  <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return, <b>reacting to the charts above</b>. Only buckets with at least 3 triggered setups are shown.</p>
   <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
   <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
   <h2 class="sec">Every triggered setup</h2>
@@ -1260,6 +1262,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   toggleIn(k, el.dataset.fv);          // multi-select: toggle this value in the set ("" = clear all)
   if(k.startsWith("pof_"))renderPreorders();
   else if(k.startsWith("oof_"))paintOrderOps();
+  else if(k.startsWith("pff_"))renderPerformance();
   else if(k.startsWith("acf_"))paintActivity();
   else if(k.startsWith("vcf_")||k.startsWith("vmf_"))paintVersion();
   else if(k.startsWith("bcf_"))paintBatch();
@@ -1938,7 +1941,16 @@ const _pfPerf=r=>{   // direction-aware return; fall back to entry-vs-now when c
   if(c==null && r.entry>0 && r.current_price!=null) c=(r.current_price-r.entry)/r.entry*100;
   return c==null?null:(r.direction==="BEAR"?-c:c);};
 function renderPerformance(){
-  const trg=DATA.filter(r=>r.status==="TRIGGERED").map(r=>({...r,perf:_pfPerf(r)})).filter(r=>r.perf!=null);
+  const trgAll=DATA.filter(r=>r.status==="TRIGGERED").map(r=>({...r,perf:_pfPerf(r)})).filter(r=>r.perf!=null);
+  const _pm=r=>(r.trig_date||'').slice(0,7);   // trigger month (YYYY-MM)
+  // Click-to-filter charts (user 2026-07-11): Sector / Market / Month over the triggered set.
+  const by=fn=>trgAll.reduce((m,r)=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]=(m[v]||0)+1;return m;},{});
+  $("pf-viz").innerHTML=LIMITED?"":
+    `<div class="vizsector">`+pieChart("Sector",by("sector"),"pff_sector")+`</div>`+
+    `<div class="vizsector">`+barChart("Market",by("market"),"pff_market")+`</div>`+
+    `<div class="vizsector">`+barChart("Trigger month",by(_pm),"pff_month",null,true)+`</div>`;
+  // The cards + table below REACT to the chart filters (user 2026-07-11).
+  const trg=trgAll.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_month",_pm(r)));
   // Top Quality/R:R buckets — responsive count: 8 on a wide screen, 4 on laptop/tablet, 3 on small.
   const N=innerWidth>=1400?8:innerWidth>=900?4:3;
   const buckets={};
@@ -1951,7 +1963,7 @@ function renderPerformance(){
       <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggered setups.</div></div>`).join("")
     :`<p class="muted">Not enough triggered setups yet to rank Quality/R:R buckets (need at least 3 per bucket).</p>`;
   const rows=genSort(trg,pfSortK,pfSortDir);
-  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${trg.length}</b> triggered setups`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
+  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${trg.length}</b> triggered setups${trg.length!==trgAll.length?` <span class="muted">of ${trgAll.length}</span>`:''}`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("pftab-count").textContent=`(${trg.length})`;
   $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`showTab('scanner');showDetail('${r.ticker}')`}">
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
