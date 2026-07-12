@@ -338,7 +338,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="tablewrap">
       <table>
         <thead><tr>
-          <th style="cursor:default" title="Favourite">★</th><th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
+          <th data-k="_fav" title="Favourite (click to sort)">★</th><th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <th data-k="market">Market</th><th data-k="sector">Sector</th><th data-k="status">Status</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
           <th data-k="current_price" title="Latest price">Now</th>
@@ -371,7 +371,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <table>
       <thead><tr>
         <th style="cursor:default"><input type="checkbox" id="po-all" onclick="poToggleAll(this)"></th>
-        <th style="cursor:default" title="Favourite">★</th>
+        <th data-pk="_fav" title="Favourite (click to sort)">★</th>
         <th data-pk="ticker">Ticker</th><th data-pk="name">Name</th><th style="cursor:default">Action</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
         <th data-pk="current_price">Now</th><th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
         <th data-pk="added" title="When the setup completed and joined the dataset">Added</th><th data-pk="source">Source</th>
@@ -391,7 +391,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 700px;min-width:0">
       <div class="count" style="padding-left:0"><span id="oo-count"></span></div>
       <div class="tablewrap"><table>
-        <thead><tr><th style="cursor:default" title="Favourite">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
+        <thead><tr><th data-ok="_fav" title="Favourite (click to sort)">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
         <tbody id="oo-rows"></tbody>
       </table></div>
     </section>
@@ -1105,8 +1105,9 @@ function renderViz(rows){
 }
 
 function render(){
+  const _sv=r=>sortK==="_fav"?(FAVS.has(disp(r.ticker))?1:0):r[sortK];   // favourite column sortable (user 2026-07-11)
   const rows=DATA.filter(pass).sort((a,b)=>{
-    const x=a[sortK],y=b[sortK];const av=x==null?-1e9:x,bv=y==null?-1e9:y;
+    const x=_sv(a),y=_sv(b);const av=x==null?-1e9:x,bv=y==null?-1e9:y;
     return (av<bv?-1:av>bv?1:0)*sortDir;});
   const _nT=rows.filter(r=>r.status==="TRIGGERED").length,_nR=rows.filter(r=>r.status==="READY").length,_nD=rows.filter(r=>r.status==="DEVELOPING").length;
   $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} scanned (${_nT} TRIGGERED · ${_nR} READY · ${_nD} DEVELOPING). Click a row to open its detail; use Filters or the charts to narrow.</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
@@ -1800,6 +1801,7 @@ function paintOrderOps(){
     `<div class="vizsector">`+barChart("Ticker",oby("ticker"),"oof_ticker")+`</div>`;
   // Resolve instrument name from the loaded snapshot (user 2026-07-03: name next to Ticker).
   const nm=t=>{const r=DATA.find(x=>x.ticker===t||disp(x.ticker)===t);return r?(r.name||''):'';};
+  rows.forEach(r=>r._fav=FAVS.has(disp(r.ticker))?1:0);   // favourite column sortable (user 2026-07-11)
   $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>
     ${_favCell(r.ticker)}<td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td><b>${disp(r.ticker||'')}</b></td><td>${nm(r.ticker)}</td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
@@ -1925,9 +1927,12 @@ function maRebuild(){
 }
 // ── Performance tab (user 2026-07-10): triggered setups + best Quality/R:R combinations ──
 let pfSortK="perf", pfSortDir=-1;
-const _pfPerf=r=>{const c=r.chg_since_trig;return c==null?null:(r.direction==="BEAR"?-c:c);};   // direction-aware return
+const _pfPerf=r=>{   // direction-aware return; fall back to entry-vs-now when chg_since_trig is unset (user 2026-07-11)
+  let c=r.chg_since_trig;
+  if(c==null && r.entry>0 && r.current_price!=null) c=(r.current_price-r.entry)/r.entry*100;
+  return c==null?null:(r.direction==="BEAR"?-c:c);};
 function renderPerformance(){
-  const trg=DATA.filter(r=>r.status==="TRIGGERED"&&r.chg_since_trig!=null).map(r=>({...r,perf:_pfPerf(r)}));
+  const trg=DATA.filter(r=>r.status==="TRIGGERED").map(r=>({...r,perf:_pfPerf(r)})).filter(r=>r.perf!=null);
   // Top Quality/R:R buckets — responsive count: 8 on a wide screen, 4 on laptop/tablet, 3 on small.
   const N=innerWidth>=1400?8:innerWidth>=900?4:3;
   const buckets={};
@@ -2041,7 +2046,7 @@ function renderPreorders(){
   if(_poq)po=po.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(_poq));
   // Click a column header to sort (user 2026-06-30). Dist->Entry sorts on |distance| (closest first);
   // other columns sort on their raw value; nulls always sink to the bottom.
-  const val=r=>{const v=r[poSortK];if(v==null)return null;return poSortK==="dist_entry"?Math.abs(v):v;};
+  const val=r=>{if(poSortK==="_fav")return FAVS.has(disp(r.ticker))?1:0;const v=r[poSortK];if(v==null)return null;return poSortK==="dist_entry"?Math.abs(v):v;};
   po.sort((a,b)=>{const x=val(a),y=val(b);
     if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1;
     return (x<y?-1:x>y?1:0)*poSortDir;});
