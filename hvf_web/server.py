@@ -340,12 +340,20 @@ def _limit_defaults() -> dict:
     """Code defaults for a user's PERSONAL trading limits (user 2026-07-10), sourced from config.py so
     they track the shared engine's baseline. Per-user overrides layer on top."""
     import config as _cfg
-    return {"min_risk_reward": float(getattr(_cfg, "MIN_RISK_REWARD", 3.0)),
+    base = {"min_risk_reward": float(getattr(_cfg, "MIN_RISK_REWARD", 3.0)),
             "min_quality": int(getattr(_cfg, "MIN_PUBLISH_QUALITY", 25)),
             "max_trades_per_instrument_per_day": int(getattr(_cfg, "MAX_TRADES_PER_INSTRUMENT_PER_DAY", 5)),
             "bounce_alert_pct": float(getattr(_cfg, "BOUNCE_ALERT_PCT", 0.02)),
             "bounce_lookback_hours": int(getattr(_cfg, "BOUNCE_LOOKBACK_HOURS", 48)),
             "email_recipients": list(getattr(_cfg, "EMAIL_RECIPIENTS", []))}
+    # Fall back to the OWNER's (Alex's) saved limits where set (user 2026-07-11): a user who hasn't
+    # picked their own inherits Alex's, not just the code baseline.
+    try:
+        owner = (_wu.get_settings(_OWNER) or {}).get("limits") or {}
+        base.update({k: v for k, v in owner.items() if k in base})
+    except Exception:
+        pass
+    return base
 
 
 def _user_limits(s: dict) -> dict:

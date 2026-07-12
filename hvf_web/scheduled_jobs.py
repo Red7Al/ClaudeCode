@@ -116,9 +116,10 @@ def _cron_human(cron: str) -> str:
 # Which trading STYLE a job serves (user 2026-07-06). The session monitors/opens place multi-factor
 # momentum trades; the HVF jobs run the squeeze pipeline; the rest are support/ops (reports, health).
 _MOMENTUM_JOBS = {"AUS Open", "AUS Monitor", "Commodity Monitor AM", "Commodity Monitor PM",
-                  "UK Open", "UK Monitor", "US Open", "US Monitor"}
-_SQUEEZE_JOBS = {"HVF Daily Report", "HVF Orders", "UK HVF Watch", "US HVF Watch",
-                 "Sunday Pre-Open Commodity Scan"}
+                  "UK Open", "UK Monitor", "US Open", "US Monitor",
+                  # user 2026-07-11: these serve the multi-factor momentum pipeline too
+                  "Sunday Readiness Check", "Sunday Pre-Open Commodity Scan", "COT Report"}
+_SQUEEZE_JOBS = {"HVF Daily Report", "HVF Orders", "UK HVF Watch", "US HVF Watch"}
 
 
 def _trading_style(title: str) -> str:

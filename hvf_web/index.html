@@ -383,7 +383,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-orderops" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="oo-showclosed" onchange="paintOrderOps()"> Show closed (deleted / expired / cancelled)</label><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);font-size:13px"><span class="datecard">📅 <span id="oo-datebar"></span></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="oo-showclosed" onchange="paintOrderOps()"> Show all statuses (default: Pending + Watching)</label><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);font-size:13px"><span class="datecard">📅 <span id="oo-datebar"></span></span></div>
   <h1>Pre-orders to my IG</h1>
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
@@ -767,7 +767,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="mk-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th data-mk="market">Market</th><th style="cursor:default" title="Show/hide this market in your Scanner & Pre-orders">Enabled</th><th data-mk="incl">Included?</th><th data-mk="total">Instruments</th><th data-mk="signal">With signal</th><th data-mk="triggered">Triggered</th><th data-mk="ready">Ready</th><th data-mk="developing">Developing</th><th data-mk="avgq">Avg Quality</th></tr></thead>
+      <thead><tr><th data-mk="market">Market</th><th style="cursor:default" title="Show/hide this market in your Scanner & Pre-orders">Enabled</th><th data-mk="total">Instruments</th><th data-mk="signal">With signal</th><th data-mk="triggered">Triggered</th><th data-mk="ready">Ready</th><th data-mk="developing">Developing</th><th data-mk="avgq">Avg Quality</th></tr></thead>
       <tbody id="mk-rows"></tbody>
     </table></div>
   </section>
@@ -895,7 +895,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="ma-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th data-ma="market">Market</th><th style="cursor:default" title="Enable/disable this market app-wide (forces it OFF for all users)">Enabled</th><th data-ma="incl">Included?</th><th data-ma="total">Instruments</th><th data-ma="signal">With signal</th><th data-ma="triggered">Triggered</th><th data-ma="ready">Ready</th><th data-ma="developing">Developing</th><th data-ma="avgq">Avg Quality</th></tr></thead>
+      <thead><tr><th data-ma="market">Market</th><th style="cursor:default" title="Enable/disable this market app-wide (forces it OFF for all users)">Enabled</th><th data-ma="total">Instruments</th><th data-ma="signal">With signal</th><th data-ma="triggered">Triggered</th><th data-ma="ready">Ready</th><th data-ma="developing">Developing</th><th data-ma="avgq">Avg Quality</th></tr></thead>
       <tbody id="ma-rows"></tbody>
     </table></div>
   </section>
@@ -1540,10 +1540,10 @@ function renderTabVis(hidden){
   const chipFor=t=>chip(t,DEFAULT_HIDDEN.has(t)?SHOWN_TABS.includes(t):!hidden.has(t),false);
   const head=x=>`<div class="muted" style="width:100%;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:12px 0 2px">${x}</div>`;
   const INSTR=["performance","scanner","preorders","orderops","igaccount"];   // Instrument Operations group (user 2026-07-11)
-  const grouped=new Set([].concat(...Object.values(TAB_GROUPS),INSTR));
+  const grouped=new Set([].concat(...Object.values(TAB_GROUPS),INSTR,["activity"]));   // My Activity shown under Application Operations (user 2026-07-11)
   // Settings, Instrument Operations, Application Operations, then everything else (user 2026-07-11).
   const setg=TAB_GROUPS.settings.filter(t=>t!=="config"&&allow(t));
-  const ops=TAB_GROUPS.operations.filter(allow);
+  const ops=[...TAB_GROUPS.operations,"activity"].filter(allow);
   const instr=INSTR.filter(allow);
   const rest=TABS.filter(t=>t!=="config"&&!grouped.has(t)&&allow(t));
   const chipUsers=t=>(t==="users"&&IS_ADMIN)?chip(t,true,true):chipFor(t);   // admins can't disable User Management
@@ -1747,11 +1747,13 @@ function paintOrderOps(){
   const st=s=>s==="PENDING"?"var(--accent)":s==="FILLED"?"var(--bull)":s==="WATCHING"?"#d29922":"var(--muted)";
   // Chart-click filters (user 2026-07-03) apply to the table; the charts show the full mix.
   let rows=OO_ROWS;
+  const _statusPicked=setOf("oof_status");   // did the user click a Status on the chart?
   [["oof_status","status"],["oof_direction","direction"],["oof_session","session"],["oof_ticker","ticker"]].forEach(([id,k])=>{
     rows=rows.filter(r=>inSet(id,r[k]));});
-  // Default view excludes closed states (user 2026-07-11) — tick "Show closed" to include them.
-  if(!(($("oo-showclosed")||{}).checked)){const _closed=new Set(["DELETED","EXPIRED","CANCELLED","CANCELED"]);
-    rows=rows.filter(r=>!_closed.has(String(r.status||"").toUpperCase()));}
+  // Default active view (user 2026-07-11): only PENDING + WATCHING — UNLESS a Status is clicked on the
+  // chart, or "Show all statuses" is ticked. (So the chart filter can reach FILLED/closed states.)
+  if(!_statusPicked && !(($("oo-showclosed")||{}).checked)){const _active=new Set(["PENDING","WATCHING"]);
+    rows=rows.filter(r=>_active.has(String(r.status||"").toUpperCase()));}
   rows=applyDateFilter("oo",rows,r=>r.updated_at||r.placed_at);   // date filter on Updated
   // Free-text search by name / ticker (user 2026-07-10).
   const _ooq=(($("oo-search")||{}).value||"").trim().toLowerCase();
@@ -1828,7 +1830,7 @@ function _mkAgg(){
   return Object.values(g).map(o=>({...o,avgq:o.qn?Math.round(o.qsum/o.qn):null,incl:o.incl?1:0}));
 }
 const _mkSort=(rows,k,dir)=>rows.sort((a,b)=>{const x=a[k],y=b[k];const av=x==null?-1e9:x,bv=y==null?-1e9:y;const c=(av<bv?-1:av>bv?1:0)*dir;return c||String(a.market||'').localeCompare(String(b.market||''));});   // Market tiebreak (user 2026-07-11)
-const _mkCells=o=>`<td>${_mkIncl(o.incl)}</td><td>${o.total}</td><td>${o.signal}</td>
+const _mkCells=o=>`<td>${o.total}</td><td>${o.signal}</td>
     <td>${o.triggered?`<b style="color:var(--bull)">${o.triggered}</b>`:'0'}</td><td>${o.ready?`<b style="color:var(--accent)">${o.ready}</b>`:'0'}</td><td>${o.developing||0}</td>
     <td>${o.avgq!=null?`<b style="color:${qcol(o.avgq)}">${o.avgq}</b>`:''}</td>`;
 // Per-market on/off switch (user 2026-07-11). scope 'app' = admin (everyone); 'user' = this login only.
@@ -1843,14 +1845,14 @@ function mkToggle(market,scope,enabled){
 const _mkUserSwitch=m=>{const admDis=MARKETS_DISABLED.has(m),on=!MARKETS_OFF.has(m)&&!admDis;
   return `<input type="checkbox" ${on?'checked':''} ${admDis?'disabled title="Disabled by admin"':''} onchange="mkToggle('${(m||'').replace(/'/g,'')}','user',this.checked)" style="cursor:pointer;transform:scale(1.3)">`;};
 const _mkAdminSwitch=m=>`<input type="checkbox" ${MARKETS_DISABLED.has(m)?'':'checked'} onchange="mkToggle('${(m||'').replace(/'/g,'')}','app',this.checked)" style="cursor:pointer;transform:scale(1.3)">`;
-let mkSortK="incl", mkSortDir=-1;   // default: Included? first, then Market (user 2026-07-11)
+let mkSortK="market", mkSortDir=1;   // default: Market A→Z (user 2026-07-11)
 function renderMarkets(){
   const rows=_mkSort(_mkAgg(),mkSortK,mkSortDir);
   $("mk-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments scanned</span>`;
   $("mktab-count")&&($("mktab-count").textContent=`(${rows.length})`);
   // No click-through to the Scanner (user 2026-07-11) — this is a coverage view.
   $("mk-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkUserSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")
-    ||`<tr><td colspan="9" class="empty">No market data yet — open the Scanner first.</td></tr>`;
+    ||`<tr><td colspan="8" class="empty">No market data yet — open the Scanner first.</td></tr>`;
 }
 function mkFilter(m){const el=$("mf_market");if(el)el.value=m;showTab("scanner");render();}
 document.querySelectorAll("th[data-mk]").forEach(th=>th.onclick=()=>{const k=th.dataset.mk;mkSortDir=(mkSortK===k)?-mkSortDir:-1;mkSortK=k;renderMarkets();});
@@ -1859,7 +1861,7 @@ let maSortK="total", maSortDir=-1;
 function renderMarketsAdmin(){
   const rows=_mkSort(_mkAgg(),maSortK,maSortDir);
   $("ma-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments</span>`;
-  $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkAdminSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")||`<tr><td colspan="9" class="empty">No market data.</td></tr>`;
+  $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkAdminSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")||`<tr><td colspan="8" class="empty">No market data.</td></tr>`;
 }
 document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();});
 // ── IG Account tab (user 2026-07-10): the acting user's own IG open positions + working orders ──
