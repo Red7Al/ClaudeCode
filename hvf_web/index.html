@@ -338,7 +338,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="tablewrap">
       <table>
         <thead><tr>
-          <th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
+          <th style="cursor:default" title="Favourite">★</th><th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <th data-k="market">Market</th><th data-k="sector">Sector</th><th data-k="status">Status</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
           <th data-k="current_price" title="Latest price">Now</th>
@@ -371,6 +371,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <table>
       <thead><tr>
         <th style="cursor:default"><input type="checkbox" id="po-all" onclick="poToggleAll(this)"></th>
+        <th style="cursor:default" title="Favourite">★</th>
         <th data-pk="ticker">Ticker</th><th data-pk="name">Name</th><th style="cursor:default">Action</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
         <th data-pk="current_price">Now</th><th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
         <th data-pk="added" title="When the setup completed and joined the dataset">Added</th><th data-pk="source">Source</th>
@@ -390,7 +391,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 700px;min-width:0">
       <div class="count" style="padding-left:0"><span id="oo-count"></span></div>
       <div class="tablewrap"><table>
-        <thead><tr><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
+        <thead><tr><th style="cursor:default" title="Favourite">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
         <tbody id="oo-rows"></tbody>
       </table></div>
     </section>
@@ -970,6 +971,14 @@ function augment(r){
 
 let TRADE_HIDE={};   // per-user Trading (Squeeze) allow-lists {directions,markets,locations}; empty list = no restriction (user 2026-07-06)
 let MARKETS_DISABLED=new Set(), MARKETS_OFF=new Set();   // app-level (admin) + per-user market on/off switches (user 2026-07-11)
+// Favourites (user 2026-07-10) — a ★ column on Scanner / My Pre-orders / Pre-orders to my IG, kept in
+// this browser (localStorage), keyed by the displayed ticker.
+let FAVS=new Set(); try{FAVS=new Set(JSON.parse(localStorage.getItem('sq_favs')||'[]'));}catch(e){}
+function toggleFav(tk){tk=disp(tk); FAVS.has(tk)?FAVS.delete(tk):FAVS.add(tk);
+  localStorage.setItem('sq_favs',JSON.stringify([...FAVS]));
+  if(typeof render==='function')render(); if(typeof renderPreorders==='function')renderPreorders(); if(typeof paintOrderOps==='function')paintOrderOps();}
+const _favCell=tk=>{const on=FAVS.has(disp(tk));
+  return `<td style="cursor:pointer;text-align:center" onclick="event.stopPropagation();toggleFav('${(tk||'').replace(/'/g,'')}')" title="${on?'Remove from favourites':'Add to favourites'}"><span style="color:${on?'#e3b341':'var(--muted)'};font-size:15px">${on?'★':'☆'}</span></td>`;};
 function tradeVisible(r){
   const ok=(v,key)=>{const a=TRADE_HIDE[key];if(!a||!a.length)return true;if(v==null)return true;return a.includes(v);};
   if(r.market && (MARKETS_DISABLED.has(r.market)||MARKETS_OFF.has(r.market)))return false;   // market switched off (admin or user)
@@ -1083,7 +1092,7 @@ function render(){
   $("sctab-count").textContent=`(${rows.length})`;
   renderViz(rows);
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
-    <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
+    ${_favCell(r.ticker)}<td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
     <td>${r.market||''}</td><td>${r.sector||''}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.days_since??'')}</td>
@@ -1094,7 +1103,7 @@ function render(){
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td>
     <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td></tr>`).join("")
-    || `<tr><td colspan="21" class="empty">No setups match the filters.</td></tr>`;
+    || `<tr><td colspan="22" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
     tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
@@ -1771,17 +1780,17 @@ function paintOrderOps(){
   // Resolve instrument name from the loaded snapshot (user 2026-07-03: name next to Ticker).
   const nm=t=>{const r=DATA.find(x=>x.ticker===t||disp(x.ticker)===t);return r?(r.name||''):'';};
   $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>
-    <td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td><b>${disp(r.ticker||'')}</b></td><td>${nm(r.ticker)}</td>
+    ${_favCell(r.ticker)}<td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td><b>${disp(r.ticker||'')}</b></td><td>${nm(r.ticker)}</td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
     <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td><td>${r.size??''}</td>
     <td><b style="color:${st(r.status)}">${r.status||''}</b></td><td>${r.session||''}</td>
     <td class="muted" style="white-space:normal;max-width:460px">${(r.notes||'').replace(/</g,'&lt;')}</td></tr>`).join("")
-  || `<tr><td colspan="12" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
+  || `<tr><td colspan="13" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
 }
 function renderOrderOps(){
   fetch("/api/order-ops",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{OO_ROWS=j.rows||[];paintOrderOps();})
-    .catch(()=>{$("oo-rows").innerHTML=`<tr><td colspan="11" class="empty">Could not load — try logging in again.</td></tr>`;});
+    .catch(()=>{$("oo-rows").innerHTML=`<tr><td colspan="13" class="empty">Could not load — try logging in again.</td></tr>`;});
 }
 let AC_ROWS=[], acSortK="ts", acSortDir=-1;
 // Category derived from the event text (user 2026-07-03) so the log is easy to filter.
@@ -2030,7 +2039,7 @@ function renderPreorders(){
     `<div class="vizsector">`+barChart("Market",pby("market"),"pof_market")+`</div>`;
   $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
     return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
-      <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
+      ${_favCell(r.ticker)}<td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
       <td><button class="btn" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();placeOnIG('${r.ticker}')" title="Place this pre-order as a live IG working order now">↗ Place on IG</button></td>
       <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
       <td>${r.status}</td><td>${r.market||''}</td>
@@ -2040,7 +2049,7 @@ function renderPreorders(){
       <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td>
       <td>${(r.timeframe||'').replace('daily-','D')}</td>
       <td>${r.added||''}</td><td>${r.source||''}</td></tr>`;}).join("")
-    || `<tr><td colspan="17" class="empty">No pre-orders right now.</td></tr>`;
+    || `<tr><td colspan="18" class="empty">No pre-orders right now.</td></tr>`;
   document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=e=>{if(e.target.type==="checkbox")return;showTab('scanner');showDetail(tr.dataset.t);});
   $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)   // keep tab count in sync after delete (user 2026-07-06)
   poUpdateBtn();
