@@ -195,6 +195,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-users .gsec,#view-performance .gsec{width:fit-content;max-width:100%}
 #view-users .tablewrap,#view-performance .tablewrap{overflow-x:visible}
 #view-users table th,#view-users table td{white-space:nowrap;word-break:normal}
+/* Layout pass (user 2026-07-11): the main data views use the screen width (less side white space and
+   less horizontal scroll on wide monitors); tighter cells fit more columns; Scanner card reclaims width. */
+#view-preorders,#view-orderops,#view-performance,#view-xposts,#view-changereq,#view-markets,#view-marketsadmin,#view-jobs{max-width:min(1780px,97vw)!important}
+#view-performance table td,#view-performance table th{white-space:nowrap}
+.tablewrap table th,.tablewrap table td{padding:5px 8px}
+#view-scanner main section.gsec{padding:10px;margin:0 8px 12px}
 .confnav .adminpill{border-color:#d29922}
 .confnav .adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a);border-color:transparent}
 .confpanel{animation:fadeIn .2s ease}
