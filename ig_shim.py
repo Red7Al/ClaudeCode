@@ -1975,10 +1975,11 @@ def place_working_order(
                 existing["deal_id"], ticker, direction, entry_level, stop_level,
                 limit_level, existing, session_name, user_id, paper_trade=paper_trade)
 
-    # Step 1 — circuit breakers (daily loss, max positions, daily caps). Spread check SKIPPED:
-    # this is the HVF working-order path (pending STOP at the pattern's own entry/stop/target), and
-    # per user 2026-06-22 an HVF-triggered order doesn't gate on the scan-time spread.
-    ok, reason = check_circuit_breakers(user_id, ticker, session_name, skip_spread=True)
+    # Step 1 — circuit breakers. NOT APPLIED to the HVF working-order path (user 2026-07-11):
+    # circuit breakers gate the Multi-Factor Momentum trading only; HVF pending orders (a STOP at the
+    # pattern's own entry/stop/target) are not gated by daily-loss/max-position/daily-cap checks.
+    # (Was: check_circuit_breakers(user_id, ticker, session_name, skip_spread=True).)
+    ok, reason = True, ""
     if not ok:
         log.warning(f"Working order blocked — circuit breaker: {reason}")
         try:
