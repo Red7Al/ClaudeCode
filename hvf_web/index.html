@@ -846,7 +846,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
     <div style="flex:1;min-width:340px">
       <h2 class="sec" style="margin-top:0">Summary</h2>
-      <p class="muted" style="font-size:13px;margin-top:-8px">Every recorded trigger split by direction. <b>Returns Available</b> counts closed trades (target or stopped); Gains / Losses / Break-even, Win % and Loss % are measured against those. <b>Reacts to the chart filters.</b></p>
+      <p class="muted" style="font-size:13px;margin-top:-8px">Every recorded trigger split by direction. <b>Returns Available</b> counts every trigger with a return figure — including <b style="color:#d29922">Open</b> trades marked to the latest price; Gains / Losses / Break-even, Win % and Loss % are measured against those. <b>Reacts to the chart filters.</b></p>
       <div id="pf-summary" class="tablewrap" style="margin-bottom:8px"></div>
     </div>
   </div>
@@ -2041,11 +2041,12 @@ function _renderPerformance(){
     ||`<tr><td colspan="13" class="empty">No recorded triggers yet.</td></tr>`;
 }
 // Summary table (user 2026-07-13): Overall / Bull / Bear split of the recorded triggers, with
-// coloured gradients to draw the eye. Returns Available = closed trades (TARGET/STOPPED); Gains,
-// Losses, Break-even, Win % and Loss % are all measured against that closed set.
+// coloured gradients to draw the eye. Returns Available = every trigger with a return figure —
+// including OPEN trades marked to the latest price — so Gains, Losses, Break-even, Win %, Loss %,
+// Avg Return and Max/Min all take the open trades into account. Open is an informational subset.
 const PF_BE=0.5;   // |return| < 0.5% counts as break-even
 function _pfSeg(rows){
-  const closed=rows.filter(r=>r.state==="TARGET"||r.state==="STOPPED"),ps=closed.map(r=>r.perf).filter(p=>p!=null);
+  const ps=rows.map(r=>r.perf).filter(p=>p!=null);
   const g=ps.filter(p=>p>PF_BE),l=ps.filter(p=>p<-PF_BE),be=ps.filter(p=>Math.abs(p)<=PF_BE);
   const av=ps.length?ps.reduce((a,b)=>a+b,0)/ps.length:null;
   return{trades:rows.length,open:rows.filter(r=>r.state==="OPEN").length,avail:ps.length,gains:g.length,losses:l.length,be:be.length,
