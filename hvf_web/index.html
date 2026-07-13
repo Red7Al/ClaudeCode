@@ -185,6 +185,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-orderops td,#view-syslogs td{white-space:nowrap;vertical-align:top}   /* top-align so a long note doesn't float short cells (user 2026-07-06) */
 #view-orderops td:last-child,#view-syslogs td:last-child{white-space:normal;word-break:break-word}
 #view-orderops td:last-child{max-width:460px}   /* wider notes -> fewer wrapped lines, shorter rows (user 2026-07-06) */
+/* Pre-orders-to-my-IG: hug the content instead of stretching 13 mostly-short columns to fill the
+   section, which distributed ~200px of slack as intra-cell white space (user 2026-07-13). Same fix
+   already used for Users/Performance; .doc .tablewrap keeps overflow-x:auto for narrow screens. */
+#view-orderops table{width:auto;max-width:100%}
 #view-preorders td,#view-preorders th{white-space:nowrap}   /* no wrap; the table scrolls sideways instead (user 2026-07-06) */
 #view-activity td{white-space:nowrap}#view-activity td:last-child{white-space:normal;word-break:break-word}   /* only Event wraps (user 2026-07-06) */
 #view-jobs td{white-space:nowrap}
@@ -371,8 +375,16 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="viz" id="po-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:var(--accent)">
   <div class="count" id="po-count" style="padding-left:0;display:flex;align-items:center;gap:14px"><span id="po-count-text"></span><span class="grow"></span>
+    <button class="btn" id="po-filt-btn" onclick="togglePoFilters()" title="Show/hide the numeric filters">⚙ Filters</button>
     <input id="po-search" placeholder="Search name / ticker…" oninput="renderPreorders()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px">
     <button class="btn" id="po-delete" onclick="deletePreorders()" disabled>Delete selected</button></div>
+  <!-- Show/hide numeric filters, mirroring the Scanner method (user 2026-07-13): Quality / R:R / Dist→Entry. -->
+  <div id="po-filters" class="hidden" style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;padding:10px 0 12px;border-bottom:1px solid var(--line);margin-bottom:10px">
+    <div class="f" style="width:auto;margin:0"><label>Quality range</label><div class="row2" style="width:150px"><input id="po_qmin" type="number" placeholder="min" oninput="renderPreorders()"><input id="po_qmax" type="number" placeholder="max" oninput="renderPreorders()"></div></div>
+    <div class="f" style="width:auto;margin:0"><label>R:R range</label><div class="row2" style="width:150px"><input id="po_rrmin" type="number" step="0.1" placeholder="min" oninput="renderPreorders()"><input id="po_rrmax" type="number" step="0.1" placeholder="max" oninput="renderPreorders()"></div></div>
+    <div class="f" style="width:auto;margin:0"><label>Dist to entry % range</label><div class="row2" style="width:170px"><input id="po_demin" type="number" step="0.1" placeholder="min" oninput="renderPreorders()"><input id="po_demax" type="number" step="0.1" placeholder="max" oninput="renderPreorders()"></div></div>
+    <button class="btn" onclick="poClearFilters()">Clear filters</button>
+  </div>
   <div class="tablewrap">
     <table>
       <thead><tr>
@@ -394,7 +406,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <h1>Pre-orders to my IG</h1>
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-    <section class="gsec" style="border-left-color:var(--accent);flex:1 1 700px;min-width:0">
+    <section class="gsec" style="border-left-color:var(--accent);flex:0 1 auto;min-width:0;max-width:100%">
       <div class="count" style="padding-left:0"><span id="oo-count"></span></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-ok="_fav" title="Favourite (click to sort)">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
@@ -804,20 +816,20 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <!-- Performance (all users, user 2026-07-10) — triggered setups + best Quality/R:R combinations. -->
 <div id="view-performance" class="hidden doc" style="max-width:1180px">
-  <input type="hidden" id="pff_sector"><input type="hidden" id="pff_market"><input type="hidden" id="pff_month">
+  <input type="hidden" id="pff_sector"><input type="hidden" id="pff_market"><input type="hidden" id="pff_status">
   <span class="eyebrow">Results</span>
   <h1>Performance</h1>
-  <p class="lede">How triggered setups have performed since they fired. "Return" is direction-aware — a BULL setup gains when price rises, a BEAR setup gains when price falls — so a positive number is always a win.</p>
+  <p class="lede">Performance of every triggered setup <b>plus everything the automation has actually placed on IG</b> — any PENDING working order or FILLED position is measured here <b>irrespective of the current squeeze state</b>, from its committed entry level to the live price (direction-aware, so positive is always in your favour). Use the <b>Status</b> chart to narrow to triggered trades or live IG orders.</p>
   <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <h2 class="sec">Top 5 Quality / R:R combinations</h2>
   <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return, <b>reacting to the charts above</b>. Only buckets with at least 3 triggered setups are shown.</p>
   <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
   <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
-  <h2 class="sec">Every triggered setup</h2>
+  <h2 class="sec">Every live setup</h2>
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="pf-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th data-pf="ticker">Ticker</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th></tr></thead>
+      <thead><tr><th data-pf="ticker">Ticker</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="status">Status</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -941,14 +953,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="ig-pos-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Instrument</th><th>Dir</th><th>Size</th><th>Level</th><th>Stop</th><th>Limit</th><th>Ccy</th><th>Opened (UTC)</th></tr></thead>
+      <thead><tr><th>Ticker</th><th>Name</th><th>Dir</th><th>Size</th><th>Level</th><th>Stop</th><th>Limit</th><th>Ccy</th><th>Opened (UTC)</th></tr></thead>
       <tbody id="ig-pos-rows"></tbody>
     </table></div>
   </section>
   <section class="gsec" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="ig-ord-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Instrument</th><th>Dir</th><th>Size</th><th>Level</th><th>Type</th><th>Source</th><th>Good&nbsp;till (UTC)</th></tr></thead>
+      <thead><tr><th>Ticker</th><th>Name</th><th>Dir</th><th>Size</th><th>Level</th><th>Type</th><th>Source</th><th>Good&nbsp;till (UTC)</th></tr></thead>
       <tbody id="ig-ord-rows"></tbody>
     </table></div>
   </section>
@@ -1919,19 +1931,21 @@ function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
   $("ig-note").textContent="";
-  $("ig-pos-rows").innerHTML=`<tr><td colspan="8" class="empty">Loading…</td></tr>`;
-  $("ig-ord-rows").innerHTML=`<tr><td colspan="7" class="empty">Loading…</td></tr>`;
+  $("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading…</td></tr>`;
+  $("ig-ord-rows").innerHTML=`<tr><td colspan="8" class="empty">Loading…</td></tr>`;
   const dtag=d=>d?`<span class="tag ${d==='BUY'?'bull':'bear'}">${d}</span>`:'';
+  // Friendly order-source labels (user 2026-07-13): WEB_BRIDGE is the 2-hour Squeeze-scanner bridge.
+  const srcLbl=s=>({WEB_BRIDGE:"Squeeze (bridge)",WEB_MANUAL:"Manual (web)"}[s]||s||'—');
   fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       const pos=j.positions||[], ord=j.orders||[];
       $("ig-note").innerHTML=j.note?`<span class="muted">🔒 ${j.note}</span>`:"";
       $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${pos.length}</b> open position${pos.length===1?'':'s'}`;
       $("ig-ord-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${ord.length}</b> working order${ord.length===1?'':'s'}`;
-      $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td><b>${p.name||p.epic||''}</b></td><td>${dtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td></tr>`).join("")||`<tr><td colspan="8" class="empty">No open positions.</td></tr>`;
-      $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td><b>${o.name||o.epic||''}</b></td><td>${dtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${o.source||'—'}</td><td>${o.good_till||''}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">No working orders.</td></tr>`;
+      $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td><b>${p.ticker||p.epic||''}</b></td><td>${p.name||''}</td><td>${dtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td></tr>`).join("")||`<tr><td colspan="9" class="empty">No open positions.</td></tr>`;
+      $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td><b>${o.ticker||o.epic||''}</b></td><td>${o.name||''}</td><td>${dtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${srcLbl(o.source)}</td><td>${o.good_till||''}</td></tr>`).join("")||`<tr><td colspan="8" class="empty">No working orders.</td></tr>`;
     })
-    .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="8" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="7" class="empty">—</td></tr>`;})
+    .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="8" class="empty">—</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
 function maRebuild(){
@@ -1943,24 +1957,60 @@ function maRebuild(){
       else{m.style.color="var(--bear)";m.textContent=(j&&j.error)||"Could not start the rebuild.";}b.disabled=false;})
     .catch(()=>{m.style.color="var(--bear)";m.textContent="Could not start the rebuild.";b.disabled=false;});
 }
-// ── Performance tab (user 2026-07-10): triggered setups + best Quality/R:R combinations ──
+// ── Performance tab (user 2026-07-10): triggered trades + everything committed to IG ──
 let pfSortK="perf", pfSortDir=-1;
+let PERF_ORDERS=null;   // acting user's working_orders, loaded once for the Performance merge (user 2026-07-13)
 const _pfPerf=r=>{   // direction-aware return; fall back to entry-vs-now when chg_since_trig is unset (user 2026-07-11)
   let c=r.chg_since_trig;
   if(c==null && r.entry>0 && r.current_price!=null) c=(r.current_price-r.entry)/r.entry*100;
   return c==null?null:(r.direction==="BEAR"?-c:c);};
+// Direction-aware move from a committed ENTRY level to the live price (user 2026-07-13) — for an
+// instrument that has an IG order but whose snapshot may no longer show the squeeze.
+const _pfFromEntry=(entry,cur,dir)=>{if(!(entry>0)||cur==null)return null;const c=(cur-entry)/entry*100;return dir==="BEAR"?-c:c;};
 function renderPerformance(){
-  const trgAll=DATA.filter(r=>r.status==="TRIGGERED").map(r=>({...r,perf:_pfPerf(r)})).filter(r=>r.perf!=null);
-  const _pm=r=>(r.trig_date||'').slice(0,7);   // trigger month (YYYY-MM)
-  // Click-to-filter charts (user 2026-07-11): Sector / Market / Month over the triggered set.
-  const by=fn=>trgAll.reduce((m,r)=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]=(m[v]||0)+1;return m;},{});
+  if(PERF_ORDERS===null && !LIMITED){   // fetch the user's IG orders once, then re-render with them merged
+    PERF_ORDERS=[];   // guard against re-entry while the request is in flight
+    fetch("/api/order-ops",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]})
+      .then(j=>{PERF_ORDERS=j.rows||[];_renderPerformance();}).catch(()=>{PERF_ORDERS=[];_renderPerformance();});
+  }
+  _renderPerformance();
+}
+function _renderPerformance(){
+  const snapBy={}; DATA.forEach(r=>{snapBy[r.ticker]=r;snapBy[disp(r.ticker)]=r;});
+  const bag={};   // keyed by displayed ticker — an instrument appears once, order data winning
+  // 1) Triggered snapshot setups — realised/triggered performance (the original Performance content).
+  DATA.filter(r=>r.status==="TRIGGERED").forEach(r=>{const p=_pfPerf(r);if(p==null)return;
+    bag[disp(r.ticker)]={...r,perf:p,_trg:true,_dstat:"TRIGGERED"};});
+  // 2) Instruments the automation actually PLACED ON IG (user 2026-07-13): a PENDING working order or a
+  //    FILLED position MUST be measured irrespective of the current squeeze state — the source of truth
+  //    is working_orders, NOT the snapshot, so a live IG commitment never vanishes when the squeeze fades.
+  //    (WATCHING = tracked, not yet on IG — excluded; measured from the ORDER's own entry level.)
+  const dmap={BUY:"BULL",SELL:"BEAR"};
+  (PERF_ORDERS||[]).forEach(o=>{const st=String(o.status||"").toUpperCase();
+    if(st!=="PENDING"&&st!=="FILLED")return;
+    const k=disp(o.ticker), snap=snapBy[o.ticker]||snapBy[k]||{}, prev=bag[k];
+    const dir=snap.direction||dmap[o.direction]||null;
+    const entry=(o.entry!=null&&o.entry!=="")?+o.entry:snap.entry;
+    const cur=snap.current_price!=null?snap.current_price:null;
+    const perf=_pfFromEntry(entry,cur,dir);
+    bag[k]={...snap,...(prev||{}), ticker:o.ticker, name:snap.name||(prev&&prev.name)||'',
+      direction:dir, entry, current_price:cur,
+      quality:snap.quality??(prev&&prev.quality), rr:snap.rr??(prev&&prev.rr),
+      market:snap.market||(prev&&prev.market)||'', sector:snap.sector||(prev&&prev.sector)||'',
+      trig_date:snap.trig_date||(prev&&prev.trig_date)||null,
+      perf: perf!=null?perf:(prev?prev.perf:null),
+      _trg: !!(prev&&prev._trg), ordered:true, _dstat:st};});
+  const all=Object.values(bag);
+  const scol=k=>k==="TRIGGERED"?"var(--bull)":k==="FILLED"?"#3fb950":k==="PENDING"?"var(--accent)":"#d29922";
+  // Click-to-filter charts: Sector / Market / Status over the whole set.
+  const by=fn=>all.reduce((m,r)=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]=(m[v]||0)+1;return m;},{});
   $("pf-viz").innerHTML=LIMITED?"":
     `<div class="vizsector">`+pieChart("Sector",by("sector"),"pff_sector")+`</div>`+
     `<div class="vizsector">`+barChart("Market",by("market"),"pff_market")+`</div>`+
-    `<div class="vizsector">`+barChart("Trigger month",by(_pm),"pff_month",null,true)+`</div>`;
-  // The cards + table below REACT to the chart filters (user 2026-07-11).
-  const trg=trgAll.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_month",_pm(r)));
-  // Top Quality/R:R buckets — responsive count: 8 on a wide screen, 4 on laptop/tablet, 3 on small.
+    `<div class="vizsector">`+barChart("Status",by("_dstat"),"pff_status",scol)+`</div>`;
+  const sel=all.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_status",r._dstat));
+  // Top Quality/R:R buckets — genuinely TRIGGERED trades only, so the averages stay honest.
+  const trg=sel.filter(r=>r._trg && r.perf!=null);
   const N=innerWidth>=1400?8:innerWidth>=900?4:3;
   const buckets={};
   trg.forEach(r=>{if(r.quality==null||r.rr==null)return;const qb=Math.floor(r.quality/10)*10,rb=Math.floor(r.rr);
@@ -1971,17 +2021,20 @@ function renderPerformance(){
       <h3>Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)}</h3>
       <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggered setups.</div></div>`).join("")
     :`<p class="muted">Not enough triggered setups yet to rank Quality/R:R buckets (need at least 3 per bucket).</p>`;
-  const rows=genSort(trg,pfSortK,pfSortDir);
-  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${trg.length}</b> triggered setups${trg.length!==trgAll.length?` <span class="muted">of ${trgAll.length}</span>`:''}`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
-  $("pftab-count").textContent=`(${trg.length})`;
-  $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`showTab('scanner');showDetail('${r.ticker}')`}">
+  const rows=genSort(sel,pfSortK,pfSortDir);
+  const nTrg=sel.filter(r=>r._trg).length, nOrd=sel.filter(r=>r.ordered).length;
+  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${sel.length}</b> setups measured <span class="muted">(${nTrg} triggered · ${nOrd} placed on IG)${sel.length!==all.length?` of ${all.length}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
+  $("pftab-count").textContent=`(${sel.length})`;
+  $("pf-rows").innerHTML=rows.map(r=>{const ds=r._dstat||r.status||'';
+    return `<tr class="clk" onclick="${LIMITED?'showLogin()':`showTab('scanner');showDetail('${r.ticker}')`}">
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
-    <td>${ob(r.market||'')}</td><td>${ob(r.sector||'')}</td><td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td>
+    <td>${ob(`<b style="color:${scol(ds)}">${ds}</b>${r.ordered?' <span class="muted" title="Live order/position on IG">• IG</span>':''}`)}</td>
+    <td>${ob(r.market||'')}</td><td>${ob(r.sector||'')}</td><td>${ob(r.trig_date?r.trig_date.slice(0,10):'—')}</td>
     <td>${ob(f2(r.entry))}</td><td>${ob(f2(r.current_price))}</td>
-    <td><b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b></td>
-    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td></tr>`).join("")
-    ||`<tr><td colspan="11" class="empty">No triggered setups in the current snapshot.</td></tr>`;
+    <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
+    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td></tr>`;}).join("")
+    ||`<tr><td colspan="12" class="empty">No triggered trades or IG orders in the current snapshot.</td></tr>`;
 }
 document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();_sortArrows("data-pf",pfSortK,pfSortDir);});
 // ── Change Requests tab (admin, user 2026-07-10): parses ChangeRequests/*.txt via /api/change-requests ──
@@ -2061,6 +2114,8 @@ function doReset(){
       else{el.style.color="var(--bear)";el.textContent=j.error||"Reset failed.";}});
 }
 let poSortK="dist_entry", poSortDir=1;   // default sort: Dist->Entry, closest first (user 2026-06-30)
+function togglePoFilters(){const p=$("po-filters");if(p)p.classList.toggle("hidden");}
+function poClearFilters(){["po_qmin","po_qmax","po_rrmin","po_rrmax","po_demin","po_demax"].forEach(id=>{const el=$(id);if(el)el.value="";});renderPreorders();}
 function renderPreorders(){
   let po=DATA.filter(r=>isPreorder(r)&&tradeVisible(r));   // hide the user's excluded markets (user 2026-07-06)
   {const _seen=new Set();po=po.filter(r=>{const k=disp(r.ticker);if(_seen.has(k))return false;_seen.add(k);return true;});}   // no duplicate rows (user 2026-07-10)
@@ -2071,6 +2126,9 @@ function renderPreorders(){
   // Free-text search by name / ticker (user 2026-07-10).
   const _poq=(($("po-search")||{}).value||"").trim().toLowerCase();
   if(_poq)po=po.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(_poq));
+  // Numeric show/hide filters (user 2026-07-13) — same method as the Scanner: null value always passes.
+  {const g=id=>(($(id)||{}).value),rng=(v,lo,hi)=>{const a=num(g(lo)),b=num(g(hi));if(v==null)return true;if(a!=null&&v<a)return false;if(b!=null&&v>b)return false;return true;};
+   po=po.filter(r=>rng(r.quality,"po_qmin","po_qmax")&&rng(r.rr,"po_rrmin","po_rrmax")&&rng(r.dist_entry,"po_demin","po_demax"));}
   // Click a column header to sort (user 2026-06-30). Dist->Entry sorts on |distance| (closest first);
   // other columns sort on their raw value; nulls always sink to the bottom.
   const val=r=>{if(poSortK==="_fav")return FAVS.has(disp(r.ticker))?1:0;const v=r[poSortK];if(v==null)return null;return poSortK==="dist_entry"?Math.abs(v):v;};

@@ -1589,30 +1589,60 @@ def api_ig_account():
             db.close()
     except Exception as e:
         log.warning(f"ig-account DB maps failed: {e}")
+    # Company name per ticker from the snapshot (user 2026-07-13: show the instrument NAME, not just
+    # the ticker/epic, on the IG Account report).
+    tk2name = {r["ticker"]: (r.get("name") or "")
+               for r in _load_snapshot().get("records", []) if r.get("ticker")}
+
+    # Fetch positions and orders INDEPENDENTLY (user 2026-07-13 bug: a failure in get_working_orders
+    # used to abort the whole block, so open positions silently vanished even though that call had
+    # already succeeded). Each call now stands on its own; one failing never hides the other.
+    positions, orders = [], []
+    pos_ok = ord_ok = False
     try:
         with ig_shim._IG_LOCK, ig_shim.acting_session(name):
-            positions = ig_shim.get_open_positions() or []
-            orders = ig_shim.get_working_orders() or []
+            try:
+                positions = ig_shim.get_open_positions() or []
+                pos_ok = True
+            except Exception as e:
+                log.warning(f"ig-account positions read failed for {name}: {e}")
+            try:
+                orders = ig_shim.get_working_orders() or []
+                ord_ok = True
+            except Exception as e:
+                log.warning(f"ig-account orders read failed for {name}: {e}")
     except Exception as e:
-        log.warning(f"ig-account read failed for {name}: {e}")
+        log.warning(f"ig-account session unavailable for {name}: {e}")
         out["note"] = "Could not read your IG account right now — try Refresh."
         return jsonify(out)
+    if not pos_ok and not ord_ok:
+        out["note"] = "Could not read your IG account right now — try Refresh."
+        return jsonify(out)
+    if not pos_ok:
+        out["note"] = "Open positions are unavailable right now — try Refresh."
+    elif not ord_ok:
+        out["note"] = "Working orders are unavailable right now — try Refresh."
 
-    def _nm(mk):
-        return epic2tk.get(str(mk.get("epic"))) or mk.get("instrumentName") or mk.get("epic") or ""
+    def _tk(epic, mk):   # short ticker for an epic (epic_lookup, else IG's instrument name, else epic)
+        return epic2tk.get(str(epic)) or (mk.get("instrumentName") if mk else None) or epic or ""
 
     for p in positions:
         pos, mk = (p.get("position") or {}), (p.get("market") or {})
+        epic = mk.get("epic")
+        tk = _tk(epic, mk)
         out["positions"].append({
-            "name": _nm(mk), "epic": mk.get("epic"), "direction": pos.get("direction"),
+            "ticker": tk, "name": tk2name.get(tk) or mk.get("instrumentName") or tk,
+            "epic": epic, "direction": pos.get("direction"),
             "size": pos.get("size"), "level": pos.get("level") or pos.get("openLevel"),
             "currency": pos.get("currency"), "stop": pos.get("stopLevel"), "limit": pos.get("limitLevel"),
             "opened": str(pos.get("createdDateUTC") or pos.get("createdDate") or "")[:19]})
     for w in orders:
         od, mk = (w.get("workingOrderData") or {}), (w.get("marketData") or {})
         epic = od.get("epic") or mk.get("epic")
+        tk = _tk(epic, mk)
         out["orders"].append({
-            "name": _nm(mk) or epic2tk.get(str(epic)) or epic, "epic": epic,
+            "ticker": tk, "name": tk2name.get(tk) or mk.get("instrumentName") or tk,
+            "epic": epic,
             "direction": od.get("direction"), "size": od.get("orderSize") or od.get("size"),
             "level": od.get("orderLevel") or od.get("level"), "type": od.get("orderType"),
             "good_till": str(od.get("goodTillDate") or "")[:19], "source": epic2src.get(str(epic)) or "—"})

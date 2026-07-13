@@ -144,11 +144,24 @@ def get_trade_filters() -> dict:
     return out
 
 
+def get_disabled_markets() -> list:
+    """Admin deny-list from the Markets (Admin) switch (user 2026-07-11): markets switched OFF for
+    everyone. Unlike trade_markets (an owner allow-list), this is enforced in the order path so a
+    disabled market is kept out of PROCESSING — not just hidden in the UI (user 2026-07-13)."""
+    v = get_value("markets_disabled", "")
+    return [x.strip() for x in v.split(",") if x.strip()]
+
+
 def trade_allowed(direction: str = None, market: str = None, location: str = None) -> tuple:
     """Trade-filter gate (user 2026-07-03, Config tab): direction is BULL/BEAR; market/location as in
     the scanner. A missing/empty stored filter = allow all; unknown attribute values pass (fail OPEN).
+    A market in the admin deny-list (markets_disabled) is always blocked (user 2026-07-13).
     Returns (allowed, reason)."""
     try:
+        # Admin market kill-switch first: a disabled market never reaches IG, regardless of the
+        # owner allow-list below (user 2026-07-13 — keep filtered-out markets out of the order path).
+        if market and market in get_disabled_markets():
+            return False, f"market {market} is disabled (Markets Admin)"
         f = get_trade_filters()
         if direction and f["directions"] and direction not in f["directions"]:
             return False, f"direction {direction} not in allowed {f['directions']}"
