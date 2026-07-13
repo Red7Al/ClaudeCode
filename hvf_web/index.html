@@ -2038,7 +2038,7 @@ function _pfSeg(rows){
   const closed=rows.filter(r=>r.state==="TARGET"||r.state==="STOPPED"),ps=closed.map(r=>r.perf).filter(p=>p!=null);
   const g=ps.filter(p=>p>PF_BE),l=ps.filter(p=>p<-PF_BE),be=ps.filter(p=>Math.abs(p)<=PF_BE);
   const av=ps.length?ps.reduce((a,b)=>a+b,0)/ps.length:null;
-  return{trades:rows.length,avail:ps.length,gains:g.length,losses:l.length,be:be.length,
+  return{trades:rows.length,open:rows.filter(r=>r.state==="OPEN").length,avail:ps.length,gains:g.length,losses:l.length,be:be.length,
     gl:l.length?g.length/l.length:(g.length?Infinity:null),
     win:ps.length?g.length/ps.length*100:null,loss:ps.length?l.length/ps.length*100:null,
     avg:av,max:ps.length?Math.max(...ps):null,min:ps.length?Math.min(...ps):null};
@@ -2054,6 +2054,7 @@ function _renderPfSummary(sel){
     return `<tr>
       <td><b>${name}</b></td>
       <td style="text-align:right">${s.trades}</td>
+      <td style="text-align:right;color:#d29922">${s.open}</td>
       <td style="text-align:right">${s.avail}</td>
       <td style="text-align:right;${_pfBg(s.gains,s.avail||1,true)}">${s.gains}</td>
       <td style="text-align:right;${_pfBg(s.losses,s.avail||1,false)}">${s.losses}</td>
@@ -2066,7 +2067,7 @@ function _renderPfSummary(sel){
       <td style="text-align:right;color:var(--bear)">${s.min==null?'—':s.min.toFixed(1)+'%'}</td>
     </tr>`;}).join("");
   $("pf-summary").innerHTML=`<table><thead><tr>
-    <th>Segment</th><th style="text-align:right">Trades</th><th style="text-align:right">Returns Available</th>
+    <th>Segment</th><th style="text-align:right">Trades</th><th style="text-align:right">Open</th><th style="text-align:right">Returns Available</th>
     <th style="text-align:right">Gains</th><th style="text-align:right">Losses</th><th style="text-align:right">Break-even</th>
     <th style="text-align:right">Gain:Loss Count</th><th style="text-align:right">Win %</th><th style="text-align:right">Loss %</th>
     <th style="text-align:right">Avg Return</th><th style="text-align:right">Max Gain</th><th style="text-align:right">Max Loss</th>
