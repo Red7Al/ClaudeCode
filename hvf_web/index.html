@@ -29,6 +29,18 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .subnav .subpill.active{background:var(--grad);color:#fff;border-color:transparent}
 .subnav .subpill.adminpill{border-color:#d29922}
 .subnav .subpill.adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a)}
+/* Settings sub-tabs down the LEFT-HAND SIDE (user 2026-07-13) — a fixed left column of buttons with the
+   settings content shifted right of it. Operations keeps the centered top bar. */
+.subnav.subnav-settings{flex-direction:column;align-items:stretch;justify-content:flex-start;gap:8px;
+  position:fixed;top:49px;left:0;bottom:0;width:196px;overflow:auto;border-right:1px solid var(--line);
+  border-bottom:none;padding:14px 12px}
+.subnav.subnav-settings .subpill{text-align:left;padding:9px 12px;font-size:13px}
+body.settingsnav #view-config,body.settingsnav #view-markets,
+body.settingsnav #view-configadmin,body.settingsnav #view-marketsadmin{margin-left:196px}
+@media(max-width:640px){/* stack again on small screens */
+  .subnav.subnav-settings{position:static;flex-direction:row;flex-wrap:wrap;width:auto;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:7px 16px}
+  body.settingsnav #view-config,body.settingsnav #view-markets,
+  body.settingsnav #view-configadmin,body.settingsnav #view-marketsadmin{margin-left:0}}
 #view-preorders{padding:10px 16px}
 .gloss .card>div>div{padding:5px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.45}
 .gloss .card>div>div:last-child{border-bottom:none}
@@ -1381,7 +1393,11 @@ function colorTabs(){
 function renderSubnav(parent,active){
   const sn=$("subnav"); if(!sn)return;
   const kids=parent?TAB_GROUPS[parent].filter(tabAllowed):[];
-  if(!kids.length){sn.style.display="none";sn.innerHTML="";return;}
+  // Settings sub-tabs run DOWN THE LEFT-HAND SIDE (user 2026-07-13): body.settingsnav switches the
+  // sub-nav to a fixed left column and shifts the Settings views right. Operations keeps the top bar.
+  document.body.classList.toggle("settingsnav", parent==="settings" && kids.length>0);
+  if(!kids.length){sn.style.display="none";sn.innerHTML="";sn.className="subnav";return;}
+  sn.className="subnav"+(parent?" subnav-"+parent:"");
   sn.style.display="flex";
   sn.innerHTML=kids.map(c=>`<button class="subpill${ADMIN_TABS.includes(c)?' adminpill':''}${c===active?' active':''}" onclick="showTab('${c}')">${TAB_LABELS[c]||c}</button>`).join("");
 }

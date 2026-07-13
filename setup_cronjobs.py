@@ -128,6 +128,7 @@ JOBS = [
     ("Daily Report",         "30 21 * * 1-5",    "trading-daily-report.yml"),
     ("Pre-Order Report",     "45 21 * * 1-5",    "trading-working-orders-report.yml"),  # engine-managed working_orders -> #arw-claude-orders (user 2026-06-16)
     ("Data Quality Audit",   "15 22 * * 1-5",    "trading-data-quality.yml"),  # Yahoo-vs-IG nightly audit (2026-06-12)
+    ("Price History Audit",  "0 23 * * 1-6",     "trading-price-audit.yml"),  # golden-dataset audit: YF refetch + IG-as-truth correction of the trailing 7d (user 2026-07-13). Mon-Sat 23:00 UTC, after Data Quality Audit; self-throttles on the shared IG allowance.
     # ── Safety net + proactive self-checks ────────────────────────────────────────────────────────────────────────────
     ("Session Watchdog",     "*/10 0-21 * * 1-5","trading-watchdog.yml"),     # migrated off GitHub cron 2026-06-08
     ("Daily Diagnostics",    "30 7 * * 1-5",     "trading-diagnostics.yml"),  # proactive daily health check -> #alerts
