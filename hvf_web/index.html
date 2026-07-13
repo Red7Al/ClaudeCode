@@ -837,6 +837,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <h1>Performance</h1>
   <p class="lede">Every <b>recorded trigger</b> — the entry, stop, target and date captured the moment the setup fired — tracked forward through the price history to its outcome: <b style="color:var(--bull)">TARGET</b> (hit the target first), <b style="color:var(--bear)">STOPPED</b> (hit the stop first), or <b style="color:#d29922">OPEN</b> (still running, marked to the latest price). Return is direction-aware, so positive is always in your favour. This is independent of the current squeeze status — a trigger is measured from when it happened.</p>
   <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
+  <h2 class="sec">Summary</h2>
+  <p class="muted" style="font-size:13px;margin-top:-8px">Every recorded trigger split by direction. <b>Returns Available</b> counts closed trades (target or stopped); Gains / Losses / Break-even, Win % and Loss % are measured against those. <b>Reacts to the chart filters above.</b></p>
+  <div id="pf-summary" class="tablewrap" style="margin-bottom:8px"></div>
   <h2 class="sec">Top 5 Quality / R:R combinations</h2>
   <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return across the recorded triggers, <b>reacting to the charts above</b>. Only buckets with at least 3 triggers are shown.</p>
   <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
@@ -2000,6 +2003,7 @@ function _renderPerformance(){
     `<div class="vizsector">`+barChart("Market",by("market"),"pff_market")+`</div>`+
     `<div class="vizsector">`+barChart("Outcome",by("state"),"pff_status",_stcol)+`</div>`;
   const sel=all.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_status",r.state));
+  _renderPfSummary(sel);
   // Top Quality/R:R buckets by average return across the (filtered) recorded triggers.
   const N=innerWidth>=1400?8:innerWidth>=900?4:3;
   const buckets={};
@@ -2025,6 +2029,48 @@ function _renderPerformance(){
     <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td></tr>`).join("")
     ||`<tr><td colspan="13" class="empty">No recorded triggers yet.</td></tr>`;
+}
+// Summary table (user 2026-07-13): Overall / Bull / Bear split of the recorded triggers, with
+// coloured gradients to draw the eye. Returns Available = closed trades (TARGET/STOPPED); Gains,
+// Losses, Break-even, Win % and Loss % are all measured against that closed set.
+const PF_BE=0.5;   // |return| < 0.5% counts as break-even
+function _pfSeg(rows){
+  const closed=rows.filter(r=>r.state==="TARGET"||r.state==="STOPPED"),ps=closed.map(r=>r.perf).filter(p=>p!=null);
+  const g=ps.filter(p=>p>PF_BE),l=ps.filter(p=>p<-PF_BE),be=ps.filter(p=>Math.abs(p)<=PF_BE);
+  const av=ps.length?ps.reduce((a,b)=>a+b,0)/ps.length:null;
+  return{trades:rows.length,avail:ps.length,gains:g.length,losses:l.length,be:be.length,
+    gl:l.length?g.length/l.length:(g.length?Infinity:null),
+    win:ps.length?g.length/ps.length*100:null,loss:ps.length?l.length/ps.length*100:null,
+    avg:av,max:ps.length?Math.max(...ps):null,min:ps.length?Math.min(...ps):null};
+}
+// Gradient background scaled from 0..max of |v|, green for good / red for bad.
+const _pfBg=(v,max,good)=>{if(v==null||!max)return"";const a=Math.min(Math.abs(v)/max,1)*0.55;
+  const c=(good?(v>=0):(v<0))?`22,163,74`:`220,38,38`;return`background:rgba(${c},${a.toFixed(2)})`;};
+function _renderPfSummary(sel){
+  if(LIMITED){$("pf-summary").innerHTML=`<p class="muted">🔒 <a href="#" onclick="showLogin();return false">Log in</a> to see the performance summary.</p>`;return;}
+  const segs=[["Overall",sel],["Bull",sel.filter(r=>r.direction==="BULL")],["Bear",sel.filter(r=>r.direction==="BEAR")]];
+  const rows=segs.map(([name,rs])=>{const s=_pfSeg(rs);
+    const pc=v=>v==null?'<span class="muted">—</span>':v.toFixed(1)+'%';
+    return `<tr>
+      <td><b>${name}</b></td>
+      <td style="text-align:right">${s.trades}</td>
+      <td style="text-align:right">${s.avail}</td>
+      <td style="text-align:right;${_pfBg(s.gains,s.avail||1,true)}">${s.gains}</td>
+      <td style="text-align:right;${_pfBg(s.losses,s.avail||1,false)}">${s.losses}</td>
+      <td style="text-align:right">${s.be}</td>
+      <td style="text-align:right"><b>${s.gl==null?'—':s.gl===Infinity?'∞':s.gl.toFixed(2)+'x'}</b></td>
+      <td style="text-align:right;${_pfBg(s.win,100,true)}">${pc(s.win)}</td>
+      <td style="text-align:right;${_pfBg(s.loss,100,false)}">${pc(s.loss)}</td>
+      <td style="text-align:right;${_pfBg(s.avg,Math.max(Math.abs(s.max||0),Math.abs(s.min||0))||1,true)}"><b>${s.avg==null?'—':(s.avg>0?'+':'')+s.avg.toFixed(1)+'%'}</b></td>
+      <td style="text-align:right;color:var(--bull)">${s.max==null?'—':'+'+s.max.toFixed(1)+'%'}</td>
+      <td style="text-align:right;color:var(--bear)">${s.min==null?'—':s.min.toFixed(1)+'%'}</td>
+    </tr>`;}).join("");
+  $("pf-summary").innerHTML=`<table><thead><tr>
+    <th>Segment</th><th style="text-align:right">Trades</th><th style="text-align:right">Returns Available</th>
+    <th style="text-align:right">Gains</th><th style="text-align:right">Losses</th><th style="text-align:right">Break-even</th>
+    <th style="text-align:right">Gain:Loss Count</th><th style="text-align:right">Win %</th><th style="text-align:right">Loss %</th>
+    <th style="text-align:right">Avg Return</th><th style="text-align:right">Max Gain</th><th style="text-align:right">Max Loss</th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
 }
 document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();_sortArrows("data-pf",pfSortK,pfSortDir);});
 // ── Change Requests tab (admin, user 2026-07-10): parses ChangeRequests/*.txt via /api/change-requests ──
