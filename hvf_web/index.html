@@ -219,6 +219,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
    less horizontal scroll on wide monitors); tighter cells fit more columns; Scanner card reclaims width. */
 #view-preorders,#view-orderops,#view-performance,#view-xposts,#view-changereq,#view-markets,#view-marketsadmin,#view-jobs{max-width:min(1780px,97vw)!important}
 #view-performance table td,#view-performance table th{white-space:nowrap}
+/* Performance summary sits beside the charts (user 2026-07-13): headers may wrap, data never does,
+   so the table always fits without a horizontal scrollbar. */
+#pf-charts{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+#view-performance #pf-summary table th{white-space:normal;vertical-align:bottom;line-height:1.15;max-width:78px}
+#view-performance #pf-summary table td{white-space:nowrap}
+#pf-summary table{font-size:12.5px}
 .tablewrap table th,.tablewrap table td{padding:5px 8px}
 #view-scanner main section.gsec{padding:10px;margin:0 8px 12px}
 .confnav .adminpill{border-color:#d29922}
@@ -836,10 +842,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <span class="eyebrow">Results</span>
   <h1>Performance</h1>
   <p class="lede">Every <b>recorded trigger</b> — the entry, stop, target and date captured the moment the setup fired — tracked forward through the price history to its outcome: <b style="color:var(--bull)">TARGET</b> (hit the target first), <b style="color:var(--bear)">STOPPED</b> (hit the stop first), or <b style="color:#d29922">OPEN</b> (still running, marked to the latest price). Return is direction-aware, so positive is always in your favour. This is independent of the current squeeze status — a trigger is measured from when it happened.</p>
-  <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
-  <h2 class="sec">Summary</h2>
-  <p class="muted" style="font-size:13px;margin-top:-8px">Every recorded trigger split by direction. <b>Returns Available</b> counts closed trades (target or stopped); Gains / Losses / Break-even, Win % and Loss % are measured against those. <b>Reacts to the chart filters above.</b></p>
-  <div id="pf-summary" class="tablewrap" style="margin-bottom:8px"></div>
+  <div id="pf-charts">
+    <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
+    <div style="flex:1;min-width:340px">
+      <h2 class="sec" style="margin-top:0">Summary</h2>
+      <p class="muted" style="font-size:13px;margin-top:-8px">Every recorded trigger split by direction. <b>Returns Available</b> counts closed trades (target or stopped); Gains / Losses / Break-even, Win % and Loss % are measured against those. <b>Reacts to the chart filters.</b></p>
+      <div id="pf-summary" class="tablewrap" style="margin-bottom:8px"></div>
+    </div>
+  </div>
   <h2 class="sec">Top 5 Quality / R:R combinations</h2>
   <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return across the recorded triggers, <b>reacting to the charts above</b>. Only buckets with at least 3 triggers are shown.</p>
   <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
