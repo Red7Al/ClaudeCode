@@ -1448,6 +1448,90 @@ def api_order_ops():
     return jsonify({"rows": rows})
 
 
+# ── Accurate performance report (user 2026-07-13) ─────────────────────────────────────────────────────
+# Built from the RECORDED trigger events (hvf_triggers: entry/stop/target/dates captured the moment each
+# setup fired — point-in-time, immune to the mutable snapshot) and classified against price_history from
+# the trigger date forward: STOPPED (price hit the stop first), TARGET (hit the target first), or OPEN
+# (neither yet — marked to the freshest price). Entry/stop/target AND price_history are both in the
+# instrument's native (Yahoo) scale, so no unit mismatch. One row per recorded funnel instance, so the
+# same ticker can appear several times (successive triggers). Cached briefly — it walks 100k+ price bars.
+_PERF_CACHE = {"ts": 0.0, "data": None}
+_PERF_TTL = 300   # seconds
+
+
+def _perf_exit(bull: bool, entry: float, stop: float, target: float, bars: list):
+    """bars: chronological (high, low, close) from the trigger date on. Returns (state, return_pct) where
+    state is STOPPED / TARGET / None (None = no exit hit yet -> caller marks OPEN to market)."""
+    for hi, lo, _cl in bars:
+        if hi is None or lo is None:
+            continue
+        hit_stop = (lo <= stop) if bull else (hi >= stop)
+        hit_tgt = (hi >= target) if bull else (lo <= target)
+        if hit_stop:   # same-bar tie resolves to the stop (worst case), standard backtest convention
+            return "STOPPED", ((stop - entry) / entry * 100 if bull else (entry - stop) / entry * 100)
+        if hit_tgt:
+            return "TARGET", ((target - entry) / entry * 100 if bull else (entry - target) / entry * 100)
+    return None, None
+
+
+@app.route("/api/performance")
+def api_performance():
+    """Every recorded trigger with its committed levels and realised/open outcome. Public (the tab is
+    visible logged-out with client-side blur); cached for _PERF_TTL because it scans price_history."""
+    now = _time.time()
+    if _PERF_CACHE["data"] is not None and now - _PERF_CACHE["ts"] < _PERF_TTL:
+        return jsonify(_PERF_CACHE["data"])
+    out = []
+    try:
+        snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
+        from db_pool import get_db
+        db = get_db()
+        try:
+            trigs = db.run(
+                "select ticker, hvf_type, timeframe, quality, risk_reward, entry_level, stop_level, "
+                "target_level, market, recorded_at::date from hvf_triggers "
+                "where entry_level is not null and stop_level is not null and target_level is not null "
+                "order by recorded_at desc") or []
+            # Group by ticker so each instrument's price_history is fetched once.
+            by_tk = {}
+            for t in trigs:
+                by_tk.setdefault(t[0], []).append(t)
+            for tk, rows in by_tk.items():
+                d0 = min(r[9] for r in rows)   # earliest trigger date for this ticker
+                bars = db.run("select bar_date, high, low, close from price_history "
+                              "where ticker = :tk and bar_date >= :d0 order by bar_date",
+                              tk=tk, d0=d0) or []
+                srec = snap.get(tk, {})
+                for (_tk, ht, tf, q, rr, e, s, t, mk, td) in rows:
+                    e, s, t = float(e), float(s), float(t)
+                    bull = (ht == "BULLISH")
+                    path = [(b[1], b[2], b[3]) for b in bars if b[0] >= td]
+                    state, perf = _perf_exit(bull, e, s, t, path)
+                    if state is None:   # still open — mark to the freshest price we have
+                        cur = srec.get("current_price")
+                        if cur is None:
+                            cur = next((c for (_h, _l, c) in reversed(path) if c is not None), None)
+                        state = "OPEN"
+                        perf = None if cur is None else ((cur - e) / e * 100 if bull else (e - cur) / e * 100)
+                    out.append({
+                        "ticker": tk, "name": srec.get("name") or tk,
+                        "market": mk or srec.get("market"), "sector": srec.get("sector"),
+                        "direction": "BULL" if bull else "BEAR", "timeframe": tf,
+                        "quality": q, "rr": (float(rr) if rr is not None else None),
+                        "entry": e, "stop": s, "target": t,
+                        "current_price": srec.get("current_price"),
+                        "trig_date": str(td), "state": state,
+                        "perf": (round(perf, 2) if perf is not None else None)})
+        finally:
+            db.close()
+        out.sort(key=lambda r: (r.get("perf") is None, -(r.get("perf") or 0)))
+    except Exception as ex:
+        log.warning(f"performance report failed: {ex}")
+    payload = {"rows": out, "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
+    _PERF_CACHE.update(ts=now, data=payload)
+    return jsonify(payload)
+
+
 _CR_DIR = os.path.join(_REPO_ROOT, "ChangeRequests")
 # Status a requirement line can carry (user 2026-07-10, Change Requests tab). A line is Completed/In
 # Progress/Cancelled/Requested when it ends with a bracketed marker (e.g. "[Completed]") or carries a

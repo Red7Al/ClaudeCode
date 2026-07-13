@@ -44,10 +44,13 @@ select,input{width:100%;background:var(--panel);color:var(--fg);border:1px solid
 .row2{display:flex;gap:6px} .row2 input{width:50%}
 main{flex:1;display:flex;flex-direction:column;min-width:0}
 .count{padding:8px 16px;color:var(--muted);font-size:12px}
-.viz{display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:stretch}
+/* Charts hug their content (user 2026-07-13): boxes were stretched to the tallest chart's height, so a
+   1–3 bar chart left a big empty gutter. align-items:start + auto height => each box is only as tall as
+   its bars. Applies to Scanner + Performance (shared helpers). */
+.viz{display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:flex-start;flex-wrap:wrap}
 .vizsector{flex:none}
-.vizbars{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:10px 12px;flex:1;min-width:0;align-items:stretch}
-.vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;height:100%;max-width:360px}   /* cap width so vertically-stacked charts don't leave a wide empty gutter (user 2026-07-06) */
+.vizbars{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:10px 12px;flex:1;min-width:0;align-items:start}
+.vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;max-width:360px}
 .vizbox h5{margin:0 0 6px;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}
 .bars{display:flex;flex-direction:column;gap:3px;min-width:120px}
 .bar{display:flex;align-items:center;gap:6px;font-size:11px}
@@ -819,17 +822,17 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <input type="hidden" id="pff_sector"><input type="hidden" id="pff_market"><input type="hidden" id="pff_status">
   <span class="eyebrow">Results</span>
   <h1>Performance</h1>
-  <p class="lede">Performance of every triggered setup <b>plus everything the automation has actually placed on IG</b> — any PENDING working order or FILLED position is measured here <b>irrespective of the current squeeze state</b>, from its committed entry level to the live price (direction-aware, so positive is always in your favour). Use the <b>Status</b> chart to narrow to triggered trades or live IG orders.</p>
+  <p class="lede">Every <b>recorded trigger</b> — the entry, stop, target and date captured the moment the setup fired — tracked forward through the price history to its outcome: <b style="color:var(--bull)">TARGET</b> (hit the target first), <b style="color:var(--bear)">STOPPED</b> (hit the stop first), or <b style="color:#d29922">OPEN</b> (still running, marked to the latest price). Return is direction-aware, so positive is always in your favour. This is independent of the current squeeze status — a trigger is measured from when it happened.</p>
   <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <h2 class="sec">Top 5 Quality / R:R combinations</h2>
-  <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return, <b>reacting to the charts above</b>. Only buckets with at least 3 triggered setups are shown.</p>
+  <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return across the recorded triggers, <b>reacting to the charts above</b>. Only buckets with at least 3 triggers are shown.</p>
   <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
   <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
-  <h2 class="sec">Every live setup</h2>
+  <h2 class="sec">Every recorded trigger</h2>
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="pf-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th data-pf="ticker">Ticker</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="status">Status</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th></tr></thead>
+      <thead><tr><th data-pf="ticker">Ticker</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="stop">Stop</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -1957,84 +1960,54 @@ function maRebuild(){
       else{m.style.color="var(--bear)";m.textContent=(j&&j.error)||"Could not start the rebuild.";}b.disabled=false;})
     .catch(()=>{m.style.color="var(--bear)";m.textContent="Could not start the rebuild.";b.disabled=false;});
 }
-// ── Performance tab (user 2026-07-10): triggered trades + everything committed to IG ──
-let pfSortK="perf", pfSortDir=-1;
-let PERF_ORDERS=null;   // acting user's working_orders, loaded once for the Performance merge (user 2026-07-13)
-const _pfPerf=r=>{   // direction-aware return; fall back to entry-vs-now when chg_since_trig is unset (user 2026-07-11)
-  let c=r.chg_since_trig;
-  if(c==null && r.entry>0 && r.current_price!=null) c=(r.current_price-r.entry)/r.entry*100;
-  return c==null?null:(r.direction==="BEAR"?-c:c);};
-// Direction-aware move from a committed ENTRY level to the live price (user 2026-07-13) — for an
-// instrument that has an IG order but whose snapshot may no longer show the squeeze.
-const _pfFromEntry=(entry,cur,dir)=>{if(!(entry>0)||cur==null)return null;const c=(cur-entry)/entry*100;return dir==="BEAR"?-c:c;};
+// ── Performance tab (user 2026-07-13): every RECORDED trigger (hvf_triggers) with its committed
+//    entry/stop/target/date, classified STOPPED / TARGET / OPEN from price history since the trigger.
+//    Served pre-computed by /api/performance (source of truth = the recorded events, not the snapshot). ──
+let pfSortK="perf", pfSortDir=-1, PERF_DATA=null, PERF_GEN="";
+const _stcol=s=>s==="TARGET"?"var(--bull)":s==="STOPPED"?"var(--bear)":"#d29922";   // OPEN = amber
 function renderPerformance(){
-  if(PERF_ORDERS===null && !LIMITED){   // fetch the user's IG orders once, then re-render with them merged
-    PERF_ORDERS=[];   // guard against re-entry while the request is in flight
-    fetch("/api/order-ops",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]})
-      .then(j=>{PERF_ORDERS=j.rows||[];_renderPerformance();}).catch(()=>{PERF_ORDERS=[];_renderPerformance();});
+  if(PERF_DATA===null){                       // fetch the recorded-trigger report once, then render
+    PERF_DATA=[];                             // in-flight guard
+    fetch("/api/performance").then(r=>r.ok?r.json():{rows:[]})
+      .then(j=>{PERF_DATA=j.rows||[];PERF_GEN=j.generated||"";_renderPerformance();})
+      .catch(()=>{PERF_DATA=[];_renderPerformance();});
   }
   _renderPerformance();
 }
 function _renderPerformance(){
-  const snapBy={}; DATA.forEach(r=>{snapBy[r.ticker]=r;snapBy[disp(r.ticker)]=r;});
-  const bag={};   // keyed by displayed ticker — an instrument appears once, order data winning
-  // 1) Triggered snapshot setups — realised/triggered performance (the original Performance content).
-  DATA.filter(r=>r.status==="TRIGGERED").forEach(r=>{const p=_pfPerf(r);if(p==null)return;
-    bag[disp(r.ticker)]={...r,perf:p,_trg:true,_dstat:"TRIGGERED"};});
-  // 2) Instruments the automation actually PLACED ON IG (user 2026-07-13): a PENDING working order or a
-  //    FILLED position MUST be measured irrespective of the current squeeze state — the source of truth
-  //    is working_orders, NOT the snapshot, so a live IG commitment never vanishes when the squeeze fades.
-  //    (WATCHING = tracked, not yet on IG — excluded; measured from the ORDER's own entry level.)
-  const dmap={BUY:"BULL",SELL:"BEAR"};
-  (PERF_ORDERS||[]).forEach(o=>{const st=String(o.status||"").toUpperCase();
-    if(st!=="PENDING"&&st!=="FILLED")return;
-    const k=disp(o.ticker), snap=snapBy[o.ticker]||snapBy[k]||{}, prev=bag[k];
-    const dir=snap.direction||dmap[o.direction]||null;
-    const entry=(o.entry!=null&&o.entry!=="")?+o.entry:snap.entry;
-    const cur=snap.current_price!=null?snap.current_price:null;
-    const perf=_pfFromEntry(entry,cur,dir);
-    bag[k]={...snap,...(prev||{}), ticker:o.ticker, name:snap.name||(prev&&prev.name)||'',
-      direction:dir, entry, current_price:cur,
-      quality:snap.quality??(prev&&prev.quality), rr:snap.rr??(prev&&prev.rr),
-      market:snap.market||(prev&&prev.market)||'', sector:snap.sector||(prev&&prev.sector)||'',
-      trig_date:snap.trig_date||(prev&&prev.trig_date)||null,
-      perf: perf!=null?perf:(prev?prev.perf:null),
-      _trg: !!(prev&&prev._trg), ordered:true, _dstat:st};});
-  const all=Object.values(bag);
-  const scol=k=>k==="TRIGGERED"?"var(--bull)":k==="FILLED"?"#3fb950":k==="PENDING"?"var(--accent)":"#d29922";
-  // Click-to-filter charts: Sector / Market / Status over the whole set.
+  const all=PERF_DATA||[];
+  // Click-to-filter charts: Sector / Market / Outcome over the recorded triggers.
   const by=fn=>all.reduce((m,r)=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]=(m[v]||0)+1;return m;},{});
   $("pf-viz").innerHTML=LIMITED?"":
     `<div class="vizsector">`+pieChart("Sector",by("sector"),"pff_sector")+`</div>`+
     `<div class="vizsector">`+barChart("Market",by("market"),"pff_market")+`</div>`+
-    `<div class="vizsector">`+barChart("Status",by("_dstat"),"pff_status",scol)+`</div>`;
-  const sel=all.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_status",r._dstat));
-  // Top Quality/R:R buckets — genuinely TRIGGERED trades only, so the averages stay honest.
-  const trg=sel.filter(r=>r._trg && r.perf!=null);
+    `<div class="vizsector">`+barChart("Outcome",by("state"),"pff_status",_stcol)+`</div>`;
+  const sel=all.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_status",r.state));
+  // Top Quality/R:R buckets by average return across the (filtered) recorded triggers.
   const N=innerWidth>=1400?8:innerWidth>=900?4:3;
   const buckets={};
-  trg.forEach(r=>{if(r.quality==null||r.rr==null)return;const qb=Math.floor(r.quality/10)*10,rb=Math.floor(r.rr);
+  sel.forEach(r=>{if(r.quality==null||r.rr==null||r.perf==null)return;const qb=Math.floor(r.quality/10)*10,rb=Math.floor(+r.rr);
     const o=(buckets[qb+"|"+rb]=buckets[qb+"|"+rb]||{qb,rb,n:0,sum:0});o.n++;o.sum+=r.perf;});
   const combos=Object.values(buckets).filter(b=>b.n>=3).map(b=>({...b,avg:b.sum/b.n})).sort((a,b)=>b.avg-a.avg).slice(0,N);
   $("pf-combos").innerHTML=LIMITED?`<p class="muted">🔒 <a href="#" onclick="showLogin();return false">Log in</a> to see the best Quality / R:R combinations.</p>`
     :combos.length?combos.map((b,i)=>`<div class="fcard"><div class="ic">${i+1}</div>
       <h3>Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)}</h3>
-      <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggered setups.</div></div>`).join("")
-    :`<p class="muted">Not enough triggered setups yet to rank Quality/R:R buckets (need at least 3 per bucket).</p>`;
+      <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggers.</div></div>`).join("")
+    :`<p class="muted">Not enough recorded triggers yet to rank Quality/R:R buckets (need at least 3 per bucket).</p>`;
   const rows=genSort(sel,pfSortK,pfSortDir);
-  const nTrg=sel.filter(r=>r._trg).length, nOrd=sel.filter(r=>r.ordered).length;
-  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${sel.length}</b> setups measured <span class="muted">(${nTrg} triggered · ${nOrd} placed on IG)${sel.length!==all.length?` of ${all.length}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
+  const nT=sel.filter(r=>r.state==="TARGET").length, nS=sel.filter(r=>r.state==="STOPPED").length, nO=sel.filter(r=>r.state==="OPEN").length;
+  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${sel.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${sel.length!==all.length?` of ${all.length}`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("pftab-count").textContent=`(${sel.length})`;
-  $("pf-rows").innerHTML=rows.map(r=>{const ds=r._dstat||r.status||'';
-    return `<tr class="clk" onclick="${LIMITED?'showLogin()':`showTab('scanner');showDetail('${r.ticker}')`}">
+  $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`showTab('scanner');showDetail('${r.ticker}')`}">
     <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
-    <td>${ob(`<b style="color:${scol(ds)}">${ds}</b>${r.ordered?' <span class="muted" title="Live order/position on IG">• IG</span>':''}`)}</td>
-    <td>${ob(r.market||'')}</td><td>${ob(r.sector||'')}</td><td>${ob(r.trig_date?r.trig_date.slice(0,10):'—')}</td>
-    <td>${ob(f2(r.entry))}</td><td>${ob(f2(r.current_price))}</td>
+    <td>${ob(`<b style="color:${_stcol(r.state)}">${r.state||''}</b>`)}</td>
+    <td>${ob(r.market||'')}</td><td>${ob(r.trig_date||'—')}</td>
+    <td>${ob(f2(r.entry))}</td><td style="color:var(--bear)">${ob(f2(r.stop))}</td><td style="color:var(--bull)">${ob(f2(r.target))}</td>
+    <td>${ob(f2(r.current_price))}</td>
     <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
-    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td></tr>`;}).join("")
-    ||`<tr><td colspan="12" class="empty">No triggered trades or IG orders in the current snapshot.</td></tr>`;
+    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td></tr>`).join("")
+    ||`<tr><td colspan="13" class="empty">No recorded triggers yet.</td></tr>`;
 }
 document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();_sortArrows("data-pf",pfSortK,pfSortDir);});
 // ── Change Requests tab (admin, user 2026-07-10): parses ChangeRequests/*.txt via /api/change-requests ──
