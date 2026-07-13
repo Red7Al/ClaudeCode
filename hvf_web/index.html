@@ -345,14 +345,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <table>
         <thead><tr>
           <th data-k="_fav" title="Favourite (click to sort)">★</th><th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
-          <th data-k="market">Market</th><th data-k="sector">Sector</th><th data-k="status">Status</th>
+          <th data-k="market">Market</th><th data-k="dist_entry" title="Distance from the live price to the entry level (sorted closest-first)">Dist→Entry</th><th data-k="sector">Sector</th><th data-k="status">Status</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
           <th data-k="current_price" title="Latest price">Now</th>
           <th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th style="cursor:default" title="Whether this instrument is already in your My Pre-orders">In Pre-orders?</th>
           <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
           <th data-k="pe">P/E</th><th data-k="insider_pct" title="Insider ownership %">Insider %</th><th data-k="timeframe">TF</th>
-          <th data-k="location">Location</th><th data-k="dist_entry">Dist→Entry</th>
+          <th data-k="location">Location</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -390,7 +390,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-orderops" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="oo-showclosed" onchange="paintOrderOps()"> Show all statuses (default: Pending + Watching)</label><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);font-size:13px"><span class="datecard">📅 <span id="oo-datebar"></span></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="oo-showclosed" onchange="paintOrderOps()"> Show closed (deleted / expired / cancelled)</label><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);font-size:13px"><span class="datecard">📅 <span id="oo-datebar"></span></span></div>
   <h1>Pre-orders to my IG</h1>
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
@@ -955,7 +955,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <script>
-let DATA=[], SEL=null, sortK="trig_date", sortDir=-1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;
+let DATA=[], SEL=null, sortK="dist_entry", sortDir=1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: closest to entry first (user 2026-07-11)
 const $=id=>document.getElementById(id);
 const F=["f_search","f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
          "f_demin","f_demax","f_dsmin","f_dsmax","f_pemin","f_pemax","f_inmin","f_inmax"];
@@ -1113,7 +1113,7 @@ function renderViz(rows){
 }
 
 function render(){
-  const _sv=r=>sortK==="_fav"?(FAVS.has(disp(r.ticker))?1:0):r[sortK];   // favourite column sortable (user 2026-07-11)
+  const _sv=r=>sortK==="_fav"?(FAVS.has(disp(r.ticker))?1:0):sortK==="dist_entry"?(r.dist_entry==null?1e9:Math.abs(r.dist_entry)):r[sortK];   // ★ sortable; Dist→Entry sorts by |distance| (user 2026-07-11)
   const rows=DATA.filter(pass).sort((a,b)=>{
     const x=_sv(a),y=_sv(b);const av=x==null?-1e9:x,bv=y==null?-1e9:y;
     return (av<bv?-1:av>bv?1:0)*sortDir;});
@@ -1124,7 +1124,7 @@ function render(){
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
     ${_favCell(r.ticker)}<td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
-    <td>${r.market||''}</td><td>${r.sector||''}</td><td>${ob(r.status||'')}</td>
+    <td>${r.market||''}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${r.sector||''}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.days_since??'')}</td>
     <td>${ob(f2(r.current_price))}</td>
     <td>${ob(r.tgt_str||'')}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
@@ -1132,11 +1132,12 @@ function render(){
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td>
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td>
-    <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td></tr>`).join("")
+    <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td></tr>`).join("")
     || `<tr><td colspan="22" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
     tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
+  _sortArrows("data-k",sortK,sortDir);   // show the sort arrow (incl. the default Dist→Entry, user 2026-07-11)
 }
 
 function closeDetail(){SEL=null;$("detail").classList.add("hidden");render();}
@@ -1250,9 +1251,9 @@ function showDetail(t){
 
 function applyAll(){render(); if(SEL&&!$("detail").classList.contains("hidden")){const r=DATA.find(x=>x.ticker===SEL);if(r&&pass(r))showDetail(SEL);else{$("detail").classList.add("hidden");SEL=null;}}}
 
-document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=(sortK===k)?-sortDir:-1;sortK=k;render();});
-document.querySelectorAll("th[data-pk]").forEach(th=>th.onclick=()=>{const k=th.dataset.pk;poSortDir=(poSortK===k)?-poSortDir:1;poSortK=k;renderPreorders();});
-document.querySelectorAll("th[data-ok]").forEach(th=>th.onclick=()=>{const k=th.dataset.ok;ooSortDir=(ooSortK===k)?-ooSortDir:-1;ooSortK=k;paintOrderOps();});
+document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=(sortK===k)?-sortDir:-1;sortK=k;render();_sortArrows("data-k",sortK,sortDir);});
+document.querySelectorAll("th[data-pk]").forEach(th=>th.onclick=()=>{const k=th.dataset.pk;poSortDir=(poSortK===k)?-poSortDir:1;poSortK=k;renderPreorders();_sortArrows("data-pk",poSortK,poSortDir);});
+document.querySelectorAll("th[data-ok]").forEach(th=>th.onclick=()=>{const k=th.dataset.ok;ooSortDir=(ooSortK===k)?-ooSortDir:-1;ooSortK=k;paintOrderOps();_sortArrows("data-ok",ooSortK,ooSortDir);});
 document.querySelectorAll("th[data-ak]").forEach(th=>th.onclick=()=>{const k=th.dataset.ak;acSortDir=(acSortK===k)?-acSortDir:-1;acSortK=k;paintActivity();});
 F.forEach(id=>$(id).addEventListener("input",applyAll));
 // Click a chart bar / pie slice to set that filter (toggle off if already set) — user 2026-06-27.
@@ -1328,7 +1329,7 @@ function tabAllowed(t){
   if(!PUBLIC_TABS.includes(t)&&!AUTH)return false;      // login-required tab, not logged in
   if(DEFAULT_HIDDEN.has(t)&&!SHOWN_TABS.includes(t))return false;   // default-hidden unless opted in (user 2026-07-10)
   if(t==="config")return true;                          // config always available once logged in
-  if(t==="users"&&IS_ADMIN)return true;                 // admins ALWAYS keep User Management (user 2026-07-11) — can't be hidden
+  if((t==="users"||t==="sysdocs")&&IS_ADMIN)return true;   // admins ALWAYS get User Management + How it works (System) (user 2026-07-11)
   if(HIDDEN_TABS.includes(t))return false;              // user chose to hide it (Tab Visibility) — applies to admin tabs too
   return true;
 }
@@ -1418,7 +1419,7 @@ function paintXposts(){
   $("x-rows").innerHTML=rows.map(e=>`<tr><td>${e.published_at||''}</td><td><b>${disp(e.ticker)}</b></td><td>${e.name||''}</td><td>${e.market||''}</td><td>${e.thread>1?e.thread+' pts':'1'}</td><td><a href="${e.url}" target="_blank" rel="noopener">open ↗</a></td></tr>`).join("")||`<tr><td colspan="6" class="empty">No tweets yet.</td></tr>`;
 }
 function renderXposts(){fetch("/api/x-posts",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{X_ROWS=j.rows||[];paintXposts();}).catch(()=>{$("x-rows").innerHTML=`<tr><td colspan="6" class="empty">Could not load — try logging in again.</td></tr>`;});}
-document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.dataset.xk;xSortDir=(xSortK===k)?-xSortDir:-1;xSortK=k;paintXposts();});
+document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.dataset.xk;xSortDir=(xSortK===k)?-xSortDir:-1;xSortK=k;paintXposts();_sortArrows("data-xk",xSortK,xSortDir);});
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
 const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner Report",xposts:"X Posts",
   preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
@@ -1479,7 +1480,7 @@ function renderJobs(force){
       paintJobs();})
     .catch(()=>{$("jobs-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not load — admin only; try logging in again.</td></tr>`;});
 }
-document.querySelectorAll("th[data-jk]").forEach(th=>th.onclick=()=>{const k=th.dataset.jk;jSortDir=(jSortK===k)?-jSortDir:1;jSortK=k;paintJobs();});
+document.querySelectorAll("th[data-jk]").forEach(th=>th.onclick=()=>{const k=th.dataset.jk;jSortDir=(jSortK===k)?-jSortDir:1;jSortK=k;paintJobs();_sortArrows("data-jk",jSortK,jSortDir);});
 function renderSyslogs(){
   if(!($("slf_level")||{}).value)$("slf_level").value="ERROR"+SEP+"WARNING";   // default to problems only (user 2026-07-06)
   fetch("/api/system-logs",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
@@ -1601,8 +1602,8 @@ function saveTabVis(){
     .then(r=>{if(!r.ok)throw 0;HIDDEN_TABS=hidden;SHOWN_TABS=shown;applyTabVisibility();$("tabvis-msg").style.color="var(--bull)";$("tabvis-msg").textContent="Saved.";})
     .catch(()=>{$("tabvis-msg").style.color="var(--bear)";$("tabvis-msg").textContent="Save failed.";});
 }
-document.querySelectorAll("th[data-vk]").forEach(th=>th.onclick=()=>{const k=th.dataset.vk;verSortDir=(verSortK===k)?-verSortDir:-1;verSortK=k;paintVersion();});
-document.querySelectorAll("th[data-bk]").forEach(th=>th.onclick=()=>{const k=th.dataset.bk;batchSortDir=(batchSortK===k)?-batchSortDir:-1;batchSortK=k;paintBatch();});
+document.querySelectorAll("th[data-vk]").forEach(th=>th.onclick=()=>{const k=th.dataset.vk;verSortDir=(verSortK===k)?-verSortDir:-1;verSortK=k;paintVersion();_sortArrows("data-vk",verSortK,verSortDir);});
+document.querySelectorAll("th[data-bk]").forEach(th=>th.onclick=()=>{const k=th.dataset.bk;batchSortDir=(batchSortK===k)?-batchSortDir:-1;batchSortK=k;paintBatch();_sortArrows("data-bk",batchSortK,batchSortDir);});
 // ── Configuration tab (user 2026-07-03): per-user filter defaults + shared execution switches ──────
 let USER_FILTERS={};
 const FILTER_IDS=()=>F.concat(["f_days","pof_direction","pof_status","pof_location","pof_market","pof_timeframe","pof_sector"]);   // incl. the per-user Pre-orders filters
@@ -1775,6 +1776,13 @@ function saveExec(){
 }
 // Generic column sort for the simple tables (user 2026-06-30: "allow click on title ... any table"):
 // nulls sink, numbers compare numerically, everything else as strings.
+// Sort-direction arrow on the active column header (user 2026-07-11). attr = the header's data-* name.
+function _sortArrows(attr,key,dir){
+  document.querySelectorAll('th['+attr+']').forEach(th=>{
+    const old=th.querySelector('.sarr'); if(old)old.remove();
+    if(th.getAttribute(attr)===String(key)) th.insertAdjacentHTML('beforeend',` <span class="sarr" style="opacity:.65;font-size:10px">${dir<0?'▼':'▲'}</span>`);
+  });
+}
 function genSort(rows,k,dir){
   return rows.slice().sort((a,b)=>{const x=a[k],y=b[k];
     if(x==null&&y==null)return 0; if(x==null||x==="")return 1; if(y==null||y==="")return -1;
@@ -1790,10 +1798,11 @@ function paintOrderOps(){
   const _statusPicked=setOf("oof_status");   // did the user click a Status on the chart?
   [["oof_status","status"],["oof_direction","direction"],["oof_session","session"],["oof_ticker","ticker"]].forEach(([id,k])=>{
     rows=rows.filter(r=>inSet(id,r[k]));});
-  // Default active view (user 2026-07-11): only PENDING + WATCHING — UNLESS a Status is clicked on the
-  // chart, or "Show all statuses" is ticked. (So the chart filter can reach FILLED/closed states.)
-  if(!_statusPicked && !(($("oo-showclosed")||{}).checked)){const _active=new Set(["PENDING","WATCHING"]);
-    rows=rows.filter(r=>_active.has(String(r.status||"").toUpperCase()));}
+  // Default view (user 2026-07-11): hide only the DEAD states (deleted/expired/cancelled) — everything
+  // live (PENDING/WATCHING/FILLED/…) stays visible. UNLESS a Status is clicked on the chart, or
+  // "Show closed" is ticked (the chart filter can then reach the closed states too).
+  if(!_statusPicked && !(($("oo-showclosed")||{}).checked)){const _closed=new Set(["DELETED","EXPIRED","CANCELLED","CANCELED"]);
+    rows=rows.filter(r=>!_closed.has(String(r.status||"").toUpperCase()));}
   rows=applyDateFilter("oo",rows,r=>r.updated_at||r.placed_at);   // date filter on Updated
   // Free-text search by name / ticker (user 2026-07-10).
   const _ooq=(($("oo-search")||{}).value||"").trim().toLowerCase();
@@ -1896,7 +1905,7 @@ function renderMarkets(){
     ||`<tr><td colspan="8" class="empty">No market data yet — open the Scanner first.</td></tr>`;
 }
 function mkFilter(m){const el=$("mf_market");if(el)el.value=m;showTab("scanner");render();}
-document.querySelectorAll("th[data-mk]").forEach(th=>th.onclick=()=>{const k=th.dataset.mk;mkSortDir=(mkSortK===k)?-mkSortDir:-1;mkSortK=k;renderMarkets();});
+document.querySelectorAll("th[data-mk]").forEach(th=>th.onclick=()=>{const k=th.dataset.mk;mkSortDir=(mkSortK===k)?-mkSortDir:-1;mkSortK=k;renderMarkets();_sortArrows("data-mk",mkSortK,mkSortDir);});
 // ── Markets (Admin) tab (admin, user 2026-07-10): per-market coverage + full data-import rebuild ──
 let maSortK="total", maSortDir=-1;
 function renderMarketsAdmin(){
@@ -1904,7 +1913,7 @@ function renderMarketsAdmin(){
   $("ma-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments</span>`;
   $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkAdminSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")||`<tr><td colspan="8" class="empty">No market data.</td></tr>`;
 }
-document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();});
+document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();_sortArrows("data-ma",maSortK,maSortDir);});
 // ── IG Account tab (user 2026-07-10): the acting user's own IG open positions + working orders ──
 function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
@@ -1974,7 +1983,7 @@ function renderPerformance(){
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td></tr>`).join("")
     ||`<tr><td colspan="11" class="empty">No triggered setups in the current snapshot.</td></tr>`;
 }
-document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();});
+document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();_sortArrows("data-pf",pfSortK,pfSortDir);});
 // ── Change Requests tab (admin, user 2026-07-10): parses ChangeRequests/*.txt via /api/change-requests ──
 let CR_FILES=[], crSortK="created", crSortDir=-1, CR_SEL=null, CR_DETAIL=null, crDetailStatus="All";
 function renderCR(ev){
@@ -2019,7 +2028,7 @@ function paintCRDetail(){
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${pills}</div>
     <div class="tablewrap"><table><thead><tr><th>Working Area</th><th>Scope</th><th>Requirement</th><th>Status</th></tr></thead><tbody>${reqs||'<tr><td colspan="4" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
 }
-document.querySelectorAll("th[data-crk]").forEach(th=>th.onclick=()=>{const k=th.dataset.crk;crSortDir=(crSortK===k)?-crSortDir:-1;crSortK=k;paintCR();});
+document.querySelectorAll("th[data-crk]").forEach(th=>th.onclick=()=>{const k=th.dataset.crk;crSortDir=(crSortK===k)?-crSortDir:-1;crSortK=k;paintCR();_sortArrows("data-crk",crSortK,crSortDir);});
 function doLogin(){
   fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({name:$("li_name").value,pwd:$("li_pwd").value})})
