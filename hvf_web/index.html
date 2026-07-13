@@ -184,11 +184,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 /* Pre-orders-to-my-IG + System Logs: nowrap all columns except the last (notes/message) */
 #view-orderops td,#view-syslogs td{white-space:nowrap;vertical-align:top}   /* top-align so a long note doesn't float short cells (user 2026-07-06) */
 #view-orderops td:last-child,#view-syslogs td:last-child{white-space:normal;word-break:break-word}
-#view-orderops td:last-child{max-width:460px}   /* wider notes -> fewer wrapped lines, shorter rows (user 2026-07-06) */
-/* Pre-orders-to-my-IG: hug the content instead of stretching 13 mostly-short columns to fill the
-   section, which distributed ~200px of slack as intra-cell white space (user 2026-07-13). Same fix
-   already used for Users/Performance; .doc .tablewrap keeps overflow-x:auto for narrow screens. */
-#view-orderops table{width:auto;max-width:100%}
+/* Pre-orders-to-my-IG: full-width table where the NOTES column absorbs all the slack (width:100%),
+   so the short columns stay tight AND the note gets the room it needs — few wrapped lines, short rows
+   (user 2026-07-13, replacing the width:auto attempt that squeezed Notes to ~165px and made rows tall). */
+#view-orderops table{width:100%}
+#view-orderops td:last-child,#view-orderops th:last-child{width:100%;min-width:440px}
 #view-preorders td,#view-preorders th{white-space:nowrap}   /* no wrap; the table scrolls sideways instead (user 2026-07-06) */
 #view-activity td{white-space:nowrap}#view-activity td:last-child{white-space:normal;word-break:break-word}   /* only Event wraps (user 2026-07-06) */
 #view-jobs td{white-space:nowrap}
@@ -402,19 +402,19 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-orderops" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="oo-showclosed" onchange="paintOrderOps()"> Show closed (deleted / expired / cancelled)</label><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);font-size:13px"><span class="datecard">📅 <span id="oo-datebar"></span></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><span class="datecard">📅 <span id="oo-datebar"></span></span></div>
   <h1>Pre-orders to my IG</h1>
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
-  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-    <section class="gsec" style="border-left-color:var(--accent);flex:0 1 auto;min-width:0;max-width:100%">
-      <div class="count" style="padding-left:0"><span id="oo-count"></span></div>
-      <div class="tablewrap"><table>
-        <thead><tr><th data-ok="_fav" title="Favourite (click to sort)">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
-        <tbody id="oo-rows"></tbody>
-      </table></div>
-    </section>
-    <div class="viz" id="oo-viz" style="border-bottom:none;padding:0;flex:0 0 auto;flex-direction:column"></div>
-  </div>
+  <!-- Standard interface (user 2026-07-13): charts in a full-width band ABOVE the table (like My
+       Pre-orders), search + toggle in the count bar, date filter alone in the header row. -->
+  <div class="viz" id="oo-viz" style="border-bottom:none;padding:0 0 10px"></div>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="oo-count"></span><span class="grow"></span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="oo-showclosed" onchange="paintOrderOps()"> Show closed (deleted / expired / cancelled)</label><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="width:200px;padding:4px 8px;font-size:12px"></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th data-ok="_fav" title="Favourite (click to sort)">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
+      <tbody id="oo-rows"></tbody>
+    </table></div>
+  </section>
 </div>
 
 <div id="view-xposts" class="hidden doc" style="max-width:1240px">
