@@ -63,6 +63,9 @@ def _location_of(ticker: str, market: str = "") -> str:
         return "Asia"
     if t.endswith(".AX"):
         return "Oceania"
+    # Euronext venues — Paris/Amsterdam/Milan/Brussels/Oslo/Lisbon/Dublin (user 2026-07-14)
+    if t.endswith((".PA", ".AS", ".MI", ".BR", ".OL", ".LS", ".IR")):
+        return "Europe"
     return "US"
 
 

@@ -430,12 +430,41 @@ INDIA = [
     "ACC.NS", "JSWENERGY.NS", "INDHOTEL.NS", "GODREJPROP.NS", "CHOLAFIN.NS", "IDFCFIRSTB.NS", "YESBANK.NS", "BANDHANBNK.NS",
 ]
 
+EURONEXT = [
+    # Top 100 Euronext equities by market cap across the pan-European venues (user 2026-07-14):
+    # Paris (.PA), Amsterdam (.AS), Milan (.MI), Brussels (.BR), Oslo (.OL), Lisbon (.LS), Dublin (.IR).
+    # Paris (Euronext Paris)
+    "MC.PA", "OR.PA", "RMS.PA", "CDI.PA", "TTE.PA", "SAN.PA", "AI.PA", "SU.PA",
+    "EL.PA", "AIR.PA", "DG.PA", "CS.PA", "BNP.PA", "SAF.PA", "KER.PA", "BN.PA",
+    "RI.PA", "DSY.PA", "ORA.PA", "ACA.PA", "GLE.PA", "ENGI.PA", "CAP.PA", "VIE.PA",
+    "HO.PA", "ML.PA", "SGO.PA", "PUB.PA", "LR.PA", "EN.PA", "CA.PA", "STLAP.PA",
+    "VIV.PA", "WLN.PA", "EDEN.PA", "AMUN.PA", "ERF.PA", "AKE.PA", "BVI.PA", "ALO.PA",
+    "RNO.PA", "FR.PA", "TEP.PA", "STMPA.PA",
+    # Amsterdam (Euronext Amsterdam)
+    "ASML.AS", "PRX.AS", "INGA.AS", "ADYEN.AS", "AD.AS", "PHIA.AS", "WKL.AS", "HEIA.AS",
+    "ASM.AS", "DSFIR.AS", "AKZA.AS", "KPN.AS", "NN.AS", "ABN.AS", "RAND.AS", "AGN.AS",
+    "BESI.AS", "IMCD.AS", "MT.AS", "UMG.AS",
+    # Milan (Euronext Milan / Borsa Italiana)
+    "ENEL.MI", "ISP.MI", "UCG.MI", "ENI.MI", "RACE.MI", "G.MI", "MONC.MI", "PST.MI",
+    "SRG.MI", "TRN.MI", "PIRC.MI", "LDO.MI", "CPR.MI", "MB.MI", "FBK.MI", "BAMI.MI",
+    # Brussels (Euronext Brussels)
+    "ABI.BR", "KBC.BR", "UCB.BR", "SOLB.BR", "GBLB.BR", "COLR.BR", "AGS.BR", "UMI.BR",
+    "PROX.BR",
+    # Oslo (Euronext Oslo Børs)
+    "EQNR.OL", "DNB.OL", "TEL.OL", "AKRBP.OL", "MOWI.OL", "NHY.OL",
+    # Lisbon (Euronext Lisbon)
+    "EDP.LS", "GALP.LS", "JMT.LS",
+    # Dublin (Euronext Dublin)
+    "RYA.IR", "KRX.IR",
+]
+
 UNIVERSE = {
     "FTSE 100":     FTSE100,
     "FTSE 250":     FTSE250,
     "NASDAQ 100":   NASDAQ100,       # listed before S&P 500 so dual-listed mega-caps file under NASDAQ
     "S&P 500":      SP500,
     "DAX":          GERMANY,        # DAX 40 + MDAX equities; Location "Germany" (user 2026-07-06)
+    "Euronext":     EURONEXT,       # top 100 pan-European Euronext equities; Location "Europe" (user 2026-07-14)
     "SSE (Shanghai)": SHANGHAI,     # Shanghai Stock Exchange equities; Location China (user 2026-07-06)
     "Hong Kong":    HONGKONG,       # top Hong Kong equities (user 2026-07-03)
     "Nikkei 225":   JAPAN,          # Nikkei 225 equities; Location Japan (user 2026-07-06)
