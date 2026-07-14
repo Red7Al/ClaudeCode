@@ -1506,11 +1506,13 @@ def api_performance():
                     e, s, t = float(e), float(s), float(t)
                     bull = (ht == "BULLISH")
                     path = [(b[1], b[2], b[3]) for b in bars if b[0] >= td]
+                    # "Now" price: prefer the live snapshot, else fall back to the freshest close in
+                    # price_history (not every recorded trigger is still in the current snapshot).
+                    cur = srec.get("current_price")
+                    if cur is None:
+                        cur = next((c for (_h, _l, c) in reversed(path) if c is not None), None)
                     state, perf = _perf_exit(bull, e, s, t, path)
                     if state is None:   # still open — mark to the freshest price we have
-                        cur = srec.get("current_price")
-                        if cur is None:
-                            cur = next((c for (_h, _l, c) in reversed(path) if c is not None), None)
                         state = "OPEN"
                         perf = None if cur is None else ((cur - e) / e * 100 if bull else (e - cur) / e * 100)
                     out.append({
@@ -1519,7 +1521,7 @@ def api_performance():
                         "direction": "BULL" if bull else "BEAR", "timeframe": tf,
                         "quality": q, "rr": (float(rr) if rr is not None else None),
                         "entry": e, "stop": s, "target": t,
-                        "current_price": srec.get("current_price"),
+                        "current_price": cur,
                         "trig_date": str(td), "state": state,
                         "perf": (round(perf, 2) if perf is not None else None)})
         finally:
