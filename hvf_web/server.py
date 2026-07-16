@@ -1503,6 +1503,33 @@ def _perf_trigger_date(bull: bool, entry: float, ready, bars: list, recorded):
     return recorded
 
 
+def _perf_bars(db, cutoff: dict) -> dict:
+    """{ticker: [(bar_date, high, low, close), ...]} for every ticker in `cutoff` ({ticker: from_date}),
+    in ONE round trip.
+
+    This used to be a query PER TICKER inside the report loop. Supabase is remote, so 268 tickers meant
+    268 sequential round-trips at ~66ms — ~18s of pure latency before the tab could paint, which is why
+    a 348-row report felt slow (user 2026-07-17, P-17a): it was never the rendering. Joining against a
+    VALUES list keeps each ticker's own cutoff (so we fetch exactly the same bars, not more) and costs
+    one round-trip: measured 14,768 bars in 0.85s, ~21x faster."""
+    items = [(tk, d0) for tk, d0 in cutoff.items() if d0]
+    if not items:
+        return {}
+    vals = ",".join(f"(:t{i}, :d{i}::date)" for i in range(len(items)))
+    params = {}
+    for i, (tk, d0) in enumerate(items):
+        params[f"t{i}"] = tk
+        params[f"d{i}"] = str(d0)
+    rows = db.run(
+        f"select p.ticker, p.bar_date, p.high, p.low, p.close from price_history p "
+        f"join (values {vals}) as f(ticker, d0) on p.ticker = f.ticker and p.bar_date >= f.d0 "
+        f"order by p.ticker, p.bar_date", **params) or []
+    out = {}
+    for tk, bd, hi, lo, cl in rows:
+        out.setdefault(tk, []).append((bd, hi, lo, cl))
+    return out
+
+
 @app.route("/api/performance")
 def api_performance():
     """Every recorded trigger with its committed levels and realised/open outcome. Public (the tab is
@@ -1525,13 +1552,16 @@ def api_performance():
             by_tk = {}
             for t in trigs:
                 by_tk.setdefault(t[0], []).append(t)
+            # Bars from the earliest funnel completion, not from recorded_at: the real break can predate
+            # the recording by weeks (P-01), and _perf_trigger_date has to see those bars.
+            cutoff = {}
             for tk, rows in by_tk.items():
-                # Bars from the earliest funnel completion, not from recorded_at: the real break can
-                # predate the recording by weeks (P-01), and _perf_trigger_date has to see those bars.
                 d0 = min((d for r in rows for d in (r[10], r[11], r[9]) if d), default=None)
-                bars = db.run("select bar_date, high, low, close from price_history "
-                              "where ticker = :tk and bar_date >= :d0 order by bar_date",
-                              tk=tk, d0=d0) or []
+                if d0:
+                    cutoff[tk] = d0
+            bars_by_tk = _perf_bars(db, cutoff)
+            for tk, rows in by_tk.items():
+                bars = bars_by_tk.get(tk, [])
                 srec = snap.get(tk, {})
                 for (_tk, ht, tf, q, rr, e, s, t, mk, rec, h3d, l3d) in rows:
                     e, s, t = float(e), float(s), float(t)
