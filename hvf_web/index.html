@@ -274,7 +274,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-performance table td,#view-performance table th{white-space:nowrap}
 /* Performance summary sits beside the charts (user 2026-07-13): headers may wrap, data never does,
    so the table always fits without a horizontal scrollbar. */
-#pf-charts{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+/* Chart cards match the height of the Summary table beside them (user 2026-07-17, P-16c). flex-start
+   let the two columns run to independent heights; stretch hands #pf-viz the row's full height and
+   .viz{align-items:stretch} passes it down to the cards. On a narrow screen this wraps, and each flex
+   line stretches on its own, so the cards simply match whatever shares their line. */
+#pf-charts{display:flex;gap:18px;flex-wrap:wrap;align-items:stretch}
+#pf-charts>#pf-viz{align-content:stretch}
 #view-performance #pf-summary table th{white-space:normal;vertical-align:bottom;line-height:1.15;max-width:78px}
 #view-performance #pf-summary table td{white-space:nowrap}
 #pf-summary table{font-size:12.5px}
