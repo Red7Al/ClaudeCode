@@ -72,10 +72,24 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
    boxes pack together left-to-right, wrapping as needed — no stretched boxes, no empty right-hand
    gutters, no grid gaps. vizbars is display:contents so its charts pack in the SAME flow as Sector /
    Market instead of a stretched 2-col grid. Applies to Scanner + Performance (shared helpers). */
-.viz{display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:flex-start;flex-wrap:wrap}
-.vizsector{flex:none}
+/* align-items:stretch — charts sharing a row all take the height of the tallest on that row, so the
+   strip has no ragged bottoms (user 2026-07-17, P-14). .viz wraps, and each flex LINE stretches
+   independently, so a chart is only ever matched to its own row's tallest. */
+.viz{display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:stretch;flex-wrap:wrap}
+.vizsector{flex:none;display:flex}
+.vizsector>.vizbox{flex:1}
 .vizbars{display:contents}
-.vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:max-content;max-width:340px;flex:0 0 auto}
+.vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:max-content;max-width:340px;flex:0 0 auto;
+  display:flex;flex-direction:column}
+/* Stretched cards would otherwise leave dead space under a short chart (a 2-bar Direction next to an
+   8-bar Market). The bar list grows into the card and each row grows with it — so a few-bar chart gets
+   TALLER bars and bigger text rather than a gap at the bottom (user 2026-07-17, P-16). Capped, so a
+   1-bar card gets a chunky bar, not one absurd 150px block. */
+.vizbox>.bars{flex:1;justify-content:space-evenly}
+.vizbox>.bars>.bar{flex:1 1 auto;max-height:30px}
+.vizbox>.bars>.bar .fill{height:min(100%,18px);min-height:11px}
+.vizbox>.bars>.bar .tk,.vizbox>.bars>.bar .n{font-size:clamp(10px,1.6vh,12px)}
+.vizbox>div:not(.bars){flex:1;display:flex;align-items:center}
 .vizbox h5{margin:0 0 6px;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}
 .bars{display:flex;flex-direction:column;gap:3px;min-width:0}
 .bar{display:flex;align-items:center;gap:6px;font-size:11px}
