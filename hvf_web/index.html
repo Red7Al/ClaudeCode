@@ -253,8 +253,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-jobs table th{white-space:nowrap}   /* header no longer wraps "Last status Last run Runs Failures" (user 2026-07-10) */
 /* User Management + Performance: snug tables + cards that hug their content — removes the stretched-
    column white space and the spurious horizontal scrollbar (user 2026-07-10). */
-#view-users table,#view-performance table{width:auto;max-width:100%}
-#view-users .gsec,#view-performance .gsec{width:fit-content;max-width:100%}
+/* User Management fills its width (user 2026-07-17). width:auto + .gsec width:fit-content shrink-wrapped
+   the table to ~681px and left ~500px of the view empty beside it. Performance keeps shrink-to-fit —
+   its columns are numeric and stretching them reads worse. */
+#view-performance table{width:auto;max-width:100%}
+#view-users table{width:100%}
+#view-performance .gsec{width:fit-content;max-width:100%}
+#view-users .gsec{width:auto;max-width:100%}
 #view-users .tablewrap,#view-performance .tablewrap{overflow-x:visible}
 #view-users table th,#view-users table td{white-space:nowrap;word-break:normal}
 /* Layout pass (user 2026-07-11): the main data views use the screen width (less side white space and
@@ -613,7 +618,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
 </div>
 
-<div id="view-users" class="hidden doc" style="max-width:840px">
+<!-- 1240px to match every other table view (user 2026-07-17). At 840px the users table — which is
+     width:auto + nowrap cells — outgrew its container and, because .tablewrap is overflow-x:visible
+     here, pushed the whole PAGE sideways while ~400px sat unused to its right: scrolling and white
+     space at the same time, from the same cause. -->
+<div id="view-users" class="hidden doc" style="max-width:1240px">
   <span class="eyebrow">Admin</span>
   <h1>User Management</h1>
   <p class="lede">Manage logins — assign a subscription role and enable or disable accounts. Roles: <b>Admin</b> (full access), <b>Gold</b> (read/write incl. pre-orders + multi factor momentum trading), <b>Silver</b> (read/write incl. pre-orders), <b>Guest</b> (read-only, no pre-orders).</p>
