@@ -450,6 +450,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
           <th data-k="pe">P/E</th><th data-k="insider_pct" title="Insider ownership %">Insider %</th><th data-k="timeframe">TF</th>
           <th data-k="location">Location</th>
+          <th data-k="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank for setups that have not triggered, and for instruments with no real volume (FX, indices).">RVOL</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -959,7 +960,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="pf-count"></span>
       <input id="pf-search" placeholder="Search name / ticker…" oninput="_renderPerformance()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
     <div class="tablewrap"><table>
-      <thead><tr><th data-pf="ticker">Ticker</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="stop">Stop</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th></tr></thead>
+      <thead><tr><th data-pf="ticker">Ticker</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="stop">Stop</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank where the instrument has no real volume (FX, indices).">RVOL</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -1152,6 +1153,11 @@ const _esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/
 const nm40=n=>{const s=String(n??"");
   return s.length<=NAME_MAX?_esc(s):`<span title="${_esc(s)}">${_esc(s.slice(0,NAME_MAX-1))}…</span>`;};
 const qcol=q=>q>=70?"var(--bull)":q>=50?"#d29922":"var(--bear)";   // quality colour: green / amber / red
+// RVOL on the trigger bar (user 2026-07-17, P-30) — that day's volume / the mean of the previous 20.
+// >=2 = a real participation spike (green), >=1 = above normal (amber), <1 = thin (muted). Blank, never
+// 0 or 1.0, where there is no real volume to measure: FX and indices would otherwise read as "normal".
+const rvolCell=v=>v==null?'<span class="muted">—</span>'
+  :`<b style="color:${v>=2?'var(--bull)':v>=1?'#d29922':'var(--muted)'}">${(+v).toFixed(1)}×</b>`;
 // "since trig" colour: green when price has moved in the trade's favour, red against.
 const trigCol=r=>{const c=r.chg_since_trig;if(c==null)return"var(--fg)";return c<0?"var(--bear)":c>0?"var(--bull)":"var(--fg)";};  // red when negative
 
@@ -1365,8 +1371,9 @@ function render(){
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td>
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td>
-    <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td></tr>`).join("")
-    || `<tr><td colspan="22" class="empty">No setups match the filters.</td></tr>`;
+    <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td>
+    <td>${ob(rvolCell(r.rvol))}</td></tr>`).join("")
+    || `<tr><td colspan="23" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
     tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
@@ -2348,8 +2355,9 @@ function _renderPerformance(){
     <td>${ob(f2(r.entry))}</td><td style="color:var(--bear)">${ob(f2(r.stop))}</td><td style="color:var(--bull)">${ob(f2(r.target))}</td>
     <td>${ob(f2(r.current_price))}</td>
     <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
-    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td></tr>`).join("")
-    ||`<tr><td colspan="13" class="empty">No recorded triggers yet.</td></tr>`;
+    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td>
+    <td>${ob(rvolCell(r.rvol))}</td></tr>`).join("")
+    ||`<tr><td colspan="14" class="empty">No recorded triggers yet.</td></tr>`;
 }
 // Summary table (user 2026-07-13): Overall / Bull / Bear split of the recorded triggers, with
 // coloured gradients to draw the eye. Returns Available = every trigger with a return figure —

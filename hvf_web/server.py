@@ -85,6 +85,7 @@ _RENDER_LOCK = _threading.Lock()
 import collections as _collections
 import time as _time
 import re as _re
+import datetime as _dt
 _SERVER_STARTED = _time.time()
 _LOG_RING = _collections.deque(maxlen=800)
 
@@ -688,6 +689,49 @@ def index():
 # Fields a LOGGED-OUT visitor may see (user 2026-07-03: first 5 Scanner columns; the rest obfuscated).
 _PUBLIC_FIELDS = ("ticker", "name", "direction", "h3_date", "l3_date", "sector", "has_signal", "status")
 
+# Scanner RVOL (user 2026-07-17, P-30). Cached against the snapshot's generated_utc: a trigger and the
+# volume on its bar are historical facts, so they only change when the snapshot is rebuilt.
+_RVOL_CACHE = {"gen": None, "data": {}}
+
+
+def _snapshot_rvol(snap: dict) -> dict:
+    """{ticker: rvol} on each TRIGGERED setup's REAL break bar.
+
+    Deliberately does NOT use the Scanner's own "Triggered" column: that is still a proxy (the last pivot
+    date, computed client-side in augment() — see the open "HVF site: exact triggered date" backlog item).
+    Averaging volume around the pivot instead of the break would quietly measure the wrong day, so this
+    replays _perf_trigger_date over price_history exactly as the Performance report does."""
+    gen = snap.get("generated_utc")
+    if _RVOL_CACHE["gen"] == gen and _RVOL_CACHE["data"]:
+        return _RVOL_CACHE["data"]
+    out = {}
+    try:
+        want = []
+        for r in snap.get("records", []):
+            tk, e = r.get("ticker"), r.get("entry")
+            ready = max([d for d in (r.get("h3_date"), r.get("l3_date")) if d], default=None)
+            if r.get("status") == "TRIGGERED" and tk and e and ready:
+                want.append((tk, _dt.date.fromisoformat(str(ready)[:10]), float(e), r.get("direction") == "BULL"))
+        if want:
+            from db_pool import get_db
+            db = get_db()
+            try:
+                bars_by_tk = _perf_bars(db, {tk: rd for tk, rd, _e, _b in want},
+                                        lookback_days=_RVOL_LOOKBACK_DAYS)
+            finally:
+                db.close()
+            for tk, rd, e, bull in want:
+                bars = bars_by_tk.get(tk, [])
+                td = _perf_trigger_date(bull, e, rd, bars, None)
+                if td:
+                    v = _rvol_at(bars, td)
+                    if v is not None:
+                        out[tk] = v
+    except Exception as ex:
+        log.warning(f"scanner RVOL failed (column blank): {ex}")
+    _RVOL_CACHE.update(gen=gen, data=out)
+    return out
+
 
 @app.route("/api/records")
 def api_records():
@@ -696,7 +740,9 @@ def api_records():
     # The Scanner shows the FULL universe to every user — the Config trade filters gate only what the
     # operator TRADES (enforced in ig_shim at order time), never what is shown (user 2026-07-06).
     if authed:
-        recs = [{k: v for k, v in r.items() if k != "_card"} for r in snap.get("records", [])]
+        rvol = _snapshot_rvol(snap)                       # RVOL at the real break bar (P-30)
+        recs = [dict({k: v for k, v in r.items() if k != "_card"}, rvol=rvol.get(r.get("ticker")))
+                for r in snap.get("records", [])]
     else:
         # Teaser mode (user 2026-07-03): only the first-5-column fields leave the server — the rest
         # are stripped HERE, not hidden client-side, so logged-out users cannot fetch them at all.
@@ -1495,7 +1541,7 @@ def _perf_trigger_date(bull: bool, entry: float, ready, bars: list, recorded):
     bars from `ready` — the funnel's last pivot, before which the pattern did not yet exist, so an earlier
     break is not this setup's. No lookahead: every level is fixed by pivots dated on or before `ready`.
     Falls back to `recorded` when price_history cannot show the break (e.g. bars older than the store)."""
-    for bd, _hi, _lo, cl in bars:
+    for bd, _hi, _lo, cl, *_ in bars:
         if cl is None or (ready is not None and bd < ready):
             continue
         if (cl > entry) if bull else (cl < entry):
@@ -1503,9 +1549,36 @@ def _perf_trigger_date(bull: bool, entry: float, ready, bars: list, recorded):
     return recorded
 
 
-def _perf_bars(db, cutoff: dict) -> dict:
-    """{ticker: [(bar_date, high, low, close), ...]} for every ticker in `cutoff` ({ticker: from_date}),
-    in ONE round trip.
+# Relative volume at the trigger (user 2026-07-17, P-30): RVOL = the trigger bar's volume / the mean
+# volume of the RVOL_BARS bars BEFORE it. The request said "last 20-50 bars"; 20 is the desk standard and
+# the shortest in that range, so it reacts to the burst that accompanies a break rather than smoothing it
+# away. The average EXCLUDES the trigger bar — including it would dilute the very spike being measured.
+RVOL_BARS = 20
+# Fetch this much history before each funnel's first pivot so the 20-bar average exists at the trigger.
+# ~40 calendar days ≈ 28 trading days, comfortably more than RVOL_BARS.
+_RVOL_LOOKBACK_DAYS = 40
+
+
+def _rvol_at(bars: list, td) -> float:
+    """RVOL on bar `td` from `bars` [(bar_date, high, low, close, volume), ...] ascending, or None.
+    None (never 0) when there is no volume to speak of — FX and indices carry no real volume, and a
+    fabricated 1.0 there would read as 'average participation' rather than 'not applicable'."""
+    i = next((k for k, b in enumerate(bars) if b[0] == td), None)
+    if i is None:
+        return None
+    vol = bars[i][4]
+    prior = [b[4] for b in bars[max(0, i - RVOL_BARS):i] if b[4]]
+    if not vol or len(prior) < 5:        # too few real bars to average against
+        return None
+    avg = sum(prior) / len(prior)
+    return round(vol / avg, 2) if avg > 0 else None
+
+
+def _perf_bars(db, cutoff: dict, lookback_days: int = 0) -> dict:
+    """{ticker: [(bar_date, high, low, close, volume), ...]} for every ticker in `cutoff`
+    ({ticker: from_date}), in ONE round trip. `lookback_days` widens each cutoff backwards (P-30 needs
+    bars BEFORE the trigger to average against); the extra bars are harmless to the outcome walk, which
+    filters to bar_date >= the trigger date anyway.
 
     This used to be a query PER TICKER inside the report loop. Supabase is remote, so 268 tickers meant
     268 sequential round-trips at ~66ms — ~18s of pure latency before the tab could paint, which is why
@@ -1515,18 +1588,19 @@ def _perf_bars(db, cutoff: dict) -> dict:
     items = [(tk, d0) for tk, d0 in cutoff.items() if d0]
     if not items:
         return {}
+    back = _dt.timedelta(days=lookback_days) if lookback_days else _dt.timedelta(0)
     vals = ",".join(f"(:t{i}, :d{i}::date)" for i in range(len(items)))
     params = {}
     for i, (tk, d0) in enumerate(items):
         params[f"t{i}"] = tk
-        params[f"d{i}"] = str(d0)
+        params[f"d{i}"] = str(d0 - back)
     rows = db.run(
-        f"select p.ticker, p.bar_date, p.high, p.low, p.close from price_history p "
+        f"select p.ticker, p.bar_date, p.high, p.low, p.close, p.volume from price_history p "
         f"join (values {vals}) as f(ticker, d0) on p.ticker = f.ticker and p.bar_date >= f.d0 "
         f"order by p.ticker, p.bar_date", **params) or []
     out = {}
-    for tk, bd, hi, lo, cl in rows:
-        out.setdefault(tk, []).append((bd, hi, lo, cl))
+    for tk, bd, hi, lo, cl, vol in rows:
+        out.setdefault(tk, []).append((bd, hi, lo, cl, vol))
     return out
 
 
@@ -1559,7 +1633,7 @@ def api_performance():
                 d0 = min((d for r in rows for d in (r[10], r[11], r[9]) if d), default=None)
                 if d0:
                     cutoff[tk] = d0
-            bars_by_tk = _perf_bars(db, cutoff)
+            bars_by_tk = _perf_bars(db, cutoff, lookback_days=_RVOL_LOOKBACK_DAYS)   # extra bars for RVOL (P-30)
             for tk, rows in by_tk.items():
                 bars = bars_by_tk.get(tk, [])
                 srec = snap.get(tk, {})
@@ -1586,7 +1660,8 @@ def api_performance():
                         "entry": e, "stop": s, "target": t,
                         "current_price": cur,
                         "trig_date": str(td), "state": state,
-                        "perf": (round(perf, 2) if perf is not None else None)})
+                        "perf": (round(perf, 2) if perf is not None else None),
+                        "rvol": _rvol_at(bars, td)})   # relative volume on the trigger bar (P-30)
         finally:
             db.close()
         out.sort(key=lambda r: (r.get("perf") is None, -(r.get("perf") or 0)))
