@@ -2303,7 +2303,10 @@ function paintCRDetail(){
     const n=s==="All"?all.length:(counts[s]||0);
     return `<button class="subpill${crDetailStatus===s?' active':''}" onclick="crStatusFilter('${s}')" style="font-size:11px">${s} (${n})</button>`;}).join("");
   const shown=crDetailStatus==="All"?all:all.filter(q=>q.status===crDetailStatus);
-  const reqs=shown.map(q=>`<tr><td>${q.working_area||'—'}</td><td>${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td></tr>`).join("");
+  // Status must never wrap: the Requirement column is white-space:normal and takes what it likes, which
+  // squeezed Status until "Completed" broke mid-word as "Complet/ed" (user 2026-07-17). width:1% +
+  // nowrap sizes the column to its longest label ("Not Started") and leaves the rest to Requirement.
+  const reqs=shown.map(q=>`<tr><td style="white-space:nowrap">${q.working_area||'—'}</td><td style="white-space:nowrap">${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td style="white-space:nowrap;width:1%"><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td></tr>`).join("");
   $("cr-detail").innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">${d.name}</h3><span class="grow"></span><span class="muted" style="font-size:12px">Created ${d.created||'?'} · Updated ${d.updated||'?'} · ${d.total} actions</span><button class="btn" onclick="$('cr-detail').classList.add('hidden');CR_SEL=null;paintCR()">✕ Close</button></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${pills}</div>
     <div class="tablewrap"><table><thead><tr><th>Working Area</th><th>Scope</th><th>Requirement</th><th>Status</th></tr></thead><tbody>${reqs||'<tr><td colspan="4" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
