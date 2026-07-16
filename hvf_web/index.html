@@ -1018,7 +1018,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" id="cr-section" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="cr-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th data-crk="name">File</th><th data-crk="created">Created</th><th data-crk="updated">Last updated</th><th data-crk="total">Actions</th><th>Completed</th><th>In&nbsp;Progress</th><th>Not&nbsp;Started</th><th>Cancelled</th></tr></thead>
+      <thead><tr><th data-crk="name">File</th><th data-crk="created">Created</th><th data-crk="updated">Last updated</th><th data-crk="total">Actions</th><th data-crk="prioritised" title="Requirements carrying a P-number, or under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th>Completed</th><th>In&nbsp;Progress</th><th>Not&nbsp;Started</th><th>Cancelled</th></tr></thead>
       <tbody id="cr-rows"></tbody>
     </table></div>
   </section>
@@ -2371,8 +2371,9 @@ function paintCR(){
   const c=(o,k,col)=>{const n=(o.counts||{})[k]||0;return n?`<b style="color:${col}">${n}</b>`:'0';};
   $("cr-rows").innerHTML=rows.map(o=>`<tr class="clk ${CR_SEL===o.file?'sel':''}" onclick="crOpen('${o.file}')">
     <td><b>${o.name}</b></td><td>${o.created||''}</td><td>${o.updated||''}</td><td><b>${o.total}</b></td>
+    <td>${o.prioritised?`<b style="color:#d29922">${o.prioritised}</b>`:'0'}</td>
     <td>${c(o,'Completed','var(--bull)')}</td><td>${c(o,'In Progress','var(--accent)')}</td><td>${c(o,'Not Started','var(--muted)')}</td><td>${c(o,'Cancelled','var(--bear)')}</td></tr>`).join("")
-    ||`<tr><td colspan="8" class="empty">No change-request files found.</td></tr>`;
+    ||`<tr><td colspan="9" class="empty">No change-request files found.</td></tr>`;
 }
 function crOpen(file){
   CR_SEL=file;paintCR();
@@ -2393,10 +2394,13 @@ function paintCRDetail(){
   // Status must never wrap: the Requirement column is white-space:normal and takes what it likes, which
   // squeezed Status until "Completed" broke mid-word as "Complet/ed" (user 2026-07-17). width:1% +
   // nowrap sizes the column to its longest label ("Not Started") and leaves the rest to Requirement.
-  const reqs=shown.map(q=>`<tr><td style="white-space:nowrap">${q.working_area||'—'}</td><td style="white-space:nowrap">${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td style="white-space:nowrap;width:1%"><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td></tr>`).join("");
+  // Prioritised Y/N (user 2026-07-17, P-22) — Y when the requirement carries a P-number or sits under an
+  // "Explicitly prioritised work" heading. Same width:1%+nowrap treatment as Status so the Requirement
+  // column keeps the width.
+  const reqs=shown.map(q=>`<tr><td style="white-space:nowrap">${q.working_area||'—'}</td><td style="white-space:nowrap">${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td style="white-space:nowrap;width:1%;text-align:center"><b style="color:${q.prioritised?'#d29922':'var(--muted)'}">${q.prioritised?'Y':'N'}</b></td><td style="white-space:nowrap;width:1%"><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td></tr>`).join("");
   $("cr-detail").innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">${d.name}</h3><span class="grow"></span><span class="muted" style="font-size:12px">Created ${d.created||'?'} · Updated ${d.updated||'?'} · ${d.total} actions</span><button class="btn" onclick="$('cr-detail').classList.add('hidden');CR_SEL=null;paintCR()">✕ Close</button></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${pills}</div>
-    <div class="tablewrap"><table><thead><tr><th>Working Area</th><th>Scope</th><th>Requirement</th><th>Status</th></tr></thead><tbody>${reqs||'<tr><td colspan="4" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
+    <div class="tablewrap"><table><thead><tr><th>Working Area</th><th>Scope</th><th>Requirement</th><th title="Carries a P-number, or sits under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th>Status</th></tr></thead><tbody>${reqs||'<tr><td colspan="5" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
 }
 document.querySelectorAll("th[data-crk]").forEach(th=>th.onclick=()=>{const k=th.dataset.crk;crSortDir=(crSortK===k)?-crSortDir:-1;crSortK=k;paintCR();_sortArrows("data-crk",crSortK,crSortDir);});
 function doLogin(){

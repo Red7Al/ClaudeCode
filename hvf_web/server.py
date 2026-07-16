@@ -1606,6 +1606,19 @@ _CR_LEAD = {"[x]": "Completed", "[X]": "Completed", "[~]": "In Progress",
             "[-]": "Cancelled", "[?]": "Requested"}
 
 
+# A requirement is PRIORITISED when it carries a P-number tag ("P-01 - ...", "P-16a - ...") or sits under
+# an "Explicitly prioritised work" heading (user 2026-07-17, P-22) — the two ways priority is marked in
+# these files. Derived, not stored: the tag IS the prioritisation, so there is nothing to keep in sync.
+_CR_PRIO_TAG = _re.compile(r"^P-\d+[a-z]?\b", _re.I)
+
+
+def _cr_prioritised(text: str, area: str) -> bool:
+    if _CR_PRIO_TAG.match((text or "").strip()):
+        return True
+    a = (area or "").lower()
+    return "prioritis" in a or "prioritiz" in a
+
+
 def _cr_status(line: str) -> str:
     s = line.strip()
     for tag, st in _CR_LEAD.items():
@@ -1659,12 +1672,14 @@ def _cr_parse(path: str) -> dict:
                     text = text[len(tag):].strip()
             if not text:
                 continue
-            reqs.append({"text": text, "working_area": area, "scope": scope, "status": _cr_status(raw)})
+            reqs.append({"text": text, "working_area": area, "scope": scope, "status": _cr_status(raw),
+                         "prioritised": _cr_prioritised(text, area)})
     counts = {"Completed": 0, "In Progress": 0, "Not Started": 0, "Cancelled": 0, "Requested": 0}
     for r in reqs:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     return {"name": name, "file": fn, "created": created, "updated": updated,
-            "total": len(reqs), "counts": counts, "requirements": reqs}
+            "total": len(reqs), "counts": counts, "requirements": reqs,
+            "prioritised": sum(1 for r in reqs if r["prioritised"])}
 
 
 @app.route("/api/change-requests")
