@@ -102,7 +102,13 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 .bars{display:flex;flex-direction:column;gap:3px;min-width:0}
 .bar{display:flex;align-items:center;gap:6px;font-size:11px}
 .bar .tk{width:auto;min-width:48px;max-width:170px;color:var(--muted);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px}
-.bar .fill{height:11px;border-radius:2px;background:var(--accent)}
+/* .track claims the row's spare width so the bar scales to the card (user 2026-07-17, P-16a); the fill
+   sits inside it as a %. The pie's LEGEND also uses .fill as a fixed 10px colour swatch and has no
+   .track — hence the .track-scoped rule rather than touching .fill itself. */
+.bar .track{flex:1;min-width:24px;display:block}
+/* display:block is load-bearing: .fill is a <span>, blockified only while it is a direct flex item of
+   .bar. Inside .track it would fall back to inline and silently ignore width/height (measured 0px). */
+.bar .fill{display:block;height:11px;border-radius:2px;background:var(--accent)}
 .bar .n{color:var(--muted)}
 table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{text-align:left;padding:6px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
@@ -1183,9 +1189,13 @@ function barChart(title,counts,fk,colorFn,labelDesc){
   const sel=setOf(fk), nsel=sel?sel.size:0;
   const entries=Object.entries(counts).sort(labelDesc?((a,b)=>String(b[0]).localeCompare(String(a[0]))):((a,b)=>b[1]-a[1])).slice(0,8);
   const max=Math.max(1,...entries.map(e=>e[1]));
+  // The bar scales to the CARD, not to a fixed 72px (user 2026-07-17, P-16a). The old hardcoded ceiling
+  // meant a wide card (Market/Location run ~246px since the cards started claiming spare width) drew a
+  // stubby 72px bar and left the rest of the row empty — wasted space INSIDE the card. A .track flexes
+  // into whatever width is going and the fill takes its share as a %.
   const rows=entries.map(([k,n])=>{const on=sel&&sel.has(String(k));
     return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}" title="click to filter ${k}"><span class="tk">${on?'● ':''}${k}</span>
-    <span class="fill" style="width:${Math.round(n/max*72)}px;background:${colorFn?colorFn(k):'var(--accent)'};opacity:${nsel&&!on?0.4:1}"></span><span class="n">${n}</span></div>`;}).join("");
+    <span class="track"><span class="fill" style="width:${Math.max(2,Math.round(n/max*100))}%;background:${colorFn?colorFn(k):'var(--accent)'};opacity:${nsel&&!on?0.4:1}"></span></span><span class="n">${n}</span></div>`;}).join("");
   return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
 }
 function pieChart(title,counts,fk){
