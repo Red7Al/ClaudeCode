@@ -1174,18 +1174,18 @@ function renderViz(rows){
   // the Market chart on any page (user 2026-07-03: it will have many entries).
   // Scanner charts use mf_* multi-select inputs (user 2026-07-03) — separate from the single-select
   // sidebar dropdowns; pass() honours both.
-  // Chart order (user 2026-07-17, P-12/P-13): Location left of Market, Market left of Sector. .vizbars is
-  // display:contents, so DOM order IS left-to-right order — the Sector pie moving last is what puts
-  // Location (in the bars) and Market ahead of it, while each keeps its own column as before.
+  // Chart order (user 2026-07-17, P-12a): Market and Sector are the FAR LEFT pair, Market left of Sector.
+  // Supersedes P-13 ("Location left of Market") — the two cannot both hold once Market+Sector lead.
+  // .vizbars is display:contents, so DOM order IS left-to-right order.
   $("viz").innerHTML=
+    `<div class="vizsector">`+barChart("Market",by("market"),"mf_market")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",by("sector"),"mf_sector")+`</div>`+
     `<div class="vizbars">`+
       barChart("Direction",by("direction"),"mf_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
       barChart("Status",by("status"),"mf_status",k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
       barChart("Location",by("location"),"mf_location")+
       barChart("Timeframe",by("timeframe"),"mf_timeframe")+
-    `</div>`+
-    `<div class="vizsector">`+barChart("Market",by("market"),"mf_market")+`</div>`+
-    `<div class="vizsector">`+pieChart("Sector",by("sector"),"mf_sector")+`</div>`;
+    `</div>`;
 }
 
 function render(){
@@ -1539,10 +1539,10 @@ const _xmonth=e=>(e.published_at||'').slice(0,7);
 function paintXposts(){
   const by=fn=>X_ROWS.reduce((m,e)=>{const v=fn(e)||'—';m[v]=(m[v]||0)+1;return m;},{});
   $("x-viz").innerHTML=
-    `<div class="vizsector">`+barChart("Ticker",by(e=>disp(e.ticker)),"xf_ticker")+`</div>`+
     `<div class="vizsector">`+barChart("Market",by(e=>e.market),"xf_market")+`</div>`+
     `<div class="vizsector">`+barChart("Month",by(_xmonth),"xf_month",null,true)+`</div>`+
-    `<div class="vizsector">`+barChart("Month-Week",by(e=>_mw(e.published_at)),"xf_mweek",null,true)+`</div>`;
+    `<div class="vizsector">`+barChart("Month-Week",by(e=>_mw(e.published_at)),"xf_mweek",null,true)+`</div>`+
+    `<div class="vizsector">`+barChart("Ticker",by(e=>disp(e.ticker)),"xf_ticker")+`</div>`;   /* Ticker far right (P-11a) */
   if($("x-datebar")&&!$("x-datebar").innerHTML)$("x-datebar").innerHTML=dateFilterBar("x","paintXposts()");
   const _xq=(($("x-search")||{}).value||"").toLowerCase().trim();
   let rows=X_ROWS.filter(e=>inSet("xf_ticker",disp(e.ticker))&&inSet("xf_market",e.market)&&inSet("xf_month",_xmonth(e))&&inSet("xf_mweek",_mw(e.published_at)));
@@ -1958,12 +1958,12 @@ function paintOrderOps(){
   $("oo-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> order operation records${rows.length!==OO_ROWS.length?` <span class="muted">of ${OO_ROWS.length}</span>`:""}`;
   $("ootab-count").textContent="("+OO_ROWS.length+")";
   const oby=k=>OO_ROWS.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
-  // Ticker chart sits far left wherever it appears (user 2026-07-17, P-11).
+  // Ticker chart sits far RIGHT wherever it appears (user 2026-07-17, P-11a — reverses P-11).
   $("oo-viz").innerHTML=
-    `<div class="vizsector">`+barChart("Ticker",oby("ticker"),"oof_ticker")+`</div>`+
     `<div class="vizsector">`+barChart("Status",oby("status"),"oof_status",k=>k==="PENDING"?"var(--accent)":k==="FILLED"?"var(--bull)":k==="WATCHING"?"#d29922":"var(--bear)")+`</div>`+
     `<div class="vizsector">`+barChart("Direction",oby("direction"),"oof_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`+
-    `<div class="vizsector">`+barChart("Source",oby("session"),"oof_session")+`</div>`;
+    `<div class="vizsector">`+barChart("Source",oby("session"),"oof_session")+`</div>`+
+    `<div class="vizsector">`+barChart("Ticker",oby("ticker"),"oof_ticker")+`</div>`;
   // Resolve instrument name from the loaded snapshot (user 2026-07-03: name next to Ticker).
   const nm=t=>{const r=DATA.find(x=>x.ticker===t||disp(x.ticker)===t);return r?(r.name||''):'';};
   rows.forEach(r=>r._fav=FAVS.has(disp(r.ticker))?1:0);   // favourite column sortable (user 2026-07-11)
@@ -2300,16 +2300,16 @@ function renderPreorders(){
   $("po-count-text").innerHTML=`<b style="font-size:15px;color:var(--fg)">${po.length}</b> instruments with a pre-order — waiting for the entry to trigger <span class="muted">(${nR} READY · ${po.length-nR} DEVELOPING). Click a row for detail; tick + Delete selected to dismiss.</span>`;
   // Chart visuals, same set as the Scanner (user 2026-07-03). Non-filtering here (dummy filter keys).
   const pby=k=>po.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
-  // Location < Market < Sector, as on the Scanner (user 2026-07-17, P-12/P-13).
+  // Market + Sector far left, Market left of Sector — as on the Scanner (user 2026-07-17, P-12a).
   $("po-viz").innerHTML=
+    `<div class="vizsector">`+barChart("Market",pby("market"),"pof_market")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",pby("sector"),"pof_sector")+`</div>`+
     `<div class="vizbars">`+
       barChart("Direction",pby("direction"),"pof_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
       barChart("Status",pby("status"),"pof_status",k=>k==="READY"?"var(--accent)":"#d29922")+
       barChart("Location",pby("location"),"pof_location")+
       barChart("Timeframe",pby("timeframe"),"pof_timeframe")+
-    `</div>`+
-    `<div class="vizsector">`+barChart("Market",pby("market"),"pof_market")+`</div>`+
-    `<div class="vizsector">`+pieChart("Sector",pby("sector"),"pof_sector")+`</div>`;
+    `</div>`;
   $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
     return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
       ${_favCell(r.ticker)}<td><b>${disp(r.ticker)}</b></td><td>${nm40(r.name)}</td>
