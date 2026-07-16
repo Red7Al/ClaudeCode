@@ -76,10 +76,13 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
    strip has no ragged bottoms (user 2026-07-17, P-14). .viz wraps, and each flex LINE stretches
    independently, so a chart is only ever matched to its own row's tallest. */
 .viz{display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:stretch;flex-wrap:wrap}
-.vizsector{flex:none;display:flex}
+/* Cards GROW into the row's spare width (user 2026-07-17): the strip was leaving ~256px empty on the
+   right while long labels ("NASDAQ 100", "Europe (West)") were crammed against their bars inside a
+   170px label column. Spending that space is what makes P-16's larger text fit. */
+.vizsector{flex:1 1 auto;display:flex;min-width:0}
 .vizsector>.vizbox{flex:1}
 .vizbars{display:contents}
-.vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:max-content;max-width:340px;flex:0 0 auto;
+.vizbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:max-content;min-width:0;max-width:340px;flex:1 1 auto;
   display:flex;flex-direction:column}
 /* Stretched cards would otherwise leave dead space under a short chart (a 2-bar Direction next to an
    8-bar Market). The bar list grows into the card and each row grows with it — so a few-bar chart gets
