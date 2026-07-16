@@ -226,7 +226,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 /* Doc-page tables (activity/batch/version/users) wrap text so there's no horizontal scroll bar
    even when a charts column sits alongside (user 2026-07-03). */
 .doc .tablewrap{overflow-x:auto}
-.doc .tablewrap table th,.doc .tablewrap table td{white-space:normal;word-break:break-word}
+/* Doc tables do NOT wrap by default (user 2026-07-17). This rule used to force white-space:normal on
+   every cell, so any squeezed column broke its label — "Completed" rendered as "Complet/ed" on Change
+   Requests — and six views (#view-orderops/-preorders/-activity/-jobs/-users/-performance) each carried
+   their own rule re-asserting nowrap to fight it. Cells that SHOULD wrap (syslog message, user note,
+   market notes, CR requirement) set white-space:normal inline, and inline wins, so they are unaffected.
+   word-break stays: it is inert while nowrap, and still breaks a giant unbroken string in those cells.
+   Anything too wide now scrolls sideways via .doc .tablewrap{overflow-x:auto} — the same trade-off
+   #view-preorders already chose deliberately. */
+.doc .tablewrap table th,.doc .tablewrap table td{white-space:nowrap;word-break:break-word}
 .datecard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 12px;box-shadow:var(--sh-sm);display:inline-flex;align-items:center;gap:8px;font-size:13px}
 /* Admin pages get the amber treatment (user 2026-07-04) */
 #view-batch .gsec,#view-users .gsec,#view-version .gsec,#view-syslogs .gsec,#view-xposts .gsec,#view-jobs .gsec{border-left-color:#d29922}
