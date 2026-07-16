@@ -1,0 +1,122 @@
+---
+name: ah-web-formatting
+description: >
+  Layout and formatting rules for the HVF web app (hvf_web/index.html) — table wrapping and column
+  widths, the chart strip's order/height/stacking/width behaviour, instrument-name truncation, and the
+  multi-select filter component. Also carries the verification recipe for this specific page, which has
+  several traps that silently produce wrong conclusions (display:contents wrappers have no box;
+  requestAnimationFrame never fires in the preview pane; logged-out data collapses whole columns to
+  "—"). Use whenever adding or changing ANY table, chart, filter or card in hvf_web/index.html, or when
+  the user reports "wrapping", "cramped", "white space", "scrolling" or "spacing" on a page.
+---
+
+# HVF web app — formatting rules
+
+Everything here was established by fixing a real defect (user requests 2026-07-17, P-08…P-25). Each rule
+states WHY, because the naive alternative is what broke.
+
+## 1. Tables
+
+**Doc tables do not wrap by default.**
+
+```css
+th,td{white-space:nowrap}                                            /* base */
+.doc .tablewrap table th,.doc .tablewrap table td{white-space:nowrap;word-break:break-word}
+```
+
+- A cell that SHOULD wrap declares `style="white-space:normal"` **inline** — inline beats the
+  stylesheet, so it survives the nowrap default. This is the mechanism the whole scheme relies on.
+  Current wrapping cells: syslog message, user note, market notes, Change-Request requirement text.
+- `word-break:break-word` stays in the rule: it is inert while `nowrap`, and still saves the wrapping
+  cells from one giant unbroken string.
+- **Never** set `white-space:normal` on a whole table. That was the old rule and it forced EVERY cell to
+  wrap; any squeezed column then broke mid-word — Change Requests rendered "Completed" as "Complet/ed".
+  It also spawned six per-view rules (`#view-orderops/-preorders/-activity/-jobs/-users/-performance`)
+  that existed only to re-assert nowrap. Those are now redundant; do not add a seventh.
+- A short-label column next to a greedy `white-space:normal` column also wants `width:1%`, so it sizes
+  to its longest label and hands the remaining width to the text column.
+- Too wide is fine: `.doc .tablewrap{overflow-x:auto}` scrolls sideways. `#view-preorders` chose that
+  trade-off deliberately.
+
+**Widths.** Table views are `max-width:1240px`. An outlier is a bug: `view-users` sat at 840px, its
+`width:auto` table outgrew it, and because `#view-users .tablewrap` is `overflow-x:visible` the overflow
+pushed the whole PAGE sideways while ~500px sat unused beside it — "scrolling AND white space" from one
+cause. `#view-users table{width:100%}` fills the width; `#view-performance` keeps `width:auto`
+shrink-to-fit because its columns are numeric and stretching them reads worse.
+
+**Instrument names.** Use `nm40(name)` in table cells — 40 chars, full name in a `title`, HTML-escaped.
+Michelin's legal name is 80 chars and wrecks layout. Detail views keep the full name.
+
+## 2. Chart strip (`.viz`)
+
+**Order** (left → right): `Market`, `Sector` (Market left of Sector), then the rest; `Ticker` far right
+wherever it appears. `.vizbars{display:contents}` means **DOM order IS visual order**.
+
+**Heights.** `.viz{align-items:stretch}` — cards sharing a row take the tallest's height. `.viz` wraps
+and each flex LINE stretches independently, so a card is only matched against its own row.
+
+**Filling the card.** Stretch alone just relocates the waste (a 1-bar card measured 68px of dead space).
+`.vizbox>.bars{flex:1;justify-content:space-evenly}` plus capped growth:
+
+```css
+.vizbox>.bars>.bar{flex:1 1 auto;max-height:30px}
+.vizbox>.bars>.bar .fill{height:min(100%,18px);min-height:11px}
+.vizbox>.bars>.bar .tk,.vizbox>.bars>.bar .n{font-size:clamp(10px,1.6vh,12px)}
+```
+
+The caps matter: uncapped, a 1-bar card gets one absurd 150px block. The selector is
+`.vizbox>.bars>.bar` (direct child) so the **pie's legend** — nested a level deeper — keeps its 11px
+colour swatches instead of being inflated into fake bars.
+
+**Width.** Cards are `flex:1 1 auto;min-width:0` (cap `max-width:340px`) so they spend the row's spare
+width. Skip this and enlarging label text just crams it: `.bar .tk` is a shrinking column sharing its
+row with a fixed-width fill and count, so on a 186px card the label got ~68px and "NASDAQ 100" /
+"Europe (West)" collided with their bars while 256px sat empty to the right.
+
+**Stacking** — `packViz(id)` after every strip render. Measures each card's natural height (a
+`.measuring` class drops the stretch for the read), then packs greedily left-to-right: short cards
+(≤60% of tallest) share a `.vizcol` while the running total fits under the tallest. Idempotent —
+unwraps existing `.vizcol` first. Preserves order, so Market/Sector still lead.
+
+> **The decision must be MEASURED, never hardcoded.** Logged out, Market/Location/Timeframe each show a
+> single "—" bar and look obviously pairable; logged in they carry 6–8 bars and must stay side by side.
+> Same code, opposite layouts.
+
+## 3. Multi-select filters (`.msel`)
+
+Progressive enhancement: the real `<select multiple>` stays in the DOM (visually hidden) and remains the
+single source of truth, so `pass()`, reset, show-all, saved defaults and chart click-to-filter keep
+working untouched. The dropdown drives `option.selected`, dispatches `input` on the select, then
+`msyncAll()` repaints button + checkboxes. Call `msyncAll()` after any BULK write to the selects
+(reset/showall/applyUserDefaults/fillSel) or the button label goes stale. Options arrive late via
+`fillSel()`, so build each popup on open.
+
+## 4. Verifying changes on THIS page — the traps
+
+Measure and assert. Do not eyeball, and do not trust a summary you built without checking it.
+
+- **`display:contents` wrappers have no box.** `.vizbars`/`getBoundingClientRect()` returns all zeros
+  and sorts first, so a naive left-to-right sort reports a wrong order. Walk to the leaf elements that
+  actually have geometry.
+- **`requestAnimationFrame` never fires** when the preview pane isn't painting — `await`ing it hangs the
+  tool for 30s and looks like a render bug. Don't.
+- **Screenshots time out** on the snapshot-heavy pages. Use DOM measurement.
+- **Logged out, `LIMITED` strips `market`/`location`/`timeframe`** from `/api/records`; every row
+  collapses to "—". Never tune layout on that. Inject a realistic distribution first:
+  `DATA.forEach((r,i)=>{r.market=M[i%M.length];…}); render();`
+- **Read every heading, not the first.** Taking only the first `h5` per element made stacked columns
+  report their partner as a *missing chart* and nearly sent me chasing a non-existent bug.
+- **Wrapping check**: lines = `el.getBoundingClientRect().height / lineHeight` on the **text element**
+  (the `<b>`), not the cell — a row grows with its neighbouring wrapped cell and false-positives.
+- **Truncation check**: `el.scrollWidth > el.clientWidth`.
+- **"Cramped" is usually horizontal.** Confirm with `scrollHeight > clientHeight` before assuming
+  vertical overflow; on every reported case it was the label column, not the card height.
+
+## 5. Checklist for a new table or chart
+
+1. Short-value columns nowrap (default); only the long-text column gets inline `white-space:normal`.
+2. Long-label column next to it → `width:1%`.
+3. Instrument names → `nm40()`.
+4. View `max-width:1240px` unless there's a stated reason.
+5. Chart strip: Market/Sector left, Ticker right; call `packViz()` after render.
+6. Verify by measuring, with realistic (not logged-out) data.
