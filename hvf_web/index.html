@@ -1030,23 +1030,42 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <span class="eyebrow" style="color:#d29922;background:color-mix(in srgb,#d29922 14%,transparent)">Admin</span>
   <h1>Configuration (Admin)</h1>
   <p class="lede">Application-wide engine settings — shared across the one trading account, read DB-first by the engine (local + GitHub Actions) with a code fallback. Admin only; every change is recorded in your activity log.</p>
-  <div class="card" style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+  <!-- Sub-tabs, as on Configuration (User) which the user rates highly (user 2026-07-17, P-28): one panel
+       at a time instead of eight stacked cards. Credential pills are injected by renderCredentials. -->
+  <nav class="confnav" id="confadminnav">
+    <button class="pill adminpill active" data-panel="engine" onclick="confAdminShow('engine')">⚙️ Engine</button>
+    <button class="pill adminpill" data-panel="bridge" onclick="confAdminShow('bridge')">🌉 Bridge quality</button>
+    <button class="pill adminpill" data-panel="spread" onclick="confAdminShow('spread')">↔️ Spread retries</button>
+    <button class="pill adminpill" data-panel="xpub" onclick="confAdminShow('xpub')">🐦 X publishing</button>
+  </nav>
+
+  <div class="confapanel" data-panel="engine">
+  <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
     <p class="muted" style="font-size:12px">Application-wide trading/engine values (shared, one account).</p>
     <div class="credrow"><span class="clabel">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="eng-wo_lifespan_days" style="max-width:120px"></div>
     <button class="btn" style="margin-top:10px" onclick="saveEngine()">Save engine settings</button>
     <span id="eng-msg" style="font-size:12px;margin-left:8px"></span>
   </div>
-  <div class="card" style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Bridge quality floor <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+  </div>
+
+  <div class="confapanel hidden" data-panel="bridge">
+  <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Bridge quality floor <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
     <p class="muted" style="font-size:12px">Minimum pattern Quality (0–100) a setup needs before the 2-hourly bridge auto-loads it as a pre-order / IG working order.</p>
     <div class="credrow"><span class="clabel">Minimum Quality (Q)</span><input type="number" min="0" max="100" step="1" id="eng-bridge_min_quality" style="max-width:120px"></div>
     <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save quality floor</button>
   </div>
-  <div class="card" style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Spread retries <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+  </div>
+
+  <div class="confapanel hidden" data-panel="spread">
+  <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Spread retries <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
     <p class="muted" style="font-size:12px">When the quoted spread is too wide, how often and how long to retry before skipping the trade.</p>
     <div class="credrow"><span class="clabel">Spread retry attempts</span><input type="number" min="0" step="1" id="eng-spread_retry_attempts" style="max-width:120px"></div>
     <div class="credrow"><span class="clabel">Spread retry wait (secs)</span><input type="number" min="0" step="1" id="eng-spread_retry_wait_secs" style="max-width:120px"></div>
     <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save spread retries</button>
   </div>
+  </div>
+
+  <div class="confapanel hidden" data-panel="xpub">
   <!-- X publishing — the ONE editor for these three values. A second copy used to be injected next to
        X Credentials with the same element ids, and getElementById returns only the first match, so this
        card's inputs were shadowed and never saved (user 2026-07-17, P-10). The morning-HVF market
@@ -1061,9 +1080,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="btn" style="margin-top:10px" onclick="saveXPub()">Save X publishing settings</button>
     <span id="xpub-msg" style="font-size:12px;margin-left:8px"></span>
   </div>
+  </div>
 
   <!-- Shared/admin credential sections (Supabase, X Credentials, Slack, Server) are injected here by
-       renderCredentials — moved off Configuration (User) (user 2026-07-17, P-03). -->
+       renderCredentials as their own .confapanel + pill (user 2026-07-17, P-03 then P-28). -->
   <div id="cfgadmin-creds"></div>
 </div>
 
@@ -1353,7 +1373,18 @@ function render(){
   _sortArrows("data-k",sortK,sortDir);   // show the sort arrow (incl. the default Dist→Entry, user 2026-07-11)
 }
 
-function closeDetail(){SEL=null;$("detail").classList.add("hidden");render();}
+// The instrument detail lives inside the Scanner view, so opening one from another tab has to jump to
+// Scanner first. Closing it then stranded you there (user 2026-07-17, P-29: "clicking on instrument name
+// within performance works but on closing the detail, it goes to Scanner tab"). openDetailFrom() records
+// the origin tab and closeDetail() returns to it.
+let DETAIL_FROM=null;
+function openDetailFrom(tab,t){DETAIL_FROM=tab;showTab("scanner");showDetail(t);}
+function closeDetail(){
+  SEL=null;$("detail").classList.add("hidden");
+  const back=DETAIL_FROM; DETAIL_FROM=null;
+  if(back&&back!=="scanner"&&tabAllowed(back)){showTab(back);return;}   // back where we came from
+  render();
+}
 
 function showDetail(t){
   SEL=t; render();
@@ -1894,6 +1925,13 @@ function confShow(panel){
   document.querySelectorAll("#view-config .confpanel").forEach(p=>p.classList.toggle("hidden",p.dataset.panel!==panel));
   document.querySelectorAll("#confnav .pill").forEach(b=>b.classList.toggle("active",b.dataset.panel===panel));
 }
+// Configuration (Admin) sub-tabs — the same one-panel-at-a-time approach as Configuration (User), which
+// the user rates highly (user 2026-07-17, P-28). Separate class (.confapanel) and nav from confShow's so
+// the two pages cannot select each other's panels.
+function confAdminShow(panel){
+  document.querySelectorAll("#view-configadmin .confapanel").forEach(p=>p.classList.toggle("hidden",p.dataset.panel!==panel));
+  document.querySelectorAll("#confadminnav .pill").forEach(b=>b.classList.toggle("active",b.dataset.panel===panel));
+}
 function renderCredentials(){
   fetch("/api/credentials",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
@@ -1913,29 +1951,33 @@ function renderCredentials(){
         const head=`<h4>${sec.id}${sec.admin_only?' <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span>':sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
           <p class="muted" style="font-size:12px;margin:0 0 8px">${sec.note}</p>${rows}${btn}
           <div id="cred-msg-${sec.id}" style="font-size:12px;margin-top:6px"></div>`;
-        // Admin-only sections are plain stacked cards on Configuration (Admin); user sections stay as
-        // switchable panels on Configuration (User) (user 2026-07-17, P-03).
+        // Admin-only sections live on Configuration (Admin), user sections on Configuration (User)
+        // (user 2026-07-17, P-03) — each as a switchable panel behind its own pill (P-28).
         return sec.admin_only
-          ? {admin:true, html:`<div class="card"${amber}>${head}</div>`}
+          ? {admin:true, id:sec.id, html:`<div class="confapanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"${amber}>${head}</div></div>`}
           : {admin:false, html:`<div class="confpanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"${amber}>${head}</div></div>`};
       });
       $("cfg-creds").innerHTML=cards.filter(c=>!c.admin).map(c=>c.html).join("");
       const adminBox=$("cfgadmin-creds");
       if(adminBox)adminBox.innerHTML=cards.filter(c=>c.admin).map(c=>c.html).join("");
-      // One nav pill per USER credential section. Email (Yahoo) sits at the END of the options
-      // (user 2026-07-17, P-05); the admin sections no longer produce pills at all (P-03).
-      document.querySelectorAll("#confnav .pill.credpill").forEach(p=>p.remove());
+      // One nav pill per credential section: user sections onto Configuration (User) with Email (Yahoo)
+      // last (user 2026-07-17, P-05); admin sections onto Configuration (Admin)'s own nav (P-28).
+      document.querySelectorAll("#confnav .pill.credpill,#confadminnav .pill.credpill").forEach(p=>p.remove());
       const icons={IG:"🔑",Supabase:"🗄️","X Credentials":"𝕏",Slack:"💬",Server:"🖥️","Email (Yahoo)":"✉️"};
-      (j.sections||[]).filter(s=>s.scope==="app"&&!s.admin_only).forEach(s=>{
+      (j.sections||[]).filter(s=>s.scope==="app").forEach(s=>{
+        const admin=!!s.admin_only, nav=$(admin?"confadminnav":"confnav");
+        if(!nav)return;
         const b=document.createElement("button");
-        b.className="pill credpill";
+        b.className="pill credpill"+(admin?" adminpill":"");
         b.dataset.panel=s.id; b.textContent=`${icons[s.id]||"🧩"} ${s.id}`;
-        b.onclick=()=>confShow(s.id);
-        $("confnav").appendChild(b);
+        b.onclick=()=>(admin?confAdminShow:confShow)(s.id);
+        nav.appendChild(b);
       });
       if(window.ENGINE_VALS)Object.entries(ENGINE_VALS).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});
       const cur=document.querySelector("#confnav .pill.active")?.dataset.panel;
       confShow(document.querySelector(`#view-config .confpanel[data-panel="${cur}"]`)?cur:"preferences");
+      const curA=document.querySelector("#confadminnav .pill.active")?.dataset.panel;
+      confAdminShow(document.querySelector(`#view-configadmin .confapanel[data-panel="${curA}"]`)?curA:"engine");
     })
     .catch(()=>{$("cfg-creds").innerHTML=`<div class="muted">Could not load credentials — try logging in again.</div>`;});
 }
@@ -2296,7 +2338,7 @@ function _renderPerformance(){
   const nT=sel.filter(r=>r.state==="TARGET").length, nS=sel.filter(r=>r.state==="STOPPED").length, nO=sel.filter(r=>r.state==="OPEN").length;
   $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${sel.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${sel.length!==all.length?` of ${all.length}`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("pftab-count").textContent=`(${sel.length})`;
-  $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`showTab('scanner');showDetail('${r.ticker}')`}">
+  $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
     <td><b>${disp(r.ticker)}</b></td><td>${nm40(r.name)}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
     <td>${ob(`<b style="color:${_stcol(r.state)}">${r.state||''}</b>`)}</td>
@@ -2494,7 +2536,7 @@ function renderPreorders(){
       <td>${(r.timeframe||'').replace('daily-','D')}</td>
       <td>${r.added||''}</td><td>${r.source||''}</td></tr>`;}).join("")
     || `<tr><td colspan="18" class="empty">No pre-orders right now.</td></tr>`;
-  document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=e=>{if(e.target.type==="checkbox")return;showTab('scanner');showDetail(tr.dataset.t);});
+  document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=e=>{if(e.target.type==="checkbox")return;openDetailFrom('preorders',tr.dataset.t);});   // return here on close (P-29)
   $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)   // keep tab count in sync after delete (user 2026-07-06)
   poUpdateBtn();
 }
