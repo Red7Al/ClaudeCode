@@ -31,6 +31,28 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .subnav .subpill.adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a)}
 /* Settings sub-tabs sit in the CENTRAL TOP ROW, same as Operations (user 2026-07-17, P-04 — reverts the
    2026-07-13 left-hand column). No .subnav-settings override: the default .subnav row styling applies. */
+/* Multi-select filters (user 2026-07-17, P-08). The bare <select multiple size=5> list boxes were the
+   "ugly filters": each one burned 5 rows of sidebar whether or not it was in use, showed no summary of
+   what was picked, and needed ctrl/cmd-click to multi-select. These render a compact dropdown that shows
+   the current selection and only opens the checkbox list on click. The real <select> stays in the DOM
+   (visually hidden) and remains the source of truth, so pass()/reset/showall/user defaults are unchanged. */
+.msel{position:relative}
+.msel select[multiple]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.msel-btn{width:100%;display:flex;align-items:center;gap:6px;text-align:left;cursor:pointer;
+  background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;font-size:13px}
+.msel-btn:hover{border-color:var(--accent)}
+.msel-btn .msel-txt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msel-btn .msel-caret{flex:none;opacity:.6;font-size:10px}
+.msel-btn.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.msel-pop{position:absolute;z-index:60;top:calc(100% + 4px);left:0;right:0;max-height:230px;overflow:auto;
+  background:var(--bg);border:1px solid var(--accent);border-radius:8px;padding:5px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.msel-pop.hidden{display:none}
+.msel-pop label{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:5px;cursor:pointer;font-size:13px;white-space:nowrap}
+.msel-pop label:hover{background:var(--chip)}
+.msel-pop input{accent-color:var(--accent);margin:0}
+.msel-clear{width:100%;margin-top:3px;border-top:1px solid var(--line);padding-top:5px;background:none;border:none;
+  color:var(--muted);font:inherit;font-size:12px;cursor:pointer;text-align:left;padding-left:7px}
+.msel-clear:hover{color:var(--fg)}
 #view-preorders{padding:10px 16px}
 .gloss .card>div>div{padding:5px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.45}
 .gloss .card>div>div:last-child{border-bottom:none}
@@ -325,7 +347,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <div class="layout" id="view-scanner">
   <aside id="aside" class="collapsed">
     <div class="f"><label>Search name / ticker</label><input id="f_search" type="text" placeholder="e.g. Howden, ABF, gold"></div>
-    <h3>Direction & place <span class="muted" style="font-weight:400;font-size:10px;text-transform:none;letter-spacing:0">(ctrl/⌘-click for several)</span></h3>
+    <h3>Direction & place <span class="muted" style="font-weight:400;font-size:10px;text-transform:none;letter-spacing:0">(tick any number)</span></h3>
     <div class="f"><label>Direction</label><select id="f_dir" multiple size="3"><option>BULL</option><option>BEAR</option><option value="—">— (none)</option></select></div>
     <div class="f"><label>Location (Geography)</label><select id="f_loc" multiple size="4"></select></div>
     <div class="f"><label>Market</label><select id="f_mkt" multiple size="5"></select></div>
@@ -1305,6 +1327,64 @@ function showDetail(t){
 
 function applyAll(){render(); if(SEL&&!$("detail").classList.contains("hidden")){const r=DATA.find(x=>x.ticker===SEL);if(r&&pass(r))showDetail(SEL);else{$("detail").classList.add("hidden");SEL=null;}}}
 
+// ── Multi-select filter dropdowns (user 2026-07-17, P-08) ────────────────────────────────────────────
+// Wrap each sidebar <select multiple> in a dropdown: closed it shows what's picked; open it's a checkbox
+// list (no ctrl/cmd-click). The <select> stays the single source of truth — every read (pass()), every
+// write (reset / showall / applyUserDefaults / chart clicks) keeps working untouched; msyncAll() just
+// repaints the button + boxes from it. Options arrive later via fillSel(), so the list is built on open.
+const MSEL_IDS=["f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf"];
+function _mselLabel(sel){
+  const on=[...sel.selectedOptions].filter(o=>o.value!=="");
+  if(!on.length)return "All";
+  if(on.length===1)return on[0].textContent;
+  return `${on.length} selected`;
+}
+function msyncAll(){
+  MSEL_IDS.forEach(id=>{
+    const sel=$(id), wrap=sel&&sel.closest(".msel"); if(!wrap)return;
+    const on=[...sel.selectedOptions].filter(o=>o.value!=="").length;
+    const btn=wrap.querySelector(".msel-btn");
+    btn.querySelector(".msel-txt").textContent=_mselLabel(sel);
+    btn.classList.toggle("on",on>0);
+    wrap.querySelectorAll(".msel-pop input").forEach(cb=>{
+      const o=[...sel.options].find(o=>o.value===cb.value); cb.checked=!!(o&&o.selected);});
+  });
+}
+function _mselBuild(wrap,sel){
+  const pop=wrap.querySelector(".msel-pop");
+  pop.innerHTML=[...sel.options].map(o=>
+    `<label><input type="checkbox" value="${o.value.replace(/"/g,"&quot;")}"${o.selected?" checked":""}> ${o.textContent}</label>`).join("")
+    +`<button type="button" class="msel-clear">Clear</button>`;
+  pop.querySelectorAll("input").forEach(cb=>cb.onchange=()=>{
+    const o=[...sel.options].find(o=>o.value===cb.value); if(o)o.selected=cb.checked;
+    sel.dispatchEvent(new Event("input",{bubbles:true}));   // drives the existing applyAll listener
+    msyncAll();});
+  pop.querySelector(".msel-clear").onclick=()=>{
+    [...sel.options].forEach(o=>o.selected=false);
+    sel.dispatchEvent(new Event("input",{bubbles:true}));
+    msyncAll();};
+}
+function mselInit(){
+  MSEL_IDS.forEach(id=>{
+    const sel=$(id); if(!sel||sel.closest(".msel"))return;
+    const wrap=document.createElement("div"); wrap.className="msel";
+    sel.parentNode.insertBefore(wrap,sel); wrap.appendChild(sel);
+    wrap.insertAdjacentHTML("beforeend",
+      `<button type="button" class="msel-btn"><span class="msel-txt">All</span><span class="msel-caret">▼</span></button>`
+      +`<div class="msel-pop hidden"></div>`);
+    const btn=wrap.querySelector(".msel-btn"), pop=wrap.querySelector(".msel-pop");
+    btn.onclick=e=>{e.stopPropagation();
+      const opening=pop.classList.contains("hidden");
+      document.querySelectorAll(".msel-pop").forEach(p=>p.classList.add("hidden"));   // one open at a time
+      if(opening){_mselBuild(wrap,sel);pop.classList.remove("hidden");}};
+    pop.onclick=e=>e.stopPropagation();
+  });
+  msyncAll();
+}
+document.addEventListener("click",()=>document.querySelectorAll(".msel-pop").forEach(p=>p.classList.add("hidden")));
+document.addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelectorAll(".msel-pop").forEach(p=>p.classList.add("hidden"));});
+mselInit();
+
 document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=(sortK===k)?-sortDir:-1;sortK=k;render();_sortArrows("data-k",sortK,sortDir);});
 document.querySelectorAll("th[data-pk]").forEach(th=>th.onclick=()=>{const k=th.dataset.pk;poSortDir=(poSortK===k)?-poSortDir:1;poSortK=k;renderPreorders();_sortArrows("data-pk",poSortK,poSortDir);});
 document.querySelectorAll("th[data-ok]").forEach(th=>th.onclick=()=>{const k=th.dataset.ok;ooSortDir=(ooSortK===k)?-ooSortDir:-1;ooSortK=k;paintOrderOps();_sortArrows("data-ok",ooSortK,ooSortDir);});
@@ -1329,8 +1409,8 @@ const MF_IDS=["mf_sector","mf_direction","mf_status","mf_location","mf_market","
 $("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");
   // Built-in defaults first, then the user's OWN saved defaults on top (Config tab, user 2026-07-03).
   $("f_qmin").value=45;$("f_rrmin").value=3.1;$("f_dsmax").value=90;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;
-  applyUserDefaults();applyAll();};
-$("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");signalOnly=false;$("signalonly").innerHTML='Show Squeeze Only <span style="color:var(--bear)">✗</span>';$("f_days").value=365;$("dlbl").textContent=365;applyAll();};
+  applyUserDefaults();msyncAll();applyAll();};   // msyncAll: repaint the P-08 dropdowns after a bulk write
+$("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");signalOnly=false;$("signalonly").innerHTML='Show Squeeze Only <span style="color:var(--bear)">✗</span>';$("f_days").value=365;$("dlbl").textContent=365;msyncAll();applyAll();};
 $("togglefilters").onclick=()=>{const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").innerHTML="Show Filters "+(hidden?'<span style="color:var(--bear)">✗</span>':'<span style="color:var(--bull)">✓</span>');};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").innerHTML="Show Squeeze Only "+(signalOnly?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');applyAll();};
 let _refStart=0, _lastTens=-1;
@@ -2309,6 +2389,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     DATA=j.records||[]; DATA.forEach(augment);
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");
+    msyncAll();   // options only exist now — repaint the P-08 dropdown buttons (incl. any user defaults)
     render();
     $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)
     // Introduction example: a real funnel card — Howden if it's a current setup, else the best triggered name.
