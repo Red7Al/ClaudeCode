@@ -90,6 +90,11 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 .vizbox>.bars>.bar .fill{height:min(100%,18px);min-height:11px}
 .vizbox>.bars>.bar .tk,.vizbox>.bars>.bar .n{font-size:clamp(10px,1.6vh,12px)}
 .vizbox>div:not(.bars){flex:1;display:flex;align-items:center}
+/* P-15 — short charts stacked into a shared column by packViz(). .measuring drops the stretch so the
+   packer can read each card's NATURAL height before deciding. */
+.viz.measuring{align-items:flex-start}
+.vizcol{display:flex;flex-direction:column;gap:10px;flex:none;align-self:stretch}
+.vizcol>.vizbox{width:100%;max-width:none}
 .vizbox h5{margin:0 0 6px;font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em}
 .bars{display:flex;flex-direction:column;gap:3px;min-width:0}
 .bar{display:flex;align-items:center;gap:6px;font-size:11px}
@@ -1178,6 +1183,48 @@ function pieChart(title,counts,fk){
   return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div style="display:flex;gap:8px;align-items:center">
     <svg viewBox="0 0 40 40" width="86" height="86">${seg}</svg><div class="bars" style="min-width:120px">${legend}</div></div></div>`;
 }
+// ── P-15: stack short charts into a shared column (user 2026-07-17) ─────────────────────────────────
+// "If charts next to each other total less than the tallest, stack them over each other." Purely a
+// MEASURED decision — never hardcode which charts pair up. Logged out, LIMITED strips market/location/
+// timeframe so each collapses to a single "—" bar and stacking is obviously right; logged in the same
+// charts carry 6-8 bars and must stay side by side. Same code has to serve both.
+//
+// Order is preserved: cards are packed left-to-right, so P-12a (Market+Sector lead) and P-11a (Ticker
+// far right) still hold — a stacked column simply occupies the slot its first card would have had.
+const VIZ_GAP=10;
+function packViz(id){
+  const c=document.getElementById(id); if(!c) return;
+  // Undo any previous packing so this is idempotent across re-renders.
+  c.querySelectorAll(".vizcol").forEach(col=>{
+    while(col.firstChild) col.parentNode.insertBefore(col.firstChild, col);
+    col.remove();});
+  // Flex items are .vizsector wrappers and (via .vizbars display:contents) bare .vizbox cards.
+  const items=[...c.children].flatMap(ch=>ch.classList.contains("vizbars")?[...ch.children]:[ch]);
+  if(items.length<3) return;
+  c.classList.add("measuring");                       // natural heights, not the P-14 stretched ones
+  const h=items.map(el=>el.getBoundingClientRect().height);
+  c.classList.remove("measuring");
+  const tall=Math.max(...h);
+  if(!tall) return;
+  // Greedy left-to-right: a card starts a column; later SHORT cards join it while they still fit
+  // under the tallest card's height. Only cards that are themselves short enough to pair are moved.
+  const used=new Array(items.length).fill(false);
+  for(let i=0;i<items.length;i++){
+    if(used[i]||h[i]>tall*0.6) continue;              // tall cards are never stacked
+    let stack=[i], total=h[i];
+    for(let j=i+1;j<items.length;j++){
+      if(used[j]||h[j]>tall*0.6) continue;
+      if(total+VIZ_GAP+h[j]<=tall){ stack.push(j); total+=VIZ_GAP+h[j]; }
+    }
+    if(stack.length<2) continue;                      // nothing gained
+    const col=document.createElement("div"); col.className="vizcol";
+    items[stack[0]].parentNode.insertBefore(col, items[stack[0]]);
+    stack.forEach(k=>{ used[k]=true;
+      // unwrap a .vizsector so the card itself sits in the column
+      const el=items[k], box=el.classList.contains("vizsector")?el.firstElementChild:el;
+      col.appendChild(box); if(el!==box) el.remove(); });
+  }
+}
 function renderViz(rows){
   const by=k=>rows.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
   // Bars wrap among themselves in the top row; the Sector pie gets its own row so nothing ever
@@ -1200,6 +1247,7 @@ function renderViz(rows){
       barChart("Location",by("location"),"mf_location")+
       barChart("Timeframe",by("timeframe"),"mf_timeframe")+
     `</div>`;
+  packViz("viz");   // P-15
 }
 
 function render(){
@@ -2140,6 +2188,7 @@ function _renderPerformance(){
     `<div class="vizsector">`+barChart("Market",by("market"),"pff_market")+`</div>`+          /* Market left of Sector (P-12) */
     `<div class="vizsector">`+pieChart("Sector",by("sector"),"pff_sector")+`</div>`+
     `<div class="vizsector">`+barChart("Outcome",by("state"),"pff_status",_stcol)+`</div>`;
+  packViz("pf-viz");   // P-15
   const sel=all.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_status",r.state));
   _renderPfSummary(sel);
   // Top Quality/R:R buckets by average return across the (filtered) recorded triggers.
@@ -2324,6 +2373,7 @@ function renderPreorders(){
       barChart("Location",pby("location"),"pof_location")+
       barChart("Timeframe",pby("timeframe"),"pof_timeframe")+
     `</div>`;
+  packViz("po-viz");   // P-15
   $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
     return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
       ${_favCell(r.ticker)}<td><b>${disp(r.ticker)}</b></td><td>${nm40(r.name)}</td>
