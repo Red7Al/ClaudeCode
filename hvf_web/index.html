@@ -920,7 +920,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
   <h2 class="sec">Every recorded trigger</h2>
   <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0"><span id="pf-count"></span></div>
+    <!-- Name/ticker search, as on Scanner / Pre-orders / Order Ops / X Posts (user 2026-07-17, P-17) -->
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="pf-count"></span>
+      <input id="pf-search" placeholder="Search name / ticker…" oninput="_renderPerformance()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
     <div class="tablewrap"><table>
       <thead><tr><th data-pf="ticker">Ticker</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="stop">Stop</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th></tr></thead>
       <tbody id="pf-rows"></tbody>
@@ -1054,6 +1056,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <h1>IG Account</h1>
   <p class="lede">Your own IG account — live open positions and working orders. Shown for the account whose credentials you use (owner uses the shared account; others use their own from Configuration → IG).</p>
   <div id="ig-note" style="font-size:12px;margin-bottom:10px"></div>
+  <!-- One name/ticker search for the tab — filters BOTH tables below, since they are the same
+       instrument universe and two boxes on one page would just be clutter (user 2026-07-17, P-17). -->
+  <div style="margin-bottom:10px"><input id="ig-search" placeholder="Search name / ticker…" oninput="paintIgAccount()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="ig-pos-count"></span></div>
     <div class="tablewrap"><table>
@@ -2171,23 +2176,34 @@ function renderMarketsAdmin(){
 }
 document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();_sortArrows("data-ma",maSortK,maSortDir);});
 // ── IG Account tab (user 2026-07-10): the acting user's own IG open positions + working orders ──
+let IG_POS=[], IG_ORD=[];
+const _igDtag=d=>d?`<span class="tag ${d==='BUY'?'bull':'bear'}">${d}</span>`:'';
+// Friendly order-source labels (user 2026-07-13): WEB_BRIDGE is the 2-hour Squeeze-scanner bridge.
+const _igSrc=s=>({WEB_BRIDGE:"Squeeze (bridge)",WEB_MANUAL:"Manual (web)"}[s]||s||'—');
+// Paint from the last fetch, honouring the tab's name/ticker search (user 2026-07-17, P-17). Split out
+// of renderIgAccount so typing filters in place instead of re-hitting the IG API on every keystroke —
+// IG has a rate-limited allowance, so re-fetching per character is not an option.
+function paintIgAccount(){
+  const q=(($("ig-search")||{}).value||"").trim().toLowerCase();
+  const hit=r=>!q||(((r.name||'')+' '+(r.ticker||r.epic||'')).toLowerCase().includes(q));
+  const pos=IG_POS.filter(hit), ord=IG_ORD.filter(hit);
+  const cnt=(n,tot,word)=>`<b style="font-size:15px;color:var(--fg)">${n}</b> ${word}${n===1?'':'s'}${q&&tot!==n?` <span class="muted">of ${tot}</span>`:''}`;
+  $("ig-pos-count").innerHTML=cnt(pos.length,IG_POS.length,"open position");
+  $("ig-ord-count").innerHTML=cnt(ord.length,IG_ORD.length,"working order");
+  $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td><b>${p.ticker||p.epic||''}</b></td><td>${nm40(p.name)}</td><td>${_igDtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
+  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td><b>${o.ticker||o.epic||''}</b></td><td>${nm40(o.name)}</td><td>${_igDtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td></tr>`).join("")||`<tr><td colspan="8" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
+}
 function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
   $("ig-note").textContent="";
   $("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading…</td></tr>`;
   $("ig-ord-rows").innerHTML=`<tr><td colspan="8" class="empty">Loading…</td></tr>`;
-  const dtag=d=>d?`<span class="tag ${d==='BUY'?'bull':'bear'}">${d}</span>`:'';
-  // Friendly order-source labels (user 2026-07-13): WEB_BRIDGE is the 2-hour Squeeze-scanner bridge.
-  const srcLbl=s=>({WEB_BRIDGE:"Squeeze (bridge)",WEB_MANUAL:"Manual (web)"}[s]||s||'—');
   fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
-      const pos=j.positions||[], ord=j.orders||[];
+      IG_POS=j.positions||[]; IG_ORD=j.orders||[];
       $("ig-note").innerHTML=j.note?`<span class="muted">🔒 ${j.note}</span>`:"";
-      $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${pos.length}</b> open position${pos.length===1?'':'s'}`;
-      $("ig-ord-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${ord.length}</b> working order${ord.length===1?'':'s'}`;
-      $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td><b>${p.ticker||p.epic||''}</b></td><td>${nm40(p.name)}</td><td>${dtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td></tr>`).join("")||`<tr><td colspan="9" class="empty">No open positions.</td></tr>`;
-      $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td><b>${o.ticker||o.epic||''}</b></td><td>${nm40(o.name)}</td><td>${dtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${srcLbl(o.source)}</td><td>${o.good_till||''}</td></tr>`).join("")||`<tr><td colspan="8" class="empty">No working orders.</td></tr>`;
+      paintIgAccount();
     })
     .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="8" class="empty">—</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
@@ -2224,7 +2240,11 @@ function _renderPerformance(){
     `<div class="vizsector">`+pieChart("Sector",by("sector"),"pff_sector")+`</div>`+
     `<div class="vizsector">`+barChart("Outcome",by("state"),"pff_status",_stcol)+`</div>`;
   packViz("pf-viz");   // P-15
-  const sel=all.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_status",r.state));
+  // Name/ticker search (user 2026-07-17, P-17). Applied alongside the chart filters, so the summary, the
+  // Quality/R:R buckets and the row count all reflect the search — same contract as the other tabs.
+  const _pfq=(($("pf-search")||{}).value||"").trim().toLowerCase();
+  let sel=all.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_status",r.state));
+  if(_pfq)sel=sel.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(_pfq));
   _renderPfSummary(sel);
   // Top Quality/R:R buckets by average return across the (filtered) recorded triggers.
   const N=innerWidth>=1400?8:innerWidth>=900?4:3;
