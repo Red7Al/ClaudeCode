@@ -199,6 +199,13 @@ def location_of_ticker(ticker: str) -> str:
         return "Asia"
     if t.endswith(".AX"):
         return "Oceania"
+    # Euronext venues — Paris/Amsterdam/Milan/Brussels/Oslo/Lisbon/Dublin. MUST mirror
+    # hvf_web/build_snapshot._location_of, which gained this branch with the Euronext universe
+    # (user 2026-07-14). Without it every Euronext ticker fell through to "US" here while the web app
+    # called it "Europe" — the order layer and the scanner disagreeing about the same instrument
+    # (user 2026-07-17, P-27: UMG.AS).
+    if t.endswith((".PA", ".AS", ".MI", ".BR", ".OL", ".LS", ".IR")):
+        return "Europe"
     return "US"
 
 

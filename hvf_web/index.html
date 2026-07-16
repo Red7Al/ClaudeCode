@@ -2300,7 +2300,9 @@ function _renderPerformance(){
     <td><b>${disp(r.ticker)}</b></td><td>${nm40(r.name)}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
     <td>${ob(`<b style="color:${_stcol(r.state)}">${r.state||''}</b>`)}</td>
-    <td>${ob(r.market||'')}</td><td>${r.trig_date||'—'}</td>   <!-- triggered date stays visible logged-out (user 2026-07-17, P-17b) -->
+    <!-- Market and Triggered stay visible logged-out (user 2026-07-17, P-26 and P-17b); the rest of the
+         row is still obfuscated by ob(). /api/performance is public and already returns both. -->
+    <td>${r.market||''}</td><td>${r.trig_date||'—'}</td>
     <td>${ob(f2(r.entry))}</td><td style="color:var(--bear)">${ob(f2(r.stop))}</td><td style="color:var(--bull)">${ob(f2(r.target))}</td>
     <td>${ob(f2(r.current_price))}</td>
     <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
