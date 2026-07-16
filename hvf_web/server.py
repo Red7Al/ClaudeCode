@@ -508,6 +508,13 @@ def api_config():
         _wu.set_settings(name, s)
         _wu.log_event(name, "Saved broker leverage (Config)")
     if "exec" in body:
+        # GOLD-tier + a money path: these switches decide which monitor sources may place live IG orders
+        # on the shared trading account. The Trading (Momentum) panel that owns them is hidden below Gold,
+        # but hiding a panel is not authorisation — /api/config only requires a login, so before this
+        # check ANY logged-in guest/silver could POST {"exec":...} and flip live trading (user 2026-07-17).
+        # Admin is an access axis, not a subscription, so it does not substitute for Gold.
+        if _wu.get_subscription(name) != "gold":
+            return jsonify({"ok": False, "error": "Trading (Momentum) is a Gold-tier feature"}), 403
         for src, on in (body["exec"] or {}).items():
             if src in _cs.EXEC_SOURCES:
                 _cs.set_value(f"exec_{src}", "true" if on else "false", updated_by=name)
@@ -1452,8 +1459,11 @@ def api_order_ops():
 # Built from the RECORDED trigger events (hvf_triggers: entry/stop/target/dates captured the moment each
 # setup fired — point-in-time, immune to the mutable snapshot) and classified against price_history from
 # the trigger date forward: STOPPED (price hit the stop first), TARGET (hit the target first), or OPEN
-# (neither yet — marked to the freshest price). Entry/stop/target AND price_history are both in the
-# instrument's native (Yahoo) scale, so no unit mismatch. One row per recorded funnel instance, so the
+# (neither yet — marked to the freshest price). That trigger date is DERIVED from price
+# (_perf_trigger_date), not taken from recorded_at — recorded_at is only when a scan first noticed the
+# break, which for a late-added market is weeks late (user 2026-07-17, P-01). Entry/stop/target AND
+# price_history are both in the instrument's native (Yahoo) scale, so no unit mismatch. One row per
+# recorded funnel instance, so the
 # same ticker can appear several times (successive triggers). Cached briefly — it walks 100k+ price bars.
 _PERF_CACHE = {"ts": 0.0, "data": None}
 _PERF_TTL = 300   # seconds
@@ -1474,6 +1484,25 @@ def _perf_exit(bull: bool, entry: float, stop: float, target: float, bars: list)
     return None, None
 
 
+def _perf_trigger_date(bull: bool, entry: float, ready, bars: list, recorded):
+    """The date the setup actually FIRED, derived from price rather than from when a scan noticed it.
+
+    hvf_triggers.recorded_at is only the moment a scan first SAW the break, which is not the break: an
+    instrument added to the universe late (the Euronext top-100 landed 2026-07-14) records weeks after
+    it fired — RAND.AS broke its 26.28 entry on 07-01 but recorded_at says 07-14 (user 2026-07-17 P-01).
+
+    So replay hvf_clean's own trigger rule (a CLOSE beyond the entry pivot, hvf_clean.py rule 4) over the
+    bars from `ready` — the funnel's last pivot, before which the pattern did not yet exist, so an earlier
+    break is not this setup's. No lookahead: every level is fixed by pivots dated on or before `ready`.
+    Falls back to `recorded` when price_history cannot show the break (e.g. bars older than the store)."""
+    for bd, _hi, _lo, cl in bars:
+        if cl is None or (ready is not None and bd < ready):
+            continue
+        if (cl > entry) if bull else (cl < entry):
+            return min(bd, recorded) if recorded else bd
+    return recorded
+
+
 @app.route("/api/performance")
 def api_performance():
     """Every recorded trigger with its committed levels and realised/open outcome. Public (the tab is
@@ -1489,7 +1518,7 @@ def api_performance():
         try:
             trigs = db.run(
                 "select ticker, hvf_type, timeframe, quality, risk_reward, entry_level, stop_level, "
-                "target_level, market, recorded_at::date from hvf_triggers "
+                "target_level, market, recorded_at::date, h3_date, l3_date from hvf_triggers "
                 "where entry_level is not null and stop_level is not null and target_level is not null "
                 "order by recorded_at desc") or []
             # Group by ticker so each instrument's price_history is fetched once.
@@ -1497,14 +1526,18 @@ def api_performance():
             for t in trigs:
                 by_tk.setdefault(t[0], []).append(t)
             for tk, rows in by_tk.items():
-                d0 = min(r[9] for r in rows)   # earliest trigger date for this ticker
+                # Bars from the earliest funnel completion, not from recorded_at: the real break can
+                # predate the recording by weeks (P-01), and _perf_trigger_date has to see those bars.
+                d0 = min((d for r in rows for d in (r[10], r[11], r[9]) if d), default=None)
                 bars = db.run("select bar_date, high, low, close from price_history "
                               "where ticker = :tk and bar_date >= :d0 order by bar_date",
                               tk=tk, d0=d0) or []
                 srec = snap.get(tk, {})
-                for (_tk, ht, tf, q, rr, e, s, t, mk, td) in rows:
+                for (_tk, ht, tf, q, rr, e, s, t, mk, rec, h3d, l3d) in rows:
                     e, s, t = float(e), float(s), float(t)
                     bull = (ht == "BULLISH")
+                    ready = max([d for d in (h3d, l3d) if d], default=None)   # funnel's last pivot
+                    td = _perf_trigger_date(bull, e, ready, bars, rec)
                     path = [(b[1], b[2], b[3]) for b in bars if b[0] >= td]
                     # "Now" price: prefer the live snapshot, else fall back to the freshest close in
                     # price_history (not every recorded trigger is still in the current snapshot).

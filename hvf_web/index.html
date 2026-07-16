@@ -29,18 +29,8 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .subnav .subpill.active{background:var(--grad);color:#fff;border-color:transparent}
 .subnav .subpill.adminpill{border-color:#d29922}
 .subnav .subpill.adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a)}
-/* Settings sub-tabs down the LEFT-HAND SIDE (user 2026-07-13) — a fixed left column of buttons with the
-   settings content shifted right of it. Operations keeps the centered top bar. */
-.subnav.subnav-settings{flex-direction:column;align-items:stretch;justify-content:flex-start;gap:8px;
-  position:fixed;top:49px;left:0;bottom:0;width:196px;overflow:auto;border-right:1px solid var(--line);
-  border-bottom:none;padding:14px 12px}
-.subnav.subnav-settings .subpill{text-align:left;padding:9px 12px;font-size:13px}
-body.settingsnav #view-config,body.settingsnav #view-markets,
-body.settingsnav #view-configadmin,body.settingsnav #view-marketsadmin{margin-left:196px}
-@media(max-width:640px){/* stack again on small screens */
-  .subnav.subnav-settings{position:static;flex-direction:row;flex-wrap:wrap;width:auto;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:7px 16px}
-  body.settingsnav #view-config,body.settingsnav #view-markets,
-  body.settingsnav #view-configadmin,body.settingsnav #view-marketsadmin{margin-left:0}}
+/* Settings sub-tabs sit in the CENTRAL TOP ROW, same as Operations (user 2026-07-17, P-04 — reverts the
+   2026-07-13 left-hand column). No .subnav-settings override: the default .subnav row styling applies. */
 #view-preorders{padding:10px 16px}
 .gloss .card>div>div{padding:5px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.45}
 .gloss .card>div>div:last-child{border-bottom:none}
@@ -466,9 +456,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="pill active" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
     <button class="pill" data-panel="tabvis" onclick="confShow('tabvis')">👁️ Tab visibility</button>
     <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
+    <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>   <!-- right of IG (user 2026-07-17, P-25) -->
     <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>
-    <button class="pill" data-panel="trading_mo" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
-    <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>
+    <!-- Gold-tier only (user 2026-07-17, P-06): ships HIDDEN and is revealed by renderConfig() only for a
+         Gold account, so a failure to run the gate leaves the feature hidden rather than exposed. -->
+    <button class="pill" data-panel="trading_mo" style="display:none" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
     <!-- Admin-only engine settings moved to the "Configuration (Admin)" tab (user 2026-07-10). -->
     <!-- credential-section pills (Supabase/X/Slack/Server/Email) are injected here by renderCredentials -->
   </nav>
@@ -823,7 +815,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <!-- Markets (all users, user 2026-07-10) — one row per market with live coverage from the snapshot. -->
 <div id="view-markets" class="hidden doc" style="max-width:1120px">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Coverage</span><span class="grow"></span><button class="btn" onclick="renderMarkets()">↻ Refresh</button></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Coverage</span><span class="grow"></span><button class="btn" onclick="refreshMarkets(event)">↻ Refresh</button></div>
   <h1>Markets</h1>
   <p class="lede">Every market we scan, with its live coverage from the current snapshot — how many instruments it holds and how many have a squeeze setup right now. Click a market to filter the Scanner to it.</p>
   <section class="gsec" style="border-left-color:var(--accent)">
@@ -946,13 +938,24 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="credrow"><span class="clabel">Spread retry wait (secs)</span><input type="number" min="0" step="1" id="eng-spread_retry_wait_secs" style="max-width:120px"></div>
     <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save spread retries</button>
   </div>
-  <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>X publishing <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
-    <p class="muted" style="font-size:12px">Application-wide X-publishing limits, stored in the database and read by the publisher on both the local server and GitHub Actions (code fallback if the DB is unreachable).</p>
+  <!-- X publishing — the ONE editor for these three values. A second copy used to be injected next to
+       X Credentials with the same element ids, and getElementById returns only the first match, so this
+       card's inputs were shadowed and never saved (user 2026-07-17, P-10). The morning-HVF market
+       chooser that panel owned now lives here too. -->
+  <div class="card" style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>X publishing <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+    <p class="muted" style="font-size:12px">Application-wide X-publishing limits, stored in the database and read by the publisher on both the local server and GitHub Actions (code fallback if the DB is unreachable). Credentials live in <b>X Credentials</b> below.</p>
     <div class="credrow"><span class="clabel">Max X publications per day (UTC)</span><input type="number" min="0" step="1" id="eng-x_max_per_day" style="max-width:120px"></div>
     <div class="credrow"><span class="clabel">Superinvestor lookback (days)</span><input type="number" min="0" step="1" id="eng-superinvestor_lookback_days" style="max-width:120px"></div>
     <div class="credrow"><span class="clabel">Min senator trades <span class="muted" style="font-weight:400">(not currently consumed by the engine)</span></span><input type="number" min="0" step="1" id="eng-min_senator_trades" style="max-width:120px"></div>
-    <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save X publishing settings</button>
+    <div style="margin-top:12px"><span class="clabel" style="display:block;margin-bottom:6px">Morning HVF tweets — markets to publish <span class="muted" style="font-weight:400">(default FTSE 100, FTSE 250, NASDAQ 100, S&amp;P 500)</span></span>
+      <div id="xhvf-markets" style="display:flex;flex-wrap:wrap;gap:8px">loading…</div></div>
+    <button class="btn" style="margin-top:10px" onclick="saveXPub()">Save X publishing settings</button>
+    <span id="xpub-msg" style="font-size:12px;margin-left:8px"></span>
   </div>
+
+  <!-- Shared/admin credential sections (Supabase, X Credentials, Slack, Server) are injected here by
+       renderCredentials — moved off Configuration (User) (user 2026-07-17, P-03). -->
+  <div id="cfgadmin-creds"></div>
 </div>
 
 <!-- Markets (Admin) (admin, default hidden, user 2026-07-10) — per-market coverage + data-import reprocessing. -->
@@ -1009,6 +1012,13 @@ function levType(r){const m=r.market||"";if(m==="FX")return"fx";if(m==="Indices"
 const levOf=r=>LEVERAGE[levType(r)];
 const f2=v=>(v==null||v==="")?"":(+v).toFixed(2);
 const disp=t=>(t||"").replace(/\.L$/,"");
+// Long legal names wreck table layout — Michelin's runs to 80 characters ("Compagnie Générale des
+// Établissements Michelin Société en commandite par actions"). Table reports show the first 40 with the
+// full name on hover (user 2026-07-17, P-23). Detail views keep the full name.
+const NAME_MAX=40;
+const _esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const nm40=n=>{const s=String(n??"");
+  return s.length<=NAME_MAX?_esc(s):`<span title="${_esc(s)}">${_esc(s.slice(0,NAME_MAX-1))}…</span>`;};
 const qcol=q=>q>=70?"var(--bull)":q>=50?"#d29922":"var(--bear)";   // quality colour: green / amber / red
 // "since trig" colour: green when price has moved in the trade's favour, red against.
 const trigCol=r=>{const c=r.chg_since_trig;if(c==null)return"var(--fg)";return c<0?"var(--bear)":c>0?"var(--bull)":"var(--fg)";};  // red when negative
@@ -1142,15 +1152,18 @@ function renderViz(rows){
   // the Market chart on any page (user 2026-07-03: it will have many entries).
   // Scanner charts use mf_* multi-select inputs (user 2026-07-03) — separate from the single-select
   // sidebar dropdowns; pass() honours both.
+  // Chart order (user 2026-07-17, P-12/P-13): Location left of Market, Market left of Sector. .vizbars is
+  // display:contents, so DOM order IS left-to-right order — the Sector pie moving last is what puts
+  // Location (in the bars) and Market ahead of it, while each keeps its own column as before.
   $("viz").innerHTML=
-    `<div class="vizsector">`+pieChart("Sector",by("sector"),"mf_sector")+`</div>`+
     `<div class="vizbars">`+
       barChart("Direction",by("direction"),"mf_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
       barChart("Status",by("status"),"mf_status",k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
       barChart("Location",by("location"),"mf_location")+
       barChart("Timeframe",by("timeframe"),"mf_timeframe")+
     `</div>`+
-    `<div class="vizsector">`+barChart("Market",by("market"),"mf_market")+`</div>`;
+    `<div class="vizsector">`+barChart("Market",by("market"),"mf_market")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",by("sector"),"mf_sector")+`</div>`;
 }
 
 function render(){
@@ -1163,7 +1176,7 @@ function render(){
   $("sctab-count").textContent=`(${rows.length})`;
   renderViz(rows);
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
-    ${_favCell(r.ticker)}<td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
+    ${_favCell(r.ticker)}<td><b>${disp(r.ticker)}</b></td><td>${nm40(r.name)}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
     <td>${r.market||''}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${r.sector||''}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.days_since??'')}</td>
@@ -1366,7 +1379,7 @@ let ROLE="guest", IS_ADMIN=false, HIDDEN_TABS=[], SHOWN_TABS=[];
 function tabAllowed(t){
   if(FEATURE_TABS.includes(t)&&!FEATURES[t])return false;   // feature tab off by default (user 2026-07-03)
   if(ADMIN_TABS.includes(t)&&!IS_ADMIN)return false;    // admin tabs require admin
-  if(t==="mfm"&&!(ROLE==="gold"||IS_ADMIN))return false;   // Multi-Factor Momentum is Gold-tier (user 2026-07-11)
+  if(t==="mfm"&&!goldOnly())return false;   // Multi-Factor Momentum is Gold-tier (user 2026-07-11; Gold ONLY 2026-07-17)
   if(!PUBLIC_TABS.includes(t)&&!AUTH)return false;      // login-required tab, not logged in
   if(DEFAULT_HIDDEN.has(t)&&!SHOWN_TABS.includes(t))return false;   // default-hidden unless opted in (user 2026-07-10)
   if(t==="config")return true;                          // config always available once logged in
@@ -1407,9 +1420,6 @@ function colorTabs(){
 function renderSubnav(parent,active){
   const sn=$("subnav"); if(!sn)return;
   const kids=parent?TAB_GROUPS[parent].filter(tabAllowed):[];
-  // Settings sub-tabs run DOWN THE LEFT-HAND SIDE (user 2026-07-13): body.settingsnav switches the
-  // sub-nav to a fixed left column and shifts the Settings views right. Operations keeps the top bar.
-  document.body.classList.toggle("settingsnav", parent==="settings" && kids.length>0);
   if(!kids.length){sn.style.display="none";sn.innerHTML="";sn.className="subnav";return;}
   sn.className="subnav"+(parent?" subnav-"+parent:"");
   sn.style.display="flex";
@@ -1461,7 +1471,7 @@ function paintXposts(){
   rows=genSort(rows,xSortK,xSortDir);
   $("xtab-count")&&($("xtab-count").textContent=`(${X_ROWS.length})`);
   $("x-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> tweets${rows.length!==X_ROWS.length?` <span class="muted">of ${X_ROWS.length}</span>`:''}`;
-  $("x-rows").innerHTML=rows.map(e=>`<tr><td>${e.published_at||''}</td><td><b>${disp(e.ticker)}</b></td><td>${e.name||''}</td><td>${e.market||''}</td><td>${e.thread>1?e.thread+' pts':'1'}</td><td><a href="${e.url}" target="_blank" rel="noopener">open ↗</a></td></tr>`).join("")||`<tr><td colspan="6" class="empty">No tweets yet.</td></tr>`;
+  $("x-rows").innerHTML=rows.map(e=>`<tr><td>${e.published_at||''}</td><td><b>${disp(e.ticker)}</b></td><td>${nm40(e.name)}</td><td>${e.market||''}</td><td>${e.thread>1?e.thread+' pts':'1'}</td><td><a href="${e.url}" target="_blank" rel="noopener">open ↗</a></td></tr>`).join("")||`<tr><td colspan="6" class="empty">No tweets yet.</td></tr>`;
 }
 function renderXposts(){fetch("/api/x-posts",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{X_ROWS=j.rows||[];paintXposts();}).catch(()=>{$("x-rows").innerHTML=`<tr><td colspan="6" class="empty">Could not load — try logging in again.</td></tr>`;});}
 document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.dataset.xk;xSortDir=(xSortK===k)?-xSortDir:-1;xSortK=k;paintXposts();_sortArrows("data-xk",xSortK,xSortDir);});
@@ -1656,15 +1666,21 @@ function applyUserDefaults(){
   Object.entries(USER_FILTERS).forEach(([k,v])=>{const el=$(k);if(el&&v!=null&&v!=="")el.value=v;});
   if(USER_FILTERS.f_days){$("dlbl").textContent=USER_FILTERS.f_days;}
 }
+// Gold-tier gate — the SINGLE rule for every Gold-only feature (Trading (Momentum) config panel, the
+// Multi-Factor Momentum tab). Gold means Gold (user 2026-07-17): admin is an access-control axis, not a
+// subscription level, so it no longer unlocks Gold features for a Silver/Guest account. Seed admins
+// default to a gold subscription, so this does not lock them out of anything.
+const goldOnly=()=>ROLE==="gold";
 // Configuration card navigation (user 2026-07-03): show one config panel at a time.
 function confShow(panel){
+  if(panel==="trading_mo"&&!goldOnly())panel="preferences";   // never open a Gold panel for a lesser tier
   document.querySelectorAll("#view-config .confpanel").forEach(p=>p.classList.toggle("hidden",p.dataset.panel!==panel));
   document.querySelectorAll("#confnav .pill").forEach(b=>b.classList.toggle("active",b.dataset.panel===panel));
 }
 function renderCredentials(){
   fetch("/api/credentials",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
-      $("cfg-creds").innerHTML=(j.sections||[]).map(sec=>{
+      const cards=(j.sections||[]).map(sec=>{
         const ro=!sec.editable;
         const rows=sec.fields.map(f=>{
           const state=f.set?`<span class="cstate on">Set</span>`:`<span class="cstate off">Not set</span>`;
@@ -1677,32 +1693,32 @@ function renderCredentials(){
         const btn=ro?`<span class="muted" style="font-size:12px">🔒 Read-only — the administrator manages these shared credentials.</span>`
           :`<button class="btn" style="margin-top:6px" onclick="saveCreds('${sec.id}')">Save ${sec.id} credentials</button>`;
         const amber=sec.admin_only?' style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"':'';
-        const xsettings=sec.id==="X Credentials"&&!ro?`</div><div class="confpanel hidden" data-panel="X Posts"><div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>X Posts settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
-          <p class="muted" style="font-size:12px">Publishing behaviour for the X account (credentials live in X Credentials).</p>
-          <div class="credrow"><span class="clabel">X posts per day (max)</span><input type="number" min="0" step="1" id="eng-x_max_per_day" style="max-width:120px"></div>
-          <div class="credrow"><span class="clabel">Superinvestor lookback (days)</span><input type="number" min="1" step="1" id="eng-superinvestor_lookback_days" style="max-width:120px"></div>
-          <div class="credrow"><span class="clabel">Min senator trades</span><input type="number" min="1" step="1" id="eng-min_senator_trades" style="max-width:120px"></div>
-          <div style="margin-top:12px"><span class="clabel" style="display:block;margin-bottom:6px">Morning HVF tweets — markets to publish <span class="muted" style="font-weight:400">(default FTSE 100, FTSE 250, NASDAQ 100, S&amp;P 500)</span></span>
-          <div id="xhvf-markets" style="display:flex;flex-wrap:wrap;gap:8px">loading…</div></div>
-          <button class="btn" style="margin-top:10px" onclick="saveXPosts()">Save X Posts settings</button></div>`:"";
-        return `<div class="confpanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"${amber}><h4>${sec.id}${sec.admin_only?' <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span>':sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
+        const head=`<h4>${sec.id}${sec.admin_only?' <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span>':sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
           <p class="muted" style="font-size:12px;margin:0 0 8px">${sec.note}</p>${rows}${btn}
-          <div id="cred-msg-${sec.id}" style="font-size:12px;margin-top:6px"></div></div>${xsettings}</div>`;}).join("");
-      // Inject a nav pill per credential section (amber for admin-only). Non-admin shared sections
-      // (Email (Yahoo)) go right after Preferences; admin-only ones append at the end (user 2026-07-03).
+          <div id="cred-msg-${sec.id}" style="font-size:12px;margin-top:6px"></div>`;
+        // Admin-only sections are plain stacked cards on Configuration (Admin); user sections stay as
+        // switchable panels on Configuration (User) (user 2026-07-17, P-03).
+        return sec.admin_only
+          ? {admin:true, html:`<div class="card"${amber}>${head}</div>`}
+          : {admin:false, html:`<div class="confpanel hidden" data-panel="${sec.id}"><div class="card" style="margin-bottom:0"${amber}>${head}</div></div>`};
+      });
+      $("cfg-creds").innerHTML=cards.filter(c=>!c.admin).map(c=>c.html).join("");
+      const adminBox=$("cfgadmin-creds");
+      if(adminBox)adminBox.innerHTML=cards.filter(c=>c.admin).map(c=>c.html).join("");
+      // One nav pill per USER credential section. Email (Yahoo) sits at the END of the options
+      // (user 2026-07-17, P-05); the admin sections no longer produce pills at all (P-03).
       document.querySelectorAll("#confnav .pill.credpill").forEach(p=>p.remove());
-      const icons={IG:"🔑",Supabase:"🗄️","X Credentials":"𝕏",Slack:"💬",Server:"🖥️","Email (Yahoo)":"✉️","X Posts":"🐦"};
-      const prefPill=document.querySelector('#confnav .pill[data-panel="preferences"]');
-      (j.sections||[]).filter(s=>s.scope==="app").forEach(s=>{
+      const icons={IG:"🔑",Supabase:"🗄️","X Credentials":"𝕏",Slack:"💬",Server:"🖥️","Email (Yahoo)":"✉️"};
+      (j.sections||[]).filter(s=>s.scope==="app"&&!s.admin_only).forEach(s=>{
         const b=document.createElement("button");
-        b.className="pill credpill"+(s.admin_only?" adminpill":"");
+        b.className="pill credpill";
         b.dataset.panel=s.id; b.textContent=`${icons[s.id]||"🧩"} ${s.id}`;
         b.onclick=()=>confShow(s.id);
-        if(!s.admin_only && prefPill) prefPill.after(b);    // Email (Yahoo) next to Preferences
-        else $("confnav").appendChild(b);
+        $("confnav").appendChild(b);
       });
       if(window.ENGINE_VALS)Object.entries(ENGINE_VALS).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});
-      confShow(document.querySelector("#confnav .pill.active")?.dataset.panel||"IG");
+      const cur=document.querySelector("#confnav .pill.active")?.dataset.panel;
+      confShow(document.querySelector(`#view-config .confpanel[data-panel="${cur}"]`)?cur:"preferences");
     })
     .catch(()=>{$("cfg-creds").innerHTML=`<div class="muted">Could not load credentials — try logging in again.</div>`;});
 }
@@ -1718,9 +1734,10 @@ function saveCreds(secId){
 }
 function renderConfig(){
   renderCredentials();
-  // Trading (Momentum) is a Gold-tier feature (user 2026-07-11): hide the pill for Silver/Guest.
+  // Reveal the Gold-tier Trading (Momentum) pill (it ships hidden — see the button in #confnav).
   const _tm=document.querySelector('#confnav .pill[data-panel="trading_mo"]');
-  if(_tm)_tm.style.display=(ROLE==="gold"||IS_ADMIN)?"":"none";
+  if(_tm)_tm.style.display=goldOnly()?"":"none";
+  if(!goldOnly()&&document.querySelector('#view-config .confpanel[data-panel="trading_mo"]:not(.hidden)'))confShow("preferences");
   fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       USER_FILTERS=j.filters||{};
@@ -1779,13 +1796,17 @@ function saveEngine(){
     .then(r=>{if(!r.ok)throw 0;$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="Engine settings saved.";})
     .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});
 }
-function saveXPosts(){
-  // X Posts panel: numeric publishing settings + morning HVF tweet markets (user 2026-07-06).
+function saveXPub(){
+  // X publishing card on Configuration (Admin): numeric publishing limits + morning HVF tweet markets
+  // (user 2026-07-06; single editor since 2026-07-17 P-10).
   const eng={};["x_max_per_day","superinvestor_lookback_days","min_senator_trades"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});
   const mk=[...document.querySelectorAll(".xhvf-mk:checked")].map(c=>c.dataset.v);
+  const msg=$("xpub-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({engine:eng,x_hvf_markets:mk})})
-    .then(r=>{if(!r.ok)throw 0;$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="X Posts settings saved.";})
-    .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});
+    .then(r=>{if(!r.ok)throw 0;return r.json().catch(()=>({}));})
+    .then(()=>{window.ENGINE_VALS={...(window.ENGINE_VALS||{}),...eng};
+               msg.style.color="var(--bull)";msg.textContent="X publishing settings saved.";})
+    .catch(()=>{msg.style.color="var(--bear)";msg.textContent="Save failed (admin only).";});
 }
 function saveLeverage(){
   const lev={};["fx","equities","commodities","indices"].forEach(k=>{const v=parseFloat($("lev-"+k).value);if(v>0)lev[k]=v;});
@@ -1857,11 +1878,12 @@ function paintOrderOps(){
   $("oo-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> order operation records${rows.length!==OO_ROWS.length?` <span class="muted">of ${OO_ROWS.length}</span>`:""}`;
   $("ootab-count").textContent="("+OO_ROWS.length+")";
   const oby=k=>OO_ROWS.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
+  // Ticker chart sits far left wherever it appears (user 2026-07-17, P-11).
   $("oo-viz").innerHTML=
+    `<div class="vizsector">`+barChart("Ticker",oby("ticker"),"oof_ticker")+`</div>`+
     `<div class="vizsector">`+barChart("Status",oby("status"),"oof_status",k=>k==="PENDING"?"var(--accent)":k==="FILLED"?"var(--bull)":k==="WATCHING"?"#d29922":"var(--bear)")+`</div>`+
     `<div class="vizsector">`+barChart("Direction",oby("direction"),"oof_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`+
-    `<div class="vizsector">`+barChart("Source",oby("session"),"oof_session")+`</div>`+
-    `<div class="vizsector">`+barChart("Ticker",oby("ticker"),"oof_ticker")+`</div>`;
+    `<div class="vizsector">`+barChart("Source",oby("session"),"oof_session")+`</div>`;
   // Resolve instrument name from the loaded snapshot (user 2026-07-03: name next to Ticker).
   const nm=t=>{const r=DATA.find(x=>x.ticker===t||disp(x.ticker)===t);return r?(r.name||''):'';};
   rows.forEach(r=>r._fav=FAVS.has(disp(r.ticker))?1:0);   // favourite column sortable (user 2026-07-11)
@@ -1949,6 +1971,18 @@ function renderMarkets(){
   $("mk-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkUserSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")
     ||`<tr><td colspan="8" class="empty">No market data yet — open the Scanner first.</td></tr>`;
 }
+// Markets (User) Refresh button (user 2026-07-17, P-07). It used to call renderMarkets() directly, which
+// only repaints the in-memory snapshot — no data was re-read and nothing said the click had registered.
+// Now it re-reads /api/records and shows an hourglass on the button until the rows repaint.
+function refreshMarkets(ev){
+  const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
+  if(btn){btn.disabled=true;btn.textContent="⏳ Refreshing…";}
+  $("mk-count").innerHTML='<span class="muted">⏳ Loading…</span>';
+  fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(j=>{DATA=j.records||[];DATA.forEach(augment);renderMarkets();})
+    .catch(()=>{$("mk-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not refresh — try again.</td></tr>`;})
+    .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
+}
 function mkFilter(m){const el=$("mf_market");if(el)el.value=m;showTab("scanner");render();}
 document.querySelectorAll("th[data-mk]").forEach(th=>th.onclick=()=>{const k=th.dataset.mk;mkSortDir=(mkSortK===k)?-mkSortDir:-1;mkSortK=k;renderMarkets();_sortArrows("data-mk",mkSortK,mkSortDir);});
 // ── Markets (Admin) tab (admin, user 2026-07-10): per-market coverage + full data-import rebuild ──
@@ -1975,8 +2009,8 @@ function renderIgAccount(ev){
       $("ig-note").innerHTML=j.note?`<span class="muted">🔒 ${j.note}</span>`:"";
       $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${pos.length}</b> open position${pos.length===1?'':'s'}`;
       $("ig-ord-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${ord.length}</b> working order${ord.length===1?'':'s'}`;
-      $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td><b>${p.ticker||p.epic||''}</b></td><td>${p.name||''}</td><td>${dtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td></tr>`).join("")||`<tr><td colspan="9" class="empty">No open positions.</td></tr>`;
-      $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td><b>${o.ticker||o.epic||''}</b></td><td>${o.name||''}</td><td>${dtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${srcLbl(o.source)}</td><td>${o.good_till||''}</td></tr>`).join("")||`<tr><td colspan="8" class="empty">No working orders.</td></tr>`;
+      $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td><b>${p.ticker||p.epic||''}</b></td><td>${nm40(p.name)}</td><td>${dtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td></tr>`).join("")||`<tr><td colspan="9" class="empty">No open positions.</td></tr>`;
+      $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td><b>${o.ticker||o.epic||''}</b></td><td>${nm40(o.name)}</td><td>${dtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${srcLbl(o.source)}</td><td>${o.good_till||''}</td></tr>`).join("")||`<tr><td colspan="8" class="empty">No working orders.</td></tr>`;
     })
     .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="8" class="empty">—</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
@@ -2009,8 +2043,8 @@ function _renderPerformance(){
   // Click-to-filter charts: Sector / Market / Outcome over the recorded triggers.
   const by=fn=>all.reduce((m,r)=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]=(m[v]||0)+1;return m;},{});
   $("pf-viz").innerHTML=LIMITED?"":
+    `<div class="vizsector">`+barChart("Market",by("market"),"pff_market")+`</div>`+          /* Market left of Sector (P-12) */
     `<div class="vizsector">`+pieChart("Sector",by("sector"),"pff_sector")+`</div>`+
-    `<div class="vizsector">`+barChart("Market",by("market"),"pff_market")+`</div>`+
     `<div class="vizsector">`+barChart("Outcome",by("state"),"pff_status",_stcol)+`</div>`;
   const sel=all.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_status",r.state));
   _renderPfSummary(sel);
@@ -2030,7 +2064,7 @@ function _renderPerformance(){
   $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${sel.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${sel.length!==all.length?` of ${all.length}`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("pftab-count").textContent=`(${sel.length})`;
   $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`showTab('scanner');showDetail('${r.ticker}')`}">
-    <td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
+    <td><b>${disp(r.ticker)}</b></td><td>${nm40(r.name)}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
     <td>${ob(`<b style="color:${_stcol(r.state)}">${r.state||''}</b>`)}</td>
     <td>${ob(r.market||'')}</td><td>${ob(r.trig_date||'—')}</td>
@@ -2186,18 +2220,19 @@ function renderPreorders(){
   $("po-count-text").innerHTML=`<b style="font-size:15px;color:var(--fg)">${po.length}</b> instruments with a pre-order — waiting for the entry to trigger <span class="muted">(${nR} READY · ${po.length-nR} DEVELOPING). Click a row for detail; tick + Delete selected to dismiss.</span>`;
   // Chart visuals, same set as the Scanner (user 2026-07-03). Non-filtering here (dummy filter keys).
   const pby=k=>po.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
+  // Location < Market < Sector, as on the Scanner (user 2026-07-17, P-12/P-13).
   $("po-viz").innerHTML=
-    `<div class="vizsector">`+pieChart("Sector",pby("sector"),"pof_sector")+`</div>`+
     `<div class="vizbars">`+
       barChart("Direction",pby("direction"),"pof_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
       barChart("Status",pby("status"),"pof_status",k=>k==="READY"?"var(--accent)":"#d29922")+
       barChart("Location",pby("location"),"pof_location")+
       barChart("Timeframe",pby("timeframe"),"pof_timeframe")+
     `</div>`+
-    `<div class="vizsector">`+barChart("Market",pby("market"),"pof_market")+`</div>`;
+    `<div class="vizsector">`+barChart("Market",pby("market"),"pof_market")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",pby("sector"),"pof_sector")+`</div>`;
   $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
     return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
-      ${_favCell(r.ticker)}<td><b>${disp(r.ticker)}</b></td><td>${r.name||''}</td>
+      ${_favCell(r.ticker)}<td><b>${disp(r.ticker)}</b></td><td>${nm40(r.name)}</td>
       <td><button class="btn" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();placeOnIG('${r.ticker}')" title="Place this pre-order as a live IG working order now">↗ Place on IG</button></td>
       <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
       <td>${r.status}</td><td>${r.market||''}</td>

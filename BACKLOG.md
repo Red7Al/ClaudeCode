@@ -2,6 +2,43 @@
 
 Deferred items (not blocking). Add new items at the top of the relevant section.
 
+## Security
+
+- [ ] **`/api/config` POST "bridge" has no authorisation check** (found 2026-07-17 while gating "exec").
+  `api_config()` requires only a LOGIN — any tier. Each branch is expected to gate itself, and most do
+  (`markets_disabled`, `x_hvf_markets`, `features`, `engine` all check `is_admin`; `exec` now requires a
+  gold subscription). **`bridge` checks nothing**, so any logged-in guest/silver can POST
+  `{"bridge": true|false}` and flip `exec_WEB_BRIDGE` — i.e. turn the 2-hourly bridge's live IG
+  order placement on or off for the shared trading account.
+  NOT fixed because the correct gate is a product decision, unlike `exec`: the bridge toggle is shown in
+  **Trading (Squeeze)**, which every logged-in tier can see, so gating it to admin/gold is a deliberate
+  behaviour change for existing users rather than a straight bug fix. Decide the intended rule, then add
+  the check next to the `exec` one in `hvf_web/server.py::api_config`.
+
+## Data quality
+
+- [ ] **Universe tickers that no longer resolve on Yahoo: ANSS, MMC, FI** (user 2026-07-17; found during
+  the 15-month backfill for P-24). These three are in `run_hvf_report.py::UNIVERSE` but Yahoo returns
+  **HTTP 404 "Quote not found"** for all of them — not a throttle or a transient miss: `yf.download`
+  returns 0 rows and `fast_info` raises `KeyError 'exchangeTimezoneName'`. They are the only 3 of 1309
+  instruments with **no price history at all**, so they are invisible to the engine, the Scanner and the
+  Performance report while still counting toward the universe.
+  - `ANSS` — Ansys; plausibly delisted after the Synopsys acquisition, so the fix is likely REMOVAL.
+  - `MMC` — Marsh & McLennan, and `FI` — Fiserv: both still trading as far as we know, so these are
+    likely a symbol change needing a `config.YAHOO_MAP` entry rather than removal.
+  - Do NOT guess replacement symbols — a wrong mapping silently attributes another company's prices to
+    the ticker. Confirm each symbol against the exchange/Yahoo first, then either add a `YAHOO_MAP`
+    entry or drop it from `UNIVERSE`, and re-run `python price_audit.py --backfill 460 --tickers <list>`.
+  - Verify with: `python price_audit.py --backfill 460 --tickers ANSS,MMC,FI` (expect ~315 bars each).
+  - A recurring reminder is scheduled until this is closed — see `.claude/` scheduled task
+    "backlog-data-quality-reminder".
+
+- [ ] **Instruments with under 15 months of history: MTLN.L, PRN.L, SHAW.L** (user 2026-07-17). Not a
+  bug — earliest bars are 2025-08-04 / 2025-10-31 / 2025-10-30, i.e. these listed recently and 15 months
+  of history does not exist yet. Nothing to fix; they will age into full coverage. Listed so the P-24
+  "all instruments have 15 months" check has a documented set of known exceptions (1303/1309 + these 3
+  + the 3 unresolved above = 1309).
+
 ## New feature requests — added 2026-06-26 (user batch)
 
 - [ ] **Add NASDAQ-100 instruments to the universe** (user 2026-06-28, "on Monday afternoon" → target
