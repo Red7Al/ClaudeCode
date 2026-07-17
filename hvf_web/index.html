@@ -968,6 +968,18 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return across the recorded triggers, <b>reacting to the charts above</b>. Only buckets with at least 3 triggers are shown.</p>
   <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
   <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
+  <!-- 15-month squeeze analysis (user 2026-07-17, P-21b) -->
+  <h2 class="sec">What separates the winners — 15 months of squeezes</h2>
+  <p class="muted" style="font-size:13px;margin-top:-8px">Built by replaying the engine over 15 months of price history
+  (<code>squeeze_history</code>), not just the triggers recorded since 2026-06-30 — a sample that small cannot support a
+  conclusion. The population is every funnel the engine would have surfaced as <b>READY or TRIGGERED</b>, including ones you
+  did not trade; that is the only way to see whether a filter helps. <b>Win %</b> counts resolved funnels only
+  (hit target vs stopped) — open trades have not finished, and counting them would flatter whichever bucket holds the most
+  unfinished ones. A bucket is only called out as advice with at least 10 resolved funnels behind it.</p>
+  <div id="sqa-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
+  <div id="sqa-advice" style="margin-bottom:10px"></div>
+  <div id="sqa-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
+
   <h2 class="sec">Every recorded trigger</h2>
   <section class="gsec" style="border-left-color:var(--accent)">
     <!-- Name/ticker search, as on Scanner / Pre-orders / Order Ops / X Posts (user 2026-07-17, P-17) -->
@@ -2328,8 +2340,53 @@ function renderPerformance(){
     fetch("/api/performance").then(r=>r.ok?r.json():{rows:[]})
       .then(j=>{PERF_DATA=j.rows||[];PERF_GEN=j.generated||"";_renderPerformance();})
       .catch(()=>{PERF_DATA=[];_renderPerformance();});
+    renderSqueezeAnalysis();                  // 15-month replay analysis (P-21b) — its own endpoint
   }
   _renderPerformance();
+}
+// ── 15-month squeeze analysis (user 2026-07-17, P-21b) ───────────────────────────────────────────────
+let SQA=null;
+function renderSqueezeAnalysis(){
+  if(SQA!==null)return paintSqueezeAnalysis();
+  SQA={};
+  fetch("/api/squeeze-analysis").then(r=>r.ok?r.json():null)
+    .then(j=>{SQA=j||{};paintSqueezeAnalysis();}).catch(()=>{SQA={};paintSqueezeAnalysis();});
+}
+// Colour a win% against the baseline, not against an absolute: 30% is good or bad only relative to what
+// every other funnel did.
+const _sqaCol=(v,base)=>v==null?"var(--muted)":v-base>=10?"var(--bull)":v-base<=-10?"var(--bear)":"var(--fg)";
+function paintSqueezeAnalysis(){
+  const box=$("sqa-summary"), adv=$("sqa-advice"), dims=$("sqa-dims");
+  if(!box)return;
+  const b=SQA&&SQA.baseline;
+  if(!b||!b.resolved){
+    box.innerHTML=`<div class="muted" style="font-size:13px">No squeeze history yet — run <code>python squeeze_history.py --months 15</code> to build it.</div>`;
+    adv.innerHTML="";dims.innerHTML="";return;}
+  const card=(ic,t,v,s)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:17px;color:var(--fg)">${v}</b><br><span class="muted">${s}</span></div></div>`;
+  box.innerHTML=
+    card("🧪","Funnels analysed",b.funnels,`over 15 months · ${b.resolved} resolved`)+
+    card("🎯","Baseline win rate",`${b.win_pct}%`,`${b.wins} hit target of ${b.resolved} resolved`)+
+    card("📈","Baseline avg return",`${b.avg_return}%`,"direction-aware, per resolved funnel")+
+    card("⏳","Still running / never fired",`${b.open} / ${b.never_triggered}`,"excluded from win %");
+  adv.innerHTML=(SQA.advice&&SQA.advice.length)
+    ? `<div class="card" style="border:1px solid var(--bull);background:color-mix(in srgb,var(--bull) 8%,transparent)">
+        <h4>✅ Filters that beat the baseline</h4>
+        <p class="muted" style="font-size:12px;margin:0 0 8px">At least 10 resolved funnels, and a win rate at least 10 points above the ${b.win_pct}% baseline.</p>
+        ${SQA.advice.map(a=>`<div class="credrow"><span class="clabel">${a.dimension}: <b>${a.bucket}</b></span>
+          <span><b style="color:var(--bull)">${a.win_pct}%</b> <span class="muted">win (+${a.lift} pts) · avg ${a.avg_return}% · n=${a.resolved}</span></span></div>`).join("")}</div>`
+    : `<div class="card"><h4>No filter clears the bar yet</h4><p class="muted" style="font-size:12px;margin:0">
+        Nothing beats the ${b.win_pct}% baseline by 10+ points on 10+ resolved funnels. That is itself a finding: on this sample the
+        attributes below do not separate winners strongly enough to trade on.</p></div>`;
+  // One card per dimension; buckets below the sample floor are shown greyed rather than hidden, so a
+  // thin bucket cannot be mistaken for a strong one.
+  dims.innerHTML=(SQA.dimensions||[]).filter(d=>d.buckets.some(x=>x.resolved)).map(d=>
+    `<div class="vizsector"><div class="vizbox"><h5>${d.name}</h5><div class="bars">`+
+    d.buckets.filter(x=>x.resolved).map(x=>`<div class="bar" title="${x.funnels} funnels · ${x.resolved} resolved · ${x.never_triggered} never fired">
+      <span class="tk" style="max-width:120px">${x.bucket}</span>
+      <span class="track"><span class="fill" style="width:${Math.max(2,Math.round((x.win_pct||0)))}%;background:${_sqaCol(x.win_pct,b.win_pct)};opacity:${x.enough?1:0.35}"></span></span>
+      <span class="n" style="color:${_sqaCol(x.win_pct,b.win_pct)}">${x.win_pct==null?'—':x.win_pct+'%'}</span>
+      <span class="n muted" style="min-width:34px">n=${x.resolved}</span></div>`).join("")+
+    `</div></div></div>`).join("");
 }
 function _renderPerformance(){
   const all=PERF_DATA||[];

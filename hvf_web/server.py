@@ -1672,6 +1672,126 @@ def api_performance():
     return jsonify(payload)
 
 
+# ── Squeeze analysis (user 2026-07-17, P-21b) ────────────────────────────────────────────────────────
+# "Do some analysis of all 15 month price squeezes and give advice on how to filter out the best options
+# e.g. location, sector, R:R." Reads squeeze_history — the 15-month engine replay (squeeze_history.py) —
+# because hvf_triggers only starts 2026-06-30 and is far too small a sample to draw a conclusion from.
+#
+# The population here is EVERY funnel the engine would have seen, including ones the live filters reject
+# (quality floor, R:R floor, the 1.5% bridge band). That is the point: you cannot learn which filter
+# helps by looking only at setups that already passed the filters.
+#
+# Win rate counts RESOLVED funnels only (TARGET vs STOPPED). OPEN ones have not finished, and counting
+# them would flatter whichever bucket happens to hold the most unfinished trades. NEVER_TRIGGERED are
+# excluded from the win rate but reported, because "never fired" is a cost of a filter, not a loss.
+_SQA_CACHE = {"ts": 0.0, "data": None}
+_SQA_TTL = 600
+_SQA_MIN_N = 10          # below this a bucket is reported but never called good or bad
+
+
+def _sqa_buckets(rows, keyfn, label):
+    out = []
+    seen = {}
+    for r in rows:
+        k = keyfn(r)
+        if k is None:
+            continue
+        seen.setdefault(str(k), []).append(r)
+    for k, rs in seen.items():
+        res = [r for r in rs if r["outcome"] in ("TARGET", "STOPPED")]
+        wins = [r for r in res if r["outcome"] == "TARGET"]
+        never = [r for r in rs if r["outcome"] == "NEVER_TRIGGERED"]
+        rets = [r["return_pct"] for r in res if r["return_pct"] is not None]
+        out.append({
+            "dimension": label, "bucket": k, "funnels": len(rs), "resolved": len(res),
+            "wins": len(wins), "never_triggered": len(never),
+            "win_pct": (round(len(wins) / len(res) * 100, 1) if res else None),
+            "avg_return": (round(sum(rets) / len(rets), 2) if rets else None),
+            "expectancy": (round(sum(rets) / len(rets), 2) if rets else None),
+            "enough": len(res) >= _SQA_MIN_N,
+        })
+    return sorted(out, key=lambda b: (b["win_pct"] is None, -(b["win_pct"] or 0)))
+
+
+def _sqa_band(v, edges, fmt="{}–{}"):
+    if v is None:
+        return None
+    for lo, hi in zip(edges, edges[1:]):
+        if lo <= v < hi:
+            return fmt.format(lo, hi)
+    return f"{edges[-1]}+" if v >= edges[-1] else None
+
+
+@app.route("/api/squeeze-analysis")
+def api_squeeze_analysis():
+    """Which attributes actually separate the winners, over the 15-month replayed population."""
+    now = _time.time()
+    if _SQA_CACHE["data"] is not None and now - _SQA_CACHE["ts"] < _SQA_TTL:
+        return jsonify(_SQA_CACHE["data"])
+    payload = {"rows": 0, "baseline": None, "dimensions": [], "advice": [],
+               "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
+    try:
+        snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
+        from db_pool import get_db
+        db = get_db()
+        try:
+            # ready_date is not null = the engine actually surfaced this funnel as READY or TRIGGERED.
+            # Without this the population includes funnels it REJECTS: everything that never reached
+            # ready has R:R 2.10-2.99, i.e. below MIN_RISK_REWARD=3, so it is DEVELOPING forever and can
+            # never be traded. Their outcomes still exist here (the trigger is derived from price, not
+            # from the signal), and leaving them in produced exactly the wrong advice — "prefer R:R 0-3"
+            # and "prefer Quality 0-30", both describing trades the engine would never place.
+            raw = db.run(
+                "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
+                "outcome, return_pct, triggered_date from squeeze_history "
+                "where ready_date is not null") or []
+        finally:
+            db.close()
+        rows = []
+        for tk, mk, tf, ht, q, rr, rv, oc, ret, td in raw:
+            s = snap.get(tk, {})
+            rows.append({"ticker": tk, "market": mk or s.get("market"), "sector": s.get("sector"),
+                         "location": s.get("location"), "timeframe": tf, "direction": ht,
+                         "quality": (float(q) if q is not None else None),
+                         "rr": (float(rr) if rr is not None else None),
+                         "rvol": (float(rv) if rv is not None else None),
+                         "outcome": oc, "return_pct": (float(ret) if ret is not None else None)})
+        res = [r for r in rows if r["outcome"] in ("TARGET", "STOPPED")]
+        wins = [r for r in res if r["outcome"] == "TARGET"]
+        rets = [r["return_pct"] for r in res if r["return_pct"] is not None]
+        base_win = (len(wins) / len(res) * 100) if res else None
+        base_ret = (sum(rets) / len(rets)) if rets else None
+        payload["rows"] = len(rows)
+        payload["baseline"] = {"funnels": len(rows), "resolved": len(res), "wins": len(wins),
+                               "win_pct": (round(base_win, 1) if base_win is not None else None),
+                               "avg_return": (round(base_ret, 2) if base_ret is not None else None),
+                               "never_triggered": sum(1 for r in rows if r["outcome"] == "NEVER_TRIGGERED"),
+                               "open": sum(1 for r in rows if r["outcome"] == "OPEN")}
+        dims = [
+            ("Location", lambda r: r["location"]),
+            ("Sector", lambda r: r["sector"]),
+            ("Market", lambda r: r["market"]),
+            ("Direction", lambda r: r["direction"]),
+            ("Timeframe", lambda r: r["timeframe"]),
+            ("R:R", lambda r: _sqa_band(r["rr"], [0, 3, 5, 8, 12, 20])),
+            ("Quality", lambda r: _sqa_band(r["quality"], [0, 30, 40, 50, 60, 70])),
+            ("RVOL at trigger", lambda r: _sqa_band(r["rvol"], [0, 0.8, 1.0, 1.4, 1.8, 2.5])),
+        ]
+        for label, fn in dims:
+            payload["dimensions"].append({"name": label, "buckets": _sqa_buckets(rows, fn, label)})
+        # Advice = buckets with a real sample that beat the baseline win rate by >= 10 points.
+        if base_win is not None:
+            for d in payload["dimensions"]:
+                for b in d["buckets"]:
+                    if b["enough"] and b["win_pct"] is not None and b["win_pct"] - base_win >= 10:
+                        payload["advice"].append({**b, "lift": round(b["win_pct"] - base_win, 1)})
+            payload["advice"].sort(key=lambda a: -a["lift"])
+    except Exception as ex:
+        log.warning(f"squeeze analysis failed: {ex}")
+    _SQA_CACHE.update(ts=now, data=payload)
+    return jsonify(payload)
+
+
 _CR_DIR = os.path.join(_REPO_ROOT, "ChangeRequests")
 # Status a requirement line can carry (user 2026-07-10, Change Requests tab). A line is Completed/In
 # Progress/Cancelled/Requested when it ends with a bracketed marker (e.g. "[Completed]") or carries a
