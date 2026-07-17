@@ -1826,7 +1826,12 @@ _CR_DIR = os.path.join(_REPO_ROOT, "ChangeRequests")
 # Status a requirement line can carry (user 2026-07-10, Change Requests tab). A line is Completed/In
 # Progress/Cancelled/Requested when it ends with a bracketed marker (e.g. "[Completed]") or carries a
 # short leading tag ([x] done, [~] wip, [-] cancelled, [?] requested); otherwise it is Not Started.
-_CR_TAIL = _re.compile(r"\[(completed|in[\s-]?progress|not[\s-]?started|cancelled|canceled|requested)\]\s*$", _re.I)
+# The marker may be followed by a short parenthetical note (user 2026-07-17) — e.g.
+# "[Completed]  (superseded by P-11a)" or "[In Progress]  (finishing last 264 tickers)". Without the
+# optional `(...)$` this was end-anchored, so any noted line silently read as Not Started.
+_CR_TAIL = _re.compile(
+    r"\[(completed|in[\s-]?progress|not[\s-]?started|cancelled|canceled|requested)\]\s*(?:\([^)]*\)\s*)?$",
+    _re.I)
 _CR_LEAD = {"[x]": "Completed", "[X]": "Completed", "[~]": "In Progress",
             "[-]": "Cancelled", "[?]": "Requested"}
 
