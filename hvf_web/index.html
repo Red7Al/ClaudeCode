@@ -1665,7 +1665,7 @@ function tabAllowed(t){
   if(!PUBLIC_TABS.includes(t)&&!AUTH)return false;      // login-required tab, not logged in
   if(DEFAULT_HIDDEN.has(t)&&!SHOWN_TABS.includes(t))return false;   // default-hidden unless opted in (user 2026-07-10)
   if(t==="config")return true;                          // config always available once logged in
-  if((t==="users"||t==="sysdocs")&&IS_ADMIN)return true;   // admins ALWAYS get User Management + How it works (System) (user 2026-07-11)
+  if(t==="users"&&IS_ADMIN)return true;   // admins ALWAYS get User Management (user 2026-07-11). "How it works (System)" used to be force-shown here too, but must honour Tab Visibility — it falls through to the HIDDEN_TABS check below (user 2026-07-17, P-25)
   if(HIDDEN_TABS.includes(t))return false;              // user chose to hide it (Tab Visibility) — applies to admin tabs too
   return true;
 }
