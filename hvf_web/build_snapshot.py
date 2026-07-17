@@ -49,6 +49,17 @@ _INDEX_REGION = {
 }
 
 
+def _sector_of(ticker: str):
+    """Cached GICS sector for any ticker (user 2026-07-17). Sector is stable, so it is resolved once into
+    sector_cache and read here for EVERY instrument — signal or not — instead of only the ones that had a
+    live fundamentals fetch, which left most of the universe with sector=None."""
+    try:
+        import sector_cache
+        return sector_cache.get_sector(ticker)
+    except Exception:
+        return None
+
+
 def _location_of(ticker: str, market: str = "") -> str:
     t = (ticker or "").upper()
     if market == "FX" or t.endswith("=X") or t in ("USDJPY", "EURUSD", "GBPUSD", "AUDUSD"):
@@ -190,7 +201,7 @@ def build():
             r = sig.get(tk)
             if not (r and r.get("hvf_type")):
                 out.append({"ticker": tk, "name": _nm, "market": market, "location": _location_of(tk, market),
-                            "has_signal": False, "direction": None, "sector": None, "status": None,
+                            "has_signal": False, "direction": None, "sector": _sector_of(tk), "status": None,
                             "quality": None, "pe": None, "timeframe": None, "rr": None, "insider_pct": None,
                             "entry": None, "stop": None, "target": None, "current_price": None,
                             "h3_date": None, "l3_date": None, "h1_date": None, "rules": [],
@@ -213,7 +224,7 @@ def build():
                 "ticker": tk, "name": _nm, "has_signal": True,
                 "direction": "BULL" if r.get("hvf_type") == "BULLISH" else "BEAR",
                 "location": _location_of(tk, market), "market": market,
-                "sector": f.get("sector"),
+                "sector": f.get("sector") or _sector_of(tk),   # live fundamentals, else the cache (P-21b)
                 "status": r.get("hvf_signal"),
                 "quality": r.get("pattern_quality"),
                 "pe": round(pe, 1) if isinstance(pe, (int, float)) and pe > 0 else None,

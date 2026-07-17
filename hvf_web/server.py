@@ -1706,6 +1706,16 @@ _SQA_TTL = 600
 _SQA_MIN_N = 10          # below this a bucket is reported but never called good or bad
 
 
+def _sqa_sector(ticker: str):
+    """Cached sector for any ticker (user 2026-07-17) — so the squeeze analysis has a sector for funnels
+    whose ticker has no current signal, not just the ~250 in today's snapshot with one."""
+    try:
+        import sector_cache
+        return sector_cache.get_sector(ticker)
+    except Exception:
+        return None
+
+
 def _sqa_buckets(rows, keyfn, label):
     out = []
     seen = {}
@@ -1767,7 +1777,10 @@ def api_squeeze_analysis():
         rows = []
         for tk, mk, tf, ht, q, rr, rv, oc, ret, td in raw:
             s = snap.get(tk, {})
-            rows.append({"ticker": tk, "market": mk or s.get("market"), "sector": s.get("sector"),
+            # sector from the cache first (covers every ticker, not just those with a current signal —
+            # user 2026-07-17), snapshot as a fallback; location/market only exist on the snapshot row.
+            rows.append({"ticker": tk, "market": mk or s.get("market"),
+                         "sector": _sqa_sector(tk) or s.get("sector"),
                          "location": s.get("location"), "timeframe": tf, "direction": ht,
                          "quality": (float(q) if q is not None else None),
                          "rr": (float(rr) if rr is not None else None),
