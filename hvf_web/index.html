@@ -658,7 +658,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <input type="hidden" id="bcf_source"><input type="hidden" id="bcf_by"><input type="hidden" id="bcf_month"><input type="hidden" id="bcf_mweek">
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 520px;min-width:0">
-      <div class="count" style="padding-left:0"><span id="batch-count"></span></div>
+      <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="batch-count"></span><span class="grow"></span><input id="batch-search" placeholder="Search event…" oninput="paintBatch()" style="width:200px;padding:4px 8px;font-size:12px"></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-bk="ts">When (UTC)</th><th data-bk="source">Source</th><th data-bk="event">Event</th><th data-bk="by">Operator</th></tr></thead>
         <tbody id="batch-rows"></tbody>
@@ -720,7 +720,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="fgrid" id="sl-health" style="margin-bottom:16px"></div>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
-      <div class="count" style="padding-left:0"><span id="sl-count"></span></div>
+      <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="sl-count"></span><span class="grow"></span><input id="sl-search" placeholder="Search message…" oninput="paintSyslogs()" style="width:200px;padding:4px 8px;font-size:12px"></div>
       <div class="tablewrap"><table>
         <thead><tr><th data-sk="ts">Time</th><th data-sk="level">Level</th><th data-sk="logger">Module</th><th data-sk="message">Message</th></tr></thead>
         <tbody id="sl-rows"></tbody>
@@ -1777,6 +1777,8 @@ function paintSyslogs(){
   if($("sl-datebar")&&!$("sl-datebar").innerHTML)$("sl-datebar").innerHTML=dateFilterBar("sl","paintSyslogs()");
   let rows=SL_ROWS.filter(e=>inSet("slf_level",e.level)&&inSet("slf_logger",e.logger)&&inSet("slf_hour",(e.ts||'').slice(11,13)+":00")&&inSet("slf_month",(e.ts||'').slice(0,7))&&inSet("slf_mweek",_mw(e.ts)));
   rows=applyDateFilter("sl",rows,e=>e.ts);
+  const _slq=(($("sl-search")||{}).value||"").toLowerCase().trim();   // free-text search by message (user 2026-07-17)
+  if(_slq)rows=rows.filter(e=>(e.message||"").toLowerCase().includes(_slq));
   rows=genSort(rows,slSortK,slSortDir);
   $("sl-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> log records${rows.length!==SL_ROWS.length?` <span class="muted">of ${SL_ROWS.length}</span>`:''}`;
   $("sl-rows").innerHTML=rows.slice(0,400).map(e=>`<tr><td style="white-space:nowrap">${e.ts||''}</td><td><b style="color:${lvlCol(e.level)}">${e.level||''}</b></td><td>${e.logger||''}</td><td class="muted" style="white-space:normal;word-break:break-word">${(e.message||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No log records yet.</td></tr>`;
@@ -1906,6 +1908,8 @@ function paintBatch(){
   [["bcf_source",e=>e.source],["bcf_by",e=>e.by],["bcf_month",_bmonth],["bcf_mweek",e=>_mw(e.ts)]].forEach(([id,fn])=>{
     rows=rows.filter(e=>inSet(id,fn(e)));});
   rows=applyDateFilter("batch",rows,e=>e.ts);
+  const _bq=(($("batch-search")||{}).value||"").toLowerCase().trim();   // free-text search by event (user 2026-07-17)
+  if(_bq)rows=rows.filter(e=>(e.event||"").toLowerCase().includes(_bq));
   $("batab-count")&&($("batab-count").textContent=`(${BATCH_ROWS.length})`);
   $("batch-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> batch runs${rows.length!==BATCH_ROWS.length?` <span class="muted">of ${BATCH_ROWS.length}</span>`:''}`;
   $("batch-rows").innerHTML=genSort(rows,batchSortK,batchSortDir).map(e=>`<tr><td>${e.ts||''}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.source||''}</span></td><td>${(e.event||'').replace(/</g,"&lt;")}</td><td>${e.by||''}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
