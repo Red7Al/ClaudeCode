@@ -956,6 +956,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <span class="eyebrow">Results</span>
   <h1>Performance</h1>
   <p class="lede">Every <b>recorded trigger</b> — the entry, stop, target and date captured the moment the setup fired — tracked forward through the price history to its outcome: <b style="color:var(--bull)">TARGET</b> (hit the target first), <b style="color:var(--bear)">STOPPED</b> (hit the stop first), or <b style="color:#d29922">OPEN</b> (still running, marked to the latest price). Return is direction-aware, so positive is always in your favour. This is independent of the current squeeze status — a trigger is measured from when it happened.</p>
+  <!-- Sub-tabs (user 2026-07-17): the recorded-trigger results and the 15-month analysis are two
+       distinct reads, so they get their own pill instead of one long scroll. -->
+  <nav class="confnav" id="pf-subnav" style="margin:0 0 12px">
+    <button class="pill active" data-pfpanel="results" onclick="pfPanel('results')">📊 Results</button>
+    <button class="pill" data-pfpanel="analysis" onclick="pfPanel('analysis')">🏆 What separates the winners</button>
+  </nav>
+  <div id="pf-panel-results">
   <div id="pf-charts">
     <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
     <div style="flex:1;min-width:340px">
@@ -968,17 +975,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return across the recorded triggers, <b>reacting to the charts above</b>. Only buckets with at least 3 triggers are shown.</p>
   <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
   <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
-  <!-- 15-month squeeze analysis (user 2026-07-17, P-21b) -->
-  <h2 class="sec">What separates the winners — 15 months of squeezes</h2>
-  <p class="muted" style="font-size:13px;margin-top:-8px">Built by replaying the engine over 15 months of price history
-  (<code>squeeze_history</code>), not just the triggers recorded since 2026-06-30 — a sample that small cannot support a
-  conclusion. The population is every funnel the engine would have surfaced as <b>READY or TRIGGERED</b>, including ones you
-  did not trade; that is the only way to see whether a filter helps. <b>Win %</b> counts resolved funnels only
-  (hit target vs stopped) — open trades have not finished, and counting them would flatter whichever bucket holds the most
-  unfinished ones. A bucket is only called out as advice with at least 10 resolved funnels behind it.</p>
-  <div id="sqa-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
-  <div id="sqa-advice" style="margin-bottom:10px"></div>
-  <div id="sqa-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
 
   <h2 class="sec">Every recorded trigger</h2>
   <section class="gsec" style="border-left-color:var(--accent)">
@@ -991,6 +987,21 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
+  </div><!-- /#pf-panel-results -->
+
+  <!-- 15-month squeeze analysis (user 2026-07-17, P-21b) — its own sub-tab (P-21b follow-up). -->
+  <div id="pf-panel-analysis" class="hidden">
+    <h2 class="sec" style="margin-top:0">What separates the winners — 15 months of squeezes</h2>
+    <p class="muted" style="font-size:13px;margin-top:-8px">Built by replaying the engine over 15 months of price history
+    (<code>squeeze_history</code>), not just the triggers recorded since 2026-06-30 — a sample that small cannot support a
+    conclusion. The population is every funnel the engine would have surfaced as <b>READY or TRIGGERED</b>, including ones you
+    did not trade; that is the only way to see whether a filter helps. <b>Win %</b> counts resolved funnels only
+    (hit target vs stopped) — open trades have not finished, and counting them would flatter whichever bucket holds the most
+    unfinished ones. A bucket is only called out as advice with at least 10 resolved funnels behind it.</p>
+    <div id="sqa-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
+    <div id="sqa-advice" style="margin-bottom:10px"></div>
+    <div id="sqa-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
+  </div>
 </div>
 
 <!-- Trading (Multi-Factor Momentum) (all users, default hidden, user 2026-07-10) — from commodity_fundamentals.md -->
@@ -2343,9 +2354,18 @@ function renderPerformance(){
     fetch("/api/performance").then(r=>r.ok?r.json():{rows:[]})
       .then(j=>{PERF_DATA=j.rows||[];PERF_GEN=j.generated||"";_renderPerformance();})
       .catch(()=>{PERF_DATA=[];_renderPerformance();});
-    renderSqueezeAnalysis();                  // 15-month replay analysis (P-21b) — its own endpoint
+    // The analysis loads lazily when its sub-tab is opened (pfPanel), not here.
   }
   _renderPerformance();
+}
+// Performance sub-tabs (user 2026-07-17): Results vs the 15-month analysis. The analysis fetches lazily
+// on first open, so the Results view is never slowed by it.
+function pfPanel(which){
+  document.querySelectorAll("#pf-subnav .pill").forEach(b=>b.classList.toggle("active",b.dataset.pfpanel===which));
+  const res=$("pf-panel-results"), an=$("pf-panel-analysis");
+  if(res)res.classList.toggle("hidden",which!=="results");
+  if(an)an.classList.toggle("hidden",which!=="analysis");
+  if(which==="analysis")renderSqueezeAnalysis();
 }
 // ── 15-month squeeze analysis (user 2026-07-17, P-21b) ───────────────────────────────────────────────
 let SQA=null;
