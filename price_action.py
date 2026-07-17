@@ -460,6 +460,22 @@ def get_trend_structure(ticker: str) -> dict:
         lh_ll_count:    number of lower high / lower low pairs (positive = bearish)
         last_weekly_close: most recent weekly close
     """
+    # Fetch enough for BOTH the recent swing structure AND the ~6-month return reconciliation.
+    return _trend_from_weekly(
+        _get_weekly(ticker, weeks=max(TREND_STRUCTURE_WKLY, MEDIUM_TERM_WKLY) + 4), ticker)
+
+
+def _trend_from_weekly(hist_full, ticker: str = "") -> dict:
+    """The trend maths from get_trend_structure, split out AT THE FETCH so it can also be run over a
+    historical weekly frame (user 2026-07-17, P-09 / P-21a).
+
+    get_trend_structure fetches its own data, so it can only ever describe the trend as it stands NOW.
+    Replaying the HVF engine across 15 months needs the trend AS OF each past date — score every
+    historical bar with today's trend and the result is not a backfill, it is a fabrication that looks
+    entirely plausible. `ticker` is used only for log lines.
+
+    This is a pure split, not a rewrite: same code, same results (verified against the live fetch path
+    across a sample of tickers)."""
     result = {
         "signal":             "SIDEWAYS",
         "hh_hl_count":        0,
@@ -467,9 +483,7 @@ def get_trend_structure(ticker: str) -> dict:
         "last_weekly_close":  None,
         "medium_term_pct":    None,
     }
-    # Fetch enough for BOTH the recent swing structure AND the ~6-month return reconciliation.
-    hist_full = _get_weekly(ticker, weeks=max(TREND_STRUCTURE_WKLY, MEDIUM_TERM_WKLY) + 4)
-    if hist_full.empty or len(hist_full) < 4:
+    if hist_full is None or hist_full.empty or len(hist_full) < 4:
         return result
 
     # Medium-term (~6-month) % return — the dominant trend the HVF continuation should follow.
