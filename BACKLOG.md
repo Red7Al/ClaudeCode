@@ -2,6 +2,34 @@
 
 Deferred items (not blocking). Add new items at the top of the relevant section.
 
+## Trading safety
+
+- [ ] **"Markets (User)" looks like a trading switch but is view-only — Commodities is tradeable AND
+  invisible** (found 2026-07-17 while confirming FX). Three switches mention markets; only two gate the
+  order path, and the names do not tell you which:
+  | switch | stored as | enforced where |
+  |---|---|---|
+  | Markets (**User**) | `web_users.settings.markets_off` | **VIEW ONLY** — read solely by `/api/config` for that user's Scanner/Pre-orders. Never reaches the order path. |
+  | Markets (**Admin**) | `app_config.markets_disabled` | order path (`config_store.trade_allowed`) |
+  | Configuration → Trading | `app_config.trade_markets` (allow-list) | order path (`config_store.trade_allowed`) |
+
+  Current live state: `markets_off = ['Commodities','FX']`, `markets_disabled = ['Crypto']`,
+  allow-list includes `Commodities` but not `FX`. So:
+  - **Commodities — hidden from the owner's view, but ALLOWED in the order path.** The 2-hourly bridge
+    can place a live IG order in a commodity that never appears in the owner's Scanner or Pre-orders.
+    The snapshot carries 25 commodity instruments, 1 currently TRIGGERED.
+  - **FX is safe only by accident**: it is blocked because it is missing from the allow-list, NOT by the
+    Markets (Admin) disable the owner believed was doing it. 32 FX instruments, 8 currently TRIGGERED —
+    adding FX to the allow-list (or clearing the allow-list, since EMPTY means ALLOW ALL) would make all
+    of them tradeable and invisible at once.
+
+  A screen warning + renaming the column Enabled -> Visible landed 2026-07-17. Still open, and needs an
+  OWNER decision, not a silent fix: either drop Commodities from the allow-list, or switch it off in
+  Markets (Admin), or accept that it trades unseen. Longer term, consider making Markets (User) mirror
+  into `markets_disabled` for the owner, or renaming these so a view filter cannot be mistaken for a
+  kill-switch. NOTE the empty-list trap: `get_trade_filters()` treats an empty `trade_markets` as
+  "no restriction", so clearing it opens EVERY market rather than closing them.
+
 ## Security
 
 - [ ] **`/api/config` POST "bridge" has no authorisation check** (found 2026-07-17 while gating "exec").

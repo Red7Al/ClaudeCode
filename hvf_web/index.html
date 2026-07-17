@@ -929,10 +929,21 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Coverage</span><span class="grow"></span><button class="btn" onclick="refreshMarkets(event)">↻ Refresh</button></div>
   <h1>Markets</h1>
   <p class="lede">Every market we scan, with its live coverage from the current snapshot — how many instruments it holds and how many have a squeeze setup right now. Click a market to filter the Scanner to it.</p>
+  <!-- This switch is VIEW-ONLY and reads like a trading control, which is a trap worth naming on screen
+       (user 2026-07-17): markets_off is consumed only by /api/config for this user's Scanner/Pre-orders
+       and never reaches the order path, so a market switched OFF here still trades if it is in the
+       Config -> Trading allow-list. Commodities was exactly that: hidden here, tradeable by the bridge. -->
+  <div class="card" style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent);margin-bottom:12px">
+    <b style="color:#d29922">⚠️ These switches change what YOU SEE, not what trades.</b>
+    <p class="muted" style="font-size:12px;margin:6px 0 0">Turning a market off here hides it from your Scanner and Pre-orders only.
+    The engine and the 2-hourly bridge can still place live IG orders in it — so a market hidden here can trade without appearing in your lists.
+    To stop a market <b>trading</b>, remove it from the allow-list in <b>Configuration → Trading (Squeeze)</b>, or switch it off in
+    <b>Markets (Admin)</b>, which is enforced in the order path.</p>
+  </div>
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="mk-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th data-mk="market">Market</th><th style="cursor:default" title="Show/hide this market in your Scanner & Pre-orders">Enabled</th><th data-mk="total">Instruments</th><th data-mk="signal">With signal</th><th data-mk="triggered">Triggered</th><th data-mk="ready">Ready</th><th data-mk="developing">Developing</th><th data-mk="avgq">Avg Quality</th></tr></thead>
+      <thead><tr><th data-mk="market">Market</th><th style="cursor:default" title="VIEW ONLY — shows/hides this market in your Scanner &amp; Pre-orders. It does NOT stop the market trading.">Visible</th><th data-mk="total">Instruments</th><th data-mk="signal">With signal</th><th data-mk="triggered">Triggered</th><th data-mk="ready">Ready</th><th data-mk="developing">Developing</th><th data-mk="avgq">Avg Quality</th></tr></thead>
       <tbody id="mk-rows"></tbody>
     </table></div>
   </section>
