@@ -1139,9 +1139,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <h1>IG Account</h1>
   <p class="lede">Your own IG account — live open positions and working orders. Shown for the account whose credentials you use (owner uses the shared account; others use their own from Configuration → IG).</p>
   <div id="ig-note" style="font-size:12px;margin-bottom:10px"></div>
-  <!-- One name/ticker search for the tab — filters BOTH tables below, since they are the same
-       instrument universe and two boxes on one page would just be clutter (user 2026-07-17, P-17). -->
-  <div style="margin-bottom:10px"><input id="ig-search" placeholder="Search name / ticker…" oninput="paintIgAccount()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
+  <!-- No search here (user 2026-07-17): the IG account holds only a handful of live positions/orders, so
+       a search is clutter. paintIgAccount tolerates the missing #ig-search input (treats it as blank). -->
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="ig-pos-count"></span></div>
     <div class="tablewrap"><table>
@@ -2501,7 +2500,7 @@ function paintCR(){
   $("cr-rows").innerHTML=rows.map(o=>`<tr class="clk ${CR_SEL===o.file?'sel':''}" onclick="crOpen('${o.file}')">
     <td><b>${o.name}</b></td><td>${o.created||''}</td><td>${o.updated||''}</td><td><b>${o.total}</b></td>
     <td>${o.prioritised?`<b style="color:#d29922">${o.prioritised}</b>`:'0'}</td>
-    <td>${c(o,'Completed','var(--bull)')}</td><td>${c(o,'In Progress','var(--accent)')}</td><td>${c(o,'Not Started','var(--muted)')}</td><td>${c(o,'Cancelled','var(--bear)')}</td></tr>`).join("")
+    <td>${c(o,'Completed','var(--bull)')}</td><td>${c(o,'In Progress','var(--accent)')}</td><td>${c(o,'Not Started','#d29922')}</td><td>${c(o,'Cancelled','var(--bear)')}</td></tr>`).join("")
     ||`<tr><td colspan="9" class="empty">No change-request files found.</td></tr>`;
 }
 function crOpen(file){
@@ -2513,7 +2512,7 @@ function crOpen(file){
 function crStatusFilter(s){crDetailStatus=s;paintCRDetail();}
 function paintCRDetail(){
   const d=CR_DETAIL; if(!d)return;
-  const sc={Completed:'var(--bull)','In Progress':'var(--accent)','Not Started':'var(--muted)',Cancelled:'var(--bear)',Requested:'#d29922'};
+  const sc={Completed:'var(--bull)','In Progress':'var(--accent)','Not Started':'#d29922',Cancelled:'var(--bear)',Requested:'#d29922'};
   const all=d.requirements||[], counts=all.reduce((m,q)=>{m[q.status]=(m[q.status]||0)+1;return m;},{});
   // Status filter (user 2026-07-11): click a status to show only those requirements.
   const pills=["All","Completed","In Progress","Not Started","Cancelled","Requested"].map(s=>{
