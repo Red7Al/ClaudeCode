@@ -845,7 +845,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
     <div>
       <img id="intro-card" loading="lazy" alt="real funnel example" onerror="this.style.display='none'" style="width:100%">
-      <p class="muted" id="intro-card-cap" style="font-size:12px;margin:8px 0 0">A real setup — swing highs <span style="color:var(--bear)">H1·H2·H3</span> and lows <span style="color:var(--bull)">L1·L2·L3</span> converging into the funnel, with Entry / Stop / Target labelled.</p>
+      <p class="muted" id="intro-card-cap" style="font-size:12px;margin:8px 0 0">A real setup, swing highs <span style="color:var(--bear)">H1·H2·H3</span> and lows <span style="color:var(--bull)">L1·L2·L3</span> converging into the funnel, with Entry / Stop / Target labelled.</p>
     </div>
   </div>
 
@@ -2694,7 +2694,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     // Use an EQUITY as the worked example, never an index/FX/commodity (user 2026-07-03).
     const _isEq=r=>["FTSE 100","FTSE 250","NASDAQ 100","S&P 500"].includes(r.market);
     const _ex=(DATA.some(r=>r.ticker==="HWDN.L"&&r.has_signal))?"HWDN.L":((DATA.filter(r=>r.has_signal&&r.status==="TRIGGERED"&&_isEq(r)).sort((a,b)=>(b.quality||0)-(a.quality||0))[0]||{}).ticker);
-    if(_ex&&$("intro-card")){$("intro-card").src="/api/card/"+_ex;$("intro-card-cap").innerHTML=$("intro-card-cap").innerHTML.replace(/^A real setup/,"A real setup ("+disp(_ex)+")");}
+    if(_ex&&$("intro-card")){$("intro-card").src="/api/card/"+_ex;}   // caption stays "A real setup, …"; the old ticker-injection regex was non-idempotent and doubled the text on re-render (user 2026-07-17)
     // If a refresh is already running (started elsewhere), disable the button and show its progress.
     fetch("/api/status").then(x=>x.json()).then(s=>{if(s.refreshing){$("refresh").disabled=true;_refStart=Date.now();pollRefresh();}}).catch(()=>{});
   })
