@@ -441,7 +441,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="tablewrap">
       <table>
         <thead><tr>
-          <th data-k="_fav" title="Favourite (click to sort)">★</th><th data-k="ticker">Ticker</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
+          <!-- Ticker sits FAR RIGHT (user 2026-07-17, P-11b); ★ stays leftmost. -->
+          <th data-k="_fav" title="Favourite (click to sort)">★</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <th data-k="market">Market</th><th data-k="dist_entry" title="Distance from the live price to the entry level (sorted closest-first)">Dist→Entry</th><th data-k="sector">Sector</th><th data-k="status">Status</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
           <th data-k="current_price" title="Latest price">Now</th>
@@ -451,6 +452,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <th data-k="pe">P/E</th><th data-k="insider_pct" title="Insider ownership %">Insider %</th><th data-k="timeframe">TF</th>
           <th data-k="location">Location</th>
           <th data-k="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank for setups that have not triggered, and for instruments with no real volume (FX, indices).">RVOL</th>
+          <th data-k="ticker">Ticker</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -490,9 +492,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <thead><tr>
         <th style="cursor:default"><input type="checkbox" id="po-all" onclick="poToggleAll(this)"></th>
         <th data-pk="_fav" title="Favourite (click to sort)">★</th>
-        <th data-pk="ticker">Ticker</th><th data-pk="name">Name</th><th style="cursor:default">Action</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
+        <!-- Ticker sits FAR RIGHT (user 2026-07-17, P-11b). -->
+        <th data-pk="name">Name</th><th style="cursor:default">Action</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
         <th data-pk="current_price">Now</th><th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
-        <th data-pk="added" title="When the setup completed and joined the dataset">Added</th><th data-pk="source">Source</th>
+        <th data-pk="added" title="When the setup completed and joined the dataset">Added</th><th data-pk="source">Source</th><th data-pk="ticker">Ticker</th>
       </tr></thead>
       <tbody id="po-rows"></tbody>
     </table>
@@ -525,7 +528,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </aside>
     <div class="sidemain">
     <div class="tablewrap"><table>
-      <thead><tr><th data-ok="_fav" title="Favourite (click to sort)">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="ticker">Ticker</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th></tr></thead>
+      <thead><tr><th data-ok="_fav" title="Favourite (click to sort)">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th><th data-ok="ticker">Ticker</th></tr></thead>   <!-- Ticker far right (P-11b) -->
       <tbody id="oo-rows"></tbody>
     </table></div>
     </div><!-- /.sidemain -->
@@ -542,7 +545,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 640px;min-width:0">
       <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="x-count"></span><span class="grow"></span><input id="x-search" placeholder="Search name…" oninput="paintXposts()" style="width:180px;padding:4px 8px;font-size:12px"></div>
       <div class="tablewrap"><table>
-        <thead><tr><th data-xk="published_at">Published (UTC)</th><th data-xk="ticker">Ticker</th><th data-xk="name">Name</th><th data-xk="market">Market</th><th data-xk="thread">Thread</th><th style="cursor:default">Link</th></tr></thead>
+        <thead><tr><th data-xk="published_at">Published (UTC)</th><th data-xk="name">Name</th><th data-xk="market">Market</th><th data-xk="thread">Thread</th><th data-xk="ticker">Ticker</th><th style="cursor:default">Link</th></tr></thead>
         <tbody id="x-rows"></tbody>
       </table></div>
     </section>
@@ -960,7 +963,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="pf-count"></span>
       <input id="pf-search" placeholder="Search name / ticker…" oninput="_renderPerformance()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
     <div class="tablewrap"><table>
-      <thead><tr><th data-pf="ticker">Ticker</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="stop">Stop</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank where the instrument has no real volume (FX, indices).">RVOL</th></tr></thead>
+      <!-- Ticker sits FAR RIGHT on every table that has one (user 2026-07-17, P-11b). -->
+      <thead><tr><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="stop">Stop</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank where the instrument has no real volume (FX, indices).">RVOL</th><th data-pf="ticker">Ticker</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -1118,14 +1122,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="ig-pos-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Ticker</th><th>Name</th><th>Dir</th><th>Size</th><th>Level</th><th>Stop</th><th>Limit</th><th>Ccy</th><th>Opened (UTC)</th></tr></thead>
+      <thead><tr><th>Name</th><th>Dir</th><th>Size</th><th>Level</th><th>Stop</th><th>Limit</th><th>Ccy</th><th>Opened (UTC)</th><th>Ticker</th></tr></thead>
       <tbody id="ig-pos-rows"></tbody>
     </table></div>
   </section>
   <section class="gsec" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="ig-ord-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Ticker</th><th>Name</th><th>Dir</th><th>Size</th><th>Level</th><th>Type</th><th>Source</th><th>Good&nbsp;till (UTC)</th></tr></thead>
+      <thead><tr><th>Name</th><th>Dir</th><th>Size</th><th>Level</th><th>Type</th><th>Source</th><th>Good&nbsp;till (UTC)</th><th>Ticker</th></tr></thead>
       <tbody id="ig-ord-rows"></tbody>
     </table></div>
   </section>
@@ -1361,7 +1365,7 @@ function render(){
   $("sctab-count").textContent=`(${rows.length})`;
   renderViz(rows);
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
-    ${_favCell(r.ticker)}<td><b>${disp(r.ticker)}</b></td><td>${nm40(r.name)}</td>
+    ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
     <td>${r.market||''}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${r.sector||''}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.days_since??'')}</td>
@@ -1372,7 +1376,7 @@ function render(){
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td>
     <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td>
-    <td>${ob(rvolCell(r.rvol))}</td></tr>`).join("")
+    <td>${ob(rvolCell(r.rvol))}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
     || `<tr><td colspan="23" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
@@ -1726,7 +1730,7 @@ function paintXposts(){
   rows=genSort(rows,xSortK,xSortDir);
   $("xtab-count")&&($("xtab-count").textContent=`(${X_ROWS.length})`);
   $("x-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> tweets${rows.length!==X_ROWS.length?` <span class="muted">of ${X_ROWS.length}</span>`:''}`;
-  $("x-rows").innerHTML=rows.map(e=>`<tr><td>${e.published_at||''}</td><td><b>${disp(e.ticker)}</b></td><td>${nm40(e.name)}</td><td>${e.market||''}</td><td>${e.thread>1?e.thread+' pts':'1'}</td><td><a href="${e.url}" target="_blank" rel="noopener">open ↗</a></td></tr>`).join("")||`<tr><td colspan="6" class="empty">No tweets yet.</td></tr>`;
+  $("x-rows").innerHTML=rows.map(e=>`<tr><td>${e.published_at||''}</td><td>${nm40(e.name)}</td><td>${e.market||''}</td><td>${e.thread>1?e.thread+' pts':'1'}</td><td><b>${disp(e.ticker)}</b></td><td><a href="${e.url}" target="_blank" rel="noopener">open ↗</a></td></tr>`).join("")||`<tr><td colspan="6" class="empty">No tweets yet.</td></tr>`;
 }
 function renderXposts(){fetch("/api/x-posts",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{X_ROWS=j.rows||[];paintXposts();}).catch(()=>{$("x-rows").innerHTML=`<tr><td colspan="6" class="empty">Could not load — try logging in again.</td></tr>`;});}
 document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.dataset.xk;xSortDir=(xSortK===k)?-xSortDir:-1;xSortK=k;paintXposts();_sortArrows("data-xk",xSortK,xSortDir);});
@@ -2154,11 +2158,12 @@ function paintOrderOps(){
   const nm=t=>{const r=DATA.find(x=>x.ticker===t||disp(x.ticker)===t);return r?(r.name||''):'';};
   rows.forEach(r=>r._fav=FAVS.has(disp(r.ticker))?1:0);   // favourite column sortable (user 2026-07-11)
   $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>
-    ${_favCell(r.ticker)}<td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td><b>${disp(r.ticker||'')}</b></td><td>${nm(r.ticker)}</td>
+    ${_favCell(r.ticker)}<td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td>${nm(r.ticker)}</td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
     <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td><td>${r.size??''}</td>
     <td><b style="color:${st(r.status)}">${r.status||''}</b></td><td>${r.session||''}</td>
-    <td class="muted" style="white-space:normal;max-width:460px">${(r.notes||'').replace(/</g,'&lt;')}</td></tr>`).join("")
+    <td class="muted" style="white-space:normal;max-width:460px">${(r.notes||'').replace(/</g,'&lt;')}</td>
+    <td><b>${disp(r.ticker||'')}</b></td></tr>`).join("")
   || `<tr><td colspan="13" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
 }
 function renderOrderOps(){
@@ -2274,8 +2279,8 @@ function paintIgAccount(){
   const cnt=(n,tot,word)=>`<b style="font-size:15px;color:var(--fg)">${n}</b> ${word}${n===1?'':'s'}${q&&tot!==n?` <span class="muted">of ${tot}</span>`:''}`;
   $("ig-pos-count").innerHTML=cnt(pos.length,IG_POS.length,"open position");
   $("ig-ord-count").innerHTML=cnt(ord.length,IG_ORD.length,"working order");
-  $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td><b>${p.ticker||p.epic||''}</b></td><td>${nm40(p.name)}</td><td>${_igDtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
-  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td><b>${o.ticker||o.epic||''}</b></td><td>${nm40(o.name)}</td><td>${_igDtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td></tr>`).join("")||`<tr><td colspan="8" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
+  $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td>${nm40(p.name)}</td><td>${_igDtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td><b>${p.ticker||p.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
+  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${_igDtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="8" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
 function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
@@ -2346,7 +2351,7 @@ function _renderPerformance(){
   $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${sel.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${sel.length!==all.length?` of ${all.length}`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("pftab-count").textContent=`(${sel.length})`;
   $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
-    <td><b>${disp(r.ticker)}</b></td><td>${nm40(r.name)}</td>
+    <td>${nm40(r.name)}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
     <td>${ob(`<b style="color:${_stcol(r.state)}">${r.state||''}</b>`)}</td>
     <!-- Market and Triggered stay visible logged-out (user 2026-07-17, P-26 and P-17b); the rest of the
@@ -2356,7 +2361,7 @@ function _renderPerformance(){
     <td>${ob(f2(r.current_price))}</td>
     <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td>
-    <td>${ob(rvolCell(r.rvol))}</td></tr>`).join("")
+    <td>${ob(rvolCell(r.rvol))}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
     ||`<tr><td colspan="14" class="empty">No recorded triggers yet.</td></tr>`;
 }
 // Summary table (user 2026-07-13): Overall / Bull / Bear split of the recorded triggers, with
@@ -2533,7 +2538,7 @@ function renderPreorders(){
   packViz("po-viz");   // P-15
   $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
     return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
-      ${_favCell(r.ticker)}<td><b>${disp(r.ticker)}</b></td><td>${nm40(r.name)}</td>
+      ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
       <td><button class="btn" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();placeOnIG('${r.ticker}')" title="Place this pre-order as a live IG working order now">↗ Place on IG</button></td>
       <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
       <td>${r.status}</td><td>${r.market||''}</td>
@@ -2542,7 +2547,7 @@ function renderPreorders(){
       <td>${r.rr!=null?r.rr.toFixed(1):''}</td>
       <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td>
       <td>${(r.timeframe||'').replace('daily-','D')}</td>
-      <td>${r.added||''}</td><td>${r.source||''}</td></tr>`;}).join("")
+      <td>${r.added||''}</td><td>${r.source||''}</td><td><b>${disp(r.ticker)}</b></td></tr>`;}).join("")
     || `<tr><td colspan="18" class="empty">No pre-orders right now.</td></tr>`;
   document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=e=>{if(e.target.type==="checkbox")return;openDetailFrom('preorders',tr.dataset.t);});   // return here on close (P-29)
   $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)   // keep tab count in sync after delete (user 2026-07-06)
