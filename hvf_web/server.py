@@ -1729,12 +1729,18 @@ def _sqa_buckets(rows, keyfn, label):
         wins = [r for r in res if r["outcome"] == "TARGET"]
         never = [r for r in rs if r["outcome"] == "NEVER_TRIGGERED"]
         rets = [r["return_pct"] for r in res if r["return_pct"] is not None]
+        losses = len(res) - len(wins)
+        avg = (sum(rets) / len(rets)) if rets else None
         out.append({
             "dimension": label, "bucket": k, "funnels": len(rs), "resolved": len(res),
-            "wins": len(wins), "never_triggered": len(never),
+            "wins": len(wins), "losses": losses, "never_triggered": len(never),
             "win_pct": (round(len(wins) / len(res) * 100, 1) if res else None),
-            "avg_return": (round(sum(rets) / len(rets), 2) if rets else None),
-            "expectancy": (round(sum(rets) / len(rets), 2) if rets else None),
+            "loss_pct": (round(losses / len(res) * 100, 1) if res else None),   # user 2026-07-17
+            "avg_return": (round(avg, 2) if avg is not None else None),
+            "expectancy": (round(avg, 2) if avg is not None else None),
+            # Expected P&L on a £10,000 position for one trade in this bucket ("potential impact of having
+            # £10,000 to invest") — the per-trade expectancy in pounds, not a compounded book.
+            "pnl_per_10k": (round(avg / 100 * 10000) if avg is not None else None),
             "enough": len(res) >= _SQA_MIN_N,
         })
     return sorted(out, key=lambda b: (b["win_pct"] is None, -(b["win_pct"] or 0)))
@@ -1793,8 +1799,11 @@ def api_squeeze_analysis():
         base_ret = (sum(rets) / len(rets)) if rets else None
         payload["rows"] = len(rows)
         payload["baseline"] = {"funnels": len(rows), "resolved": len(res), "wins": len(wins),
+                               "losses": len(res) - len(wins),
                                "win_pct": (round(base_win, 1) if base_win is not None else None),
+                               "loss_pct": (round((len(res) - len(wins)) / len(res) * 100, 1) if res else None),
                                "avg_return": (round(base_ret, 2) if base_ret is not None else None),
+                               "pnl_per_10k": (round(base_ret / 100 * 10000) if base_ret is not None else None),
                                "never_triggered": sum(1 for r in rows if r["outcome"] == "NEVER_TRIGGERED"),
                                "open": sum(1 for r in rows if r["outcome"] == "OPEN")}
         dims = [

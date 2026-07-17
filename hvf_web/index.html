@@ -2366,17 +2366,21 @@ function paintSqueezeAnalysis(){
     box.innerHTML=`<div class="muted" style="font-size:13px">No squeeze history yet — run <code>python squeeze_history.py --months 15</code> to build it.</div>`;
     adv.innerHTML="";dims.innerHTML="";return;}
   const card=(ic,t,v,s)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:17px;color:var(--fg)">${v}</b><br><span class="muted">${s}</span></div></div>`;
+  // £-per-trade impact of a £10,000 position (user 2026-07-17): the per-trade expectancy in pounds,
+  // green if the sample makes money on average, red if it bleeds.
+  const gbp=v=>v==null?'—':`${v<0?'-':'+'}£${Math.abs(v).toLocaleString()}`;
   box.innerHTML=
     card("🧪","Funnels analysed",b.funnels,`over 15 months · ${b.resolved} resolved`)+
-    card("🎯","Baseline win rate",`${b.win_pct}%`,`${b.wins} hit target of ${b.resolved} resolved`)+
+    card("🎯","Win vs loss rate",`${b.win_pct}% / ${b.loss_pct}%`,`${b.wins} hit target · ${b.losses} stopped`)+
     card("📈","Baseline avg return",`${b.avg_return}%`,"direction-aware, per resolved funnel")+
+    card("💷","Impact per £10,000",`<span style="color:${b.pnl_per_10k>=0?'var(--bull)':'var(--bear)'}">${gbp(b.pnl_per_10k)}</span>`,"expected on one £10k trade, on average")+
     card("⏳","Still running / never fired",`${b.open} / ${b.never_triggered}`,"excluded from win %");
   adv.innerHTML=(SQA.advice&&SQA.advice.length)
     ? `<div class="card" style="border:1px solid var(--bull);background:color-mix(in srgb,var(--bull) 8%,transparent)">
         <h4>✅ Filters that beat the baseline</h4>
         <p class="muted" style="font-size:12px;margin:0 0 8px">At least 10 resolved funnels, and a win rate at least 10 points above the ${b.win_pct}% baseline.</p>
         ${SQA.advice.map(a=>`<div class="credrow"><span class="clabel">${a.dimension}: <b>${a.bucket}</b></span>
-          <span><b style="color:var(--bull)">${a.win_pct}%</b> <span class="muted">win (+${a.lift} pts) · avg ${a.avg_return}% · n=${a.resolved}</span></span></div>`).join("")}</div>`
+          <span><b style="color:var(--bull)">${a.win_pct}%</b> <span class="muted">win / ${a.loss_pct}% loss (+${a.lift} pts) · ${gbp(a.pnl_per_10k)} per £10k · n=${a.resolved}</span></span></div>`).join("")}</div>`
     : `<div class="card"><h4>No filter clears the bar yet</h4><p class="muted" style="font-size:12px;margin:0">
         Nothing beats the ${b.win_pct}% baseline by 10+ points on 10+ resolved funnels. That is itself a finding: on this sample the
         attributes below do not separate winners strongly enough to trade on.</p></div>`;
@@ -2384,11 +2388,11 @@ function paintSqueezeAnalysis(){
   // thin bucket cannot be mistaken for a strong one.
   dims.innerHTML=(SQA.dimensions||[]).filter(d=>d.buckets.some(x=>x.resolved)).map(d=>
     `<div class="vizsector"><div class="vizbox"><h5>${d.name}</h5><div class="bars">`+
-    d.buckets.filter(x=>x.resolved).map(x=>`<div class="bar" title="${x.funnels} funnels · ${x.resolved} resolved · ${x.never_triggered} never fired">
+    d.buckets.filter(x=>x.resolved).map(x=>`<div class="bar" title="${x.bucket}: ${x.win_pct}% win / ${x.loss_pct}% loss · ${gbp(x.pnl_per_10k)} per £10k trade · ${x.resolved} resolved (${x.wins} target, ${x.losses} stopped) · ${x.never_triggered} never fired">
       <span class="tk" style="max-width:120px">${x.bucket}</span>
       <span class="track"><span class="fill" style="width:${Math.max(2,Math.round((x.win_pct||0)))}%;background:${_sqaCol(x.win_pct,b.win_pct)};opacity:${x.enough?1:0.35}"></span></span>
       <span class="n" style="color:${_sqaCol(x.win_pct,b.win_pct)}">${x.win_pct==null?'—':x.win_pct+'%'}</span>
-      <span class="n muted" style="min-width:34px">n=${x.resolved}</span></div>`).join("")+
+      <span class="n" style="min-width:52px;color:${x.pnl_per_10k>=0?'var(--bull)':'var(--bear)'}">${gbp(x.pnl_per_10k)}</span></div>`).join("")+
     `</div></div></div>`).join("");
 }
 function _renderPerformance(){
