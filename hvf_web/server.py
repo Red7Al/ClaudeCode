@@ -1515,14 +1515,30 @@ _PERF_CACHE = {"ts": 0.0, "data": None}
 _PERF_TTL = 300   # seconds
 
 
+# Intraday high/low carry bad ticks (Yahoo): e.g. LSEG.L 2026-06-18 printed a 10130 high on an 8338
+# close — a 21% wick that would trip a stop price never really reached. When a bar's high (or low)
+# deviates from its OWN close by more than this fraction, treat it as a wick and fall back to the close
+# for level-touch tests. A close that is itself beyond the level still counts — that is a real breach,
+# not a wick (user 2026-07-17, P-01 LSEG bug B).
+_BAD_TICK_CAP = 0.15
+
+
 def _perf_exit(bull: bool, entry: float, stop: float, target: float, bars: list):
-    """bars: chronological (high, low, close) from the trigger date on. Returns (state, return_pct) where
-    state is STOPPED / TARGET / None (None = no exit hit yet -> caller marks OPEN to market)."""
-    for hi, lo, _cl in bars:
+    """bars: chronological (high, low, close) STRICTLY AFTER the trigger bar. Entry is the trigger bar's
+    CLOSE, so the trade can only be stopped/targeted from the NEXT bar on — the trigger bar's own intraday
+    range must never stop it before entry (user 2026-07-17, P-01 LSEG bug A). Returns (state, return_pct)
+    where state is STOPPED / TARGET / None (None = no exit hit yet -> caller marks OPEN to market)."""
+    for hi, lo, cl in bars:
         if hi is None or lo is None:
             continue
-        hit_stop = (lo <= stop) if bull else (hi >= stop)
-        hit_tgt = (hi >= target) if bull else (lo <= target)
+        # Reject implausible intraday wicks: fall back to the close when high/low is too far from it.
+        if cl is not None:
+            hi_eff = hi if hi <= cl * (1 + _BAD_TICK_CAP) else cl
+            lo_eff = lo if lo >= cl * (1 - _BAD_TICK_CAP) else cl
+        else:
+            hi_eff, lo_eff = hi, lo
+        hit_stop = (lo_eff <= stop) if bull else (hi_eff >= stop)
+        hit_tgt = (hi_eff >= target) if bull else (lo_eff <= target)
         if hit_stop:   # same-bar tie resolves to the stop (worst case), standard backtest convention
             return "STOPPED", ((stop - entry) / entry * 100 if bull else (entry - stop) / entry * 100)
         if hit_tgt:
@@ -1642,13 +1658,14 @@ def api_performance():
                     bull = (ht == "BULLISH")
                     ready = max([d for d in (h3d, l3d) if d], default=None)   # funnel's last pivot
                     td = _perf_trigger_date(bull, e, ready, bars, rec)
-                    path = [(b[1], b[2], b[3]) for b in bars if b[0] >= td]
+                    path = [(b[1], b[2], b[3]) for b in bars if b[0] >= td]        # from the trigger bar: mark-to-market fallback price
+                    exit_path = [(b[1], b[2], b[3]) for b in bars if b[0] > td]    # AFTER it: entry is the trigger CLOSE (P-01 bug A)
                     # "Now" price: prefer the live snapshot, else fall back to the freshest close in
                     # price_history (not every recorded trigger is still in the current snapshot).
                     cur = srec.get("current_price")
                     if cur is None:
                         cur = next((c for (_h, _l, c) in reversed(path) if c is not None), None)
-                    state, perf = _perf_exit(bull, e, s, t, path)
+                    state, perf = _perf_exit(bull, e, s, t, exit_path)
                     if state is None:   # still open — mark to the freshest price we have
                         state = "OPEN"
                         perf = None if cur is None else ((cur - e) / e * 100 if bull else (e - cur) / e * 100)
