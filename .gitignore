@@ -57,3 +57,6 @@ launcher_secrets.cmd
 
 # local run logs
 hvf_web/run.log
+
+# Personal ToDo / change-request notes to Claude — local working notes, not tracked
+ChangeRequests/
