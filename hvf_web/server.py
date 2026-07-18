@@ -1716,69 +1716,101 @@ def _sqa_sector(ticker: str):
         return None
 
 
-# Broker leverage by instrument type (user 2026-07-17: "each INSTRUMENT TRADE IS LEVERAGED"). Mirrors
-# the client LEVERAGE map + levType() in index.html, and reads the OWNER's configured values so the £
-# impact matches how the account actually trades. A £10k MARGIN position controls £10k x leverage of
-# exposure, so P&L = 10000 x leverage x return%/100 — not 10000 x return%/100.
-_SQA_LEV_DEFAULT = {"fx": 30, "equities": 10, "commodities": 10, "indices": 10}
+# Methodology RECONCILED to the code that already defines these (user 2026-07-18 — a QA correction).
+#   Win / loss / avg — the Performance report's _pfSeg (hvf_web/index.html): a GAIN is a marked-to-market
+#     return above +PF_BE, a LOSS below -PF_BE, and BOTH counts include OPEN trades. Win% = gains / every
+#     trade that has a return (not target-hits / closed-only, which is a different, contradictory number).
+#   £ impact & compounding — calculate_position_size (ig_shim.py): each trade risks a FIXED fraction of
+#     the wallet (risk_per_trade, 2%), size = risk_amount / stop_distance. So a stop loses exactly that
+#     fraction and NOTHING blows up. A trade's wallet impact = risk% x R-multiple, where the R-multiple is
+#     return% / stop-distance% (STOPPED = -1R, TARGET = +R:R, open = partial).
+_SQA_BE = 0.5             # |return| <= this = break-even (matches PF_BE in _pfSeg)
+_SQA_RISK = 0.02          # risk per trade (calculate_position_size default risk_per_trade)
 
 
-def _sqa_leverage():
+def _sqa_bridge_min_quality() -> float:
     try:
-        cfg = (_wu.get_settings(_OWNER) or {}).get("leverage") or {}
+        import config_store as _cs
+        return float(_cs.get_value("bridge_min_quality", 50))
     except Exception:
-        cfg = {}
-    return {k: (cfg.get(k) if isinstance(cfg.get(k), (int, float)) and cfg.get(k) > 0 else v)
-            for k, v in _SQA_LEV_DEFAULT.items()}
+        return 50.0
 
 
-def _sqa_lev_for(market: str, lev: dict) -> float:
-    m = market or ""
-    if m == "FX":
-        return lev["fx"]
-    if m == "Indices":
-        return lev["indices"]
-    if m == "Commodities":
-        return lev["commodities"]
-    return lev["equities"]     # equities, and Crypto treated as equities (matches client levType)
+def _sqa_seg(rows):
+    """Segment stats for a set of funnels, using the SAME definitions as the Performance report's _pfSeg,
+    plus the 2%-risk £ impact. `rows` may include OPEN (marked-to-market) funnels — they count, exactly as
+    on the Performance report."""
+    ps = [r for r in rows if r.get("return_pct") is not None]      # 'Returns Available' (incl. OPEN)
+    if not ps:
+        return {"funnels": len(rows), "avail": 0, "gains": 0, "losses": 0, "be": 0, "wins": 0,
+                "losses_n": 0, "win_pct": None, "loss_pct": None, "avg_return": None,
+                "max": None, "min": None, "pnl_per_10k": None, "enough": False}
+    rets = [r["return_pct"] for r in ps]
+    gains = sum(1 for p in rets if p > _SQA_BE)
+    losses = sum(1 for p in rets if p < -_SQA_BE)
+    be = len(ps) - gains - losses
+    rms = [r["r_mult"] for r in ps if r.get("r_mult") is not None]
+    # £ P&L on a £10,000 wallet for one trade: risk 2% (£200) x the trade's R-multiple, averaged.
+    pnl10k = round(10000 * _SQA_RISK * (sum(rms) / len(rms))) if rms else None
+    return {
+        "funnels": len(rows), "avail": len(ps),
+        "gains": gains, "losses": losses, "be": be,
+        "wins": gains, "losses_n": losses,     # aliases the UI already reads
+        "win_pct": round(gains / len(ps) * 100, 1),
+        "loss_pct": round(losses / len(ps) * 100, 1),
+        "avg_return": round(sum(rets) / len(rets), 2),
+        "max": round(max(rets), 1), "min": round(min(rets), 1),
+        "pnl_per_10k": pnl10k,
+        "enough": len(ps) >= _SQA_MIN_N,
+    }
 
 
-def _sqa_pnl10k(res_rows) -> float:
-    """Mean £ P&L on a £10,000 MARGIN position across resolved funnels, each amplified by its own
-    instrument's leverage. Averaged per-funnel so a bucket that mixes FX (30x) and equities (10x) is
-    weighted correctly, not by a single blended rate."""
-    vals = [r["return_pct"] / 100.0 * 10000 * r["lev"]
-            for r in res_rows if r.get("return_pct") is not None and r.get("lev")]
-    return round(sum(vals) / len(vals)) if vals else None
+# Max concurrent open positions in the compound simulation. The bridge places at most BRIDGE_MAX_PER_RUN
+# (6) NEW orders per 2-hourly pass; a realistic book holds a handful at once. This is the one modelling
+# assumption in the compound, so it is a named constant, not buried.
+_SQA_MAX_CONCURRENT = 6
 
 
-def _sqa_compound(res_rows, start=10000.0):
-    """Compounded wallet, ONE POSITION AT A TIME: start with £`start`, and from the resolved trades take
-    the next setup only AFTER the current trade has closed, letting the wallet grow or shrink as you go
-    (user 2026-07-17: "the compound effect of a bigger wallet as £10k grows or shrinks on each trade").
+def _sqa_compound(rows, start=10000.0, max_concurrent=_SQA_MAX_CONCURRENT):
+    """Compounded wallet as a PORTFOLIO SIMULATION, not a sequential product (user 2026-07-18). Sequential
+    compounding of thousands of overlapping trades is degenerate — with a positive per-trade edge it
+    explodes regardless of risk size, because the count, not the stake, drives it. Real trades run in
+    parallel and are capped, so this simulates that:
 
-    Why one-at-a-time: the resolved set has thousands of OVERLAPPING trades, and compounding all of them
-    sequentially is degenerate — face value it explodes (a positive edge over thousands of trades →
-    astronomical), and at full leverage it ruins to £0 (geometric mean < 1 on a sub-30% win rate). Neither
-    describes a real wallet. Taking non-overlapping trades in date order caps the count at what actually
-    fits the window and gives a realistic path.
+      * population = BRIDGE-TRADEABLE resolved funnels only (quality >= the bridge floor, R:R >= 3) — the
+        setups the 2-hourly bridge would actually have placed;
+      * at most `max_concurrent` positions open at once (the bridge's own per-pass cap); a setup that
+        arrives with every slot full is SKIPPED, exactly as the live cap would skip it;
+      * each position risks 2% of the wallet AT THE MOMENT IT OPENS (calculate_position_size) and realises
+        risked£ x R-multiple when it closes. A stop loses its 2%, nothing more — it cannot blow up.
 
-    Position sizing = EXPOSURE ≈ the whole wallet each trade (leverage frees the margin; you do not stake
-    10x your capital), so a trade's raw return applies at face value. Returns (n taken, final wallet)."""
-    seq = sorted((r for r in res_rows
-                  if r.get("return_pct") is not None and r.get("trig_date")),
+    Returns {final wallet, trades taken, skipped, max_concurrent}."""
+    import heapq
+    minq = _sqa_bridge_min_quality()
+    seq = sorted((r for r in rows
+                  if r["outcome"] in ("TARGET", "STOPPED")
+                  and r.get("r_mult") is not None and r.get("trig_date") and r.get("exit_date")
+                  and (r.get("quality") or 0) >= minq and (r.get("rr") or 0) >= 3),
                  key=lambda r: r["trig_date"])
-    w, n, free_from = float(start), 0, ""
-    for r in seq:
-        if r["trig_date"] < free_from:      # a position is still open — skip this overlapping setup
-            continue
-        w *= (1.0 + max(-1.0, r["return_pct"] / 100.0))
-        n += 1
-        free_from = r.get("exit_date") or r["trig_date"]   # free again once this trade closes
-        if w <= 0:
-            w = 0.0
-            break
-    return {"final": round(w), "trades": n} if n else None
+    if not seq:
+        return None
+    wallet = float(start)
+    taken = skipped = 0
+    open_pos = []                      # heap of (exit_date, risked_gbp, r_mult)
+    for t in seq:
+        td = t["trig_date"]
+        while open_pos and open_pos[0][0] <= td:        # close anything that has matured
+            _ed, risked, rm = heapq.heappop(open_pos)
+            wallet = max(0.0, wallet + risked * rm)
+        if len(open_pos) < max_concurrent:
+            heapq.heappush(open_pos, (t["exit_date"], wallet * _SQA_RISK, t["r_mult"]))
+            taken += 1
+        else:
+            skipped += 1
+    while open_pos:                                     # close the book at the end
+        _ed, risked, rm = heapq.heappop(open_pos)
+        wallet = max(0.0, wallet + risked * rm)
+    return {"final": round(wallet), "trades": taken, "skipped": skipped, "max_concurrent": max_concurrent}
 
 
 def _sqa_buckets(rows, keyfn, label):
@@ -1790,25 +1822,10 @@ def _sqa_buckets(rows, keyfn, label):
             continue
         seen.setdefault(str(k), []).append(r)
     for k, rs in seen.items():
-        res = [r for r in rs if r["outcome"] in ("TARGET", "STOPPED")]
-        wins = [r for r in res if r["outcome"] == "TARGET"]
-        never = [r for r in rs if r["outcome"] == "NEVER_TRIGGERED"]
-        rets = [r["return_pct"] for r in res if r["return_pct"] is not None]
-        losses = len(res) - len(wins)
-        avg = (sum(rets) / len(rets)) if rets else None
-        out.append({
-            "dimension": label, "bucket": k, "funnels": len(rs), "resolved": len(res),
-            "wins": len(wins), "losses": losses, "never_triggered": len(never),
-            "win_pct": (round(len(wins) / len(res) * 100, 1) if res else None),
-            "loss_pct": (round(losses / len(res) * 100, 1) if res else None),   # user 2026-07-17
-            "avg_return": (round(avg, 2) if avg is not None else None),
-            "expectancy": (round(avg, 2) if avg is not None else None),
-            # Expected P&L on a £10,000 MARGIN position for one trade in this bucket, LEVERAGED by each
-            # instrument's own broker leverage (user 2026-07-17). This is per-trade expectancy in pounds,
-            # not a compounded book.
-            "pnl_per_10k": _sqa_pnl10k(res),
-            "enough": len(res) >= _SQA_MIN_N,
-        })
+        seg = _sqa_seg(rs)
+        never = sum(1 for r in rs if r["outcome"] == "NEVER_TRIGGERED")
+        out.append({"dimension": label, "bucket": k, "never_triggered": never,
+                    "resolved": seg["avail"], **seg})   # 'resolved' kept as the sample-size the UI shows
     return sorted(out, key=lambda b: (b["win_pct"] is None, -(b["win_pct"] or 0)))
 
 
@@ -1846,15 +1863,22 @@ def api_squeeze_analysis():
             # makes the population definitionally "tradeable" rather than relying on that.
             raw = db.run(
                 "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
-                "outcome, return_pct, triggered_date, outcome_date from squeeze_history "
-                "where ready_date is not null and risk_reward >= 3") or []
+                "outcome, return_pct, triggered_date, outcome_date, entry_level, stop_level "
+                "from squeeze_history where ready_date is not null and risk_reward >= 3") or []
         finally:
             db.close()
-        lev = _sqa_leverage()
         rows = []
-        for tk, mk, tf, ht, q, rr, rv, oc, ret, td, od in raw:
+        for tk, mk, tf, ht, q, rr, rv, oc, ret, td, od, e, s_ in raw:
             s = snap.get(tk, {})
             market = mk or s.get("market")
+            ret = float(ret) if ret is not None else None
+            # R-multiple = the trade's return in units of what it RISKED (return% / stop-distance%), so a
+            # stop is -1R, a target is +R:R (user 2026-07-18, matching calculate_position_size).
+            r_mult = None
+            if ret is not None and e and s_:
+                sd = abs(float(e) - float(s_)) / float(e) * 100.0
+                if sd > 0:
+                    r_mult = ret / sd
             # sector from the cache first (covers every ticker, not just those with a current signal —
             # user 2026-07-17), snapshot as a fallback; location/market only exist on the snapshot row.
             rows.append({"ticker": tk, "market": market,
@@ -1863,23 +1887,14 @@ def api_squeeze_analysis():
                          "quality": (float(q) if q is not None else None),
                          "rr": (float(rr) if rr is not None else None),
                          "rvol": (float(rv) if rv is not None else None),
-                         "lev": _sqa_lev_for(market, lev),   # per-instrument leverage (user 2026-07-17)
-                         "trig_date": str(td) if td else None,   # for chronological compounding
-                         "exit_date": str(od) if od else None,
-                         "outcome": oc, "return_pct": (float(ret) if ret is not None else None)})
-        res = [r for r in rows if r["outcome"] in ("TARGET", "STOPPED")]
-        wins = [r for r in res if r["outcome"] == "TARGET"]
-        rets = [r["return_pct"] for r in res if r["return_pct"] is not None]
-        base_win = (len(wins) / len(res) * 100) if res else None
-        base_ret = (sum(rets) / len(rets)) if rets else None
+                         "trig_date": str(td) if td else None, "exit_date": str(od) if od else None,
+                         "r_mult": r_mult,
+                         "outcome": oc, "return_pct": ret})
+        base = _sqa_seg(rows)
         payload["rows"] = len(rows)
-        payload["baseline"] = {"funnels": len(rows), "resolved": len(res), "wins": len(wins),
-                               "losses": len(res) - len(wins),
-                               "win_pct": (round(base_win, 1) if base_win is not None else None),
-                               "loss_pct": (round((len(res) - len(wins)) / len(res) * 100, 1) if res else None),
-                               "avg_return": (round(base_ret, 2) if base_ret is not None else None),
-                               "pnl_per_10k": _sqa_pnl10k(res),   # leveraged per-instrument (user 2026-07-17)
-                               "compound_10k": _sqa_compound(res),   # £10k compounded chronologically
+        payload["baseline"] = {**base,
+                               "resolved": base["avail"],
+                               "compound_10k": _sqa_compound(rows),   # 2% risk, bridge-tradeable
                                "never_triggered": sum(1 for r in rows if r["outcome"] == "NEVER_TRIGGERED"),
                                "open": sum(1 for r in rows if r["outcome"] == "OPEN")}
         dims = [
@@ -1895,6 +1910,7 @@ def api_squeeze_analysis():
         for label, fn in dims:
             payload["dimensions"].append({"name": label, "buckets": _sqa_buckets(rows, fn, label)})
         # Advice = buckets with a real sample that beat the baseline win rate by >= 10 points.
+        base_win = base.get("win_pct")
         if base_win is not None:
             for d in payload["dimensions"]:
                 for b in d["buckets"]:

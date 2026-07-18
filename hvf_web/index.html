@@ -996,9 +996,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <p class="muted" style="font-size:13px;margin-top:-8px">Built by replaying the engine over 15 months of price history
     (<code>squeeze_history</code>), not just the triggers recorded since 2026-06-30 — a sample that small cannot support a
     conclusion. The population is every funnel the engine would have surfaced as <b>READY or TRIGGERED</b>, including ones you
-    did not trade; that is the only way to see whether a filter helps. <b>Win %</b> counts resolved funnels only
-    (hit target vs stopped) — open trades have not finished, and counting them would flatter whichever bucket holds the most
-    unfinished ones. A bucket is only called out as advice with at least 10 resolved funnels behind it.</p>
+    did not trade; that is the only way to see whether a filter helps. <b>Win %</b> uses the same definition as the
+    Performance report above — a <b>gain</b> is any positive marked-to-market return (open trades included), not a
+    target-hit — so the two agree. £ figures risk 2% of the wallet per trade; the compounded £10k is a portfolio
+    simulation capped at the bridge's concurrent limit. A bucket is only called out as advice with at least 10 behind it.</p>
     <div id="sqa-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
     <div id="sqa-advice" style="margin-bottom:10px"></div>
     <div id="sqa-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
@@ -2393,11 +2394,12 @@ function paintSqueezeAnalysis(){
   const gbp=v=>v==null?'—':`${v<0?'-':'+'}£${Math.abs(v).toLocaleString()}`;
   const money=v=>v==null?'—':`£${Math.round(v).toLocaleString()}`;
   // Four cards (user 2026-07-17): secondary figures fold into the subtitles.
+  const c=b.compound_10k||{};
   box.innerHTML=
-    card("🧪","Funnels analysed",b.funnels,`over 15 months · ${b.resolved} resolved · ${b.open} open · ${b.never_triggered} never fired`)+
-    card("🎯","Win vs loss rate",`${b.win_pct}% / ${b.loss_pct}%`,`${b.wins} hit target · ${b.losses} stopped (R:R ≥ 3 only)`)+
-    card("💷","Impact per £10,000",`<span style="color:${b.pnl_per_10k>=0?'var(--bull)':'var(--bear)'}">${gbp(b.pnl_per_10k)}</span>`,`one leveraged £10k trade, on average · ${b.avg_return}% raw`)+
-    card("📈","£10,000 compounded",`<span style="color:${((b.compound_10k||{}).final||0)>=10000?'var(--bull)':'var(--bear)'}">${money((b.compound_10k||{}).final)}</span>`,`one trade at a time · ${(b.compound_10k||{}).trades||0} non-overlapping trades · exposure sized to the wallet`);
+    card("🧪","Funnels analysed",b.funnels,`over 15 months · ${b.avail} with a return · ${b.open} open · ${b.never_triggered} never fired`)+
+    card("🎯","Win vs loss rate",`${b.win_pct}% / ${b.loss_pct}%`,`${b.gains} gains · ${b.losses} losses · ${b.be} break-even (same basis as the Performance report — a gain is any +ve return, open included)`)+
+    card("💷","Impact per £10,000",`<span style="color:${b.pnl_per_10k>=0?'var(--bull)':'var(--bear)'}">${gbp(b.pnl_per_10k)}</span>`,`risking 2% (£200) per trade · avg ${b.avg_return}% return`)+
+    card("📈","£10,000 compounded",`<span style="color:${(c.final||0)>=10000?'var(--bull)':'var(--bear)'}">${money(c.final)}</span>`,`portfolio sim · max ${c.max_concurrent||6} open at once · ${c.trades||0} taken, ${c.skipped||0} skipped (slots full)`);
   adv.innerHTML=(SQA.advice&&SQA.advice.length)
     ? `<div class="card" style="border:1px solid var(--bull);background:color-mix(in srgb,var(--bull) 8%,transparent)">
         <h4>✅ Filters that beat the baseline</h4>
