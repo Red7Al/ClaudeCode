@@ -418,6 +418,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" value="3.1" placeholder="min"><input id="f_rrmax" type="number" step="0.1" placeholder="max"></div></div>
     <div class="f"><label>Dist to entry % range</label><div class="row2"><input id="f_demin" type="number" step="0.1" value="-10" placeholder="min"><input id="f_demax" type="number" step="0.1" value="10" placeholder="max"></div></div>
     <div class="f"><label>Days since setup range</label><div class="row2"><input id="f_dsmin" type="number" placeholder="min"><input id="f_dsmax" type="number" value="90" placeholder="max"></div></div>
+    <div class="f"><label>RVOL range (at trigger)</label><div class="row2"><input id="f_rvmin" type="number" step="0.1" placeholder="min"><input id="f_rvmax" type="number" step="0.1" placeholder="max"></div></div>
     <h3>Fundamentals</h3>
     <div class="f"><label>P/E range</label><div class="row2"><input id="f_pemin" type="number" placeholder="min"><input id="f_pemax" type="number" placeholder="max"></div></div>
     <div class="f"><label>Insider % range</label><div class="row2"><input id="f_inmin" type="number" step="0.1" placeholder="min"><input id="f_inmax" type="number" step="0.1" placeholder="max"></div></div>
@@ -1172,7 +1173,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 let DATA=[], SEL=null, sortK="dist_entry", sortDir=1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: closest to entry first (user 2026-07-11)
 const $=id=>document.getElementById(id);
 const F=["f_search","f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
-         "f_demin","f_demax","f_dsmin","f_dsmax","f_pemin","f_pemax","f_inmin","f_inmax"];
+         "f_demin","f_demax","f_dsmin","f_dsmax","f_rvmin","f_rvmax","f_pemin","f_pemax","f_inmin","f_inmax"];
 const LOC={UK:"United Kingdom",US:"United States",FX:"FX",
   "Europe (West)":"Europe (West)","Europe (East)":"Europe (East)","Asia":"Asia","Other":"Other"};
 const locName=v=>LOC[v]||v||"";
@@ -1265,6 +1266,7 @@ function pass(r){
   if(!rng(r.rr,"f_rrmin","f_rrmax"))return false;
   if(!rng(r.dist_entry,"f_demin","f_demax"))return false;
   if(!rng(r.days_since,"f_dsmin","f_dsmax"))return false;
+  if(!rng(r.rvol,"f_rvmin","f_rvmax"))return false;   // RVOL at trigger (user 2026-07-17)
   if(!rng(r.pe,"f_pemin","f_pemax"))return false;
   if(!rng(r.insider_pct,"f_inmin","f_inmax"))return false;
   return true;
