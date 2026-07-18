@@ -1010,6 +1010,16 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div id="sqa-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
     <div id="sqa-advice" style="margin-bottom:10px"></div>
     <div id="sqa-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
+    <!-- Concurrency dial (user 2026-07-18): the compounded £ is dominated by how many positions run at
+         once (each risks 2%, so 50 = 100% heat). Drag to see the effect. -->
+    <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <b style="font-size:13px">Concurrency</b>
+      <input id="sqa-conc" type="range" min="1" max="50" value="10" style="flex:1;min-width:180px;max-width:360px" oninput="$('sqa-conc-lbl').textContent=this.value+' open ('+(this.value*2)+'% heat)'" onchange="sqaSetConc(this.value)">
+      <span id="sqa-conc-lbl" class="muted" style="font-size:12px;min-width:150px">10 open (20% heat)</span>
+      <span class="muted" style="font-size:11px">each trade risks 2% of the wallet; the compound is very sensitive to this</span>
+    </div>
+    <h3 class="sec" style="font-size:15px;margin-bottom:2px">Every trade behind these numbers <span id="sqa-trades-count" class="muted" style="font-size:12px;font-weight:400"></span></h3>
+    <div id="sqa-trades" class="tablewrap" style="max-height:420px;overflow:auto"></div>
   </div>
 </div>
 
@@ -2359,6 +2369,11 @@ function maRebuild(){
 let pfSortK="perf", pfSortDir=-1, PERF_DATA=null, PERF_GEN="";
 const _stcol=s=>s==="TARGET"?"var(--bull)":s==="STOPPED"?"var(--bear)":"#d29922";   // OPEN = amber
 function renderPerformance(){
+  // "What separates the winners" is ADMIN ONLY (user 2026-07-18): hide the sub-tab pill for everyone
+  // else, and never leave a non-admin sitting on the analysis panel.
+  const _anPill=document.querySelector('#pf-subnav .pill[data-pfpanel="analysis"]');
+  if(_anPill)_anPill.style.display=IS_ADMIN?'':'none';
+  if(!IS_ADMIN && !$("pf-panel-analysis").classList.contains("hidden"))pfPanel('results');
   if(PERF_DATA===null){                       // fetch the recorded-trigger report once, then render
     PERF_DATA=[];                             // in-flight guard
     fetch("/api/performance").then(r=>r.ok?r.json():{rows:[]})
@@ -2371,6 +2386,7 @@ function renderPerformance(){
 // Performance sub-tabs (user 2026-07-17): Results vs the 15-month analysis. The analysis fetches lazily
 // on first open, so the Results view is never slowed by it.
 function pfPanel(which){
+  if(which==="analysis"&&!IS_ADMIN)which="results";   // admin-only analysis (user 2026-07-18)
   document.querySelectorAll("#pf-subnav .pill").forEach(b=>b.classList.toggle("active",b.dataset.pfpanel===which));
   const res=$("pf-panel-results"), an=$("pf-panel-analysis");
   if(res)res.classList.toggle("hidden",which!=="results");
@@ -2388,15 +2404,22 @@ const CHERRY_PRESETS=[
   {id:"balanced", label:"Balanced · 1.8/60/5",   f:{rvmin:1.8,qmin:60,rrmin:5}},
 ];
 const _cherryEq=(a,b)=>JSON.stringify(a||{})===JSON.stringify(b||{});
-let SQA=null, SQA_FILTER={};
+let SQA=null, SQA_FILTER={}, SQA_CONC=10;
 function sqaPreset(id){const p=CHERRY_PRESETS.find(x=>x.id===id);if(!p)return;SQA_FILTER=p.f;SQA=null;renderSqueezeAnalysis();}
+function sqaSetConc(v){SQA_CONC=Math.max(1,+v||10);SQA=null;renderSqueezeAnalysis();}
+// Loading state (user 2026-07-18): recomputing on a preset / dial change takes a moment, so say so.
+function sqaBusy(on){
+  const s=$("sqa-summary"); if(s&&on)s.innerHTML='<div class="muted" style="font-size:13px;padding:10px">⏳ Recalculating…</div>';
+  document.querySelectorAll('#sqa-presets .pill,#sqa-conc').forEach(x=>{x.style.opacity=on?0.5:1;x.style.pointerEvents=on?'none':'';});
+}
 function renderSqueezeAnalysis(){
   paintSqaPresets();
   if(SQA!==null)return paintSqueezeAnalysis();
-  SQA={};
-  const qs=Object.entries(SQA_FILTER).map(([k,v])=>`${k}=${v}`).join("&");
-  fetch("/api/squeeze-analysis"+(qs?"?"+qs:"")).then(r=>r.ok?r.json():null)
-    .then(j=>{SQA=j||{};paintSqueezeAnalysis();}).catch(()=>{SQA={};paintSqueezeAnalysis();});
+  SQA={}; sqaBusy(true);
+  const qs=Object.entries({...SQA_FILTER,conc:SQA_CONC}).map(([k,v])=>`${k}=${v}`).join("&");
+  fetch("/api/squeeze-analysis?"+qs).then(r=>r.ok?r.json():null)
+    .then(j=>{SQA=j||{};sqaBusy(false);paintSqueezeAnalysis();})
+    .catch(()=>{SQA={};sqaBusy(false);paintSqueezeAnalysis();});
 }
 function paintSqaPresets(){
   const n=$("sqa-presets");if(!n)return;
@@ -2456,6 +2479,18 @@ function paintSqueezeAnalysis(){
       <span class="n" style="color:${_sqaCol(x.win_pct,b.win_pct)}">${x.win_pct==null?'—':x.win_pct+'%'}</span>
       <span class="n" style="min-width:52px;color:${x.pnl_per_10k>=0?'var(--bull)':'var(--bear)'}">${gbp(x.pnl_per_10k)}</span></div>`).join("")+
     `</div></div></div>`).join("");
+  // Sync the dial to the value the server actually used.
+  if($("sqa-conc")&&c.max_concurrent){$("sqa-conc").value=c.max_concurrent;$("sqa-conc-lbl").textContent=`${c.max_concurrent} open (${c.max_concurrent*2}% heat)`;}
+  // Every trade behind the numbers (user 2026-07-18) — so £-figures can be checked, newest first.
+  const tb=$("sqa-trades"), tc=$("sqa-trades-count"), ts=SQA.trades||[];
+  if(tc)tc.textContent=`(${ts.length} — newest first)`;
+  if(tb)tb.innerHTML=`<table><thead><tr><th>Name</th><th>Dir</th><th>Market</th><th>Sector</th><th>Triggered</th><th>Outcome</th><th>Return</th><th title="Return in units of what the trade risked (stop = -1R, target = +R:R). This drives the £ figures.">R</th><th>Quality</th><th>R:R</th><th>RVOL</th><th>Ticker</th></tr></thead><tbody>`+
+    ts.slice(0,500).map(t=>`<tr><td>${nm40(disp(t.ticker))}</td><td>${t.direction==='BULLISH'?'BULL':'BEAR'}</td><td>${t.market||''}</td><td>${t.sector||''}</td><td>${t.trig_date||''}</td>
+      <td><b style="color:${_stcol(t.outcome)}">${t.outcome}</b></td>
+      <td style="color:${(t.return_pct||0)>=0?'var(--bull)':'var(--bear)'}">${t.return_pct!=null?(t.return_pct>0?'+':'')+t.return_pct+'%':'—'}</td>
+      <td style="color:${(t.r_mult||0)>=0?'var(--bull)':'var(--bear)'}">${t.r_mult!=null?(t.r_mult>0?'+':'')+t.r_mult+'R':'—'}</td>
+      <td>${t.quality!=null?Math.round(t.quality):''}</td><td>${t.rr!=null?(+t.rr).toFixed(1):''}</td><td>${t.rvol!=null?(+t.rvol).toFixed(1):''}</td><td><b>${disp(t.ticker)}</b></td></tr>`).join("")+
+    `</tbody></table>`+(ts.length>500?`<p class="muted" style="font-size:11px;padding:6px">showing the newest 500 of ${ts.length}</p>`:'');
 }
 function _renderPerformance(){
   const all=PERF_DATA||[];

@@ -1849,6 +1849,14 @@ def _sqa_all_rows():
     if _SQA_ROWS["rows"] is not None and now - _SQA_ROWS["ts"] < _SQA_TTL:
         return _SQA_ROWS["rows"]
     snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
+    # Only markets the account ACTUALLY TRADES (user 2026-07-18: "FX is showing very profitable and we
+    # are not trading FX"). Use the trade allow-list — the same gate ig_shim.trade_allowed enforces — so
+    # the analysis population matches what would really have been placed. Empty list = allow all.
+    try:
+        import config_store as _cs
+        allowed = set(_cs.get_trade_filters().get("markets") or [])
+    except Exception:
+        allowed = set()
     from db_pool import get_db
     db = get_db()
     try:
@@ -1862,6 +1870,8 @@ def _sqa_all_rows():
     for tk, mk, tf, ht, q, rr, rv, oc, ret, td, od, e, s_ in raw:
         s = snap.get(tk, {})
         market = mk or s.get("market")
+        if allowed and market not in allowed:      # not a traded market — exclude (FX, Crypto, ...)
+            continue
         ret = float(ret) if ret is not None else None
         # R-multiple = the trade's return in units of what it RISKED (return% / stop-distance%): a stop is
         # -1R, a target +R:R (user 2026-07-18, matching calculate_position_size).
@@ -1897,7 +1907,9 @@ def api_squeeze_analysis():
     win rate / expectancy / compounded £ (user 2026-07-18)."""
     now = _time.time()
     rvmin, qmin, rrmin = _sqa_num("rvmin"), _sqa_num("qmin"), _sqa_num("rrmin")
-    ckey = (rvmin, qmin, rrmin)
+    conc = _sqa_num("conc")                     # concurrency dial (user 2026-07-18)
+    conc = int(conc) if conc and conc >= 1 else _SQA_MAX_CONCURRENT
+    ckey = (rvmin, qmin, rrmin, conc)
     if _SQA_CACHE.get("key") == ckey and _SQA_CACHE["data"] is not None and now - _SQA_CACHE["ts"] < _SQA_TTL:
         return jsonify(_SQA_CACHE["data"])
     payload = {"rows": 0, "baseline": None, "dimensions": [], "advice": [],
@@ -1917,9 +1929,18 @@ def api_squeeze_analysis():
         payload["rows"] = len(rows)
         payload["baseline"] = {**base,
                                "resolved": base["avail"],
-                               "compound_10k": _sqa_compound(rows),   # 2% risk, bridge-tradeable
+                               "compound_10k": _sqa_compound(rows, max_concurrent=conc),   # dial (P-18)
                                "never_triggered": sum(1 for r in rows if r["outcome"] == "NEVER_TRIGGERED"),
                                "open": sum(1 for r in rows if r["outcome"] == "OPEN")}
+        # Every trade behind the numbers (user 2026-07-18: "show each of the trades in a table") so the
+        # figures can be checked. Newest first; R-multiple is the £-driver behind the impact/compound.
+        payload["trades"] = [
+            {"ticker": r["ticker"], "market": r["market"], "sector": r["sector"], "direction": r["direction"],
+             "quality": r["quality"], "rr": r["rr"], "rvol": r["rvol"], "trig_date": r["trig_date"],
+             "outcome": r["outcome"], "return_pct": r["return_pct"],
+             "r_mult": (round(r["r_mult"], 2) if r["r_mult"] is not None else None)}
+            for r in sorted((x for x in rows if x["return_pct"] is not None),
+                            key=lambda x: (x["trig_date"] or ""), reverse=True)]
         dims = [
             ("Location", lambda r: r["location"]),
             ("Sector", lambda r: r["sector"]),
