@@ -1249,8 +1249,11 @@ function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return
 
 function augment(r){
   r.dist_entry=(r.entry!=null&&r.current_price)? +(((r.entry-r.current_price)/r.current_price)*100).toFixed(2):null;
-  // Price move since it triggered, vs the entry (trigger) level. Only meaningful for TRIGGERED rows.
-  r.chg_since_trig=(r.status==="TRIGGERED"&&r.entry&&r.current_price)? +(((r.current_price-r.entry)/r.entry)*100).toFixed(1):null;
+  // Return since it triggered, vs the entry (trigger) level. DIRECTION-AWARE so it agrees with the
+  // Performance tab: a BEAR wins when price falls below entry (user 2026-07-18, RRL.AX read -8.44%
+  // "loss" here while Performance correctly showed +7.7% — it was direction-agnostic). BULL: (cur-entry)/entry,
+  // BEAR: (entry-cur)/entry. Only meaningful for TRIGGERED rows.
+  r.chg_since_trig=(r.status==="TRIGGERED"&&r.entry&&r.current_price)? +((((r.direction==="BEAR"?(r.entry-r.current_price):(r.current_price-r.entry)))/r.entry)*100).toFixed(1):null;
   // "Days since" and "Triggered" now share ONE date (the trigger pivot: L3 for a long, H3 for a short),
   // so they're always in sync — Days since = today minus the date shown in the Triggered column.
   const _trigref=(r.direction==="BULL"?r.l3_date:r.h3_date)||r.l3_date||r.h3_date;
