@@ -1839,58 +1839,80 @@ def _sqa_band(v, edges, fmt="{}–{}"):
     return f"{edges[-1]}+" if v >= edges[-1] else None
 
 
+_SQA_ROWS = {"ts": 0.0, "rows": None}
+
+
+def _sqa_all_rows():
+    """The full bridge-eligible population (ready + R:R>=3), built once and cached — the query + sector
+    lookups are the slow part. Cherry-pick presets filter this in Python, so they cost nothing."""
+    now = _time.time()
+    if _SQA_ROWS["rows"] is not None and now - _SQA_ROWS["ts"] < _SQA_TTL:
+        return _SQA_ROWS["rows"]
+    snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
+    from db_pool import get_db
+    db = get_db()
+    try:
+        raw = db.run(
+            "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
+            "outcome, return_pct, triggered_date, outcome_date, entry_level, stop_level "
+            "from squeeze_history where ready_date is not null and risk_reward >= 3") or []
+    finally:
+        db.close()
+    rows = []
+    for tk, mk, tf, ht, q, rr, rv, oc, ret, td, od, e, s_ in raw:
+        s = snap.get(tk, {})
+        market = mk or s.get("market")
+        ret = float(ret) if ret is not None else None
+        # R-multiple = the trade's return in units of what it RISKED (return% / stop-distance%): a stop is
+        # -1R, a target +R:R (user 2026-07-18, matching calculate_position_size).
+        r_mult = None
+        if ret is not None and e and s_:
+            sd = abs(float(e) - float(s_)) / float(e) * 100.0
+            if sd > 0:
+                r_mult = ret / sd
+        rows.append({"ticker": tk, "market": market,
+                     "sector": _sqa_sector(tk) or s.get("sector"),
+                     "location": s.get("location"), "timeframe": tf, "direction": ht,
+                     "quality": (float(q) if q is not None else None),
+                     "rr": (float(rr) if rr is not None else None),
+                     "rvol": (float(rv) if rv is not None else None),
+                     "trig_date": str(td) if td else None, "exit_date": str(od) if od else None,
+                     "r_mult": r_mult, "outcome": oc, "return_pct": ret})
+    _SQA_ROWS.update(ts=now, rows=rows)
+    return rows
+
+
+def _sqa_num(name):
+    try:
+        v = request.args.get(name)
+        return float(v) if v not in (None, "") else None
+    except Exception:
+        return None
+
+
 @app.route("/api/squeeze-analysis")
 def api_squeeze_analysis():
-    """Which attributes actually separate the winners, over the 15-month replayed population."""
+    """Which attributes actually separate the winners, over the 15-month replayed population. Optional
+    cherry-pick filters (query params rvmin, qmin, rrmin) narrow the population, so a preset shows its own
+    win rate / expectancy / compounded £ (user 2026-07-18)."""
     now = _time.time()
-    if _SQA_CACHE["data"] is not None and now - _SQA_CACHE["ts"] < _SQA_TTL:
+    rvmin, qmin, rrmin = _sqa_num("rvmin"), _sqa_num("qmin"), _sqa_num("rrmin")
+    ckey = (rvmin, qmin, rrmin)
+    if _SQA_CACHE.get("key") == ckey and _SQA_CACHE["data"] is not None and now - _SQA_CACHE["ts"] < _SQA_TTL:
         return jsonify(_SQA_CACHE["data"])
     payload = {"rows": 0, "baseline": None, "dimensions": [], "advice": [],
+               "filter": {"rvmin": rvmin, "qmin": qmin, "rrmin": rrmin},
                "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
     try:
-        snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
-        from db_pool import get_db
-        db = get_db()
-        try:
-            # ready_date is not null = the engine actually surfaced this funnel as READY or TRIGGERED.
-            # Without this the population includes funnels it REJECTS: everything that never reached
-            # ready has R:R 2.10-2.99, i.e. below MIN_RISK_REWARD=3, so it is DEVELOPING forever and can
-            # never be traded. Their outcomes still exist here (the trigger is derived from price, not
-            # from the signal), and leaving them in produced exactly the wrong advice — "prefer R:R 0-3"
-            # and "prefer Quality 0-30", both describing trades the engine would never place.
-            # ready_date not null AND R:R >= 3: only funnels the engine would actually TRADE. R:R < 3 is
-            # DEVELOPING (below MIN_RISK_REWARD) and never traded, so it must not colour the win/loss
-            # (user 2026-07-17). ready_date alone already excludes all but 3 of these; the explicit floor
-            # makes the population definitionally "tradeable" rather than relying on that.
-            raw = db.run(
-                "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
-                "outcome, return_pct, triggered_date, outcome_date, entry_level, stop_level "
-                "from squeeze_history where ready_date is not null and risk_reward >= 3") or []
-        finally:
-            db.close()
-        rows = []
-        for tk, mk, tf, ht, q, rr, rv, oc, ret, td, od, e, s_ in raw:
-            s = snap.get(tk, {})
-            market = mk or s.get("market")
-            ret = float(ret) if ret is not None else None
-            # R-multiple = the trade's return in units of what it RISKED (return% / stop-distance%), so a
-            # stop is -1R, a target is +R:R (user 2026-07-18, matching calculate_position_size).
-            r_mult = None
-            if ret is not None and e and s_:
-                sd = abs(float(e) - float(s_)) / float(e) * 100.0
-                if sd > 0:
-                    r_mult = ret / sd
-            # sector from the cache first (covers every ticker, not just those with a current signal —
-            # user 2026-07-17), snapshot as a fallback; location/market only exist on the snapshot row.
-            rows.append({"ticker": tk, "market": market,
-                         "sector": _sqa_sector(tk) or s.get("sector"),
-                         "location": s.get("location"), "timeframe": tf, "direction": ht,
-                         "quality": (float(q) if q is not None else None),
-                         "rr": (float(rr) if rr is not None else None),
-                         "rvol": (float(rv) if rv is not None else None),
-                         "trig_date": str(td) if td else None, "exit_date": str(od) if od else None,
-                         "r_mult": r_mult,
-                         "outcome": oc, "return_pct": ret})
+        rows = _sqa_all_rows()
+        # Cherry-pick: null attribute is EXCLUDED when a min is set (you can't select on what you can't
+        # measure — e.g. RVOL>1.8 must drop no-RVOL FX/index funnels).
+        if rvmin is not None:
+            rows = [r for r in rows if r["rvol"] is not None and r["rvol"] > rvmin]
+        if qmin is not None:
+            rows = [r for r in rows if r["quality"] is not None and r["quality"] >= qmin]
+        if rrmin is not None:
+            rows = [r for r in rows if r["rr"] is not None and r["rr"] >= rrmin]
         base = _sqa_seg(rows)
         payload["rows"] = len(rows)
         payload["baseline"] = {**base,
@@ -1920,7 +1942,7 @@ def api_squeeze_analysis():
             payload["advice"].sort(key=lambda a: -a["lift"])
     except Exception as ex:
         log.warning(f"squeeze analysis failed: {ex}")
-    _SQA_CACHE.update(ts=now, data=payload)
+    _SQA_CACHE.update(ts=now, data=payload, key=ckey)
     return jsonify(payload)
 
 

@@ -405,6 +405,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div class="layout" id="view-scanner">
   <aside id="aside" class="collapsed">
+    <!-- Cherry-pick presets from the 15-month analysis (user 2026-07-18): set RVOL / Quality / R:R to
+         the filters that separate the best setups. Same presets as the Performance analysis panel. -->
+    <h3>Cherry-pick <span class="muted" style="font-weight:400;font-size:10px;text-transform:none;letter-spacing:0">(from 15-month analysis)</span></h3>
+    <div id="scanner-presets" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>
     <div class="f"><label>Search name / ticker</label><input id="f_search" type="text" placeholder="e.g. Howden, ABF, gold"></div>
     <h3>Direction & place <span class="muted" style="font-weight:400;font-size:10px;text-transform:none;letter-spacing:0">(tick any number)</span></h3>
     <div class="f"><label>Direction</label><select id="f_dir" multiple size="3"><option>BULL</option><option>BEAR</option><option value="—">— (none)</option></select></div>
@@ -1000,6 +1004,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     Performance report above — a <b>gain</b> is any positive marked-to-market return (open trades included), not a
     target-hit — so the two agree. £ figures risk 2% of the wallet per trade; the compounded £10k is a portfolio
     simulation capped at the bridge's concurrent limit. A bucket is only called out as advice with at least 10 behind it.</p>
+    <!-- Cherry-pick presets (user 2026-07-18): narrow the population to a filter and see its own win
+         rate / expectancy / compound. Same presets drive the Scanner (setCherry). -->
+    <nav class="confnav" id="sqa-presets" style="margin:0 0 10px"></nav>
     <div id="sqa-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
     <div id="sqa-advice" style="margin-bottom:10px"></div>
     <div id="sqa-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
@@ -2371,13 +2378,43 @@ function pfPanel(which){
   if(which==="analysis")renderSqueezeAnalysis();
 }
 // ── 15-month squeeze analysis (user 2026-07-17, P-21b) ───────────────────────────────────────────────
-let SQA=null;
+// Cherry-pick presets, derived from the 15-month data (user 2026-07-18): RVOL lifts win RATE; Quality /
+// R:R lift PROFIT per trade. Each drives both the analysis (server filter) and the Scanner (setCherry).
+const CHERRY_PRESETS=[
+  {id:"all",      label:"All setups",            f:{}},
+  {id:"win",      label:"High win · RVOL>1.8",   f:{rvmin:1.8}},
+  {id:"profit",   label:"High profit · R:R≥8",   f:{rrmin:8}},
+  {id:"quality",  label:"High quality · Q≥70",   f:{qmin:70}},
+  {id:"balanced", label:"Balanced · 1.8/60/5",   f:{rvmin:1.8,qmin:60,rrmin:5}},
+];
+const _cherryEq=(a,b)=>JSON.stringify(a||{})===JSON.stringify(b||{});
+let SQA=null, SQA_FILTER={};
+function sqaPreset(id){const p=CHERRY_PRESETS.find(x=>x.id===id);if(!p)return;SQA_FILTER=p.f;SQA=null;renderSqueezeAnalysis();}
 function renderSqueezeAnalysis(){
+  paintSqaPresets();
   if(SQA!==null)return paintSqueezeAnalysis();
   SQA={};
-  fetch("/api/squeeze-analysis").then(r=>r.ok?r.json():null)
+  const qs=Object.entries(SQA_FILTER).map(([k,v])=>`${k}=${v}`).join("&");
+  fetch("/api/squeeze-analysis"+(qs?"?"+qs:"")).then(r=>r.ok?r.json():null)
     .then(j=>{SQA=j||{};paintSqueezeAnalysis();}).catch(()=>{SQA={};paintSqueezeAnalysis();});
 }
+function paintSqaPresets(){
+  const n=$("sqa-presets");if(!n)return;
+  n.innerHTML=CHERRY_PRESETS.map(p=>`<button class="pill${_cherryEq(p.f,SQA_FILTER)?' active':''}" onclick="sqaPreset('${p.id}')">${p.label}</button>`).join("");
+}
+// Same presets on the SCANNER (user 2026-07-18): set the RVOL / Quality / R:R range filters so you can
+// pick instruments the analysis says are best. A preset field not in the preset is cleared.
+function setCherry(id){
+  const p=CHERRY_PRESETS.find(x=>x.id===id); if(!p)return;
+  $("f_rvmin").value=p.f.rvmin??''; $("f_qmin").value=p.f.qmin??''; $("f_rrmin").value=p.f.rrmin??'';
+  document.querySelectorAll('#scanner-presets .pill').forEach(b=>b.classList.toggle('active',b.dataset.p===id));
+  applyAll();
+}
+function paintScannerPresets(){
+  const n=$("scanner-presets"); if(!n)return;
+  n.innerHTML=CHERRY_PRESETS.map(p=>`<button class="pill" data-p="${p.id}" onclick="setCherry('${p.id}')" style="font-size:11px;padding:4px 9px">${p.label}</button>`).join("");
+}
+paintScannerPresets();   // render now — CHERRY_PRESETS is defined above (user 2026-07-18)
 // Colour a win% against the baseline, not against an absolute: 30% is good or bad only relative to what
 // every other funnel did.
 const _sqaCol=(v,base)=>v==null?"var(--muted)":v-base>=10?"var(--bull)":v-base<=-10?"var(--bear)":"var(--fg)";
