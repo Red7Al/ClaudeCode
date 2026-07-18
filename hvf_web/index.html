@@ -2391,12 +2391,13 @@ function paintSqueezeAnalysis(){
   // £-per-trade impact of a £10,000 position (user 2026-07-17): the per-trade expectancy in pounds,
   // green if the sample makes money on average, red if it bleeds.
   const gbp=v=>v==null?'—':`${v<0?'-':'+'}£${Math.abs(v).toLocaleString()}`;
+  const money=v=>v==null?'—':`£${Math.round(v).toLocaleString()}`;
+  // Four cards (user 2026-07-17): secondary figures fold into the subtitles.
   box.innerHTML=
-    card("🧪","Funnels analysed",b.funnels,`over 15 months · ${b.resolved} resolved`)+
-    card("🎯","Win vs loss rate",`${b.win_pct}% / ${b.loss_pct}%`,`${b.wins} hit target · ${b.losses} stopped`)+
-    card("📈","Baseline avg return",`${b.avg_return}%`,"direction-aware, per resolved funnel")+
-    card("💷","Impact per £10,000",`<span style="color:${b.pnl_per_10k>=0?'var(--bull)':'var(--bear)'}">${gbp(b.pnl_per_10k)}</span>`,"expected on one £10k trade, on average")+
-    card("⏳","Still running / never fired",`${b.open} / ${b.never_triggered}`,"excluded from win %");
+    card("🧪","Funnels analysed",b.funnels,`over 15 months · ${b.resolved} resolved · ${b.open} open · ${b.never_triggered} never fired`)+
+    card("🎯","Win vs loss rate",`${b.win_pct}% / ${b.loss_pct}%`,`${b.wins} hit target · ${b.losses} stopped (R:R ≥ 3 only)`)+
+    card("💷","Impact per £10,000",`<span style="color:${b.pnl_per_10k>=0?'var(--bull)':'var(--bear)'}">${gbp(b.pnl_per_10k)}</span>`,`one leveraged £10k trade, on average · ${b.avg_return}% raw`)+
+    card("📈","£10,000 compounded",`<span style="color:${((b.compound_10k||{}).final||0)>=10000?'var(--bull)':'var(--bear)'}">${money((b.compound_10k||{}).final)}</span>`,`one trade at a time · ${(b.compound_10k||{}).trades||0} non-overlapping trades · exposure sized to the wallet`);
   adv.innerHTML=(SQA.advice&&SQA.advice.length)
     ? `<div class="card" style="border:1px solid var(--bull);background:color-mix(in srgb,var(--bull) 8%,transparent)">
         <h4>✅ Filters that beat the baseline</h4>

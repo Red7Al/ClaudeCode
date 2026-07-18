@@ -216,8 +216,12 @@ def replay_ticker(ticker: str, market: str, months: int = 15):
             f.update(triggered_date=None, outcome="NEVER_TRIGGERED", outcome_date=None,
                      return_pct=None, rvol=None)
         else:
+            # Walk from the bar AFTER the trigger: entry is the trigger bar's CLOSE, so that bar's own
+            # intraday high/low happened before you were in the trade. Including it counted same-bar
+            # stops that could not have hit you and over-stated the loss rate (user 2026-07-17; the
+            # Performance report was fixed the same way, P-01).
             i = by_date.get(td, 0)
-            oc, od, ret = _exit_outcome(bull, e, s, t, tuples[i:])
+            oc, od, ret = _exit_outcome(bull, e, s, t, tuples[i + 1:])
             f.update(triggered_date=td, outcome=oc, outcome_date=od,
                      return_pct=(round(ret, 2) if ret is not None else None), rvol=_rvol_at(tuples, td))
         out.append(f)

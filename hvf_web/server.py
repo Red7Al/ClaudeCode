@@ -1752,6 +1752,35 @@ def _sqa_pnl10k(res_rows) -> float:
     return round(sum(vals) / len(vals)) if vals else None
 
 
+def _sqa_compound(res_rows, start=10000.0):
+    """Compounded wallet, ONE POSITION AT A TIME: start with £`start`, and from the resolved trades take
+    the next setup only AFTER the current trade has closed, letting the wallet grow or shrink as you go
+    (user 2026-07-17: "the compound effect of a bigger wallet as £10k grows or shrinks on each trade").
+
+    Why one-at-a-time: the resolved set has thousands of OVERLAPPING trades, and compounding all of them
+    sequentially is degenerate — face value it explodes (a positive edge over thousands of trades →
+    astronomical), and at full leverage it ruins to £0 (geometric mean < 1 on a sub-30% win rate). Neither
+    describes a real wallet. Taking non-overlapping trades in date order caps the count at what actually
+    fits the window and gives a realistic path.
+
+    Position sizing = EXPOSURE ≈ the whole wallet each trade (leverage frees the margin; you do not stake
+    10x your capital), so a trade's raw return applies at face value. Returns (n taken, final wallet)."""
+    seq = sorted((r for r in res_rows
+                  if r.get("return_pct") is not None and r.get("trig_date")),
+                 key=lambda r: r["trig_date"])
+    w, n, free_from = float(start), 0, ""
+    for r in seq:
+        if r["trig_date"] < free_from:      # a position is still open — skip this overlapping setup
+            continue
+        w *= (1.0 + max(-1.0, r["return_pct"] / 100.0))
+        n += 1
+        free_from = r.get("exit_date") or r["trig_date"]   # free again once this trade closes
+        if w <= 0:
+            w = 0.0
+            break
+    return {"final": round(w), "trades": n} if n else None
+
+
 def _sqa_buckets(rows, keyfn, label):
     out = []
     seen = {}
@@ -1811,15 +1840,19 @@ def api_squeeze_analysis():
             # never be traded. Their outcomes still exist here (the trigger is derived from price, not
             # from the signal), and leaving them in produced exactly the wrong advice — "prefer R:R 0-3"
             # and "prefer Quality 0-30", both describing trades the engine would never place.
+            # ready_date not null AND R:R >= 3: only funnels the engine would actually TRADE. R:R < 3 is
+            # DEVELOPING (below MIN_RISK_REWARD) and never traded, so it must not colour the win/loss
+            # (user 2026-07-17). ready_date alone already excludes all but 3 of these; the explicit floor
+            # makes the population definitionally "tradeable" rather than relying on that.
             raw = db.run(
                 "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
-                "outcome, return_pct, triggered_date from squeeze_history "
-                "where ready_date is not null") or []
+                "outcome, return_pct, triggered_date, outcome_date from squeeze_history "
+                "where ready_date is not null and risk_reward >= 3") or []
         finally:
             db.close()
         lev = _sqa_leverage()
         rows = []
-        for tk, mk, tf, ht, q, rr, rv, oc, ret, td in raw:
+        for tk, mk, tf, ht, q, rr, rv, oc, ret, td, od in raw:
             s = snap.get(tk, {})
             market = mk or s.get("market")
             # sector from the cache first (covers every ticker, not just those with a current signal —
@@ -1831,6 +1864,8 @@ def api_squeeze_analysis():
                          "rr": (float(rr) if rr is not None else None),
                          "rvol": (float(rv) if rv is not None else None),
                          "lev": _sqa_lev_for(market, lev),   # per-instrument leverage (user 2026-07-17)
+                         "trig_date": str(td) if td else None,   # for chronological compounding
+                         "exit_date": str(od) if od else None,
                          "outcome": oc, "return_pct": (float(ret) if ret is not None else None)})
         res = [r for r in rows if r["outcome"] in ("TARGET", "STOPPED")]
         wins = [r for r in res if r["outcome"] == "TARGET"]
@@ -1844,6 +1879,7 @@ def api_squeeze_analysis():
                                "loss_pct": (round((len(res) - len(wins)) / len(res) * 100, 1) if res else None),
                                "avg_return": (round(base_ret, 2) if base_ret is not None else None),
                                "pnl_per_10k": _sqa_pnl10k(res),   # leveraged per-instrument (user 2026-07-17)
+                               "compound_10k": _sqa_compound(res),   # £10k compounded chronologically
                                "never_triggered": sum(1 for r in rows if r["outcome"] == "NEVER_TRIGGERED"),
                                "open": sum(1 for r in rows if r["outcome"] == "OPEN")}
         dims = [
