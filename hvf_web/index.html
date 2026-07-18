@@ -1423,16 +1423,17 @@ function renderViz(rows){
   // the Market chart on any page (user 2026-07-03: it will have many entries).
   // Scanner charts use mf_* multi-select inputs (user 2026-07-03) — separate from the single-select
   // sidebar dropdowns; pass() honours both.
-  // Chart order (user 2026-07-17, P-12a): Market and Sector are the FAR LEFT pair, Market left of Sector.
-  // Supersedes P-13 ("Location left of Market") — the two cannot both hold once Market+Sector lead.
-  // .vizbars is display:contents, so DOM order IS left-to-right order.
+  // Chart order (user 2026-07-18, P-01/P-02): Market leftmost, Location right of Market, Sector right of
+  // Location — the far-left trio — then the compact bars. Supersedes the 2026-07-17 Market+Sector pairing
+  // (P-01 now puts Location between them). Matches the Performance tab. .vizbars is display:contents, so
+  // DOM order IS left-to-right order.
   $("viz").innerHTML=
     `<div class="vizsector">`+barChart("Market",by("market"),"mf_market")+`</div>`+
+    `<div class="vizsector">`+barChart("Location",by("location"),"mf_location")+`</div>`+
     `<div class="vizsector">`+pieChart("Sector",by("sector"),"mf_sector")+`</div>`+
     `<div class="vizbars">`+
       barChart("Direction",by("direction"),"mf_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
       barChart("Status",by("status"),"mf_status",k=>k==="TRIGGERED"?"var(--bull)":k==="READY"?"var(--accent)":"#d29922")+
-      barChart("Location",by("location"),"mf_location")+
       barChart("Timeframe",by("timeframe"),"mf_timeframe")+
     `</div>`;
   packViz("viz");   // P-15
