@@ -1716,6 +1716,42 @@ def _sqa_sector(ticker: str):
         return None
 
 
+# Broker leverage by instrument type (user 2026-07-17: "each INSTRUMENT TRADE IS LEVERAGED"). Mirrors
+# the client LEVERAGE map + levType() in index.html, and reads the OWNER's configured values so the £
+# impact matches how the account actually trades. A £10k MARGIN position controls £10k x leverage of
+# exposure, so P&L = 10000 x leverage x return%/100 — not 10000 x return%/100.
+_SQA_LEV_DEFAULT = {"fx": 30, "equities": 10, "commodities": 10, "indices": 10}
+
+
+def _sqa_leverage():
+    try:
+        cfg = (_wu.get_settings(_OWNER) or {}).get("leverage") or {}
+    except Exception:
+        cfg = {}
+    return {k: (cfg.get(k) if isinstance(cfg.get(k), (int, float)) and cfg.get(k) > 0 else v)
+            for k, v in _SQA_LEV_DEFAULT.items()}
+
+
+def _sqa_lev_for(market: str, lev: dict) -> float:
+    m = market or ""
+    if m == "FX":
+        return lev["fx"]
+    if m == "Indices":
+        return lev["indices"]
+    if m == "Commodities":
+        return lev["commodities"]
+    return lev["equities"]     # equities, and Crypto treated as equities (matches client levType)
+
+
+def _sqa_pnl10k(res_rows) -> float:
+    """Mean £ P&L on a £10,000 MARGIN position across resolved funnels, each amplified by its own
+    instrument's leverage. Averaged per-funnel so a bucket that mixes FX (30x) and equities (10x) is
+    weighted correctly, not by a single blended rate."""
+    vals = [r["return_pct"] / 100.0 * 10000 * r["lev"]
+            for r in res_rows if r.get("return_pct") is not None and r.get("lev")]
+    return round(sum(vals) / len(vals)) if vals else None
+
+
 def _sqa_buckets(rows, keyfn, label):
     out = []
     seen = {}
@@ -1738,9 +1774,10 @@ def _sqa_buckets(rows, keyfn, label):
             "loss_pct": (round(losses / len(res) * 100, 1) if res else None),   # user 2026-07-17
             "avg_return": (round(avg, 2) if avg is not None else None),
             "expectancy": (round(avg, 2) if avg is not None else None),
-            # Expected P&L on a £10,000 position for one trade in this bucket ("potential impact of having
-            # £10,000 to invest") — the per-trade expectancy in pounds, not a compounded book.
-            "pnl_per_10k": (round(avg / 100 * 10000) if avg is not None else None),
+            # Expected P&L on a £10,000 MARGIN position for one trade in this bucket, LEVERAGED by each
+            # instrument's own broker leverage (user 2026-07-17). This is per-trade expectancy in pounds,
+            # not a compounded book.
+            "pnl_per_10k": _sqa_pnl10k(res),
             "enough": len(res) >= _SQA_MIN_N,
         })
     return sorted(out, key=lambda b: (b["win_pct"] is None, -(b["win_pct"] or 0)))
@@ -1780,17 +1817,20 @@ def api_squeeze_analysis():
                 "where ready_date is not null") or []
         finally:
             db.close()
+        lev = _sqa_leverage()
         rows = []
         for tk, mk, tf, ht, q, rr, rv, oc, ret, td in raw:
             s = snap.get(tk, {})
+            market = mk or s.get("market")
             # sector from the cache first (covers every ticker, not just those with a current signal —
             # user 2026-07-17), snapshot as a fallback; location/market only exist on the snapshot row.
-            rows.append({"ticker": tk, "market": mk or s.get("market"),
+            rows.append({"ticker": tk, "market": market,
                          "sector": _sqa_sector(tk) or s.get("sector"),
                          "location": s.get("location"), "timeframe": tf, "direction": ht,
                          "quality": (float(q) if q is not None else None),
                          "rr": (float(rr) if rr is not None else None),
                          "rvol": (float(rv) if rv is not None else None),
+                         "lev": _sqa_lev_for(market, lev),   # per-instrument leverage (user 2026-07-17)
                          "outcome": oc, "return_pct": (float(ret) if ret is not None else None)})
         res = [r for r in rows if r["outcome"] in ("TARGET", "STOPPED")]
         wins = [r for r in res if r["outcome"] == "TARGET"]
@@ -1803,7 +1843,7 @@ def api_squeeze_analysis():
                                "win_pct": (round(base_win, 1) if base_win is not None else None),
                                "loss_pct": (round((len(res) - len(wins)) / len(res) * 100, 1) if res else None),
                                "avg_return": (round(base_ret, 2) if base_ret is not None else None),
-                               "pnl_per_10k": (round(base_ret / 100 * 10000) if base_ret is not None else None),
+                               "pnl_per_10k": _sqa_pnl10k(res),   # leveraged per-instrument (user 2026-07-17)
                                "never_triggered": sum(1 for r in rows if r["outcome"] == "NEVER_TRIGGERED"),
                                "open": sum(1 for r in rows if r["outcome"] == "OPEN")}
         dims = [
