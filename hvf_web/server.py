@@ -1765,10 +1765,11 @@ def _sqa_seg(rows):
     }
 
 
-# Max concurrent open positions in the compound simulation. The bridge places at most BRIDGE_MAX_PER_RUN
-# (6) NEW orders per 2-hourly pass; a realistic book holds a handful at once. This is the one modelling
-# assumption in the compound, so it is a named constant, not buried.
-_SQA_MAX_CONCURRENT = 6
+# Max concurrent open positions in the compound simulation. RISK-BASED, not the bridge's per-pass cap
+# (user 2026-07-18): each trade risks 2%, so 50 open at once = 100% of equity at risk — the absolute
+# ceiling before you are over-committed. (A prudent book runs lower "heat", ~10-15 positions / 20-30%,
+# so a cluster of correlated stops can't wipe it — worth revisiting, but 50 is the defensible maximum.)
+_SQA_MAX_CONCURRENT = 50
 
 
 def _sqa_compound(rows, start=10000.0, max_concurrent=_SQA_MAX_CONCURRENT):

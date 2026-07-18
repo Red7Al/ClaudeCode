@@ -2399,7 +2399,7 @@ function paintSqueezeAnalysis(){
     card("🧪","Funnels analysed",b.funnels,`over 15 months · ${b.avail} with a return · ${b.open} open · ${b.never_triggered} never fired`)+
     card("🎯","Win vs loss rate",`${b.win_pct}% / ${b.loss_pct}%`,`${b.gains} gains · ${b.losses} losses · ${b.be} break-even (same basis as the Performance report — a gain is any +ve return, open included)`)+
     card("💷","Impact per £10,000",`<span style="color:${b.pnl_per_10k>=0?'var(--bull)':'var(--bear)'}">${gbp(b.pnl_per_10k)}</span>`,`risking 2% (£200) per trade · avg ${b.avg_return}% return`)+
-    card("📈","£10,000 compounded",`<span style="color:${(c.final||0)>=10000?'var(--bull)':'var(--bear)'}">${money(c.final)}</span>`,`portfolio sim · max ${c.max_concurrent||6} open at once · ${c.trades||0} taken, ${c.skipped||0} skipped (slots full)`);
+    card("📈","£10,000 compounded",`<span style="color:${(c.final||0)>=10000?'var(--bull)':'var(--bear)'}">${money(c.final)}</span>`,`portfolio sim · up to ${c.max_concurrent||50} open (${(c.max_concurrent||50)*2}% risk heat) · ${c.trades||0} taken · very sensitive to this cap`);
   adv.innerHTML=(SQA.advice&&SQA.advice.length)
     ? `<div class="card" style="border:1px solid var(--bull);background:color-mix(in srgb,var(--bull) 8%,transparent)">
         <h4>✅ Filters that beat the baseline</h4>
