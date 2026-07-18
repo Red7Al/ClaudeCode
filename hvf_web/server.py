@@ -1672,6 +1672,7 @@ def api_performance():
                     out.append({
                         "ticker": tk, "name": srec.get("name") or tk,
                         "market": mk or srec.get("market"), "sector": srec.get("sector"),
+                        "location": srec.get("location"),   # for the Location chart on Performance (P-10)
                         "direction": "BULL" if bull else "BEAR", "timeframe": tf,
                         "quality": q, "rr": (float(rr) if rr is not None else None),
                         "entry": e, "stop": s, "target": t,
