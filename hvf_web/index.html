@@ -1190,6 +1190,30 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <script>
 let DATA=[], SEL=null, sortK="dist_entry", sortDir=1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: closest to entry first (user 2026-07-11)
 const $=id=>document.getElementById(id);
+// In-app confirm (user 2026-07-18): the native confirm() prefixes the ngrok host ("…ngrok-free.dev
+// says"), which looks broken. This styled dialog keeps the message clean and on-brand. Returns a Promise.
+function appConfirm(msg,{title="Please confirm",ok="Confirm",cancel="Cancel"}={}){
+  return new Promise(res=>{
+    const ov=document.createElement("div");
+    ov.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px";
+    const box=document.createElement("div");
+    box.style.cssText="background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;max-width:440px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.5);overflow:hidden";
+    box.innerHTML=`<div style="padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700">${title}</div>`
+      +`<div style="padding:16px 18px;font-size:13.5px;line-height:1.5;color:var(--fg)"></div>`
+      +`<div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">`
+      +`<button class="btn" data-x>${cancel}</button>`
+      +`<button class="btn" data-ok style="border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)">${ok}</button></div>`;
+    box.children[1].textContent=msg;   // textContent so the message can't inject markup
+    const done=v=>{ov.remove();document.removeEventListener("keydown",onKey);res(v);};
+    const onKey=e=>{if(e.key==="Escape")done(false);else if(e.key==="Enter")done(true);};
+    box.querySelector("[data-x]").onclick=()=>done(false);
+    box.querySelector("[data-ok]").onclick=()=>done(true);
+    ov.onclick=e=>{if(e.target===ov)done(false);};
+    document.addEventListener("keydown",onKey);
+    ov.appendChild(box);document.body.appendChild(ov);
+    box.querySelector("[data-ok]").focus();
+  });
+}
 const F=["f_search","f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
          "f_demin","f_demax","f_dsmin","f_dsmax","f_rvmin","f_rvmax","f_pemin","f_pemax","f_inmin","f_inmax"];
 const LOC={UK:"United Kingdom",US:"United States",FX:"FX",
@@ -1646,8 +1670,8 @@ $("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(
 $("togglefilters").onclick=()=>{const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").innerHTML="Show Filters "+(hidden?'<span style="color:var(--bear)">✗</span>':'<span style="color:var(--bull)">✓</span>');};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").innerHTML="Show Squeeze Only "+(signalOnly?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');applyAll();};
 let _refStart=0, _lastTens=-1;
-$("refresh").onclick=()=>{ if($("refresh").disabled)return;
-  if(!confirm(`Rebuild the snapshot now? Scans the full universe (${DATA.length||'884+'} instruments) — takes a few minutes. The page keeps working with current data and reloads automatically when done.`))return;
+$("refresh").onclick=async()=>{ if($("refresh").disabled)return;
+  if(!await appConfirm(`Scans the full universe (${DATA.length||'884+'} instruments) — takes a few minutes. The page keeps working with the current data and reloads automatically when the rebuild finishes.`,{title:"Rebuild the snapshot now?",ok:"↻ Rebuild"}))return;
   $("refresh").disabled=true; $("refresh").textContent="↻ Starting…"; _refStart=Date.now(); _lastTens=-1;
   fetch("/api/refresh",{method:"POST",headers:{"X-Auth":AUTH}}).then(x=>x.json()).then(j=>{ pollRefresh(); })
     .catch(()=>{$("refresh").textContent="↻ Refresh failed";$("refresh").disabled=false;});};
@@ -1745,6 +1769,7 @@ function showTab(name){
   if(TAB_GROUPS[name]){const kids=TAB_GROUPS[name].filter(tabAllowed);name=kids[0]||"welcome";}   // parent -> first child
   if(!tabAllowed(name))name="welcome";                  // never open a tab this session can't see
   if(!_navFromHist && TAB_HIST[TAB_HI]!==name){TAB_HIST=TAB_HIST.slice(0,TAB_HI+1);TAB_HIST.push(name);TAB_HI=TAB_HIST.length-1;}
+  try{sessionStorage.setItem("sq_tab",name);}catch(e){}   // survive the post-refresh reload so we don't dump the user on Introduction (user 2026-07-18)
   _updateNavBtns();
   const locked=!AUTH && !PUBLIC_TABS.includes(name);    // login-required tab, not logged in -> login panel
   const parent=parentOf(name);
@@ -1892,8 +1917,8 @@ function paintRequests(reqs){
     <td>${r.ts||''}</td><td><b>${r.name}</b></td><td>${r.email||''}</td><td class="muted" style="white-space:normal;max-width:260px">${(r.note||'').replace(/</g,"&lt;")}</td>
     <td><button class="btn" style="padding:3px 8px" onclick="reqAction('${r.name}','approve')">✓ Approve</button> <button class="btn" style="padding:3px 8px" onclick="reqAction('${r.name}','reject')">✕ Reject</button></td></tr>`).join("");
 }
-function reqAction(name,action){
-  if(action==="approve"&&!confirm(`Approve '${name}'? Creates a guest account (locked). They set their password via 'Forgot password?' with their registered email.`))return;
+async function reqAction(name,action){
+  if(action==="approve"&&!await appConfirm(`Creates a guest account (locked). They set their password via 'Forgot password?' with their registered email.`,{title:`Approve '${name}'?`,ok:"✓ Approve"}))return;
   fetch("/api/users",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({name,action})})
     .then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(()=>{$("users-msg").style.color="var(--bull)";$("users-msg").textContent=`${action==='approve'?'Approved':'Rejected'} ${name}.`;renderUsers();})
@@ -2354,8 +2379,8 @@ function renderIgAccount(ev){
     .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="8" class="empty">—</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
-function maRebuild(){
-  if(!confirm("Rebuild the snapshot now? This rescans the whole universe (a few minutes) and refreshes the data for everyone."))return;
+async function maRebuild(){
+  if(!await appConfirm("This rescans the whole universe (a few minutes) and refreshes the data for everyone.",{title:"Rebuild the snapshot now?",ok:"↻ Rebuild"}))return;
   const b=$("ma-rebuild"),m=$("ma-msg");b.disabled=true;m.style.color="var(--muted)";m.textContent="Rebuild starting…";
   fetch("/api/refresh",{method:"POST",headers:{"X-Auth":AUTH}}).then(r=>r.json().then(j=>({ok:r.ok,j})))
     .then(({ok,j})=>{if(ok&&j.started){m.style.color="var(--bull)";m.textContent="Rebuild running in the background — reload in a few minutes to see fresh data.";}
@@ -2728,9 +2753,9 @@ function renderPreorders(){
 function poSelected(){return [...document.querySelectorAll(".po-sel:checked")].map(c=>c.dataset.t);}
 function poUpdateBtn(){const n=poSelected().length;const b=$("po-delete");b.disabled=!n;b.textContent=n?`Delete selected (${n})`:"Delete selected";}
 function poToggleAll(cb){document.querySelectorAll(".po-sel").forEach(c=>c.checked=cb.checked);poUpdateBtn();}
-function deletePreorders(){
+async function deletePreorders(){
   const tks=poSelected(); if(!tks.length)return;
-  if(!confirm(`Delete ${tks.length} pre-order(s)? They move to Order (Operations) as DELETED and stay hidden from this list for 30 days.`))return;
+  if(!await appConfirm(`They move to Order (Operations) as DELETED and stay hidden from this list for 30 days.`,{title:`Delete ${tks.length} pre-order(s)?`,ok:"Delete"}))return;
   fetch("/api/preorder-delete",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({tickers:tks})})
     .then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(()=>{tks.forEach(t=>{IGWO.add(t);PINNED.delete(t);PINNED.delete(disp(t));});$("po-all").checked=false;renderPreorders();})
@@ -2753,8 +2778,8 @@ function pushToPreorder(tk){
     .catch(e=>alert("Could not update pre-orders: "+e));
 }
 // Place a pre-order as a live IG working order now (money path) — confirm first.
-function placeOnIG(tk){
-  if(!confirm(`Place a LIVE IG working order for ${disp(tk)} now, using your own IG account? This is a real order.`))return;
+async function placeOnIG(tk){
+  if(!await appConfirm(`Places it now using your own IG account. This is a real order.`,{title:`Place a LIVE IG working order for ${disp(tk)}?`,ok:"Place order"}))return;
   fetch("/api/place-order",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({ticker:tk})})
     .then(r=>r.json().then(j=>({ok:r.ok,j})))
     .then(({ok,j})=>{if(!ok||!j.ok){alert("Not placed: "+(j.error||j.status||"unknown"));return;}
@@ -2769,7 +2794,10 @@ fetch("/api/me",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(m=>{
   if(m.name)$("logout").textContent=`${m.name}${m.is_admin?" (admin)":""} · Log out`;   // who's logged in
   return AUTH?fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({})):{};
 }).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[]; SHOWN_TABS=(cfg&&cfg.shown_tabs)||[]; if(cfg&&cfg.leverage)LEVERAGE=cfg.leverage; PINNED=new Set((cfg&&cfg.pinned_preorders)||[]); OVERRIDES=(cfg&&cfg.pinned_overrides)||{}; if(cfg&&cfg.features)FEATURES=cfg.features;})
-  .catch(()=>{}).finally(()=>{applyTabVisibility();showTab("welcome");});
+  .catch(()=>{}).finally(()=>{applyTabVisibility();
+    // Return to the tab we were on before a reload (e.g. after a data refresh); fresh visits open Introduction.
+    let _t=null; try{_t=sessionStorage.getItem("sq_tab");}catch(e){}
+    showTab(_t&&tabAllowed(_t)?_t:"welcome");});
 if(AUTH)$("logout").style.display="";
 let LIMITED=false;
 const ob=h=>LIMITED?'<span class="muted">•••</span>':h;   // obfuscated cell for logged-out visitors
