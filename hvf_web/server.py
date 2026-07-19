@@ -1953,6 +1953,106 @@ def api_squeeze_analysis():
     return jsonify(payload)
 
 
+def _sl_path(direction, entry, stop, target, bars, thr):
+    """Re-walk one trade's daily OHLC bars applying the trailing stop each bar (user 2026-07-18,
+    illustration-only). Same hit convention as squeeze_history._exit_outcome — stop wins a same-bar tie;
+    the stop trails on the bar CLOSE (avoids intra-bar whipsaw). Returns (outcome, exit_price)."""
+    import ig_shim
+    buy = direction == "BULLISH"
+    cur = stop
+    last = None
+    for _bd, hi, lo, cl in bars:
+        last = cl
+        if buy:
+            if lo <= cur:
+                return "STOPPED", cur
+            if target and hi >= target:
+                return "TARGET", target
+        else:
+            if hi >= cur:
+                return "STOPPED", cur
+            if target and lo <= target:
+                return "TARGET", target
+        ns = ig_shim.compute_trailing_stop(direction, entry, cur, cl, thr)   # thr is a fraction
+        if ns is not None:
+            cur = ns
+    if last is None:
+        return "OPEN", None
+    return "OPEN", last
+
+
+_SLBARS = {"ts": 0.0, "by_tk": None}
+
+
+def _winners_sl_rows(threshold_pct):
+    """Every 12-month tradeable trade with BOTH its plain return% and the return%/outcome it WOULD have had
+    with the trailing stop applied (re-backtest). threshold_pct=0 => the two are identical (reconciliation)."""
+    import datetime as _dt
+    thr = (float(threshold_pct or 0) or 0) / 100.0
+    cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
+    rows = sorted((r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cut12),
+                  key=lambda r: (r.get("trig_date") or ""))
+    by_tk = None
+    if thr > 0:
+        # Load the bars we need once, keyed by ticker (cached 10 min). Only when the feature is on.
+        now = _time.time()
+        if _SLBARS["by_tk"] is not None and now - _SLBARS["ts"] < _SQA_TTL:
+            by_tk = _SLBARS["by_tk"]
+        else:
+            # One bulk query for every bar in the window (all trades trigger within the last 12 months, so
+            # their forward paths live in [cut12, now]) — 1000+ per-ticker round-trips were ~80s.
+            by_tk = {}
+            from db_pool import get_db
+            db = get_db()
+            try:
+                raw = db.run("select ticker, bar_date, high, low, close from price_history "
+                             "where bar_date >= :d order by ticker, bar_date", d=cut12) or []
+            finally:
+                db.close()
+            for tk, bd, hi, lo, cl in raw:
+                if hi is None or lo is None or cl is None:
+                    continue
+                by_tk.setdefault(tk, []).append((str(bd), float(hi), float(lo), float(cl)))
+            _SLBARS.update(ts=now, by_tk=by_tk)
+    out = []
+    for r in rows:
+        plain = r["return_pct"]
+        sl_perf, sl_out = plain, r["outcome"]
+        if thr > 0 and r.get("entry") and r.get("stop") and r.get("trig_date"):
+            td = r["trig_date"]
+            bars = [b for b in by_tk.get(r["ticker"], []) if b[0] >= td]
+            if bars:
+                sl_out, ex = _sl_path(r["direction"], r["entry"], r["stop"], r.get("target"), bars, thr)
+                if ex is not None:
+                    buy = r["direction"] == "BULLISH"
+                    sl_perf = round(((ex - r["entry"]) / r["entry"] * 100.0) if buy
+                                    else ((r["entry"] - ex) / r["entry"] * 100.0), 2)
+        out.append({"ticker": r["ticker"], "name": r["name"], "market": r["market"], "sector": r["sector"],
+                    "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
+                    "trig_date": r["trig_date"], "entry": r["entry"], "stop": r["stop"],
+                    "outcome": r["outcome"], "perf": plain,
+                    "sl_outcome": sl_out, "sl_perf": sl_perf,
+                    "quality": r["quality"], "rr": r["rr"], "rvol": r["rvol"]})
+    return out
+
+
+@app.route("/api/winners-sl")
+def api_winners_sl():
+    """Winners rows re-backtested with the trailing stop at the requested threshold % (query `sl`, else the
+    configured stop_amend_threshold). Illustration-only — never touches live stops (user 2026-07-18)."""
+    try:
+        sl = request.args.get("sl")
+        if sl in (None, ""):
+            import config_store as _cs
+            sl = _cs.get_value("stop_amend_threshold", "0")
+        rows = _winners_sl_rows(sl)
+        return jsonify({"rows": rows, "threshold_pct": float(sl or 0), "months": 12,
+                        "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())})
+    except Exception as ex:
+        log.warning(f"winners-sl failed: {ex}")
+        return jsonify({"rows": [], "threshold_pct": 0, "months": 12})
+
+
 @app.route("/api/winners")
 def api_winners():
     """Raw per-trade rows for the "What separates the winners" tab (user 2026-07-18): the FULL last-12-months

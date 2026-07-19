@@ -1013,6 +1013,16 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <b>net £ = stake × the trade's return%</b>; the stake starts at £200 on £10k and grows as the wallet does (winners raise the
     next stake — 10,000 → 10,250 → 2% of 10,250 …). The stop caps each loss at <b>stake × the stop distance %</b> — a few pounds.
     The ledger below is every trade in <b>strict chronological order by trigger date</b>, so you can follow the wallet build.</p>
+    <!-- Automated Stop-Loss Amendment — ILLUSTRATION ONLY (user 2026-07-18): re-backtests every trade with a
+         trailing stop and shows the impact. Does NOT touch live IG stops. -->
+    <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <b style="font-size:13px">🎯 Trailing-stop illustration</b>
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Threshold
+        <input id="ordp-sl-in" type="number" min="0" max="100" step="5" value="0" style="width:70px;padding:4px 6px" onchange="winnersSLChange()">%</label>
+      <span class="muted" style="font-size:11px">re-backtests each trade with a stop that trails by <b>entry × gain × this %</b> on the close. 0 = off. Illustration only — never moves real stops.</span>
+      <span id="ordp-sl-busy" class="muted" style="font-size:12px"></span>
+    </div>
+    <div id="ordp-sl" style="margin-bottom:10px"></div>
     <div id="ordp-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
     <div id="ordp-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
     <h3 class="sec" style="font-size:15px;margin-bottom:2px">Every trade — oldest first, wallet after each <span id="ordp-count" class="muted" style="font-size:12px;font-weight:400"></span></h3>
@@ -2464,6 +2474,30 @@ function renderSqueezeAnalysis(){
   fetch("/api/winners").then(r=>r.ok?r.json():{rows:[]})
     .then(j=>{WIN=j.rows||[];paintOrdersPerf();})
     .catch(()=>{WIN=[];paintOrdersPerf();});
+}
+// Trailing-stop illustration (user 2026-07-18): re-backtest every trade with a stop that trails by
+// entry×gain×threshold on the close, and show the impact vs the plain result. ILLUSTRATION ONLY — the
+// server never touches live IG stops.
+function winnersSLChange(){
+  const v=+(($("ordp-sl-in")||{}).value||0), box=$("ordp-sl"), busy=$("ordp-sl-busy");
+  if(!(v>0)){if(box)box.innerHTML="";return;}
+  if(busy)busy.textContent="⏳ re-backtesting…";
+  fetch("/api/winners-sl?sl="+v).then(r=>r.ok?r.json():null).then(j=>{
+    if(busy)busy.textContent="";
+    const rows=((j&&j.rows)||[]).filter(r=>r.perf!=null);
+    if(!rows.length){if(box)box.innerHTML='<div class="muted" style="font-size:13px">No data to re-backtest.</div>';return;}
+    const comp=key=>{let w=WINNERS_WALLET;for(const r of rows){const p=r[key];if(p!=null)w+=w*WINNERS_STAKE*p/100;}return w;};
+    const plainFinal=comp("perf"), slFinal=comp("sl_perf"), delta=slFinal-plainFinal;
+    const improved=rows.filter(r=>r.sl_perf!=null&&r.sl_perf>r.perf).length;
+    const cut=rows.filter(r=>r.sl_perf!=null&&r.sl_perf<r.perf).length;
+    const money=x=>`£${Math.round(x).toLocaleString()}`, col=delta>=0?'var(--bull)':'var(--bear)';
+    box.innerHTML=`<div class="card" style="border:1px solid ${col};background:color-mix(in srgb,${col} 8%,transparent)">
+      <h4 style="margin:0 0 6px">🎯 Trailing stop @ ${(j.threshold_pct||v)}% — illustration (live stops unaffected)</h4>
+      <div class="muted" style="font-size:13px">£10,000 compounded ends at <b>${money(slFinal)}</b> <b>with</b> the trailing stop vs <b>${money(plainFinal)}</b> <b>without</b> —
+      a <b style="color:${col}">${delta>=0?'+':'−'}${money(Math.abs(delta))}</b> difference over ${rows.length.toLocaleString()} trades.
+      <b>${improved.toLocaleString()}</b> trades came out better (loss cut or gain locked in), <b>${cut.toLocaleString()}</b> were cut short of a bigger win.
+      ${delta>=0?'Here the trailing stop would have helped.':'Here it would have hurt — it cuts winners short more than it saves losers.'}</div></div>`;
+  }).catch(()=>{if(busy)busy.textContent="";if(box)box.innerHTML='<div class="muted" style="font-size:13px">Re-backtest failed.</div>';});
 }
 // Same presets on the SCANNER (user 2026-07-18): set the RVOL / Quality / R:R range filters so you can
 // pick instruments the analysis says are best. A preset field not in the preset is cleared.
