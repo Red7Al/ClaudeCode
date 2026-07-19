@@ -1036,8 +1036,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
     <div id="ordp-sl" style="margin-bottom:10px"></div>
     <div id="ordp-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
+    <!-- Full-width monthly %-growth chart (user 2026-07-18, P-05) -->
+    <div id="ordp-monthly" style="margin-bottom:12px"></div>
     <div id="ordp-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
-    <h3 class="sec" style="font-size:15px;margin-bottom:2px">Every trade — oldest first, wallet after each <span id="ordp-count" class="muted" style="font-size:12px;font-weight:400"></span></h3>
+    <h3 class="sec" style="font-size:15px;margin-bottom:2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Every trade — oldest first, wallet after each <span id="ordp-count" class="muted" style="font-size:12px;font-weight:400"></span><span class="grow" style="flex:1"></span><input id="ordp-ledger-q" placeholder="Search name / ticker…" oninput="winnersLedgerFilter()" style="width:auto;max-width:200px;padding:4px 8px;font-size:12px;font-weight:400"></h3>
     <p class="muted" style="font-size:12px;margin:2px 0 6px">Each row is one recorded trade. <b>Stake</b> = the Max-position-size % of the running wallet; <b>Net £</b> = stake × its return%; <b>Wallet</b> is the running total, and the last row equals the compounded figure above. <b>Max loss</b> = stake × the stop distance %.</p>
     <div id="ordp-table" class="tablewrap" style="max-height:460px;overflow:auto"></div>
   </div>
@@ -2508,6 +2510,12 @@ function renderSqueezeAnalysis(){
     .then(j=>{WIN=j.rows||[];paintOrdersPerf();})
     .catch(()=>{WIN=[];paintOrdersPerf();});
 }
+// Name search on the winners ledger (user 2026-07-18, P-05) — filters the visible rows by name/ticker;
+// the compounding stays over all trades. (General rule: any table with a Name column is searchable.)
+function winnersLedgerFilter(){
+  const q=(($("ordp-ledger-q")||{}).value||"").trim().toLowerCase();
+  document.querySelectorAll("#ordp-table tbody tr").forEach(tr=>{tr.style.display=(!q||tr.innerText.toLowerCase().includes(q))?"":"none";});
+}
 // Trailing-stop illustration (user 2026-07-18): re-backtest every trade with a stop that trails by
 // entry×gain×threshold on the close, and show the impact vs the plain result. ILLUSTRATION ONLY — the
 // server never touches live IG stops.
@@ -2587,6 +2595,21 @@ function paintOrdersPerf(){
     card("🎯","Win vs loss",`${winpct==null?'—':winpct+'%'} / ${losspct==null?'':losspct+'%'}`,`a win is <b>any gain</b>, a loss is <b>any loss</b> (open trades included) — same definition as the Results report · avg return ${avgRet>=0?'+':''}${avgRet.toFixed(1)}%`)+
     card("💷","Net P&L",`<span style="color:${_pnlc(gain)}">${_gbp2(gain)}</span>`,`from staking <b>${stakePct}% of the wallet</b> on every trade (compounding). Stake starts at ${openStake}; typical max loss <b>£${medML.toFixed(2)}</b> (= stake × the stop distance %).`)+
     card("📈",money(WINNERS_WALLET)+" compounded",`<span style="color:${w>=WINNERS_WALLET?'var(--bull)':'var(--bear)'}">${money(w)}</span> <span class="muted" style="font-size:12px">total</span>`,`each stake = ${stakePct}% of the wallet <i>at that moment</i>, so winners raise the next stake. ${money(gain)} gain over ${taken.length.toLocaleString()} trades${WINNERS_MAXOPEN>0?' taken':''} — every one in the ledger below, oldest first.`);
+  // Full-width monthly %-growth chart of the compounded wallet (user 2026-07-18, P-05).
+  const mdiv=$("ordp-monthly");
+  if(mdiv){
+    const byMonth={}; ledger.forEach(x=>{const m=(x.r.trig_date||'').slice(0,7); if(m)byMonth[m]=x.cum;});
+    const months=Object.keys(byMonth).sort(); let prev=WINNERS_WALLET;
+    const mg=months.map(m=>{const end=byMonth[m], g=prev>0?(end-prev)/prev*100:0; prev=end; return {m,g};});
+    const mx=Math.max(1,...mg.map(x=>Math.abs(x.g)));
+    mdiv.innerHTML=mg.length?`<div class="vizbox" style="max-width:none"><h5>Monthly growth of the compounded wallet (%)</h5>
+      <div style="display:flex;align-items:flex-end;gap:4px;height:130px;padding-top:6px">`+
+      mg.map(x=>`<div title="${x.m}: ${x.g>=0?'+':''}${x.g.toFixed(1)}%" style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+        <span style="font-size:10px;font-weight:600;color:${x.g>=0?'var(--bull)':'var(--bear)'}">${x.g>=0?'+':''}${x.g.toFixed(0)}%</span>
+        <div style="width:80%;max-width:34px;background:${x.g>=0?'var(--bull)':'var(--bear)'};height:${Math.max(2,Math.abs(x.g)/mx*92)}px;border-radius:3px 3px 0 0"></div>
+        <span style="font-size:9px;color:var(--muted);margin-top:3px;white-space:nowrap">${x.m.slice(2)}</span>
+      </div>`).join("")+`</div></div>`:'';
+  }
   // Which attributes separated the winners — each trade's compounded net £ attributed to its bucket.
   const groups=[["Market",r=>r.market],["Location",r=>locName(r.location)],["Sector",r=>r.sector],["Direction",r=>r.direction],["Outcome",r=>r.outcome]];
   if(dims)dims.innerHTML=groups.map(([name,fn])=>{
