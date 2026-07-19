@@ -2674,14 +2674,6 @@ def reconcile_working_orders() -> dict:
 
     except Exception as e:
         log.error(f"reconcile_working_orders failed: {e}")
-    # Automated Stop-Loss Amendment (user 2026-07-18) — trail stops on open positions each monitor pass.
-    # No-op unless the stop_amend_threshold config value > 0, so this is safe to run unconditionally.
-    try:
-        _amend = amend_open_stops()
-        if _amend.get("amended"):
-            summary.setdefault("stops_trailed", []).extend(_amend["amended"])
-    except Exception as e:
-        log.warning(f"amend_open_stops failed: {e}")
     return summary
 
 
@@ -2916,8 +2908,11 @@ def stop_amend_threshold() -> float:
 
 
 def amend_open_stops(min_move_pct: float = 0.0) -> dict:
-    """Trail the stop on every open position by the configured threshold. A no-op unless
-    stop_amend_threshold > 0, so it is safe to call every monitor pass. Never widens a stop."""
+    """Trail the stop on every open position by the configured threshold. Never widens a stop.
+
+    NOT WIRED TO THE LIVE MONITOR (user 2026-07-18): the stop-amendment skill is illustration-only in the
+    Performance tab for now — update_stop must not move real IG stops until the user explicitly enables it.
+    Kept here (uncalled) for when it does go live. The reusable formula is compute_trailing_stop()."""
     threshold = stop_amend_threshold()
     out = {"threshold": threshold, "amended": [], "skipped": 0, "checked": 0}
     if threshold <= 0:
