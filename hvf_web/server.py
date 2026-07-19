@@ -2068,7 +2068,7 @@ def api_winners():
         payload["rows"] = [
             {"ticker": r["ticker"], "name": r["name"], "market": r["market"], "sector": r["sector"],
              "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
-             "trig_date": r["trig_date"], "entry": r["entry"], "stop": r["stop"],
+             "trig_date": r["trig_date"], "exit_date": r.get("exit_date"), "entry": r["entry"], "stop": r["stop"],
              "outcome": r["outcome"], "perf": r["return_pct"],
              "quality": r["quality"], "rr": r["rr"], "rvol": r["rvol"]}
             for r in rows]

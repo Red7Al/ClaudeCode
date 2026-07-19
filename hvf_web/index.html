@@ -1017,6 +1017,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <b>net £ = stake × the trade's return%</b>; the stake starts at £200 on £10k and grows as the wallet does (winners raise the
     next stake — 10,000 → 10,250 → 2% of 10,250 …). The stop caps each loss at <b>stake × the stop distance %</b> — a few pounds.
     The ledger below is every trade in <b>strict chronological order by trigger date</b>, so you can follow the wallet build.</p>
+    <!-- Wallet + stake variables (user 2026-07-18, P-05): drive every £ figure on the winners tab. -->
+    <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <b style="font-size:13px">💷 Model</b>
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Wallet £ <input id="ordp-wallet" type="number" min="100" step="1000" value="10000" style="width:100px;padding:4px 6px" onchange="winnersParamsChange()"></label>
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Max position size <input id="ordp-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="winnersParamsChange()">%</label>
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = no cap. A low cap skips trades that trigger while you're already full — far fewer trades.">Max open positions <input id="ordp-maxopen" type="number" min="0" step="1" placeholder="∞" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()"></label>
+      <span class="muted" style="font-size:11px">each trade stakes this % of the running wallet; both drive every £ figure below</span>
+    </div>
     <!-- Automated Stop-Loss Amendment — ILLUSTRATION ONLY (user 2026-07-18): re-backtests every trade with a
          trailing stop and shows the impact. Does NOT touch live IG stops. -->
     <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -1030,7 +1038,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div id="ordp-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
     <div id="ordp-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
     <h3 class="sec" style="font-size:15px;margin-bottom:2px">Every trade — oldest first, wallet after each <span id="ordp-count" class="muted" style="font-size:12px;font-weight:400"></span></h3>
-    <p class="muted" style="font-size:12px;margin:2px 0 6px">Each row is one recorded trade. <b>Stake</b> = 2% of the running wallet; <b>Net £</b> = stake × its return%; <b>Wallet</b> is the running total, and the last row equals the compounded figure above. <b>Max loss</b> = stake × the stop distance %.</p>
+    <p class="muted" style="font-size:12px;margin:2px 0 6px">Each row is one recorded trade. <b>Stake</b> = the Max-position-size % of the running wallet; <b>Net £</b> = stake × its return%; <b>Wallet</b> is the running total, and the last row equals the compounded figure above. <b>Max loss</b> = stake × the stop distance %.</p>
     <div id="ordp-table" class="tablewrap" style="max-height:460px;overflow:auto"></div>
   </div>
 </div>
@@ -2483,8 +2491,16 @@ const _cherryEq=(a,b)=>JSON.stringify(a||{})===JSON.stringify(b||{});
 // (user 2026-07-18: "369 rows in main performance tab can be used"), expressed in £ as a fixed 2%-of-wallet
 // stake (£200 on £10k) × each trade's actual return%. So it reconciles with Results by construction — no
 // separate population, no R-multiple, no compounding-to-millions.
-const WINNERS_WALLET=10000, WINNERS_STAKE=0.02;
+let WINNERS_WALLET=10000, WINNERS_STAKE=0.02, WINNERS_MAXOPEN=0;   // £ wallet, stake fraction, concurrency cap (P-05)
 let WIN=null;
+// Wallet £ (L211), Max position size % (L200), Max open positions (L199) are variables on the winners tab.
+function winnersParamsChange(){
+  const w=+(($("ordp-wallet")||{}).value||0), s=+(($("ordp-stake")||{}).value||0), mo=+(($("ordp-maxopen")||{}).value||0);
+  if(w>0)WINNERS_WALLET=w;
+  if(s>0)WINNERS_STAKE=s/100;
+  WINNERS_MAXOPEN=mo>0?mo:0;
+  paintOrdersPerf(); winnersSLChange();   // re-render both the plain view and any SL illustration
+}
 function renderSqueezeAnalysis(){
   if(WIN!==null)return paintOrdersPerf();
   WIN=[]; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="muted" style="font-size:13px;padding:10px">⏳ Loading 12 months of trades…</div>';
@@ -2545,20 +2561,32 @@ function paintOrdersPerf(){
   const winpct=wp.length?Math.round(wins.length/wp.length*1000)/10:null;
   const losspct=wp.length?Math.round(losses.length/wp.length*1000)/10:null;
   const avgRet=wp.length?wp.reduce((a,r)=>a+r.perf,0)/wp.length:0;
-  // THE model (user 2026-07-18): chronological by TRIGGER DATE, stake = 2% of the wallet AT THAT POINT IN
-  // TIME (compounding). net = stake × return%. There is no flat stake.
+  // THE model (user 2026-07-18): chronological by TRIGGER DATE, stake = Max-position-size % of the wallet
+  // AT THAT POINT IN TIME (compounding). net = stake × return%.
+  const stakePct=+(WINNERS_STAKE*100).toFixed(2);
   const seq=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
+  // Max open positions cap (P-05, L199): skip a trade that would trigger while MAXOPEN are already open.
+  let taken=seq, skipped=0;
+  if(WINNERS_MAXOPEN>0){
+    taken=[]; const openExits=[];
+    for(const r of seq){
+      for(let i=openExits.length-1;i>=0;i--){if(openExits[i]<=(r.trig_date||''))openExits.splice(i,1);}
+      if(openExits.length<WINNERS_MAXOPEN){taken.push(r);openExits.push(r.exit_date||'9999-99-99');}else skipped++;
+    }
+  }
   let w=WINNERS_WALLET;const ledger=[];
-  for(const r of seq){const stake=w*WINNERS_STAKE,net=stake*r.perf/100;w+=net;ledger.push({r,stake,net,maxloss:stake*stopPct(r),cum:w});}
+  for(const r of taken){const stake=w*WINNERS_STAKE,net=stake*r.perf/100;w+=net;ledger.push({r,stake,net,maxloss:stake*stopPct(r),cum:w});}
   const gain=w-WINNERS_WALLET;
   const mls=ledger.map(x=>x.maxloss).sort((a,b)=>a-b);const medML=mls.length?mls[Math.floor(mls.length/2)]:0;
-  const span=wp.length?`${seq[0].trig_date} → ${seq[seq.length-1].trig_date}`:'';
+  const span=taken.length?`${taken[0].trig_date} → ${taken[taken.length-1].trig_date}`:'';
+  const capNote=WINNERS_MAXOPEN>0?` · capped at ${WINNERS_MAXOPEN} open → <b>${taken.length}</b> taken, ${skipped} skipped`:'';
+  const openStake=money(WINNERS_WALLET*WINNERS_STAKE);
   const card=(ic,t,v,sub)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:17px;color:var(--fg)">${v}</b><br><span class="muted">${sub}</span></div></div>`;
   box.innerHTML=
-    card("📊","Trades · "+(typeof PF_WINDOW_LABEL!=='undefined'?PF_WINDOW_LABEL:'12 months'),all.length,`${span} · ${wp.length} with a return · ${wins.length} win / ${losses.length} loss / ${be.length} break-even · tradeable universe (R:R≥3, FX/Crypto excluded)`)+
+    card("📊","Trades · "+(typeof PF_WINDOW_LABEL!=='undefined'?PF_WINDOW_LABEL:'12 months'),all.length,`${span} · ${wp.length} with a return · ${wins.length} win / ${losses.length} loss / ${be.length} break-even${capNote} · tradeable universe (R:R≥3, FX/Crypto excluded)`)+
     card("🎯","Win vs loss",`${winpct==null?'—':winpct+'%'} / ${losspct==null?'':losspct+'%'}`,`a win is <b>any gain</b>, a loss is <b>any loss</b> (open trades included) — same definition as the Results report · avg return ${avgRet>=0?'+':''}${avgRet.toFixed(1)}%`)+
-    card("💷","Net P&L",`<span style="color:${_pnlc(gain)}">${_gbp2(gain)}</span>`,`from staking <b>2% of the wallet</b> on every trade (compounding). Avg stake grows from £200 as the wallet does; typical max loss <b>£${medML.toFixed(2)}</b> (= stake × the stop distance %).`)+
-    card("📈","£10,000 compounded",`<span style="color:${w>=WINNERS_WALLET?'var(--bull)':'var(--bear)'}">${money(w)}</span> <span class="muted" style="font-size:12px">total</span>`,`each stake = 2% of the wallet <i>at that moment</i>, so winners raise the next stake. ${money(gain)} gain over ${wp.length} trades — every one in the ledger below, oldest first.`);
+    card("💷","Net P&L",`<span style="color:${_pnlc(gain)}">${_gbp2(gain)}</span>`,`from staking <b>${stakePct}% of the wallet</b> on every trade (compounding). Stake starts at ${openStake}; typical max loss <b>£${medML.toFixed(2)}</b> (= stake × the stop distance %).`)+
+    card("📈",money(WINNERS_WALLET)+" compounded",`<span style="color:${w>=WINNERS_WALLET?'var(--bull)':'var(--bear)'}">${money(w)}</span> <span class="muted" style="font-size:12px">total</span>`,`each stake = ${stakePct}% of the wallet <i>at that moment</i>, so winners raise the next stake. ${money(gain)} gain over ${taken.length.toLocaleString()} trades${WINNERS_MAXOPEN>0?' taken':''} — every one in the ledger below, oldest first.`);
   // Which attributes separated the winners — each trade's compounded net £ attributed to its bucket.
   const groups=[["Market",r=>r.market],["Location",r=>locName(r.location)],["Sector",r=>r.sector],["Direction",r=>r.direction],["Outcome",r=>r.outcome]];
   if(dims)dims.innerHTML=groups.map(([name,fn])=>{
@@ -2574,7 +2602,7 @@ function paintOrdersPerf(){
         <span class="n muted" style="min-width:30px">${v.n}</span></div>`).join("")+
       `</div></div></div>`;
   }).join("");
-  if(tc)tc.textContent=`(${ledger.length} trades, ${span} · £10k → ${money(w)})`;
+  if(tc)tc.textContent=`(${ledger.length} trades, ${span} · ${money(WINNERS_WALLET)} → ${money(w)})`;
   const oc=st=>st==='TARGET'?'var(--bull)':st==='STOPPED'?'var(--bear)':'#d29922';
   if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="2% of the wallet at this point in time">Stake</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Running wallet after this trade — last row = the compounded figure">Wallet</th></tr></thead><tbody>`+
     ledger.map((x,i)=>{const r=x.r;return `<tr><td class="muted">${i+1}</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td>
