@@ -103,6 +103,8 @@ APP_ENGINE_KEYS = {
     "spread_retry_attempts": 3,
     "spread_retry_wait_secs": 2,
     "bridge_min_quality": 50,        # min pattern Quality for the bridge to auto-load a setup
+    "stop_amend_threshold": 0,       # Automated Stop-Loss Amendment: % of the profit run to lock into the
+                                     # stop each monitor pass (0 = OFF). e.g. 50 keeps half the gain.
 }
 
 

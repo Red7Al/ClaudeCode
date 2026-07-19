@@ -1099,6 +1099,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
     <p class="muted" style="font-size:12px">Application-wide trading/engine values (shared, one account).</p>
     <div class="credrow"><span class="clabel">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="eng-wo_lifespan_days" style="max-width:120px"></div>
+    <div class="credrow"><span class="clabel">Automated stop-loss trailing (%) <span class="muted" style="font-weight:400">0 = off. As a position runs into profit, each monitor pass moves the stop up by <b>entry × gain × this %</b> (never widened). e.g. 50 keeps half the run.</span></span><input type="number" min="0" max="100" step="5" id="eng-stop_amend_threshold" style="max-width:120px"></div>
     <button class="btn" style="margin-top:10px" onclick="saveEngine()">Save engine settings</button>
     <span id="eng-msg" style="font-size:12px;margin-left:8px"></span>
   </div>
@@ -2158,7 +2159,7 @@ function saveBridge(){
     .then(r=>{const el=$("bridge-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Bridge setting saved.";}else{el.style.color="var(--bear)";el.textContent="Save failed.";}});
 }
 function saveEngine(){
-  const eng={};["wo_lifespan_days","x_max_per_day","superinvestor_lookback_days","min_senator_trades","spread_retry_attempts","spread_retry_wait_secs","bridge_min_quality"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});
+  const eng={};["wo_lifespan_days","x_max_per_day","superinvestor_lookback_days","min_senator_trades","spread_retry_attempts","spread_retry_wait_secs","bridge_min_quality","stop_amend_threshold"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({engine:eng})})
     .then(r=>{if(!r.ok)throw 0;$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="Engine settings saved.";})
     .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});

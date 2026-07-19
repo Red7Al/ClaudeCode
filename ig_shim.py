@@ -2674,6 +2674,14 @@ def reconcile_working_orders() -> dict:
 
     except Exception as e:
         log.error(f"reconcile_working_orders failed: {e}")
+    # Automated Stop-Loss Amendment (user 2026-07-18) — trail stops on open positions each monitor pass.
+    # No-op unless the stop_amend_threshold config value > 0, so this is safe to run unconditionally.
+    try:
+        _amend = amend_open_stops()
+        if _amend.get("amended"):
+            summary.setdefault("stops_trailed", []).extend(_amend["amended"])
+    except Exception as e:
+        log.warning(f"amend_open_stops failed: {e}")
     return summary
 
 
@@ -2859,6 +2867,88 @@ def update_stop(deal_id: str, new_stop_level: float) -> bool:
     except requests.HTTPError as e:
         log.error(f"Failed to update stop: {e.response.status_code} — {e.response.text}")
         return False
+
+
+# ======================================================================================================================
+# Automated Stop-Loss Amendment (user 2026-07-18)
+# ----------------------------------------------------------------------------------------------------------------------
+# As a position moves into profit, lock some of that gain in by trailing the stop up (a long) / down (a short).
+#   gain      = favourable % move from entry
+#   increment = entry * gain * threshold          (threshold is a fraction; 0.5 = keep half the run)
+#   new_stop  = current_stop + increment          (BUY; minus for SELL — i.e. move the stop toward price)
+# The stop is only ever TIGHTENED, never widened. OFF unless the `stop_amend_threshold` config value > 0.
+# Examples (user, all BUY): stop100/entry105/price120/thr50% -> +7.5 -> 107.5 ; thr0% -> none ; price85 -> none.
+# ======================================================================================================================
+
+def compute_trailing_stop(direction, entry, current_stop, price, threshold, min_move_pct: float = 0.0):
+    """New absolute stop level per the rule above, or None if no amendment applies. `threshold` is a
+    fraction (0.5 = 50%). `min_move_pct` (a %, default 0 = off) optionally requires the move to exceed that
+    % of the current stop before amending — the user's ">1% of the stop price" guard, wired off for now."""
+    try:
+        entry = float(entry); current_stop = float(current_stop); threshold = float(threshold)
+        price = float(price)
+    except (TypeError, ValueError):
+        return None
+    if not entry or not current_stop or threshold <= 0 or price is None:
+        return None
+    buy = str(direction).upper() in ("BUY", "BULL", "BULLISH")
+    gain = (price - entry) / entry if buy else (entry - price) / entry
+    if gain <= 0:                                   # only trail once in profit
+        return None
+    increment = entry * gain * threshold
+    new_stop = current_stop + increment if buy else current_stop - increment
+    better = new_stop > current_stop if buy else new_stop < current_stop
+    if not better:                                  # never widen
+        return None
+    if min_move_pct and abs(new_stop - current_stop) < abs(current_stop) * (min_move_pct / 100.0):
+        return None                                 # move too small to bother
+    return round(new_stop, 2)
+
+
+def stop_amend_threshold() -> float:
+    """Configured Automated Stop-Loss Amendment threshold as a FRACTION (0 = OFF). Stored in config as a
+    percent (0-100, e.g. 50 = keep half the run), so divide by 100 here."""
+    try:
+        import config_store
+        return float(config_store.get_value("stop_amend_threshold", "0") or 0) / 100.0
+    except Exception:
+        return 0.0
+
+
+def amend_open_stops(min_move_pct: float = 0.0) -> dict:
+    """Trail the stop on every open position by the configured threshold. A no-op unless
+    stop_amend_threshold > 0, so it is safe to call every monitor pass. Never widens a stop."""
+    threshold = stop_amend_threshold()
+    out = {"threshold": threshold, "amended": [], "skipped": 0, "checked": 0}
+    if threshold <= 0:
+        return out
+    for p in get_open_positions():
+        out["checked"] += 1
+        pos = p.get("position", {}) or {}
+        mkt = p.get("market", {}) or {}
+        deal_id = pos.get("dealId")
+        direction = pos.get("direction")
+        try:
+            entry = float(pos.get("openLevel") or pos.get("level") or 0)
+            stop = float(pos.get("stopLevel") or 0)
+            bid = float(mkt.get("bid") or 0); offer = float(mkt.get("offer") or 0)
+        except (TypeError, ValueError):
+            out["skipped"] += 1; continue
+        buy = str(direction).upper() == "BUY"
+        price = (bid if buy else offer) or ((bid + offer) / 2 if (bid or offer) else 0)   # exit price side
+        if not (deal_id and stop and entry and price):
+            out["skipped"] += 1; continue
+        new_stop = compute_trailing_stop(direction, entry, stop, price, threshold, min_move_pct)
+        if new_stop is None:
+            out["skipped"] += 1; continue
+        if update_stop(deal_id, new_stop):
+            log.info(f"Stop trailed: {mkt.get('epic')} {direction} {stop} -> {new_stop} "
+                     f"(entry {entry}, price {price}, threshold {threshold})")
+            out["amended"].append({"epic": mkt.get("epic"), "deal_id": deal_id,
+                                   "old_stop": stop, "new_stop": new_stop})
+        else:
+            out["skipped"] += 1
+    return out
 
 
 # ======================================================================================================================
