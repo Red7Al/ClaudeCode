@@ -500,7 +500,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <th style="cursor:default"><input type="checkbox" id="po-all" onclick="poToggleAll(this)"></th>
         <th data-pk="_fav" title="Favourite (click to sort)">★</th>
         <!-- Ticker sits FAR RIGHT (user 2026-07-17, P-11b). -->
-        <th data-pk="name">Name</th><th style="cursor:default">Action</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
+        <th data-pk="name">Name</th><th style="cursor:default">Action</th><th data-pk="direction">Dir</th><th data-pk="status">Status</th><th data-pk="market">Market</th><th data-pk="sector">Sector</th>
         <th data-pk="current_price">Now</th><th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
         <th data-pk="added" title="When the setup completed and joined the dataset">Added</th><th data-pk="source">Source</th><th data-pk="ticker">Ticker</th>
       </tr></thead>
@@ -965,9 +965,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <p class="lede">Every <b>recorded trigger</b> — the entry, stop, target and date captured the moment the setup fired — tracked forward through the price history to its outcome: <b style="color:var(--bull)">TARGET</b> (hit the target first), <b style="color:var(--bear)">STOPPED</b> (hit the stop first), or <b style="color:#d29922">OPEN</b> (still running, marked to the latest price). Return is direction-aware, so positive is always in your favour. This is independent of the current squeeze status — a trigger is measured from when it happened.</p>
   <!-- Sub-tabs (user 2026-07-17): the recorded-trigger results and the 15-month analysis are two
        distinct reads, so they get their own pill instead of one long scroll. -->
-  <nav class="confnav" id="pf-subnav" style="margin:0 0 12px">
+  <nav class="confnav" id="pf-subnav" style="margin:0 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <button class="pill active" data-pfpanel="results" onclick="pfPanel('results')">📊 Results</button>
     <button class="pill" data-pfpanel="analysis" onclick="pfPanel('analysis')">🏆 What separates the winners</button>
+    <!-- Date filter (user 2026-07-18, P-01): narrows the trigger-date window; drives every figure on BOTH
+         sub-tabs (summary cards, charts, tables, the compounded £). -->
+    <span class="grow" style="flex:1"></span>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">From <input id="pf-date-from" type="date" onchange="pfDateChange()" style="padding:4px 6px"></label>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">To <input id="pf-date-to" type="date" onchange="pfDateChange()" style="padding:4px 6px"></label>
+    <button class="btn" onclick="pfDateClear()" style="padding:4px 9px;font-size:12px" title="Clear the date filter — show the full 12 months">All 12mo</button>
   </nav>
   <div id="pf-panel-results">
   <div id="pf-charts">
@@ -991,7 +997,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <input id="pf-search" placeholder="Search name / ticker…" oninput="_renderPerformance()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
     <div class="tablewrap"><table>
       <!-- Ticker sits FAR RIGHT on every table that has one (user 2026-07-17, P-11b). -->
-      <thead><tr><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="stop">Stop</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank where the instrument has no real volume (FX, indices).">RVOL</th><th data-pf="ticker">Ticker</th></tr></thead>
+      <thead><tr><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="stop">Stop</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank where the instrument has no real volume (FX, indices).">RVOL</th><th data-pf="ticker">Ticker</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -2390,11 +2396,17 @@ async function maRebuild(){
 let pfSortK="perf", pfSortDir=-1, PERF_DATA=null, PERF_GEN="", PF_LOC_FILTER="";
 const _stcol=s=>s==="TARGET"?"var(--bull)":s==="STOPPED"?"var(--bear)":"#d29922";   // OPEN = amber
 function pfLocFilter(loc){PF_LOC_FILTER=(PF_LOC_FILTER===loc)?"":loc;_renderPerformance();}   // toggle the Summary-title location filter
+// Date filter (user 2026-07-18, P-01) — one trigger-date window drives BOTH Performance sub-tabs.
+let PF_DATE_FROM="", PF_DATE_TO="";
+function pfDateOk(d){if(!d)return true;if(PF_DATE_FROM&&d<PF_DATE_FROM)return false;if(PF_DATE_TO&&d>PF_DATE_TO)return false;return true;}
+function pfDateChange(){PF_DATE_FROM=(($("pf-date-from")||{}).value)||"";PF_DATE_TO=(($("pf-date-to")||{}).value)||"";_renderPerformance();if(typeof WIN!=='undefined'&&WIN!==null)paintOrdersPerf();}
+function pfDateClear(){if($("pf-date-from"))$("pf-date-from").value="";if($("pf-date-to"))$("pf-date-to").value="";pfDateChange();}
 function renderPerformance(){
-  // "What separates the winners" is ADMIN ONLY (user 2026-07-18): hide the sub-tab pill for everyone
-  // else, and never leave a non-admin sitting on the analysis panel.
-  const _anPill=document.querySelector('#pf-subnav .pill[data-pfpanel="analysis"]');
-  if(_anPill)_anPill.style.display=IS_ADMIN?'':'none';
+  // "What separates the winners" is ADMIN ONLY (user 2026-07-18). For non-admins there is only the
+  // Results panel, so a lone "Results" pill reads oddly (P-01a) — hide the whole sub-nav bar for them,
+  // and never leave a non-admin sitting on the analysis panel.
+  const _sub=$("pf-subnav");
+  if(_sub)_sub.style.display=IS_ADMIN?'':'none';
   if(!IS_ADMIN && !$("pf-panel-analysis").classList.contains("hidden"))pfPanel('results');
   if(PERF_DATA===null){                       // fetch the recorded-trigger report once, then render
     PERF_DATA=[];                             // in-flight guard
@@ -2457,9 +2469,9 @@ const _gbp2=v=>v==null?'—':`${v<0?'−':'+'}£${Math.abs(v).toLocaleString(und
 function paintOrdersPerf(){
   const box=$("ordp-summary"), dims=$("ordp-dims"), tb=$("ordp-table"), tc=$("ordp-count");
   if(!box)return;
-  const all=(WIN||[]).filter(r=>r&&r.entry&&r.stop);
+  const all=(WIN||[]).filter(r=>r&&r.entry&&r.stop&&pfDateOk(r.trig_date));   // shared date-window filter (P-01)
   if(!all.length){
-    box.innerHTML=`<div class="muted" style="font-size:13px">No trades in the last 12 months yet — build the history with <code>python squeeze_history.py --months 15</code>.</div>`;
+    box.innerHTML=`<div class="muted" style="font-size:13px">No trades in this date window — widen the date filter above (or clear it for the full 12 months).</div>`;
     if(dims)dims.innerHTML="";if(tb)tb.innerHTML="";return;}
   const money=v=>v==null?'—':`£${Math.round(v).toLocaleString()}`;
   const stopPct=r=>Math.abs(r.entry-r.stop)/r.entry;           // the defined HVF stop, as a fraction
@@ -2483,7 +2495,7 @@ function paintOrdersPerf(){
     card("💷","Net P&L",`<span style="color:${_pnlc(gain)}">${_gbp2(gain)}</span>`,`from staking <b>2% of the wallet</b> on every trade (compounding). Avg stake grows from £200 as the wallet does; typical max loss <b>£${medML.toFixed(2)}</b> (= stake × the stop distance %).`)+
     card("📈","£10,000 compounded",`<span style="color:${w>=WINNERS_WALLET?'var(--bull)':'var(--bear)'}">${money(w)}</span> <span class="muted" style="font-size:12px">total</span>`,`each stake = 2% of the wallet <i>at that moment</i>, so winners raise the next stake. ${money(gain)} gain over ${wp.length} trades — every one in the ledger below, oldest first.`);
   // Which attributes separated the winners — each trade's compounded net £ attributed to its bucket.
-  const groups=[["Market",r=>r.market],["Location",r=>locName(r.location)],["Sector",r=>r.sector],["Direction",r=>r.direction]];
+  const groups=[["Market",r=>r.market],["Location",r=>locName(r.location)],["Sector",r=>r.sector],["Direction",r=>r.direction],["Outcome",r=>r.outcome]];
   if(dims)dims.innerHTML=groups.map(([name,fn])=>{
     const m={};ledger.forEach(x=>{const k=fn(x.r)||'—';(m[k]=m[k]||{net:0,n:0,w:0});m[k].net+=x.net;m[k].n++;if(x.r.perf>PF_BE)m[k].w++;});
     const bs=Object.entries(m).filter(([k,v])=>v.n).sort((a,b)=>b[1].net-a[1].net);
@@ -2500,7 +2512,7 @@ function paintOrdersPerf(){
   if(tc)tc.textContent=`(${ledger.length} trades, ${span} · £10k → ${money(w)})`;
   const oc=st=>st==='TARGET'?'var(--bull)':st==='STOPPED'?'var(--bear)':'#d29922';
   if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="2% of the wallet at this point in time">Stake</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Running wallet after this trade — last row = the compounded figure">Wallet</th></tr></thead><tbody>`+
-    ledger.map((x,i)=>{const r=x.r;return `<tr><td class="muted">${i+1}</td><td>${r.trig_date||''}</td><td>${nm40(disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td>
+    ledger.map((x,i)=>{const r=x.r;return `<tr><td class="muted">${i+1}</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td>
       <td><b style="color:${oc(r.outcome)}">${r.outcome}</b></td>
       <td style="color:${_pnlc(r.perf)}">${r.perf==null?'—':(r.perf>0?'+':'')+r.perf+'%'}</td>
       <td class="muted">${money(x.stake)}</td>
@@ -2510,7 +2522,7 @@ function paintOrdersPerf(){
     `</tbody></table>`;
 }
 function _renderPerformance(){
-  const all=PERF_DATA||[];
+  const all=(PERF_DATA||[]).filter(r=>pfDateOk(r.trig_date));   // date-window filter (P-01) drives everything below
   // Click-to-filter charts: Sector / Market / Outcome over the recorded triggers.
   const by=fn=>all.reduce((m,r)=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]=(m[v]||0)+1;return m;},{});
   const _wlCol=k=>k==="Win"?"var(--bull)":k==="Loss"?"var(--bear)":"#d29922";
@@ -2556,13 +2568,13 @@ function _renderPerformance(){
     <td>${ob(`<b style="color:${_stcol(r.state)}">${r.state||''}</b>`)}</td>
     <!-- Market and Triggered stay visible logged-out (user 2026-07-17, P-26 and P-17b); the rest of the
          row is still obfuscated by ob(). /api/performance is public and already returns both. -->
-    <td>${r.market||''}</td><td>${r.trig_date||'—'}</td>
+    <td>${r.market||''}</td><td>${r.sector||''}</td><td>${r.trig_date||'—'}</td>
     <td>${ob(f2(r.entry))}</td><td style="color:var(--bear)">${ob(f2(r.stop))}</td><td style="color:var(--bull)">${ob(f2(r.target))}</td>
     <td>${ob(f2(r.current_price))}</td>
     <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td>
     <td>${ob(rvolCell(r.rvol))}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
-    ||`<tr><td colspan="14" class="empty">No recorded triggers yet.</td></tr>`;
+    ||`<tr><td colspan="15" class="empty">No recorded triggers yet.</td></tr>`;
 }
 // Summary table (user 2026-07-13): Overall / Bull / Bear split of the recorded triggers, with
 // coloured gradients to draw the eye. Returns Available = every trigger with a return figure —
@@ -2743,14 +2755,14 @@ function renderPreorders(){
       ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
       <td><button class="btn" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();placeOnIG('${r.ticker}')" title="Place this pre-order as a live IG working order now">↗ Place on IG</button></td>
       <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
-      <td>${r.status}</td><td>${r.market||''}</td>
+      <td>${r.status}</td><td>${r.market||''}</td><td>${r.sector||''}</td>
       <td>${f2(r.current_price)}</td><td><b>${f2((OVERRIDES[r.ticker]||{}).entry??r.entry)}${(OVERRIDES[r.ticker]||{}).entry!=null&&OVERRIDES[r.ticker].entry!==r.entry?' ✎':''}</b></td><td style="color:var(--bear)">${f2((OVERRIDES[r.ticker]||{}).stop??r.stop)}</td><td style="color:var(--bull)">${f2((OVERRIDES[r.ticker]||{}).target??r.target)}</td>
       <td>${d!=null?(d>0?'+':'')+d+'%':''}</td>
       <td>${r.rr!=null?r.rr.toFixed(1):''}</td>
       <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td>
       <td>${(r.timeframe||'').replace('daily-','D')}</td>
       <td>${r.added||''}</td><td>${r.source||''}</td><td><b>${disp(r.ticker)}</b></td></tr>`;}).join("")
-    || `<tr><td colspan="18" class="empty">No pre-orders right now.</td></tr>`;
+    || `<tr><td colspan="19" class="empty">No pre-orders right now.</td></tr>`;
   document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=e=>{if(e.target.type==="checkbox")return;openDetailFrom('preorders',tr.dataset.t);});   // return here on close (P-29)
   $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)   // keep tab count in sync after delete (user 2026-07-06)
   poUpdateBtn();

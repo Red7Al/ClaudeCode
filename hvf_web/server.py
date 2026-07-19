@@ -1966,7 +1966,7 @@ def api_winners():
         rows = [r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cut12]
         rows.sort(key=lambda r: (r.get("trig_date") or ""))
         payload["rows"] = [
-            {"ticker": r["ticker"], "market": r["market"], "sector": r["sector"],
+            {"ticker": r["ticker"], "name": r["name"], "market": r["market"], "sector": r["sector"],
              "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
              "trig_date": r["trig_date"], "entry": r["entry"], "stop": r["stop"],
              "outcome": r["outcome"], "perf": r["return_pct"],
