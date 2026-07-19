@@ -971,8 +971,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <!-- Date filter (user 2026-07-18, P-01): narrows the trigger-date window; drives every figure on BOTH
          sub-tabs (summary cards, charts, tables, the compounded £). -->
     <span class="grow" style="flex:1"></span>
-    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">From <input id="pf-date-from" type="date" onchange="pfDateChange()" style="padding:4px 6px"></label>
-    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">To <input id="pf-date-to" type="date" onchange="pfDateChange()" style="padding:4px 6px"></label>
+    <select id="pf-date-preset" onchange="pfDatePreset(this.value)" style="padding:4px 6px;font-size:12px" title="Quick date window">
+      <option value="12">Last 12 months</option><option value="9">Last 9 months</option>
+      <option value="6">Last 6 months</option><option value="3">Last 3 months</option>
+      <option value="">Custom / all</option></select>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">From <input id="pf-date-from" type="date" onchange="pfDateChange(true)" style="padding:4px 6px"></label>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">To <input id="pf-date-to" type="date" onchange="pfDateChange(true)" style="padding:4px 6px"></label>
     <button class="btn" onclick="pfDateClear()" style="padding:4px 9px;font-size:12px" title="Clear the date filter — show the full 12 months">All 12mo</button>
   </nav>
   <div id="pf-panel-results">
@@ -2420,11 +2424,24 @@ async function maRebuild(){
 let pfSortK="perf", pfSortDir=-1, PERF_DATA=null, PERF_GEN="", PF_LOC_FILTER="";
 const _stcol=s=>s==="TARGET"?"var(--bull)":s==="STOPPED"?"var(--bear)":"#d29922";   // OPEN = amber
 function pfLocFilter(loc){PF_LOC_FILTER=(PF_LOC_FILTER===loc)?"":loc;_renderPerformance();}   // toggle the Summary-title location filter
-// Date filter (user 2026-07-18, P-01) — one trigger-date window drives BOTH Performance sub-tabs.
-let PF_DATE_FROM="", PF_DATE_TO="";
+// Date filter (user 2026-07-18, P-01) — one trigger-date window drives BOTH Performance sub-tabs. A preset
+// dropdown (Last 3/6/9/12 months) sets it quickly; the window label feeds the "Trades" card title (P-01).
+let PF_DATE_FROM="", PF_DATE_TO="", PF_WINDOW_LABEL="last 12 months";
 function pfDateOk(d){if(!d)return true;if(PF_DATE_FROM&&d<PF_DATE_FROM)return false;if(PF_DATE_TO&&d>PF_DATE_TO)return false;return true;}
-function pfDateChange(){PF_DATE_FROM=(($("pf-date-from")||{}).value)||"";PF_DATE_TO=(($("pf-date-to")||{}).value)||"";_renderPerformance();if(typeof WIN!=='undefined'&&WIN!==null)paintOrdersPerf();}
-function pfDateClear(){if($("pf-date-from"))$("pf-date-from").value="";if($("pf-date-to"))$("pf-date-to").value="";pfDateChange();}
+function _pfMonthsAgo(n){const d=new Date();d.setMonth(d.getMonth()-n);return d.toISOString().slice(0,10);}
+function pfDatePreset(v){
+  const fr=$("pf-date-from"), to=$("pf-date-to");
+  if(!v){if(fr)fr.value="";if(to)to.value="";PF_WINDOW_LABEL="all 12 months";}
+  else{if(fr)fr.value=_pfMonthsAgo(+v);if(to)to.value="";PF_WINDOW_LABEL="last "+v+" months";}
+  pfDateChange();
+}
+function pfDateChange(manual){
+  PF_DATE_FROM=(($("pf-date-from")||{}).value)||"";PF_DATE_TO=(($("pf-date-to")||{}).value)||"";
+  if(manual){const ps=$("pf-date-preset");if(ps)ps.value="";
+    PF_WINDOW_LABEL=(PF_DATE_FROM||PF_DATE_TO)?((PF_DATE_FROM||'…')+' → '+(PF_DATE_TO||'now')):"all 12 months";}
+  _renderPerformance();if(typeof WIN!=='undefined'&&WIN!==null)paintOrdersPerf();
+}
+function pfDateClear(){const ps=$("pf-date-preset");if(ps)ps.value="";if($("pf-date-from"))$("pf-date-from").value="";if($("pf-date-to"))$("pf-date-to").value="";PF_WINDOW_LABEL="all 12 months";pfDateChange();}
 function renderPerformance(){
   // "What separates the winners" is ADMIN ONLY (user 2026-07-18). For non-admins there is only the
   // Results panel, so a lone "Results" pill reads oddly (P-01a) — hide the whole sub-nav bar for them,
@@ -2538,8 +2555,8 @@ function paintOrdersPerf(){
   const span=wp.length?`${seq[0].trig_date} → ${seq[seq.length-1].trig_date}`:'';
   const card=(ic,t,v,sub)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:17px;color:var(--fg)">${v}</b><br><span class="muted">${sub}</span></div></div>`;
   box.innerHTML=
-    card("📊","Trades · 12 months",all.length,`${span} · ${wp.length} with a return · ${wins.length} win / ${losses.length} loss / ${be.length} break-even · tradeable universe (R:R≥3, FX/Crypto excluded)`)+
-    card("🎯","Win vs loss",`${winpct==null?'—':winpct+'%'} / ${losspct==null?'':losspct+'%'}`,`a win is any return above +${PF_BE}% (open included) — same definition as the Results report · avg return ${avgRet>=0?'+':''}${avgRet.toFixed(1)}%`)+
+    card("📊","Trades · "+(typeof PF_WINDOW_LABEL!=='undefined'?PF_WINDOW_LABEL:'12 months'),all.length,`${span} · ${wp.length} with a return · ${wins.length} win / ${losses.length} loss / ${be.length} break-even · tradeable universe (R:R≥3, FX/Crypto excluded)`)+
+    card("🎯","Win vs loss",`${winpct==null?'—':winpct+'%'} / ${losspct==null?'':losspct+'%'}`,`a win is <b>any gain</b>, a loss is <b>any loss</b> (open trades included) — same definition as the Results report · avg return ${avgRet>=0?'+':''}${avgRet.toFixed(1)}%`)+
     card("💷","Net P&L",`<span style="color:${_pnlc(gain)}">${_gbp2(gain)}</span>`,`from staking <b>2% of the wallet</b> on every trade (compounding). Avg stake grows from £200 as the wallet does; typical max loss <b>£${medML.toFixed(2)}</b> (= stake × the stop distance %).`)+
     card("📈","£10,000 compounded",`<span style="color:${w>=WINNERS_WALLET?'var(--bull)':'var(--bear)'}">${money(w)}</span> <span class="muted" style="font-size:12px">total</span>`,`each stake = 2% of the wallet <i>at that moment</i>, so winners raise the next stake. ${money(gain)} gain over ${wp.length} trades — every one in the ledger below, oldest first.`);
   // Which attributes separated the winners — each trade's compounded net £ attributed to its bucket.
@@ -2628,7 +2645,7 @@ function _renderPerformance(){
 // coloured gradients to draw the eye. Returns Available = every trigger with a return figure —
 // including OPEN trades marked to the latest price — so Gains, Losses, Break-even, Win %, Loss %,
 // Avg Return and Max/Min all take the open trades into account. Open is an informational subset.
-const PF_BE=0.5;   // |return| < 0.5% counts as break-even
+const PF_BE=0;   // a WIN is any gain (>0), a LOSS is any loss (<0); only exactly 0 is break-even (user 2026-07-18)
 // Win / Loss / Break-even category for a recorded trigger, from its direction-aware return (matches _pfSeg).
 function _pfwl(r){if(r.perf==null)return"—";return r.perf>PF_BE?"Win":r.perf<-PF_BE?"Loss":"Break-even";}
 function _pfSeg(rows){
