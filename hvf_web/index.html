@@ -999,30 +999,19 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
   <!-- 15-month squeeze analysis (user 2026-07-17, P-21b) — its own sub-tab (P-21b follow-up). -->
   <div id="pf-panel-analysis" class="hidden">
-    <h2 class="sec" style="margin-top:0">What separates the winners — 15 months of squeezes</h2>
-    <p class="muted" style="font-size:13px;margin-top:-8px">Built by replaying the engine over 15 months of price history
-    (<code>squeeze_history</code>), not just the triggers recorded since 2026-06-30 — a sample that small cannot support a
-    conclusion. The population is every funnel the engine would have surfaced as <b>READY or TRIGGERED</b>, including ones you
-    did not trade; that is the only way to see whether a filter helps. <b>Win %</b> uses the same definition as the
-    Performance report above — a <b>gain</b> is any positive marked-to-market return (open trades included), not a
-    target-hit — so the two agree. £ figures risk 2% of the wallet per trade; the compounded £10k is a portfolio
-    simulation capped at the bridge's concurrent limit. A bucket is only called out as advice with at least 10 behind it.</p>
-    <!-- Cherry-pick presets (user 2026-07-18): narrow the population to a filter and see its own win
-         rate / expectancy / compound. Same presets drive the Scanner (setCherry). -->
-    <nav class="confnav" id="sqa-presets" style="margin:0 0 10px"></nav>
-    <div id="sqa-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
-    <div id="sqa-advice" style="margin-bottom:10px"></div>
-    <div id="sqa-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
-    <!-- Concurrency dial (user 2026-07-18): the compounded £ is dominated by how many positions run at
-         once (each risks 2%, so 50 = 100% heat). Drag to see the effect. -->
-    <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-      <b style="font-size:13px">Concurrency</b>
-      <input id="sqa-conc" type="range" min="1" max="50" value="10" style="flex:1;min-width:180px;max-width:360px" oninput="$('sqa-conc-lbl').textContent=this.value+' open ('+(this.value*2)+'% heat)'" onchange="sqaSetConc(this.value)">
-      <span id="sqa-conc-lbl" class="muted" style="font-size:12px;min-width:150px">10 open (20% heat)</span>
-      <span class="muted" style="font-size:11px">each trade risks 2% of the wallet; the compound is very sensitive to this</span>
-    </div>
-    <h3 class="sec" style="font-size:15px;margin-bottom:2px">Every trade behind these numbers <span id="sqa-trades-count" class="muted" style="font-size:12px;font-weight:400"></span></h3>
-    <div id="sqa-trades" class="tablewrap" style="max-height:420px;overflow:auto"></div>
+    <h2 class="sec" style="margin-top:0">What separates the winners — what's possible over 12 months</h2>
+    <p class="muted" style="font-size:13px;margin-top:-8px">Every tradeable setup over the <b>last 12 months</b> (user 2026-07-18),
+    replayed from price history — the full period, not just the recent recorded triggers. Assume each was placed, so this is the
+    performance of <b>what's possible</b>. Return % uses the same direction-aware, marked-to-market definition as the Results
+    report. The £ figures place a stake of <b>2% of the wallet at that point in time</b> on every trade and compound it:
+    <b>net £ = stake × the trade's return%</b>; the stake starts at £200 on £10k and grows as the wallet does (winners raise the
+    next stake — 10,000 → 10,250 → 2% of 10,250 …). The stop caps each loss at <b>stake × the stop distance %</b> — a few pounds.
+    The ledger below is every trade in <b>strict chronological order by trigger date</b>, so you can follow the wallet build.</p>
+    <div id="ordp-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
+    <div id="ordp-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
+    <h3 class="sec" style="font-size:15px;margin-bottom:2px">Every trade — oldest first, wallet after each <span id="ordp-count" class="muted" style="font-size:12px;font-weight:400"></span></h3>
+    <p class="muted" style="font-size:12px;margin:2px 0 6px">Each row is one recorded trade. <b>Stake</b> = 2% of the running wallet; <b>Net £</b> = stake × its return%; <b>Wallet</b> is the running total, and the last row equals the compounded figure above. <b>Max loss</b> = stake × the stop distance %.</p>
+    <div id="ordp-table" class="tablewrap" style="max-height:460px;overflow:auto"></div>
   </div>
 </div>
 
@@ -1075,7 +1064,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <div id="view-changereq" class="hidden doc" style="max-width:1240px">
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderCR(event)">↻ Refresh</button></div>
   <h1>Change Requests</h1>
-  <p class="lede">Every change-request file in <b>ChangeRequests/</b>, parsed into individual requirements. Each file shows its total actions and how many are Completed, In Progress, Not Started or Cancelled. Click a row to read the full breakdown.</p>
+  <p class="lede">Every change-request file in <b>ChangeRequests/</b>, parsed into individual requirements. Each file shows its total actions and how many are Completed, In Progress, Not Started or Cancelled. The <b>In Progress</b> count is kept live as work is picked up. Click a row to read the full breakdown; every requirement has a stable <b>#row</b> number.</p>
   <section class="gsec" id="cr-section" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="cr-count"></span></div>
     <div class="tablewrap"><table>
@@ -2437,26 +2426,18 @@ const CHERRY_PRESETS=[
   {id:"balanced", label:"Balanced · 1.8/60/5",   f:{rvmin:1.8,qmin:60,rrmin:5}},
 ];
 const _cherryEq=(a,b)=>JSON.stringify(a||{})===JSON.stringify(b||{});
-let SQA=null, SQA_FILTER={}, SQA_CONC=10;
-function sqaPreset(id){const p=CHERRY_PRESETS.find(x=>x.id===id);if(!p)return;SQA_FILTER=p.f;SQA=null;renderSqueezeAnalysis();}
-function sqaSetConc(v){SQA_CONC=Math.max(1,+v||10);SQA=null;renderSqueezeAnalysis();}
-// Loading state (user 2026-07-18): recomputing on a preset / dial change takes a moment, so say so.
-function sqaBusy(on){
-  const s=$("sqa-summary"); if(s&&on)s.innerHTML='<div class="muted" style="font-size:13px;padding:10px">⏳ Recalculating…</div>';
-  document.querySelectorAll('#sqa-presets .pill,#sqa-conc').forEach(x=>{x.style.opacity=on?0.5:1;x.style.pointerEvents=on?'none':'';});
-}
+// "What separates the winners" (admin) is built from the SAME 369 recorded trades as the Results tab
+// (user 2026-07-18: "369 rows in main performance tab can be used"), expressed in £ as a fixed 2%-of-wallet
+// stake (£200 on £10k) × each trade's actual return%. So it reconciles with Results by construction — no
+// separate population, no R-multiple, no compounding-to-millions.
+const WINNERS_WALLET=10000, WINNERS_STAKE=0.02;
+let WIN=null;
 function renderSqueezeAnalysis(){
-  paintSqaPresets();
-  if(SQA!==null)return paintSqueezeAnalysis();
-  SQA={}; sqaBusy(true);
-  const qs=Object.entries({...SQA_FILTER,conc:SQA_CONC}).map(([k,v])=>`${k}=${v}`).join("&");
-  fetch("/api/squeeze-analysis?"+qs).then(r=>r.ok?r.json():null)
-    .then(j=>{SQA=j||{};sqaBusy(false);paintSqueezeAnalysis();})
-    .catch(()=>{SQA={};sqaBusy(false);paintSqueezeAnalysis();});
-}
-function paintSqaPresets(){
-  const n=$("sqa-presets");if(!n)return;
-  n.innerHTML=CHERRY_PRESETS.map(p=>`<button class="pill${_cherryEq(p.f,SQA_FILTER)?' active':''}" onclick="sqaPreset('${p.id}')">${p.label}</button>`).join("");
+  if(WIN!==null)return paintOrdersPerf();
+  WIN=[]; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="muted" style="font-size:13px;padding:10px">⏳ Loading 12 months of trades…</div>';
+  fetch("/api/winners").then(r=>r.ok?r.json():{rows:[]})
+    .then(j=>{WIN=j.rows||[];paintOrdersPerf();})
+    .catch(()=>{WIN=[];paintOrdersPerf();});
 }
 // Same presets on the SCANNER (user 2026-07-18): set the RVOL / Quality / R:R range filters so you can
 // pick instruments the analysis says are best. A preset field not in the preset is cleared.
@@ -2471,59 +2452,62 @@ function paintScannerPresets(){
   n.innerHTML=CHERRY_PRESETS.map(p=>`<button class="pill" data-p="${p.id}" onclick="setCherry('${p.id}')" style="font-size:11px;padding:4px 9px">${p.label}</button>`).join("");
 }
 paintScannerPresets();   // render now — CHERRY_PRESETS is defined above (user 2026-07-18)
-// Colour a win% against the baseline, not against an absolute: 30% is good or bad only relative to what
-// every other funnel did.
-const _sqaCol=(v,base)=>v==null?"var(--muted)":v-base>=10?"var(--bull)":v-base<=-10?"var(--bear)":"var(--fg)";
-function paintSqueezeAnalysis(){
-  const box=$("sqa-summary"), adv=$("sqa-advice"), dims=$("sqa-dims");
+const _pnlc=v=>(v||0)>0?'var(--bull)':(v||0)<0?'var(--bear)':'var(--muted)';
+const _gbp2=v=>v==null?'—':`${v<0?'−':'+'}£${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+function paintOrdersPerf(){
+  const box=$("ordp-summary"), dims=$("ordp-dims"), tb=$("ordp-table"), tc=$("ordp-count");
   if(!box)return;
-  const b=SQA&&SQA.baseline;
-  if(!b||!b.resolved){
-    box.innerHTML=`<div class="muted" style="font-size:13px">No squeeze history yet — run <code>python squeeze_history.py --months 15</code> to build it.</div>`;
-    adv.innerHTML="";dims.innerHTML="";return;}
-  const card=(ic,t,v,s)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:17px;color:var(--fg)">${v}</b><br><span class="muted">${s}</span></div></div>`;
-  // £-per-trade impact of a £10,000 position (user 2026-07-17): the per-trade expectancy in pounds,
-  // green if the sample makes money on average, red if it bleeds.
-  const gbp=v=>v==null?'—':`${v<0?'-':'+'}£${Math.abs(v).toLocaleString()}`;
+  const all=(WIN||[]).filter(r=>r&&r.entry&&r.stop);
+  if(!all.length){
+    box.innerHTML=`<div class="muted" style="font-size:13px">No trades in the last 12 months yet — build the history with <code>python squeeze_history.py --months 15</code>.</div>`;
+    if(dims)dims.innerHTML="";if(tb)tb.innerHTML="";return;}
   const money=v=>v==null?'—':`£${Math.round(v).toLocaleString()}`;
-  // Four cards (user 2026-07-17): secondary figures fold into the subtitles.
-  const c=b.compound_10k||{};
+  const stopPct=r=>Math.abs(r.entry-r.stop)/r.entry;           // the defined HVF stop, as a fraction
+  const wp=all.filter(r=>r.perf!=null);                        // returns available (incl. open, marked-to-market)
+  const wins=wp.filter(r=>r.perf>PF_BE),losses=wp.filter(r=>r.perf<-PF_BE),be=wp.filter(r=>Math.abs(r.perf)<=PF_BE);
+  const winpct=wp.length?Math.round(wins.length/wp.length*1000)/10:null;
+  const losspct=wp.length?Math.round(losses.length/wp.length*1000)/10:null;
+  const avgRet=wp.length?wp.reduce((a,r)=>a+r.perf,0)/wp.length:0;
+  // THE model (user 2026-07-18): chronological by TRIGGER DATE, stake = 2% of the wallet AT THAT POINT IN
+  // TIME (compounding). net = stake × return%. There is no flat stake.
+  const seq=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
+  let w=WINNERS_WALLET;const ledger=[];
+  for(const r of seq){const stake=w*WINNERS_STAKE,net=stake*r.perf/100;w+=net;ledger.push({r,stake,net,maxloss:stake*stopPct(r),cum:w});}
+  const gain=w-WINNERS_WALLET;
+  const mls=ledger.map(x=>x.maxloss).sort((a,b)=>a-b);const medML=mls.length?mls[Math.floor(mls.length/2)]:0;
+  const span=wp.length?`${seq[0].trig_date} → ${seq[seq.length-1].trig_date}`:'';
+  const card=(ic,t,v,sub)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:17px;color:var(--fg)">${v}</b><br><span class="muted">${sub}</span></div></div>`;
   box.innerHTML=
-    card("🧪","Funnels analysed",b.funnels,`over 15 months · ${b.avail} with a return · ${b.open} open · ${b.never_triggered} never fired`)+
-    card("🎯","Win vs loss rate",`${b.win_pct}% / ${b.loss_pct}%`,`${b.gains} gains · ${b.losses} losses · ${b.be} break-even (same basis as the Performance report — a gain is any +ve return, open included)`)+
-    card("💷","Impact per £10,000",`<span style="color:${b.pnl_per_10k>=0?'var(--bull)':'var(--bear)'}">${gbp(b.pnl_per_10k)}</span>`,`risking 2% (£200) per trade · avg ${b.avg_return}% return`)+
-    card("📈","£10,000 compounded",`<span style="color:${(c.final||0)>=10000?'var(--bull)':'var(--bear)'}">${money(c.final)}</span>`,`portfolio sim · up to ${c.max_concurrent||50} open (${(c.max_concurrent||50)*2}% risk heat) · ${c.trades||0} taken · very sensitive to this cap`);
-  adv.innerHTML=(SQA.advice&&SQA.advice.length)
-    ? `<div class="card" style="border:1px solid var(--bull);background:color-mix(in srgb,var(--bull) 8%,transparent)">
-        <h4>✅ Filters that beat the baseline</h4>
-        <p class="muted" style="font-size:12px;margin:0 0 8px">At least 10 resolved funnels, and a win rate at least 10 points above the ${b.win_pct}% baseline.</p>
-        ${SQA.advice.map(a=>`<div class="credrow"><span class="clabel">${a.dimension}: <b>${a.bucket}</b></span>
-          <span><b style="color:var(--bull)">${a.win_pct}%</b> <span class="muted">win / ${a.loss_pct}% loss (+${a.lift} pts) · ${gbp(a.pnl_per_10k)} per £10k · n=${a.resolved}</span></span></div>`).join("")}</div>`
-    : `<div class="card"><h4>No filter clears the bar yet</h4><p class="muted" style="font-size:12px;margin:0">
-        Nothing beats the ${b.win_pct}% baseline by 10+ points on 10+ resolved funnels. That is itself a finding: on this sample the
-        attributes below do not separate winners strongly enough to trade on.</p></div>`;
-  // One card per dimension; buckets below the sample floor are shown greyed rather than hidden, so a
-  // thin bucket cannot be mistaken for a strong one.
-  dims.innerHTML=(SQA.dimensions||[]).filter(d=>d.buckets.some(x=>x.resolved)).map(d=>
-    `<div class="vizsector"><div class="vizbox"><h5>${d.name}</h5><div class="bars">`+
-    d.buckets.filter(x=>x.resolved).map(x=>`<div class="bar" title="${x.bucket}: ${x.win_pct}% win / ${x.loss_pct}% loss · ${gbp(x.pnl_per_10k)} per £10k trade · ${x.resolved} resolved (${x.wins} target, ${x.losses} stopped) · ${x.never_triggered} never fired">
-      <span class="tk" style="max-width:120px">${x.bucket}</span>
-      <span class="track"><span class="fill" style="width:${Math.max(2,Math.round((x.win_pct||0)))}%;background:${_sqaCol(x.win_pct,b.win_pct)};opacity:${x.enough?1:0.35}"></span></span>
-      <span class="n" style="color:${_sqaCol(x.win_pct,b.win_pct)}">${x.win_pct==null?'—':x.win_pct+'%'}</span>
-      <span class="n" style="min-width:52px;color:${x.pnl_per_10k>=0?'var(--bull)':'var(--bear)'}">${gbp(x.pnl_per_10k)}</span></div>`).join("")+
-    `</div></div></div>`).join("");
-  // Sync the dial to the value the server actually used.
-  if($("sqa-conc")&&c.max_concurrent){$("sqa-conc").value=c.max_concurrent;$("sqa-conc-lbl").textContent=`${c.max_concurrent} open (${c.max_concurrent*2}% heat)`;}
-  // Every trade behind the numbers (user 2026-07-18) — so £-figures can be checked, newest first.
-  const tb=$("sqa-trades"), tc=$("sqa-trades-count"), ts=SQA.trades||[];
-  if(tc)tc.textContent=`(${ts.length} — newest first)`;
-  if(tb)tb.innerHTML=`<table><thead><tr><th>Name</th><th>Dir</th><th>Market</th><th>Sector</th><th>Triggered</th><th>Outcome</th><th>Return</th><th title="Return in units of what the trade risked (stop = -1R, target = +R:R). This drives the £ figures.">R</th><th>Quality</th><th>R:R</th><th>RVOL</th><th>Ticker</th></tr></thead><tbody>`+
-    ts.slice(0,500).map(t=>`<tr><td>${nm40(disp(t.ticker))}</td><td>${t.direction==='BULLISH'?'BULL':'BEAR'}</td><td>${t.market||''}</td><td>${t.sector||''}</td><td>${t.trig_date||''}</td>
-      <td><b style="color:${_stcol(t.outcome)}">${t.outcome}</b></td>
-      <td style="color:${(t.return_pct||0)>=0?'var(--bull)':'var(--bear)'}">${t.return_pct!=null?(t.return_pct>0?'+':'')+t.return_pct+'%':'—'}</td>
-      <td style="color:${(t.r_mult||0)>=0?'var(--bull)':'var(--bear)'}">${t.r_mult!=null?(t.r_mult>0?'+':'')+t.r_mult+'R':'—'}</td>
-      <td>${t.quality!=null?Math.round(t.quality):''}</td><td>${t.rr!=null?(+t.rr).toFixed(1):''}</td><td>${t.rvol!=null?(+t.rvol).toFixed(1):''}</td><td><b>${disp(t.ticker)}</b></td></tr>`).join("")+
-    `</tbody></table>`+(ts.length>500?`<p class="muted" style="font-size:11px;padding:6px">showing the newest 500 of ${ts.length}</p>`:'');
+    card("📊","Trades · 12 months",all.length,`${span} · ${wp.length} with a return · ${wins.length} win / ${losses.length} loss / ${be.length} break-even · tradeable universe (R:R≥3, FX/Crypto excluded)`)+
+    card("🎯","Win vs loss",`${winpct==null?'—':winpct+'%'} / ${losspct==null?'':losspct+'%'}`,`a win is any return above +${PF_BE}% (open included) — same definition as the Results report · avg return ${avgRet>=0?'+':''}${avgRet.toFixed(1)}%`)+
+    card("💷","Net P&L",`<span style="color:${_pnlc(gain)}">${_gbp2(gain)}</span>`,`from staking <b>2% of the wallet</b> on every trade (compounding). Avg stake grows from £200 as the wallet does; typical max loss <b>£${medML.toFixed(2)}</b> (= stake × the stop distance %).`)+
+    card("📈","£10,000 compounded",`<span style="color:${w>=WINNERS_WALLET?'var(--bull)':'var(--bear)'}">${money(w)}</span> <span class="muted" style="font-size:12px">total</span>`,`each stake = 2% of the wallet <i>at that moment</i>, so winners raise the next stake. ${money(gain)} gain over ${wp.length} trades — every one in the ledger below, oldest first.`);
+  // Which attributes separated the winners — each trade's compounded net £ attributed to its bucket.
+  const groups=[["Market",r=>r.market],["Location",r=>locName(r.location)],["Sector",r=>r.sector],["Direction",r=>r.direction]];
+  if(dims)dims.innerHTML=groups.map(([name,fn])=>{
+    const m={};ledger.forEach(x=>{const k=fn(x.r)||'—';(m[k]=m[k]||{net:0,n:0,w:0});m[k].net+=x.net;m[k].n++;if(x.r.perf>PF_BE)m[k].w++;});
+    const bs=Object.entries(m).filter(([k,v])=>v.n).sort((a,b)=>b[1].net-a[1].net);
+    if(!bs.length)return"";
+    const mx=Math.max(1,...bs.map(([k,v])=>Math.abs(v.net)));
+    return `<div class="vizsector"><div class="vizbox"><h5>${name} — net £</h5><div class="bars">`+
+      bs.map(([k,v])=>`<div class="bar" title="${k}: ${v.n} trades · ${Math.round(v.w/v.n*100)}% win · net ${_gbp2(v.net)}">
+        <span class="tk" style="max-width:130px">${k}</span>
+        <span class="track"><span class="fill" style="width:${Math.max(2,Math.round(Math.abs(v.net)/mx*100))}%;background:${_pnlc(v.net)}"></span></span>
+        <span class="n" style="min-width:60px;color:${_pnlc(v.net)}">${_gbp2(v.net)}</span>
+        <span class="n muted" style="min-width:30px">${v.n}</span></div>`).join("")+
+      `</div></div></div>`;
+  }).join("");
+  if(tc)tc.textContent=`(${ledger.length} trades, ${span} · £10k → ${money(w)})`;
+  const oc=st=>st==='TARGET'?'var(--bull)':st==='STOPPED'?'var(--bear)':'#d29922';
+  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="2% of the wallet at this point in time">Stake</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Running wallet after this trade — last row = the compounded figure">Wallet</th></tr></thead><tbody>`+
+    ledger.map((x,i)=>{const r=x.r;return `<tr><td class="muted">${i+1}</td><td>${r.trig_date||''}</td><td>${nm40(disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td>
+      <td><b style="color:${oc(r.outcome)}">${r.outcome}</b></td>
+      <td style="color:${_pnlc(r.perf)}">${r.perf==null?'—':(r.perf>0?'+':'')+r.perf+'%'}</td>
+      <td class="muted">${money(x.stake)}</td>
+      <td style="color:${_pnlc(x.net)}">${_gbp2(x.net)}</td>
+      <td class="muted">£${x.maxloss.toFixed(2)}</td>
+      <td><b>${money(x.cum)}</b></td></tr>`;}).join("")+
+    `</tbody></table>`;
 }
 function _renderPerformance(){
   const all=PERF_DATA||[];
@@ -2672,10 +2656,10 @@ function paintCRDetail(){
   // Prioritised Y/N (user 2026-07-17, P-22) — Y when the requirement carries a P-number or sits under an
   // "Explicitly prioritised work" heading. Same width:1%+nowrap treatment as Status so the Requirement
   // column keeps the width.
-  const reqs=shown.map(q=>`<tr><td style="white-space:nowrap">${q.working_area||'—'}</td><td style="white-space:nowrap">${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td style="white-space:nowrap;width:1%;text-align:center"><b style="color:${q.prioritised?'#d29922':'var(--muted)'}">${q.prioritised?'Y':'N'}</b></td><td style="white-space:nowrap;width:1%"><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td></tr>`).join("");
+  const reqs=shown.map(q=>`<tr><td style="white-space:nowrap;width:1%;text-align:right;color:var(--muted)"><b>#${q.row}</b></td><td style="white-space:nowrap">${q.working_area||'—'}</td><td style="white-space:nowrap">${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td style="white-space:nowrap;width:1%;text-align:center"><b style="color:${q.prioritised?'#d29922':'var(--muted)'}">${q.prioritised?'Y':'N'}</b></td><td style="white-space:nowrap;width:1%"><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td></tr>`).join("");
   $("cr-detail").innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">${d.name}</h3><span class="grow"></span><span class="muted" style="font-size:12px">Created ${d.created||'?'} · Updated ${d.updated||'?'} · ${d.total} actions</span><button class="btn" onclick="$('cr-detail').classList.add('hidden');CR_SEL=null;paintCR()">✕ Close</button></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${pills}</div>
-    <div class="tablewrap"><table><thead><tr><th>Working Area</th><th>Scope</th><th>Requirement</th><th title="Carries a P-number, or sits under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th>Status</th></tr></thead><tbody>${reqs||'<tr><td colspan="5" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
+    <div class="tablewrap"><table><thead><tr><th title="Stable row number — use this when referring to a requirement">#</th><th>Working Area</th><th>Scope</th><th>Requirement</th><th title="Carries a P-number, or sits under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th>Status</th></tr></thead><tbody>${reqs||'<tr><td colspan="6" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
 }
 document.querySelectorAll("th[data-crk]").forEach(th=>th.onclick=()=>{const k=th.dataset.crk;crSortDir=(crSortK===k)?-crSortDir:-1;crSortK=k;paintCR();_sortArrows("data-crk",crSortK,crSortDir);});
 function doLogin(){

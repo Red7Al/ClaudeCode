@@ -1622,66 +1622,30 @@ def _perf_bars(db, cutoff: dict, lookback_days: int = 0) -> dict:
 
 @app.route("/api/performance")
 def api_performance():
-    """Every recorded trigger with its committed levels and realised/open outcome. Public (the tab is
-    visible logged-out with client-side blur); cached for _PERF_TTL because it scans price_history."""
+    """Every tradeable trigger over the LAST 12 MONTHS with its levels and realised/open outcome. This is
+    the SAME dataset as the "What separates the winners" tab (user 2026-07-18: the two must never diverge)
+    — the 12-month squeeze_history replay via _sqa_all_rows (R:R>=3, FX/Crypto excluded, direction-aware
+    marked-to-market return%), NOT the recent hvf_triggers. Public (client-side blur); cached."""
     now = _time.time()
     if _PERF_CACHE["data"] is not None and now - _PERF_CACHE["ts"] < _PERF_TTL:
         return jsonify(_PERF_CACHE["data"])
     out = []
     try:
-        snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
-        from db_pool import get_db
-        db = get_db()
-        try:
-            trigs = db.run(
-                "select ticker, hvf_type, timeframe, quality, risk_reward, entry_level, stop_level, "
-                "target_level, market, recorded_at::date, h3_date, l3_date from hvf_triggers "
-                "where entry_level is not null and stop_level is not null and target_level is not null "
-                "order by recorded_at desc") or []
-            # Group by ticker so each instrument's price_history is fetched once.
-            by_tk = {}
-            for t in trigs:
-                by_tk.setdefault(t[0], []).append(t)
-            # Bars from the earliest funnel completion, not from recorded_at: the real break can predate
-            # the recording by weeks (P-01), and _perf_trigger_date has to see those bars.
-            cutoff = {}
-            for tk, rows in by_tk.items():
-                d0 = min((d for r in rows for d in (r[10], r[11], r[9]) if d), default=None)
-                if d0:
-                    cutoff[tk] = d0
-            bars_by_tk = _perf_bars(db, cutoff, lookback_days=_RVOL_LOOKBACK_DAYS)   # extra bars for RVOL (P-30)
-            for tk, rows in by_tk.items():
-                bars = bars_by_tk.get(tk, [])
-                srec = snap.get(tk, {})
-                for (_tk, ht, tf, q, rr, e, s, t, mk, rec, h3d, l3d) in rows:
-                    e, s, t = float(e), float(s), float(t)
-                    bull = (ht == "BULLISH")
-                    ready = max([d for d in (h3d, l3d) if d], default=None)   # funnel's last pivot
-                    td = _perf_trigger_date(bull, e, ready, bars, rec)
-                    path = [(b[1], b[2], b[3]) for b in bars if b[0] >= td]        # from the trigger bar: mark-to-market fallback price
-                    exit_path = [(b[1], b[2], b[3]) for b in bars if b[0] > td]    # AFTER it: entry is the trigger CLOSE (P-01 bug A)
-                    # "Now" price: prefer the live snapshot, else fall back to the freshest close in
-                    # price_history (not every recorded trigger is still in the current snapshot).
-                    cur = srec.get("current_price")
-                    if cur is None:
-                        cur = next((c for (_h, _l, c) in reversed(path) if c is not None), None)
-                    state, perf = _perf_exit(bull, e, s, t, exit_path)
-                    if state is None:   # still open — mark to the freshest price we have
-                        state = "OPEN"
-                        perf = None if cur is None else ((cur - e) / e * 100 if bull else (e - cur) / e * 100)
-                    out.append({
-                        "ticker": tk, "name": srec.get("name") or tk,
-                        "market": mk or srec.get("market"), "sector": srec.get("sector"),
-                        "location": srec.get("location"),   # for the Location chart on Performance (P-10)
-                        "direction": "BULL" if bull else "BEAR", "timeframe": tf,
-                        "quality": q, "rr": (float(rr) if rr is not None else None),
-                        "entry": e, "stop": s, "target": t,
-                        "current_price": cur,
-                        "trig_date": str(td), "state": state,
-                        "perf": (round(perf, 2) if perf is not None else None),
-                        "rvol": _rvol_at(bars, td)})   # relative volume on the trigger bar (P-30)
-        finally:
-            db.close()
+        import datetime as _dt
+        cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
+        for r in _sqa_all_rows():
+            if (r.get("trig_date") or "") < cut12:
+                continue
+            out.append({
+                "ticker": r["ticker"], "name": r["name"],
+                "market": r["market"], "sector": r["sector"], "location": r["location"],
+                "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"), "timeframe": r["timeframe"],
+                "quality": r["quality"], "rr": r["rr"],
+                "entry": r["entry"], "stop": r["stop"], "target": r["target"],
+                "current_price": r["current_price"],
+                "trig_date": r["trig_date"], "state": r["outcome"],
+                "perf": (round(r["return_pct"], 2) if r["return_pct"] is not None else None),
+                "rvol": r["rvol"]})
         out.sort(key=lambda r: (r.get("perf") is None, -(r.get("perf") or 0)))
     except Exception as ex:
         log.warning(f"performance report failed: {ex}")
@@ -1786,8 +1750,10 @@ def _sqa_compound(rows, start=10000.0, max_concurrent=_SQA_MAX_CONCURRENT):
       * each position risks 2% of the wallet AT THE MOMENT IT OPENS (calculate_position_size) and realises
         risked£ x R-multiple when it closes. A stop loses its 2%, nothing more — it cannot blow up.
 
-    Returns {final wallet, trades taken, skipped, max_concurrent}."""
-    import heapq
+    Returns {final wallet, trades taken, skipped, max_concurrent, start, ledger}. `ledger` is every taken
+    trade in the order it CLOSED (the moment the wallet changes), each carrying the running wallet after it —
+    so the headline £ can be audited line by line and reconciles exactly to `final` (user 2026-07-18)."""
+    import heapq, itertools
     minq = _sqa_bridge_min_quality()
     seq = sorted((r for r in rows
                   if r["outcome"] in ("TARGET", "STOPPED")
@@ -1798,21 +1764,33 @@ def _sqa_compound(rows, start=10000.0, max_concurrent=_SQA_MAX_CONCURRENT):
         return None
     wallet = float(start)
     taken = skipped = 0
-    open_pos = []                      # heap of (exit_date, risked_gbp, r_mult)
+    ledger = []
+    _seq = itertools.count()           # tie-breaker so heap never compares dict payloads
+    open_pos = []                      # heap of (exit_date, seq, risked_gbp, r_mult, trade)
+    def _close(item):
+        nonlocal wallet
+        _ed, _s, risked, rm, tr = item
+        before = wallet
+        wallet = max(0.0, wallet + risked * rm)
+        ledger.append({"ticker": tr["ticker"], "market": tr["market"], "sector": tr["sector"],
+                       "direction": tr["direction"], "quality": tr["quality"], "rr": tr["rr"],
+                       "return_pct": tr["return_pct"], "outcome": tr["outcome"],
+                       "r_mult": round(rm, 2), "trig_date": tr["trig_date"], "exit_date": _ed,
+                       "wallet_before": round(before), "risked": round(risked, 2),
+                       "pnl": round(risked * rm, 2), "wallet_after": round(wallet)})
     for t in seq:
         td = t["trig_date"]
         while open_pos and open_pos[0][0] <= td:        # close anything that has matured
-            _ed, risked, rm = heapq.heappop(open_pos)
-            wallet = max(0.0, wallet + risked * rm)
+            _close(heapq.heappop(open_pos))
         if len(open_pos) < max_concurrent:
-            heapq.heappush(open_pos, (t["exit_date"], wallet * _SQA_RISK, t["r_mult"]))
+            heapq.heappush(open_pos, (t["exit_date"], next(_seq), wallet * _SQA_RISK, t["r_mult"], t))
             taken += 1
         else:
             skipped += 1
     while open_pos:                                     # close the book at the end
-        _ed, risked, rm = heapq.heappop(open_pos)
-        wallet = max(0.0, wallet + risked * rm)
-    return {"final": round(wallet), "trades": taken, "skipped": skipped, "max_concurrent": max_concurrent}
+        _close(heapq.heappop(open_pos))
+    return {"final": round(wallet), "start": round(start), "gain": round(wallet - start),
+            "trades": taken, "skipped": skipped, "max_concurrent": max_concurrent, "ledger": ledger}
 
 
 def _sqa_buckets(rows, keyfn, label):
@@ -1863,12 +1841,12 @@ def _sqa_all_rows():
     try:
         raw = db.run(
             "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
-            "outcome, return_pct, triggered_date, outcome_date, entry_level, stop_level "
+            "outcome, return_pct, triggered_date, outcome_date, entry_level, stop_level, target_level "
             "from squeeze_history where ready_date is not null and risk_reward >= 3") or []
     finally:
         db.close()
     rows = []
-    for tk, mk, tf, ht, q, rr, rv, oc, ret, td, od, e, s_ in raw:
+    for tk, mk, tf, ht, q, rr, rv, oc, ret, td, od, e, s_, t_ in raw:
         s = snap.get(tk, {})
         market = mk or s.get("market")
         if allowed and market not in allowed:      # not a traded market — exclude (FX, Crypto, ...)
@@ -1881,12 +1859,16 @@ def _sqa_all_rows():
             sd = abs(float(e) - float(s_)) / float(e) * 100.0
             if sd > 0:
                 r_mult = ret / sd
-        rows.append({"ticker": tk, "market": market,
+        rows.append({"ticker": tk, "name": s.get("name") or tk, "market": market,
                      "sector": _sqa_sector(tk) or s.get("sector"),
                      "location": s.get("location"), "timeframe": tf, "direction": ht,
                      "quality": (float(q) if q is not None else None),
                      "rr": (float(rr) if rr is not None else None),
                      "rvol": (float(rv) if rv is not None else None),
+                     "entry": (float(e) if e is not None else None),
+                     "stop": (float(s_) if s_ is not None else None),
+                     "target": (float(t_) if t_ is not None else None),
+                     "current_price": s.get("current_price"),
                      "trig_date": str(td) if td else None, "exit_date": str(od) if od else None,
                      "r_mult": r_mult, "outcome": oc, "return_pct": ret})
     _SQA_ROWS.update(ts=now, rows=rows)
@@ -1926,22 +1908,25 @@ def api_squeeze_analysis():
             rows = [r for r in rows if r["quality"] is not None and r["quality"] >= qmin]
         if rrmin is not None:
             rows = [r for r in rows if r["rr"] is not None and r["rr"] >= rrmin]
-        base = _sqa_seg(rows)
-        payload["rows"] = len(rows)
+        # Summary figures use the LAST 12 MONTHS (user 2026-07-18: "for summary it should be 12 months");
+        # the per-trade detail table below keeps the full 15-month replay for reference.
+        import datetime as _dt
+        cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
+        rows12 = [r for r in rows if (r.get("trig_date") or "") >= cut12]
+        base = _sqa_seg(rows12)
+        payload["rows"] = len(rows12)
+        payload["summary_months"] = 12
+        payload["detail_months"] = 15
+        payload["detail_funnels"] = len(rows)          # full 15-month population (for the reference note)
         payload["baseline"] = {**base,
                                "resolved": base["avail"],
-                               "compound_10k": _sqa_compound(rows, max_concurrent=conc),   # dial (P-18)
-                               "never_triggered": sum(1 for r in rows if r["outcome"] == "NEVER_TRIGGERED"),
-                               "open": sum(1 for r in rows if r["outcome"] == "OPEN")}
-        # Every trade behind the numbers (user 2026-07-18: "show each of the trades in a table") so the
-        # figures can be checked. Newest first; R-multiple is the £-driver behind the impact/compound.
-        payload["trades"] = [
-            {"ticker": r["ticker"], "market": r["market"], "sector": r["sector"], "direction": r["direction"],
-             "quality": r["quality"], "rr": r["rr"], "rvol": r["rvol"], "trig_date": r["trig_date"],
-             "outcome": r["outcome"], "return_pct": r["return_pct"],
-             "r_mult": (round(r["r_mult"], 2) if r["r_mult"] is not None else None)}
-            for r in sorted((x for x in rows if x["return_pct"] is not None),
-                            key=lambda x: (x["trig_date"] or ""), reverse=True)]
+                               "trades_per_year": base["avail"],   # 12-month window => resolved count IS the annual rate
+                               "compound_10k": _sqa_compound(rows12, max_concurrent=conc),   # dial (P-18)
+                               "never_triggered": sum(1 for r in rows12 if r["outcome"] == "NEVER_TRIGGERED"),
+                               "open": sum(1 for r in rows12 if r["outcome"] == "OPEN")}
+        # Every trade behind the compound number is carried in baseline.compound_10k.ledger (built by
+        # _sqa_compound, in close order with the running wallet) so the headline £ can be audited line by
+        # line and reconciles exactly to `final` (user 2026-07-18: "show the wallet grow after each trade").
         dims = [
             ("Location", lambda r: r["location"]),
             ("Sector", lambda r: r["sector"]),
@@ -1953,7 +1938,7 @@ def api_squeeze_analysis():
             ("RVOL at trigger", lambda r: _sqa_band(r["rvol"], [0, 0.8, 1.0, 1.4, 1.8, 2.5])),
         ]
         for label, fn in dims:
-            payload["dimensions"].append({"name": label, "buckets": _sqa_buckets(rows, fn, label)})
+            payload["dimensions"].append({"name": label, "buckets": _sqa_buckets(rows12, fn, label)})
         # Advice = buckets with a real sample that beat the baseline win rate by >= 10 points.
         base_win = base.get("win_pct")
         if base_win is not None:
@@ -1965,6 +1950,30 @@ def api_squeeze_analysis():
     except Exception as ex:
         log.warning(f"squeeze analysis failed: {ex}")
     _SQA_CACHE.update(ts=now, data=payload, key=ckey)
+    return jsonify(payload)
+
+
+@app.route("/api/winners")
+def api_winners():
+    """Raw per-trade rows for the "What separates the winners" tab (user 2026-07-18): the FULL last-12-months
+    tradeable population (squeeze_history replay, R:R>=3, FX/Crypto excluded), each with its direction-aware
+    return% — the SAME definition the Performance report uses. The frontend applies a 2%-of-the-running-wallet
+    stake to compound the £. Chronological so the wallet can be built oldest-first."""
+    import datetime as _dt
+    payload = {"rows": [], "months": 12, "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
+    try:
+        cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
+        rows = [r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cut12]
+        rows.sort(key=lambda r: (r.get("trig_date") or ""))
+        payload["rows"] = [
+            {"ticker": r["ticker"], "market": r["market"], "sector": r["sector"],
+             "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
+             "trig_date": r["trig_date"], "entry": r["entry"], "stop": r["stop"],
+             "outcome": r["outcome"], "perf": r["return_pct"],
+             "quality": r["quality"], "rr": r["rr"], "rvol": r["rvol"]}
+            for r in rows]
+    except Exception as ex:
+        log.warning(f"winners rows failed: {ex}")
     return jsonify(payload)
 
 
@@ -2048,7 +2057,8 @@ def _cr_parse(path: str) -> dict:
                     text = text[len(tag):].strip()
             if not text:
                 continue
-            reqs.append({"text": text, "working_area": area, "scope": scope, "status": _cr_status(raw),
+            reqs.append({"row": len(reqs) + 1,   # stable 1-based number so "#26" maps to a line (user 2026-07-18)
+                         "text": text, "working_area": area, "scope": scope, "status": _cr_status(raw),
                          "prioritised": _cr_prioritised(text, area)})
     counts = {"Completed": 0, "In Progress": 0, "Not Started": 0, "Cancelled": 0, "Requested": 0}
     for r in reqs:
