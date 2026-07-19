@@ -478,7 +478,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="viz" id="po-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:var(--accent)">
   <div class="count" id="po-count" style="padding-left:0;display:flex;align-items:center;gap:14px"><span id="po-count-text"></span><span class="grow"></span>
-    <button class="btn" id="po-filt-btn" onclick="togglePoFilters()" title="Show/hide the numeric filters">⚙ Filters</button>
+    <!-- Filters live on the header "Show Filters" button, same as the Scanner (user 2026-07-18, P-03). -->
     <input id="po-search" placeholder="Search name / ticker…" oninput="renderPreorders()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px">
     <button class="btn" id="po-delete" onclick="deletePreorders()" disabled>Delete selected</button></div>
   <!-- Show/hide numeric filters, mirroring the Scanner method (user 2026-07-13): Quality / R:R / Dist→Entry. -->
@@ -521,7 +521,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        Pre-orders), search + toggle in the count bar, date filter alone in the header row. -->
   <div class="viz" id="oo-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="oo-count"></span><span class="grow"></span><button class="btn" id="oo-filt-btn" onclick="toggleOoFilters()" title="Show/hide the filters">⚙ Filters <span style="color:var(--bear)">✗</span></button><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="width:200px;padding:4px 8px;font-size:12px"></div>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="oo-count"></span><span class="grow"></span><!-- Filters on the header "Show Filters" button, same as the Scanner (user 2026-07-18, P-03). --><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="width:200px;padding:4px 8px;font-size:12px"></div>
     <!-- Filters on the LEFT, hidden/shown — the Scanner's method (user 2026-07-17, P-19). The date range
          and the closed-orders toggle move off the top; the name search stays in the count bar, since
          P-17 asks for it "on top of table". -->
@@ -1669,7 +1669,10 @@ $("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id
   $("f_qmin").value=45;$("f_rrmin").value=3.1;$("f_dsmax").value=90;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;
   applyUserDefaults();msyncAll();applyAll();};   // msyncAll: repaint the P-08 dropdowns after a bulk write
 $("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");signalOnly=false;$("signalonly").innerHTML='Show Squeeze Only <span style="color:var(--bear)">✗</span>';$("f_days").value=365;$("dlbl").textContent=365;msyncAll();applyAll();};
-$("togglefilters").onclick=()=>{const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").innerHTML="Show Filters "+(hidden?'<span style="color:var(--bear)">✗</span>':'<span style="color:var(--bull)">✓</span>');};
+$("togglefilters").onclick=()=>{
+  if(CUR_TAB==="preorders")return togglePoFilters();      // same header button drives the Pre-orders asides (P-03)
+  if(CUR_TAB==="orderops")return toggleOoFilters();
+  const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").innerHTML="Show Filters "+(hidden?'<span style="color:var(--bear)">✗</span>':'<span style="color:var(--bull)">✓</span>');};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").innerHTML="Show Squeeze Only "+(signalOnly?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');applyAll();};
 let _refStart=0, _lastTens=-1;
 $("refresh").onclick=async()=>{ if($("refresh").disabled)return;
@@ -1767,11 +1770,13 @@ function renderSubnav(parent,active){
 let TAB_HIST=[], TAB_HI=-1, _navFromHist=false;
 function _updateNavBtns(){const b=$("nav-back"),f=$("nav-fwd");if(b)b.disabled=TAB_HI<=0;if(f)f.disabled=TAB_HI>=TAB_HIST.length-1;}
 function tabHistGo(dir){const ni=TAB_HI+dir;if(ni<0||ni>=TAB_HIST.length)return;TAB_HI=ni;_navFromHist=true;showTab(TAB_HIST[ni]);_navFromHist=false;}
+let CUR_TAB="welcome";
 function showTab(name){
   if(TAB_GROUPS[name]){const kids=TAB_GROUPS[name].filter(tabAllowed);name=kids[0]||"welcome";}   // parent -> first child
   if(!tabAllowed(name))name="welcome";                  // never open a tab this session can't see
   if(!_navFromHist && TAB_HIST[TAB_HI]!==name){TAB_HIST=TAB_HIST.slice(0,TAB_HI+1);TAB_HIST.push(name);TAB_HI=TAB_HIST.length-1;}
   try{sessionStorage.setItem("sq_tab",name);}catch(e){}   // survive the post-refresh reload so we don't dump the user on Introduction (user 2026-07-18)
+  CUR_TAB=name;   // active tab — the header "Show Filters" button routes on this (P-03)
   _updateNavBtns();
   const locked=!AUTH && !PUBLIC_TABS.includes(name);    // login-required tab, not logged in -> login panel
   const parent=parentOf(name);
@@ -1781,9 +1786,17 @@ function showTab(name){
   renderSubnav(locked?null:parent,name);
   colorTabs();
   $("loginpanel").classList.toggle("hidden",!locked);
-  // Header controls are Scanner tools; Refresh is admin-only (user 2026-07-03).
+  // Header controls are Scanner tools; Refresh is admin-only (user 2026-07-03). "Show Filters" also serves
+  // My Pre-orders and Pre-orders-to-IG, same placement as the Scanner (user 2026-07-18, P-03).
   const sc=(name==="scanner")&&!locked;
-  ["togglefilters","signalonly","reset","showall"].forEach(id=>{const b=$(id);if(b)b.style.display=sc?"":"none";});
+  const filterTab=["scanner","preorders","orderops"].includes(name)&&!locked;
+  ["signalonly","reset","showall"].forEach(id=>{const b=$(id);if(b)b.style.display=sc?"":"none";});
+  const tf=$("togglefilters");
+  if(tf){tf.style.display=filterTab?"":"none";
+    if(filterTab){const shown=name==="preorders"?!( $("po-filters")||{classList:{contains:()=>true}}).classList.contains("hidden")
+        :name==="orderops"?!( $("oo-filters")||{classList:{contains:()=>true}}).classList.contains("hidden")
+        :!( $("aside")||{classList:{contains:()=>true}}).classList.contains("collapsed");
+      tf.innerHTML="Show Filters "+(shown?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');}}
   const rb=$("refresh"); if(rb) rb.style.display=(sc&&IS_ADMIN)?"":"none";
   if(locked)return;
   const R={preorders:renderPreorders,activity:renderActivity,orderops:renderOrderOps,xposts:renderXposts,
@@ -2710,9 +2723,9 @@ let poSortK="dist_entry", poSortDir=1;   // default sort: Dist->Entry, closest f
 // (user 2026-07-17, P-18/P-19).
 function _toggleSideFilters(panelId,btnId){const p=$(panelId);if(!p)return;
   const shown=!p.classList.toggle("hidden");
-  const b=$(btnId); if(b)b.innerHTML=`⚙ Filters <span style="color:var(--${shown?'bull':'bear'})">${shown?'✓':'✗'}</span>`;}
-function togglePoFilters(){_toggleSideFilters("po-filters","po-filt-btn");}
-function toggleOoFilters(){_toggleSideFilters("oo-filters","oo-filt-btn");}
+  const b=$(btnId); if(b)b.innerHTML=`Show Filters <span style="color:var(--${shown?'bull':'bear'})">${shown?'✓':'✗'}</span>`;}
+function togglePoFilters(){_toggleSideFilters("po-filters","togglefilters");}   // reflect state on the header button (P-03)
+function toggleOoFilters(){_toggleSideFilters("oo-filters","togglefilters");}
 function ooClearFilters(){["oo-from","oo-to"].forEach(id=>{const el=$(id);if(el)el.value="";});
   const sc=$("oo-showclosed"); if(sc)sc.checked=false; paintOrderOps();}
 function poClearFilters(){["po_qmin","po_qmax","po_rrmin","po_rrmax","po_demin","po_demax"].forEach(id=>{const el=$(id);if(el)el.value="";});renderPreorders();}
