@@ -1985,7 +1985,7 @@ _CR_DIR = os.path.join(_REPO_ROOT, "ChangeRequests")
 # "[Completed]  (superseded by P-11a)" or "[In Progress]  (finishing last 264 tickers)". Without the
 # optional `(...)$` this was end-anchored, so any noted line silently read as Not Started.
 _CR_TAIL = _re.compile(
-    r"\[(completed|in[\s-]?progress|not[\s-]?started|cancelled|canceled|requested)\]\s*(?:\([^)]*\)\s*)?$",
+    r"\[(completed|in[\s-]?progress|not[\s-]?started|cancelled|canceled|requested|deferred)\]\s*(?:\([^)]*\)\s*)?$",
     _re.I)
 _CR_LEAD = {"[x]": "Completed", "[X]": "Completed", "[~]": "In Progress",
             "[-]": "Cancelled", "[?]": "Requested"}
@@ -2013,7 +2013,8 @@ def _cr_status(line: str) -> str:
     if m:
         v = m.group(1).lower().replace("-", " ").replace("inprogress", "in progress")
         return {"completed": "Completed", "in progress": "In Progress", "not started": "Not Started",
-                "cancelled": "Cancelled", "canceled": "Cancelled", "requested": "Requested"}.get(v, "Not Started")
+                "cancelled": "Cancelled", "canceled": "Cancelled", "requested": "Requested",
+                "deferred": "Deferred"}.get(v, "Not Started")
     return "Not Started"
 
 
@@ -2060,7 +2061,7 @@ def _cr_parse(path: str) -> dict:
             reqs.append({"row": len(reqs) + 1,   # stable 1-based number so "#26" maps to a line (user 2026-07-18)
                          "text": text, "working_area": area, "scope": scope, "status": _cr_status(raw),
                          "prioritised": _cr_prioritised(text, area)})
-    counts = {"Completed": 0, "In Progress": 0, "Not Started": 0, "Cancelled": 0, "Requested": 0}
+    counts = {"Completed": 0, "In Progress": 0, "Not Started": 0, "Cancelled": 0, "Requested": 0, "Deferred": 0}
     for r in reqs:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     return {"name": name, "file": fn, "created": created, "updated": updated,

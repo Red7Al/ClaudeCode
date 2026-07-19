@@ -1074,7 +1074,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" id="cr-section" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="cr-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th data-crk="name">File</th><th data-crk="created">Created</th><th data-crk="updated">Last updated</th><th data-crk="total">Actions</th><th data-crk="prioritised" title="Requirements carrying a P-number, or under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th>Completed</th><th>In&nbsp;Progress</th><th>Not&nbsp;Started</th><th>Cancelled</th></tr></thead>
+      <thead><tr><th data-crk="name">File</th><th data-crk="created">Created</th><th data-crk="updated">Last updated</th><th data-crk="total">Actions</th><th data-crk="prioritised" title="Requirements carrying a P-number, or under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th>Completed</th><th>In&nbsp;Progress</th><th>Not&nbsp;Started</th><th>Cancelled</th><th>Deferred</th></tr></thead>
       <tbody id="cr-rows"></tbody>
     </table></div>
   </section>
@@ -2337,7 +2337,7 @@ function renderMarkets(){
   $("mktab-count")&&($("mktab-count").textContent=`(${rows.length})`);
   // No click-through to the Scanner (user 2026-07-11) — this is a coverage view.
   $("mk-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkUserSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")
-    ||`<tr><td colspan="8" class="empty">No market data yet — open the Scanner first.</td></tr>`;
+    ||`<tr><td colspan="9" class="empty">No market data yet — open the Scanner first.</td></tr>`;
 }
 // Markets (User) Refresh button (user 2026-07-17, P-07). It used to call renderMarkets() directly, which
 // only repaints the in-memory snapshot — no data was re-read and nothing said the click had registered.
@@ -2348,7 +2348,7 @@ function refreshMarkets(ev){
   $("mk-count").innerHTML='<span class="muted">⏳ Loading…</span>';
   fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{DATA=j.records||[];DATA.forEach(augment);renderMarkets();})
-    .catch(()=>{$("mk-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not refresh — try again.</td></tr>`;})
+    .catch(()=>{$("mk-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not refresh — try again.</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
 function mkFilter(m){const el=$("mf_market");if(el)el.value=m;showTab("scanner");render();}
@@ -2358,7 +2358,7 @@ let maSortK="total", maSortDir=-1;
 function renderMarketsAdmin(){
   const rows=_mkSort(_mkAgg(),maSortK,maSortDir);
   $("ma-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments</span>`;
-  $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkAdminSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")||`<tr><td colspan="8" class="empty">No market data.</td></tr>`;
+  $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkAdminSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")||`<tr><td colspan="9" class="empty">No market data.</td></tr>`;
 }
 document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();_sortArrows("data-ma",maSortK,maSortDir);});
 // ── IG Account tab (user 2026-07-10): the acting user's own IG open positions + working orders ──
@@ -2377,21 +2377,21 @@ function paintIgAccount(){
   $("ig-pos-count").innerHTML=cnt(pos.length,IG_POS.length,"open position");
   $("ig-ord-count").innerHTML=cnt(ord.length,IG_ORD.length,"working order");
   $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td>${nm40(p.name)}</td><td>${_igDtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td><b>${p.ticker||p.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
-  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${_igDtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="8" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
+  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${_igDtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
 function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
   $("ig-note").textContent="";
   $("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading…</td></tr>`;
-  $("ig-ord-rows").innerHTML=`<tr><td colspan="8" class="empty">Loading…</td></tr>`;
+  $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading…</td></tr>`;
   fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       IG_POS=j.positions||[]; IG_ORD=j.orders||[];
       $("ig-note").innerHTML=j.note?`<span class="muted">🔒 ${j.note}</span>`:"";
       paintIgAccount();
     })
-    .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="8" class="empty">—</td></tr>`;})
+    .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
 async function maRebuild(){
@@ -2642,10 +2642,10 @@ function renderCR(ev){
   const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
   $("cr-count").innerHTML='<span class="muted">Loading…</span>';
-  $("cr-rows").innerHTML=`<tr><td colspan="8" class="empty">Loading change-request files…</td></tr>`;
+  $("cr-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading change-request files…</td></tr>`;
   fetch("/api/change-requests",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{CR_FILES=j.files||[];paintCR();})
-    .catch(()=>{$("cr-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not load (admin only).</td></tr>`;})
+    .catch(()=>{$("cr-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not load (admin only).</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
 function paintCR(){
@@ -2656,7 +2656,7 @@ function paintCR(){
   $("cr-rows").innerHTML=rows.map(o=>`<tr class="clk ${CR_SEL===o.file?'sel':''}" onclick="crOpen('${o.file}')">
     <td><b>${o.name}</b></td><td>${o.created||''}</td><td>${o.updated||''}</td><td><b>${o.total}</b></td>
     <td>${o.prioritised?`<b style="color:#d29922">${o.prioritised}</b>`:'0'}</td>
-    <td>${c(o,'Completed','var(--bull)')}</td><td>${c(o,'In Progress','var(--accent)')}</td><td>${c(o,'Not Started','#d29922')}</td><td>${c(o,'Cancelled','var(--bear)')}</td></tr>`).join("")
+    <td>${c(o,'Completed','var(--bull)')}</td><td>${c(o,'In Progress','var(--accent)')}</td><td>${c(o,'Not Started','#d29922')}</td><td>${c(o,'Cancelled','var(--bear)')}</td><td>${c(o,'Deferred','var(--muted)')}</td></tr>`).join("")
     ||`<tr><td colspan="9" class="empty">No change-request files found.</td></tr>`;
 }
 function crOpen(file){
@@ -2668,10 +2668,10 @@ function crOpen(file){
 function crStatusFilter(s){crDetailStatus=s;paintCRDetail();}
 function paintCRDetail(){
   const d=CR_DETAIL; if(!d)return;
-  const sc={Completed:'var(--bull)','In Progress':'var(--accent)','Not Started':'#d29922',Cancelled:'var(--bear)',Requested:'#d29922'};
+  const sc={Completed:'var(--bull)','In Progress':'var(--accent)','Not Started':'#d29922',Cancelled:'var(--bear)',Requested:'#d29922',Deferred:'var(--muted)'};
   const all=d.requirements||[], counts=all.reduce((m,q)=>{m[q.status]=(m[q.status]||0)+1;return m;},{});
   // Status filter (user 2026-07-11): click a status to show only those requirements.
-  const pills=["All","Completed","In Progress","Not Started","Cancelled","Requested"].map(s=>{
+  const pills=["All","Completed","In Progress","Not Started","Cancelled","Requested","Deferred"].map(s=>{
     const n=s==="All"?all.length:(counts[s]||0);
     return `<button class="subpill${crDetailStatus===s?' active':''}" onclick="crStatusFilter('${s}')" style="font-size:11px">${s} (${n})</button>`;}).join("");
   const shown=crDetailStatus==="All"?all:all.filter(q=>q.status===crDetailStatus);
