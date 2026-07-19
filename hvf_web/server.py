@@ -2053,6 +2053,70 @@ def api_winners_sl():
         return jsonify({"rows": [], "threshold_pct": 0, "months": 12})
 
 
+@app.route("/api/squeeze-history")
+def api_squeeze_history():
+    """Lifecycle history of squeeze funnels (user 2026-07-18, Squeeze History (Admin) tab): each funnel's
+    developing → ready → triggered → outcome journey, replayed over price history. Newest first."""
+    payload = {"rows": [], "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
+    try:
+        snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
+        from db_pool import get_db
+        db = get_db()
+        try:
+            raw = db.run(
+                "select ticker, market, timeframe, hvf_type, first_seen, first_signal, ready_date, "
+                "triggered_date, outcome, outcome_date, return_pct, quality, risk_reward "
+                "from squeeze_history "
+                "order by coalesce(triggered_date, ready_date, first_seen) desc nulls last limit 1000") or []
+        finally:
+            db.close()
+        for (tk, mk, tf, ht, fseen, fsig, rd, td, oc, od, ret, q, rr) in raw:
+            s = snap.get(tk, {})
+            payload["rows"].append({
+                "ticker": tk, "name": s.get("name") or tk, "market": mk or s.get("market"),
+                "sector": _sqa_sector(tk) or s.get("sector"),
+                "direction": ("BULL" if ht == "BULLISH" else "BEAR"), "timeframe": tf,
+                "first_seen": (str(fseen) if fseen else None), "first_signal": fsig,
+                "ready_date": (str(rd) if rd else None), "triggered_date": (str(td) if td else None),
+                "outcome": oc, "outcome_date": (str(od) if od else None),
+                "return_pct": (round(ret, 2) if ret is not None else None),
+                "quality": (round(q) if q is not None else None),
+                "rr": (round(rr, 1) if rr is not None else None)})
+    except Exception as ex:
+        log.warning(f"squeeze history failed: {ex}")
+    return jsonify(payload)
+
+
+@app.route("/api/fees")
+def api_fees():
+    """Fees (Admin) tab (user 2026-07-18): management fee (1%/mo of AUM) + performance fee (10%/mo of
+    profits), with a worked example from LAST MONTH's realised P&L (daily_pnl)."""
+    import datetime as _dt
+    payload = {"mgmt_pct": 1.0, "perf_pct": 10.0, "last_month": None,
+               "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
+    try:
+        today = _dt.date.today()
+        first_this = today.replace(day=1)
+        last_month_end = first_this - _dt.timedelta(days=1)
+        first_last = last_month_end.replace(day=1)
+        from db_pool import get_db
+        db = get_db()
+        try:
+            row = db.run("select coalesce(sum(total_pnl),0), coalesce(sum(trade_count),0), "
+                         "coalesce(sum(win_count),0), coalesce(sum(loss_count),0) from daily_pnl "
+                         "where trade_date >= :a and trade_date <= :b",
+                         a=first_last.isoformat(), b=last_month_end.isoformat()) or [(0, 0, 0, 0)]
+            pnl, tc, wc, lc = row[0]
+        finally:
+            db.close()
+        payload["last_month"] = {"label": first_last.strftime("%B %Y"),
+                                 "pnl": float(pnl or 0), "trades": int(tc or 0),
+                                 "wins": int(wc or 0), "losses": int(lc or 0)}
+    except Exception as ex:
+        log.warning(f"fees failed: {ex}")
+    return jsonify(payload)
+
+
 @app.route("/api/winners")
 def api_winners():
     """Raw per-trade rows for the "What separates the winners" tab (user 2026-07-18): the FULL last-12-months

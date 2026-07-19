@@ -332,10 +332,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="tab" id="tab-intro" onclick="showTab('intro')">How it works</button>
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
   <button class="tab" id="tab-performance" onclick="showTab('performance')" style="display:none">Performance <span id="pftab-count"></span></button>
+  <button class="tab" id="tab-squeezehist" onclick="showTab('squeezehist')" style="display:none">Squeeze History</button>
   <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner Report <span id="sctab-count"></span></button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')" style="display:none">My Pre-orders <span id="potab-count"></span></button>
   <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Pre-orders to my IG <span id="ootab-count"></span></button>
   <button class="tab" id="tab-igaccount" onclick="showTab('igaccount')" style="display:none">IG Account</button>
+  <button class="tab" id="tab-fees" onclick="showTab('fees')" style="display:none">Fees</button>
   <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My Activity <span id="actab-count"></span></button>
   <button class="tab" id="tab-mfm" onclick="showTab('mfm')" style="display:none">Trading (Multi-Factor Momentum)</button>
   <button class="tab" id="tab-sysdocs" onclick="showTab('sysdocs')" style="display:none">How it works (System)</button>
@@ -1045,6 +1047,39 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
 </div>
 
+<!-- Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle: developing → ready → triggered → outcome. -->
+<div id="view-squeezehist" class="hidden doc" style="max-width:1240px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderSqueezeHist()">↻ Refresh</button></div>
+  <h1>Squeeze History</h1>
+  <p class="lede">Every squeeze funnel's journey through the engine — <b>developing → ready → triggered → outcome</b> — replayed over the price history. Each row is one funnel with the dates it changed state and how it resolved (<b style="color:var(--bull)">TARGET</b> / <b style="color:var(--bear)">STOPPED</b> / <b style="color:#d29922">OPEN</b> / NEVER&nbsp;TRIGGERED). Newest first.</p>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="sqh-count"></span><span class="grow"></span><input id="sqh-search" placeholder="Search name / ticker…" oninput="paintSqueezeHist()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Name</th><th>Dir</th><th>Market</th><th>Sector</th><th>TF</th><th title="First replay step this funnel existed">Developing</th><th title="First step seen READY">Ready</th><th title="First close beyond entry after the pivots">Triggered</th><th>Outcome</th><th>Closed</th><th>Return</th><th>Quality</th><th>R:R</th><th>Ticker</th></tr></thead>
+      <tbody id="sqh-rows"><tr><td colspan="14" class="empty">Loading…</td></tr></tbody>
+    </table></div>
+  </section>
+</div>
+
+<!-- Fees (Admin) (user 2026-07-18) — management + performance fees, with a last-month worked example. -->
+<div id="view-fees" class="hidden doc" style="max-width:1000px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderFees()">↻ Refresh</button></div>
+  <h1>Fees</h1>
+  <p class="lede">How the account is charged. Two monthly fees, both billed monthly.</p>
+  <div class="fgrid" style="margin-bottom:12px">
+    <div class="fcard"><div class="ic">🏦</div><h3>Management fee</h3><div class="body"><b style="font-size:17px;color:var(--fg)">1% / month</b><br><span class="muted">of assets under management (AUM), including the cash balance. Industry norm is usually 1.5%+.</span></div></div>
+    <div class="fcard"><div class="ic">📈</div><h3>Performance fee</h3><div class="body"><b style="font-size:17px;color:var(--fg)">10% / month</b><br><span class="muted">on profits only (nothing charged in a losing month). Industry norm is usually 15%+.</span></div></div>
+  </div>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <h3 class="sec" style="margin-top:0">Worked example — last month</h3>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">AUM £ <input id="fees-aum" type="number" min="0" step="1000" value="10000" style="width:110px;padding:4px 6px" onchange="paintFees()"></label>
+      <span class="muted" style="font-size:11px">management fee = 1% of AUM; performance fee = 10% of last month's profit (0 if a loss)</span>
+    </div>
+    <div id="fees-example" class="tablewrap" style="margin-top:8px"></div>
+  </section>
+</div>
+
 <!-- Trading (Multi-Factor Momentum) (all users, default hidden, user 2026-07-10) — from commodity_fundamentals.md -->
 <div id="view-mfm" class="hidden doc" style="max-width:1000px">
   <span class="eyebrow">Trading method</span>
@@ -1727,9 +1762,9 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/target overrides (user 2026-07-03/04)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","intro","appendix","scanner","preorders","orderops","igaccount","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","mfm","changereq"];
+const TABS=["welcome","intro","appendix","scanner","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
 const PUBLIC_TABS=["welcome","intro","appendix","scanner","performance"];   // visible when logged out (Performance blurs all but ticker/name/return)
-const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin"];  // admin only
+const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin","squeezehist","fees"];  // admin only
 const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
 // Tabs hidden by DEFAULT (user 2026-07-10): visible only once the user opts in via Tab Visibility.
 const DEFAULT_HIDDEN=new Set(["mfm"]);   // IG Account is now default-visible (user 2026-07-11)
@@ -1827,7 +1862,8 @@ function showTab(name){
   const R={preorders:renderPreorders,activity:renderActivity,orderops:renderOrderOps,xposts:renderXposts,
     config:renderConfig,configadmin:renderConfig,users:renderUsers,syslogs:renderSyslogs,jobs:renderJobs,
     version:renderVersion,batch:renderBatch,markets:renderMarkets,marketsadmin:renderMarketsAdmin,
-    performance:renderPerformance,changereq:renderCR,igaccount:renderIgAccount};
+    performance:renderPerformance,changereq:renderCR,igaccount:renderIgAccount,
+    squeezehist:renderSqueezeHist,fees:renderFees};
   if(R[name])R[name]();
 }
 // ── X Posts tab (user 2026-07-03): all published tweets + charts, click-to-filter, sortable. ──
@@ -1857,7 +1893,8 @@ const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix
   preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
   users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)",
   config:"Configuration (User)",markets:"Markets (User)",marketsadmin:"Markets (Admin)",configadmin:"Configuration (Admin)",
-  performance:"Performance",mfm:"Trading (Multi-Factor Momentum)",changereq:"Change Requests",igaccount:"IG Account"};
+  performance:"Performance",mfm:"Trading (Multi-Factor Momentum)",changereq:"Change Requests",igaccount:"IG Account",
+  squeezehist:"Squeeze History",fees:"Fees"};
 // ── System Logs (admin, user 2026-07-04): health cards + log table + clickable charts ──────────────
 let SL_ROWS=[], slSortK="ts", slSortDir=-1;
 function paintSyslogs(){
@@ -2635,6 +2672,45 @@ function paintOrdersPerf(){
       <td style="color:${_pnlc(x.net)}">${_gbp2(x.net)}</td>
       <td class="muted">£${x.maxloss.toFixed(2)}</td>
       <td><b>${money(x.cum)}</b></td></tr>`;}).join("")+
+    `</tbody></table>`;
+}
+// ── Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle table ───────────────────────────────
+let SQH=null;
+function renderSqueezeHist(){
+  if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty">Loading…</td></tr>';}
+  fetch("/api/squeeze-history").then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];paintSqueezeHist();})
+    .catch(()=>{SQH=[];paintSqueezeHist();});
+}
+function paintSqueezeHist(){
+  const rows=SQH||[], q=(($("sqh-search")||{}).value||"").trim().toLowerCase();
+  const shown=q?rows.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(q)):rows;
+  if($("sqh-count"))$("sqh-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> funnels${rows.length!==shown.length?` of ${rows.length.toLocaleString()}`:''}`;
+  if($("sqh-rows"))$("sqh-rows").innerHTML=shown.map(r=>`<tr>
+    <td>${nm40(r.name)}</td><td>${r.direction}</td><td>${r.market||''}</td><td>${r.sector||''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td>
+    <td>${r.first_seen||'—'}</td><td>${r.ready_date||'—'}</td><td>${r.triggered_date||'—'}</td>
+    <td><b style="color:${_stcol(r.outcome)}">${r.outcome||''}</b></td><td>${r.outcome_date||'—'}</td>
+    <td style="color:${(r.return_pct||0)>=0?'var(--bull)':'var(--bear)'}">${r.return_pct!=null?(r.return_pct>0?'+':'')+r.return_pct+'%':'—'}</td>
+    <td>${r.quality!=null?r.quality:''}</td><td>${r.rr!=null?(+r.rr).toFixed(1):''}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
+    ||`<tr><td colspan="14" class="empty">No squeeze history yet.</td></tr>`;
+}
+// ── Fees (Admin) (user 2026-07-18) — management + performance fees, last-month example ────────────────
+let FEES=null;
+function renderFees(){
+  fetch("/api/fees").then(r=>r.ok?r.json():null).then(j=>{FEES=j||{};paintFees();}).catch(()=>{FEES={};paintFees();});
+}
+function paintFees(){
+  const box=$("fees-example"); if(!box)return;
+  const f=FEES||{}, lm=f.last_month, aum=+(($("fees-aum")||{}).value||0)||10000;
+  const mgmt=aum*(f.mgmt_pct!=null?f.mgmt_pct:1)/100;
+  const profit=lm?lm.pnl:0, perf=profit>0?profit*(f.perf_pct!=null?f.perf_pct:10)/100:0;
+  const gbp=v=>`£${(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const row=(k,v,note)=>`<tr><td>${k}</td><td style="text-align:right"><b>${v}</b></td><td class="muted">${note||''}</td></tr>`;
+  box.innerHTML=`<table><thead><tr><th>Item</th><th style="text-align:right">Amount</th><th>Basis</th></tr></thead><tbody>`+
+    row(`Period`, lm?lm.label:'—', lm?`${lm.trades} trades · ${lm.wins} win / ${lm.losses} loss`:'no daily P&L recorded')+
+    row(`Realised profit`, `<span style="color:${profit>=0?'var(--bull)':'var(--bear)'}">${gbp(profit)}</span>`, `last month's total_pnl`)+
+    row(`Management fee (1%)`, gbp(mgmt), `1% × AUM ${gbp(aum)}`)+
+    row(`Performance fee (10%)`, gbp(perf), profit>0?`10% × profit`:`0 — no profit this month`)+
+    `<tr style="border-top:2px solid var(--line)"><td><b>Total fees</b></td><td style="text-align:right"><b>${gbp(mgmt+perf)}</b></td><td class="muted">management + performance</td></tr>`+
     `</tbody></table>`;
 }
 function _renderPerformance(){
