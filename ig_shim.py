@@ -635,6 +635,25 @@ def get_account_balance() -> dict:
     raise ValueError(f"Account {IG_ACCOUNT_ID} not found in IG response")
 
 
+def get_account_info() -> dict:
+    """Name + id of the account the CURRENT session is acting on (user 2026-07-20, IG Account tab header).
+    Uses the acting session's own account id (so it is correct for non-owner users under acting_session),
+    falling back to the 'preferred' account. Best-effort — returns {} on any failure so the page still
+    renders. The caller is responsible for obfuscating the id before sending it to the browser."""
+    try:
+        acct_id = getattr(session, "_account_id", None) or IG_ACCOUNT_ID
+        accts = (session.get("/accounts", version="1") or {}).get("accounts", []) or []
+        match = next((a for a in accts if str(a.get("accountId")) == str(acct_id)), None)
+        if match is None:
+            match = next((a for a in accts if a.get("preferred")), accts[0] if accts else None)
+        if match:
+            return {"account_id":   str(match.get("accountId") or ""),
+                    "account_name": match.get("accountName") or ""}
+    except Exception:
+        pass
+    return {}
+
+
 # ======================================================================================================================
 # Epic Lookup
 # Checks Supabase cache first. Falls back to IG market search on cache miss.

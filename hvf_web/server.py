@@ -2313,7 +2313,7 @@ def api_ig_account():
     # Fetch positions and orders INDEPENDENTLY (user 2026-07-13 bug: a failure in get_working_orders
     # used to abort the whole block, so open positions silently vanished even though that call had
     # already succeeded). Each call now stands on its own; one failing never hides the other.
-    positions, orders = [], []
+    positions, orders, acct_info = [], [], {}
     pos_ok = ord_ok = False
     try:
         with ig_shim._IG_LOCK, ig_shim.acting_session(name):
@@ -2327,6 +2327,10 @@ def api_ig_account():
                 ord_ok = True
             except Exception as e:
                 log.warning(f"ig-account orders read failed for {name}: {e}")
+            try:   # account name + id for the header (user 2026-07-20); id is masked before it leaves here
+                acct_info = ig_shim.get_account_info() or {}
+            except Exception as e:
+                log.warning(f"ig-account info read failed for {name}: {e}")
     except Exception as e:
         log.warning(f"ig-account session unavailable for {name}: {e}")
         out["note"] = "Could not read your IG account right now — try Refresh."
@@ -2362,6 +2366,11 @@ def api_ig_account():
             "direction": od.get("direction"), "size": od.get("orderSize") or od.get("size"),
             "level": od.get("orderLevel") or od.get("level"), "type": od.get("orderType"),
             "good_till": str(od.get("goodTillDate") or "")[:19], "source": epic2src.get(str(epic)) or "—"})
+    # Account name + OBFUSCATED number for the header (user 2026-07-20). The raw account id is masked here
+    # so the full number never reaches the browser — only the last 3 chars survive.
+    aid = acct_info.get("account_id") or ""
+    out["account_name"] = acct_info.get("account_name") or ""
+    out["account_masked"] = ("••••" + aid[-3:]) if aid else ""
     return jsonify(out)
 
 

@@ -1256,6 +1256,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><button class="btn" id="ig-refresh" onclick="renderIgAccount(event)">↻ Refresh</button></div>
   <h1>IG Account</h1>
   <p class="lede">Your own IG account — live open positions and working orders. Shown for the account whose credentials you use (owner uses the shared account; others use their own from Configuration → IG).</p>
+  <!-- Account name + obfuscated number, above the open positions (user 2026-07-20, P-05). -->
+  <div id="ig-acct" style="font-size:14px;margin-bottom:8px"></div>
   <div id="ig-note" style="font-size:12px;margin-bottom:10px"></div>
   <!-- No search here (user 2026-07-17): the IG account holds only a handful of live positions/orders, so
        a search is clutter. paintIgAccount tolerates the missing #ig-search input (treats it as blank). -->
@@ -2475,12 +2477,16 @@ function paintIgAccount(){
 function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
-  $("ig-note").textContent="";
+  $("ig-note").textContent="";$("ig-acct").innerHTML="";
   $("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading…</td></tr>`;
   $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading…</td></tr>`;
   fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       IG_POS=j.positions||[]; IG_ORD=j.orders||[];
+      // Account name + obfuscated number above the positions (user 2026-07-20). Number is already masked
+      // server-side (last 3 chars only).
+      $("ig-acct").innerHTML=(j.account_name||j.account_masked)
+        ?`🏦 <b style="color:var(--fg)">${_esc(j.account_name)||'IG account'}</b>${j.account_masked?` <span class="muted" style="font-weight:400">· acct ${_esc(j.account_masked)}</span>`:''}`:"";
       $("ig-note").innerHTML=j.note?`<span class="muted">🔒 ${j.note}</span>`:"";
       paintIgAccount();
     })
