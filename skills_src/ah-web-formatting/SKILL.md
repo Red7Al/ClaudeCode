@@ -47,6 +47,21 @@ shrink-to-fit because its columns are numeric and stretching them reads worse.
 **Instrument names.** Use `nm40(name)` in table cells — 40 chars, full name in a `title`, HTML-escaped.
 Michelin's legal name is 80 chars and wrecks layout. Detail views keep the full name.
 
+**Every column sorts.** EVERY table column must be clickable to sort by that column (user 2026-07-20).
+The house pattern, reused across Scanner / Performance / Order Ops / Squeeze History:
+
+- Give each header `class="clk"` and a `data-<prefix>="<field>"` attribute naming the row key it sorts
+  (e.g. `data-pf`, `data-sqh`). The `<field>` is the property on the row object, not the display label.
+- Keep module sort state as `let <x>SortK="…", <x>SortDir=-1` (`-1` = descending first click).
+- Wire once: `document.querySelectorAll("th[data-<prefix>]").forEach(th=>th.onclick=()=>{…toggle dir if
+  same key else -1; set key; repaint; _sortArrows("data-<prefix>", sortK, sortDir);});`
+- Sort with the shared `genSort(rows,k,dir)` — it already pushes null/`""` to the bottom, compares numbers
+  numerically and everything else with `localeCompare`. Don't hand-roll a comparator.
+- `_sortArrows(attr,key,dir)` stamps the ▲/▼ marker on the active header; call it after every sort so the
+  indicator tracks the column.
+- A `sortK` of `""` means "server / natural order" — a valid default when the API already returns a
+  sensible order (Squeeze History returns newest-first, and only sorts once a header is clicked).
+
 ## 2. Chart strip (`.viz`)
 
 **Order** (left → right): `Market`, `Sector` (Market left of Sector), then the rest; `Ticker` far right
@@ -117,6 +132,8 @@ Measure and assert. Do not eyeball, and do not trust a summary you built without
 1. Short-value columns nowrap (default); only the long-text column gets inline `white-space:normal`.
 2. Long-label column next to it → `width:1%`.
 3. Instrument names → `nm40()`.
-4. View `max-width:1240px` unless there's a stated reason.
-5. Chart strip: Market/Sector left, Ticker right; call `packViz()` after render.
-6. Verify by measuring, with realistic (not logged-out) data.
+4. Every header sortable: `class="clk"` + `data-<prefix>` on each `<th>`, wired to `genSort` +
+   `_sortArrows`. No exceptions.
+5. View `max-width:1240px` unless there's a stated reason.
+6. Chart strip: Market/Sector left, Ticker right; call `packViz()` after render.
+7. Verify by measuring, with realistic (not logged-out) data.
