@@ -349,7 +349,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        Config/Config-Admin/Markets/Markets-Admin) live under the Operations / Settings parents below. -->
   <span class="grow"></span>
   <!-- Squeeze History sits at the right, next to Operations (user 2026-07-20). -->
-  <button class="tab" id="tab-squeezehist" onclick="showTab('squeezehist')" style="display:none">Squeeze History</button>
+  <button class="tab" id="tab-squeezehist" onclick="showTab('squeezehist')" style="display:none">Squeeze History <span id="sqhtab-count"></span></button>
   <button class="tab" id="tab-operations" onclick="showTab('operations')" style="display:none">🛠️ Operations</button>
   <button class="tab" id="tab-settings" onclick="showTab('settings')" style="display:none">⚙️ Settings</button>
 </div>
@@ -1003,8 +1003,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- Summary sub-tab (user 2026-07-20): the compounded-wallet monthly chart + the Segment summary table,
        both full width. Its own pill, left of Results. -->
   <div id="pf-panel-summary">   <!-- default sub-tab (user 2026-07-20) -->
-    <!-- Monthly growth of the compounded wallet (user 2026-07-18/20): full width. Admin-only (it derives
-         from the winners compounding model). -->
+    <!-- Monthly growth of the compounded wallet (user 2026-07-18/20): full width. Shown to everyone,
+         including logged-out visitors, because it sells the product (user 2026-07-20). -->
     <div id="pf-monthly" style="margin:0 0 14px"></div>
     <div id="pf-summary-wrap">
       <h2 class="sec" style="margin-top:0">Summary</h2>   <!-- Location buttons moved up next to the dates (user 2026-07-20) -->
@@ -2726,6 +2726,7 @@ function paintSqueezeHist(){
     &&inSet("sqf_sector",r.sector)&&inSet("sqf_direction",r.direction)&&inSet("sqf_status",r.outcome));
   if(sqhSortK)shown=genSort(shown,sqhSortK,sqhSortDir);
   if($("sqh-count"))$("sqh-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> funnels${rows.length!==shown.length?` of ${rows.length.toLocaleString()}`:''}`;
+  if($("sqhtab-count"))$("sqhtab-count").textContent=`(${shown.length.toLocaleString()})`;   // row count in the tab name (user 2026-07-20, P-01)
   if($("sqh-rows"))$("sqh-rows").innerHTML=shown.map(r=>`<tr>
     <td>${nm40(r.name)}</td><td>${r.direction}</td><td>${r.market||''}</td><td>${r.sector||''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td>
     <td>${r.first_seen||'—'}</td><td>${r.ready_date||'—'}</td><td>${r.triggered_date||'—'}</td>
@@ -2756,13 +2757,12 @@ function paintFees(){
     `<tr style="border-top:2px solid var(--line)"><td><b>Total fees</b></td><td style="text-align:right"><b>${gbp(mgmt+perf)}</b></td><td class="muted">management + performance</td></tr>`+
     `</tbody></table>`;
 }
-// Monthly growth of the compounded wallet (user 2026-07-18, P-01) — moved from the winners tab to the
-// Report tab, full width, above the Summary. Compounds a 2%-of-wallet stake across the date-filtered
-// population in trigger-date order (same model as the winners tab), then shows the month-on-month %.
-// Admin-only, since it is the winners compounding model expressed as a chart.
+// Monthly growth of the compounded wallet (user 2026-07-18, P-01) — on the Summary sub-tab, full width.
+// Compounds a 2%-of-wallet stake across the date-filtered population in trigger-date order, then shows the
+// month-on-month %. Shown to EVERYONE incl. logged-out visitors (user 2026-07-20) — it sells the product;
+// /api/performance is public, so the data is available without login.
 function _pfMonthly(rows){
   const div=$("pf-monthly"); if(!div)return;
-  if(LIMITED||!IS_ADMIN){div.innerHTML="";return;}
   const rs=(rows||[]).filter(r=>r.perf!=null&&r.trig_date).slice().sort((a,b)=>(a.trig_date<b.trig_date?-1:a.trig_date>b.trig_date?1:0));
   const byMonth={}; let w=WINNERS_WALLET;
   rs.forEach(r=>{w+=w*WINNERS_STAKE*r.perf/100; byMonth[r.trig_date.slice(0,7)]=w;});
@@ -2771,10 +2771,10 @@ function _pfMonthly(rows){
   if(!mg.length){div.innerHTML="";return;}
   const mx=Math.max(1,...mg.map(x=>Math.abs(x.g)));
   div.innerHTML=`<div class="vizbox" style="max-width:none;width:100%"><h5>Monthly growth of the compounded wallet (%)</h5>
-    <div style="display:flex;align-items:flex-end;gap:4px;height:130px;padding-top:6px;width:100%">`+
+    <div style="display:flex;align-items:flex-end;gap:4px;height:195px;flex:none;padding-top:6px;width:100%">`+
     mg.map(x=>`<div title="${x.m}: ${x.g>=0?'+':''}${x.g.toFixed(1)}%" style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
       <span style="font-size:10px;font-weight:600;color:${x.g>=0?'var(--bull)':'var(--bear)'}">${x.g>=0?'+':''}${x.g.toFixed(0)}%</span>
-      <div style="width:90%;max-width:68px;background:${x.g>=0?'var(--bull)':'var(--bear)'};height:${Math.max(2,Math.abs(x.g)/mx*92)}px;border-radius:3px 3px 0 0"></div>
+      <div style="width:90%;max-width:68px;background:${x.g>=0?'var(--bull)':'var(--bear)'};height:${Math.max(2,Math.abs(x.g)/mx*138)}px;border-radius:3px 3px 0 0"></div>
       <span style="font-size:9px;color:var(--muted);margin-top:3px;white-space:nowrap">${x.m.slice(2)}</span>
     </div>`).join("")+`</div></div>`;
 }
