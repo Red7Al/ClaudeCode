@@ -118,7 +118,7 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--chip)} tr.sel{backgroun
 .bull{background:rgba(63,185,80,.15);color:var(--bull)} .bear{background:rgba(248,81,73,.15);color:var(--bear)}
 .muted{color:var(--muted);font-size:11px}
 .tablewrap{overflow:auto;flex:1}
-#detail{width:760px;flex:none;border-left:2px solid var(--accent);padding:16px 20px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px;box-shadow:-10px 0 28px rgba(0,0,0,.4);background:var(--bg)}
+#detail{width:800px;flex:none;border-left:2px solid var(--accent);padding:16px 20px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px;box-shadow:-10px 0 28px rgba(0,0,0,.4);background:var(--bg)}   /* +5% width (user 2026-07-18, P-50) */
 #detail.hidden{display:none}
 .hidden{display:none}
 /* Collapsible LEFT-HAND filter panel for the Pre-orders tabs (user 2026-07-17, P-18/P-19) — the Scanner's
@@ -298,7 +298,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 /* Summary table spans the FULL view width (user 2026-07-18, P-01) — overrides the numeric-table
    shrink-to-fit (#view-performance table{width:auto}) for this one wide 12-column table only. */
 #view-performance #pf-summary table{width:100%;max-width:none}
-#view-performance #pf-summary table th{white-space:normal;vertical-align:bottom;line-height:1.15;max-width:78px}
+/* Full width leaves room for one-line headers (user 2026-07-18, P-10): nowrap, no 78px cap — verified the
+   nowrap columns still total the table width with no horizontal overflow. */
+#view-performance #pf-summary table th{white-space:nowrap;vertical-align:bottom}
 #view-performance #pf-summary table td{white-space:nowrap}
 #pf-summary table{font-size:12.5px}
 .tablewrap table th,.tablewrap table td{padding:5px 8px}
