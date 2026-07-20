@@ -985,6 +985,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
          immediately beside the From/To inputs. Narrows the trigger-date window for every figure on both tabs. -->
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <span class="grow" style="flex:1"></span>
+      <!-- Location quick-filter buttons, moved up next to the dates (user 2026-07-20). Drive the summary
+           table AND the monthly-growth chart; the selected button turns green. -->
+      <span id="pf-loc-btns" style="display:inline-flex;gap:5px;flex-wrap:wrap"></span>
       <!-- width:auto defeats the global select{width:100%} that made this dropdown span the whole row
            and wrap above the calendar (user 2026-07-20). Order: dropdown left, From/To calendar far right.
            The "Custom / all" option clears the window, so the separate "All 12mo" button was removed (redundant). -->
@@ -1004,8 +1007,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
          from the winners compounding model). -->
     <div id="pf-monthly" style="margin:0 0 14px"></div>
     <div id="pf-summary-wrap">
-      <h2 class="sec" style="margin-top:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Summary
-        <span id="pf-loc-btns" style="display:inline-flex;gap:5px;flex-wrap:wrap"></span></h2>
+      <h2 class="sec" style="margin-top:0">Summary</h2>   <!-- Location buttons moved up next to the dates (user 2026-07-20) -->
       <p class="muted" style="font-size:13px;margin-top:-8px">Every recorded trigger split by direction. <b>Returns Available</b> counts every trigger with a return figure — including <b style="color:#d29922">Open</b> trades marked to the latest price; Gains / Losses / Break-even, Win % and Loss % are measured against those. <b>Reacts to the date filter and the Location buttons above.</b></p>
       <div id="pf-summary" class="tablewrap" style="margin-bottom:8px"></div>
     </div>
@@ -2772,7 +2774,7 @@ function _pfMonthly(rows){
     <div style="display:flex;align-items:flex-end;gap:4px;height:130px;padding-top:6px;width:100%">`+
     mg.map(x=>`<div title="${x.m}: ${x.g>=0?'+':''}${x.g.toFixed(1)}%" style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
       <span style="font-size:10px;font-weight:600;color:${x.g>=0?'var(--bull)':'var(--bear)'}">${x.g>=0?'+':''}${x.g.toFixed(0)}%</span>
-      <div style="width:80%;max-width:34px;background:${x.g>=0?'var(--bull)':'var(--bear)'};height:${Math.max(2,Math.abs(x.g)/mx*92)}px;border-radius:3px 3px 0 0"></div>
+      <div style="width:90%;max-width:68px;background:${x.g>=0?'var(--bull)':'var(--bear)'};height:${Math.max(2,Math.abs(x.g)/mx*92)}px;border-radius:3px 3px 0 0"></div>
       <span style="font-size:9px;color:var(--muted);margin-top:3px;white-space:nowrap">${x.m.slice(2)}</span>
     </div>`).join("")+`</div></div>`;
 }
@@ -2789,12 +2791,12 @@ function _renderPerformance(){
     `<div class="vizsector">`+barChart("Outcome",by("state"),"pff_status",_stcol)+`</div>`+
     `<div class="vizsector">`+barChart("Win / Loss",by(_pfwl),"pff_wl",_wlCol)+`</div>`;         /* wins / losses / break-even (P-10) */
   packViz("pf-viz");   // P-15
-  _pfMonthly(all);     // full-width compounded-wallet monthly growth, above the Summary (P-01)
-  // Quick location filters beside the Summary title (P-10): one pill per location, plus "All" to clear.
+  // Location quick-filter buttons (user 2026-07-18/20): one per location, plus "All". The SELECTED one is
+  // green. They drive the summary table AND the monthly-growth chart (both via `sel`, below).
   const _locs=[...new Set(all.map(r=>locName(r.location)).filter(v=>v&&v!=="—"))].sort();
   const _lb=$("pf-loc-btns");
-  if(_lb)_lb.innerHTML=LIMITED?"":([`<button class="subpill${PF_LOC_FILTER?"":" active"}" onclick="pfLocFilter('')">All</button>`]
-    .concat(_locs.map(l=>`<button class="subpill${PF_LOC_FILTER===l?" active":""}" onclick="pfLocFilter('${l.replace(/'/g,"\\'")}')">${l}</button>`)).join(""));
+  const _locBtn=(label,val,on)=>`<button class="subpill${on?' active':''}" style="${on?'background:var(--bull);border-color:var(--bull);color:#03260f;font-weight:600':''}" onclick="pfLocFilter('${val.replace(/'/g,"\\'")}')">${label}</button>`;
+  if(_lb)_lb.innerHTML=LIMITED?"":([_locBtn('All','',!PF_LOC_FILTER)].concat(_locs.map(l=>_locBtn(l,l,PF_LOC_FILTER===l)))).join("");
   // Name/ticker search (user 2026-07-17, P-17). Applied alongside the chart filters, so the summary, the
   // Quality/R:R buckets and the row count all reflect the search — same contract as the other tabs.
   const _pfq=(($("pf-search")||{}).value||"").trim().toLowerCase();
@@ -2803,6 +2805,7 @@ function _renderPerformance(){
   if(PF_LOC_FILTER)sel=sel.filter(r=>locName(r.location)===PF_LOC_FILTER);   // Summary-title quick location filter (P-10)
   if(_pfq)sel=sel.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(_pfq));
   _renderPfSummary(sel);
+  _pfMonthly(sel);   // monthly-growth chart reacts to the location filter too (user 2026-07-20)
   // Top Quality/R:R buckets by average return across the (filtered) recorded triggers.
   const N=innerWidth>=900?4:3;   // never more than 4 cards; 3 on a mini iPad (<900px) (P-25)
   const buckets={};
