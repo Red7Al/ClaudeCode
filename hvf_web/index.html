@@ -977,17 +977,17 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <!-- Row 1: the sub-tab pills sit ABOVE the date filter (user 2026-07-18, P-01) because the date window
          drives every tab. Summary + Results are for everyone; "What separates the winners" is admin-only. -->
     <div id="pf-pills" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <button class="pill" data-pfpanel="summary" onclick="pfPanel('summary')">📈 Summary</button>
-      <button class="pill active" data-pfpanel="results" onclick="pfPanel('results')">📊 Results</button>
+      <button class="pill active" data-pfpanel="summary" onclick="pfPanel('summary')">📈 Summary</button>
+      <button class="pill" data-pfpanel="results" onclick="pfPanel('results')">📊 Results</button>
       <button class="pill" id="pf-pill-winners" data-pfpanel="analysis" onclick="pfPanel('analysis')">🏆 What separates the winners</button>
     </div>
     <!-- Row 2: date filter, kept on the RIGHT (user 2026-07-18, P-01). The quick-window dropdown sits
          immediately beside the From/To inputs. Narrows the trigger-date window for every figure on both tabs. -->
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <span class="grow" style="flex:1"></span>
-      <button class="btn" onclick="pfDateClear()" style="padding:4px 9px;font-size:12px" title="Clear the date filter — show the full 12 months">All 12mo</button>
       <!-- width:auto defeats the global select{width:100%} that made this dropdown span the whole row
-           and wrap above the calendar (user 2026-07-20). Order: dropdown left, From/To calendar far right. -->
+           and wrap above the calendar (user 2026-07-20). Order: dropdown left, From/To calendar far right.
+           The "Custom / all" option clears the window, so the separate "All 12mo" button was removed (redundant). -->
       <select id="pf-date-preset" onchange="pfDatePreset(this.value)" style="padding:4px 6px;font-size:12px;width:auto;flex:none" title="Quick date window">
         <option value="12">Last 12 months</option><option value="9">Last 9 months</option>
         <option value="6">Last 6 months</option><option value="3">Last 3 months</option>
@@ -999,7 +999,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </nav>
   <!-- Summary sub-tab (user 2026-07-20): the compounded-wallet monthly chart + the Segment summary table,
        both full width. Its own pill, left of Results. -->
-  <div id="pf-panel-summary" class="hidden">
+  <div id="pf-panel-summary">   <!-- default sub-tab (user 2026-07-20) -->
     <!-- Monthly growth of the compounded wallet (user 2026-07-18/20): full width. Admin-only (it derives
          from the winners compounding model). -->
     <div id="pf-monthly" style="margin:0 0 14px"></div>
@@ -1010,7 +1010,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div id="pf-summary" class="tablewrap" style="margin-bottom:8px"></div>
     </div>
   </div>
-  <div id="pf-panel-results">
+  <div id="pf-panel-results" class="hidden">
   <div id="pf-charts">
     <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
   </div>
@@ -1051,15 +1051,16 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <span class="muted" style="font-size:11px">each trade stakes this % of the running wallet; both drive every £ figure below</span>
     </div>
     <!-- Automated Stop-Loss Amendment — ILLUSTRATION ONLY (user 2026-07-18): re-backtests every trade with a
-         trailing stop and shows the impact. Does NOT touch live IG stops. -->
-    <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+         trailing stop and shows the impact. Does NOT touch live IG stops.
+         DISABLED for now (user 2026-07-20) — hidden; threshold pinned at 0 so it is a no-op. -->
+    <div class="card" style="margin-bottom:10px;display:none;align-items:center;gap:12px;flex-wrap:wrap">
       <b style="font-size:13px">🎯 Trailing-stop illustration</b>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Threshold
         <input id="ordp-sl-in" type="number" min="0" max="100" step="5" value="0" style="width:70px;padding:4px 6px" onchange="winnersSLChange()">%</label>
       <span class="muted" style="font-size:11px">re-backtests each trade with a stop that trails by <b>entry × gain × this %</b> on the close. 0 = off. Illustration only — never moves real stops.</span>
       <span id="ordp-sl-busy" class="muted" style="font-size:12px"></span>
     </div>
-    <div id="ordp-sl" style="margin-bottom:10px"></div>
+    <div id="ordp-sl" style="margin-bottom:10px;display:none"></div>
     <div id="ordp-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
     <!-- Monthly %-growth chart moved to the Report tab (user 2026-07-18, P-01) — see #pf-monthly. -->
     <div id="ordp-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
