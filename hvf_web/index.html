@@ -2666,8 +2666,13 @@ function paintOrdersPerf(){
       if(openExits.length<WINNERS_MAXOPEN){taken.push(r);openExits.push(r.exit_date||'9999-99-99');}else skipped++;
     }
   }
-  let w=WINNERS_WALLET;const ledger=[];
-  for(const r of taken){const stake=w*WINNERS_STAKE,net=stake*r.perf/100;w+=net;ledger.push({r,stake,net,maxloss:stake*stopPct(r),cum:w});}
+  let w=WINNERS_WALLET;const ledger=[];const _openEx=[];   // _openEx = exit dates of trades still open (P-05, L40)
+  for(const r of taken){
+    const td=r.trig_date||'';
+    for(let i=_openEx.length-1;i>=0;i--){if(_openEx[i]<=td)_openEx.splice(i,1);}   // close any that exited on/before this trigger
+    _openEx.push(r.exit_date||'9999-99-99');                                        // this trade is now open
+    const stake=w*WINNERS_STAKE,net=stake*r.perf/100;w+=net;
+    ledger.push({r,stake,net,maxloss:stake*stopPct(r),cum:w,open:_openEx.length});}
   const gain=w-WINNERS_WALLET;
   const mls=ledger.map(x=>x.maxloss).sort((a,b)=>a-b);const medML=mls.length?mls[Math.floor(mls.length/2)]:0;
   const span=taken.length?`${taken[0].trig_date} → ${taken[taken.length-1].trig_date}`:'';
@@ -2697,8 +2702,9 @@ function paintOrdersPerf(){
   }).join("");
   if(tc)tc.textContent=`(${ledger.length} trades, ${span} · ${money(WINNERS_WALLET)} → ${money(w)})`;
   const oc=st=>st==='TARGET'?'var(--bull)':st==='STOPPED'?'var(--bear)':'#d29922';
-  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="2% of the wallet at this point in time">Stake</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Running wallet after this trade — last row = the compounded figure">Wallet</th></tr></thead><tbody>`+
+  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="2% of the wallet at this point in time">Stake</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Running wallet after this trade — last row = the compounded figure">Wallet</th></tr></thead><tbody>`+
     ledger.map((x,i)=>{const r=x.r;return `<tr><td class="muted">${i+1}</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td>
+      <td class="muted" title="concurrent open positions">${x.open}</td>
       <td><b style="color:${oc(r.outcome)}">${r.outcome}</b></td>
       <td style="color:${_pnlc(r.perf)}">${r.perf==null?'—':(r.perf>0?'+':'')+r.perf+'%'}</td>
       <td class="muted">${money(x.stake)}</td>
