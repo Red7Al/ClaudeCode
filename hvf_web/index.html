@@ -2767,8 +2767,8 @@ function _pfMonthly(rows){
   const mg=months.map(m=>{const end=byMonth[m], g=prev>0?(end-prev)/prev*100:0; prev=end; return {m,g};});
   if(!mg.length){div.innerHTML="";return;}
   const mx=Math.max(1,...mg.map(x=>Math.abs(x.g)));
-  div.innerHTML=`<div class="vizbox" style="max-width:none"><h5>Monthly growth of the compounded wallet (%)</h5>
-    <div style="display:flex;align-items:flex-end;gap:4px;height:130px;padding-top:6px">`+
+  div.innerHTML=`<div class="vizbox" style="max-width:none;width:100%"><h5>Monthly growth of the compounded wallet (%)</h5>
+    <div style="display:flex;align-items:flex-end;gap:4px;height:130px;padding-top:6px;width:100%">`+
     mg.map(x=>`<div title="${x.m}: ${x.g>=0?'+':''}${x.g.toFixed(1)}%" style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
       <span style="font-size:10px;font-weight:600;color:${x.g>=0?'var(--bull)':'var(--bear)'}">${x.g>=0?'+':''}${x.g.toFixed(0)}%</span>
       <div style="width:80%;max-width:34px;background:${x.g>=0?'var(--bull)':'var(--bear)'};height:${Math.max(2,Math.abs(x.g)/mx*92)}px;border-radius:3px 3px 0 0"></div>
