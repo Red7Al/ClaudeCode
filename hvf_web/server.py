@@ -2067,13 +2067,14 @@ def api_squeeze_history():
                 "select ticker, market, timeframe, hvf_type, first_seen, first_signal, ready_date, "
                 "triggered_date, outcome, outcome_date, return_pct, quality, risk_reward "
                 "from squeeze_history "
-                "order by coalesce(triggered_date, ready_date, first_seen) desc nulls last limit 1000") or []
+                "order by coalesce(triggered_date, ready_date, first_seen) desc nulls last") or []   # no row cap (user 2026-07-18, P-01)
         finally:
             db.close()
         for (tk, mk, tf, ht, fseen, fsig, rd, td, oc, od, ret, q, rr) in raw:
             s = snap.get(tk, {})
             payload["rows"].append({
                 "ticker": tk, "name": s.get("name") or tk, "market": mk or s.get("market"),
+                "location": s.get("location"),   # for the Location chart (user 2026-07-18, P-01)
                 "sector": _sqa_sector(tk) or s.get("sector"),
                 "direction": ("BULL" if ht == "BULLISH" else "BEAR"), "timeframe": tf,
                 "first_seen": (str(fseen) if fseen else None), "first_signal": fsig,
