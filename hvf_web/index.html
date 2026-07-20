@@ -974,11 +974,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- Sub-tabs (user 2026-07-17): the recorded-trigger results and the 15-month analysis are two
        distinct reads, so they get their own pill instead of one long scroll. -->
   <nav class="confnav" id="pf-subnav" style="margin:0 0 12px;display:flex;flex-direction:column;gap:8px">
-    <!-- Row 1: the two sub-tab pills sit ABOVE the date filter (user 2026-07-18, P-01) because the date
-         window drives BOTH tabs. Hidden for non-admins (only the Results tab exists for them). -->
+    <!-- Row 1: the sub-tab pills sit ABOVE the date filter (user 2026-07-18, P-01) because the date window
+         drives every tab. Summary + Results are for everyone; "What separates the winners" is admin-only. -->
     <div id="pf-pills" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <button class="pill" data-pfpanel="summary" onclick="pfPanel('summary')">📈 Summary</button>
       <button class="pill active" data-pfpanel="results" onclick="pfPanel('results')">📊 Results</button>
-      <button class="pill" data-pfpanel="analysis" onclick="pfPanel('analysis')">🏆 What separates the winners</button>
+      <button class="pill" id="pf-pill-winners" data-pfpanel="analysis" onclick="pfPanel('analysis')">🏆 What separates the winners</button>
     </div>
     <!-- Row 2: date filter, kept on the RIGHT (user 2026-07-18, P-01). The quick-window dropdown sits
          immediately beside the From/To inputs. Narrows the trigger-date window for every figure on both tabs. -->
@@ -994,18 +995,22 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <button class="btn" onclick="pfDateClear()" style="padding:4px 9px;font-size:12px" title="Clear the date filter — show the full 12 months">All 12mo</button>
     </div>
   </nav>
-  <div id="pf-panel-results">
-  <div id="pf-charts">
-    <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
-    <!-- Monthly growth of the compounded wallet (user 2026-07-18, P-01): moved here to the Report tab,
-         above the Summary, full width. Admin-only (it derives from the winners compounding model). -->
-    <div id="pf-monthly" style="margin:0 0 12px"></div>
+  <!-- Summary sub-tab (user 2026-07-20): the compounded-wallet monthly chart + the Segment summary table,
+       both full width. Its own pill, left of Results. -->
+  <div id="pf-panel-summary" class="hidden">
+    <!-- Monthly growth of the compounded wallet (user 2026-07-18/20): full width. Admin-only (it derives
+         from the winners compounding model). -->
+    <div id="pf-monthly" style="margin:0 0 14px"></div>
     <div id="pf-summary-wrap">
       <h2 class="sec" style="margin-top:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Summary
         <span id="pf-loc-btns" style="display:inline-flex;gap:5px;flex-wrap:wrap"></span></h2>
-      <p class="muted" style="font-size:13px;margin-top:-8px">Every recorded trigger split by direction. <b>Returns Available</b> counts every trigger with a return figure — including <b style="color:#d29922">Open</b> trades marked to the latest price; Gains / Losses / Break-even, Win % and Loss % are measured against those. <b>Reacts to the chart filters.</b></p>
+      <p class="muted" style="font-size:13px;margin-top:-8px">Every recorded trigger split by direction. <b>Returns Available</b> counts every trigger with a return figure — including <b style="color:#d29922">Open</b> trades marked to the latest price; Gains / Losses / Break-even, Win % and Loss % are measured against those. <b>Reacts to the date filter and the Location buttons above.</b></p>
       <div id="pf-summary" class="tablewrap" style="margin-bottom:8px"></div>
     </div>
+  </div>
+  <div id="pf-panel-results">
+  <div id="pf-charts">
+    <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
   </div>
   <h2 class="sec">Best Quality / R:R combinations</h2>
   <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return across the recorded triggers, <b>reacting to the charts above</b>. Only buckets with at least 3 triggers are shown.</p>
@@ -2519,10 +2524,12 @@ function renderPerformance(){
   // "What separates the winners" is ADMIN ONLY (user 2026-07-18). For non-admins there is only the
   // Results panel, so a lone "Results" pill reads oddly (P-01a) — hide the whole sub-nav bar for them,
   // and never leave a non-admin sitting on the analysis panel.
-  // Only the sub-tab PILLS are admin-only now (the date filter row stays for everyone, so non-admins can
-  // still narrow the Results window). This avoids the lone "Results" pill that looked odd (P-01a).
+  // Summary + Results pills are for everyone; only "What separates the winners" is admin-only (user
+  // 2026-07-20). Non-admins now have two real pills (Summary, Results), so no lone odd pill (P-01a).
   const _pills=$("pf-pills");
-  if(_pills)_pills.style.display=IS_ADMIN?'flex':'none';
+  if(_pills)_pills.style.display='flex';
+  const _pw=$("pf-pill-winners");
+  if(_pw)_pw.style.display=IS_ADMIN?'':'none';
   if(!IS_ADMIN && !$("pf-panel-analysis").classList.contains("hidden"))pfPanel('results');
   if(PERF_DATA===null){                       // fetch the recorded-trigger report once, then render
     PERF_DATA=[];                             // in-flight guard
@@ -2538,7 +2545,8 @@ function renderPerformance(){
 function pfPanel(which){
   if(which==="analysis"&&!IS_ADMIN)which="results";   // admin-only analysis (user 2026-07-18)
   document.querySelectorAll("#pf-subnav .pill").forEach(b=>b.classList.toggle("active",b.dataset.pfpanel===which));
-  const res=$("pf-panel-results"), an=$("pf-panel-analysis");
+  const sm=$("pf-panel-summary"), res=$("pf-panel-results"), an=$("pf-panel-analysis");
+  if(sm)sm.classList.toggle("hidden",which!=="summary");   // Summary sub-tab (user 2026-07-20)
   if(res)res.classList.toggle("hidden",which!=="results");
   if(an)an.classList.toggle("hidden",which!=="analysis");
   if(which==="analysis")renderSqueezeAnalysis();
