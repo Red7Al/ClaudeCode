@@ -337,7 +337,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="tab" id="tab-intro" onclick="showTab('intro')">How it works</button>
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
   <button class="tab" id="tab-performance" onclick="showTab('performance')" style="display:none">Performance <span id="pftab-count"></span></button>
-  <button class="tab" id="tab-squeezehist" onclick="showTab('squeezehist')" style="display:none">Squeeze History</button>
   <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner Report <span id="sctab-count"></span></button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')" style="display:none">My Pre-orders <span id="potab-count"></span></button>
   <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Pre-orders to my IG <span id="ootab-count"></span></button>
@@ -349,6 +348,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- grouped children (Batch/Users/X Posts/Version/System Logs/Scheduled Jobs/Change Requests, and
        Config/Config-Admin/Markets/Markets-Admin) live under the Operations / Settings parents below. -->
   <span class="grow"></span>
+  <!-- Squeeze History sits at the right, next to Operations (user 2026-07-20). -->
+  <button class="tab" id="tab-squeezehist" onclick="showTab('squeezehist')" style="display:none">Squeeze History</button>
   <button class="tab" id="tab-operations" onclick="showTab('operations')" style="display:none">🛠️ Operations</button>
   <button class="tab" id="tab-settings" onclick="showTab('settings')" style="display:none">⚙️ Settings</button>
 </div>
