@@ -303,6 +303,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-performance #pf-summary table th{white-space:nowrap;vertical-align:bottom}
 #view-performance #pf-summary table td{white-space:nowrap}
 #pf-summary table{font-size:12.5px}
+/* "Settings used" card on the Summary sub-tab (user 2026-07-24, P-02) — compact, left of the filters. */
+.pf-setcard{max-width:280px;min-width:190px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:11.5px}
+.pf-setcard-h{font-weight:700;margin-bottom:4px;font-size:12px}
+.pf-setcard-row{display:flex;justify-content:space-between;gap:12px;padding:1px 0}
+.pf-setcard-k{color:var(--muted);white-space:nowrap}
+.pf-setcard-v{text-align:right;font-weight:600}
 .tablewrap table th,.tablewrap table td{padding:5px 8px}
 #view-scanner main section.gsec{padding:10px;margin:0 8px 12px}
 .confnav .adminpill{border-color:#d29922}
@@ -467,6 +473,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <th data-k="pe">P/E</th><th data-k="insider_pct" title="Insider ownership %">Insider %</th><th data-k="timeframe">TF</th>
           <th data-k="location">Location</th>
           <th data-k="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank for setups that have not triggered, and for instruments with no real volume (FX, indices).">RVOL</th>
+          <th data-k="volume_score" title="VolumeScore (0–12) on the break bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank until triggered.">Vol</th>
           <th data-k="ticker">Ticker</th>
         </tr></thead>
         <tbody id="rows"></tbody>
@@ -622,7 +629,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
   <div class="confpanel hidden" data-panel="leverage">
     <div class="card" style="margin-bottom:0"><h4>Leverage (Broker) — by instrument type</h4>
-      <p class="muted" style="font-size:12px">Your broker's leverage for each instrument type. Shown as the <b>Leverage</b> column in the Scanner. Defaults: FX 30, Equities 10, Commodities 10, Indices 10.</p>
+      <p class="muted" style="font-size:12px">Your broker's leverage for each instrument type. Shown as the <b>Leverage</b> column in the Scanner. Defaults match <b>IG UK retail</b> margin (FCA/ESMA caps): FX 30, Indices 20, Commodities 10, Equities 5.</p>
       <div class="credrow"><span class="clabel">FX</span><input type="number" min="1" step="1" id="lev-fx" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Equities</span><input type="number" min="1" step="1" id="lev-equities" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Commodities</span><input type="number" min="1" step="1" id="lev-commodities" style="max-width:120px"></div>
@@ -984,6 +991,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <!-- Row 2: date filter, kept on the RIGHT (user 2026-07-18, P-01). The quick-window dropdown sits
          immediately beside the From/To inputs. Narrows the trigger-date window for every figure on both tabs. -->
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <!-- "Settings used" card (user 2026-07-24, P-02): summarises the settings that produced the Summary
+           chart + table (date window, location, market, any cross-filters). Left of the filters; Summary sub-tab only. -->
+      <div id="pf-settings-card" class="pf-setcard" style="display:none"></div>
       <span class="grow" style="flex:1"></span>
       <!-- Location quick-filter buttons, moved up next to the dates (user 2026-07-20). Drive the summary
            table AND the monthly-growth chart; the selected button turns green. -->
@@ -1043,7 +1053,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     report. The £ figures place a stake of <b>2% of the wallet at that point in time</b> on every trade and compound it:
     <b>net £ = stake × the trade's return%</b>; the stake starts at £20 on £1k and grows as the wallet does (winners raise the
     next stake — 1,000 → 1,025 → 2% of 1,025 …). The stop caps each loss at <b>stake × the stop distance %</b> — a few pounds.
-    The ledger below is every trade in <b>strict chronological order by trigger date</b>, so you can follow the wallet build.</p>
+    The ledger below is every trade in <b>strict chronological order by trigger date</b>, so you can follow the wallet build.
+    <b>Each row is one whole trade</b> — placed on its trigger date; the <b>Outcome</b> column is how that trade eventually
+    resolved (TARGET / STOPPED / still OPEN), not a separate open/close event.</p>
     <!-- Wallet + stake variables (user 2026-07-18, P-05): drive every £ figure on the winners tab. -->
     <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <b style="font-size:13px">💷 Model</b>
@@ -1069,6 +1081,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <h3 class="sec" style="font-size:15px;margin-bottom:2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Every trade — oldest first, wallet after each <span id="ordp-count" class="muted" style="font-size:12px;font-weight:400"></span><span class="grow" style="flex:1"></span><input id="ordp-ledger-q" placeholder="Search name / ticker…" oninput="winnersLedgerFilter()" style="width:auto;max-width:200px;padding:4px 8px;font-size:12px;font-weight:400"></h3>
     <p class="muted" style="font-size:12px;margin:2px 0 6px">Each row is one recorded trade. <b>Stake</b> = the Max-position-size % of the running wallet; <b>Net £</b> = stake × its return%; <b>Wallet</b> is the running total, and the last row equals the compounded figure above. <b>Max loss</b> = stake × the stop distance %.</p>
     <div id="ordp-table" class="tablewrap" style="max-height:460px;overflow:auto"></div>
+    <!-- VolumeScore impact report (user 2026-07-24, P-02 L55) — how filtering on VolumeScore changes the book. -->
+    <h3 class="sec" style="font-size:15px;margin:16px 0 2px">📊 VolumeScore impact — how volume confirmation filters the winners</h3>
+    <p class="muted" style="font-size:12px;margin:2px 0 6px">Same 12-month replayed population as above. Win rate, average return and the concurrency-capped £ for the whole book vs the VolumeScore ≥ 8 subset, and where profit concentrates by score band.</p>
+    <div id="volscore-report">loading…</div>
   </div>
 </div>
 
@@ -1163,7 +1179,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" id="cr-section" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="cr-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th data-crk="name">File</th><th data-crk="created">Created</th><th data-crk="updated">Last updated</th><th data-crk="total">Actions</th><th data-crk="prioritised" title="Requirements carrying a P-number, or under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th>Completed</th><th>In&nbsp;Progress</th><th>Not&nbsp;Started</th><th>Cancelled</th><th>Deferred</th></tr></thead>
+      <thead><tr><th class="clk" data-crk="name">File</th><th class="clk" data-crk="created">Created</th><th class="clk" data-crk="updated">Last updated</th><th class="clk" data-crk="total">Actions</th><th class="clk" data-crk="prioritised" title="Requirements carrying a P-number, or under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th class="clk" data-crk="Completed">Completed</th><th class="clk" data-crk="In Progress">In&nbsp;Progress</th><th class="clk" data-crk="Not Started">Not&nbsp;Started</th><th class="clk" data-crk="Cancelled">Cancelled</th><th class="clk" data-crk="Deferred">Deferred</th></tr></thead>
       <tbody id="cr-rows"></tbody>
     </table></div>
   </section>
@@ -1310,7 +1326,7 @@ const LOC={UK:"United Kingdom",US:"United States",FX:"FX",
   "Europe (West)":"Europe (West)","Europe (East)":"Europe (East)","Asia":"Asia","Other":"Other"};
 const locName=v=>LOC[v]||v||"";
 // Broker leverage by instrument type (user 2026-07-03). Type derived from the instrument's market.
-let LEVERAGE={fx:30,equities:10,commodities:10,indices:10};
+let LEVERAGE={fx:30,equities:5,commodities:10,indices:20};   // IG UK retail (FCA/ESMA) defaults (user 2026-07-24, P-02)
 function levType(r){const m=r.market||"";if(m==="FX")return"fx";if(m==="Indices")return"indices";if(m==="Commodities")return"commodities";if(m==="Crypto")return"equities";return"equities";}
 const levOf=r=>LEVERAGE[levType(r)];
 const f2=v=>(v==null||v==="")?"":(+v).toFixed(2);
@@ -1328,6 +1344,9 @@ const qcol=q=>q>=70?"var(--bull)":q>=50?"#d29922":"var(--bear)";   // quality co
 // 0 or 1.0, where there is no real volume to measure: FX and indices would otherwise read as "normal".
 const rvolCell=v=>v==null?'<span class="muted">—</span>'
   :`<b style="color:${v>=2?'var(--bull)':v>=1?'#d29922':'var(--muted)'}">${(+v).toFixed(1)}×</b>`;
+// VolumeScore cell (0–12, user 2026-07-24, P-02): 8+ green (trade-worthy), 5–7 amber, below grey.
+const volScoreCell=v=>v==null?'<span class="muted">—</span>'
+  :`<b style="color:${v>=8?'var(--bull)':v>=5?'#d29922':'var(--muted)'}" title="${v} of 12">${v}</b>`;
 // "since trig" colour: green when price has moved in the trade's favour, red against.
 const trigCol=r=>{const c=r.chg_since_trig;if(c==null)return"var(--fg)";return c<0?"var(--bear)":c>0?"var(--bull)":"var(--fg)";};  // red when negative
 
@@ -1547,8 +1566,8 @@ function render(){
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td>
     <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td>
-    <td>${ob(rvolCell(r.rvol))}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
-    || `<tr><td colspan="23" class="empty">No setups match the filters.</td></tr>`;
+    <td>${ob(rvolCell(r.rvol))}</td><td>${ob(volScoreCell(r.volume_score))}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
+    || `<tr><td colspan="24" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
     tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
@@ -1582,9 +1601,10 @@ function showDetail(t){
     ${AUTH&&r.has_signal?`<button class="btn" onclick="pushToPreorder('${r.ticker}')" style="float:right;margin-right:8px">${(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker)))?'✓ In Pre-orders':'➕ Push to Pre-orders'}</button>`:''}
     <h2>${disp(r.ticker)} <span class="muted" style="font-size:13px">${r.name||''}</span> <span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></h2>
     <div class="sub">${locName(r.location)} · ${r.market||''} · ${r.sector||''} · ${r.status||''} · Q${r.quality??'?'} · R:R ${r.rr!=null?r.rr.toFixed(2):'?'} · ${(r.timeframe||'').replace('daily-','D')}</div>
-    <div class="card"><h4>Squeeze Rules 1–5 — justification</h4><div id="rulesbox">loading…</div></div>
+    ${IS_ADMIN?`<div class="card"><h4>Squeeze Rules 1–5 — justification</h4><div id="rulesbox">loading…</div></div>`:''}
     <div class="card"><h4>Quality (${r.quality??'?'}/100) — how it's scored</h4>
       <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the funnel is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric funnel; a low Q means a loose, older, or lopsided one.</div></div>
+    ${AUTH?`<div class="card"><h4>VolumeScore — breakout confirmation (0–12)</h4><div id="volscorebox">loading…</div></div>`:''}
     <div class="card"><h4>Price — last ${days} days (filter-reactive)</h4>
       <img id="pw" src="/api/pricewin/${r.ticker}?days=${days}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}"></div>
     <div class="card"><h4>X post card</h4><img loading="lazy" src="/api/card/${r.ticker}"></div>
@@ -1657,11 +1677,23 @@ function showDetail(t){
     if(card)card.style.display="";
     if(!r.broker){const b=document.getElementById("brokerbase");if(b)b.style.display="none";}
   }).catch(()=>{const el=document.getElementById("brokerchg");if(el)el.style.display="none";});
-  fetch(`/api/rules/${r.ticker}`).then(x=>x.json()).then(j=>{
+  // Squeeze Rules 1–5 justification is admin-only (user 2026-07-24, P-02): don't expose the per-rule
+  // PASS/FAIL diagnostics to non-admin subscribers. Card is omitted above too, so guard the fetch.
+  if(IS_ADMIN) fetch(`/api/rules/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("rulesbox"); if(!el||SEL!==r.ticker)return;
     el.innerHTML=(j.rules||[]).map(u=>`<div class="rule"><div class="top"><span class="v ${u.verdict}">${u.verdict}</span><b>Rule ${u.n} — ${u.name}</b></div><div class="why">${(u.detail||u.note||'').replace(/</g,'&lt;')}</div></div>`).join("")
       || "<span class='muted'>no rule detail</span>";
   }).catch(()=>{document.getElementById("rulesbox")&&(document.getElementById("rulesbox").textContent="rules unavailable");});
+  // VolumeScore breakdown (user 2026-07-24, P-02) — logged-in only; blank until the setup has triggered.
+  if(AUTH) fetch(`/api/volscore/${r.ticker}`,{headers:{"X-Auth":AUTH}}).then(x=>x.json()).then(j=>{
+    const el=document.getElementById("volscorebox"); if(!el||SEL!==r.ticker)return;
+    const v=j.volscore;
+    if(!v){el.innerHTML='<span class="muted" style="font-size:12px">Computed once the setup triggers (needs the break bar + volume history).</span>';return;}
+    const col=v.pass?'var(--bull)':(v.score>=5?'#d29922':'var(--muted)');
+    const mark=g=>g===true?'<b style="color:var(--bull)">✓</b>':g===false?'<span style="color:var(--bear)">✕</span>':'<span class="muted">n/a</span>';
+    el.innerHTML=`<div class="kv"><span><b style="color:${col};font-size:16px">${v.score}</b> / ${v.max} — ${v.pass?'<b style="color:var(--bull)">tradeable (≥'+v.threshold+')</b>':'below the '+v.threshold+' threshold'}</span></div>`+
+      v.components.map(c=>`<div class="kv" style="font-size:12px"><span>${mark(c.got)} ${c.label}${c.note?` <span class="muted">(${c.note})</span>`:''}</span><b class="muted">+${c.earned}/${c.points}</b></div>`).join("");
+  }).catch(()=>{document.getElementById("volscorebox")&&(document.getElementById("volscorebox").textContent="VolumeScore unavailable");});
   fetch(`/api/links/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("xlinks"); if(!el||SEL!==r.ticker)return;
     let h="";
@@ -1793,6 +1825,7 @@ $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light
 // signal, not yet triggered, and quality >= 25 (user 2026-06-29: drop the low-quality noise)
 // signal, not yet triggered, Q>=25, and NOT already placed on IG (removed once it's a live working order).
 let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/target overrides (user 2026-07-03/04)
+let MY_LIMITS={};   // the user's personal floors from Configuration → My trading limits (min_risk_reward, min_quality) — applied to My Pre-orders (user 2026-07-24, P-02)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
 const TABS=["welcome","intro","appendix","scanner","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
@@ -2205,7 +2238,7 @@ function renderConfig(){
       USER_FILTERS=j.filters||{};
       HIDDEN_TABS=j.hidden_tabs||[]; renderTabVis(HIDDEN_TABS);   // tab-visibility card (user 2026-07-03)
       if(j.leverage){LEVERAGE=j.leverage;["fx","equities","commodities","indices"].forEach(k=>{if($("lev-"+k))$("lev-"+k).value=j.leverage[k];});}
-      if(j.limits){Object.entries(j.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el)el.value=Array.isArray(v)?v.join(", "):v;});}
+      if(j.limits){MY_LIMITS=j.limits;Object.entries(j.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el)el.value=Array.isArray(v)?v.join(", "):v;});if(typeof renderPreorders==='function')renderPreorders();}
       // Engine settings (admin only) now live on the Configuration (Admin) tab; just fill the inputs.
       if(j.engine){window.ENGINE_VALS=j.engine;Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});}
       // Morning HVF tweet markets (admin, user 2026-07-06): checkbox chips over the universe's markets.
@@ -2283,7 +2316,9 @@ function saveLimits(){
   [["min_quality",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
   lim.email_recipients=($("lim-email_recipients").value||"").split(",").map(x=>x.trim()).filter(Boolean);
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
-    .then(r=>{const el=$("lim-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Saved.";}else{el.style.color="var(--bear)";el.textContent="Save failed.";}})
+    .then(r=>{const el=$("lim-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Saved.";
+      MY_LIMITS={...MY_LIMITS,...lim};if(typeof renderPreorders==='function')renderPreorders();   // apply new floors to My Pre-orders now (user 2026-07-24, P-02)
+    }else{el.style.color="var(--bear)";el.textContent="Save failed.";}})
     .catch(()=>{const el=$("lim-msg");el.style.color="var(--bear)";el.textContent="Save failed.";});
 }
 function saveTradeFilters(){
@@ -2561,6 +2596,7 @@ function pfPanel(which){
   if(res)res.classList.toggle("hidden",which!=="results");
   if(an)an.classList.toggle("hidden",which!=="analysis");
   if(which==="analysis")renderSqueezeAnalysis();
+  if(which==="summary"&&typeof _renderPerformance==="function")_renderPerformance();   // rebuild the "Settings used" card for this sub-tab (user 2026-07-24, P-02)
 }
 // ── 15-month squeeze analysis (user 2026-07-17, P-21b) ───────────────────────────────────────────────
 // Cherry-pick presets, derived from the 15-month data (user 2026-07-18): RVOL lifts win RATE; Quality /
@@ -2588,11 +2624,32 @@ function winnersParamsChange(){
   paintOrdersPerf(); winnersSLChange();   // re-render both the plain view and any SL illustration
 }
 function renderSqueezeAnalysis(){
+  renderVolScoreReport();   // VolumeScore impact report (user 2026-07-24, P-02) — loads once, server-cached
   if(WIN!==null)return paintOrdersPerf();
   WIN=[]; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="muted" style="font-size:13px;padding:10px">⏳ Loading 12 months of trades…</div>';
   fetch("/api/winners").then(r=>r.ok?r.json():{rows:[]})
     .then(j=>{WIN=j.rows||[];paintOrdersPerf();})
     .catch(()=>{WIN=[];paintOrdersPerf();});
+}
+// VolumeScore impact report (user 2026-07-24, P-02 L55): admin-only; fetched once (server-cached). Shows
+// whole book vs the ≥threshold subset (win rate, avg return, compounded £) and per-band profitability.
+let VSR_LOADED=false;
+function renderVolScoreReport(){
+  const box=$("volscore-report"); if(!box||VSR_LOADED)return;
+  VSR_LOADED=true;
+  const pct=v=>v==null?'—':v+'%', gbp=v=>v==null?'—':'£'+Math.round(v).toLocaleString();
+  const ret=v=>v==null?'—':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>0?'+':''}${v}%</span>`;
+  fetch("/api/volscore-report",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
+    if(!j||j.error){box.innerHTML=`<span class="muted" style="font-size:12px">${(j&&j.error)||'VolumeScore report unavailable.'}</span>`;VSR_LOADED=false;return;}
+    const seg=(t,ic,s)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:16px;color:var(--fg)">${s.avail||0}</b> trades · <b style="color:var(--bull)">${pct(s.win_pct)}</b> win · avg ${ret(s.avg_return)}</div></div>`;
+    const comp=(t,c)=>c?`<div class="fcard"><div class="ic">£</div><h3>${t}</h3><div class="body"><b style="font-size:16px;color:${c.gain>=0?'var(--bull)':'var(--bear)'}">${gbp(c.final)}</b> from ${gbp(c.start)} <span class="muted">(${c.trades} trades)</span></div></div>`:'';
+    const rowc=b=>`<tr><td><b>${b.bucket}</b></td><td>${b.resolved}</td><td>${pct(b.win_pct)}</td><td>${ret(b.avg_return)}</td><td>${b.pnl_per_10k==null?'—':gbp(b.pnl_per_10k)}</td></tr>`;
+    box.innerHTML=
+      `<div class="fgrid" style="margin-bottom:8px">${seg('All trades','∑',j.all)}${seg('VolumeScore ≥ '+j.threshold,'✓',j.passing)}${comp('All book',j.compound_all)}${comp('≥'+j.threshold+' book',j.compound_passing)}</div>`+
+      `<div class="tablewrap"><table><thead><tr><th>VolumeScore band</th><th>Trades</th><th>Win %</th><th>Avg return</th><th title="£ P&L on a £10k wallet, one trade at 2% risk">£/10k per trade</th></tr></thead><tbody>${(j.buckets||[]).map(rowc).join('')||'<tr><td colspan="5" class="empty">No data.</td></tr>'}</tbody></table></div>`+
+      ((j.advice||[]).length?`<ul class="muted" style="font-size:12px;margin:8px 0 0;padding-left:18px">${j.advice.map(a=>`<li>${a.replace(/</g,'&lt;')}</li>`).join('')}</ul>`:'')+
+      `<div class="muted" style="font-size:11px;margin-top:6px">Same 12-month replay population as the tabs above · generated ${j.generated||''}</div>`;
+  }).catch(()=>{box.innerHTML='<span class="muted" style="font-size:12px">VolumeScore report unavailable.</span>';VSR_LOADED=false;});
 }
 // Name search on the winners ledger (user 2026-07-18, P-05) — filters the visible rows by name/ticker;
 // the compounding stays over all trades. (General rule: any table with a Name column is searchable.)
@@ -2818,6 +2875,7 @@ function _renderPerformance(){
   if(_pfq)sel=sel.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(_pfq));
   _renderPfSummary(sel);
   _pfMonthly(sel);   // monthly-growth chart reacts to the location filter too (user 2026-07-20)
+  _pfSettingsCard(sel,all);   // "Settings used" card, Summary sub-tab only (user 2026-07-24, P-02)
   // Top Quality/R:R buckets by average return across the (filtered) recorded triggers.
   const N=innerWidth>=900?4:3;   // never more than 4 cards; 3 on a mini iPad (<900px) (P-25)
   const buckets={};
@@ -2846,6 +2904,27 @@ function _renderPerformance(){
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td>
     <td>${ob(rvolCell(r.rvol))}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
     ||`<tr><td colspan="15" class="empty">No recorded triggers yet.</td></tr>`;
+}
+// "Settings used" card (user 2026-07-24, P-02): a provenance card, left of the filters on the Summary
+// sub-tab, stating the settings behind the monthly chart + summary table — the date window, location, the
+// market scope, plus any chart cross-filters carried over from Results, and the resulting trigger count.
+function _pfSettingsCard(sel,all){
+  const card=$("pf-settings-card"); if(!card)return;
+  const onSummary=$("pf-panel-summary")&&!$("pf-panel-summary").classList.contains("hidden");
+  if(!onSummary||LIMITED){card.style.display="none";return;}
+  const list=id=>{const s=setOf(id);return s?[...s]:null;};
+  const nice=a=>!a||!a.length?null:(a.length<=3?a.join(", "):a.length+" selected");
+  const esc=v=>String(v).replace(/</g,"&lt;");
+  const items=[["Date window",PF_WINDOW_LABEL||"all 12 months"],
+    ["Location",PF_LOC_FILTER||nice(list("pff_location"))||"All locations"],
+    ["Market",nice(list("pff_market"))||"All markets"]];
+  const opt=(lab,id)=>{const v=nice(list(id));if(v)items.push([lab,v]);};
+  opt("Sector","pff_sector"); opt("Direction","pff_direction"); opt("Outcome","pff_status"); opt("Win/Loss","pff_wl");
+  const q=(($("pf-search")||{}).value||"").trim(); if(q)items.push(["Search",'"'+q+'"']);
+  card.style.display="";
+  card.innerHTML=`<div class="pf-setcard-h">⚙️ Settings used</div>`+
+    items.map(([k,v])=>`<div class="pf-setcard-row"><span class="pf-setcard-k">${k}</span><span class="pf-setcard-v">${esc(v)}</span></div>`).join("")+
+    `<div class="pf-setcard-row" style="border-top:1px solid var(--line);margin-top:4px;padding-top:4px"><span class="pf-setcard-k">Triggers</span><span class="pf-setcard-v"><b>${sel.length}</b>${sel.length!==all.length?` of ${all.length}`:""}</span></div>`;
 }
 // Summary table (user 2026-07-13): Overall / Bull / Bear split of the recorded triggers, with
 // coloured gradients to draw the eye. Returns Available = every trigger with a return figure —
@@ -2895,6 +2974,7 @@ function _renderPfSummary(sel){
 document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();_sortArrows("data-pf",pfSortK,pfSortDir);});
 // ── Change Requests tab (admin, user 2026-07-10): parses ChangeRequests/*.txt via /api/change-requests ──
 let CR_FILES=[], crSortK="created", crSortDir=-1, CR_SEL=null, CR_DETAIL=null, crDetailStatus="All";
+let crdSortK="row", crdSortDir=1;   // detail-table sort (user 2026-07-24, P-03): default #row ascending
 function renderCR(ev){
   // Visible feedback on refresh (user 2026-07-11): spin the button + show a loading row.
   const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
@@ -2907,7 +2987,10 @@ function renderCR(ev){
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
 function paintCR(){
-  const rows=genSort(CR_FILES.slice(),crSortK,crSortDir);
+  // Flatten the per-status counts onto each row so EVERY column sorts (user 2026-07-24, P-02): the count
+  // columns read o.counts[status], but genSort compares top-level keys — project them up first.
+  const flat=CR_FILES.map(o=>{const c=o.counts||{};return {...o,"Completed":c["Completed"]||0,"In Progress":c["In Progress"]||0,"Not Started":c["Not Started"]||0,"Cancelled":c["Cancelled"]||0,"Deferred":c["Deferred"]||0};});
+  const rows=genSort(flat,crSortK,crSortDir);
   $("cr-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${CR_FILES.length}</b> change-request files`;
   $("crtab-count")&&($("crtab-count").textContent=`(${CR_FILES.length})`);
   const c=(o,k,col)=>{const n=(o.counts||{})[k]||0;return n?`<b style="color:${col}">${n}</b>`:'0';};
@@ -2939,10 +3022,16 @@ function paintCRDetail(){
   // Prioritised Y/N (user 2026-07-17, P-22) — Y when the requirement carries a P-number or sits under an
   // "Explicitly prioritised work" heading. Same width:1%+nowrap treatment as Status so the Requirement
   // column keeps the width.
-  const reqs=shown.map(q=>`<tr><td style="white-space:nowrap;width:1%;text-align:right;color:var(--muted)"><b>#${q.row}</b></td><td style="white-space:nowrap">${q.working_area||'—'}</td><td style="white-space:nowrap">${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td style="white-space:nowrap;width:1%;text-align:center"><b style="color:${q.prioritised?'#d29922':'var(--muted)'}">${q.prioritised?'Y':'N'}</b></td><td style="white-space:nowrap;width:1%"><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td></tr>`).join("");
+  // Every detail column sorts too (user 2026-07-24, P-03) — the file-level table already did; this is the
+  // table opened by clicking a filename. Uses the shared genSort/_sortArrows house pattern.
+  const rows=genSort(shown,crdSortK,crdSortDir);
+  const reqs=rows.map(q=>`<tr><td style="white-space:nowrap;width:1%;text-align:right;color:var(--muted)"><b>#${q.row}</b></td><td style="white-space:nowrap">${q.working_area||'—'}</td><td style="white-space:nowrap">${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td style="white-space:nowrap;width:1%;text-align:center"><b style="color:${q.prioritised?'#d29922':'var(--muted)'}">${q.prioritised?'Y':'N'}</b></td><td style="white-space:nowrap;width:1%"><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td></tr>`).join("");
   $("cr-detail").innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">${d.name}</h3><span class="grow"></span><span class="muted" style="font-size:12px">Created ${d.created||'?'} · Updated ${d.updated||'?'} · ${d.total} actions</span><button class="btn" onclick="$('cr-detail').classList.add('hidden');CR_SEL=null;paintCR()">✕ Close</button></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${pills}</div>
-    <div class="tablewrap"><table><thead><tr><th title="Stable row number — use this when referring to a requirement">#</th><th>Working Area</th><th>Scope</th><th>Requirement</th><th title="Carries a P-number, or sits under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th>Status</th></tr></thead><tbody>${reqs||'<tr><td colspan="6" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
+    <div class="tablewrap"><table><thead><tr><th class="clk" data-crd="row" title="Stable row number — use this when referring to a requirement">#</th><th class="clk" data-crd="working_area">Working Area</th><th class="clk" data-crd="scope">Scope</th><th class="clk" data-crd="text">Requirement</th><th class="clk" data-crd="prioritised" title="Carries a P-number, or sits under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th class="clk" data-crd="status">Status</th></tr></thead><tbody>${reqs||'<tr><td colspan="6" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
+  // Re-wire on every paint — the header row is rebuilt each render, so a one-time binding would go stale.
+  $("cr-detail").querySelectorAll("th[data-crd]").forEach(th=>th.onclick=()=>{const k=th.dataset.crd;crdSortDir=(crdSortK===k)?-crdSortDir:1;crdSortK=k;paintCRDetail();});
+  _sortArrows("data-crd",crdSortK,crdSortDir);
 }
 document.querySelectorAll("th[data-crk]").forEach(th=>th.onclick=()=>{const k=th.dataset.crk;crSortDir=(crSortK===k)?-crSortDir:-1;crSortK=k;paintCR();_sortArrows("data-crk",crSortK,crSortDir);});
 function doLogin(){
@@ -2990,6 +3079,12 @@ function poClearFilters(){["po_qmin","po_qmax","po_rrmin","po_rrmax","po_demin",
 function renderPreorders(){
   let po=DATA.filter(r=>isPreorder(r)&&tradeVisible(r));   // hide the user's excluded markets (user 2026-07-06)
   {const _seen=new Set();po=po.filter(r=>{const k=disp(r.ticker);if(_seen.has(k))return false;_seen.add(k);return true;});}   // no duplicate rows (user 2026-07-10)
+  // Respect the user's personal R:R / Quality floors (user 2026-07-24, P-02 BUG): My Pre-orders must not
+  // list setups below the floors in Configuration → My trading limits. isPreorder() auto-qualifies any
+  // READY/DEVELOPING setup at the system baseline (Q≥25), so without this a Q<40 or R:R<5 row still showed.
+  // null rr/quality passes (nothing to compare against).
+  {const rrMin=num(MY_LIMITS.min_risk_reward), qMin=num(MY_LIMITS.min_quality);
+   po=po.filter(r=>!(rrMin!=null&&r.rr!=null&&r.rr<rrMin) && !(qMin!=null&&r.quality!=null&&r.quality<qMin));}
   // Chart-click filters (user 2026-07-03): each pof_* holds a SET of selected values (multi-select).
   [["pof_direction","direction"],["pof_status","status"],["pof_location","location"],
    ["pof_market","market"],["pof_timeframe","timeframe"],["pof_sector","sector"]].forEach(([id,k])=>{

@@ -458,6 +458,27 @@ EURONEXT = [
     "RYA.IR", "KRX.IR",
 ]
 
+# Government / sovereign-bond ETFs (user 2026-07-24, ToDo P-02 L312) — SCAN-ONLY: no IG epics, so they
+# are scanned + reported but never traded (like the planned scan-only equities). Ticker == Yahoo symbol
+# (YAHOO_MAP identity fallback), so no YAHOO_MAP entries are needed; _location_of routes US-listed -> US
+# and .L -> UK. Sovereign only (US Treasuries across the curve, TIPS, international & EM government, UK
+# gilts) — deliberately NO broad-aggregate funds (AGG/BND) which mix in corporates. This is the verified
+# core; extend toward 50 with euro-area / JGB sovereign ETFs once their exact Yahoo symbols are confirmed
+# (wrong symbols 404 on every scan — see the old UK250 fix).
+GOVT_BONDS = [
+    # US Treasuries by maturity
+    "SHV", "BIL", "GBIL", "TBIL", "SHY", "VGSH", "SCHO", "SPTS", "UTWO",
+    "IEI", "VGIT", "SCHR", "SPTI", "IEF", "UTEN", "TLH",
+    "VGLT", "SPTL", "SCHQ", "TLT", "EDV",
+    "USFR", "TFLO", "GOVT",
+    # US Treasury inflation-protected (TIPS)
+    "TIP", "VTIP", "SCHP", "STIP", "SPIP", "LTPZ",
+    # International & emerging-market sovereign (US-listed)
+    "BWX", "BWZ", "IGOV", "ISHG", "WIP", "EMB", "VWOB", "EMLC", "PCY", "EBND",
+    # UK gilts (LSE)
+    "IGLT.L", "VGOV.L", "IGLS.L", "INXG.L",
+]
+
 UNIVERSE = {
     "FTSE 100":     FTSE100,
     "FTSE 250":     FTSE250,
@@ -474,6 +495,7 @@ UNIVERSE = {
     "Indices":      INDICES,        # major market indices (split from "Indices & FX", user 2026-06-30)
     "FX":           FX,             # currency pairs (split from "Indices & FX", user 2026-06-30)
     "Crypto":       CRYPTO,         # top-5 by market cap
+    "Government Bonds": GOVT_BONDS,  # sovereign-bond ETFs, SCAN-ONLY / no IG epics (user 2026-07-24, P-02 L312)
     # DAX suspended 2026-06-05 — re-add when reinstated
     # NB (user 2026-06-22): FTSE 100/250 and S&P 500 are the EQUITY coverage — examples of markets,
     # not the whole universe. The report spans all asset classes: UK + US equities, commodities,

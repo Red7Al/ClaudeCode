@@ -390,8 +390,10 @@ def api_config():
     import config_store as _cs
     if request.method == "GET":
         s = _wu.get_settings(name)
-        # Per-user broker leverage by instrument type (user 2026-07-03; defaults FX 100, else 10).
-        lev = {"fx": 30, "equities": 10, "commodities": 10, "indices": 10}   # FX 100 -> 30 (user 2026-07-03)
+        # Per-user broker leverage by instrument type. Defaults match IG UK RETAIL margin, i.e. the
+        # FCA/ESMA leverage caps (user 2026-07-24, P-02): major FX 3.33%->30, major indices 5%->20,
+        # commodities (non-gold) 10%->10, individual shares 20%->5. Per-user overrides still win.
+        lev = {"fx": 30, "equities": 5, "commodities": 10, "indices": 20}
         lev.update({k: v for k, v in (s.get("leverage") or {}).items() if k in lev})
         return jsonify({"name": name, "filters": s.get("filters", {}),
                         "exec": _cs.get_exec_flags(), "exec_sources": _cs.EXEC_SOURCES,
@@ -733,6 +735,61 @@ def _snapshot_rvol(snap: dict) -> dict:
     return out
 
 
+# VolumeScore (user 2026-07-24, ToDo P-02 L49): a 0–12 breakout-confirmation score computed on each
+# TRIGGERED setup's real break bar, using the SAME bars and trigger-date replay as RVOL above. Cached
+# against the snapshot's generated_utc for the same reason (the break and its volume are historical).
+_VOLSCORE_CACHE = {"gen": None, "data": {}}
+_VOLSCORE_LOOKBACK_DAYS = 160   # ~112 trading bars before the trigger — covers the 60-bar LVN profile + ATR window
+
+
+def _snapshot_volscore(snap: dict) -> dict:
+    """{ticker: volume_score_result_dict} on each TRIGGERED setup's real break bar. The full dict
+    (score + per-component breakdown) is cached so /api/records reads the score and /api/volscore
+    reads the breakdown without re-fetching bars. "Strong squeeze" is proxied from the funnel's
+    Quality (>=60 = tight/fresh), the only squeeze-strength signal available server-side."""
+    gen = snap.get("generated_utc")
+    if _VOLSCORE_CACHE["gen"] == gen and _VOLSCORE_CACHE["data"]:
+        return _VOLSCORE_CACHE["data"]
+    out = {}
+    try:
+        import volume_score as _vscore
+        want = []
+        for r in snap.get("records", []):
+            tk, e = r.get("ticker"), r.get("entry")
+            ready = max([d for d in (r.get("h3_date"), r.get("l3_date")) if d], default=None)
+            if r.get("status") == "TRIGGERED" and tk and e and ready:
+                want.append((tk, _dt.date.fromisoformat(str(ready)[:10]), float(e),
+                             r.get("direction") == "BULL", r.get("quality")))
+        if want:
+            from db_pool import get_db
+            db = get_db()
+            try:
+                bars_by_tk = _perf_bars(db, {tk: rd for tk, rd, _e, _b, _q in want},
+                                        lookback_days=_VOLSCORE_LOOKBACK_DAYS)
+            finally:
+                db.close()
+            for tk, rd, e, bull, q in want:
+                bars = bars_by_tk.get(tk, [])
+                td = _perf_trigger_date(bull, e, rd, bars, None)
+                if td:
+                    strong = (q is not None and q >= 60)
+                    out[tk] = _vscore.volume_score(bars, td, bull, squeeze_strong=strong)
+    except Exception as ex:
+        log.warning(f"scanner VolumeScore failed (column blank): {ex}")
+    _VOLSCORE_CACHE.update(gen=gen, data=out)
+    return out
+
+
+@app.route("/api/volscore/<ticker>")
+def api_volscore(ticker):
+    """VolumeScore breakdown for one triggered setup (user 2026-07-24, P-02). Logged-in only —
+    it is a trading signal, not public teaser data."""
+    if not _wu.name_for_token(request.headers.get("X-Auth") or ""):
+        return jsonify({"error": "login required"}), 401
+    res = _snapshot_volscore(_load_snapshot()).get(ticker)
+    return jsonify({"ticker": ticker, "volscore": res})
+
+
 @app.route("/api/records")
 def api_records():
     snap = _load_snapshot()
@@ -741,7 +798,9 @@ def api_records():
     # operator TRADES (enforced in ig_shim at order time), never what is shown (user 2026-07-06).
     if authed:
         rvol = _snapshot_rvol(snap)                       # RVOL at the real break bar (P-30)
-        recs = [dict({k: v for k, v in r.items() if k != "_card"}, rvol=rvol.get(r.get("ticker")))
+        vscore = _snapshot_volscore(snap)                 # VolumeScore 0–12 at the break bar (P-02 L49)
+        recs = [dict({k: v for k, v in r.items() if k != "_card"}, rvol=rvol.get(r.get("ticker")),
+                     volume_score=(vscore.get(r.get("ticker")) or {}).get("score"))
                 for r in snap.get("records", [])]
     else:
         # Teaser mode (user 2026-07-03): only the first-5-column fields leave the server — the rest
@@ -914,6 +973,10 @@ def _rule_detail(rec: dict) -> list:
 
 @app.route("/api/rules/<ticker>")
 def api_rules(ticker):
+    # Admin-only (user 2026-07-24, P-02): the per-rule PASS/FAIL justification is an internal scanner
+    # diagnostic, not shared with non-admin subscribers. Frontend omits the card too.
+    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+        return jsonify({"error": "admin only"}), 403
     return jsonify({"ticker": ticker, "rules": _rule_detail(_record(ticker))})
 
 
@@ -1979,6 +2042,111 @@ def _sl_path(direction, entry, stop, target, bars, thr):
     if last is None:
         return "OPEN", None
     return "OPEN", last
+
+
+# VolumeScore impact report (user 2026-07-24, ToDo P-02 L55). Uses the SAME 12-month replay population as
+# the Performance Results / "What separates the winners" tabs (_sqa_all_rows) — never the small hvf_triggers
+# set — so the numbers reconcile with those tabs. Scores every trade's break bar, then shows how filtering
+# on VolumeScore changes win rate, average return and the compounded £, and where the profit concentrates.
+_VSR_CACHE = {"ts": 0.0, "data": None}
+
+
+def _volscore_report():
+    import datetime as _dt
+    import volume_score as _vscore
+    now = _time.time()
+    if _VSR_CACHE["data"] is not None and now - _VSR_CACHE["ts"] < _SQA_TTL:
+        return _VSR_CACHE["data"]
+    cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
+    rows = [r for r in _sqa_all_rows()
+            if (r.get("trig_date") or "") >= cut12 and r.get("trig_date") and r.get("entry")]
+    # One bar cutoff per ticker = its EARLIEST trigger minus the lookback, so a ticker with several trades
+    # is fetched once and each trade finds its own break bar in the shared list.
+    cut = {}
+    for r in rows:
+        td = _dt.date.fromisoformat(str(r["trig_date"])[:10])
+        cut[r["ticker"]] = min(cut.get(r["ticker"], td), td)
+    bars_by = {}
+    if cut:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            bars_by = _perf_bars(db, cut, lookback_days=_VOLSCORE_LOOKBACK_DAYS)
+        finally:
+            db.close()
+    scored = []
+    for r in rows:
+        bars = bars_by.get(r["ticker"], [])
+        td = _dt.date.fromisoformat(str(r["trig_date"])[:10])
+        # Snap to a real bar date if the recorded trigger fell on a non-trading day.
+        bdates = [b[0] for b in bars]
+        if td not in bdates:
+            later = [d for d in bdates if d >= td]
+            td = later[0] if later else (bdates[-1] if bdates else td)
+        bull = r["direction"] == "BULLISH"
+        strong = (r.get("quality") is not None and r["quality"] >= 60)
+        res = _vscore.volume_score(bars, td, bull, squeeze_strong=strong)
+        rr = dict(r)
+        rr["volume_score"] = res["score"]
+        scored.append(rr)
+
+    def _band(v):
+        if v is None:
+            return None
+        return "0–4" if v < 5 else "5–7" if v < 8 else "8–9" if v < 10 else "10–12"
+
+    buckets = _sqa_buckets(scored, lambda r: _band(r.get("volume_score")), "VolumeScore")
+    order = {"0–4": 0, "5–7": 1, "8–9": 2, "10–12": 3}
+    buckets.sort(key=lambda b: order.get(b["bucket"], 9))
+
+    passing = [r for r in scored if (r.get("volume_score") or 0) >= _vscore.PASS_THRESHOLD]
+    seg_all, seg_pass = _sqa_seg(scored), _sqa_seg(passing)
+    comp_all, comp_pass = _sqa_compound(scored), _sqa_compound(passing)
+
+    # Plain-English takeaways, derived (not hand-written) so they track the data.
+    advice = []
+    if seg_all.get("avail") and seg_pass.get("avail"):
+        d_win = (seg_pass["win_pct"] or 0) - (seg_all["win_pct"] or 0)
+        d_ret = (seg_pass["avg_return"] or 0) - (seg_all["avg_return"] or 0)
+        advice.append(
+            f"Filtering to VolumeScore ≥ {_vscore.PASS_THRESHOLD} keeps {seg_pass['avail']} of "
+            f"{seg_all['avail']} resolved trades ({round(seg_pass['avail'] / seg_all['avail'] * 100)}%), "
+            f"moving win rate {('+' if d_win >= 0 else '')}{round(d_win, 1)} pts "
+            f"({seg_all['win_pct']}% → {seg_pass['win_pct']}%) and average return "
+            f"{('+' if d_ret >= 0 else '')}{round(d_ret, 1)} pts "
+            f"({seg_all['avg_return']}% → {seg_pass['avg_return']}%).")
+    best = max((b for b in buckets if b.get("enough")), key=lambda b: (b["avg_return"] or -999), default=None)
+    if best:
+        advice.append(f"The most profitable band is VolumeScore {best['bucket']}: "
+                      f"{best['win_pct']}% win, avg return {best['avg_return']}% over {best['resolved']} trades.")
+    if comp_all and comp_pass:
+        advice.append(f"On the £{comp_all['start']:,} concurrency-capped simulation, the unfiltered book ends "
+                      f"£{comp_all['final']:,} ({comp_all['trades']} trades); the ≥{_vscore.PASS_THRESHOLD} book ends "
+                      f"£{comp_pass['final']:,} ({comp_pass['trades']} trades).")
+
+    data = {
+        "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+        "threshold": _vscore.PASS_THRESHOLD, "max": _vscore.MAX_SCORE,
+        "n": len(scored),
+        "all": seg_all, "passing": seg_pass,
+        "compound_all": comp_all, "compound_passing": comp_pass,
+        "buckets": buckets, "advice": advice,
+    }
+    _VSR_CACHE.update(ts=now, data=data)
+    return data
+
+
+@app.route("/api/volscore-report")
+def api_volscore_report():
+    """VolumeScore impact over the 12-month replay (user 2026-07-24, P-02). Admin only — sits on the
+    admin 'What separates the winners' analysis tab alongside the other replayed-population reports."""
+    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+        return jsonify({"error": "admin only"}), 403
+    try:
+        return jsonify(_volscore_report())
+    except Exception as ex:
+        log.warning(f"volscore report failed: {ex}")
+        return jsonify({"error": "report unavailable"}), 500
 
 
 _SLBARS = {"ts": 0.0, "by_tk": None}

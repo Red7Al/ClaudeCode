@@ -106,6 +106,7 @@ JOBS = [
     ("AUS Monitor",          "*/5 0-6 * * 1-5", "trading-aus-monitor.yml"),
     ("Commodity Monitor AM", "*/10 4-8 * * 1-5", "trading-commodity-monitor.yml"),
     # ── Pre-UK ────────────────────────────────────────────────────────────────────────────────────────────────────────
+    ("Price Data Refresh",  "0 5 * * 1-6",    "trading-price-audit.yml"),  # 05:00 UTC Mon-Sat — refresh price_history BEFORE the 05:30 HVF Daily Report, which needs current bars (user 2026-07-24, ToDo P-02 L319). Reuses the audit workflow (re-fetch trailing window + upsert; idempotent). The 23:00 "Price History Audit" still does the nightly IG-truth correction.
     ("HVF Daily Report",    "30 5 * * 1-6",   "trading-hvf-report.yml"),  # 05:30 UTC Mon-Sat -> all publications (report + X drafts + live-X) done before 07:00 UTC (8am BST) (user 2026-06-19)
     ("HVF Orders",          "0 6 * * 1-6",    "trading-hvf-orders.yml"),  # 06:00 UTC Mon-Sat -> actionable HVF setups to #arw-claude-orders, before 07:00 UTC (8am BST) (user 2026-06-19)
     # "HVF Quality Reports" removed 2026-06-16: the long quality report now rides with EVERY
