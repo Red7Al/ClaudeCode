@@ -373,7 +373,63 @@ def prune_jobs():
         raise SystemExit(1)
 
 
+# cron-job.org lastStatus codes (from their API docs).
+_STATUS_LABELS = {0: "not yet run", 1: "OK", 2: "failed: DNS", 3: "failed: could not connect",
+                  4: "failed: HTTP error (e.g. 401/404 from GitHub)", 5: "failed: timeout",
+                  6: "failed: too much response data", 7: "failed: invalid URL",
+                  8: "failed: internal error", 9: "failed: unknown"}
+
+
+def report_status():
+    """Diagnostic (2026-07-25, P-02): list every job with enabled state + last-execution status, and the
+    exact HTTP status for any that failed. A '4 / HTTP 401' on the audit jobs confirms an expired embedded
+    GitHub PAT (dispatch rejected, so no Actions run is created). Needs only CRONJOB_API_KEY."""
+    import datetime as _dt
+    resp = requests.get(f"{CRONJOB_API}/jobs",
+                        headers={"Authorization": f"Bearer {CRONJOB_API_KEY}"}, timeout=15)
+    resp.raise_for_status()
+    jobs = resp.json().get("jobs", [])
+    print(f"Existing jobs on account: {len(jobs)}\n")
+    for j in sorted(jobs, key=lambda x: x.get("title", "")):
+        jid, title = j.get("jobId"), j.get("title", "")
+        d = j if ("lastStatus" in j and "enabled" in j) else (lambda: (lambda x: x)(_safe_detail(jid)))()
+        enabled = d.get("enabled")
+        ls = d.get("lastStatus")
+        le = d.get("lastExecution")
+        letxt = "—"
+        if le:
+            try:
+                letxt = _dt.datetime.utcfromtimestamp(int(le)).strftime("%Y-%m-%d %H:%M UTC")
+            except Exception:
+                letxt = str(le)
+        http = ""
+        if ls not in (None, 0, 1):                       # failed — pull the exact HTTP status from history
+            try:
+                h = requests.get(f"{CRONJOB_API}/jobs/{jid}/history",
+                                 headers={"Authorization": f"Bearer {CRONJOB_API_KEY}"}, timeout=15)
+                hist = (h.json() or {}).get("history", []) if h.ok else []
+                if hist:
+                    http = f"  HTTP {hist[0].get('httpStatus')}"
+            except Exception:
+                pass
+        flag = "ON " if enabled else "OFF"
+        print(f"  [{flag}] last={_STATUS_LABELS.get(ls, ls)}{http} @ {letxt}  |  {title} (id={jid})")
+
+
+def _safe_detail(job_id):
+    try:
+        return _job_detail(job_id)
+    except Exception:
+        return {}
+
+
 def main():
+    # --status: read-only diagnostic of every job's enabled/last-execution state (no GitHub PAT needed).
+    if "--status" in sys.argv:
+        print("cron-job.org job status:\n")
+        report_status()
+        return
+
     # --reconcile: only retune schedules of existing jobs (no GitHub PAT needed).
     if "--reconcile" in sys.argv:
         print("Reconciling cron-job.org SCHEDULES to setup_cronjobs.JOBS (frequency retune)...")

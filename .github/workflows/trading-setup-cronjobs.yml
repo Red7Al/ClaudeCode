@@ -1,4 +1,4 @@
-name: Setup Cron Jobs — reconcile / create / prune (2026-06-16)
+name: Setup Cron Jobs — reconcile / create / prune / status (2026-07-25)
 
 # --reconcile (default): PATCHes ONLY each existing job's schedule.
 #   Needs CRONJOB_API_KEY only. Use after changing cadence in setup_cronjobs.py.
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'reconcile = retune schedules | create-missing = add new | prune = delete removed'
+        description: 'reconcile = retune schedules | create-missing = add new | prune = delete removed | status = read-only diagnostic'
         required: false
         default: 'reconcile'
         type: choice
@@ -19,6 +19,7 @@ on:
           - reconcile
           - create-missing
           - prune
+          - status
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -47,5 +48,10 @@ jobs:
       - name: Prune removed jobs
         if: ${{ github.event.inputs.mode == 'prune' }}
         run: python setup_cronjobs.py --prune
+        env:
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+      - name: Job status diagnostic
+        if: ${{ github.event.inputs.mode == 'status' }}
+        run: python setup_cronjobs.py --status
         env:
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
