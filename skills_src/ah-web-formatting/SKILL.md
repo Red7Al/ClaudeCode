@@ -137,3 +137,44 @@ Measure and assert. Do not eyeball, and do not trust a summary you built without
 5. View `max-width:1240px` unless there's a stated reason.
 6. Chart strip: Market/Sector left, Ticker right; call `packViz()` after render.
 7. Verify by measuring, with realistic (not logged-out) data.
+
+## 6. House standards for EVERY chart/table screen (user 2026-07-24, P-03 L24–L39)
+
+These are STANDING rules — apply them to every screen you add or touch, not just when asked. Status
+noted as of 2026-07-24.
+
+**Tables**
+- Every column sortable (L25) — house pattern in §1 (`class="clk"` + `data-<prefix>`, `genSort`,
+  `_sortArrows`). Applies to the *detail* tables too (the Change-Requests per-file breakdown was the last
+  gap, fixed 2026-07-24). ✅ broadly compliant.
+- When a column is sorted — default OR manually — its ▲/▼ arrow must be visible (L39). `_sortArrows` shows
+  it on click; tables with a **default** sort should also call `_sortArrows` on first paint. ⚠️ partial —
+  manual sorts show it; not every table stamps the arrow on initial render. Gap logged.
+
+**Charts (`.viz` strip)**
+- Header text is **bold** — `.vizbox h5{font-weight:700}` (L37). ✅ (was un-bold until 2026-07-24).
+- Order left→right: Location, then Market, then Sector, then the rest; Ticker far right (L29, §2). ✅
+- Multi-select on every chart (L30) — the `.msel` component (§3); the real `<select multiple>` stays the
+  source of truth. ✅ where charts are wired to a `pff_*/pof_*/sqf_*` filter key.
+- Spacing: consistent between cards, bars left-aligned, labels readable — all handled by `packViz()` +
+  the `.viz`/`.vizbox` CSS in §2 (L34/L35/L36). Call `packViz(id)` after every strip render. ✅
+- Do NOT change a card's size/position when a selection is made (L33): `packViz` measures with a
+  `.measuring` class and packs deterministically, so selection must not re-pack differently. ✅ as long as
+  selection only filters data and you re-`packViz` with the same inputs.
+- On selection, show the impact on the OTHER charts **without hiding bars** (L31): a selected value should
+  recolour/annotate the other charts rather than dropping their bars to zero/removing them. ⚠️ NOT yet —
+  today the other charts recompute from filtered data, which changes/removes bars. Gap logged.
+- Any date-filtered screen must have a **Month** and **Month-Week** chart (L24). Present on the perf/report
+  and squeeze-history strips (`barChart("Month…")` + the `_mw()` month-week bucket); ⚠️ not audited as
+  universal across every date-filtered screen. Gap logged.
+
+**Data**
+- Never store data in local files — always the Supabase database (L26). The one deliberate exception is
+  `hvf_web/snapshot.json`, a rebuildable CACHE of a scan (not a source of record); everything durable
+  (price_history, squeeze_history, web_users, app_config, x_publications…) lives in Supabase.
+- Run instrument backfills wherever 15 months of history is missing (L27) via `price_audit.py --backfill`
+  (see [[deploy-cron-tasks]]); new universe additions (e.g. the 2026-07-24 bond ETFs) get a scoped backfill
+  on deploy.
+
+When a standard is only partially met, don't silently leave it — log a specific P-03 follow-up in the
+ChangeRequests file (marker LAST on the line — see [[cr-status-live]]).
