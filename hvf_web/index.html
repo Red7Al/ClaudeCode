@@ -1101,6 +1101,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <h3 class="sec" style="font-size:15px;margin:16px 0 2px">📊 VolumeScore impact — how volume confirmation filters the winners</h3>
     <p class="muted" style="font-size:12px;margin:2px 0 6px">Same 12-month replayed population as above. Win rate, average return and the concurrency-capped £ for the whole book vs the VolumeScore ≥ 8 subset, and where profit concentrates by score band.</p>
     <div id="volscore-report">loading…</div>
+    <!-- Best settings by quarter (user 2026-07-25, P-04 L59) — best Market/Quality/R:R per quarter over
+         the available data (up to 3 years). -->
+    <h3 class="sec" style="font-size:15px;margin:16px 0 2px">🏅 Best settings by quarter <span id="best-span" class="muted" style="font-size:12px;font-weight:400"></span></h3>
+    <p class="muted" style="font-size:12px;margin:2px 0 6px">For each calendar quarter over the available replayed data (up to 3 years — extends as history grows), the Market, Quality band and R:R band with the highest average return (min 3 trades). Answers "which settings worked, and how that shifts over time".</p>
+    <div id="best-settings-report">loading…</div>
   </div>
 </div>
 
@@ -2676,6 +2681,7 @@ function renderLeverageImpact(){
 }
 function renderSqueezeAnalysis(){
   renderVolScoreReport();   // VolumeScore impact report (user 2026-07-24, P-02) — loads once, server-cached
+  renderBestSettings();     // best settings by quarter (user 2026-07-25, P-04 L59) — loads once, server-cached
   if(WIN!==null)return winnersParamsChange();   // route through winnersParamsChange so the derived Min/Max Trade populate (P-05)
   WIN=[]; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="muted" style="font-size:13px;padding:10px">⏳ Loading 12 months of trades…</div>';
   fetch("/api/winners").then(r=>r.ok?r.json():{rows:[]})
@@ -2684,6 +2690,20 @@ function renderSqueezeAnalysis(){
 }
 // VolumeScore impact report (user 2026-07-24, P-02 L55): admin-only; fetched once (server-cached). Shows
 // whole book vs the ≥threshold subset (win rate, avg return, compounded £) and per-band profitability.
+let BEST_LOADED=false;
+function renderBestSettings(){
+  const box=$("best-settings-report"); if(!box||BEST_LOADED)return;
+  BEST_LOADED=true;
+  const ret=v=>v==null?'—':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>0?'+':''}${v}%</span>`;
+  const b=x=>x?`<b>${x.value}</b> <span class="muted">(${ret(x.avg)}, ${x.n})</span>`:'—';
+  fetch("/api/best-settings",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
+    if(!j||j.error){box.innerHTML=`<span class="muted" style="font-size:12px">${(j&&j.error)||'Best-settings report unavailable.'}</span>`;BEST_LOADED=false;return;}
+    if($("best-span"))$("best-span").textContent=j.span?`· ${j.span}`:'';
+    const rows=(j.quarters||[]).map(q=>`<tr><td><b>${q.quarter}</b></td><td>${q.trades}</td><td>${q.win_pct==null?'—':q.win_pct+'%'}</td><td>${ret(q.avg_return)}</td><td>${b(q.best_market)}</td><td>${b(q.best_quality)}</td><td>${b(q.best_rr)}</td></tr>`).join('');
+    box.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Quarter</th><th>Trades</th><th>Win %</th><th>Avg return</th><th title="Market with the highest avg return that quarter">Best Market</th><th title="Quality band (10-wide) with the highest avg return">Best Quality</th><th title="R:R band with the highest avg return">Best R:R</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">No data.</td></tr>'}</tbody></table></div>`+
+      `<div class="muted" style="font-size:11px;margin-top:6px">Best = highest average return, min 3 trades per bucket (shown as value (avg return, n)). ${j.note||''} · generated ${j.generated||''}</div>`;
+  }).catch(()=>{box.innerHTML='<span class="muted" style="font-size:12px">Best-settings report unavailable.</span>';BEST_LOADED=false;});
+}
 let VSR_LOADED=false;
 function renderVolScoreReport(){
   const box=$("volscore-report"); if(!box||VSR_LOADED)return;

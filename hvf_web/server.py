@@ -2184,6 +2184,75 @@ def api_volscore_report():
         return jsonify({"error": "report unavailable"}), 500
 
 
+# Best settings by quarter (user 2026-07-24 P-04 L59; 2026-07-25 do 3yr not 5yr). Over the AVAILABLE
+# replayed population (_sqa_all_rows — up to price retention, 3yr; currently ~15mo), for each calendar
+# quarter find the best Market / Quality band / R:R band by average return. Auto-extends as data grows.
+_BEST_CACHE = {"ts": 0.0, "data": None}
+
+
+def _best_bucket(rows, keyfn, min_n=3):
+    """The bucket (by keyfn) with the highest average return, among buckets with >= min_n resolved trades."""
+    from collections import defaultdict
+    g = defaultdict(list)
+    for r in rows:
+        k = keyfn(r)
+        if k is not None and r.get("return_pct") is not None:
+            g[k].append(r["return_pct"])
+    best = None
+    for k, rets in g.items():
+        if len(rets) < min_n:
+            continue
+        avg = sum(rets) / len(rets)
+        if best is None or avg > best["avg"]:
+            best = {"value": k, "n": len(rets), "avg": round(avg, 1)}
+    return best
+
+
+def _best_settings():
+    now = _time.time()
+    if _BEST_CACHE["data"] is not None and now - _BEST_CACHE["ts"] < _SQA_TTL:
+        return _BEST_CACHE["data"]
+    from collections import defaultdict
+    rows = [r for r in _sqa_all_rows() if r.get("trig_date") and r.get("return_pct") is not None]
+    q = defaultdict(list)
+    for r in rows:
+        d = str(r["trig_date"])
+        try:
+            yr, mo = int(d[:4]), int(d[5:7])
+            q[f"{yr} Q{(mo - 1) // 3 + 1}"].append(r)
+        except Exception:
+            pass
+    quarters = []
+    for qk in sorted(q, reverse=True):                 # newest quarter first
+        rs = q[qk]
+        seg = _sqa_seg(rs)
+        quarters.append({
+            "quarter": qk, "trades": seg["avail"], "win_pct": seg["win_pct"], "avg_return": seg["avg_return"],
+            "best_market": _best_bucket(rs, lambda r: r.get("market")),
+            "best_quality": _best_bucket(rs, lambda r: _sqa_band(r.get("quality"), [0, 30, 40, 50, 60, 70])),
+            "best_rr": _best_bucket(rs, lambda r: _sqa_band(r.get("rr"), [0, 3, 5, 8, 12, 20])),
+        })
+    span = f"{min(q) if q else '—'} → {max(q) if q else '—'}"
+    data = {"generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+            "quarters": quarters, "span": span, "n": len(rows),
+            "note": "Over the available replayed population (up to 3-year price retention; extends as data grows)."}
+    _BEST_CACHE.update(ts=now, data=data)
+    return data
+
+
+@app.route("/api/best-settings")
+def api_best_settings():
+    """Best Market / Quality / R:R per quarter over the available data (user 2026-07-25, P-04 L59).
+    Admin only — sits on the analysis tab with the other replayed-population reports."""
+    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+        return jsonify({"error": "admin only"}), 403
+    try:
+        return jsonify(_best_settings())
+    except Exception as ex:
+        log.warning(f"best-settings report failed: {ex}")
+        return jsonify({"error": "report unavailable"}), 500
+
+
 _SLBARS = {"ts": 0.0, "by_tk": None}
 
 
