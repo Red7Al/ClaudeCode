@@ -1000,7 +1000,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div id="pf-settings-card" class="pf-setcard" style="display:none"></div>
       <span class="grow" style="flex:1"></span>
       <!-- Location quick-filter buttons, moved up next to the dates (user 2026-07-20). Drive the summary
-           table AND the monthly-growth chart; the selected button turns green. -->
+           table AND the monthly-growth chart; the selected button turns green. These are by LOCATION, not
+           market — e.g. Nasdaq 100 / S&P 500 sit under "United States" (user 2026-07-24, P-04 L82). For
+           market-level filtering, click a bar on the Market chart (Results sub-tab). -->
+      <span class="muted" id="pf-loc-lbl" style="font-size:12px;align-self:center" title="Filter by location. Markets like Nasdaq 100 / S&P 500 are under 'United States'. To filter by a specific market, click a bar on the Market chart in the Results sub-tab.">Location:</span>
       <span id="pf-loc-btns" style="display:inline-flex;gap:5px;flex-wrap:wrap"></span>
       <!-- width:auto defeats the global select{width:100%} that made this dropdown span the whole row
            and wrap above the calendar (user 2026-07-20). Order: dropdown left, From/To calendar far right.
@@ -2927,6 +2930,7 @@ function _renderPerformance(){
   const _lb=$("pf-loc-btns");
   const _locBtn=(label,val,on)=>`<button class="subpill${on?' active':''}" style="${on?'background:var(--bull);border-color:var(--bull);color:#03260f;font-weight:600':''}" onclick="pfLocFilter('${val.replace(/'/g,"\\'")}')">${label}</button>`;
   if(_lb)_lb.innerHTML=LIMITED?"":([_locBtn('All','',!PF_LOC_FILTER)].concat(_locs.map(l=>_locBtn(l,l,PF_LOC_FILTER===l)))).join("");
+  {const _ll=$("pf-loc-lbl"); if(_ll)_ll.style.display=(LIMITED||!_locs.length)?"none":"";}   // hide the "Location:" label when there are no buttons (user 2026-07-24, P-04 L82)
   // Name/ticker search (user 2026-07-17, P-17): _pfq is computed above (moved up for the charts). The
   // summary, Quality/R:R buckets and row count all reflect it — same contract as the other tabs.
   let sel=all.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_status",r.state)
