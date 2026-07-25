@@ -1061,9 +1061,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <b style="font-size:13px">💷 Model</b>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Wallet £ <input id="ordp-wallet" type="number" min="100" step="500" value="1000" style="width:100px;padding:4px 6px" onchange="winnersParamsChange()"></label>
+      <!-- Minimum Trade: read-only IG floor (user 2026-07-18, P-05 L253) — the smallest stake IG will accept. -->
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="The smallest position IG will accept. Read-only.">Minimum Trade £<b id="ordp-mintrade" style="color:var(--fg)">25</b></label>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Max position size <input id="ordp-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="winnersParamsChange()">%</label>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = no cap. A low cap skips trades that trigger while you're already full — far fewer trades.">Max open positions <input id="ordp-maxopen" type="number" min="0" step="1" placeholder="∞" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()"></label>
+      <!-- Maximum Trade: read-only, derived = Wallet ÷ Max open positions (user 2026-07-18, P-05 L254). The
+           identity Wallet = Max open × Maximum Trade (L255/L256) is enforced by deriving it here. -->
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ Max open positions — so Wallet = Max open × Maximum Trade. With no cap it's the whole wallet.">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
       <span class="muted" style="font-size:11px">each trade stakes this % of the running wallet; both drive every £ figure below</span>
+      <span id="ordp-model-msg" style="font-size:11px;flex-basis:100%"></span>
     </div>
     <!-- Automated Stop-Loss Amendment — ILLUSTRATION ONLY (user 2026-07-18): re-backtests every trade with a
          trailing stop and shows the impact. Does NOT touch live IG stops.
@@ -2617,20 +2623,37 @@ const _cherryEq=(a,b)=>JSON.stringify(a||{})===JSON.stringify(b||{});
 let WINNERS_WALLET=1000, WINNERS_STAKE=0.02, WINNERS_MAXOPEN=0;   // £ wallet (default £1000, P-01), stake fraction, concurrency cap (P-05)
 let WIN=null;
 // Wallet £ (L211), Max position size % (L200), Max open positions (L199) are variables on the winners tab.
+const MIN_TRADE=25;   // IG minimum stake (£), read-only floor (user 2026-07-18, P-05 L253)
 function winnersParamsChange(){
-  const w=+(($("ordp-wallet")||{}).value||0), s=+(($("ordp-stake")||{}).value||0), mo=+(($("ordp-maxopen")||{}).value||0);
-  if(w>0)WINNERS_WALLET=w;
+  const wEl=$("ordp-wallet"), moEl=$("ordp-maxopen");
+  let w=+((wEl||{}).value||0), s=+(($("ordp-stake")||{}).value||0), mo=+((moEl||{}).value||0);
+  const fmt=v=>"£"+Math.round(v).toLocaleString();   // money() is local to paintOrdersPerf, so format here
+  let warn="";
+  // Validation (user 2026-07-18, P-05 L257): keep the Wallet sane — blank / non-positive / absurd values
+  // are clamped so the derived figures never break.
+  if(!(w>0)){w=1000; if(wEl)wEl.value=w; warn=`Wallet must be a positive number — reset to £1,000.`;}
+  else if(w>1e8){w=1e8; if(wEl)wEl.value=w; warn=`Wallet capped at £100,000,000.`;}
+  if(mo<0){mo=0; if(moEl)moEl.value="";}
+  WINNERS_WALLET=w;
   if(s>0)WINNERS_STAKE=s/100;
   WINNERS_MAXOPEN=mo>0?mo:0;
+  // Maximum Trade = Wallet ÷ Max open positions (L254); with no cap it's the whole wallet.
+  const maxTrade=mo>0?w/mo:w;
+  const mt=$("ordp-maxtrade"); if(mt)mt.textContent=mo>0?fmt(maxTrade):fmt(w)+" (no cap)";
+  const mn=$("ordp-mintrade"); if(mn)mn.textContent=MIN_TRADE;
+  // If the wallet can't fund that many positions at the IG minimum, warn (L257).
+  if(mo>0 && maxTrade<MIN_TRADE && !warn)
+    warn=`Wallet ÷ ${mo} = ${fmt(maxTrade)} per trade, below the £${MIN_TRADE} minimum — reduce Max open positions or raise the Wallet.`;
+  const msg=$("ordp-model-msg"); if(msg){msg.textContent=warn; msg.style.color=warn?"var(--bear)":"";}
   paintOrdersPerf(); winnersSLChange();   // re-render both the plain view and any SL illustration
 }
 function renderSqueezeAnalysis(){
   renderVolScoreReport();   // VolumeScore impact report (user 2026-07-24, P-02) — loads once, server-cached
-  if(WIN!==null)return paintOrdersPerf();
+  if(WIN!==null)return winnersParamsChange();   // route through winnersParamsChange so the derived Min/Max Trade populate (P-05)
   WIN=[]; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="muted" style="font-size:13px;padding:10px">⏳ Loading 12 months of trades…</div>';
   fetch("/api/winners").then(r=>r.ok?r.json():{rows:[]})
-    .then(j=>{WIN=j.rows||[];paintOrdersPerf();})
-    .catch(()=>{WIN=[];paintOrdersPerf();});
+    .then(j=>{WIN=j.rows||[];winnersParamsChange();})
+    .catch(()=>{WIN=[];winnersParamsChange();});
 }
 // VolumeScore impact report (user 2026-07-24, P-02 L55): admin-only; fetched once (server-cached). Shows
 // whole book vs the ≥threshold subset (win rate, avg return, compounded £) and per-band profitability.
