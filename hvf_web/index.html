@@ -2937,15 +2937,21 @@ function _renderPerformance(){
     &&(!PF_LOC_FILTER||locName(r.location)===PF_LOC_FILTER)
     &&(!_pfq||((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(_pfq)));
   const byX=(fn,exceptKey)=>_cross(exceptKey).reduce((m,r)=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]=(m[v]||0)+1;return m;},{});
+  // L31 (user 2026-07-25): show the selection's IMPACT on the other charts WITHOUT hiding bars — keep every
+  // category present in the full (date-windowed) data as a bar; its value is the count within the current
+  // selection (0 → a dimmed stub, not removed). Reconciles L31 with the L109 cross-filter: bars stay put,
+  // the numbers move. (barChart still caps the display at its top 8 by count, as everywhere.)
+  const byXFull=(fn,exceptKey)=>{const sel=byX(fn,exceptKey);
+    all.forEach(r=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—'; if(!(v in sel))sel[v]=0;}); return sel;};
   $("pf-viz").innerHTML=LIMITED?"":
-    `<div class="vizsector">`+barChart("Market",byX("market","pff_market"),"pff_market")+`</div>`+          /* Market leftmost (P-01/P-12) */
-    `<div class="vizsector">`+barChart("Location",byX(r=>locName(r.location),"pff_location"),"pff_location")+`</div>`+   /* Location right of Market (P-01) */
-    `<div class="vizsector">`+pieChart("Sector",byX("sector","pff_sector"),"pff_sector")+`</div>`+            /* Sector right of Location (P-02) */
-    `<div class="vizsector">`+barChart("Direction",byX("direction","pff_direction"),"pff_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+`</div>`+   /* P-10 */
-    `<div class="vizsector">`+barChart("Outcome",byX("state","pff_status"),"pff_status",_stcol)+`</div>`+
-    `<div class="vizsector">`+barChart("Win / Loss",byX(_pfwl,"pff_wl"),"pff_wl",_wlCol)+`</div>`+         /* wins / losses / break-even (P-10) */
-    `<div class="vizsector">`+barChart("Month",byX(r=>(r.trig_date||"").slice(0,7),"pff_month"),"pff_month",null,true)+`</div>`+   /* date-filtered screen → Month (P-03 L24) */
-    `<div class="vizsector">`+barChart("Month-Week",byX(r=>_mw(r.trig_date),"pff_mweek"),"pff_mweek",null,true)+`</div>`;   /* + Month-Week (P-03 L24) */
+    `<div class="vizsector">`+barChart("Market",byXFull("market","pff_market"),"pff_market")+`</div>`+          /* Market leftmost (P-01/P-12) */
+    `<div class="vizsector">`+barChart("Location",byXFull(r=>locName(r.location),"pff_location"),"pff_location")+`</div>`+   /* Location right of Market (P-01) */
+    `<div class="vizsector">`+pieChart("Sector",byXFull("sector","pff_sector"),"pff_sector")+`</div>`+            /* Sector right of Location (P-02) */
+    `<div class="vizsector">`+barChart("Direction",byXFull("direction","pff_direction"),"pff_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+`</div>`+   /* P-10 */
+    `<div class="vizsector">`+barChart("Outcome",byXFull("state","pff_status"),"pff_status",_stcol)+`</div>`+
+    `<div class="vizsector">`+barChart("Win / Loss",byXFull(_pfwl,"pff_wl"),"pff_wl",_wlCol)+`</div>`+         /* wins / losses / break-even (P-10) */
+    `<div class="vizsector">`+barChart("Month",byXFull(r=>(r.trig_date||"").slice(0,7),"pff_month"),"pff_month",null,true)+`</div>`+   /* date-filtered screen → Month (P-03 L24) */
+    `<div class="vizsector">`+barChart("Month-Week",byXFull(r=>_mw(r.trig_date),"pff_mweek"),"pff_mweek",null,true)+`</div>`;   /* + Month-Week (P-03 L24) */
   packViz("pf-viz");   // P-15
   // Location quick-filter buttons (user 2026-07-18/20): one per location, plus "All". The SELECTED one is
   // green. They drive the summary table AND the monthly-growth chart (both via `sel`, below).
