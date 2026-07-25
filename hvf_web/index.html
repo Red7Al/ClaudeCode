@@ -1089,7 +1089,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <!-- Monthly %-growth chart moved to the Report tab (user 2026-07-18, P-01) — see #pf-monthly. -->
     <div id="ordp-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
     <h3 class="sec" style="font-size:15px;margin-bottom:2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Every trade — oldest first, wallet after each <span id="ordp-count" class="muted" style="font-size:12px;font-weight:400"></span><span class="grow" style="flex:1"></span><input id="ordp-ledger-q" placeholder="Search name / ticker…" oninput="winnersLedgerFilter()" style="width:auto;max-width:200px;padding:4px 8px;font-size:12px;font-weight:400"></h3>
-    <p class="muted" style="font-size:12px;margin:2px 0 6px">Each row is one recorded trade. <b>Stake</b> = the Max-position-size % of the running wallet; <b>Margin</b> = the cash the position ties up = stake ÷ leverage (IG UK retail rates by instrument type); <b>Net £</b> = stake × its return%; <b>Equity</b> is the running account value (the compounded wallet incl. realised P&amp;L), and the last row equals the compounded figure above. <b>Max loss</b> = stake × the stop distance %.</p>
+    <p class="muted" style="font-size:12px;margin:2px 0 6px">Each row is one recorded trade. <b>Stake</b> = the Max-position-size % of the running wallet; <b>Margin</b> = the cash the position ties up = stake ÷ leverage (IG UK retail rates by instrument type); <b>Net £</b> = stake × its return%; <b>Equity</b> is the running account value (the compounded wallet incl. realised P&amp;L), and the last row equals the compounded figure above. <b>Available</b> = Equity − Margin (what's left to open further positions). <b>Max loss</b> = stake × the stop distance %.</p>
     <div id="ordp-table" class="tablewrap" style="max-height:460px;overflow:auto"></div>
     <!-- VolumeScore impact report (user 2026-07-24, P-02 L55) — how filtering on VolumeScore changes the book. -->
     <h3 class="sec" style="font-size:15px;margin:16px 0 2px">📊 VolumeScore impact — how volume confirmation filters the winners</h3>
@@ -2804,7 +2804,7 @@ function paintOrdersPerf(){
   }).join("");
   if(tc)tc.textContent=`(${ledger.length} trades, ${span} · ${money(WINNERS_WALLET)} → ${money(w)})`;
   const oc=st=>st==='TARGET'?'var(--bull)':st==='STOPPED'?'var(--bear)':'#d29922';
-  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="2% of the wallet at this point in time">Stake</th><th title="Margin required to open = position size ÷ leverage (IG UK retail rates by instrument type: equities 5×, indices 20×, commodities 10×)">Margin</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Account equity after this trade = the running compounded wallet incl. realised P&amp;L; last row = the compounded figure">Equity</th></tr></thead><tbody>`+
+  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="2% of the wallet at this point in time">Stake</th><th title="Margin required to open = position size ÷ leverage (IG UK retail rates by instrument type: equities 5×, indices 20×, commodities 10×)">Margin</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Account equity after this trade = the running compounded wallet incl. realised P&amp;L; last row = the compounded figure">Equity</th><th title="Available to open further positions = Equity − Margin (user 2026-07-24, P-04)">Available</th></tr></thead><tbody>`+
     ledger.map((x,i)=>{const r=x.r;return `<tr><td class="muted">${i+1}</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td>
       <td class="muted" title="concurrent open positions">${x.open}</td>
       <td><b style="color:${oc(r.outcome)}">${r.outcome}</b></td>
@@ -2813,7 +2813,8 @@ function paintOrdersPerf(){
       <td class="muted" title="position size ÷ leverage">${levOf(r)?money(x.stake/levOf(r)):'—'}</td>
       <td style="color:${_pnlc(x.net)}">${_gbp2(x.net)}</td>
       <td class="muted">£${x.maxloss.toFixed(2)}</td>
-      <td><b>${money(x.cum)}</b></td></tr>`;}).join("")+
+      <td><b>${money(x.cum)}</b></td>
+      <td class="muted">${levOf(r)?money(x.cum-x.stake/levOf(r)):money(x.cum)}</td></tr>`;}).join("")+
     `</tbody></table>`;
 }
 // ── Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle table ───────────────────────────────
