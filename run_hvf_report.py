@@ -479,6 +479,28 @@ GOVT_BONDS = [
     "IGLT.L", "VGOV.L", "IGLS.L", "INXG.L",
 ]
 
+# BSE India (user 2026-07-24 P-02 L319; added 2026-07-25) — SCAN-ONLY, no IG epics (NSE India is already
+# live with .NS; this is the Bombay Stock Exchange listing with .BO). Curated verified large-caps
+# (Sensex/Nifty names); ticker==Yahoo symbol. Ampersand/hyphen tickers omitted (Yahoo-symbol risk).
+# Extend toward top-100 with more verified .BO symbols.
+BSE_INDIA = [
+    "RELIANCE.BO", "TCS.BO", "HDFCBANK.BO", "INFY.BO", "ICICIBANK.BO", "HINDUNILVR.BO", "SBIN.BO",
+    "BHARTIARTL.BO", "ITC.BO", "KOTAKBANK.BO", "LT.BO", "AXISBANK.BO", "BAJFINANCE.BO", "ASIANPAINT.BO",
+    "MARUTI.BO", "HCLTECH.BO", "SUNPHARMA.BO", "TITAN.BO", "ULTRACEMCO.BO", "WIPRO.BO", "NESTLEIND.BO",
+    "ONGC.BO", "NTPC.BO", "POWERGRID.BO", "TATAMOTORS.BO", "TATASTEEL.BO", "ADANIENT.BO", "ADANIPORTS.BO",
+    "JSWSTEEL.BO", "COALINDIA.BO", "GRASIM.BO", "HINDALCO.BO", "DRREDDY.BO", "CIPLA.BO", "BAJAJFINSV.BO",
+    "BRITANNIA.BO", "EICHERMOT.BO", "HEROMOTOCO.BO", "TECHM.BO", "INDUSINDBK.BO", "APOLLOHOSP.BO",
+    "BPCL.BO", "TATACONSUM.BO", "SBILIFE.BO", "HDFCLIFE.BO", "DIVISLAB.BO",
+]
+
+# Shenzhen (SZSE) China (user 2026-07-24 P-02 L320; added 2026-07-25) — SCAN-ONLY (Shanghai .SS + Hong
+# Kong already live; this is Shenzhen with .SZ). Curated verified large-caps (000/002/300 boards).
+SHENZHEN = [
+    "000001.SZ", "000002.SZ", "000063.SZ", "000100.SZ", "000333.SZ", "000338.SZ", "000568.SZ", "000651.SZ",
+    "000725.SZ", "000858.SZ", "002027.SZ", "002142.SZ", "002230.SZ", "002304.SZ", "002352.SZ", "002415.SZ",
+    "002475.SZ", "002594.SZ", "002714.SZ", "300059.SZ", "300124.SZ", "300750.SZ", "300760.SZ",
+]
+
 UNIVERSE = {
     "FTSE 100":     FTSE100,
     "FTSE 250":     FTSE250,
@@ -496,6 +518,8 @@ UNIVERSE = {
     "FX":           FX,             # currency pairs (split from "Indices & FX", user 2026-06-30)
     "Crypto":       CRYPTO,         # top-5 by market cap
     "Government Bonds": GOVT_BONDS,  # sovereign-bond ETFs, SCAN-ONLY / no IG epics (user 2026-07-24, P-02 L312)
+    "BSE (India)":      BSE_INDIA,   # Bombay Stock Exchange equities (.BO), SCAN-ONLY (user 2026-07-24, P-02 L319)
+    "SZSE (Shenzhen)":  SHENZHEN,    # Shenzhen equities (.SZ), SCAN-ONLY (user 2026-07-24, P-02 L320)
     # DAX suspended 2026-06-05 — re-add when reinstated
     # NB (user 2026-06-22): FTSE 100/250 and S&P 500 are the EQUITY coverage — examples of markets,
     # not the whole universe. The report spans all asset classes: UK + US equities, commodities,

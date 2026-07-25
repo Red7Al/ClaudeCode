@@ -70,7 +70,7 @@ def _location_of(ticker: str, market: str = "") -> str:
         return "UK"
     if t.endswith(".DE"):                 # German equities (user 2026-07-06: DAX / Germany)
         return "Germany"
-    if t.endswith(".SS") or t.endswith(".HK") or t.endswith(".T") or t.endswith(".NS"):   # Shanghai / Hong Kong equities
+    if t.endswith((".SS", ".HK", ".T", ".NS", ".BO", ".SZ")):   # Shanghai / HK / Tokyo / NSE / BSE / Shenzhen
         return "Asia"
     if t.endswith(".AX"):
         return "Oceania"
