@@ -232,6 +232,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   color:var(--muted);cursor:pointer;transition:all .15s ease;display:flex;align-items:center;gap:7px}
 .confnav .pill:hover{border-color:var(--accent);color:var(--fg)}
 .confnav .pill.active{background:var(--grad);color:#fff;border-color:transparent;box-shadow:var(--sh-sm)}
+/* Performance sub-tab pills (moved out of .confnav in P-03 L250): grey when inactive, accent when active
+   (user 2026-07-25, P-02 L79/L251/L252). Also restores styling the move had dropped. */
+#pf-pills .pill{background:var(--chip);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s ease}
+#pf-pills .pill:hover{border-color:var(--accent);color:var(--fg)}
+#pf-pills .pill.active{background:var(--accent);color:#fff;border-color:transparent}
 /* Credential rows — readable current value (user 2026-07-03: grey/small was hard to read) */
 .credrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line)}
 .credrow:first-of-type{border-top:none}
@@ -2957,7 +2962,7 @@ function _renderPerformance(){
   // green. They drive the summary table AND the monthly-growth chart (both via `sel`, below).
   const _locs=[...new Set(all.map(r=>locName(r.location)).filter(v=>v&&v!=="—"))].sort();
   const _lb=$("pf-loc-btns");
-  const _locBtn=(label,val,on)=>`<button class="subpill${on?' active':''}" style="${on?'background:var(--bull);border-color:var(--bull);color:#03260f;font-weight:600':''}" onclick="pfLocFilter('${val.replace(/'/g,"\\'")}')">${label}</button>`;
+  const _locBtn=(label,val,on)=>`<button class="subpill${on?' active':''}" style="${on?'background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600':''}" onclick="pfLocFilter('${val.replace(/'/g,"\\'")}')">${label}</button>`;   /* grey inactive, accent when active (user 2026-07-25, P-02 L79/L252) */
   if(_lb)_lb.innerHTML=LIMITED?"":([_locBtn('All','',!PF_LOC_FILTER)].concat(_locs.map(l=>_locBtn(l,l,PF_LOC_FILTER===l)))).join("");
   {const _ll=$("pf-loc-lbl"); if(_ll)_ll.style.display=(LIMITED||!_locs.length)?"none":"";}   // hide the "Location:" label when there are no buttons (user 2026-07-24, P-04 L82)
   // Name/ticker search (user 2026-07-17, P-17): _pfq is computed above (moved up for the charts). The
