@@ -146,7 +146,8 @@ def build():
 
     log.info("scanning universe ...")
     from run_hvf_report import UNIVERSE
-    # Total = ALL universe entries (633), not the de-duplicated scan count (~600) — user 2026-07-03.
+    # Total = ALL universe entries (1386), not the de-duplicated scan count (~1353) — user 2026-07-03;
+    # counts are computed live from UNIVERSE, these figures are just an illustrative snapshot (2026-07-24).
     _total = sum(len(t) for t in UNIVERSE.values())
     PROGRESS.update(done=0, total=_total)
     scan = scan_universe(progress_cb=lambda d, t: PROGRESS.update(done=d, total=_total))

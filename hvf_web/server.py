@@ -1934,6 +1934,29 @@ def _sqa_all_rows():
                      "current_price": s.get("current_price"),
                      "trig_date": str(td) if td else None, "exit_date": str(od) if od else None,
                      "r_mult": r_mult, "outcome": oc, "return_pct": ret})
+    # NOW-price fallback (user 2026-07-24, P-03 BUG "multiple rows with blank NOW"): the snapshot only
+    # covers the CURRENT universe, so a squeeze_history ticker no longer scanned had current_price=None
+    # and showed a blank NOW. Fill those from the latest stored close in price_history — one query for
+    # all the missing tickers.
+    missing = sorted({r["ticker"] for r in rows if r.get("current_price") is None})
+    if missing:
+        try:
+            from db_pool import get_db
+            db = get_db()
+            try:
+                ph = ",".join(f":m{i}" for i in range(len(missing)))
+                params = {f"m{i}": tk for i, tk in enumerate(missing)}
+                last = {tk: (float(cl) if cl is not None else None)
+                        for tk, cl in (db.run(
+                            f"select distinct on (ticker) ticker, close from price_history "
+                            f"where ticker in ({ph}) order by ticker, bar_date desc", **params) or [])}
+            finally:
+                db.close()
+            for r in rows:
+                if r.get("current_price") is None and last.get(r["ticker"]) is not None:
+                    r["current_price"] = last[r["ticker"]]
+        except Exception as ex:
+            log.warning(f"NOW-price fallback failed: {ex}")
     _SQA_ROWS.update(ts=now, rows=rows)
     return rows
 
