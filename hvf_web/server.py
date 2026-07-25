@@ -2495,9 +2495,14 @@ def _cr_parse(path: str) -> dict:
                     text = text[len(tag):].strip()
             if not text:
                 continue
+            # Split the requirement from any "-- …" delivery note (user 2026-07-25, P-02 L305) so the tab
+            # shows them in separate columns instead of one cluttered Requirement cell. " -- " is the
+            # delimiter the notes are written with; the "(Claude …)" older inline form stays with the text.
+            req, _sep, note = text.partition(" -- ")
             reqs.append({"row": len(reqs) + 1,   # stable 1-based number so "#26" maps to a line (user 2026-07-18)
-                         "text": text, "working_area": area, "scope": scope, "status": _cr_status(raw),
-                         "prioritised": _cr_prioritised(text, area)})
+                         "text": req.strip(), "delivery_notes": note.strip(),
+                         "working_area": area, "scope": scope, "status": _cr_status(raw),
+                         "prioritised": _cr_prioritised(req, area)})
     counts = {"Completed": 0, "In Progress": 0, "Not Started": 0, "Cancelled": 0, "Requested": 0, "Deferred": 0}
     for r in reqs:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
