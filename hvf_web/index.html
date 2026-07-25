@@ -974,12 +974,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <!-- Performance (all users, user 2026-07-10) — triggered setups + best Quality/R:R combinations. -->
 <div id="view-performance" class="hidden doc" style="max-width:1180px">
-  <input type="hidden" id="pff_sector"><input type="hidden" id="pff_market"><input type="hidden" id="pff_status">
+  <!-- Filter-holders for the Results click-to-filter charts. pff_location/direction/wl were MISSING
+       (user 2026-07-24, P-04 L111-113): the click handler bails when the holder input doesn't exist, so
+       clicking those bars did nothing. All six charts now have a backing input. -->
+  <input type="hidden" id="pff_sector"><input type="hidden" id="pff_market"><input type="hidden" id="pff_status"><input type="hidden" id="pff_location"><input type="hidden" id="pff_direction"><input type="hidden" id="pff_wl">
   <!-- Sub-tab pills at the very TOP, centred (user 2026-07-24, P-03) — above the title/lede. -->
   <div id="pf-pills" style="display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px">
-    <button class="pill active" data-pfpanel="summary" onclick="pfPanel('summary')">📈 Summary</button>
-    <button class="pill" data-pfpanel="results" onclick="pfPanel('results')">📊 Results</button>
-    <button class="pill" id="pf-pill-winners" data-pfpanel="analysis" onclick="pfPanel('analysis')">🏆 What separates the winners</button>
+    <button class="pill active" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button>
+    <button class="pill" data-pfpanel="results" onclick="pfPanel('results')" title="The detail: every recorded trigger as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Results</button>
+    <button class="pill" id="pf-pill-winners" data-pfpanel="analysis" onclick="pfPanel('analysis')" title="Admin: the same 12-month population expressed as a compounding £ wallet — what's POSSIBLE if every setup were placed, and which attributes (market, R:R, quality, volume) separate the winners. Answers 'how to size and pick for the best return'.">🏆 What separates the winners</button>
   </div>
   <span class="eyebrow">Results</span>
   <h1>Performance</h1>
@@ -2896,16 +2899,27 @@ function _pfMonthly(rows){
 }
 function _renderPerformance(){
   const all=(PERF_DATA||[]).filter(r=>pfDateOk(r.trig_date));   // date-window filter (P-01) drives everything below
-  // Click-to-filter charts: Sector / Market / Outcome over the recorded triggers.
-  const by=fn=>all.reduce((m,r)=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]=(m[v]||0)+1;return m;},{});
   const _wlCol=k=>k==="Win"?"var(--bull)":k==="Loss"?"var(--bear)":"#d29922";
+  // Cross-filter (user 2026-07-24, P-04 L107/L109): each chart counts the population filtered by the OTHER
+  // charts' selections (plus the Location button + search), so selecting e.g. Location=US narrows the
+  // Market/Sector/… charts to US — while each chart still shows its OWN full set so the selection can be
+  // changed (clear via each chart's ✕). Search term is computed here (moved up from below) so the charts
+  // react to it too.
+  const _pfq=(($("pf-search")||{}).value||"").trim().toLowerCase();
+  const _pfDims=[["pff_market",r=>r.market],["pff_location",r=>locName(r.location)],["pff_sector",r=>r.sector],
+                 ["pff_direction",r=>r.direction],["pff_status",r=>r.state],["pff_wl",r=>_pfwl(r)]];
+  const _cross=exceptKey=>all.filter(r=>
+    _pfDims.every(([id,fn])=>id===exceptKey||inSet(id,fn(r)))
+    &&(!PF_LOC_FILTER||locName(r.location)===PF_LOC_FILTER)
+    &&(!_pfq||((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(_pfq)));
+  const byX=(fn,exceptKey)=>_cross(exceptKey).reduce((m,r)=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]=(m[v]||0)+1;return m;},{});
   $("pf-viz").innerHTML=LIMITED?"":
-    `<div class="vizsector">`+barChart("Market",by("market"),"pff_market")+`</div>`+          /* Market leftmost (P-01/P-12) */
-    `<div class="vizsector">`+barChart("Location",by(r=>locName(r.location)),"pff_location")+`</div>`+   /* Location right of Market (P-01) */
-    `<div class="vizsector">`+pieChart("Sector",by("sector"),"pff_sector")+`</div>`+            /* Sector right of Location (P-02) */
-    `<div class="vizsector">`+barChart("Direction",by("direction"),"pff_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+`</div>`+   /* P-10 */
-    `<div class="vizsector">`+barChart("Outcome",by("state"),"pff_status",_stcol)+`</div>`+
-    `<div class="vizsector">`+barChart("Win / Loss",by(_pfwl),"pff_wl",_wlCol)+`</div>`;         /* wins / losses / break-even (P-10) */
+    `<div class="vizsector">`+barChart("Market",byX("market","pff_market"),"pff_market")+`</div>`+          /* Market leftmost (P-01/P-12) */
+    `<div class="vizsector">`+barChart("Location",byX(r=>locName(r.location),"pff_location"),"pff_location")+`</div>`+   /* Location right of Market (P-01) */
+    `<div class="vizsector">`+pieChart("Sector",byX("sector","pff_sector"),"pff_sector")+`</div>`+            /* Sector right of Location (P-02) */
+    `<div class="vizsector">`+barChart("Direction",byX("direction","pff_direction"),"pff_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+`</div>`+   /* P-10 */
+    `<div class="vizsector">`+barChart("Outcome",byX("state","pff_status"),"pff_status",_stcol)+`</div>`+
+    `<div class="vizsector">`+barChart("Win / Loss",byX(_pfwl,"pff_wl"),"pff_wl",_wlCol)+`</div>`;         /* wins / losses / break-even (P-10) */
   packViz("pf-viz");   // P-15
   // Location quick-filter buttons (user 2026-07-18/20): one per location, plus "All". The SELECTED one is
   // green. They drive the summary table AND the monthly-growth chart (both via `sel`, below).
@@ -2913,9 +2927,8 @@ function _renderPerformance(){
   const _lb=$("pf-loc-btns");
   const _locBtn=(label,val,on)=>`<button class="subpill${on?' active':''}" style="${on?'background:var(--bull);border-color:var(--bull);color:#03260f;font-weight:600':''}" onclick="pfLocFilter('${val.replace(/'/g,"\\'")}')">${label}</button>`;
   if(_lb)_lb.innerHTML=LIMITED?"":([_locBtn('All','',!PF_LOC_FILTER)].concat(_locs.map(l=>_locBtn(l,l,PF_LOC_FILTER===l)))).join("");
-  // Name/ticker search (user 2026-07-17, P-17). Applied alongside the chart filters, so the summary, the
-  // Quality/R:R buckets and the row count all reflect the search — same contract as the other tabs.
-  const _pfq=(($("pf-search")||{}).value||"").trim().toLowerCase();
+  // Name/ticker search (user 2026-07-17, P-17): _pfq is computed above (moved up for the charts). The
+  // summary, Quality/R:R buckets and row count all reflect it — same contract as the other tabs.
   let sel=all.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_status",r.state)
     &&inSet("pff_location",locName(r.location))&&inSet("pff_direction",r.direction)&&inSet("pff_wl",_pfwl(r)));
   if(PF_LOC_FILTER)sel=sel.filter(r=>locName(r.location)===PF_LOC_FILTER);   // Summary-title quick location filter (P-10)
