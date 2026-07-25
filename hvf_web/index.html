@@ -3296,6 +3296,19 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
   .catch(e=>{ // 401 = no/stale login: clear the token; the login panel appears when a data tab is opened.
     if(e==="auth"){AUTH="";localStorage.removeItem("sq_auth");$("logout").style.display="none";}
   });
+// Default-sort arrow on first paint (user 2026-07-25, P-03 L39): the click handlers stamp the ▲/▼ on
+// click, but a DEFAULT-sorted column had no arrow until first clicked. Stamp each table's default now —
+// theads are static HTML so the marker persists across tbody repaints. (CR detail rebuilds its thead and
+// re-stamps itself in paintCRDetail.) sortK="" means natural order → no arrow.
+function _stampSortDefaults(){
+  const pairs=[["data-k",()=>[sortK,sortDir]],["data-pk",()=>[poSortK,poSortDir]],["data-ok",()=>[ooSortK,ooSortDir]],
+   ["data-pf",()=>[pfSortK,pfSortDir]],["data-crk",()=>[crSortK,crSortDir]],
+   // admin tables (var names from their th[data-*] click wiring)
+   ["data-xk",()=>[xSortK,xSortDir]],["data-jk",()=>[jSortK,jSortDir]],["data-sk",()=>[slSortK,slSortDir]],
+   ["data-vk",()=>[verSortK,verSortDir]],["data-bk",()=>[batchSortK,batchSortDir]],["data-ak",()=>[acSortK,acSortDir]]];
+  pairs.forEach(([a,get])=>{try{const [k,d]=get();_sortArrows(a,k,d);}catch(e){}});   // per-pair guard: a missing var just skips that table
+}
+_stampSortDefaults();
 </script>
 </body>
 </html>
