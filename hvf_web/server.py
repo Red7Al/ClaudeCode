@@ -1111,10 +1111,15 @@ def api_status():
     return jsonify(resp)
 
 
+_FUND_CACHE = {}   # ticker -> last SUCCESSFUL {currency, kpis}; survives Yahoo's transient quoteSummary 404s
+
+
 @app.route("/api/fundamentals/<ticker>")
 def api_fundamentals(ticker):
     """Company KPIs straight from yfinance .info (user 2026-06-28): P/E, FCF, dividends, margins, growth,
-    leverage, etc. Live per-ticker; graceful (empty kpis) if Yahoo is unreachable."""
+    leverage, etc. Live per-ticker; graceful (empty kpis) if Yahoo is unreachable. A good fetch is cached
+    so a later transient 404 (e.g. GLEN.L — a FTSE 100 name whose data DOES exist; user 2026-07-24, P-03
+    L138) serves the last-good KPIs marked stale rather than blanking the panel."""
     out = {}
     cur = None
     try:
@@ -1155,7 +1160,14 @@ def api_fundamentals(ticker):
         }
     except Exception as e:
         log.warning(f"fundamentals lookup failed for {ticker}: {e}")
-    return jsonify({"ticker": ticker, "currency": cur, "kpis": out})
+    # Cache a good fetch; serve last-good (stale) when this one came back empty (P-03 L138).
+    if any(v is not None for v in out.values()):
+        _FUND_CACHE[ticker] = {"currency": cur, "kpis": out}
+        return jsonify({"ticker": ticker, "currency": cur, "kpis": out, "stale": False})
+    cached = _FUND_CACHE.get(ticker)
+    if cached:
+        return jsonify({"ticker": ticker, "currency": cached["currency"], "kpis": cached["kpis"], "stale": True})
+    return jsonify({"ticker": ticker, "currency": cur, "kpis": out, "stale": False})
 
 
 @app.route("/api/broker/<ticker>")
