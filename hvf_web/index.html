@@ -1560,8 +1560,8 @@ function renderViz(rows){
   // (P-01 now puts Location between them). Matches the Performance tab. .vizbars is display:contents, so
   // DOM order IS left-to-right order.
   $("viz").innerHTML=
+    `<div class="vizsector">`+barChart("Location",by("location"),"mf_location")+`</div>`+   /* Location, Market, Sector on LHS (user 2026-07-24/25, P-03 L29 / P-05 L182 — supersedes the earlier P-12a "Market first") */
     `<div class="vizsector">`+barChart("Market",by("market"),"mf_market")+`</div>`+
-    `<div class="vizsector">`+barChart("Location",by("location"),"mf_location")+`</div>`+
     `<div class="vizsector">`+pieChart("Sector",by("sector"),"mf_sector")+`</div>`+
     `<div class="vizbars">`+
       barChart("Direction",by("direction"),"mf_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
@@ -2863,8 +2863,8 @@ function paintSqueezeHist(){
   // Standard chart strip (P-01): Market, Location, Sector, Direction, Status — click a bar/slice to filter.
   const by=fn=>base.reduce((m,r)=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]=(m[v]||0)+1;return m;},{});
   if($("sqh-viz"))$("sqh-viz").innerHTML=
+    `<div class="vizsector">`+barChart("Location",by(r=>locName(r.location)),"sqf_location")+`</div>`+   /* Location first (P-05 L340) */
     `<div class="vizsector">`+barChart("Market",by("market"),"sqf_market")+`</div>`+
-    `<div class="vizsector">`+barChart("Location",by(r=>locName(r.location)),"sqf_location")+`</div>`+
     `<div class="vizsector">`+pieChart("Sector",by("sector"),"sqf_sector")+`</div>`+
     `<div class="vizsector">`+barChart("Direction",by("direction"),"sqf_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+`</div>`+
     `<div class="vizsector">`+barChart("Status",by("outcome"),"sqf_status",_stcol)+`</div>`;
@@ -2949,9 +2949,9 @@ function _renderPerformance(){
   const byXFull=(fn,exceptKey)=>{const sel=byX(fn,exceptKey);
     all.forEach(r=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—'; if(!(v in sel))sel[v]=0;}); return sel;};
   $("pf-viz").innerHTML=LIMITED?"":
-    `<div class="vizsector">`+barChart("Market",byXFull("market","pff_market"),"pff_market")+`</div>`+          /* Market leftmost (P-01/P-12) */
-    `<div class="vizsector">`+barChart("Location",byXFull(r=>locName(r.location),"pff_location"),"pff_location")+`</div>`+   /* Location right of Market (P-01) */
-    `<div class="vizsector">`+pieChart("Sector",byXFull("sector","pff_sector"),"pff_sector")+`</div>`+            /* Sector right of Location (P-02) */
+    `<div class="vizsector">`+barChart("Location",byXFull(r=>locName(r.location),"pff_location"),"pff_location")+`</div>`+   /* Location first (P-05 L182, supersedes P-12a) */
+    `<div class="vizsector">`+barChart("Market",byXFull("market","pff_market"),"pff_market")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",byXFull("sector","pff_sector"),"pff_sector")+`</div>`+
     `<div class="vizsector">`+barChart("Direction",byXFull("direction","pff_direction"),"pff_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+`</div>`+   /* P-10 */
     `<div class="vizsector">`+barChart("Outcome",byXFull("state","pff_status"),"pff_status",_stcol)+`</div>`+
     `<div class="vizsector">`+barChart("Win / Loss",byXFull(_pfwl,"pff_wl"),"pff_wl",_wlCol)+`</div>`+         /* wins / losses / break-even (P-10) */
@@ -3205,14 +3205,14 @@ function renderPreorders(){
   $("po-count-text").innerHTML=`<b style="font-size:15px;color:var(--fg)">${po.length}</b> instruments with a pre-order — waiting for the entry to trigger <span class="muted">(${nR} READY · ${po.length-nR} DEVELOPING). Click a row for detail; tick + Delete selected to dismiss.</span>`;
   // Chart visuals, same set as the Scanner (user 2026-07-03). Non-filtering here (dummy filter keys).
   const pby=k=>po.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
-  // Market + Sector far left, Market left of Sector — as on the Scanner (user 2026-07-17, P-12a).
+  // Location, Market, Sector on LHS (user 2026-07-24/25, P-03 L29 / P-05 L182 — supersedes P-12a "Market first").
   $("po-viz").innerHTML=
+    `<div class="vizsector">`+barChart("Location",pby("location"),"pof_location")+`</div>`+
     `<div class="vizsector">`+barChart("Market",pby("market"),"pof_market")+`</div>`+
     `<div class="vizsector">`+pieChart("Sector",pby("sector"),"pof_sector")+`</div>`+
     `<div class="vizbars">`+
       barChart("Direction",pby("direction"),"pof_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
       barChart("Status",pby("status"),"pof_status",k=>k==="READY"?"var(--accent)":"#d29922")+
-      barChart("Location",pby("location"),"pof_location")+
       barChart("Timeframe",pby("timeframe"),"pof_timeframe")+
     `</div>`;
   packViz("po-viz");   // P-15
