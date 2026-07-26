@@ -265,12 +265,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-batch .eyebrow,#view-users .eyebrow,#view-version .eyebrow,#view-syslogs .eyebrow,#view-xposts .eyebrow,#view-sysdocs .eyebrow,#view-jobs .eyebrow{color:#d29922;background:color-mix(in srgb,#d29922 14%,transparent)}
 /* Pre-orders-to-my-IG + System Logs: nowrap all columns except the last (notes/message) */
 #view-orderops td,#view-syslogs td{white-space:nowrap;vertical-align:top}   /* top-align so a long note doesn't float short cells (user 2026-07-06) */
-#view-orderops td:last-child,#view-syslogs td:last-child{white-space:normal;word-break:break-word}
+#view-orderops td:nth-last-child(2),#view-syslogs td:last-child{white-space:normal;word-break:break-word}   /* Order Ops: NOTES (2nd-last) wraps — Ticker was moved to last (P-11b), so retarget (user 2026-07-25, P-05 L210/L211) */
+#view-orderops td:last-child,#view-orderops th:last-child{white-space:nowrap;width:1%}   /* Ticker: narrow */
 /* Pre-orders-to-my-IG: full-width table where the NOTES column absorbs all the slack (width:100%),
    so the short columns stay tight AND the note gets the room it needs — few wrapped lines, short rows
    (user 2026-07-13, replacing the width:auto attempt that squeezed Notes to ~165px and made rows tall). */
 #view-orderops table{width:100%}
-#view-orderops td:last-child,#view-orderops th:last-child{width:100%;min-width:440px}
+#view-orderops td:nth-last-child(2),#view-orderops th:nth-last-child(2){width:100%;min-width:440px}   /* NOTES absorbs the slack (user 2026-07-25, P-05 L210) */
 #view-preorders td,#view-preorders th{white-space:nowrap}   /* no wrap; the table scrolls sideways instead (user 2026-07-06) */
 #view-activity td{white-space:nowrap}#view-activity td:last-child{white-space:normal;word-break:break-word}   /* only Event wraps (user 2026-07-06) */
 #view-jobs td{white-space:nowrap}
