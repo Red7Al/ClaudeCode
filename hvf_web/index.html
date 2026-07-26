@@ -1480,17 +1480,30 @@ function dateFilterBar(pfx,painter){
   return `<label class="muted" style="font-size:12px">From <input type="date" id="${pfx}-from" onchange="${painter}" style="width:auto"></label>`+
          `<label class="muted" style="font-size:12px">To <input type="date" id="${pfx}-to" onchange="${painter}" style="width:auto"></label>`;
 }
-function barChart(title,counts,fk,colorFn,labelDesc){
+function barChart(title,counts,fk,colorFn,labelDesc,opts){
   const sel=setOf(fk), nsel=sel?sel.size:0;
-  const entries=Object.entries(counts).sort(labelDesc?((a,b)=>String(b[0]).localeCompare(String(a[0]))):((a,b)=>b[1]-a[1])).slice(0,8);
+  // opts.metric (user 2026-07-26, P-05 L281): a {key: avgReturn%} map. When present the bars are ORDERED
+  // by avg return desc and TINTED green (positive) / red (negative), intensity scaled to the biggest |avg|
+  // shown. Bar LENGTH still encodes trade count, so length = how many, colour = how good. Used by the
+  // Results Market & Location charts. Absent → the original count-order + colorFn behaviour, unchanged.
+  const metric=opts&&opts.metric;
+  let entries=Object.entries(counts);
+  entries.sort(metric?((a,b)=>((metric[b[0]]==null?-1e9:metric[b[0]])-(metric[a[0]]==null?-1e9:metric[a[0]])))
+    :labelDesc?((a,b)=>String(b[0]).localeCompare(String(a[0]))):((a,b)=>b[1]-a[1]));
+  entries=entries.slice(0,8);
   const max=Math.max(1,...entries.map(e=>e[1]));
+  const mmax=metric?Math.max(1,...entries.map(e=>Math.abs(metric[e[0]]||0))):0;
+  const mBg=v=>`rgba(${v>=0?'34,163,74':'220,38,38'},${(Math.min(Math.abs(v)/mmax,1)*0.7+0.18).toFixed(2)})`;
   // The bar scales to the CARD, not to a fixed 72px (user 2026-07-17, P-16a). The old hardcoded ceiling
   // meant a wide card (Market/Location run ~246px since the cards started claiming spare width) drew a
   // stubby 72px bar and left the rest of the row empty — wasted space INSIDE the card. A .track flexes
   // into whatever width is going and the fill takes its share as a %.
   const rows=entries.map(([k,n])=>{const on=sel&&sel.has(String(k));
-    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}" title="click to filter ${k}"><span class="tk">${on?'● ':''}${k}</span>
-    <span class="track"><span class="fill" style="width:${Math.max(2,Math.round(n/max*100))}%;background:${colorFn?colorFn(k):'var(--accent)'};opacity:${nsel&&!on?0.4:1}"></span></span><span class="n">${n}</span></div>`;}).join("");
+    const mv=metric?metric[k]:null;
+    const bg=metric?(mv==null?'var(--muted)':mBg(mv)):(colorFn?colorFn(k):'var(--accent)');
+    const tip=metric?`${k}: avg return ${mv==null?'—':(mv>0?'+':'')+mv.toFixed(1)+'%'} · ${n} trade${n===1?'':'s'} — click to filter`:`click to filter ${k}`;
+    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}" title="${tip}"><span class="tk">${on?'● ':''}${k}</span>
+    <span class="track"><span class="fill" style="width:${Math.max(2,Math.round(n/max*100))}%;background:${bg};opacity:${nsel&&!on?0.4:1}"></span></span><span class="n">${n}</span></div>`;}).join("");
   return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
 }
 function pieChart(title,counts,fk){
@@ -2971,9 +2984,13 @@ function _renderPerformance(){
   // the numbers move. (barChart still caps the display at its top 8 by count, as everywhere.)
   const byXFull=(fn,exceptKey)=>{const sel=byX(fn,exceptKey);
     all.forEach(r=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—'; if(!(v in sel))sel[v]=0;}); return sel;};
+  // Average direction-aware return per group, over the same cross-filtered rows (user 2026-07-26, P-05
+  // L281) — drives the Market & Location charts' colour (green good / red bad) and their bar order.
+  const avgX=(fn,exceptKey)=>{const acc={};_cross(exceptKey).forEach(r=>{if(r.perf==null)return;const v=(typeof fn==='function'?fn(r):r[fn])||'—';(acc[v]=acc[v]||[]).push(r.perf);});
+    const out={};for(const k in acc)out[k]=acc[k].reduce((a,b)=>a+b,0)/acc[k].length;return out;};
   $("pf-viz").innerHTML=LIMITED?"":
-    `<div class="vizsector">`+barChart("Location",byXFull(r=>locName(r.location),"pff_location"),"pff_location")+`</div>`+   /* Location first (P-05 L182, supersedes P-12a) */
-    `<div class="vizsector">`+barChart("Market",byXFull("market","pff_market"),"pff_market")+`</div>`+
+    `<div class="vizsector">`+barChart("Location",byXFull(r=>locName(r.location),"pff_location"),"pff_location",null,false,{metric:avgX(r=>locName(r.location),"pff_location")})+`</div>`+   /* Location first (P-05 L182); colour+order by avg return (P-05 L281) */
+    `<div class="vizsector">`+barChart("Market",byXFull("market","pff_market"),"pff_market",null,false,{metric:avgX("market","pff_market")})+`</div>`+
     `<div class="vizsector">`+pieChart("Sector",byXFull("sector","pff_sector"),"pff_sector")+`</div>`+
     `<div class="vizsector">`+barChart("Direction",byXFull("direction","pff_direction"),"pff_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+`</div>`+   /* P-10 */
     `<div class="vizsector">`+barChart("Outcome",byXFull("state","pff_status"),"pff_status",_stcol)+`</div>`+

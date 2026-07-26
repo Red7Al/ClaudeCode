@@ -85,6 +85,12 @@ The caps matter: uncapped, a 1-bar card gets one absurd 150px block. The selecto
 `.vizbox>.bars>.bar` (direct child) so the **pie's legend** — nested a level deeper — keeps its 11px
 colour swatches instead of being inflated into fake bars.
 
+**Colour/order by a metric.** `barChart(...,opts)` takes an optional `{metric:{key:value}}` map (user
+2026-07-26, P-05 L281). When present the bars are ORDERED by `value` desc and TINTED green (≥0) / red (<0),
+intensity scaled to the biggest `|value|` shown; **bar length still encodes the count**, so length = how
+many and colour = how good. Used by the Results Market & Location charts (avg return per group, from
+`avgX()`). Omit `opts` for the default count-order + `colorFn` behaviour — every other chart is unchanged.
+
 **Width.** Cards are `flex:1 1 auto;min-width:0` (cap `max-width:340px`) so they spend the row's spare
 width. Skip this and enlarging label text just crams it: `.bar .tk` is a shrinking column sharing its
 row with a fixed-width fill and count, so on a 186px card the label got ~68px and "NASDAQ 100" /
