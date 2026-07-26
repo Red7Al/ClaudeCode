@@ -2540,7 +2540,9 @@ const _igSrc=s=>({WEB_BRIDGE:"Squeeze (bridge)",WEB_MANUAL:"Manual (web)"}[s]||s
 function paintIgAccount(){
   const q=(($("ig-search")||{}).value||"").trim().toLowerCase();
   const hit=r=>!q||(((r.name||'')+' '+(r.ticker||r.epic||'')).toLowerCase().includes(q));
-  const pos=IG_POS.filter(hit), ord=IG_ORD.filter(hit);
+  const pos=IG_POS.filter(hit);
+  // Working orders default-sorted by Good till (UTC) descending (user 2026-07-25, P-05 L245).
+  const ord=IG_ORD.filter(hit).sort((a,b)=>(b.good_till||'').localeCompare(a.good_till||''));
   const cnt=(n,tot,word)=>`<b style="font-size:15px;color:var(--fg)">${n}</b> ${word}${n===1?'':'s'}${q&&tot!==n?` <span class="muted">of ${tot}</span>`:''}`;
   $("ig-pos-count").innerHTML=cnt(pos.length,IG_POS.length,"open position");
   $("ig-ord-count").innerHTML=cnt(ord.length,IG_ORD.length,"working order");
@@ -2861,7 +2863,7 @@ function paintOrdersPerf(){
     `</tbody></table>`;
 }
 // ── Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle table ───────────────────────────────
-let SQH=null, sqhSortK="", sqhSortDir=-1;   // "" = server order (newest first); a header click sets a key
+let SQH=null, sqhSortK="return_pct", sqhSortDir=-1;   // default: Return descending (user 2026-07-25, P-05 L342); header click changes it
 function renderSqueezeHist(){
   if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty">Loading…</td></tr>';}
   fetch("/api/squeeze-history").then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];paintSqueezeHist();})
@@ -3333,7 +3335,8 @@ function _stampSortDefaults(){
    ["data-pf",()=>[pfSortK,pfSortDir]],["data-crk",()=>[crSortK,crSortDir]],
    // admin tables (var names from their th[data-*] click wiring)
    ["data-xk",()=>[xSortK,xSortDir]],["data-jk",()=>[jSortK,jSortDir]],["data-sk",()=>[slSortK,slSortDir]],
-   ["data-vk",()=>[verSortK,verSortDir]],["data-bk",()=>[batchSortK,batchSortDir]],["data-ak",()=>[acSortK,acSortDir]]];
+   ["data-vk",()=>[verSortK,verSortDir]],["data-bk",()=>[batchSortK,batchSortDir]],["data-ak",()=>[acSortK,acSortDir]],
+   ["data-sqh",()=>[sqhSortK,sqhSortDir]]];   // Squeeze History default sort arrow (P-05 L342)
   pairs.forEach(([a,get])=>{try{const [k,d]=get();_sortArrows(a,k,d);}catch(e){}});   // per-pair guard: a missing var just skips that table
 }
 _stampSortDefaults();
