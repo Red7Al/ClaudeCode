@@ -2452,6 +2452,27 @@ def _cr_prioritised(text: str, area: str) -> bool:
     return "prioritis" in a or "prioritiz" in a
 
 
+# Per-requirement Scope = its category word (user 2026-07-25, P-05 L310) — Data/Format/Content/BUG/etc.,
+# so the Scope column is populated like Working Area instead of mostly blank. Falls back to the heading
+# scope ("NEW DELIVERY") when the line has no category.
+_CR_CATEGORY = _re.compile(r"^P-\d+[a-z]?\s+(BUG|Format|Data|Content|Default|Filter|Query)\b", _re.I)
+_CR_PNUM = _re.compile(r"^P-0*(\d+)", _re.I)
+
+
+def _cr_scope(req: str, heading_scope: str) -> str:
+    m = _CR_CATEGORY.match((req or "").strip())
+    return (m.group(1).title() if m else "") or heading_scope
+
+
+def _cr_prange(req: str):
+    """Priority range bucket for the file-level summary (user 2026-07-25, P-05 L311)."""
+    m = _CR_PNUM.match((req or "").strip())
+    if not m:
+        return None
+    n = int(m.group(1))
+    return "P01-05" if n <= 5 else "P06-10" if n <= 10 else "P11-25" if n <= 25 else "P26+"
+
+
 def _cr_status(line: str) -> str:
     s = line.strip()
     for tag, st in _CR_LEAD.items():
@@ -2512,13 +2533,16 @@ def _cr_parse(path: str) -> dict:
             req, _sep, note = text.partition(" -- ")
             reqs.append({"row": len(reqs) + 1,   # stable 1-based number so "#26" maps to a line (user 2026-07-18)
                          "text": req.strip(), "delivery_notes": note.strip(),
-                         "working_area": area, "scope": scope, "status": _cr_status(raw),
-                         "prioritised": _cr_prioritised(req, area)})
+                         "working_area": area, "scope": _cr_scope(req, scope), "status": _cr_status(raw),
+                         "prange": _cr_prange(req), "prioritised": _cr_prioritised(req, area)})
     counts = {"Completed": 0, "In Progress": 0, "Not Started": 0, "Cancelled": 0, "Requested": 0, "Deferred": 0}
+    pranges = {"P01-05": 0, "P06-10": 0, "P11-25": 0, "P26+": 0}
     for r in reqs:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
+        if r.get("prange"):
+            pranges[r["prange"]] += 1
     return {"name": name, "file": fn, "created": created, "updated": updated,
-            "total": len(reqs), "counts": counts, "requirements": reqs,
+            "total": len(reqs), "counts": counts, "pranges": pranges, "requirements": reqs,
             "prioritised": sum(1 for r in reqs if r["prioritised"])}
 
 

@@ -1206,7 +1206,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" id="cr-section" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="cr-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th class="clk" data-crk="name">File</th><th class="clk" data-crk="created">Created</th><th class="clk" data-crk="updated">Last updated</th><th class="clk" data-crk="total">Actions</th><th class="clk" data-crk="prioritised" title="Requirements carrying a P-number, or under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th class="clk" data-crk="Completed">Completed</th><th class="clk" data-crk="In Progress">In&nbsp;Progress</th><th class="clk" data-crk="Not Started">Not&nbsp;Started</th><th class="clk" data-crk="Cancelled">Cancelled</th><th class="clk" data-crk="Deferred">Deferred</th></tr></thead>
+      <thead><tr><th class="clk" data-crk="name">File</th><th class="clk" data-crk="created">Created</th><th class="clk" data-crk="updated">Last updated</th><th class="clk" data-crk="total">Actions</th><th class="clk" data-crk="prioritised" title="Requirements carrying a P-number, or under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th class="clk" data-crk="Completed">Completed</th><th class="clk" data-crk="In Progress">In&nbsp;Progress</th><th class="clk" data-crk="Not Started">Not&nbsp;Started</th><th class="clk" data-crk="Cancelled">Cancelled</th><th class="clk" data-crk="Deferred">Deferred</th><th class="clk" data-crk="P01-05" title="Requirements with priority P-01..P-05">P01-05</th><th class="clk" data-crk="P06-10" title="P-06..P-10">P06-10</th><th class="clk" data-crk="P11-25" title="P-11..P-25">P11-25</th><th class="clk" data-crk="P26+" title="P-26 and above">P26+</th></tr></thead>
       <tbody id="cr-rows"></tbody>
     </table></div>
   </section>
@@ -3104,16 +3104,18 @@ function renderCR(ev){
 function paintCR(){
   // Flatten the per-status counts onto each row so EVERY column sorts (user 2026-07-24, P-02): the count
   // columns read o.counts[status], but genSort compares top-level keys — project them up first.
-  const flat=CR_FILES.map(o=>{const c=o.counts||{};return {...o,"Completed":c["Completed"]||0,"In Progress":c["In Progress"]||0,"Not Started":c["Not Started"]||0,"Cancelled":c["Cancelled"]||0,"Deferred":c["Deferred"]||0};});
+  const flat=CR_FILES.map(o=>{const c=o.counts||{},p=o.pranges||{};return {...o,"Completed":c["Completed"]||0,"In Progress":c["In Progress"]||0,"Not Started":c["Not Started"]||0,"Cancelled":c["Cancelled"]||0,"Deferred":c["Deferred"]||0,"P01-05":p["P01-05"]||0,"P06-10":p["P06-10"]||0,"P11-25":p["P11-25"]||0,"P26+":p["P26+"]||0};});
   const rows=genSort(flat,crSortK,crSortDir);
   $("cr-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${CR_FILES.length}</b> change-request files`;
   $("crtab-count")&&($("crtab-count").textContent=`(${CR_FILES.length})`);
   const c=(o,k,col)=>{const n=(o.counts||{})[k]||0;return n?`<b style="color:${col}">${n}</b>`:'0';};
+  const pc=(o,k)=>{const n=(o.pranges||{})[k]||0;return n?`<b style="color:#d29922">${n}</b>`:'<span class="muted">0</span>';};   // priority-range count (P-05 L311)
   $("cr-rows").innerHTML=rows.map(o=>`<tr class="clk ${CR_SEL===o.file?'sel':''}" onclick="crOpen('${o.file}')">
     <td><b>${o.name}</b></td><td>${o.created||''}</td><td>${o.updated||''}</td><td><b>${o.total}</b></td>
     <td>${o.prioritised?`<b style="color:#d29922">${o.prioritised}</b>`:'0'}</td>
-    <td>${c(o,'Completed','var(--bull)')}</td><td>${c(o,'In Progress','var(--accent)')}</td><td>${c(o,'Not Started','#d29922')}</td><td>${c(o,'Cancelled','var(--bear)')}</td><td>${c(o,'Deferred','var(--muted)')}</td></tr>`).join("")
-    ||`<tr><td colspan="9" class="empty">No change-request files found.</td></tr>`;
+    <td>${c(o,'Completed','var(--bull)')}</td><td>${c(o,'In Progress','var(--accent)')}</td><td>${c(o,'Not Started','#d29922')}</td><td>${c(o,'Cancelled','var(--bear)')}</td><td>${c(o,'Deferred','var(--muted)')}</td>
+    <td>${pc(o,'P01-05')}</td><td>${pc(o,'P06-10')}</td><td>${pc(o,'P11-25')}</td><td>${pc(o,'P26+')}</td></tr>`).join("")
+    ||`<tr><td colspan="13" class="empty">No change-request files found.</td></tr>`;
 }
 function crOpen(file){
   CR_SEL=file;paintCR();
@@ -3143,7 +3145,7 @@ function paintCRDetail(){
   const reqs=rows.map(q=>`<tr><td style="white-space:nowrap;width:1%;text-align:right;color:var(--muted)"><b>#${q.row}</b></td><td style="white-space:nowrap">${q.working_area||'—'}</td><td style="white-space:nowrap">${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td style="white-space:nowrap;width:1%;text-align:center"><b style="color:${q.prioritised?'#d29922':'var(--muted)'}">${q.prioritised?'Y':'N'}</b></td><td style="white-space:nowrap;width:1%"><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td><td style="white-space:normal;color:var(--muted);font-size:12px">${(q.delivery_notes||'').replace(/</g,'&lt;')}</td></tr>`).join("");
   $("cr-detail").innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">${d.name}</h3><span class="grow"></span><span class="muted" style="font-size:12px">Created ${d.created||'?'} · Updated ${d.updated||'?'} · ${d.total} actions</span><button class="btn" onclick="$('cr-detail').classList.add('hidden');CR_SEL=null;paintCR()">✕ Close</button></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${pills}</div>
-    <div class="tablewrap"><table><thead><tr><th class="clk" data-crd="row" title="Stable row number — use this when referring to a requirement">#</th><th class="clk" data-crd="working_area">Working Area</th><th class="clk" data-crd="scope" title="&quot;NEW DELIVERY&quot; when the requirement's Application Focus heading is tagged as a new delivery (heading ends with &quot;– NEW DELIVERY&quot;); otherwise blank.">Scope</th><th class="clk" data-crd="text">Requirement</th><th class="clk" data-crd="prioritised" title="Carries a P-number, or sits under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th class="clk" data-crd="status">Status</th><th class="clk" data-crd="delivery_notes" title="What Claude did / decided for this requirement (split out from the requirement text, user 2026-07-25 P-02 L305)">Delivery notes</th></tr></thead><tbody>${reqs||'<tr><td colspan="7" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
+    <div class="tablewrap"><table><thead><tr><th class="clk" data-crd="row" title="Stable row number — use this when referring to a requirement">#</th><th class="clk" data-crd="working_area">Working Area</th><th class="clk" data-crd="scope" title="The requirement's category (Data / Format / Content / BUG / Default / Filter), or &quot;NEW DELIVERY&quot; when it sits under a new-delivery heading (user 2026-07-25, P-05 L310).">Scope</th><th class="clk" data-crd="text">Requirement</th><th class="clk" data-crd="prioritised" title="Carries a P-number, or sits under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th class="clk" data-crd="status">Status</th><th class="clk" data-crd="delivery_notes" title="What Claude did / decided for this requirement (split out from the requirement text, user 2026-07-25 P-02 L305)">Delivery notes</th></tr></thead><tbody>${reqs||'<tr><td colspan="7" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
   // Re-wire on every paint — the header row is rebuilt each render, so a one-time binding would go stale.
   $("cr-detail").querySelectorAll("th[data-crd]").forEach(th=>th.onclick=()=>{const k=th.dataset.crd;crdSortDir=(crdSortK===k)?-crdSortDir:1;crdSortK=k;paintCRDetail();});
   _sortArrows("data-crd",crdSortK,crdSortDir);
