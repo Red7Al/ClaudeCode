@@ -309,6 +309,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-performance #pf-summary table th{white-space:nowrap;vertical-align:bottom}
 #view-performance #pf-summary table td{white-space:nowrap}
 #pf-summary table{font-size:12.5px}
+/* Wallet-model columns on Results (user 2026-07-26, P-05 L98/L271): hidden until the toggle adds
+   .wallet-on to #pf-table. display:none on th/td removes the column cleanly. */
+#pf-table:not(.wallet-on) .wcol{display:none}
 /* "Settings used" card on the Summary sub-tab (user 2026-07-24, P-02) — compact, left of the filters. */
 .pf-setcard{max-width:280px;min-width:190px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:11.5px}
 .pf-setcard-h{font-weight:700;margin-bottom:4px;font-size:12px}
@@ -1049,9 +1052,24 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <!-- Name/ticker search, as on Scanner / Pre-orders / Order Ops / X Posts (user 2026-07-17, P-17) -->
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="pf-count"></span>
       <input id="pf-search" placeholder="Search name / ticker…" oninput="_renderPerformance()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
-    <div class="tablewrap"><table>
+    <!-- Wallet model on Results (user 2026-07-26, P-05 L98/L271): the SAME Wallet / Max-position / Max-open
+         model as "What separates the winners", applied to the recorded triggers below. Off by default so
+         the table keeps its return sort; when ON the Stake / Net £ / Wallet columns appear and the table
+         goes strict chronological (trigger-date) order, since a running wallet only reads correctly in
+         time order. Reconciles with the winners ledger by using the identical stake=%-of-running-wallet,
+         net=stake×return%, compounding formula (just over this Results population). -->
+    <div id="pf-wallet-ctrl" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:2px 0 10px;font-size:12px">
+      <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="pfw-on" onchange="pfWalletToggle()"> <b style="color:var(--fg)">Show wallet model</b> — Stake / Net £ / running Wallet</label>
+      <span id="pfw-inputs" class="hidden" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <label class="muted" style="display:flex;align-items:center;gap:5px">Wallet £ <input id="pfw-wallet" type="number" min="100" step="500" value="1000" style="width:100px;padding:4px 6px" onchange="_renderPerformance()"></label>
+        <label class="muted" style="display:flex;align-items:center;gap:5px" title="Each trade stakes this % of the running wallet at that moment (compounding).">Max position size <input id="pfw-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="_renderPerformance()">%</label>
+        <label class="muted" style="display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = no cap. A low cap skips a trade that triggers while you're already full.">Max open positions <input id="pfw-maxopen" type="number" min="0" step="1" placeholder="∞" style="width:64px;padding:4px 6px" onchange="_renderPerformance()"></label>
+        <span id="pfw-summary" style="font-size:12px"></span>
+      </span>
+    </div>
+    <div class="tablewrap"><table id="pf-table">
       <!-- Ticker sits FAR RIGHT on every table that has one (user 2026-07-17, P-11b). -->
-      <thead><tr><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank where the instrument has no real volume (FX, indices).">RVOL</th><th data-pf="ticker">Ticker</th></tr></thead>
+      <thead><tr><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Wallet</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank where the instrument has no real volume (FX, indices).">RVOL</th><th data-pf="ticker">Ticker</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -2961,6 +2979,28 @@ function _pfMonthly(rows){
       <span style="font-size:9px;color:var(--muted);margin-top:3px;white-space:nowrap">${x.m.slice(2)}</span>
     </div>`).join("")+`</div></div>`;
 }
+// Wallet model on Results (user 2026-07-26, P-05 L98/L271) — the SAME formula as the winners ledger
+// (paintOrdersPerf): chronological by trigger date, stake = Max-position-size % of the RUNNING wallet
+// (compounding), net = stake × return%, with an optional Max-open-positions cap. Applied to the recorded
+// triggers shown on Results. Attaches _stake / _net / _cum to each row (null for rows without a return).
+function pfWalletToggle(){const on=!!($("pfw-on")||{}).checked;$("pfw-inputs")&&$("pfw-inputs").classList.toggle("hidden",!on);_renderPerformance();}
+function _pfAddDays(d,n){if(!d)return'9999-99-99';const t=new Date(d+'T00:00:00Z');if(isNaN(t))return'9999-99-99';t.setUTCDate(t.getUTCDate()+(+n||0));return t.toISOString().slice(0,10);}
+function _pfWalletLedger(sel){
+  const wallet=Math.max(1,+(($("pfw-wallet")||{}).value)||1000);
+  const stakeFrac=(Math.max(0.01,+(($("pfw-stake")||{}).value)||2))/100;
+  const maxopen=Math.max(0,Math.floor(+(($("pfw-maxopen")||{}).value)||0));
+  sel.forEach(r=>{r._stake=r._net=r._cum=null;});
+  const wp=sel.filter(r=>r.perf!=null);
+  const seq=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
+  const exitOf=r=>r.state==='OPEN'?'9999-99-99':_pfAddDays(r.trig_date,r.days_open||0);   // when the slot frees
+  let taken=seq, skipped=0;
+  if(maxopen>0){taken=[];const openExits=[];
+    for(const r of seq){for(let i=openExits.length-1;i>=0;i--){if(openExits[i]<=(r.trig_date||''))openExits.splice(i,1);}
+      if(openExits.length<maxopen){taken.push(r);openExits.push(exitOf(r));}else skipped++;}}
+  let w=wallet;
+  for(const r of taken){const stake=w*stakeFrac,net=stake*r.perf/100;w+=net;r._stake=stake;r._net=net;r._cum=w;}
+  return {wallet,endWallet:w,taken:taken.length,skipped,maxopen};
+}
 function _renderPerformance(){
   const all=(PERF_DATA||[]).filter(r=>pfDateOk(r.trig_date));   // date-window filter (P-01) drives everything below
   const _wlCol=k=>k==="Win"?"var(--bull)":k==="Loss"?"var(--bear)":"#d29922";
@@ -3026,7 +3066,14 @@ function _renderPerformance(){
       <h3>Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)}</h3>
       <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggers.</div></div>`).join("")
     :`<p class="muted">Not enough recorded triggers yet to rank Quality/R:R buckets (need at least 3 per bucket).</p>`;
-  const rows=genSort(sel,pfSortK,pfSortDir);
+  // Wallet model (P-05 L98/L271): when ON, compute the running wallet over the shown triggers and force
+  // strict trigger-date order (a running wallet only reads correctly chronologically); else the usual sort.
+  const pfwOn=!!($("pfw-on")||{}).checked;
+  const led=pfwOn?_pfWalletLedger(sel):null;
+  const rows=pfwOn?sel.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''))
+                  :genSort(sel,pfSortK,pfSortDir);
+  $("pf-table")&&$("pf-table").classList.toggle("wallet-on",pfwOn);
+  if($("pfw-summary"))$("pfw-summary").innerHTML=(pfwOn&&led)?`<b style="color:var(--fg)">£${Math.round(led.wallet).toLocaleString()}</b> → <b style="color:${led.endWallet>=led.wallet?'var(--bull)':'var(--bear)'}">£${Math.round(led.endWallet).toLocaleString()}</b> over ${led.taken.toLocaleString()} trade${led.taken===1?'':'s'}${led.maxopen>0?` · cap ${led.maxopen} open → ${led.skipped.toLocaleString()} skipped`:''} <span class="muted">· recorded triggers shown, oldest first (same model as “What separates the winners”)</span>`:"";
   const nT=sel.filter(r=>r.state==="TARGET").length, nS=sel.filter(r=>r.state==="STOPPED").length, nO=sel.filter(r=>r.state==="OPEN").length;
   $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${sel.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${sel.length!==all.length?` of ${all.length}`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("pftab-count").textContent=`(${sel.length})`;
@@ -3041,9 +3088,12 @@ function _renderPerformance(){
     <td style="color:var(--bear)">${ob(f2(r.stop))}</td><td>${ob(f2(r.entry))}</td><td style="color:var(--bull)">${ob(f2(r.target))}</td>
     <td>${ob(f2(r.current_price))}</td>
     <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
+    <td class="wcol muted">${r._stake!=null?'£'+Math.round(r._stake).toLocaleString():'—'}</td>
+    <td class="wcol">${r._net!=null?`<span style="color:${r._net>=0?'var(--bull)':'var(--bear)'}">${r._net>=0?'+':'−'}£${Math.abs(r._net).toFixed(2)}</span>`:'—'}</td>
+    <td class="wcol"><b>${r._cum!=null?'£'+Math.round(r._cum).toLocaleString():'—'}</b></td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td>
     <td>${ob(rvolCell(r.rvol))}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
-    ||`<tr><td colspan="16" class="empty">No recorded triggers yet.</td></tr>`;
+    ||`<tr><td colspan="${pfwOn?19:16}" class="empty">No recorded triggers yet.</td></tr>`;
 }
 // "Settings used" card (user 2026-07-24, P-02): a provenance card, left of the filters on the Summary
 // sub-tab, stating the settings behind the monthly chart + summary table — the date window, location, the
