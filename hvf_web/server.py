@@ -1708,6 +1708,16 @@ def api_performance():
     try:
         import datetime as _dt
         cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
+        def _days_open(r):   # days the trade was/has been active (user 2026-07-25, P-05 L99)
+            td = r.get("trig_date")
+            if not td:
+                return None
+            try:
+                d0 = _dt.date.fromisoformat(str(td)[:10])
+                d1 = _dt.date.fromisoformat(str(r.get("exit_date"))[:10]) if r.get("exit_date") else _dt.date.today()
+                return max(0, (d1 - d0).days)
+            except Exception:
+                return None
         for r in _sqa_all_rows():
             if (r.get("trig_date") or "") < cut12:
                 continue
@@ -1719,6 +1729,7 @@ def api_performance():
                 "entry": r["entry"], "stop": r["stop"], "target": r["target"],
                 "current_price": r["current_price"],
                 "trig_date": r["trig_date"], "state": r["outcome"],
+                "days_open": _days_open(r),
                 "perf": (round(r["return_pct"], 2) if r["return_pct"] is not None else None),
                 "rvol": r["rvol"]})
         out.sort(key=lambda r: (r.get("perf") is None, -(r.get("perf") or 0)))

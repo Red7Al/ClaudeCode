@@ -1050,7 +1050,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <input id="pf-search" placeholder="Search name / ticker…" oninput="_renderPerformance()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
     <div class="tablewrap"><table>
       <!-- Ticker sits FAR RIGHT on every table that has one (user 2026-07-17, P-11b). -->
-      <thead><tr><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="entry">Entry</th><th data-pf="stop">Stop</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank where the instrument has no real volume (FX, indices).">RVOL</th><th data-pf="ticker">Ticker</th></tr></thead>
+      <thead><tr><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank where the instrument has no real volume (FX, indices).">RVOL</th><th data-pf="ticker">Ticker</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -2997,12 +2997,13 @@ function _renderPerformance(){
     <!-- Market and Triggered stay visible logged-out (user 2026-07-17, P-26 and P-17b); the rest of the
          row is still obfuscated by ob(). /api/performance is public and already returns both. -->
     <td>${r.market||''}</td><td>${r.sector||''}</td><td>${r.trig_date||'—'}</td>
-    <td>${ob(f2(r.entry))}</td><td style="color:var(--bear)">${ob(f2(r.stop))}</td><td style="color:var(--bull)">${ob(f2(r.target))}</td>
+    <td>${r.days_open!=null?r.days_open:'—'}</td>
+    <td style="color:var(--bear)">${ob(f2(r.stop))}</td><td>${ob(f2(r.entry))}</td><td style="color:var(--bull)">${ob(f2(r.target))}</td>
     <td>${ob(f2(r.current_price))}</td>
     <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td>
     <td>${ob(rvolCell(r.rvol))}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
-    ||`<tr><td colspan="15" class="empty">No recorded triggers yet.</td></tr>`;
+    ||`<tr><td colspan="16" class="empty">No recorded triggers yet.</td></tr>`;
 }
 // "Settings used" card (user 2026-07-24, P-02): a provenance card, left of the filters on the Summary
 // sub-tab, stating the settings behind the monthly chart + summary table — the date window, location, the
