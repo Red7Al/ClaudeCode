@@ -2654,11 +2654,25 @@ function renderIgAccount(ev){
       // server-side (last 3 chars only).
       $("ig-acct").innerHTML=(j.account_name||j.account_masked)
         ?`🏦 <b style="color:var(--fg)">${_esc(j.account_name)||'IG account'}</b>${j.account_masked?` <span class="muted" style="font-weight:400">· acct ${_esc(j.account_masked)}</span>`:''}`:"";
-      $("ig-note").innerHTML=j.note?`<span class="muted">🔒 ${j.note}</span>`:"";
+      // No IG credentials (user 2026-07-26, P-07 #91/#92): show a prominent warning AND a button that
+      // jumps straight to Configuration → IG, instead of only a muted "set them in Configuration" note.
+      const noCreds=j.no_creds||((j.note||"").toLowerCase().indexOf("no ig credentials")===0);
+      $("ig-note").innerHTML=noCreds
+        ? `<div class="card" style="border-color:#d29922;background:color-mix(in srgb,#d29922 12%,transparent);display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 6px"><span style="font-size:13px">⚠️ <b style="color:var(--fg)">No IG credentials set.</b> <span class="muted">Add your IG login to see your account and place orders.</span></span><span class="grow" style="flex:1"></span><button class="btn" style="border-color:#d29922" onclick="openIgSettings()">🔑 Open IG settings</button></div>`
+        : (j.note?`<span class="muted">🔒 ${j.note}</span>`:"");
       paintIgAccount();
     })
     .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
+}
+// Jump from the IG Account warning straight to Configuration → IG (user 2026-07-26, P-07 #91). The IG
+// credential panel is built ASYNCHRONOUSLY by renderCredentials(), so poll for it before confShow('IG').
+function openIgSettings(){
+  showTab('config');
+  if(typeof renderCredentials==="function")renderCredentials();   // ensure the credential panels get built
+  let n=25; const tick=()=>{ if(document.querySelector('#view-config .confpanel[data-panel="IG"]')){confShow('IG');}
+    else if(--n>0){setTimeout(tick,120);} };
+  tick();
 }
 async function maRebuild(){
   if(!await appConfirm("This rescans the whole universe (a few minutes) and refreshes the data for everyone.",{title:"Rebuild the snapshot now?",ok:"↻ Rebuild"}))return;

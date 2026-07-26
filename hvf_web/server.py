@@ -2598,6 +2598,7 @@ def api_ig_account():
         import ig_shim
         if ig_shim.session_for(name) is None:
             out["note"] = "No IG credentials of your own — set them in Configuration → IG to see your account."
+            out["no_creds"] = True   # drives the warning + "Open IG settings" button on the page (P-07 #91/#92)
             return jsonify(out)
     except Exception as e:
         out["note"] = f"IG session unavailable: {e}"
