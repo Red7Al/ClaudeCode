@@ -3224,7 +3224,7 @@ function _renderPfSummary(sel){
 }
 document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();_sortArrows("data-pf",pfSortK,pfSortDir);});
 // ── Change Requests tab (admin, user 2026-07-10): parses ChangeRequests/*.txt via /api/change-requests ──
-let CR_FILES=[], crSortK="created", crSortDir=-1, CR_SEL=null, CR_DETAIL=null, crDetailStatus="All";
+let CR_FILES=[], crSortK="created", crSortDir=-1, CR_SEL=null, CR_DETAIL=null, crDetailStatus="All", crDetailPrange="All";
 let crdSortK="row", crdSortDir=1;   // detail-table sort (user 2026-07-24, P-03): default #row ascending
 function renderCR(ev){
   // Visible feedback on refresh (user 2026-07-11): spin the button + show a loading row.
@@ -3256,19 +3256,30 @@ function paintCR(){
 function crOpen(file){
   CR_SEL=file;paintCR();
   fetch("/api/change-requests?file="+encodeURIComponent(file),{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(d=>{CR_DETAIL=d;crDetailStatus="All";$("cr-detail").classList.remove("hidden");paintCRDetail();$("cr-detail").scrollIntoView({behavior:"smooth",block:"nearest"});})
+    .then(d=>{CR_DETAIL=d;crDetailStatus="All";crDetailPrange="All";$("cr-detail").classList.remove("hidden");paintCRDetail();$("cr-detail").scrollIntoView({behavior:"smooth",block:"nearest"});})
     .catch(()=>{$("cr-detail").classList.remove("hidden");$("cr-detail").innerHTML='<p class="empty">Could not load file.</p>';});
 }
 function crStatusFilter(s){crDetailStatus=s;paintCRDetail();}
+function crPrangeFilter(p){crDetailPrange=p;paintCRDetail();}   // priority-group filter (user 2026-07-26, P-07/L317)
 function paintCRDetail(){
   const d=CR_DETAIL; if(!d)return;
   const sc={Completed:'var(--bull)','In Progress':'var(--accent)','Not Started':'#d29922',Cancelled:'var(--bear)',Requested:'#d29922',Deferred:'var(--muted)'};
-  const all=d.requirements||[], counts=all.reduce((m,q)=>{m[q.status]=(m[q.status]||0)+1;return m;},{});
-  // Status filter (user 2026-07-11): click a status to show only those requirements.
+  const all=d.requirements||[];
+  // Two filter axes (user 2026-07-11 status; user 2026-07-26 P-07/L317 priority group): click a status
+  // AND/OR a priority band to narrow. The pill counts are CROSS-FILTERED — each status pill counts within
+  // the active priority band and vice-versa — so "P01-05" then "Not Started" shows exactly what's left in
+  // that band, and each count reflects what clicking will actually reveal.
+  const byStatus=crDetailStatus==="All"?all:all.filter(q=>q.status===crDetailStatus);
+  const byPrange=crDetailPrange==="All"?all:all.filter(q=>q.prange===crDetailPrange);
+  const sCounts=byPrange.reduce((m,q)=>{m[q.status]=(m[q.status]||0)+1;return m;},{});
+  const pCounts=byStatus.reduce((m,q)=>{m[q.prange]=(m[q.prange]||0)+1;return m;},{});
   const pills=["All","Completed","In Progress","Not Started","Cancelled","Requested","Deferred"].map(s=>{
-    const n=s==="All"?all.length:(counts[s]||0);
+    const n=s==="All"?byPrange.length:(sCounts[s]||0);
     return `<button class="subpill${crDetailStatus===s?' active':''}" onclick="crStatusFilter('${s}')" style="font-size:11px">${s} (${n})</button>`;}).join("");
-  const shown=crDetailStatus==="All"?all:all.filter(q=>q.status===crDetailStatus);
+  const ppills=["All","P01-05","P06-10","P11-25","P26+"].map(p=>{
+    const n=p==="All"?byStatus.length:(pCounts[p]||0);
+    return `<button class="subpill${crDetailPrange===p?' active':''}" onclick="crPrangeFilter('${p}')" style="font-size:11px">${p} (${n})</button>`;}).join("");
+  const shown=all.filter(q=>(crDetailStatus==="All"||q.status===crDetailStatus)&&(crDetailPrange==="All"||q.prange===crDetailPrange));
   // Status must never wrap: the Requirement column is white-space:normal and takes what it likes, which
   // squeezed Status until "Completed" broke mid-word as "Complet/ed" (user 2026-07-17). width:1% +
   // nowrap sizes the column to its longest label ("Not Started") and leaves the rest to Requirement.
@@ -3278,10 +3289,11 @@ function paintCRDetail(){
   // Every detail column sorts too (user 2026-07-24, P-03) — the file-level table already did; this is the
   // table opened by clicking a filename. Uses the shared genSort/_sortArrows house pattern.
   const rows=genSort(shown,crdSortK,crdSortDir);
-  const reqs=rows.map(q=>`<tr><td style="white-space:nowrap;width:1%;text-align:right;color:var(--muted)"><b>#${q.row}</b></td><td style="white-space:nowrap">${q.working_area||'—'}</td><td style="white-space:nowrap">${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td style="white-space:nowrap;width:1%;text-align:center"><b style="color:${q.prioritised?'#d29922':'var(--muted)'}">${q.prioritised?'Y':'N'}</b></td><td style="white-space:nowrap;width:1%"><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td><td style="white-space:normal;color:var(--muted);font-size:12px">${(q.delivery_notes||'').replace(/</g,'&lt;')}</td></tr>`).join("");
+  const reqs=rows.map(q=>`<tr><td style="white-space:nowrap;width:1%;text-align:right;color:var(--muted)"><b>#${q.row}</b></td><td style="white-space:nowrap">${q.working_area||'—'}</td><td style="white-space:nowrap">${q.scope||''}</td><td style="white-space:normal">${(q.text||'').replace(/</g,'&lt;')}</td><td style="white-space:nowrap;width:1%;text-align:center"><b style="color:${q.prioritised?'#d29922':'var(--muted)'}">${q.prioritised?'Y':'N'}</b></td><td style="white-space:nowrap;width:1%;text-align:center;color:var(--muted)">${q.prange||'—'}</td><td style="white-space:nowrap;width:1%"><b style="color:${sc[q.status]||'var(--muted)'}">${q.status}</b></td><td style="white-space:normal;color:var(--muted);font-size:12px">${(q.delivery_notes||'').replace(/</g,'&lt;')}</td></tr>`).join("");
   $("cr-detail").innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3 style="margin:0">${d.name}</h3><span class="grow"></span><span class="muted" style="font-size:12px">Created ${d.created||'?'} · Updated ${d.updated||'?'} · ${d.total} actions</span><button class="btn" onclick="$('cr-detail').classList.add('hidden');CR_SEL=null;paintCR()">✕ Close</button></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${pills}</div>
-    <div class="tablewrap"><table><thead><tr><th class="clk" data-crd="row" title="Stable row number — use this when referring to a requirement">#</th><th class="clk" data-crd="working_area">Working Area</th><th class="clk" data-crd="scope" title="The requirement's category (Data / Format / Content / BUG / Default / Filter), or &quot;NEW DELIVERY&quot; when it sits under a new-delivery heading (user 2026-07-25, P-05 L310).">Scope</th><th class="clk" data-crd="text">Requirement</th><th class="clk" data-crd="prioritised" title="Carries a P-number, or sits under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th class="clk" data-crd="status">Status</th><th class="clk" data-crd="delivery_notes" title="What Claude did / decided for this requirement (split out from the requirement text, user 2026-07-25 P-02 L305)">Delivery notes</th></tr></thead><tbody>${reqs||'<tr><td colspan="7" class="empty">No requirements with this status.</td></tr>'}</tbody></table></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 4px">${pills}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px;align-items:center"><span class="muted" style="font-size:11px;margin-right:2px">Priority:</span>${ppills}</div>
+    <div class="tablewrap"><table><thead><tr><th class="clk" data-crd="row" title="Stable row number — use this when referring to a requirement">#</th><th class="clk" data-crd="working_area">Working Area</th><th class="clk" data-crd="scope" title="The requirement's category (Data / Format / Content / BUG / Default / Filter), or &quot;NEW DELIVERY&quot; when it sits under a new-delivery heading (user 2026-07-25, P-05 L310).">Scope</th><th class="clk" data-crd="text">Requirement</th><th class="clk" data-crd="prioritised" title="Carries a P-number, or sits under an &quot;Explicitly prioritised work&quot; heading">Prioritised</th><th class="clk" data-crd="prange" title="Priority band from the requirement's P-number: P01-05 (highest) → P26+ (user 2026-07-26, P-07/L317)">Priority</th><th class="clk" data-crd="status">Status</th><th class="clk" data-crd="delivery_notes" title="What Claude did / decided for this requirement (split out from the requirement text, user 2026-07-25 P-02 L305)">Delivery notes</th></tr></thead><tbody>${reqs||'<tr><td colspan="8" class="empty">No requirements match these filters.</td></tr>'}</tbody></table></div>`;
   // Re-wire on every paint — the header row is rebuilt each render, so a one-time binding would go stale.
   $("cr-detail").querySelectorAll("th[data-crd]").forEach(th=>th.onclick=()=>{const k=th.dataset.crd;crdSortDir=(crdSortK===k)?-crdSortDir:1;crdSortK=k;paintCRDetail();});
   _sortArrows("data-crd",crdSortK,crdSortDir);
