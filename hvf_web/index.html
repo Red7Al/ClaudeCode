@@ -109,7 +109,12 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 /* display:block is load-bearing: .fill is a <span>, blockified only while it is a direct flex item of
    .bar. Inside .track it would fall back to inline and silently ignore width/height (measured 0px). */
 .bar .fill{display:block;height:11px;border-radius:2px;background:var(--accent)}
-.bar .n{color:var(--muted)}
+/* Fixed-width, right-aligned count so a card's natural width does NOT change when the number gains/loses a
+   digit on selection — keeps card size/position stable while brushing (user 2026-07-26, P-04 #65/#66). */
+.bar .n{color:var(--muted);flex:none;min-width:2.4em;text-align:right;font-variant-numeric:tabular-nums}
+/* Fixed-width slot for the ● selected-marker so selecting a bar doesn't widen its label and shift cards
+   (user 2026-07-26, P-04 #66). Reserved on every bar, so width is identical selected or not. */
+.bar .selmk{display:inline-block;width:.85em;text-align:center;color:var(--fg)}
 table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{text-align:left;padding:6px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
 th{position:sticky;top:0;background:var(--panel);cursor:pointer;color:var(--muted);font-size:11px;text-transform:uppercase}
@@ -1333,6 +1338,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <tbody id="ig-pos-rows"></tbody>
     </table></div>
   </section>
+  <!-- Standard chart strip for the working orders (Amend) — Location / Market / Sector in the house
+       LHS order, enriched from the scanner snapshot by ticker; click-to-filter + brushed like every
+       other page (user 2026-07-26, P-04 L94 / #94). Hidden only when there are no working orders. -->
+  <input type="hidden" id="igo_location"><input type="hidden" id="igo_market"><input type="hidden" id="igo_sector">
+  <div class="viz" id="ig-ord-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="ig-ord-count"></span></div>
     <div class="tablewrap"><table>
@@ -1460,12 +1470,15 @@ function pass(r,except){
   const sel=(v,id)=>{const opts=[...$(id).selectedOptions].map(o=>o.value).filter(x=>x!=="");
     if(!opts.length)return true; return opts.includes((v==null||v==="")?"—":v);};
   const dm=(v,id,mfid)=>sel(v,id) && inSet(mfid,v);
-  if(except!=="direction" && !dm(r.direction,"f_dir","mf_direction"))return false;
-  if(except!=="location"  && !dm(r.location,"f_loc","mf_location"))return false;
-  if(except!=="market"    && !dm(r.market,"f_mkt","mf_market"))return false;
-  if(except!=="sector"    && !dm(r.sector,"f_sec","mf_sector"))return false;
-  if(except!=="status"    && !dm(r.status,"f_stat","mf_status"))return false;
-  if(except!=="timeframe" && !dm(r.timeframe,"f_tf","mf_timeframe"))return false;
+  // except===true skips ALL chart-dimension filters (keeps search / signalOnly / numeric ranges) — used to
+  // build the chart-selection-INDEPENDENT seed base so brushed charts keep a constant bar set (P-04 #65).
+  const _all=(except===true);
+  if(!_all && except!=="direction" && !dm(r.direction,"f_dir","mf_direction"))return false;
+  if(!_all && except!=="location"  && !dm(r.location,"f_loc","mf_location"))return false;
+  if(!_all && except!=="market"    && !dm(r.market,"f_mkt","mf_market"))return false;
+  if(!_all && except!=="sector"    && !dm(r.sector,"f_sec","mf_sector"))return false;
+  if(!_all && except!=="status"    && !dm(r.status,"f_stat","mf_status"))return false;
+  if(!_all && except!=="timeframe" && !dm(r.timeframe,"f_tf","mf_timeframe"))return false;
   // null value passes a range (a no-signal / missing-field row is never excluded by a numeric range —
   // so toggling "Squeeze only" off shows the whole monitored universe).
   const rng=(v,lo,hi)=>{const a=num(g(lo)),b=num(g(hi));if(v==null)return true;if(a!=null&&v<a)return false;if(b!=null&&v>b)return false;return true;};
@@ -1524,7 +1537,7 @@ function barChart(title,counts,fk,colorFn,labelDesc,opts){
     const mv=metric?metric[k]:null;
     const bg=metric?(mv==null?'var(--muted)':mBg(mv)):(colorFn?colorFn(k):'var(--accent)');
     const tip=metric?`${k}: avg return ${mv==null?'—':(mv>0?'+':'')+mv.toFixed(1)+'%'} · ${n} trade${n===1?'':'s'} — click to filter`:`click to filter ${k}`;
-    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}" title="${tip}"><span class="tk">${on?'● ':''}${k}</span>
+    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}" title="${tip}"><span class="tk"><span class="selmk">${on?'●':''}</span>${k}</span>
     <span class="track"><span class="fill" style="width:${Math.max(2,Math.round(n/max*100))}%;background:${bg};opacity:${nsel&&!on?0.4:1}"></span></span><span class="n">${n}</span></div>`;}).join("");
   return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
 }
@@ -1539,7 +1552,7 @@ function pieChart(title,counts,fk){
     const x2=20+18*Math.cos(a2-Math.PI/2),y2=20+18*Math.sin(a2-Math.PI/2);
     seg+=`<path class="clk" data-fk="${fk}" data-fv="${k}" d="M20,20 L${x1.toFixed(2)},${y1.toFixed(2)} A18,18 0 ${frac>0.5?1:0},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${cols[i%cols.length]}" stroke="${on?'var(--fg)':'none'}" stroke-width="${on?1.5:0}" opacity="${nsel&&!on?0.4:1}"><title>click to filter ${k}</title></path>`;a=a2;});
   const legend=entries.slice(0,8).map(([k,n],i)=>{const on=has(k);
-    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}"><span class="fill" style="width:10px;background:${cols[i%cols.length]}"></span><span class="tk" style="text-align:left;width:auto" title="click to filter ${k}">${on?'● ':''}${k} (${n})</span></div>`;}).join("");
+    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}"><span class="fill" style="width:10px;background:${cols[i%cols.length]}"></span><span class="tk" style="text-align:left;width:auto" title="click to filter ${k}"><span class="selmk">${on?'●':''}</span>${k}</span><span class="n">${n}</span></div>`;}).join("");
   return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div style="display:flex;gap:8px;align-items:center">
     <svg viewBox="0 0 40 40" width="86" height="86">${seg}</svg><div class="bars" style="min-width:120px">${legend}</div></div></div>`;
 }
@@ -1590,7 +1603,14 @@ function renderViz(rows){
   // not its own (pass(r,field)), so ALL option-bars stay visible with the selected value(s) highlighted —
   // the strip no longer collapses to just the picked option (which read as "data filtered, nothing
   // selected"). `field` is both the row property counted and the dimension skipped in pass().
-  const by=(field)=>{const seen={};DATA.forEach(r=>{if(!pass(r,field))return;const v=r[field]||"—";seen[v]=(seen[v]||0)+1;});return seen;};
+  // Seed EVERY option value (count 0 if none) from the chart-selection-INDEPENDENT base (all non-chart
+  // filters applied, all six chart dims skipped) so a selection never drops a bar — the bar SET stays
+  // constant, packViz packs identically, and card size/position don't change on selection (P-04 #65 /
+  // house L31+L33). Then count the brushed subset on top.
+  const by=(field)=>{const seen={};
+    DATA.forEach(r=>{if(!pass(r,true))return;const v=r[field]||"—";if(!(v in seen))seen[v]=0;});
+    DATA.forEach(r=>{if(!pass(r,field))return;const v=r[field]||"—";seen[v]++;});
+    return seen;};
   // Bars wrap among themselves in the top row; the Sector pie gets its own row so nothing ever
   // stacks directly above or below it (user 2026-06-28).
   // Sector pie is its OWN left column; the bar charts wrap among themselves to the right — so the
@@ -1856,6 +1876,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   else if(k.startsWith("bcf_"))paintBatch();
   else if(k.startsWith("xf_"))paintXposts();
   else if(k.startsWith("slf_"))paintSyslogs();
+  else if(k.startsWith("igo_"))paintIgAccount();
   else applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
 const MF_IDS=["mf_sector","mf_direction","mf_status","mf_location","mf_market","mf_timeframe"];
@@ -2588,8 +2609,27 @@ function paintIgAccount(){
   const hit=r=>!q||(((r.name||'')+' '+(r.ticker||r.epic||'')).toLowerCase().includes(q));
   const pos=IG_POS.filter(hit);
   // Working orders default-sorted by Good till (UTC) descending (user 2026-07-25, P-05 L245).
-  const ord=IG_ORD.filter(hit).sort((a,b)=>(b.good_till||'').localeCompare(a.good_till||''));
-  const cnt=(n,tot,word)=>`<b style="font-size:15px;color:var(--fg)">${n}</b> ${word}${n===1?'':'s'}${q&&tot!==n?` <span class="muted">of ${tot}</span>`:''}`;
+  // Working orders (Amend): enrich each with location/market/sector from the scanner snapshot (DATA) by
+  // ticker, so the standard Location/Market/Sector chart strip can group them (user 2026-07-26, P-04 #94).
+  const _snap={}; DATA.forEach(r=>{if(r.ticker)_snap[r.ticker]=r;});
+  const _enr=o=>{const s=_snap[o.ticker]||_snap[o.epic]||{};
+    return Object.assign({},o,{location:s.location||"—",market:s.market||"—",sector:s.sector||"—"});};
+  const ordBase=IG_ORD.filter(hit).map(_enr);           // search-filtered + enriched — the chart brushing base
+  const IGF=[["igo_location","location"],["igo_market","market"],["igo_sector","sector"]];
+  // Brushed counts (house L31): each chart counts over ordBase with the OTHER igo_ filters applied but not
+  // its own, so all option-bars stay visible with the selected one(s) highlighted.
+  const iby=(field,exceptId)=>{const m={};
+    ordBase.forEach(o=>{const v=o[field]||"—";if(!(v in m))m[v]=0;});   // seed every option → stable packing (P-04 #66/#94)
+    ordBase.forEach(o=>{if(!IGF.every(([id,k])=>id===exceptId||inSet(id,o[k])))return;const v=o[field]||"—";m[v]++;});
+    return m;};
+  $("ig-ord-viz").innerHTML=ordBase.length?(
+    `<div class="vizsector">`+barChart("Location",iby("location","igo_location"),"igo_location")+`</div>`+
+    `<div class="vizsector">`+barChart("Market",iby("market","igo_market"),"igo_market")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",iby("sector","igo_sector"),"igo_sector")+`</div>`):"";
+  packViz("ig-ord-viz");
+  // Table honours every igo_ chart filter; default sort by Good till (UTC) desc (user 2026-07-25, P-05 L245).
+  const ord=ordBase.filter(o=>IGF.every(([id,k])=>inSet(id,o[k]))).sort((a,b)=>(b.good_till||'').localeCompare(a.good_till||''));
+  const cnt=(n,tot,word)=>`<b style="font-size:15px;color:var(--fg)">${n}</b> ${word}${n===1?'':'s'}${tot!==n?` <span class="muted">of ${tot}</span>`:''}`;
   $("ig-pos-count").innerHTML=cnt(pos.length,IG_POS.length,"open position");
   $("ig-ord-count").innerHTML=cnt(ord.length,IG_ORD.length,"working order");
   $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td>${nm40(p.name)}</td><td>${_igDtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td><b>${p.ticker||p.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
@@ -3376,7 +3416,13 @@ function renderPreorders(){
   $("po-count-text").innerHTML=`<b style="font-size:15px;color:var(--fg)">${poRows.length}</b> instruments with a pre-order — waiting for the entry to trigger <span class="muted">(${nR} READY · ${poRows.length-nR} DEVELOPING). Click a row for detail; tick + Delete selected to dismiss.</span>`;
   // Chart visuals, same set as the Scanner (user 2026-07-03) — brushed: count over po with every OTHER
   // pof_* applied but not `exceptId`, so all option-bars stay visible (user 2026-07-26, P-03 L31).
-  const pby=(field,exceptId)=>{const m={};po.forEach(r=>{if(!POF.every(([id,k])=>id===exceptId||inSet(id,r[k])))return;const v=r[field]||"—";m[v]=(m[v]||0)+1;});return m;};
+  const pby=(field,exceptId)=>{const m={};
+    // Seed EVERY option value (count 0 if none) from the chart-independent base `po`, so a selection never
+    // drops a bar — the bar SET stays constant, so packViz packs identically and card size/position don't
+    // change on selection (user 2026-07-26, P-04 #66 / house L31+L33). Mirrors the Performance byXFull seed.
+    po.forEach(r=>{const v=r[field]||"—";if(!(v in m))m[v]=0;});
+    po.forEach(r=>{if(!POF.every(([id,k])=>id===exceptId||inSet(id,r[k])))return;const v=r[field]||"—";m[v]++;});
+    return m;};
   // Location, Market, Sector on LHS (user 2026-07-24/25, P-03 L29 / P-05 L182 — supersedes P-12a "Market first").
   $("po-viz").innerHTML=
     `<div class="vizsector">`+barChart("Location",pby("location","pof_location"),"pof_location")+`</div>`+
