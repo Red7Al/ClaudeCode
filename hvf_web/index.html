@@ -2193,7 +2193,9 @@ function renderTabVis(hidden){
   const grouped=new Set([].concat(...Object.values(TAB_GROUPS),INSTR,["activity"]));   // My Activity shown under Application Operations (user 2026-07-11)
   // Settings, Instrument Operations, Application Operations, then everything else (user 2026-07-11).
   const setg=TAB_GROUPS.settings.filter(t=>t!=="config"&&allow(t));
-  const ops=[...TAB_GROUPS.operations,"activity"].filter(allow);
+  // X Posts is governed by its OWN global feature toggle (featrow-xposts) — exclude it from the per-user
+  // list so there aren't two overlapping controls for the same tab (user 2026-07-26, P-07/L149).
+  const ops=[...TAB_GROUPS.operations,"activity"].filter(t=>t!=="xposts").filter(allow);
   const instr=INSTR.filter(allow);
   const rest=TABS.filter(t=>t!=="config"&&!grouped.has(t)&&allow(t));
   const chipUsers=t=>(t==="users"&&IS_ADMIN)?chip(t,true,true):chipFor(t);   // admins can't disable User Management
