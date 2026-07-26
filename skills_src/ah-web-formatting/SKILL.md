@@ -64,8 +64,10 @@ The house pattern, reused across Scanner / Performance / Order Ops / Squeeze His
 
 ## 2. Chart strip (`.viz`)
 
-**Order** (left → right): `Market`, `Sector` (Market left of Sector), then the rest; `Ticker` far right
-wherever it appears. `.vizbars{display:contents}` means **DOM order IS visual order**.
+**Order** (left → right): `Location`, `Market`, `Sector` on the LHS (in that order), then the rest;
+`Ticker` far right wherever it appears. `.vizbars{display:contents}` means **DOM order IS visual order**.
+(User 2026-07-24/25, P-03 L29 / P-05 L182/L340 — this SUPERSEDES the earlier P-12a "Market/Sector lead":
+Location now leads. Applied on Scanner, Performance, Squeeze History and Pre-orders.)
 
 **Heights.** `.viz{align-items:stretch}` — cards sharing a row take the tallest's height. `.viz` wraps
 and each flex LINE stretches independently, so a card is only matched against its own row.
@@ -135,7 +137,7 @@ Measure and assert. Do not eyeball, and do not trust a summary you built without
 4. Every header sortable: `class="clk"` + `data-<prefix>` on each `<th>`, wired to `genSort` +
    `_sortArrows`. No exceptions.
 5. View `max-width:1240px` unless there's a stated reason.
-6. Chart strip: Market/Sector left, Ticker right; call `packViz()` after render.
+6. Chart strip: Location, Market, Sector left (in that order); Ticker right; call `packViz()` after render.
 7. Verify by measuring, with realistic (not logged-out) data.
 
 ## 6. House standards for EVERY chart/table screen (user 2026-07-24, P-03 L24–L39)
