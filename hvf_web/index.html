@@ -1101,6 +1101,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <span class="muted" style="font-size:11px">each trade stakes this % of the running wallet; both drive every £ figure below</span>
       <span id="ordp-model-msg" style="font-size:11px;flex-basis:100%"></span>
     </div>
+    <!-- Best-combination card (user 2026-07-26, P-05 L132/L133): grid-searches Max position size / Max open
+         positions / R:R floor over these trades and recommends the mix with the best RISK-ADJUSTED return,
+         with worked examples at £1k…£10k. Rendered by renderBestCombo() from paintOrdersPerf. -->
+    <div id="ordp-bestcombo" style="margin-bottom:10px"></div>
     <!-- Leverage-impact report (user 2026-07-24, P-03 L70): how the Configuration → Leverage figures affect
          the model. Recomputed by winnersParamsChange from the wallet/stake + the LEVERAGE config. -->
     <div id="ordp-leverage-impact" style="margin-bottom:10px"></div>
@@ -2826,13 +2830,70 @@ function paintScannerPresets(){
 paintScannerPresets();   // render now — CHERRY_PRESETS is defined above (user 2026-07-18)
 const _pnlc=v=>(v||0)>0?'var(--bull)':(v||0)<0?'var(--bear)':'var(--muted)';
 const _gbp2=v=>v==null?'—':`${v<0?'−':'+'}£${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+// Best-combination optimiser (user 2026-07-26, P-05 L132/L133) — grid-searches Max position size %, Max
+// open positions and R:R floor over the winners trades and recommends the mix with the best RISK-ADJUSTED
+// return: total compounded return % ÷ worst peak-to-trough drawdown %. Ranking on the ratio (not raw
+// return) stops it railing to the biggest stake, which always compounds hardest on a positive edge but
+// courts ruin. The optimum is wallet-independent under %-of-wallet compounding, so the £1k…£10k examples
+// apply the SAME combo and just scale the £ outcome, flagging any wallet whose stake is below the £25 IG
+// minimum. Uses startWallet=1 so ret/dd come out as fractions.
+function _combReplay(seq,stakeFrac,maxopen){
+  let taken=seq;
+  if(maxopen>0){taken=[];const openExits=[];
+    for(const r of seq){for(let i=openExits.length-1;i>=0;i--){if(openExits[i]<=(r.trig_date||''))openExits.splice(i,1);}
+      if(openExits.length<maxopen){taken.push(r);openExits.push(r.exit_date||_pfAddDays(r.trig_date,r.days_open||0));}}}
+  let w=1,peak=1,maxdd=0;
+  for(const r of taken){w+=w*stakeFrac*r.perf/100; if(w>peak)peak=w; const dd=peak>0?(peak-w)/peak:0; if(dd>maxdd)maxdd=dd;}
+  return {ret:w-1,dd:maxdd,n:taken.length};
+}
+function renderBestCombo(all){
+  const box=$("ordp-bestcombo"); if(!box)return;
+  const wp=(all||[]).filter(r=>r.perf!=null&&r.trig_date);
+  if(wp.length<10){box.innerHTML="";return;}   // too few trades to optimise meaningfully
+  const STAKES=[1,2,3,5,7.5,10], OPENS=[0,3,5,8,12,20], RRS=[3,5,8];
+  const byDate=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
+  let best=null;
+  for(const rr of RRS){
+    const seq=byDate.filter(r=>r.rr!=null&&r.rr>=rr);
+    if(seq.length<5)continue;
+    for(const mo of OPENS)for(const st of STAKES){
+      const {ret,dd,n}=_combReplay(seq,st/100,mo);
+      if(n<5)continue;
+      const score=dd>0?ret/dd:(ret>0?ret*1e3:ret);   // return per unit drawdown; no drawdown + positive → rank top
+      if(!best||score>best.score)best={st,mo,rr,ret,dd,n,score};
+    }
+  }
+  if(!best){box.innerHTML="";return;}
+  const pct=v=>(v>=0?'+':'')+(v*100).toFixed(1)+'%';
+  const gbp=v=>'£'+Math.round(v).toLocaleString();
+  const WALLETS=[1000,2500,5000,7500,10000];
+  const rows=WALLETS.map(w=>{const stake=w*best.st/100,end=w*(1+best.ret),net=end-w,ddP=best.dd*w*(1+best.ret);
+    const feas=stake>=25;
+    return `<tr><td><b>${gbp(w)}</b></td><td class="muted">${gbp(stake)}${feas?'':' <span style="color:var(--bear)" title="Below the £25 IG minimum — raise the stake % or the wallet">⚠</span>'}</td>
+      <td><b style="color:${net>=0?'var(--bull)':'var(--bear)'}">${gbp(end)}</b></td>
+      <td style="color:${net>=0?'var(--bull)':'var(--bear)'}">${net>=0?'+':'−'}${gbp(Math.abs(net))}</td></tr>`;}).join("");
+  box.innerHTML=`<div class="card" style="margin:0">
+    <h4 style="margin:0 0 4px">🥇 Best combination <span class="muted" style="font-weight:400;font-size:11px">— ranked by return per unit of drawdown, over ${best.n.toLocaleString()} trades in this window</span></h4>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:6px 0 8px">
+      <div><div class="muted" style="font-size:11px">Max position size</div><b style="font-size:16px;color:var(--fg)">${best.st}%</b></div>
+      <div><div class="muted" style="font-size:11px">Max open positions</div><b style="font-size:16px;color:var(--fg)">${best.mo>0?best.mo:'∞'}</b></div>
+      <div><div class="muted" style="font-size:11px">R:R floor</div><b style="font-size:16px;color:var(--fg)">≥ ${best.rr}</b></div>
+      <div style="border-left:1px solid var(--line);padding-left:18px"><div class="muted" style="font-size:11px">Total return</div><b style="font-size:16px;color:${best.ret>=0?'var(--bull)':'var(--bear)'}">${pct(best.ret)}</b></div>
+      <div><div class="muted" style="font-size:11px">Max drawdown</div><b style="font-size:16px;color:var(--bear)">−${(best.dd*100).toFixed(1)}%</b></div>
+      <div><div class="muted" style="font-size:11px">Return ÷ drawdown</div><b style="font-size:16px;color:var(--fg)">${best.dd>0?(best.ret/best.dd).toFixed(2):'∞'}</b></div>
+    </div>
+    <div class="tablewrap"><table><thead><tr><th>Wallet</th><th title="First trade's stake = Max position size % of the wallet">Opening stake</th><th>Ending wallet</th><th>Net P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="muted" style="font-size:11px;margin-top:6px">Because each stake is a fixed % of the running wallet, the best mix and its <b>%</b> return are the same at every wallet size — only the £ amounts scale. Set the Model above to these values to see the full ledger. This maximises return <b>per unit of risk</b>, not raw return (the biggest stake always compounds hardest but risks ruin). ⚠ marks a wallet whose opening stake is below the £25 IG minimum.</div>
+  </div>`;
+}
 function paintOrdersPerf(){
   const box=$("ordp-summary"), dims=$("ordp-dims"), tb=$("ordp-table"), tc=$("ordp-count");
   if(!box)return;
   const all=(WIN||[]).filter(r=>r&&r.entry&&r.stop&&pfDateOk(r.trig_date));   // shared date-window filter (P-01)
   if(!all.length){
     box.innerHTML=`<div class="muted" style="font-size:13px">No trades in this date window — widen the date filter above (or clear it for the full 12 months).</div>`;
-    if(dims)dims.innerHTML="";if(tb)tb.innerHTML="";return;}
+    if(dims)dims.innerHTML="";if(tb)tb.innerHTML="";renderBestCombo([]);return;}
+  renderBestCombo(all);   // best-combination card (P-05 L132/L133)
   const money=v=>v==null?'—':`£${Math.round(v).toLocaleString()}`;
   const stopPct=r=>Math.abs(r.entry-r.stop)/r.entry;           // the defined HVF stop, as a fraction
   const wp=all.filter(r=>r.perf!=null);                        // returns available (incl. open, marked-to-market)
