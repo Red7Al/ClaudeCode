@@ -164,8 +164,16 @@ noted as of 2026-07-24.
   `.measuring` class and packs deterministically, so selection must not re-pack differently. ✅ as long as
   selection only filters data and you re-`packViz` with the same inputs.
 - On selection, show the impact on the OTHER charts **without hiding bars** (L31): a selected value should
-  recolour/annotate the other charts rather than dropping their bars to zero/removing them. ⚠️ NOT yet —
-  today the other charts recompute from filtered data, which changes/removes bars. Gap logged.
+  recolour/annotate the other charts rather than dropping their bars to zero/removing them. ✅ done via
+  **brushing** (user 2026-07-26): each chart is counted over the rows that pass every OTHER filter but not
+  its own, so all option-bars stay visible with the selected value(s) highlighted (● + `active`) and the
+  header shows the `▶ N ✕` clear badge. Performance was always brushed (`_cross`/`byX`/`byXFull`); the
+  Scanner (`pass(r,except)` + `renderViz`'s `by(field)`) and My Pre-orders (`POF` dims + brushed `pby`)
+  were collapsing to only the picked value and now brush too. Order Ops (`oby` over full `OO_ROWS`) and
+  Squeeze History (`by` over search-only `base`) never collapsed — they already show the full mix with the
+  selection highlighted. **This matters most for DEFAULT selections** (`_seedStatusDefaults`): a seeded
+  default must read as "one option selected among the others", never as "the data got filtered and nothing
+  is selected".
 - Any date-filtered screen must have a **Month** and **Month-Week** chart (L24). Present on the perf/report
   and squeeze-history strips (`barChart("Month…")` + the `_mw()` month-week bucket); ⚠️ not audited as
   universal across every date-filtered screen. Gap logged.

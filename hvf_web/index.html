@@ -1421,7 +1421,11 @@ function tradeVisible(r){
   if(r.market && (MARKETS_DISABLED.has(r.market)||MARKETS_OFF.has(r.market)))return false;   // market switched off (admin or user)
   return ok(r.direction,"directions")&&ok(r.market,"markets")&&ok(r.location,"locations");
 }
-function pass(r){
+// `except` (optional) names ONE chart dimension to skip — used for chart "brushing" (user 2026-07-26):
+// each chart is counted over rows that pass every OTHER filter but not its own, so all option-bars stay
+// visible with the selected one(s) highlighted, rather than the strip collapsing to only the picked value
+// (P-03 L31 standard). Undefined (the table's call) applies every filter, exactly as before.
+function pass(r,except){
   const _q=($("f_search").value||"").trim().toLowerCase();
   if(_q && !((r.ticker||"").toLowerCase().includes(_q) || (r.name||"").toLowerCase().includes(_q)))return false;
   if(signalOnly && r.has_signal===false)return false;
@@ -1434,12 +1438,12 @@ function pass(r){
   const sel=(v,id)=>{const opts=[...$(id).selectedOptions].map(o=>o.value).filter(x=>x!=="");
     if(!opts.length)return true; return opts.includes((v==null||v==="")?"—":v);};
   const dm=(v,id,mfid)=>sel(v,id) && inSet(mfid,v);
-  if(!dm(r.direction,"f_dir","mf_direction"))return false;
-  if(!dm(r.location,"f_loc","mf_location"))return false;
-  if(!dm(r.market,"f_mkt","mf_market"))return false;
-  if(!dm(r.sector,"f_sec","mf_sector"))return false;
-  if(!dm(r.status,"f_stat","mf_status"))return false;
-  if(!dm(r.timeframe,"f_tf","mf_timeframe"))return false;
+  if(except!=="direction" && !dm(r.direction,"f_dir","mf_direction"))return false;
+  if(except!=="location"  && !dm(r.location,"f_loc","mf_location"))return false;
+  if(except!=="market"    && !dm(r.market,"f_mkt","mf_market"))return false;
+  if(except!=="sector"    && !dm(r.sector,"f_sec","mf_sector"))return false;
+  if(except!=="status"    && !dm(r.status,"f_stat","mf_status"))return false;
+  if(except!=="timeframe" && !dm(r.timeframe,"f_tf","mf_timeframe"))return false;
   // null value passes a range (a no-signal / missing-field row is never excluded by a numeric range —
   // so toggling "Squeeze only" off shows the whole monitored universe).
   const rng=(v,lo,hi)=>{const a=num(g(lo)),b=num(g(hi));if(v==null)return true;if(a!=null&&v<a)return false;if(b!=null&&v>b)return false;return true;};
@@ -1547,7 +1551,11 @@ function packViz(id){
   }
 }
 function renderViz(rows){
-  const by=k=>rows.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
+  // Brushing (user 2026-07-26, P-03 L31): each chart counts over rows that pass every OTHER filter but
+  // not its own (pass(r,field)), so ALL option-bars stay visible with the selected value(s) highlighted —
+  // the strip no longer collapses to just the picked option (which read as "data filtered, nothing
+  // selected"). `field` is both the row property counted and the dimension skipped in pass().
+  const by=(field)=>{const seen={};DATA.forEach(r=>{if(!pass(r,field))return;const v=r[field]||"—";seen[v]=(seen[v]||0)+1;});return seen;};
   // Bars wrap among themselves in the top row; the Sector pie gets its own row so nothing ever
   // stacks directly above or below it (user 2026-06-28).
   // Sector pie is its OWN left column; the bar charts wrap among themselves to the right — so the
@@ -3203,9 +3211,11 @@ function renderPreorders(){
   {const rrMin=num(MY_LIMITS.min_risk_reward), qMin=num(MY_LIMITS.min_quality);
    po=po.filter(r=>!(rrMin!=null&&r.rr!=null&&r.rr<rrMin) && !(qMin!=null&&r.quality!=null&&r.quality<qMin));}
   // Chart-click filters (user 2026-07-03): each pof_* holds a SET of selected values (multi-select).
-  [["pof_direction","direction"],["pof_status","status"],["pof_location","location"],
-   ["pof_market","market"],["pof_timeframe","timeframe"],["pof_sector","sector"]].forEach(([id,k])=>{
-    po=po.filter(r=>inSet(id,r[k]));});
+  // Applied to the TABLE (poRows below); the CHARTS brush — each is counted over all OTHER pof_* but not
+  // its own — so every option-bar stays visible with the selected value(s) highlighted rather than the
+  // strip collapsing to just the picked option (user 2026-07-26, P-03 L31). `po` stays the brushing base.
+  const POF=[["pof_direction","direction"],["pof_status","status"],["pof_location","location"],
+             ["pof_market","market"],["pof_timeframe","timeframe"],["pof_sector","sector"]];
   // Free-text search by name / ticker (user 2026-07-10).
   const _poq=(($("po-search")||{}).value||"").trim().toLowerCase();
   if(_poq)po=po.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(_poq));
@@ -3214,26 +3224,29 @@ function renderPreorders(){
    po=po.filter(r=>rng(r.quality,"po_qmin","po_qmax")&&rng(r.rr,"po_rrmin","po_rrmax")&&rng(r.dist_entry,"po_demin","po_demax"));}
   // Click a column header to sort (user 2026-06-30). Dist->Entry sorts on |distance| (closest first);
   // other columns sort on their raw value; nulls always sink to the bottom.
+  // Table honours EVERY chart filter (all pof_*); the charts (pby) brush by skipping their own.
+  let poRows=po.filter(r=>POF.every(([id,k])=>inSet(id,r[k])));
   const val=r=>{if(poSortK==="_fav")return FAVS.has(disp(r.ticker))?1:0;const v=r[poSortK];if(v==null)return null;return poSortK==="dist_entry"?Math.abs(v):v;};
-  po.sort((a,b)=>{const x=val(a),y=val(b);
+  poRows.sort((a,b)=>{const x=val(a),y=val(b);
     if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1;
     return (x<y?-1:x>y?1:0)*poSortDir;});
-  const nR=po.filter(r=>r.status==="READY").length;
-  $("po-count-text").innerHTML=`<b style="font-size:15px;color:var(--fg)">${po.length}</b> instruments with a pre-order — waiting for the entry to trigger <span class="muted">(${nR} READY · ${po.length-nR} DEVELOPING). Click a row for detail; tick + Delete selected to dismiss.</span>`;
-  // Chart visuals, same set as the Scanner (user 2026-07-03). Non-filtering here (dummy filter keys).
-  const pby=k=>po.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
+  const nR=poRows.filter(r=>r.status==="READY").length;
+  $("po-count-text").innerHTML=`<b style="font-size:15px;color:var(--fg)">${poRows.length}</b> instruments with a pre-order — waiting for the entry to trigger <span class="muted">(${nR} READY · ${poRows.length-nR} DEVELOPING). Click a row for detail; tick + Delete selected to dismiss.</span>`;
+  // Chart visuals, same set as the Scanner (user 2026-07-03) — brushed: count over po with every OTHER
+  // pof_* applied but not `exceptId`, so all option-bars stay visible (user 2026-07-26, P-03 L31).
+  const pby=(field,exceptId)=>{const m={};po.forEach(r=>{if(!POF.every(([id,k])=>id===exceptId||inSet(id,r[k])))return;const v=r[field]||"—";m[v]=(m[v]||0)+1;});return m;};
   // Location, Market, Sector on LHS (user 2026-07-24/25, P-03 L29 / P-05 L182 — supersedes P-12a "Market first").
   $("po-viz").innerHTML=
-    `<div class="vizsector">`+barChart("Location",pby("location"),"pof_location")+`</div>`+
-    `<div class="vizsector">`+barChart("Market",pby("market"),"pof_market")+`</div>`+
-    `<div class="vizsector">`+pieChart("Sector",pby("sector"),"pof_sector")+`</div>`+
+    `<div class="vizsector">`+barChart("Location",pby("location","pof_location"),"pof_location")+`</div>`+
+    `<div class="vizsector">`+barChart("Market",pby("market","pof_market"),"pof_market")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",pby("sector","pof_sector"),"pof_sector")+`</div>`+
     `<div class="vizbars">`+
-      barChart("Direction",pby("direction"),"pof_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
-      barChart("Status",pby("status"),"pof_status",k=>k==="READY"?"var(--accent)":"#d29922")+
-      barChart("Timeframe",pby("timeframe"),"pof_timeframe")+
+      barChart("Direction",pby("direction","pof_direction"),"pof_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+
+      barChart("Status",pby("status","pof_status"),"pof_status",k=>k==="READY"?"var(--accent)":"#d29922")+
+      barChart("Timeframe",pby("timeframe","pof_timeframe"),"pof_timeframe")+
     `</div>`;
   packViz("po-viz");   // P-15
-  $("po-rows").innerHTML=po.map(r=>{const d=r.dist_entry;
+  $("po-rows").innerHTML=poRows.map(r=>{const d=r.dist_entry;
     return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
       ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
       <td><button class="btn" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();placeOnIG('${r.ticker}')" title="Place this pre-order as a live IG working order now">↗ Place on IG</button></td>
