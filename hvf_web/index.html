@@ -121,6 +121,8 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 /* Fixed-width slot for the ● selected-marker so selecting a bar doesn't widen its label and shift cards
    (user 2026-07-26, P-04 #66). Reserved on every bar, so width is identical selected or not. */
 .bar .selmk{display:inline-block;width:.85em;text-align:center;color:var(--fg)}
+/* "Hide trades missed" toggle on the winners ledger (user 2026-07-26, P-07 #30). */
+#ordp-table.hide-missed .missed-row{display:none}
 table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{text-align:left;padding:6px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
 th{position:sticky;top:0;background:var(--panel);cursor:pointer;color:var(--muted);font-size:11px;text-transform:uppercase}
@@ -1133,7 +1135,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div id="ordp-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
     <!-- Monthly %-growth chart moved to the Report tab (user 2026-07-18, P-01) — see #pf-monthly. -->
     <div id="ordp-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
-    <h3 class="sec" style="font-size:15px;margin-bottom:2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Every trade — oldest first, wallet after each <span id="ordp-count" class="muted" style="font-size:12px;font-weight:400"></span><span class="grow" style="flex:1"></span><input id="ordp-ledger-q" placeholder="Search name / ticker…" oninput="winnersLedgerFilter()" style="width:auto;max-width:200px;padding:4px 8px;font-size:12px;font-weight:400"></h3>
+    <h3 class="sec" style="font-size:15px;margin-bottom:2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Every trade — oldest first, wallet after each <span id="ordp-count" class="muted" style="font-size:12px;font-weight:400"></span><span class="grow" style="flex:1"></span><label id="ordp-missed-ctrl" title="Hide the funnels that triggered but were NOT placed because the Max-open-positions cap was full (P-07 #30)" style="display:none;align-items:center;gap:5px;cursor:pointer;font-size:12px;font-weight:400;color:var(--muted)"><input type="checkbox" id="ordp-hide-missed" onchange="winnersToggleMissed()"> Hide trades missed<span id="ordp-missed-count"></span></label><input id="ordp-ledger-q" placeholder="Search name / ticker…" oninput="winnersLedgerFilter()" style="width:auto;max-width:200px;padding:4px 8px;font-size:12px;font-weight:400"></h3>
     <p class="muted" style="font-size:12px;margin:2px 0 6px">Each row is one recorded trade. <b>Stake</b> = the Max-position-size % of the running wallet; <b>Margin</b> = the cash the position ties up = stake ÷ leverage (IG UK retail rates by instrument type); <b>Net £</b> = stake × its return%; <b>Equity</b> is the running account value (the compounded wallet incl. realised P&amp;L), and the last row equals the compounded figure above. <b>Available</b> = Equity − Margin (what's left to open further positions). <b>Max loss</b> = stake × the stop distance %.</p>
     <div id="ordp-table" class="tablewrap" style="max-height:460px;overflow:auto"></div>
     <!-- VolumeScore impact report (user 2026-07-24, P-02 L55) — how filtering on VolumeScore changes the book. -->
@@ -2760,6 +2762,8 @@ const _cherryEq=(a,b)=>JSON.stringify(a||{})===JSON.stringify(b||{});
 // stake (£200 on £10k) × each trade's actual return%. So it reconciles with Results by construction — no
 // separate population, no R-multiple, no compounding-to-millions.
 let WINNERS_WALLET=1000, WINNERS_STAKE=0.02, WINNERS_MAXOPEN=0;   // £ wallet (default £1000, P-01), stake fraction, concurrency cap (P-05)
+let WINNERS_HIDE_MISSED=false;   // "hide trades missed" toggle on the winners ledger (P-07 #30)
+function winnersToggleMissed(){WINNERS_HIDE_MISSED=!!($("ordp-hide-missed")||{}).checked;const t=$("ordp-table");if(t)t.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);}
 let WIN=null;
 // Wallet £ (L211), Max position size % (L200), Max open positions (L199) are variables on the winners tab.
 const MIN_TRADE=25;   // IG minimum stake (£), read-only floor (user 2026-07-18, P-05 L253)
@@ -2968,24 +2972,24 @@ function paintOrdersPerf(){
   const stakePct=+(WINNERS_STAKE*100).toFixed(2);
   const seq=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
   // Max open positions cap (P-05, L199): skip a trade that would trigger while MAXOPEN are already open.
-  let taken=seq, skipped=0;
-  if(WINNERS_MAXOPEN>0){
-    taken=[]; const openExits=[];
-    for(const r of seq){
-      for(let i=openExits.length-1;i>=0;i--){if(openExits[i]<=(r.trig_date||''))openExits.splice(i,1);}
-      if(openExits.length<WINNERS_MAXOPEN){taken.push(r);openExits.push(r.exit_date||'9999-99-99');}else skipped++;
-    }
-  }
+  // Single chronological pass (P-07 #28/#29/#30): a funnel that TRIGGERS while WINNERS_MAXOPEN positions
+  // are already open is "not placed" — no slot/capital free (the balance-too-low analog). We now RECORD
+  // each missed funnel (with a reason) instead of only counting it, so the ledger can show it and offer a
+  // "hide trades missed" toggle. Missed rows never touch the wallet.
   let w=WINNERS_WALLET;const ledger=[];const _openEx=[];   // _openEx = exit dates of trades still open (P-05, L40)
-  for(const r of taken){
+  for(const r of seq){
     const td=r.trig_date||'';
     for(let i=_openEx.length-1;i>=0;i--){if(_openEx[i]<=td)_openEx.splice(i,1);}   // close any that exited on/before this trigger
+    if(WINNERS_MAXOPEN>0 && _openEx.length>=WINNERS_MAXOPEN){                        // book full → not placed
+      ledger.push({r,missed:true,reason:`Book full — ${WINNERS_MAXOPEN} open`,open:_openEx.length});continue;}
     _openEx.push(r.exit_date||'9999-99-99');                                        // this trade is now open
     const stake=w*WINNERS_STAKE,net=stake*r.perf/100;w+=net;
-    ledger.push({r,stake,net,maxloss:stake*stopPct(r),cum:w,open:_openEx.length});}
+    ledger.push({r,stake,net,maxloss:stake*stopPct(r),cum:w,open:_openEx.length,missed:false});}
+  const takenRows=ledger.filter(x=>!x.missed), missedRows=ledger.filter(x=>x.missed);
+  const skipped=missedRows.length, taken=takenRows;   // `taken` kept as the taken-trades array used below
   const gain=w-WINNERS_WALLET;
-  const mls=ledger.map(x=>x.maxloss).sort((a,b)=>a-b);const medML=mls.length?mls[Math.floor(mls.length/2)]:0;
-  const span=taken.length?`${taken[0].trig_date} → ${taken[taken.length-1].trig_date}`:'';
+  const mls=takenRows.map(x=>x.maxloss).sort((a,b)=>a-b);const medML=mls.length?mls[Math.floor(mls.length/2)]:0;
+  const span=taken.length?`${taken[0].r.trig_date} → ${taken[taken.length-1].r.trig_date}`:'';
   const capNote=WINNERS_MAXOPEN>0?` · capped at ${WINNERS_MAXOPEN} open → <b>${taken.length}</b> taken, ${skipped} skipped`:'';
   const openStake=money(WINNERS_WALLET*WINNERS_STAKE);
   const card=(ic,t,v,sub)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:17px;color:var(--fg)">${v}</b><br><span class="muted">${sub}</span></div></div>`;
@@ -2998,7 +3002,7 @@ function paintOrdersPerf(){
   // Which attributes separated the winners — each trade's compounded net £ attributed to its bucket.
   const groups=[["Market",r=>r.market],["Location",r=>locName(r.location)],["Sector",r=>r.sector],["Direction",r=>r.direction],["Outcome",r=>r.outcome]];
   if(dims)dims.innerHTML=groups.map(([name,fn])=>{
-    const m={};ledger.forEach(x=>{const k=fn(x.r)||'—';(m[k]=m[k]||{net:0,n:0,w:0});m[k].net+=x.net;m[k].n++;if(x.r.perf>PF_BE)m[k].w++;});
+    const m={};takenRows.forEach(x=>{const k=fn(x.r)||'—';(m[k]=m[k]||{net:0,n:0,w:0});m[k].net+=x.net;m[k].n++;if(x.r.perf>PF_BE)m[k].w++;});
     const bs=Object.entries(m).filter(([k,v])=>v.n).sort((a,b)=>b[1].net-a[1].net);
     if(!bs.length)return"";
     const mx=Math.max(1,...bs.map(([k,v])=>Math.abs(v.net)));
@@ -3010,10 +3014,18 @@ function paintOrdersPerf(){
         <span class="n muted" style="min-width:30px">${v.n}</span></div>`).join("")+
       `</div></div></div>`;
   }).join("");
-  if(tc)tc.textContent=`(${ledger.length} trades, ${span} · ${money(WINNERS_WALLET)} → ${money(w)})`;
+  if(tc)tc.textContent=`(${takenRows.length} trades${skipped?` · ${skipped} missed`:''}, ${span} · ${money(WINNERS_WALLET)} → ${money(w)})`;
   const oc=st=>st==='TARGET'?'var(--bull)':st==='STOPPED'?'var(--bear)':'#d29922';
-  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="2% of the wallet at this point in time">Stake</th><th title="Margin required to open = position size ÷ leverage (IG UK retail rates by instrument type: equities 5×, indices 20×, commodities 10×)">Margin</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Account equity after this trade = the running compounded wallet incl. realised P&amp;L; last row = the compounded figure">Equity</th><th title="Available to open further positions = Equity − Margin (user 2026-07-24, P-04)">Available</th></tr></thead><tbody>`+
-    ledger.map((x,i)=>{const r=x.r;return `<tr><td class="muted">${i+1}</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td>
+  let _ti=0;
+  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="2% of the wallet at this point in time">Stake</th><th title="Margin required to open = position size ÷ leverage (IG UK retail rates by instrument type: equities 5×, indices 20×, commodities 10×)">Margin</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Account equity after this trade = the running compounded wallet incl. realised P&amp;L; last row = the compounded figure">Equity</th><th title="Available to open further positions = Equity − Margin (user 2026-07-24, P-04)">Available</th><th title="Why a triggered funnel was NOT placed — 'Book full' means all Max-open-position slots were already taken (no capital free). Blank = it was placed.">Reason</th></tr></thead><tbody>`+
+    ledger.map(x=>{const r=x.r;
+      if(x.missed)return `<tr class="missed-row" style="opacity:.6"><td class="muted">—</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td>
+      <td class="muted" title="positions already open when this funnel triggered">${x.open}</td>
+      <td><b style="color:var(--muted)">MISSED</b></td>
+      <td class="muted" title="would-be return had it been placed — NOT realised">${r.perf==null?'—':(r.perf>0?'+':'')+r.perf+'%'}</td>
+      <td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>
+      <td class="muted">${x.reason}</td></tr>`;
+      _ti++;return `<tr><td class="muted">${_ti}</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td>
       <td class="muted" title="concurrent open positions">${x.open}</td>
       <td><b style="color:${oc(r.outcome)}">${r.outcome}</b></td>
       <td style="color:${_pnlc(r.perf)}">${r.perf==null?'—':(r.perf>0?'+':'')+r.perf+'%'}</td>
@@ -3022,8 +3034,12 @@ function paintOrdersPerf(){
       <td style="color:${_pnlc(x.net)}">${_gbp2(x.net)}</td>
       <td class="muted">£${x.maxloss.toFixed(2)}</td>
       <td><b>${money(x.cum)}</b></td>
-      <td class="muted">${levOf(r)?money(x.cum-x.stake/levOf(r)):money(x.cum)}</td></tr>`;}).join("")+
+      <td class="muted">${levOf(r)?money(x.cum-x.stake/levOf(r)):money(x.cum)}</td>
+      <td class="muted">—</td></tr>`;}).join("")+
     `</tbody></table>`;
+  if(tb)tb.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);
+  const _mc=$("ordp-missed-ctrl"); if(_mc){_mc.style.display=skipped>0?"inline-flex":"none";
+    const _lbl=$("ordp-missed-count"); if(_lbl)_lbl.textContent=skipped?` (${skipped})`:"";}
 }
 // ── Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle table ───────────────────────────────
 let SQH=null, sqhSortK="return_pct", sqhSortDir=-1;   // default: Return descending (user 2026-07-25, P-05 L342); header click changes it
