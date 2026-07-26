@@ -2176,6 +2176,18 @@ function applyUserDefaults(){
   Object.entries(USER_FILTERS).forEach(([k,v])=>{const el=$(k);if(el&&v!=null&&v!=="")el.value=v;});
   if(USER_FILTERS.f_days){$("dlbl").textContent=USER_FILTERS.f_days;}
 }
+// Built-in default chart-Status selections (user 2026-07-25, P-05 L188/L203/L225/L341). Seeded ONCE on
+// load, only when the filter is unset, so the user's own click / saved default always wins and
+// reset/showall can clear it. Values are the chart's raw status codes, SEP-joined for multi-select.
+let _statusSeeded=false;
+function _seedStatusDefaults(){
+  if(_statusSeeded)return; _statusSeeded=true;
+  const seed=(id,vals)=>{const el=$(id); if(el&&!el.value)el.value=vals.join(SEP);};
+  if(!(USER_FILTERS&&USER_FILTERS.mf_status))seed("mf_status",["READY"]);   // Scanner (L188)
+  seed("pof_status",["READY","TRIGGERED"]);   // My Pre-orders (L203)
+  seed("oof_status",["PENDING","WATCHING"]);  // Pre-orders to IG — Pending + Waiting (L225)
+  seed("sqf_status",["TARGET"]);              // Squeeze History (L341)
+}
 // Gold-tier gate — the SINGLE rule for every Gold-only feature (Trading (Momentum) config panel, the
 // Multi-Factor Momentum tab). Gold means Gold (user 2026-07-17): admin is an access-control axis, not a
 // subscription level, so it no longer unlocks Gold features for a Silver/Guest account. Seed admins
@@ -3292,7 +3304,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
   .then(([j,p,pc,wo,cfg])=>{
     POS=p.positions||{}; PUB=pc.pubcounts||{}; IGWO=new Set(wo.tickers||[]);
     LIMITED=!!j.limited;   // logged out: only the first 5 columns are real; the rest render obfuscated
-    USER_FILTERS=(cfg&&cfg.filters)||{}; applyUserDefaults();   // the user's own saved defaults (Config tab)
+    USER_FILTERS=(cfg&&cfg.filters)||{}; applyUserDefaults(); _seedStatusDefaults();   // user saved defaults, then built-in default Status selections (P-05)
     TRADE_HIDE=(cfg&&cfg.trade)||{};   // per-user Trading (Squeeze) filter -> hides excluded markets (user 2026-07-06)
     MARKETS_DISABLED=new Set((cfg&&cfg.markets_disabled)||[]); MARKETS_OFF=new Set((cfg&&cfg.markets_off)||[]);   // market on/off switches (user 2026-07-11)
     DATA=j.records||[]; DATA.forEach(augment);
