@@ -29,6 +29,12 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .subnav .subpill.active{background:var(--grad);color:#fff;border-color:transparent}
 .subnav .subpill.adminpill{border-color:#d29922}
 .subnav .subpill.adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a)}
+/* Subpills used OUTSIDE .subnav (the Change Requests Status / Priority filters) need the same look — the
+   .subnav-scoped rules above don't reach them, so the active pill showed no colour (user 2026-07-26,
+   P-06 #125). These unscoped rules style any .subpill; the .subnav rules above still win within a subnav. */
+.subpill{background:var(--chip);border:1px solid var(--line);border-radius:6px;color:var(--muted);padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600}
+.subpill:hover{color:var(--fg);border-color:var(--accent)}
+.subpill.active{background:var(--grad);color:#fff;border-color:transparent}
 /* Settings sub-tabs sit in the CENTRAL TOP ROW, same as Operations (user 2026-07-17, P-04 — reverts the
    2026-07-13 left-hand column). No .subnav-settings override: the default .subnav row styling applies. */
 /* Multi-select filters (user 2026-07-17, P-08). The bare <select multiple size=5> list boxes were the
