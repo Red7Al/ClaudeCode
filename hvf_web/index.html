@@ -512,6 +512,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <span class="eyebrow">Trading</span>
   <h1>My Pre-orders</h1>
   <p class="lede">Instruments with a pre-order — waiting for the entry to trigger. Click a row for detail; tick rows then <b>Delete</b> to dismiss, or <b>Place on IG</b> to send one to your account now.</p>
+  <!-- No-IG-credentials warning + "Open IG settings" button (user 2026-07-27, P-10 L218 / P-25 L219) —
+       "Place on IG" needs IG credentials; populated by renderIgCredWarn() from /api/ig-status. -->
+  <div id="po-igwarn"></div>
   <div class="viz" id="po-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:var(--accent)">
   <div class="count" id="po-count" style="padding-left:0;display:flex;align-items:center;gap:14px"><span id="po-count-text"></span><span class="grow"></span>
@@ -554,6 +557,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span></div>
   <h1>Pre-orders to my IG</h1>
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
+  <!-- No-IG-credentials warning + "Open IG settings" button (user 2026-07-27, P-10 L225 / P-30 L226) —
+       these orders live on IG; populated by renderIgCredWarn() from /api/ig-status. -->
+  <div id="oo-igwarn"></div>
   <!-- Standard interface (user 2026-07-13): charts in a full-width band ABOVE the table (like My
        Pre-orders), search + toggle in the count bar, date filter alone in the header row. -->
   <div class="viz" id="oo-viz" style="border-bottom:none;padding:0 0 10px"></div>
@@ -1009,6 +1015,20 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <span class="eyebrow">Results</span>
   <h1>Performance</h1>
   <p class="lede">Every <b>recorded trigger</b> — the entry, stop, target and date captured the moment the setup fired — tracked forward through the price history to its outcome: <b style="color:var(--bull)">TARGET</b> (hit the target first), <b style="color:var(--bear)">STOPPED</b> (hit the stop first), or <b style="color:#d29922">OPEN</b> (still running, marked to the latest price). Return is direction-aware, so positive is always in your favour. This is independent of the current squeeze status — a trigger is measured from when it happened.</p>
+  <!-- Winners title + lede lifted ABOVE the shared date/location filter row (user 2026-07-27, P-07 L289) —
+       shown only when the "What separates the winners" sub-tab is active (toggled in pfPanel). -->
+  <div id="pf-winners-head" class="hidden">
+    <h2 class="sec" style="margin-top:0">What separates the winners — what's possible over 12 months</h2>
+    <p class="muted" style="font-size:13px;margin-top:-8px">Every tradeable setup over the <b>last 12 months</b> (user 2026-07-18),
+    replayed from price history — the full period, not just the recent recorded triggers. Assume each was placed, so this is the
+    performance of <b>what's possible</b>. Return % uses the same direction-aware, marked-to-market definition as the Results
+    report. The £ figures place a stake of <b>2% of the wallet at that point in time</b> on every trade and compound it:
+    <b>net £ = stake × the trade's return%</b>; the stake starts at £20 on £1k and grows as the wallet does (winners raise the
+    next stake — 1,000 → 1,025 → 2% of 1,025 …). The stop caps each loss at <b>stake × the stop distance %</b> — a few pounds.
+    The ledger below is every trade in <b>strict chronological order by trigger date</b>, so you can follow the wallet build.
+    <b>Each row is one whole trade</b> — placed on its trigger date; the <b>Outcome</b> column is how that trade eventually
+    resolved (TARGET / STOPPED / still OPEN), not a separate open/close event.</p>
+  </div>
   <!-- Sub-tabs (user 2026-07-17): the recorded-trigger results and the 15-month analysis are two
        distinct reads, so they get their own pill instead of one long scroll. -->
   <nav class="confnav" id="pf-subnav" style="margin:0 0 12px;display:flex;flex-direction:column;gap:8px">
@@ -1090,16 +1110,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
   <!-- 15-month squeeze analysis (user 2026-07-17, P-21b) — its own sub-tab (P-21b follow-up). -->
   <div id="pf-panel-analysis" class="hidden">
-    <h2 class="sec" style="margin-top:0">What separates the winners — what's possible over 12 months</h2>
-    <p class="muted" style="font-size:13px;margin-top:-8px">Every tradeable setup over the <b>last 12 months</b> (user 2026-07-18),
-    replayed from price history — the full period, not just the recent recorded triggers. Assume each was placed, so this is the
-    performance of <b>what's possible</b>. Return % uses the same direction-aware, marked-to-market definition as the Results
-    report. The £ figures place a stake of <b>2% of the wallet at that point in time</b> on every trade and compound it:
-    <b>net £ = stake × the trade's return%</b>; the stake starts at £20 on £1k and grows as the wallet does (winners raise the
-    next stake — 1,000 → 1,025 → 2% of 1,025 …). The stop caps each loss at <b>stake × the stop distance %</b> — a few pounds.
-    The ledger below is every trade in <b>strict chronological order by trigger date</b>, so you can follow the wallet build.
-    <b>Each row is one whole trade</b> — placed on its trigger date; the <b>Outcome</b> column is how that trade eventually
-    resolved (TARGET / STOPPED / still OPEN), not a separate open/close event.</p>
+    <!-- Title + lede for this panel now render ABOVE the shared filter row (#pf-winners-head, P-07 L289). -->
     <!-- Wallet + stake variables (user 2026-07-18, P-05): drive every £ figure on the winners tab. -->
     <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <b style="font-size:13px">💷 Model</b>
@@ -1573,7 +1584,18 @@ function pieChart(title,counts,fk){
 // Order is preserved: cards are packed left-to-right, so P-12a (Market+Sector lead) and P-11a (Ticker
 // far right) still hold — a stacked column simply occupies the slot its first card would have had.
 const VIZ_GAP=10;
-function packViz(id){
+// Cards that must NEVER be stacked — always standalone (user 2026-07-27, P-06): the primary Location,
+// Market and Sector charts. The naive height-only packer would tuck a short Location under another card
+// ("Direction under Location") on some data; these three stay side-by-side as their own cards, matching
+// the Performance → Results strip (the gold standard). Matched on the card's <h5> header (the winners
+// strip suffixes "— net £", so compare the part before the em dash).
+const VIZ_NOSTACK=new Set(["Location","Market","Sector"]);
+const _vizLabel=el=>{const box=el.classList.contains("vizsector")?el.firstElementChild:el;
+  const hh=box&&box.querySelector("h5"); if(!hh)return"";
+  // Cut at the em-dash ("Location — net £" on the winners strip) OR the "▶ N ✕" clear-badge that a
+  // filtered chart appends — so the pin holds regardless of the winners suffix or the active-filter state.
+  return hh.textContent.split(/[—▶]/)[0].trim();};
+function packViz(id,_retry){
   const c=document.getElementById(id); if(!c) return;
   // Undo any previous packing so this is idempotent across re-renders.
   c.querySelectorAll(".vizcol").forEach(col=>{
@@ -1587,14 +1609,16 @@ function packViz(id){
   c.classList.remove("measuring");
   const tall=Math.max(...h);
   if(!tall) return;
+  const pinned=items.map(el=>VIZ_NOSTACK.has(_vizLabel(el)));   // Location/Market/Sector — never stacked
   // Greedy left-to-right: a card starts a column; later SHORT cards join it while they still fit
-  // under the tallest card's height. Only cards that are themselves short enough to pair are moved.
+  // under the tallest card's height. Only cards that are themselves short enough to pair are moved,
+  // and NEVER the pinned Location/Market/Sector cards (P-06).
   const used=new Array(items.length).fill(false);
   for(let i=0;i<items.length;i++){
-    if(used[i]||h[i]>tall*0.6) continue;              // tall cards are never stacked
+    if(used[i]||pinned[i]||h[i]>tall*0.6) continue;   // tall or pinned cards are never stacked
     let stack=[i], total=h[i];
     for(let j=i+1;j<items.length;j++){
-      if(used[j]||h[j]>tall*0.6) continue;
+      if(used[j]||pinned[j]||h[j]>tall*0.6) continue;
       if(total+VIZ_GAP+h[j]<=tall){ stack.push(j); total+=VIZ_GAP+h[j]; }
     }
     if(stack.length<2) continue;                      // nothing gained
@@ -1604,6 +1628,24 @@ function packViz(id){
       // unwrap a .vizsector so the card itself sits in the column
       const el=items[k], box=el.classList.contains("vizsector")?el.firstElementChild:el;
       col.appendChild(box); if(el!==box) el.remove(); });
+  }
+  // If the strip still wraps onto a second row, drop the "Month-Week" card and re-pack once (user
+  // 2026-07-27, P-06): Month-Week is the most disposable of the date charts, so we sacrifice it to keep
+  // the strip on a single row (e.g. Performance → Results). Only acts when real layout is available
+  // (top-level items report distinct offsetTops) — the static file:// snapshot reports 0, so it no-ops
+  // there rather than dropping the chart blindly.
+  if(!_retry){
+    // Re-derive the flex participants AFTER packing (vizcols now exist; .vizbars is display:contents so
+    // its children are the real flex items). Skip zero rects — a display:contents wrapper reports top 0
+    // and would fake a wrap.
+    const flex=[...c.children].flatMap(ch=>ch.classList.contains("vizbars")?[...ch.children]:[ch]);
+    const tops=flex.map(el=>el.getBoundingClientRect()).filter(r=>r.height>0).map(r=>Math.round(r.top));
+    const wraps=tops.length>1 && Math.max(...tops)-Math.min(...tops)>4;
+    if(wraps){
+      const mw=items.find(el=>_vizLabel(el)==="Month-Week");
+      if(mw){ (mw.closest(".vizsector")||mw).remove();   // drop the Month-Week card, then re-pack once
+        return packViz(id,true); }
+    }
   }
 }
 function renderViz(rows){
@@ -2337,7 +2379,7 @@ function saveCreds(secId){
   if(!Object.keys(values).length){msg.style.color="var(--muted)";msg.textContent="Nothing to save (all fields blank).";return;}
   fetch("/api/credentials",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({section:secId,values})})
     .then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{msg.style.color="var(--bull)";msg.textContent=`Saved ${(j.saved||[]).length} field(s).`;renderCredentials();})
+    .then(j=>{msg.style.color="var(--bull)";msg.textContent=`Saved ${(j.saved||[]).length} field(s).`;renderCredentials();if(secId==="IG"&&typeof _igStatus==="function")_igStatus(true);})
     .catch(()=>{msg.style.color="var(--bear)";msg.textContent="Save failed.";});
 }
 function renderConfig(){
@@ -2468,6 +2510,7 @@ function genSort(rows,k,dir){
 const _mw=d=>{if(!d)return'—';const day=+String(d).slice(8,10)||1;return String(d).slice(0,7)+' W'+Math.min(5,Math.ceil(day/7));};   // Month-Week bucket
 let OO_ROWS=[], ooSortK="updated_at", ooSortDir=-1;
 function paintOrderOps(){
+  renderIgCredWarn("oo-igwarn");   // no-IG-credentials warning + Open IG settings button (P-10 L225 / P-30 L226)
   const st=s=>s==="PENDING"?"var(--accent)":s==="FILLED"?"var(--bull)":s==="WATCHING"?"#d29922":"var(--muted)";
   // Chart-click filters (user 2026-07-03) apply to the table; the charts show the full mix.
   let rows=OO_ROWS;
@@ -2676,6 +2719,26 @@ function openIgSettings(){
     else if(--n>0){setTimeout(tick,120);} };
   tick();
 }
+// No-IG-credentials warning + "Open IG settings" button on My Pre-orders and Pre-orders-to-my-IG
+// (user 2026-07-27, P-10 L218/L225 + P-25/30 L219/L226). Same amber card + button as the IG Account
+// page (P-07 #91/#92). /api/ig-status is a CHEAP check (no live IG login); cached so switching between
+// the two pages only calls it once. Pass force=true after saving credentials to re-check.
+let _IG_NOCREDS=null, _IG_STATUS_P=null;
+function _igStatus(force){
+  if(force){_IG_NOCREDS=null;_IG_STATUS_P=null;}
+  if(_IG_STATUS_P)return _IG_STATUS_P;
+  _IG_STATUS_P=fetch("/api/ig-status",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{no_creds:false})
+    .then(j=>{_IG_NOCREDS=!!j.no_creds;return _IG_NOCREDS;}).catch(()=>{_IG_NOCREDS=false;return false;});
+  return _IG_STATUS_P;
+}
+function renderIgCredWarn(id){
+  const el=$(id); if(!el)return;
+  if(!AUTH){el.innerHTML="";return;}                    // logged-out: no warning (can't set creds anyway)
+  const paint=()=>{ el.innerHTML=_IG_NOCREDS
+    ? `<div class="card" style="border-color:#d29922;background:color-mix(in srgb,#d29922 12%,transparent);display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px"><span style="font-size:13px">⚠️ <b style="color:var(--fg)">No IG credentials set.</b> <span class="muted">Add your IG login to place these orders on your account.</span></span><span class="grow" style="flex:1"></span><button class="btn" style="border-color:#d29922" onclick="openIgSettings()">🔑 Open IG settings</button></div>`
+    : ""; };
+  if(_IG_NOCREDS===null){_igStatus().then(paint);}else{paint();}
+}
 async function maRebuild(){
   if(!await appConfirm("This rescans the whole universe (a few minutes) and refreshes the data for everyone.",{title:"Rebuild the snapshot now?",ok:"↻ Rebuild"}))return;
   const b=$("ma-rebuild"),m=$("ma-msg");b.disabled=true;m.style.color="var(--muted)";m.textContent="Rebuild starting…";
@@ -2743,6 +2806,7 @@ function pfPanel(which){
   if(sm)sm.classList.toggle("hidden",which!=="summary");   // Summary sub-tab (user 2026-07-20)
   if(res)res.classList.toggle("hidden",which!=="results");
   if(an)an.classList.toggle("hidden",which!=="analysis");
+  const wh=$("pf-winners-head");if(wh)wh.classList.toggle("hidden",which!=="analysis");   // winners title/lede above the filters (P-07 L289)
   if(which==="analysis")renderSqueezeAnalysis();
   if(which==="summary"&&typeof _renderPerformance==="function")_renderPerformance();   // rebuild the "Settings used" card for this sub-tab (user 2026-07-24, P-02)
 }
@@ -3420,6 +3484,7 @@ function ooClearFilters(){["oo-from","oo-to"].forEach(id=>{const el=$(id);if(el)
   const sc=$("oo-showclosed"); if(sc)sc.checked=false; paintOrderOps();}
 function poClearFilters(){["po_qmin","po_qmax","po_rrmin","po_rrmax","po_demin","po_demax"].forEach(id=>{const el=$(id);if(el)el.value="";});renderPreorders();}
 function renderPreorders(){
+  renderIgCredWarn("po-igwarn");   // no-IG-credentials warning + Open IG settings button (P-10 L218 / P-25 L219)
   let po=DATA.filter(r=>isPreorder(r)&&tradeVisible(r));   // hide the user's excluded markets (user 2026-07-06)
   {const _seen=new Set();po=po.filter(r=>{const k=disp(r.ticker);if(_seen.has(k))return false;_seen.add(k);return true;});}   // no duplicate rows (user 2026-07-10)
   // Respect the user's personal R:R / Quality floors (user 2026-07-24, P-02 BUG): My Pre-orders must not

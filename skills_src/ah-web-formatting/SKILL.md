@@ -105,6 +105,22 @@ unwraps existing `.vizcol` first. Preserves order, so Market/Sector still lead.
 > single "—" bar and look obviously pairable; logged in they carry 6–8 bars and must stay side by side.
 > Same code, opposite layouts.
 
+**NEVER stack Location, Market or Sector** (user 2026-07-27, P-06). These three primary charts are
+always standalone cards — `packViz` pins them via `VIZ_NOSTACK`/`_vizLabel` (matched on the `<h5>`
+header; the winners strip's "— net £" suffix is stripped before the compare) so they are never moved
+into a `.vizcol` and nothing is ever stacked onto them. Height alone used to tuck a short Location under
+another card ("Direction under Location"); it must not. Only the compact charts (Direction, Status,
+Timeframe, Win/Loss, Outcome, Month …) may pair. **The Performance → Results strip is the gold
+standard** — every card in its own `.vizsector`, L/M/S leading, no awkward stacks.
+
+**Drop Month-Week if the strip wraps to a second row** (user 2026-07-27, P-06). After packing, `packViz`
+checks whether the real flex participants span more than one row (distinct `getBoundingClientRect().top`,
+skipping zero-rect `display:contents` wrappers); if so and a "Month-Week" card exists it removes that one
+card and re-packs once. Month-Week is the most disposable date chart, so it is sacrificed to keep the
+strip on one row. Guarded to no-op when no real layout is available (the static `file://` snapshot
+reports top 0), so it never blindly drops the chart during offline verification — confirm on the live
+logged-in app.
+
 ## 3. Multi-select filters (`.msel`)
 
 Progressive enhancement: the real `<select multiple>` stays in the DOM (visually hidden) and remains the
@@ -144,6 +160,8 @@ Measure and assert. Do not eyeball, and do not trust a summary you built without
    `_sortArrows`. No exceptions.
 5. View `max-width:1240px` unless there's a stated reason.
 6. Chart strip: Location, Market, Sector left (in that order); Ticker right; call `packViz()` after render.
+   Location/Market/Sector are NEVER stacked (pinned in `packViz`); Month-Week is dropped if it would wrap
+   to a second row. Gold standard = Performance → Results.
 7. Verify by measuring, with realistic (not logged-out) data.
 
 ## 6. House standards for EVERY chart/table screen (user 2026-07-24, P-03 L24–L39)
@@ -166,6 +184,8 @@ noted as of 2026-07-24.
   source of truth. ✅ where charts are wired to a `pff_*/pof_*/sqf_*` filter key.
 - Spacing: consistent between cards, bars left-aligned, labels readable — all handled by `packViz()` +
   the `.viz`/`.vizbox` CSS in §2 (L34/L35/L36). Call `packViz(id)` after every strip render. ✅
+- NEVER stack Location, Market or Sector (P-06, 2026-07-27) — pinned standalone in `packViz`; Month-Week
+  is dropped if it would spill to a second row. Gold standard strip = Performance → Results. See §2.
 - Do NOT change a card's size/position when a selection is made (L33): `packViz` measures with a
   `.measuring` class and packs deterministically, so selection must not re-pack differently. ✅ as long as
   selection only filters data and you re-`packViz` with the same inputs.

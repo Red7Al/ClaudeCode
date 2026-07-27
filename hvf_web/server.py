@@ -1122,6 +1122,13 @@ def api_fundamentals(ticker):
     L138) serves the last-good KPIs marked stale rather than blanking the panel."""
     out = {}
     cur = None
+    # Non-equity instruments (FX pairs "=X", futures "=F", indices "^", crypto "-USD"/"-USDT") have no
+    # company fundamentals — skip the Yahoo call entirely so we don't spam its transient quoteSummary 404s
+    # (e.g. GBPCAD=X, which we neither download nor trade; user 2026-07-27, P-10 L140). Return empty KPIs.
+    _t = (ticker or "").upper()
+    if _t.endswith("=X") or _t.endswith("=F") or _t.startswith("^") or _t.endswith("-USD") or _t.endswith("-USDT"):
+        return jsonify({"ticker": ticker, "currency": None, "kpis": {}, "stale": False,
+                        "note": "No company fundamentals for non-equity instruments (FX / index / future / crypto)."})
     try:
         import yfinance as yf
         try:
@@ -2582,6 +2589,25 @@ def api_change_requests():
             log.warning(f"change-request parse failed for {f}: {e}")
     out.sort(key=lambda r: (r.get("created") or "", r.get("file") or ""), reverse=True)
     return jsonify({"files": out})
+
+
+@app.route("/api/ig-status")
+def api_ig_status():
+    """Cheap 'does this user have IG credentials' check (user 2026-07-27, P-10 L218/L225 + P-25/30
+    L219/L226). Drives the no-credentials warning + 'Open IG settings' button on My Pre-orders and
+    Pre-orders-to-my-IG, WITHOUT building a live IG session (no network login) — reads the stored/env
+    creds via ig_shim._resolve_ig_creds, owner-aware (owner falls back to env, non-owner needs own)."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    no_creds = True
+    try:
+        import ig_shim
+        c = ig_shim._resolve_ig_creds(name)
+        no_creds = not (c and c.get("api_key") and c.get("username") and c.get("password"))
+    except Exception as e:
+        log.warning(f"ig-status check failed for {name}: {e}")
+    return jsonify({"no_creds": bool(no_creds)})
 
 
 @app.route("/api/ig-account")
