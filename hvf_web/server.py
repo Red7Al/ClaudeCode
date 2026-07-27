@@ -2575,10 +2575,15 @@ def _cr_parse(path: str) -> dict:
             # shows them in separate columns instead of one cluttered Requirement cell. " -- " is the
             # delimiter the notes are written with; the "(Claude …)" older inline form stays with the text.
             req, _sep, note = text.partition(" -- ")
+            _st = _cr_status(raw)
+            # A DEFERRED item is parked, so it carries NO priority — blank its band + prioritised flag
+            # (user 2026-07-27, P-06). This also drops it from the priority-range counts/filter below.
+            _deferred = (_st == "Deferred")
             reqs.append({"row": len(reqs) + 1,   # stable 1-based number so "#26" maps to a line (user 2026-07-18)
                          "text": req.strip(), "delivery_notes": note.strip(),
-                         "working_area": area, "scope": _cr_scope(req, scope), "status": _cr_status(raw),
-                         "prange": _cr_prange(req), "prioritised": _cr_prioritised(req, area)})
+                         "working_area": area, "scope": _cr_scope(req, scope), "status": _st,
+                         "prange": (None if _deferred else _cr_prange(req)),
+                         "prioritised": (False if _deferred else _cr_prioritised(req, area))})
     counts = {"Completed": 0, "In Progress": 0, "Not Started": 0, "Cancelled": 0, "Requested": 0, "Deferred": 0}
     pranges = {"P01-05": 0, "P06-10": 0, "P11-25": 0, "P26+": 0}
     for r in reqs:

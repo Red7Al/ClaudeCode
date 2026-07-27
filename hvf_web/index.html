@@ -368,6 +368,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </header>
 <div class="tabs">
   <button class="tab active" id="tab-welcome" onclick="showTab('welcome')">Introduction</button>
+  <button class="tab" id="tab-whatwedo" onclick="showTab('whatwedo')">What we do</button>
   <button class="tab" id="tab-intro" onclick="showTab('intro')">How it works</button>
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
   <button class="tab" id="tab-performance" onclick="showTab('performance')" style="display:none">Performance <span id="pftab-count"></span></button>
@@ -888,6 +889,33 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </section>
     <div class="viz" id="act-viz" style="border-bottom:none;padding:0;flex:0 0 auto;flex-direction:column"></div>
   </div>
+</div>
+
+<!-- "What we do" (user 2026-07-27, P-10 L169) — plain-English overview of the service; visible to all
+     (PUBLIC_TABS) and hideable via Tab visibility. Sits left of "How it works". -->
+<div id="view-whatwedo" class="hidden doc">
+  <span class="eyebrow">What we do</span>
+  <h1>Spot the setup, place the order, manage the risk</h1>
+  <p class="lede">We run a <b>SqueezeScanner engine</b> across <b>over 1,300 instruments</b> — shares, indices, FX, commodities, crypto and government bonds — that finds one high-probability structure, works out exactly where to <b>enter</b>, where to <b>stop out</b> and where to <b>take profit</b>, and — when you connect your broker — places and manages that order for you. Here's the whole service in plain English.</p>
+
+  <div class="fgrid two">
+    <div class="fcard"><div class="ic">🔎</div><h3>Spot the structure</h3><div class="body">
+      Prices coil into a tightening funnel before they break. The engine scans the whole universe every day and flags these setups the moment they form — so you're looking at a <b>shortlist of ready trades</b>, not a wall of charts.</div></div>
+    <div class="fcard"><div class="ic">🎯</div><h3>Entry, Stop and Target</h3><div class="body">
+      Every setup arrives with the three numbers that matter: the <b>entry</b> where the breakout triggers, a <b>stop</b> just past the far side of the funnel to cap the loss, and a <b>target</b> projected from the funnel's own size. You know your risk and reward <b>before</b> you commit.</div></div>
+    <div class="fcard"><div class="ic">🛡️</div><h3>Risk management</h3><div class="body">
+      Risk is built in, not bolted on. Position size is a small, fixed fraction of your wallet, the stop defines the most any trade can lose, and your personal floors — minimum Quality, R:R and Volume Score — filter out the weaker setups. You set the limits; we respect them.</div></div>
+    <div class="fcard"><div class="ic">⚙️</div><h3>Automation</h3><div class="body">
+      Once you're happy with a setup it can be sent straight to your IG account as a working order — entry, stop and target already attached — and tracked from <b>watching → pending → filled</b> to its outcome. Scheduled jobs re-scan the markets and refresh prices so the shortlist stays current without you lifting a finger.</div></div>
+    <div class="fcard"><div class="ic">🔒</div><h3>Security</h3><div class="body">
+      Your broker credentials are <b>encrypted</b> and only ever used to act on <b>your own</b> account. We can read your positions and place the orders you approve — we <b>cannot</b> add or withdraw funds. Every change is written to your activity log.</div></div>
+    <div class="fcard"><div class="ic">🌍</div><h3>Across every market</h3><div class="body">
+      One engine, many markets: UK &amp; US shares, world indices, major FX pairs, commodities, a handful of large crypto and government-bond ETFs — <b>over 1,300 instruments</b> watched together, so an opportunity isn't missed just because it's in a corner of the market you weren't looking at.</div></div>
+  </div>
+
+  <h2 class="sec">In one sentence</h2>
+  <p style="font-size:15px;line-height:1.6;max-width:820px">We watch the whole market for one repeatable structure, hand you the exact levels to trade it with the risk defined up front, and — when you choose — place and manage the order on your own broker account, securely. The <b>How it works</b> tab explains the pattern itself; the <b>Scanner Report</b> shows today's setups.</p>
+  <p class="muted" style="font-size:12px;margin-top:16px">A research and execution tool — not financial advice. Prices can fall as well as rise, and trades can be stopped out.</p>
 </div>
 
 <div id="view-intro" class="hidden doc">
@@ -1982,8 +2010,8 @@ let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/
 let MY_LIMITS={};   // the user's personal floors from Configuration → My trading limits (min_risk_reward, min_quality) — applied to My Pre-orders (user 2026-07-24, P-02)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","intro","appendix","scanner","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
-const PUBLIC_TABS=["welcome","intro","appendix","scanner","performance"];   // visible when logged out (Performance blurs all but ticker/name/return)
+const TABS=["welcome","whatwedo","intro","appendix","scanner","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
+const PUBLIC_TABS=["welcome","whatwedo","intro","appendix","scanner","performance"];   // visible when logged out (Performance blurs all but ticker/name/return); "What we do" is for everyone (user 2026-07-27, P-10 L169)
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin","squeezehist","fees"];  // admin only
 const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
 // Tabs hidden by DEFAULT (user 2026-07-10): visible only once the user opts in via Tab Visibility.
@@ -2109,7 +2137,7 @@ function paintXposts(){
 function renderXposts(){fetch("/api/x-posts",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{X_ROWS=j.rows||[];paintXposts();}).catch(()=>{$("x-rows").innerHTML=`<tr><td colspan="6" class="empty">Could not load — try logging in again.</td></tr>`;});}
 document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.dataset.xk;xSortDir=(xSortK===k)?-xSortDir:-1;xSortK=k;paintXposts();_sortArrows("data-xk",xSortK,xSortDir);});
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
-const TAB_LABELS={welcome:"Introduction",intro:"How it works",appendix:"Appendix",scanner:"Scanner Report",xposts:"X Posts",
+const TAB_LABELS={welcome:"Introduction",whatwedo:"What we do",intro:"How it works",appendix:"Appendix",scanner:"Scanner Report",xposts:"X Posts",
   preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
   users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)",
   config:"Configuration (User)",markets:"Markets (User)",marketsadmin:"Markets (Admin)",configadmin:"Configuration (Admin)",
