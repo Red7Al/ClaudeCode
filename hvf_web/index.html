@@ -1147,6 +1147,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div id="ordp-sl" style="margin-bottom:10px;display:none"></div>
     <div id="ordp-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
     <!-- Monthly %-growth chart moved to the Report tab (user 2026-07-18, P-01) — see #pf-monthly. -->
+    <!-- Click-to-filter holders for the winners charts (user 2026-07-27, P-10 L122/L123): clicking a
+         Location/Market/Sector/Direction/Outcome bar narrows the summary cards + ledger below, like the
+         Results tab. Multi-select sets, driven by the shared [data-fk] click dispatcher (ordpf_ prefix). -->
+    <input type="hidden" id="ordpf_market"><input type="hidden" id="ordpf_location"><input type="hidden" id="ordpf_sector"><input type="hidden" id="ordpf_direction"><input type="hidden" id="ordpf_outcome">
     <div id="ordp-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
     <h3 class="sec" style="font-size:15px;margin-bottom:2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Every trade — oldest first, wallet after each <span id="ordp-count" class="muted" style="font-size:12px;font-weight:400"></span><span class="grow" style="flex:1"></span><label id="ordp-missed-ctrl" title="Hide the funnels that triggered but were NOT placed because the Max-open-positions cap was full (P-07 #30)" style="display:none;align-items:center;gap:5px;cursor:pointer;font-size:12px;font-weight:400;color:var(--muted)"><input type="checkbox" id="ordp-hide-missed" onchange="winnersToggleMissed()"> Hide trades missed<span id="ordp-missed-count"></span></label><input id="ordp-ledger-q" placeholder="Search name / ticker…" oninput="winnersLedgerFilter()" style="width:auto;max-width:200px;padding:4px 8px;font-size:12px;font-weight:400"></h3>
     <p class="muted" style="font-size:12px;margin:2px 0 6px">Each row is one recorded trade. <b>Stake</b> = the Max-position-size % of the running wallet; <b>Margin</b> = the cash the position ties up = stake ÷ leverage (IG UK retail rates by instrument type); <b>Net £</b> = stake × its return%; <b>Equity</b> is the running account value (the compounded wallet incl. realised P&amp;L), and the last row equals the compounded figure above. <b>Available</b> = Equity − Margin (what's left to open further positions). <b>Max loss</b> = stake × the stop distance %.</p>
@@ -1922,6 +1926,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   if(k.startsWith("pof_"))renderPreorders();
   else if(k.startsWith("oof_"))paintOrderOps();
   else if(k.startsWith("pff_"))renderPerformance();
+  else if(k.startsWith("ordpf_"))paintOrdersPerf();   // winners charts click-to-filter (P-10 L122/L123)
   else if(k.startsWith("sqf_"))paintSqueezeHist();
   else if(k.startsWith("acf_"))paintActivity();
   else if(k.startsWith("vcf_")||k.startsWith("vmf_"))paintVersion();
@@ -3018,6 +3023,28 @@ function renderBestCombo(all){
     <div class="muted" style="font-size:11px;margin-top:6px">Because each stake is a fixed % of the running wallet, the best mix and its <b>%</b> return are the same at every wallet size — only the £ amounts scale. Set the Model above to these values to see the full ledger. This maximises return <b>per unit of risk</b>, not raw return (the biggest stake always compounds hardest but risks ruin). ⚠ marks a wallet whose opening stake is below the £25 IG minimum.</div>
   </div>`;
 }
+// One compounding pass over a set of winners trades (user 2026-07-27, P-10 L122/L123 refactor): chronological
+// by trigger date, applies the Max-open-positions cap (a funnel that triggers while the book is full is a
+// MISSED row), and stakes WINNERS_STAKE % of the running wallet on each taken trade. Returns the ledger
+// (taken + missed rows, in order) and the final wallet. Extracted so the brushed per-chart net-£ attribution
+// can re-run it over each chart's filtered subset (compounding is path-dependent → one pass per subset).
+function _winLedger(rows){
+  const stopPct=r=>Math.abs(r.entry-r.stop)/r.entry;
+  const seq=rows.filter(r=>r.perf!=null).slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
+  let w=WINNERS_WALLET;const ledger=[];const _openEx=[];
+  for(const r of seq){
+    const td=r.trig_date||'';
+    for(let i=_openEx.length-1;i>=0;i--){if(_openEx[i]<=td)_openEx.splice(i,1);}
+    if(WINNERS_MAXOPEN>0 && _openEx.length>=WINNERS_MAXOPEN){ledger.push({r,missed:true,reason:`Book full — ${WINNERS_MAXOPEN} open`,open:_openEx.length});continue;}
+    _openEx.push(r.exit_date||'9999-99-99');
+    const stake=w*WINNERS_STAKE,net=stake*r.perf/100;w+=net;
+    ledger.push({r,stake,net,maxloss:stake*stopPct(r),cum:w,open:_openEx.length,missed:false});}
+  return {ledger,endWallet:w};
+}
+// Winners-chart filter dims (user 2026-07-27, P-10 L122/L123): clicking a Location/Market/Sector/Direction/
+// Outcome bar narrows the summary cards + ledger, like the Results tab. locName keeps FTSE 100 under UK/Europe.
+const _owDims=[["ordpf_market",r=>r.market],["ordpf_location",r=>locName(r.location)],["ordpf_sector",r=>r.sector],["ordpf_direction",r=>r.direction],["ordpf_outcome",r=>r.outcome]];
+const _owPass=(r,except)=>_owDims.every(([id,fn])=>id===except||inSet(id,fn(r)||"—"));
 function paintOrdersPerf(){
   const box=$("ordp-summary"), dims=$("ordp-dims"), tb=$("ordp-table"), tc=$("ordp-count");
   if(!box)return;
@@ -3025,32 +3052,23 @@ function paintOrdersPerf(){
   if(!all.length){
     box.innerHTML=`<div class="muted" style="font-size:13px">No trades in this date window — widen the date filter above (or clear it for the full 12 months).</div>`;
     if(dims)dims.innerHTML="";if(tb)tb.innerHTML="";renderBestCombo([]);return;}
-  renderBestCombo(all);   // best-combination card (P-05 L132/L133)
+  // Apply the winners-chart click-to-filter selection (L122/L123) — the cards + ledger below reflect it.
+  const fsel=all.filter(r=>_owPass(r,null)), _filtered=fsel.length!==all.length;
+  paintWinnersDims(dims,all);   // brushed, clickable net-£ attribution charts (built from `all`, own filter excluded)
+  if(!fsel.length){
+    box.innerHTML=`<div class="muted" style="font-size:13px">No trades match the selected chart filters. Clear a filter (the ▶ ✕ on a chart header) to widen.</div>`;
+    if(tb)tb.innerHTML="";if(tc)tc.textContent="(0 of "+all.length+")";renderBestCombo([]);return;}
+  renderBestCombo(fsel);   // best-combination card (P-05 L132/L133) — over the current selection
   const money=v=>v==null?'—':`£${Math.round(v).toLocaleString()}`;
-  const stopPct=r=>Math.abs(r.entry-r.stop)/r.entry;           // the defined HVF stop, as a fraction
-  const wp=all.filter(r=>r.perf!=null);                        // returns available (incl. open, marked-to-market)
+  const wp=fsel.filter(r=>r.perf!=null);                       // returns available (incl. open, marked-to-market)
   const wins=wp.filter(r=>r.perf>PF_BE),losses=wp.filter(r=>r.perf<-PF_BE),be=wp.filter(r=>Math.abs(r.perf)<=PF_BE);
   const winpct=wp.length?Math.round(wins.length/wp.length*1000)/10:null;
   const losspct=wp.length?Math.round(losses.length/wp.length*1000)/10:null;
   const avgRet=wp.length?wp.reduce((a,r)=>a+r.perf,0)/wp.length:0;
   // THE model (user 2026-07-18): chronological by TRIGGER DATE, stake = Max-position-size % of the wallet
-  // AT THAT POINT IN TIME (compounding). net = stake × return%.
+  // AT THAT POINT IN TIME (compounding). net = stake × return%. Now over the filtered selection (L122).
   const stakePct=+(WINNERS_STAKE*100).toFixed(2);
-  const seq=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
-  // Max open positions cap (P-05, L199): skip a trade that would trigger while MAXOPEN are already open.
-  // Single chronological pass (P-07 #28/#29/#30): a funnel that TRIGGERS while WINNERS_MAXOPEN positions
-  // are already open is "not placed" — no slot/capital free (the balance-too-low analog). We now RECORD
-  // each missed funnel (with a reason) instead of only counting it, so the ledger can show it and offer a
-  // "hide trades missed" toggle. Missed rows never touch the wallet.
-  let w=WINNERS_WALLET;const ledger=[];const _openEx=[];   // _openEx = exit dates of trades still open (P-05, L40)
-  for(const r of seq){
-    const td=r.trig_date||'';
-    for(let i=_openEx.length-1;i>=0;i--){if(_openEx[i]<=td)_openEx.splice(i,1);}   // close any that exited on/before this trigger
-    if(WINNERS_MAXOPEN>0 && _openEx.length>=WINNERS_MAXOPEN){                        // book full → not placed
-      ledger.push({r,missed:true,reason:`Book full — ${WINNERS_MAXOPEN} open`,open:_openEx.length});continue;}
-    _openEx.push(r.exit_date||'9999-99-99');                                        // this trade is now open
-    const stake=w*WINNERS_STAKE,net=stake*r.perf/100;w+=net;
-    ledger.push({r,stake,net,maxloss:stake*stopPct(r),cum:w,open:_openEx.length,missed:false});}
+  const {ledger,endWallet:w}=_winLedger(fsel);
   const takenRows=ledger.filter(x=>!x.missed), missedRows=ledger.filter(x=>x.missed);
   const skipped=missedRows.length, taken=takenRows;   // `taken` kept as the taken-trades array used below
   const gain=w-WINNERS_WALLET;
@@ -3060,27 +3078,14 @@ function paintOrdersPerf(){
   const openStake=money(WINNERS_WALLET*WINNERS_STAKE);
   const card=(ic,t,v,sub)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:17px;color:var(--fg)">${v}</b><br><span class="muted">${sub}</span></div></div>`;
   box.innerHTML=
-    card("📊","Trades · "+(typeof PF_WINDOW_LABEL!=='undefined'?PF_WINDOW_LABEL:'12 months'),all.length,`${span} · ${wp.length} with a return · ${wins.length} win / ${losses.length} loss / ${be.length} break-even${capNote} · tradeable universe (R:R≥3, FX/Crypto excluded)`)+
+    card("📊","Trades · "+(typeof PF_WINDOW_LABEL!=='undefined'?PF_WINDOW_LABEL:'12 months'),(_filtered?`${fsel.length.toLocaleString()} of ${all.length.toLocaleString()}`:all.length),`${span} · ${wp.length} with a return · ${wins.length} win / ${losses.length} loss / ${be.length} break-even${capNote}${_filtered?' · filtered by the charts (click a bar to change)':' · tradeable universe (R:R≥3, FX/Crypto excluded)'}`)+
     card("🎯","Win vs loss",`${winpct==null?'—':winpct+'%'} / ${losspct==null?'':losspct+'%'}`,`a win is <b>any gain</b>, a loss is <b>any loss</b> (open trades included) — same definition as the Results report · avg return ${avgRet>=0?'+':''}${avgRet.toFixed(1)}%`)+
     card("💷","Net P&L",`<span style="color:${_pnlc(gain)}">${_gbp2(gain)}</span>`,`from staking <b>${stakePct}% of the wallet</b> on every trade (compounding). Stake starts at ${openStake}; typical max loss <b>£${medML.toFixed(2)}</b> (= stake × the stop distance %).`)+
     card("📈",money(WINNERS_WALLET)+" compounded",`<span style="color:${w>=WINNERS_WALLET?'var(--bull)':'var(--bear)'}">${money(w)}</span> <span class="muted" style="font-size:12px">total</span>`,`each stake = ${stakePct}% of the wallet <i>at that moment</i>, so winners raise the next stake. ${money(gain)} gain over ${taken.length.toLocaleString()} trades${WINNERS_MAXOPEN>0?' taken':''} — every one in the ledger below, oldest first.`);
   // (Monthly %-growth chart now lives on the Report tab — _pfMonthly, driven by _renderPerformance.)
-  // Which attributes separated the winners — each trade's compounded net £ attributed to its bucket.
-  const groups=[["Market",r=>r.market],["Location",r=>locName(r.location)],["Sector",r=>r.sector],["Direction",r=>r.direction],["Outcome",r=>r.outcome]];
-  if(dims)dims.innerHTML=groups.map(([name,fn])=>{
-    const m={};takenRows.forEach(x=>{const k=fn(x.r)||'—';(m[k]=m[k]||{net:0,n:0,w:0});m[k].net+=x.net;m[k].n++;if(x.r.perf>PF_BE)m[k].w++;});
-    const bs=Object.entries(m).filter(([k,v])=>v.n).sort((a,b)=>b[1].net-a[1].net);
-    if(!bs.length)return"";
-    const mx=Math.max(1,...bs.map(([k,v])=>Math.abs(v.net)));
-    return `<div class="vizsector"><div class="vizbox"><h5>${name} — net £</h5><div class="bars">`+
-      bs.map(([k,v])=>`<div class="bar" title="${k}: ${v.n} trades · ${Math.round(v.w/v.n*100)}% win · net ${_gbp2(v.net)}">
-        <span class="tk" style="max-width:130px">${k}</span>
-        <span class="track"><span class="fill" style="width:${Math.max(2,Math.round(Math.abs(v.net)/mx*100))}%;background:${_pnlc(v.net)}"></span></span>
-        <span class="n" style="min-width:60px;color:${_pnlc(v.net)}">${_gbp2(v.net)}</span>
-        <span class="n muted" style="min-width:30px">${v.n}</span></div>`).join("")+
-      `</div></div></div>`;
-  }).join("");
-  if(tc)tc.textContent=`(${takenRows.length} trades${skipped?` · ${skipped} missed`:''}, ${span} · ${money(WINNERS_WALLET)} → ${money(w)})`;
+  // The net-£ attribution charts (which attributes separated the winners) are painted by paintWinnersDims()
+  // ABOVE (they're click-to-filter now, L122/L123, so they drive this very render and must be built first).
+  if(tc)tc.textContent=`(${takenRows.length} trades${skipped?` · ${skipped} missed`:''}${_filtered?` · filtered`:''}, ${span} · ${money(WINNERS_WALLET)} → ${money(w)})`;
   const oc=st=>st==='TARGET'?'var(--bull)':st==='STOPPED'?'var(--bear)':'#d29922';
   let _ti=0;
   if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="VolumeScore (0–12) on the trigger bar — breakout confirmation (Strong squeeze, RVOL, breakout volume, VWAP, OBV, low-volume node, ATR). 8+ = well-confirmed. Blank where it can't be scored.">Vol</th><th title="2% of the wallet at this point in time">Stake</th><th title="Margin required to open = position size ÷ leverage (IG UK retail rates by instrument type: equities 5×, indices 20×, commodities 10×)">Margin</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Account equity after this trade = the running compounded wallet incl. realised P&amp;L; last row = the compounded figure">Equity</th><th title="Available to open further positions = Equity − Margin (user 2026-07-24, P-04)">Available</th><th title="Why a triggered funnel was NOT placed — 'Book full' means all Max-open-position slots were already taken (no capital free). Blank = it was placed.">Reason</th></tr></thead><tbody>`+
@@ -3108,6 +3113,35 @@ function paintOrdersPerf(){
   if(tb)tb.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);
   const _mc=$("ordp-missed-ctrl"); if(_mc){_mc.style.display=skipped>0?"inline-flex":"none";
     const _lbl=$("ordp-missed-count"); if(_lbl)_lbl.textContent=skipped?` (${skipped})`:"";}
+}
+// Brushed, click-to-filter net-£ attribution charts for the winners tab (user 2026-07-27, P-10 L122/L123).
+// Each chart is built over the trades passing every OTHER winners filter (so picking one narrows the others
+// but never hides a bar — house L31), with net £ attributed from a ledger re-run over that brushed subset
+// (compounding is path-dependent). Bars carry data-fk/data-fv (RAW value, like barChart, so inSet matches)
+// so the shared [data-fk] click dispatcher toggles the ordpf_* set and re-renders paintOrdersPerf. Location
+// grouping via locName keeps FTSE 100 under UK/Europe (answers the "Oceania contains FTSE 100" report).
+function paintWinnersDims(dims, all){
+  if(!dims)return;
+  const groups=[["Market","ordpf_market",r=>r.market],["Location","ordpf_location",r=>locName(r.location)],
+                ["Sector","ordpf_sector",r=>r.sector],["Direction","ordpf_direction",r=>r.direction],
+                ["Outcome","ordpf_outcome",r=>r.outcome]];
+  dims.innerHTML=groups.map(([name,fk,fn])=>{
+    const base=all.filter(r=>_owPass(r,fk));           // brushing: every OTHER winners filter applied, not this one
+    const {ledger:lg}=_winLedger(base);
+    const m={}; lg.filter(x=>!x.missed).forEach(x=>{const k=fn(x.r)||'—';(m[k]=m[k]||{net:0,n:0,w:0});m[k].net+=x.net;m[k].n++;if(x.r.perf>PF_BE)m[k].w++;});
+    all.forEach(r=>{const k=fn(r)||'—'; if(!(k in m))m[k]={net:0,n:0,w:0};});   // seed every value so bars persist as 0-stubs
+    const sel=setOf(fk), nsel=sel?sel.size:0, has=k=>!!(sel&&sel.has(String(k)));
+    const bs=Object.entries(m).sort((a,b)=>b[1].net-a[1].net);
+    if(!bs.length)return"";
+    const mx=Math.max(1,...bs.map(([k,v])=>Math.abs(v.net)));
+    return `<div class="vizsector"><div class="vizbox${nsel?' filtered':''}"><h5>${name} — net £${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div class="bars">`+
+      bs.map(([k,v])=>`<div class="bar clk${has(k)?' active':''}" data-fk="${fk}" data-fv="${k}" title="${k}: ${v.n} trades · ${v.n?Math.round(v.w/v.n*100):0}% win · net ${_gbp2(v.net)} — click to filter">
+        <span class="tk" style="max-width:130px"><span class="selmk">${has(k)?'●':''}</span>${k}</span>
+        <span class="track"><span class="fill" style="width:${Math.max(2,Math.round(Math.abs(v.net)/mx*100))}%;background:${_pnlc(v.net)}"></span></span>
+        <span class="n" style="min-width:60px;color:${_pnlc(v.net)}">${_gbp2(v.net)}</span>
+        <span class="n muted" style="min-width:30px">${v.n}</span></div>`).join("")+
+      `</div></div></div>`;
+  }).join("");
 }
 // ── Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle table ───────────────────────────────
 let SQH=null, sqhSortK="return_pct", sqhSortDir=-1;   // default: Return descending (user 2026-07-25, P-05 L342); header click changes it
