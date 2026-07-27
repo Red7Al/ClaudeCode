@@ -1195,7 +1195,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <!-- Click-to-filter holders for the winners charts (user 2026-07-27, P-10 L122/L123): clicking a
          Location/Market/Sector/Direction/Outcome bar narrows the summary cards + ledger below, like the
          Results tab. Multi-select sets, driven by the shared [data-fk] click dispatcher (ordpf_ prefix). -->
-    <input type="hidden" id="ordpf_market"><input type="hidden" id="ordpf_location"><input type="hidden" id="ordpf_sector"><input type="hidden" id="ordpf_direction"><input type="hidden" id="ordpf_outcome">
+    <input type="hidden" id="ordpf_market"><input type="hidden" id="ordpf_location"><input type="hidden" id="ordpf_sector"><input type="hidden" id="ordpf_direction"><input type="hidden" id="ordpf_outcome"><input type="hidden" id="ordpf_quality"><input type="hidden" id="ordpf_rr">
     <div id="ordp-dims" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
     <h3 class="sec" style="font-size:15px;margin-bottom:2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Every trade — oldest first, wallet after each <span id="ordp-count" class="muted" style="font-size:12px;font-weight:400"></span><span class="grow" style="flex:1"></span><label id="ordp-missed-ctrl" title="Hide the funnels that triggered but were NOT placed because the Max-open-positions cap was full (P-07 #30)" style="display:none;align-items:center;gap:5px;cursor:pointer;font-size:12px;font-weight:400;color:var(--muted)"><input type="checkbox" id="ordp-hide-missed" onchange="winnersToggleMissed()"> Hide trades missed<span id="ordp-missed-count"></span></label><input id="ordp-ledger-q" placeholder="Search name / ticker…" oninput="winnersLedgerFilter()" style="width:auto;max-width:200px;padding:4px 8px;font-size:12px;font-weight:400"></h3>
     <p class="muted" style="font-size:12px;margin:2px 0 6px">Each row is one recorded trade. <b>Stake</b> = the Max-position-size % of the running wallet; <b>Margin</b> = the cash the position ties up = stake ÷ leverage (IG UK retail rates by instrument type); <b>Net £</b> = stake × its return%; <b>Equity</b> is the running account value (the compounded wallet incl. realised P&amp;L), and the last row equals the compounded figure above. <b>Available</b> = Equity − Margin (what's left to open further positions). <b>Max loss</b> = stake × the stop distance %.</p>
@@ -2804,6 +2804,8 @@ async function maRebuild(){
 //    entry/stop/target/date, classified STOPPED / TARGET / OPEN from price history since the trigger.
 //    Served pre-computed by /api/performance (source of truth = the recorded events, not the snapshot). ──
 let pfSortK="perf", pfSortDir=-1, PERF_DATA=null, PERF_GEN="", PF_LOC_FILTER="";
+let PF_COMBO=null;   // clicked "Best Quality / R:R combination" card → filter the Results table to that band (user 2026-07-27, P-10 L292)
+function pfComboFilter(qb,rb){PF_COMBO=(PF_COMBO&&PF_COMBO.qb===+qb&&PF_COMBO.rb===+rb)?null:{qb:+qb,rb:+rb};_renderPerformance();}
 const _stcol=s=>s==="TARGET"?"var(--bull)":s==="STOPPED"?"var(--bear)":"#d29922";   // OPEN = amber
 function pfLocFilter(loc){PF_LOC_FILTER=(PF_LOC_FILTER===loc)?"":loc;_renderPerformance();}   // toggle the Summary-title location filter
 // Date filter (user 2026-07-18, P-01) — one trigger-date window drives BOTH Performance sub-tabs. A preset
@@ -3091,7 +3093,11 @@ function _winLedger(rows){
 }
 // Winners-chart filter dims (user 2026-07-27, P-10 L122/L123): clicking a Location/Market/Sector/Direction/
 // Outcome bar narrows the summary cards + ledger, like the Results tab. locName keeps FTSE 100 under UK/Europe.
-const _owDims=[["ordpf_market",r=>r.market],["ordpf_location",r=>locName(r.location)],["ordpf_sector",r=>r.sector],["ordpf_direction",r=>r.direction],["ordpf_outcome",r=>r.outcome]];
+// Quality (10-wide) and R:R (1-wide) bands — clickable dims so the winners cards can be filtered by
+// R:R / Quality too (user 2026-07-27, P-10 L300), matching the "Best Quality / R:R" theme.
+const _qBand=r=>r.quality!=null?`${Math.floor(r.quality/10)*10}–${Math.floor(r.quality/10)*10+9}`:"—";
+const _rrBand=r=>r.rr!=null?`R:R ${Math.floor(+r.rr)}–${Math.floor(+r.rr)+1}`:"—";
+const _owDims=[["ordpf_market",r=>r.market],["ordpf_location",r=>locName(r.location)],["ordpf_sector",r=>r.sector],["ordpf_direction",r=>r.direction],["ordpf_outcome",r=>r.outcome],["ordpf_quality",_qBand],["ordpf_rr",_rrBand]];
 const _owPass=(r,except)=>_owDims.every(([id,fn])=>id===except||inSet(id,fn(r)||"—"));
 function paintOrdersPerf(){
   const box=$("ordp-summary"), dims=$("ordp-dims"), tb=$("ordp-table"), tc=$("ordp-count");
@@ -3172,7 +3178,8 @@ function paintWinnersDims(dims, all){
   if(!dims)return;
   const groups=[["Market","ordpf_market",r=>r.market],["Location","ordpf_location",r=>locName(r.location)],
                 ["Sector","ordpf_sector",r=>r.sector],["Direction","ordpf_direction",r=>r.direction],
-                ["Outcome","ordpf_outcome",r=>r.outcome]];
+                ["Outcome","ordpf_outcome",r=>r.outcome],
+                ["Quality","ordpf_quality",_qBand],["R:R","ordpf_rr",_rrBand]];   // click-to-filter by R:R / Quality (user 2026-07-27, P-10 L300)
   dims.innerHTML=groups.map(([name,fk,fn])=>{
     const base=all.filter(r=>_owPass(r,fk));           // brushing: every OTHER winners filter applied, not this one
     const {ledger:lg}=_winLedger(base);
@@ -3351,21 +3358,25 @@ function _renderPerformance(){
     const o=(buckets[qb+"|"+rb]=buckets[qb+"|"+rb]||{qb,rb,n:0,sum:0});o.n++;o.sum+=r.perf;});
   const combos=Object.values(buckets).filter(b=>b.n>=3).map(b=>({...b,avg:b.sum/b.n})).sort((a,b)=>b.avg-a.avg).slice(0,N);
   $("pf-combos").innerHTML=LIMITED?`<p class="muted">🔒 <a href="#" onclick="showLogin();return false">Log in</a> to see the best Quality / R:R combinations.</p>`
-    :combos.length?combos.map((b,i)=>`<div class="fcard"><div class="ic">${i+1}</div>
+    :combos.length?combos.map((b,i)=>{const on=PF_COMBO&&PF_COMBO.qb===b.qb&&PF_COMBO.rb===b.rb;
+      return `<div class="fcard clk${on?' active':''}" style="cursor:pointer${on?';border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)':''}" onclick="pfComboFilter(${b.qb},${b.rb})" title="Click to filter the table below to Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)}${on?' — click again to clear':''} (user 2026-07-27, P-10 L292)"><div class="ic">${on?'✓':i+1}</div>
       <h3>Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)}</h3>
-      <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggers.</div></div>`).join("")
+      <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggers.${on?' <span style="color:var(--accent);font-weight:600">· filtering the table ✕</span>':''}</div></div>`;}).join("")
     :`<p class="muted">Not enough recorded triggers yet to rank Quality/R:R buckets (need at least 3 per bucket).</p>`;
+  // Best-combination card click (user 2026-07-27, P-10 L292): filter the TABLE (and its count + wallet) to
+  // the picked Quality/R:R band, while the cards above still show every bucket so you can change selection.
+  const selT = PF_COMBO ? sel.filter(r=>r.quality!=null&&r.rr!=null&&Math.floor(r.quality/10)*10===PF_COMBO.qb&&Math.floor(+r.rr)===PF_COMBO.rb) : sel;
   // Wallet model (P-05 L98/L271): when ON, compute the running wallet over the shown triggers and force
   // strict trigger-date order (a running wallet only reads correctly chronologically); else the usual sort.
   const pfwOn=!!($("pfw-on")||{}).checked;
-  const led=pfwOn?_pfWalletLedger(sel):null;
-  const rows=pfwOn?sel.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''))
-                  :genSort(sel,pfSortK,pfSortDir);
+  const led=pfwOn?_pfWalletLedger(selT):null;
+  const rows=pfwOn?selT.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''))
+                  :genSort(selT,pfSortK,pfSortDir);
   $("pf-table")&&$("pf-table").classList.toggle("wallet-on",pfwOn);
   if($("pfw-summary"))$("pfw-summary").innerHTML=(pfwOn&&led)?`<b style="color:var(--fg)">£${Math.round(led.wallet).toLocaleString()}</b> → <b style="color:${led.endWallet>=led.wallet?'var(--bull)':'var(--bear)'}">£${Math.round(led.endWallet).toLocaleString()}</b> over ${led.taken.toLocaleString()} trade${led.taken===1?'':'s'}${led.maxopen>0?` · cap ${led.maxopen} open → ${led.skipped.toLocaleString()} skipped`:''} <span class="muted">· recorded triggers shown, oldest first (same model as “What separates the winners”)</span>`:"";
-  const nT=sel.filter(r=>r.state==="TARGET").length, nS=sel.filter(r=>r.state==="STOPPED").length, nO=sel.filter(r=>r.state==="OPEN").length;
-  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${sel.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${sel.length!==all.length?` of ${all.length}`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
-  $("pftab-count").textContent=`(${sel.length})`;
+  const nT=selT.filter(r=>r.state==="TARGET").length, nS=selT.filter(r=>r.state==="STOPPED").length, nO=selT.filter(r=>r.state==="OPEN").length;
+  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb});return false" style="color:var(--accent)">✕ clear</a>`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
+  $("pftab-count").textContent=`(${selT.length})`;
   $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
     <td>${nm40(r.name)}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
