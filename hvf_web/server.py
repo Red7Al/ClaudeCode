@@ -343,6 +343,7 @@ def _limit_defaults() -> dict:
     import config as _cfg
     base = {"min_risk_reward": float(getattr(_cfg, "MIN_RISK_REWARD", 3.0)),
             "min_quality": int(getattr(_cfg, "MIN_PUBLISH_QUALITY", 25)),
+            "min_volume_score": int(getattr(_cfg, "MIN_VOLUME_SCORE", 1)),   # personal VolumeScore floor (user 2026-07-27, P-03) — default 1
             "max_trades_per_instrument_per_day": int(getattr(_cfg, "MAX_TRADES_PER_INSTRUMENT_PER_DAY", 5)),
             "bounce_alert_pct": float(getattr(_cfg, "BOUNCE_ALERT_PCT", 0.02)),
             "bounce_lookback_hours": int(getattr(_cfg, "BOUNCE_LOOKBACK_HOURS", 48)),
@@ -375,6 +376,9 @@ def _limit_block(name: str, tk: str, on: bool = True) -> str:
         return f"R:R {rr} is below your personal floor of {lim['min_risk_reward']:g} (Configuration → My trading limits)"
     if isinstance(q, (int, float)) and q < lim["min_quality"]:
         return f"Quality {q} is below your personal floor of {lim['min_quality']} (Configuration → My trading limits)"
+    vs = rec.get("volume_score")
+    if isinstance(vs, (int, float)) and vs < lim.get("min_volume_score", 1):
+        return f"VolumeScore {vs} is below your personal floor of {lim['min_volume_score']} (Configuration → My trading limits)"
     return ""
 
 
@@ -455,7 +459,7 @@ def api_config():
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = float(v)
-        for k in ("min_quality", "max_trades_per_instrument_per_day", "bounce_lookback_hours"):
+        for k in ("min_quality", "min_volume_score", "max_trades_per_instrument_per_day", "bounce_lookback_hours"):
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = int(v)

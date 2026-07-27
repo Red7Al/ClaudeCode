@@ -634,6 +634,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <p class="muted" style="font-size:12px">Your personal floors. <b>R:R</b> and <b>Quality</b> are enforced on <b>your own</b> manual actions — pushing a setup to Pre-orders or placing it on IG is blocked below these. The rest are stored against your login. The shared automated engine (one IG account, run by GitHub Actions) keeps using the system baseline.</p>
       <div class="credrow"><span class="clabel">Minimum R:R</span><input type="number" min="0" step="0.1" id="lim-min_risk_reward" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Minimum Quality (Q)</span><input type="number" min="0" max="100" step="1" id="lim-min_quality" style="max-width:120px"></div>
+      <!-- Personal VolumeScore floor (user 2026-07-27, P-03) — filters My Pre-orders + gates manual actions, exactly like Minimum Quality. Default 1. -->
+      <div class="credrow"><span class="clabel" title="VolumeScore (0–12) floor: breakout-confirmation. Filters My Pre-orders and blocks push-to-pre-orders / place-on-IG below this, exactly like Minimum Quality. Default 1.">Minimum Volume Score (0–12)</span><input type="number" min="0" max="12" step="1" id="lim-min_volume_score" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Max trades per instrument / day</span><input type="number" min="0" step="1" id="lim-max_trades_per_instrument_per_day" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Bounce alert (fraction — 0.02 = 2%)</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Bounce lookback (hours)</span><input type="number" min="0" step="1" id="lim-bounce_lookback_hours" style="max-width:120px"></div>
@@ -2468,7 +2470,7 @@ function saveLimits(){
   const num=(id,int)=>{const v=(int?parseInt:parseFloat)($("lim-"+id).value);return isFinite(v)&&v>=0?v:undefined;};
   const lim={};
   [["min_risk_reward",0],["bounce_alert_pct",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
-  [["min_quality",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
+  [["min_quality",1],["min_volume_score",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
   lim.email_recipients=($("lim-email_recipients").value||"").split(",").map(x=>x.trim()).filter(Boolean);
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
     .then(r=>{const el=$("lim-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Saved.";
@@ -3491,8 +3493,9 @@ function renderPreorders(){
   // list setups below the floors in Configuration → My trading limits. isPreorder() auto-qualifies any
   // READY/DEVELOPING setup at the system baseline (Q≥25), so without this a Q<40 or R:R<5 row still showed.
   // null rr/quality passes (nothing to compare against).
-  {const rrMin=num(MY_LIMITS.min_risk_reward), qMin=num(MY_LIMITS.min_quality);
-   po=po.filter(r=>!(rrMin!=null&&r.rr!=null&&r.rr<rrMin) && !(qMin!=null&&r.quality!=null&&r.quality<qMin));}
+  {const rrMin=num(MY_LIMITS.min_risk_reward), qMin=num(MY_LIMITS.min_quality), vsMin=num(MY_LIMITS.min_volume_score);
+   po=po.filter(r=>!(rrMin!=null&&r.rr!=null&&r.rr<rrMin) && !(qMin!=null&&r.quality!=null&&r.quality<qMin)
+                && !(vsMin!=null&&r.volume_score!=null&&r.volume_score<vsMin));}   // personal VolumeScore floor (user 2026-07-27, P-03), like Quality
   // Chart-click filters (user 2026-07-03): each pof_* holds a SET of selected values (multi-select).
   // Applied to the TABLE (poRows below); the CHARTS brush — each is counted over all OTHER pof_* but not
   // its own — so every option-bar stays visible with the selected value(s) highlighted rather than the
