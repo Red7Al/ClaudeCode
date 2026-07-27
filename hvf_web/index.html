@@ -1608,50 +1608,48 @@ function packViz(id,_retry){
     while(col.firstChild) col.parentNode.insertBefore(col.firstChild, col);
     col.remove();});
   // Flex items are .vizsector wrappers and (via .vizbars display:contents) bare .vizbox cards.
-  const items=[...c.children].flatMap(ch=>ch.classList.contains("vizbars")?[...ch.children]:[ch]);
+  const flat=()=>[...c.children].flatMap(ch=>ch.classList.contains("vizbars")?[...ch.children]:[ch]);
+  const items=flat();
   if(items.length<3) return;
-  c.classList.add("measuring");                       // natural heights, not the P-14 stretched ones
-  const h=items.map(el=>el.getBoundingClientRect().height);
+  // Visual ROW count of the current (unstacked) strip. Skips zero-rect display:contents wrappers; a hidden
+  // view (the file:// snapshot) reports top 0 for everything → one row → no stacking, the safe default.
+  const rowCount=()=>{const t=flat().map(el=>el.getBoundingClientRect()).filter(r=>r.height>0).map(r=>Math.round(r.top));
+    return t.length?new Set(t.map(v=>Math.round(v/8))).size:1;};
+  // ONLY stack when the strip WRAPS (user 2026-07-27, P-06). If every card already fits on ONE row, leave
+  // them side by side — align-items:stretch + the space-evenly bars fill each card cleanly and the row
+  // spaces evenly, matching Performance → Results (the gold standard). Stacking a short card UNDER another
+  // only pays off to reclaim vertical space once the row has wrapped; doing it while there is horizontal
+  // room is exactly the "inconsistent spacing / big white gaps" the user reported on Scanner + My
+  // Pre-orders. Measured, never hardcoded.
+  if(rowCount()<=1) return;
+  // Wrapped. First try dropping the Month-Week card — the most disposable date chart — if that alone
+  // un-wraps the strip (user 2026-07-27, P-06). Re-pack once after removing it.
+  if(!_retry){
+    const mw=items.find(el=>_vizLabel(el)==="Month-Week");
+    if(mw){ (mw.closest(".vizsector")||mw).remove(); return packViz(id,true); }
+  }
+  if(rowCount()<=1) return;   // dropping Month-Week was enough
+  // Still wrapped: consolidate SHORT cards into shared columns to reduce ragged height. Pin Location/
+  // Market/Sector (never stacked). Greedy left-to-right, preserving order.
+  c.classList.add("measuring");                       // natural heights, not the stretched ones
+  const its=flat(), h=its.map(el=>el.getBoundingClientRect().height);
   c.classList.remove("measuring");
-  const tall=Math.max(...h);
-  if(!tall) return;
-  const pinned=items.map(el=>VIZ_NOSTACK.has(_vizLabel(el)));   // Location/Market/Sector — never stacked
-  // Greedy left-to-right: a card starts a column; later SHORT cards join it while they still fit
-  // under the tallest card's height. Only cards that are themselves short enough to pair are moved,
-  // and NEVER the pinned Location/Market/Sector cards (P-06).
-  const used=new Array(items.length).fill(false);
-  for(let i=0;i<items.length;i++){
+  const tall=Math.max(...h); if(!tall) return;
+  const pinned=its.map(el=>VIZ_NOSTACK.has(_vizLabel(el)));   // Location/Market/Sector — never stacked
+  const used=new Array(its.length).fill(false);
+  for(let i=0;i<its.length;i++){
     if(used[i]||pinned[i]||h[i]>tall*0.6) continue;   // tall or pinned cards are never stacked
     let stack=[i], total=h[i];
-    for(let j=i+1;j<items.length;j++){
+    for(let j=i+1;j<its.length;j++){
       if(used[j]||pinned[j]||h[j]>tall*0.6) continue;
       if(total+VIZ_GAP+h[j]<=tall){ stack.push(j); total+=VIZ_GAP+h[j]; }
     }
     if(stack.length<2) continue;                      // nothing gained
     const col=document.createElement("div"); col.className="vizcol";
-    items[stack[0]].parentNode.insertBefore(col, items[stack[0]]);
+    its[stack[0]].parentNode.insertBefore(col, its[stack[0]]);
     stack.forEach(k=>{ used[k]=true;
-      // unwrap a .vizsector so the card itself sits in the column
-      const el=items[k], box=el.classList.contains("vizsector")?el.firstElementChild:el;
+      const el=its[k], box=el.classList.contains("vizsector")?el.firstElementChild:el;
       col.appendChild(box); if(el!==box) el.remove(); });
-  }
-  // If the strip still wraps onto a second row, drop the "Month-Week" card and re-pack once (user
-  // 2026-07-27, P-06): Month-Week is the most disposable of the date charts, so we sacrifice it to keep
-  // the strip on a single row (e.g. Performance → Results). Only acts when real layout is available
-  // (top-level items report distinct offsetTops) — the static file:// snapshot reports 0, so it no-ops
-  // there rather than dropping the chart blindly.
-  if(!_retry){
-    // Re-derive the flex participants AFTER packing (vizcols now exist; .vizbars is display:contents so
-    // its children are the real flex items). Skip zero rects — a display:contents wrapper reports top 0
-    // and would fake a wrap.
-    const flex=[...c.children].flatMap(ch=>ch.classList.contains("vizbars")?[...ch.children]:[ch]);
-    const tops=flex.map(el=>el.getBoundingClientRect()).filter(r=>r.height>0).map(r=>Math.round(r.top));
-    const wraps=tops.length>1 && Math.max(...tops)-Math.min(...tops)>4;
-    if(wraps){
-      const mw=items.find(el=>_vizLabel(el)==="Month-Week");
-      if(mw){ (mw.closest(".vizsector")||mw).remove();   // drop the Month-Week card, then re-pack once
-        return packViz(id,true); }
-    }
   }
 }
 function renderViz(rows){

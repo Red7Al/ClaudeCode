@@ -96,14 +96,23 @@ width. Skip this and enlarging label text just crams it: `.bar .tk` is a shrinki
 row with a fixed-width fill and count, so on a 186px card the label got ~68px and "NASDAQ 100" /
 "Europe (West)" collided with their bars while 256px sat empty to the right.
 
-**Stacking** — `packViz(id)` after every strip render. Measures each card's natural height (a
-`.measuring` class drops the stretch for the read), then packs greedily left-to-right: short cards
-(≤60% of tallest) share a `.vizcol` while the running total fits under the tallest. Idempotent —
-unwraps existing `.vizcol` first. Preserves order, so Market/Sector still lead.
+**Stacking** — `packViz(id)` after every strip render. **It stacks ONLY when the strip WRAPS to more than
+one row** (user 2026-07-27, P-06). If every card fits on a single row, `packViz` leaves them side by side —
+`align-items:stretch` + the `space-evenly` bars fill each card cleanly and the row spaces evenly, matching
+Performance → Results. Stacking a short card *under* another only pays off to reclaim vertical space once
+the row has wrapped; doing it while there is horizontal room was the "inconsistent spacing / big white
+gaps" (a 99px gap before a `flex:none` `.vizcol`, "Status under Direction") the user reported on Scanner +
+My Pre-orders. So `packViz` measures the current row count first (`getBoundingClientRect().top`, skipping
+zero-rect `display:contents` wrappers); returns early if ≤1 row; otherwise drops Month-Week (below) and, if
+still wrapped, does the greedy pin-aware consolidation (short cards ≤60% of the tallest share a `.vizcol`).
+Idempotent — unwraps existing `.vizcol` first. Preserves order.
 
 > **The decision must be MEASURED, never hardcoded.** Logged out, Market/Location/Timeframe each show a
 > single "—" bar and look obviously pairable; logged in they carry 6–8 bars and must stay side by side.
-> Same code, opposite layouts.
+> Same code, opposite layouts. A hidden view (the `file://` snapshot) reports `top:0` for every card → one
+> row → no stacking, the safe default; **verify layout on a VISIBLE view** — reveal it
+> (`el.classList.remove('hidden')`), inject realistic data, set an explicit wide viewport (the preview
+> pane defaults narrow, which fakes a wrap), then measure.
 
 **NEVER stack Location, Market or Sector** (user 2026-07-27, P-06). These three primary charts are
 always standalone cards — `packViz` pins them via `VIZ_NOSTACK`/`_vizLabel` (matched on the `<h5>`
