@@ -1729,6 +1729,7 @@ def api_performance():
                 return max(0, (d1 - d0).days)
             except Exception:
                 return None
+        vsmap = _volscore_trigger_map()   # per-trigger VolumeScore for the Results Vol column (P-03, 2026-07-27)
         for r in _sqa_all_rows():
             if (r.get("trig_date") or "") < cut12:
                 continue
@@ -1742,7 +1743,8 @@ def api_performance():
                 "trig_date": r["trig_date"], "state": r["outcome"],
                 "days_open": _days_open(r),
                 "perf": (round(r["return_pct"], 2) if r["return_pct"] is not None else None),
-                "rvol": r["rvol"]})
+                "rvol": r["rvol"],
+                "volume_score": vsmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]))})
         out.sort(key=lambda r: (r.get("perf") is None, -(r.get("perf") or 0)))
     except Exception as ex:
         log.warning(f"performance report failed: {ex}")
@@ -2108,12 +2110,20 @@ def _sl_path(direction, entry, stop, target, bars, thr):
 _VSR_CACHE = {"ts": 0.0, "data": None}
 
 
-def _volscore_report():
+_VSCORED_CACHE = {"ts": 0.0, "data": None}
+_VSMAP_CACHE = {"ts": 0.0, "data": None}
+
+
+def _volscore_scored():
+    """Last-12mo _sqa rows, each annotated with volume_score (breakout confirmation on its trigger bar),
+    cached. Single source shared by the VolumeScore report (buckets / win-rate) AND the per-trigger map
+    that puts a Vol column on the Performance results + winners detail tables (user 2026-07-27, P-03), so
+    the report and the tables always reconcile and the expensive per-ticker bar fetch happens once."""
     import datetime as _dt
     import volume_score as _vscore
     now = _time.time()
-    if _VSR_CACHE["data"] is not None and now - _VSR_CACHE["ts"] < _SQA_TTL:
-        return _VSR_CACHE["data"]
+    if _VSCORED_CACHE["data"] is not None and now - _VSCORED_CACHE["ts"] < _SQA_TTL:
+        return _VSCORED_CACHE["data"]
     cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
     rows = [r for r in _sqa_all_rows()
             if (r.get("trig_date") or "") >= cut12 and r.get("trig_date") and r.get("entry")]
@@ -2146,6 +2156,27 @@ def _volscore_report():
         rr = dict(r)
         rr["volume_score"] = res["score"]
         scored.append(rr)
+    _VSCORED_CACHE.update(ts=now, data=scored)
+    return scored
+
+
+def _volscore_trigger_map():
+    """{(ticker, trig_date[:10]): volume_score} from _volscore_scored — the lookup that adds the Vol
+    column to the Performance results table and the winners ledger (user 2026-07-27, P-03)."""
+    now = _time.time()
+    if _VSMAP_CACHE["data"] is not None and now - _VSMAP_CACHE["ts"] < _SQA_TTL:
+        return _VSMAP_CACHE["data"]
+    m = {(r["ticker"], str(r["trig_date"])[:10]): r.get("volume_score") for r in _volscore_scored()}
+    _VSMAP_CACHE.update(ts=now, data=m)
+    return m
+
+
+def _volscore_report():
+    import volume_score as _vscore
+    now = _time.time()
+    if _VSR_CACHE["data"] is not None and now - _VSR_CACHE["ts"] < _SQA_TTL:
+        return _VSR_CACHE["data"]
+    scored = _volscore_scored()
 
     def _band(v):
         if v is None:
@@ -2424,12 +2455,14 @@ def api_winners():
         cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
         rows = [r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cut12]
         rows.sort(key=lambda r: (r.get("trig_date") or ""))
+        vsmap = _volscore_trigger_map()   # per-trigger VolumeScore for the ledger Vol column (P-03, 2026-07-27)
         payload["rows"] = [
             {"ticker": r["ticker"], "name": r["name"], "market": r["market"], "sector": r["sector"],
              "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
              "trig_date": r["trig_date"], "exit_date": r.get("exit_date"), "entry": r["entry"], "stop": r["stop"],
              "outcome": r["outcome"], "perf": r["return_pct"],
-             "quality": r["quality"], "rr": r["rr"], "rvol": r["rvol"]}
+             "quality": r["quality"], "rr": r["rr"], "rvol": r["rvol"],
+             "volume_score": vsmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]))}
             for r in rows]
     except Exception as ex:
         log.warning(f"winners rows failed: {ex}")
