@@ -644,6 +644,16 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div class="credrow"><span class="clabel">Minimum Quality (Q)</span><input type="number" min="0" max="100" step="1" id="lim-min_quality" style="max-width:120px"></div>
       <!-- Personal VolumeScore floor (user 2026-07-27, P-03) — filters My Pre-orders + gates manual actions, exactly like Minimum Quality. Default 1. -->
       <div class="credrow"><span class="clabel" title="VolumeScore (0–12) floor: breakout-confirmation. Filters My Pre-orders and blocks push-to-pre-orders / place-on-IG below this, exactly like Minimum Quality. Default 1.">Minimum Volume Score (0–12)</span><input type="number" min="0" max="12" step="1" id="lim-min_volume_score" style="max-width:120px"></div>
+      <!-- Min/Max tradeable instrument VALUE (user 2026-07-27, P-07) — for equities the value is market cap.
+           0 = off. Enforced like the Quality floor once records carry an mcap value (data pipeline pending);
+           the variable is stored and honoured now. -->
+      <div class="credrow"><span class="clabel" title="Only trade instruments whose value is at least this. For equities the value is MARKET CAP (e.g. £/$). 0 = no minimum. Enforced like Minimum Quality once instrument values are available in the scan.">Min instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-min_instrument_value" style="max-width:160px"></div>
+      <div class="credrow"><span class="clabel" title="Only trade instruments whose value is at most this. For equities the value is MARKET CAP. 0 = no maximum.">Max instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-max_instrument_value" style="max-width:160px"></div>
+      <!-- Adaptive filters (user 2026-07-27, P-07): the configuration knob to re-tune Market/Quality/R:R
+           on a cadence from the best-settings analysis. The walk-forward engine that applies it is the
+           separate deferred L58 task; here we store the preference + window. -->
+      <div class="credrow"><span class="clabel" title="When on, your Market / Quality / R:R filters are periodically re-tuned from the recent 'best settings' analysis (every N weeks below). The automatic re-tuning engine is being built (deferred L58); this stores your preference.">Adaptive filters — auto-tune Market / Quality / R:R</span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="lim-adaptive_filters"> enable</label></div>
+      <div class="credrow"><span class="clabel" title="How often the adaptive filters re-tune, in weeks (e.g. 4 = every 4 weeks). Only used when 'Adaptive filters' is enabled.">Rebalance window (weeks)</span><input type="number" min="1" max="52" step="1" id="lim-rebalance_weeks" placeholder="4" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Max trades per instrument / day</span><input type="number" min="0" step="1" id="lim-max_trades_per_instrument_per_day" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Bounce alert (fraction — 0.02 = 2%)</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Bounce lookback (hours)</span><input type="number" min="0" step="1" id="lim-bounce_lookback_hours" style="max-width:120px"></div>
@@ -2434,7 +2444,7 @@ function renderConfig(){
       USER_FILTERS=j.filters||{};
       HIDDEN_TABS=j.hidden_tabs||[]; renderTabVis(HIDDEN_TABS);   // tab-visibility card (user 2026-07-03)
       if(j.leverage){LEVERAGE=j.leverage;["fx","equities","commodities","indices"].forEach(k=>{if($("lev-"+k))$("lev-"+k).value=j.leverage[k];});}
-      if(j.limits){MY_LIMITS=j.limits;Object.entries(j.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el)el.value=Array.isArray(v)?v.join(", "):v;});if(typeof renderPreorders==='function')renderPreorders();}
+      if(j.limits){MY_LIMITS=j.limits;Object.entries(j.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=Array.isArray(v)?v.join(", "):v;}});if(typeof renderPreorders==='function')renderPreorders();}
       // Engine settings (admin only) now live on the Configuration (Admin) tab; just fill the inputs.
       if(j.engine){window.ENGINE_VALS=j.engine;Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});}
       // Morning HVF tweet markets (admin, user 2026-07-06): checkbox chips over the universe's markets.
@@ -2508,8 +2518,9 @@ function saveLeverage(){
 function saveLimits(){
   const num=(id,int)=>{const v=(int?parseInt:parseFloat)($("lim-"+id).value);return isFinite(v)&&v>=0?v:undefined;};
   const lim={};
-  [["min_risk_reward",0],["bounce_alert_pct",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
-  [["min_quality",1],["min_volume_score",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
+  [["min_risk_reward",0],["bounce_alert_pct",0],["min_instrument_value",0],["max_instrument_value",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
+  [["min_quality",1],["min_volume_score",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["rebalance_weeks",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
+  lim.adaptive_filters=($("lim-adaptive_filters")||{}).checked?1:0;   // adaptive-filters enable toggle (user 2026-07-27, P-07)
   lim.email_recipients=($("lim-email_recipients").value||"").split(",").map(x=>x.trim()).filter(Boolean);
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
     .then(r=>{const el=$("lim-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Saved.";
@@ -3568,8 +3579,12 @@ function renderPreorders(){
   // READY/DEVELOPING setup at the system baseline (Q≥25), so without this a Q<40 or R:R<5 row still showed.
   // null rr/quality passes (nothing to compare against).
   {const rrMin=num(MY_LIMITS.min_risk_reward), qMin=num(MY_LIMITS.min_quality), vsMin=num(MY_LIMITS.min_volume_score);
+   // Instrument-value band (user 2026-07-27, P-07) — MCAP for equities; only bites when the row carries an
+   // `mcap` value AND the bound is set (0 = off), so it's a no-op until that data lands (like the server gate).
+   const ivMin=num(MY_LIMITS.min_instrument_value), ivMax=num(MY_LIMITS.max_instrument_value);
    po=po.filter(r=>!(rrMin!=null&&r.rr!=null&&r.rr<rrMin) && !(qMin!=null&&r.quality!=null&&r.quality<qMin)
-                && !(vsMin!=null&&r.volume_score!=null&&r.volume_score<vsMin));}   // personal VolumeScore floor (user 2026-07-27, P-03), like Quality
+                && !(vsMin!=null&&r.volume_score!=null&&r.volume_score<vsMin)
+                && !(r.mcap!=null&&ivMin!=null&&ivMin>0&&r.mcap<ivMin) && !(r.mcap!=null&&ivMax!=null&&ivMax>0&&r.mcap>ivMax));}   // personal VolumeScore floor + instrument-value band (P-03/P-07), like Quality
   // Chart-click filters (user 2026-07-03): each pof_* holds a SET of selected values (multi-select).
   // Applied to the TABLE (poRows below); the CHARTS brush — each is counted over all OTHER pof_* but not
   // its own — so every option-bar stays visible with the selected value(s) highlighted rather than the

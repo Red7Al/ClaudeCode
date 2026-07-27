@@ -344,6 +344,16 @@ def _limit_defaults() -> dict:
     base = {"min_risk_reward": float(getattr(_cfg, "MIN_RISK_REWARD", 3.0)),
             "min_quality": int(getattr(_cfg, "MIN_PUBLISH_QUALITY", 25)),
             "min_volume_score": int(getattr(_cfg, "MIN_VOLUME_SCORE", 1)),   # personal VolumeScore floor (user 2026-07-27, P-03) — default 1
+            # Min/Max tradeable instrument VALUE (user 2026-07-27, P-07) — for equities the value is market
+            # cap; 0 = off. Enforced (like the Quality floor) once records carry an `mcap` field; until that
+            # data pipeline lands the gate is a graceful no-op, so the variable exists and is honoured now.
+            "min_instrument_value": float(getattr(_cfg, "MIN_INSTRUMENT_VALUE", 0)),
+            "max_instrument_value": float(getattr(_cfg, "MAX_INSTRUMENT_VALUE", 0)),
+            # Adaptive filters (user 2026-07-27, P-07): when on, the user's Market/Quality/R:R filters are
+            # re-tuned from the recent best-settings analysis every `rebalance_weeks`. The walk-forward
+            # engine that applies it is the separate (deferred) L58 task; this is the configuration knob.
+            "adaptive_filters": int(getattr(_cfg, "ADAPTIVE_FILTERS", 0)),
+            "rebalance_weeks": int(getattr(_cfg, "REBALANCE_WEEKS", 4)),
             "max_trades_per_instrument_per_day": int(getattr(_cfg, "MAX_TRADES_PER_INSTRUMENT_PER_DAY", 5)),
             "bounce_alert_pct": float(getattr(_cfg, "BOUNCE_ALERT_PCT", 0.02)),
             "bounce_lookback_hours": int(getattr(_cfg, "BOUNCE_LOOKBACK_HOURS", 48)),
@@ -379,6 +389,14 @@ def _limit_block(name: str, tk: str, on: bool = True) -> str:
     vs = rec.get("volume_score")
     if isinstance(vs, (int, float)) and vs < lim.get("min_volume_score", 1):
         return f"VolumeScore {vs} is below your personal floor of {lim['min_volume_score']} (Configuration → My trading limits)"
+    # Instrument-value band (user 2026-07-27, P-07) — MCAP for equities; only gates when the record carries
+    # a value AND the user set a bound (0 = off). No-op until the `mcap` data lands, so it's safe now.
+    val, vmin, vmax = rec.get("mcap"), lim.get("min_instrument_value", 0), lim.get("max_instrument_value", 0)
+    if isinstance(val, (int, float)):
+        if vmin and val < vmin:
+            return f"Instrument value {val:,.0f} is below your minimum of {vmin:,.0f} (Configuration → My trading limits)"
+        if vmax and val > vmax:
+            return f"Instrument value {val:,.0f} is above your maximum of {vmax:,.0f} (Configuration → My trading limits)"
     return ""
 
 
@@ -455,11 +473,12 @@ def api_config():
         s = _wu.get_settings(name)
         cur = s.get("limits") or {}
         b = body["limits"] or {}
-        for k in ("min_risk_reward", "bounce_alert_pct"):
+        for k in ("min_risk_reward", "bounce_alert_pct", "min_instrument_value", "max_instrument_value"):
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = float(v)
-        for k in ("min_quality", "min_volume_score", "max_trades_per_instrument_per_day", "bounce_lookback_hours"):
+        for k in ("min_quality", "min_volume_score", "max_trades_per_instrument_per_day", "bounce_lookback_hours",
+                  "adaptive_filters", "rebalance_weeks"):
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = int(v)
