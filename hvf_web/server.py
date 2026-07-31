@@ -354,6 +354,11 @@ def _limit_defaults() -> dict:
             # engine that applies it is the separate (deferred) L58 task; this is the configuration knob.
             "adaptive_filters": int(getattr(_cfg, "ADAPTIVE_FILTERS", 0)),
             "rebalance_weeks": int(getattr(_cfg, "REBALANCE_WEEKS", 4)),
+            # "What separates the winners" model variables saved as the user's defaults (user 2026-07-28,
+            # P-10 L158) — Wallet £, Max position size %, Max open positions — so the winners tab remembers them.
+            "wallet": float(getattr(_cfg, "MODEL_WALLET", 1000)),
+            "max_position_pct": float(getattr(_cfg, "MODEL_STAKE_PCT", 2)),
+            "max_open": int(getattr(_cfg, "MODEL_MAX_OPEN", 0)),
             "max_trades_per_instrument_per_day": int(getattr(_cfg, "MAX_TRADES_PER_INSTRUMENT_PER_DAY", 5)),
             "bounce_alert_pct": float(getattr(_cfg, "BOUNCE_ALERT_PCT", 0.02)),
             "bounce_lookback_hours": int(getattr(_cfg, "BOUNCE_LOOKBACK_HOURS", 48)),
@@ -473,12 +478,13 @@ def api_config():
         s = _wu.get_settings(name)
         cur = s.get("limits") or {}
         b = body["limits"] or {}
-        for k in ("min_risk_reward", "bounce_alert_pct", "min_instrument_value", "max_instrument_value"):
+        for k in ("min_risk_reward", "bounce_alert_pct", "min_instrument_value", "max_instrument_value",
+                  "wallet", "max_position_pct"):
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = float(v)
         for k in ("min_quality", "min_volume_score", "max_trades_per_instrument_per_day", "bounce_lookback_hours",
-                  "adaptive_filters", "rebalance_weeks"):
+                  "adaptive_filters", "rebalance_weeks", "max_open"):
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = int(v)

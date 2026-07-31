@@ -1170,6 +1170,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
            identity Wallet = Max open × Maximum Trade (L255/L256) is enforced by deriving it here. -->
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ Max open positions — so Wallet = Max open × Maximum Trade. With no cap it's the whole wallet.">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
       <span class="muted" style="font-size:11px">each trade stakes this % of the running wallet; both drive every £ figure below</span>
+      <!-- Save the winners Model variables (Wallet / Max position size / Max open) as the user's persistent
+           defaults in Configuration (user 2026-07-28, P-10 L158), so the tab remembers them next login. -->
+      <button class="btn" id="ordp-save-defaults" style="padding:4px 10px;font-size:12px" onclick="winnersSaveDefaults()" title="Save Wallet / Max position size / Max open positions as your defaults (Configuration → My trading limits)">💾 Save as my defaults</button>
+      <span id="ordp-save-msg" style="font-size:11px"></span>
       <span id="ordp-model-msg" style="font-size:11px;flex-basis:100%"></span>
     </div>
     <!-- Best-combination card (user 2026-07-26, P-05 L132/L133): grid-searches Max position size / Max open
@@ -2444,7 +2448,7 @@ function renderConfig(){
       USER_FILTERS=j.filters||{};
       HIDDEN_TABS=j.hidden_tabs||[]; renderTabVis(HIDDEN_TABS);   // tab-visibility card (user 2026-07-03)
       if(j.leverage){LEVERAGE=j.leverage;["fx","equities","commodities","indices"].forEach(k=>{if($("lev-"+k))$("lev-"+k).value=j.leverage[k];});}
-      if(j.limits){MY_LIMITS=j.limits;Object.entries(j.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=Array.isArray(v)?v.join(", "):v;}});if(typeof renderPreorders==='function')renderPreorders();}
+      if(j.limits){MY_LIMITS=j.limits;Object.entries(j.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=Array.isArray(v)?v.join(", "):v;}});if(typeof renderPreorders==='function')renderPreorders();if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();}   // apply saved winners-Model defaults (P-10 L158)
       // Engine settings (admin only) now live on the Configuration (Admin) tab; just fill the inputs.
       if(j.engine){window.ENGINE_VALS=j.engine;Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});}
       // Morning HVF tweet markets (admin, user 2026-07-06): checkbox chips over the universe's markets.
@@ -2908,6 +2912,25 @@ function winnersParamsChange(){
   const msg=$("ordp-model-msg"); if(msg){msg.textContent=warn; msg.style.color=warn?"var(--bear)":"";}
   renderLeverageImpact();                 // leverage-impact report (P-03 L70)
   paintOrdersPerf(); winnersSLChange();   // re-render both the plain view and any SL illustration
+}
+// Save the winners Model variables as the user's persistent defaults (user 2026-07-28, P-10 L158) — stored
+// on the user record via /api/config limits, and re-applied to the Model inputs on the next login (loadLimits).
+function winnersSaveDefaults(){
+  const wallet=Math.max(1,+(($("ordp-wallet")||{}).value)||1000);
+  const stake=Math.max(0.1,+(($("ordp-stake")||{}).value)||2);
+  const mo=Math.max(0,Math.floor(+(($("ordp-maxopen")||{}).value)||0));
+  const msg=$("ordp-save-msg");
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:{wallet,max_position_pct:stake,max_open:mo}})})
+    .then(r=>{if(!r.ok)throw 0;MY_LIMITS={...MY_LIMITS,wallet,max_position_pct:stake,max_open:mo};if(msg){msg.style.color="var(--bull)";msg.textContent="✓ Saved as your defaults.";setTimeout(()=>{if(msg)msg.textContent="";},4000);}})
+    .catch(()=>{if(msg){msg.style.color="var(--bear)";msg.textContent="Save failed.";}});
+}
+// Apply saved winners-Model defaults to the Model inputs (user 2026-07-28, P-10 L158) — called from loadLimits.
+function applyWinnersDefaults(){
+  const set=(id,v)=>{const e=$(id);if(e&&v!=null&&v!=="")e.value=v;};
+  if(MY_LIMITS.wallet!=null)set("ordp-wallet",MY_LIMITS.wallet);
+  if(MY_LIMITS.max_position_pct!=null)set("ordp-stake",MY_LIMITS.max_position_pct);
+  const moEl=$("ordp-maxopen"); if(moEl&&MY_LIMITS.max_open!=null)moEl.value=MY_LIMITS.max_open>0?MY_LIMITS.max_open:"";   // 0 = ∞ → blank (set() skips "" so do it directly)
+  if(typeof winnersParamsChange==="function")winnersParamsChange();
 }
 // Leverage-impact report (user 2026-07-24, P-03 L70): how the Configuration → Leverage figures affect the
 // model. Leverage sets the margin per position (stake ÷ leverage) and therefore how many positions the
