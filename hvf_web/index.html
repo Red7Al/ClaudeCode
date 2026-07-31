@@ -3022,13 +3022,19 @@ const _gbp2=v=>v==null?'—':`${v<0?'−':'+'}£${Math.abs(v).toLocaleString(und
 // apply the SAME combo and just scale the £ outcome, flagging any wallet whose stake is below the £25 IG
 // minimum. Uses startWallet=1 so ret/dd come out as fractions.
 function _combReplay(seq,stakeFrac,maxopen){
-  let taken=seq;
-  if(maxopen>0){taken=[];const openExits=[];
-    for(const r of seq){for(let i=openExits.length-1;i>=0;i--){if(openExits[i]<=(r.trig_date||''))openExits.splice(i,1);}
-      if(openExits.length<maxopen){taken.push(r);openExits.push(r.exit_date||_pfAddDays(r.trig_date,r.days_open||0));}}}
+  // Concurrency is bounded by the WALLET (user 2026-07-28 — fixes the impossible ×468 best-combination and
+  // the deferred L119 "586 open trades not possible with 2% margin, max 50"): a stake of s% of the wallet
+  // funds at most floor(1/s) positions AT ONCE, so an "∞" (maxopen=0) or a larger cap is bounded to that.
+  // Without it, ∞ open + a big stake compounds every one of ~1,925 OVERLAPPING trades sequentially — an
+  // impossible return with an impossibly small single-curve drawdown, so the optimiser railed to 10%/∞.
+  const fund=Math.max(1,Math.floor(1/stakeFrac));
+  const cap=maxopen>0?Math.min(maxopen,fund):fund;
+  const taken=[];const openExits=[];
+  for(const r of seq){for(let i=openExits.length-1;i>=0;i--){if(openExits[i]<=(r.trig_date||''))openExits.splice(i,1);}
+    if(openExits.length<cap){taken.push(r);openExits.push(r.exit_date||_pfAddDays(r.trig_date,r.days_open||0));}}
   let w=1,peak=1,maxdd=0;
   for(const r of taken){w+=w*stakeFrac*r.perf/100; if(w>peak)peak=w; const dd=peak>0?(peak-w)/peak:0; if(dd>maxdd)maxdd=dd;}
-  return {ret:w-1,dd:maxdd,n:taken.length};
+  return {ret:w-1,dd:maxdd,n:taken.length,cap};
 }
 function renderBestCombo(all){
   const box=$("ordp-bestcombo"); if(!box)return;
@@ -3041,10 +3047,10 @@ function renderBestCombo(all){
     const seq=byDate.filter(r=>r.rr!=null&&r.rr>=rr);
     if(seq.length<5)continue;
     for(const mo of OPENS)for(const st of STAKES){
-      const {ret,dd,n}=_combReplay(seq,st/100,mo);
+      const {ret,dd,n,cap}=_combReplay(seq,st/100,mo);
       if(n<5)continue;
       const score=dd>0?ret/dd:(ret>0?ret*1e3:ret);   // return per unit drawdown; no drawdown + positive → rank top
-      if(!best||score>best.score)best={st,mo,rr,ret,dd,n,score};
+      if(!best||score>best.score)best={st,mo,rr,ret,dd,n,score,cap};
     }
   }
   if(!best){box.innerHTML="";return;}
@@ -3063,7 +3069,7 @@ function renderBestCombo(all){
     <h4 style="margin:0 0 4px">🥇 Best combination <span class="muted" style="font-weight:400;font-size:11px">— ranked by return per unit of drawdown, over ${best.n.toLocaleString()} trades in this window</span></h4>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:6px 0 8px">
       <div><div class="muted" style="font-size:11px">Max position size</div><b style="font-size:16px;color:var(--fg)">${best.st}%</b></div>
-      <div><div class="muted" style="font-size:11px">Max open positions</div><b style="font-size:16px;color:var(--fg)">${best.mo>0?best.mo:'∞'}</b></div>
+      <div><div class="muted" style="font-size:11px">Max open positions</div><b style="font-size:16px;color:var(--fg)" title="Bounded by the wallet: a ${best.st}% stake funds at most ${best.cap} positions at once (100% exposure)${best.mo>0&&best.mo<=best.cap?'':' — the ∞/large setting is capped to this'}">${best.cap}</b></div>
       <div><div class="muted" style="font-size:11px">R:R floor</div><b style="font-size:16px;color:var(--fg)">≥ ${best.rr}</b></div>
       <div style="border-left:1px solid var(--line);padding-left:18px"><div class="muted" style="font-size:11px">Total return</div><b style="font-size:16px;color:${best.ret>=0?'var(--bull)':'var(--bear)'}">${pct(best.ret)}</b></div>
       <div><div class="muted" style="font-size:11px">Max drawdown</div><b style="font-size:16px;color:var(--bear)">−${(best.dd*100).toFixed(1)}%</b></div>
@@ -3081,11 +3087,16 @@ function renderBestCombo(all){
 function _winLedger(rows){
   const stopPct=r=>Math.abs(r.entry-r.stop)/r.entry;
   const seq=rows.filter(r=>r.perf!=null).slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
+  // Concurrency is bounded by the WALLET (user 2026-07-28, L119): a WINNERS_STAKE fraction funds at most
+  // floor(1/stake) positions at once, so an "∞" (WINNERS_MAXOPEN=0) or larger cap can't exceed 100%
+  // exposure — you can't hold 586 open trades on a 2% stake, only 50. Keeps this in step with _combReplay.
+  const fund=Math.max(1,Math.floor(1/WINNERS_STAKE));
+  const cap=WINNERS_MAXOPEN>0?Math.min(WINNERS_MAXOPEN,fund):fund;
   let w=WINNERS_WALLET;const ledger=[];const _openEx=[];
   for(const r of seq){
     const td=r.trig_date||'';
     for(let i=_openEx.length-1;i>=0;i--){if(_openEx[i]<=td)_openEx.splice(i,1);}
-    if(WINNERS_MAXOPEN>0 && _openEx.length>=WINNERS_MAXOPEN){ledger.push({r,missed:true,reason:`Book full — ${WINNERS_MAXOPEN} open`,open:_openEx.length});continue;}
+    if(_openEx.length>=cap){ledger.push({r,missed:true,reason:WINNERS_MAXOPEN>0&&WINNERS_MAXOPEN<=fund?`Book full — ${cap} open`:`Wallet full — ${cap} open (a ${(WINNERS_STAKE*100).toFixed(1)}% stake funds ${fund})`,open:_openEx.length});continue;}
     _openEx.push(r.exit_date||'9999-99-99');
     const stake=w*WINNERS_STAKE,net=stake*r.perf/100;w+=net;
     ledger.push({r,stake,net,maxloss:stake*stopPct(r),cum:w,open:_openEx.length,missed:false});}
