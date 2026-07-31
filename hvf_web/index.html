@@ -2529,6 +2529,8 @@ function saveLimits(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
     .then(r=>{const el=$("lim-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Saved.";
       MY_LIMITS={...MY_LIMITS,...lim};if(typeof renderPreorders==='function')renderPreorders();   // apply new floors to My Pre-orders now (user 2026-07-24, P-02)
+      if(typeof _renderPerformance==='function')_renderPerformance();   // Performance respects the personal Volume Score floor now too (user 2026-07-28)
+      if(WIN!==null&&typeof winnersParamsChange==='function')winnersParamsChange();   // re-render the winners tab with the new floor
     }else{el.style.color="var(--bear)";el.textContent="Save failed.";}})
     .catch(()=>{const el=$("lim-msg");el.style.color="var(--bear)";el.textContent="Save failed.";});
 }
@@ -2809,6 +2811,7 @@ async function maRebuild(){
 //    Served pre-computed by /api/performance (source of truth = the recorded events, not the snapshot). ──
 let pfSortK="perf", pfSortDir=-1, PERF_DATA=null, PERF_GEN="", PF_LOC_FILTER="";
 let PF_COMBO=null;   // clicked "Best Quality / R:R combination" card → filter the Results table to that band (user 2026-07-27, P-10 L292)
+let PF_VS_FLOOR=0;   // active personal Minimum Volume Score floor applied to the Performance population (user 2026-07-28); 0 = off
 function pfComboFilter(qb,rb){PF_COMBO=(PF_COMBO&&PF_COMBO.qb===+qb&&PF_COMBO.rb===+rb)?null:{qb:+qb,rb:+rb};_renderPerformance();}
 const _stcol=s=>s==="TARGET"?"var(--bull)":s==="STOPPED"?"var(--bear)":"#d29922";   // OPEN = amber
 function pfLocFilter(loc){PF_LOC_FILTER=(PF_LOC_FILTER===loc)?"":loc;_renderPerformance();}   // toggle the Summary-title location filter
@@ -3136,7 +3139,11 @@ const _owPass=(r,except)=>_owDims.every(([id,fn])=>id===except||inSet(id,fn(r)||
 function paintOrdersPerf(){
   const box=$("ordp-summary"), dims=$("ordp-dims"), tb=$("ordp-table"), tc=$("ordp-count");
   if(!box)return;
-  const all=(WIN||[]).filter(r=>r&&r.entry&&r.stop&&pfDateOk(r.trig_date));   // shared date-window filter (P-01)
+  // Personal Minimum Volume Score floor filters the winners population too (user 2026-07-28), keeping it on
+  // ONE dataset with the Results tab; unscored rows (null) pass, matching My Pre-orders.
+  const _vsF=(typeof num==='function')?num(MY_LIMITS.min_volume_score):(+MY_LIMITS.min_volume_score||null);
+  const _vsFloor=(_vsF!=null&&_vsF>0)?_vsF:0;
+  const all=(WIN||[]).filter(r=>r&&r.entry&&r.stop&&pfDateOk(r.trig_date)&&(!_vsFloor||r.volume_score==null||r.volume_score>=_vsFloor));   // shared date-window + Volume Score floor (P-01 / 2026-07-28)
   if(!all.length){
     box.innerHTML=`<div class="muted" style="font-size:13px">No trades in this date window — widen the date filter above (or clear it for the full 12 months).</div>`;
     if(dims)dims.innerHTML="";if(tb)tb.innerHTML="";renderBestCombo([]);return;}
@@ -3332,7 +3339,14 @@ function _pfWalletLedger(sel){
   return {wallet,endWallet:w,taken:taken.length,skipped,maxopen};
 }
 function _renderPerformance(){
-  const all=(PERF_DATA||[]).filter(r=>pfDateOk(r.trig_date));   // date-window filter (P-01) drives everything below
+  // Personal Minimum Volume Score floor now filters the Performance tab too (user 2026-07-28 — "volume-score
+  // is very important"): setting it to 9 in Configuration narrows Results + Summary + count to setups scoring
+  // ≥ 9. Unscored rows (volume_score null) pass, matching the My Pre-orders behaviour. PF_VS_FLOOR drives the
+  // count note so it's clear WHY the population shrank.
+  const _vsFloor=(typeof num==='function')?num(MY_LIMITS.min_volume_score):(+MY_LIMITS.min_volume_score||null);
+  PF_VS_FLOOR=(_vsFloor!=null&&_vsFloor>0)?_vsFloor:0;
+  let all=(PERF_DATA||[]).filter(r=>pfDateOk(r.trig_date));   // date-window filter (P-01) drives everything below
+  if(PF_VS_FLOOR)all=all.filter(r=>r.volume_score==null||r.volume_score>=PF_VS_FLOOR);   // personal Volume Score floor
   const _wlCol=k=>k==="Win"?"var(--bull)":k==="Loss"?"var(--bear)":"#d29922";
   // Cross-filter (user 2026-07-24, P-04 L107/L109): each chart counts the population filtered by the OTHER
   // charts' selections (plus the Location button + search), so selecting e.g. Location=US narrows the
@@ -3409,7 +3423,7 @@ function _renderPerformance(){
   $("pf-table")&&$("pf-table").classList.toggle("wallet-on",pfwOn);
   if($("pfw-summary"))$("pfw-summary").innerHTML=(pfwOn&&led)?`<b style="color:var(--fg)">£${Math.round(led.wallet).toLocaleString()}</b> → <b style="color:${led.endWallet>=led.wallet?'var(--bull)':'var(--bear)'}">£${Math.round(led.endWallet).toLocaleString()}</b> over ${led.taken.toLocaleString()} trade${led.taken===1?'':'s'}${led.maxopen>0?` · cap ${led.maxopen} open → ${led.skipped.toLocaleString()} skipped`:''} <span class="muted">· recorded triggers shown, oldest first (same model as “What separates the winners”)</span>`:"";
   const nT=selT.filter(r=>r.state==="TARGET").length, nS=selT.filter(r=>r.state==="STOPPED").length, nO=selT.filter(r=>r.state==="OPEN").length;
-  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb});return false" style="color:var(--accent)">✕ clear</a>`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
+  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb});return false" style="color:var(--accent)">✕ clear</a>`:''}${PF_VS_FLOOR?` · <b style="color:var(--fg)">Volume Score ≥ ${PF_VS_FLOOR}</b> (your floor)`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("pftab-count").textContent=`(${selT.length})`;
   $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
     <td>${nm40(r.name)}</td>
