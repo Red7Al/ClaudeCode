@@ -356,7 +356,7 @@ def _limit_defaults() -> dict:
             "rebalance_weeks": int(getattr(_cfg, "REBALANCE_WEEKS", 4)),
             # "What separates the winners" model variables saved as the user's defaults (user 2026-07-28,
             # P-10 L158) — Wallet £, Max position size %, Max open positions — so the winners tab remembers them.
-            "wallet": float(getattr(_cfg, "MODEL_WALLET", 1000)),
+            "wallet": float(getattr(_cfg, "MODEL_WALLET", 10000)),   # default £10,000 (user 2026-08-01)
             "max_position_pct": float(getattr(_cfg, "MODEL_STAKE_PCT", 2)),
             "max_open": int(getattr(_cfg, "MODEL_MAX_OPEN", 0)),
             "max_trades_per_instrument_per_day": int(getattr(_cfg, "MAX_TRADES_PER_INSTRUMENT_PER_DAY", 5)),
