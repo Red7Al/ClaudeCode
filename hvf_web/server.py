@@ -1775,7 +1775,7 @@ def api_performance():
             if (r.get("trig_date") or "") < cut12:
                 continue
             out.append({
-                "ticker": r["ticker"], "name": r["name"],
+                "ticker": r["ticker"], "name": r["name"], "mcap": r.get("mcap"),
                 "market": r["market"], "sector": r["sector"], "location": r["location"],
                 "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"), "timeframe": r["timeframe"],
                 "quality": r["quality"], "rr": r["rr"],
@@ -1987,6 +1987,19 @@ def _sqa_all_rows():
             "from squeeze_history where ready_date is not null and risk_reward >= 3") or []
     finally:
         db.close()
+    # Market-cap map (user 2026-08-01, P-07/P-08) — one query; attached to every row so the Back Test /
+    # winners MCap column + the Min/Max instrument value (MCAP) filters have data. Empty until the
+    # mcap_backfill has populated instrument_mcap (graceful: missing tickers -> mcap None -> "—").
+    mcap_map = {}
+    try:
+        dbm = get_db()
+        try:
+            for _t, _m in (dbm.run("select ticker, mcap from instrument_mcap") or []):
+                mcap_map[_t] = _m
+        finally:
+            dbm.close()
+    except Exception as _e:
+        log.warning(f"mcap map load failed: {_e}")
     rows = []
     for tk, mk, tf, ht, q, rr, rv, oc, ret, td, od, e, s_, t_ in raw:
         s = snap.get(tk, {})
@@ -2002,6 +2015,7 @@ def _sqa_all_rows():
             if sd > 0:
                 r_mult = ret / sd
         rows.append({"ticker": tk, "name": s.get("name") or tk, "market": market,
+                     "mcap": mcap_map.get(tk),   # market cap (normalised) for the MCap column + value filters
                      "sector": _sqa_sector(tk) or s.get("sector"),
                      "location": s.get("location"), "timeframe": tf, "direction": ht,
                      "quality": (float(q) if q is not None else None),
@@ -2500,7 +2514,7 @@ def api_winners():
         rows.sort(key=lambda r: (r.get("trig_date") or ""))
         vsmap = _volscore_trigger_map()   # per-trigger VolumeScore for the ledger Vol column (P-03, 2026-07-27)
         payload["rows"] = [
-            {"ticker": r["ticker"], "name": r["name"], "market": r["market"], "sector": r["sector"],
+            {"ticker": r["ticker"], "name": r["name"], "market": r["market"], "mcap": r.get("mcap"), "sector": r["sector"],
              "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
              "trig_date": r["trig_date"], "exit_date": r.get("exit_date"), "entry": r["entry"], "stop": r["stop"],
              "outcome": r["outcome"], "perf": r["return_pct"],
