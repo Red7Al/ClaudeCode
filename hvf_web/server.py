@@ -1545,8 +1545,16 @@ def api_place_order():
         import ig_shim
         # Place using the ACTING user's OWN IG session (user 2026-07-03): owner -> env creds; a
         # non-owner -> their own credentials (or blocked above). The swap is serialised under _IG_LOCK.
+        # Route the trade-open email to the ACCOUNT HOLDER (user 2026-08-01, P-12): carry the acting
+        # user's registered email + name on the profile so place_hvf_order_from_sig emails them (with the
+        # instrument report — rules/broker/ownership), not just the global recipients list.
+        _profile = dict(get_user_profile() or {})
+        _acct_email = _wu.email_for(name)
+        if _acct_email:
+            _profile["email"] = _acct_email
+        _profile["name"] = name
         with ig_shim.acting_session(name):
-            wo = ig_shim.place_hvf_order_from_sig(sig, get_user_profile(), "WEB_MANUAL", 1.0)
+            wo = ig_shim.place_hvf_order_from_sig(sig, _profile, "WEB_MANUAL", 1.0)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e) or f"{tk}: IG rejected the order"}), 500
     finally:

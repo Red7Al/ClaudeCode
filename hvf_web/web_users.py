@@ -170,6 +170,13 @@ def list_users() -> list:
             for n, u in _ensure_seeded().items() if isinstance(u, dict) and "pwd_hash" in u]
 
 
+def email_for(name: str) -> str:
+    """The registered email for a login (empty if unknown). Used to route trade-open emails to the
+    account holder (user 2026-08-01, P-12)."""
+    u = _ensure_seeded().get(name)
+    return (u or {}).get("email", "") if isinstance(u, dict) else ""
+
+
 def _set_field(name: str, field: str, value) -> bool:
     with _LOCK:
         users = _load()

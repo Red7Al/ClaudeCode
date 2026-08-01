@@ -2879,9 +2879,12 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
             log.warning(f"Working-order notification failed for {ticker}: {e}")
         try:
             from trade_email import send_trade_email
+            # Send to the ACCOUNT HOLDER when we know them (web place carries profile['email']); otherwise
+            # fall back to the global EMAIL_RECIPIENTS (bridge / Actions runs). User 2026-08-01, P-12.
+            _rcpts = [profile["email"]] if profile.get("email") else None
             send_trade_email(ticker, direction, sig, result, size=size,
                              session_name=session_name, event="Working order placed",
-                             deal_ref=result.get("deal_id", ""))
+                             deal_ref=result.get("deal_id", ""), recipients=_rcpts)
         except Exception as e:
             log.warning(f"Working-order email failed for {ticker}: {e}")
     return result
