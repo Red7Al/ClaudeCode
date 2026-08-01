@@ -2543,7 +2543,9 @@ function saveCreds(secId){
   const values={};
   document.querySelectorAll(`.cred-in[data-sec="${secId}"]`).forEach(i=>{if(i.value!=="")values[i.dataset.key]=i.value;});
   const msg=$("cred-msg-"+secId);
-  if(!Object.keys(values).length){msg.style.color="var(--muted)";msg.textContent="Nothing to save (all fields blank).";return;}
+  if(!Object.keys(values).length){msg.style.color="var(--muted)";
+    // The Slack "send" toggles save instantly on click — this button only saves changed webhook URLs.
+    msg.textContent=secId==="Slack"?"Channel send toggles save instantly — no webhook URL was changed here.":"No credential field was changed (enter a value to update it).";return;}
   fetch("/api/credentials",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({section:secId,values})})
     .then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{msg.style.color="var(--bull)";msg.textContent=`Saved ${(j.saved||[]).length} field(s).`;renderCredentials();if(secId==="IG"&&typeof _igStatus==="function")_igStatus(true);})
