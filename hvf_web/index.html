@@ -335,9 +335,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
    .wallet-on to #pf-table. display:none on th/td removes the column cleanly. */
 #pf-table:not(.wallet-on) .wcol{display:none}
 /* "Settings used" card on the Summary sub-tab (user 2026-07-24, P-02) — compact, left of the filters. */
-.pf-setcard{max-width:440px;min-width:190px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:11.5px}
+.pf-setcard{max-width:660px;min-width:190px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:11.5px}
 .pf-setcard-h{font-weight:700;margin-bottom:4px;font-size:12px}
-.pf-setcard-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px 18px}   /* two columns to cut the row count (user 2026-08-01) */
+.pf-setcard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px 18px}   /* up to 3 columns when there's room (user 2026-08-01) */
 .pf-setcard-row{display:flex;justify-content:space-between;gap:12px;padding:1px 0}
 .pf-setcard-k{color:var(--muted);white-space:nowrap}
 .pf-setcard-v{text-align:right;font-weight:600}
@@ -1161,7 +1161,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
            market — e.g. Nasdaq 100 / S&P 500 sit under "United States" (user 2026-07-24, P-04 L82). For
            market-level filtering, click a bar on the Market chart (Results sub-tab). -->
       <span class="muted" id="pf-loc-lbl" style="font-size:12px;align-self:center" title="Filter by location. Markets like Nasdaq 100 / S&P 500 are under 'United States'. To filter by a specific market, click a bar on the Market chart in the Results sub-tab.">Location:</span>
-      <span id="pf-loc-btns" style="display:inline-flex;gap:5px;flex-wrap:wrap"></span>
+      <span id="pf-loc-btns" style="display:flex;gap:5px;flex-wrap:wrap;flex:1 1 auto;min-width:0;justify-content:flex-end"></span>   <!-- may wrap over two lines when there are many locations (user 2026-08-01) -->
       <!-- width:auto defeats the global select{width:100%} that made this dropdown span the whole row
            and wrap above the calendar (user 2026-07-20). Order: dropdown left, From/To calendar far right.
            The "Custom / all" option clears the window, so the separate "All 12mo" button was removed (redundant). -->
@@ -1212,7 +1212,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
          time order. Reconciles with the winners ledger by using the identical stake=%-of-running-wallet,
          net=stake×return%, compounding formula (just over this Results population). -->
     <div id="pf-wallet-ctrl" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:2px 0 10px;font-size:12px">
-      <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="pfw-on" checked onchange="pfWalletToggle()"> <b style="color:var(--fg)">Show wallet model</b> — Stake / Net £ / running Wallet / Open</label>
+      <b style="color:var(--fg)">💷 Wallet model</b> <span class="muted">— Stake / Net £ / running Wallet / Open</span>
       <span id="pfw-inputs" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <label class="muted" style="display:flex;align-items:center;gap:5px">Wallet £ <input id="pfw-wallet" type="number" min="100" step="500" value="1000" style="width:100px;padding:4px 6px" onchange="_renderPerformance()"></label>
         <label class="muted" style="display:flex;align-items:center;gap:5px" title="Each trade stakes this % of the running wallet at that moment (compounding).">Max position size <input id="pfw-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="_renderPerformance()">%</label>
@@ -1222,7 +1222,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
     <div class="tablewrap"><table id="pf-table">
       <!-- Ticker sits FAR RIGHT on every table that has one (user 2026-07-17, P-11b). -->
-      <thead><tr><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="exit_date" title="Date the trade closed (hit target or stop). Blank while still OPEN.">Closed</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Wallet</th><th class="wcol" data-pf="_open" title="Number of positions open (including this one) at this trade's trigger date — how full the book was.">Open</th><th data-pf="ticker">Ticker</th></tr></thead>
+      <thead><tr><th style="cursor:default" title="Row number (in the current sort order)">#</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="exit_date" title="Date the trade closed (hit target or stop). Blank while still OPEN.">Closed</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Equity</th><th class="wcol" data-pf="_open" title="Number of positions open (including this one) at this trade's trigger date — how full the book was.">Open</th><th data-pf="ticker">Ticker</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -3176,6 +3176,9 @@ function renderBestCombo(all){
   const pct=v=>v>=9?'×'+(1+v).toLocaleString(undefined,{maximumFractionDigits:(1+v)>=100?0:1})
     :(v>=0?'+':'')+(v*100).toFixed(1)+'%';
   const gbp=v=>'£'+Math.round(v).toLocaleString();
+  // Win : loss of the best combo's eligible trades (user 2026-08-01).
+  const _bseq=byDate.filter(r=>r.perf!=null&&r.rr!=null&&r.rr>=best.rr&&(best.q<=0||r.quality==null||r.quality>=best.q)&&(best.vs<=0||r.volume_score==null||r.volume_score>=best.vs));
+  const _bw=_bseq.filter(r=>r.perf>0).length,_bl=_bseq.filter(r=>r.perf<0).length,_bwl=(_bw+_bl)?Math.round(_bw/(_bw+_bl)*100):null;
   // Only the wallet actually IN USE (the Model wallet above) — the £1k…£10k example rows were dropped
   // (user 2026-08-01): the best mix and its % return are wallet-independent, so one worked row is enough.
   const w=Math.max(1,WINNERS_WALLET||1000);
@@ -3194,8 +3197,9 @@ function renderBestCombo(all){
       <div style="border-left:1px solid var(--line);padding-left:18px"><div class="muted" style="font-size:11px">Total return</div><b style="font-size:16px;color:${best.ret>=0?'var(--bull)':'var(--bear)'}">${pct(best.ret)}</b></div>
       <div><div class="muted" style="font-size:11px">Max drawdown</div><b style="font-size:16px;color:var(--bear)">−${(best.dd*100).toFixed(1)}%</b></div>
       <div><div class="muted" style="font-size:11px">Return ÷ drawdown</div><b style="font-size:16px;color:var(--fg)">${best.dd>0?(best.ret/best.dd).toFixed(2):'∞'}</b></div>
+      <div><div class="muted" style="font-size:11px">Win : Loss</div><b style="font-size:16px;color:var(--fg)" title="Wins vs losses among this combination's eligible trades">${_bw} : ${_bl}${_bwl!=null?` <span class="muted" style="font-weight:400;font-size:12px">(${_bwl}%)</span>`:''}</b></div>
     </div>
-    <div class="tablewrap"><table><thead><tr><th>Wallet</th><th title="First trade's stake = Max position size % of the wallet">Opening stake</th><th>Ending wallet</th><th>Net P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="tablewrap"><table><thead><tr><th>Equity</th><th title="First trade's stake = Max position size % of the wallet">Opening stake</th><th>Ending equity</th><th>Net P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted" style="font-size:11px;margin-top:6px">On your <b>${gbp(w)}</b> Model wallet. Because each stake is a fixed % of the running wallet, the best mix and its <b>%</b> return are the same at every wallet size — only the £ amounts scale. Set the Model above to these values to see the full ledger. This maximises return <b>per unit of risk</b>, not raw return (the biggest stake always compounds hardest but risks ruin). ⚠ marks a wallet whose opening stake is below the £25 IG minimum.</div>
   </div>`;
 }
@@ -3267,7 +3271,7 @@ function paintOrdersPerf(){
   const openStake=money(WINNERS_WALLET*WINNERS_STAKE);
   const card=(ic,t,v,sub)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:17px;color:var(--fg)">${v}</b><br><span class="muted">${sub}</span></div></div>`;
   box.innerHTML=
-    card("📊","Trades · "+(typeof PF_WINDOW_LABEL!=='undefined'?PF_WINDOW_LABEL:'12 months'),(_filtered?`${fsel.length.toLocaleString()} of ${all.length.toLocaleString()}`:all.length),`${span} · ${wp.length} with a return · ${wins.length} win / ${losses.length} loss / ${be.length} break-even${capNote}${_filtered?' · filtered by the charts (click a bar to change)':' · tradeable universe (R:R≥3, FX/Crypto excluded)'}`)+
+    card("📊","Trades placed · "+(typeof PF_WINDOW_LABEL!=='undefined'?PF_WINDOW_LABEL:'12 months'),taken.length.toLocaleString(),`<b>${taken.length.toLocaleString()}</b> actually placed of <b>${all.length.toLocaleString()}</b> tradeable${skipped?` · <b>${skipped.toLocaleString()}</b> skipped (book/wallet full)`:''}${_filtered?` · ${fsel.length.toLocaleString()} after chart filters`:''} · ${span}${_filtered?' · filtered by the charts (click a bar to change)':' · tradeable universe (R:R≥3, FX/Crypto excluded)'}`)+
     card("🎯","Win vs loss",`${winpct==null?'—':winpct+'%'} / ${losspct==null?'':losspct+'%'}`,`a win is <b>any gain</b>, a loss is <b>any loss</b> (open trades included) — same definition as the Results report · avg return ${avgRet>=0?'+':''}${avgRet.toFixed(1)}%`)+
     card("💷","Net P&L",`<span style="color:${_pnlc(gain)}">${_gbp2(gain)}</span>`,`from staking <b>${stakePct}% of the wallet</b> on every trade (compounding). Stake starts at ${openStake}; typical max loss <b>£${medML.toFixed(2)}</b> (= stake × the stop distance %).`)+
     card("📈",money(WINNERS_WALLET)+" compounded",`<span style="color:${w>=WINNERS_WALLET?'var(--bull)':'var(--bear)'}">${money(w)}</span> <span class="muted" style="font-size:12px">total</span>`,`each stake = ${stakePct}% of the wallet <i>at that moment</i>, so winners raise the next stake. ${money(gain)} gain over ${taken.length.toLocaleString()} trades${WINNERS_MAXOPEN>0?' taken':''} — every one in the ledger below, oldest first.`);
@@ -3312,16 +3316,17 @@ function paintOrdersPerf(){
 function paintWinnersDims(dims, all){
   if(!dims)return;
   const groups=[["Market","ordpf_market",r=>r.market],["Location","ordpf_location",r=>locName(r.location)],
-                ["Sector","ordpf_sector",r=>r.sector],["Direction","ordpf_direction",r=>r.direction],
+                ["Sector","ordpf_sector",r=>r.sector],
                 ["Outcome","ordpf_outcome",r=>r.outcome],
-                ["Quality","ordpf_quality",_qBand],["R:R","ordpf_rr",_rrBand]];   // click-to-filter by R:R / Quality (user 2026-07-27, P-10 L300)
+                ["Quality","ordpf_quality",_qBand],["R:R","ordpf_rr",_rrBand]];   // Direction card removed (user 2026-08-01); click-to-filter by R:R / Quality (P-10 L300)
   dims.innerHTML=groups.map(([name,fk,fn])=>{
     const base=all.filter(r=>_owPass(r,fk));           // brushing: every OTHER winners filter applied, not this one
     const {ledger:lg}=_winLedger(base);
     const m={}; lg.filter(x=>!x.missed).forEach(x=>{const k=fn(x.r)||'—';(m[k]=m[k]||{net:0,n:0,w:0});m[k].net+=x.net;m[k].n++;if(x.r.perf>PF_BE)m[k].w++;});
     all.forEach(r=>{const k=fn(r)||'—'; if(!(k in m))m[k]={net:0,n:0,w:0};});   // seed every value so bars persist as 0-stubs
     const sel=setOf(fk), nsel=sel?sel.size:0, has=k=>!!(sel&&sel.has(String(k)));
-    const bs=Object.entries(m).sort((a,b)=>b[1].net-a[1].net);
+    let bs=Object.entries(m).sort((a,b)=>b[1].net-a[1].net);
+    if(name==="R:R")bs=bs.slice(0,10);   // R:R card shows the top 10 bands by net £ (user 2026-08-01)
     if(!bs.length)return"";
     const mx=Math.max(1,...bs.map(([k,v])=>Math.abs(v.net)));
     return `<div class="vizsector"><div class="vizbox${nsel?' filtered':''}"><h5>${name} — net £${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div class="bars">`+
@@ -3481,8 +3486,7 @@ function _renderPerformance(){
     `<div class="vizsector">`+barChart("Outcome",byXFull("state","pff_status"),"pff_status",_stcol)+`</div>`+
     `<div class="vizsector">`+barChart("Win / Loss",byXFull(_pfwl,"pff_wl"),"pff_wl",_wlCol)+`</div>`+         /* wins / losses / break-even (P-10) */
     `<div class="vizsector">`+barChart("Days Open",byXFull(_doBand,"pff_daysopen"),"pff_daysopen")+`</div>`+   /* days-open range distribution (user 2026-08-01) */
-    `<div class="vizsector">`+barChart("Month",byXFull(r=>(r.trig_date||"").slice(0,7),"pff_month"),"pff_month",null,true)+`</div>`+   /* date-filtered screen → Month (P-03 L24) */
-    `<div class="vizsector">`+barChart("Month-Week",byXFull(r=>_mw(r.trig_date),"pff_mweek"),"pff_mweek",null,true)+`</div>`;   /* + Month-Week (P-03 L24) */
+    `<div class="vizsector">`+barChart("Month",byXFull(r=>(r.trig_date||"").slice(0,7),"pff_month"),"pff_month",null,true)+`</div>`;   /* Month-Week removed from the Back Test strip (user 2026-08-01) */
   packViz("pf-viz");   // P-15
   // Location quick-filter buttons (user 2026-07-18/20): one per location, plus "All". The SELECTED one is
   // green. They drive the summary table AND the monthly-growth chart (both via `sel`, below).
@@ -3523,7 +3527,7 @@ function _renderPerformance(){
   const selT = PF_COMBO ? sel.filter(_pfInCombo) : sel;
   // Wallet model (P-05 L98/L271): when ON, compute the running wallet over the shown triggers and force
   // strict trigger-date order (a running wallet only reads correctly chronologically); else the usual sort.
-  const pfwOn=!!($("pfw-on")||{}).checked;
+  const pfwOn=$("pfw-on")?$("pfw-on").checked:true;   // wallet model is always on now — the toggle was removed (user 2026-08-01)
   const led=pfwOn?_pfWalletLedger(selT):null;
   const rows=pfwOn?selT.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''))
                   :genSort(selT,pfSortK,pfSortDir);
@@ -3532,7 +3536,8 @@ function _renderPerformance(){
   const nT=selT.filter(r=>r.state==="TARGET").length, nS=selT.filter(r=>r.state==="STOPPED").length, nO=selT.filter(r=>r.state==="OPEN").length;
   $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} · ${PF_COMBO.vb} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb},${PF_COMBO.vlo==null?'null':PF_COMBO.vlo},${PF_COMBO.vhi==null?'null':PF_COMBO.vhi},'${PF_COMBO.vb}');return false" style="color:var(--accent)">✕ clear</a>`:''}${PF_VS_FLOOR?` · <b style="color:var(--fg)">Volume Score ≥ ${PF_VS_FLOOR}</b> (your floor)`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("pftab-count").textContent=`(${selT.length})`;
-  $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
+  $("pf-rows").innerHTML=rows.map((r,__i)=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
+    <td class="muted">${__i+1}</td>
     <td>${nm40(r.name)}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
     <td>${ob(volScoreCell(r.volume_score))}</td>
@@ -3551,7 +3556,7 @@ function _renderPerformance(){
     <td class="wcol"><b>${r._cum!=null?'£'+Math.round(r._cum).toLocaleString():'—'}</b></td>
     <td class="wcol">${r._open!=null?r._open:'—'}</td>
     <td><b>${disp(r.ticker)}</b></td></tr>`).join("")
-    ||`<tr><td colspan="${pfwOn?21:17}" class="empty">No recorded triggers yet.</td></tr>`;
+    ||`<tr><td colspan="${pfwOn?22:18}" class="empty">No recorded triggers yet.</td></tr>`;
 }
 // "Settings used" card (user 2026-07-24, P-02): a provenance card, left of the filters on the Summary
 // sub-tab, stating the settings behind the monthly chart + summary table — the date window, location, the
@@ -3641,7 +3646,7 @@ function _renderPfSummary(sel){
     <th>Segment</th><th style="text-align:right">Trades</th><th style="text-align:right">Returns Available</th>
     <th style="text-align:right">Gains</th><th style="text-align:right">Losses</th><th style="text-align:right">Break-even</th>
     <th style="text-align:right">Gain:Loss Count</th><th style="text-align:right">Win %</th><th style="text-align:right">Loss %</th>
-    <th style="text-align:right">Avg Return</th><th style="text-align:right">Max Gain</th><th style="text-align:right">Max Loss</th>
+    <th style="text-align:right">Avg Return</th><th style="text-align:right">Max Gain</th><th style="text-align:right" title="The worst single-trade return in the segment">Max Drawdown</th>
   </tr></thead><tbody>${rows}</tbody></table>`);
 }
 document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();_sortArrows("data-pf",pfSortK,pfSortDir);});
