@@ -2798,14 +2798,35 @@ def api_ig_account():
     def _tk(epic, mk):   # short ticker for an epic (epic_lookup, else IG's instrument name, else epic)
         return epic2tk.get(str(epic)) or (mk.get("instrumentName") if mk else None) or epic or ""
 
+    def _num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
     for p in positions:
         pos, mk = (p.get("position") or {}), (p.get("market") or {})
         epic = mk.get("epic")
         tk = _tk(epic, mk)
+        # Live P&L (user 2026-08-01): a BUY closes at the BID, a SELL at the OFFER. Profit per point =
+        # size x contractSize; profit% is direction-aware against the open level. Best-effort — any
+        # missing quote leaves profit None ("—" on the page).
+        direction = pos.get("direction")
+        open_lvl = _num(pos.get("level") or pos.get("openLevel"))
+        size = _num(pos.get("size"))
+        csize = _num(pos.get("contractSize")) or 1.0
+        close = _num(mk.get("bid")) if direction == "BUY" else _num(mk.get("offer"))
+        profit = profit_pct = None
+        if open_lvl and close is not None and size is not None:
+            pts = (close - open_lvl) if direction == "BUY" else (open_lvl - close)
+            profit = round(pts * size * csize, 2)
+            if open_lvl:
+                profit_pct = round(pts / open_lvl * 100.0, 2)
         out["positions"].append({
             "ticker": tk, "name": tk2name.get(tk) or mk.get("instrumentName") or tk,
-            "epic": epic, "direction": pos.get("direction"),
+            "epic": epic, "direction": direction,
             "size": pos.get("size"), "level": pos.get("level") or pos.get("openLevel"),
+            "current": close, "profit": profit, "profit_pct": profit_pct,
             "currency": pos.get("currency"), "stop": pos.get("stopLevel"), "limit": pos.get("limitLevel"),
             "opened": str(pos.get("createdDateUTC") or pos.get("createdDate") or "")[:19]})
     for w in orders:
