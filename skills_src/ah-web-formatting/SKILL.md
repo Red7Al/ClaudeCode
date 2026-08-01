@@ -182,6 +182,18 @@ noted as of 2026-07-24.
 - Every column sortable (L25) — house pattern in §1 (`class="clk"` + `data-<prefix>`, `genSort`,
   `_sortArrows`). Applies to the *detail* tables too (the Change-Requests per-file breakdown was the last
   gap, fixed 2026-07-24). ✅ broadly compliant.
+- **Gap below the last row, above the horizontal scrollbar (user 2026-08-01).** A table with few rows but
+  many columns shows a horizontal scrollbar jammed right under the last row — it reads as noise. `.doc
+  .tablewrap` carries `padding-bottom:14px` so the scrollbar always sits clear of the content. Keep it; do
+  not remove it per-view.
+- **A chart strip NEVER wraps to a second row (user 2026-08-01).** Charts placed side by side must stay on
+  ONE row — if the strip would spill to a second row, consolidate (stack short cards into `.vizcol`s, drop
+  the most disposable card) until it fits. This supersedes the earlier "stack only when already wrapped"
+  softness: the target is always a single row. `packViz` owns this; verify on the live logged-in app (the
+  `file://` snapshot reports one row for everything — see §2/§4 traps).
+- **The date-filter row NEVER wraps across rows either (user 2026-08-01).** The From/To + quick-window +
+  location controls must stay on a single line; if space is tight, shrink/scroll within the row rather than
+  letting a control drop to a second row. Same one-row discipline as the chart strip.
 - When a column is sorted — default OR manually — its ▲/▼ arrow must be visible (L39). `_sortArrows` shows
   it on click; tables with a **default** sort should also call `_sortArrows` on first paint. ⚠️ partial —
   manual sorts show it; not every table stamps the arrow on initial render. Gap logged.

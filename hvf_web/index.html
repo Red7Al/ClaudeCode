@@ -265,7 +265,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .credrow .cstate.on{color:var(--bull)} .credrow .cstate.off{color:var(--bear)}                /* "Not set" red */
 /* Doc-page tables (activity/batch/version/users) wrap text so there's no horizontal scroll bar
    even when a charts column sits alongside (user 2026-07-03). */
-.doc .tablewrap{overflow-x:auto}
+.doc .tablewrap{overflow-x:auto;padding-bottom:14px}   /* gap between the last row and the horizontal scrollbar (user 2026-08-01) */
 /* Doc tables do NOT wrap by default (user 2026-07-17). This rule used to force white-space:normal on
    every cell, so any squeezed column broke its label — "Completed" rendered as "Complet/ed" on Change
    Requests — and six views (#view-orderops/-preorders/-activity/-jobs/-users/-performance) each carried
@@ -914,9 +914,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <span class="eyebrow">Terms &amp; Conditions</span>
   <h1>Terms &amp; Conditions of Service</h1>
   <p class="lede">These terms govern your use of the Squeeze Scanner service. Please read them carefully. By subscribing to or using the service you agree to them.</p>
-  <div class="card" style="border-color:#d29922;background:color-mix(in srgb,#d29922 10%,transparent);margin-bottom:14px">
-    <b style="color:var(--fg)">⚠️ Draft for review.</b> <span class="muted">This is a plain-English draft prepared to set out how the service works and its limitations. It is <b>not legal advice</b> and should be reviewed and finalised by a qualified professional before it is relied upon.</span>
-  </div>
 
   <h2 class="sec">1. The service</h2>
   <p>The Squeeze Scanner is a research and execution-assistance tool. It scans a large universe of instruments for one repeatable price structure and, for each qualifying setup, computes an entry, a stop-loss and a target. Where you have connected your own broker (IG) credentials, the service can — <b>at your instruction and within the limits you set</b> — place and manage the corresponding working orders on your own account.</p>
@@ -967,7 +964,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <h2 class="sec">8. Changes to these terms</h2>
   <p>We may update these terms from time to time. Continued use of the service after a change takes effect constitutes acceptance of the updated terms.</p>
 
-  <p class="muted" style="font-size:12px;margin-top:18px">A research and execution-assistance tool — not financial advice. Prices can fall as well as rise, and trades can be stopped out. Draft wording pending legal review.</p>
+  <p class="muted" style="font-size:12px;margin-top:18px">A research and execution-assistance tool — not financial advice. Prices can fall as well as rise, and trades can be stopped out.</p>
 </div>
 
 <!-- "What we do" (user 2026-07-27, P-10 L169) — plain-English overview of the service; visible to all
