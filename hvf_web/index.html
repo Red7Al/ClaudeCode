@@ -638,8 +638,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="pill" data-panel="tabvis" onclick="confShow('tabvis')">👁️ Tab visibility</button>
     <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
     <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>   <!-- next to IG (user 2026-08-01) -->
-    <button class="pill" data-panel="adaptive" onclick="confShow('adaptive')">🎯 Adaptive Filters</button>   <!-- own panel (user 2026-08-01) -->
     <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>
+    <button class="pill" data-panel="adaptive" onclick="confShow('adaptive')">🎯 Adaptive Filters</button>   <!-- moved to the end (user 2026-08-01) -->
     <!-- Gold-tier only (user 2026-07-17, P-06): ships HIDDEN and is revealed by renderConfig() only for a
          Gold account, so a failure to run the gate leaves the feature hidden rather than exposed. -->
     <button class="pill" data-panel="trading_mo" style="display:none" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
@@ -1425,7 +1425,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </nav>
 
   <div class="confapanel" data-panel="engine">
-  <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+  <div class="card" style="margin-bottom:0"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
     <p class="muted" style="font-size:12px">Application-wide trading/engine values (shared, one account).</p>
     <div class="credrow"><span class="clabel">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="eng-wo_lifespan_days" style="max-width:120px"></div>
     <div class="credrow" style="display:none"><span class="clabel">Automated stop-loss trailing (%) <span class="muted" style="font-weight:400">0 = off. As a position runs into profit, each monitor pass moves the stop up by <b>entry × gain × this %</b> (never widened). e.g. 50 keeps half the run.</span></span><input type="number" min="0" max="100" step="5" id="eng-stop_amend_threshold" style="max-width:120px"></div>   <!-- disabled — no longer used (user 2026-08-01) -->
@@ -1456,7 +1456,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        X Credentials with the same element ids, and getElementById returns only the first match, so this
        card's inputs were shadowed and never saved (user 2026-07-17, P-10). The morning-HVF market
        chooser that panel owned now lives here too. -->
-  <div class="card" style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>X publishing <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
+  <div class="card"><h4>X publishing <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
     <p class="muted" style="font-size:12px">Application-wide X-publishing limits, stored in the database and read by the publisher on both the local server and GitHub Actions (code fallback if the DB is unreachable). Credentials live in <b>X Credentials</b> below.</p>
     <div class="credrow"><span class="clabel">Max X publications per day (UTC)</span><input type="number" min="0" step="1" id="eng-x_max_per_day" style="max-width:120px"></div>
     <div class="credrow"><span class="clabel">Superinvestor lookback (days)</span><input type="number" min="0" step="1" id="eng-superinvestor_lookback_days" style="max-width:120px"></div>
@@ -3433,14 +3433,19 @@ function sqhSort(k){sqhSortDir=(sqhSortK===k)?-sqhSortDir:-1;sqhSortK=k;paintSqu
 function paintSqueezeHist(){
   const rows=SQH||[], q=(($("sqh-search")||{}).value||"").trim().toLowerCase();
   const base=q?rows.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(q)):rows;
-  // Standard chart strip (P-01): Market, Location, Sector, Direction, Status — click a bar/slice to filter.
-  const by=fn=>base.reduce((m,r)=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]=(m[v]||0)+1;return m;},{});
+  // Chart strip with BRUSHING (user 2026-08-01): each chart counts over rows passing every OTHER sqf_
+  // filter but not its own, so clicking a bar/slice cross-filters the other charts (all option-bars stay
+  // visible with the selection highlighted) — matching Performance/Scanner.
+  const _sqDims=[["sqf_market",r=>r.market],["sqf_location",r=>locName(r.location)],["sqf_sector",r=>r.sector],["sqf_direction",r=>r.direction],["sqf_status",r=>r.outcome]];
+  const byX=(fn,exceptId)=>{const m={};
+    base.forEach(r=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';if(!(v in m))m[v]=0;});   // seed every option so bars persist
+    base.forEach(r=>{if(!_sqDims.every(([id,f])=>id===exceptId||inSet(id,f(r))))return;const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]++;});return m;};
   if($("sqh-viz"))$("sqh-viz").innerHTML=
-    `<div class="vizsector">`+barChart("Location",by(r=>locName(r.location)),"sqf_location")+`</div>`+   /* Location first (P-05 L340) */
-    `<div class="vizsector">`+barChart("Market",by("market"),"sqf_market")+`</div>`+
-    `<div class="vizsector">`+pieChart("Sector",by("sector"),"sqf_sector")+`</div>`+
-    `<div class="vizsector">`+barChart("Direction",by("direction"),"sqf_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+`</div>`+
-    `<div class="vizsector">`+barChart("Status",by("outcome"),"sqf_status",_stcol)+`</div>`;
+    `<div class="vizsector">`+barChart("Location",byX(r=>locName(r.location),"sqf_location"),"sqf_location")+`</div>`+   /* Location first (P-05 L340) */
+    `<div class="vizsector">`+barChart("Market",byX("market","sqf_market"),"sqf_market")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",byX("sector","sqf_sector"),"sqf_sector")+`</div>`+
+    `<div class="vizsector">`+barChart("Direction",byX("direction","sqf_direction"),"sqf_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+`</div>`+
+    `<div class="vizsector">`+barChart("Status",byX("outcome","sqf_status"),"sqf_status",_stcol)+`</div>`;
   packViz("sqh-viz");
   let shown=base.filter(r=>inSet("sqf_market",r.market)&&inSet("sqf_location",locName(r.location))
     &&inSet("sqf_sector",r.sector)&&inSet("sqf_direction",r.direction)&&inSet("sqf_status",r.outcome));
@@ -3448,7 +3453,7 @@ function paintSqueezeHist(){
   if($("sqh-count"))$("sqh-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> funnels${rows.length!==shown.length?` of ${rows.length.toLocaleString()}`:''}`;
   if($("sqhtab-count"))$("sqhtab-count").textContent=`(${shown.length.toLocaleString()})`;   // row count in the tab name (user 2026-07-20, P-01)
   if($("sqh-rows"))$("sqh-rows").innerHTML=shown.map(r=>`<tr>
-    <td>${nm40(r.name)}</td><td>${r.direction}</td><td>${r.market||''}</td><td>${r.sector||''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td>
+    <td class="clk" style="cursor:pointer;color:var(--accent)" title="Open the detail report" onclick="openDetailFrom('squeezehist','${(r.ticker||'').replace(/'/g,'')}')">${nm40(r.name)}</td><td>${r.direction}</td><td>${r.market||''}</td><td>${r.sector||''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td>
     <td>${r.first_seen||'—'}</td><td>${r.ready_date||'—'}</td><td>${r.triggered_date||'—'}</td>
     <td><b style="color:${_stcol(r.outcome)}">${r.outcome||''}</b></td><td>${r.outcome_date||'—'}</td>
     <td style="color:${(r.return_pct||0)>=0?'var(--bull)':'var(--bear)'}">${r.return_pct!=null?(r.return_pct>0?'+':'')+r.return_pct+'%':'—'}</td>
