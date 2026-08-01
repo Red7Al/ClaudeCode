@@ -1222,7 +1222,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
     <div class="tablewrap"><table id="pf-table">
       <!-- Ticker sits FAR RIGHT on every table that has one (user 2026-07-17, P-11b). -->
-      <thead><tr><th style="cursor:default" title="Row number (in the current sort order)">#</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="exit_date" title="Date the trade closed (hit target or stop). Blank while still OPEN.">Closed</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Equity</th><th class="wcol" data-pf="_open" title="Number of positions open (including this one) at this trade's trigger date — how full the book was.">Open</th><th data-pf="ticker">Ticker</th></tr></thead>
+      <thead><tr><th style="cursor:default" title="Row number (in the current sort order)">#</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="mcap" title="Market capitalisation (in the instrument's own currency). Blank until the market-cap backfill lands.">MCap</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="exit_date" title="Date the trade closed (hit target or stop). Blank while still OPEN.">Closed</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Equity</th><th class="wcol" data-pf="_open" title="Number of positions open (including this one) at this trade's trigger date — how full the book was.">Open</th><th data-pf="ticker">Ticker</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -3111,6 +3111,12 @@ function winnersSLChange(){
       ${delta>=0?'Here the trailing stop would have helped.':'Here it would have hurt — it cuts winners short more than it saves losers.'}</div></div>`;
   }).catch(()=>{if(busy)busy.textContent="";if(box)box.innerHTML='<div class="muted" style="font-size:13px">Re-backtest failed.</div>';});
 }
+// Compact market-cap format (user 2026-08-01): 1.23T / 340B / 12M. No currency symbol (values are in each
+// instrument's own currency). Blank when absent — mcap is not captured in the pipeline yet, so this reads
+// "—" until the market-cap backfill lands (normalised for pence-quoted markets).
+function _mcapFmt(v){if(v==null||!isFinite(+v))return'—';v=+v;const a=Math.abs(v);
+  if(a>=1e12)return(v/1e12).toFixed(2)+'T';if(a>=1e9)return(v/1e9).toFixed(1)+'B';
+  if(a>=1e6)return(v/1e6).toFixed(0)+'M';return Math.round(v).toLocaleString();}
 // Same presets on the SCANNER (user 2026-07-18): set the RVOL / Quality / R:R range filters so you can
 // pick instruments the analysis says are best. A preset field not in the preset is cleared.
 function setCherry(id){
@@ -3288,16 +3294,16 @@ function paintOrdersPerf(){
   if(tc)tc.textContent=`(${takenRows.length} trades${skipped?` · ${skipped} missed`:''}${_filtered?` · filtered`:''}, ${span} · ${money(WINNERS_WALLET)} → ${money(w)})`;
   const oc=st=>st==='TARGET'?'var(--bull)':st==='STOPPED'?'var(--bear)':'#d29922';
   let _ti=0;
-  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="VolumeScore (0–12) on the trigger bar — breakout confirmation (Strong squeeze, RVOL, breakout volume, VWAP, OBV, low-volume node, ATR). 8+ = well-confirmed. Blank where it can't be scored.">Vol</th><th title="2% of the wallet at this point in time">Stake</th><th title="Margin required to open = position size ÷ leverage (IG UK retail rates by instrument type: equities 5×, indices 20×, commodities 10×)">Margin</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Account equity after this trade = the running compounded wallet incl. realised P&amp;L; last row = the compounded figure">Equity</th><th title="Available to open further positions = Equity − Margin (user 2026-07-24, P-04)">Available</th><th title="Why a triggered funnel was NOT placed — 'Book full' means all Max-open-position slots were already taken (no capital free). Blank = it was placed.">Reason</th></tr></thead><tbody>`+
+  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="Market cap (instrument currency); blank until the mcap backfill lands.">MCap</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th title="VolumeScore (0–12) on the trigger bar — breakout confirmation (Strong squeeze, RVOL, breakout volume, VWAP, OBV, low-volume node, ATR). 8+ = well-confirmed. Blank where it can't be scored.">Vol</th><th title="2% of the wallet at this point in time">Stake</th><th title="Margin required to open = position size ÷ leverage (IG UK retail rates by instrument type: equities 5×, indices 20×, commodities 10×)">Margin</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Account equity after this trade = the running compounded wallet incl. realised P&amp;L; last row = the compounded figure">Equity</th><th title="Available to open further positions = Equity − Margin (user 2026-07-24, P-04)">Available</th><th title="Why a triggered funnel was NOT placed — 'Book full' means all Max-open-position slots were already taken (no capital free). Blank = it was placed.">Reason</th></tr></thead><tbody>`+
     ledger.map(x=>{const r=x.r;
-      if(x.missed)return `<tr class="missed-row" style="opacity:.6"><td class="muted">—</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td>
+      if(x.missed)return `<tr class="missed-row" style="opacity:.6"><td class="muted">—</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td><td class="muted">${_mcapFmt(r.mcap)}</td>
       <td class="muted" title="positions already open when this funnel triggered">${x.open}</td>
       <td><b style="color:var(--muted)">MISSED</b></td>
       <td class="muted" title="would-be return had it been placed — NOT realised">${r.perf==null?'—':(r.perf>0?'+':'')+r.perf+'%'}</td>
       <td class="muted">${volScoreCell(r.volume_score)}</td>
       <td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>
       <td class="muted">${x.reason}</td></tr>`;
-      _ti++;return `<tr><td class="muted">${_ti}</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td>
+      _ti++;return `<tr><td class="muted">${_ti}</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td><td class="muted">${_mcapFmt(r.mcap)}</td>
       <td class="muted" title="concurrent open positions">${x.open}</td>
       <td><b style="color:${oc(r.outcome)}">${r.outcome}</b></td>
       <td style="color:${_pnlc(r.perf)}">${r.perf==null?'—':(r.perf>0?'+':'')+r.perf+'%'}</td>
@@ -3559,7 +3565,7 @@ function _renderPerformance(){
     <td>${ob(`<b style="color:${_stcol(r.state)}">${r.state||''}</b>`)}</td>
     <!-- Market and Triggered stay visible logged-out (user 2026-07-17, P-26 and P-17b); the rest of the
          row is still obfuscated by ob(). /api/performance is public and already returns both. -->
-    <td>${r.market||''}</td><td>${r.sector||''}</td><td>${r.trig_date||'—'}</td>
+    <td>${r.market||''}</td><td>${r.sector||''}</td><td>${ob(_mcapFmt(r.mcap))}</td><td>${r.trig_date||'—'}</td>
     <td>${r.days_open!=null?r.days_open:'—'}</td>
     <td>${(()=>{let cd=r.exit_date?String(r.exit_date).slice(0,10):null;
       if(!cd&&(r.state==='TARGET'||r.state==='STOPPED')&&r.trig_date!=null&&r.days_open!=null){cd=_pfAddDays(r.trig_date,r.days_open);if(cd==='9999-99-99')cd=null;}
@@ -3572,7 +3578,7 @@ function _renderPerformance(){
     <td class="wcol"><b>${r._cum!=null?'£'+Math.round(r._cum).toLocaleString():'—'}</b></td>
     <td class="wcol">${r._open!=null?r._open:'—'}</td>
     <td><b>${disp(r.ticker)}</b></td></tr>`).join("")
-    ||`<tr><td colspan="${pfwOn?22:18}" class="empty">No recorded triggers yet.</td></tr>`;
+    ||`<tr><td colspan="${pfwOn?23:19}" class="empty">No recorded triggers yet.</td></tr>`;
 }
 // "Settings used" card (user 2026-07-24, P-02): a provenance card, left of the filters on the Summary
 // sub-tab, stating the settings behind the monthly chart + summary table — the date window, location, the
