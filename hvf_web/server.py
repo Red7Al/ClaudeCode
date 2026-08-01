@@ -363,13 +363,9 @@ def _limit_defaults() -> dict:
             "bounce_alert_pct": float(getattr(_cfg, "BOUNCE_ALERT_PCT", 0.02)),
             "bounce_lookback_hours": int(getattr(_cfg, "BOUNCE_LOOKBACK_HOURS", 48)),
             "email_recipients": list(getattr(_cfg, "EMAIL_RECIPIENTS", []))}
-    # Fall back to the OWNER's (Alex's) saved limits where set (user 2026-07-11): a user who hasn't
-    # picked their own inherits Alex's, not just the code baseline.
-    try:
-        owner = (_wu.get_settings(_OWNER) or {}).get("limits") or {}
-        base.update({k: v for k, v in owner.items() if k in base})
-    except Exception:
-        pass
+    # Defaults come from the code baseline ONLY (user 2026-08-01: "all user settings must be unique to
+    # the user - none must be shared"). A user who hasn't picked their own limits falls back to config.py,
+    # NOT to another user's (previously Alex's) saved limits — no setting is inherited between users.
     return base
 
 
@@ -559,9 +555,14 @@ def api_config():
 
 
 def _user_trade_allows(name: str, rec: dict) -> bool:
-    """PER-USER trade-filter gate (user 2026-07-06): does this user's own market/direction/location
-    selection allow the given snapshot record? An empty list for a field = no restriction; a missing
-    field value never blocks. Used to keep filtered-out markets out of the user's pin/place path."""
+    """PER-USER trade gate: does this user's own selection allow the given snapshot record? An empty
+    list for a field = no restriction; a missing field value never blocks. Used to keep filtered-out
+    setups out of the user's pin/place path.
+
+    Direction/location come from the user's Trading (Squeeze) trade filters. MARKET is governed by the
+    per-user Markets (User) on/off switch (`markets_off`) plus the admin deny-list (`markets_disabled`),
+    which now gates trading as well as visibility (user 2026-08-01: "Markets (User) drives both what is
+    visible and what is traded"). Market was removed from the Trading (Squeeze) allow-list."""
     if not rec:
         return True
     import config_store as _cs
@@ -569,10 +570,17 @@ def _user_trade_allows(name: str, rec: dict) -> bool:
     tf = s.get("trade_filters")
     if tf is None:
         tf = _cs.get_trade_filters()                     # seed from legacy global for pre-migration users
-    for key, field in (("directions", "direction"), ("markets", "market"), ("locations", "location")):
+    for key, field in (("directions", "direction"), ("locations", "location")):
         allowed = tf.get(key) or []
         v = rec.get(field)
         if allowed and v is not None and v not in allowed:
+            return False
+    # Market gate: this user's Markets (User) switch + the admin app-wide deny-list.
+    market = rec.get("market")
+    if market:
+        if market in (s.get("markets_off") or []):
+            return False
+        if market in _cs.get_disabled_markets():
             return False
     return True
 
@@ -1767,6 +1775,7 @@ def api_performance():
                 "current_price": r["current_price"],
                 "trig_date": r["trig_date"], "state": r["outcome"],
                 "days_open": _days_open(r),
+                "exit_date": r.get("exit_date"),   # close/outcome date (blank while OPEN) — Back Test "Closed" column (user 2026-08-01)
                 "perf": (round(r["return_pct"], 2) if r["return_pct"] is not None else None),
                 "rvol": r["rvol"],
                 "volume_score": vsmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]))})
@@ -1953,13 +1962,14 @@ def _sqa_all_rows():
         return _SQA_ROWS["rows"]
     snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
     # Only markets the account ACTUALLY TRADES (user 2026-07-18: "FX is showing very profitable and we
-    # are not trading FX"). Use the trade allow-list — the same gate ig_shim.trade_allowed enforces — so
-    # the analysis population matches what would really have been placed. Empty list = allow all.
+    # are not trading FX"). Market is now gated by the app-wide Markets (Admin) deny-list (user 2026-08-01,
+    # replacing the retired owner market allow-list); each user's Markets (User) switch refines this further
+    # client-side. To keep a market (e.g. FX) out of this shared analysis, disable it in Markets (Admin).
     try:
         import config_store as _cs
-        allowed = set(_cs.get_trade_filters().get("markets") or [])
+        denied = set(_cs.get_disabled_markets())
     except Exception:
-        allowed = set()
+        denied = set()
     from db_pool import get_db
     db = get_db()
     try:
@@ -1973,7 +1983,7 @@ def _sqa_all_rows():
     for tk, mk, tf, ht, q, rr, rv, oc, ret, td, od, e, s_, t_ in raw:
         s = snap.get(tk, {})
         market = mk or s.get("market")
-        if allowed and market not in allowed:      # not a traded market — exclude (FX, Crypto, ...)
+        if market and market in denied:             # market disabled app-wide (Markets Admin) — exclude
             continue
         ret = float(ret) if ret is not None else None
         # R-multiple = the trade's return in units of what it RISKED (return% / stop-distance%): a stop is

@@ -196,8 +196,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 :root.light input[type="date"]{color-scheme:light}
 .filterbar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 14px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;max-width:fit-content}
 
-/* Document pages (Introduction / How it works / Appendix) */
+/* Document pages (Introduction / How it works / Appendix / T&C) */
 .doc{padding:40px 32px;max-width:1120px;margin:0 auto}
+/* T&C list (user 2026-07-27, P-25) — readable spacing for the terms clauses */
+.tclist{margin:6px 0 0;padding-left:22px;max-width:820px}
+.tclist li{font-size:15px;line-height:1.55;margin:0 0 7px;color:var(--fg)}
 .doc .eyebrow{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);padding:5px 12px;border-radius:999px;margin-bottom:16px}
 .doc h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:0 0 12px}
@@ -332,8 +335,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
    .wallet-on to #pf-table. display:none on th/td removes the column cleanly. */
 #pf-table:not(.wallet-on) .wcol{display:none}
 /* "Settings used" card on the Summary sub-tab (user 2026-07-24, P-02) — compact, left of the filters. */
-.pf-setcard{max-width:280px;min-width:190px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:11.5px}
+.pf-setcard{max-width:440px;min-width:190px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:11.5px}
 .pf-setcard-h{font-weight:700;margin-bottom:4px;font-size:12px}
+.pf-setcard-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px 18px}   /* two columns to cut the row count (user 2026-08-01) */
 .pf-setcard-row{display:flex;justify-content:space-between;gap:12px;padding:1px 0}
 .pf-setcard-k{color:var(--muted);white-space:nowrap}
 .pf-setcard-v{text-align:right;font-weight:600}
@@ -383,6 +387,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- grouped children (Batch/Users/X Posts/Version/System Logs/Scheduled Jobs/Change Requests, and
        Config/Config-Admin/Markets/Markets-Admin) live under the Operations / Settings parents below. -->
   <span class="grow"></span>
+  <!-- T&C on the RIGHT of all tabs, visible to everyone incl. logged-out (user 2026-07-27, P-25); hideable
+       via Tab visibility, default visible. Leads the right-aligned cluster (the others are admin-gated). -->
+  <button class="tab" id="tab-terms" onclick="showTab('terms')">T&amp;C</button>
   <!-- Squeeze History sits at the right, next to Operations (user 2026-07-20). -->
   <button class="tab" id="tab-squeezehist" onclick="showTab('squeezehist')" style="display:none">Squeeze History <span id="sqhtab-count"></span></button>
   <button class="tab" id="tab-operations" onclick="showTab('operations')" style="display:none">🛠️ Operations</button>
@@ -586,7 +593,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </aside>
     <div class="sidemain">
     <div class="tablewrap"><table>
-      <thead><tr><th data-ok="_fav" title="Favourite (click to sort)">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th><th data-ok="ticker">Ticker</th></tr></thead>   <!-- Ticker far right (P-11b) -->
+      <thead><tr><th data-ok="_fav" title="Favourite (click to sort)">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="dist_pct" title="Distance from the live price to the entry level, as a % of the live price. Positive = price still has to rise to the entry; negative = it has passed it.">Dist %</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th><th data-ok="ticker">Ticker</th></tr></thead>   <!-- Ticker far right (P-11b) -->
       <tbody id="oo-rows"></tbody>
     </table></div>
     </div><!-- /.sidemain -->
@@ -621,8 +628,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="pill active" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
     <button class="pill" data-panel="tabvis" onclick="confShow('tabvis')">👁️ Tab visibility</button>
     <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
-    <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>   <!-- right of IG (user 2026-07-17, P-25) -->
-    <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>
+    <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>   <!-- next to IG (user 2026-08-01) -->
+    <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>
     <!-- Gold-tier only (user 2026-07-17, P-06): ships HIDDEN and is revealed by renderConfig() only for a
          Gold account, so a failure to run the gate leaves the feature hidden rather than exposed. -->
     <button class="pill" data-panel="trading_mo" style="display:none" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
@@ -692,8 +699,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="confpanel hidden" data-panel="trading_sq">
     <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">Trading (Squeeze) — affects live orders</h3>
     <p class="muted" style="font-size:12px;margin:0 0 14px">Which squeeze setups may be traded on the live IG account.</p>
-    <div class="card" ><h4>Trade filters — direction, market</h4>
-      <p class="muted" style="font-size:12px">Only ticked values may be traded. Ticking everything (or nothing) in a group = no restriction. Shared switches; changes are attributed to you and checked live before every trade.</p>
+    <div class="card" ><h4>Trade filters — direction</h4>
+      <p class="muted" style="font-size:12px">Only ticked directions may be traded. Ticking both (or neither) = no restriction. To control which <b>markets</b> may be traded, use <b>Markets (User)</b> — that switch now governs both what you see and what you trade.</p>
       <div id="cfg-trade">loading…</div>
       <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
       <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
@@ -901,6 +908,68 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
 </div>
 
+<!-- Terms & Conditions (user 2026-07-27, P-25) — visible to all incl. logged-out; hideable via Tab
+     visibility, default visible. DRAFT wording (my own words per the request) — flagged for legal review. -->
+<div id="view-terms" class="hidden doc">
+  <span class="eyebrow">Terms &amp; Conditions</span>
+  <h1>Terms &amp; Conditions of Service</h1>
+  <p class="lede">These terms govern your use of the Squeeze Scanner service. Please read them carefully. By subscribing to or using the service you agree to them.</p>
+  <div class="card" style="border-color:#d29922;background:color-mix(in srgb,#d29922 10%,transparent);margin-bottom:14px">
+    <b style="color:var(--fg)">⚠️ Draft for review.</b> <span class="muted">This is a plain-English draft prepared to set out how the service works and its limitations. It is <b>not legal advice</b> and should be reviewed and finalised by a qualified professional before it is relied upon.</span>
+  </div>
+
+  <h2 class="sec">1. The service</h2>
+  <p>The Squeeze Scanner is a research and execution-assistance tool. It scans a large universe of instruments for one repeatable price structure and, for each qualifying setup, computes an entry, a stop-loss and a target. Where you have connected your own broker (IG) credentials, the service can — <b>at your instruction and within the limits you set</b> — place and manage the corresponding working orders on your own account.</p>
+  <p class="muted" style="font-size:13px">The service does <b>not</b> provide personal financial, investment or tax advice, and nothing it produces is a recommendation to buy or sell. You are responsible for your own trading decisions. Trading leveraged products carries a high risk of loss; prices can fall as well as rise and you can lose more than you expect.</p>
+
+  <h2 class="sec">2. Subscription &amp; payment</h2>
+  <ul class="tclist">
+    <li>The service is provided on a <b>monthly subscription</b> basis.</li>
+    <li>Fees for a given month fall due and are payable <b>within the first 7 days of the following month</b>.</li>
+    <li>Any management and/or performance fees, and any applicable discounts, are as agreed for your account and shown in the Fees tab.</li>
+    <li>Non-payment may result in suspension or termination of access. Fees already due remain payable.</li>
+  </ul>
+
+  <h2 class="sec">3. Availability &amp; service interruptions</h2>
+  <p>We aim to keep the service running but <b>cannot guarantee continuous availability</b>. The service depends on components outside our sole control, and it may be unavailable — in whole or in part — for reasons including, without limitation:</p>
+  <ul class="tclist">
+    <li>planned or unplanned downtime of <b>our own service</b>;</li>
+    <li>outages, maintenance, rate-limiting or changes at <b>IG</b> (your broker);</li>
+    <li><b>network</b> or internet-connectivity failures; and</li>
+    <li>failures or delays at <b>third-party data providers</b>.</li>
+  </ul>
+  <p class="muted" style="font-size:13px">We are not liable for losses arising from any such interruption, including opportunities missed or orders not placed, amended or closed while the service or a dependency is unavailable.</p>
+
+  <h2 class="sec">4. Orders that may not be placed</h2>
+  <p>Even when the service identifies a setup, an order <b>may not be placed, or may be rejected,</b> for reasons including:</p>
+  <ul class="tclist">
+    <li>the calculated position size is <b>below the minimum size</b> IG will accept;</li>
+    <li>the instrument or CFD is <b>not available to trade at IG</b> for your account;</li>
+    <li>your account <b>balance or available margin</b> is insufficient;</li>
+    <li>a <b>margin call</b>, account restriction or IG-side control prevents the order; or</li>
+    <li>your own configured limits (minimum Quality, R:R, Volume Score, instrument value, maximum open positions, etc.) exclude it.</li>
+  </ul>
+  <p class="muted" style="font-size:13px">You remain responsible for monitoring your account. We do not guarantee that any particular setup will be traded.</p>
+
+  <h2 class="sec">5. Access to your broker account</h2>
+  <p>Where you supply your IG credentials, you authorise the service to <b>read your positions and account details and to place, amend and cancel orders</b> that you have approved or that fall within the limits you configure. The service <b>cannot and does not add funds to, or withdraw funds from, your account</b> — it has no ability to move money into or out of your IG account.</p>
+
+  <h2 class="sec">6. Credentials &amp; data</h2>
+  <ul class="tclist">
+    <li>Your IG credentials are stored <b>encrypted</b> and are used only to act on <b>your own</b> account. They are never shared with other users and full values are never displayed back to you.</li>
+    <li>Instrument prices, fundamentals and related market data are obtained from <b>third-party providers</b>. We rely on those sources and do not warrant that such data is accurate, complete or timely; figures shown may be delayed or estimated.</li>
+    <li>Your activity is logged for security and audit purposes.</li>
+  </ul>
+
+  <h2 class="sec">7. Liability</h2>
+  <p>To the extent permitted by law, the service is provided "as is" and we exclude liability for trading losses, for the accuracy or timeliness of third-party data, and for interruptions or acts of the broker, data providers or networks. Nothing in these terms excludes any liability that cannot lawfully be excluded.</p>
+
+  <h2 class="sec">8. Changes to these terms</h2>
+  <p>We may update these terms from time to time. Continued use of the service after a change takes effect constitutes acceptance of the updated terms.</p>
+
+  <p class="muted" style="font-size:12px;margin-top:18px">A research and execution-assistance tool — not financial advice. Prices can fall as well as rise, and trades can be stopped out. Draft wording pending legal review.</p>
+</div>
+
 <!-- "What we do" (user 2026-07-27, P-10 L169) — plain-English overview of the service; visible to all
      (PUBLIC_TABS) and hideable via Tab visibility. Sits left of "How it works". -->
 <div id="view-whatwedo" class="hidden doc">
@@ -1031,11 +1100,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        and never reaches the order path, so a market switched OFF here still trades if it is in the
        Config -> Trading allow-list. Commodities was exactly that: hidden here, tradeable by the bridge. -->
   <div class="card" style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent);margin-bottom:12px">
-    <b style="color:#d29922">⚠️ These switches change what YOU SEE, not what trades.</b>
-    <p class="muted" style="font-size:12px;margin:6px 0 0">Turning a market off here hides it from your Scanner and Pre-orders only.
-    The engine and the 2-hourly bridge can still place live IG orders in it — so a market hidden here can trade without appearing in your lists.
-    To stop a market <b>trading</b>, remove it from the allow-list in <b>Configuration → Trading (Squeeze)</b>, or switch it off in
-    <b>Markets (Admin)</b>, which is enforced in the order path.</p>
+    <b style="color:#d29922">⚠️ These switches change what you see AND what you trade.</b>
+    <p class="muted" style="font-size:12px;margin:6px 0 0">Turning a market off here hides it from your Scanner and Pre-orders <b>and</b> blocks you placing or pinning orders in it (user 2026-08-01).
+    The shared automated 2-hourly bridge trades one IG account, so it is gated app-wide by <b>Markets (Admin)</b>, not by your personal switch —
+    to stop a market trading for everyone, switch it off in <b>Markets (Admin)</b>.</p>
   </div>
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="mk-count"></span></div>
@@ -1052,11 +1120,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- Filter-holders for the Results click-to-filter charts. pff_location/direction/wl were MISSING
        (user 2026-07-24, P-04 L111-113): the click handler bails when the holder input doesn't exist, so
        clicking those bars did nothing. All six charts now have a backing input. -->
-  <input type="hidden" id="pff_sector"><input type="hidden" id="pff_market"><input type="hidden" id="pff_status"><input type="hidden" id="pff_location"><input type="hidden" id="pff_direction"><input type="hidden" id="pff_wl"><input type="hidden" id="pff_month"><input type="hidden" id="pff_mweek">
+  <input type="hidden" id="pff_sector"><input type="hidden" id="pff_market"><input type="hidden" id="pff_status"><input type="hidden" id="pff_location"><input type="hidden" id="pff_direction"><input type="hidden" id="pff_wl"><input type="hidden" id="pff_month"><input type="hidden" id="pff_mweek"><input type="hidden" id="pff_daysopen">
   <!-- Sub-tab pills at the very TOP, centred (user 2026-07-24, P-03) — above the title/lede. -->
   <div id="pf-pills" style="display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px">
     <button class="pill active" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button>
-    <button class="pill" data-pfpanel="results" onclick="pfPanel('results')" title="The detail: every recorded trigger as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Results</button>
+    <button class="pill" data-pfpanel="results" onclick="pfPanel('results')" title="Back test over the last 12 months for YOUR current configuration (your Trading (Squeeze) direction filter, Markets (User) and personal floors): every setup as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Back Test</button>
     <button class="pill" id="pf-pill-winners" data-pfpanel="analysis" onclick="pfPanel('analysis')" title="Admin: the same 12-month population expressed as a compounding £ wallet — what's POSSIBLE if every setup were placed, and which attributes (market, R:R, quality, volume) separate the winners. Answers 'how to size and pick for the best return'.">🏆 What separates the winners</button>
   </div>
   <span class="eyebrow">Results</span>
@@ -1119,11 +1187,16 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
   </div>
   <div id="pf-panel-results" class="hidden">
+  <h2 class="sec" style="margin-top:0">Back Test</h2>
+  <p class="muted" style="font-size:13px;margin-top:-8px">These are <b>back-test results over the last 12 months</b>, replayed against your <b>current configuration</b> — your Trading (Squeeze) <b>direction</b> filter, your <b>Markets (User)</b> selection and your personal <b>Volume Score / Quality / R:R</b> floors. Change any of those and this back test updates to match. Each setup is measured from its trigger to <b style="color:var(--bull)">TARGET</b>, <b style="color:var(--bear)">STOPPED</b> or <b style="color:#d29922">OPEN</b> (marked to the latest price).</p>
   <div id="pf-charts">
     <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
   </div>
-  <h2 class="sec">Best Quality / R:R combinations</h2>
-  <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide) and R:R bands (1 wide); ranked by average direction-aware return across the recorded triggers, <b>reacting to the charts above</b>. Only buckets with at least 3 triggers are shown.</p>
+  <h2 class="sec">Summary</h2>
+  <p class="muted" style="font-size:13px;margin-top:-8px">Overall / Bull / Bear split of the back-test population above — the same table as the Summary sub-tab, reflecting your current filters.</p>
+  <div id="pf-summary-bt" class="tablewrap" style="margin-bottom:14px"></div>
+  <h2 class="sec">Best Quality / R:R combinations / Volume Score</h2>
+  <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide), R:R bands (1 wide) and Volume Score bands (8+ / 4–7 / 0–3); ranked by average direction-aware return across the recorded triggers, <b>reacting to the charts above</b>. Only buckets with at least 3 triggers are shown.</p>
   <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
   <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
 
@@ -1139,8 +1212,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
          time order. Reconciles with the winners ledger by using the identical stake=%-of-running-wallet,
          net=stake×return%, compounding formula (just over this Results population). -->
     <div id="pf-wallet-ctrl" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:2px 0 10px;font-size:12px">
-      <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="pfw-on" onchange="pfWalletToggle()"> <b style="color:var(--fg)">Show wallet model</b> — Stake / Net £ / running Wallet</label>
-      <span id="pfw-inputs" class="hidden" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="pfw-on" checked onchange="pfWalletToggle()"> <b style="color:var(--fg)">Show wallet model</b> — Stake / Net £ / running Wallet / Open</label>
+      <span id="pfw-inputs" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <label class="muted" style="display:flex;align-items:center;gap:5px">Wallet £ <input id="pfw-wallet" type="number" min="100" step="500" value="1000" style="width:100px;padding:4px 6px" onchange="_renderPerformance()"></label>
         <label class="muted" style="display:flex;align-items:center;gap:5px" title="Each trade stakes this % of the running wallet at that moment (compounding).">Max position size <input id="pfw-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="_renderPerformance()">%</label>
         <label class="muted" style="display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = no cap. A low cap skips a trade that triggers while you're already full.">Max open positions <input id="pfw-maxopen" type="number" min="0" step="1" placeholder="∞" style="width:64px;padding:4px 6px" onchange="_renderPerformance()"></label>
@@ -1149,7 +1222,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
     <div class="tablewrap"><table id="pf-table">
       <!-- Ticker sits FAR RIGHT on every table that has one (user 2026-07-17, P-11b). -->
-      <thead><tr><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Wallet</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank where the instrument has no real volume (FX, indices).">RVOL</th><th data-pf="ticker">Ticker</th></tr></thead>
+      <thead><tr><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="sector">Sector</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="exit_date" title="Date the trade closed (hit target or stop). Blank while still OPEN.">Closed</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Wallet</th><th class="wcol" data-pf="_open" title="Number of positions open (including this one) at this trade's trigger date — how full the book was.">Open</th><th data-pf="ticker">Ticker</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -1180,9 +1253,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
          positions / R:R floor over these trades and recommends the mix with the best RISK-ADJUSTED return,
          with worked examples at £1k…£10k. Rendered by renderBestCombo() from paintOrdersPerf. -->
     <div id="ordp-bestcombo" style="margin-bottom:10px"></div>
-    <!-- Leverage-impact report (user 2026-07-24, P-03 L70): how the Configuration → Leverage figures affect
-         the model. Recomputed by winnersParamsChange from the wallet/stake + the LEVERAGE config. -->
-    <div id="ordp-leverage-impact" style="margin-bottom:10px"></div>
+    <!-- Leverage-impact report removed (user 2026-08-01): leverage does not feed the compounded P&L
+         model (it only sets margin per position / theoretical concurrency), so the card was misleading. -->
     <!-- Automated Stop-Loss Amendment — ILLUSTRATION ONLY (user 2026-07-18): re-backtests every trade with a
          trailing stop and shows the impact. Does NOT touch live IG stops.
          DISABLED for now (user 2026-07-20) — hidden; threshold pinned at 0 so it is a no-op. -->
@@ -1524,8 +1596,10 @@ const _favCell=tk=>{const on=FAVS.has(disp(tk));
   return `<td style="cursor:pointer;text-align:center" onclick="event.stopPropagation();toggleFav('${(tk||'').replace(/'/g,'')}')" title="${on?'Remove from favourites':'Add to favourites'}"><span style="color:${on?'#e3b341':'var(--muted)'};font-size:15px">${on?'★':'☆'}</span></td>`;};
 function tradeVisible(r){
   const ok=(v,key)=>{const a=TRADE_HIDE[key];if(!a||!a.length)return true;if(v==null)return true;return a.includes(v);};
-  if(r.market && (MARKETS_DISABLED.has(r.market)||MARKETS_OFF.has(r.market)))return false;   // market switched off (admin or user)
-  return ok(r.direction,"directions")&&ok(r.market,"markets")&&ok(r.location,"locations");
+  // Market is governed by the Markets (User) on/off switch (markets_off) + admin markets_disabled — this
+  // now gates BOTH visibility and trading (user 2026-08-01). Trading (Squeeze) keeps only direction/location.
+  if(r.market && (MARKETS_DISABLED.has(r.market)||MARKETS_OFF.has(r.market)))return false;
+  return ok(r.direction,"directions")&&ok(r.location,"locations");
 }
 // `except` (optional) names ONE chart dimension to skip — used for chart "brushing" (user 2026-07-26):
 // each chart is counted over rows that pass every OTHER filter but not its own, so all option-bars stay
@@ -2024,8 +2098,8 @@ let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/
 let MY_LIMITS={};   // the user's personal floors from Configuration → My trading limits (min_risk_reward, min_quality) — applied to My Pre-orders (user 2026-07-24, P-02)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","whatwedo","intro","appendix","scanner","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
-const PUBLIC_TABS=["welcome","whatwedo","intro","appendix","scanner","performance"];   // visible when logged out (Performance blurs all but ticker/name/return); "What we do" is for everyone (user 2026-07-27, P-10 L169)
+const TABS=["welcome","whatwedo","intro","appendix","terms","scanner","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
+const PUBLIC_TABS=["welcome","whatwedo","intro","appendix","terms","scanner","performance"];   // visible when logged out (Performance blurs all but ticker/name/return); "What we do" + "T&C" are for everyone (user 2026-07-27, P-10 L169 / P-25)
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin","squeezehist","fees"];  // admin only
 const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
 // Tabs hidden by DEFAULT (user 2026-07-10): visible only once the user opts in via Tab Visibility.
@@ -2151,7 +2225,7 @@ function paintXposts(){
 function renderXposts(){fetch("/api/x-posts",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{X_ROWS=j.rows||[];paintXposts();}).catch(()=>{$("x-rows").innerHTML=`<tr><td colspan="6" class="empty">Could not load — try logging in again.</td></tr>`;});}
 document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.dataset.xk;xSortDir=(xSortK===k)?-xSortDir:-1;xSortK=k;paintXposts();_sortArrows("data-xk",xSortK,xSortDir);});
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
-const TAB_LABELS={welcome:"Introduction",whatwedo:"What we do",intro:"How it works",appendix:"Appendix",scanner:"Scanner Report",xposts:"X Posts",
+const TAB_LABELS={welcome:"Introduction",whatwedo:"What we do",intro:"How it works",appendix:"Appendix",terms:"T&C",scanner:"Scanner Report",xposts:"X Posts",
   preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
   users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)",
   config:"Configuration (User)",markets:"Markets (User)",marketsadmin:"Markets (Admin)",configadmin:"Configuration (Admin)",
@@ -2464,8 +2538,9 @@ function renderConfig(){
       $("cfg-exec").innerHTML=(j.exec_sources||[]).map(s=>{const on=(j.exec||{})[s]!==false;
         return `<div class="kv" style="align-items:flex-start"><span><b>${s}</b><br><span class="muted" style="font-size:12px">${_xd[s]||''}</span></span><label style="cursor:pointer;white-space:nowrap"><span class="yn">${on?"Yes":"No"}</span> <input type="checkbox" class="cfg-ex" data-s="${s}" ${on?"checked":""}></label></div>`;}).join("");
       document.querySelectorAll(".cfg-ex").forEach(c=>c.onchange=()=>{const yn=c.parentElement.querySelector(".yn");if(yn)yn.textContent=c.checked?"Yes":"No";});
-      // Trade filters (user 2026-07-03): direction / market / location allow-lists. Empty stored = all allowed.
-      const tf=j.trade||{}, groups=[["directions",["BULL","BEAR"]],["markets",uniq("market")]];   // location removed (user 2026-07-03)
+      // Trade filters: DIRECTION only (user 2026-08-01). Market moved out of Trading (Squeeze) — the
+      // per-user Markets (User) on/off switch now governs both visibility AND trading. Empty stored = all allowed.
+      const tf=j.trade||{}, groups=[["directions",["BULL","BEAR"]]];
       TRADE_HIDE=tf;   // sync per-user hide (user 2026-07-06)
       $("cfg-trade").innerHTML=groups.map(([g,opts])=>{
         const allowed=tf[g]||[];
@@ -2535,11 +2610,13 @@ function saveLimits(){
     .catch(()=>{const el=$("lim-msg");el.style.color="var(--bear)";el.textContent="Save failed.";});
 }
 function saveTradeFilters(){
+  // DIRECTION only (user 2026-08-01) — market is governed by Markets (User) now. markets/locations kept
+  // empty (= no restriction) for backend compatibility.
   const t={directions:[],markets:[],locations:[]};
   document.querySelectorAll(".cfg-tf:checked").forEach(c=>t[c.dataset.g].push(c.dataset.v));
   // A fully-ticked group = no restriction (send empty so the engine stores ALL).
-  const totals={directions:2,markets:uniq("market").length,locations:uniq("location").length};
-  Object.keys(t).forEach(g=>{if(t[g].length===totals[g]||t[g].length===0)t[g]=[];});
+  const totals={directions:2};
+  Object.keys(t).forEach(g=>{if(t[g].length===(totals[g]||0)||t[g].length===0)t[g]=[];});
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({trade:t})})
     .then(r=>{if(!r.ok)throw 0;TRADE_HIDE=t;render();renderPreorders&&renderPreorders();$("cfg-msg").style.color="var(--bull)";$("cfg-msg").textContent="Trade filters saved.";})
     .catch(()=>{$("cfg-msg").style.color="var(--bear)";$("cfg-msg").textContent="Save failed.";});
@@ -2597,15 +2674,21 @@ function paintOrderOps(){
     `<div class="vizsector">`+barChart("Ticker",oby("ticker"),"oof_ticker")+`</div>`;
   // Resolve instrument name from the loaded snapshot (user 2026-07-03: name next to Ticker).
   const nm=t=>{const r=DATA.find(x=>x.ticker===t||disp(x.ticker)===t);return r?(r.name||''):'';};
+  // Distance to price % (user 2026-08-01): how far the live price is from the order's entry level,
+  // as a % of the live price. Live price comes from the loaded snapshot for this ticker.
+  const _px=t=>{const d=DATA.find(x=>x.ticker===t||disp(x.ticker)===t);return d?d.current_price:null;};
+  rows.forEach(r=>{const p=_px(r.ticker);r.dist_pct=(r.entry!=null&&p)?+(((r.entry-p)/p)*100).toFixed(2):null;});
   rows.forEach(r=>r._fav=FAVS.has(disp(r.ticker))?1:0);   // favourite column sortable (user 2026-07-11)
   $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>
     ${_favCell(r.ticker)}<td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td>${nm(r.ticker)}</td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
-    <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td><td>${r.size??''}</td>
+    <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td>
+    <td>${r.dist_pct!=null?`<span style="color:${r.dist_pct>=0?'var(--muted)':'var(--bear)'}">${r.dist_pct>0?'+':''}${r.dist_pct}%</span>`:'<span class="muted">—</span>'}</td>
+    <td>${r.size??''}</td>
     <td><b style="color:${st(r.status)}">${r.status||''}</b></td><td>${r.session||''}</td>
     <td class="muted" style="white-space:normal;max-width:460px">${(r.notes||'').replace(/</g,'&lt;')}</td>
     <td><b>${disp(r.ticker||'')}</b></td></tr>`).join("")
-  || `<tr><td colspan="13" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
+  || `<tr><td colspan="14" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
 }
 function renderOrderOps(){
   fetch("/api/order-ops",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
@@ -2649,7 +2732,7 @@ function renderActivity(){
 }
 // ── Markets tab (user 2026-07-10): live per-market coverage computed from the loaded snapshot ──
 // "Included?" = whether any instrument in that market is visible to you (passes your market filter).
-const _mkIncl=b=>b?'<span style="color:var(--bull);font-weight:700" title="Included in your processing">🟢 Included</span>':'<span class="muted" title="Excluded by your market filter — Configuration → Trading (Squeeze)">⚪ Excluded</span>';
+const _mkIncl=b=>b?'<span style="color:var(--bull);font-weight:700" title="Included in your processing">🟢 Included</span>':'<span class="muted" title="Switched off in Markets (User) — hidden from your lists and not traded on your behalf">⚪ Excluded</span>';
 function _mkAgg(){
   const g={};
   DATA.forEach(r=>{const m=r.market||"—";const o=(g[m]=g[m]||{market:m,total:0,signal:0,triggered:0,ready:0,developing:0,qsum:0,qn:0,incl:false});
@@ -2809,10 +2892,24 @@ async function maRebuild(){
 // ── Performance tab (user 2026-07-13): every RECORDED trigger (hvf_triggers) with its committed
 //    entry/stop/target/date, classified STOPPED / TARGET / OPEN from price history since the trigger.
 //    Served pre-computed by /api/performance (source of truth = the recorded events, not the snapshot). ──
-let pfSortK="perf", pfSortDir=-1, PERF_DATA=null, PERF_GEN="", PF_LOC_FILTER="";
+let pfSortK="trig_date", pfSortDir=1, PERF_DATA=null, PERF_GEN="", PF_LOC_FILTER="";   // default: Triggered date ascending / oldest first (user 2026-08-01)
 let PF_COMBO=null;   // clicked "Best Quality / R:R combination" card → filter the Results table to that band (user 2026-07-27, P-10 L292)
 let PF_VS_FLOOR=0;   // active personal Minimum Volume Score floor applied to the Performance population (user 2026-07-28); 0 = off
-function pfComboFilter(qb,rb){PF_COMBO=(PF_COMBO&&PF_COMBO.qb===+qb&&PF_COMBO.rb===+rb)?null:{qb:+qb,rb:+rb};_renderPerformance();}
+// Quality / R:R / Volume-Score band click-to-filter (user 2026-07-27 P-10 L292; volume added 2026-08-01).
+// vlo/vhi bound the volume band ('—' band = unscored rows, vlo/vhi null).
+function pfComboFilter(qb,rb,vlo,vhi,vb){
+  const q=+qb,r=+rb,lo=(vlo==null||vlo==='null')?null:+vlo,hi=(vhi==null||vhi==='null')?null:+vhi,b=vb||"—";
+  PF_COMBO=(PF_COMBO&&PF_COMBO.qb===q&&PF_COMBO.rb===r&&PF_COMBO.vb===b)?null:{qb:q,rb:r,vlo:lo,vhi:hi,vb:b};
+  _renderPerformance();
+}
+// Does a row fall in the currently-picked Quality/R:R/Volume combo band?
+function _pfInCombo(r){
+  if(!PF_COMBO||r.quality==null||r.rr==null)return false;
+  if(Math.floor(r.quality/10)*10!==PF_COMBO.qb||Math.floor(+r.rr)!==PF_COMBO.rb)return false;
+  const vs=r.volume_score;
+  if(PF_COMBO.vb==="—")return vs==null;
+  return vs!=null&&vs>=PF_COMBO.vlo&&vs<=PF_COMBO.vhi;
+}
 const _stcol=s=>s==="TARGET"?"var(--bull)":s==="STOPPED"?"var(--bear)":"#d29922";   // OPEN = amber
 function pfLocFilter(loc){PF_LOC_FILTER=(PF_LOC_FILTER===loc)?"":loc;_renderPerformance();}   // toggle the Summary-title location filter
 // Date filter (user 2026-07-18, P-01) — one trigger-date window drives BOTH Performance sub-tabs. A preset
@@ -2913,7 +3010,6 @@ function winnersParamsChange(){
   if(mo>0 && maxTrade<MIN_TRADE && !warn)
     warn=`Wallet ÷ ${mo} = ${fmt(maxTrade)} per trade, below the £${MIN_TRADE} minimum — reduce Max open positions or raise the Wallet.`;
   const msg=$("ordp-model-msg"); if(msg){msg.textContent=warn; msg.style.color=warn?"var(--bear)":"";}
-  renderLeverageImpact();                 // leverage-impact report (P-03 L70)
   paintOrdersPerf(); winnersSLChange();   // re-render both the plain view and any SL illustration
 }
 // Save the winners Model variables as the user's persistent defaults (user 2026-07-28, P-10 L158) — stored
@@ -2934,23 +3030,6 @@ function applyWinnersDefaults(){
   if(MY_LIMITS.max_position_pct!=null)set("ordp-stake",MY_LIMITS.max_position_pct);
   const moEl=$("ordp-maxopen"); if(moEl&&MY_LIMITS.max_open!=null)moEl.value=MY_LIMITS.max_open>0?MY_LIMITS.max_open:"";   // 0 = ∞ → blank (set() skips "" so do it directly)
   if(typeof winnersParamsChange==="function")winnersParamsChange();
-}
-// Leverage-impact report (user 2026-07-24, P-03 L70): how the Configuration → Leverage figures affect the
-// model. Leverage sets the margin per position (stake ÷ leverage) and therefore how many positions the
-// wallet can fund at once — it does NOT change per-trade return%.
-function renderLeverageImpact(){
-  const el=$("ordp-leverage-impact"); if(!el)return;
-  const w=WINNERS_WALLET, sf=WINNERS_STAKE, stake=w*sf;
-  const fmt=v=>"£"+Math.round(v).toLocaleString();
-  const tiers=[["Equities",LEVERAGE.equities],["Indices",LEVERAGE.indices],["Commodities",LEVERAGE.commodities],["FX",LEVERAGE.fx]];
-  const rows=tiers.map(([t,lev])=>{
-    const margin=lev?stake/lev:stake, maxConc=lev?Math.floor(w/(stake/lev)):Math.floor(w/stake);
-    return `<tr><td>${t}</td><td>${lev?lev+'×':'—'}</td><td>${fmt(margin)}</td><td>${maxConc.toLocaleString()}</td></tr>`;
-  }).join("");
-  el.innerHTML=`<div class="card" style="margin:0"><h4 style="margin:0 0 4px">⚖️ Leverage impact <span class="muted" style="font-weight:400;font-size:11px">— from Configuration → Leverage</span></h4>
-    <div class="muted" style="font-size:12px;margin-bottom:6px">On a ${fmt(w)} wallet staking ${(sf*100).toFixed(1)}% (${fmt(stake)}) per trade, leverage sets the <b>margin</b> each position ties up and so how many the wallet funds at once:</div>
-    <div class="tablewrap"><table><thead><tr><th>Instrument type</th><th>Leverage</th><th title="Cash tied up = stake ÷ leverage">Margin / trade</th><th title="floor(wallet ÷ margin per trade)">Max concurrent the wallet funds</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="muted" style="font-size:11px;margin-top:6px"><b>Impact:</b> higher leverage lowers the margin per trade, so the same wallet funds more concurrent positions (more of the opportunity captured). It does <b>not</b> change a trade's return% — the compounded P&amp;L above is driven by the trades taken and their returns (capped by your <b>Max open positions</b>), not by leverage. Keep Max open positions within the capacity above.</div></div>`;
 }
 function renderSqueezeAnalysis(){
   renderVolScoreReport();   // VolumeScore impact report (user 2026-07-24, P-02) — loads once, server-cached
@@ -3066,17 +3145,29 @@ function renderBestCombo(all){
   const box=$("ordp-bestcombo"); if(!box)return;
   const wp=(all||[]).filter(r=>r.perf!=null&&r.trig_date);
   if(wp.length<10){box.innerHTML="";return;}   // too few trades to optimise meaningfully
-  const STAKES=[1,2,3,5,7.5,10], OPENS=[0,3,5,8,12,20], RRS=[3,5,8];
+  // Grid-search all factors (user 2026-08-01): stake %, max open, R:R floor, PLUS Quality floor and
+  // VolumeScore floor — so the best combination reflects every lever, not just stake/open/R:R. Filters
+  // narrow progressively (rr → quality → volume) to keep the search cheap. Null quality/volume_score pass
+  // a floor, matching the rest of the app (My Pre-orders / Back Test).
+  const STAKES=[1,2,3,5,7.5,10], OPENS=[0,3,5,8,12,20], RRS=[3,5,8], QUALS=[0,25,50,75], VSCORES=[0,4,8];
   const byDate=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
   let best=null;
   for(const rr of RRS){
-    const seq=byDate.filter(r=>r.rr!=null&&r.rr>=rr);
-    if(seq.length<5)continue;
-    for(const mo of OPENS)for(const st of STAKES){
-      const {ret,dd,n,cap}=_combReplay(seq,st/100,mo);
-      if(n<5)continue;
-      const score=dd>0?ret/dd:(ret>0?ret*1e3:ret);   // return per unit drawdown; no drawdown + positive → rank top
-      if(!best||score>best.score)best={st,mo,rr,ret,dd,n,score,cap};
+    const seqR=byDate.filter(r=>r.rr!=null&&r.rr>=rr);
+    if(seqR.length<5)continue;
+    for(const q of QUALS){
+      const seqQ=q>0?seqR.filter(r=>r.quality==null||r.quality>=q):seqR;
+      if(seqQ.length<5)continue;
+      for(const vs of VSCORES){
+        const seq=vs>0?seqQ.filter(r=>r.volume_score==null||r.volume_score>=vs):seqQ;
+        if(seq.length<5)continue;
+        for(const mo of OPENS)for(const st of STAKES){
+          const {ret,dd,n,cap}=_combReplay(seq,st/100,mo);
+          if(n<5)continue;
+          const score=dd>0?ret/dd:(ret>0?ret*1e3:ret);   // return per unit drawdown; no drawdown + positive → rank top
+          if(!best||score>best.score)best={st,mo,rr,q,vs,ret,dd,n,score,cap};
+        }
+      }
     }
   }
   if(!best){box.innerHTML="";return;}
@@ -3085,24 +3176,27 @@ function renderBestCombo(all){
   const pct=v=>v>=9?'×'+(1+v).toLocaleString(undefined,{maximumFractionDigits:(1+v)>=100?0:1})
     :(v>=0?'+':'')+(v*100).toFixed(1)+'%';
   const gbp=v=>'£'+Math.round(v).toLocaleString();
-  const WALLETS=[1000,2500,5000,7500,10000];
-  const rows=WALLETS.map(w=>{const stake=w*best.st/100,end=w*(1+best.ret),net=end-w,ddP=best.dd*w*(1+best.ret);
-    const feas=stake>=25;
-    return `<tr><td><b>${gbp(w)}</b></td><td class="muted">${gbp(stake)}${feas?'':' <span style="color:var(--bear)" title="Below the £25 IG minimum — raise the stake % or the wallet">⚠</span>'}</td>
+  // Only the wallet actually IN USE (the Model wallet above) — the £1k…£10k example rows were dropped
+  // (user 2026-08-01): the best mix and its % return are wallet-independent, so one worked row is enough.
+  const w=Math.max(1,WINNERS_WALLET||1000);
+  const stake=w*best.st/100,end=w*(1+best.ret),net=end-w,feas=stake>=25;
+  const rows=`<tr><td><b>${gbp(w)}</b></td><td class="muted">${gbp(stake)}${feas?'':' <span style="color:var(--bear)" title="Below the £25 IG minimum — raise the stake % or the wallet">⚠</span>'}</td>
       <td><b style="color:${net>=0?'var(--bull)':'var(--bear)'}">${gbp(end)}</b></td>
-      <td style="color:${net>=0?'var(--bull)':'var(--bear)'}">${net>=0?'+':'−'}${gbp(Math.abs(net))}</td></tr>`;}).join("");
+      <td style="color:${net>=0?'var(--bull)':'var(--bear)'}">${net>=0?'+':'−'}${gbp(Math.abs(net))}</td></tr>`;
   box.innerHTML=`<div class="card" style="margin:0">
     <h4 style="margin:0 0 4px">🥇 Best combination <span class="muted" style="font-weight:400;font-size:11px">— ranked by return per unit of drawdown, over ${best.n.toLocaleString()} trades in this window</span></h4>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:6px 0 8px">
       <div><div class="muted" style="font-size:11px">Max position size</div><b style="font-size:16px;color:var(--fg)">${best.st}%</b></div>
       <div><div class="muted" style="font-size:11px">Max open positions</div><b style="font-size:16px;color:var(--fg)" title="Bounded by the wallet: a ${best.st}% stake funds at most ${best.cap} positions at once (100% exposure)${best.mo>0&&best.mo<=best.cap?'':' — the ∞/large setting is capped to this'}">${best.cap}</b></div>
       <div><div class="muted" style="font-size:11px">R:R floor</div><b style="font-size:16px;color:var(--fg)">≥ ${best.rr}</b></div>
+      <div><div class="muted" style="font-size:11px">Quality floor</div><b style="font-size:16px;color:var(--fg)">${best.q>0?'≥ '+best.q:'any'}</b></div>
+      <div><div class="muted" style="font-size:11px">VolumeScore floor</div><b style="font-size:16px;color:var(--fg)">${best.vs>0?'≥ '+best.vs:'any'}</b></div>
       <div style="border-left:1px solid var(--line);padding-left:18px"><div class="muted" style="font-size:11px">Total return</div><b style="font-size:16px;color:${best.ret>=0?'var(--bull)':'var(--bear)'}">${pct(best.ret)}</b></div>
       <div><div class="muted" style="font-size:11px">Max drawdown</div><b style="font-size:16px;color:var(--bear)">−${(best.dd*100).toFixed(1)}%</b></div>
       <div><div class="muted" style="font-size:11px">Return ÷ drawdown</div><b style="font-size:16px;color:var(--fg)">${best.dd>0?(best.ret/best.dd).toFixed(2):'∞'}</b></div>
     </div>
     <div class="tablewrap"><table><thead><tr><th>Wallet</th><th title="First trade's stake = Max position size % of the wallet">Opening stake</th><th>Ending wallet</th><th>Net P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="muted" style="font-size:11px;margin-top:6px">Because each stake is a fixed % of the running wallet, the best mix and its <b>%</b> return are the same at every wallet size — only the £ amounts scale. Set the Model above to these values to see the full ledger. This maximises return <b>per unit of risk</b>, not raw return (the biggest stake always compounds hardest but risks ruin). ⚠ marks a wallet whose opening stake is below the £25 IG minimum.</div>
+    <div class="muted" style="font-size:11px;margin-top:6px">On your <b>${gbp(w)}</b> Model wallet. Because each stake is a fixed % of the running wallet, the best mix and its <b>%</b> return are the same at every wallet size — only the £ amounts scale. Set the Model above to these values to see the full ledger. This maximises return <b>per unit of risk</b>, not raw return (the biggest stake always compounds hardest but risks ruin). ⚠ marks a wallet whose opening stake is below the £25 IG minimum.</div>
   </div>`;
 }
 // One compounding pass over a set of winners trades (user 2026-07-27, P-10 L122/L123 refactor): chronological
@@ -3143,7 +3237,7 @@ function paintOrdersPerf(){
   // ONE dataset with the Results tab; unscored rows (null) pass, matching My Pre-orders.
   const _vsF=(typeof num==='function')?num(MY_LIMITS.min_volume_score):(+MY_LIMITS.min_volume_score||null);
   const _vsFloor=(_vsF!=null&&_vsF>0)?_vsF:0;
-  const all=(WIN||[]).filter(r=>r&&r.entry&&r.stop&&pfDateOk(r.trig_date)&&(!_vsFloor||r.volume_score==null||r.volume_score>=_vsFloor));   // shared date-window + Volume Score floor (P-01 / 2026-07-28)
+  const all=(WIN||[]).filter(r=>r&&r.entry&&r.stop&&pfDateOk(r.trig_date)&&(!_vsFloor||r.volume_score==null||r.volume_score>=_vsFloor)&&tradeVisible(r));   // shared date-window + Volume Score floor (P-01 / 2026-07-28) + user direction/market filter (2026-08-01)
   if(!all.length){
     box.innerHTML=`<div class="muted" style="font-size:13px">No trades in this date window — widen the date filter above (or clear it for the full 12 months).</div>`;
     if(dims)dims.innerHTML="";if(tb)tb.innerHTML="";renderBestCombo([]);return;}
@@ -3334,8 +3428,13 @@ function _pfWalletLedger(sel){
   if(maxopen>0){taken=[];const openExits=[];
     for(const r of seq){for(let i=openExits.length-1;i>=0;i--){if(openExits[i]<=(r.trig_date||''))openExits.splice(i,1);}
       if(openExits.length<maxopen){taken.push(r);openExits.push(exitOf(r));}else skipped++;}}
-  let w=wallet;
-  for(const r of taken){const stake=w*stakeFrac,net=stake*r.perf/100;w+=net;r._stake=stake;r._net=net;r._cum=w;}
+  // Running wallet + concurrently-open count per trade (user 2026-08-01): _open = how many positions were
+  // open (including this one) at this trade's trigger date, so the back test shows the book's fullness.
+  let w=wallet;const _open=[];
+  for(const r of taken){const td=r.trig_date||'';
+    for(let i=_open.length-1;i>=0;i--){if(_open[i]<=td)_open.splice(i,1);}
+    _open.push(exitOf(r));r._open=_open.length;
+    const stake=w*stakeFrac,net=stake*r.perf/100;w+=net;r._stake=stake;r._net=net;r._cum=w;}
   return {wallet,endWallet:w,taken:taken.length,skipped,maxopen};
 }
 function _renderPerformance(){
@@ -3347,6 +3446,7 @@ function _renderPerformance(){
   PF_VS_FLOOR=(_vsFloor!=null&&_vsFloor>0)?_vsFloor:0;
   let all=(PERF_DATA||[]).filter(r=>pfDateOk(r.trig_date));   // date-window filter (P-01) drives everything below
   if(PF_VS_FLOOR)all=all.filter(r=>r.volume_score==null||r.volume_score>=PF_VS_FLOOR);   // personal Volume Score floor
+  all=all.filter(r=>tradeVisible(r));   // respect the user's Trading (Squeeze) direction filter + Markets (User) (user 2026-08-01): BULL/BEAR removed or a market switched off must not appear in the back test
   const _wlCol=k=>k==="Win"?"var(--bull)":k==="Loss"?"var(--bear)":"#d29922";
   // Cross-filter (user 2026-07-24, P-04 L107/L109): each chart counts the population filtered by the OTHER
   // charts' selections (plus the Location button + search), so selecting e.g. Location=US narrows the
@@ -3356,6 +3456,7 @@ function _renderPerformance(){
   const _pfq=(($("pf-search")||{}).value||"").trim().toLowerCase();
   const _pfDims=[["pff_market",r=>r.market],["pff_location",r=>locName(r.location)],["pff_sector",r=>r.sector],
                  ["pff_direction",r=>r.direction],["pff_status",r=>r.state],["pff_wl",r=>_pfwl(r)],
+                 ["pff_daysopen",r=>_doBand(r)],   // Days-open range chart (user 2026-08-01)
                  ["pff_month",r=>(r.trig_date||"").slice(0,7)],["pff_mweek",r=>_mw(r.trig_date)]];   // date-filtered screen → Month + Month-Week (P-03 L24)
   const _cross=exceptKey=>all.filter(r=>
     _pfDims.every(([id,fn])=>id===exceptKey||inSet(id,fn(r)))
@@ -3379,6 +3480,7 @@ function _renderPerformance(){
     `<div class="vizsector">`+barChart("Direction",byXFull("direction","pff_direction"),"pff_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+`</div>`+   /* P-10 */
     `<div class="vizsector">`+barChart("Outcome",byXFull("state","pff_status"),"pff_status",_stcol)+`</div>`+
     `<div class="vizsector">`+barChart("Win / Loss",byXFull(_pfwl,"pff_wl"),"pff_wl",_wlCol)+`</div>`+         /* wins / losses / break-even (P-10) */
+    `<div class="vizsector">`+barChart("Days Open",byXFull(_doBand,"pff_daysopen"),"pff_daysopen")+`</div>`+   /* days-open range distribution (user 2026-08-01) */
     `<div class="vizsector">`+barChart("Month",byXFull(r=>(r.trig_date||"").slice(0,7),"pff_month"),"pff_month",null,true)+`</div>`+   /* date-filtered screen → Month (P-03 L24) */
     `<div class="vizsector">`+barChart("Month-Week",byXFull(r=>_mw(r.trig_date),"pff_mweek"),"pff_mweek",null,true)+`</div>`;   /* + Month-Week (P-03 L24) */
   packViz("pf-viz");   // P-15
@@ -3393,6 +3495,7 @@ function _renderPerformance(){
   // summary, Quality/R:R buckets and row count all reflect it — same contract as the other tabs.
   let sel=all.filter(r=>inSet("pff_sector",r.sector)&&inSet("pff_market",r.market)&&inSet("pff_status",r.state)
     &&inSet("pff_location",locName(r.location))&&inSet("pff_direction",r.direction)&&inSet("pff_wl",_pfwl(r))
+    &&inSet("pff_daysopen",_doBand(r))
     &&inSet("pff_month",(r.trig_date||"").slice(0,7))&&inSet("pff_mweek",_mw(r.trig_date)));
   if(PF_LOC_FILTER)sel=sel.filter(r=>locName(r.location)===PF_LOC_FILTER);   // Summary-title quick location filter (P-10)
   if(_pfq)sel=sel.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(_pfq));
@@ -3401,19 +3504,23 @@ function _renderPerformance(){
   _pfSettingsCard(sel,all);   // "Settings used" card, Summary sub-tab only (user 2026-07-24, P-02)
   // Top Quality/R:R buckets by average return across the (filtered) recorded triggers.
   const N=innerWidth>=900?4:3;   // never more than 4 cards; 3 on a mini iPad (<900px) (P-25)
+  // Buckets now include a VolumeScore band (user 2026-08-01): Quality (10-wide) x R:R (1-wide) x Vol band
+  // (8+ / 4–7 / 0–3 / — unscored), ranked by average return. So the "best combination" reflects volume too.
+  const _vsB=vs=>vs==null?{k:"—",lo:null,hi:null}:vs>=8?{k:"Vol 8+",lo:8,hi:99}:vs>=4?{k:"Vol 4–7",lo:4,hi:7}:{k:"Vol 0–3",lo:0,hi:3};
   const buckets={};
-  sel.forEach(r=>{if(r.quality==null||r.rr==null||r.perf==null)return;const qb=Math.floor(r.quality/10)*10,rb=Math.floor(+r.rr);
-    const o=(buckets[qb+"|"+rb]=buckets[qb+"|"+rb]||{qb,rb,n:0,sum:0});o.n++;o.sum+=r.perf;});
+  sel.forEach(r=>{if(r.quality==null||r.rr==null||r.perf==null)return;const qb=Math.floor(r.quality/10)*10,rb=Math.floor(+r.rr);const vb=_vsB(r.volume_score);
+    const key=qb+"|"+rb+"|"+vb.k;
+    const o=(buckets[key]=buckets[key]||{qb,rb,vb:vb.k,vlo:vb.lo,vhi:vb.hi,n:0,sum:0});o.n++;o.sum+=r.perf;});
   const combos=Object.values(buckets).filter(b=>b.n>=3).map(b=>({...b,avg:b.sum/b.n})).sort((a,b)=>b.avg-a.avg).slice(0,N);
-  $("pf-combos").innerHTML=LIMITED?`<p class="muted">🔒 <a href="#" onclick="showLogin();return false">Log in</a> to see the best Quality / R:R combinations.</p>`
-    :combos.length?combos.map((b,i)=>{const on=PF_COMBO&&PF_COMBO.qb===b.qb&&PF_COMBO.rb===b.rb;
-      return `<div class="fcard clk${on?' active':''}" style="cursor:pointer${on?';border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)':''}" onclick="pfComboFilter(${b.qb},${b.rb})" title="Click to filter the table below to Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)}${on?' — click again to clear':''} (user 2026-07-27, P-10 L292)"><div class="ic">${on?'✓':i+1}</div>
-      <h3>Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)}</h3>
+  $("pf-combos").innerHTML=LIMITED?`<p class="muted">🔒 <a href="#" onclick="showLogin();return false">Log in</a> to see the best Quality / R:R / Volume combinations.</p>`
+    :combos.length?combos.map((b,i)=>{const on=PF_COMBO&&PF_COMBO.qb===b.qb&&PF_COMBO.rb===b.rb&&PF_COMBO.vb===b.vb;
+      return `<div class="fcard clk${on?' active':''}" style="cursor:pointer${on?';border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)':''}" onclick="pfComboFilter(${b.qb},${b.rb},${b.vlo==null?'null':b.vlo},${b.vhi==null?'null':b.vhi},'${b.vb}')" title="Click to filter the table below to Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)} · ${b.vb}${on?' — click again to clear':''}"><div class="ic">${on?'✓':i+1}</div>
+      <h3>Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)} · ${b.vb}</h3>
       <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggers.${on?' <span style="color:var(--accent);font-weight:600">· filtering the table ✕</span>':''}</div></div>`;}).join("")
-    :`<p class="muted">Not enough recorded triggers yet to rank Quality/R:R buckets (need at least 3 per bucket).</p>`;
+    :`<p class="muted">Not enough recorded triggers yet to rank Quality/R:R/Volume buckets (need at least 3 per bucket).</p>`;
   // Best-combination card click (user 2026-07-27, P-10 L292): filter the TABLE (and its count + wallet) to
-  // the picked Quality/R:R band, while the cards above still show every bucket so you can change selection.
-  const selT = PF_COMBO ? sel.filter(r=>r.quality!=null&&r.rr!=null&&Math.floor(r.quality/10)*10===PF_COMBO.qb&&Math.floor(+r.rr)===PF_COMBO.rb) : sel;
+  // the picked Quality/R:R/Volume band, while the cards above still show every bucket so you can re-pick.
+  const selT = PF_COMBO ? sel.filter(_pfInCombo) : sel;
   // Wallet model (P-05 L98/L271): when ON, compute the running wallet over the shown triggers and force
   // strict trigger-date order (a running wallet only reads correctly chronologically); else the usual sort.
   const pfwOn=!!($("pfw-on")||{}).checked;
@@ -3423,26 +3530,28 @@ function _renderPerformance(){
   $("pf-table")&&$("pf-table").classList.toggle("wallet-on",pfwOn);
   if($("pfw-summary"))$("pfw-summary").innerHTML=(pfwOn&&led)?`<b style="color:var(--fg)">£${Math.round(led.wallet).toLocaleString()}</b> → <b style="color:${led.endWallet>=led.wallet?'var(--bull)':'var(--bear)'}">£${Math.round(led.endWallet).toLocaleString()}</b> over ${led.taken.toLocaleString()} trade${led.taken===1?'':'s'}${led.maxopen>0?` · cap ${led.maxopen} open → ${led.skipped.toLocaleString()} skipped`:''} <span class="muted">· recorded triggers shown, oldest first (same model as “What separates the winners”)</span>`:"";
   const nT=selT.filter(r=>r.state==="TARGET").length, nS=selT.filter(r=>r.state==="STOPPED").length, nO=selT.filter(r=>r.state==="OPEN").length;
-  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb});return false" style="color:var(--accent)">✕ clear</a>`:''}${PF_VS_FLOOR?` · <b style="color:var(--fg)">Volume Score ≥ ${PF_VS_FLOOR}</b> (your floor)`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
+  $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} · ${PF_COMBO.vb} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb},${PF_COMBO.vlo==null?'null':PF_COMBO.vlo},${PF_COMBO.vhi==null?'null':PF_COMBO.vhi},'${PF_COMBO.vb}');return false" style="color:var(--accent)">✕ clear</a>`:''}${PF_VS_FLOOR?` · <b style="color:var(--fg)">Volume Score ≥ ${PF_VS_FLOOR}</b> (your floor)`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("pftab-count").textContent=`(${selT.length})`;
   $("pf-rows").innerHTML=rows.map(r=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
     <td>${nm40(r.name)}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
     <td>${ob(volScoreCell(r.volume_score))}</td>
+    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td>
     <td>${ob(`<b style="color:${_stcol(r.state)}">${r.state||''}</b>`)}</td>
     <!-- Market and Triggered stay visible logged-out (user 2026-07-17, P-26 and P-17b); the rest of the
          row is still obfuscated by ob(). /api/performance is public and already returns both. -->
     <td>${r.market||''}</td><td>${r.sector||''}</td><td>${r.trig_date||'—'}</td>
     <td>${r.days_open!=null?r.days_open:'—'}</td>
+    <td>${r.exit_date?String(r.exit_date).slice(0,10):(r.state==='OPEN'?'<span class="muted">open</span>':'—')}</td>
     <td style="color:var(--bear)">${ob(f2(r.stop))}</td><td>${ob(f2(r.entry))}</td><td style="color:var(--bull)">${ob(f2(r.target))}</td>
     <td>${ob(f2(r.current_price))}</td>
     <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
     <td class="wcol muted">${r._stake!=null?'£'+Math.round(r._stake).toLocaleString():'—'}</td>
     <td class="wcol">${r._net!=null?`<span style="color:${r._net>=0?'var(--bull)':'var(--bear)'}">${r._net>=0?'+':'−'}£${Math.abs(r._net).toFixed(2)}</span>`:'—'}</td>
     <td class="wcol"><b>${r._cum!=null?'£'+Math.round(r._cum).toLocaleString():'—'}</b></td>
-    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td>
-    <td>${ob(rvolCell(r.rvol))}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
-    ||`<tr><td colspan="${pfwOn?20:17}" class="empty">No recorded triggers yet.</td></tr>`;
+    <td class="wcol">${r._open!=null?r._open:'—'}</td>
+    <td><b>${disp(r.ticker)}</b></td></tr>`).join("")
+    ||`<tr><td colspan="${pfwOn?21:17}" class="empty">No recorded triggers yet.</td></tr>`;
 }
 // "Settings used" card (user 2026-07-24, P-02): a provenance card, left of the filters on the Summary
 // sub-tab, stating the settings behind the monthly chart + summary table — the date window, location, the
@@ -3459,10 +3568,30 @@ function _pfSettingsCard(sel,all){
     ["Market",nice(list("pff_market"))||"All markets"]];
   const opt=(lab,id)=>{const v=nice(list(id));if(v)items.push([lab,v]);};
   opt("Sector","pff_sector"); opt("Direction","pff_direction"); opt("Outcome","pff_status"); opt("Win/Loss","pff_wl");
+  // Your CONFIGURED floors + filters that shape the back test (user 2026-08-01): R:R / Quality / Volume Score
+  // from My trading limits, the Trading (Squeeze) direction filter, and the Markets (User) selection.
+  const _num=v=>(typeof num==='function')?num(v):(v==null||v===''?null:+v);
+  // ALWAYS show the three floors (user 2026-08-01) — fall back to the config baseline when the user
+  // hasn't overridden them, so they never vanish just because MY_LIMITS wasn't loaded/set.
+  const rr=_num(MY_LIMITS.min_risk_reward), ql=_num(MY_LIMITS.min_quality), vs=_num(MY_LIMITS.min_volume_score);
+  items.push(["R:R floor","≥ "+(rr!=null?rr:3)]);
+  items.push(["Quality floor","≥ "+(ql!=null?ql:25)]);
+  items.push(["Volume Score floor","≥ "+(vs!=null?vs:1)]);
+  const dirs=(TRADE_HIDE&&TRADE_HIDE.directions)||[];
+  if(dirs.length===1)items.push(["Direction (yours)",dirs.join(", ")]);
+  const uni=(typeof uniq==='function')?uniq("market"):[];
+  if(uni.length){
+    const removed=uni.filter(m=>MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m)), keptN=uni.length-removed.length;
+    if(removed.length===0)items.push(["Markets (yours)","all "+uni.length]);
+    else if(removed.length<=keptN)items.push(["Markets removed",(removed.length<=5?removed.join(", "):removed.length+" markets")+" · "+keptN+" of "+uni.length+" kept"]);
+    else{const kept=uni.filter(m=>!(MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m)));items.push(["Markets kept",(kept.length<=5?kept.join(", "):kept.length+" markets")+" · "+keptN+" of "+uni.length]);}
+  }
   const q=(($("pf-search")||{}).value||"").trim(); if(q)items.push(["Search",'"'+q+'"']);
   card.style.display="";
   card.innerHTML=`<div class="pf-setcard-h">⚙️ Settings used</div>`+
+    `<div class="pf-setcard-grid">`+
     items.map(([k,v])=>`<div class="pf-setcard-row"><span class="pf-setcard-k">${k}</span><span class="pf-setcard-v">${esc(v)}</span></div>`).join("")+
+    `</div>`+
     `<div class="pf-setcard-row" style="border-top:1px solid var(--line);margin-top:4px;padding-top:4px"><span class="pf-setcard-k">Triggers</span><span class="pf-setcard-v"><b>${sel.length}</b>${sel.length!==all.length?` of ${all.length}`:""}</span></div>`;
 }
 // Summary table (user 2026-07-13): Overall / Bull / Bear split of the recorded triggers, with
@@ -3472,6 +3601,8 @@ function _pfSettingsCard(sel,all){
 const PF_BE=0;   // a WIN is any gain (>0), a LOSS is any loss (<0); only exactly 0 is break-even (user 2026-07-18)
 // Win / Loss / Break-even category for a recorded trigger, from its direction-aware return (matches _pfSeg).
 function _pfwl(r){if(r.perf==null)return"—";return r.perf>PF_BE?"Win":r.perf<-PF_BE?"Loss":"Break-even";}
+// Days-open range bucket for the Back Test chart strip (user 2026-08-01) — how long trades stay live.
+function _doBand(r){const d=r.days_open;if(d==null)return"—";if(d<=2)return"0–2d";if(d<=5)return"3–5d";if(d<=10)return"6–10d";if(d<=20)return"11–20d";if(d<=40)return"21–40d";return"40d+";}
 function _pfSeg(rows){
   const ps=rows.map(r=>r.perf).filter(p=>p!=null);
   const g=ps.filter(p=>p>PF_BE),l=ps.filter(p=>p<-PF_BE),be=ps.filter(p=>Math.abs(p)<=PF_BE);
@@ -3485,7 +3616,10 @@ function _pfSeg(rows){
 const _pfBg=(v,max,good)=>{if(v==null||!max)return"";const a=Math.min(Math.abs(v)/max,1)*0.55;
   const c=(good?(v>=0):(v<0))?`22,163,74`:`220,38,38`;return`background:rgba(${c},${a.toFixed(2)})`;};
 function _renderPfSummary(sel){
-  if(LIMITED){$("pf-summary").innerHTML=`<p class="muted">🔒 <a href="#" onclick="showLogin();return false">Log in</a> to see the performance summary.</p>`;return;}
+  // Mirror the summary table to BOTH the Summary sub-tab and the Back Test sub-tab (user 2026-08-01):
+  // #pf-summary (Summary) and #pf-summary-bt (Back Test, above the Quality/R:R/Volume combos).
+  const _put=html=>{const a=$("pf-summary");if(a)a.innerHTML=html;const b=$("pf-summary-bt");if(b)b.innerHTML=html;};
+  if(LIMITED){_put(`<p class="muted">🔒 <a href="#" onclick="showLogin();return false">Log in</a> to see the performance summary.</p>`);return;}
   const segs=[["Overall",sel],["Bull",sel.filter(r=>r.direction==="BULL")],["Bear",sel.filter(r=>r.direction==="BEAR")]];
   const rows=segs.map(([name,rs])=>{const s=_pfSeg(rs);
     const pc=v=>v==null?'<span class="muted">—</span>':v.toFixed(1)+'%';
@@ -3503,12 +3637,12 @@ function _renderPfSummary(sel){
       <td style="text-align:right;color:var(--bull)">${s.max==null?'—':'+'+s.max.toFixed(1)+'%'}</td>
       <td style="text-align:right;color:var(--bear)">${s.min==null?'—':s.min.toFixed(1)+'%'}</td>
     </tr>`;}).join("");
-  $("pf-summary").innerHTML=`<table><thead><tr>
+  _put(`<table><thead><tr>
     <th>Segment</th><th style="text-align:right">Trades</th><th style="text-align:right">Returns Available</th>
     <th style="text-align:right">Gains</th><th style="text-align:right">Losses</th><th style="text-align:right">Break-even</th>
     <th style="text-align:right">Gain:Loss Count</th><th style="text-align:right">Win %</th><th style="text-align:right">Loss %</th>
     <th style="text-align:right">Avg Return</th><th style="text-align:right">Max Gain</th><th style="text-align:right">Max Loss</th>
-  </tr></thead><tbody>${rows}</tbody></table>`;
+  </tr></thead><tbody>${rows}</tbody></table>`);
 }
 document.querySelectorAll("th[data-pf]").forEach(th=>th.onclick=()=>{const k=th.dataset.pf;pfSortDir=(pfSortK===k)?-pfSortDir:-1;pfSortK=k;renderPerformance();_sortArrows("data-pf",pfSortK,pfSortDir);});
 // ── Change Requests tab (admin, user 2026-07-10): parses ChangeRequests/*.txt via /api/change-requests ──
