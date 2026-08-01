@@ -2866,6 +2866,15 @@ def api_ig_account():
 if __name__ == "__main__":
     import threading
     try:
+        # Supabase-backed encrypted secret store (task #53). DUAL-READ: fills only env vars not already
+        # set from .env, so behaviour is unchanged now but pruning .env later keeps the app working.
+        import sys as _sys, os as _os
+        _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        import app_secrets
+        app_secrets.load_secrets_into_env()
+    except Exception as _e:
+        log.warning(f"app_secrets load skipped: {_e}")
+    try:
         import_credentials_from_env()   # one-off seed of the encrypted store from GitHub Secrets/env
     except Exception as _e:
         log.warning(f"credential seed skipped: {_e}")

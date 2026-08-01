@@ -553,7 +553,23 @@ def get_secret(name: str, key: str) -> str:
 _APP_KEY = "__app__"
 
 
+def _appsec():
+    """The Supabase-backed encrypted secret store (task #53), lazily imported to avoid a circular import."""
+    import sys, os as _os
+    sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    import app_secrets
+    return app_secrets
+
+
 def set_app_secret(key: str, value: str) -> bool:
+    # DUAL-WRITE (task #53): write the authoritative Supabase app_secrets row (keyed by the ENV name, i.e.
+    # KEY.upper()) AND keep the local Fernet file as a cold backup, so admin edits reach both. Best-effort on
+    # Supabase — the local write always succeeds so nothing is lost if the DB is briefly unreachable.
+    try:
+        _appsec().set_secret(key.upper(), value, updated_by="admin")
+        os.environ[key.upper()] = value   # take effect live for env-reading code (next read), not just next boot
+    except Exception as e:
+        log.warning(f"app secret Supabase write failed for {key}: {e}")
     f = _fernet()
     with _LOCK:
         users = _load()
@@ -564,6 +580,13 @@ def set_app_secret(key: str, value: str) -> bool:
 
 
 def get_app_secret(key: str) -> str:
+    # Prefer the authoritative Supabase store (task #53); fall back to the local Fernet file.
+    try:
+        v = _appsec().get_secret(key.upper())
+        if v:
+            return v
+    except Exception as e:
+        log.warning(f"app secret Supabase read failed for {key}: {e}")
     rec = _load().get(_APP_KEY) or {}
     if key not in (rec.get("secrets") or {}):
         return ""
