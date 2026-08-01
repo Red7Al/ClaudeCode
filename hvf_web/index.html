@@ -2497,8 +2497,8 @@ function renderCredentials(){
           const right=ro?valchip
             :`${valchip}<input type="password" class="cred-in" data-sec="${sec.id}" data-key="${f.key}" placeholder="${f.set?'change…':'enter value'}" autocomplete="new-password">`;
           // Per-webhook Slack send/not-send toggle (user 2026-08-01) — one against EACH channel.
-          const slackTog=(sec.id==="Slack")?`<label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;margin-right:8px" title="Send alerts to this channel"><input type="checkbox" class="slack-ch" data-ch="${f.key.replace('slack_','')}" onchange="saveSlackChannel(this.dataset.ch,this.checked)" style="width:16px;height:16px;accent-color:var(--accent)"><b style="color:var(--fg);font-size:12px">send</b></label>`:"";
-          return `<div class="credrow"><span class="clabel">${slackTog}${f.label} ${state}</span>${right}</div>`;})
+          const slackTog=(sec.id==="Slack")?`<label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;margin-left:12px;flex:none" title="Send alerts to this channel"><input type="checkbox" class="slack-ch" data-ch="${f.key.replace('slack_','')}" onchange="saveSlackChannel(this.dataset.ch,this.checked)" style="width:16px;height:16px;accent-color:var(--accent)"><b style="color:var(--fg);font-size:12px">send</b></label>`:"";
+          return `<div class="credrow"><span class="clabel">${f.label} ${state}</span>${right}${slackTog}</div>`;})
           .join("");
         const btn=ro?`<span class="muted" style="font-size:12px">🔒 Read-only — the administrator manages these shared credentials.</span>`
           :`<button class="btn" style="margin-top:6px" onclick="saveCreds('${sec.id}')">Save ${sec.id} credentials</button>`;
