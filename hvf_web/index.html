@@ -341,6 +341,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .pf-setcard{max-width:660px;min-width:190px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:11.5px}
 .pf-setcard-h{font-weight:700;margin-bottom:4px;font-size:12px}
 .pf-setcard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px 18px}   /* up to 3 columns when there's room (user 2026-08-01) */
+/* Tab-visibility panel readability (user 2026-08-01) — hard to read on iPad mini. Bigger chips + checkboxes,
+   clearer section headers, and one chip per line on small screens so labels never truncate. */
+#tabvis-list label{font-size:14px;padding:8px 12px;gap:9px}
+#tabvis-list input[type=checkbox]{width:18px;height:18px;flex:none}
+#tabvis-list>.muted{font-size:12px!important;color:var(--fg)!important;opacity:.75;font-weight:700}
+@media (max-width:820px){#tabvis-list{gap:10px 12px}#tabvis-list label{font-size:15px;width:100%;justify-content:flex-start}}
 .pf-setcard-row{display:flex;justify-content:space-between;gap:12px;padding:1px 0}
 .pf-setcard-k{color:var(--muted);white-space:nowrap}
 .pf-setcard-v{text-align:right;font-weight:600}
@@ -1501,7 +1507,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        a search is clutter. paintIgAccount tolerates the missing #ig-search input (treats it as blank). -->
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="ig-pos-count"></span><span class="grow" style="flex:1"></span>
-      <label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer" title="Show one aggregated row per instrument (sum the sizes, size-weighted average level) instead of every individual position."><input type="checkbox" id="ig-pos-agg" onchange="paintIgAccount()"> Aggregate — 1 row per instrument</label></div>
+      <span class="muted" style="font-size:12.5px;display:inline-flex;align-items:center;gap:14px" title="Aggregate rows = one combined row per instrument (sum sizes, size-weighted level, summed profit)."><b style="color:var(--fg)">View:</b>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="all" checked onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> Every position</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="agg" onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> <b style="color:var(--fg)">Aggregate rows</b></label></span></div>
     <div class="tablewrap"><table>
       <thead><tr><th class="clk" data-igp="name">Name</th><th class="clk" data-igp="direction">Dir</th><th class="clk" data-igp="size">Size</th><th class="clk" data-igp="level">Level</th><th class="clk" data-igp="current" title="Live close price (BUY at bid, SELL at offer)">Now</th><th class="clk" data-igp="profit" title="Live profit in the instrument's currency = (close − open) × size × contract size, direction-aware">Profit</th><th class="clk" data-igp="profit_pct" title="Live profit % against the open level, direction-aware">Profit %</th><th class="clk" data-igp="stop">Stop</th><th class="clk" data-igp="limit">Limit</th><th class="clk" data-igp="currency">Ccy</th><th class="clk" data-igp="opened">Opened (UTC)</th><th class="clk" data-igp="ticker">Ticker</th></tr></thead>
       <tbody id="ig-pos-rows"></tbody>
@@ -2836,7 +2844,8 @@ function paintIgAccount(){
 
   // ── OPEN POSITIONS (own strip + aggregate toggle + sortable table, user 2026-08-01) ──
   let posBase=IG_POS.filter(hit).map(p=>Object.assign({},p,_enrCommon(p)));
-  const _agg=(($("ig-pos-agg")||{}).checked);
+  const _agg=((document.querySelector('input[name="ig-pos-view"]:checked')||{}).value==='agg');
+  const _sz=v=>v==null||v===''?'':(Math.round(+v*100)/100);   // round size to 2dp — fixes 0.10999999… (user 2026-08-01)
   if(_agg){   // one row per instrument+direction: sum size, size-weighted average level, earliest opened
     const g={};
     posBase.forEach(p=>{const key=(p.ticker||p.epic||p.name)+'|'+p.direction;
@@ -2862,7 +2871,7 @@ function paintIgAccount(){
   $("ig-pos-count").innerHTML=cnt(pos.length,IG_POS.length,_agg?"instrument":"open position");
   const _pf=v=>v==null?'<span class="muted">—</span>':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>=0?'+':'−'}${Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:2})}</span>`;
   const _pfp=v=>v==null?'<span class="muted">—</span>':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>=0?'+':''}${v}%</span>`;
-  $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${_igDtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.current??'<span class="muted">—</span>')}</td><td>${_pf(p.profit)}</td><td>${_pfp(p.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td><b>${p.ticker||p.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="12" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
+  $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${_igDtag(p.direction)}</td><td>${_sz(p.size)}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.current??'<span class="muted">—</span>')}</td><td>${_pf(p.profit)}</td><td>${_pfp(p.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td><b>${p.ticker||p.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="12" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
 
   // ── WORKING ORDERS (own strip + sortable table) ──
   const ordBase=IG_ORD.filter(hit).map(o=>Object.assign({},o,_enrCommon(o),{gtd:(o.good_till||"").slice(0,10)||"—"}));
@@ -2879,7 +2888,7 @@ function paintIgAccount(){
   packViz("ig-ord-viz");
   const ord=genSort(ordBase.filter(o=>IGF.every(([id,k])=>inSet(id,o[k]))),igoSortK,igoSortDir);
   $("ig-ord-count").innerHTML=cnt(ord.length,IG_ORD.length,"working order");
-  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${_igDtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
+  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${_igDtag(o.direction)}</td><td>${_sz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
 function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
