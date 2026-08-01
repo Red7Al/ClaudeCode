@@ -81,7 +81,10 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 /* align-items:stretch — charts sharing a row all take the height of the tallest on that row, so the
    strip has no ragged bottoms (user 2026-07-17, P-14). .viz wraps, and each flex LINE stretches
    independently, so a chart is only ever matched to its own row's tallest. */
-.viz{display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:stretch;flex-wrap:wrap}
+/* A chart strip NEVER wraps to a second row (user 2026-08-01, new rule): nowrap keeps every card on ONE
+   line — they shrink to fit (flex:1 1 auto;min-width:0), and overflow-x:auto scrolls only in the extreme
+   case where they can't. Matches the Performance -> Results gold standard (all cards on one row). */
+.viz{display:flex;gap:10px;padding:10px 16px 16px;border-bottom:1px solid var(--line);align-items:stretch;flex-wrap:nowrap;overflow-x:auto}
 /* Cards GROW into the row's spare width (user 2026-07-17): the strip was leaving ~256px empty on the
    right while long labels ("NASDAQ 100", "Europe (West)") were crammed against their bars inside a
    170px label column. Spending that space is what makes P-16's larger text fit. */
