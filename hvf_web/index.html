@@ -2496,13 +2496,15 @@ function renderCredentials(){
           // Read-only: show the value chip. Editable: show the current value chip + an input to change it.
           const right=ro?valchip
             :`${valchip}<input type="password" class="cred-in" data-sec="${sec.id}" data-key="${f.key}" placeholder="${f.set?'change…':'enter value'}" autocomplete="new-password">`;
-          return `<div class="credrow"><span class="clabel">${f.label} ${state}</span>${right}</div>`;})
+          // Per-webhook Slack send/not-send toggle (user 2026-08-01) — one against EACH channel.
+          const slackTog=(sec.id==="Slack")?`<label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;margin-right:8px" title="Send alerts to this channel"><input type="checkbox" class="slack-ch" data-ch="${f.key.replace('slack_','')}" onchange="saveSlackChannel(this.dataset.ch,this.checked)" style="width:16px;height:16px;accent-color:var(--accent)"><b style="color:var(--fg);font-size:12px">send</b></label>`:"";
+          return `<div class="credrow"><span class="clabel">${slackTog}${f.label} ${state}</span>${right}</div>`;})
           .join("");
         const btn=ro?`<span class="muted" style="font-size:12px">🔒 Read-only — the administrator manages these shared credentials.</span>`
           :`<button class="btn" style="margin-top:6px" onclick="saveCreds('${sec.id}')">Save ${sec.id} credentials</button>`;
         const amber=sec.admin_only?' style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"':'';
         const head=`<h4>${sec.id}${sec.admin_only?' <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span>':sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
-          <p class="muted" style="font-size:12px;margin:0 0 8px">${sec.note}</p>${rows}${btn}
+          <p class="muted" style="font-size:12px;margin:0 0 8px">${sec.note}${sec.id==="Slack"?' <b style="color:var(--fg)">Tick "send" beside a channel to enable it; untick to silence that webhook.</b>':''}</p>${rows}${btn}
           <div id="cred-msg-${sec.id}" style="font-size:12px;margin-top:6px"></div>`;
         // Admin-only sections live on Configuration (Admin), user sections on Configuration (User)
         // (user 2026-07-17, P-03) — each as a switchable panel behind its own pill (P-28).
@@ -2513,6 +2515,7 @@ function renderCredentials(){
       $("cfg-creds").innerHTML=cards.filter(c=>!c.admin).map(c=>c.html).join("");
       const adminBox=$("cfgadmin-creds");
       if(adminBox)adminBox.innerHTML=cards.filter(c=>c.admin).map(c=>c.html).join("");
+      _applySlackToggles();   // reflect each channel's current send/off state on the just-rendered toggles
       // One nav pill per credential section: user sections onto Configuration (User) with Email (Yahoo)
       // last (user 2026-07-17, P-05); admin sections onto Configuration (Admin)'s own nav (P-28).
       document.querySelectorAll("#confnav .pill.credpill,#confadminnav .pill.credpill").forEach(p=>p.remove());
@@ -2567,6 +2570,7 @@ function renderConfig(){
       if($("cfg-bridge"))$("cfg-bridge").checked=!!j.bridge;
       if($("featrow-xposts"))$("featrow-xposts").style.display=j.is_admin?"":"none";
       if(j.features){FEATURES=j.features;if($("feat-xposts"))$("feat-xposts").checked=!!j.features.xposts;}
+      SLACK_CHANNELS=j.slack_channels||{}; _applySlackToggles();   // per-channel Slack send/off (user 2026-08-01)
       const n=Object.keys(USER_FILTERS).length;
       $("cfg-defaults").textContent=n?("Saved defaults: "+Object.entries(USER_FILTERS).map(([k,v])=>`${k.replace('f_','')}=${v}`).join(" · ")):"No saved defaults yet — using the built-in ones.";
       const _xd=j.exec_descriptions||{};
@@ -2646,6 +2650,14 @@ function saveLimits(){
     }else{_setMsg("Save failed.",false);}})
     .catch(()=>{_setMsg("Save failed.",false);});
 }
+// Per-webhook Slack send/not-send toggles (user 2026-08-01). SLACK_CHANNELS mirrors the app_config
+// slack_ch_<channel> flags; one "send" checkbox sits against each webhook in the Slack card. Unticking a
+// channel silences ONLY that webhook (gated per-channel in notify._send + the direct posters).
+let SLACK_CHANNELS={};
+function _applySlackToggles(){document.querySelectorAll(".slack-ch").forEach(c=>{const ch=c.dataset.ch;c.checked=SLACK_CHANNELS[ch]!==false;});}
+function saveSlackChannel(ch,on){SLACK_CHANNELS[ch]=!!on;
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({slack_channel:{name:ch,on:!!on}})})
+    .then(r=>{if(!r.ok)throw 0;}).catch(()=>{});}
 function saveTradeFilters(){
   // DIRECTION only (user 2026-08-01) — market is governed by Markets (User) now. markets/locations kept
   // empty (= no restriction) for backend compatibility.

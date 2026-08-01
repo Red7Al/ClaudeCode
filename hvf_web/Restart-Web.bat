@@ -58,8 +58,10 @@ start "Squeeze Server" cmd /k python -m hvf_web.server
 REM give the server a few seconds to bind port 5057 before ngrok connects
 timeout /t 5 >nul
 
+cd C:\Users\eahin\OneDrive\ngrok
 echo Starting ngrok public share on port 5057 ...
-start "ngrok share" cmd /k ngrok http 5057 --pooling-enabled
+start "ngrok share" cmd /k nGrok-Start-SqueezeScanner.bat
+REM ngrok http 5057 --pooling-enabled
 
 echo.
 echo ============================================================
@@ -70,7 +72,6 @@ echo ============================================================
 
 pause
 goto :eof
-
 
 REM ======================================================================================================
 REM Function: CheckLibrary

@@ -89,6 +89,9 @@ def build_orders_blocks(tradeable: list, scan_time: str) -> list:
 
 
 def post_to_slack(blocks: list) -> bool:
+    from notify import slack_enabled
+    if not slack_enabled("orders"):
+        return False   # Slack #orders channel disabled (user 2026-08-01)
     if not SLACK_ORDERS:
         log.warning("SLACK_ORDERS not set — printing orders to stdout instead (expected on a local run)")
         return False

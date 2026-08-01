@@ -978,6 +978,9 @@ def build_slack_blocks(tradeable, developing, scan_time: str, per_market_n: int 
 
 
 def post_to_slack(blocks: list, rw_blocks: list = None):
+    from notify import slack_enabled
+    if not slack_enabled("signals"):
+        return   # Slack #signals channel disabled (user 2026-08-01)
     # Post the report to the primary channel AND any additional channels (user 2026-06-26, C):
     # SLACK_RW_HVF is an extra HVF-report channel. Each is an independent webhook; a missing/failed
     # one doesn't stop the others. rw_blocks (top-3-per-market) is used for SLACK_RW_HVF when given

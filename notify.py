@@ -143,11 +143,38 @@ WEBHOOKS = {
 # Internal Helpers
 # ======================================================================================================================
 
+_SLACK_FLAGS = {}   # channel -> (ts, on)
+
+
+def slack_enabled(channel: str) -> bool:
+    """PER-CHANNEL Slack on/off switch (user 2026-08-01): each webhook (alerts / signals / trades / daily /
+    weekly / orders / twitter) can be silenced independently. Read from the shared app_config key
+    'slack_ch_<channel>' (config_store) so it applies to BOTH the web server and the GitHub Actions
+    monitors. Cached 30s per channel; fail-open (default ON) so a config read error never silences alerts."""
+    import time as _t
+    now = _t.time()
+    c = _SLACK_FLAGS.get(channel)
+    if c and now - c[0] < 30:
+        return c[1]
+    on = True
+    try:
+        import config_store as _cs
+        v = str(_cs.get_value(f"slack_ch_{channel}", "1")).strip().lower()
+        on = v not in ("0", "false", "off", "no")
+    except Exception:
+        on = True
+    _SLACK_FLAGS[channel] = (now, on)
+    return on
+
+
 def _send(channel: str, blocks: list) -> bool:
     """
     POST a Block Kit message to the specified Slack channel via webhook.
     Returns True on success, False on failure.
     """
+    if not slack_enabled(channel):
+        log.info(f"Slack channel '{channel}' disabled — skipping post")
+        return False
     url = WEBHOOKS.get(channel)
     if not url:
         log.warning(f"No webhook URL configured for channel: {channel}")

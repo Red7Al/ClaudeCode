@@ -821,7 +821,9 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
     R:R, entry, stop or target changes.
     """
     import requests
-    from notify import fmt
+    from notify import fmt, slack_enabled
+    if not slack_enabled("signals"):
+        return   # Slack #signals channel disabled (user 2026-08-01)
     slack_url = os.environ.get("SLACK_SIGNALS", "")
     if not slack_url:
         return

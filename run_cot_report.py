@@ -443,6 +443,9 @@ def _staleness_note(report_date, generated_at: datetime, refreshed: bool = False
 # ----------------------------------------------------------------------------------------------------------------------
 
 def post_to_slack(text: str) -> bool:
+    from notify import slack_enabled
+    if not slack_enabled("weekly"):
+        return False   # Slack #weekly channel disabled (user 2026-08-01)
     if not SLACK_URL:
         log.warning("SLACK_WEEKLY not set — printing report to stdout instead")
         print(text)

@@ -222,7 +222,9 @@ def _save(rows: list):
 def _post_slack(rows: list, remaining):
     """Weight order: CRITICAL first, then by phantom count desc. CRITICAL → #alerts, else digest → #signals."""
     import requests
-    from notify import fmt
+    from notify import fmt, slack_enabled
+    if not slack_enabled("signals"):
+        return   # Slack #signals channel disabled (user 2026-08-01)
 
     rank = {"IDENTITY_MISMATCH": 0, "CRITICAL_MISMATCH": 0, "PHANTOM_WICKS": 1, "NO_OVERLAP": 2,
             "NO_IG_DATA": 3, "NO_YAHOO_DATA": 3, "NO_EPIC": 4, "OK": 5}

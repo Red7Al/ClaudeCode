@@ -446,6 +446,8 @@ def api_config():
                         "pinned_overrides": s.get("pinned_overrides", {}),
                         "engine": _cs.get_engine_settings(), "is_admin": _wu.is_admin(name),
                         "x_hvf_markets": _cs.get_x_hvf_markets(),
+                        "slack_channels": {ch: str(_cs.get_value(f"slack_ch_{ch}", "1")).strip().lower() not in ("0", "false", "off", "no")
+                                           for ch in ("alerts", "daily", "signals", "trades", "weekly")},
                         "features": {"xposts": _cs.get_value("feature_xposts", "false") == "true"}})
     body = request.get_json(silent=True) or {}
     if "trade" in body:
@@ -531,6 +533,15 @@ def api_config():
             if k in (body["features"] or {}):
                 _cs.set_value(f"feature_{k}", "true" if body["features"][k] else "false", updated_by=name)
         _wu.log_event(name, "Saved feature toggles (Config)")
+    if "slack_channel" in body:   # PER-CHANNEL Slack on/off (user 2026-08-01) — admin; a toggle per webhook
+        if not _wu.is_admin(name):
+            return jsonify({"ok": False, "error": "admin only"}), 403
+        sc = body["slack_channel"] or {}
+        ch = str(sc.get("name", "")).strip()
+        if ch in ("alerts", "daily", "signals", "trades", "weekly", "orders", "twitter"):
+            on = bool(sc.get("on"))
+            _cs.set_value(f"slack_ch_{ch}", "1" if on else "0", updated_by=name)
+            _wu.log_event(name, f"Slack #{ch} {'ENABLED' if on else 'DISABLED'} (Config)")
     if "engine" in body:
         if not _wu.is_admin(name):
             return jsonify({"ok": False, "error": "admin only"}), 403
