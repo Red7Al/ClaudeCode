@@ -64,3 +64,27 @@ def get_db(timeout: int = 15, attempts: int = 3):
             if i < attempts - 1:
                 time.sleep(3 * (i + 1))   # 3s, 6s — let a session-pool slot free up
     raise last
+
+
+# ── Encrypted secret-store bootstrap (task #53) ───────────────────────────────────────────────────────
+# db_pool is imported early by EVERY DB-using entrypoint (web server + all GitHub-Actions scripts), so this
+# is the single place to decrypt the Supabase app_secrets store into os.environ. DUAL-READ (override=False)
+# — only fills env vars not already set from .env, so behaviour is unchanged until .env is pruned. FULLY
+# fail-open: this must NEVER raise, since a failure here would break the import everything depends on. Runs
+# once per process, AFTER get_db is defined (app_secrets reads back through get_db).
+_SECRETS_BOOTSTRAPPED = False
+
+
+def _bootstrap_secrets():
+    global _SECRETS_BOOTSTRAPPED
+    if _SECRETS_BOOTSTRAPPED:
+        return
+    _SECRETS_BOOTSTRAPPED = True
+    try:
+        import app_secrets
+        app_secrets.load_secrets_into_env()
+    except Exception as e:
+        log.warning(f"app_secrets bootstrap skipped: {e}")
+
+
+_bootstrap_secrets()

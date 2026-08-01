@@ -68,12 +68,11 @@ def set_secret(name: str, value: str, updated_by=""):
     """Fernet-encrypt + upsert into app_secrets; refresh cache. Used by the admin Credentials UI."""
 ```
 
-Call sites:
-- `hvf_web/server.py` `__main__` and the WSGI entry: `app_secrets.load_secrets_into_env()` as the very first
-  step (before `import_credentials_from_env`, before the first DB/IG use).
-- Each Actions entrypoint (`run_session.py`, `run_hvf_report.py`, `intraday_signals.py`, …): the same one-line
-  call at the top of `main()`.
-- `setup_cronjobs.py`: read `GH_PAT` / `CRONJOB_API_KEY` via `get_secret` instead of env.
+Call site (single chokepoint — IMPLEMENTED): `db_pool.py` runs `_bootstrap_secrets()` at import (after
+`get_db` is defined, once per process, fully fail-open). Every DB-using entrypoint — the web server and all
+41 GitHub-Actions scripts — imports `db_pool`, so this one hook wires them all with no per-file edits.
+`hvf_web/server.py __main__` also calls it explicitly at boot (belt-and-suspenders). Verified: importing
+`db_pool` with only the bootstrap creds in env pulls `CRONJOB_API_KEY`/`FRED_API_KEY` from the store.
 
 Key rotation is supported by making `APP_SECRET_KEY` a **MultiFernet** (comma-separated keys: new first for
 encrypt, all tried for decrypt) — rotate by prepending a new key, re-encrypting, then retiring the old.
