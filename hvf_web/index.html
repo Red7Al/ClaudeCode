@@ -1475,32 +1475,35 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- Account name + obfuscated number, above the open positions (user 2026-07-20, P-05). -->
   <div id="ig-acct" style="font-size:14px;margin-bottom:8px"></div>
   <div id="ig-note" style="font-size:12px;margin-bottom:10px"></div>
-  <!-- Chart strip ABOVE BOTH tables (user 2026-08-01): Location / Market / Sector + Direction +
-       Good-till-date, computed from the working orders (enriched from the snapshot). Click-to-filter
-       brushes the working-orders table below. -->
-  <input type="hidden" id="igo_location"><input type="hidden" id="igo_market"><input type="hidden" id="igo_sector"><input type="hidden" id="igo_direction"><input type="hidden" id="igo_gtd">
-  <div class="viz" id="ig-ord-viz" style="border-bottom:none;padding:0 0 10px"></div>
+  <!-- OPEN POSITIONS get their OWN chart strip directly above their table (user 2026-08-01): Location /
+       Market / Sector / Direction, computed from the positions (enriched from the snapshot). -->
+  <input type="hidden" id="igp_location"><input type="hidden" id="igp_market"><input type="hidden" id="igp_sector"><input type="hidden" id="igp_direction">
+  <div class="viz" id="ig-pos-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <!-- No search here (user 2026-07-17): the IG account holds only a handful of live positions/orders, so
        a search is clutter. paintIgAccount tolerates the missing #ig-search input (treats it as blank). -->
   <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0"><span id="ig-pos-count"></span></div>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="ig-pos-count"></span><span class="grow" style="flex:1"></span>
+      <label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer" title="Show one aggregated row per instrument (sum the sizes, size-weighted average level) instead of every individual position."><input type="checkbox" id="ig-pos-agg" onchange="paintIgAccount()"> Aggregate — 1 row per instrument</label></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Name</th><th>Dir</th><th>Size</th><th>Level</th><th>Stop</th><th>Limit</th><th>Ccy</th><th>Opened (UTC)</th><th>Ticker</th></tr></thead>
+      <thead><tr><th class="clk" data-igp="name">Name</th><th class="clk" data-igp="direction">Dir</th><th class="clk" data-igp="size">Size</th><th class="clk" data-igp="level">Level</th><th class="clk" data-igp="stop">Stop</th><th class="clk" data-igp="limit">Limit</th><th class="clk" data-igp="currency">Ccy</th><th class="clk" data-igp="opened">Opened (UTC)</th><th class="clk" data-igp="ticker">Ticker</th></tr></thead>
       <tbody id="ig-pos-rows"></tbody>
     </table></div>
   </section>
-  <!-- The working-orders chart strip moved ABOVE both tables (user 2026-08-01) — see #ig-ord-viz above. -->
+  <!-- WORKING ORDERS get their OWN chart strip directly above their table (user 2026-08-01): Location /
+       Market / Sector / Direction / Good-till-date, computed from the orders. -->
+  <input type="hidden" id="igo_location"><input type="hidden" id="igo_market"><input type="hidden" id="igo_sector"><input type="hidden" id="igo_direction"><input type="hidden" id="igo_gtd">
+  <div class="viz" id="ig-ord-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="ig-ord-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Name</th><th>Dir</th><th>Size</th><th>Level</th><th>Type</th><th>Source</th><th>Good&nbsp;till (UTC)</th><th>Ticker</th></tr></thead>
+      <thead><tr><th class="clk" data-igo="name">Name</th><th class="clk" data-igo="direction">Dir</th><th class="clk" data-igo="size">Size</th><th class="clk" data-igo="level">Level</th><th class="clk" data-igo="type">Type</th><th class="clk" data-igo="source">Source</th><th class="clk" data-igo="good_till">Good&nbsp;till (UTC)</th><th class="clk" data-igo="ticker">Ticker</th></tr></thead>
       <tbody id="ig-ord-rows"></tbody>
     </table></div>
   </section>
 </div>
 
 <script>
-let DATA=[], SEL=null, sortK="dist_entry", sortDir=1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: closest to entry first (user 2026-07-11)
+let DATA=[], SEL=null, sortK="days_since", sortDir=-1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: most days since trigger first (user 2026-08-01)
 const $=id=>document.getElementById(id);
 // In-app confirm (user 2026-07-18): the native confirm() prefixes the ngrok host ("…ngrok-free.dev
 // says"), which looks broken. This styled dialog keeps the message clean and on-brand. Returns a Promise.
@@ -2039,6 +2042,8 @@ mselInit();
 document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;sortDir=(sortK===k)?-sortDir:-1;sortK=k;render();_sortArrows("data-k",sortK,sortDir);});
 document.querySelectorAll("th[data-pk]").forEach(th=>th.onclick=()=>{const k=th.dataset.pk;poSortDir=(poSortK===k)?-poSortDir:1;poSortK=k;renderPreorders();_sortArrows("data-pk",poSortK,poSortDir);});
 document.querySelectorAll("th[data-ok]").forEach(th=>th.onclick=()=>{const k=th.dataset.ok;ooSortDir=(ooSortK===k)?-ooSortDir:-1;ooSortK=k;paintOrderOps();_sortArrows("data-ok",ooSortK,ooSortDir);});
+document.querySelectorAll("th[data-igp]").forEach(th=>th.onclick=()=>{const k=th.dataset.igp;igpSortDir=(igpSortK===k)?-igpSortDir:-1;igpSortK=k;paintIgAccount();_sortArrows("data-igp",igpSortK,igpSortDir);});   // IG Account positions sort (user 2026-08-01)
+document.querySelectorAll("th[data-igo]").forEach(th=>th.onclick=()=>{const k=th.dataset.igo;igoSortDir=(igoSortK===k)?-igoSortDir:-1;igoSortK=k;paintIgAccount();_sortArrows("data-igo",igoSortK,igoSortDir);});   // IG Account orders sort (user 2026-08-01)
 document.querySelectorAll("th[data-ak]").forEach(th=>th.onclick=()=>{const k=th.dataset.ak;acSortDir=(acSortK===k)?-acSortDir:-1;acSortK=k;paintActivity();});
 F.forEach(id=>$(id).addEventListener("input",applyAll));
 // Click a chart bar / pie slice to set that filter (toggle off if already set) — user 2026-06-27.
@@ -2056,7 +2061,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   else if(k.startsWith("bcf_"))paintBatch();
   else if(k.startsWith("xf_"))paintXposts();
   else if(k.startsWith("slf_"))paintSyslogs();
-  else if(k.startsWith("igo_"))paintIgAccount();
+  else if(k.startsWith("igo_")||k.startsWith("igp_"))paintIgAccount();
   else applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
 const MF_IDS=["mf_sector","mf_direction","mf_status","mf_location","mf_market","mf_timeframe"];
@@ -2430,7 +2435,7 @@ let _statusSeeded=false;
 function _seedStatusDefaults(){
   if(_statusSeeded)return; _statusSeeded=true;
   const seed=(id,vals)=>{const el=$(id); if(el&&!el.value)el.value=vals.join(SEP);};
-  if(!(USER_FILTERS&&USER_FILTERS.mf_status))seed("mf_status",["READY"]);   // Scanner (L188)
+  if(!(USER_FILTERS&&USER_FILTERS.mf_status))seed("mf_status",["TRIGGERED"]);   // Scanner default = Triggered (user 2026-08-01)
   seed("pof_status",["READY","TRIGGERED"]);   // My Pre-orders (L203)
   seed("oof_status",["PENDING","WATCHING"]);  // Pre-orders to IG — Pending + Waiting (L225)
   // Squeeze History: no default outcome pre-selection (user 2026-08-01) — show every outcome, sorted by
@@ -2794,6 +2799,7 @@ function renderMarketsAdmin(){
 document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();_sortArrows("data-ma",maSortK,maSortDir);});
 // ── IG Account tab (user 2026-07-10): the acting user's own IG open positions + working orders ──
 let IG_POS=[], IG_ORD=[];
+let igpSortK="size", igpSortDir=-1, igoSortK="good_till", igoSortDir=-1;   // IG Account table sorts (user 2026-08-01): positions by size desc, orders by good-till desc
 const _igDtag=d=>d?`<span class="tag ${d==='BUY'?'bull':'bear'}">${d}</span>`:'';
 // Friendly order-source labels (user 2026-07-13): WEB_BRIDGE is the 2-hour Squeeze-scanner bridge.
 const _igSrc=s=>({WEB_BRIDGE:"Squeeze (bridge)",WEB_MANUAL:"Manual (web)"}[s]||s||'—');
@@ -2803,22 +2809,42 @@ const _igSrc=s=>({WEB_BRIDGE:"Squeeze (bridge)",WEB_MANUAL:"Manual (web)"}[s]||s
 function paintIgAccount(){
   const q=(($("ig-search")||{}).value||"").trim().toLowerCase();
   const hit=r=>!q||(((r.name||'')+' '+(r.ticker||r.epic||'')).toLowerCase().includes(q));
-  const pos=IG_POS.filter(hit);
-  // Working orders default-sorted by Good till (UTC) descending (user 2026-07-25, P-05 L245).
-  // Working orders (Amend): enrich each with location/market/sector from the scanner snapshot (DATA) by
-  // ticker, so the standard Location/Market/Sector chart strip can group them (user 2026-07-26, P-04 #94).
   const _snap={}; DATA.forEach(r=>{if(r.ticker)_snap[r.ticker]=r;});
-  const _enr=o=>{const s=_snap[o.ticker]||_snap[o.epic]||{};
-    return Object.assign({},o,{location:s.location||"—",market:s.market||"—",sector:s.sector||"—",
-      direction:o.direction||"—",gtd:(o.good_till||"").slice(0,10)||"—"});};   // Direction + Good-till-date dims (user 2026-08-01)
-  const ordBase=IG_ORD.filter(hit).map(_enr);           // search-filtered + enriched — the chart brushing base
+  const _enrCommon=o=>{const s=_snap[o.ticker]||_snap[o.epic]||{};
+    return {location:s.location||"—",market:s.market||"—",sector:s.sector||"—",direction:o.direction||"—"};};
+  const cnt=(n,tot,word)=>`<b style="font-size:15px;color:var(--fg)">${n}</b> ${word}${n===1?'':'s'}${tot!==n?` <span class="muted">of ${tot}</span>`:''}`;
+
+  // ── OPEN POSITIONS (own strip + aggregate toggle + sortable table, user 2026-08-01) ──
+  let posBase=IG_POS.filter(hit).map(p=>Object.assign({},p,_enrCommon(p)));
+  const _agg=(($("ig-pos-agg")||{}).checked);
+  if(_agg){   // one row per instrument+direction: sum size, size-weighted average level, earliest opened
+    const g={};
+    posBase.forEach(p=>{const key=(p.ticker||p.epic||p.name)+'|'+p.direction;
+      const a=g[key]||(g[key]=Object.assign({},p,{size:0,_wsum:0,_n:0,stop:null,limit:null}));
+      const sz=+p.size||0; a.size+=sz; a._wsum+=(+p.level||0)*sz; a._n++;
+      if(p.opened&&(!a.opened||p.opened<a.opened))a.opened=p.opened;});
+    posBase=Object.values(g).map(a=>Object.assign(a,{level:a.size?+(a._wsum/a.size).toFixed(4):a.level}));
+  }
+  const IGPF=[["igp_location","location"],["igp_market","market"],["igp_sector","sector"],["igp_direction","direction"]];
+  const pby=(field,exceptId)=>{const m={};
+    posBase.forEach(p=>{const v=p[field]||"—";if(!(v in m))m[v]=0;});
+    posBase.forEach(p=>{if(!IGPF.every(([id,k])=>id===exceptId||inSet(id,p[k])))return;const v=p[field]||"—";m[v]++;});return m;};
+  $("ig-pos-viz").innerHTML=posBase.length?(
+    `<div class="vizsector">`+barChart("Location",pby("location","igp_location"),"igp_location")+`</div>`+
+    `<div class="vizsector">`+barChart("Market",pby("market","igp_market"),"igp_market")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",pby("sector","igp_sector"),"igp_sector")+`</div>`+
+    `<div class="vizsector">`+barChart("Direction",pby("direction","igp_direction"),"igp_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`):"";
+  packViz("ig-pos-viz");
+  const pos=genSort(posBase.filter(p=>IGPF.every(([id,k])=>inSet(id,p[k]))),igpSortK,igpSortDir);
+  $("ig-pos-count").innerHTML=cnt(pos.length,IG_POS.length,_agg?"instrument":"open position");
+  $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${_igDtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td><b>${p.ticker||p.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
+
+  // ── WORKING ORDERS (own strip + sortable table) ──
+  const ordBase=IG_ORD.filter(hit).map(o=>Object.assign({},o,_enrCommon(o),{gtd:(o.good_till||"").slice(0,10)||"—"}));
   const IGF=[["igo_location","location"],["igo_market","market"],["igo_sector","sector"],["igo_direction","direction"],["igo_gtd","gtd"]];
-  // Brushed counts (house L31): each chart counts over ordBase with the OTHER igo_ filters applied but not
-  // its own, so all option-bars stay visible with the selected one(s) highlighted.
   const iby=(field,exceptId)=>{const m={};
-    ordBase.forEach(o=>{const v=o[field]||"—";if(!(v in m))m[v]=0;});   // seed every option → stable packing (P-04 #66/#94)
-    ordBase.forEach(o=>{if(!IGF.every(([id,k])=>id===exceptId||inSet(id,o[k])))return;const v=o[field]||"—";m[v]++;});
-    return m;};
+    ordBase.forEach(o=>{const v=o[field]||"—";if(!(v in m))m[v]=0;});
+    ordBase.forEach(o=>{if(!IGF.every(([id,k])=>id===exceptId||inSet(id,o[k])))return;const v=o[field]||"—";m[v]++;});return m;};
   $("ig-ord-viz").innerHTML=ordBase.length?(
     `<div class="vizsector">`+barChart("Location",iby("location","igo_location"),"igo_location")+`</div>`+
     `<div class="vizsector">`+barChart("Market",iby("market","igo_market"),"igo_market")+`</div>`+
@@ -2826,12 +2852,8 @@ function paintIgAccount(){
     `<div class="vizsector">`+barChart("Direction",iby("direction","igo_direction"),"igo_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`+
     `<div class="vizsector">`+barChart("Good till",iby("gtd","igo_gtd"),"igo_gtd",null,true)+`</div>`):"";
   packViz("ig-ord-viz");
-  // Table honours every igo_ chart filter; default sort by Good till (UTC) desc (user 2026-07-25, P-05 L245).
-  const ord=ordBase.filter(o=>IGF.every(([id,k])=>inSet(id,o[k]))).sort((a,b)=>(b.good_till||'').localeCompare(a.good_till||''));
-  const cnt=(n,tot,word)=>`<b style="font-size:15px;color:var(--fg)">${n}</b> ${word}${n===1?'':'s'}${tot!==n?` <span class="muted">of ${tot}</span>`:''}`;
-  $("ig-pos-count").innerHTML=cnt(pos.length,IG_POS.length,"open position");
+  const ord=genSort(ordBase.filter(o=>IGF.every(([id,k])=>inSet(id,o[k]))),igoSortK,igoSortDir);
   $("ig-ord-count").innerHTML=cnt(ord.length,IG_ORD.length,"working order");
-  $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td>${nm40(p.name)}</td><td>${_igDtag(p.direction)}</td><td>${p.size??''}</td><td>${p.level??''}</td><td>${p.stop??''}</td><td>${p.limit??''}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td><b>${p.ticker||p.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
   $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${_igDtag(o.direction)}</td><td>${o.size??''}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
 function renderIgAccount(ev){
@@ -3954,7 +3976,8 @@ function _stampSortDefaults(){
    // admin tables (var names from their th[data-*] click wiring)
    ["data-xk",()=>[xSortK,xSortDir]],["data-jk",()=>[jSortK,jSortDir]],["data-sk",()=>[slSortK,slSortDir]],
    ["data-vk",()=>[verSortK,verSortDir]],["data-bk",()=>[batchSortK,batchSortDir]],["data-ak",()=>[acSortK,acSortDir]],
-   ["data-sqh",()=>[sqhSortK,sqhSortDir]]];   // Squeeze History default sort arrow (P-05 L342)
+   ["data-sqh",()=>[sqhSortK,sqhSortDir]],
+   ["data-igp",()=>[igpSortK,igpSortDir]],["data-igo",()=>[igoSortK,igoSortDir]]];   // IG Account tables (user 2026-08-01)
   pairs.forEach(([a,get])=>{try{const [k,d]=get();_sortArrows(a,k,d);}catch(e){}});   // per-pair guard: a missing var just skips that table
 }
 _stampSortDefaults();
