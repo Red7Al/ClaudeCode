@@ -760,6 +760,11 @@ MAX_TRADES_PER_INSTRUMENT_PER_DAY = 5
 # charts. Editable list — add addresses to email more people.
 EMAIL_RECIPIENTS = ["eahind@yahoo.co.uk"]
 
+# The FROM address for outbound emails (user 2026-08-01: "email from can be eahind@yahoo.co.uk for now").
+# For Yahoo SMTP the sender must equal the authenticated YAHOO_USER, so set YAHOO_USER to this address;
+# for Resend it is the RESEND_FROM (needs a verified domain). Env EMAIL_FROM overrides.
+EMAIL_FROM = "eahind@yahoo.co.uk"
+
 # Economic calendar block window — no new trades within this many minutes
 # of a high-impact event
 CALENDAR_BLOCK_MINUTES = 30

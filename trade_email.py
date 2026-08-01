@@ -554,6 +554,19 @@ def _html_with_inline(html: str, charts: list) -> str:
         for cid, _, _ in charts)
 
 
+def _from_addr(default: str = "") -> str:
+    """Configured FROM address (user 2026-08-01: eahind@yahoo.co.uk for now). Env EMAIL_FROM wins, then
+    config.EMAIL_FROM, else the caller's default (e.g. the provider's authenticated user)."""
+    v = os.environ.get("EMAIL_FROM")
+    if v:
+        return v
+    try:
+        from config import EMAIL_FROM
+        return EMAIL_FROM or default
+    except Exception:
+        return default
+
+
 def _send_via_resend(subject, text, html, charts, rcpts) -> bool:
     """Send via the Resend HTTP API (no SMTP, no app password). Charts attached inline."""
     import base64
@@ -561,8 +574,8 @@ def _send_via_resend(subject, text, html, charts, rcpts) -> bool:
     if not key:
         return False
     # Resend test mode (no verified domain) sends FROM onboarding@resend.dev and only
-    # delivers to the account-owner address. Set RESEND_FROM once a domain is verified.
-    sender = os.environ.get("RESEND_FROM", "onboarding@resend.dev")
+    # delivers to the account-owner address. Set RESEND_FROM / EMAIL_FROM once a domain is verified.
+    sender = os.environ.get("RESEND_FROM") or _from_addr("onboarding@resend.dev")
     payload = {
         "from": sender, "to": rcpts, "subject": subject,
         "text": text, "html": _html_with_inline(html, charts),
@@ -589,7 +602,7 @@ def _send_via_yahoo(subject, text, html, charts, rcpts) -> bool:
         return False
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"]    = user
+    msg["From"]    = _from_addr(user)   # eahind@yahoo.co.uk by default; Yahoo needs this to equal YAHOO_USER
     msg["To"]      = ", ".join(rcpts)
     msg.set_content(text)
     msg.add_alternative(_html_with_inline(html, charts), subtype="html")
