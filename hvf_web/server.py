@@ -1578,6 +1578,11 @@ def api_place_order():
         if _acct_email:
             _profile["email"] = _acct_email
         _profile["name"] = name
+        # Per-user IG working-order lifespan (user 2026-08-01) — apply the acting user's own value at
+        # placement; falls back to the shared default when unset.
+        _wol = _user_limits(_wu.get_settings(name)).get("wo_lifespan_days")
+        if isinstance(_wol, (int, float)) and _wol >= 1:
+            _profile["wo_lifespan_days"] = int(_wol)
         with ig_shim.acting_session(name):
             wo = ig_shim.place_hvf_order_from_sig(sig, _profile, "WEB_MANUAL", 1.0)
     except Exception as e:

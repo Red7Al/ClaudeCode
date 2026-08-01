@@ -2865,7 +2865,10 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         user_id=profile["user_id"], ticker=ticker, direction=direction, size=size,
         entry_level=entry, stop_level=stop, limit_level=target,
         session_name=session_name, signal_summary=signal_str,
-        paper_trade=profile.get("paper_trade", False), hvf_type=hvf_type)
+        paper_trade=profile.get("paper_trade", False), hvf_type=hvf_type,
+        # Per-user IG working-order lifespan (user 2026-08-01): the web place path carries the acting
+        # user's own value; None here falls back to the shared config_store default (bridge / Actions).
+        good_till_days=profile.get("wo_lifespan_days"))
 
     if result and not result.get("updated") and not result.get("watching"):
         try:
