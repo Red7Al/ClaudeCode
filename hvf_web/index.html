@@ -392,8 +392,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="tab" id="tab-terms" onclick="showTab('terms')">T&amp;C</button>
   <!-- Squeeze History sits at the right, next to Operations (user 2026-07-20). -->
   <button class="tab" id="tab-squeezehist" onclick="showTab('squeezehist')" style="display:none">Squeeze History <span id="sqhtab-count"></span></button>
-  <button class="tab" id="tab-operations" onclick="showTab('operations')" style="display:none">🛠️ Operations</button>
   <button class="tab" id="tab-settings" onclick="showTab('settings')" style="display:none">⚙️ Settings</button>
+  <button class="tab" id="tab-operations" onclick="showTab('operations')" style="display:none">🛠️ Operations</button>   <!-- Operations to the RIGHT of Settings (user 2026-08-01) -->
 </div>
 <div class="subnav" id="subnav" style="display:none"></div>
 
@@ -1392,8 +1392,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        at a time instead of eight stacked cards. Credential pills are injected by renderCredentials. -->
   <nav class="confnav" id="confadminnav">
     <button class="pill adminpill active" data-panel="engine" onclick="confAdminShow('engine')">⚙️ Engine</button>
-    <button class="pill adminpill" data-panel="bridge" onclick="confAdminShow('bridge')">🌉 Bridge quality</button>
-    <button class="pill adminpill" data-panel="spread" onclick="confAdminShow('spread')">↔️ Spread retries</button>
+    <button class="pill adminpill" data-panel="bridge" onclick="confAdminShow('bridge')" style="display:none">🌉 Bridge quality</button>   <!-- disabled — no longer used (user 2026-08-01) -->
+    <button class="pill adminpill" data-panel="spread" onclick="confAdminShow('spread')" style="display:none">↔️ Spread retries</button>   <!-- disabled — no longer used (user 2026-08-01) -->
     <button class="pill adminpill" data-panel="xpub" onclick="confAdminShow('xpub')">🐦 X publishing</button>
   </nav>
 
@@ -1401,7 +1401,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
     <p class="muted" style="font-size:12px">Application-wide trading/engine values (shared, one account).</p>
     <div class="credrow"><span class="clabel">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="eng-wo_lifespan_days" style="max-width:120px"></div>
-    <div class="credrow"><span class="clabel">Automated stop-loss trailing (%) <span class="muted" style="font-weight:400">0 = off. As a position runs into profit, each monitor pass moves the stop up by <b>entry × gain × this %</b> (never widened). e.g. 50 keeps half the run.</span></span><input type="number" min="0" max="100" step="5" id="eng-stop_amend_threshold" style="max-width:120px"></div>
+    <div class="credrow" style="display:none"><span class="clabel">Automated stop-loss trailing (%) <span class="muted" style="font-weight:400">0 = off. As a position runs into profit, each monitor pass moves the stop up by <b>entry × gain × this %</b> (never widened). e.g. 50 keeps half the run.</span></span><input type="number" min="0" max="100" step="5" id="eng-stop_amend_threshold" style="max-width:120px"></div>   <!-- disabled — no longer used (user 2026-08-01) -->
     <button class="btn" style="margin-top:10px" onclick="saveEngine()">Save engine settings</button>
     <span id="eng-msg" style="font-size:12px;margin-left:8px"></span>
   </div>
@@ -2429,7 +2429,8 @@ function _seedStatusDefaults(){
   if(!(USER_FILTERS&&USER_FILTERS.mf_status))seed("mf_status",["READY"]);   // Scanner (L188)
   seed("pof_status",["READY","TRIGGERED"]);   // My Pre-orders (L203)
   seed("oof_status",["PENDING","WATCHING"]);  // Pre-orders to IG — Pending + Waiting (L225)
-  seed("sqf_status",["TARGET"]);              // Squeeze History (L341)
+  // Squeeze History: no default outcome pre-selection (user 2026-08-01) — show every outcome, sorted by
+  // triggered date desc (see sqhSortK default).
 }
 // Gold-tier gate — the SINGLE rule for every Gold-only feature (Trading (Momentum) config panel, the
 // Multi-Factor Momentum tab). Gold means Gold (user 2026-07-17): admin is an access-control axis, not a
@@ -2490,6 +2491,8 @@ function renderCredentials(){
         b.onclick=()=>(admin?confAdminShow:confShow)(s.id);
         nav.appendChild(b);
       });
+      // Email (Yahoo) section is disabled — no longer used (user 2026-08-01): drop its pill.
+      document.querySelectorAll('#confnav .credpill,#confadminnav .credpill').forEach(p=>{if(p.dataset.panel==="Email (Yahoo)")p.remove();});
       if(window.ENGINE_VALS)Object.entries(ENGINE_VALS).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});
       const cur=document.querySelector("#confnav .pill.active")?.dataset.panel;
       confShow(document.querySelector(`#view-config .confpanel[data-panel="${cur}"]`)?cur:"preferences");
@@ -2510,9 +2513,9 @@ function saveCreds(secId){
 }
 function renderConfig(){
   renderCredentials();
-  // Reveal the Gold-tier Trading (Momentum) pill (it ships hidden — see the button in #confnav).
+  // Trading (Momentum) is DISABLED — no longer used (user 2026-08-01): keep its pill hidden for everyone.
   const _tm=document.querySelector('#confnav .pill[data-panel="trading_mo"]');
-  if(_tm)_tm.style.display=goldOnly()?"":"none";
+  if(_tm)_tm.style.display="none";
   if(!goldOnly()&&document.querySelector('#view-config .confpanel[data-panel="trading_mo"]:not(.hidden)'))confShow("preferences");
   fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
@@ -2661,7 +2664,7 @@ function paintOrderOps(){
     rows=rows.filter(r=>(_snm(r.ticker)+' '+disp(r.ticker||'')+' '+(r.ticker||'')).toLowerCase().includes(_ooq));}
   if($("oo-datebar")&&!$("oo-datebar").innerHTML)$("oo-datebar").innerHTML=dateFilterBar("oo","paintOrderOps()");
   $("oo-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> order operation records${rows.length!==OO_ROWS.length?` <span class="muted">of ${OO_ROWS.length}</span>`:""}`;
-  $("ootab-count").textContent="("+OO_ROWS.length+")";
+  $("ootab-count").textContent="("+rows.length+")";   // VISIBLE (filtered) count, not the total (user 2026-08-01)
   const oby=k=>OO_ROWS.reduce((m,r)=>{const v=r[k]||"—";m[v]=(m[v]||0)+1;return m;},{});
   // Ticker chart sits far RIGHT wherever it appears (user 2026-07-17, P-11a — reverses P-11).
   $("oo-viz").innerHTML=
@@ -3336,7 +3339,7 @@ function paintWinnersDims(dims, all){
   }).join("");
 }
 // ── Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle table ───────────────────────────────
-let SQH=null, sqhSortK="return_pct", sqhSortDir=-1;   // default: Return descending (user 2026-07-25, P-05 L342); header click changes it
+let SQH=null, sqhSortK="triggered_date", sqhSortDir=-1;   // default: Triggered date descending (user 2026-08-01); header click changes it
 function renderSqueezeHist(){
   if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty">Loading…</td></tr>';}
   fetch("/api/squeeze-history").then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];paintSqueezeHist();})
