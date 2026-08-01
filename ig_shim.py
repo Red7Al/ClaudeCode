@@ -1023,11 +1023,16 @@ def get_epic(ticker: str) -> Optional[str]:
 
 def get_open_positions() -> list:
     """
-    Return all currently open OTC positions for the account.
-    Returns an empty list if no positions exist (404 from IG is not an error).
+    Return all currently open positions for the account.
+
+    Uses GET /positions (v2) — the list-all endpoint. BUG FIX (user 2026-08-01: "I have open positions
+    but you NEVER return them"): this previously called GET /positions/otc, which is only valid for POST
+    (create) / DELETE (close). A GET on it returns 404, and the 404 was being swallowed as "no positions",
+    so every real open position was invisible on the IG Account page. GET /positions returns 200 with an
+    empty list for a flat account, so the 404 branch below is just defensive now.
     """
     try:
-        data = session.get("/positions/otc", version="2")
+        data = session.get("/positions", version="2")
         return data.get("positions", [])
     except requests.HTTPError as e:
         if e.response.status_code == 404:
