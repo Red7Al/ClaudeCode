@@ -1472,6 +1472,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- Account name + obfuscated number, above the open positions (user 2026-07-20, P-05). -->
   <div id="ig-acct" style="font-size:14px;margin-bottom:8px"></div>
   <div id="ig-note" style="font-size:12px;margin-bottom:10px"></div>
+  <!-- Chart strip ABOVE BOTH tables (user 2026-08-01): Location / Market / Sector + Direction +
+       Good-till-date, computed from the working orders (enriched from the snapshot). Click-to-filter
+       brushes the working-orders table below. -->
+  <input type="hidden" id="igo_location"><input type="hidden" id="igo_market"><input type="hidden" id="igo_sector"><input type="hidden" id="igo_direction"><input type="hidden" id="igo_gtd">
+  <div class="viz" id="ig-ord-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <!-- No search here (user 2026-07-17): the IG account holds only a handful of live positions/orders, so
        a search is clutter. paintIgAccount tolerates the missing #ig-search input (treats it as blank). -->
   <section class="gsec" style="border-left-color:var(--accent)">
@@ -1481,11 +1486,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <tbody id="ig-pos-rows"></tbody>
     </table></div>
   </section>
-  <!-- Standard chart strip for the working orders (Amend) — Location / Market / Sector in the house
-       LHS order, enriched from the scanner snapshot by ticker; click-to-filter + brushed like every
-       other page (user 2026-07-26, P-04 L94 / #94). Hidden only when there are no working orders. -->
-  <input type="hidden" id="igo_location"><input type="hidden" id="igo_market"><input type="hidden" id="igo_sector">
-  <div class="viz" id="ig-ord-viz" style="border-bottom:none;padding:0 0 10px"></div>
+  <!-- The working-orders chart strip moved ABOVE both tables (user 2026-08-01) — see #ig-ord-viz above. -->
   <section class="gsec" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="ig-ord-count"></span></div>
     <div class="tablewrap"><table>
@@ -2805,9 +2806,10 @@ function paintIgAccount(){
   // ticker, so the standard Location/Market/Sector chart strip can group them (user 2026-07-26, P-04 #94).
   const _snap={}; DATA.forEach(r=>{if(r.ticker)_snap[r.ticker]=r;});
   const _enr=o=>{const s=_snap[o.ticker]||_snap[o.epic]||{};
-    return Object.assign({},o,{location:s.location||"—",market:s.market||"—",sector:s.sector||"—"});};
+    return Object.assign({},o,{location:s.location||"—",market:s.market||"—",sector:s.sector||"—",
+      direction:o.direction||"—",gtd:(o.good_till||"").slice(0,10)||"—"});};   // Direction + Good-till-date dims (user 2026-08-01)
   const ordBase=IG_ORD.filter(hit).map(_enr);           // search-filtered + enriched — the chart brushing base
-  const IGF=[["igo_location","location"],["igo_market","market"],["igo_sector","sector"]];
+  const IGF=[["igo_location","location"],["igo_market","market"],["igo_sector","sector"],["igo_direction","direction"],["igo_gtd","gtd"]];
   // Brushed counts (house L31): each chart counts over ordBase with the OTHER igo_ filters applied but not
   // its own, so all option-bars stay visible with the selected one(s) highlighted.
   const iby=(field,exceptId)=>{const m={};
@@ -2817,7 +2819,9 @@ function paintIgAccount(){
   $("ig-ord-viz").innerHTML=ordBase.length?(
     `<div class="vizsector">`+barChart("Location",iby("location","igo_location"),"igo_location")+`</div>`+
     `<div class="vizsector">`+barChart("Market",iby("market","igo_market"),"igo_market")+`</div>`+
-    `<div class="vizsector">`+pieChart("Sector",iby("sector","igo_sector"),"igo_sector")+`</div>`):"";
+    `<div class="vizsector">`+pieChart("Sector",iby("sector","igo_sector"),"igo_sector")+`</div>`+
+    `<div class="vizsector">`+barChart("Direction",iby("direction","igo_direction"),"igo_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`+
+    `<div class="vizsector">`+barChart("Good till",iby("gtd","igo_gtd"),"igo_gtd",null,true)+`</div>`):"";
   packViz("ig-ord-viz");
   // Table honours every igo_ chart filter; default sort by Good till (UTC) desc (user 2026-07-25, P-05 L245).
   const ord=ordBase.filter(o=>IGF.every(([id,k])=>inSet(id,o[k]))).sort((a,b)=>(b.good_till||'').localeCompare(a.good_till||''));
