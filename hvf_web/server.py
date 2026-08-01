@@ -337,6 +337,17 @@ def api_reset_password():
     return jsonify({"ok": True}) if ok else (jsonify({"ok": False, "error": err}), 400)
 
 
+def _wo_lifespan_baseline() -> int:
+    """Baseline IG working-order lifespan (days) for a user who hasn't set their own (user 2026-08-01):
+    the shared app_config value if present, else the code default 28."""
+    try:
+        import config_store as _cs
+        v = _cs.get_value("wo_lifespan_days", "")
+        return int(float(v)) if v else 28
+    except Exception:
+        return 28
+
+
 def _limit_defaults() -> dict:
     """Code defaults for a user's PERSONAL trading limits (user 2026-07-10), sourced from config.py so
     they track the shared engine's baseline. Per-user overrides layer on top."""
@@ -360,6 +371,9 @@ def _limit_defaults() -> dict:
             "max_position_pct": float(getattr(_cfg, "MODEL_STAKE_PCT", 2)),
             "max_open": int(getattr(_cfg, "MODEL_MAX_OPEN", 0)),
             "max_trades_per_instrument_per_day": int(getattr(_cfg, "MAX_TRADES_PER_INSTRUMENT_PER_DAY", 5)),
+            # IG working-order lifespan is now PER-USER (user 2026-08-01) — default from the shared app_config
+            # (or the code baseline 28). The engine's own default still applies to the automated bridge.
+            "wo_lifespan_days": _wo_lifespan_baseline(),
             "bounce_alert_pct": float(getattr(_cfg, "BOUNCE_ALERT_PCT", 0.02)),
             "bounce_lookback_hours": int(getattr(_cfg, "BOUNCE_LOOKBACK_HOURS", 48)),
             "email_recipients": list(getattr(_cfg, "EMAIL_RECIPIENTS", []))}
@@ -480,7 +494,7 @@ def api_config():
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = float(v)
         for k in ("min_quality", "min_volume_score", "max_trades_per_instrument_per_day", "bounce_lookback_hours",
-                  "adaptive_filters", "rebalance_weeks", "max_open"):
+                  "adaptive_filters", "rebalance_weeks", "max_open", "wo_lifespan_days"):
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = int(v)

@@ -632,6 +632,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="pill" data-panel="tabvis" onclick="confShow('tabvis')">👁️ Tab visibility</button>
     <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
     <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>   <!-- next to IG (user 2026-08-01) -->
+    <button class="pill" data-panel="adaptive" onclick="confShow('adaptive')">🎯 Adaptive Filters</button>   <!-- own panel (user 2026-08-01) -->
     <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>
     <!-- Gold-tier only (user 2026-07-17, P-06): ships HIDDEN and is revealed by renderConfig() only for a
          Gold account, so a failure to run the gate leaves the feature hidden rather than exposed. -->
@@ -659,17 +660,25 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
            the variable is stored and honoured now. -->
       <div class="credrow"><span class="clabel" title="Only trade instruments whose value is at least this. For equities the value is MARKET CAP (e.g. £/$). 0 = no minimum. Enforced like Minimum Quality once instrument values are available in the scan.">Min instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-min_instrument_value" style="max-width:160px"></div>
       <div class="credrow"><span class="clabel" title="Only trade instruments whose value is at most this. For equities the value is MARKET CAP. 0 = no maximum.">Max instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-max_instrument_value" style="max-width:160px"></div>
-      <!-- Adaptive filters (user 2026-07-27, P-07): the configuration knob to re-tune Market/Quality/R:R
-           on a cadence from the best-settings analysis. The walk-forward engine that applies it is the
-           separate deferred L58 task; here we store the preference + window. -->
-      <div class="credrow"><span class="clabel" title="When on, your Market / Quality / R:R filters are periodically re-tuned from the recent 'best settings' analysis (every N weeks below). The automatic re-tuning engine is being built (deferred L58); this stores your preference.">Adaptive filters — auto-tune Market / Quality / R:R</span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="lim-adaptive_filters"> enable</label></div>
-      <div class="credrow"><span class="clabel" title="How often the adaptive filters re-tune, in weeks (e.g. 4 = every 4 weeks). Only used when 'Adaptive filters' is enabled.">Rebalance window (weeks)</span><input type="number" min="1" max="52" step="1" id="lim-rebalance_weeks" placeholder="4" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">Max trades per instrument / day</span><input type="number" min="0" step="1" id="lim-max_trades_per_instrument_per_day" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">Bounce alert (fraction — 0.02 = 2%)</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">Bounce lookback (hours)</span><input type="number" min="0" step="1" id="lim-bounce_lookback_hours" style="max-width:120px"></div>
+      <!-- Adaptive filters + Rebalance window moved to their own "Adaptive Filters" panel (user 2026-08-01).
+           Max trades per instrument/day moved to Trading (Squeeze). Bounce alert/lookback disabled — inputs
+           kept hidden so saveLimits still round-trips their stored values. -->
+      <div class="credrow" style="display:none"><span class="clabel">Bounce alert (fraction — 0.02 = 2%)</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct" style="max-width:120px"></div>
+      <div class="credrow" style="display:none"><span class="clabel">Bounce lookback (hours)</span><input type="number" min="0" step="1" id="lim-bounce_lookback_hours" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Email recipients (comma-separated)</span><input type="text" id="lim-email_recipients" class="cred-in" style="flex:1 1 260px"></div>
       <button class="btn" style="margin-top:10px" onclick="saveLimits()">Save my trading limits</button>
       <span id="lim-msg" style="font-size:12px;margin-left:8px"></span>
+    </div>
+  </div>
+
+  <!-- Adaptive Filters — its own panel (user 2026-08-01): moved out of My trading limits. -->
+  <div class="confpanel hidden" data-panel="adaptive">
+    <div class="card" style="margin-bottom:0"><h4>Adaptive Filters</h4>
+      <p class="muted" style="font-size:12px">When on, your Market / Quality / R:R filters are periodically re-tuned from the recent <b>best-settings</b> analysis (every N weeks). The auto-tuning engine is being built (deferred); this stores your preference + cadence. Saved with your other trading limits.</p>
+      <div class="credrow"><span class="clabel" title="When on, your Market / Quality / R:R filters are periodically re-tuned from the recent 'best settings' analysis (every N weeks below).">Adaptive filters — auto-tune Market / Quality / R:R</span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="lim-adaptive_filters"> enable</label></div>
+      <div class="credrow"><span class="clabel" title="How often the adaptive filters re-tune, in weeks (e.g. 4 = every 4 weeks). Only used when 'Adaptive filters' is enabled.">Rebalance window (weeks)</span><input type="number" min="1" max="52" step="1" id="lim-rebalance_weeks" placeholder="4" style="max-width:120px"></div>
+      <button class="btn" style="margin-top:10px" onclick="saveLimits()">Save adaptive filters</button>
+      <span id="lim-msg2" style="font-size:12px;margin-left:8px"></span>
     </div>
   </div>
 
@@ -712,6 +721,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <p class="muted" style="font-size:12px">Yes = the 2-hourly bridge (and 28-day lifespan orders) may place squeeze setups as live IG working orders. No = the bridge scans and reports but places nothing.</p>
       <div class="credrow"><span class="clabel">Bridge may place orders</span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="cfg-bridge" onchange="saveBridge()"> Yes</label></div>
       <span id="bridge-msg" style="font-size:12px"></span>
+    </div>
+    <!-- Per-user squeeze trading controls moved here (user 2026-08-01): Max trades/instrument/day (from My
+         trading limits) + IG working-order lifespan (now per-user, was an admin engine setting). Saved with
+         your trading limits. -->
+    <div class="card"><h4>My squeeze order controls</h4>
+      <div class="credrow"><span class="clabel">Max trades per instrument / day</span><input type="number" min="0" step="1" id="lim-max_trades_per_instrument_per_day" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="How long your IG working orders stay live before expiring, in days. Your own setting (was admin-only).">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="lim-wo_lifespan_days" placeholder="28" style="max-width:120px"></div>
+      <button class="btn" style="margin-top:8px" onclick="saveLimits()">Save order controls</button>
+      <span id="lim-msg3" style="font-size:12px;margin-left:8px"></span>
     </div>
   </div>
 
@@ -2435,7 +2453,7 @@ let _statusSeeded=false;
 function _seedStatusDefaults(){
   if(_statusSeeded)return; _statusSeeded=true;
   const seed=(id,vals)=>{const el=$(id); if(el&&!el.value)el.value=vals.join(SEP);};
-  if(!(USER_FILTERS&&USER_FILTERS.mf_status))seed("mf_status",["TRIGGERED"]);   // Scanner default = Triggered (user 2026-08-01)
+  if(!(USER_FILTERS&&USER_FILTERS.mf_status))seed("mf_status",["READY"]);   // Scanner default = Ready (user 2026-08-01, reverted)
   seed("pof_status",["READY","TRIGGERED"]);   // My Pre-orders (L203)
   seed("oof_status",["PENDING","WATCHING"]);  // Pre-orders to IG — Pending + Waiting (L225)
   // Squeeze History: no default outcome pre-selection (user 2026-08-01) — show every outcome, sorted by
@@ -2604,19 +2622,21 @@ function saveLeverage(){
     .catch(()=>{$("lev-msg").style.color="var(--bear)";$("lev-msg").textContent="Save failed.";});
 }
 function saveLimits(){
-  const num=(id,int)=>{const v=(int?parseInt:parseFloat)($("lim-"+id).value);return isFinite(v)&&v>=0?v:undefined;};
+  const num=(id,int)=>{const el=$("lim-"+id);if(!el)return undefined;const v=(int?parseInt:parseFloat)(el.value);return isFinite(v)&&v>=0?v:undefined;};
   const lim={};
   [["min_risk_reward",0],["bounce_alert_pct",0],["min_instrument_value",0],["max_instrument_value",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
-  [["min_quality",1],["min_volume_score",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["rebalance_weeks",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
+  [["min_quality",1],["min_volume_score",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["rebalance_weeks",1],["wo_lifespan_days",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
   lim.adaptive_filters=($("lim-adaptive_filters")||{}).checked?1:0;   // adaptive-filters enable toggle (user 2026-07-27, P-07)
-  lim.email_recipients=($("lim-email_recipients").value||"").split(",").map(x=>x.trim()).filter(Boolean);
+  const _er=$("lim-email_recipients"); if(_er)lim.email_recipients=(_er.value||"").split(",").map(x=>x.trim()).filter(Boolean);
+  // Show the "Saved." message in whichever panel's save button was clicked (limits / adaptive / squeeze).
+  const _setMsg=(txt,ok)=>["lim-msg","lim-msg2","lim-msg3"].forEach(id=>{const el=$(id);if(el){el.style.color=ok?"var(--bull)":"var(--bear)";el.textContent=txt;}});
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
-    .then(r=>{const el=$("lim-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Saved.";
+    .then(r=>{if(r.ok){_setMsg("Saved.",true);
       MY_LIMITS={...MY_LIMITS,...lim};if(typeof renderPreorders==='function')renderPreorders();   // apply new floors to My Pre-orders now (user 2026-07-24, P-02)
       if(typeof _renderPerformance==='function')_renderPerformance();   // Performance respects the personal Volume Score floor now too (user 2026-07-28)
       if(WIN!==null&&typeof winnersParamsChange==='function')winnersParamsChange();   // re-render the winners tab with the new floor
-    }else{el.style.color="var(--bear)";el.textContent="Save failed.";}})
-    .catch(()=>{const el=$("lim-msg");el.style.color="var(--bear)";el.textContent="Save failed.";});
+    }else{_setMsg("Save failed.",false);}})
+    .catch(()=>{_setMsg("Save failed.",false);});
 }
 function saveTradeFilters(){
   // DIRECTION only (user 2026-08-01) — market is governed by Markets (User) now. markets/locations kept
