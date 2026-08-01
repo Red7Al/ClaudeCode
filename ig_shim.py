@@ -694,6 +694,18 @@ def instrument_names_match(ticker: str, ig_name: str, yahoo_name: str) -> bool:
     return False
 
 
+def _name_search_term(yahoo_name: str) -> str:
+    """A clean IG search term from a Yahoo company name — legal-suffix stopwords dropped, first few
+    significant words kept ('Astellas Pharma Inc.' -> 'Astellas Pharma'). Used as a fallback when the
+    ticker itself can't be resolved at IG (numeric-coded foreign tickers, e.g. Tokyo .T / Shenzhen .SZ,
+    which IG lists by NAME, not by their local code). User 2026-08-01."""
+    _sw = {"plc", "the", "inc", "corp", "corporation", "group", "ltd", "limited", "holdings", "holding",
+           "trust", "ord", "and", "of", "co", "adr", "sa", "nv", "se", "ag", "class", "company", "co.,"}
+    ws = [w for w in (yahoo_name or "").lower().replace(".", " ").replace(",", " ").split()
+          if w not in _sw and len(w) > 1]
+    return " ".join(ws[:3])
+
+
 # Search-term aliases (user 2026-07-03): some index tickers can't be found by their raw symbol at IG.
 # get_epic tries these name terms in order when the ticker matches. e.g. ^NSEI: try "India 50" then "NIFTY".
 _SEARCH_TERM_ALIASES = {
@@ -932,18 +944,42 @@ def get_epic(ticker: str) -> Optional[str]:
                             f"overridden by name match → {best.get('epic')} "
                             f"({best.get('instrumentName')})")
             else:
-                try:
-                    from notify import alert_system_error
-                    alert_system_error("EPIC_LOOKUP", "get_epic",
-                                       f"{ticker} ({y_name}): no IG search result matches this "
-                                       f"company's name — wrong-instrument risk, NOT cached, "
-                                       f"instrument skipped.",
-                                       detail=str([(m.get('epic'), m.get('instrumentName'))
-                                                   for m in markets[:6]]))
-                except Exception:
-                    pass
-                log.error(f"get_epic {ticker}: no candidate matches Yahoo name '{y_name}' — refusing")
-                return None
+                # Fallback — retry the IG search by COMPANY NAME (user 2026-08-01). The ticker-based
+                # search returned no name match; this is normal for numeric-coded foreign tickers (Tokyo
+                # .T, Shenzhen .SZ …) that IG doesn't index by their local code but DOES list by name
+                # ('4503.T' finds nothing; 'Astellas Pharma' finds the epic). Still gated by
+                # instrument_names_match, so there is no wrong-instrument risk.
+                name_term = _name_search_term(y_name)
+                name_markets = []
+                if name_term and name_term.lower() != normalized.lower():
+                    try:
+                        log.info(f"get_epic {ticker}: no ticker-name match — retrying IG search by name "
+                                 f"'{name_term}'")
+                        name_markets = session.get("/markets", params={"searchTerm": name_term},
+                                                   version="1").get("markets", [])
+                    except Exception as e:
+                        log.warning(f"get_epic {ticker}: name search '{name_term}' failed: {e}")
+                name_match = [m for m in name_markets
+                              if instrument_names_match(ticker, m.get("instrumentName", ""), y_name)]
+                if name_match:
+                    markets = name_markets           # so the downstream UK-epic check sees the right set
+                    best = max(name_match, key=_epic_score)
+                    log.info(f"get_epic {ticker}: resolved via company-name search '{name_term}' → "
+                             f"{best.get('epic')} ({best.get('instrumentName')})")
+                else:
+                    try:
+                        from notify import alert_system_error
+                        alert_system_error("EPIC_LOOKUP", "get_epic",
+                                           f"{ticker} ({y_name}): no IG search result matches this "
+                                           f"company's name (by ticker OR by name) — wrong-instrument "
+                                           f"risk, NOT cached, instrument skipped.",
+                                           detail=str([(m.get('epic'), m.get('instrumentName'))
+                                                       for m in markets[:6]]))
+                    except Exception:
+                        pass
+                    log.error(f"get_epic {ticker}: no candidate matches Yahoo name '{y_name}' "
+                              f"(ticker + name search) — refusing")
+                    return None
 
     if is_uk and not best.get("epic", "").startswith("KA.D."):
         # A .L ticker that cannot resolve to a UK share epic is a wrong-
