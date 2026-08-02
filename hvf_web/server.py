@@ -2620,9 +2620,48 @@ def api_squeeze_history():
 @app.route("/api/fees")
 def api_fees():
     """Fees (Admin) tab (user 2026-07-18): management fee (1%/mo of AUM) + performance fee (10%/mo of
-    profits), with a worked example from LAST MONTH's realised P&L (daily_pnl)."""
+    profits). Returns TWO periods (user 2026-07-31, P-05): "last_month" (the billed month) and
+    "this_month" (month-to-date, "so far"). Each carries the daily_pnl aggregate PLUS the underlying
+    per-trade transactions (trade_log) that EXPLAIN the realised profit — the transaction pnl sums back to
+    the period profit (reconciled per row-count/total)."""
     import datetime as _dt
-    payload = {"mgmt_pct": 1.0, "perf_pct": 10.0, "last_month": None,
+
+    def _period(db, start, end, label):
+        # Aggregate summary from daily_pnl (the source the performance fee is billed on).
+        row = db.run("select coalesce(sum(total_pnl),0), coalesce(sum(trade_count),0), "
+                     "coalesce(sum(win_count),0), coalesce(sum(loss_count),0) from daily_pnl "
+                     "where trade_date >= :a and trade_date <= :b",
+                     a=start.isoformat(), b=end.isoformat()) or [(0, 0, 0, 0)]
+        pnl, tc, wc, lc = row[0]
+        # The transactions behind it — closed trades whose close date falls in the window.
+        txns = []
+        try:
+            for (tk, dr, sz, op, cp, pl, plp, oa, ca, cr) in (db.run(
+                    "select ticker, direction, size, open_price, close_price, pnl, pnl_pct, "
+                    "opened_at, closed_at, close_reason from trade_log "
+                    "where closed_at::date >= :a and closed_at::date <= :b order by closed_at",
+                    a=start.isoformat(), b=end.isoformat()) or []):
+                txns.append({
+                    "ticker": tk, "direction": dr,
+                    "size": (float(sz) if sz is not None else None),
+                    "open": (float(op) if op is not None else None),
+                    "close": (float(cp) if cp is not None else None),
+                    "pnl": (float(pl) if pl is not None else 0.0),
+                    "pnl_pct": (float(plp) if plp is not None else None),
+                    "opened_at": (oa.isoformat() if oa else None),
+                    "closed_at": (ca.isoformat() if ca else None),
+                    "reason": cr})
+        except Exception as tex:
+            log.warning(f"fees txns failed for {label}: {tex}")
+        txn_sum = round(sum(t["pnl"] for t in txns), 2)
+        return {"label": label, "start": start.isoformat(), "end": end.isoformat(),
+                "pnl": float(pnl or 0), "trades": int(tc or 0),
+                "wins": int(wc or 0), "losses": int(lc or 0),
+                "txns": txns, "txn_pnl": txn_sum,
+                # True when the per-trade transactions reconcile with the billed daily_pnl total.
+                "reconciled": (abs(txn_sum - float(pnl or 0)) < 0.01)}
+
+    payload = {"mgmt_pct": 1.0, "perf_pct": 10.0, "last_month": None, "this_month": None,
                "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
     try:
         today = _dt.date.today()
@@ -2632,16 +2671,11 @@ def api_fees():
         from db_pool import get_db
         db = get_db()
         try:
-            row = db.run("select coalesce(sum(total_pnl),0), coalesce(sum(trade_count),0), "
-                         "coalesce(sum(win_count),0), coalesce(sum(loss_count),0) from daily_pnl "
-                         "where trade_date >= :a and trade_date <= :b",
-                         a=first_last.isoformat(), b=last_month_end.isoformat()) or [(0, 0, 0, 0)]
-            pnl, tc, wc, lc = row[0]
+            payload["last_month"] = _period(db, first_last, last_month_end, first_last.strftime("%B %Y"))
+            payload["this_month"] = _period(db, first_this, today,
+                                            today.strftime("%B %Y") + " (so far)")
         finally:
             db.close()
-        payload["last_month"] = {"label": first_last.strftime("%B %Y"),
-                                 "pnl": float(pnl or 0), "trades": int(tc or 0),
-                                 "wins": int(wc or 0), "losses": int(lc or 0)}
     except Exception as ex:
         log.warning(f"fees failed: {ex}")
     return jsonify(payload)

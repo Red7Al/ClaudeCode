@@ -50,6 +50,8 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .msel-btn .msel-txt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msel-btn .msel-caret{flex:none;opacity:.6;font-size:10px}
 .msel-btn.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+#fees-period .fees-per{background:transparent;color:var(--muted);font-weight:500;cursor:pointer}
+#fees-period .fees-per.on{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--fg);font-weight:600}
 .msel-pop{position:absolute;z-index:60;top:calc(100% + 4px);left:0;right:0;max-height:230px;overflow:auto;
   background:var(--bg);border:1px solid var(--accent);border-radius:8px;padding:5px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
 .msel-pop.hidden{display:none}
@@ -1376,12 +1378,20 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="fcard"><div class="ic">📈</div><h3>Performance fee</h3><div class="body"><b style="font-size:17px;color:var(--fg)">10% / month</b><br><span class="muted">on profits only (nothing charged in a losing month). Industry norm is usually 15%+.</span></div></div>
   </div>
   <section class="gsec" style="border-left-color:var(--accent)">
-    <h3 class="sec" style="margin-top:0">Worked example — last month</h3>
+    <h3 class="sec" style="margin-top:0" id="fees-title">Worked example — last month</h3>
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <span class="muted" style="font-size:12px">Period</span>
+      <div id="fees-period" style="display:inline-flex;gap:0;border:1px solid var(--line);border-radius:7px;overflow:hidden">
+        <button class="btn fees-per on" data-per="last" onclick="feesPeriod('last')" style="border:0;border-radius:0;padding:5px 12px">Last month</button>
+        <button class="btn fees-per" data-per="this" onclick="feesPeriod('this')" style="border:0;border-radius:0;padding:5px 12px;border-left:1px solid var(--line)">This month (so far)</button>
+      </div>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">AUM £ <input id="fees-aum" type="number" min="0" step="1000" value="10000" style="width:110px;padding:4px 6px" onchange="paintFees()"></label>
-      <span class="muted" style="font-size:11px">management fee = 1% of AUM; performance fee = 10% of last month's profit (0 if a loss)</span>
+      <span class="muted" style="font-size:11px">management fee = 1% of AUM; performance fee = 10% of the period's profit (0 if a loss)</span>
     </div>
     <div id="fees-example" class="tablewrap" style="margin-top:8px"></div>
+    <h3 class="sec" id="fees-txn-title">Transactions this period</h3>
+    <p class="muted" style="font-size:11.5px;margin:2px 0 6px">The closed trades whose realised P&amp;L makes up the profit the performance fee is charged on.</p>
+    <div id="fees-txns" class="tablewrap" style="margin-top:4px"></div>
   </section>
 </div>
 
@@ -3559,24 +3569,68 @@ function paintSqueezeHist(){
 }
 // Wire the sortable Squeeze-History headers (mirrors the Performance th[data-pf] wiring).
 document.querySelectorAll("th[data-sqh]").forEach(th=>th.onclick=()=>sqhSort(th.dataset.sqh));
-// ── Fees (Admin) (user 2026-07-18) — management + performance fees, last-month example ────────────────
-let FEES=null;
+// ── Fees (Admin) (user 2026-07-18) — management + performance fees ─────────────────────────────────────
+// Two selectable periods (user 2026-07-31, P-05): "Last month" (billed) + "This month (so far)"; each
+// shows the fee example AND the underlying transactions (trade_log) that explain the realised profit.
+let FEES=null, FEES_PER='last';
 function renderFees(){
   fetch("/api/fees").then(r=>r.ok?r.json():null).then(j=>{FEES=j||{};paintFees();}).catch(()=>{FEES={};paintFees();});
 }
+function feesPeriod(p){
+  FEES_PER=p;
+  document.querySelectorAll('#fees-period .fees-per').forEach(b=>b.classList.toggle('on', b.dataset.per===p));
+  paintFees();
+}
+function _feesGbp(v){return `£${(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;}
 function paintFees(){
   const box=$("fees-example"); if(!box)return;
-  const f=FEES||{}, lm=f.last_month, aum=+(($("fees-aum")||{}).value||0)||10000;
+  const f=FEES||{}, seg=(FEES_PER==='this'?f.this_month:f.last_month)||null;
+  const aum=+(($("fees-aum")||{}).value||0)||10000;
   const mgmt=aum*(f.mgmt_pct!=null?f.mgmt_pct:1)/100;
-  const profit=lm?lm.pnl:0, perf=profit>0?profit*(f.perf_pct!=null?f.perf_pct:10)/100:0;
-  const gbp=v=>`£${(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const profit=seg?seg.pnl:0, perf=profit>0?profit*(f.perf_pct!=null?f.perf_pct:10)/100:0;
+  const isThis=(FEES_PER==='this');
+  const gbp=_feesGbp;
+  const ti=$("fees-title"); if(ti)ti.textContent=`Worked example — ${isThis?'this month (so far)':'last month'}`;
   const row=(k,v,note)=>`<tr><td>${k}</td><td style="text-align:right"><b>${v}</b></td><td class="muted">${note||''}</td></tr>`;
   box.innerHTML=`<table><thead><tr><th>Item</th><th style="text-align:right">Amount</th><th>Basis</th></tr></thead><tbody>`+
-    row(`Period`, lm?lm.label:'—', lm?`${lm.trades} trades · ${lm.wins} win / ${lm.losses} loss`:'no daily P&L recorded')+
-    row(`Realised profit`, `<span style="color:${profit>=0?'var(--bull)':'var(--bear)'}">${gbp(profit)}</span>`, `last month's total_pnl`)+
+    row(`Period`, seg?seg.label:'—', seg?`${seg.trades} trades · ${seg.wins} win / ${seg.losses} loss`:'no daily P&L recorded')+
+    row(`Realised profit`, `<span style="color:${profit>=0?'var(--bull)':'var(--bear)'}">${gbp(profit)}</span>`, isThis?`this month's total_pnl to date`:`last month's total_pnl`)+
     row(`Management fee (1%)`, gbp(mgmt), `1% × AUM ${gbp(aum)}`)+
-    row(`Performance fee (10%)`, gbp(perf), profit>0?`10% × profit`:`0 — no profit this month`)+
-    `<tr style="border-top:2px solid var(--line)"><td><b>Total fees</b></td><td style="text-align:right"><b>${gbp(mgmt+perf)}</b></td><td class="muted">management + performance</td></tr>`+
+    row(`Performance fee (10%)`, gbp(perf), profit>0?`10% × profit`:`0 — no profit ${isThis?'yet this month':'this month'}`)+
+    `<tr style="border-top:2px solid var(--line)"><td><b>${isThis?'Fees so far':'Total fees'}</b></td><td style="text-align:right"><b>${gbp(mgmt+perf)}</b></td><td class="muted">management + performance${isThis?' — accrues until month end':''}</td></tr>`+
+    `</tbody></table>`;
+  paintFeesTxns(seg);
+}
+function paintFeesTxns(seg){
+  const box=$("fees-txns"); if(!box)return;
+  const ti=$("fees-txn-title");
+  const txns=(seg&&seg.txns)||[];
+  if(ti)ti.textContent=`Transactions — ${seg?seg.label:'—'}`;
+  if(!txns.length){box.innerHTML=`<p class="muted" style="font-size:12px;padding:6px 0">No closed trades in this period.</p>`;return;}
+  const gbp=_feesGbp;
+  const fdate=s=>{if(!s)return '';const d=new Date(s);return isNaN(d)?String(s).slice(0,10):d.toLocaleDateString(undefined,{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});};
+  const num=(v,dp)=>v==null?'—':(+v).toLocaleString(undefined,{minimumFractionDigits:dp,maximumFractionDigits:dp});
+  let rows='', tot=0;
+  txns.forEach((t,i)=>{
+    tot+=(t.pnl||0);
+    const col=(t.pnl||0)>=0?'var(--bull)':'var(--bear)';
+    rows+=`<tr>`+
+      `<td class="muted" style="text-align:right">${i+1}</td>`+
+      `<td>${t.ticker||''}</td>`+
+      `<td><span style="color:${t.direction==='BUY'?'var(--bull)':'var(--bear)'}">${t.direction||''}</span></td>`+
+      `<td style="text-align:right">${num(t.size,2)}</td>`+
+      `<td style="text-align:right">${num(t.open,2)}</td>`+
+      `<td style="text-align:right">${num(t.close,2)}</td>`+
+      `<td style="text-align:right;color:${col}"><b>${gbp(t.pnl)}</b></td>`+
+      `<td style="text-align:right;color:${col}">${t.pnl_pct==null?'—':(t.pnl_pct>=0?'+':'')+(+t.pnl_pct).toFixed(2)+'%'}</td>`+
+      `<td>${fdate(t.opened_at)}</td>`+
+      `<td>${fdate(t.closed_at)}</td>`+
+      `</tr>`;
+  });
+  const recon=seg&&seg.reconciled;
+  box.innerHTML=`<table><thead><tr><th style="text-align:right">#</th><th>Instrument</th><th>Dir</th><th style="text-align:right">Size</th><th style="text-align:right">Open</th><th style="text-align:right">Close</th><th style="text-align:right">P&amp;L</th><th style="text-align:right">P&amp;L %</th><th>Opened</th><th>Closed</th></tr></thead><tbody>`+
+    rows+
+    `<tr style="border-top:2px solid var(--line)"><td></td><td colspan="5"><b>Total realised (${txns.length} trades)</b></td><td style="text-align:right;color:${tot>=0?'var(--bull)':'var(--bear)'}"><b>${gbp(tot)}</b></td><td colspan="3" class="muted">${recon?'✓ reconciles with billed profit':'⚠ differs from billed profit'}</td></tr>`+
     `</tbody></table>`;
 }
 // Monthly growth of the compounded wallet (user 2026-07-18, P-01) — on the Summary sub-tab, full width.
