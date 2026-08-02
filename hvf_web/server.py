@@ -374,6 +374,12 @@ def _limit_defaults() -> dict:
             # IG working-order lifespan is now PER-USER (user 2026-08-01) — default from the shared app_config
             # (or the code baseline 28). The engine's own default still applies to the automated bridge.
             "wo_lifespan_days": _wo_lifespan_baseline(),
+            # "Let winners run" (user 2026-08-02): per-user opt-in for the winners-run illustration. OFF by
+            # default (0) — the report only renders when the user turns it on; the trail % is their chosen
+            # ratchet above target. Report-only (never touches live orders).
+            "let_winners_run": int(getattr(_cfg, "LET_WINNERS_RUN", 0)),
+            "let_winners_run_trail": int(getattr(_cfg, "LET_WINNERS_RUN_TRAIL", 25)),
+            "let_winners_run_stop": int(getattr(_cfg, "LET_WINNERS_RUN_STOP", 0)),   # pre-target stop-loss trail % (0=hard stop)
             "bounce_alert_pct": float(getattr(_cfg, "BOUNCE_ALERT_PCT", 0.02)),
             "bounce_lookback_hours": int(getattr(_cfg, "BOUNCE_LOOKBACK_HOURS", 48)),
             "email_recipients": list(getattr(_cfg, "EMAIL_RECIPIENTS", []))}
@@ -496,7 +502,8 @@ def api_config():
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = float(v)
         for k in ("min_quality", "min_volume_score", "max_trades_per_instrument_per_day", "bounce_lookback_hours",
-                  "adaptive_filters", "rebalance_weeks", "max_open", "wo_lifespan_days"):
+                  "adaptive_filters", "rebalance_weeks", "max_open", "wo_lifespan_days",
+                  "let_winners_run", "let_winners_run_trail", "let_winners_run_stop"):
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = int(v)
@@ -2190,6 +2197,44 @@ def _sl_path(direction, entry, stop, target, bars, thr):
     return "OPEN", last
 
 
+def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0):
+    """Let a winner RUN but ratchet the stop UP TO THE TARGET the moment target is reached, so the trade can
+    never give back below the target gain (user 2026-08-01: "put a stop near target so 17 doesn't go to 7").
+    Two configurable trailing knobs (user 2026-08-02):
+      * `stop_thr` — the STOP-LOSS trailing % applied BEFORE target: if >0 the stop follows price up on the
+        way to target (so a trade that runs then reverses before target keeps some gain); 0 = the original
+        hard stop stays put until target (same as the real trade).
+      * `thr` — the trailing % applied ABOVE target once the stop has floored at the target.
+    At target the stop moves to the target and is never let below it, so a target-hitter's return is ALWAYS
+    >= its target return, plus any further run. Returns (outcome, exit_price)."""
+    import ig_shim
+    buy = direction == "BULLISH"
+    cur = stop
+    floored = False   # has the stop been ratcheted up to the target yet?
+    last = None
+    for _bd, hi, lo, cl in bars:
+        last = cl
+        if buy:
+            if lo <= cur:
+                return ("RAN" if floored else "STOPPED"), cur
+            if not floored and target and hi >= target:
+                floored = True
+                cur = max(cur, target)
+        else:
+            if hi >= cur:
+                return ("RAN" if floored else "STOPPED"), cur
+            if not floored and target and lo <= target:
+                floored = True
+                cur = min(cur, target)
+        # Trail the stop toward price: above target by `thr`, before target by the stop-loss trail `stop_thr`.
+        t = thr if floored else stop_thr
+        if t and t > 0:
+            ns = ig_shim.compute_trailing_stop(direction, entry, cur, cl, t)
+            if ns is not None:
+                cur = max(cur, ns) if buy else min(cur, ns)
+    return "OPEN", (last if last is not None else None)
+
+
 # VolumeScore impact report (user 2026-07-24, ToDo P-02 L55). Uses the SAME 12-month replay population as
 # the Performance Results / "What separates the winners" tabs (_sqa_all_rows) — never the small hvf_triggers
 # set — so the numbers reconcile with those tabs. Scores every trade's break bar, then shows how filtering
@@ -2463,6 +2508,78 @@ def api_winners_sl():
     except Exception as ex:
         log.warning(f"winners-sl failed: {ex}")
         return jsonify({"rows": [], "threshold_pct": 0, "months": 12})
+
+
+def _winners_run_rows(threshold_pct, stop_pct=0):
+    """Every 12-month tradeable trade with its plain return% AND the return%/outcome it WOULD have had if we
+    did NOT sell at target but let it RUN — re-walk with the target exit DISABLED, so the position keeps
+    trailing past target and exits only on the trailing stop, the hard stop, or the window end.
+    threshold_pct = the trailing % ABOVE target; stop_pct = the STOP-LOSS trailing % applied BEFORE target
+    (0 => the original hard stop holds until target). The delta (run - plain) is the per-trade impact of
+    letting winners run. Illustration only — never touches live orders. (ToDo P-10 'let them run'.)"""
+    import datetime as _dt
+    thr = (float(threshold_pct or 0) or 0) / 100.0
+    sthr = (float(stop_pct or 0) or 0) / 100.0
+    cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
+    rows = sorted((r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cut12),
+                  key=lambda r: (r.get("trig_date") or ""))
+    # Reuse the SL report's bar cache (same window / shape).
+    now = _time.time()
+    if _SLBARS["by_tk"] is not None and now - _SLBARS["ts"] < _SQA_TTL:
+        by_tk = _SLBARS["by_tk"]
+    else:
+        by_tk = {}
+        from db_pool import get_db
+        db = get_db()
+        try:
+            raw = db.run("select ticker, bar_date, high, low, close from price_history "
+                         "where bar_date >= :d order by ticker, bar_date", d=cut12) or []
+        finally:
+            db.close()
+        for tk, bd, hi, lo, cl in raw:
+            if hi is None or lo is None or cl is None:
+                continue
+            by_tk.setdefault(tk, []).append((str(bd), float(hi), float(lo), float(cl)))
+        _SLBARS.update(ts=now, by_tk=by_tk)
+    out = []
+    for r in rows:
+        plain = r["return_pct"]
+        run_perf, run_out = plain, r["outcome"]
+        if r.get("entry") and r.get("stop") and r.get("trig_date"):
+            bars = [b for b in by_tk.get(r["ticker"], []) if b[0] >= r["trig_date"]]
+            if bars:
+                # Stop ratchets to the target once reached, then trails above it (user 2026-08-01) — so a
+                # target-hitter never falls back below its target gain; only genuine runners beat it.
+                run_out, ex = _run_path(r["direction"], r["entry"], r["stop"], r.get("target"), bars, thr, sthr)
+                if ex is not None:
+                    buy = r["direction"] == "BULLISH"
+                    run_perf = round(((ex - r["entry"]) / r["entry"] * 100.0) if buy
+                                     else ((r["entry"] - ex) / r["entry"] * 100.0), 2)
+        out.append({"ticker": r["ticker"], "name": r["name"], "market": r["market"], "sector": r["sector"],
+                    "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
+                    "trig_date": r["trig_date"], "entry": r["entry"], "stop": r["stop"],
+                    "outcome": r["outcome"], "perf": plain,
+                    "run_outcome": run_out, "run_perf": run_perf,
+                    "quality": r["quality"], "rr": r["rr"]})
+    return out
+
+
+@app.route("/api/winners-run")
+def api_winners_run():
+    """Winners rows re-backtested LETTING WINNERS RUN — no sell at target, trail past it. Query params:
+    `thr` % = trail above target (default 25); `stop` % = stop-loss trail before target (default 0 = hard stop
+    holds until target). Illustration-only (user 2026-08-01/02, ToDo P-08 'let them run')."""
+    try:
+        thr = request.args.get("thr")
+        if thr in (None, ""):
+            thr = "25"
+        stop = request.args.get("stop") or "0"
+        rows = _winners_run_rows(thr, stop)
+        return jsonify({"rows": rows, "threshold_pct": float(thr or 0), "stop_pct": float(stop or 0),
+                        "months": 12, "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())})
+    except Exception as ex:
+        log.warning(f"winners-run failed: {ex}")
+        return jsonify({"rows": [], "threshold_pct": 0, "stop_pct": 0, "months": 12})
 
 
 @app.route("/api/squeeze-history")

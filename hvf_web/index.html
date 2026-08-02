@@ -737,6 +737,18 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <button class="btn" style="margin-top:8px" onclick="saveLimits()">Save order controls</button>
       <span id="lim-msg3" style="font-size:12px;margin-left:8px"></span>
     </div>
+    <!-- Let winners run (user 2026-08-02): per-user opt-in for the winners-run illustration on the Winners
+         tab. OFF by default; when on, the report shows how gains look if you keep a winner running with the
+         stop ratcheted up to target (so it can't decay below the target gain), trailing above by Trail %.
+         Report-only — it never changes your live orders. -->
+    <div class="card"><h4>🏃 Let winners run</h4>
+      <p class="muted" style="font-size:12px;margin:0 0 8px">Adds the "Let winners run" illustration to your Winners tab: once a trade hits target the stop moves <b>up to the target</b> (locking the target gain, so 17% can't drop back to 7%), then trails above it. This is an <b>illustration</b> — it never changes your live IG orders.</p>
+      <div class="credrow"><span class="clabel">Show the "Let winners run" report</span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="lim-let_winners_run" onchange="saveLimits()"> On</label></div>
+      <div class="credrow"><span class="clabel" title="Stop-loss trailing % applied BEFORE target is reached — the stop follows price up on the way to target. 0 = keep the original hard stop until target.">Stop-loss trail before target (%)</span><input type="number" min="0" max="100" step="5" id="lim-let_winners_run_stop" placeholder="0" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="How far above the target the stop trails once target is reached. Higher = keep more of a big run; lower = lock in sooner.">Trail above target (%)</span><input type="number" min="0" max="100" step="5" id="lim-let_winners_run_trail" placeholder="25" style="max-width:120px"></div>
+      <button class="btn" style="margin-top:8px" onclick="saveLimits()">Save</button>
+      <span id="lim-msg4" style="font-size:12px;margin-left:8px"></span>
+    </div>
   </div>
 
   <!-- Trading (Momentum) — the per-source execution switches (the "bottom 4" options) -->
@@ -1224,6 +1236,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
   <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
 
+  <!-- Let winners run on the Back Test (user 2026-08-02, ToDo P-08): same illustration as the What-separates
+       tab, rendered here too. Per-user opt-in; hidden unless the user turns it on. Populated by winnersRunChange. -->
+  <div id="pf-run-wrap" style="display:none;margin-bottom:14px">
+    <h2 class="sec">🏃 Let winners run</h2>
+    <p class="muted" style="font-size:13px;margin-top:-8px">The impact of NOT selling at target — once a trade hits target the stop moves up to the target (so the gain can't decay), then trails past it, using your configured trail settings (Configuration → Trading (Squeeze) → Let winners run). Illustration only — it never changes your live orders.</p>
+    <div id="pf-run"></div>
+  </div>
+
   <h2 class="sec">Every recorded trigger</h2>
   <section class="gsec" style="border-left-color:var(--accent)">
     <!-- Name/ticker search, as on Scanner / Pre-orders / Order Ops / X Posts (user 2026-07-17, P-17) -->
@@ -1277,6 +1297,21 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
          positions / R:R floor over these trades and recommends the mix with the best RISK-ADJUSTED return,
          with worked examples at £1k…£10k. Rendered by renderBestCombo() from paintOrdersPerf. -->
     <div id="ordp-bestcombo" style="margin-bottom:10px"></div>
+    <!-- Let winners run (user 2026-08-01/02, ToDo P-08): re-backtests each trade WITHOUT selling at target,
+         ratcheting the stop up to target then trailing past it, and shows the compounded impact. Per-user
+         opt-in (Configuration → Trading (Squeeze) → Let winners run); hidden unless the user turns it on. -->
+    <div id="ordp-run-wrap" style="display:none">
+      <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <b style="font-size:13px">🏃 Let winners run</b>
+        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Stop-loss trailing % applied BEFORE target — the stop follows price up on the way to target. 0 = keep the original hard stop until target.">Stop trail
+          <input id="ordp-run-stop" type="number" min="0" max="100" step="5" value="0" style="width:64px;padding:4px 6px" onchange="winnersRunChange()">%</label>
+        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Once target is reached the stop moves UP TO the target (so the gain can't decay), then trails above it by entry × gain × this %.">Run trail
+          <input id="ordp-run-in" type="number" min="0" max="100" step="5" value="25" style="width:64px;padding:4px 6px" onchange="winnersRunChange()">%</label>
+        <span class="muted" style="font-size:11px">once target hits, the stop moves <b>up to target</b> then trails — so 17% can't decay to 7%. Illustration only — never moves real orders.</span>
+        <span id="ordp-run-busy" class="muted" style="font-size:12px"></span>
+      </div>
+      <div id="ordp-run" style="margin-bottom:10px"></div>
+    </div>
     <!-- Leverage-impact report removed (user 2026-08-01): leverage does not feed the compounded P&L
          model (it only sets margin per position / theoretical concurrency), so the card was misleading. -->
     <!-- Automated Stop-Loss Amendment — ILLUSTRATION ONLY (user 2026-07-18): re-backtests every trade with a
@@ -2562,7 +2597,7 @@ function renderConfig(){
       USER_FILTERS=j.filters||{};
       HIDDEN_TABS=j.hidden_tabs||[]; renderTabVis(HIDDEN_TABS);   // tab-visibility card (user 2026-07-03)
       if(j.leverage){LEVERAGE=j.leverage;["fx","equities","commodities","indices"].forEach(k=>{if($("lev-"+k))$("lev-"+k).value=j.leverage[k];});}
-      if(j.limits){MY_LIMITS=j.limits;Object.entries(j.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=Array.isArray(v)?v.join(", "):v;}});if(typeof renderPreorders==='function')renderPreorders();if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();}   // apply saved winners-Model defaults (P-10 L158)
+      if(j.limits){MY_LIMITS=j.limits;Object.entries(j.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=Array.isArray(v)?v.join(", "):v;}});if(typeof renderPreorders==='function')renderPreorders();if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();if(typeof winnersRunChange==='function')winnersRunChange();}   // apply saved winners-Model defaults (P-10 L158) + render the let-winners-run card if opted in (P-08)
       // Engine settings (admin only) now live on the Configuration (Admin) tab; just fill the inputs.
       if(j.engine){window.ENGINE_VALS=j.engine;Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});}
       // Morning HVF tweet markets (admin, user 2026-07-06): checkbox chips over the universe's markets.
@@ -2639,11 +2674,12 @@ function saveLimits(){
   const num=(id,int)=>{const el=$("lim-"+id);if(!el)return undefined;const v=(int?parseInt:parseFloat)(el.value);return isFinite(v)&&v>=0?v:undefined;};
   const lim={};
   [["min_risk_reward",0],["bounce_alert_pct",0],["min_instrument_value",0],["max_instrument_value",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
-  [["min_quality",1],["min_volume_score",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["rebalance_weeks",1],["wo_lifespan_days",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
+  [["min_quality",1],["min_volume_score",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["rebalance_weeks",1],["wo_lifespan_days",1],["let_winners_run_trail",1],["let_winners_run_stop",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
   lim.adaptive_filters=($("lim-adaptive_filters")||{}).checked?1:0;   // adaptive-filters enable toggle (user 2026-07-27, P-07)
+  lim.let_winners_run=($("lim-let_winners_run")||{}).checked?1:0;   // "Let winners run" report opt-in, default OFF (user 2026-08-02)
   const _er=$("lim-email_recipients"); if(_er)lim.email_recipients=(_er.value||"").split(",").map(x=>x.trim()).filter(Boolean);
-  // Show the "Saved." message in whichever panel's save button was clicked (limits / adaptive / squeeze).
-  const _setMsg=(txt,ok)=>["lim-msg","lim-msg2","lim-msg3"].forEach(id=>{const el=$(id);if(el){el.style.color=ok?"var(--bull)":"var(--bear)";el.textContent=txt;}});
+  // Show the "Saved." message in whichever panel's save button was clicked (limits / adaptive / squeeze / winners-run).
+  const _setMsg=(txt,ok)=>["lim-msg","lim-msg2","lim-msg3","lim-msg4"].forEach(id=>{const el=$(id);if(el){el.style.color=ok?"var(--bull)":"var(--bear)";el.textContent=txt;}});
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
     .then(r=>{if(r.ok){_setMsg("Saved.",true);
       MY_LIMITS={...MY_LIMITS,...lim};if(typeof renderPreorders==='function')renderPreorders();   // apply new floors to My Pre-orders now (user 2026-07-24, P-02)
@@ -3087,7 +3123,7 @@ function winnersParamsChange(){
   if(mo>0 && maxTrade<MIN_TRADE && !warn)
     warn=`Wallet ÷ ${mo} = ${fmt(maxTrade)} per trade, below the £${MIN_TRADE} minimum — reduce Max open positions or raise the Wallet.`;
   const msg=$("ordp-model-msg"); if(msg){msg.textContent=warn; msg.style.color=warn?"var(--bear)":"";}
-  paintOrdersPerf(); winnersSLChange();   // re-render both the plain view and any SL illustration
+  paintOrdersPerf(); winnersSLChange(); winnersRunChange();   // re-render the plain view + SL + let-winners-run illustrations
 }
 // Save the winners Model variables as the user's persistent defaults (user 2026-07-28, P-10 L158) — stored
 // on the user record via /api/config limits, and re-applied to the Model inputs on the next login (loadLimits).
@@ -3180,6 +3216,45 @@ function winnersSLChange(){
       <b>${improved.toLocaleString()}</b> trades came out better (loss cut or gain locked in), <b>${cut.toLocaleString()}</b> were cut short of a bigger win.
       ${delta>=0?'Here the trailing stop would have helped.':'Here it would have hurt — it cuts winners short more than it saves losers.'}</div></div>`;
   }).catch(()=>{if(busy)busy.textContent="";if(box)box.innerHTML='<div class="muted" style="font-size:13px">Re-backtest failed.</div>';});
+}
+// Let winners run (user 2026-08-01/02, ToDo P-08): re-backtest each trade with the target exit REMOVED — once
+// a trade hits target the stop ratchets UP TO the target (so it can't give back below the target gain, e.g. 17%
+// stays >=17%), then trails above it by the Run-trail %; before target it trails by the Stop-trail %. Per-user
+// opt-in: hidden unless MY_LIMITS.let_winners_run is on; inputs default from the user's saved config.
+function winnersRunChange(){
+  // The card is shown on TWO surfaces (user 2026-08-02): the "What separates the winners" tab (#ordp-run,
+  // with its own trail inputs) AND the Back Test / Results tab (#pf-run, read-only, uses the saved config).
+  const wraps=["ordp-run-wrap","pf-run-wrap"].map($), boxes=["ordp-run","pf-run"].map($), busy=$("ordp-run-busy");
+  const paintAll=html=>boxes.forEach(b=>{if(b)b.innerHTML=html;});
+  if(!(MY_LIMITS&&+MY_LIMITS.let_winners_run)){wraps.forEach(w=>{if(w)w.style.display="none";});return;}   // OFF by default
+  wraps.forEach(w=>{if(w)w.style.display="";});
+  // Default the two inputs from the user's saved config the first time (don't clobber manual edits after).
+  const inT=$("ordp-run-in"), inS=$("ordp-run-stop");
+  if(inT&&!inT.dataset.seed){inT.value=(MY_LIMITS.let_winners_run_trail??25);inT.dataset.seed="1";}
+  if(inS&&!inS.dataset.seed){inS.value=(MY_LIMITS.let_winners_run_stop??0);inS.dataset.seed="1";}
+  const v=+((inT||{}).value||(MY_LIMITS.let_winners_run_trail??25)), sv=+((inS||{}).value||(MY_LIMITS.let_winners_run_stop??0));
+  if(busy)busy.textContent="⏳ re-backtesting…";
+  fetch("/api/winners-run?thr="+v+"&stop="+sv).then(r=>r.ok?r.json():null).then(j=>{
+    if(busy)busy.textContent="";
+    const rows=((j&&j.rows)||[]).filter(r=>r.perf!=null);
+    if(!rows.length){paintAll('<div class="muted" style="font-size:13px">No data to re-backtest.</div>');return;}
+    const comp=key=>{let w=WINNERS_WALLET;for(const r of rows){const p=r[key];if(p!=null)w+=w*WINNERS_STAKE*p/100;}return w;};
+    const plainFinal=comp("perf"), runFinal=comp("run_perf"), delta=runFinal-plainFinal;
+    const tgt=rows.filter(r=>r.outcome==='TARGET'&&r.run_perf!=null);
+    const ran=tgt.filter(r=>r.run_perf>r.perf+0.01).length, back=tgt.filter(r=>r.run_perf<r.perf-0.01).length;
+    const money=x=>`£${Math.round(x).toLocaleString()}`, col=delta>=0?'var(--bull)':'var(--bear)';
+    const big=tgt.slice().sort((a,b)=>(b.run_perf-b.perf)-(a.run_perf-a.perf)).slice(0,5);
+    const stopTxt=sv>0?` (stop trailing ${j.stop_pct||sv}% before target)`:``;
+    paintAll(`<div class="card" style="border:1px solid ${col};background:color-mix(in srgb,${col} 8%,transparent)">
+      <h4 style="margin:0 0 6px">🏃 Let winners run @ ${(j.threshold_pct||v)}% run-trail${stopTxt} — illustration (live orders unaffected)</h4>
+      <div class="muted" style="font-size:13px">Once a trade hits target, the stop moves <b>up to the target</b> (so it can't give back below the target gain), then trails above it.
+      ${money(WINNERS_WALLET)} compounded ends at <b>${money(runFinal)}</b> <b>letting winners run</b> vs <b>${money(plainFinal)}</b> <b>selling at target</b> —
+      a <b style="color:${col}">${delta>=0?'+':'−'}${money(Math.abs(delta))}</b> difference over ${rows.length.toLocaleString()} trades.
+      Of <b>${tgt.length.toLocaleString()}</b> target hits, <b>${ran.toLocaleString()}</b> ran further and only <b>${back.toLocaleString()}</b> came in below target (price closed under target on the last available bar).
+      ${delta>=0?'Letting winners run (with the stop at target) beats selling at target here — raise the Trail % to keep more of a big run, lower it to lock in sooner.':'Here it did not help.'}</div>
+      ${big.length?`<div class="muted" style="font-size:12px;margin-top:6px"><b>Biggest runners:</b> ${big.map(r=>`${_esc(r.name||disp(r.ticker))} ${r.perf>0?'+':''}${r.perf}%→${r.run_perf>0?'+':''}${r.run_perf}%`).join(' · ')}</div>`:''}
+    </div>`);
+  }).catch(()=>{if(busy)busy.textContent="";paintAll('<div class="muted" style="font-size:13px">Re-backtest failed.</div>');});
 }
 // Compact market-cap format (user 2026-08-01): 1.23T / 340B / 12M. No currency symbol (values are in each
 // instrument's own currency). Blank when absent — mcap is not captured in the pipeline yet, so this reads
@@ -3283,8 +3358,30 @@ function renderBestCombo(all){
       <div><div class="muted" style="font-size:11px">Win : Loss</div><b style="font-size:16px;color:var(--fg)" title="Wins vs losses among this combination's eligible trades">${_bw} : ${_bl}${_bwl!=null?` <span class="muted" style="font-weight:400;font-size:12px">(${_bwl}%)</span>`:''}</b></div>
     </div>
     <div class="tablewrap"><table><thead><tr><th>Equity</th><th title="First trade's stake = Max position size % of the wallet">Opening stake</th><th>Ending equity</th><th>Net P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div style="margin-top:8px"><button class="btn" onclick='applyConfigFromReport(${JSON.stringify({min_risk_reward:best.rr,min_quality:best.q,min_volume_score:best.vs,max_position_pct:best.st,max_open:best.cap})},this)' title="Copy this winning combination into your personal trading configuration so your live trading replicates it">⬇ Copy this configuration to my settings</button>
+      <span class="muted" style="font-size:11px;margin-left:8px">writes R:R ≥ ${best.rr}, Quality ${best.q>0?'≥ '+best.q:'any'}, VolumeScore ${best.vs>0?'≥ '+best.vs:'any'}, position ${best.st}%, max open ${best.cap} to your settings</span></div>
     <div class="muted" style="font-size:11px;margin-top:6px">On your <b>${gbp(w)}</b> Model wallet. Because each stake is a fixed % of the running wallet, the best mix and its <b>%</b> return are the same at every wallet size — only the £ amounts scale. Set the Model above to these values to see the full ledger. This maximises return <b>per unit of risk</b>, not raw return (the biggest stake always compounds hardest but risks ruin). ⚠ marks a wallet whose opening stake is below the £25 IG minimum.</div>
   </div>`;
+}
+// Copy a winning configuration (from the Best-combination card or a combos row) into the user's personal
+// trading limits (user 2026-08-02, ToDo P-08) — "replicate those results in our trading". Confirms first,
+// POSTs only the provided keys to /api/config, refreshes MY_LIMITS + the config inputs, and re-renders the
+// dependent views. Values map: min_risk_reward, min_quality, min_volume_score, max_position_pct, max_open.
+function applyConfigFromReport(cfg, btn){
+  cfg=cfg||{};
+  const labels={min_risk_reward:"R:R floor",min_quality:"Quality floor",min_volume_score:"VolumeScore floor",max_position_pct:"Max position size %",max_open:"Max open positions"};
+  const summary=Object.keys(cfg).map(k=>`• ${labels[k]||k}: ${cfg[k]}`).join("\n");
+  if(!confirm("Copy this configuration to your personal trading settings?\n\n"+summary+"\n\nThis updates your live trading filters (Configuration → My trading limits). It does not place or change any orders.")) return;
+  if(btn){btn.disabled=true;btn.textContent="Saving…";}
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:cfg})})
+    .then(r=>{if(!r.ok)throw 0;
+      MY_LIMITS={...MY_LIMITS,...cfg};
+      Object.entries(cfg).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v;}});
+      if(btn){btn.textContent="✓ Copied to my settings";setTimeout(()=>{btn.disabled=false;btn.textContent="⬇ Copy this configuration to my settings";},4000);}
+      if(typeof renderPreorders==='function')renderPreorders();
+      if(typeof _renderPerformance==='function')_renderPerformance();
+      if(WIN!==null&&typeof winnersParamsChange==='function')winnersParamsChange();})
+    .catch(()=>{if(btn){btn.disabled=false;btn.textContent="⚠ Save failed — retry";}});
 }
 // One compounding pass over a set of winners trades (user 2026-07-27, P-10 L122/L123 refactor): chronological
 // by trigger date, applies the Max-open-positions cap (a funnel that triggers while the book is full is a
@@ -3615,7 +3712,8 @@ function _renderPerformance(){
     :combos.length?combos.map((b,i)=>{const on=PF_COMBO&&PF_COMBO.qb===b.qb&&PF_COMBO.rb===b.rb&&PF_COMBO.vb===b.vb;
       return `<div class="fcard clk${on?' active':''}" style="cursor:pointer${on?';border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)':''}" onclick="pfComboFilter(${b.qb},${b.rb},${b.vlo==null?'null':b.vlo},${b.vhi==null?'null':b.vhi},'${b.vb}')" title="Click to filter the table below to Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)} · ${b.vb}${on?' — click again to clear':''}"><div class="ic">${on?'✓':i+1}</div>
       <h3>Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)} · ${b.vb}</h3>
-      <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggers.${on?' <span style="color:var(--accent);font-weight:600">· filtering the table ✕</span>':''}</div></div>`;}).join("")
+      <div class="body"><b style="color:${b.avg>=0?'var(--bull)':'var(--bear)'};font-size:18px">${b.avg>0?'+':''}${b.avg.toFixed(1)}%</b> average return across <b>${b.n}</b> triggers.${on?' <span style="color:var(--accent);font-weight:600">· filtering the table ✕</span>':''}
+        <div style="margin-top:6px"><a href="#" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify({min_quality:b.qb,min_risk_reward:b.rb,min_volume_score:b.vlo==null?0:b.vlo})});return false' style="font-size:11px;color:var(--accent)" title="Copy Quality ≥ ${b.qb}, R:R ≥ ${b.rb}, VolumeScore ≥ ${b.vlo==null?0:b.vlo} into your personal trading settings">⬇ copy to my settings</a></div></div></div>`;}).join("")
     :`<p class="muted">Not enough recorded triggers yet to rank Quality/R:R/Volume buckets (need at least 3 per bucket).</p>`;
   // Best-combination card click (user 2026-07-27, P-10 L292): filter the TABLE (and its count + wallet) to
   // the picked Quality/R:R/Volume band, while the cards above still show every bucket so you can re-pick.
