@@ -1395,7 +1395,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <button class="btn fees-per on" data-per="last" onclick="feesPeriod('last')" style="border:0;border-radius:0;padding:5px 12px">Last month</button>
         <button class="btn fees-per" data-per="this" onclick="feesPeriod('this')" style="border:0;border-radius:0;padding:5px 12px;border-left:1px solid var(--line)">This month (so far)</button>
       </div>
-      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">AUM £ <input id="fees-aum" type="number" min="0" step="1000" value="10000" style="width:110px;padding:4px 6px" onchange="paintFees()"></label>
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">AUM £ <input id="fees-aum" type="number" min="0" step="1000" value="10000" style="width:110px;padding:4px 6px" onchange="paintFees()"> <span id="fees-aum-hint" style="font-size:11px;font-style:italic"></span></label>
       <span class="muted" style="font-size:11px">management fee = 1% of AUM; performance fee = 10% of the period's profit (0 if a loss)</span>
     </div>
     <div id="fees-example" class="tablewrap" style="margin-top:8px"></div>
@@ -2705,9 +2705,12 @@ function renderConfig(){
       // Engine settings (admin only) now live on the Configuration (Admin) tab; just fill the inputs.
       if(j.engine){window.ENGINE_VALS=j.engine;Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});}
       // Morning HVF tweet markets (admin, user 2026-07-06): checkbox chips over the universe's markets.
-      if($("xhvf-markets")){const picked=new Set(j.x_hvf_markets||[]);const mkts=uniq("market");
+      if($("xhvf-markets")){const picked=new Set(j.x_hvf_markets||[]);
+        // Use the canonical market list (P-15) — robust when DATA doesn't carry `market`. Bigger accent
+        // checkboxes + roomier chips so the picker is legible/tappable on iPad (user 2026-08-02, P-12).
+        const mkts=(typeof _refreshMktList==='function'?_refreshMktList():uniq("market"));
         $("xhvf-markets").innerHTML=(mkts.length?mkts:[...picked]).map(m=>{const on=picked.has(m);
-          return `<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;background:${on?'color-mix(in srgb,var(--accent) 14%,transparent)':'var(--chip)'};border:1px solid ${on?'var(--accent)':'var(--line)'};border-radius:999px;padding:6px 12px;cursor:pointer"><input type="checkbox" class="xhvf-mk" data-v="${m}" ${on?"checked":""} onchange="this.parentElement.style.background=this.checked?'color-mix(in srgb,var(--accent) 14%,transparent)':'var(--chip)';this.parentElement.style.borderColor=this.checked?'var(--accent)':'var(--line)'"> ${m}</label>`;}).join("");}
+          return `<label style="display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--fg);background:${on?'color-mix(in srgb,var(--accent) 16%,transparent)':'var(--chip)'};border:1px solid ${on?'var(--accent)':'var(--line)'};border-radius:999px;padding:8px 14px;cursor:pointer;line-height:1"><input type="checkbox" class="xhvf-mk" data-v="${m}" ${on?"checked":""} style="width:17px;height:17px;accent-color:var(--accent);margin:0" onchange="this.parentElement.style.background=this.checked?'color-mix(in srgb,var(--accent) 16%,transparent)':'var(--chip)';this.parentElement.style.borderColor=this.checked?'var(--accent)':'var(--line)'"> ${m}</label>`;}).join("");}
       if($("cfg-bridge"))$("cfg-bridge").checked=!!j.bridge;
       if($("featrow-xposts"))$("featrow-xposts").style.display=j.is_admin?"":"none";
       if(j.features){FEATURES=j.features;if($("feat-xposts"))$("feat-xposts").checked=!!j.features.xposts;}
@@ -3668,7 +3671,16 @@ document.querySelectorAll("th[data-sqh]").forEach(th=>th.onclick=()=>sqhSort(th.
 // shows the fee example AND the underlying transactions (trade_log) that explain the realised profit.
 let FEES=null, FEES_PER='last';
 function renderFees(){
-  fetch("/api/fees").then(r=>r.ok?r.json():null).then(j=>{FEES=j||{};paintFees();}).catch(()=>{FEES={};paintFees();});
+  fetch("/api/fees",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
+    FEES=j||{};
+    // Seed the AUM box from the REAL account equity when available (user 2026-08-02, P-12), so the
+    // management fee isn't implied to be a tidy £100 on a round £10,000. Seed ONCE so a manual edit sticks.
+    const aumEl=$("fees-aum");
+    if(aumEl&&FEES.real_aum!=null&&!aumEl.dataset.seeded){aumEl.value=Math.round(FEES.real_aum);aumEl.dataset.seeded="1";}
+    const hint=$("fees-aum-hint");
+    if(hint)hint.textContent=(FEES.real_aum!=null)?`live IG account value${FEES.aum_currency?' ('+FEES.aum_currency+')':''}`:`no live balance — enter your account value`;
+    paintFees();
+  }).catch(()=>{FEES={};paintFees();});
 }
 function feesPeriod(p){
   FEES_PER=p;

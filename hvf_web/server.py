@@ -2693,8 +2693,25 @@ def api_fees():
         _disc = _wu.active_fee_discount(_viewer) if _viewer else {"mgmt_pct": 0, "perf_pct": 0, "active": False}
     except Exception:
         _disc = {"mgmt_pct": 0, "perf_pct": 0, "active": False}
+    # The REAL account value for the AUM basis (user 2026-08-02, P-12) — so the management-fee example uses
+    # the actual equity (cash balance + open P&L), not a round typed figure. Best-effort; None when the
+    # viewer has no IG session/creds (the UI then keeps the manual default).
+    _real_aum = None
+    _aum_ccy = None
+    try:
+        import ig_shim
+        if _viewer and ig_shim.session_for(_viewer) is not None:
+            with ig_shim._IG_LOCK, ig_shim.acting_session(_viewer):
+                _bal = ig_shim.get_account_balance() or {}
+            _b = float(_bal.get("balance") or 0)
+            _pl = float(_bal.get("profit_loss") or 0)
+            _real_aum = round(_b + _pl, 2)      # account equity = ledger balance + open P&L
+            _aum_ccy = _bal.get("currency")
+    except Exception as _ex:
+        log.warning(f"fees real AUM unavailable: {_ex}")
     payload = {"mgmt_pct": 1.0, "perf_pct": 10.0, "last_month": None, "this_month": None,
                "discount": _disc, "user": _viewer or None,
+               "real_aum": _real_aum, "aum_currency": _aum_ccy,
                "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
     try:
         today = _dt.date.today()
