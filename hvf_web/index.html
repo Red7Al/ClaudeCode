@@ -1365,11 +1365,19 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <!-- Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle: developing → ready → triggered → outcome. -->
 <div id="view-squeezehist" class="hidden doc" style="max-width:1240px">
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderSqueezeHist()">↻ Refresh</button></div>
-  <h1>Squeeze History</h1>
+  <!-- Title row shares the year filter (multi-select, middle/right) + a compact Direction chart next to the
+       title (user 2026-08-02, P-06). Direction moved here to free a Quality chart into the strip below. -->
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 4px">
+    <h1 style="margin:0">Squeeze History</h1>
+    <div id="sqh-dir-mini" style="flex:0 0 auto"></div>
+    <span style="flex:1"></span>
+    <div id="sqh-years" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end"></div>
+  </div>
   <p class="lede">Every squeeze funnel's journey through the engine — <b>developing → ready → triggered → outcome</b> — replayed over the price history. Each row is one funnel with the dates it changed state and how it resolved (<b style="color:var(--bull)">TARGET</b> / <b style="color:var(--bear)">STOPPED</b> / <b style="color:#d29922">OPEN</b> / NEVER&nbsp;TRIGGERED). Newest first.</p>
-  <!-- Standard chart strip (user 2026-07-18, P-01): Market, Location, Sector, Direction, Status — the same
-       click-to-filter charts as the other tabs, driving the table below. Hidden inputs hold each filter set. -->
-  <input type="hidden" id="sqf_market"><input type="hidden" id="sqf_location"><input type="hidden" id="sqf_sector"><input type="hidden" id="sqf_direction"><input type="hidden" id="sqf_status">
+  <!-- Standard chart strip (user 2026-07-18, P-01): Location, Market, Sector, Quality, Status — the same
+       click-to-filter charts as the other tabs, driving the table below. Hidden inputs hold each filter set.
+       Direction lives in the compact title chart; Year is the button row above (all cross-filter). -->
+  <input type="hidden" id="sqf_market"><input type="hidden" id="sqf_location"><input type="hidden" id="sqf_sector"><input type="hidden" id="sqf_direction"><input type="hidden" id="sqf_status"><input type="hidden" id="sqf_year"><input type="hidden" id="sqf_quality">
   <div id="sqh-viz" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="sqh-count"></span><span class="grow"></span><input id="sqh-search" placeholder="Search name / ticker…" oninput="paintSqueezeHist()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
@@ -3638,29 +3646,66 @@ function renderSqueezeHist(){
 }
 // Header sort (user 2026-07-18, P-01): click toggles asc/desc on that column; "" restores server order.
 function sqhSort(k){sqhSortDir=(sqhSortK===k)?-sqhSortDir:-1;sqhSortK=k;paintSqueezeHist();_sortArrows("data-sqh",sqhSortK,sqhSortDir);}
+function _sqYearOf(r){return String(r.triggered_date||r.ready_date||r.first_seen||'').slice(0,4)||'—';}
+function _sqQBand(r){const q=r.quality;if(q==null)return '—';if(q>=75)return '75–100';if(q>=50)return '50–74';if(q>=25)return '25–49';return '0–24';}
+const _sqQCol=k=>k==='75–100'?'var(--bull)':k==='0–24'?'var(--bear)':'var(--accent)';
+let _sqYearSeeded=false;
+let _sqDvSrc=null,_sqDvQ=null,_sqDv=null;   // cached precomputed dim values (P-06 perf)
 function paintSqueezeHist(){
   const rows=SQH||[], q=(($("sqh-search")||{}).value||"").trim().toLowerCase();
+  // Default the year filter to the most recent TWO years, once, when the data first loads (user 2026-08-02,
+  // P-06) — this also keeps the (now 32k+ row) tab fast by default.
+  if(!_sqYearSeeded && rows.length){
+    _sqYearSeeded=true;
+    const yrs=[...new Set(rows.map(_sqYearOf).filter(y=>y&&y!=='—'))].sort();
+    const recent=yrs.slice(-2);
+    if(recent.length && $("sqf_year") && !$("sqf_year").value) $("sqf_year").value=recent.join(SEP);
+  }
   const base=q?rows.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(q)):rows;
-  // Chart strip with BRUSHING (user 2026-08-01): each chart counts over rows passing every OTHER sqf_
-  // filter but not its own, so clicking a bar/slice cross-filters the other charts (all option-bars stay
-  // visible with the selection highlighted) — matching Performance/Scanner.
-  const _sqDims=[["sqf_market",r=>r.market],["sqf_location",r=>locName(r.location)],["sqf_sector",r=>r.sector],["sqf_direction",r=>r.direction],["sqf_status",r=>r.outcome]];
-  const byX=(fn,exceptId)=>{const m={};
-    base.forEach(r=>{const v=(typeof fn==='function'?fn(r):r[fn])||'—';if(!(v in m))m[v]=0;});   // seed every option so bars persist
-    base.forEach(r=>{if(!_sqDims.every(([id,f])=>id===exceptId||inSet(id,f(r))))return;const v=(typeof fn==='function'?fn(r):r[fn])||'—';m[v]++;});return m;};
+  // Chart strip with BRUSHING (user 2026-08-01): each chart counts over rows passing every OTHER sqf_ filter
+  // but not its own. Year + Quality are now dims too, and Direction drives the compact title chart.
+  const _sqDims=[["sqf_market",r=>r.market],["sqf_location",r=>locName(r.location)],["sqf_sector",r=>r.sector],["sqf_direction",r=>r.direction],["sqf_status",r=>r.outcome],["sqf_year",_sqYearOf],["sqf_quality",_sqQBand]];
+  // Precompute each row's dim values ONCE (user 2026-08-02, P-06) — the old byX recomputed every dim for
+  // every chart, which was slow on 32k+ rows (esp. re-clicking Sector/Status).
+  // Precomputed dim values are cached across paints (user 2026-08-02, P-06): they depend only on the data +
+  // search, NOT the filter selections, so clicking a filter reuses them instead of rebuilding 32k×7.
+  let dv;
+  if(_sqDvSrc===SQH && _sqDvQ===q && _sqDv){dv=_sqDv;}
+  else{dv=base.map(r=>{const o={};_sqDims.forEach(([id,f])=>{const v=f(r);o[id]=(v==null||v==='')?'—':String(v);});return o;});_sqDvSrc=SQH;_sqDvQ=q;_sqDv=dv;}
+  // Hoist each dim's selected-set ONCE per paint (user 2026-08-02, P-06) — inSet() rebuilt a Set from a
+  // string split on every call, which over 32k rows × 7 charts was ~1.8M splits (the real slowness).
+  const _sel={}; _sqDims.forEach(([id])=>_sel[id]=setOf(id));
+  const _pass=(id,v)=>{const s=_sel[id];return !s||s.has(v);};   // v is already the normalised dim string
+  const byX=id=>{const m={};dv.forEach(o=>{if(!(o[id] in m))m[o[id]]=0;});
+    dv.forEach(o=>{for(const [d] of _sqDims){if(d!==id&&!_pass(d,o[d]))return;}m[o[id]]++;});return m;};
+  // Year buttons (multi-select) — brushed counts respecting every OTHER filter (user 2026-08-02, P-06).
+  const yc=byX("sqf_year"), ysel=setOf("sqf_year");
+  const yrsAll=[...new Set(rows.map(_sqYearOf).filter(y=>y&&y!=='—'))].sort().reverse();
+  if($("sqh-years"))$("sqh-years").innerHTML=`<span class="muted" style="font-size:11px">Year</span>`+
+    yrsAll.map(y=>{const on=ysel&&ysel.has(y);return `<button class="btn clk" data-fk="sqf_year" data-fv="${y}" style="padding:3px 9px;font-size:12px;${on?'border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--fg)':''}" title="${yc[y]||0} funnels">${y}</button>`;}).join("")+
+    (ysel&&ysel.size?` <span class="afilt clk" data-fk="sqf_year" data-fv="" title="clear year filter" style="font-size:12px">✕</span>`:'');
+  // Compact Direction chart next to the title (click-to-filter) — freed the strip for a Quality chart.
+  const dc=byX("sqf_direction"), dsel=setOf("sqf_direction");
+  if($("sqh-dir-mini"))$("sqh-dir-mini").innerHTML=["BULL","BEAR"].filter(d=>d in dc).map(d=>{const on=dsel&&dsel.has(d);const col=d==="BULL"?"var(--bull)":"var(--bear)";
+    return `<button class="btn clk" data-fk="sqf_direction" data-fv="${d}" style="padding:3px 9px;font-size:12px;margin-right:4px;${on?`border-color:${col};background:color-mix(in srgb,${col} 16%,transparent)`:''}"><span style="color:${col}">${d}</span> <b>${dc[d]||0}</b></button>`;}).join("");
   if($("sqh-viz"))$("sqh-viz").innerHTML=
-    `<div class="vizsector">`+barChart("Location",byX(r=>locName(r.location),"sqf_location"),"sqf_location")+`</div>`+   /* Location first (P-05 L340) */
-    `<div class="vizsector">`+barChart("Market",byX("market","sqf_market"),"sqf_market")+`</div>`+
-    `<div class="vizsector">`+pieChart("Sector",byX("sector","sqf_sector"),"sqf_sector")+`</div>`+
-    `<div class="vizsector">`+barChart("Direction",byX("direction","sqf_direction"),"sqf_direction",k=>k==="BULL"?"var(--bull)":"var(--bear)")+`</div>`+
-    `<div class="vizsector">`+barChart("Status",byX("outcome","sqf_status"),"sqf_status",_stcol)+`</div>`;
+    `<div class="vizsector">`+barChart("Location",byX("sqf_location"),"sqf_location")+`</div>`+   /* Location first (P-05 L340) */
+    `<div class="vizsector">`+barChart("Market",byX("sqf_market"),"sqf_market")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",byX("sqf_sector"),"sqf_sector")+`</div>`+
+    `<div class="vizsector">`+barChart("Quality",byX("sqf_quality"),"sqf_quality",_sqQCol)+`</div>`+
+    `<div class="vizsector">`+barChart("Status",byX("sqf_status"),"sqf_status",_stcol)+`</div>`;
   packViz("sqh-viz");
-  let shown=base.filter(r=>inSet("sqf_market",r.market)&&inSet("sqf_location",locName(r.location))
-    &&inSet("sqf_sector",r.sector)&&inSet("sqf_direction",r.direction)&&inSet("sqf_status",r.outcome));
+  let shown=base.filter((r,i)=>{const o=dv[i];for(const [id] of _sqDims){if(!_pass(id,o[id]))return false;}return true;});
   if(sqhSortK)shown=genSort(shown,sqhSortK,sqhSortDir);
-  if($("sqh-count"))$("sqh-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> funnels${rows.length!==shown.length?` of ${rows.length.toLocaleString()}`:''}`;
+  // Cap the rendered rows (user 2026-08-02, P-06) — the store is now 32k+ funnels; drawing 12k <tr> each
+  // repaint made clicking Sector/Status take ~2s. The charts + count still cover the FULL filtered set; only
+  // the table display is capped (narrow the filters — or the year — to see more specific rows).
+  const SQH_CAP=1500;
+  const capped=shown.length>SQH_CAP;
+  const view=capped?shown.slice(0,SQH_CAP):shown;
+  if($("sqh-count"))$("sqh-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> funnels${rows.length!==shown.length?` of ${rows.length.toLocaleString()}`:''}${capped?` <span class="muted" style="font-size:11px">· showing first ${SQH_CAP.toLocaleString()} — filter to narrow</span>`:''}`;
   if($("sqhtab-count"))$("sqhtab-count").textContent=`(${shown.length.toLocaleString()})`;   // row count in the tab name (user 2026-07-20, P-01)
-  if($("sqh-rows"))$("sqh-rows").innerHTML=shown.map(r=>`<tr>
+  if($("sqh-rows"))$("sqh-rows").innerHTML=view.map(r=>`<tr>
     <td class="clk" style="cursor:pointer;color:var(--accent)" title="Open the detail report" onclick="openDetailFrom('squeezehist','${(r.ticker||'').replace(/'/g,'')}')">${nm40(r.name)}</td><td>${r.direction}</td><td>${r.market||''}</td><td>${r.sector||''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td>
     <td>${r.first_seen||'—'}</td><td>${r.ready_date||'—'}</td><td>${r.triggered_date||'—'}</td>
     <td><b style="color:${_stcol(r.outcome)}">${r.outcome||''}</b></td><td>${r.outcome_date||'—'}</td>
