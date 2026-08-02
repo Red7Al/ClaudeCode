@@ -272,7 +272,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .credrow .cstate.on{color:var(--bull)} .credrow .cstate.off{color:var(--bear)}                /* "Not set" red */
 /* Doc-page tables (activity/batch/version/users) wrap text so there's no horizontal scroll bar
    even when a charts column sits alongside (user 2026-07-03). */
-.doc .tablewrap{overflow-x:auto;padding-bottom:14px}   /* gap between the last row and the horizontal scrollbar (user 2026-08-01) */
+.doc .tablewrap{overflow-x:auto;padding-bottom:22px}   /* gap between the last row and the horizontal scrollbar (user 2026-08-01; widened to 22px 2026-08-02, P-06) */
 /* Doc tables do NOT wrap by default (user 2026-07-17). This rule used to force white-space:normal on
    every cell, so any squeezed column broke its label — "Completed" rendered as "Complet/ed" on Change
    Requests — and six views (#view-orderops/-preorders/-activity/-jobs/-users/-performance) each carried
@@ -1182,7 +1182,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="pill" id="pf-pill-winners" data-pfpanel="analysis" onclick="pfPanel('analysis')" title="Admin: the same 12-month population expressed as a compounding £ wallet — what's POSSIBLE if every setup were placed, and which attributes (market, R:R, quality, volume) separate the winners. Answers 'how to size and pick for the best return'.">🏆 What separates the winners</button>
   </div>
   <span class="eyebrow">Results</span>
-  <h1>Performance</h1>
+  <!-- Processing badge (user 2026-08-02, P-06) — shown next to the title while /api/performance is still
+       computing, so it's clear why the tab is briefly empty. -->
+  <h1 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:4px">Performance <span id="pf-loading"></span></h1>
   <p class="lede">Every <b>recorded trigger</b> — the entry, stop, target and date captured the moment the setup fired — tracked forward through the price history to its outcome: <b style="color:var(--bull)">TARGET</b> (hit the target first), <b style="color:var(--bear)">STOPPED</b> (hit the stop first), or <b style="color:#d29922">OPEN</b> (still running, marked to the latest price). Return is direction-aware, so positive is always in your favour. This is independent of the current squeeze status — a trigger is measured from when it happened.</p>
   <!-- Winners title + lede lifted ABOVE the shared date/location filter row (user 2026-07-27, P-07 L289) —
        shown only when the "What separates the winners" sub-tab is active (toggled in pfPanel). -->
@@ -3194,13 +3196,15 @@ function renderPerformance(){
   const _pw=$("pf-pill-winners");
   if(_pw)_pw.style.display=IS_ADMIN?'':'none';
   if(!IS_ADMIN && !$("pf-panel-analysis").classList.contains("hidden"))pfPanel('results');
+  const _pfl=$("pf-loading");
   if(PERF_DATA===null){                       // fetch the recorded-trigger report once, then render
     PERF_DATA=[];                             // in-flight guard
+    if(_pfl)_pfl.innerHTML=`<span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#d29922;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ processing the 12-month replay…</span>`;
     fetch("/api/performance").then(r=>r.ok?r.json():{rows:[]})
-      .then(j=>{PERF_DATA=j.rows||[];PERF_GEN=j.generated||"";_renderPerformance();})
-      .catch(()=>{PERF_DATA=[];_renderPerformance();});
+      .then(j=>{PERF_DATA=j.rows||[];PERF_GEN=j.generated||"";if($("pf-loading"))$("pf-loading").innerHTML="";_renderPerformance();})
+      .catch(()=>{PERF_DATA=[];if($("pf-loading"))$("pf-loading").innerHTML="";_renderPerformance();});
     // The analysis loads lazily when its sub-tab is opened (pfPanel), not here.
-  }
+  } else if(_pfl && PERF_DATA.length){_pfl.innerHTML="";}
   _renderPerformance();
 }
 // Performance sub-tabs (user 2026-07-17): Results vs the 15-month analysis. The analysis fetches lazily

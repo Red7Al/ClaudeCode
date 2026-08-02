@@ -184,8 +184,8 @@ noted as of 2026-07-24.
   gap, fixed 2026-07-24). ✅ broadly compliant.
 - **Gap below the last row, above the horizontal scrollbar (user 2026-08-01).** A table with few rows but
   many columns shows a horizontal scrollbar jammed right under the last row — it reads as noise. `.doc
-  .tablewrap` carries `padding-bottom:14px` so the scrollbar always sits clear of the content. Keep it; do
-  not remove it per-view.
+  .tablewrap` carries `padding-bottom:22px` (widened from 14px, user 2026-08-02) so the scrollbar always
+  sits well clear of the content. Keep it; do not remove it per-view.
 - **A chart strip NEVER wraps to a second row (user 2026-08-01).** Charts placed side by side must stay on
   ONE row — if the strip would spill to a second row, consolidate (stack short cards into `.vizcol`s, drop
   the most disposable card) until it fits. This supersedes the earlier "stack only when already wrapped"
