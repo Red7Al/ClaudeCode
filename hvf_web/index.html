@@ -1387,8 +1387,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <h1>Fees</h1>
   <p class="lede">How the account is charged. Two monthly fees, both billed monthly.</p>
   <div class="fgrid" style="margin-bottom:12px">
-    <div class="fcard"><div class="ic">🏦</div><h3>Management fee</h3><div class="body"><b style="font-size:17px;color:var(--fg)">1% / month</b><br><span class="muted">of assets under management (AUM), including the cash balance. Industry norm is usually 1.5%+.</span></div></div>
-    <div class="fcard"><div class="ic">📈</div><h3>Performance fee</h3><div class="body"><b style="font-size:17px;color:var(--fg)">10% / month</b><br><span class="muted">on profits only (nothing charged in a losing month). Industry norm is usually 15%+.</span></div></div>
+    <div class="fcard"><div class="ic">🏦</div><h3>Management fee</h3><div class="body"><b style="font-size:17px;color:var(--fg)">1% / year</b><br><span class="muted">of assets under management (AUM), including the cash balance — charged monthly as 1%&nbsp;÷&nbsp;12. Industry norm is usually 1.5%+ p.a.</span></div></div>
+    <div class="fcard"><div class="ic">📈</div><h3>Performance fee</h3><div class="body"><b style="font-size:17px;color:var(--fg)">10% / year</b><br><span class="muted">on profits only (nothing charged in a losing month) — charged monthly as 10%&nbsp;÷&nbsp;12. Industry norm is usually 15%+ p.a.</span></div></div>
   </div>
   <section class="gsec" style="border-left-color:var(--accent)">
     <h3 class="sec" style="margin-top:0" id="fees-title">Worked example — last month</h3>
@@ -1399,7 +1399,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <button class="btn fees-per" data-per="this" onclick="feesPeriod('this')" style="border:0;border-radius:0;padding:5px 12px;border-left:1px solid var(--line)">This month (so far)</button>
       </div>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">AUM £ <input id="fees-aum" type="number" min="0" step="1000" value="10000" style="width:110px;padding:4px 6px" onchange="paintFees()"> <span id="fees-aum-hint" style="font-size:11px;font-style:italic"></span></label>
-      <span class="muted" style="font-size:11px">management fee = 1% of AUM; performance fee = 10% of the period's profit (0 if a loss)</span>
+      <span class="muted" style="font-size:11px">rates are per annum; the monthly charge = rate ÷ 12 — management = (1% ÷ 12) of AUM; performance = (10% ÷ 12) of the period's profit (0 if a loss)</span>
     </div>
     <div id="fees-example" class="tablewrap" style="margin-top:8px"></div>
     <h3 class="sec" id="fees-txn-title">Transactions this period</h3>
@@ -1485,7 +1485,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="confapanel" data-panel="engine">
   <div class="card" style="margin-bottom:0"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
     <p class="muted" style="font-size:12px">Application-wide trading/engine values (shared, one account).</p>
-    <div class="credrow"><span class="clabel">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="eng-wo_lifespan_days" style="max-width:120px"></div>
+    <!-- IG working-order lifespan removed here (user 2026-08-02, P-06): it is now a per-user setting in
+         Configuration (User) → Trading (Squeeze), so the admin copy is redundant. -->
     <div class="credrow" style="display:none"><span class="clabel">Automated stop-loss trailing (%) <span class="muted" style="font-weight:400">0 = off. As a position runs into profit, each monitor pass moves the stop up by <b>entry × gain × this %</b> (never widened). e.g. 50 keeps half the run.</span></span><input type="number" min="0" max="100" step="5" id="eng-stop_amend_threshold" style="max-width:120px"></div>   <!-- disabled — no longer used (user 2026-08-01) -->
     <button class="btn" style="margin-top:10px" onclick="saveEngine()">Save engine settings</button>
     <span id="eng-msg" style="font-size:12px;margin-left:8px"></span>
@@ -3682,6 +3683,11 @@ function renderFees(){
     if(aumEl&&FEES.real_aum!=null&&!aumEl.dataset.seeded){aumEl.value=Math.round(FEES.real_aum);aumEl.dataset.seeded="1";}
     const hint=$("fees-aum-hint");
     if(hint)hint.textContent=(FEES.real_aum!=null)?`live IG account value${FEES.aum_currency?' ('+FEES.aum_currency+')':''}`:`no live balance — enter your account value`;
+    // Period toggle buttons show the actual YEAR + MONTH (user 2026-08-02, P-06), e.g. "July 2026".
+    const lb=document.querySelector('#fees-period .fees-per[data-per="last"]');
+    const tb=document.querySelector('#fees-period .fees-per[data-per="this"]');
+    if(lb&&FEES.last_month&&FEES.last_month.label)lb.textContent=FEES.last_month.label;
+    if(tb&&FEES.this_month&&FEES.this_month.label)tb.textContent=FEES.this_month.label;
     paintFees();
   }).catch(()=>{FEES={};paintFees();});
 }
@@ -3695,21 +3701,22 @@ function paintFees(){
   const box=$("fees-example"); if(!box)return;
   const f=FEES||{}, seg=(FEES_PER==='this'?f.this_month:f.last_month)||null;
   const aum=+(($("fees-aum")||{}).value||0)||10000;
+  // Rates are PER ANNUM (user 2026-08-02, P-06 — fees were 12× too high). The MONTHLY charge = rate ÷ 12.
   const mgmtRate=(f.mgmt_pct!=null?f.mgmt_pct:1), perfRate=(f.perf_pct!=null?f.perf_pct:10);
-  const mgmtGross=aum*mgmtRate/100;
-  const profit=seg?seg.pnl:0, perfGross=profit>0?profit*perfRate/100:0;
+  const mgmtGross=aum*mgmtRate/100/12;
+  const profit=seg?seg.pnl:0, perfGross=profit>0?profit*perfRate/100/12:0;
   // Per-user fee discount (user 2026-08-02, P-20) — reduces each fee by its discount % when active today.
   const disc=(f.discount||{}), dm=+(disc.mgmt_pct||0), dp=+(disc.perf_pct||0), hasDisc=(disc.active&&(dm>0||dp>0));
   const mgmt=mgmtGross*(1-dm/100), perf=perfGross*(1-dp/100);
   const isThis=(FEES_PER==='this');
   const gbp=_feesGbp;
-  const ti=$("fees-title"); if(ti)ti.textContent=`Worked example — ${isThis?'this month (so far)':'last month'}`;
+  const ti=$("fees-title"); if(ti)ti.textContent=`Worked example — ${seg?seg.label:(isThis?'this month (so far)':'last month')}`;
   const row=(k,v,note)=>`<tr><td>${k}</td><td style="text-align:right"><b>${v}</b></td><td class="muted">${note||''}</td></tr>`;
   box.innerHTML=`<table><thead><tr><th>Item</th><th style="text-align:right">Amount</th><th>Basis</th></tr></thead><tbody>`+
     row(`Period`, seg?seg.label:'—', seg?`${seg.trades} trades · ${seg.wins} win / ${seg.losses} loss`:'no daily P&L recorded')+
     row(`Realised profit`, `<span style="color:${profit>=0?'var(--bull)':'var(--bear)'}">${gbp(profit)}</span>`, isThis?`this month's total_pnl to date`:`last month's total_pnl`)+
-    row(`Management fee (${mgmtRate}%)`, gbp(mgmt), dm>0?`${mgmtRate}% × AUM ${gbp(aum)}, less ${dm}% discount`:`${mgmtRate}% × AUM ${gbp(aum)}`)+
-    row(`Performance fee (${perfRate}%)`, gbp(perf), profit>0?(dp>0?`${perfRate}% × profit, less ${dp}% discount`:`${perfRate}% × profit`):`0 — no profit ${isThis?'yet this month':'this month'}`)+
+    row(`Management fee (${mgmtRate}% p.a.)`, gbp(mgmt), dm>0?`(${mgmtRate}% ÷ 12) × AUM ${gbp(aum)}, less ${dm}% discount`:`(${mgmtRate}% ÷ 12) × AUM ${gbp(aum)}`)+
+    row(`Performance fee (${perfRate}% p.a.)`, gbp(perf), profit>0?(dp>0?`(${perfRate}% ÷ 12) × profit, less ${dp}% discount`:`(${perfRate}% ÷ 12) × profit`):`0 — no profit ${isThis?'yet this month':'this month'}`)+
     (hasDisc?row(`Discount applied`, `−${gbp((mgmtGross-mgmt)+(perfGross-perf))}`, `${dm>0?`mgmt −${dm}%`:''}${dm>0&&dp>0?' · ':''}${dp>0?`perf −${dp}%`:''}${(disc.start||disc.end)?` · ${disc.start||'—'}→${disc.end||'—'}`:''}`):'')+
     `<tr style="border-top:2px solid var(--line)"><td><b>${isThis?'Fees so far':'Total fees'}</b></td><td style="text-align:right"><b>${gbp(mgmt+perf)}</b></td><td class="muted">management + performance${isThis?' — accrues until month end':''}${hasDisc?' (after discount)':''}</td></tr>`+
     `</tbody></table>`;
