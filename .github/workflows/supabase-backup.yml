@@ -1,0 +1,56 @@
+name: Supabase database backup (2026-08-02)
+
+# Self-managed logical backup of the Supabase Postgres DB (user 2026-08-02, P-25). Supabase's own scheduled
+# backups are a paid feature; this is the free alternative — a read-only pg_dump to a compressed
+# custom-format file, uploaded as a GitHub Actions artifact (retained 90 days, the free-tier max).
+#
+# Server is Postgres 17.6, so the client is pinned to 17 (pg_dump must be >= the server major version).
+# The connection uses the SESSION pooler (port 5432) — the same endpoint db_pool uses; the transaction
+# pooler (6543) is NOT usable for pg_dump.
+#
+# GitHub cron is BANNED in this repo (all scheduling is cron-job.org); this is workflow_dispatch only — run
+# it by hand from the Actions tab, or point a cron-job.org job at it (weekly is a sensible cadence). Read
+# only; it never writes to the database.
+on:
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - name: Guard — bootstrap creds present (no values printed)
+        run: |
+          if [ -z "$SUPABASE_USER" ] || [ -z "$SUPABASE_DB_PASSWORD" ]; then
+            echo "MISSING SUPABASE_USER / SUPABASE_DB_PASSWORD secrets."; exit 1
+          fi
+          echo "Bootstrap creds present."
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          pg_dump --version
+      - name: Dump database (custom format, compressed)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          STAMP=$(date -u +%Y%m%d-%H%M%SZ)
+          echo "stamp=$STAMP" >> "$GITHUB_ENV"
+          pg_dump \
+            -h aws-0-eu-west-1.pooler.supabase.com -p 5432 \
+            -U "$SUPABASE_USER" -d postgres \
+            --schema=public --no-owner --no-privileges -Fc \
+            -f "supabase-$STAMP.dump"
+          ls -lh "supabase-$STAMP.dump"
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-backup-${{ env.stamp }}
+          path: supabase-*.dump
+          retention-days: 90
+          if-no-files-found: error
