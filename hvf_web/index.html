@@ -206,6 +206,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 /* T&C list (user 2026-07-27, P-25) — readable spacing for the terms clauses */
 .tclist{margin:6px 0 0;padding-left:22px;max-width:820px}
 .tclist li{font-size:15px;line-height:1.55;margin:0 0 7px;color:var(--fg)}
+/* T&C caveat notes — one consistent style across every section (user 2026-08-02, P-25). */
+.tcnote{color:var(--muted);font-size:13px;line-height:1.5;max-width:820px;margin:8px 0 0}
 .doc .eyebrow{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);padding:5px 12px;border-radius:999px;margin-bottom:16px}
 .doc h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:0 0 12px}
@@ -958,7 +960,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <!-- Terms & Conditions (user 2026-07-27, P-25) — visible to all incl. logged-out; hideable via Tab
-     visibility, default visible. DRAFT wording (my own words per the request) — flagged for legal review. -->
+     visibility, default visible. Reviewed/approved (draft banner removed, P-09). Every section's caveat
+     note uses the shared .tcnote class for consistent formatting (P-25, 2026-08-02). -->
 <div id="view-terms" class="hidden doc">
   <span class="eyebrow">Terms &amp; Conditions</span>
   <h1>Terms &amp; Conditions of Service</h1>
@@ -966,7 +969,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
   <h2 class="sec">1. The service</h2>
   <p>The Squeeze Scanner is a research and execution-assistance tool. It scans a large universe of instruments for one repeatable price structure and, for each qualifying setup, computes an entry, a stop-loss and a target. Where you have connected your own broker (IG) credentials, the service can — <b>at your instruction and within the limits you set</b> — place and manage the corresponding working orders on your own account.</p>
-  <p class="muted" style="font-size:13px">The service does <b>not</b> provide personal financial, investment or tax advice, and nothing it produces is a recommendation to buy or sell. You are responsible for your own trading decisions. Trading leveraged products carries a high risk of loss; prices can fall as well as rise and you can lose more than you expect.</p>
+  <p class="tcnote">The service does <b>not</b> provide personal financial, investment or tax advice, and nothing it produces is a recommendation to buy or sell. You are responsible for your own trading decisions. Trading leveraged products carries a high risk of loss; prices can fall as well as rise and you can lose more than you expect.</p>
 
   <h2 class="sec">2. Subscription &amp; payment</h2>
   <ul class="tclist">
@@ -984,7 +987,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <li><b>network</b> or internet-connectivity failures; and</li>
     <li>failures or delays at <b>third-party data providers</b>.</li>
   </ul>
-  <p class="muted" style="font-size:13px">We are not liable for losses arising from any such interruption, including opportunities missed or orders not placed, amended or closed while the service or a dependency is unavailable.</p>
+  <p class="tcnote">We are not liable for losses arising from any such interruption, including opportunities missed or orders not placed, amended or closed while the service or a dependency is unavailable.</p>
 
   <h2 class="sec">4. Orders that may not be placed</h2>
   <p>Even when the service identifies a setup, an order <b>may not be placed, or may be rejected,</b> for reasons including:</p>
@@ -995,7 +998,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <li>a <b>margin call</b>, account restriction or IG-side control prevents the order; or</li>
     <li>your own configured limits (minimum Quality, R:R, Volume Score, instrument value, maximum open positions, etc.) exclude it.</li>
   </ul>
-  <p class="muted" style="font-size:13px">You remain responsible for monitoring your account. We do not guarantee that any particular setup will be traded.</p>
+  <p class="tcnote">You remain responsible for monitoring your account. We do not guarantee that any particular setup will be traded.</p>
 
   <h2 class="sec">5. Access to your broker account</h2>
   <p>Where you supply your IG credentials, you authorise the service to <b>read your positions and account details and to place, amend and cancel orders</b> that you have approved or that fall within the limits you configure. The service <b>cannot and does not add funds to, or withdraw funds from, your account</b> — it has no ability to move money into or out of your IG account.</p>
@@ -1013,7 +1016,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <h2 class="sec">8. Changes to these terms</h2>
   <p>We may update these terms from time to time. Continued use of the service after a change takes effect constitutes acceptance of the updated terms.</p>
 
-  <p class="muted" style="font-size:12px;margin-top:18px">A research and execution-assistance tool — not financial advice. Prices can fall as well as rise, and trades can be stopped out.</p>
+  <p class="tcnote" style="margin-top:20px">A research and execution-assistance tool — not financial advice. Prices can fall as well as rise, and trades can be stopped out.</p>
 </div>
 
 <!-- "What we do" (user 2026-07-27, P-10 L169) — plain-English overview of the service; visible to all
