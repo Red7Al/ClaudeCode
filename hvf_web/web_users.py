@@ -166,7 +166,8 @@ def list_users() -> list:
     return [{"name": n, "email": u.get("email", ""), "admin": bool(u.get("admin", _default_admin(n))),
              "subscription": u.get("subscription", _default_subscription(n)),
              "enabled": bool(u.get("enabled", True)),
-             "pwd_strength": (u.get("pwd_strength") or ("Locked" if u.get("locked") else "unknown"))}
+             "pwd_strength": (u.get("pwd_strength") or ("Locked" if u.get("locked") else "unknown")),
+             "fee_discount": get_fee_discount(n)}   # current + history (P-20/P-40, user 2026-08-02)
             for n, u in _ensure_seeded().items() if isinstance(u, dict) and "pwd_hash" in u]
 
 
@@ -194,6 +195,73 @@ def set_admin(name: str, admin: bool) -> bool:
 
 def set_subscription(name: str, sub: str) -> bool:
     return sub in SUBSCRIPTIONS and _set_field(name, "subscription", sub)
+
+
+# ── Per-user fee discounts (user 2026-08-02, P-20 / P-40) ──────────────────────────────────────────────
+# Admins can grant a user a management-fee and/or performance-fee discount (both default 0), each with an
+# optional start/end date (default none = open-ended). Every change snapshots the previous discount into an
+# append-only history so the full record is retained and admin-visible (P-40).
+def _now_iso() -> str:
+    import datetime as _dt
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def get_fee_discount(name: str) -> dict:
+    """The user's CURRENT fee-discount record + history. Zeros/None when unset."""
+    u = _ensure_seeded().get(name)
+    fd = (u.get("fee_discounts") or {}) if isinstance(u, dict) else {}
+    return {"mgmt_pct": float(fd.get("mgmt_pct") or 0), "perf_pct": float(fd.get("perf_pct") or 0),
+            "start": fd.get("start"), "end": fd.get("end"),
+            "set_by": fd.get("set_by"), "set_at": fd.get("set_at"),
+            "history": list(fd.get("history") or [])}
+
+
+def active_fee_discount(name: str, on: str = None) -> dict:
+    """The discount IN EFFECT on date `on` (default today), honouring the start/end window. Outside the
+    window (or when unset) the effective discount is zero. `active` is True only when a non-zero discount
+    applies today."""
+    import datetime as _dt
+    fd = get_fee_discount(name)
+    d = on or _dt.date.today().isoformat()
+    in_window = True
+    if fd["start"] and d < fd["start"]:
+        in_window = False
+    if fd["end"] and d > fd["end"]:
+        in_window = False
+    mgmt = fd["mgmt_pct"] if in_window else 0.0
+    perf = fd["perf_pct"] if in_window else 0.0
+    return {"mgmt_pct": mgmt, "perf_pct": perf, "start": fd["start"], "end": fd["end"],
+            "in_window": in_window, "active": bool(in_window and (mgmt > 0 or perf > 0))}
+
+
+def set_fee_discount(name: str, mgmt_pct, perf_pct, start=None, end=None, by: str = "") -> bool:
+    """Set the user's current fee discount, snapshotting the previous one into history (P-40). Percentages
+    are clamped to 0–100; blank dates become None (open-ended). Returns False for an unknown login."""
+    def _clamp(v):
+        try:
+            return max(0.0, min(100.0, float(v or 0)))
+        except (TypeError, ValueError):
+            return 0.0
+    start = (start or None) or None
+    end = (end or None) or None
+    with _LOCK:
+        users = _load()
+        u = users.get(name)
+        if not u or "pwd_hash" not in u:
+            return False
+        fd = dict(u.get("fee_discounts") or {})
+        hist = list(fd.get("history") or [])
+        # Retire the previous CURRENT discount into history if it carried any values.
+        if fd.get("mgmt_pct") or fd.get("perf_pct") or fd.get("start") or fd.get("end"):
+            hist.append({"mgmt_pct": float(fd.get("mgmt_pct") or 0), "perf_pct": float(fd.get("perf_pct") or 0),
+                         "start": fd.get("start"), "end": fd.get("end"),
+                         "set_by": fd.get("set_by"), "set_at": fd.get("set_at"),
+                         "retired_by": by, "retired_at": _now_iso()})
+        u["fee_discounts"] = {"mgmt_pct": _clamp(mgmt_pct), "perf_pct": _clamp(perf_pct),
+                              "start": start, "end": end, "set_by": by, "set_at": _now_iso(),
+                              "history": hist}
+        _save(users)
+    return True
 
 
 def set_enabled(name: str, enabled: bool) -> bool:

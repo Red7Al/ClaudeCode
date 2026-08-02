@@ -312,6 +312,13 @@ def api_users():
         changed.append(f"admin={bool(body['admin'])}")
     if "enabled" in body and target != name and _wu.set_enabled(target, bool(body["enabled"])):
         changed.append(f"enabled={bool(body['enabled'])}")
+    # Per-user fee discount (user 2026-08-02, P-20/P-40) — mgmt/perf % + optional start/end dates.
+    if "fee_discount" in body and isinstance(body["fee_discount"], dict):
+        fd = body["fee_discount"]
+        if _wu.set_fee_discount(target, fd.get("mgmt_pct"), fd.get("perf_pct"),
+                                (str(fd.get("start") or "").strip() or None),
+                                (str(fd.get("end") or "").strip() or None), by=name):
+            changed.append(f"fee discount mgmt={fd.get('mgmt_pct') or 0}% perf={fd.get('perf_pct') or 0}%")
     if changed:
         _wu.log_event(name, f"User maintenance: {target} → {', '.join(changed)}")
     return jsonify({"ok": True, "changed": changed, "users": _wu.list_users()})
@@ -2679,7 +2686,15 @@ def api_fees():
                 # True when the per-trade transactions reconcile with the billed daily_pnl total.
                 "reconciled": (abs(txn_sum - float(pnl or 0)) < 0.01)}
 
+    # The viewing user's active fee discount (user 2026-08-02, P-20) — applied to the worked example so
+    # the numbers reflect what THAT account is actually charged. Zero for users without a discount.
+    _viewer = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    try:
+        _disc = _wu.active_fee_discount(_viewer) if _viewer else {"mgmt_pct": 0, "perf_pct": 0, "active": False}
+    except Exception:
+        _disc = {"mgmt_pct": 0, "perf_pct": 0, "active": False}
     payload = {"mgmt_pct": 1.0, "perf_pct": 10.0, "last_month": None, "this_month": None,
+               "discount": _disc, "user": _viewer or None,
                "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
     try:
         today = _dt.date.today()

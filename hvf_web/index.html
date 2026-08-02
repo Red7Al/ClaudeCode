@@ -808,7 +808,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="users-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords">Password Complexity</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords">Password Complexity</th><th title="Management &amp; performance fee discounts for this account, with an optional start/end window. Both default to 0.">Fees discount</th></tr></thead>
       <tbody id="users-rows"></tbody>
     </table></div>
     <div id="users-msg" style="font-size:12px;margin-top:8px"></div>
@@ -2441,9 +2441,52 @@ function renderUsers(){
         <td><label style="cursor:pointer;font-size:13px"><input type="checkbox" ${u.admin?'checked':''} onchange="saveUser('${u.name}',{admin:this.checked})"> Admin</label></td>
         <td><select onchange="saveUser('${u.name}',{subscription:this.value})" style="width:auto">${subs.map(s=>`<option ${u.subscription===s?'selected':''}>${s}</option>`).join("")}</select></td>
         <td><button class="btn" onclick="saveUser('${u.name}',{enabled:${!u.enabled}})">${u.enabled?'<span style="color:var(--bull)">Enabled</span> — disable':'<span style="color:var(--bear)">Disabled</span> — enable'}</button></td>
-        <td>${pwStrength(u.pwd_strength)}</td></tr>`).join("");
+        <td>${pwStrength(u.pwd_strength)}</td>
+        <td>${_discEditor(u)}</td></tr>`).join("");
       paintRequests(j.requests||[]);})
-    .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="6" class="empty">Could not load (admin only).</td></tr>`;});
+    .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="7" class="empty">Could not load (admin only).</td></tr>`;});
+}
+// Per-user fee-discount editor (user 2026-08-02, P-20/P-40): mgmt % + perf % + optional start/end window,
+// Save, and a history reveal. Both default 0; dates default none (open-ended).
+function _discEditor(u){
+  const d=(u.fee_discount||{}), n=u.name, hist=d.history||[];
+  const esc=n.replace(/'/g,"\\'");
+  const inp=(k,v,ph)=>`<input id="disc-${k}-${n}" type="${k==='m'||k==='p'?'number':'date'}" ${k==='m'||k==='p'?'min="0" max="100" step="0.5"':''} value="${v!=null?v:''}" placeholder="${ph}" style="width:${k==='m'||k==='p'?'52px':'128px'};padding:3px 5px;font-size:12px">`;
+  const active = d.mgmt_pct>0||d.perf_pct>0;
+  return `<div style="display:flex;flex-direction:column;gap:4px;min-width:300px">
+    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+      <span class="muted" style="font-size:11px">Mgmt</span>${inp('m',d.mgmt_pct,'0')}<span class="muted" style="font-size:11px">%</span>
+      <span class="muted" style="font-size:11px">Perf</span>${inp('p',d.perf_pct,'0')}<span class="muted" style="font-size:11px">%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+      <span class="muted" style="font-size:11px">From</span>${inp('s',d.start,'')}
+      <span class="muted" style="font-size:11px">To</span>${inp('e',d.end,'')}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn" style="padding:3px 9px;font-size:12px" onclick="saveDiscount('${esc}')">Save discount</button>
+      ${active?`<span class="tag" style="background:var(--chip);color:var(--fg);font-size:11px">active</span>`:''}
+      ${hist.length?`<a href="#" style="font-size:11px" onclick="toggleDiscHist('${esc}');return false">history (${hist.length})</a>`:''}
+    </div>
+    <div id="disc-hist-${n}" style="display:none;font-size:11px" class="muted"></div>
+  </div>`;
+}
+function saveDiscount(name){
+  const g=k=>($("disc-"+k+"-"+name)||{}).value;
+  const patch={fee_discount:{mgmt_pct:parseFloat(g('m'))||0,perf_pct:parseFloat(g('p'))||0,start:g('s')||null,end:g('e')||null}};
+  saveUser(name,patch);
+}
+function toggleDiscHist(name){
+  const box=$("disc-hist-"+name); if(!box)return;
+  if(box.style.display!=="none"){box.style.display="none";return;}
+  // Pull the freshest history from the last render's data via a small refetch of /api/users.
+  fetch("/api/users",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(j=>{
+    const u=(j.users||[]).find(x=>x.name===name)||{}, h=((u.fee_discount||{}).history)||[];
+    box.innerHTML = h.length? h.slice().reverse().map(e=>`• Mgmt ${e.mgmt_pct||0}% / Perf ${e.perf_pct||0}%`+
+      `${e.start||e.end?` · ${e.start||'—'}→${e.end||'—'}`:''}`+
+      `${e.set_by?` · set by ${e.set_by}`:''}${e.retired_at?` · retired ${e.retired_at}`:''}`).join("<br>")
+      : "No prior discounts.";
+    box.style.display="";
+  }).catch(()=>{box.innerHTML="Could not load history.";box.style.display="";});
 }
 function paintRequests(reqs){
   $("req-section").style.display=reqs.length?"":"none";
@@ -3631,8 +3674,12 @@ function paintFees(){
   const box=$("fees-example"); if(!box)return;
   const f=FEES||{}, seg=(FEES_PER==='this'?f.this_month:f.last_month)||null;
   const aum=+(($("fees-aum")||{}).value||0)||10000;
-  const mgmt=aum*(f.mgmt_pct!=null?f.mgmt_pct:1)/100;
-  const profit=seg?seg.pnl:0, perf=profit>0?profit*(f.perf_pct!=null?f.perf_pct:10)/100:0;
+  const mgmtRate=(f.mgmt_pct!=null?f.mgmt_pct:1), perfRate=(f.perf_pct!=null?f.perf_pct:10);
+  const mgmtGross=aum*mgmtRate/100;
+  const profit=seg?seg.pnl:0, perfGross=profit>0?profit*perfRate/100:0;
+  // Per-user fee discount (user 2026-08-02, P-20) — reduces each fee by its discount % when active today.
+  const disc=(f.discount||{}), dm=+(disc.mgmt_pct||0), dp=+(disc.perf_pct||0), hasDisc=(disc.active&&(dm>0||dp>0));
+  const mgmt=mgmtGross*(1-dm/100), perf=perfGross*(1-dp/100);
   const isThis=(FEES_PER==='this');
   const gbp=_feesGbp;
   const ti=$("fees-title"); if(ti)ti.textContent=`Worked example — ${isThis?'this month (so far)':'last month'}`;
@@ -3640,9 +3687,10 @@ function paintFees(){
   box.innerHTML=`<table><thead><tr><th>Item</th><th style="text-align:right">Amount</th><th>Basis</th></tr></thead><tbody>`+
     row(`Period`, seg?seg.label:'—', seg?`${seg.trades} trades · ${seg.wins} win / ${seg.losses} loss`:'no daily P&L recorded')+
     row(`Realised profit`, `<span style="color:${profit>=0?'var(--bull)':'var(--bear)'}">${gbp(profit)}</span>`, isThis?`this month's total_pnl to date`:`last month's total_pnl`)+
-    row(`Management fee (1%)`, gbp(mgmt), `1% × AUM ${gbp(aum)}`)+
-    row(`Performance fee (10%)`, gbp(perf), profit>0?`10% × profit`:`0 — no profit ${isThis?'yet this month':'this month'}`)+
-    `<tr style="border-top:2px solid var(--line)"><td><b>${isThis?'Fees so far':'Total fees'}</b></td><td style="text-align:right"><b>${gbp(mgmt+perf)}</b></td><td class="muted">management + performance${isThis?' — accrues until month end':''}</td></tr>`+
+    row(`Management fee (${mgmtRate}%)`, gbp(mgmt), dm>0?`${mgmtRate}% × AUM ${gbp(aum)}, less ${dm}% discount`:`${mgmtRate}% × AUM ${gbp(aum)}`)+
+    row(`Performance fee (${perfRate}%)`, gbp(perf), profit>0?(dp>0?`${perfRate}% × profit, less ${dp}% discount`:`${perfRate}% × profit`):`0 — no profit ${isThis?'yet this month':'this month'}`)+
+    (hasDisc?row(`Discount applied`, `−${gbp((mgmtGross-mgmt)+(perfGross-perf))}`, `${dm>0?`mgmt −${dm}%`:''}${dm>0&&dp>0?' · ':''}${dp>0?`perf −${dp}%`:''}${(disc.start||disc.end)?` · ${disc.start||'—'}→${disc.end||'—'}`:''}`):'')+
+    `<tr style="border-top:2px solid var(--line)"><td><b>${isThis?'Fees so far':'Total fees'}</b></td><td style="text-align:right"><b>${gbp(mgmt+perf)}</b></td><td class="muted">management + performance${isThis?' — accrues until month end':''}${hasDisc?' (after discount)':''}</td></tr>`+
     `</tbody></table>`;
   paintFeesTxns(seg);
 }
