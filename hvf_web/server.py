@@ -2651,8 +2651,44 @@ def api_fees():
     the period profit (reconciled per row-count/total)."""
     import datetime as _dt
 
+    def _period_ig(start, end, label, ig_txns):
+        """Build a period from the viewer's REAL IG transaction history (user 2026-08-02, P-06) — the source
+        of truth, so ALL closed trades show (not just the sparse trade_log) and IG's own charges (overnight
+        funding/interest) are surfaced. `pnl` is the NET realised profit (trade P&L + charges)."""
+        a, b = start.isoformat(), end.isoformat()
+        inwin = [t for t in ig_txns if a <= str(t.get("date") or "")[:10] <= b]
+        trades = [t for t in inwin if t.get("kind") == "TRADE"]
+        charges = [t for t in inwin if t.get("kind") == "CHARGE"]
+        txns = []
+        for t in trades:
+            sz = t.get("size")
+            op, cp = t.get("open_level"), t.get("close_level")
+            direction = "BUY" if (sz is not None and sz > 0) else "SELL"
+            pct = None
+            if op and cp and op != 0:
+                mv = (cp - op) / op * 100.0
+                pct = round(mv if direction == "BUY" else -mv, 2)
+            txns.append({
+                "ticker": t.get("instrument"), "direction": direction,
+                "size": (abs(sz) if sz is not None else None),
+                "open": op, "close": cp,
+                "pnl": round(float(t.get("pnl") or 0), 2), "pnl_pct": pct,
+                "opened_at": t.get("open_date"), "closed_at": t.get("date"),
+                "reason": t.get("type")})
+        chg_rows = [{"date": t.get("date"), "instrument": t.get("instrument"),
+                     "type": t.get("type"), "pnl": round(float(t.get("pnl") or 0), 2)} for t in charges]
+        trade_pnl = round(sum(t["pnl"] for t in txns), 2)
+        charges_total = round(sum(c["pnl"] for c in chg_rows), 2)
+        net = round(trade_pnl + charges_total, 2)
+        wins = sum(1 for t in txns if t["pnl"] > 0)
+        losses = sum(1 for t in txns if t["pnl"] < 0)
+        return {"label": label, "start": a, "end": b, "source": "ig",
+                "pnl": net, "trade_pnl": trade_pnl, "charges_total": charges_total,
+                "trades": len(txns), "wins": wins, "losses": losses,
+                "txns": txns, "txn_pnl": trade_pnl, "charges": chg_rows, "reconciled": True}
+
     def _period(db, start, end, label):
-        # Aggregate summary from daily_pnl (the source the performance fee is billed on).
+        # Fallback (no IG session): the app's own record — daily_pnl aggregate + trade_log transactions.
         row = db.run("select coalesce(sum(total_pnl),0), coalesce(sum(trade_count),0), "
                      "coalesce(sum(win_count),0), coalesce(sum(loss_count),0) from daily_pnl "
                      "where trade_date >= :a and trade_date <= :b",
@@ -2679,10 +2715,10 @@ def api_fees():
         except Exception as tex:
             log.warning(f"fees txns failed for {label}: {tex}")
         txn_sum = round(sum(t["pnl"] for t in txns), 2)
-        return {"label": label, "start": start.isoformat(), "end": end.isoformat(),
+        return {"label": label, "start": start.isoformat(), "end": end.isoformat(), "source": "app",
                 "pnl": float(pnl or 0), "trades": int(tc or 0),
                 "wins": int(wc or 0), "losses": int(lc or 0),
-                "txns": txns, "txn_pnl": txn_sum,
+                "txns": txns, "txn_pnl": txn_sum, "charges": [], "charges_total": 0.0,
                 # True when the per-trade transactions reconcile with the billed daily_pnl total.
                 "reconciled": (abs(txn_sum - float(pnl or 0)) < 0.01)}
 
@@ -2696,36 +2732,48 @@ def api_fees():
     # The REAL account value for the AUM basis (user 2026-08-02, P-12) — so the management-fee example uses
     # the actual equity (cash balance + open P&L), not a round typed figure. Best-effort; None when the
     # viewer has no IG session/creds (the UI then keeps the manual default).
+    today = _dt.date.today()
+    first_this = today.replace(day=1)
+    last_month_end = first_this - _dt.timedelta(days=1)
+    first_last = last_month_end.replace(day=1)
+
+    # One IG session block (user 2026-08-02): fetch the real account equity (AUM basis) AND the full
+    # transaction history spanning both periods, so the fees reflect the ACTUAL closed trades + IG charges.
     _real_aum = None
     _aum_ccy = None
+    _ig_txns = None
     try:
         import ig_shim
         if _viewer and ig_shim.session_for(_viewer) is not None:
             with ig_shim._IG_LOCK, ig_shim.acting_session(_viewer):
                 _bal = ig_shim.get_account_balance() or {}
+                _ig_txns = ig_shim.get_transactions(first_last.strftime("%Y-%m-%dT00:00:00"))
             _b = float(_bal.get("balance") or 0)
             _pl = float(_bal.get("profit_loss") or 0)
             _real_aum = round(_b + _pl, 2)      # account equity = ledger balance + open P&L
             _aum_ccy = _bal.get("currency")
     except Exception as _ex:
-        log.warning(f"fees real AUM unavailable: {_ex}")
+        log.warning(f"fees IG data unavailable: {_ex}")
+
     payload = {"mgmt_pct": 1.0, "perf_pct": 10.0, "last_month": None, "this_month": None,
                "discount": _disc, "user": _viewer or None,
                "real_aum": _real_aum, "aum_currency": _aum_ccy,
+               "source": ("ig" if _ig_txns is not None else "app"),
                "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
     try:
-        today = _dt.date.today()
-        first_this = today.replace(day=1)
-        last_month_end = first_this - _dt.timedelta(days=1)
-        first_last = last_month_end.replace(day=1)
-        from db_pool import get_db
-        db = get_db()
-        try:
-            payload["last_month"] = _period(db, first_last, last_month_end, first_last.strftime("%B %Y"))
-            payload["this_month"] = _period(db, first_this, today,
-                                            today.strftime("%B %Y") + " (so far)")
-        finally:
-            db.close()
+        if _ig_txns is not None:
+            # Truth: the account's real transaction history (all closed trades + IG charges).
+            payload["last_month"] = _period_ig(first_last, last_month_end, first_last.strftime("%B %Y"), _ig_txns)
+            payload["this_month"] = _period_ig(first_this, today, today.strftime("%B %Y") + " (so far)", _ig_txns)
+        else:
+            # Fallback: the app's own record (daily_pnl + trade_log).
+            from db_pool import get_db
+            db = get_db()
+            try:
+                payload["last_month"] = _period(db, first_last, last_month_end, first_last.strftime("%B %Y"))
+                payload["this_month"] = _period(db, first_this, today, today.strftime("%B %Y") + " (so far)")
+            finally:
+                db.close()
     except Exception as ex:
         log.warning(f"fees failed: {ex}")
     return jsonify(payload)

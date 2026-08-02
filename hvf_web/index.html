@@ -3712,9 +3712,17 @@ function paintFees(){
   const gbp=_feesGbp;
   const ti=$("fees-title"); if(ti)ti.textContent=`Worked example — ${seg?seg.label:(isThis?'this month (so far)':'last month')}`;
   const row=(k,v,note)=>`<tr><td>${k}</td><td style="text-align:right"><b>${v}</b></td><td class="muted">${note||''}</td></tr>`;
+  const isIg=(seg&&seg.source==='ig');
+  const colr=v=>`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${gbp(v)}</span>`;
+  // When sourced from real IG history (P-06), show the P&L breakdown: trading P&L, IG charges, net.
+  const pnlRows = isIg
+    ? row(`Realised trading P&L`, colr(seg.trade_pnl||0), `${seg.trades} closed trades (net of spread)`)+
+      row(`IG charges`, colr(seg.charges_total||0), `overnight funding / interest / fees${seg.charges&&seg.charges.length?` · ${seg.charges.length} item${seg.charges.length>1?'s':''}`:''}`)+
+      row(`Net realised profit`, `<b>${colr(profit)}</b>`, `trading P&L + IG charges — the fee basis`)
+    : row(`Realised profit`, colr(profit), isThis?`this month's total_pnl to date`:`last month's total_pnl`);
   box.innerHTML=`<table><thead><tr><th>Item</th><th style="text-align:right">Amount</th><th>Basis</th></tr></thead><tbody>`+
-    row(`Period`, seg?seg.label:'—', seg?`${seg.trades} trades · ${seg.wins} win / ${seg.losses} loss`:'no daily P&L recorded')+
-    row(`Realised profit`, `<span style="color:${profit>=0?'var(--bull)':'var(--bear)'}">${gbp(profit)}</span>`, isThis?`this month's total_pnl to date`:`last month's total_pnl`)+
+    row(`Period`, seg?seg.label:'—', seg?`${seg.trades} trades · ${seg.wins} win / ${seg.losses} loss${isIg?' · from your IG history':''}`:'no data recorded')+
+    pnlRows+
     row(`Management fee (${mgmtRate}% p.a.)`, gbp(mgmt), dm>0?`(${mgmtRate}% ÷ 12) × AUM ${gbp(aum)}, less ${dm}% discount`:`(${mgmtRate}% ÷ 12) × AUM ${gbp(aum)}`)+
     row(`Performance fee (${perfRate}% p.a.)`, gbp(perf), profit>0?(dp>0?`(${perfRate}% ÷ 12) × profit, less ${dp}% discount`:`(${perfRate}% ÷ 12) × profit`):`0 — no profit ${isThis?'yet this month':'this month'}`)+
     (hasDisc?row(`Discount applied`, `−${gbp((mgmtGross-mgmt)+(perfGross-perf))}`, `${dm>0?`mgmt −${dm}%`:''}${dm>0&&dp>0?' · ':''}${dp>0?`perf −${dp}%`:''}${(disc.start||disc.end)?` · ${disc.start||'—'}→${disc.end||'—'}`:''}`):'')+
@@ -3725,34 +3733,51 @@ function paintFees(){
 function paintFeesTxns(seg){
   const box=$("fees-txns"); if(!box)return;
   const ti=$("fees-txn-title");
-  const txns=(seg&&seg.txns)||[];
+  const txns=(seg&&seg.txns)||[], charges=(seg&&seg.charges)||[];
   if(ti)ti.textContent=`Transactions — ${seg?seg.label:'—'}`;
-  if(!txns.length){box.innerHTML=`<p class="muted" style="font-size:12px;padding:6px 0">No closed trades in this period.</p>`;return;}
   const gbp=_feesGbp;
   const fdate=s=>{if(!s)return '';const d=new Date(s);return isNaN(d)?String(s).slice(0,10):d.toLocaleDateString(undefined,{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});};
   const num=(v,dp)=>v==null?'—':(+v).toLocaleString(undefined,{minimumFractionDigits:dp,maximumFractionDigits:dp});
-  let rows='', tot=0;
-  txns.forEach((t,i)=>{
-    tot+=(t.pnl||0);
-    const col=(t.pnl||0)>=0?'var(--bull)':'var(--bear)';
-    rows+=`<tr>`+
-      `<td class="muted" style="text-align:right">${i+1}</td>`+
-      `<td>${t.ticker||''}</td>`+
-      `<td><span style="color:${t.direction==='BUY'?'var(--bull)':'var(--bear)'}">${t.direction||''}</span></td>`+
-      `<td style="text-align:right">${num(t.size,2)}</td>`+
-      `<td style="text-align:right">${num(t.open,2)}</td>`+
-      `<td style="text-align:right">${num(t.close,2)}</td>`+
-      `<td style="text-align:right;color:${col}"><b>${gbp(t.pnl)}</b></td>`+
-      `<td style="text-align:right;color:${col}">${t.pnl_pct==null?'—':(t.pnl_pct>=0?'+':'')+(+t.pnl_pct).toFixed(2)+'%'}</td>`+
-      `<td>${fdate(t.opened_at)}</td>`+
-      `<td>${fdate(t.closed_at)}</td>`+
-      `</tr>`;
-  });
-  const recon=seg&&seg.reconciled;
-  box.innerHTML=`<table><thead><tr><th style="text-align:right">#</th><th>Instrument</th><th>Dir</th><th style="text-align:right">Size</th><th style="text-align:right">Open</th><th style="text-align:right">Close</th><th style="text-align:right">P&amp;L</th><th style="text-align:right">P&amp;L %</th><th>Opened</th><th>Closed</th></tr></thead><tbody>`+
-    rows+
-    `<tr style="border-top:2px solid var(--line)"><td></td><td colspan="5"><b>Total realised (${txns.length} trades)</b></td><td style="text-align:right;color:${tot>=0?'var(--bull)':'var(--bear)'}"><b>${gbp(tot)}</b></td><td colspan="3" class="muted">${recon?'✓ reconciles with billed profit':'⚠ differs from billed profit'}</td></tr>`+
-    `</tbody></table>`;
+  let html='';
+  if(!txns.length){
+    html+=`<p class="muted" style="font-size:12px;padding:6px 0">No closed trades in this period.</p>`;
+  }else{
+    let rows='', tot=0;
+    txns.forEach((t,i)=>{
+      tot+=(t.pnl||0);
+      const col=(t.pnl||0)>=0?'var(--bull)':'var(--bear)';
+      rows+=`<tr>`+
+        `<td class="muted" style="text-align:right">${i+1}</td>`+
+        `<td>${t.ticker||''}</td>`+
+        `<td><span style="color:${t.direction==='BUY'?'var(--bull)':'var(--bear)'}">${t.direction||''}</span></td>`+
+        `<td style="text-align:right">${num(t.size,2)}</td>`+
+        `<td style="text-align:right">${num(t.open,2)}</td>`+
+        `<td style="text-align:right">${num(t.close,2)}</td>`+
+        `<td style="text-align:right;color:${col}"><b>${gbp(t.pnl)}</b></td>`+
+        `<td style="text-align:right;color:${col}">${t.pnl_pct==null?'—':(t.pnl_pct>=0?'+':'')+(+t.pnl_pct).toFixed(2)+'%'}</td>`+
+        `<td>${fdate(t.opened_at)}</td>`+
+        `<td>${fdate(t.closed_at)}</td>`+
+        `</tr>`;
+    });
+    html+=`<table><thead><tr><th style="text-align:right">#</th><th>Instrument</th><th>Dir</th><th style="text-align:right">Size</th><th style="text-align:right">Open</th><th style="text-align:right">Close</th><th style="text-align:right">P&amp;L</th><th style="text-align:right">P&amp;L %</th><th>Opened</th><th>Closed</th></tr></thead><tbody>`+
+      rows+
+      `<tr style="border-top:2px solid var(--line)"><td></td><td colspan="5"><b>Total trading P&amp;L (${txns.length} trades)</b></td><td style="text-align:right;color:${tot>=0?'var(--bull)':'var(--bear)'}"><b>${gbp(tot)}</b></td><td colspan="3"></td></tr>`+
+      `</tbody></table>`;
+  }
+  // IG charges behind the period (user 2026-08-02, P-06) — overnight funding / interest / fees that also
+  // hit the net P&L, straight from the account's transaction history.
+  if(charges.length){
+    let crows='', ctot=0;
+    charges.forEach((c,i)=>{ctot+=(c.pnl||0);
+      crows+=`<tr><td class="muted" style="text-align:right">${i+1}</td><td>${(c.instrument||'').replace(/</g,'&lt;')}</td><td class="muted">${c.type||''}</td><td>${fdate(c.date)}</td><td style="text-align:right;color:${(c.pnl||0)>=0?'var(--bull)':'var(--bear)'}">${gbp(c.pnl)}</td></tr>`;});
+    html+=`<h3 class="sec" style="font-size:14px">IG charges — ${seg.label}</h3>`+
+      `<p class="muted" style="font-size:11.5px;margin:2px 0 6px">Overnight funding, interest and fees IG applied in this period — these reduce the net realised profit above.</p>`+
+      `<div class="tablewrap"><table><thead><tr><th style="text-align:right">#</th><th>Charge</th><th>Type</th><th>Date</th><th style="text-align:right">Amount</th></tr></thead><tbody>`+
+      crows+
+      `<tr style="border-top:2px solid var(--line)"><td></td><td colspan="3"><b>Total IG charges (${charges.length})</b></td><td style="text-align:right;color:${ctot>=0?'var(--bull)':'var(--bear)'}"><b>${gbp(ctot)}</b></td></tr>`+
+      `</tbody></table></div>`;
+  }
+  box.innerHTML=html;
 }
 // Monthly growth of the compounded wallet (user 2026-07-18, P-01) — on the Summary sub-tab, full width.
 // Compounds a 2%-of-wallet stake across the date-filtered population in trigger-date order, then shows the

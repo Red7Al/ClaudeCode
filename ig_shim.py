@@ -635,6 +635,69 @@ def get_account_balance() -> dict:
     raise ValueError(f"Account {IG_ACCOUNT_ID} not found in IG response")
 
 
+def _parse_money(v) -> float:
+    """Parse an IG money string like '£-0.25' / '1,234.50' to a float (currency symbol + thousands
+    separators stripped). Returns 0.0 on anything unparseable."""
+    if v is None:
+        return 0.0
+    cleaned = "".join(ch for ch in str(v) if ch.isdigit() or ch in ".-")
+    try:
+        return float(cleaned) if cleaned not in ("", "-", ".", "-.") else 0.0
+    except ValueError:
+        return 0.0
+
+
+def get_transactions(from_iso: str, to_iso: str = None) -> list:
+    """The account's transaction history over [from_iso, to_iso] (IG /history/transactions, v2), normalised
+    and CLASSIFIED (user 2026-08-02, P-06). Each row:
+      {date, open_date, instrument, type, pnl, open_level, close_level, size, currency, kind}
+    where kind is:
+      'TRADE'  — a closed deal (has numeric open & close levels); pnl = realised P&L (net of spread)
+      'CHARGE' — an IG cost that hits P&L: overnight funding/interest, borrowing, dividends adj, fees
+      'CASH'   — a deposit/withdrawal of funds (excluded from both trade P&L and charges)
+    Best-effort; returns [] on any failure. The caller runs it inside the acting user's session."""
+    params = {"type": "ALL", "from": from_iso}
+    if to_iso:
+        params["to"] = to_iso
+    try:
+        data = session.get("/history/transactions", version="2", params=params) or {}
+    except Exception as e:
+        log.warning(f"get_transactions failed: {e}")
+        return []
+    out = []
+    for t in (data.get("transactions", []) or []):
+        name = str(t.get("instrumentName") or "")
+        up = name.upper()
+        ol = str(t.get("openLevel") or "").strip()
+        cl = str(t.get("closeLevel") or "").strip()
+        sz = str(t.get("size") or "").strip()
+        is_cash = bool(t.get("cashTransaction"))
+        # A real closed deal carries numeric open + close levels and a size.
+        def _num(x):
+            return x not in ("", "-", "0") and _parse_money(x) != 0.0
+        if is_cash and not (_num(ol) and _num(cl)):
+            kind = "CASH"
+        elif any(k in up for k in ("INTEREST", "FUNDING", "DIVIDEND", "BORROW", "COMMISSION", "FEE", "CHARGE")):
+            kind = "CHARGE"
+        elif _num(ol) and _num(cl):
+            kind = "TRADE"
+        else:
+            kind = "CHARGE"
+        out.append({
+            "date": t.get("date"),
+            "open_date": t.get("openDateUtc") or t.get("dateUtc") or t.get("date"),
+            "instrument": name,
+            "type": t.get("transactionType"),
+            "pnl": _parse_money(t.get("profitAndLoss")),
+            "open_level": _parse_money(ol) if _num(ol) else None,
+            "close_level": _parse_money(cl) if _num(cl) else None,
+            "size": _parse_money(sz) if sz not in ("", "-") else None,
+            "currency": t.get("currency"),
+            "kind": kind,
+        })
+    return out
+
+
 def get_account_info() -> dict:
     """Name + id of the account the CURRENT session is acting on (user 2026-07-20, IG Account tab header).
     Uses the acting session's own account id (so it is correct for non-owner users under acting_session),
