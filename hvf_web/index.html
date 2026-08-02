@@ -375,6 +375,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <span class="grow"></span>
   <button class="btn" id="togglefilters">Show Filters <span style="color:var(--bear)">✗</span></button>
   <button class="btn" id="signalonly">Show Squeeze Only <span style="color:var(--bull)">✓</span></button>
+  <span id="refresh-mkt-wrap" style="display:none;position:relative">
+    <button class="btn" id="refresh-mkt-btn" onclick="toggleRefreshMkt(event)" title="Choose which markets the Refresh rescans (default: all)">Markets: All ▾</button>
+    <div id="refresh-mkt-panel" style="display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:60;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:210px;max-height:360px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.35)"></div>
+  </span>
   <button class="btn" id="refresh">↻ Refresh data</button>
   <button class="btn" id="reset">Reset filters</button>
   <button class="btn" id="showall">Remove all filters (show all)</button>
@@ -2147,10 +2151,50 @@ $("togglefilters").onclick=()=>{
   const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").innerHTML="Show Filters "+(hidden?'<span style="color:var(--bear)">✗</span>':'<span style="color:var(--bull)">✓</span>');};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").innerHTML="Show Squeeze Only "+(signalOnly?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');applyAll();};
 let _refStart=0, _lastTens=-1;
+// Refresh a CHOICE of markets (user 2026-07-31, P-15). REFRESH_MARKETS empty = the whole universe;
+// otherwise only the picked markets are rescanned and merged into the snapshot.
+let REFRESH_MARKETS=new Set();
+let REFRESH_MKT_LIST=null;   // canonical market list from /api/records (authed); falls back to uniq("market")
+function _refreshMktList(){return (REFRESH_MKT_LIST&&REFRESH_MKT_LIST.length)?REFRESH_MKT_LIST:uniq("market");}
+function buildRefreshMktPanel(){
+  const p=$("refresh-mkt-panel"); if(!p)return;
+  const mkts=_refreshMktList(), all=REFRESH_MARKETS.size===0;
+  const rows=mkts.map(m=>{
+    const on=all||REFRESH_MARKETS.has(m);
+    return `<label style="display:flex;align-items:center;gap:7px;padding:3px 4px;font-size:12.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" data-mkt="${m.replace(/"/g,'&quot;')}" ${on&&!all?'checked':''} onchange="onRefreshMktToggle(this)"> ${m}</label>`;
+  }).join("");
+  p.innerHTML=`<label style="display:flex;align-items:center;gap:7px;padding:3px 4px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--line);margin-bottom:4px"><input type="checkbox" id="refresh-mkt-all" ${all?'checked':''} onchange="onRefreshMktAll(this)"> <b>All markets</b></label>`+rows;
+  updateRefreshMktLabel();
+}
+function onRefreshMktAll(cb){ if(cb.checked){REFRESH_MARKETS.clear();} buildRefreshMktPanel(); }
+function onRefreshMktToggle(cb){
+  const m=cb.getAttribute("data-mkt");
+  if(cb.checked)REFRESH_MARKETS.add(m); else REFRESH_MARKETS.delete(m);
+  // Ticking a specific market means "not all"; if the user unticks everything, fall back to All.
+  buildRefreshMktPanel();
+}
+function updateRefreshMktLabel(){
+  const b=$("refresh-mkt-btn"); if(!b)return;
+  const n=REFRESH_MARKETS.size;
+  b.textContent = n===0 ? "Markets: All ▾" : (n===1 ? `Markets: ${[...REFRESH_MARKETS][0]} ▾` : `Markets: ${n} selected ▾`);
+}
+function toggleRefreshMkt(e){
+  if(e)e.stopPropagation();
+  const p=$("refresh-mkt-panel"); if(!p)return;
+  const open=p.style.display!=="none";
+  if(open){p.style.display="none";return;}
+  buildRefreshMktPanel(); p.style.display="block";
+  // close on next outside click
+  setTimeout(()=>{const h=ev=>{if(!$("refresh-mkt-wrap").contains(ev.target)){p.style.display="none";document.removeEventListener("click",h);}};document.addEventListener("click",h);},0);
+}
 $("refresh").onclick=async()=>{ if($("refresh").disabled)return;
-  if(!await appConfirm(`Scans the full universe (${DATA.length||'884+'} instruments) — takes a few minutes. The page keeps working with the current data and reloads automatically when the rebuild finishes.`,{title:"Rebuild the snapshot now?",ok:"↻ Rebuild"}))return;
+  const picked=[...REFRESH_MARKETS];
+  const scope = picked.length ? `the selected market${picked.length>1?'s':''} (${picked.join(', ')})`
+                              : `the full universe (${DATA.length||'884+'} instruments)`;
+  if(!await appConfirm(`Rescans ${scope} — takes a few minutes. The page keeps working with the current data and reloads automatically when the rebuild finishes.`,{title:"Rebuild the snapshot now?",ok:"↻ Rebuild"}))return;
   $("refresh").disabled=true; $("refresh").textContent="↻ Starting…"; _refStart=Date.now(); _lastTens=-1;
-  fetch("/api/refresh",{method:"POST",headers:{"X-Auth":AUTH}}).then(x=>x.json()).then(j=>{ pollRefresh(); })
+  fetch("/api/refresh",{method:"POST",headers:{"X-Auth":AUTH,"Content-Type":"application/json"},
+        body:JSON.stringify(picked.length?{markets:picked}:{})}).then(x=>x.json()).then(j=>{ pollRefresh(); })
     .catch(()=>{$("refresh").textContent="↻ Refresh failed";$("refresh").disabled=false;});};
 function pollRefresh(){
   fetch("/api/status").then(x=>x.json()).then(s=>{
@@ -2271,6 +2315,7 @@ function showTab(name){
         :!( $("aside")||{classList:{contains:()=>true}}).classList.contains("collapsed");
       tf.innerHTML="Show Filters "+(shown?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');}}
   const rb=$("refresh"); if(rb) rb.style.display=(sc&&IS_ADMIN)?"":"none";
+  const rmw=$("refresh-mkt-wrap"); if(rmw){rmw.style.display=(sc&&IS_ADMIN)?"":"none"; if(sc&&IS_ADMIN)updateRefreshMktLabel();}
   if(locked)return;
   const R={preorders:renderPreorders,activity:renderActivity,orderops:renderOrderOps,xposts:renderXposts,
     config:renderConfig,configadmin:renderConfig,users:renderUsers,syslogs:renderSyslogs,jobs:renderJobs,
@@ -2345,7 +2390,7 @@ function paintJobs(){
   const totF=JOB_ROWS.reduce((s,e)=>s+(e.failures||0),0);
   $("jobs-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> scheduled jobs${rows.length!==JOB_ROWS.length?` <span class="muted">of ${JOB_ROWS.length}</span>`:""} <span class="muted">· ${totF} recent failure(s)</span>`;
   $("jobs-rows").innerHTML=rows.map(e=>`<tr>
-    <td><b>${e.title||""}</b></td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||""}</span></td>
+    <td><b>${e.title||""}</b>${e.purpose?`<div class="muted" style="font-size:11.5px;max-width:360px;white-space:normal;line-height:1.35;margin-top:3px">${e.purpose}</div>`:""}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||""}</span></td>
     <td><b style="color:${_jstyleCol(e.trading_style)}">${e.trading_style||""}</b></td>
     <td>${e.frequency||e.cron||""}</td>
     <td><b style="color:${_jstCol(e.last_status)}">${e.last_status||"—"}</b></td>
@@ -2871,7 +2916,7 @@ function refreshMarkets(ev){
   if(btn){btn.disabled=true;btn.textContent="⏳ Refreshing…";}
   $("mk-count").innerHTML='<span class="muted">⏳ Loading…</span>';
   fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{DATA=j.records||[];DATA.forEach(augment);renderMarkets();})
+    .then(j=>{DATA=j.records||[];if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;DATA.forEach(augment);renderMarkets();})
     .catch(()=>{$("mk-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not refresh — try again.</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
@@ -4155,6 +4200,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     TRADE_HIDE=(cfg&&cfg.trade)||{};   // per-user Trading (Squeeze) filter -> hides excluded markets (user 2026-07-06)
     MARKETS_DISABLED=new Set((cfg&&cfg.markets_disabled)||[]); MARKETS_OFF=new Set((cfg&&cfg.markets_off)||[]);   // market on/off switches (user 2026-07-11)
     DATA=j.records||[]; DATA.forEach(augment);
+    if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;   // canonical market list for the Refresh picker (P-15)
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");
     msyncAll();   // options only exist now — repaint the P-08 dropdown buttons (incl. any user defaults)

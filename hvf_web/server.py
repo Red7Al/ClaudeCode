@@ -865,18 +865,22 @@ def api_records():
     authed = request.headers.get("X-Auth") in _wu.valid_tokens()
     # The Scanner shows the FULL universe to every user — the Config trade filters gate only what the
     # operator TRADES (enforced in ig_shim at order time), never what is shown (user 2026-07-06).
+    markets = None
     if authed:
         rvol = _snapshot_rvol(snap)                       # RVOL at the real break bar (P-30)
         vscore = _snapshot_volscore(snap)                 # VolumeScore 0–12 at the break bar (P-02 L49)
         recs = [dict({k: v for k, v in r.items() if k != "_card"}, rvol=rvol.get(r.get("ticker")),
                      volume_score=(vscore.get(r.get("ticker")) or {}).get("score"))
                 for r in snap.get("records", [])]
+        # Canonical market list (user 2026-07-31, P-15) — drives the Scanner "Refresh a choice of markets"
+        # picker independent of which fields the client keeps on DATA.
+        markets = sorted({r.get("market") for r in snap.get("records", []) if r.get("market")})
     else:
         # Teaser mode (user 2026-07-03): only the first-5-column fields leave the server — the rest
         # are stripped HERE, not hidden client-side, so logged-out users cannot fetch them at all.
         recs = [{k: r.get(k) for k in _PUBLIC_FIELDS} for r in snap.get("records", [])]
     return jsonify({"generated_utc": snap.get("generated_utc"), "count": len(recs),
-                    "records": recs, "limited": not authed})
+                    "records": recs, "limited": not authed, "markets": markets})
 
 
 def _png_response(png: bytes):
@@ -1128,17 +1132,19 @@ def api_working_orders():
 _REFRESHING = {"on": False}
 
 
-def _do_rebuild() -> bool:
+def _do_rebuild(markets=None) -> bool:
     """Rebuild the snapshot (shared by the 12h loop + the manual refresh button). Guards against a
-    concurrent rebuild and clears the PNG/tweet/links caches afterwards."""
+    concurrent rebuild and clears the PNG/tweet/links caches afterwards. markets (user 2026-07-31, P-15) —
+    an optional list of market names to refresh a CHOICE of markets (merged into the snapshot); None =
+    full universe."""
     if _REFRESHING["on"]:
         return False
     _REFRESHING["on"] = True
     try:
         from hvf_web.build_snapshot import build
-        build()
+        build(markets=markets or None)
         _PNG_CACHE.clear()
-        log.info("snapshot rebuilt; caches cleared")
+        log.info("snapshot rebuilt; caches cleared" + (f" (markets: {markets})" if markets else ""))
         return True
     except Exception as e:
         log.error(f"snapshot rebuild failed: {e}")
@@ -1159,11 +1165,23 @@ def api_refresh():
     if _REFRESHING["on"]:
         _wu.log_event(name, "Requested data refresh (one already running)")
         return jsonify({"started": False, "busy": True})
-    _wu.log_event(name, "Requested data refresh (full universe rebuild)")
-    _append_batch("Refresh button", "Full universe snapshot rebuild started", by=name)
+    # Optional choice of markets to refresh (user 2026-07-31, P-15); empty/absent = full universe.
+    markets = None
+    try:
+        body = request.get_json(silent=True) or {}
+        raw = body.get("markets")
+        if isinstance(raw, list):
+            markets = [str(m).strip() for m in raw if str(m).strip()] or None
+    except Exception:
+        markets = None
+    label = ("markets: " + ", ".join(markets)) if markets else "full universe rebuild"
+    _wu.log_event(name, f"Requested data refresh ({label})")
+    _append_batch("Refresh button",
+                  ("Snapshot rebuild started — " + ", ".join(markets)) if markets
+                  else "Full universe snapshot rebuild started", by=name)
     import threading
-    threading.Thread(target=_do_rebuild, daemon=True).start()
-    return jsonify({"started": True})
+    threading.Thread(target=lambda: _do_rebuild(markets), daemon=True).start()
+    return jsonify({"started": True, "markets": markets})
 
 
 @app.route("/api/status")

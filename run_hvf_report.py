@@ -531,22 +531,46 @@ UNIVERSE = {
 # Scan
 # ----------------------------------------------------------------------------------------------------------------------
 
-def scan_universe(progress_cb=None) -> dict:
+def scan_universe(progress_cb=None, markets=None) -> dict:
     """
     Scan all instruments in all indices.
     Returns dict keyed by index name, each value a list of HVF result dicts.
     progress_cb(done, total) is called after each instrument (user 2026-06-29: live refresh progress).
+
+    markets (user 2026-07-31, P-15 — "refresh a choice of markets"): when given a collection of market
+    names, ONLY those markets are actually scanned. De-dup ownership is preserved exactly as in a full
+    scan — tickers listed in an EARLIER (non-selected) market are still marked seen so a dual-listed ticker
+    keeps its full-build attribution and never gets re-attributed to a later selected market. total (for
+    the progress bar) counts only the tickers actually scanned.
     """
     from price_action import get_hvf_signal_mtf, get_trend_structure
 
+    sel = set(markets) if markets else None
     results = {}
     # De-dup across markets (user 2026-06-29: NASDAQ 100 + S&P 500 overlap heavily) — a ticker is scanned
     # once, attributed to the first market that lists it.
-    total   = len({t for v in UNIVERSE.values() for t in v})
+    if sel is None:
+        total = len({t for v in UNIVERSE.values() for t in v})
+    else:
+        # Owned tickers of the selected markets = their tickers minus any listed in an earlier market.
+        _owned, _prior = 0, set()
+        for _mkt, _tks in UNIVERSE.items():
+            for _t in _tks:
+                if _t in _prior:
+                    continue
+                _prior.add(_t)
+                if _mkt in sel:
+                    _owned += 1
+        total = _owned
     done    = 0
     seen    = set()
 
     for index_name, tickers in UNIVERSE.items():
+        # Partial refresh: don't scan unselected markets, but still claim their tickers as seen so the
+        # de-dup ownership (first market wins) is identical to a full scan.
+        if sel is not None and index_name not in sel:
+            seen.update(tickers)
+            continue
         index_results = []
         log.info(f"Scanning {index_name} ({len(tickers)} tickers)...")
         for ticker in tickers:

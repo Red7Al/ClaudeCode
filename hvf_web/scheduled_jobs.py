@@ -62,19 +62,15 @@ def _load_jobs() -> list:
 
 def _cron_human(cron: str) -> str:
     """A readable cadence from a 5-field UTC cron expression. Falls back to the raw cron on anything
-    unexpected (never raises)."""
+    unexpected (never raises).
+
+    Fix (user 2026-07-31, P-15): a concrete minute AND concrete hour are now COMBINED into one clock time
+    ("22:15 UTC") instead of being emitted as two disjoint fragments (":15, 22:00 UTC" — which read as the
+    nonsensical ":15 22:00 UTC")."""
     try:
         minute, hour, mday, month, wday = cron.split()
     except ValueError:
         return cron
-
-    # minutes / hours
-    if minute.startswith("*/"):
-        when = f"every {minute[2:]} min"
-    elif minute.isdigit():
-        when = f":{int(minute):02d}"
-    else:
-        when = f"min {minute}"
 
     def _hours(h):
         if h == "*":
@@ -87,7 +83,29 @@ def _cron_human(cron: str) -> str:
         if h.isdigit():
             return f"{int(h):02d}:00 UTC"
         return f"h{h}"
-    hrs = _hours(hour)
+
+    # Time-of-day phrase — minute and hour read TOGETHER so a fixed daily time is a single clock value.
+    if minute.startswith("*/"):
+        when = f"every {minute[2:]} min"
+        hrs = _hours(hour)
+        if hrs:
+            when += f", {hrs}"
+    elif minute.isdigit():
+        mm = int(minute)
+        if hour == "*":
+            when = f":{mm:02d} each hour"
+        elif hour.isdigit():
+            when = f"{int(hour):02d}:{mm:02d} UTC"
+        elif "," in hour and all(x.isdigit() for x in hour.split(",")):
+            when = ", ".join(f"{int(x):02d}:{mm:02d}" for x in hour.split(",")) + " UTC"
+        elif "-" in hour and hour.replace("-", "").isdigit():
+            a, b = hour.split("-")
+            when = f":{mm:02d} hourly {int(a):02d}:00-{int(b):02d}:00 UTC"
+        else:
+            when = f"{hour}:{mm:02d} UTC"
+    else:
+        hrs = _hours(hour)
+        when = f"min {minute}" + (f", {hrs}" if hrs else "")
 
     # weekdays
     def _wday(w):
@@ -106,11 +124,7 @@ def _cron_human(cron: str) -> str:
         return w
     days = _wday(wday)
 
-    parts = [when]
-    if hrs:
-        parts.append(hrs)
-    parts.append(days)
-    return ", ".join(p for p in parts if p)
+    return ", ".join(p for p in (when, days) if p)
 
 
 # Which trading STYLE a job serves (user 2026-07-06). The session monitors/opens place multi-factor
@@ -128,6 +142,46 @@ def _trading_style(title: str) -> str:
     if title in _SQUEEZE_JOBS:
         return "Squeeze"
     return "Support / ops"
+
+
+# What each scheduled job is FOR (user 2026-07-31, P-15 — "determine the purpose of each job"). Keyed by
+# the JOBS title; jobs without an explicit entry fall back to a category-derived sentence in _purpose().
+_PURPOSE = {
+    "AUS Open": "Opens the Australian (ASX) session — scans for multi-factor momentum setups and places the session's opening trades.",
+    "AUS Monitor": "Every 5 min through Sydney hours, manages open ASX-session positions (trailing stops / exits).",
+    "Commodity Monitor AM": "Morning intraday scan of commodities (metals & energy) for momentum signals.",
+    "Price Data Refresh": "Re-fetches and upserts the universe's daily price history so the HVF report that follows runs on fresh data.",
+    "HVF Daily Report": "Runs the daily Squeeze (HVF) scan across the whole universe and publishes the shortlist / report.",
+    "HVF Orders": "Places the day's qualifying Squeeze setups on IG as working orders (entry, stop and target attached).",
+    "UK Open": "Opens the UK / Europe (LSE) session — momentum scan plus the session's opening trades.",
+    "UK Morning Brief": "Emails / posts the UK morning market brief (Mondays & Fridays).",
+    "UK Monitor": "Every 5 min through London hours, manages open UK-session positions.",
+    "US Open": "Opens the US (NYSE / NASDAQ) session — momentum scan plus the session's opening trades.",
+    "US Monitor": "Every 5 min through US hours, manages open US-session positions.",
+    "US HVF Watch": "Four intraday checks of US Squeeze setups approaching their trigger, alerting as they near entry.",
+    "UK HVF Watch": "Four intraday checks of UK Squeeze setups approaching their trigger, alerting as they near entry.",
+    "Social Monitor": "Every 15 min, watches X / social feeds for relevant market signals and mentions.",
+    "Commodity Monitor PM": "Evening intraday scan of commodities for momentum signals.",
+    "Session Close": "End-of-session housekeeping — settles the day's session positions and records realised P&L.",
+    "Daily Report": "End-of-day performance and activity report for the account.",
+    "Pre-Order Report": "Summarises the working orders queued for the next session so they can be reviewed before the open.",
+    "Data Quality Audit": "Nightly Yahoo-vs-IG price / data integrity audit; flags gaps and mismatches.",
+    "Price History Audit": "Nightly re-fetch and completeness check of the universe's price history.",
+    "Session Watchdog": "Every 10 min, health-checks that the session jobs and the IG order bridge are alive; alerts on failure.",
+    "Daily Diagnostics": "Morning system diagnostics — data freshness, connectivity and credentials.",
+    "Weekend Review": "Saturday review of the week's trades and overall system performance.",
+    "COT Report": "Saturday Commitments-of-Traders report on commodities positioning.",
+    "Sunday Readiness Check": "Sunday pre-week readiness — verifies data, credentials and schedules before Monday's open.",
+    "Sunday Pre-Open Commodity Scan": "Sunday pre-market commodities scan / brief ahead of the week's open.",
+}
+
+
+def _purpose(title: str) -> str:
+    if title in _PURPOSE:
+        return _PURPOSE[title]
+    # Fallback: a sentence from the category so a newly-added job is never blank.
+    cat = _category(title).lower()
+    return f"{title} — {cat} job." if cat != "other" else title
 
 
 def _category(title: str) -> str:
@@ -184,7 +238,7 @@ def get_jobs(force: bool = False) -> dict:
 
     jobs = [{"title": ti, "cron": cr, "workflow": wf,
              "frequency": _cron_human(cr), "category": _category(ti),
-             "trading_style": _trading_style(ti)}
+             "trading_style": _trading_style(ti), "purpose": _purpose(ti)}
             for (ti, cr, wf) in JOBS]
 
     error = None

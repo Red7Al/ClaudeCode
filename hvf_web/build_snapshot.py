@@ -135,7 +135,11 @@ def _months_to_go(r: dict):
         return None
 
 
-def build():
+def build(markets=None):
+    """Build the full-universe snapshot. markets (user 2026-07-31, P-15) — when given a collection of
+    market names, ONLY those markets are rescanned and their records are MERGED into the existing snapshot
+    (records of the other markets are kept untouched), so an admin can refresh a choice of markets quickly
+    instead of the whole universe."""
     from run_hvf_report import scan_universe
     from quality_report import fundamentals
     import yfinance as yf
@@ -144,13 +148,29 @@ def build():
     except Exception:
         YAHOO_MAP = {}
 
-    log.info("scanning universe ...")
     from run_hvf_report import UNIVERSE
-    # Total = ALL universe entries (1386), not the de-duplicated scan count (~1353) — user 2026-07-03;
-    # counts are computed live from UNIVERSE, these figures are just an illustrative snapshot (2026-07-24).
-    _total = sum(len(t) for t in UNIVERSE.values())
+    sel = set(markets) if markets else None
+    if sel is not None:
+        sel = {m for m in sel if m in UNIVERSE}          # ignore unknown names
+        if not sel:
+            log.warning("build(markets=...) got no known markets; nothing to do")
+            return
+    log.info("scanning universe ..." if sel is None else f"scanning markets: {sorted(sel)} ...")
+    # Total tickers to scan: the whole universe, or (for a partial refresh) only the tickers OWNED by the
+    # selected markets (their tickers minus any listed in an earlier market — matches scan de-dup).
+    if sel is None:
+        _total = sum(len(t) for t in UNIVERSE.values())
+    else:
+        _total, _prior = 0, set()
+        for _mkt, _tks in UNIVERSE.items():
+            for _t in _tks:
+                if _t in _prior:
+                    continue
+                _prior.add(_t)
+                if _mkt in sel:
+                    _total += 1
     PROGRESS.update(done=0, total=_total)
-    scan = scan_universe(progress_cb=lambda d, t: PROGRESS.update(done=d, total=_total))
+    scan = scan_universe(progress_cb=lambda d, t: PROGRESS.update(done=d, total=_total), markets=sel)
     # Record every TRIGGERED funnel to Supabase for performance tracking (user 2026-06-30, HVF status).
     # Deduped per funnel instance inside the recorder; a failure never blocks the build.
     try:
@@ -194,6 +214,10 @@ def build():
     out = []
     _seen = set()                    # de-dup across markets (NASDAQ 100 / S&P 500 overlap) — first wins
     for market, tickers in UNIVERSE.items():
+        # Partial refresh: claim unselected markets' tickers (preserve ownership) but emit no records.
+        if sel is not None and market not in sel:
+            _seen.update(tickers)
+            continue
         for tk in tickers:
             if tk in _seen:
                 continue
@@ -252,6 +276,19 @@ def build():
             log.info(f"name cache updated ({len(_names)} names)")
         except Exception as e:
             log.warning(f"could not write name cache: {e}")
+
+    # Partial refresh (user 2026-07-31, P-15): merge the freshly-scanned selected markets into the existing
+    # snapshot — keep every record whose market was NOT selected, replace those that were. Full refresh
+    # (sel is None) writes `out` as-is.
+    if sel is not None:
+        try:
+            with open(SNAPSHOT, encoding="utf-8") as fh:
+                prev = (json.load(fh) or {}).get("records", [])
+        except Exception:
+            prev = []
+        kept = [r for r in prev if r.get("market") not in sel]
+        out = kept + out
+        log.info(f"partial refresh {sorted(sel)}: kept {len(kept)} untouched + {len(out) - len(kept)} rescanned")
 
     snapshot = {"generated_utc": datetime.now(timezone.utc).isoformat(),
                 "count": len(out), "records": out}
