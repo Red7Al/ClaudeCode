@@ -57,7 +57,10 @@ _DDL = [
 ]
 
 # How much history to keep (user 2026-06-29: record 3 years; delete anything older).
-RETENTION_YEARS = 3
+# Raised to 5 years (user 2026-08-02): the squeeze-history replay wants the deepest window the price
+# data allows, so retention must not prune below what we backfill. The nightly audit prunes to this
+# same window, so a 5-year backfill is now durable instead of being cut back to 3y overnight.
+RETENTION_YEARS = 5
 
 _OHLCV = ("Open", "High", "Low", "Close", "Volume")
 _schema_ready = False
