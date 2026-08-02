@@ -591,7 +591,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <div id="view-orderops" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span></div>
-  <h1>Pre-orders to my IG</h1>
+  <!-- Bridge on/off badge next to the title (user 2026-08-02, P-06) — makes it unmistakable whether the
+       bridge is actually placing orders on IG. Painted by renderOrderOps() from the loaded config. -->
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 6px">
+    <h1 style="margin:0">Pre-orders to my IG</h1>
+    <span id="oo-bridge-badge"></span>
+  </div>
   <p class="lede">Every move of a scanned setup toward a live IG working order. WATCHING = tracked, not yet on IG (price outside the 1.5% band) · PENDING = live working order on IG · FILLED / EXPIRED / CANCELLED = outcome · DELETED = dismissed from Pre-orders by a user. The bridge checks READY setups (Quality &gt; 50) every 2 hours.</p>
   <!-- No-IG-credentials warning + "Open IG settings" button (user 2026-07-27, P-10 L225 / P-30 L226) —
        these orders live on IG; populated by renderIgCredWarn() from /api/ig-status. -->
@@ -2724,6 +2729,7 @@ function renderConfig(){
         $("xhvf-markets").innerHTML=(mkts.length?mkts:[...picked]).map(m=>{const on=picked.has(m);
           return `<label style="display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--fg);background:${on?'color-mix(in srgb,var(--accent) 16%,transparent)':'var(--chip)'};border:1px solid ${on?'var(--accent)':'var(--line)'};border-radius:999px;padding:8px 14px;cursor:pointer;line-height:1"><input type="checkbox" class="xhvf-mk" data-v="${m}" ${on?"checked":""} style="width:17px;height:17px;accent-color:var(--accent);margin:0" onchange="this.parentElement.style.background=this.checked?'color-mix(in srgb,var(--accent) 16%,transparent)':'var(--chip)';this.parentElement.style.borderColor=this.checked?'var(--accent)':'var(--line)'"> ${m}</label>`;}).join("");}
       if($("cfg-bridge"))$("cfg-bridge").checked=!!j.bridge;
+      BRIDGE_ON=!!j.bridge; if(typeof paintBridgeBadge==='function')paintBridgeBadge();   // Pre-orders bridge badge (P-06)
       if($("featrow-xposts"))$("featrow-xposts").style.display=j.is_admin?"":"none";
       if(j.features){FEATURES=j.features;if($("feat-xposts"))$("feat-xposts").checked=!!j.features.xposts;}
       SLACK_CHANNELS=j.slack_channels||{}; _applySlackToggles();   // per-channel Slack send/off (user 2026-08-01)
@@ -2763,7 +2769,7 @@ function saveFeatures(){
 }
 function saveBridge(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({bridge:$("cfg-bridge").checked})})
-    .then(r=>{const el=$("bridge-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Bridge setting saved.";}else{el.style.color="var(--bear)";el.textContent="Save failed.";}});
+    .then(r=>{const el=$("bridge-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Bridge setting saved.";BRIDGE_ON=$("cfg-bridge").checked;paintBridgeBadge();}else{el.style.color="var(--bear)";el.textContent="Save failed.";}});
 }
 function saveEngine(){
   const eng={};["wo_lifespan_days","x_max_per_day","superinvestor_lookback_days","min_senator_trades","spread_retry_attempts","spread_retry_wait_secs","bridge_min_quality","stop_amend_threshold"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});
@@ -2896,7 +2902,17 @@ function paintOrderOps(){
     <td><b>${disp(r.ticker||'')}</b></td></tr>`).join("")
   || `<tr><td colspan="14" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
 }
+// Bridge on/off state (user 2026-08-02, P-06) — whether the DB→IG bridge may place orders. Loaded from
+// /api/config (j.bridge). The badge next to the Pre-orders title makes it unmistakable.
+let BRIDGE_ON=false;
+function paintBridgeBadge(){
+  const el=$("oo-bridge-badge"); if(!el)return;
+  el.innerHTML=BRIDGE_ON
+    ? `<span title="The bridge places qualifying READY setups on IG as working orders every 2 hours." style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--bull);border:1px solid var(--bull);background:color-mix(in srgb,var(--bull) 12%,transparent);border-radius:999px;padding:5px 12px">🟢 Bridge ON — placing orders on IG</span>`
+    : `<span title="The bridge is scanning and reporting but is NOT placing any orders on IG. Enable it in Configuration → Trading (Squeeze)." style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#d29922;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:5px 12px">⏸ Bridge OFF — no orders placed on IG</span>`;
+}
 function renderOrderOps(){
+  paintBridgeBadge();
   fetch("/api/order-ops",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{OO_ROWS=j.rows||[];paintOrderOps();})
     .catch(()=>{$("oo-rows").innerHTML=`<tr><td colspan="13" class="empty">Could not load — try logging in again.</td></tr>`;});
