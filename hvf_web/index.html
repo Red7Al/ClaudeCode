@@ -363,6 +363,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   .doc{padding:28px 18px} .doc h1{font-size:26px} .hero{grid-template-columns:1fr;padding:20px}
   .gcols{columns:1} .confnav{gap:6px} .fgrid.two{grid-template-columns:1fr}
 }
+/* Performance card strip (user 2026-08-02, P-12): when 4 stat cards can't sit on one row (iPad and
+   narrower) the 4th ("≥threshold book" compounded) would wrap onto a second row — hide it there and keep
+   the 3 primary cards on one clean row. It returns on wider screens. */
+@media(max-width:1088px){ .fgrid.pf-cardstrip>.fcard:nth-child(4){display:none} }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -1298,6 +1302,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <button class="btn" id="ordp-save-defaults" style="padding:4px 10px;font-size:12px" onclick="winnersSaveDefaults()" title="Save Wallet / Max position size / Max open positions as your defaults (Configuration → My trading limits)">💾 Save as my defaults</button>
       <span id="ordp-save-msg" style="font-size:11px"></span>
       <span id="ordp-model-msg" style="font-size:11px;flex-basis:100%"></span>
+      <!-- Leverage clarity (user 2026-08-02, P-12): the compounded wallet/equity figures are leverage-neutral. -->
+      <span class="muted" style="font-size:11px;flex-basis:100%;line-height:1.4">⚖️ <b style="color:var(--fg)">Leverage &amp; the wallet:</b> leverage does <b>not</b> change the £ or % return shown here — the compounded equity is identical at any leverage. It only sets the <b>margin</b> each position ties up (stake ÷ leverage), i.e. how much cash is freed to hold more positions at once. The concurrency cap (Max open) is what limits the wallet, not leverage.</span>
     </div>
     <!-- Best-combination card (user 2026-07-26, P-05 L132/L133): grid-searches Max position size / Max open
          positions / R:R floor over these trades and recommends the mix with the best RISK-ADJUSTED return,
@@ -2678,7 +2684,7 @@ function saveCreds(secId){
   const msg=$("cred-msg-"+secId);
   if(!Object.keys(values).length){msg.style.color="var(--muted)";
     // The Slack "send" toggles save instantly on click — this button only saves changed webhook URLs.
-    msg.textContent=secId==="Slack"?"Channel send toggles save instantly — no webhook URL was changed here.":"No credential field was changed (enter a value to update it).";return;}
+    msg.textContent=secId==="Slack"?"Nothing to save — the ‘send’ checkboxes already save automatically when you tick them.":"No credential field was changed (enter a value to update it).";return;}
   fetch("/api/credentials",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({section:secId,values})})
     .then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{msg.style.color="var(--bull)";msg.textContent=`Saved ${(j.saved||[]).length} field(s).`;renderCredentials();if(secId==="IG"&&typeof _igStatus==="function")_igStatus(true);})
@@ -3279,7 +3285,7 @@ function renderVolScoreReport(){
     const comp=(t,c)=>c?`<div class="fcard"><div class="ic">£</div><h3>${t}</h3><div class="body"><b style="font-size:16px;color:${c.gain>=0?'var(--bull)':'var(--bear)'}">${gbp(c.final)}</b> from ${gbp(c.start)} <span class="muted">(${c.trades} trades)</span></div></div>`:'';
     const rowc=b=>`<tr><td><b>${b.bucket}</b></td><td>${b.resolved}</td><td>${pct(b.win_pct)}</td><td>${ret(b.avg_return)}</td><td>${b.pnl_per_10k==null?'—':gbp(b.pnl_per_10k)}</td></tr>`;
     box.innerHTML=
-      `<div class="fgrid" style="margin-bottom:8px">${seg('All trades','∑',j.all)}${seg('VolumeScore ≥ '+j.threshold,'✓',j.passing)}${comp('All book',j.compound_all)}${comp('≥'+j.threshold+' book',j.compound_passing)}</div>`+
+      `<div class="fgrid pf-cardstrip" style="margin-bottom:8px">${seg('All trades','∑',j.all)}${seg('VolumeScore ≥ '+j.threshold,'✓',j.passing)}${comp('All book',j.compound_all)}${comp('≥'+j.threshold+' book',j.compound_passing)}</div>`+
       `<div class="tablewrap"><table><thead><tr><th>VolumeScore band</th><th>Trades</th><th>Win %</th><th>Avg return</th><th title="£ P&L on a £10k wallet, one trade at 2% risk">£/10k per trade</th></tr></thead><tbody>${(j.buckets||[]).map(rowc).join('')||'<tr><td colspan="5" class="empty">No data.</td></tr>'}</tbody></table></div>`+
       ((j.advice||[]).length?`<ul class="muted" style="font-size:12px;margin:8px 0 0;padding-left:18px">${j.advice.map(a=>`<li>${a.replace(/</g,'&lt;')}</li>`).join('')}</ul>`:'')+
       `<div class="muted" style="font-size:11px;margin-top:6px">Same 12-month replay population as the tabs above · generated ${j.generated||''}</div>`;
