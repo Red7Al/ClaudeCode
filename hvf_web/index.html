@@ -810,7 +810,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
      width:auto + nowrap cells — outgrew its container and, because .tablewrap is overflow-x:visible
      here, pushed the whole PAGE sideways while ~400px sat unused to its right: scrolling and white
      space at the same time, from the same cause. -->
-<div id="view-users" class="hidden doc" style="max-width:1240px">
+<div id="view-users" class="hidden doc" style="max-width:min(1760px,97vw)">
   <span class="eyebrow">Admin</span>
   <h1>User Management</h1>
   <p class="lede">Manage logins — assign a subscription role and enable or disable accounts. Roles: <b>Admin</b> (full access), <b>Gold</b> (read/write incl. pre-orders + multi factor momentum trading), <b>Silver</b> (read/write incl. pre-orders), <b>Guest</b> (read-only, no pre-orders).</p>
@@ -824,7 +824,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="users-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords">Password Complexity</th><th title="Management &amp; performance fee discounts for this account, with an optional start/end window. Both default to 0.">Fees discount</th><th title="Audit trail of this account's IG identity (account name + masked number), encrypted in Supabase. Captured whenever the credentials change or the IG Account tab is opened.">IG account (audit)</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th><th title="Management &amp; performance fee discounts for this account, with an optional start/end window. Both default to 0.">Fees discount</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords">Password Complexity</th><th title="Audit trail of this account's IG identity (account name + masked number), encrypted in Supabase. Captured whenever the credentials change or the IG Account tab is opened.">IG account (audit)</th></tr></thead>
       <tbody id="users-rows"></tbody>
     </table></div>
     <div id="users-msg" style="font-size:12px;margin-top:8px"></div>
@@ -2540,8 +2540,8 @@ function renderUsers(){
         <td><label style="cursor:pointer;font-size:13px"><input type="checkbox" ${u.admin?'checked':''} onchange="saveUser('${u.name}',{admin:this.checked})"> Admin</label></td>
         <td><select onchange="saveUser('${u.name}',{subscription:this.value})" style="width:auto">${subs.map(s=>`<option ${u.subscription===s?'selected':''}>${s}</option>`).join("")}</select></td>
         <td><button class="btn" onclick="saveUser('${u.name}',{enabled:${!u.enabled}})">${u.enabled?'<span style="color:var(--bull)">Enabled</span> — disable':'<span style="color:var(--bear)">Disabled</span> — enable'}</button></td>
-        <td>${pwStrength(u.pwd_strength)}</td>
         <td>${_discEditor(u)}</td>
+        <td>${pwStrength(u.pwd_strength)}</td>
         <td>${_igAuditCell(u)}</td></tr>`).join("");
       paintRequests(j.requests||[]);})
     .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not load (admin only).</td></tr>`;});
@@ -2553,7 +2553,7 @@ function _discEditor(u){
   const esc=n.replace(/'/g,"\\'");
   const inp=(k,v,ph)=>`<input id="disc-${k}-${n}" type="${k==='m'||k==='p'?'number':'date'}" ${k==='m'||k==='p'?'min="0" max="100" step="0.5"':''} value="${v!=null?v:''}" placeholder="${ph}" style="width:${k==='m'||k==='p'?'52px':'128px'};padding:3px 5px;font-size:12px">`;
   const active = d.mgmt_pct>0||d.perf_pct>0;
-  return `<div style="display:flex;flex-direction:column;gap:4px;min-width:300px">
+  return `<div style="display:flex;flex-direction:column;gap:4px;min-width:300px;background:color-mix(in srgb,var(--muted) 9%,transparent);border:1px solid var(--line);border-radius:8px;padding:8px 10px">
     <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
       <span class="muted" style="font-size:11px">Mgmt</span>${inp('m',d.mgmt_pct,'0')}<span class="muted" style="font-size:11px">%</span>
       <span class="muted" style="font-size:11px">Perf</span>${inp('p',d.perf_pct,'0')}<span class="muted" style="font-size:11px">%</span>
@@ -2564,7 +2564,7 @@ function _discEditor(u){
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <button class="btn" style="padding:3px 9px;font-size:12px" onclick="saveDiscount('${esc}')">Save discount</button>
-      ${active?`<span class="tag" style="background:var(--chip);color:var(--fg);font-size:11px">active</span>`:''}
+      ${active?`<span class="tag" style="background:color-mix(in srgb,var(--bull) 22%,transparent);color:var(--bull);border:1px solid var(--bull);font-size:11px;font-weight:700">✓ active</span>`:''}
       ${hist.length?`<a href="#" style="font-size:11px" onclick="toggleDiscHist('${esc}');return false">history (${hist.length})</a>`:''}
     </div>
     <div id="disc-hist-${n}" style="display:none;font-size:11px" class="muted"></div>
