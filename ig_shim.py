@@ -1831,9 +1831,20 @@ def get_prices_df(epic: str, resolution: str = "DAY", count: int = 120):
 
 
 def get_snapshot(epic: str) -> dict:
-    """Return the current market snapshot (bid, offer, high, low, net change) for an epic."""
-    data = session.get(f"/markets/{epic}", version="3")
-    return data.get("snapshot", {})
+    """Return the current market snapshot (bid, offer, high, low, net change) for an epic.
+
+    Resilient per-epic (user 2026-08-03): a single market can return 403 (account not
+    permissioned / restricted instrument — e.g. INVP) or 404 (retired epic). Previously the
+    unhandled HTTPError from raise_for_status() propagated and killed the ENTIRE monitor loop,
+    so one forbidden UK epic failed the whole UK Monitor run every 5 min. Now any fetch error is
+    logged and returns an empty snapshot {} — every caller already treats a missing bid/offer as
+    "skip this instrument" (`if not price: continue`), so the loop moves on instead of crashing."""
+    try:
+        data = session.get(f"/markets/{epic}", version="3")
+        return data.get("snapshot", {})
+    except Exception as e:
+        log.warning(f"IG snapshot failed for {epic}: {e} — skipping this instrument")
+        return {}
 
 
 # ======================================================================================================================
