@@ -238,6 +238,10 @@ def build_blocks(live: list, changes: list, when: str) -> list:
 
 def post(blocks: list):
     import requests
+    from notify import slack_enabled
+    if not slack_enabled("orders"):   # per-channel switch (user 2026-08-03)
+        log.info("Slack channel 'orders' disabled — pre-order report not posted")
+        return False
     url = os.environ.get("SLACK_ORDERS", "")
     if not url:
         log.warning("SLACK_ORDERS not set — pre-order report not posted (this is expected on a local run).")

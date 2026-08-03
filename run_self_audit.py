@@ -261,7 +261,10 @@ def post_report(results: list):
         lines.append("_All external IDs (CFTC/EIA/FRED) and DB constraints verified against live sources._")
 
     text = "\n".join(lines)
-    if SLACK_URL:
+    from notify import slack_enabled
+    if SLACK_URL and not slack_enabled("alerts"):   # per-channel switch (user 2026-08-03)
+        log.info("Slack channel 'alerts' disabled — self-audit not posted")
+    elif SLACK_URL:
         try:
             requests.post(SLACK_URL, json={"text": text}, timeout=10)
         except Exception as e:

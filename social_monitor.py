@@ -513,6 +513,9 @@ def alert_new_picks(new_picks: list):
     """
     if not new_picks:
         return
+    from notify import slack_enabled
+    if not slack_enabled("signals"):   # per-channel switch (user 2026-08-03)
+        return
     _ensure_direction_column()
 
     # RSS mention alerts go to #signals. SLACK_TWITTER is reserved for content

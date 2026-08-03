@@ -1931,11 +1931,14 @@ def _generate_x_drafts(tradeable: list, post: bool = True, collect: bool = False
     import matplotlib.dates as mdates
     import yfinance as _yf
     from datetime import datetime, timezone, timedelta
-    from notify import fmt
+    from notify import fmt, slack_enabled
 
     slack_url = os.environ.get("SLACK_TWITTER", "")
     if post and not slack_url:
         log.warning("SLACK_TWITTER not set — X draft reports skipped")
+        return
+    if post and not slack_enabled("twitter"):   # per-channel switch (user 2026-08-03) — no drafts when #twitter is off
+        log.info("Slack channel 'twitter' disabled — X draft reports skipped")
         return
 
     # Quality gate (user 2026-06-19): don't PUBLISH sub-threshold setups in the X drafts / live-X.
@@ -2506,7 +2509,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                          place_hvf_order_from_sig, reconcile_working_orders,
                          calculate_position_size, get_epic)
     from config import SESSION_INSTRUMENTS, MAX_TRADES_PER_SESSION, SESSION_TRADE_CAPS
-    from notify import fmt, should_post_summary   # name fmt + 2h summary gate
+    from notify import fmt, should_post_summary, slack_enabled   # name fmt + 2h summary gate + per-channel switch
 
     results = []
 
@@ -2677,7 +2680,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
         log.info("US Monitor: daily trade limit reached — no new entries scanned")
 
     # Send Slack alert for flagged positions
-    if position_alerts and notify_slack:
+    if position_alerts and notify_slack and slack_enabled("alerts"):   # per-channel switch (user 2026-08-03)
         slack_url = os.environ.get("SLACK_ALERTS", "")
         if slack_url:
             lines = ""
@@ -2706,7 +2709,7 @@ def run_us_monitor(notify_slack: bool = True) -> list:
     # Periodic session summary to #signals — gated to <= every 2h (monitoring runs
     # every 5 min, but the full review must not spam the channel). The position
     # alerts above are immediate and NOT gated. See user directive 2026-06-09.
-    if notify_slack and should_post_summary():
+    if notify_slack and should_post_summary() and slack_enabled("signals"):   # per-channel switch (user 2026-08-03)
         slack_url = os.environ.get("SLACK_SIGNALS", "")
         if slack_url:
             lines = ""

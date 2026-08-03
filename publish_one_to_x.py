@@ -130,6 +130,9 @@ def build_publication(ticker: str):
 def _confirm_to_slack(ticker: str, name: str, lead_id, posted: int, n_parts: int):
     """Confirm a live X publication to #arw-claude-twitter (user 2026-06-16)."""
     import requests
+    from notify import slack_enabled
+    if not slack_enabled("twitter"):   # per-channel switch (user 2026-08-03)
+        return
     url = os.environ.get("SLACK_TWITTER", "")
     if not url:
         log.warning("SLACK_TWITTER not set — X publication confirmation not sent.")
@@ -167,6 +170,9 @@ def _summary_to_slack(rows: list):
     quality · R:R — and a link to its lead tweet. Best-effort; never raises."""
     import requests
     from datetime import datetime, timezone
+    from notify import slack_enabled
+    if not slack_enabled("twitter"):   # per-channel switch (user 2026-08-03)
+        return
     url = os.environ.get("SLACK_TWITTER", "")
     if not url or not rows:
         return

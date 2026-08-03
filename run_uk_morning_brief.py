@@ -66,6 +66,10 @@ def post_slack(blocks: list):
             elif b.get("type") == "header":
                 print(f"\n=== {b['text']['text']} ===")
         return
+    from notify import slack_enabled
+    if not slack_enabled("daily"):   # per-channel switch (user 2026-08-03) — UK brief → #daily
+        log.info("Slack channel 'daily' disabled — UK morning brief not posted")
+        return
     resp = requests.post(SLACK_URL, json={"blocks": blocks}, timeout=10)
     if resp.status_code != 200:
         log.error(f"Slack post failed: {resp.status_code} {resp.text}")

@@ -794,7 +794,10 @@ def main():
 
     log.info("Report built. Posting to Slack...")
 
-    if SLACK_URL:
+    from notify import slack_enabled
+    if SLACK_URL and not slack_enabled("daily"):   # per-channel switch (user 2026-08-03)
+        log.info("Slack channel 'daily' disabled — end-of-day report not posted")
+    elif SLACK_URL:
         resp = requests.post(
             SLACK_URL,
             json={"text": report},

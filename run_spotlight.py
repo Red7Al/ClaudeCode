@@ -207,7 +207,10 @@ def main():
 
     blocks = build_blocks(results)
 
-    if SLACK_URL:
+    from notify import slack_enabled
+    if SLACK_URL and not slack_enabled("signals"):   # per-channel switch (user 2026-08-03)
+        log.info("Slack channel 'signals' disabled — spotlight not posted")
+    elif SLACK_URL:
         resp = requests.post(SLACK_URL, json={"blocks": blocks}, timeout=10)
         if resp.status_code == 200:
             log.info("Spotlight posted to Slack")

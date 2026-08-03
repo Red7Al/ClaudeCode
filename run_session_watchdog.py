@@ -77,10 +77,15 @@ def alert(session: str, problem: str, detail: str = ""):
     if detail:
         msg += f"\n```{detail}```"
     log.warning(f"WATCHDOG ALERT: {session} — {problem}")
-    if SLACK_URL:
+    # Only the NOTIFICATION honours the #alerts on/off switch (user 2026-08-03); the workflow
+    # re-dispatch (recovery) below is unaffected, so the system still self-heals when #alerts is off.
+    from notify import slack_enabled
+    if SLACK_URL and slack_enabled("alerts"):
         requests.post(SLACK_URL,
                       json={"text": msg},
                       timeout=10)
+    elif SLACK_URL:
+        log.info("Slack channel 'alerts' disabled — watchdog alert not posted (recovery still runs)")
 
 
 # GitHub API — used to re-trigger a missed workflow via repository_dispatch

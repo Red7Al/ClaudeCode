@@ -1021,6 +1021,10 @@ def _post(tweet: str, thread: list, ticker: str, name: str, rank: int, total: in
     copy-paste-ready code blocks (one fence per tweet). Text-only via the SLACK_TWITTER
     webhook — the long report is no longer a PNG (user 2026-06-16)."""
     import requests
+    from notify import slack_enabled
+    if not slack_enabled("twitter"):   # per-channel switch (user 2026-08-03)
+        log.info("Slack channel 'twitter' disabled — quality report not posted")
+        return
     slack_url = os.environ.get("SLACK_TWITTER", "")
     if not slack_url:
         log.warning("SLACK_TWITTER not set — quality report not posted. Skim tweet + thread below:\n"
@@ -1049,6 +1053,10 @@ def publish_quality_reports(setups: list, limit: int = 10, changed_only: bool = 
     entry/target/R:R moved. `setups` are HVF result dicts (ticker, hvf_type,
     h3_level/stop_level/target, risk_reward, index, name)."""
     import requests
+    from notify import slack_enabled
+    if not slack_enabled("twitter"):   # per-channel switch (user 2026-08-03)
+        log.info("Slack channel 'twitter' disabled — quality reports not published")
+        return
     from intraday_signals import _resolve_name, _x_market_tags, _NFA_DISCLAIMER
     from price_action import market_short
     from config import PER_MARKET_TOP_N
@@ -1107,6 +1115,10 @@ def publish_long_report_for(r: dict, post: bool = True) -> list:
     tail = f"#{disp} {_x_market_tags(r)}{_NFA_DISCLAIMER}"
     thread = paginate_report_thread(title, body, tail)
     if not post:
+        return thread
+    from notify import slack_enabled
+    if not slack_enabled("twitter"):   # per-channel switch (user 2026-08-03)
+        log.info(f"Slack channel 'twitter' disabled — long quality report not posted for {tk}")
         return thread
     slack_url = os.environ.get("SLACK_TWITTER", "")
     if not slack_url:
