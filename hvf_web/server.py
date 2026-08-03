@@ -1758,7 +1758,11 @@ def api_order_ops():
 # recorded funnel instance, so the
 # same ticker can appear several times (successive triggers). Cached briefly — it walks 100k+ price bars.
 _PERF_CACHE = {"ts": 0.0, "data": None}
-_PERF_TTL = 300   # seconds
+_PERF_TTL = 900   # seconds (15 min) — raised with the background warmer so the payload never expires under a user
+# Background pre-warm interval (user 2026-08-03): keep the Performance caches warm OFF the request path so a
+# tab click never triggers the ~35s cold build (the "processing the 12-month replay…" hang). Kept < every
+# cache TTL (_PERF_TTL / _SQA_TTL) so each cache is refreshed before it can expire under a user request.
+_PERF_WARM_INTERVAL = 600   # seconds (10 min)
 
 
 # Intraday high/low carry bad ticks (Yahoo): e.g. LSEG.L 2026-06-18 printed a 10130 high on an 8338
@@ -1927,7 +1931,7 @@ def api_performance():
 # them would flatter whichever bucket happens to hold the most unfinished trades. NEVER_TRIGGERED are
 # excluded from the win rate but reported, because "never fired" is a cost of a filter, not a loss.
 _SQA_CACHE = {"ts": 0.0, "data": None}
-_SQA_TTL = 600
+_SQA_TTL = 900   # 15 min — matches _PERF_TTL so the background warmer keeps every replay cache fresh (user 2026-08-03)
 _SQA_MIN_N = 10          # below this a bucket is reported but never called good or bad
 
 
@@ -2156,12 +2160,17 @@ def _sqa_all_rows():
             from db_pool import get_db
             db = get_db()
             try:
-                ph = ",".join(f":m{i}" for i in range(len(missing)))
-                params = {f"m{i}": tk for i, tk in enumerate(missing)}
+                # LATERAL per-ticker index probe (user 2026-08-03 P1 FIX): a `distinct on (ticker) ...
+                # where ticker in (<1388 params>)` degenerated into a full sort of the 1.74M-row
+                # price_history — ~50s — which hung /api/performance ("processing the 12-month replay…"
+                # forever) after the 5-year backfill. unnest+LATERAL(LIMIT 1) does one index scan per
+                # ticker on idx_price_history_ticker_date instead: ~2.4s for the same 1388 tickers.
                 last = {tk: (float(cl) if cl is not None else None)
                         for tk, cl in (db.run(
-                            f"select distinct on (ticker) ticker, close from price_history "
-                            f"where ticker in ({ph}) order by ticker, bar_date desc", **params) or [])}
+                            "select t.tk, ph.close from unnest(:tks::text[]) as t(tk) "
+                            "cross join lateral (select close from price_history p "
+                            "where p.ticker = t.tk order by bar_date desc limit 1) ph",
+                            tks=missing) or [])}
             finally:
                 db.close()
             for r in rows:
@@ -3174,6 +3183,29 @@ def api_ig_account():
     return jsonify(out)
 
 
+def _perf_warm_loop():
+    """Pre-compute the Performance caches OFF the request path (user 2026-08-03). The 12-month replay +
+    per-trigger VolumeScore take ~35s cold — after the 5-year backfill that used to hang /api/performance
+    on the first click ("processing the 12-month replay…" forever). This warms them at startup and every
+    _PERF_WARM_INTERVAL (< the payload TTL), so a click always hits a warm cache (~0.3s) and the heavy build
+    never runs synchronously under a user. The user asked for exactly this: process the data ahead of time
+    (it's ready after the morning refresh), don't wait for the tab to be clicked."""
+    import time as _t
+    while True:
+        try:
+            t0 = _t.time()
+            _sqa_all_rows()            # 12-month bridge-eligible population (cached)
+            _volscore_scored()         # per-trigger VolumeScore (cached — the ~30s part)
+            _volscore_trigger_map()    # (ticker, date) -> VolumeScore map used by /api/performance
+            _PERF_CACHE["data"] = None  # force a fresh payload build into the cache
+            with app.test_request_context("/api/performance"):
+                api_performance()
+            log.info(f"performance caches warmed in {_t.time() - t0:.1f}s")
+        except Exception as e:
+            log.warning(f"performance warm failed: {e}")
+        _t.sleep(_PERF_WARM_INTERVAL)
+
+
 if __name__ == "__main__":
     import threading
     try:
@@ -3197,5 +3229,6 @@ if __name__ == "__main__":
         log.warning(f"web_store migration skipped: {_e}")
     threading.Thread(target=_refresh_loop, daemon=True).start()
     threading.Thread(target=_bridge_loop, daemon=True).start()
+    threading.Thread(target=_perf_warm_loop, daemon=True).start()   # keep Performance caches warm (user 2026-08-03)
     log.info("HVF site on http://127.0.0.1:5057  (ngrok http 5057 to share)")
     app.run(host="0.0.0.0", port=5057, debug=False, threaded=True)
