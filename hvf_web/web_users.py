@@ -311,6 +311,62 @@ def log_event(name: str, event: str):
         log.warning(f"log_event failed for {name}: {e}")
 
 
+# ── IG account audit trail (user 2026-08-03, P-25) ──────────────────────────────────────────────────────
+# For AUDIT, keep an append-only history of each user's IG account IDENTITY — account NAME + NUMBER — in
+# SUPABASE (via web_store), ENCRYPTED at rest with the same per-user Fernet key (the key stays local; only
+# ciphertext reaches Supabase). A cleartext last-3 of the number is kept for masked display. A new row is
+# written ONLY when the identity changes (deduped against the latest row) so repeat reads don't spam it.
+def _enc(value: str) -> str:
+    return base64.b64encode(_fernet().encrypt((value or "").encode())).decode()
+
+
+def _dec(token: str) -> str:
+    try:
+        return _fernet().decrypt(base64.b64decode(token)).decode() if token else ""
+    except Exception:
+        return ""
+
+
+def record_ig_account_audit(user_name: str, account_name: str, account_number: str,
+                            source: str = "", by: str = "") -> bool:
+    """Append an encrypted IG-account-identity audit row IF it differs from the latest one. Best-effort —
+    never raises (audit must not break the caller). Returns True only when a new row was written."""
+    account_name = (account_name or "").strip()
+    account_number = (account_number or "").strip()
+    if not account_name and not account_number:
+        return False
+    try:
+        import web_store
+        latest = web_store.list_ig_audit(user_name, limit=1)
+        if latest and _dec(latest[0].get("name_enc")) == account_name \
+                and _dec(latest[0].get("number_enc")) == account_number:
+            return False   # unchanged — no new audit row
+        return web_store.append_ig_audit(
+            user_name,
+            _enc(account_name) if account_name else None,
+            _enc(account_number) if account_number else None,
+            (account_number[-3:] if account_number else None),
+            source, by or user_name)
+    except Exception as e:
+        log.warning(f"record_ig_account_audit failed for {user_name}: {e}")
+        return False
+
+
+def get_ig_account_audit(user_name: str, limit: int = 100) -> list:
+    """Admin view of a user's IG-account audit history: decrypted account NAME + MASKED number (last-3 only
+    — the full number never leaves the server) + source/by/timestamp, newest first."""
+    try:
+        import web_store
+        rows = web_store.list_ig_audit(user_name, limit=limit)
+    except Exception as e:
+        log.warning(f"get_ig_account_audit failed for {user_name}: {e}")
+        return []
+    return [{"account_name": _dec(r.get("name_enc")),
+             "account_masked": ("••••" + r["last3"]) if r.get("last3") else "",
+             "source": r.get("source") or "", "by": r.get("by") or "", "at": r.get("ts") or ""}
+            for r in rows]
+
+
 def get_log(name: str) -> list:
     try:
         import web_store

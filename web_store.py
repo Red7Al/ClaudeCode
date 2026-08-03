@@ -32,6 +32,14 @@ _DDL = [
         id bigserial primary key, ts timestamptz not null default now(),
         user_id text not null, event text)""",
     "create index if not exists idx_web_activity_user on web_activity_log (user_id, ts desc)",
+    # IG account audit trail (user 2026-08-03, P-25): append-only ENCRYPTED history of each user's IG
+    # account identity. This store holds only CIPHERTEXT (the *_enc columns) — the Fernet encrypt/decrypt
+    # lives in web_users, which owns the key. account_number_last3 is cleartext for masked display.
+    """create table if not exists web_ig_account_audit (
+        id bigserial primary key, ts timestamptz not null default now(),
+        user_id text not null, account_name_enc text, account_number_enc text,
+        account_number_last3 text, source text, by_user text)""",
+    "create index if not exists idx_web_ig_audit_user on web_ig_account_audit (user_id, ts desc)",
 ]
 _ready = False
 
@@ -109,6 +117,43 @@ def list_activity(user_id: str, limit: int = 200) -> list:
             db.close()
     except Exception as e:
         log.warning(f"list_activity failed: {e}")
+        return []
+
+
+# ── IG account audit trail (user 2026-08-03, P-25) ─────────────────────────────────────────────────────
+# Ciphertext-only row store for the encrypted IG-account-identity history; encrypt/decrypt is in web_users.
+def append_ig_audit(user_id: str, name_enc: str, number_enc: str, number_last3: str,
+                    source: str = "", by: str = "") -> bool:
+    try:
+        db = _db()
+        try:
+            db.run("""insert into web_ig_account_audit
+                        (user_id, account_name_enc, account_number_enc, account_number_last3, source, by_user)
+                      values (:u,:ne,:nu,:l3,:s,:b)""",
+                   u=user_id, ne=name_enc, nu=number_enc, l3=number_last3, s=source, b=by)
+            return True
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"append_ig_audit failed: {e}")
+        return False
+
+
+def list_ig_audit(user_id: str, limit: int = 100) -> list:
+    """Raw rows (ciphertext included) newest-first — web_users decrypts the *_enc fields for display."""
+    try:
+        db = _db()
+        try:
+            rows = db.run("""select ts, account_name_enc, account_number_enc, account_number_last3,
+                                    source, by_user
+                               from web_ig_account_audit where user_id = :u
+                               order by ts desc limit :n""", u=user_id, n=limit) or []
+            return [{"ts": _fmt(r[0]), "name_enc": r[1], "number_enc": r[2],
+                     "last3": r[3], "source": r[4], "by": r[5]} for r in rows]
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"list_ig_audit failed: {e}")
         return []
 
 

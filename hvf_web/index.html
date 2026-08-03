@@ -819,7 +819,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="users-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords">Password Complexity</th><th title="Management &amp; performance fee discounts for this account, with an optional start/end window. Both default to 0.">Fees discount</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords">Password Complexity</th><th title="Management &amp; performance fee discounts for this account, with an optional start/end window. Both default to 0.">Fees discount</th><th title="Audit trail of this account's IG identity (account name + masked number), encrypted in Supabase. Captured whenever the credentials change or the IG Account tab is opened.">IG account (audit)</th></tr></thead>
       <tbody id="users-rows"></tbody>
     </table></div>
     <div id="users-msg" style="font-size:12px;margin-top:8px"></div>
@@ -2523,9 +2523,10 @@ function renderUsers(){
         <td><select onchange="saveUser('${u.name}',{subscription:this.value})" style="width:auto">${subs.map(s=>`<option ${u.subscription===s?'selected':''}>${s}</option>`).join("")}</select></td>
         <td><button class="btn" onclick="saveUser('${u.name}',{enabled:${!u.enabled}})">${u.enabled?'<span style="color:var(--bull)">Enabled</span> — disable':'<span style="color:var(--bear)">Disabled</span> — enable'}</button></td>
         <td>${pwStrength(u.pwd_strength)}</td>
-        <td>${_discEditor(u)}</td></tr>`).join("");
+        <td>${_discEditor(u)}</td>
+        <td>${_igAuditCell(u)}</td></tr>`).join("");
       paintRequests(j.requests||[]);})
-    .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="7" class="empty">Could not load (admin only).</td></tr>`;});
+    .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not load (admin only).</td></tr>`;});
 }
 // Per-user fee-discount editor (user 2026-08-02, P-20/P-40): mgmt % + perf % + optional start/end window,
 // Save, and a history reveal. Both default 0; dates default none (open-ended).
@@ -2568,6 +2569,29 @@ function toggleDiscHist(name){
       : "No prior discounts.";
     box.style.display="";
   }).catch(()=>{box.innerHTML="Could not load history.";box.style.display="";});
+}
+// Per-user IG account audit trail (user 2026-08-03, P-25): a reveal that lazily fetches the encrypted
+// IG-identity history from /api/ig-account-audit (admin only). The full account number never leaves the
+// server — only the account name + a masked last-3 number are shown, newest first.
+function _igAuditCell(u){
+  const n=u.name, esc=n.replace(/'/g,"\\'");
+  return `<div style="min-width:150px">
+    <a href="#" style="font-size:11px" onclick="toggleIgAudit('${esc}');return false">IG audit ▾</a>
+    <div id="igaud-${n}" style="display:none;font-size:11px;margin-top:4px;max-width:260px;white-space:normal" class="muted"></div>
+  </div>`;
+}
+function toggleIgAudit(name){
+  const box=$("igaud-"+name); if(!box)return;
+  if(box.style.display!=="none"){box.style.display="none";return;}
+  box.innerHTML="Loading…"; box.style.display="";
+  fetch("/api/ig-account-audit?user="+encodeURIComponent(name),{headers:{"X-Auth":AUTH}})
+    .then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{
+      const a=j.audit||[];
+      box.innerHTML = a.length ? a.map(e=>
+        `• <b style="color:var(--fg)">${(e.account_name||'—').replace(/</g,"&lt;")}</b> ${e.account_masked||''}`+
+        ` <span class="muted">· ${e.at||''}${e.source?` · ${e.source}`:''}</span>`).join("<br>")
+        : "No IG account captured yet — it records when the credentials change or the IG Account tab is opened.";
+    }).catch(()=>{box.innerHTML="Could not load (admin only).";});
 }
 function paintRequests(reqs){
   $("req-section").style.display=reqs.length?"":"none";

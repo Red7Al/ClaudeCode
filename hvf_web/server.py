@@ -324,6 +324,22 @@ def api_users():
     return jsonify({"ok": True, "changed": changed, "users": _wu.list_users()})
 
 
+@app.route("/api/ig-account-audit")
+def api_ig_account_audit():
+    """Admin-only (user 2026-08-03, P-25): the encrypted IG-account-identity audit trail for one user —
+    decrypted account NAME + MASKED number (last-3) + source/by/timestamp, newest first. The full account
+    number is never returned to the browser; it stays encrypted in Supabase."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    if not _wu.is_admin(name):
+        return jsonify({"error": "admin only"}), 403
+    target = (request.args.get("user") or "").strip()
+    if not target:
+        return jsonify({"error": "no user"}), 400
+    return jsonify({"user": target, "audit": _wu.get_ig_account_audit(target)})
+
+
 @app.route("/api/request-reset-code", methods=["POST"])
 def api_request_reset_code():
     """Step 1 of the secure reset (user 2026-07-03): email a one-time code to the REGISTERED address.
@@ -730,6 +746,19 @@ def api_credentials():
         saved.append(key)
     if saved:
         _wu.log_event(name, f"Updated {sec_id} credentials ({len(saved)} field(s))")
+        # Audit trail (user 2026-08-03, P-25): when IG credentials change, capture the account identity
+        # (name + number) under the acting user's fresh session and record it encrypted in Supabase.
+        # Best-effort — it also validates the new credentials, but never blocks or fails the save.
+        if sec["scope"] == "ig":
+            try:
+                import ig_shim
+                with ig_shim._IG_LOCK, ig_shim.acting_session(name):
+                    ai = ig_shim.get_account_info() or {}
+                if ai.get("account_id") or ai.get("account_name"):
+                    _wu.record_ig_account_audit(name, ai.get("account_name", ""),
+                                                ai.get("account_id", ""), source="cred_update", by=name)
+            except Exception as e:
+                log.warning(f"ig audit on cred update failed for {name}: {e}")
     return jsonify({"ok": True, "saved": saved})
 
 
@@ -3052,6 +3081,11 @@ def api_ig_account():
         log.warning(f"ig-account session unavailable for {name}: {e}")
         out["note"] = "Could not read your IG account right now — try Refresh."
         return jsonify(out)
+    # Audit trail (user 2026-08-03, P-25): record this user's IG account identity (name + number),
+    # encrypted in Supabase. Deduped — only writes when the identity changes. Best-effort, never blocks.
+    if acct_info.get("account_id") or acct_info.get("account_name"):
+        _wu.record_ig_account_audit(name, acct_info.get("account_name", ""),
+                                    acct_info.get("account_id", ""), source="ig_account_view", by=name)
     if not pos_ok and not ord_ok:
         out["note"] = "Could not read your IG account right now — try Refresh."
         return jsonify(out)
