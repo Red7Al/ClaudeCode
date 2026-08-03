@@ -755,6 +755,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="card"><h4>My squeeze order controls</h4>
       <div class="credrow"><span class="clabel">Max trades per instrument / day</span><input type="number" min="0" step="1" id="lim-max_trades_per_instrument_per_day" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel" title="How long your IG working orders stay live before expiring, in days. Your own setting (was admin-only).">IG working-order lifespan (days)</span><input type="number" min="1" step="1" id="lim-wo_lifespan_days" placeholder="28" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="How close price must be to the entry level (%) before a live IG order is placed. Setups further away are queued as WATCHING and placed automatically once price enters this band. Your own setting; default 1.5%.">Pre-order to IG threshold (%)</span><input type="number" min="0.1" max="10" step="0.1" id="lim-preorder_threshold_pct" placeholder="1.5" style="max-width:120px"></div>
       <button class="btn" style="margin-top:8px" onclick="saveLimits()">Save order controls</button>
       <span id="lim-msg3" style="font-size:12px;margin-left:8px"></span>
     </div>
@@ -2908,7 +2909,7 @@ function saveLeverage(){
 function saveLimits(){
   const num=(id,int)=>{const el=$("lim-"+id);if(!el)return undefined;const v=(int?parseInt:parseFloat)(el.value);return isFinite(v)&&v>=0?v:undefined;};
   const lim={};
-  [["min_risk_reward",0],["bounce_alert_pct",0],["min_instrument_value",0],["max_instrument_value",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
+  [["min_risk_reward",0],["bounce_alert_pct",0],["min_instrument_value",0],["max_instrument_value",0],["preorder_threshold_pct",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
   [["min_quality",1],["min_volume_score",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["rebalance_weeks",1],["wo_lifespan_days",1],["let_winners_run_trail",1],["let_winners_run_stop",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
   lim.adaptive_filters=($("lim-adaptive_filters")||{}).checked?1:0;   // adaptive-filters enable toggle (user 2026-07-27, P-07)
   lim.let_winners_run=($("lim-let_winners_run")||{}).checked?1:0;   // "Let winners run" report opt-in, default OFF (user 2026-08-02)

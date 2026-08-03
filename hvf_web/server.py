@@ -371,6 +371,23 @@ def _wo_lifespan_baseline() -> int:
         return 28
 
 
+def _preorder_threshold_baseline() -> float:
+    """Baseline Pre-order-to-IG proximity band (%) for a user who hasn't set their own (user 2026-08-03,
+    P-75): the shared app_config value if present, else the engine default (ig_shim.WO_PROXIMITY_PCT, 1.5)."""
+    try:
+        import config_store as _cs
+        v = _cs.get_value("wo_proximity_pct", "")
+        if v:
+            return float(v)
+    except Exception:
+        pass
+    try:
+        import ig_shim
+        return float(getattr(ig_shim, "WO_PROXIMITY_PCT", 1.5))
+    except Exception:
+        return 1.5
+
+
 def _limit_defaults() -> dict:
     """Code defaults for a user's PERSONAL trading limits (user 2026-07-10), sourced from config.py so
     they track the shared engine's baseline. Per-user overrides layer on top."""
@@ -397,6 +414,11 @@ def _limit_defaults() -> dict:
             # IG working-order lifespan is now PER-USER (user 2026-08-01) — default from the shared app_config
             # (or the code baseline 28). The engine's own default still applies to the automated bridge.
             "wo_lifespan_days": _wo_lifespan_baseline(),
+            # Pre-order-to-IG proximity band is now PER-USER (user 2026-08-03, P-75) — how close price must
+            # be to the entry (%) before the bridge places a live IG order (further away = queued WATCHING).
+            # Default from the shared app_config (or the engine baseline 1.5). The automated bridge keeps the
+            # shared default; a WATCHING row records the band it was queued under so it promotes consistently.
+            "preorder_threshold_pct": _preorder_threshold_baseline(),
             # "Let winners run" (user 2026-08-02): per-user opt-in for the winners-run illustration. OFF by
             # default (0) — the report only renders when the user turns it on; the trail % is their chosen
             # ratchet above target. Report-only (never touches live orders).
@@ -520,7 +542,7 @@ def api_config():
         cur = s.get("limits") or {}
         b = body["limits"] or {}
         for k in ("min_risk_reward", "bounce_alert_pct", "min_instrument_value", "max_instrument_value",
-                  "wallet", "max_position_pct"):
+                  "wallet", "max_position_pct", "preorder_threshold_pct"):
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = float(v)
@@ -1641,9 +1663,15 @@ def api_place_order():
         _profile["name"] = name
         # Per-user IG working-order lifespan (user 2026-08-01) — apply the acting user's own value at
         # placement; falls back to the shared default when unset.
-        _wol = _user_limits(_wu.get_settings(name)).get("wo_lifespan_days")
+        _ulim = _user_limits(_wu.get_settings(name))
+        _wol = _ulim.get("wo_lifespan_days")
         if isinstance(_wol, (int, float)) and _wol >= 1:
             _profile["wo_lifespan_days"] = int(_wol)
+        # Per-user Pre-order proximity band (user 2026-08-03, P-75) — apply the acting user's own % at
+        # placement; falls back to the shared default when unset.
+        _prox = _ulim.get("preorder_threshold_pct")
+        if isinstance(_prox, (int, float)) and _prox > 0:
+            _profile["preorder_threshold_pct"] = float(_prox)
         with ig_shim.acting_session(name):
             wo = ig_shim.place_hvf_order_from_sig(sig, _profile, "WEB_MANUAL", 1.0)
     except Exception as e:

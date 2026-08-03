@@ -260,8 +260,15 @@ MIGRATIONS = [
             updated_at      timestamptz default now(),
             filled_at       timestamptz,
             fill_deal_id    text,
-            notes           text
+            notes           text,
+            proximity_pct   numeric
         )"""
+    ),
+    (
+        # Per-user Pre-order proximity band (user 2026-08-03, P-75): idempotent add for existing tables —
+        # records the placement band a WATCHING row was queued under so reconcile promotes it consistently.
+        "working_orders: add proximity_pct",
+        "ALTER TABLE working_orders ADD COLUMN IF NOT EXISTS proximity_pct numeric"
     ),
     (
         "working_orders: index on status",

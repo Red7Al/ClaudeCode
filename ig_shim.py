@@ -1944,9 +1944,11 @@ def get_working_orders() -> list:
 def _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction,
                              size, entry_level, stop_level, limit_level, otype,
                              hvf_type, good_till, paper_trade, session_name,
-                             signal_summary, status="PENDING"):
+                             signal_summary, status="PENDING", proximity_pct=None):
     """Insert a new working-order record. status defaults to PENDING; pass WATCHING
-    when price is not yet in range and no capital is committed. Never raises."""
+    when price is not yet in range and no capital is committed. proximity_pct (user 2026-08-03, P-75)
+    is the per-user placement band this row was queued under, so reconcile promotes a WATCHING row at
+    the SAME threshold the acting user set (not the global default). Never raises."""
     try:
         db = get_db()
         try:
@@ -1954,15 +1956,15 @@ def _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction
                 """insert into working_orders
                    (deal_ref, deal_id, user_id, ticker, epic, direction, size,
                     entry_level, stop_level, limit_level, otype, hvf_type, good_till,
-                    status, paper_trade, session, signal_summary)
+                    status, paper_trade, session, signal_summary, proximity_pct)
                    values (:v_ref, :v_deal, :v_uid, :v_ticker, :v_epic, :v_dir, :v_size,
                            :v_entry, :v_stop, :v_limit, :v_otype, :v_hvf, :v_till,
-                           :v_status, :v_paper, :v_session, :v_signal)""",
+                           :v_status, :v_paper, :v_session, :v_signal, :v_prox)""",
                 v_ref=deal_ref, v_deal=deal_id, v_uid=user_id, v_ticker=ticker,
                 v_epic=epic, v_dir=direction, v_size=size, v_entry=entry_level,
                 v_stop=stop_level, v_limit=limit_level, v_otype=otype, v_hvf=hvf_type,
                 v_till=good_till, v_status=status, v_paper=paper_trade,
-                v_session=session_name, v_signal=signal_summary
+                v_session=session_name, v_signal=signal_summary, v_prox=proximity_pct
             )
             log.info(f"Working order logged to Supabase: {deal_id} ({ticker} {direction} @ {entry_level}) [{status}]")
         finally:
@@ -2038,6 +2040,7 @@ def place_working_order(
     good_till_days: int = None,     # None -> configured lifespan (config_store wo_lifespan_days, default 28)
     hvf_type:       str = None,
     max_entry_distance_pct: float = 0.90,   # sanity guard: entry vs current price (after unit conversion)
+    proximity_pct:  float = None,   # None -> per-user placement band (config_store wo_proximity_pct, default WO_PROXIMITY_PCT)
 ) -> Optional[dict]:
     """
     Place (or amend) a PENDING entry order on IG at the HVF level.
@@ -2063,6 +2066,17 @@ def place_working_order(
             good_till_days = int(cfg_num("wo_lifespan_days", 28))
         except Exception:
             good_till_days = 28
+
+    # Pre-order proximity band (user 2026-08-03, P-75): now PER-USER. When the caller doesn't pass one
+    # (bridge / Actions / tests), fall back to the shared config_store value, then the module default. The
+    # resolved value is stored on the row so reconcile promotes a WATCHING order at the SAME band.
+    if proximity_pct is None:
+        try:
+            from config_store import cfg_num
+            proximity_pct = float(cfg_num("wo_proximity_pct", WO_PROXIMITY_PCT))
+        except Exception:
+            proximity_pct = WO_PROXIMITY_PCT
+    proximity_pct = float(proximity_pct or WO_PROXIMITY_PCT)
 
     # Step 0a — an open position on this ticker already carries the exposure;
     # do not stack a pending order on top of it.
@@ -2240,7 +2254,7 @@ def place_working_order(
     # sits beyond ~1.2× the stop distance, the pattern is already invalidated
     # (or the levels belong to a different instrument): nothing valid to watch.
     stop_dist_pct = abs(entry_level - stop_level) / current * 100.0 if current else 0.0
-    max_watch_pct = max(WO_PROXIMITY_PCT, stop_dist_pct * 1.2)
+    max_watch_pct = max(proximity_pct, stop_dist_pct * 1.2)
     if dist_pct > max_watch_pct:
         msg = (f"Price is {dist_pct:.1f}% from entry {entry_level} but the pattern's own "
                f"stop is only {stop_dist_pct:.1f}% away — the setup is already invalidated "
@@ -2258,7 +2272,7 @@ def place_working_order(
     # Beyond WO_PROXIMITY_PCT, log as WATCHING (no IG order placed, no margin
     # committed) and post a Slack alert. reconcile_working_orders will upgrade
     # the WATCHING row to PENDING once price enters the band.
-    if dist_pct > WO_PROXIMITY_PCT:
+    if dist_pct > proximity_pct:
         watch_id  = f"WATCH-{ticker}-{int(time.time())}"
         good_till = datetime.now(timezone.utc) + timedelta(days=good_till_days)
         _log_working_order_to_db(
@@ -2266,16 +2280,16 @@ def place_working_order(
             size, entry_level, stop_level, limit_level,
             "STOP" if direction == "BUY" else "STOP",   # placeholder — set at placement time
             hvf_type, good_till, paper_trade, session_name, signal_summary,
-            status="WATCHING"
+            status="WATCHING", proximity_pct=proximity_pct
         )
         try:
             from notify import working_order_watching
             working_order_watching(ticker, direction, entry_level, stop_level,
-                                   limit_level, dist_pct, WO_PROXIMITY_PCT, session_name)
+                                   limit_level, dist_pct, proximity_pct, session_name)
         except Exception as ne:
             log.warning(f"Watching notification failed for {ticker}: {ne}")
         log.info(f"{ticker}: entry {entry_level} is {dist_pct:.2f}% away — logged as WATCHING "
-                 f"(will place order when within {WO_PROXIMITY_PCT}%)")
+                 f"(will place order when within {proximity_pct}%)")
         return {"deal_id": watch_id, "watching": True, "level": entry_level,
                 "stop_level": stop_level, "limit_level": limit_level,
                 "current_price": current, "working_order": True}
@@ -2627,13 +2641,18 @@ def reconcile_working_orders() -> dict:
         # Separate WATCHING from PENDING. Query includes both statuses.
         watching_rows = []
         pending_rows  = []
+        prox_by_deal  = {}   # deal_id -> per-user placement band this row was queued under (P-75)
         for r in rows:
-            # Need status — fetch it (column not in original select; use deal_id prefix heuristic)
+            # Need status — fetch it (column not in original select; use deal_id prefix heuristic).
+            # Also pull proximity_pct (P-75) so a WATCHING row promotes at the SAME band its acting user set.
             deal_id_val = str(r[0])
             db2 = get_db()
             try:
-                st_rows = db2.run("select status from working_orders where deal_id=:d", d=deal_id_val)
+                st_rows = db2.run("select status, proximity_pct from working_orders where deal_id=:d",
+                                  d=deal_id_val)
                 row_status = st_rows[0][0] if st_rows else "PENDING"
+                if st_rows and st_rows[0][1] is not None:
+                    prox_by_deal[deal_id_val] = float(st_rows[0][1])
             except Exception:
                 row_status = "PENDING"
             finally:
@@ -2664,7 +2683,8 @@ def reconcile_working_orders() -> dict:
                     summary["watching"] += 1
                     continue
                 dist_pct = abs(float(entry) - current) / current * 100.0
-                if dist_pct <= WO_PROXIMITY_PCT:
+                row_prox = prox_by_deal.get(str(deal_id), WO_PROXIMITY_PCT)   # per-user band (P-75)
+                if dist_pct <= row_prox:
                     ok = _promote_watching_order(r)
                     if ok:
                         summary["promoted"].append(ticker)
@@ -2942,7 +2962,10 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         paper_trade=profile.get("paper_trade", False), hvf_type=hvf_type,
         # Per-user IG working-order lifespan (user 2026-08-01): the web place path carries the acting
         # user's own value; None here falls back to the shared config_store default (bridge / Actions).
-        good_till_days=profile.get("wo_lifespan_days"))
+        good_till_days=profile.get("wo_lifespan_days"),
+        # Per-user Pre-order proximity band (user 2026-08-03, P-75): same pattern — the web place path
+        # carries the acting user's own %; None falls back to the shared config_store default.
+        proximity_pct=profile.get("preorder_threshold_pct"))
 
     if result and not result.get("updated") and not result.get("watching"):
         try:
