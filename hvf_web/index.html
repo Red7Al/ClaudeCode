@@ -19,11 +19,15 @@ header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:
 header h1{font-size:16px;margin:0} .grow{flex:1}
 .btn{background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
 .btn:disabled{cursor:not-allowed;opacity:.7}
-.tabs{display:flex;gap:4px;padding:6px 16px 0;border-bottom:1px solid var(--line)}
+/* Sticky tab bar (user 2026-08-03, P-75): the enabled tabs stay pinned under the header as the page
+   scrolls, so navigation never scrolls away. --hdr-h / --sticky-top are measured in JS (syncStickyOffsets)
+   so the offsets survive the tabs wrapping to a second row on a narrow screen; CSS fallbacks cover first
+   paint. z-index sits BELOW the header (5) so the header's Refresh/Markets dropdowns still overlay the tabs. */
+.tabs{display:flex;gap:4px;padding:6px 16px 0;border-bottom:1px solid var(--line);position:sticky;top:var(--hdr-h,49px);z-index:4;background:var(--bg)}
 .tab{background:none;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;color:var(--muted);padding:6px 16px;cursor:pointer;font-size:13px}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
 /* Operations / Settings sub-navigation (user 2026-07-10) */
-.subnav{display:flex;gap:6px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;align-items:center;justify-content:center;position:sticky;top:49px;z-index:4}
+.subnav{display:flex;gap:6px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;align-items:center;justify-content:center;position:sticky;top:var(--sticky-top,90px);z-index:3}
 .subnav .subpill{background:var(--chip);border:1px solid var(--line);border-radius:6px;color:var(--muted);padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600}
 .subnav .subpill:hover{color:var(--fg);border-color:var(--accent)}
 .subnav .subpill.active{background:var(--grad);color:#fff;border-color:transparent}
@@ -66,7 +70,7 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .gloss .card>div>div:last-child{border-bottom:none}
 .gloss .card b{color:var(--fg)}
 .layout{display:flex;gap:0;min-height:calc(100vh - 49px)}
-aside{width:270px;flex:none;border-right:1px solid var(--line);padding:12px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px}
+aside{width:270px;flex:none;border-right:1px solid var(--line);padding:12px;overflow:auto;max-height:calc(100vh - var(--sticky-top,90px));position:sticky;top:var(--sticky-top,90px)}
 aside h3{font-size:11px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;letter-spacing:.04em}
 .f{margin-bottom:8px} label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
 .f select[multiple]{width:100%;height:auto;padding:2px 4px;font-size:12px}   /* multi-select filters (user 2026-07-06) */
@@ -136,7 +140,7 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--chip)} tr.sel{backgroun
 .bull{background:rgba(63,185,80,.15);color:var(--bull)} .bear{background:rgba(248,81,73,.15);color:var(--bear)}
 .muted{color:var(--muted);font-size:11px}
 .tablewrap{overflow:auto;flex:1}
-#detail{width:920px;flex:none;border-left:2px solid var(--accent);padding:16px 20px;overflow:auto;max-height:calc(100vh - 49px);position:sticky;top:49px;box-shadow:-10px 0 28px rgba(0,0,0,.4);background:var(--bg)}   /* 800 -> 920 (+15%, user 2026-07-25 P-05 L193; earlier +5% P-50) */
+#detail{width:920px;flex:none;border-left:2px solid var(--accent);padding:16px 20px;overflow:auto;max-height:calc(100vh - var(--sticky-top,90px));position:sticky;top:var(--sticky-top,90px);box-shadow:-10px 0 28px rgba(0,0,0,.4);background:var(--bg)}   /* 800 -> 920 (+15%, user 2026-07-25 P-05 L193; earlier +5% P-50) */
 #detail.hidden{display:none}
 .hidden{display:none}
 /* Collapsible LEFT-HAND filter panel for the Pre-orders tabs (user 2026-07-17, P-18/P-19) — the Scanner's
@@ -2332,7 +2336,20 @@ function applyTabVisibility(){
   Object.keys(TAB_GROUPS).forEach(p=>{const b=$("tab-"+p);if(b)b.style.display=TAB_GROUPS[p].some(tabAllowed)?"":"none";});
   const rb=$("refresh"); if(rb) rb.dataset.adminonly="1";
   colorTabs();
+  syncStickyOffsets();   // tab set changed → re-measure the sticky header+tabs height (P-75)
 }
+// Sticky tab bar offsets (user 2026-08-03, P-75): measure the pinned header + tab-bar heights and publish
+// them as CSS vars so the subnav, filter sidebar and detail panel sit BELOW the pinned tabs — and stay
+// correct when the tabs wrap to a second row on a narrow screen. Cheap; safe to call often.
+function syncStickyOffsets(){
+  const hdr=document.querySelector("header"), tabs=document.querySelector(".tabs");
+  const h=hdr?hdr.offsetHeight:49, t=tabs?tabs.offsetHeight:41;
+  const rs=document.documentElement.style;
+  rs.setProperty("--hdr-h", h+"px");
+  rs.setProperty("--sticky-top", (h+t)+"px");
+}
+window.addEventListener("resize", syncStickyOffsets);
+window.addEventListener("load", syncStickyOffsets);
 // Each tab a progressively darker shade of grey, left -> right (user 2026-07-03). Light text keeps
 // the darker right-hand tabs readable in both themes; the active tab gets a bright accent underline.
 function colorTabs(){
