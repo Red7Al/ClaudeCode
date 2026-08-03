@@ -824,7 +824,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0"><span id="users-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th><th title="Management &amp; performance fee discounts for this account, with an optional start/end window. Both default to 0.">Fees discount</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords">Password Complexity</th><th title="Audit trail of this account's IG identity (account name + masked number), encrypted in Supabase. Captured whenever the credentials change or the IG Account tab is opened.">IG account (audit)</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th>Subscription</th><th>Status</th><th title="Management &amp; performance fee discounts for this account, with an optional start/end window. Both default to 0.">Fees discount</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords" style="white-space:normal;width:1%;text-align:center;line-height:1.2">Password Complexity</th><th title="Audit trail of this account's IG identity (account name + masked number), encrypted in Supabase. Captured whenever the credentials change or the IG Account tab is opened.">IG account (audit)</th></tr></thead>
       <tbody id="users-rows"></tbody>
     </table></div>
     <div id="users-msg" style="font-size:12px;margin-top:8px"></div>
@@ -2553,7 +2553,7 @@ function _discEditor(u){
   const esc=n.replace(/'/g,"\\'");
   const inp=(k,v,ph)=>`<input id="disc-${k}-${n}" type="${k==='m'||k==='p'?'number':'date'}" ${k==='m'||k==='p'?'min="0" max="100" step="0.5"':''} value="${v!=null?v:''}" placeholder="${ph}" style="width:${k==='m'||k==='p'?'52px':'128px'};padding:3px 5px;font-size:12px">`;
   const active = d.mgmt_pct>0||d.perf_pct>0;
-  return `<div style="display:flex;flex-direction:column;gap:4px;min-width:300px;background:color-mix(in srgb,var(--muted) 9%,transparent);border:1px solid var(--line);border-radius:8px;padding:8px 10px">
+  return `<div style="display:flex;flex-direction:column;gap:4px;min-width:300px;background:color-mix(in srgb,var(--muted) 6%,transparent);border:1px solid var(--line);border-radius:8px;padding:8px 10px">
     <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
       <span class="muted" style="font-size:11px">Mgmt</span>${inp('m',d.mgmt_pct,'0')}<span class="muted" style="font-size:11px">%</span>
       <span class="muted" style="font-size:11px">Perf</span>${inp('p',d.perf_pct,'0')}<span class="muted" style="font-size:11px">%</span>
