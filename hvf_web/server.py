@@ -3187,6 +3187,31 @@ def api_ig_account():
     return jsonify(out)
 
 
+@app.route("/api/ig-closed")
+def api_ig_closed():
+    """Recently CLOSED trades for the acting user's IG account, each with the REASON it closed (user
+    2026-08-03, P-10/P-12: "see closed trades e.g. China Mengniu and understand why"). Lazy-loaded by the
+    IG Account tab's "Closed trades" reveal. Best-effort — returns a note (not an error) with no session."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    try:
+        import ig_shim, datetime as _dt
+        if ig_shim.session_for(name) is None:
+            return jsonify({"trades": [], "note": "No IG credentials of your own — set them in Configuration → IG."})
+        try:
+            days = max(1, min(365, int(request.args.get("days", 120))))
+        except Exception:
+            days = 120
+        frm = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
+        with ig_shim._IG_LOCK, ig_shim.acting_session(name):
+            trades = ig_shim.get_closed_trades(frm) or []
+        return jsonify({"trades": trades, "days": days})
+    except Exception as e:
+        log.warning(f"ig-closed failed for {name}: {e}")
+        return jsonify({"trades": [], "note": "Could not read your closed trades right now — try again."})
+
+
 def _perf_warm_loop():
     """Pre-compute the Performance caches OFF the request path (user 2026-08-03). The 12-month replay +
     per-trigger VolumeScore take ~35s cold — after the 5-year backfill that used to hang /api/performance

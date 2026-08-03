@@ -1111,6 +1111,67 @@ def get_position_by_deal(deal_id: str) -> Optional[dict]:
     return None
 
 
+def get_closed_trades(from_iso: str) -> list:
+    """Recently CLOSED trades for the acting account, each with the REASON it closed (user 2026-08-03,
+    P-10/P-12 — "see closed trades e.g. China Mengniu, and understand WHY it closed").
+
+    Built from the TESTED get_transactions() closed-deal rows (reliable instrument / P&L / open+close
+    levels / dates), enriched best-effort with a close REASON from ONE /history/activity fetch. Each row:
+      {date, instrument, direction, size, open_level, close_level, pnl, currency, reason}
+    reason: STOP_HIT | TARGET_HIT | MANUAL | SYSTEM | UNKNOWN (same mapping as get_close_reason). The
+    reason is matched to a trade by (instrument-name, close-day); an unmatched trade still shows with
+    reason UNKNOWN, so the list never depends on the activity parse. Best-effort; [] on failure."""
+    trades = [t for t in (get_transactions(from_iso) or []) if t.get("kind") == "TRADE"]
+    if not trades:
+        return []
+    # Build a (name-upper, YYYY-MM-DD) -> reason map from a single detailed activity fetch.
+    reason_by = {}
+    try:
+        data = session.get("/history/activity", version="3",
+                           params={"from": from_iso, "detailed": True}) or {}
+        for act in (data.get("activities", []) or []):
+            det = act.get("details") or {}
+            actions = det.get("actions") or []
+            atypes = [str(a.get("actionType") or "").upper() for a in actions]
+            if not any("CLOSE" in a for a in atypes):
+                continue                                   # only position closes
+            reason = "MANUAL"
+            for a in atypes:
+                if "STOP" in a:
+                    reason = "STOP_HIT"; break
+                if "LIMIT" in a or "PROFIT" in a:
+                    reason = "TARGET_HIT"; break
+            if reason == "MANUAL" and str(act.get("channel") or "").upper() in ("SYSTEM", "DEALER"):
+                reason = "SYSTEM"
+            nm = str(det.get("marketName") or act.get("description") or "").upper()
+            day = str(act.get("date") or "")[:10]
+            if nm and day:
+                reason_by[(nm, day)] = reason
+    except Exception as e:
+        log.warning(f"get_closed_trades activity enrich failed (trades still returned): {e}")
+    out = []
+    for t in trades:
+        ol, cl = t.get("open_level"), t.get("close_level")
+        # Direction of the ORIGINAL position: a BUY closes lower->higher for profit; infer from P&L vs move.
+        direction = ""
+        if ol is not None and cl is not None and t.get("pnl") is not None:
+            moved_up = cl > ol
+            made_money = t["pnl"] > 0
+            direction = "BUY" if (moved_up == made_money) else "SELL"
+        nm = str(t.get("instrument") or "").upper()
+        day = str(t.get("date") or "")[:10]
+        out.append({
+            "date": str(t.get("date") or "")[:19],
+            "instrument": t.get("instrument"),
+            "direction": direction,
+            "size": t.get("size"),
+            "open_level": ol, "close_level": cl,
+            "pnl": t.get("pnl"), "currency": t.get("currency"),
+            "reason": reason_by.get((nm, day), "UNKNOWN"),
+        })
+    return out
+
+
 def get_close_reason(deal_id: str) -> tuple[str, float]:
     """
     Query the IG activity history to determine why a position was closed.
