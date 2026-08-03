@@ -3347,7 +3347,12 @@ function renderPerformance(){
     PERF_DATA=[];                             // in-flight guard
     if(_pfl)_pfl.innerHTML=`<span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#d29922;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ processing the 12-month replay…</span>`;
     fetch("/api/performance").then(r=>r.ok?r.json():{rows:[]})
-      .then(j=>{PERF_DATA=j.rows||[];PERF_GEN=j.generated||"";if($("pf-loading"))$("pf-loading").innerHTML="";_renderPerformance();})
+      .then(j=>{
+        // Server is still building the 12-month replay (cold cache, first load after a restart, user
+        // 2026-08-03 P-01): it returns {warming:true} instantly instead of blocking ~40s. Keep the badge
+        // and poll until the rows are ready, so the tab never hangs.
+        if(j.warming){PERF_DATA=null;if($("pf-loading"))$("pf-loading").innerHTML=`<span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#d29922;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ processing the 12-month replay… (one-off after a restart)</span>`;setTimeout(renderPerformance,3000);return;}
+        PERF_DATA=j.rows||[];PERF_GEN=j.generated||"";if($("pf-loading"))$("pf-loading").innerHTML="";_renderPerformance();})
       .catch(()=>{PERF_DATA=[];if($("pf-loading"))$("pf-loading").innerHTML="";_renderPerformance();});
     // The analysis loads lazily when its sub-tab is opened (pfPanel), not here.
   } else if(_pfl && PERF_DATA.length){_pfl.innerHTML="";}

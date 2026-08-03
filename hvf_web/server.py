@@ -1870,15 +1870,12 @@ def _perf_bars(db, cutoff: dict, lookback_days: int = 0) -> dict:
     return out
 
 
-@app.route("/api/performance")
-def api_performance():
-    """Every tradeable trigger over the LAST 12 MONTHS with its levels and realised/open outcome. This is
-    the SAME dataset as the "What separates the winners" tab (user 2026-07-18: the two must never diverge)
-    — the 12-month squeeze_history replay via _sqa_all_rows (R:R>=3, FX/Crypto excluded, direction-aware
-    marked-to-market return%), NOT the recent hvf_triggers. Public (client-side blur); cached."""
-    now = _time.time()
-    if _PERF_CACHE["data"] is not None and now - _PERF_CACHE["ts"] < _PERF_TTL:
-        return jsonify(_PERF_CACHE["data"])
+_PERF_WARMING = {"on": False}
+
+
+def _build_perf_payload():
+    """Build the /api/performance payload — the ~40s cold work (12-month replay + per-trigger VolumeScore)
+    — and store it in _PERF_CACHE. Safe to call from a background thread."""
     out = []
     try:
         import datetime as _dt
@@ -1914,8 +1911,42 @@ def api_performance():
     except Exception as ex:
         log.warning(f"performance report failed: {ex}")
     payload = {"rows": out, "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
-    _PERF_CACHE.update(ts=now, data=payload)
-    return jsonify(payload)
+    _PERF_CACHE.update(ts=_time.time(), data=payload)
+    return payload
+
+
+def _kick_perf_warm():
+    """Start a one-off background build if one isn't already running (user 2026-08-03, P-01: "performance
+    still slow") — so a cold /api/performance NEVER blocks the request thread for ~40s."""
+    if _PERF_WARMING["on"]:
+        return
+    _PERF_WARMING["on"] = True
+    import threading
+    def _run():
+        try:
+            _build_perf_payload()
+        finally:
+            _PERF_WARMING["on"] = False
+    threading.Thread(target=_run, daemon=True).start()
+
+
+@app.route("/api/performance")
+def api_performance():
+    """Every tradeable trigger over the LAST 12 MONTHS with its levels and realised/open outcome. This is
+    the SAME dataset as the "What separates the winners" tab (user 2026-07-18: the two must never diverge)
+    — the 12-month squeeze_history replay via _sqa_all_rows (R:R>=3, FX/Crypto excluded, direction-aware
+    marked-to-market return%), NOT the recent hvf_triggers. Public; cached + background-warmed.
+
+    NON-BLOCKING (user 2026-08-03, P-01): a cold cache NEVER builds on the request thread (that ~40s build
+    is what made the tab feel hung). We kick a background build and answer immediately — the current cache
+    if we have one (stale-while-revalidate), else a {warming:true} marker the frontend polls on."""
+    now = _time.time()
+    if _PERF_CACHE["data"] is not None and now - _PERF_CACHE["ts"] < _PERF_TTL:
+        return jsonify(_PERF_CACHE["data"])
+    _kick_perf_warm()
+    if _PERF_CACHE["data"] is not None:
+        return jsonify(_PERF_CACHE["data"])          # stale — refreshed in the background
+    return jsonify({"rows": [], "warming": True, "generated": ""})
 
 
 # ── Squeeze analysis (user 2026-07-17, P-21b) ────────────────────────────────────────────────────────
@@ -3223,12 +3254,7 @@ def _perf_warm_loop():
     while True:
         try:
             t0 = _t.time()
-            _sqa_all_rows()            # 12-month bridge-eligible population (cached)
-            _volscore_scored()         # per-trigger VolumeScore (cached — the ~30s part)
-            _volscore_trigger_map()    # (ticker, date) -> VolumeScore map used by /api/performance
-            _PERF_CACHE["data"] = None  # force a fresh payload build into the cache
-            with app.test_request_context("/api/performance"):
-                api_performance()
+            _build_perf_payload()      # builds _sqa_all_rows + VolumeScore + the payload, into _PERF_CACHE
             log.info(f"performance caches warmed in {_t.time() - t0:.1f}s")
         except Exception as e:
             log.warning(f"performance warm failed: {e}")
