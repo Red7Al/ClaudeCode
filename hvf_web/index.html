@@ -1646,7 +1646,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="all" checked onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> Every position</label>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="agg" onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> <b style="color:var(--fg)">Aggregate rows</b></label></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th class="clk" data-igp="name">Name</th><th class="clk" data-igp="direction">Dir</th><th class="clk" data-igp="size">Size</th><th class="clk" data-igp="level">Level</th><th class="clk" data-igp="current" title="Live close price (BUY at bid, SELL at offer)">Now</th><th class="clk" data-igp="profit" title="Live profit in the instrument's currency = (close − open) × size × contract size, direction-aware">Profit</th><th class="clk" data-igp="profit_pct" title="Live profit % against the open level, direction-aware">Profit %</th><th class="clk" data-igp="stop">Stop</th><th class="clk" data-igp="limit">Limit</th><th class="clk" data-igp="currency">Ccy</th><th class="clk" data-igp="opened">Opened (UTC)</th><th class="clk" data-igp="ticker">Ticker</th></tr></thead>
+      <thead><tr><th class="clk" data-igp="name">Name</th><th class="clk" data-igp="market">Market</th><th class="clk" data-igp="direction">Dir</th><th class="clk" data-igp="size">Size</th><th class="clk" data-igp="level">Level</th><th class="clk" data-igp="current" title="Live close price (BUY at bid, SELL at offer)">Now</th><th class="clk" data-igp="profit" title="Live profit in the instrument's currency = (close − open) × size × contract size, direction-aware">Profit</th><th class="clk" data-igp="profit_pct" title="Live profit % against the open level, direction-aware">Profit %</th><th class="clk" data-igp="stop">Stop</th><th class="clk" data-igp="limit">Limit</th><th class="clk" data-igp="currency">Ccy</th><th class="clk" data-igp="opened">Opened (UTC)</th><th class="clk" data-igp="ticker">Ticker</th></tr></thead>
       <tbody id="ig-pos-rows"></tbody>
     </table></div>
   </section>
@@ -1657,7 +1657,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="ig-ord-count"></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th class="clk" data-igo="name">Name</th><th class="clk" data-igo="direction">Dir</th><th class="clk" data-igo="size">Size</th><th class="clk" data-igo="level">Level</th><th class="clk" data-igo="type">Type</th><th class="clk" data-igo="source">Source</th><th class="clk" data-igo="good_till">Good&nbsp;till (UTC)</th><th class="clk" data-igo="ticker">Ticker</th></tr></thead>
+      <thead><tr><th class="clk" data-igo="name">Name</th><th class="clk" data-igo="market">Market</th><th class="clk" data-igo="direction">Dir</th><th class="clk" data-igo="size">Size</th><th class="clk" data-igo="level">Level</th><th class="clk" data-igo="type">Type</th><th class="clk" data-igo="source">Source</th><th class="clk" data-igo="good_till">Good&nbsp;till (UTC)</th><th class="clk" data-igo="ticker">Ticker</th></tr></thead>
       <tbody id="ig-ord-rows"></tbody>
     </table></div>
   </section>
@@ -3167,7 +3167,7 @@ function paintIgAccount(){
   $("ig-pos-count").innerHTML=cnt(pos.length,IG_POS.length,_agg?"instrument":"open position");
   const _pf=v=>v==null?'<span class="muted">—</span>':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>=0?'+':'−'}${Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:2})}</span>`;
   const _pfp=v=>v==null?'<span class="muted">—</span>':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>=0?'+':''}${v}%</span>`;
-  $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${_igDtag(p.direction)}</td><td>${_sz(p.size)}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.current??'<span class="muted">—</span>')}</td><td>${_pf(p.profit)}</td><td>${_pfp(p.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td><b>${p.ticker||p.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="12" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
+  $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${p.market||'<span class="muted">—</span>'}</td><td>${_igDtag(p.direction)}</td><td>${_sz(p.size)}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.current??'<span class="muted">—</span>')}</td><td>${_pf(p.profit)}</td><td>${_pfp(p.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td><b>${p.ticker||p.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="13" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
 
   // ── WORKING ORDERS (own strip + sortable table) ──
   const ordBase=IG_ORD.filter(hit).map(o=>Object.assign({},o,_enrCommon(o),{gtd:(o.good_till||"").slice(0,10)||"—"}));
@@ -3184,7 +3184,7 @@ function paintIgAccount(){
   packViz("ig-ord-viz");
   const ord=genSort(ordBase.filter(o=>IGF.every(([id,k])=>inSet(id,o[k]))),igoSortK,igoSortDir);
   $("ig-ord-count").innerHTML=cnt(ord.length,IG_ORD.length,"working order");
-  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${_igDtag(o.direction)}</td><td>${_sz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
+  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${o.market||'<span class="muted">—</span>'}</td><td>${_igDtag(o.direction)}</td><td>${_sz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
 function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";

@@ -3090,8 +3090,10 @@ def api_ig_account():
         log.warning(f"ig-account DB maps failed: {e}")
     # Company name per ticker from the snapshot (user 2026-07-13: show the instrument NAME, not just
     # the ticker/epic, on the IG Account report).
-    tk2name = {r["ticker"]: (r.get("name") or "")
-               for r in _load_snapshot().get("records", []) if r.get("ticker")}
+    _snap_recs = _load_snapshot().get("records", [])
+    tk2name = {r["ticker"]: (r.get("name") or "") for r in _snap_recs if r.get("ticker")}
+    # Ticker -> Market map (user 2026-08-03, P-10): show Market next to Name on both IG Account tables.
+    tk2market = {r["ticker"]: (r.get("market") or "") for r in _snap_recs if r.get("ticker")}
 
     # Fetch positions and orders INDEPENDENTLY (user 2026-07-13 bug: a failure in get_working_orders
     # used to abort the whole block, so open positions silently vanished even though that call had
@@ -3160,6 +3162,7 @@ def api_ig_account():
                 profit_pct = round(pts / open_lvl * 100.0, 2)
         out["positions"].append({
             "ticker": tk, "name": tk2name.get(tk) or mk.get("instrumentName") or tk,
+            "market": tk2market.get(tk) or "",   # Market column (user 2026-08-03, P-10)
             "epic": epic, "direction": direction,
             "size": pos.get("size"), "level": pos.get("level") or pos.get("openLevel"),
             "current": close, "profit": profit, "profit_pct": profit_pct,
@@ -3171,6 +3174,7 @@ def api_ig_account():
         tk = _tk(epic, mk)
         out["orders"].append({
             "ticker": tk, "name": tk2name.get(tk) or mk.get("instrumentName") or tk,
+            "market": tk2market.get(tk) or "",   # Market column (user 2026-08-03, P-10)
             "epic": epic,
             "direction": od.get("direction"), "size": od.get("orderSize") or od.get("size"),
             "level": od.get("orderLevel") or od.get("level"), "type": od.get("orderType"),
