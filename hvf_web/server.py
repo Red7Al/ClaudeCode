@@ -2077,53 +2077,61 @@ def _sqa_seg(rows):
 _SQA_MAX_CONCURRENT = 50
 
 
-def _sqa_compound(rows, start=10000.0, max_concurrent=_SQA_MAX_CONCURRENT):
-    """Compounded wallet as a PORTFOLIO SIMULATION, not a sequential product (user 2026-07-18). Sequential
-    compounding of thousands of overlapping trades is degenerate — with a positive per-trade edge it
-    explodes regardless of risk size, because the count, not the stake, drives it. Real trades run in
-    parallel and are capped, so this simulates that:
+def _sqa_compound(rows, start=10000.0, max_concurrent=_SQA_MAX_CONCURRENT,
+                  position_pct=2.0, leverage=None):
+    """Replay a funded portfolio using the same contract as the browser wallet.
 
-      * population = BRIDGE-TRADEABLE resolved funnels only (quality >= the bridge floor, R:R >= 3) — the
-        setups the 2-hourly bridge would actually have placed;
-      * at most `max_concurrent` positions open at once (the bridge's own per-pass cap); a setup that
-        arrives with every slot full is SKIPPED, exactly as the live cap would skip it;
-      * each position risks 2% of the wallet AT THE MOMENT IT OPENS (calculate_position_size) and realises
-        risked£ x R-multiple when it closes. A stop loses its 2%, nothing more — it cannot blow up.
-
-    Returns {final wallet, trades taken, skipped, max_concurrent, start, ledger}. `ledger` is every taken
-    trade in the order it CLOSED (the moment the wallet changes), each carrying the running wallet after it —
-    so the headline £ can be audited line by line and reconciles exactly to `final` (user 2026-07-18)."""
+    Position size is ``position_pct`` of equity at entry and P&L is position size × actual return%.
+    Margin (position size ÷ instrument leverage) remains reserved until exit. A trigger is skipped if
+    either the user's maximum-open limit is reached or available cash cannot fund its margin.
+    """
     import heapq, itertools
+    leverage = {**{"fx": 30.0, "equities": 5.0, "commodities": 10.0, "indices": 20.0}, **(leverage or {})}
+    max_concurrent = max(1, int(max_concurrent or 1))
+    position_fraction = max(0.0, float(position_pct)) / 100.0
+
+    def _lev(trade):
+        market = trade.get("market") or ""
+        kind = "fx" if market == "FX" else "indices" if market == "Indices" else \
+               "commodities" if market == "Commodities" else "equities"
+        return max(1.0, float(leverage[kind]))
+
     minq = _sqa_bridge_min_quality()
     seq = sorted((r for r in rows
                   if r["outcome"] in ("TARGET", "STOPPED")
-                  and r.get("r_mult") is not None and r.get("trig_date") and r.get("exit_date")
+                  and r.get("return_pct") is not None and r.get("trig_date") and r.get("exit_date")
                   and (r.get("quality") or 0) >= minq and (r.get("rr") or 0) >= 3),
                  key=lambda r: r["trig_date"])
     if not seq:
         return None
-    wallet = float(start)
+    wallet, reserved_margin = float(start), 0.0
     taken = skipped = 0
     ledger = []
     _seq = itertools.count()           # tie-breaker so heap never compares dict payloads
-    open_pos = []                      # heap of (exit_date, seq, risked_gbp, r_mult, trade)
+    open_pos = []                      # heap of (exit_date, seq, position, margin, return_pct, trade)
     def _close(item):
-        nonlocal wallet
-        _ed, _s, risked, rm, tr = item
+        nonlocal wallet, reserved_margin
+        _ed, _s, position, margin, ret, tr = item
         before = wallet
-        wallet = max(0.0, wallet + risked * rm)
+        pnl = position * ret / 100.0
+        wallet = max(0.0, wallet + pnl)
+        reserved_margin = max(0.0, reserved_margin - margin)
         ledger.append({"ticker": tr["ticker"], "market": tr["market"], "sector": tr["sector"],
                        "direction": tr["direction"], "quality": tr["quality"], "rr": tr["rr"],
                        "return_pct": tr["return_pct"], "outcome": tr["outcome"],
-                       "r_mult": round(rm, 2), "trig_date": tr["trig_date"], "exit_date": _ed,
-                       "wallet_before": round(before), "risked": round(risked, 2),
-                       "pnl": round(risked * rm, 2), "wallet_after": round(wallet)})
+                       "r_mult": round(tr.get("r_mult") or 0, 2), "trig_date": tr["trig_date"], "exit_date": _ed,
+                       "wallet_before": round(before), "stake": round(position, 2),
+                       "margin": round(margin, 2), "risked": round(position, 2),
+                       "pnl": round(pnl, 2), "wallet_after": round(wallet)})
     for t in seq:
         td = t["trig_date"]
         while open_pos and open_pos[0][0] <= td:        # close anything that has matured
             _close(heapq.heappop(open_pos))
-        if len(open_pos) < max_concurrent:
-            heapq.heappush(open_pos, (t["exit_date"], next(_seq), wallet * _SQA_RISK, t["r_mult"], t))
+        position = wallet * position_fraction
+        margin = position / _lev(t)
+        if len(open_pos) < max_concurrent and margin <= wallet - reserved_margin:
+            reserved_margin += margin
+            heapq.heappush(open_pos, (t["exit_date"], next(_seq), position, margin, t["return_pct"], t))
             taken += 1
         else:
             skipped += 1
@@ -2470,10 +2478,15 @@ def _volscore_trigger_map():
     return m
 
 
-def _volscore_report():
+def _volscore_report(model=None):
     import volume_score as _vscore
     now = _time.time()
-    if _VSR_CACHE["data"] is not None and now - _VSR_CACHE["ts"] < _SQA_TTL:
+    model = model or {}
+    model_key = (float(model.get("wallet", 10000)), float(model.get("position_pct", 2)),
+                 int(model.get("max_open", _SQA_MAX_CONCURRENT)),
+                 tuple(sorted((model.get("leverage") or {}).items())))
+    if (_VSR_CACHE["data"] is not None and _VSR_CACHE.get("key") == model_key
+            and now - _VSR_CACHE["ts"] < _SQA_TTL):
         return _VSR_CACHE["data"]
     scored = _volscore_scored()
 
@@ -2488,7 +2501,11 @@ def _volscore_report():
 
     passing = [r for r in scored if (r.get("volume_score") or 0) >= _vscore.PASS_THRESHOLD]
     seg_all, seg_pass = _sqa_seg(scored), _sqa_seg(passing)
-    comp_all, comp_pass = _sqa_compound(scored), _sqa_compound(passing)
+    replay_args = {
+        "start": model_key[0], "position_pct": model_key[1], "max_concurrent": max(1, model_key[2]),
+        "leverage": model.get("leverage") or None,
+    }
+    comp_all, comp_pass = _sqa_compound(scored, **replay_args), _sqa_compound(passing, **replay_args)
 
     # Plain-English takeaways, derived (not hand-written) so they track the data.
     advice = []
@@ -2519,7 +2536,7 @@ def _volscore_report():
         "compound_all": comp_all, "compound_passing": comp_pass,
         "buckets": buckets, "advice": advice,
     }
-    _VSR_CACHE.update(ts=now, data=data)
+    _VSR_CACHE.update(ts=now, data=data, key=model_key)
     return data
 
 
@@ -2527,10 +2544,21 @@ def _volscore_report():
 def api_volscore_report():
     """VolumeScore impact over the 12-month replay (user 2026-07-24, P-02). Admin only — sits on the
     admin 'What separates the winners' analysis tab alongside the other replayed-population reports."""
-    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not _wu.is_admin(name):
         return jsonify({"error": "admin only"}), 403
     try:
-        return jsonify(_volscore_report())
+        settings = _wu.get_settings(name)
+        limits = _user_limits(settings)
+        leverage = {"fx": 30, "equities": 5, "commodities": 10, "indices": 20}
+        leverage.update(settings.get("leverage") or {})
+        max_open = int(limits.get("max_open") or _SQA_MAX_CONCURRENT)
+        return jsonify(_volscore_report({
+            "wallet": float(limits.get("wallet") or 10000),
+            "position_pct": float(limits.get("max_position_pct") or 2),
+            "max_open": max_open,
+            "leverage": leverage,
+        }))
     except Exception as ex:
         log.warning(f"volscore report failed: {ex}")
         return jsonify({"error": "report unavailable"}), 500
