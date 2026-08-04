@@ -656,16 +656,27 @@ def get_transactions(from_iso: str, to_iso: str = None) -> list:
       'CHARGE' — an IG cost that hits P&L: overnight funding/interest, borrowing, dividends adj, fees
       'CASH'   — a deposit/withdrawal of funds (excluded from both trade P&L and charges)
     Best-effort; returns [] on any failure. The caller runs it inside the acting user's session."""
-    params = {"type": "ALL", "from": from_iso}
+    params = {"type": "ALL", "from": from_iso, "pageSize": 500, "pageNumber": 1}
     if to_iso:
         params["to"] = to_iso
-    try:
-        data = session.get("/history/transactions", version="2", params=params) or {}
-    except Exception as e:
-        log.warning(f"get_transactions failed: {e}")
-        return []
+    raw = []
+    while True:
+        try:
+            data = session.get("/history/transactions", version="2", params=params) or {}
+        except Exception as e:
+            log.warning(f"get_transactions failed: {e}")
+            if not raw:
+                return []
+            break
+        raw.extend(data.get("transactions", []) or [])
+        page = ((data.get("metadata") or {}).get("pageData") or {})
+        current = int(page.get("pageNumber") or params["pageNumber"])
+        total = int(page.get("totalPages") or current)
+        if current >= total:
+            break
+        params["pageNumber"] = current + 1
     out = []
-    for t in (data.get("transactions", []) or []):
+    for t in raw:
         name = str(t.get("instrumentName") or "")
         up = name.upper()
         ol = str(t.get("openLevel") or "").strip()
@@ -684,7 +695,9 @@ def get_transactions(from_iso: str, to_iso: str = None) -> list:
         else:
             kind = "CHARGE"
         out.append({
-            "date": t.get("date"),
+            # `date` may be IG's locale display form (e.g. 31/07/26), which cannot be compared with an
+            # ISO period boundary. `dateUtc` is stable and sortable, so always prefer it (Fees P-03).
+            "date": t.get("dateUtc") or t.get("date"),
             "open_date": t.get("openDateUtc") or t.get("dateUtc") or t.get("date"),
             "instrument": name,
             "type": t.get("transactionType"),
