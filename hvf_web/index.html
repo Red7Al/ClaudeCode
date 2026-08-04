@@ -27,6 +27,8 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .tab{background:none;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;color:var(--muted);padding:6px 16px;cursor:pointer;font-size:13px}
 #tab-sysdocs{max-width:112px;padding-inline:10px;line-height:1.15;white-space:normal}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
+.sqh-loading{color:#d29922!important;font-weight:700;letter-spacing:.02em;animation:sqhPulse .9s ease-in-out infinite alternate}
+@keyframes sqhPulse{from{opacity:.4}to{opacity:1;text-shadow:0 0 10px color-mix(in srgb,#d29922 65%,transparent)}}
 /* Operations / Settings sub-navigation (user 2026-07-10) */
 .subnav{display:flex;gap:6px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;align-items:center;justify-content:center;position:sticky;top:var(--sticky-top,90px);z-index:3}
 .subnav .subpill{background:var(--chip);border:1px solid var(--line);border-radius:6px;color:var(--muted);padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600}
@@ -1463,7 +1465,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <!-- Every header sorts (user 2026-07-18, P-01) — data-sqh drives sqhSort(). -->
     <div class="tablewrap"><table>
       <thead><tr><th class="clk" data-sqh="name">Name</th><th class="clk" data-sqh="direction">Dir</th><th class="clk" data-sqh="market">Market</th><th class="clk" data-sqh="sector">Sector</th><th class="clk" data-sqh="timeframe">TF</th><th class="clk" data-sqh="first_seen" title="First replay step this funnel existed">Developing</th><th class="clk" data-sqh="ready_date" title="First step seen READY">Ready</th><th class="clk" data-sqh="triggered_date" title="First close beyond entry after the pivots">Triggered</th><th class="clk" data-sqh="outcome">Outcome</th><th class="clk" data-sqh="outcome_date">Closed</th><th class="clk" data-sqh="return_pct">Return</th><th class="clk" data-sqh="quality">Quality</th><th class="clk" data-sqh="rr">R:R</th><th class="clk" data-sqh="ticker">Ticker</th></tr></thead>
-      <tbody id="sqh-rows"><tr><td colspan="14" class="empty">Loading…</td></tr></tbody>
+      <tbody id="sqh-rows"><tr><td colspan="14" class="empty sqh-loading">⏳ Loading…</td></tr></tbody>
     </table></div>
   </section>
 </div>
@@ -1482,8 +1484,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <span class="muted" style="font-size:12px">Period</span>
       <div id="fees-period" style="display:inline-flex;gap:0;border:1px solid var(--line);border-radius:7px;overflow:hidden">
-        <button class="btn fees-per on" data-per="last" onclick="feesPeriod('last')" style="border:0;border-radius:0;padding:5px 12px">Last month</button>
-        <button class="btn fees-per" data-per="this" onclick="feesPeriod('this')" style="border:0;border-radius:0;padding:5px 12px;border-left:1px solid var(--line)">This month (so far)</button>
+        <button class="btn fees-per" data-per="last" onclick="feesPeriod('last')" style="border:0;border-radius:0;padding:5px 12px">Last month</button>
+        <button class="btn fees-per on" data-per="this" onclick="feesPeriod('this')" style="border:0;border-radius:0;padding:5px 12px;border-left:1px solid var(--line)">This month (so far)</button>
       </div>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">AUM £ <input id="fees-aum" type="number" min="0" step="1000" value="10000" style="width:110px;padding:4px 6px" onchange="paintFees()"> <span id="fees-aum-hint" style="font-size:11px;font-style:italic"></span></label>
       <span class="muted" style="font-size:11px">rates are per annum; the monthly charge = rate ÷ 12 — management = (1% ÷ 12) of AUM; performance = (10% ÷ 12) of the period's profit (0 if a loss)</span>
@@ -1644,7 +1646,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- No search here (user 2026-07-17): the IG account holds only a handful of live positions/orders, so
        a search is clutter. paintIgAccount tolerates the missing #ig-search input (treats it as blank). -->
   <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="ig-pos-count"></span><span class="grow" style="flex:1"></span>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="ig-pos-count"></span><span class="muted" style="font-size:11.5px">Default sort: latest opened/closed ↓</span><span class="grow" style="flex:1"></span>
       <span class="muted" style="font-size:12.5px;display:inline-flex;align-items:center;gap:14px" title="Aggregate rows = one combined row per instrument (sum sizes, size-weighted level, summed profit)."><b style="color:var(--fg)">View:</b>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="all" onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> Every position</label>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="agg" checked onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> <b style="color:var(--fg)">Aggregate rows</b></label>
@@ -3137,7 +3139,7 @@ function renderMarketsAdmin(){
 document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();_sortArrows("data-ma",maSortK,maSortDir);});
 // ── IG Account tab (user 2026-07-10): the acting user's own IG open positions + working orders ──
 let IG_POS=[], IG_ORD=[], igOpenMonthInitialised=false;
-let igpSortK="opened", igpSortDir=-1, igoSortK="good_till", igoSortDir=-1;   // IG Account defaults: newest-opened positions first; orders by good-till desc
+let igpSortK="activity_date", igpSortDir=-1, igoSortK="good_till", igoSortDir=-1;   // IG Account defaults: newest opened/closed event first; orders by good-till desc
 const _igDtag=d=>d?`<span class="tag ${d==='BUY'?'bull':'bear'}">${d}</span>`:'';
 // Shared formatters: closed-trade painting runs independently of paintIgAccount.
 // Keeping these at module scope prevents real closed rows throwing ReferenceError (_sz/_pf).
@@ -3177,7 +3179,7 @@ function paintIgAccount(){
   const closedBase=(showClosed?(IGCLOSED||[]):[]).map(c=>{const s=_snapByName[_igNameKey(c.instrument)]||{};
     const ol=+c.open_level,cl=+c.close_level,dir=c.direction;
     const pct=(Number.isFinite(ol)&&ol!==0&&Number.isFinite(cl))?+(((dir==='SELL'?ol-cl:cl-ol)/ol)*100).toFixed(2):null;
-    return Object.assign({},c,{status:'Closed',name:c.instrument||'',level:c.open_level,current:c.close_level,
+    return Object.assign({},c,{status:'Closed',name:c.instrument||'',size:Math.abs(+c.size||0),level:c.open_level,current:c.close_level,
       profit:c.pnl,profit_pct:pct,closed:c.date||'',open_month:(c.date||'').slice(0,7)||'—',
       location:s.location||'—',market:s.market||'—',sector:s.sector||'—',ticker:s.ticker||''});});
   const _agg=((document.querySelector('input[name="ig-pos-view"]:checked')||{}).value==='agg');
@@ -3215,7 +3217,7 @@ function paintIgAccount(){
     `<div class="vizsector">`+barChart("Direction",pby("direction","igp_direction"),"igp_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`+
     `<div class="vizsector">`+barChart("Open / Closed Month",openMonthCounts,"igp_open_month",null,true)+`</div>`):"";
   packViz("ig-pos-viz");
-  const pos=genSort(posBase.filter(p=>IGPF.every(([id,k])=>inSet(id,p[k]))),igpSortK,igpSortDir);
+  const pos=posBase.filter(p=>IGPF.every(([id,k])=>inSet(id,p[k])));
   let closed=closedBase.filter(c=>IGPF.every(([id,k])=>inSet(id,c[k])));
   if(_agg){   // IG can close one logical position as several fills; combine fills from the same close event.
     const g={};
@@ -3230,14 +3232,19 @@ function paintIgAccount(){
         ?+(((a.direction==='SELL'?a.level-a.current:a.current-a.level)/a.level)*100).toFixed(2):null;
       a.reason=a._reasons.size===1?[...a._reasons][0]:'MIXED';return a;});
   }
-  const openRows=pos.map(p=>`<tr><td><span class="tag bull">Open</span></td><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${p.market||'<span class="muted">—</span>'}</td><td>${_igDtag(p.direction)}</td><td>${_igSz(p.size)}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.current??'<span class="muted">—</span>')}</td><td>${_igPf(p.profit)}</td><td>${_igPfp(p.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td></td><td></td><td><b>${p.ticker||p.epic||''}</b></td></tr>`);
-  const closedRows=genSort(closed,igpSortK,igpSortDir).map(c=>`<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(c.name)}${_agg&&c._n>1?` <span class="muted" style="font-size:11px">×${c._n}</span>`:''}</td><td>${c.market||'<span class="muted">—</span>'}</td><td>${_igDtag(c.direction)}</td><td>${_igSz(c.size)}</td><td>${c.level??''}</td><td>${c.current??''}</td><td>${_igPf(c.profit)}</td><td>${_igPfp(c.profit_pct)}</td><td></td><td></td><td>${c.currency||''}</td><td></td><td>${_igDateTime(c.closed)}</td><td>${_igReason(c.reason)}</td><td><b>${c.ticker||''}</b></td></tr>`);
+  const tableRows=genSort(
+    pos.map(p=>Object.assign({},p,{_rowKind:'open',status:'Open',activity_date:p.opened||''}))
+      .concat(closed.map(c=>Object.assign({},c,{_rowKind:'closed',activity_date:c.closed||''}))),
+    igpSortK,igpSortDir);
+  const renderedRows=tableRows.map(r=>r._rowKind==='open'
+    ? `<tr><td><span class="tag bull">Open</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${_agg?'<span class="muted">—</span>':(r.current??'<span class="muted">—</span>')}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(r.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(r.limit??'')}</td><td>${r.currency||''}</td><td>${r.opened||''}</td><td></td><td></td><td><b>${r.ticker||r.epic||''}</b></td></tr>`
+    : `<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??''}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td></td><td></td><td>${r.currency||''}</td><td></td><td>${_igDateTime(r.closed)}</td><td>${_igReason(r.reason)}</td><td><b>${r.ticker||''}</b></td></tr>`);
   const profitTotals={};
   pos.concat(closed).forEach(r=>{if(r.profit==null)return;const c=_igCurrency(r.currency);profitTotals[c]=(profitTotals[c]||0)+(+r.profit||0);});
   const totalProfit=Object.entries(profitTotals).map(([c,v])=>`${_igPf(+v.toFixed(2))} <span class="muted">${c}</span>`).join(' · ');
-  const totalRow=(openRows.length+closedRows.length)?`<tr style="border-top:2px solid var(--line)"><td></td><td colspan="6"><b>Total visible profit (${openRows.length+closedRows.length} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
+  const totalRow=renderedRows.length?`<tr style="border-top:2px solid var(--line)"><td></td><td colspan="6"><b>Total visible profit (${renderedRows.length} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
   $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${pos.length+closed.length}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed${IGCLOSED===null?' (loading…)':''}</span>`;
-  $("ig-pos-rows").innerHTML=openRows.concat(closedRows).join("")+totalRow||`<tr><td colspan="16" class="empty">${q?'No transactions match that search.':'No open or recently closed transactions.'}</td></tr>`;
+  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="16" class="empty">${q?'No transactions match that search.':'No open or recently closed transactions.'}</td></tr>`;
 
   // ── WORKING ORDERS (own strip + sortable table) ──
   const ordBase=IG_ORD.filter(hit).map(o=>Object.assign({},o,_enrCommon(o),{gtd:(o.good_till||"").slice(0,10)||"—"}));
@@ -3867,7 +3874,7 @@ function paintWinnersDims(dims, all){
 // ── Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle table ───────────────────────────────
 let SQH=null, sqhSortK="triggered_date", sqhSortDir=-1;   // default: Triggered date descending (user 2026-08-01); header click changes it
 function renderSqueezeHist(){
-  if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty">Loading…</td></tr>';}
+  if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Loading…</td></tr>';}
   fetch("/api/squeeze-history").then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];paintSqueezeHist();})
     .catch(()=>{SQH=[];paintSqueezeHist();});
 }
@@ -3945,7 +3952,7 @@ document.querySelectorAll("th[data-sqh]").forEach(th=>th.onclick=()=>sqhSort(th.
 // ── Fees (Admin) (user 2026-07-18) — management + performance fees ─────────────────────────────────────
 // Two selectable periods (user 2026-07-31, P-05): "Last month" (billed) + "This month (so far)"; each
 // shows the fee example AND the underlying transactions (trade_log) that explain the realised profit.
-let FEES=null, FEES_PER='last';
+let FEES=null, FEES_PER='this';
 function renderFees(){
   fetch("/api/fees",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
     FEES=j||{};
