@@ -139,6 +139,12 @@ working untouched. The dropdown drives `option.selected`, dispatches `input` on 
 (reset/showall/applyUserDefaults/fillSel) or the button label goes stale. Options arrive late via
 `fillSel()`, so build each popup on open.
 
+**Checkbox and radio controls must override the global form-field width.** The page-level
+`select,input{width:100%}` rule is appropriate for text and number fields but makes an unscoped checkbox
+fill its container and crush its label. For pill/toggle controls, set the checkbox/radio to an explicit
+size (`width` and `height` around 18px, `flex:0 0 auto`, zero margin), keep the label `white-space:nowrap`,
+and provide a minimum 44px-high tap target. Verify at iPad widths as well as desktop.
+
 ## 4. Verifying changes on THIS page — the traps
 
 Measure and assert. Do not eyeball, and do not trust a summary you built without checking it.

@@ -287,6 +287,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .credrow input.cred-in{flex:1 1 220px;max-width:340px;font-size:14px;padding:8px 10px;border-radius:8px}
 .credrow .cstate{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
 .credrow .cstate.on{color:var(--bull)} .credrow .cstate.off{color:var(--bear)}                /* "Not set" red */
+/* Direction filter pills must remain legible tap targets on iPad. The global input width is for form
+   fields, not checkboxes; without this exception each checkbox expands to 100% and crushes its label. */
+.cfg-tf-options{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+.cfg-tf-option{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:96px;min-height:44px;
+  white-space:nowrap;font-size:14px;font-weight:600;border-radius:999px;padding:8px 16px;cursor:pointer}
+.cfg-tf-option input.cfg-tf{width:18px;height:18px;flex:0 0 18px;margin:0;padding:0;accent-color:var(--accent)}
 /* Doc-page tables (activity/batch/version/users) wrap text so there's no horizontal scroll bar
    even when a charts column sits alongside (user 2026-07-03). */
 .doc .tablewrap{overflow-x:auto;padding-bottom:22px}   /* gap between the last row and the horizontal scrollbar (user 2026-08-01; widened to 22px 2026-08-02, P-06) */
@@ -2879,9 +2885,9 @@ function renderConfig(){
       TRADE_HIDE=tf;   // sync per-user hide (user 2026-07-06)
       $("cfg-trade").innerHTML=groups.map(([g,opts])=>{
         const allowed=tf[g]||[];
-        return `<div style="margin:10px 0"><b style="font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em">${g}</b><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">`+
+        return `<div style="margin:10px 0"><b style="font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em">${g}</b><div class="cfg-tf-options">`+
           opts.map(o=>{const on=(!allowed.length||allowed.includes(o));
-            return `<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;background:${on?'color-mix(in srgb,var(--accent) 14%,transparent)':'var(--chip)'};border:1px solid ${on?'var(--accent)':'var(--line)'};border-radius:999px;padding:6px 12px;cursor:pointer"><input type="checkbox" class="cfg-tf" data-g="${g}" data-v="${o}" ${on?"checked":""} onchange="this.parentElement.style.background=this.checked?'color-mix(in srgb,var(--accent) 14%,transparent)':'var(--chip)';this.parentElement.style.borderColor=this.checked?'var(--accent)':'var(--line)'"> ${o}</label>`;}).join("")+`</div></div>`;}).join("");
+            return `<label class="cfg-tf-option" style="background:${on?'color-mix(in srgb,var(--accent) 14%,transparent)':'var(--chip)'};border:1px solid ${on?'var(--accent)':'var(--line)'}"><input type="checkbox" class="cfg-tf" data-g="${g}" data-v="${o}" ${on?"checked":""} onchange="this.parentElement.style.background=this.checked?'color-mix(in srgb,var(--accent) 14%,transparent)':'var(--chip)';this.parentElement.style.borderColor=this.checked?'var(--accent)':'var(--line)'"> ${o}</label>`;}).join("")+`</div></div>`;}).join("");
     })
     .catch(()=>{$("cfg-exec").textContent="Could not load — try logging in again.";});
 }
