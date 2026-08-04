@@ -645,7 +645,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </aside>
     <div class="sidemain">
     <div class="tablewrap"><table>
-      <thead><tr><th data-ok="_fav" title="Favourite (click to sort)">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="name">Name</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="dist_pct" title="Distance from the live price to the entry level, as a % of the live price. Positive = price still has to rise to the entry; negative = it has passed it.">Dist %</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th><th data-ok="ticker">Ticker</th></tr></thead>   <!-- Ticker far right (P-11b) -->
+      <thead><tr><th data-ok="_fav" title="Favourite (click to sort)">★</th><th data-ok="placed_at">Placed</th><th data-ok="updated_at">Updated</th><th data-ok="name">Name</th><th data-ok="volume_score">VolumeScore</th><th data-ok="rr">R:R</th><th data-ok="quality">Quality</th><th data-ok="direction">Dir</th><th data-ok="entry">Entry</th><th data-ok="stop">Stop</th><th data-ok="target">Target</th><th data-ok="dist_pct" title="Distance from the live price to the entry level, as a % of the live price. Positive = price still has to rise to the entry; negative = it has passed it.">Dist %</th><th data-ok="size">Size</th><th data-ok="status">Status</th><th data-ok="session">Source</th><th data-ok="notes">Notes</th><th data-ok="ticker">Ticker</th></tr></thead>   <!-- Ticker far right (P-11b) -->
       <tbody id="oo-rows"></tbody>
     </table></div>
     </div><!-- /.sidemain -->
@@ -3024,15 +3024,19 @@ function paintOrderOps(){
     `<div class="vizsector">`+barChart("Direction",oby("direction"),"oof_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`+
     `<div class="vizsector">`+barChart("Source",oby("session"),"oof_session")+`</div>`+
     `<div class="vizsector">`+barChart("Ticker",oby("ticker"),"oof_ticker")+`</div>`;
-  // Resolve instrument name from the loaded snapshot (user 2026-07-03: name next to Ticker).
-  const nm=t=>{const r=DATA.find(x=>x.ticker===t||disp(x.ticker)===t);return r?(r.name||''):'';};
+  // Enrich operational rows from the current scanner snapshot so Name, VolumeScore, R:R and Quality
+  // are displayed together and sort on their actual values (user 2026-08-04, P-07).
+  const _ooRec=t=>DATA.find(x=>x.ticker===t||disp(x.ticker)===t);
   // Distance to price % (user 2026-08-01): how far the live price is from the order's entry level,
   // as a % of the live price. Live price comes from the loaded snapshot for this ticker.
-  const _px=t=>{const d=DATA.find(x=>x.ticker===t||disp(x.ticker)===t);return d?d.current_price:null;};
-  rows.forEach(r=>{const p=_px(r.ticker);r.dist_pct=(r.entry!=null&&p)?+(((r.entry-p)/p)*100).toFixed(2):null;});
+  rows.forEach(r=>{const d=_ooRec(r.ticker),p=d&&d.current_price;
+    r.name=d?.name||'';r.volume_score=d?.volume_score??null;r.rr=d?.rr??null;r.quality=d?.quality??null;
+    r.dist_pct=(r.entry!=null&&p)?+(((r.entry-p)/p)*100).toFixed(2):null;});
   rows.forEach(r=>r._fav=FAVS.has(disp(r.ticker))?1:0);   // favourite column sortable (user 2026-07-11)
   $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>
-    ${_favCell(r.ticker)}<td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td>${nm(r.ticker)}</td>
+    ${_favCell(r.ticker)}<td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td>${nm40(r.name)}</td>
+    <td>${volScoreCell(r.volume_score)}</td><td>${r.rr!=null?(+r.rr).toFixed(1):'<span class="muted">—</span>'}</td>
+    <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'<span class="muted">—</span>'}</td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
     <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td>
     <td>${r.dist_pct!=null?`<span style="color:${r.dist_pct>=0?'var(--muted)':'var(--bear)'}">${r.dist_pct>0?'+':''}${r.dist_pct}%</span>`:'<span class="muted">—</span>'}</td>
@@ -3040,7 +3044,7 @@ function paintOrderOps(){
     <td><b style="color:${st(r.status)}">${r.status||''}</b></td><td>${r.session||''}</td>
     <td class="muted" style="white-space:normal;max-width:460px">${(r.notes||'').replace(/</g,'&lt;')}</td>
     <td><b>${disp(r.ticker||'')}</b></td></tr>`).join("")
-  || `<tr><td colspan="14" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
+  || `<tr><td colspan="17" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
 }
 // Bridge on/off state (user 2026-08-02, P-06) — whether the DB→IG bridge may place orders. Loaded from
 // /api/config (j.bridge). The badge next to the Pre-orders title makes it unmistakable.
@@ -3056,7 +3060,7 @@ function renderOrderOps(){
   paintBridgeBadge();
   fetch("/api/order-ops",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{OO_ROWS=j.rows||[];paintOrderOps();})
-    .catch(()=>{$("oo-rows").innerHTML=`<tr><td colspan="13" class="empty">Could not load — try logging in again.</td></tr>`;});
+    .catch(()=>{$("oo-rows").innerHTML=`<tr><td colspan="17" class="empty">Could not load — try logging in again.</td></tr>`;});
 }
 let AC_ROWS=[], acSortK="ts", acSortDir=-1;
 // Category derived from the event text (user 2026-07-03) so the log is easy to filter.
