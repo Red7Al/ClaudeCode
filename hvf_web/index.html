@@ -3154,7 +3154,8 @@ function paintIgAccount(){
 
   // ── OPEN POSITIONS (own strip + aggregate toggle + sortable table, user 2026-08-01) ──
   if(!igOpenMonthInitialised){
-    const months=IG_POS.map(p=>(p.opened||'').slice(0,7)).filter(Boolean).sort();
+    const months=IG_POS.map(p=>(p.opened||'').slice(0,7))
+      .concat((IGCLOSED||[]).map(c=>(c.date||'').slice(0,7))).filter(Boolean).sort();
     if(months.length&&$("igp_open_month"))$("igp_open_month").value=months[months.length-1];
     igOpenMonthInitialised=true;
   }
@@ -3176,20 +3177,21 @@ function paintIgAccount(){
   const pby=(field,exceptId)=>{const m={};
     posBase.forEach(p=>{const v=p[field]||"—";if(!(v in m))m[v]=0;});
     posBase.forEach(p=>{if(!IGPF.every(([id,k])=>id===exceptId||inSet(id,p[k])))return;const v=p[field]||"—";m[v]++;});return m;};
-  // Month counts represent actual IG positions, not the fewer instrument rows produced by Aggregate view.
+  // Month counts represent actual visible transactions, not the fewer rows produced by Aggregate view.
   const openMonthCounts={};
   posRaw.forEach(p=>{const v=p.open_month||"—";if(!(v in openMonthCounts))openMonthCounts[v]=0;});
   posRaw.forEach(p=>{if(IGPF.every(([id,k])=>id==="igp_open_month"||inSet(id,p[k])))openMonthCounts[p.open_month||"—"]++;});
-  $("ig-pos-viz").innerHTML=posBase.length?(
+  const showClosed=((document.querySelector('input[name="ig-closed-view"]:checked')||{}).value!=='hide');
+  if(showClosed)(IGCLOSED||[]).forEach(c=>{const v=(c.date||'').slice(0,7)||"—";openMonthCounts[v]=(openMonthCounts[v]||0)+1;});
+  $("ig-pos-viz").innerHTML=(posBase.length||(showClosed&&(IGCLOSED||[]).length))?(
     `<div class="vizsector">`+barChart("Location",pby("location","igp_location"),"igp_location")+`</div>`+
     `<div class="vizsector">`+barChart("Market",pby("market","igp_market"),"igp_market")+`</div>`+
     `<div class="vizsector">`+pieChart("Sector",pby("sector","igp_sector"),"igp_sector")+`</div>`+
     `<div class="vizsector">`+barChart("Direction",pby("direction","igp_direction"),"igp_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`+
-    `<div class="vizsector">`+barChart("Open Month",openMonthCounts,"igp_open_month",null,true)+`</div>`):"";
+    `<div class="vizsector">`+barChart("Open / Closed Month",openMonthCounts,"igp_open_month",null,true)+`</div>`):"";
   packViz("ig-pos-viz");
   const pos=genSort(posBase.filter(p=>IGPF.every(([id,k])=>inSet(id,p[k]))),igpSortK,igpSortDir);
-  const showClosed=((document.querySelector('input[name="ig-closed-view"]:checked')||{}).value!=='hide');
-  let closed=(showClosed?(IGCLOSED||[]):[]).map(c=>{const ol=+c.open_level,cl=+c.close_level,dir=c.direction;
+  let closed=(showClosed?(IGCLOSED||[]):[]).filter(c=>inSet("igp_open_month",(c.date||'').slice(0,7)||"—")).map(c=>{const ol=+c.open_level,cl=+c.close_level,dir=c.direction;
     const pct=(Number.isFinite(ol)&&ol!==0&&Number.isFinite(cl))?+(((dir==='SELL'?ol-cl:cl-ol)/ol)*100).toFixed(2):null;
     return Object.assign({},c,{status:'Closed',name:c.instrument||'',level:c.open_level,current:c.close_level,
       profit:c.pnl,profit_pct:pct,closed:c.date||'',market:'—',ticker:''});});
@@ -3231,7 +3233,7 @@ let IGCLOSED=null, _igClosedNote="";
 function loadIgClosed(force){
   if(IGCLOSED!==null&&!force){paintIgAccount();return;}
   fetch("/api/ig-closed",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{trades:[]})
-    .then(j=>{IGCLOSED=j.trades||[];_igClosedNote=j.note||"";paintIgAccount();})
+    .then(j=>{IGCLOSED=j.trades||[];_igClosedNote=j.note||"";igOpenMonthInitialised=false;paintIgAccount();})
     .catch(()=>{IGCLOSED=[];_igClosedNote="Could not load closed trades.";paintIgAccount();});
 }
 function _igReason(r){
