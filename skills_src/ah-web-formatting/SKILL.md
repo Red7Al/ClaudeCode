@@ -38,7 +38,10 @@ th,td{white-space:nowrap}                                            /* base */
 - Too wide is fine: `.doc .tablewrap{overflow-x:auto}` scrolls sideways. `#view-preorders` chose that
   trade-off deliberately.
 
-**Widths.** Table views are `max-width:1240px`. An outlier is a bug: `view-users` sat at 840px, its
+**Widths.** Table views are normally `max-width:1240px`. A deliberately dense table may use the full
+available application width when this materially reduces horizontal scrolling; Squeeze History is the
+reference (`width:100%;max-width:none;margin-inline:0`). An accidental narrower outlier is a bug:
+`view-users` sat at 840px, its
 `width:auto` table outgrew it, and because `#view-users .tablewrap` is `overflow-x:visible` the overflow
 pushed the whole PAGE sideways while ~500px sat unused beside it — "scrolling AND white space" from one
 cause. `#view-users table{width:100%}` fills the width; `#view-performance` keeps `width:auto`
