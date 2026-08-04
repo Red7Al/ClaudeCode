@@ -3028,9 +3028,10 @@ function paintOrderOps(){
 }
 // Bridge on/off state (user 2026-08-02, P-06) — whether the DB→IG bridge may place orders. Loaded from
 // /api/config (j.bridge). The badge next to the Pre-orders title makes it unmistakable.
-let BRIDGE_ON=false;
+let BRIDGE_ON=null;   // unknown until /api/config returns; never present a guessed OFF state
 function paintBridgeBadge(){
   const el=$("oo-bridge-badge"); if(!el)return;
+  if(BRIDGE_ON===null){el.innerHTML="";return;}
   el.innerHTML=BRIDGE_ON
     ? `<span title="The bridge places qualifying READY setups on IG as working orders every 2 hours." style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--bull);border:1px solid var(--bull);background:color-mix(in srgb,var(--bull) 12%,transparent);border-radius:999px;padding:5px 12px">🟢 Bridge ON — placing orders on IG</span>`
     : `<span title="The bridge is scanning and reporting but is NOT placing any orders on IG. Enable it in Configuration → Trading (Squeeze)." style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#d29922;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:5px 12px">⏸ Bridge OFF — no orders placed on IG</span>`;
