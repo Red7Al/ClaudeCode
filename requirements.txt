@@ -7,3 +7,4 @@ python-dotenv>=1.0.0
 matplotlib>=3.7.0
 tweepy>=4.14.0         # official X (Twitter) API v2 publishing (x_publish.py)
 cryptography
+flask>=3.0.0

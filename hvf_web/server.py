@@ -625,7 +625,10 @@ def api_config():
                 _cs.set_value(f"exec_{src}", "true" if on else "false", updated_by=name)
                 _wu.log_event(name, f"Trade execution for {src} switched {'ON' if on else 'OFF'}")
     if "bridge" in body:
-        # Squeeze bridge (WEB_BRIDGE) execution — gated from Trading (Squeeze), user 2026-07-03.
+        # This is a GLOBAL live-order switch for the shared bridge, not a personal preference.
+        # UI visibility is not authorisation: only an administrator may change it.
+        if not _wu.is_admin(name):
+            return jsonify({"ok": False, "error": "admin only"}), 403
         _cs.set_value("exec_WEB_BRIDGE", "true" if body["bridge"] else "false", updated_by=name)
         _wu.log_event(name, f"Squeeze bridge execution switched {'ON' if body['bridge'] else 'OFF'}")
     return jsonify({"ok": True})
@@ -1757,7 +1760,7 @@ def api_order_ops():
 # price_history are both in the instrument's native (Yahoo) scale, so no unit mismatch. One row per
 # recorded funnel instance, so the
 # same ticker can appear several times (successive triggers). Cached briefly — it walks 100k+ price bars.
-_PERF_CACHE = {"ts": 0.0, "data": None}
+_PERF_CACHE = {"ts": 0.0, "data": None, "gzip": None}
 _PERF_TTL = 900   # seconds (15 min) — raised with the background warmer so the payload never expires under a user
 # Background pre-warm interval (user 2026-08-03): keep the Performance caches warm OFF the request path so a
 # tab click never triggers the ~35s cold build (the "processing the 12-month replay…" hang). Kept < every
@@ -1871,6 +1874,21 @@ def _perf_bars(db, cutoff: dict, lookback_days: int = 0) -> dict:
 
 
 _PERF_WARMING = {"on": False}
+_PERF_WARM_LOCK = _threading.Lock()
+
+
+def _claim_perf_warm() -> bool:
+    """Atomically reserve the one allowed Performance build."""
+    with _PERF_WARM_LOCK:
+        if _PERF_WARMING["on"]:
+            return False
+        _PERF_WARMING["on"] = True
+        return True
+
+
+def _finish_perf_warm():
+    with _PERF_WARM_LOCK:
+        _PERF_WARMING["on"] = False
 
 
 def _build_perf_payload():
@@ -1911,23 +1929,50 @@ def _build_perf_payload():
     except Exception as ex:
         log.warning(f"performance report failed: {ex}")
     payload = {"rows": out, "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
-    _PERF_CACHE.update(ts=_time.time(), data=payload)
+    _PERF_CACHE.update(ts=_time.time(), data=payload, gzip=None)
     return payload
+
+
+def _perf_response(payload):
+    """Return the large Performance payload compressed when the client supports gzip.
+
+    The 5k-row response is ~2 MB as plain JSON. Browsers advertise gzip, and caching the compressed
+    representation avoids repeating both that transfer cost and compression work on every tab load.
+    """
+    import math
+    def _safe(value):
+        if isinstance(value, float) and not math.isfinite(value):
+            return None
+        if isinstance(value, list):
+            return [_safe(v) for v in value]
+        if isinstance(value, dict):
+            return {k: _safe(v) for k, v in value.items()}
+        return value
+    safe_payload = _safe(payload)        # JSON forbids NaN/Infinity; browsers reject either token
+    if "gzip" not in (request.headers.get("Accept-Encoding") or "").lower():
+        return jsonify(safe_payload)
+    import gzip
+    if payload is _PERF_CACHE.get("data") and _PERF_CACHE.get("gzip") is not None:
+        body = _PERF_CACHE["gzip"]
+    else:
+        body = gzip.compress(json.dumps(safe_payload, separators=(",", ":"), default=str,
+                                        allow_nan=False).encode("utf-8"), compresslevel=5)
+        if payload is _PERF_CACHE.get("data"):
+            _PERF_CACHE["gzip"] = body
+    return Response(body, content_type="application/json", headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
 
 
 def _kick_perf_warm():
     """Start a one-off background build if one isn't already running (user 2026-08-03, P-01: "performance
     still slow") — so a cold /api/performance NEVER blocks the request thread for ~40s."""
-    if _PERF_WARMING["on"]:
+    if not _claim_perf_warm():
         return
-    _PERF_WARMING["on"] = True
-    import threading
     def _run():
         try:
             _build_perf_payload()
         finally:
-            _PERF_WARMING["on"] = False
-    threading.Thread(target=_run, daemon=True).start()
+            _finish_perf_warm()
+    _threading.Thread(target=_run, daemon=True).start()
 
 
 @app.route("/api/performance")
@@ -1942,10 +1987,10 @@ def api_performance():
     if we have one (stale-while-revalidate), else a {warming:true} marker the frontend polls on."""
     now = _time.time()
     if _PERF_CACHE["data"] is not None and now - _PERF_CACHE["ts"] < _PERF_TTL:
-        return jsonify(_PERF_CACHE["data"])
+        return _perf_response(_PERF_CACHE["data"])
     _kick_perf_warm()
     if _PERF_CACHE["data"] is not None:
-        return jsonify(_PERF_CACHE["data"])          # stale — refreshed in the background
+        return _perf_response(_PERF_CACHE["data"])   # stale — refreshed in the background
     return jsonify({"rows": [], "warming": True, "generated": ""})
 
 
@@ -3252,12 +3297,15 @@ def _perf_warm_loop():
     (it's ready after the morning refresh), don't wait for the tab to be clicked."""
     import time as _t
     while True:
-        try:
-            t0 = _t.time()
-            _build_perf_payload()      # builds _sqa_all_rows + VolumeScore + the payload, into _PERF_CACHE
-            log.info(f"performance caches warmed in {_t.time() - t0:.1f}s")
-        except Exception as e:
-            log.warning(f"performance warm failed: {e}")
+        if _claim_perf_warm():
+            try:
+                t0 = _t.time()
+                _build_perf_payload()      # builds _sqa_all_rows + VolumeScore + the payload, into _PERF_CACHE
+                log.info(f"performance caches warmed in {_t.time() - t0:.1f}s")
+            except Exception as e:
+                log.warning(f"performance warm failed: {e}")
+            finally:
+                _finish_perf_warm()
         _t.sleep(_PERF_WARM_INTERVAL)
 
 

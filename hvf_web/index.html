@@ -1329,7 +1329,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <!-- Name/ticker search, as on Scanner / Pre-orders / Order Ops / X Posts (user 2026-07-17, P-17) -->
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="pf-count"></span>
-      <input id="pf-search" placeholder="Search name / ticker…" oninput="_renderPerformance()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
+      <input id="pf-search" placeholder="Search name / ticker…" oninput="pfSearchChange()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
     <!-- Wallet model on Results (user 2026-07-26, P-05 L98/L271): the SAME Wallet / Max-position / Max-open
          model as "What separates the winners", applied to the recorded triggers below. Off by default so
          the table keeps its return sort; when ON the Stake / Net £ / Wallet columns appear and the table
@@ -3307,10 +3307,14 @@ function _pfInCombo(r){
   return vs!=null&&vs>=PF_COMBO.vlo&&vs<=PF_COMBO.vhi;
 }
 const _stcol=s=>s==="TARGET"?"var(--bull)":s==="STOPPED"?"var(--bear)":"#d29922";   // OPEN = amber
-function pfLocFilter(loc){PF_LOC_FILTER=(PF_LOC_FILTER===loc)?"":loc;_renderPerformance();}   // toggle the Summary-title location filter
+function pfLocFilter(loc){PF_LOC_FILTER=(PF_LOC_FILTER===loc)?"":loc;PF_RENDER_LIMIT=PF_RENDER_STEP;_renderPerformance();}   // toggle the Summary-title location filter
 // Date filter (user 2026-07-18, P-01) — one trigger-date window drives BOTH Performance sub-tabs. A preset
 // dropdown (Last 3/6/9/12 months) sets it quickly; the window label feeds the "Trades" card title (P-01).
 let PF_DATE_FROM="", PF_DATE_TO="", PF_WINDOW_LABEL="last 12 months";
+const PF_RENDER_STEP=250;                 // keep the 23-column Back Test DOM responsive with 5k+ triggers
+let PF_RENDER_LIMIT=PF_RENDER_STEP, PF_SEARCH_TIMER=null;
+function pfSearchChange(){clearTimeout(PF_SEARCH_TIMER);PF_SEARCH_TIMER=setTimeout(()=>{PF_RENDER_LIMIT=PF_RENDER_STEP;_renderPerformance();},150);}
+function pfShowMore(){PF_RENDER_LIMIT+=PF_RENDER_STEP;_renderPerformance();}
 function pfDateOk(d){if(!d)return true;if(PF_DATE_FROM&&d<PF_DATE_FROM)return false;if(PF_DATE_TO&&d>PF_DATE_TO)return false;return true;}
 function _pfMonthsAgo(n){const d=new Date();d.setMonth(d.getMonth()-n);return d.toISOString().slice(0,10);}
 const _ymdLocal=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;  // local Y-M-D (avoids the UTC off-by-one from toISOString at a BST midnight)
@@ -3328,7 +3332,7 @@ function pfDateChange(manual){
   PF_DATE_FROM=(($("pf-date-from")||{}).value)||"";PF_DATE_TO=(($("pf-date-to")||{}).value)||"";
   if(manual){const ps=$("pf-date-preset");if(ps)ps.value="";
     PF_WINDOW_LABEL=(PF_DATE_FROM||PF_DATE_TO)?((PF_DATE_FROM||'…')+' → '+(PF_DATE_TO||'now')):"all 12 months";}
-  _renderPerformance();if(typeof WIN!=='undefined'&&WIN!==null)paintOrdersPerf();
+  PF_RENDER_LIMIT=PF_RENDER_STEP;_renderPerformance();if(typeof WIN!=='undefined'&&WIN!==null)paintOrdersPerf();
 }
 function pfDateClear(){const ps=$("pf-date-preset");if(ps)ps.value="";if($("pf-date-from"))$("pf-date-from").value="";if($("pf-date-to"))$("pf-date-to").value="";PF_WINDOW_LABEL="all 12 months";pfDateChange();}
 function renderPerformance(){
@@ -3353,7 +3357,7 @@ function renderPerformance(){
         // and poll until the rows are ready, so the tab never hangs.
         if(j.warming){PERF_DATA=null;if($("pf-loading"))$("pf-loading").innerHTML=`<span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#d29922;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ processing the 12-month replay… (one-off after a restart)</span>`;setTimeout(renderPerformance,3000);return;}
         PERF_DATA=j.rows||[];PERF_GEN=j.generated||"";if($("pf-loading"))$("pf-loading").innerHTML="";_renderPerformance();})
-      .catch(()=>{PERF_DATA=[];if($("pf-loading"))$("pf-loading").innerHTML="";_renderPerformance();});
+      .catch(()=>{PERF_DATA=null;if($("pf-loading"))$("pf-loading").innerHTML=`<span style="color:var(--bear);font-size:12.5px">Performance data did not load. <button class="subpill" onclick="renderPerformance()">Retry</button></span>`;});
     // The analysis loads lazily when its sub-tab is opened (pfPanel), not here.
   } else if(_pfl && PERF_DATA.length){_pfl.innerHTML="";}
   _renderPerformance();
@@ -4145,7 +4149,8 @@ function _renderPerformance(){
   const nT=selT.filter(r=>r.state==="TARGET").length, nS=selT.filter(r=>r.state==="STOPPED").length, nO=selT.filter(r=>r.state==="OPEN").length;
   $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} · ${PF_COMBO.vb} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb},${PF_COMBO.vlo==null?'null':PF_COMBO.vlo},${PF_COMBO.vhi==null?'null':PF_COMBO.vhi},'${PF_COMBO.vb}');return false" style="color:var(--accent)">✕ clear</a>`:''}${PF_VS_FLOOR?` · <b style="color:var(--fg)">Volume Score ≥ ${PF_VS_FLOOR}</b> (your floor)`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("pftab-count").textContent=`(${selT.length})`;
-  $("pf-rows").innerHTML=rows.map((r,__i)=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
+  const visibleRows=rows.slice(0,PF_RENDER_LIMIT);   // summaries/wallet/counts above still use ALL selected rows
+  $("pf-rows").innerHTML=visibleRows.map((r,__i)=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
     <td class="muted">${__i+1}</td>
     <td>${nm40(r.name)}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
@@ -4166,7 +4171,8 @@ function _renderPerformance(){
     <td class="wcol">${r._net!=null?`<span style="color:${r._net>=0?'var(--bull)':'var(--bear)'}">${r._net>=0?'+':'−'}£${Math.abs(r._net).toFixed(2)}</span>`:'—'}</td>
     <td class="wcol"><b>${r._cum!=null?'£'+Math.round(r._cum).toLocaleString():'—'}</b></td>
     <td class="wcol">${r._open!=null?r._open:'—'}</td>
-    <td><b>${disp(r.ticker)}</b></td></tr>`).join("")
+    <td><b>${disp(r.ticker)}</b></td></tr>`).join("")+
+    (rows.length>visibleRows.length?`<tr><td colspan="23" class="empty"><button class="subpill" onclick="pfShowMore()">Show ${Math.min(PF_RENDER_STEP,rows.length-visibleRows.length)} more</button> <span class="muted">Showing ${visibleRows.length.toLocaleString()} of ${rows.length.toLocaleString()} filtered triggers</span></td></tr>`:"")
     ||`<tr><td colspan="${pfwOn?23:19}" class="empty">No recorded triggers yet.</td></tr>`;
 }
 // "Settings used" card (user 2026-07-24, P-02): a provenance card, left of the filters on the Summary

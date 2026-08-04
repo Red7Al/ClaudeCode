@@ -1,0 +1,31 @@
+"""Regression tests for the externally managed trading schedules."""
+
+import importlib
+import sys
+
+
+def _load_schedule_module(monkeypatch):
+    # The module validates this credential at import time, but schedule conversion
+    # itself is pure and makes no network call.
+    monkeypatch.setenv("CRONJOB_API_KEY", "test-only-placeholder")
+    sys.modules.pop("setup_cronjobs", None)
+    return importlib.import_module("setup_cronjobs")
+
+
+def test_price_data_refresh_runs_at_0430_utc_monday_to_saturday(monkeypatch):
+    schedules = _load_schedule_module(monkeypatch)
+    jobs = {title: (cron, workflow) for title, cron, workflow in schedules.JOBS}
+
+    cron, workflow = jobs["Price Data Refresh"]
+
+    assert cron == "30 4 * * 1-6"
+    assert workflow == "trading-price-audit.yml"
+    assert schedules._cron_to_schedule(cron) == {
+        "timezone": "UTC",
+        "expiresAt": 0,
+        "hours": [4],
+        "mdays": [-1],
+        "minutes": [30],
+        "months": [-1],
+        "wdays": [1, 2, 3, 4, 5, 6],
+    }

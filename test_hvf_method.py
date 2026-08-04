@@ -43,13 +43,10 @@
 # 1.0.0   2026-06-12  Alex Hind   Initial build — cases covering every HVF defect found 2026-06-11/12.
 # ======================================================================================================================
 
-import io
 import os
 import sys
 import numpy as np
 import pandas as pd
-
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 FIXDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tests_fixtures")
 PASS, FAIL = [], []
@@ -327,6 +324,23 @@ def main():
     if FAIL:
         print("FAILED:", ", ".join(FAIL))
         raise SystemExit(1)
+
+
+def test_hvf_regression_suite():
+    """Expose the complete offline regression suite to pytest collection."""
+    PASS.clear()
+    FAIL.clear()
+    case_textbook()
+    case_flat_top()
+    case_phantom_wick()
+    case_hammer_lows()
+    case_non_converging()
+    case_stale_h3()
+    case_bearish()
+    case_absurd_target()
+    case_invariant_selftest()
+    fixture_cases()
+    assert not FAIL, "HVF regressions failed: " + ", ".join(FAIL)
 
 
 if __name__ == "__main__":

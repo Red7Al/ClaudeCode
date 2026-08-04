@@ -1,4 +1,4 @@
-name: HVF Method Regression Tests (2026-06-12)
+name: Offline Python Regression Tests (2026-08-04)
 
 # Runs the deterministic HVF regression suite (test_hvf_method.py — offline,
 # frozen fixtures, no secrets needed) on every push that touches detection
@@ -10,6 +10,8 @@ on:
   push:
     branches: [main]
     paths:
+      - '**.py'
+      - 'requirements*.txt'
       - 'price_action.py'
       - 'test_hvf_method.py'
       - 'tests_fixtures/**'
@@ -28,8 +30,8 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
-      - run: pip install -r requirements.txt
-      - run: python test_hvf_method.py
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m pytest -q
       - name: Alert on failure
         if: failure()
         env:

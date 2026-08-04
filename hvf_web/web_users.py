@@ -283,7 +283,13 @@ def _login_names(users: dict = None) -> list:
 
 
 def valid_tokens() -> set:
-    return {token_for(n) for n in _login_names()}
+    """Tokens belonging to accounts that are currently enabled.
+
+    Re-evaluating the flag on every request makes disabling an account an immediate
+    server-side revocation even though the deterministic token itself has not changed.
+    """
+    users = _ensure_seeded()
+    return {token_for(n) for n in _login_names(users) if users[n].get("enabled", True)}
 
 
 def log_event(name: str, event: str):
@@ -380,7 +386,10 @@ def get_log(name: str) -> list:
 
 
 def name_for_token(token: str) -> str:
-    for n in _login_names():
+    users = _ensure_seeded()
+    for n in _login_names(users):
+        if not users[n].get("enabled", True):
+            continue
         if token and token == token_for(n):
             return n
     return ""
