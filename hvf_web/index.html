@@ -1656,16 +1656,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <tbody id="ig-ord-rows"></tbody>
     </table></div>
   </section>
-  <!-- Closed trades + why they closed (user 2026-08-03, P-10/P-12) — lazy-loaded on reveal. -->
-  <section class="gsec" style="border-left-color:var(--muted)">
-    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="ig-closed-count" class="muted">Closed trades</span><span class="grow"></span><a href="#" id="ig-closed-toggle" style="font-size:12px" onclick="toggleIgClosed();return false">▾ Show closed trades &amp; why they closed</a></div>
-    <div id="ig-closed-wrap" style="display:none">
-      <div class="tablewrap"><table>
-        <thead><tr><th class="clk" data-igc="date">Closed (UTC)</th><th class="clk" data-igc="instrument">Name</th><th class="clk" data-igc="direction">Dir</th><th class="clk" data-igc="size">Size</th><th class="clk" data-igc="open_level">Open</th><th class="clk" data-igc="close_level">Close</th><th class="clk" data-igc="pnl">P&amp;L</th><th class="clk" data-igc="reason" title="Why the position closed, from IG activity history: Stop, Target, Manual, System, or — (unmatched)">Why closed</th></tr></thead>
-        <tbody id="ig-closed-rows"></tbody>
-      </table></div>
-    </div>
-  </section>
 </div>
 
 <script>
@@ -3216,31 +3206,18 @@ function paintIgAccount(){
   $("ig-ord-count").innerHTML=cnt(ord.length,IG_ORD.length,"working order");
   $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${o.market||'<span class="muted">—</span>'}</td><td>${_igDtag(o.direction)}</td><td>${_igSz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
-// Closed trades + why they closed (user 2026-08-03, P-10/P-12) — lazy-loaded on first reveal.
-let IGCLOSED=null, _igClosedNote="", igcSortK="date", igcSortDir=-1;
+// Closed trades are loaded into the main transactions table (user 2026-08-04); no duplicate table below.
+let IGCLOSED=null, _igClosedNote="";
 function loadIgClosed(force){
-  if(IGCLOSED!==null&&!force){paintIgClosed();return;}
-  $("ig-closed-rows").innerHTML=`<tr><td colspan="8" class="empty">Loading…</td></tr>`;
+  if(IGCLOSED!==null&&!force){paintIgAccount();return;}
   fetch("/api/ig-closed",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{trades:[]})
-    .then(j=>{IGCLOSED=j.trades||[];_igClosedNote=j.note||"";paintIgClosed();paintIgAccount();})
-    .catch(()=>{$("ig-closed-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not load closed trades.</td></tr>`;});
-}
-function toggleIgClosed(){
-  const wrap=$("ig-closed-wrap"), tg=$("ig-closed-toggle"); if(!wrap)return;
-  if(wrap.style.display!=="none"){wrap.style.display="none";tg.innerHTML="▾ Show closed trades &amp; why they closed";return;}
-  wrap.style.display=""; tg.innerHTML="▴ Hide closed trades"; loadIgClosed();
+    .then(j=>{IGCLOSED=j.trades||[];_igClosedNote=j.note||"";paintIgAccount();})
+    .catch(()=>{IGCLOSED=[];_igClosedNote="Could not load closed trades.";paintIgAccount();});
 }
 function _igReason(r){
   const m={STOP_HIT:['🛑 Stop','var(--bear)'],TARGET_HIT:['🎯 Target','var(--bull)'],MANUAL:['👤 Manual','var(--fg)'],SYSTEM:['⚙️ System','var(--muted)']}[r]||['—','var(--muted)'];
   return `<span style="color:${m[1]};font-weight:600">${m[0]}</span>`;
 }
-function paintIgClosed(){
-  const t=IGCLOSED||[];
-  if($("ig-closed-count"))$("ig-closed-count").textContent=`Closed trades (${t.length})`;
-  if(!t.length){$("ig-closed-rows").innerHTML=`<tr><td colspan="8" class="empty">${_igClosedNote||'No closed trades in the last 120 days.'}</td></tr>`;return;}
-  $("ig-closed-rows").innerHTML=genSort(t.slice(),igcSortK,igcSortDir).map(c=>`<tr><td>${c.date||''}</td><td>${nm40(c.instrument||'')}</td><td>${_igDtag(c.direction)}</td><td>${_igSz(c.size)}</td><td>${c.open_level??''}</td><td>${c.close_level??''}</td><td>${_igPf(c.pnl)}</td><td>${_igReason(c.reason)}</td></tr>`).join("");
-}
-document.querySelectorAll("th[data-igc]").forEach(th=>th.onclick=()=>{const k=th.dataset.igc;igcSortDir=(igcSortK===k)?-igcSortDir:-1;igcSortK=k;paintIgClosed();_sortArrows("data-igc",igcSortK,igcSortDir);});
 function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
@@ -3261,8 +3238,8 @@ function renderIgAccount(ev){
         ? `<div class="card" style="border-color:#d29922;background:color-mix(in srgb,#d29922 12%,transparent);display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 6px"><span style="font-size:13px">⚠️ <b style="color:var(--fg)">No IG credentials set.</b> <span class="muted">Add your IG login to see your account and place orders.</span></span><span class="grow" style="flex:1"></span><button class="btn" style="border-color:#d29922" onclick="openIgSettings()">🔑 Open IG settings</button></div>`
         : (j.note?`<span class="muted">🔒 ${j.note}</span>`:"");
       paintIgAccount();
-      // Load closed trades alongside the open ones, shown by default in date order (user 2026-08-03).
-      if(!noCreds){const w=$("ig-closed-wrap");if(w){w.style.display="";const tg=$("ig-closed-toggle");if(tg)tg.innerHTML="▴ Hide closed trades";}loadIgClosed(true);}
+      // Load closed trades directly into the main transaction table (user 2026-08-04).
+      if(!noCreds)loadIgClosed(true);
     })
     .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
