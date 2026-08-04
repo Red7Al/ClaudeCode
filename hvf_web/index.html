@@ -234,6 +234,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .fcard h3{margin:4px 0 0;font-size:16px;font-weight:700;letter-spacing:-.01em}
 .fcard p,.fcard div.body{margin:0;font-size:14px;line-height:1.55;color:var(--muted)}
 .fcard .body b,.fcard p b{color:var(--fg)}
+/* System Logs health: keep all four cards on one iPad row. Compact internals and let the small
+   supporting line use two natural lines instead of forcing the whole fourth card onto row two. */
+#sl-health{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+#sl-health .fcard{min-width:0;padding:14px;gap:5px}
+#sl-health .fcard .ic{width:32px;height:32px;font-size:17px}
+#sl-health .fcard h3{font-size:14px}
+#sl-health .fcard>.muted{font-size:11px!important;line-height:1.25;min-height:2.5em;white-space:normal;overflow-wrap:anywhere}
+@media(max-width:680px){#sl-health{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* Hero panel with the funnel illustration */
 .hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:28px;box-shadow:var(--sh);
