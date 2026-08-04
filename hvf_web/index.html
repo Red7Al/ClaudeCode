@@ -3153,7 +3153,12 @@ const _igSrc=s=>({WEB_BRIDGE:"Squeeze (bridge)",WEB_MANUAL:"Manual (web)"}[s]||s
 function paintIgAccount(){
   const q=(($("ig-search")||{}).value||"").trim().toLowerCase();
   const hit=r=>!q||(((r.name||'')+' '+(r.ticker||r.epic||'')).toLowerCase().includes(q));
-  const _snap={}; DATA.forEach(r=>{if(r.ticker)_snap[r.ticker]=r;});
+  const _snap={}, _snapByName={};
+  const _companySuffix=new Set(['INC','INCORPORATED','CORP','CORPORATION','PLC','LTD','LIMITED','CO','COMPANY','HOLDING','HOLDINGS']);
+  const _igNameKey=n=>String(n||'').toUpperCase().replace(/\s*\(24 HOURS\)\s*$/,'')
+    .replace(/[^A-Z0-9]+/g,' ').split(/\s+/).filter(x=>x&&!_companySuffix.has(x)).join('');
+  DATA.forEach(r=>{if(r.ticker)_snap[r.ticker]=r;if(r.name){const k=_igNameKey(r.name);
+    if(!(k in _snapByName))_snapByName[k]=r;else _snapByName[k]=null;}});   // null = ambiguous; never guess
   const _enrCommon=o=>{const s=_snap[o.ticker]||_snap[o.epic]||{};
     return {location:s.location||"—",market:s.market||"—",sector:s.sector||"—",direction:o.direction||"—"};};
   const cnt=(n,tot,word)=>`<b style="font-size:15px;color:var(--fg)">${n}</b> ${word}${n===1?'':'s'}${tot!==n?` <span class="muted">of ${tot}</span>`:''}`;
@@ -3167,6 +3172,13 @@ function paintIgAccount(){
   }
   const posRaw=IG_POS.filter(hit).map(p=>Object.assign({},p,_enrCommon(p),{open_month:(p.opened||'').slice(0,7)||'—'}));
   let posBase=posRaw.slice();
+  const showClosed=((document.querySelector('input[name="ig-closed-view"]:checked')||{}).value!=='hide');
+  const closedBase=(showClosed?(IGCLOSED||[]):[]).map(c=>{const s=_snapByName[_igNameKey(c.instrument)]||{};
+    const ol=+c.open_level,cl=+c.close_level,dir=c.direction;
+    const pct=(Number.isFinite(ol)&&ol!==0&&Number.isFinite(cl))?+(((dir==='SELL'?ol-cl:cl-ol)/ol)*100).toFixed(2):null;
+    return Object.assign({},c,{status:'Closed',name:c.instrument||'',level:c.open_level,current:c.close_level,
+      profit:c.pnl,profit_pct:pct,closed:c.date||'',open_month:(c.date||'').slice(0,7)||'—',
+      location:s.location||'—',market:s.market||'—',sector:s.sector||'—',ticker:s.ticker||''});});
   const _agg=((document.querySelector('input[name="ig-pos-view"]:checked')||{}).value==='agg');
   if(_agg){   // one row per instrument+direction: sum size, size-weighted average level, earliest opened
     const g={};
@@ -3180,20 +3192,20 @@ function paintIgAccount(){
       profit:+a.profit.toFixed(2), profit_pct:a._pptot?+(a._ppw/a._pptot).toFixed(2):null}));
   }
   const IGPF=[["igp_location","location"],["igp_market","market"],["igp_sector","sector"],["igp_direction","direction"],["igp_open_month","open_month"]];
+  const chartBase=posBase.concat(closedBase);
   const pby=(field,exceptId)=>{const m={};
-    posBase.forEach(p=>{const v=p[field]||"—";if(!(v in m))m[v]=0;});
-    posBase.forEach(p=>{if(!IGPF.every(([id,k])=>id===exceptId||inSet(id,p[k])))return;const v=p[field]||"—";m[v]++;});return m;};
+    chartBase.forEach(p=>{const v=p[field]||"—";if(!(v in m))m[v]=0;});
+    chartBase.forEach(p=>{if(!IGPF.every(([id,k])=>id===exceptId||inSet(id,p[k])))return;const v=p[field]||"—";m[v]++;});return m;};
   const profitBy=(field,exceptId)=>{const m={};
-    posBase.forEach(p=>{const v=p[field]||"—";if(!(v in m))m[v]=0;});
-    posBase.forEach(p=>{if(!IGPF.every(([id,k])=>id===exceptId||inSet(id,p[k])))return;const v=p[field]||"—";m[v]+=+p.profit||0;});
+    chartBase.forEach(p=>{const v=p[field]||"—";if(!(v in m))m[v]=0;});
+    chartBase.forEach(p=>{if(!IGPF.every(([id,k])=>id===exceptId||inSet(id,p[k])))return;const v=p[field]||"—";m[v]+=+p.profit||0;});
     Object.keys(m).forEach(k=>m[k]=+m[k].toFixed(2));return m;};
-  const profitCurrencies=new Set(posBase.filter(p=>p.profit!=null).map(p=>_igCurrency(p.currency)));
+  const profitCurrencies=new Set(chartBase.filter(p=>p.profit!=null).map(p=>_igCurrency(p.currency)));
   const profitCurrency=profitCurrencies.size===1?[...profitCurrencies][0]:'';
   // Month counts represent actual visible transactions, not the fewer rows produced by Aggregate view.
   const openMonthCounts={};
   posRaw.forEach(p=>{const v=p.open_month||"—";if(!(v in openMonthCounts))openMonthCounts[v]=0;});
   posRaw.forEach(p=>{if(IGPF.every(([id,k])=>id==="igp_open_month"||inSet(id,p[k])))openMonthCounts[p.open_month||"—"]++;});
-  const showClosed=((document.querySelector('input[name="ig-closed-view"]:checked')||{}).value!=='hide');
   if(showClosed)(IGCLOSED||[]).forEach(c=>{const v=(c.date||'').slice(0,7)||"—";openMonthCounts[v]=(openMonthCounts[v]||0)+1;});
   $("ig-pos-viz").innerHTML=(posBase.length||(showClosed&&(IGCLOSED||[]).length))?(
     `<div class="vizsector">`+barChart("Location",profitBy("location","igp_location"),"igp_location",null,false,{profit:true,currency:profitCurrency})+`</div>`+
@@ -3203,10 +3215,7 @@ function paintIgAccount(){
     `<div class="vizsector">`+barChart("Open / Closed Month",openMonthCounts,"igp_open_month",null,true)+`</div>`):"";
   packViz("ig-pos-viz");
   const pos=genSort(posBase.filter(p=>IGPF.every(([id,k])=>inSet(id,p[k]))),igpSortK,igpSortDir);
-  let closed=(showClosed?(IGCLOSED||[]):[]).filter(c=>inSet("igp_open_month",(c.date||'').slice(0,7)||"—")).map(c=>{const ol=+c.open_level,cl=+c.close_level,dir=c.direction;
-    const pct=(Number.isFinite(ol)&&ol!==0&&Number.isFinite(cl))?+(((dir==='SELL'?ol-cl:cl-ol)/ol)*100).toFixed(2):null;
-    return Object.assign({},c,{status:'Closed',name:c.instrument||'',level:c.open_level,current:c.close_level,
-      profit:c.pnl,profit_pct:pct,closed:c.date||'',market:'—',ticker:''});});
+  let closed=closedBase.filter(c=>IGPF.every(([id,k])=>inSet(id,c[k])));
   if(_agg){   // IG can close one logical position as several fills; combine fills from the same close event.
     const g={};
     closed.forEach(c=>{const key=[c.name,c.direction,_igCurrency(c.currency)].join('|');
@@ -3221,7 +3230,7 @@ function paintIgAccount(){
       a.reason=a._reasons.size===1?[...a._reasons][0]:'MIXED';return a;});
   }
   const openRows=pos.map(p=>`<tr><td><span class="tag bull">Open</span></td><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${p.market||'<span class="muted">—</span>'}</td><td>${_igDtag(p.direction)}</td><td>${_igSz(p.size)}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.current??'<span class="muted">—</span>')}</td><td>${_igPf(p.profit)}</td><td>${_igPfp(p.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td></td><td></td><td><b>${p.ticker||p.epic||''}</b></td></tr>`);
-  const closedRows=genSort(closed,igpSortK,igpSortDir).map(c=>`<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(c.name)}${_agg&&c._n>1?` <span class="muted" style="font-size:11px">×${c._n}</span>`:''}</td><td><span class="muted">—</span></td><td>${_igDtag(c.direction)}</td><td>${_igSz(c.size)}</td><td>${c.level??''}</td><td>${c.current??''}</td><td>${_igPf(c.profit)}</td><td>${_igPfp(c.profit_pct)}</td><td></td><td></td><td>${c.currency||''}</td><td></td><td>${_igDateTime(c.closed)}</td><td>${_igReason(c.reason)}</td><td></td></tr>`);
+  const closedRows=genSort(closed,igpSortK,igpSortDir).map(c=>`<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(c.name)}${_agg&&c._n>1?` <span class="muted" style="font-size:11px">×${c._n}</span>`:''}</td><td>${c.market||'<span class="muted">—</span>'}</td><td>${_igDtag(c.direction)}</td><td>${_igSz(c.size)}</td><td>${c.level??''}</td><td>${c.current??''}</td><td>${_igPf(c.profit)}</td><td>${_igPfp(c.profit_pct)}</td><td></td><td></td><td>${c.currency||''}</td><td></td><td>${_igDateTime(c.closed)}</td><td>${_igReason(c.reason)}</td><td><b>${c.ticker||''}</b></td></tr>`);
   const profitTotals={};
   pos.concat(closed).forEach(r=>{if(r.profit==null)return;const c=_igCurrency(r.currency);profitTotals[c]=(profitTotals[c]||0)+(+r.profit||0);});
   const totalProfit=Object.entries(profitTotals).map(([c,v])=>`${_igPf(+v.toFixed(2))} <span class="muted">${c}</span>`).join(' · ');
