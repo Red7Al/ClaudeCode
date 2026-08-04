@@ -1490,7 +1490,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
     <div id="fees-example" class="tablewrap" style="margin-top:8px"></div>
     <h3 class="sec" id="fees-txn-title">Transactions this period</h3>
-    <p class="muted" style="font-size:11.5px;margin:2px 0 6px">The closed trades whose realised P&amp;L makes up the profit the performance fee is charged on.</p>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:2px 0 6px"><p class="muted" style="font-size:11.5px;margin:0">The closed trades whose realised P&amp;L makes up the profit the performance fee is charged on.</p><span class="grow"></span>
+      <span class="muted" style="font-size:12.5px;display:inline-flex;align-items:center;gap:12px"><b style="color:var(--fg)">View:</b>
+        <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="fees-txn-view" value="all" onchange="paintFees()" style="width:16px;height:16px;accent-color:var(--accent)"> Every trade</label>
+        <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="fees-txn-view" value="agg" checked onchange="paintFees()" style="width:16px;height:16px;accent-color:var(--accent)"> <b style="color:var(--fg)">Aggregate rows</b></label>
+      </span></div>
     <div id="fees-txns" class="tablewrap" style="margin-top:4px"></div>
   </section>
 </div>
@@ -1836,12 +1840,12 @@ function barChart(title,counts,fk,colorFn,labelDesc,opts){
   // by avg return desc and TINTED green (positive) / red (negative), intensity scaled to the biggest |avg|
   // shown. Bar LENGTH still encodes trade count, so length = how many, colour = how good. Used by the
   // Results Market & Location charts. Absent → the original count-order + colorFn behaviour, unchanged.
-  const metric=opts&&opts.metric;
+  const metric=opts&&opts.metric, profitMode=!!(opts&&opts.profit);
   let entries=Object.entries(counts);
-  entries.sort(metric?((a,b)=>((metric[b[0]]==null?-1e9:metric[b[0]])-(metric[a[0]]==null?-1e9:metric[a[0]])))
+  entries.sort(profitMode?((a,b)=>b[1]-a[1]):metric?((a,b)=>((metric[b[0]]==null?-1e9:metric[b[0]])-(metric[a[0]]==null?-1e9:metric[a[0]])))
     :labelDesc?((a,b)=>String(b[0]).localeCompare(String(a[0]))):((a,b)=>b[1]-a[1]));
   entries=entries.slice(0,8);
-  const max=Math.max(1,...entries.map(e=>e[1]));
+  const max=Math.max(1,...entries.map(e=>profitMode?Math.abs(e[1]):e[1]));
   const mmax=metric?Math.max(1,...entries.map(e=>Math.abs(metric[e[0]]||0))):0;
   const mBg=v=>`rgba(${v>=0?'34,163,74':'220,38,38'},${(Math.min(Math.abs(v)/mmax,1)*0.7+0.18).toFixed(2)})`;
   // The bar scales to the CARD, not to a fixed 72px (user 2026-07-17, P-16a). The old hardcoded ceiling
@@ -1850,10 +1854,11 @@ function barChart(title,counts,fk,colorFn,labelDesc,opts){
   // into whatever width is going and the fill takes its share as a %.
   const rows=entries.map(([k,n])=>{const on=sel&&sel.has(String(k));
     const mv=metric?metric[k]:null;
-    const bg=metric?(mv==null?'var(--muted)':mBg(mv)):(colorFn?colorFn(k):'var(--accent)');
-    const tip=metric?`${k}: avg return ${mv==null?'—':(mv>0?'+':'')+mv.toFixed(1)+'%'} · ${n} trade${n===1?'':'s'} — click to filter`:`click to filter ${k}`;
+    const bg=profitMode?(n>=0?'var(--bull)':'var(--bear)'):metric?(mv==null?'var(--muted)':mBg(mv)):(colorFn?colorFn(k):'var(--accent)');
+    const pLabel=profitMode?`${n>=0?'+':'−'}${Math.abs(n).toLocaleString(undefined,{maximumFractionDigits:2})}${opts.currency?' '+opts.currency:''}`:'';
+    const tip=profitMode?`${k}: ${pLabel} profit — click to filter`:metric?`${k}: avg return ${mv==null?'—':(mv>0?'+':'')+mv.toFixed(1)+'%'} · ${n} trade${n===1?'':'s'} — click to filter`:`click to filter ${k}`;
     return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}" title="${tip}"><span class="tk"><span class="selmk">${on?'●':''}</span>${k}</span>
-    <span class="track"><span class="fill" style="width:${Math.max(2,Math.round(n/max*100))}%;background:${bg};opacity:${nsel&&!on?0.4:1}"></span></span><span class="n">${n}</span></div>`;}).join("");
+    <span class="track"><span class="fill" style="width:${Math.max(2,Math.round((profitMode?Math.abs(n):n)/max*100))}%;background:${bg};opacity:${nsel&&!on?0.4:1}"></span></span><span class="n">${profitMode?pLabel:n}</span></div>`;}).join("");
   return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
 }
 function pieChart(title,counts,fk){
@@ -3139,6 +3144,7 @@ const _igSz=v=>v==null||v===''?'':(Math.round(+v*100)/100);
 const _igPf=v=>v==null?'<span class="muted">—</span>':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>=0?'+':'−'}${Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:2})}</span>`;
 const _igPfp=v=>v==null?'<span class="muted">—</span>':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>=0?'+':''}${v}%</span>`;
 const _igDateTime=s=>s?String(s).slice(0,19).replace('T',' '):'';
+const _igCurrency=c=>{const v=String(c||'').trim().toUpperCase();return ({'£':'GBP','$':'USD','US$':'USD','€':'EUR'}[v]||v||'Unspecified');};
 // Friendly order-source labels (user 2026-07-13): WEB_BRIDGE is the 2-hour Squeeze-scanner bridge.
 const _igSrc=s=>({WEB_BRIDGE:"Squeeze (bridge)",WEB_MANUAL:"Manual (web)"}[s]||s||'—');
 // Paint from the last fetch, honouring the tab's name/ticker search (user 2026-07-17, P-17). Split out
@@ -3177,6 +3183,12 @@ function paintIgAccount(){
   const pby=(field,exceptId)=>{const m={};
     posBase.forEach(p=>{const v=p[field]||"—";if(!(v in m))m[v]=0;});
     posBase.forEach(p=>{if(!IGPF.every(([id,k])=>id===exceptId||inSet(id,p[k])))return;const v=p[field]||"—";m[v]++;});return m;};
+  const profitBy=(field,exceptId)=>{const m={};
+    posBase.forEach(p=>{const v=p[field]||"—";if(!(v in m))m[v]=0;});
+    posBase.forEach(p=>{if(!IGPF.every(([id,k])=>id===exceptId||inSet(id,p[k])))return;const v=p[field]||"—";m[v]+=+p.profit||0;});
+    Object.keys(m).forEach(k=>m[k]=+m[k].toFixed(2));return m;};
+  const profitCurrencies=new Set(posBase.filter(p=>p.profit!=null).map(p=>_igCurrency(p.currency)));
+  const profitCurrency=profitCurrencies.size===1?[...profitCurrencies][0]:'';
   // Month counts represent actual visible transactions, not the fewer rows produced by Aggregate view.
   const openMonthCounts={};
   posRaw.forEach(p=>{const v=p.open_month||"—";if(!(v in openMonthCounts))openMonthCounts[v]=0;});
@@ -3184,9 +3196,9 @@ function paintIgAccount(){
   const showClosed=((document.querySelector('input[name="ig-closed-view"]:checked')||{}).value!=='hide');
   if(showClosed)(IGCLOSED||[]).forEach(c=>{const v=(c.date||'').slice(0,7)||"—";openMonthCounts[v]=(openMonthCounts[v]||0)+1;});
   $("ig-pos-viz").innerHTML=(posBase.length||(showClosed&&(IGCLOSED||[]).length))?(
-    `<div class="vizsector">`+barChart("Location",pby("location","igp_location"),"igp_location")+`</div>`+
-    `<div class="vizsector">`+barChart("Market",pby("market","igp_market"),"igp_market")+`</div>`+
-    `<div class="vizsector">`+pieChart("Sector",pby("sector","igp_sector"),"igp_sector")+`</div>`+
+    `<div class="vizsector">`+barChart("Location",profitBy("location","igp_location"),"igp_location",null,false,{profit:true,currency:profitCurrency})+`</div>`+
+    `<div class="vizsector">`+barChart("Market",profitBy("market","igp_market"),"igp_market",null,false,{profit:true,currency:profitCurrency})+`</div>`+
+    `<div class="vizsector">`+barChart("Sector",profitBy("sector","igp_sector"),"igp_sector",null,false,{profit:true,currency:profitCurrency})+`</div>`+
     `<div class="vizsector">`+barChart("Direction",pby("direction","igp_direction"),"igp_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`+
     `<div class="vizsector">`+barChart("Open / Closed Month",openMonthCounts,"igp_open_month",null,true)+`</div>`):"";
   packViz("ig-pos-viz");
@@ -3209,8 +3221,7 @@ function paintIgAccount(){
   const openRows=pos.map(p=>`<tr><td><span class="tag bull">Open</span></td><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${p.market||'<span class="muted">—</span>'}</td><td>${_igDtag(p.direction)}</td><td>${_igSz(p.size)}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.current??'<span class="muted">—</span>')}</td><td>${_igPf(p.profit)}</td><td>${_igPfp(p.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td></td><td></td><td><b>${p.ticker||p.epic||''}</b></td></tr>`);
   const closedRows=genSort(closed,igpSortK,igpSortDir).map(c=>`<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(c.name)}${_agg&&c._n>1?` <span class="muted" style="font-size:11px">×${c._n}</span>`:''}</td><td><span class="muted">—</span></td><td>${_igDtag(c.direction)}</td><td>${_igSz(c.size)}</td><td>${c.level??''}</td><td>${c.current??''}</td><td>${_igPf(c.profit)}</td><td>${_igPfp(c.profit_pct)}</td><td></td><td></td><td>${c.currency||''}</td><td></td><td>${_igDateTime(c.closed)}</td><td>${_igReason(c.reason)}</td><td></td></tr>`);
   const profitTotals={};
-  const normCurrency=c=>{const v=String(c||'').trim().toUpperCase();return ({'£':'GBP','$':'USD','US$':'USD','€':'EUR'}[v]||v||'Unspecified');};
-  pos.concat(closed).forEach(r=>{if(r.profit==null)return;const c=normCurrency(r.currency);profitTotals[c]=(profitTotals[c]||0)+(+r.profit||0);});
+  pos.concat(closed).forEach(r=>{if(r.profit==null)return;const c=_igCurrency(r.currency);profitTotals[c]=(profitTotals[c]||0)+(+r.profit||0);});
   const totalProfit=Object.entries(profitTotals).map(([c,v])=>`${_igPf(+v.toFixed(2))} <span class="muted">${c}</span>`).join(' · ');
   const totalRow=(openRows.length+closedRows.length)?`<tr style="border-top:2px solid var(--line)"><td></td><td colspan="6"><b>Total visible profit (${openRows.length+closedRows.length} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
   $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${pos.length+closed.length}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed${IGCLOSED===null?' (loading…)':''}</span>`;
@@ -3983,21 +3994,33 @@ function paintFeesTxns(seg){
   const box=$("fees-txns"); if(!box)return;
   const ti=$("fees-txn-title");
   const txns=(seg&&seg.txns)||[], charges=(seg&&seg.charges)||[];
+  const aggregate=((document.querySelector('input[name="fees-txn-view"]:checked')||{}).value==='agg');
+  let viewTxns=txns;
+  if(aggregate){
+    const grouped={};
+    txns.forEach(t=>{const key=[t.ticker,t.direction,t.closed_at].join('|');
+      const a=grouped[key]||(grouped[key]=Object.assign({},t,{size:0,pnl:0,_openW:0,_closeW:0,_weight:0,_n:0}));
+      const sz=+t.size||0;a.size+=sz;a.pnl+=(+t.pnl||0);a._openW+=(+t.open||0)*sz;
+      a._closeW+=(+t.close||0)*sz;a._weight+=sz;a._n++;});
+    viewTxns=Object.values(grouped).map(a=>{a.open=a._weight?+(a._openW/a._weight).toFixed(4):a.open;
+      a.close=a._weight?+(a._closeW/a._weight).toFixed(4):a.close;a.size=+a.size.toFixed(4);a.pnl=+a.pnl.toFixed(2);
+      a.pnl_pct=(a.open&&a.close!=null)?+(((a.direction==='SELL'?a.open-a.close:a.close-a.open)/a.open)*100).toFixed(2):null;return a;});
+  }
   if(ti)ti.textContent=`Transactions — ${seg?seg.label:'—'}`;
   const gbp=_feesGbp;
   const fdate=s=>{if(!s)return '';const d=new Date(s);return isNaN(d)?String(s).slice(0,10):d.toLocaleDateString(undefined,{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});};
   const num=(v,dp)=>v==null?'—':(+v).toLocaleString(undefined,{minimumFractionDigits:dp,maximumFractionDigits:dp});
   let html='';
-  if(!txns.length){
+  if(!viewTxns.length){
     html+=`<p class="muted" style="font-size:12px;padding:6px 0">No closed trades in this period.</p>`;
   }else{
     let rows='', tot=0;
-    txns.forEach((t,i)=>{
+    viewTxns.forEach((t,i)=>{
       tot+=(t.pnl||0);
       const col=(t.pnl||0)>=0?'var(--bull)':'var(--bear)';
       rows+=`<tr>`+
         `<td class="muted" style="text-align:right">${i+1}</td>`+
-        `<td>${t.ticker||''}</td>`+
+        `<td>${t.ticker||''}${aggregate&&t._n>1?` <span class="muted" style="font-size:11px">×${t._n}</span>`:''}</td>`+
         `<td><span style="color:${t.direction==='BUY'?'var(--bull)':'var(--bear)'}">${t.direction||''}</span></td>`+
         `<td style="text-align:right">${num(t.size,2)}</td>`+
         `<td style="text-align:right">${num(t.open,2)}</td>`+
@@ -4010,7 +4033,7 @@ function paintFeesTxns(seg){
     });
     html+=`<table><thead><tr><th style="text-align:right">#</th><th>Instrument</th><th>Dir</th><th style="text-align:right">Size</th><th style="text-align:right">Open</th><th style="text-align:right">Close</th><th style="text-align:right">P&amp;L</th><th style="text-align:right">P&amp;L %</th><th>Opened</th><th>Closed</th></tr></thead><tbody>`+
       rows+
-      `<tr style="border-top:2px solid var(--line)"><td></td><td colspan="5"><b>Total trading P&amp;L (${txns.length} trades)</b></td><td style="text-align:right;color:${tot>=0?'var(--bull)':'var(--bear)'}"><b>${gbp(tot)}</b></td><td colspan="3"></td></tr>`+
+      `<tr style="border-top:2px solid var(--line)"><td></td><td colspan="5"><b>Total trading P&amp;L (${txns.length} trades${aggregate?` · ${viewTxns.length} rows`:''})</b></td><td style="text-align:right;color:${tot>=0?'var(--bull)':'var(--bear)'}"><b>${gbp(tot)}</b></td><td colspan="3"></td></tr>`+
       `</tbody></table>`;
   }
   // IG charges behind the period (user 2026-08-02, P-06) — overnight funding / interest / fees that also
