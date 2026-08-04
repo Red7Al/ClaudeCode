@@ -3179,12 +3179,23 @@ function paintIgAccount(){
     `<div class="vizsector">`+barChart("Direction",pby("direction","igp_direction"),"igp_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`):"";
   packViz("ig-pos-viz");
   const pos=genSort(posBase.filter(p=>IGPF.every(([id,k])=>inSet(id,p[k]))),igpSortK,igpSortDir);
-  const closed=(IGCLOSED||[]).map(c=>{const ol=+c.open_level,cl=+c.close_level,dir=c.direction;
+  let closed=(IGCLOSED||[]).map(c=>{const ol=+c.open_level,cl=+c.close_level,dir=c.direction;
     const pct=(Number.isFinite(ol)&&ol!==0&&Number.isFinite(cl))?+(((dir==='SELL'?ol-cl:cl-ol)/ol)*100).toFixed(2):null;
     return Object.assign({},c,{status:'Closed',name:c.instrument||'',level:c.open_level,current:c.close_level,
       profit:c.pnl,profit_pct:pct,closed:c.date||'',market:'—',ticker:''});});
+  if(_agg){   // IG can close one logical position as several fills; combine fills from the same close event.
+    const g={};
+    closed.forEach(c=>{const key=[c.name,c.direction,c.closed,c.currency].join('|');
+      const a=g[key]||(g[key]=Object.assign({},c,{size:0,profit:0,_openW:0,_closeW:0,_weight:0,_n:0}));
+      const sz=+c.size||0;a.size+=sz;a.profit+=(+c.profit||0);a._openW+=(+c.level||0)*sz;
+      a._closeW+=(+c.current||0)*sz;a._weight+=sz;a._n++;});
+    closed=Object.values(g).map(a=>{a.level=a._weight?+(a._openW/a._weight).toFixed(4):a.level;
+      a.current=a._weight?+(a._closeW/a._weight).toFixed(4):a.current;a.size=+a.size.toFixed(4);
+      a.profit=+a.profit.toFixed(2);a.profit_pct=(a.level&&a.current!=null)
+        ?+(((a.direction==='SELL'?a.level-a.current:a.current-a.level)/a.level)*100).toFixed(2):null;return a;});
+  }
   const openRows=pos.map(p=>`<tr><td><span class="tag bull">Open</span></td><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${p.market||'<span class="muted">—</span>'}</td><td>${_igDtag(p.direction)}</td><td>${_igSz(p.size)}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.current??'<span class="muted">—</span>')}</td><td>${_igPf(p.profit)}</td><td>${_igPfp(p.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td></td><td></td><td><b>${p.ticker||p.epic||''}</b></td></tr>`);
-  const closedRows=genSort(closed,igpSortK,igpSortDir).map(c=>`<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(c.name)}</td><td><span class="muted">—</span></td><td>${_igDtag(c.direction)}</td><td>${_igSz(c.size)}</td><td>${c.level??''}</td><td>${c.current??''}</td><td>${_igPf(c.profit)}</td><td>${_igPfp(c.profit_pct)}</td><td></td><td></td><td>${c.currency||''}</td><td></td><td>${c.closed}</td><td>${_igReason(c.reason)}</td><td></td></tr>`);
+  const closedRows=genSort(closed,igpSortK,igpSortDir).map(c=>`<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(c.name)}${_agg&&c._n>1?` <span class="muted" style="font-size:11px">×${c._n}</span>`:''}</td><td><span class="muted">—</span></td><td>${_igDtag(c.direction)}</td><td>${_igSz(c.size)}</td><td>${c.level??''}</td><td>${c.current??''}</td><td>${_igPf(c.profit)}</td><td>${_igPfp(c.profit_pct)}</td><td></td><td></td><td>${c.currency||''}</td><td></td><td>${c.closed}</td><td>${_igReason(c.reason)}</td><td></td></tr>`);
   $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${pos.length+closed.length}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed${IGCLOSED===null?' (loading…)':''}</span>`;
   $("ig-pos-rows").innerHTML=openRows.concat(closedRows).join("")||`<tr><td colspan="16" class="empty">${q?'No transactions match that search.':'No open or recently closed transactions.'}</td></tr>`;
 
