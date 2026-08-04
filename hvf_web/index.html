@@ -1241,6 +1241,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="pill active" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button>
     <button class="pill" data-pfpanel="results" onclick="pfPanel('results')" title="Back test over the last 12 months for YOUR current configuration (your Trading (Squeeze) direction filter, Markets (User) and personal floors): every setup as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Back Test</button>
     <button class="pill" id="pf-pill-winners" data-pfpanel="analysis" onclick="pfPanel('analysis')" title="Admin: the same 12-month population expressed as a compounding £ wallet — what's POSSIBLE if every setup were placed, and which attributes (market, R:R, quality, volume) separate the winners. Answers 'how to size and pick for the best return'.">🏆 What separates the winners</button>
+    <button class="pill" data-pfpanel="run" onclick="pfPanel('run')" title="Compare selling at target with locking in the target and trailing the remaining move. Illustration only; live orders are never changed.">🏃 Let winners run</button>
   </div>
   <span class="eyebrow">Results</span>
   <!-- Processing badge (user 2026-08-02, P-06) — shown next to the title while /api/performance is still
@@ -1317,14 +1318,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
   <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
 
-  <!-- Let winners run on the Back Test (user 2026-08-02, ToDo P-08): same illustration as the What-separates
-       tab, rendered here too. Per-user opt-in; hidden unless the user turns it on. Populated by winnersRunChange. -->
-  <div id="pf-run-wrap" style="display:none;margin-bottom:14px">
-    <h2 class="sec">🏃 Let winners run</h2>
-    <p class="muted" style="font-size:13px;margin-top:-8px">The impact of NOT selling at target — once a trade hits target the stop moves up to the target (so the gain can't decay), then trails past it, using your configured trail settings (Configuration → Trading (Squeeze) → Let winners run). Illustration only — it never changes your live orders.</p>
-    <div id="pf-run"></div>
-  </div>
-
   <h2 class="sec">Every recorded trigger</h2>
   <section class="gsec" style="border-left-color:var(--accent)">
     <!-- Name/ticker search, as on Scanner / Pre-orders / Order Ops / X Posts (user 2026-07-17, P-17) -->
@@ -1352,6 +1345,16 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </table></div>
   </section>
   </div><!-- /#pf-panel-results -->
+
+  <!-- Dedicated Let winners run report (user 2026-08-04): promoted from the Back Test body to a fourth
+       first-class Performance sub-tab. It remains an illustration and never changes live orders. -->
+  <div id="pf-panel-run" class="hidden">
+    <h2 class="sec" style="margin-top:0">🏃 Let winners run</h2>
+    <p class="muted" style="font-size:13px;margin-top:-8px">Compare selling at TARGET with locking in that target gain and trailing the remaining move. The calculation uses your settings from Configuration → Trading (Squeeze) → Let winners run. Illustration only — it never changes your live orders.</p>
+    <div id="pf-run-wrap" style="margin-bottom:14px">
+      <div id="pf-run"></div>
+    </div>
+  </div>
 
   <!-- 15-month squeeze analysis (user 2026-07-17, P-21b) — its own sub-tab (P-21b follow-up). -->
   <div id="pf-panel-analysis" class="hidden">
@@ -3367,12 +3370,15 @@ function renderPerformance(){
 function pfPanel(which){
   if(which==="analysis"&&!IS_ADMIN)which="results";   // admin-only analysis (user 2026-07-18)
   document.querySelectorAll("#pf-pills .pill").forEach(b=>b.classList.toggle("active",b.dataset.pfpanel===which));   // pills live in #pf-pills since the P-03 L258 move — the old #pf-subnav selector matched nothing, so the active colour never updated (user 2026-07-27, P-03 A)
-  const sm=$("pf-panel-summary"), res=$("pf-panel-results"), an=$("pf-panel-analysis");
+  const sm=$("pf-panel-summary"), res=$("pf-panel-results"), an=$("pf-panel-analysis"), run=$("pf-panel-run");
   if(sm)sm.classList.toggle("hidden",which!=="summary");   // Summary sub-tab (user 2026-07-20)
   if(res)res.classList.toggle("hidden",which!=="results");
   if(an)an.classList.toggle("hidden",which!=="analysis");
+  if(run)run.classList.toggle("hidden",which!=="run");
+  const filters=$("pf-subnav");if(filters)filters.classList.toggle("hidden",which==="run");   // date/location filters do not feed /api/winners-run
   const wh=$("pf-winners-head");if(wh)wh.classList.toggle("hidden",which!=="analysis");   // winners title/lede above the filters (P-07 L289)
   if(which==="analysis")renderSqueezeAnalysis();
+  if(which==="run")winnersRunChange();
   if(which==="summary"&&typeof _renderPerformance==="function")_renderPerformance();   // rebuild the "Settings used" card for this sub-tab (user 2026-07-24, P-02)
 }
 // ── 15-month squeeze analysis (user 2026-07-17, P-21b) ───────────────────────────────────────────────
@@ -3516,11 +3522,16 @@ function winnersSLChange(){
 // stays >=17%), then trails above it by the Run-trail %; before target it trails by the Stop-trail %. Per-user
 // opt-in: hidden unless MY_LIMITS.let_winners_run is on; inputs default from the user's saved config.
 function winnersRunChange(){
-  // The card is shown on TWO surfaces (user 2026-08-02): the "What separates the winners" tab (#ordp-run,
-  // with its own trail inputs) AND the Back Test / Results tab (#pf-run, read-only, uses the saved config).
+  // The report is shown on TWO surfaces: the "What separates the winners" tab (#ordp-run, with its own
+  // trail inputs) and the dedicated Performance sub-tab (#pf-run, read-only, using the saved config).
   const wraps=["ordp-run-wrap","pf-run-wrap"].map($), boxes=["ordp-run","pf-run"].map($), busy=$("ordp-run-busy");
   const paintAll=html=>boxes.forEach(b=>{if(b)b.innerHTML=html;});
-  if(!(MY_LIMITS&&+MY_LIMITS.let_winners_run)){wraps.forEach(w=>{if(w)w.style.display="none";});return;}   // OFF by default
+  if(!(MY_LIMITS&&+MY_LIMITS.let_winners_run)){
+    const adminWrap=$("ordp-run-wrap");if(adminWrap)adminWrap.style.display="none";
+    const publicWrap=$("pf-run-wrap");if(publicWrap)publicWrap.style.display="";
+    const publicBox=$("pf-run");if(publicBox)publicBox.innerHTML='<div class="card"><b>Let winners run is off</b><div class="muted" style="font-size:13px;margin-top:5px">Turn it on in Configuration → Trading (Squeeze) → Let winners run to calculate this comparison with your trail settings.</div></div>';
+    return;
+  }
   wraps.forEach(w=>{if(w)w.style.display="";});
   // Default the two inputs from the user's saved config the first time (don't clobber manual edits after).
   const inT=$("ordp-run-in"), inS=$("ordp-run-stop");

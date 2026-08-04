@@ -1,9 +1,18 @@
 """Offline regressions for Performance report calculations."""
 
 import datetime as dt
+from pathlib import Path
 
 import ig_shim
 from hvf_web import server
+
+
+def test_performance_has_dedicated_let_winners_run_tab():
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+
+    assert 'data-pfpanel="run" onclick="pfPanel(\'run\')"' in html
+    assert 'id="pf-panel-run" class="hidden"' in html
+    assert 'if(run)run.classList.toggle("hidden",which!=="run")' in html
 
 
 def test_let_winners_run_never_gives_back_below_bull_target(monkeypatch):
