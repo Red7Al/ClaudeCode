@@ -1,12 +1,12 @@
 ---
 name: ah-quality-report
 description: >
-  Produces the per-instrument "quality angle" publication for HVF setups — a plain-English
+  Produces the per-instrument "quality angle" publication for Squeeze setups — a plain-English
   (common-man, NOT accountant) narrative fundamentals report published as a NUMBERED TEXT THREAD
   (1/n), plus a short searchable companion skim tweet, posted to #arw-claude-twitter. Use whenever the user asks for a
   quality/fundamentals report or tweet for an instrument, to change what the report covers or
   how it reads, to tune the daily change-detection, or to wire it to X. Source of truth:
-  quality_report.py. Pairs with the HVF chart publication (ah-x-publications).
+  quality_report.py. Pairs with the Squeeze chart publication (ah-x-publications).
 ---
 
 # AH Quality Report — fundamentals "quality angle" per instrument
@@ -25,7 +25,7 @@ The long report LEADS with a plain-English **chart-setup read** (`_chart_story` 
 added 2026-06-16) — why the setup matters, in the style of the colleague's chart report: the
 squeeze (range compressed to ~N% of its original width) → the breakout (or "coiled at the
 trigger") → the reward-vs-risk to target/stop — THEN the fundamentals read.
-**PUBLIC-SAFE, hard rule:** the chart read NEVER names the in-house method — no "HVF", no "Hunt
+**PUBLIC-SAFE, hard rule:** the chart read NEVER names the in-house method — no "Squeeze", no "Hunt
 Volatility Funnel", and no "funnel"; the only public vocabulary is squeeze / coil / tightening
 range / breakout / ceiling / floor (same rule as ah-x-publications).
 
@@ -61,7 +61,7 @@ publication = all three; see ah-x-publications).
   PNG upload) — runs in GitHub Actions where the secrets live (never locally; see memory
   `secrets_and_x_delivery`).
 - Scheduled via cron-job.org (`setup_cronjobs.py` → `trading-quality-reports.yml`): 07:45 Mon–Fri
-  and 09:45 Sat, just after each HVF scan populates `hvf_scan_log`, in `--daily` mode.
+  and 09:45 Sat, just after each Squeeze scan populates `hvf_scan_log`, in `--daily` mode.
 - Live X posting is via `x_publish.py` (official X API v2 via tweepy, OAuth 1.0a — the X_* secrets;
   13–17 min stagger) once the keys are set — see that module's header. (twikit was dropped: its login
   broke on X's Mar-2026 site change with no fixed release.)

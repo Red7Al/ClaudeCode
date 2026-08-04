@@ -5,7 +5,7 @@ EndToEndTrading project — what exists today, and the candidates worth adding �
 set of skills, memory items and documents stays discoverable._
 
 The system in one line: a **Squeeze Scanner engine** scans 1,300+ instruments across every asset
-type, records HVF (funnel) setups with entry/stop/target, tracks them to outcome, and (per user)
+type, records Squeeze (funnel) setups with entry/stop/target, tracks them to outcome, and (per user)
 places them as IG working orders — surfaced through a web app, Slack reports and X publications,
 driven by scheduled jobs.
 
@@ -16,10 +16,10 @@ driven by scheduled jobs.
 ### 1.1 Skills (`skills_src/<name>/SKILL.md`, packaged as `*.skill`)
 | Skill | Purpose |
 |---|---|
-| `ah-hvf-analysis` | The HVF squeeze method — detection rules, parameters, pipeline reference. |
+| `ah-hvf-analysis` | The Squeeze squeeze method — detection rules, parameters, pipeline reference. |
 | `ah-signal-stack` | Multi-factor / decision reference and troubleshooting. |
 | `ah-hvf-orders` | Turning setups into actionable orders. |
-| `ah-hvf-report` | The daily HVF report format. |
+| `ah-hvf-report` | The daily Squeeze report format. |
 | `ah-quality-report` | The long per-instrument quality report. |
 | `ah-working-orders` | IG working-order lifecycle. |
 | `ah-instrument-dossier` | Per-instrument dossier generation. |
@@ -34,7 +34,7 @@ driven by scheduled jobs.
 `table-name-search` · `web-formatting-skill`.
 
 ### 1.3 Documents (`docs/`)
-- `HVF_METHOD.md` — the five rules + thresholds.
+- `SQUEEZE_METHOD.md` — the five rules + thresholds.
 - `DECISIONS_AND_WEIGHTING.md` — scoring/weighting decisions.
 - `price_action_framework.md` · `commodity_fundamentals.md` — analytical frameworks.
 - `weekly_checklist.md` — operating checklist.
@@ -47,7 +47,7 @@ driven by scheduled jobs.
 - **Routines** — `routines/routine_*.md` (aus/uk/us open, monitor, session close, daily report, weekend review).
 - **Scheduled jobs** — authoritative registry in `setup_cronjobs.py::JOBS` (cron-job.org → GitHub Actions),
   surfaced read-only in the app's Scheduled Jobs tab.
-- **Tests** — `test_hvf_method.py`, `test_volume_score.py`, `test_bounce_monitor.py` + the pre-commit HVF suite.
+- **Tests** — `test_hvf_method.py`, `test_volume_score.py`, `test_bounce_monitor.py` + the pre-commit Squeeze suite.
 
 ---
 
@@ -67,7 +67,7 @@ These would materially help onboarding, ops and change safety. None exist yet.
 4. **Ops runbook** — deploy (see `ah-deploy`), restart the web server, run/scope a backfill, rotate
    secrets, and incident response (Yahoo 404s, IG session failures, snapshot staleness).
 5. **Scheduled-jobs timeline** — a one-page daily UTC timeline of every cron job and why it runs when
-   (e.g. price refresh 05:00 before the 05:30 HVF report), derived from `setup_cronjobs.JOBS`.
+   (e.g. price refresh 05:00 before the 05:30 Squeeze report), derived from `setup_cronjobs.JOBS`.
 6. **Security model** — auth/roles (admin/gold/silver/guest), secret storage (GitHub Secrets, not local
    `.env`), IG-credential encryption, and the instruction/data trust boundary.
 7. **Glossary** — consolidate the in-app Appendix terms into a referenceable doc.

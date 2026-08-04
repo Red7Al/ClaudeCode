@@ -1,7 +1,7 @@
 # Pipeline — where X publications live in the A&A system
 
 ```
-HVF scanner finds TRADEABLE setups (run_hvf_report daily 07:00 UTC; UK/US HVF
+Squeeze scanner finds TRADEABLE setups (run_hvf_report daily 07:00 UTC; UK/US Squeeze
 watches 2-hourly; monitors every 5 min)
       │  weight order: TRIGGERED first, quality desc, cap 20
       │  UK setups IG-validated (broker levels) before drafting

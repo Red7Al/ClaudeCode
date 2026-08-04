@@ -12,7 +12,7 @@ description: >
 # AH X Writing Style — vary the voice, sound human
 
 This is the VOICE layer for everything published to X. It governs *how the words read*; it never
-overrides the hard rules in **ah-x-publications** (NFA on every post, no method name / "HVF", no
+overrides the hard rules in **ah-x-publications** (NFA on every post, no method name / "Squeeze", no
 prices in the short tweet, plain-English direction-aligned confirmations, the complete-publication
 order). Vary the wording — never the facts, numbers, direction, or the disclaimer.
 

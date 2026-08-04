@@ -1,7 +1,7 @@
 ---
 name: ah-web-formatting
 description: >
-  Layout and formatting rules for the HVF web app (hvf_web/index.html) — table wrapping and column
+  Layout and formatting rules for the Squeeze web app (hvf_web/index.html) — table wrapping and column
   widths, the chart strip's order/height/stacking/width behaviour, instrument-name truncation, and the
   multi-select filter component. Also carries the verification recipe for this specific page, which has
   several traps that silently produce wrong conclusions (display:contents wrappers have no box;
@@ -10,7 +10,7 @@ description: >
   the user reports "wrapping", "cramped", "white space", "scrolling" or "spacing" on a page.
 ---
 
-# HVF web app — formatting rules
+# Squeeze web app — formatting rules
 
 Everything here was established by fixing a real defect (user requests 2026-07-17, P-08…P-25). Each rule
 states WHY, because the naive alternative is what broke.

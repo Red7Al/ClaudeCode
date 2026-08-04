@@ -3,7 +3,7 @@ name: ah-x-publications
 description: >
   Creates X (Twitter) publications for trading setups in the A&A Trading house style: a
   tweet (≤280 chars, plain-English justifications, mandatory "Not financial advice.") plus
-  a dark-theme post-card image showing the price chart with the HVF funnel, entry, stop and
+  a dark-theme post-card image showing the price chart with the Squeeze funnel, entry, stop and
   target. Use this skill whenever the user asks to: create/draft/format a tweet or X post
   for a setup, generate a post card or chart image for social media, review tweet drafts,
   explain the publication format, or adapt the format for a new instrument or pattern type.
@@ -49,16 +49,16 @@ A publication for an instrument is INCOMPLETE unless all three go out, in this f
    1/n TEXT thread: a public-safe chart read THEN the fundamentals; NOT a PNG, since 2026-06-16).
 
 This is **enforced in code**: `_generate_x_drafts` posts (1)+(2) then calls
-`quality_report.publish_long_report_for(r)` for (3) — so every publishing path (the daily HVF
-report, the UK/US HVF watches, and the instrument dossier) emits all three. Never reorder, never
+`quality_report.publish_long_report_for(r)` for (3) — so every publishing path (the daily Squeeze
+report, the UK/US Squeeze watches, and the instrument dossier) emits all three. Never reorder, never
 drop one, never turn the long text back into an image.
 
 ## Per-market grouping (user 2026-06-16: "top 10 by market")
 
 X drafts post the top `PER_MARKET_TOP_N` (config, = 10) PER market, GROUPED — a per-market section
-header (`📊 FTSE100 — top 10 HVF`) precedes each market's instruments, markets in `MARKET_ORDER`.
+header (`📊 FTSE100 — top 10 Squeeze`) precedes each market's instruments, markets in `MARKET_ORDER`.
 Selection + order come from `price_action.group_by_market` (the single source of truth, shared with
-the daily HVF report and the quality reports); the per-instrument webhook+card delivery is unchanged.
+the daily Squeeze report and the quality reports); the per-instrument webhook+card delivery is unchanged.
 
 ## Live publishing to X — `publish_one_to_x.py` + `trading-x-publish.yml`
 
@@ -128,11 +128,11 @@ Rules (each one is a user directive — violating any is a regression):
 5. **Fitting order when over 280 chars**: keep as MANY justifications as possible first
    (drop verbose detail before dropping a justification), then shorten wording, then drop
    the company name. More evidence beats prettier prose.
-6. **No pattern name** in public posts — "Volatility squeeze", never "HVF"/"Hunt
+6. **No pattern name** in public posts — "Volatility squeeze", never "Squeeze"/"Hunt
    Volatility Funnel" (the method name stays in-house).
 7. **No prices in the tweet text** (2026-06-13) — Now/Entry/Stop/Target/R:R live on the PNG
    card, not the tweet. The tweet is description + clear-English confirmations only.
-8. **No HVF timeframe** (e.g. d220) in the tweet OR card (2026-06-13).
+8. **No Squeeze timeframe** (e.g. d220) in the tweet OR card (2026-06-13).
 9. **Lead with a rotated hook** (2026-06-13) — line 1 is a hook (`👀 Watching $MNG`,
    `🚨 Breakout: $MNG`, …), not raw numbers. Hooks live in `_X_HOOKS` keyed by
    (direction, signal) — a BEARISH setup gets a "Breakdown:" / "📉 breaking down" hook,
@@ -229,7 +229,7 @@ live in the `x_publications` Supabase table — you cannot read them locally; us
 4. **Republish** with the fix:
    - single: `gh workflow run trading-x-publish.yml -f ticker=SBUX -f force=true`
    - batch:  `gh workflow run trading-x-publish.yml -f top_per_market=2`
-   A republish only fires if the ticker STILL has a live tradeable HVF funnel today
+   A republish only fires if the ticker STILL has a live tradeable Squeeze funnel today
    (`build_publication` returns nothing otherwise — by design, not a failure).
 
 The workflow input precedence is `list_recent` → `delete_lead_ids` → `top_per_market` → single ticker.

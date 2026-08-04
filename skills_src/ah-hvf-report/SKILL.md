@@ -1,24 +1,24 @@
 ---
 name: ah-hvf-report
 description: >
-  Writes a narrative HVF chart report for one instrument in the A&A house style — "What
+  Writes a narrative Squeeze chart report for one instrument in the A&A house style — "What
   today's chart is telling you" — walking the chart left to right from the prior trend
   through the funnel pivots to today's candle, with confidence-labelled levels, BOTH
   risk/reward framings (system stop vs full-funnel stop), weekly-close scenario analysis
-  and catalyst awareness. Use whenever the user asks for an "HVF report", "chart read",
+  and catalyst awareness. Use whenever the user asks for an "Squeeze report", "chart read",
   "what is X's chart telling us", a setup write-up for an instrument, or a colleague-style
   pattern report. Numbers must come from the live scanner + IG broker validation, never
   memory. Pairs with the post-card image from ah-x-publications.
 ---
 
-# AH HVF Report — narrative chart read for one instrument
+# AH Squeeze Report — narrative chart read for one instrument
 
 The report is PROSE walking the chart, not a data dump. A reader with no system
 knowledge must follow it. Every number is sourced live and labelled.
 
 ## Section template (in order)
 
-**1. Headline:** `## TICKER (Full Company Name) — HVF Report, {weekday} {date}`
+**1. Headline:** `## TICKER (Full Company Name) — Squeeze Report, {weekday} {date}`
 then bold line: **What today's chart is telling you:**
 
 **2. Today's tape (one short paragraph):** close, % move, day high, driver if known —
@@ -62,7 +62,7 @@ driver — with the reassessment warning if the driving news could reverse.
    an estimated level as fact.
 3. **Both R:R framings always** — the system's tight-stop R:R alone overstates the
    method; the full-funnel stop alone understates the system. Show both, explain the gap.
-4. **Plain English** — no Confs:N, no enums, no internal jargon. "HVF"/"funnel" is fine
+4. **Plain English** — no Confs:N, no enums, no internal jargon. "Squeeze"/"funnel" is fine
    in reports (in-house document), unlike public X posts.
 5. **Full company name** in the headline; GBX (pence) for UK levels.
 6. **Weekly close is the decision boundary** for trigger/invalidation language — quote

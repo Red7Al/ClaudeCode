@@ -21,7 +21,7 @@ base_name_expl = "{hook} ({name})\n{description}\n{explain}\n"
 base_expl      = "{hook}\n{description}\n{explain}\n"
 base_with_name = "{hook} ({name})\n{description}\n"
 base_no_name   = "{hook}\n{description}\n"
-# NO price line and NO HVF timeframe in the tweet text (2026-06-13) — both live on the PNG card.
+# NO price line and NO Squeeze timeframe in the tweet text (2026-06-13) — both live on the PNG card.
 justifications = ordered list of (full, short) phrasings:
     1. Pattern quality {q}/100                      (only if q ≥ 60)
     2. Options flow {bias} (call/put {x.xx}, implied volatility rank {n}%)   | short: drop IV rank

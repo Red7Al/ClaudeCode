@@ -18,9 +18,9 @@ Then walk the five gates IN ORDER — the FIRST failing gate is the answer:
 - Not a per-instrument problem — say "the whole session was risk-off".
 
 ## 2. Primary gate failed → primary_count < 2 and no bypass
-- Fewer than 2 primaries fired and neither HVF nor elite-senate/POTUS bypassed.
+- Fewer than 2 primaries fired and neither Squeeze nor elite-senate/POTUS bypassed.
 - Check which primaries are present in the row (options_bias, bb_breakout_dir, hvf_*,
-  adx, orb, week52). "Only options flow fired; needs a second primary or an HVF."
+  adx, orb, week52). "Only options flow fired; needs a second primary or an Squeeze."
 
 ## 3. Direction is None → primaries disagree
 - Equal BULLISH and BEARISH primaries → no majority → no trade.

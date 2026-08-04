@@ -1,7 +1,7 @@
 ---
 name: ah-working-orders
 description: >
-  The engine-managed PRE-ORDER system — "working orders": pending HVF entry orders the engine
+  The engine-managed PRE-ORDER system — "working orders": pending Squeeze entry orders the engine
   holds and manages (WATCHING -> PENDING -> FILLED/CANCELLED/EXPIRED) BEFORE they become live IG
   positions. Use this skill whenever the user asks about pre-orders, working orders, pending /
   watching orders, "what's queued", why an order didn't place or got amended/cancelled, the
@@ -11,7 +11,7 @@ description: >
 
 # AH Working Orders — the engine-managed pre-order system
 
-A "working order" is a **pending HVF entry order**: a set-and-forget order at the exact entry
+A "working order" is a **pending Squeeze entry order**: a set-and-forget order at the exact entry
 level (H3 long / L3 short) with the stop and target attached, placed as ONE IG working order so
 the trade triggers itself. These are the orders the engine MANAGES BEFORE they become live IG
 positions — they are explicitly **NOT positions** (the monitor must never see them in the

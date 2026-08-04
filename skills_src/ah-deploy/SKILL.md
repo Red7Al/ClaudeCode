@@ -43,9 +43,9 @@ to reproduce it locally.
    re-run the workflow. To amend instead, push a fix to `main` and re-run.
 
 ## Workflow → output map (confirm with `gh workflow list` + read the `.yml`)
-- `trading-hvf-report.yml` — full HVF scan → report to #claude-trading-signals AND X drafts
+- `trading-hvf-report.yml` — full Squeeze scan → report to #claude-trading-signals AND X drafts
   (text + card PNG, weight-ordered) to #arw-claude-twitter via `_generate_x_drafts`.
-- `trading-uk-hvf-watch.yml` / `trading-us-hvf-watch.yml` — intraday HVF watches (also post X drafts).
+- `trading-uk-hvf-watch.yml` / `trading-us-hvf-watch.yml` — intraday Squeeze watches (also post X drafts).
 - `trading-run-schema.yml` — apply idempotent schema migrations (run BEFORE code needing a new column).
 - `trading-diagnostics.yml` / `trading-watchdog.yml` / `trading-self-audit.yml` — health checks.
 

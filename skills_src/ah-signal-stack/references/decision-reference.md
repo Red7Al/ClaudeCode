@@ -11,9 +11,9 @@ re-check before quoting a value.
 | YIELD_SPREAD_GATE_THRESHOLD | −1.0 | 2y/10y spread below → gate fails |
 | SPX_HIGH_STRESS_PCT | −2.5 | SPX down more → gate fails (no new entries) |
 | SPX_STRESS_PCT | −1.0 | SPX down 1–2.5% → sizes halved (gate still passes) |
-| MIN_PRIMARY_SIGNALS | 2 | primaries needed (HVF / elite-senate / POTUS bypass) |
+| MIN_PRIMARY_SIGNALS | 2 | primaries needed (Squeeze / elite-senate / POTUS bypass) |
 | MIN_CONFIRMATION_SIGNALS | 1 | direction-aligned confirmations needed |
-| MIN_RISK_REWARD / DEFAULT_TARGET_RR | 3.0 | hard R:R floor; HVF_MIN_RR aliased to it |
+| MIN_RISK_REWARD / DEFAULT_TARGET_RR | 3.0 | shared hard R:R floor |
 | MAX_SPREAD_PCT | 0.005 | spread < 0.5% of mid |
 | MAX_SPREAD_TO_STOP_RATIO | 0.5 | spread < half the stop distance |
 | MAX_TRADES_PER_INSTRUMENT_PER_DAY | 5 | per-name daily cap |
@@ -28,14 +28,14 @@ re-check before quoting a value.
 | Options flow | options_bias BULLISH/BEARISH (call/put ratio + IV rank) | the bias |
 | Bollinger breakout | bb_breakout_dir BULLISH/BEARISH | the breakout |
 | High-vol + VWAP (BB substitute) | no BB, but HIGH_VOLUME and price ABOVE/BELOW VWAP | VWAP side |
-| HVF | hvf_signal READY or TRIGGERED | hvf_type |
+| Squeeze | hvf_signal READY or TRIGGERED | hvf_type |
 | ADX directional | ADX ≥ 20 AND \|+DI − −DI\| ≥ 5 | +DI vs −DI |
 | ORB | orb_dir BULLISH/BEARISH (30-min opening range break) | the break |
 | 52-week extreme | price at yearly high/low | toward the extreme |
 | Elite senator / POTUS | primary_fired (≥70% win-rate senator, or POTUS mention) | BULLISH |
 
 Direction = majority vote of `primary_dir`. Tie → direction None → no trade.
-Bypass to pass stage 2 alone: HVF fired, or elite-senate/POTUS.
+Bypass to pass stage 2 alone: Squeeze fired, or elite-senate/POTUS.
 
 ## Confirmation signals (signals.py ~1707–1862) — each +1, ALL direction-aligned
 

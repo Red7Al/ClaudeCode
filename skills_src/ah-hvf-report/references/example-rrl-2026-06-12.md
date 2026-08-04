@@ -5,7 +5,7 @@ time. This is the reference for tone, structure and the dual-R:R treatment.
 
 ---
 
-## RR. (Rolls-Royce Holdings PLC) — HVF Report, Friday 12 June 2026
+## RR. (Rolls-Royce Holdings PLC) — Squeeze Report, Friday 12 June 2026
 
 **What today's chart is telling you:**
 

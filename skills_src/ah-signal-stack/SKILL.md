@@ -8,8 +8,8 @@ description: >
   didn't), how position size was computed, or anything about primaries/confirmations/R:R/
   stress mode. Also trigger for "should this have traded?", "what's blocking entries?",
   "why is conf_count low?". Every rule here is verified against the live code — quote the code,
-  never memory. HVF pattern detection itself is covered by ah-hvf-analysis; this skill is the
-  decision layer that consumes HVF plus every other signal.
+  never memory. Squeeze pattern detection itself is covered by ah-hvf-analysis; this skill is the
+  decision layer that consumes Squeeze plus every other signal.
 ---
 
 # AH Signal Stack — the trade-decision pipeline
@@ -48,10 +48,10 @@ MAJORITY vote of all primary directions (ties → no direction → no trade).
 
 Primaries (each +1): **Options flow** (bias BULLISH/BEARISH from call/put + IV) ·
 **Bollinger breakout** (or, if no BB, **high volume + price vs VWAP** as a substitute) ·
-**HVF** (READY/TRIGGERED) · **ADX directional** (ADX ≥ 20 and |+DI − −DI| ≥ 5) ·
+**Squeeze** (READY/TRIGGERED) · **ADX directional** (ADX ≥ 20 and |+DI − −DI| ≥ 5) ·
 **ORB** (30-min opening-range break) · **52-week extreme** · **Elite senator / POTUS buy**.
 
-**Bypasses** (pass stage 2 with a single signal): HVF fired alone; or an elite-senator
+**Bypasses** (pass stage 2 with a single signal): Squeeze fired alone; or an elite-senator
 (≥70% win-rate) / POTUS primary. These are high-conviction enough to not need a second
 primary.
 
@@ -78,12 +78,12 @@ tweets and Slack never name a misaligned confirmation. This change can only LOWE
 Direction = majority of primary directions. **PA confirm** is the falling-knife guard:
 `price_action.verdict` must be CONFIRM_LONG (for BUY) or CONFIRM_SHORT (for SELL). Even a
 full bullish stack will NOT fire a long if the chart itself says WAIT. PA threshold is
-per-instrument (equities ±40, crypto/FX lower — config PA_CONFIRM_THRESHOLDS); HVF
+per-instrument (equities ±40, crypto/FX lower — config PA_CONFIRM_THRESHOLDS); Squeeze
 TRIGGERED halves it (the breakout is the price vote).
 
 ## Execution gates (run_session.py / ig_shim.py) — after the signal fires
 
-- **R:R ≥ 3.0** (MIN_RISK_REWARD / DEFAULT_TARGET_RR; HVF_MIN_RR aliased to it) — computed
+- **R:R ≥ 3.0** (`MIN_RISK_REWARD` / `DEFAULT_TARGET_RR`) — computed
   from the ENTRY level, never current price.
 - **Spread** < 0.5% of mid (MAX_SPREAD_PCT) AND < 0.5× stop distance
   (MAX_SPREAD_TO_STOP_RATIO); 15 retries × 20s.

@@ -24,7 +24,7 @@ not a cache. All in `price_action.py` unless stated.
 | Stop | L3×0.998 / H3×1.002 | get_hvf_signal | 0.2% beyond the third pivot — strictly pivot-based, never MAs |
 | Target | (H3+L3)/2 ± (H1−L1) | get_hvf_signal | Hunt's FULL AMP1 formula, never discounted |
 | R:R basis | from ENTRY level, not current price | get_hvf_signal (1.5.x fix) | Current-price R:R lies when price sits near the stop (Lloyds 443:1 case) |
-| R:R minimum | HVF_MIN_RR = MIN_RISK_REWARD = 3.0 | config.py (~line 550) | Aliased so HVF and general trading can never drift; raised 2.0→2.5→3.0 |
+| R:R minimum | MIN_RISK_REWARD = 3.0 | config.py (~line 550) | Shared across Squeeze and general trading so they cannot drift; raised 2.0→2.5→3.0 |
 | R:R gate order | applied BEFORE TRIGGERED | get_hvf_signal + weekly path | A broken-out low-R:R pattern is DEVELOPING, not TRIGGERED (NVDA 0.09 bug 2026-06-04) |
 | Synthetic L3 | flagged `l3_synthetic` | L3 fallback branches | Midpoint/current-price L3 has no candle — IG validation must skip it |
 

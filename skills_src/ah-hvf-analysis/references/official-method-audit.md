@@ -1,9 +1,9 @@
-# Audit vs the official (publicly documented) HVF method
+# Audit vs the official (publicly documented) Squeeze method
 
-Audited 2026-06-12 against Francis Hunt's publicly documented HVF rules. Sources:
-- themarketsniper.com — Francis Hunt's own site (HVF for lifestyle traders, equity markets)
+Audited 2026-06-12 against Francis Hunt's publicly documented Squeeze rules. Sources:
+- themarketsniper.com — Francis Hunt's own site (Squeeze for lifestyle traders, equity markets)
 - ratiopatterntrader.wordpress.com/patterns — independent codification of the pattern
-- public consensus write-ups ("The Hunt Volatility Funnel" PDF; "HVF Method Under the
+- public consensus write-ups ("The The Squeeze" PDF; "Squeeze Method Under the
   Microscope")
 
 > **Update 2026-06-22 — clean RW cut-over.** Since this audit the engine was rebuilt onto a single
@@ -61,16 +61,16 @@ This is exactly the RR.L case: the real exhaustion top is the 1,420 ATH (Feb), w
 daily windows clip; only the weekly path sees it.
 - Mitigation already present: the weekly timeframe reaches ~3 years, so a true multi-month
   funnel is caught there.
-- Residual risk: daily-timeframe HVFs on instruments with a >7-month-old exhaustion top
+- Residual risk: daily-timeframe Squeezes on instruments with a >7-month-old exhaustion top
   use a clipped AMP1. The 2026-06-12 `apply_exhaustion_amp1` re-anchor was **removed** in the
   2026-06-22 clean cut-over ("funnel logic in ONE place"): `hvf_clean.detect_hvf` now uses the
   funnel's own in-window pivots on every timeframe. Mitigation reverts to the weekly path's ~3-year
   reach; the daily-window clip is a known, accepted limitation again — the one open detection item.
 
 ### 2. Continuation-only vs our recent-trend override
-Hunt's HVF is strictly a CONTINUATION pattern. Our `recent-trend override` re-classifies a
+Hunt's Squeeze is strictly a CONTINUATION pattern. Our `recent-trend override` re-classifies a
 post-peak decline as a new DOWNTREND and then hunts a bearish funnel (the BP case). That is
-a philosophical DEPARTURE — Hunt would treat a fresh reversal as not-yet-an-HVF. We bounded
+a philosophical DEPARTURE — Hunt would treat a fresh reversal as not-yet-an-Squeeze. We bounded
 it (disabled in STRONG_UPTREND), but it can manufacture "continuation" setups the purist
 method would not recognise. **Decision for the user:** keep (pragmatic, catches real tops)
 or restrict further.

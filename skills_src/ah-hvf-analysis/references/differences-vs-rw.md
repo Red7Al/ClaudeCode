@@ -30,7 +30,7 @@ when results disagree with a manual chartist's read.
 | Trade stages (Feign/Second Chance/Capitulation/Weak Counter/Target) | Explicit lifecycle guidance | Not modelled; set-and-forget via working order + monitors | Post-trade review grades outcomes instead. |
 | KLOS (key levels of significance) | Flagged manually | Not implemented | Chart-reading concept; no mechanical definition yet. |
 | Catalyst awareness | Earnings/CB/geopolitics checked per setup | ForexFactory calendar blocks entries near high-impact events; no per-setup earnings check | Candidate: earnings-date check before posting a setup (RW's "RR. earnings 30 Jul" example). |
-| Direction | Continuation only; "inverted HVF" = short continuation | Same, plus the recent-trend override re-classifies post-peak declines (BP case) | Override is bounded (blocked in STRONG_UPTREND). |
+| Direction | Continuation only; "inverted Squeeze" = short continuation | Same, plus the recent-trend override re-classifies post-peak declines (BP case) | Override is bounded (blocked in STRONG_UPTREND). |
 | AMP1 source | Exhaustion-candle H1/L1, explicitly NOT 52wk range | Detected H1/L1 pivot levels | Equivalent when pivots are right — which the sanitiser + IG validation now protect. |
 
 ## Bottom line

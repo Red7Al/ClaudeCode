@@ -1,4 +1,4 @@
-# Pipeline reference — how an HVF setup travels from raw data to a trade and a tweet
+# Pipeline reference — how an Squeeze setup travels from raw data to a trade and a tweet
 
 All scheduling is cron-job.org → GitHub workflow_dispatch (GitHub-native cron is banned).
 Times UTC, Mon–Fri unless stated.
@@ -40,16 +40,16 @@ INSUFFICIENT_FUNDS retry; blocked trades   missed_trade_log dedupe +
 deduped, corrective action)                close digest
 ```
 
-## Schedules that touch HVF
+## Schedules that touch Squeeze
 
 | Job | Cron (UTC) | What |
 |---|---|---|
-| HVF Daily Report | 0 7 Mon–Fri (+ Sat 9) | Full universe scan: FTSE100 + FTSE250 + S&P500 list, 5 timeframes, X drafts for tradeables |
-| UK HVF Watch | 30 8,10,12,14 | UK_OPEN instrument watch, 2-hourly, dedup fingerprint |
-| US HVF Watch | 30 14,16,18,20 | US_OPEN instrument watch |
-| US/UK/AUS Monitors | */5 in session | Rescan for new entries, route HVF to working orders, reconcile fills |
+| Squeeze Daily Report | 0 7 Mon–Fri (+ Sat 9) | Full universe scan: FTSE100 + FTSE250 + S&P500 list, 5 timeframes, X drafts for tradeables |
+| UK Squeeze Watch | 30 8,10,12,14 | UK_OPEN instrument watch, 2-hourly, dedup fingerprint |
+| US Squeeze Watch | 30 14,16,18,20 | US_OPEN instrument watch |
+| US/UK/AUS Monitors | */5 in session | Rescan for new entries, route Squeeze to working orders, reconcile fills |
 | Data Quality Audit | 15 22 | Yahoo-vs-IG price + identity audit (rotating UK universe) |
-| HVF regression tests | on push | trading-hvf-tests.yml — every push touching detection code |
+| Squeeze regression tests | on push | trading-hvf-tests.yml — every push touching detection code |
 
 ## Reconciliation hooks (see memory/reconciliation_register.md)
 

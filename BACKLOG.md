@@ -92,7 +92,7 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   engine), and have the card + price chart read from the DB with Yahoo as the fallback. One source of
   truth for engine + charts + reports. Retire the `.pkl` fallback once the DB read path is verified.
 
-- [ ] **HVF site: exact triggered date** (user 2026-06-27, "do date exact tomorrow"). The site's
+- [ ] **Squeeze site: exact triggered date** (user 2026-06-27, "do date exact tomorrow"). The site's
   "Triggered" column currently shows a PROXY — the last pivot date (l3 for a long / h3 for a short),
   computed client-side in `hvf_web/index.html::augment`. Make it EXACT: in `hvf_web/build_snapshot.py`,
   for each TRIGGERED record fetch the daily history and find the first session AFTER h3_date where the
@@ -141,7 +141,7 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   the exit by X% / N bars), and an email path flagged URGENT. Guard against spam (one alert per
   instrument per bounce).
 - [x] **(C) DONE 2026-06-26 (run_hvf_report 1.27.0)** — post_to_slack also posts the report to the
-  `SLACK_RW_HVF` webhook (user-chosen extra channel; secret already set 2026-06-22) alongside
+  dedicated secondary signals webhook (user-chosen extra channel; secret already set 2026-06-22) alongside
   SLACK_SIGNALS; webhooks are independent (a missing/failing one doesn't stop the others). Secret
   wired into trading-hvf-report.yml.
 - [x] **(D) DONE 2026-06-26 (run_hvf_report 1.26.0)** — hides a market's DEVELOPING watch list when it

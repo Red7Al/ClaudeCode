@@ -1,11 +1,11 @@
 ---
 name: ah-hvf-analysis
 description: >
-  The A&A Trading implementation of the Hunt Volatility Funnel (HVF) method — the AUTOMATED
+  The A&A Trading implementation of the The Squeeze (Squeeze) method — the AUTOMATED
   production version running in the EndToEndTrading system (distinct from the manual
-  RW-hvf-analysis reference skill). Use this skill whenever the user mentions HVF, Hunt
-  Volatility Funnel, volatility squeeze, funnel patterns, or asks to: scan for HVF setups,
-  check a ticker's HVF status, explain why a pattern did or didn't detect, verify entry/stop/
+  RW-hvf-analysis reference skill). Use this skill whenever the user mentions Squeeze, Hunt
+  Volatility Funnel, volatility squeeze, funnel patterns, or asks to: scan for Squeeze setups,
+  check a ticker's Squeeze status, explain why a pattern did or didn't detect, verify entry/stop/
   target levels, generate X post cards, or change anything in the detection pipeline. Also
   trigger for casual phrasings like "any setups today?", "why isn't X showing a funnel?",
   "is the scanner right about Y?". This skill encodes the exact production parameters
@@ -13,7 +13,7 @@ description: >
   regression-test contract that protects them.
 ---
 
-# AH HVF Analysis — the A&A production implementation
+# AH Squeeze Analysis — the A&A production implementation
 
 Everything here describes code that RUNS — `price_action.py` is the single source of truth.
 When this document and the code disagree, the code wins and this document must be fixed.
@@ -56,7 +56,7 @@ R:R    = |Target − Entry| ÷ |Entry − Stop|          ← computed from ENTRY
    (≥4 weekly).
 7. **Convergence** — (H3−L3) ÷ (H1−L1) must be < 0.70, and the remaining funnel width
    (H3−L3) must be ≥ 1% of price (kills degenerate near-zero-risk patterns).
-8. **R:R gate** — `HVF_MIN_RR` (aliased to `MIN_RISK_REWARD`, currently **3.0**) applies BEFORE
+8. **R:R gate** — `MIN_RISK_REWARD` (currently **3.0**) applies BEFORE
    TRIGGERED is assigned. Below it → DEVELOPING (watchlist), never tradeable. Single source of
    truth in config.py — never hardcode.
 9. **States** — TRIGGERED (price past entry) > READY (pattern complete, waiting) > DEVELOPING
@@ -95,7 +95,7 @@ python -c "from price_action import get_hvf_signal_mtf, get_trend_structure; \
   print(get_hvf_signal_mtf('RR.L', trend_hint=get_trend_structure('RR.L')))"   # one ticker
 ```
 
-## Non-negotiables when answering HVF questions
+## Non-negotiables when answering Squeeze questions
 
 - Quote levels from the live scanner or IG data — never from memory. UK levels are GBX (pence).
 - Always show full instrument names, lists in weight order, plain-English mechanisms.
@@ -108,7 +108,7 @@ python -c "from price_action import get_hvf_signal_mtf, get_trend_structure; \
 ## Fidelity to the official method (audited 2026-06-12)
 
 The pattern, entry, and **target formula are word-for-word faithful** to Francis Hunt's
-publicly documented HVF (`Target = midpoint(H3,L3) ± (H1−L1)`). Attention items, in order:
+publicly documented Squeeze (`Target = midpoint(H3,L3) ± (H1−L1)`). Attention items, in order:
 1. **AMP1 exhaustion anchor — ✅ NOW IMPLEMENTED** (apply_exhaustion_amp1, 2026-06-12): the
    target amplitude re-anchors to the prior trend's true exhaustion extreme over full
    history; entry/stop unchanged. Daily-window targets grow; weekly unchanged.

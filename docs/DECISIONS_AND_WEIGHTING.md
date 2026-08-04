@@ -1,6 +1,6 @@
 # From a signal to a decision — weighting & publication
 
-How a detected funnel (see [HVF_METHOD.md](HVF_METHOD.md)) becomes an ordered, gated, published
+How a detected funnel (see [SQUEEZE_METHOD.md](SQUEEZE_METHOD.md)) becomes an ordered, gated, published
 decision. Generated from the live code (`hvf_clean.detect_hvf`, `price_action.hvf_weight`,
 `config.py`, `intraday_signals.py`, `run_hvf_report.py`).
 
