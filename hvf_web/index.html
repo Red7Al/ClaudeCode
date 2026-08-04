@@ -1310,9 +1310,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div id="pf-charts">
     <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
   </div>
-  <h2 class="sec">Summary</h2>
-  <p class="muted" style="font-size:13px;margin-top:-8px">Overall / Bull / Bear split of the back-test population above — the same table as the Summary sub-tab, reflecting your current filters.</p>
-  <div id="pf-summary-bt" class="tablewrap" style="margin-bottom:14px"></div>
   <h2 class="sec">Best Quality / R:R combinations / Volume Score</h2>
   <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide), R:R bands (1 wide) and Volume Score bands (8+ / 4–7 / 0–3); ranked by average direction-aware return across the recorded triggers, <b>reacting to the charts above</b>. Only buckets with at least 3 triggers are shown.</p>
   <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
@@ -1350,7 +1347,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        first-class Performance sub-tab. It remains an illustration and never changes live orders. -->
   <div id="pf-panel-run" class="hidden">
     <h2 class="sec" style="margin-top:0">🏃 Let winners run</h2>
-    <p class="muted" style="font-size:13px;margin-top:-8px">Compare selling at TARGET with locking in that target gain and trailing the remaining move. The calculation uses your settings from Configuration → Trading (Squeeze) → Let winners run. Illustration only — it never changes your live orders.</p>
+    <p class="muted" style="font-size:13px;margin-top:-8px">Compare selling at TARGET with locking in that target gain and trailing the remaining move. Change the values below to test their historical impact <b>before</b> changing your live configuration. This report is an illustration only — it never saves settings or changes live orders.</p>
+    <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <b style="font-size:13px">What-if settings</b>
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Trailing stop applied before target. Zero keeps the original hard stop until target.">Stop trail
+        <input id="pf-run-stop" type="number" min="0" max="100" step="5" value="0" style="width:64px;padding:4px 6px" onchange="winnersRunChange('pf')">%</label>
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="After target, the stop locks the target gain and trails the remaining move by this percentage.">Run trail
+        <input id="pf-run-in" type="number" min="0" max="100" step="5" value="25" style="width:64px;padding:4px 6px" onchange="winnersRunChange('pf')">%</label>
+      <span id="pf-run-busy" class="muted" style="font-size:12px"></span>
+    </div>
     <div id="pf-run-wrap" style="margin-bottom:14px">
       <div id="pf-run"></div>
     </div>
@@ -1390,9 +1395,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <b style="font-size:13px">🏃 Let winners run</b>
         <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Stop-loss trailing % applied BEFORE target — the stop follows price up on the way to target. 0 = keep the original hard stop until target.">Stop trail
-          <input id="ordp-run-stop" type="number" min="0" max="100" step="5" value="0" style="width:64px;padding:4px 6px" onchange="winnersRunChange()">%</label>
+          <input id="ordp-run-stop" type="number" min="0" max="100" step="5" value="0" style="width:64px;padding:4px 6px" onchange="winnersRunChange('ordp')">%</label>
         <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Once target is reached the stop moves UP TO the target (so the gain can't decay), then trails above it by entry × gain × this %.">Run trail
-          <input id="ordp-run-in" type="number" min="0" max="100" step="5" value="25" style="width:64px;padding:4px 6px" onchange="winnersRunChange()">%</label>
+          <input id="ordp-run-in" type="number" min="0" max="100" step="5" value="25" style="width:64px;padding:4px 6px" onchange="winnersRunChange('ordp')">%</label>
         <span class="muted" style="font-size:11px">once target hits, the stop moves <b>up to target</b> then trails — so 17% can't decay to 7%. Illustration only — never moves real orders.</span>
         <span id="ordp-run-busy" class="muted" style="font-size:12px"></span>
       </div>
@@ -3378,7 +3383,7 @@ function pfPanel(which){
   const filters=$("pf-subnav");if(filters)filters.classList.toggle("hidden",which==="run");   // date/location filters do not feed /api/winners-run
   const wh=$("pf-winners-head");if(wh)wh.classList.toggle("hidden",which!=="analysis");   // winners title/lede above the filters (P-07 L289)
   if(which==="analysis")renderSqueezeAnalysis();
-  if(which==="run")winnersRunChange();
+  if(which==="run")winnersRunChange('pf');
   if(which==="summary"&&typeof _renderPerformance==="function")_renderPerformance();   // rebuild the "Settings used" card for this sub-tab (user 2026-07-24, P-02)
 }
 // ── 15-month squeeze analysis (user 2026-07-17, P-21b) ───────────────────────────────────────────────
@@ -3423,7 +3428,7 @@ function winnersParamsChange(){
   if(mo>0 && maxTrade<MIN_TRADE && !warn)
     warn=`Wallet ÷ ${mo} = ${fmt(maxTrade)} per trade, below the £${MIN_TRADE} minimum — reduce Max open positions or raise the Wallet.`;
   const msg=$("ordp-model-msg"); if(msg){msg.textContent=warn; msg.style.color=warn?"var(--bear)":"";}
-  paintOrdersPerf(); winnersSLChange(); winnersRunChange();   // re-render the plain view + SL + let-winners-run illustrations
+  paintOrdersPerf(); winnersSLChange(); winnersRunChange('ordp');   // re-render the plain view + SL + let-winners-run illustrations
 }
 // Save the winners Model variables as the user's persistent defaults (user 2026-07-28, P-10 L158) — stored
 // on the user record via /api/config limits, and re-applied to the Model inputs on the next login (loadLimits).
@@ -3521,20 +3526,17 @@ function winnersSLChange(){
 // a trade hits target the stop ratchets UP TO the target (so it can't give back below the target gain, e.g. 17%
 // stays >=17%), then trails above it by the Run-trail %; before target it trails by the Stop-trail %. Per-user
 // opt-in: hidden unless MY_LIMITS.let_winners_run is on; inputs default from the user's saved config.
-function winnersRunChange(){
+function winnersRunChange(surface='pf'){
   // The report is shown on TWO surfaces: the "What separates the winners" tab (#ordp-run, with its own
   // trail inputs) and the dedicated Performance sub-tab (#pf-run, read-only, using the saved config).
-  const wraps=["ordp-run-wrap","pf-run-wrap"].map($), boxes=["ordp-run","pf-run"].map($), busy=$("ordp-run-busy");
-  const paintAll=html=>boxes.forEach(b=>{if(b)b.innerHTML=html;});
-  if(!(MY_LIMITS&&+MY_LIMITS.let_winners_run)){
-    const adminWrap=$("ordp-run-wrap");if(adminWrap)adminWrap.style.display="none";
-    const publicWrap=$("pf-run-wrap");if(publicWrap)publicWrap.style.display="";
-    const publicBox=$("pf-run");if(publicBox)publicBox.innerHTML='<div class="card"><b>Let winners run is off</b><div class="muted" style="font-size:13px;margin-top:5px">Turn it on in Configuration → Trading (Squeeze) → Let winners run to calculate this comparison with your trail settings.</div></div>';
-    return;
-  }
-  wraps.forEach(w=>{if(w)w.style.display="";});
-  // Default the two inputs from the user's saved config the first time (don't clobber manual edits after).
-  const inT=$("ordp-run-in"), inS=$("ordp-run-stop");
+  const prefix=surface==='ordp'?'ordp':'pf', wrap=$(prefix+"-run-wrap"), box=$(prefix+"-run"), busy=$(prefix+"-run-busy");
+  const paint=html=>{if(box)box.innerHTML=html;};
+  // Keep the legacy admin card conditional on the live option, but the dedicated Performance report is
+  // always available: its purpose is to test settings before enabling or saving them.
+  if(prefix==='ordp'&&!(MY_LIMITS&&+MY_LIMITS.let_winners_run)){if(wrap)wrap.style.display="none";return;}
+  if(wrap)wrap.style.display="";
+  // Seed each surface from saved config once; subsequent edits remain unsaved what-if values.
+  const inT=$(prefix+"-run-in"), inS=$(prefix+"-run-stop");
   if(inT&&!inT.dataset.seed){inT.value=(MY_LIMITS.let_winners_run_trail??25);inT.dataset.seed="1";}
   if(inS&&!inS.dataset.seed){inS.value=(MY_LIMITS.let_winners_run_stop??0);inS.dataset.seed="1";}
   const v=+((inT||{}).value||(MY_LIMITS.let_winners_run_trail??25)), sv=+((inS||{}).value||(MY_LIMITS.let_winners_run_stop??0));
@@ -3542,7 +3544,7 @@ function winnersRunChange(){
   fetch("/api/winners-run?thr="+v+"&stop="+sv).then(r=>r.ok?r.json():null).then(j=>{
     if(busy)busy.textContent="";
     const rows=((j&&j.rows)||[]).filter(r=>r.perf!=null);
-    if(!rows.length){paintAll('<div class="muted" style="font-size:13px">No data to re-backtest.</div>');return;}
+    if(!rows.length){paint('<div class="muted" style="font-size:13px">No data to re-backtest.</div>');return;}
     const comp=key=>{let w=WINNERS_WALLET;for(const r of rows){const p=r[key];if(p!=null)w+=w*WINNERS_STAKE*p/100;}return w;};
     const plainFinal=comp("perf"), runFinal=comp("run_perf"), delta=runFinal-plainFinal;
     const tgt=rows.filter(r=>r.outcome==='TARGET'&&r.run_perf!=null);
@@ -3550,7 +3552,7 @@ function winnersRunChange(){
     const money=x=>`£${Math.round(x).toLocaleString()}`, col=delta>=0?'var(--bull)':'var(--bear)';
     const big=tgt.slice().sort((a,b)=>(b.run_perf-b.perf)-(a.run_perf-a.perf)).slice(0,5);
     const stopTxt=sv>0?` (stop trailing ${j.stop_pct||sv}% before target)`:``;
-    paintAll(`<div class="card" style="border:1px solid ${col};background:color-mix(in srgb,${col} 8%,transparent)">
+    paint(`<div class="card" style="border:1px solid ${col};background:color-mix(in srgb,${col} 8%,transparent)">
       <h4 style="margin:0 0 6px">🏃 Let winners run @ ${(j.threshold_pct||v)}% run-trail${stopTxt} — illustration (live orders unaffected)</h4>
       <div class="muted" style="font-size:13px">Once a trade hits target, the stop moves <b>up to the target</b> (so it can't give back below the target gain), then trails above it.
       ${money(WINNERS_WALLET)} compounded ends at <b>${money(runFinal)}</b> <b>letting winners run</b> vs <b>${money(plainFinal)}</b> <b>selling at target</b> —
@@ -3559,7 +3561,7 @@ function winnersRunChange(){
       ${delta>=0?'Letting winners run (with the stop at target) beats selling at target here — raise the Trail % to keep more of a big run, lower it to lock in sooner.':'Here it did not help.'}</div>
       ${big.length?`<div class="muted" style="font-size:12px;margin-top:6px"><b>Biggest runners:</b> ${big.map(r=>`${_esc(r.name||disp(r.ticker))} ${r.perf>0?'+':''}${r.perf}%→${r.run_perf>0?'+':''}${r.run_perf}%`).join(' · ')}</div>`:''}
     </div>`);
-  }).catch(()=>{if(busy)busy.textContent="";paintAll('<div class="muted" style="font-size:13px">Re-backtest failed.</div>');});
+  }).catch(()=>{if(busy)busy.textContent="";paint('<div class="muted" style="font-size:13px">Re-backtest failed.</div>');});
 }
 // Compact market-cap format (user 2026-08-01): 1.23T / 340B / 12M. No currency symbol (values are in each
 // instrument's own currency). Blank when absent — mcap is not captured in the pipeline yet, so this reads
@@ -4250,8 +4252,8 @@ const _pfBg=(v,max,good)=>{if(v==null||!max)return"";const a=Math.min(Math.abs(v
   const c=(good?(v>=0):(v<0))?`22,163,74`:`220,38,38`;return`background:rgba(${c},${a.toFixed(2)})`;};
 function _renderPfSummary(sel){
   // Mirror the summary table to BOTH the Summary sub-tab and the Back Test sub-tab (user 2026-08-01):
-  // #pf-summary (Summary) and #pf-summary-bt (Back Test, above the Quality/R:R/Volume combos).
-  const _put=html=>{const a=$("pf-summary");if(a)a.innerHTML=html;const b=$("pf-summary-bt");if(b)b.innerHTML=html;};
+  // The split belongs only on the dedicated Summary sub-tab (removed from Back Test, user 2026-08-04).
+  const _put=html=>{const a=$("pf-summary");if(a)a.innerHTML=html;};
   if(LIMITED){_put(`<p class="muted">🔒 <a href="#" onclick="showLogin();return false">Log in</a> to see the performance summary.</p>`);return;}
   const segs=[["Overall",sel],["Bull",sel.filter(r=>r.direction==="BULL")],["Bear",sel.filter(r=>r.direction==="BEAR")]];
   const rows=segs.map(([name,rs])=>{const s=_pfSeg(rs);

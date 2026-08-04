@@ -13,6 +13,11 @@ def test_performance_has_dedicated_let_winners_run_tab():
     assert 'data-pfpanel="run" onclick="pfPanel(\'run\')"' in html
     assert 'id="pf-panel-run" class="hidden"' in html
     assert 'if(run)run.classList.toggle("hidden",which!=="run")' in html
+    assert 'id="pf-run-stop"' in html
+    assert 'id="pf-run-in"' in html
+    assert "winnersRunChange('pf')" in html
+    assert "Let winners run is off" not in html
+    assert 'id="pf-summary-bt"' not in html
 
 
 def test_let_winners_run_never_gives_back_below_bull_target(monkeypatch):
