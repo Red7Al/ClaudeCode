@@ -25,6 +25,7 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
    paint. z-index sits BELOW the header (5) so the header's Refresh/Markets dropdowns still overlay the tabs. */
 .tabs{display:flex;gap:4px;padding:6px 16px 0;border-bottom:1px solid var(--line);position:sticky;top:calc(var(--hdr-h,49px) - 1px);z-index:4;background:var(--bg)}
 .tab{background:none;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;color:var(--muted);padding:6px 16px;cursor:pointer;font-size:13px}
+#tab-sysdocs{max-width:112px;padding-inline:10px;line-height:1.15;white-space:normal}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
 /* Operations / Settings sub-navigation (user 2026-07-10) */
 .subnav{display:flex;gap:6px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;align-items:center;justify-content:center;position:sticky;top:var(--sticky-top,90px);z-index:3}
@@ -288,6 +289,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
    Anything too wide now scrolls sideways via .doc .tablewrap{overflow-x:auto} — the same trade-off
    #view-preorders already chose deliberately. */
 .doc .tablewrap table th,.doc .tablewrap table td{white-space:nowrap;word-break:break-word}
+#view-fees .fees-charges-wrap{display:inline-block;max-width:100%;padding-bottom:8px}
+#view-fees table.fees-charges{width:auto;max-width:100%}
 .datecard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 12px;box-shadow:var(--sh-sm);display:inline-flex;align-items:center;gap:8px;font-size:13px}
 /* Admin pages get the amber treatment (user 2026-07-04) */
 #view-batch .gsec,#view-users .gsec,#view-version .gsec,#view-syslogs .gsec,#view-xposts .gsec,#view-jobs .gsec{border-left-color:#d29922}
@@ -321,6 +324,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
    the table or be centred"). */
 #ig-ord-viz{justify-content:center}
 #ig-ord-viz>.vizsector{flex:0 1 auto}
+#ig-pos-viz>.vizsector{flex:1 1 0;min-width:180px}
 #view-users table th,#view-users table td{white-space:nowrap;word-break:normal}
 /* Layout pass (user 2026-07-11): the main data views use the screen width (less side white space and
    less horizontal scroll on wide monitors); tighter cells fit more columns; Scanner card reclaims width. */
@@ -1622,7 +1626,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <!-- IG Account (all users, default hidden, user 2026-07-10) — the acting user's own IG positions + orders. -->
-<div id="view-igaccount" class="hidden doc" style="max-width:1120px">
+<div id="view-igaccount" class="hidden doc" style="max-width:min(1680px,97vw)">
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><button class="btn" id="ig-refresh" onclick="renderIgAccount(event)">↻ Refresh</button></div>
   <h1>IG Account</h1>
   <p class="lede">Your own IG account — open and recently closed transactions, plus working orders. Shown for the account whose credentials you use (owner uses the shared account; others use their own from Configuration → IG).</p>
@@ -1631,7 +1635,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div id="ig-note" style="font-size:12px;margin-bottom:10px"></div>
   <!-- OPEN POSITIONS get their OWN chart strip directly above their table (user 2026-08-01): Location /
        Market / Sector / Direction, computed from the positions (enriched from the snapshot). -->
-  <input type="hidden" id="igp_location"><input type="hidden" id="igp_market"><input type="hidden" id="igp_sector"><input type="hidden" id="igp_direction">
+  <input type="hidden" id="igp_location"><input type="hidden" id="igp_market"><input type="hidden" id="igp_sector"><input type="hidden" id="igp_direction"><input type="hidden" id="igp_open_month">
   <div class="viz" id="ig-pos-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <!-- No search here (user 2026-07-17): the IG account holds only a handful of live positions/orders, so
        a search is clutter. paintIgAccount tolerates the missing #ig-search input (treats it as blank). -->
@@ -3123,7 +3127,7 @@ function renderMarketsAdmin(){
 }
 document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();_sortArrows("data-ma",maSortK,maSortDir);});
 // ── IG Account tab (user 2026-07-10): the acting user's own IG open positions + working orders ──
-let IG_POS=[], IG_ORD=[];
+let IG_POS=[], IG_ORD=[], igOpenMonthInitialised=false;
 let igpSortK="size", igpSortDir=-1, igoSortK="good_till", igoSortDir=-1;   // IG Account table sorts (user 2026-08-01): positions by size desc, orders by good-till desc
 const _igDtag=d=>d?`<span class="tag ${d==='BUY'?'bull':'bear'}">${d}</span>`:'';
 // Shared formatters: closed-trade painting runs independently of paintIgAccount.
@@ -3145,11 +3149,16 @@ function paintIgAccount(){
   const cnt=(n,tot,word)=>`<b style="font-size:15px;color:var(--fg)">${n}</b> ${word}${n===1?'':'s'}${tot!==n?` <span class="muted">of ${tot}</span>`:''}`;
 
   // ── OPEN POSITIONS (own strip + aggregate toggle + sortable table, user 2026-08-01) ──
-  let posBase=IG_POS.filter(hit).map(p=>Object.assign({},p,_enrCommon(p)));
+  if(!igOpenMonthInitialised){
+    const months=IG_POS.map(p=>(p.opened||'').slice(0,7)).filter(Boolean).sort();
+    if(months.length&&$("igp_open_month"))$("igp_open_month").value=months[months.length-1];
+    igOpenMonthInitialised=true;
+  }
+  let posBase=IG_POS.filter(hit).map(p=>Object.assign({},p,_enrCommon(p),{open_month:(p.opened||'').slice(0,7)||'—'}));
   const _agg=((document.querySelector('input[name="ig-pos-view"]:checked')||{}).value==='agg');
   if(_agg){   // one row per instrument+direction: sum size, size-weighted average level, earliest opened
     const g={};
-    posBase.forEach(p=>{const key=(p.ticker||p.epic||p.name)+'|'+p.direction;
+    posBase.forEach(p=>{const key=(p.ticker||p.epic||p.name)+'|'+p.direction+'|'+p.open_month;
       const a=g[key]||(g[key]=Object.assign({},p,{size:0,_wsum:0,_n:0,stop:null,limit:null,current:null,profit:0,_ppw:0,_pptot:0}));
       const sz=+p.size||0; a.size+=sz; a._wsum+=(+p.level||0)*sz; a._n++;
       a.profit+=(+p.profit||0);
@@ -3158,7 +3167,7 @@ function paintIgAccount(){
     posBase=Object.values(g).map(a=>Object.assign(a,{level:a.size?+(a._wsum/a.size).toFixed(4):a.level,
       profit:+a.profit.toFixed(2), profit_pct:a._pptot?+(a._ppw/a._pptot).toFixed(2):null}));
   }
-  const IGPF=[["igp_location","location"],["igp_market","market"],["igp_sector","sector"],["igp_direction","direction"]];
+  const IGPF=[["igp_location","location"],["igp_market","market"],["igp_sector","sector"],["igp_direction","direction"],["igp_open_month","open_month"]];
   const pby=(field,exceptId)=>{const m={};
     posBase.forEach(p=>{const v=p[field]||"—";if(!(v in m))m[v]=0;});
     posBase.forEach(p=>{if(!IGPF.every(([id,k])=>id===exceptId||inSet(id,p[k])))return;const v=p[field]||"—";m[v]++;});return m;};
@@ -3166,7 +3175,8 @@ function paintIgAccount(){
     `<div class="vizsector">`+barChart("Location",pby("location","igp_location"),"igp_location")+`</div>`+
     `<div class="vizsector">`+barChart("Market",pby("market","igp_market"),"igp_market")+`</div>`+
     `<div class="vizsector">`+pieChart("Sector",pby("sector","igp_sector"),"igp_sector")+`</div>`+
-    `<div class="vizsector">`+barChart("Direction",pby("direction","igp_direction"),"igp_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`):"";
+    `<div class="vizsector">`+barChart("Direction",pby("direction","igp_direction"),"igp_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`+
+    `<div class="vizsector">`+barChart("Open Month",pby("open_month","igp_open_month"),"igp_open_month",null,true)+`</div>`):"";
   packViz("ig-pos-viz");
   const pos=genSort(posBase.filter(p=>IGPF.every(([id,k])=>inSet(id,p[k]))),igpSortK,igpSortDir);
   let closed=(IGCLOSED||[]).map(c=>{const ol=+c.open_level,cl=+c.close_level,dir=c.direction;
@@ -3226,7 +3236,7 @@ function renderIgAccount(ev){
   $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading…</td></tr>`;
   fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
-      IG_POS=j.positions||[]; IG_ORD=j.orders||[];
+      IG_POS=j.positions||[]; IG_ORD=j.orders||[]; igOpenMonthInitialised=false;
       // Account name + obfuscated number above the positions (user 2026-07-20). Number is already masked
       // server-side (last 3 chars only).
       $("ig-acct").innerHTML=(j.account_name||j.account_masked)
@@ -3994,7 +4004,7 @@ function paintFeesTxns(seg){
       crows+=`<tr><td class="muted" style="text-align:right">${i+1}</td><td>${(c.instrument||'').replace(/</g,'&lt;')}</td><td class="muted">${c.type||''}</td><td>${fdate(c.date)}</td><td style="text-align:right;color:${(c.pnl||0)>=0?'var(--bull)':'var(--bear)'}">${gbp(c.pnl)}</td></tr>`;});
     html+=`<h3 class="sec" style="font-size:14px">IG charges — ${seg.label}</h3>`+
       `<p class="muted" style="font-size:11.5px;margin:2px 0 6px">Overnight funding, interest and fees IG applied in this period — these reduce the net realised profit above.</p>`+
-      `<div class="tablewrap"><table><thead><tr><th style="text-align:right">#</th><th>Charge</th><th>Type</th><th>Date</th><th style="text-align:right">Amount</th></tr></thead><tbody>`+
+      `<div class="tablewrap fees-charges-wrap"><table class="fees-charges"><thead><tr><th style="text-align:right">#</th><th>Charge</th><th>Type</th><th>Date</th><th style="text-align:right">Amount</th></tr></thead><tbody>`+
       crows+
       `<tr style="border-top:2px solid var(--line)"><td></td><td colspan="3"><b>Total IG charges (${charges.length})</b></td><td style="text-align:right;color:${ctot>=0?'var(--bull)':'var(--bear)'}"><b>${gbp(ctot)}</b></td></tr>`+
       `</tbody></table></div>`;
