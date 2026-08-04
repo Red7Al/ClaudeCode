@@ -1555,26 +1555,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <div id="view-configadmin" class="hidden doc" style="max-width:840px">
   <span class="eyebrow" style="color:#d29922;background:color-mix(in srgb,#d29922 14%,transparent)">Admin</span>
   <h1>Configuration (Admin)</h1>
-  <p class="lede">Application-wide engine settings — shared across the one trading account, read DB-first by the engine (local + GitHub Actions) with a code fallback. Admin only; every change is recorded in your activity log.</p>
+  <p class="lede">Application-wide settings shared across the service. Admin only; every change is recorded in your activity log.</p>
   <!-- Sub-tabs, as on Configuration (User) which the user rates highly (user 2026-07-17, P-28): one panel
        at a time instead of eight stacked cards. Credential pills are injected by renderCredentials. -->
   <nav class="confnav" id="confadminnav">
-    <button class="pill adminpill active" data-panel="engine" onclick="confAdminShow('engine')">⚙️ Engine</button>
     <button class="pill adminpill" data-panel="bridge" onclick="confAdminShow('bridge')" style="display:none">🌉 Bridge quality</button>   <!-- disabled — no longer used (user 2026-08-01) -->
     <button class="pill adminpill" data-panel="spread" onclick="confAdminShow('spread')" style="display:none">↔️ Spread retries</button>   <!-- disabled — no longer used (user 2026-08-01) -->
-    <button class="pill adminpill" data-panel="xpub" onclick="confAdminShow('xpub')">🐦 X publishing</button>
+    <button class="pill adminpill active" data-panel="xpub" onclick="confAdminShow('xpub')">🐦 X publishing</button>
   </nav>
-
-  <div class="confapanel" data-panel="engine">
-  <div class="card" style="margin-bottom:0"><h4>Engine settings <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
-    <p class="muted" style="font-size:12px">Application-wide trading/engine values (shared, one account).</p>
-    <!-- IG working-order lifespan removed here (user 2026-08-02, P-06): it is now a per-user setting in
-         Configuration (User) → Trading (Squeeze), so the admin copy is redundant. -->
-    <div class="credrow" style="display:none"><span class="clabel">Automated stop-loss trailing (%) <span class="muted" style="font-weight:400">0 = off. As a position runs into profit, each monitor pass moves the stop up by <b>entry × gain × this %</b> (never widened). e.g. 50 keeps half the run.</span></span><input type="number" min="0" max="100" step="5" id="eng-stop_amend_threshold" style="max-width:120px"></div>   <!-- disabled — no longer used (user 2026-08-01) -->
-    <button class="btn" style="margin-top:10px" onclick="saveEngine()">Save engine settings</button>
-    <span id="eng-msg" style="font-size:12px;margin-left:8px"></span>
-  </div>
-  </div>
 
   <div class="confapanel hidden" data-panel="bridge">
   <div class="card" style="margin-bottom:0;border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"><h4>Bridge quality floor <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
@@ -1593,7 +1581,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
   </div>
 
-  <div class="confapanel hidden" data-panel="xpub">
+  <div class="confapanel" data-panel="xpub">
   <!-- X publishing — the ONE editor for these three values. A second copy used to be injected next to
        X Credentials with the same element ids, and getElementById returns only the first match, so this
        card's inputs were shadowed and never saved (user 2026-07-17, P-10). The morning-HVF market
@@ -1637,7 +1625,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <div id="view-igaccount" class="hidden doc" style="max-width:1120px">
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><button class="btn" id="ig-refresh" onclick="renderIgAccount(event)">↻ Refresh</button></div>
   <h1>IG Account</h1>
-  <p class="lede">Your own IG account — live open positions and working orders. Shown for the account whose credentials you use (owner uses the shared account; others use their own from Configuration → IG).</p>
+  <p class="lede">Your own IG account — open and recently closed transactions, plus working orders. Shown for the account whose credentials you use (owner uses the shared account; others use their own from Configuration → IG).</p>
   <!-- Account name + obfuscated number, above the open positions (user 2026-07-20, P-05). -->
   <div id="ig-acct" style="font-size:14px;margin-bottom:8px"></div>
   <div id="ig-note" style="font-size:12px;margin-bottom:10px"></div>
@@ -1650,10 +1638,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="ig-pos-count"></span><span class="grow" style="flex:1"></span>
       <span class="muted" style="font-size:12.5px;display:inline-flex;align-items:center;gap:14px" title="Aggregate rows = one combined row per instrument (sum sizes, size-weighted level, summed profit)."><b style="color:var(--fg)">View:</b>
-        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="all" checked onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> Every position</label>
-        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="agg" onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> <b style="color:var(--fg)">Aggregate rows</b></label></span></div>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="all" onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> Every position</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="agg" checked onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> <b style="color:var(--fg)">Aggregate rows</b></label></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th class="clk" data-igp="name">Name</th><th class="clk" data-igp="market">Market</th><th class="clk" data-igp="direction">Dir</th><th class="clk" data-igp="size">Size</th><th class="clk" data-igp="level">Level</th><th class="clk" data-igp="current" title="Live close price (BUY at bid, SELL at offer)">Now</th><th class="clk" data-igp="profit" title="Live profit in the instrument's currency = (close − open) × size × contract size, direction-aware">Profit</th><th class="clk" data-igp="profit_pct" title="Live profit % against the open level, direction-aware">Profit %</th><th class="clk" data-igp="stop">Stop</th><th class="clk" data-igp="limit">Limit</th><th class="clk" data-igp="currency">Ccy</th><th class="clk" data-igp="opened">Opened (UTC)</th><th class="clk" data-igp="ticker">Ticker</th></tr></thead>
+      <thead><tr><th class="clk" data-igp="status">Status</th><th class="clk" data-igp="name">Name</th><th class="clk" data-igp="market">Market</th><th class="clk" data-igp="direction">Dir</th><th class="clk" data-igp="size">Size</th><th class="clk" data-igp="level">Open</th><th class="clk" data-igp="current" title="Live close price for open positions, execution close price for closed trades">Now / Close</th><th class="clk" data-igp="profit" title="Live or realised profit in the instrument's currency">Profit</th><th class="clk" data-igp="profit_pct" title="Profit % against the open level, direction-aware">Profit %</th><th class="clk" data-igp="stop">Stop</th><th class="clk" data-igp="limit">Limit</th><th class="clk" data-igp="currency">Ccy</th><th class="clk" data-igp="opened">Opened (UTC)</th><th class="clk" data-igp="closed">Closed (UTC)</th><th class="clk" data-igp="reason">Why closed</th><th class="clk" data-igp="ticker">Ticker</th></tr></thead>
       <tbody id="ig-pos-rows"></tbody>
     </table></div>
   </section>
@@ -2825,7 +2813,7 @@ function renderCredentials(){
       const cur=document.querySelector("#confnav .pill.active")?.dataset.panel;
       confShow(document.querySelector(`#view-config .confpanel[data-panel="${cur}"]`)?cur:"preferences");
       const curA=document.querySelector("#confadminnav .pill.active")?.dataset.panel;
-      confAdminShow(document.querySelector(`#view-configadmin .confapanel[data-panel="${curA}"]`)?curA:"engine");
+      confAdminShow(document.querySelector(`#view-configadmin .confapanel[data-panel="${curA}"]`)?curA:"xpub");
     })
     .catch(()=>{$("cfg-creds").innerHTML=`<div class="muted">Could not load credentials — try logging in again.</div>`;});
 }
@@ -3148,6 +3136,11 @@ document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.
 let IG_POS=[], IG_ORD=[];
 let igpSortK="size", igpSortDir=-1, igoSortK="good_till", igoSortDir=-1;   // IG Account table sorts (user 2026-08-01): positions by size desc, orders by good-till desc
 const _igDtag=d=>d?`<span class="tag ${d==='BUY'?'bull':'bear'}">${d}</span>`:'';
+// Shared formatters: closed-trade painting runs independently of paintIgAccount.
+// Keeping these at module scope prevents real closed rows throwing ReferenceError (_sz/_pf).
+const _igSz=v=>v==null||v===''?'':(Math.round(+v*100)/100);
+const _igPf=v=>v==null?'<span class="muted">—</span>':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>=0?'+':'−'}${Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:2})}</span>`;
+const _igPfp=v=>v==null?'<span class="muted">—</span>':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>=0?'+':''}${v}%</span>`;
 // Friendly order-source labels (user 2026-07-13): WEB_BRIDGE is the 2-hour Squeeze-scanner bridge.
 const _igSrc=s=>({WEB_BRIDGE:"Squeeze (bridge)",WEB_MANUAL:"Manual (web)"}[s]||s||'—');
 // Paint from the last fetch, honouring the tab's name/ticker search (user 2026-07-17, P-17). Split out
@@ -3164,7 +3157,6 @@ function paintIgAccount(){
   // ── OPEN POSITIONS (own strip + aggregate toggle + sortable table, user 2026-08-01) ──
   let posBase=IG_POS.filter(hit).map(p=>Object.assign({},p,_enrCommon(p)));
   const _agg=((document.querySelector('input[name="ig-pos-view"]:checked')||{}).value==='agg');
-  const _sz=v=>v==null||v===''?'':(Math.round(+v*100)/100);   // round size to 2dp — fixes 0.10999999… (user 2026-08-01)
   if(_agg){   // one row per instrument+direction: sum size, size-weighted average level, earliest opened
     const g={};
     posBase.forEach(p=>{const key=(p.ticker||p.epic||p.name)+'|'+p.direction;
@@ -3187,10 +3179,14 @@ function paintIgAccount(){
     `<div class="vizsector">`+barChart("Direction",pby("direction","igp_direction"),"igp_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`):"";
   packViz("ig-pos-viz");
   const pos=genSort(posBase.filter(p=>IGPF.every(([id,k])=>inSet(id,p[k]))),igpSortK,igpSortDir);
-  $("ig-pos-count").innerHTML=cnt(pos.length,IG_POS.length,_agg?"instrument":"open position");
-  const _pf=v=>v==null?'<span class="muted">—</span>':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>=0?'+':'−'}${Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:2})}</span>`;
-  const _pfp=v=>v==null?'<span class="muted">—</span>':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>=0?'+':''}${v}%</span>`;
-  $("ig-pos-rows").innerHTML=pos.map(p=>`<tr><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${p.market||'<span class="muted">—</span>'}</td><td>${_igDtag(p.direction)}</td><td>${_sz(p.size)}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.current??'<span class="muted">—</span>')}</td><td>${_pf(p.profit)}</td><td>${_pfp(p.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td><b>${p.ticker||p.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="13" class="empty">${q?'No open positions match that search.':'No open positions.'}</td></tr>`;
+  const closed=(IGCLOSED||[]).map(c=>{const ol=+c.open_level,cl=+c.close_level,dir=c.direction;
+    const pct=(Number.isFinite(ol)&&ol!==0&&Number.isFinite(cl))?+(((dir==='SELL'?ol-cl:cl-ol)/ol)*100).toFixed(2):null;
+    return Object.assign({},c,{status:'Closed',name:c.instrument||'',level:c.open_level,current:c.close_level,
+      profit:c.pnl,profit_pct:pct,closed:c.date||'',market:'—',ticker:''});});
+  const openRows=pos.map(p=>`<tr><td><span class="tag bull">Open</span></td><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${p.market||'<span class="muted">—</span>'}</td><td>${_igDtag(p.direction)}</td><td>${_igSz(p.size)}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.current??'<span class="muted">—</span>')}</td><td>${_igPf(p.profit)}</td><td>${_igPfp(p.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td></td><td></td><td><b>${p.ticker||p.epic||''}</b></td></tr>`);
+  const closedRows=genSort(closed,igpSortK,igpSortDir).map(c=>`<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(c.name)}</td><td><span class="muted">—</span></td><td>${_igDtag(c.direction)}</td><td>${_igSz(c.size)}</td><td>${c.level??''}</td><td>${c.current??''}</td><td>${_igPf(c.profit)}</td><td>${_igPfp(c.profit_pct)}</td><td></td><td></td><td>${c.currency||''}</td><td></td><td>${c.closed}</td><td>${_igReason(c.reason)}</td><td></td></tr>`);
+  $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${pos.length+closed.length}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed${IGCLOSED===null?' (loading…)':''}</span>`;
+  $("ig-pos-rows").innerHTML=openRows.concat(closedRows).join("")||`<tr><td colspan="16" class="empty">${q?'No transactions match that search.':'No open or recently closed transactions.'}</td></tr>`;
 
   // ── WORKING ORDERS (own strip + sortable table) ──
   const ordBase=IG_ORD.filter(hit).map(o=>Object.assign({},o,_enrCommon(o),{gtd:(o.good_till||"").slice(0,10)||"—"}));
@@ -3207,7 +3203,7 @@ function paintIgAccount(){
   packViz("ig-ord-viz");
   const ord=genSort(ordBase.filter(o=>IGF.every(([id,k])=>inSet(id,o[k]))),igoSortK,igoSortDir);
   $("ig-ord-count").innerHTML=cnt(ord.length,IG_ORD.length,"working order");
-  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${o.market||'<span class="muted">—</span>'}</td><td>${_igDtag(o.direction)}</td><td>${_sz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
+  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${o.market||'<span class="muted">—</span>'}</td><td>${_igDtag(o.direction)}</td><td>${_igSz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
 // Closed trades + why they closed (user 2026-08-03, P-10/P-12) — lazy-loaded on first reveal.
 let IGCLOSED=null, _igClosedNote="", igcSortK="date", igcSortDir=-1;
@@ -3215,7 +3211,7 @@ function loadIgClosed(force){
   if(IGCLOSED!==null&&!force){paintIgClosed();return;}
   $("ig-closed-rows").innerHTML=`<tr><td colspan="8" class="empty">Loading…</td></tr>`;
   fetch("/api/ig-closed",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{trades:[]})
-    .then(j=>{IGCLOSED=j.trades||[];_igClosedNote=j.note||"";paintIgClosed();})
+    .then(j=>{IGCLOSED=j.trades||[];_igClosedNote=j.note||"";paintIgClosed();paintIgAccount();})
     .catch(()=>{$("ig-closed-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not load closed trades.</td></tr>`;});
 }
 function toggleIgClosed(){
@@ -3231,7 +3227,7 @@ function paintIgClosed(){
   const t=IGCLOSED||[];
   if($("ig-closed-count"))$("ig-closed-count").textContent=`Closed trades (${t.length})`;
   if(!t.length){$("ig-closed-rows").innerHTML=`<tr><td colspan="8" class="empty">${_igClosedNote||'No closed trades in the last 120 days.'}</td></tr>`;return;}
-  $("ig-closed-rows").innerHTML=genSort(t.slice(),igcSortK,igcSortDir).map(c=>`<tr><td>${c.date||''}</td><td>${nm40(c.instrument||'')}</td><td>${_igDtag(c.direction)}</td><td>${_sz(c.size)}</td><td>${c.open_level??''}</td><td>${c.close_level??''}</td><td>${_pf(c.pnl)}</td><td>${_igReason(c.reason)}</td></tr>`).join("");
+  $("ig-closed-rows").innerHTML=genSort(t.slice(),igcSortK,igcSortDir).map(c=>`<tr><td>${c.date||''}</td><td>${nm40(c.instrument||'')}</td><td>${_igDtag(c.direction)}</td><td>${_igSz(c.size)}</td><td>${c.open_level??''}</td><td>${c.close_level??''}</td><td>${_igPf(c.pnl)}</td><td>${_igReason(c.reason)}</td></tr>`).join("");
 }
 document.querySelectorAll("th[data-igc]").forEach(th=>th.onclick=()=>{const k=th.dataset.igc;igcSortDir=(igcSortK===k)?-igcSortDir:-1;igcSortK=k;paintIgClosed();_sortArrows("data-igc",igcSortK,igcSortDir);});
 function renderIgAccount(ev){
