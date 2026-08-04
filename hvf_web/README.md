@@ -1,6 +1,6 @@
-# HVF Scanner website
+# Squeeze Scanner website
 
-A filterable web view of every HVF setup, with the X post-card, a date-reactive price chart, the
+A filterable web view of every Squeeze setup, with the X post-card, a date-reactive price chart, the
 fixed 3-year history, the RW Rule 1-5 verdicts, the X tweet text, and broker analysis.
 
 ## Run
@@ -28,7 +28,7 @@ read-only; anyone with the URL can view it, so only share deliberately.
 
 ## Filters
 
-direction (bull/bear), location (UK/US/FX), market, sector, HVF status, quality range, R:R range,
+direction (bull/bear), location (UK/US/FX), market, sector, Squeeze status, quality range, R:R range,
 months-to-go range, P/E range, insider-% range, and a "setup within last N days" window that also
 drives the price chart. Dark/light toggle, top-right. Click any row for the detail panel.
 

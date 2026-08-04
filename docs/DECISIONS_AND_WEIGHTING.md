@@ -26,7 +26,7 @@ decision. Generated from the live code (`hvf_clean.detect_hvf`, `price_action.hv
 
 ## Execution — live IG working orders (circuit-breaker guarded)
 
-The HVF path now places **live IG working orders directly** — it no longer just posts *candidate*
+The Squeeze path now places **live IG working orders directly** — it no longer just posts *candidate*
 orders for a downstream service. Two triggers, both routed through the same guarded
 `ig_shim.place_hvf_order_from_sig`:
 
@@ -40,8 +40,8 @@ spread) plus the per-source execution toggles and per-user trade filters, and us
 user's own IG account** (owner = env credentials; a non-owner must have supplied their own, else it
 is blocked). Working orders expire after a configurable lifespan (default 28 days).
 
-*(A separate `TradingViewWebhook` service still exists for other, non-HVF signals; it is no longer
-the execution path for HVF setups.)*
+*(A separate `TradingViewWebhook` service still exists for other, non-Squeeze signals; it is no longer
+the execution path for Squeeze setups.)*
 
 ## The weighting calculation
 
@@ -69,7 +69,7 @@ identically. Changing the rule in one place changes every list.
 
 | Constant (source) | Default | Effect |
 |---|---|---|
-| `MIN_RISK_REWARD` / `HVF_MIN_RR` (`config.py`) | 3.0 | Below it a funnel is **DEVELOPING** (watch), not tradeable. |
+| `MIN_RISK_REWARD` (`config.py`) | 3.0 | Below it a funnel is **DEVELOPING** (watch), not tradeable. |
 | `MIN_PUBLISH_QUALITY` (`config.py`) | 25 | Setups below it are **not published** to X / live-X (lowered 70→25 on 2026-06-22 — the clean RW rules already gate hard on structure, so quality is a softer ranking floor). |
 | `X_DRAFT_PER_MARKET` (`config.py`) | 5 | Top-5 per market are drafted to the X-drafts channel. |
 | `X_PUBLISH_TOP_N` (`config.py`) | 2 | Top-2 per market of the changed set auto-publish to live X. |

@@ -1,15 +1,15 @@
-# The Hunt Volatility Funnel (HVF) — rules, thresholds & AMP1
+# The Squeeze — rules, thresholds & AMP1
 
 This is the reference for *how a setup is detected and scored*. It is generated from, and kept
 in step with, the live code in `price_action.py` (`get_hvf_signal` / `get_hvf_signal_mtf`).
 The companion doc [DECISIONS_AND_WEIGHTING.md](DECISIONS_AND_WEIGHTING.md) covers how a detected
 setup is then ordered, gated and published.
 
-![HVF funnel geometry](img/hvf_funnel.png)
+![Squeeze funnel geometry](img/hvf_funnel.png)
 
-## What an HVF is
+## What The Squeeze is
 
-A Hunt Volatility Funnel is a *continuation* pattern: after a confirmed trend, price coils into a
+The Squeeze is a *continuation* pattern: after a confirmed trend, price coils into a
 tightening range — a series of **lower highs** pressing down on a series of **higher lows** — until
 it breaks out and (often) runs. The screen looks for this shape across several timeframes and keeps
 the best one.
@@ -27,7 +27,7 @@ dossier (`instrument_dossier._hvf_rules_block`).
 | 4 | **Funnel converges** | width contracts **≥ 30%** from `H1−L1` to `H3−L3` (i.e. convergence ratio `< 0.70`) |
 | 5 | **Fresh breakout pivot** | `H3` formed **within 60 bars** (stale pivots are rejected) |
 
-After detection, a setup must also clear the **tradeability gate** — `R:R ≥ HVF_MIN_RR`
+After detection, a setup must also clear the **tradeability gate** — `R:R ≥ MIN_RISK_REWARD`
 (`config.MIN_RISK_REWARD`, currently **3.0**). Below it the funnel is valid but flagged
 **DEVELOPING** (watch, don't trade) rather than **READY/TRIGGERED**.
 
