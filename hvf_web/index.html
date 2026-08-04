@@ -549,12 +549,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <th data-k="_fav" title="Favourite (click to sort)">★</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <!-- Vol moved to an early column so it's visible without scrolling the wide table (user 2026-07-27, P-03 C) -->
           <th data-k="volume_score" title="VolumeScore (0–12) on the break bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank until triggered.">Vol</th>
+          <th data-k="rr">R:R</th><th data-k="quality">Quality</th>
           <th data-k="market">Market</th><th data-k="dist_entry" title="Distance from the live price to the entry level (sorted closest-first)">Dist→Entry</th><th data-k="sector">Sector</th><th data-k="status">Status</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
           <th data-k="current_price" title="Latest price">Now</th>
           <th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th style="cursor:default" title="Whether this instrument is already in your My Pre-orders">In Pre-orders?</th>
-          <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th><th data-k="quality">Quality</th><th data-k="rr">R:R</th>
+          <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th>
           <th data-k="pe">P/E</th><th data-k="insider_pct" title="Insider ownership %">Insider %</th><th data-k="timeframe">TF</th>
           <th data-k="location">Location</th>
           <th data-k="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank for setups that have not triggered, and for instruments with no real volume (FX, indices).">RVOL</th>
@@ -2013,6 +2014,7 @@ function render(){
     ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
     <td>${ob(volScoreCell(r.volume_score))}</td>
+    <td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td><td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td>
     <td>${r.market||''}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${r.sector||''}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.days_since??'')}</td>
     <td>${ob(f2(r.current_price))}</td>
@@ -2020,7 +2022,6 @@ function render(){
     <td>${AUTH&&isPreorder(r)?'<span style="color:var(--bull)" title="In your My Pre-orders">✓</span>':''}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td>
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
-    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td>
     <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td>
     <td>${ob(rvolCell(r.rvol))}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
     || `<tr><td colspan="24" class="empty">No setups match the filters.</td></tr>`;
