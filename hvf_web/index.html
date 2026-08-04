@@ -897,7 +897,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <h1>How it works (System)</h1>
   <p class="lede">The plumbing behind the product: where code runs, how the external services connect, and how the system is patched, secured and restarted — and, first, the market hypothesis it all exists to trade.</p>
 
-  <h2 class="sec">The hypothesis — Hunt Volatility Funnel (HVF)</h2>
+  <h2 class="sec">The hypothesis — The Squeeze</h2>
   <p style="max-width:760px">Markets alternate between <b>calm</b> and <b>movement</b>. When a price coils — its swing highs stepping <b>down</b> while its swing lows step <b>up</b> — volatility is contracting into a <b>funnel</b>: the same information that once needed a wide range to digest is now being priced in an ever-tighter one. That compression is unstable. Energy stored during the squeeze is released when price finally breaks one edge, and the resulting move tends to travel about as far as the funnel was <b>tall at its mouth</b> — so the funnel that hid the setup also <b>measures</b> it. The system hunts these funnels across every instrument, and the moment one breaks it already knows the three numbers that matter: where to enter, where the idea is wrong, and how far it should run.</p>
 
   <svg viewBox="0 0 680 380" style="width:100%;max-width:660px;margin:6px auto 10px;display:block" role="img" aria-label="Diagram: converging price funnel breaking out to a measured target">
@@ -979,7 +979,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <text x="256" y="90" fill="var(--fg)" font-weight="bold">IDX</text><text x="340" y="90" fill="var(--fg)" font-weight="bold">FX</text><text x="424" y="90" fill="var(--fg)" font-weight="bold">EQ</text>
       <!-- python core -->
       <rect x="280" y="186" width="140" height="106" rx="12" fill="color-mix(in srgb,var(--accent) 15%,var(--panel))" stroke="var(--accent)" stroke-width="2"/>
-      <text x="350" y="222" font-size="22">🐍</text><text x="350" y="256" fill="var(--fg)" font-weight="bold">Python HVF</text><text x="350" y="274" fill="var(--fg)" font-weight="bold">Program</text>
+      <text x="350" y="222" font-size="22">🐍</text><text x="350" y="256" fill="var(--fg)" font-weight="bold">Python Squeeze</text><text x="350" y="274" fill="var(--fg)" font-weight="bold">Program</text>
       <!-- scheduler / IG -->
       <rect x="30" y="205" width="130" height="72" rx="12" fill="color-mix(in srgb,#a371f7 16%,var(--panel))" stroke="#a371f7"/>
       <text x="95" y="238" font-size="18">📅</text><text x="95" y="263" fill="var(--fg)" font-weight="bold">Scheduler</text>
@@ -1005,8 +1005,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="fcard"><div class="ic">DB</div><h3>Supabase</h3><div class="body">Shared Postgres reached via the session pooler (pg8000). Key tables: <code>price_history</code> (golden OHLC), <code>working_orders</code>, <code>hvf_triggers</code> (performance tracking), <code>x_publications</code>, <code>signal_log</code>, <code>app_config</code> (runtime switches), <code>web_batch_activity</code> + <code>web_activity_log</code>. The laptop and GitHub Actions read/write the SAME database — that&#39;s how one config switch controls both.</div></div>
     <div class="fcard"><div class="ic">X</div><h3>X (Twitter)</h3><div class="body">Posting uses tweepy with keys held ONLY in GitHub Secrets — the laptop never posts. Live posting runs inside GitHub Actions workflows, capped per day (Configuration &gt; X settings), deduped via <code>x_publications</code>. The X Posts tab reads that table.</div></div>
     <div class="fcard"><div class="ic">S</div><h3>Slack</h3><div class="body">Simple incoming-webhook URLs per channel (signals, alerts, daily, trades, weekly + arw-rw-hvf). Reports post independently to each webhook — one failing never blocks the others.</div></div>
-    <div class="fcard"><div class="ic">PY</div><h3>Python execution</h3><div class="body"><b>Laptop:</b> this Flask app (port 5057, shared via ngrok) with two background threads — a 12-hour snapshot rebuild and the 2-hour order bridge. <b>Cloud:</b> GitHub Actions runners (Python 3.12) execute the session monitors, HVF report, bounce alert etc., triggered by cron-job.org hitting workflow_dispatch (GitHub-native cron is deliberately not used).</div></div>
-    <div class="fcard"><div class="ic">CJ</div><h3>cron-job.org</h3><div class="body">The external <b>scheduler</b> (the 📅 node in the diagram). Every job fires on its own cron by calling GitHub&#39;s <code>workflow_dispatch</code> API — GitHub-native cron is deliberately avoided in favour of cron-job.org&#39;s visible, editable schedule with per-run history. Each job carries a GitHub token in its Authorization header to dispatch its workflow: the 5-minute session monitors, the daily HVF report, the price-data refresh and the data-quality audits all start here. Jobs are managed with <code>setup_cronjobs.py</code> against the cron-job.org API (key held in the encrypted secret store); the <b>Scheduled Jobs</b> tab lists every job&#39;s cadence and recent GitHub&nbsp;Actions run stats.</div></div>
+    <div class="fcard"><div class="ic">PY</div><h3>Python execution</h3><div class="body"><b>Laptop:</b> this Flask app (port 5057, shared via ngrok) with two background threads — a 12-hour snapshot rebuild and the 2-hour order bridge. <b>Cloud:</b> GitHub Actions runners (Python 3.12) execute the session monitors, Squeeze report, bounce alert etc., triggered by cron-job.org hitting workflow_dispatch (GitHub-native cron is deliberately not used).</div></div>
+    <div class="fcard"><div class="ic">CJ</div><h3>cron-job.org</h3><div class="body">The external <b>scheduler</b> (the 📅 node in the diagram). Every job fires on its own cron by calling GitHub&#39;s <code>workflow_dispatch</code> API — GitHub-native cron is deliberately avoided in favour of cron-job.org&#39;s visible, editable schedule with per-run history. Each job carries a GitHub token in its Authorization header to dispatch its workflow: the 5-minute session monitors, the daily Squeeze report, the price-data refresh and the data-quality audits all start here. Jobs are managed with <code>setup_cronjobs.py</code> against the cron-job.org API (key held in the encrypted secret store); the <b>Scheduled Jobs</b> tab lists every job&#39;s cadence and recent GitHub&nbsp;Actions run stats.</div></div>
     <div class="fcard"><div class="ic">GIT</div><h3>Patching &amp; releases</h3><div class="body">Code lives in the GitHub repo. A change is committed + pushed; Actions jobs pick it up on their next run automatically. The laptop app picks up changes when restarted (run.bat / Restart-Web.bat). Every commit appears automatically in the Version History tab (generated live from git).</div></div>
     <div class="fcard"><div class="ic">SEC</div><h3>Security</h3><div class="body">Passwords: PBKDF2-HMAC-SHA256, 200k iterations, per-user salt — never stored or committed. Secrets: Fernet-encrypted at rest, masked to last-4 in the UI, never sent in full to a browser. Access: admin flag + subscription levels; admin-only tabs/endpoints return 403 otherwise; logged-out visitors get a stripped teaser Scanner. Password reset = emailed one-time code (10-min expiry, single use). Every sensitive action lands in the per-user activity log.</div></div>
     <div class="fcard"><div class="ic">RB</div><h3>Reboots &amp; recovery</h3><div class="body">A Startup-folder shortcut relaunches the web server + ngrok after a reboot (run_quick.bat skips the slow rebuild). The 12h/2h background threads restart with the process. GitHub Actions is independent of the laptop — monitors and reports keep running even when the laptop is off; only the website itself needs the laptop up.</div></div>
@@ -1233,7 +1233,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <tbody id="mk-rows"></tbody>
     </table></div>
   </section>
-  <p class="muted" style="font-size:12px">Per-market data import and HVF-report processing controls live in <b>Markets (Admin)</b> (admin only) — coming in a later delivery.</p>
+  <p class="muted" style="font-size:12px">Per-market data import and Squeeze-report processing controls live in <b>Markets (Admin)</b> (admin only) — coming in a later delivery.</p>
 </div>
 
 <!-- Performance (all users, user 2026-07-10) — triggered setups + best Quality/R:R combinations. -->
@@ -1592,14 +1592,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="confapanel" data-panel="xpub">
   <!-- X publishing — the ONE editor for these three values. A second copy used to be injected next to
        X Credentials with the same element ids, and getElementById returns only the first match, so this
-       card's inputs were shadowed and never saved (user 2026-07-17, P-10). The morning-HVF market
+       card's inputs were shadowed and never saved (user 2026-07-17, P-10). The morning-Squeeze market
        chooser that panel owned now lives here too. -->
   <div class="card"><h4>X publishing <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span></h4>
     <p class="muted" style="font-size:12px">Application-wide X-publishing limits, stored in the database and read by the publisher on both the local server and GitHub Actions (code fallback if the DB is unreachable). Credentials live in <b>X Credentials</b> below.</p>
     <div class="credrow"><span class="clabel">Max X publications per day (UTC)</span><input type="number" min="0" step="1" id="eng-x_max_per_day" style="max-width:120px"></div>
     <div class="credrow"><span class="clabel">Superinvestor lookback (days)</span><input type="number" min="0" step="1" id="eng-superinvestor_lookback_days" style="max-width:120px"></div>
     <div class="credrow"><span class="clabel">Min senator trades <span class="muted" style="font-weight:400">(not currently consumed by the engine)</span></span><input type="number" min="0" step="1" id="eng-min_senator_trades" style="max-width:120px"></div>
-    <div style="margin-top:12px"><span class="clabel" style="display:block;margin-bottom:6px">Morning HVF tweets — markets to publish <span class="muted" style="font-weight:400">(default FTSE 100, FTSE 250, NASDAQ 100, S&amp;P 500)</span></span>
+    <div style="margin-top:12px"><span class="clabel" style="display:block;margin-bottom:6px">Morning Squeeze tweets — markets to publish <span class="muted" style="font-weight:400">(default FTSE 100, FTSE 250, NASDAQ 100, S&amp;P 500)</span></span>
       <div id="xhvf-markets" style="display:flex;flex-wrap:wrap;gap:8px">loading…</div></div>
     <button class="btn" style="margin-top:10px" onclick="saveXPub()">Save X publishing settings</button>
     <span id="xpub-msg" style="font-size:12px;margin-left:8px"></span>
@@ -1626,7 +1626,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <tbody id="ma-rows"></tbody>
     </table></div>
   </section>
-  <p class="muted" style="font-size:12px">Rebuild currently reprocesses the <b>whole universe</b> in one pass (the engine builds every market together). Per-market isolation and a separate HVF-report run are a planned enhancement.</p>
+  <p class="muted" style="font-size:12px">Rebuild currently reprocesses the <b>whole universe</b> in one pass (the engine builds every market together). Per-market isolation and a separate Squeeze-report run are a planned enhancement.</p>
 </div>
 
 <!-- IG Account (all users, default hidden, user 2026-07-10) — the acting user's own IG positions + orders. -->
@@ -2845,7 +2845,7 @@ function renderConfig(){
       if(j.limits){MY_LIMITS=j.limits;Object.entries(j.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=Array.isArray(v)?v.join(", "):v;}});if(typeof renderPreorders==='function')renderPreorders();if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();if(typeof winnersRunChange==='function')winnersRunChange();}   // apply saved winners-Model defaults (P-10 L158) + render the let-winners-run card if opted in (P-08)
       // Engine settings (admin only) now live on the Configuration (Admin) tab; just fill the inputs.
       if(j.engine){window.ENGINE_VALS=j.engine;Object.entries(j.engine).forEach(([k,v])=>{if($("eng-"+k))$("eng-"+k).value=v;});}
-      // Morning HVF tweet markets (admin, user 2026-07-06): checkbox chips over the universe's markets.
+      // Morning Squeeze tweet markets (admin, user 2026-07-06): checkbox chips over the universe's markets.
       if($("xhvf-markets")){const picked=new Set(j.x_hvf_markets||[]);
         // Use the canonical market list (P-15) — robust when DATA doesn't carry `market`. Bigger accent
         // checkboxes + roomier chips so the picker is legible/tappable on iPad (user 2026-08-02, P-12).
@@ -2902,7 +2902,7 @@ function saveEngine(){
     .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});
 }
 function saveXPub(){
-  // X publishing card on Configuration (Admin): numeric publishing limits + morning HVF tweet markets
+  // X publishing card on Configuration (Admin): numeric publishing limits + morning Squeeze tweet markets
   // (user 2026-07-06; single editor since 2026-07-17 P-10).
   const eng={};["x_max_per_day","superinvestor_lookback_days","min_senator_trades"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});
   const mk=[...document.querySelectorAll(".xhvf-mk:checked")].map(c=>c.dataset.v);
@@ -3209,14 +3209,16 @@ function paintIgAccount(){
       profit:c.pnl,profit_pct:pct,closed:c.date||'',market:'—',ticker:''});});
   if(_agg){   // IG can close one logical position as several fills; combine fills from the same close event.
     const g={};
-    closed.forEach(c=>{const key=[c.name,c.direction,c.closed,c.currency].join('|');
-      const a=g[key]||(g[key]=Object.assign({},c,{size:0,profit:0,_openW:0,_closeW:0,_weight:0,_n:0}));
+    closed.forEach(c=>{const key=[c.name,c.direction,_igCurrency(c.currency)].join('|');
+      const a=g[key]||(g[key]=Object.assign({},c,{size:0,profit:0,_openW:0,_closeW:0,_weight:0,_n:0,_reasons:new Set()}));
       const sz=+c.size||0;a.size+=sz;a.profit+=(+c.profit||0);a._openW+=(+c.level||0)*sz;
-      a._closeW+=(+c.current||0)*sz;a._weight+=sz;a._n++;});
+      a._closeW+=(+c.current||0)*sz;a._weight+=sz;a._n++;a._reasons.add(c.reason||'UNKNOWN');
+      if(c.closed&&(!a.closed||c.closed>a.closed))a.closed=c.closed;});
     closed=Object.values(g).map(a=>{a.level=a._weight?+(a._openW/a._weight).toFixed(4):a.level;
       a.current=a._weight?+(a._closeW/a._weight).toFixed(4):a.current;a.size=+a.size.toFixed(4);
       a.profit=+a.profit.toFixed(2);a.profit_pct=(a.level&&a.current!=null)
-        ?+(((a.direction==='SELL'?a.level-a.current:a.current-a.level)/a.level)*100).toFixed(2):null;return a;});
+        ?+(((a.direction==='SELL'?a.level-a.current:a.current-a.level)/a.level)*100).toFixed(2):null;
+      a.reason=a._reasons.size===1?[...a._reasons][0]:'MIXED';return a;});
   }
   const openRows=pos.map(p=>`<tr><td><span class="tag bull">Open</span></td><td>${nm40(p.name)}${_agg&&p._n>1?` <span class="muted" style="font-size:11px">×${p._n}</span>`:''}</td><td>${p.market||'<span class="muted">—</span>'}</td><td>${_igDtag(p.direction)}</td><td>${_igSz(p.size)}</td><td>${p.level??''}</td><td>${_agg?'<span class="muted">—</span>':(p.current??'<span class="muted">—</span>')}</td><td>${_igPf(p.profit)}</td><td>${_igPfp(p.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(p.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(p.limit??'')}</td><td>${p.currency||''}</td><td>${p.opened||''}</td><td></td><td></td><td><b>${p.ticker||p.epic||''}</b></td></tr>`);
   const closedRows=genSort(closed,igpSortK,igpSortDir).map(c=>`<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(c.name)}${_agg&&c._n>1?` <span class="muted" style="font-size:11px">×${c._n}</span>`:''}</td><td><span class="muted">—</span></td><td>${_igDtag(c.direction)}</td><td>${_igSz(c.size)}</td><td>${c.level??''}</td><td>${c.current??''}</td><td>${_igPf(c.profit)}</td><td>${_igPfp(c.profit_pct)}</td><td></td><td></td><td>${c.currency||''}</td><td></td><td>${_igDateTime(c.closed)}</td><td>${_igReason(c.reason)}</td><td></td></tr>`);
@@ -3253,7 +3255,7 @@ function loadIgClosed(force){
     .catch(()=>{IGCLOSED=[];_igClosedNote="Could not load closed trades.";paintIgAccount();});
 }
 function _igReason(r){
-  const m={STOP_HIT:['🛑 Stop','var(--bear)'],TARGET_HIT:['🎯 Target','var(--bull)'],MANUAL:['👤 Manual','var(--fg)'],SYSTEM:['⚙️ System','var(--muted)']}[r]||['—','var(--muted)'];
+  const m={STOP_HIT:['🛑 Stop','var(--bear)'],TARGET_HIT:['🎯 Target','var(--bull)'],MANUAL:['👤 Manual','var(--fg)'],SYSTEM:['⚙️ System','var(--muted)'],MIXED:['Mixed','var(--muted)']}[r]||['—','var(--muted)'];
   return `<span style="color:${m[1]};font-weight:600">${m[0]}</span>`;
 }
 function renderIgAccount(ev){
@@ -3998,10 +4000,12 @@ function paintFeesTxns(seg){
   let viewTxns=txns;
   if(aggregate){
     const grouped={};
-    txns.forEach(t=>{const key=[t.ticker,t.direction,t.closed_at].join('|');
+    txns.forEach(t=>{const key=[t.ticker,t.direction].join('|');
       const a=grouped[key]||(grouped[key]=Object.assign({},t,{size:0,pnl:0,_openW:0,_closeW:0,_weight:0,_n:0}));
       const sz=+t.size||0;a.size+=sz;a.pnl+=(+t.pnl||0);a._openW+=(+t.open||0)*sz;
-      a._closeW+=(+t.close||0)*sz;a._weight+=sz;a._n++;});
+      a._closeW+=(+t.close||0)*sz;a._weight+=sz;a._n++;
+      if(t.opened_at&&(!a.opened_at||t.opened_at<a.opened_at))a.opened_at=t.opened_at;
+      if(t.closed_at&&(!a.closed_at||t.closed_at>a.closed_at))a.closed_at=t.closed_at;});
     viewTxns=Object.values(grouped).map(a=>{a.open=a._weight?+(a._openW/a._weight).toFixed(4):a.open;
       a.close=a._weight?+(a._closeW/a._weight).toFixed(4):a.close;a.size=+a.size.toFixed(4);a.pnl=+a.pnl.toFixed(2);
       a.pnl_pct=(a.open&&a.close!=null)?+(((a.direction==='SELL'?a.open-a.close:a.close-a.open)/a.open)*100).toFixed(2):null;return a;});
