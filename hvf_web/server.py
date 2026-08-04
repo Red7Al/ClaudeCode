@@ -466,6 +466,17 @@ def _limit_block(name: str, tk: str, on: bool = True) -> str:
     return ""
 
 
+def _user_has_ig_creds(name: str) -> bool:
+    """Whether this login resolves a complete IG credential set, without opening an IG session."""
+    try:
+        import ig_shim
+        creds = ig_shim._resolve_ig_creds(name)
+        return bool(creds and creds.get("api_key") and creds.get("username") and creds.get("password"))
+    except Exception as exc:
+        log.warning(f"IG credential check failed for {name}: {exc}")
+        return False
+
+
 @app.route("/api/config", methods=["GET", "POST"])
 def api_config():
     """Per-user application configuration (user 2026-07-03, Config tab): the user's own filter
@@ -483,10 +494,14 @@ def api_config():
         # commodities (non-gold) 10%->10, individual shares 20%->5. Per-user overrides still win.
         lev = {"fx": 30, "equities": 5, "commodities": 10, "indices": 20}
         lev.update({k: v for k, v in (s.get("leverage") or {}).items() if k in lev})
+        has_ig_creds = _user_has_ig_creds(name)
         return jsonify({"name": name, "filters": s.get("filters", {}),
                         "exec": _cs.get_exec_flags(), "exec_sources": _cs.EXEC_SOURCES,
                         "exec_descriptions": _cs.EXEC_DESCRIPTIONS,
-                        "bridge": _cs.get_value("exec_WEB_BRIDGE", "false") == "true",
+                        # A login without its own complete IG credentials must always see Bridge OFF,
+                        # even if the shared engine switch is enabled for a configured account.
+                        "bridge": has_ig_creds and _cs.get_value("exec_WEB_BRIDGE", "false") == "true",
+                        "has_ig_creds": has_ig_creds,
                         "trade": (s.get("trade_filters") if s.get("trade_filters") is not None
                                   else _cs.get_trade_filters()),
                         "hidden_tabs": s.get("hidden_tabs", []), "shown_tabs": s.get("shown_tabs", []), "leverage": lev,
@@ -629,6 +644,8 @@ def api_config():
         # UI visibility is not authorisation: only an administrator may change it.
         if not _wu.is_admin(name):
             return jsonify({"ok": False, "error": "admin only"}), 403
+        if body["bridge"] and not _user_has_ig_creds(name):
+            return jsonify({"ok": False, "error": "IG credentials required"}), 409
         _cs.set_value("exec_WEB_BRIDGE", "true" if body["bridge"] else "false", updated_by=name)
         _wu.log_event(name, f"Squeeze bridge execution switched {'ON' if body['bridge'] else 'OFF'}")
     return jsonify({"ok": True})

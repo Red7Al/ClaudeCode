@@ -30,6 +30,7 @@ def test_admin_can_change_shared_bridge(monkeypatch):
     writes = []
     events = []
     _identity(monkeypatch, "Admin", admin=True)
+    monkeypatch.setattr(server, "_user_has_ig_creds", lambda name: True)
     monkeypatch.setattr(config_store, "set_value", lambda *args, **kwargs: writes.append((args, kwargs)))
     monkeypatch.setattr(server._wu, "log_event", lambda *args, **kwargs: events.append((args, kwargs)))
 
@@ -40,6 +41,34 @@ def test_admin_can_change_shared_bridge(monkeypatch):
     assert response.get_json() == {"ok": True}
     assert writes == [(('exec_WEB_BRIDGE', 'true'), {'updated_by': 'Admin'})]
     assert events and events[0][0][0] == "Admin"
+
+
+def test_login_without_ig_credentials_sees_bridge_off(monkeypatch):
+    _identity(monkeypatch, "NoBroker", admin=False)
+    monkeypatch.setattr(server, "_user_has_ig_creds", lambda name: False)
+    monkeypatch.setattr(config_store, "get_value", lambda key, default="": "true" if key == "exec_WEB_BRIDGE" else default)
+    monkeypatch.setattr(config_store, "get_exec_flags", lambda: {})
+    monkeypatch.setattr(server._wu, "get_settings", lambda name: {})
+
+    response = server.app.test_client().get("/api/config", headers={"X-Auth": "token"})
+
+    assert response.status_code == 200
+    assert response.get_json()["bridge"] is False
+    assert response.get_json()["has_ig_creds"] is False
+
+
+def test_admin_without_ig_credentials_cannot_enable_bridge(monkeypatch):
+    writes = []
+    _identity(monkeypatch, "Admin", admin=True)
+    monkeypatch.setattr(server, "_user_has_ig_creds", lambda name: False)
+    monkeypatch.setattr(config_store, "set_value", lambda *args, **kwargs: writes.append((args, kwargs)))
+
+    response = server.app.test_client().post(
+        "/api/config", headers={"X-Auth": "token"}, json={"bridge": True})
+
+    assert response.status_code == 409
+    assert response.get_json() == {"ok": False, "error": "IG credentials required"}
+    assert writes == []
 
 
 def test_cold_performance_request_returns_warming_without_building(monkeypatch):
