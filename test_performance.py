@@ -24,6 +24,8 @@ def test_performance_has_dedicated_let_winners_run_tab():
     assert "Every trade — oldest first, wallet after each" not in html
     assert html.index('data-pfpanel="results"') < html.index('data-pfpanel="summary"')
     assert ".doc .tclist li::marker{font-size:.65em;color:var(--muted)}" in html
+    assert "top:calc(var(--hdr-h,49px) - 1px)" in html
+    assert "new ResizeObserver(syncStickyOffsets)" in html
 
 
 def test_let_winners_run_never_gives_back_below_bull_target(monkeypatch):

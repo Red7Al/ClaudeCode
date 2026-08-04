@@ -23,7 +23,7 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
    scrolls, so navigation never scrolls away. --hdr-h / --sticky-top are measured in JS (syncStickyOffsets)
    so the offsets survive the tabs wrapping to a second row on a narrow screen; CSS fallbacks cover first
    paint. z-index sits BELOW the header (5) so the header's Refresh/Markets dropdowns still overlay the tabs. */
-.tabs{display:flex;gap:4px;padding:6px 16px 0;border-bottom:1px solid var(--line);position:sticky;top:var(--hdr-h,49px);z-index:4;background:var(--bg)}
+.tabs{display:flex;gap:4px;padding:6px 16px 0;border-bottom:1px solid var(--line);position:sticky;top:calc(var(--hdr-h,49px) - 1px);z-index:4;background:var(--bg)}
 .tab{background:none;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;color:var(--muted);padding:6px 16px;cursor:pointer;font-size:13px}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
 /* Operations / Settings sub-navigation (user 2026-07-10) */
@@ -2364,10 +2364,16 @@ function syncStickyOffsets(){
   const h=hdr?hdr.offsetHeight:49, t=tabs?tabs.offsetHeight:41;
   const rs=document.documentElement.style;
   rs.setProperty("--hdr-h", h+"px");
-  rs.setProperty("--sticky-top", (h+t)+"px");
+  rs.setProperty("--sticky-top", (h+t-1)+"px");   // tabs overlap the header border by 1px: no content seam
 }
 window.addEventListener("resize", syncStickyOffsets);
 window.addEventListener("load", syncStickyOffsets);
+// Header controls change after login/role/config loading and may wrap without a window resize. Observe the
+// actual sticky elements so their offsets stay joined to the header at all times (user 2026-08-04, P-03).
+if(typeof ResizeObserver!=="undefined"){
+  const _stickyRO=new ResizeObserver(syncStickyOffsets);
+  [document.querySelector("header"),document.querySelector(".tabs")].filter(Boolean).forEach(el=>_stickyRO.observe(el));
+}
 // Each tab a progressively darker shade of grey, left -> right (user 2026-07-03). Light text keeps
 // the darker right-hand tabs readable in both themes; the active tab gets a bright accent underline.
 function colorTabs(){
