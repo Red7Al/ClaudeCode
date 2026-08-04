@@ -18,6 +18,10 @@ def test_performance_has_dedicated_let_winners_run_tab():
     assert "winnersRunChange('pf')" in html
     assert "Let winners run is off" not in html
     assert 'id="pf-summary-bt"' not in html
+    assert "What separates the winners?</h2>" in html
+    assert "What separates the winners — what's possible over 12 months" not in html
+    assert 'id="ordp-ledger-q"' not in html
+    assert "Every trade — oldest first, wallet after each" not in html
 
 
 def test_let_winners_run_never_gives_back_below_bull_target(monkeypatch):
