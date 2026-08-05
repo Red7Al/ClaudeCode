@@ -281,7 +281,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #pf-pills .pill:hover{border-color:var(--accent);color:var(--fg)}
 #pf-pills .pill.active{background:var(--accent);color:#fff;border-color:transparent}
 #pf-pills .pf-pill-group{display:flex;flex-direction:column;align-items:stretch;gap:3px;min-width:0}
-#pf-pills .pf-pill-desc{text-align:center;font-size:10px;line-height:1.2;min-height:24px;max-width:220px}
+#pf-pills .pf-pill-desc,#pf-advanced-nav .pf-pill-desc{text-align:center;font-size:10px;line-height:1.2;min-height:38px;max-width:220px}
 /* Credential rows — readable current value (user 2026-07-03: grey/small was hard to read) */
 .credrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line)}
 .credrow:first-of-type{border-top:none}
@@ -1289,14 +1289,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <input type="hidden" id="pff_sector"><input type="hidden" id="pff_market"><input type="hidden" id="pff_status"><input type="hidden" id="pff_location"><input type="hidden" id="pff_direction"><input type="hidden" id="pff_wl"><input type="hidden" id="pff_month"><input type="hidden" id="pff_mweek"><input type="hidden" id="pff_daysopen">
   <!-- Sub-tab pills at the very TOP, centred (user 2026-07-24, P-03) — above the title/lede. -->
   <div id="pf-pills" style="display:flex;justify-content:center;align-items:flex-end;gap:8px;flex-wrap:wrap;margin:0 0 12px">
-    <div class="pf-pill-group"><span class="muted pf-pill-desc">Outcomes using your current filters</span><button class="pill active" data-pfpanel="results" onclick="pfPanel('results')" title="Back test over the last 12 months for YOUR current configuration (your Trading (Squeeze) direction filter, Markets (User) and personal floors): every setup as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Back Test</button></div>
-    <div class="pf-pill-group"><span class="muted pf-pill-desc">Compare wallet-constrained annual settings</span><button class="pill" data-pfpanel="settings" onclick="pfPanel('settings')" title="Rank realistic annual settings using wallet-constrained replay, profit, drawdown, robustness and trade count.">🥇 Best settings</button></div>
-    <div class="pf-pill-group"><span class="muted pf-pill-desc">Headline results and monthly growth</span><button class="pill" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button></div>
-    <div class="pf-pill-group" id="pf-advanced-group" style="display:none"><span class="muted pf-pill-desc">Specialist analysis for Silver/Gold admins</span><button class="pill" id="pf-pill-advanced" type="button" onclick="toggleAdvancedPf()" title="Open specialist winner-analysis and exit-simulation reports.">⚙ Advanced analysis</button></div>
+    <div class="pf-pill-group"><span class="muted pf-pill-desc">What your current filters would have produced over the selected period.</span><button class="pill active" data-pfpanel="results" onclick="pfPanel('results')" title="Back test over the last 12 months for YOUR current configuration (your Trading (Squeeze) direction filter, Markets (User) and personal floors): every setup as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Back Test</button></div>
+    <div class="pf-pill-group"><span class="muted pf-pill-desc">Which tested settings survived wallet, margin, trade-count, and drawdown constraints.</span><button class="pill" data-pfpanel="settings" onclick="pfPanel('settings')" title="Rank realistic annual settings using wallet-constrained replay, profit, drawdown, robustness and trade count.">🥇 Best settings</button></div>
+    <div class="pf-pill-group"><span class="muted pf-pill-desc">How many observed triggers gained, lost, or remain open.</span><button class="pill" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button></div>
+    <div class="pf-pill-group" id="pf-advanced-group" style="display:none"><span class="muted pf-pill-desc">Open specialist analysis for Silver/Gold admin users.</span><button class="pill" id="pf-pill-advanced" type="button" onclick="toggleAdvancedPf()" title="Open specialist winner-analysis and exit-simulation reports.">⚙ Advanced analysis</button></div>
   </div>
-  <div id="pf-advanced-nav" class="hidden" style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:-4px 0 12px">
-    <button class="pill" data-pfpanel="analysis" onclick="pfPanel('analysis')">🏆 What separates the winners</button>
-    <button class="pill" data-pfpanel="run" onclick="pfPanel('run')">🏃 Let winners run</button>
+  <div id="pf-advanced-nav" class="hidden" style="display:flex;justify-content:center;align-items:flex-end;gap:8px;flex-wrap:wrap;margin:-4px 0 12px">
+    <div class="pf-pill-group"><span class="muted pf-pill-desc">Which market and signal attributes were associated with the strongest outcomes.</span><button class="pill" data-pfpanel="analysis" onclick="pfPanel('analysis')">🏆 What separates the winners</button></div>
+    <div class="pf-pill-group"><span class="muted pf-pill-desc">What changes when exits are simulated differently; live orders are unaffected.</span><button class="pill" data-pfpanel="run" onclick="pfPanel('run')">🏃 Let winners run</button></div>
   </div>
   <!-- Shared compounded-wallet model: Summary, What separates the winners and Let winners run all use
        these values, so it lives above the Performance title instead of inside one sub-tab (P-07). -->
@@ -1318,13 +1318,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        computing, so it's clear why the tab is briefly empty. -->
   <h1 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:4px">Performance <span id="pf-loading"></span></h1>
   <p class="lede">Performance separates <b>observed trade outcomes</b> from <b>constrained what-if models</b>. A return is direction-aware, so positive is always in your favour; open trades are marked to the latest price. The settings shown in each panel are the settings used for that panel, not a promise of future results.</p>
-  <div class="pf-readmap" aria-label="Performance report map">
-    <div class="pf-readmap-item"><b>Back Test</b><span>What your current filters would have produced over the selected period.</span></div>
-    <div class="pf-readmap-item"><b>Summary</b><span>How many observed triggers gained, lost, or remain open.</span></div>
-    <div class="pf-readmap-item"><b>Best settings</b><span>Which tested settings survived wallet, margin, trade-count, and drawdown constraints.</span></div>
-    <div class="pf-readmap-item"><b>What separates winners</b><span>Which market and signal attributes were associated with the strongest outcomes.</span></div>
-    <div class="pf-readmap-item"><b>Let winners run</b><span>What changes when exits are simulated differently; live orders are unaffected.</span></div>
-  </div>
   <!-- Winners title + lede lifted ABOVE the shared date/location filter row (user 2026-07-27, P-07 L289) —
        shown only when the "What separates the winners" sub-tab is active (toggled in pfPanel). -->
   <div id="pf-winners-head" class="hidden">
