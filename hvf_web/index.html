@@ -1292,8 +1292,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="pf-pill-group"><span class="muted pf-pill-desc">Outcomes using your current filters</span><button class="pill active" data-pfpanel="results" onclick="pfPanel('results')" title="Back test over the last 12 months for YOUR current configuration (your Trading (Squeeze) direction filter, Markets (User) and personal floors): every setup as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Back Test</button></div>
     <div class="pf-pill-group"><span class="muted pf-pill-desc">Compare wallet-constrained annual settings</span><button class="pill" data-pfpanel="settings" onclick="pfPanel('settings')" title="Rank realistic annual settings using wallet-constrained replay, profit, drawdown, robustness and trade count.">🥇 Best settings</button></div>
     <div class="pf-pill-group"><span class="muted pf-pill-desc">Headline results and monthly growth</span><button class="pill" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button></div>
-    <div class="pf-pill-group"><span class="muted pf-pill-desc">Explore the attributes behind winners</span><button class="pill" id="pf-pill-winners" data-pfpanel="analysis" onclick="pfPanel('analysis')" title="Admin: the same 12-month population expressed as a compounding £ wallet — what's POSSIBLE if every setup were placed, and which attributes (market, R:R, quality, volume) separate the winners. Answers 'how to size and pick for the best return'.">🏆 What separates the winners</button></div>
-    <div class="pf-pill-group"><span class="muted pf-pill-desc">Compare target exits with trailing exits</span><button class="pill" data-pfpanel="run" onclick="pfPanel('run')" title="Compare selling at target with locking in the target and trailing the remaining move. Illustration only; live orders are never changed.">🏃 Let winners run</button></div>
+    <div class="pf-pill-group" id="pf-advanced-group" style="display:none"><span class="muted pf-pill-desc">Specialist analysis for Silver/Gold admins</span><button class="pill" id="pf-pill-advanced" type="button" onclick="toggleAdvancedPf()" title="Open specialist winner-analysis and exit-simulation reports.">⚙ Advanced analysis</button></div>
+  </div>
+  <div id="pf-advanced-nav" class="hidden" style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:-4px 0 12px">
+    <button class="pill" data-pfpanel="analysis" onclick="pfPanel('analysis')">🏆 What separates the winners</button>
+    <button class="pill" data-pfpanel="run" onclick="pfPanel('run')">🏃 Let winners run</button>
   </div>
   <!-- Shared compounded-wallet model: Summary, What separates the winners and Let winners run all use
        these values, so it lives above the Performance title instead of inside one sub-tab (P-07). -->
@@ -2803,6 +2806,11 @@ function _seedStatusDefaults(){
 // subscription level, so it no longer unlocks Gold features for a Silver/Guest account. Seed admins
 // default to a gold subscription, so this does not lock them out of anything.
 const goldOnly=()=>ROLE==="gold";
+const advancedPfAllowed=()=>IS_ADMIN&&(ROLE==="silver"||ROLE==="gold");
+function toggleAdvancedPf(){
+  if(!advancedPfAllowed())return;
+  const nav=$("pf-advanced-nav"); if(nav)nav.classList.toggle("hidden");
+}
 // Configuration card navigation (user 2026-07-03): show one config panel at a time.
 function confShow(panel){
   if(panel==="trading_mo"&&!goldOnly())panel="preferences";   // never open a Gold panel for a lesser tier
@@ -3459,13 +3467,13 @@ function renderPerformance(){
   // "What separates the winners" is ADMIN ONLY (user 2026-07-18). For non-admins there is only the
   // Results panel, so a lone "Results" pill reads oddly (P-01a) — hide the whole sub-nav bar for them,
   // and never leave a non-admin sitting on the analysis panel.
-  // Summary + Results pills are for everyone; only "What separates the winners" is admin-only (user
-  // 2026-07-20). Non-admins now have two real pills (Summary, Results), so no lone odd pill (P-01a).
+  // Summary + Results are the core client views. Specialist analysis is grouped behind one control
+  // and restricted to Silver/Gold administrators.
   const _pills=$("pf-pills");
   if(_pills)_pills.style.display='flex';
-  const _pw=$("pf-pill-winners");
-  if(_pw)_pw.style.display=IS_ADMIN?'':'none';
-  if(!IS_ADMIN && !$("pf-panel-analysis").classList.contains("hidden"))pfPanel('results');
+  const _ag=$("pf-advanced-group");
+  if(_ag)_ag.style.display=advancedPfAllowed()?'':'none';
+  if(!advancedPfAllowed() && (!$("pf-panel-analysis").classList.contains("hidden")||!$("pf-panel-run").classList.contains("hidden")))pfPanel('results');
   const _pfl=$("pf-loading");
   if(PERF_DATA===null){                       // fetch the recorded-trigger report once, then render
     PERF_DATA=[];                             // in-flight guard
@@ -3485,8 +3493,11 @@ function renderPerformance(){
 // Performance sub-tabs (user 2026-07-17): Results vs the 15-month analysis. The analysis fetches lazily
 // on first open, so the Results view is never slowed by it.
 function pfPanel(which){
-  if(which==="analysis"&&!IS_ADMIN)which="results";   // admin-only analysis (user 2026-07-18)
-  document.querySelectorAll("#pf-pills .pill").forEach(b=>b.classList.toggle("active",b.dataset.pfpanel===which));   // pills live in #pf-pills since the P-03 L258 move — the old #pf-subnav selector matched nothing, so the active colour never updated (user 2026-07-27, P-03 A)
+  if((which==="analysis"||which==="run")&&!advancedPfAllowed())which="results";
+  document.querySelectorAll("#pf-pills .pill,#pf-advanced-nav .pill").forEach(b=>b.classList.toggle("active",b.dataset.pfpanel===which));
+  const advNav=$("pf-advanced-nav");
+  if(advNav&&advancedPfAllowed()&&(which==="analysis"||which==="run"))advNav.classList.remove("hidden");
+  if(advNav&&which!=="analysis"&&which!=="run")advNav.classList.add("hidden");
   const sm=$("pf-panel-summary"), res=$("pf-panel-results"), an=$("pf-panel-analysis"), run=$("pf-panel-run"), settings=$("pf-panel-settings");
   if(sm)sm.classList.toggle("hidden",which!=="summary");   // Summary sub-tab (user 2026-07-20)
   if(res)res.classList.toggle("hidden",which!=="results");
