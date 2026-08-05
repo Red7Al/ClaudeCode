@@ -262,7 +262,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from config import (YAHOO_MAP, HVF_MIN_RR, PA_CONFIRM_THRESHOLDS,
+from config import (YAHOO_MAP, HVF_MIN_RR, MAX_RISK_REWARD, PA_CONFIRM_THRESHOLDS,
                     PA_CONFIRM_THRESHOLD_DEFAULT, HVF_LIQUIDITY_TIERS_GBP,
                     TIGHT_STOP_MIN_PCT, MIN_PRIOR_TREND_PCT, STALE_TRIGGER_MAX_PCT)
 
@@ -1537,8 +1537,8 @@ def check_hvf_invariants(r: dict) -> list:
             v.append(f"BULLISH order broken: stop {stop} < entry {entry} < target {target} expected")
         if r["hvf_type"] == "BEARISH" and not (target < entry < stop):
             v.append(f"BEARISH order broken: target {target} < entry {entry} < stop {stop} expected")
-    if rr is not None and not (0 < rr < 100):
-        v.append(f"risk_reward {rr} outside sane range (0, 100)")
+    if rr is not None and not (0 < rr <= MAX_RISK_REWARD):
+        v.append(f"risk_reward {rr} outside sane range (0, {MAX_RISK_REWARD:g}]")
     dates = [r.get(k) for k in ("h1_date", "h2_date", "h3_date") if r.get(k)]
     if dates != sorted(dates):
         v.append(f"high pivot dates not chronological: {dates}")

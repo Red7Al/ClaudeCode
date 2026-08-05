@@ -238,6 +238,9 @@ def case_invariant_selftest():
     v = check_hvf_invariants(bad)
     check("7 invariant checker flags negative target (OCDO.L class)",
           any("target" in x for x in v), str(v))
+    too_far = dict(bad, target=1.0, risk_reward=10.6)
+    v = check_hvf_invariants(too_far)
+    check("7b invariant checker rejects extreme R:R", any("risk_reward" in x for x in v), str(v))
 
 
 # ----------------------------------------------------------------------------------------------------------------------

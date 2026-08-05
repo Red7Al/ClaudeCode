@@ -601,6 +601,11 @@ CFTC_CODES = {
 # 3:1 (user directive 2026-06-09 — "same as Richie Williams"). Raised from 2.5.
 MIN_RISK_REWARD = 3.0
 
+# Ratios above this are treated as bad level geometry rather than an advantage. A very
+# distant target combined with a tight stop can produce a mathematically valid but
+# non-actionable setup (for example KION at 10.6:1).
+MAX_RISK_REWARD = 10.0
+
 # HVF minimum R:R threshold — patterns below this are DEVELOPING (watchlist only, not traded).
 # Intentionally aliased to MIN_RISK_REWARD so the two values are always in sync.
 # Import HVF_MIN_RR from config wherever the HVF threshold is needed — do NOT
