@@ -375,6 +375,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-performance #pf-summary table th{white-space:nowrap;vertical-align:bottom}
 #view-performance #pf-summary table td{white-space:nowrap}
 #pf-summary table{font-size:12.5px}
+/* Performance needs a clear reading order: observed outcomes first, then constrained what-if reports. */
+.pf-readmap{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;margin:0 0 14px;border:1px solid var(--line);background:var(--line);border-radius:8px;overflow:hidden}
+.pf-readmap-item{background:var(--panel);padding:9px 10px;min-width:0}
+.pf-readmap-item b{display:block;font-size:12px;color:var(--fg);margin-bottom:3px}
+.pf-readmap-item span{display:block;font-size:11.5px;line-height:1.35;color:var(--muted)}
+@media(max-width:900px){.pf-readmap{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.pf-readmap{grid-template-columns:1fr}}
 /* Wallet-model columns on Results (user 2026-07-26, P-05 L98/L271): hidden until the toggle adds
    .wallet-on to #pf-table. display:none on th/td removes the column cleanly. */
 #pf-table:not(.wallet-on) .wcol{display:none}
@@ -1304,7 +1311,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- Processing badge (user 2026-08-02, P-06) — shown next to the title while /api/performance is still
        computing, so it's clear why the tab is briefly empty. -->
   <h1 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:4px">Performance <span id="pf-loading"></span></h1>
-  <p class="lede">Every <b>recorded trigger</b> — the entry, stop, target and date captured the moment the setup fired — tracked forward through the price history to its outcome: <b style="color:var(--bull)">TARGET</b> (hit the target first), <b style="color:var(--bear)">STOPPED</b> (hit the stop first), or <b style="color:#d29922">OPEN</b> (still running, marked to the latest price). Return is direction-aware, so positive is always in your favour. This is independent of the current squeeze status — a trigger is measured from when it happened.</p>
+  <p class="lede">Performance separates <b>observed trade outcomes</b> from <b>constrained what-if models</b>. A return is direction-aware, so positive is always in your favour; open trades are marked to the latest price. The settings shown in each panel are the settings used for that panel, not a promise of future results.</p>
+  <div class="pf-readmap" aria-label="Performance report map">
+    <div class="pf-readmap-item"><b>Back Test</b><span>What your current filters would have produced over the selected period.</span></div>
+    <div class="pf-readmap-item"><b>Summary</b><span>How many observed triggers gained, lost, or remain open.</span></div>
+    <div class="pf-readmap-item"><b>Best settings</b><span>Which tested settings survived wallet, margin, trade-count, and drawdown constraints.</span></div>
+    <div class="pf-readmap-item"><b>What separates winners</b><span>Which market and signal attributes were associated with the strongest outcomes.</span></div>
+    <div class="pf-readmap-item"><b>Let winners run</b><span>What changes when exits are simulated differently; live orders are unaffected.</span></div>
+  </div>
   <!-- Winners title + lede lifted ABOVE the shared date/location filter row (user 2026-07-27, P-07 L289) —
        shown only when the "What separates the winners" sub-tab is active (toggled in pfPanel). -->
   <div id="pf-winners-head" class="hidden">
