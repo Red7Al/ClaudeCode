@@ -4642,6 +4642,9 @@ function poClearFilters(){["po_qmin","po_qmax","po_rrmin","po_rrmax","po_demin",
 function renderPreorders(){
   renderIgCredWarn("po-igwarn");   // no-IG-credentials warning + Open IG settings button (P-10 L218 / P-25 L219)
   let po=DATA.filter(r=>isPreorder(r)&&tradeVisible(r));   // hide the user's excluded markets (user 2026-07-06)
+  // Do not publish stale snapshot rows whose geometry is now rejected by the engine.
+  // This keeps the browser view consistent before the next full data refresh.
+  po=po.filter(r=>r.rr==null||r.rr<=10);
   {const _seen=new Set();po=po.filter(r=>{const k=disp(r.ticker);if(_seen.has(k))return false;_seen.add(k);return true;});}   // no duplicate rows (user 2026-07-10)
   // Respect the user's personal R:R / Quality floors (user 2026-07-24, P-02 BUG): My Pre-orders must not
   // list setups below the floors in Configuration → My trading limits. isPreorder() auto-qualifies any
