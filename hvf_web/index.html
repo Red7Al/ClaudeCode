@@ -3845,7 +3845,8 @@ function renderBestCombo(all){
   const cfgFor=x=>{const limits={min_risk_reward:x.rr,min_quality:x.q,min_volume_score:x.vs,min_rvol:x.rv,max_position_pct:x.st,max_open:x.mo,
       require_above_vwap:x.vw?1:0,require_atr_expanding:x.atr?1:0};
     if(x.scope.kind==="mcap"){limits.min_instrument_value=x.scope.min||0;limits.max_instrument_value=x.scope.max||0;}
-    const filters={f_mkt:x.scope.kind==="market"?x.scope.value:"",f_sec:x.scope.kind==="sector"?x.scope.value:""};
+    const market=x.scope.kind==="market"?x.scope.value:"", sector=x.scope.kind==="sector"?x.scope.value:"";
+    const filters={f_mkt:market,f_sec:sector,pof_market:market,pof_sector:sector};
     return {limits,filters};};
   const bestCfg=cfgFor(best);
   const eligible=evaluated.filter(x=>x.n>=20), positive=eligible.filter(x=>x.ret>0);
