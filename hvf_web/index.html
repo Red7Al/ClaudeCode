@@ -309,6 +309,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .doc .tablewrap table th,.doc .tablewrap table td{white-space:nowrap;word-break:break-word}
 #view-fees .fees-charges-wrap{display:inline-block;max-width:100%;padding-bottom:8px}
 #view-fees table.fees-charges{width:auto;max-width:100%}
+#view-fees #fees-txns table{width:100%;table-layout:auto}
+#view-fees #fees-txns th,#view-fees #fees-txns td{white-space:normal}
 .datecard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 12px;box-shadow:var(--sh-sm);display:inline-flex;align-items:center;gap:8px;font-size:13px}
 /* Admin pages get the amber treatment (user 2026-07-04) */
 #view-batch .gsec,#view-users .gsec,#view-version .gsec,#view-syslogs .gsec,#view-xposts .gsec,#view-jobs .gsec{border-left-color:#d29922}
@@ -4179,9 +4181,11 @@ function paintFeesTxns(seg){
     viewTxns.forEach((t,i)=>{
       tot+=(t.pnl||0);
       const col=(t.pnl||0)>=0?'var(--bull)':'var(--bear)';
+      const market=t.market||((DATA||[]).find(r=>r.ticker===t.ticker||r.name===t.ticker)||{}).market||'—';
       rows+=`<tr>`+
         `<td class="muted" style="text-align:right">${i+1}</td>`+
         `<td>${t.ticker||''}${aggregate&&t._n>1?` <span class="muted" style="font-size:11px">×${t._n}</span>`:''}</td>`+
+        `<td>${market}</td>`+
         `<td><span style="color:${t.direction==='BUY'?'var(--bull)':'var(--bear)'}">${t.direction||''}</span></td>`+
         `<td style="text-align:right">${num(t.size,2)}</td>`+
         `<td style="text-align:right">${num(t.open,2)}</td>`+
@@ -4192,9 +4196,9 @@ function paintFeesTxns(seg){
         `<td>${fdate(t.closed_at)}</td>`+
         `</tr>`;
     });
-    html+=`<table><thead><tr><th style="text-align:right">#</th><th>Instrument</th><th>Dir</th><th style="text-align:right">Size</th><th style="text-align:right">Open</th><th style="text-align:right">Close</th><th style="text-align:right">P&amp;L</th><th style="text-align:right">P&amp;L %</th><th>Opened</th><th>Closed date/time</th></tr></thead><tbody>`+
+    html+=`<table><thead><tr><th style="text-align:right">#</th><th>Instrument</th><th>Market</th><th>Dir</th><th style="text-align:right">Size</th><th style="text-align:right">Open</th><th style="text-align:right">Close</th><th style="text-align:right">P&amp;L</th><th style="text-align:right">P&amp;L %</th><th>Opened</th><th>Closed date/time</th></tr></thead><tbody>`+
       rows+
-      `<tr style="border-top:2px solid var(--line)"><td></td><td colspan="5"><b>Total trading P&amp;L (${txns.length} trades${aggregate?` · ${viewTxns.length} rows`:''})</b></td><td style="text-align:right;color:${tot>=0?'var(--bull)':'var(--bear)'}"><b>${gbp(tot)}</b></td><td colspan="3"></td></tr>`+
+      `<tr style="border-top:2px solid var(--line)"><td></td><td colspan="6"><b>Total trading P&amp;L (${txns.length} trades${aggregate?` · ${viewTxns.length} rows`:''})</b></td><td style="text-align:right;color:${tot>=0?'var(--bull)':'var(--bear)'}"><b>${gbp(tot)}</b></td><td colspan="3"></td></tr>`+
       `</tbody></table>`;
   }
   // IG charges behind the period (user 2026-08-02, P-06) — overnight funding / interest / fees that also
