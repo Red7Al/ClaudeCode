@@ -4366,6 +4366,7 @@ function _renderPerformance(){
     const key=qb+"|"+rb+"|"+vb.k;
     const o=(buckets[key]=buckets[key]||{qb,rb,vb:vb.k,vlo:vb.lo,vhi:vb.hi,n:0,sum:0});o.n++;o.sum+=r.perf;});
   const combos=Object.values(buckets).filter(b=>b.n>=3).map(b=>({...b,avg:b.sum/b.n})).sort((a,b)=>b.avg-a.avg).slice(0,N);
+  $("pf-combos").classList.remove("sqh-loading");
   $("pf-combos").innerHTML=LIMITED?`<p class="muted">🔒 <a href="#" onclick="showLogin();return false">Log in</a> to see the best Quality / R:R / Volume combinations.</p>`
     :combos.length?combos.map((b,i)=>{const on=PF_COMBO&&PF_COMBO.qb===b.qb&&PF_COMBO.rb===b.rb&&PF_COMBO.vb===b.vb;
       return `<div class="fcard clk${on?' active':''}" style="cursor:pointer${on?';border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)':''}" onclick="pfComboFilter(${b.qb},${b.rb},${b.vlo==null?'null':b.vlo},${b.vhi==null?'null':b.vhi},'${b.vb}')" title="Click to filter the table below to Quality ${b.qb}–${b.qb+10} · R:R ${b.rb.toFixed(1)}–${(b.rb+1).toFixed(1)} · ${b.vb}${on?' — click again to clear':''}"><div class="ic">${on?'✓':i+1}</div>
