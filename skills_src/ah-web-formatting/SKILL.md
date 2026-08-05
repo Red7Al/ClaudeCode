@@ -55,6 +55,11 @@ If a table has Sector but no Ticker, Sector is the far-right column. Move the he
 cell together and recheck empty-state `colspan` values; this is a global table standard, not a per-view
 preference.
 
+**Breakout confirmation placement.** Every table with VolumeScore must also show RVOL immediately to
+VolumeScore's left. Reuse `rvolCell()` and `volScoreCell()` so blanks and formatting stay consistent;
+move an existing RVOL column instead of duplicating it. Update sortable field keys and every affected
+`colspan` when adding the column.
+
 **Every column sorts.** EVERY table column must be clickable to sort by that column (user 2026-07-20).
 The house pattern, reused across Scanner / Performance / Order Ops / Squeeze History:
 
