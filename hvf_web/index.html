@@ -29,7 +29,7 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
 .sqh-loading{color:#d29922!important;font-weight:700;letter-spacing:.02em;animation:sqhPulse .9s ease-in-out infinite alternate}
 @keyframes sqhPulse{from{opacity:.4}to{opacity:1;text-shadow:0 0 10px color-mix(in srgb,#d29922 65%,transparent)}}
-.refreshing{color:var(--bull)!important;font-weight:700;letter-spacing:.02em;animation:refreshPulse .8s ease-in-out infinite alternate}
+.refreshing,.sqh-loading{color:#d29922!important;font-weight:700;letter-spacing:.02em;animation:sqhPulse .9s ease-in-out infinite alternate}
 @keyframes refreshPulse{from{opacity:.45}to{opacity:1;text-shadow:0 0 10px color-mix(in srgb,var(--bull) 70%,transparent)}}
 /* Operations / Settings sub-navigation (user 2026-07-10) */
 .subnav{display:flex;gap:6px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;align-items:center;justify-content:center;position:sticky;top:var(--sticky-top,90px);z-index:3}
@@ -1284,7 +1284,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Wallet £ <input id="ordp-wallet" type="number" min="100" step="500" value="10000" style="width:100px;padding:4px 6px" onchange="winnersParamsChange()"></label>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="The smallest position IG will accept. Read-only.">Minimum Trade £<b id="ordp-mintrade" style="color:var(--fg)">25</b></label>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Max position size <input id="ordp-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="winnersParamsChange()">%</label>
-    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = Auto: floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="ordp-maxopen" type="number" min="0" step="1" placeholder="Auto" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()"></label>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Default is floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="ordp-maxopen" type="number" min="1" step="1" value="50" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()"></label>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ effective Max open positions. Auto is floor(100 ÷ Max position size %).">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
     <span class="muted" style="font-size:11px">each trade stakes this % of the running wallet</span>
     <button class="btn" id="ordp-save-defaults" style="padding:4px 10px;font-size:12px" onclick="winnersSaveDefaults()" title="Save Wallet / Max position size / Max open positions as your defaults (Configuration → My trading limits)">💾 Save as my defaults</button>
@@ -1382,7 +1382,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <span id="pfw-inputs" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <label class="muted" style="display:flex;align-items:center;gap:5px">Wallet £ <input id="pfw-wallet" type="number" min="100" step="500" value="10000" style="width:100px;padding:4px 6px" onchange="_renderPerformance()"></label>
         <label class="muted" style="display:flex;align-items:center;gap:5px" title="Each trade stakes this % of the running wallet at that moment (compounding).">Max position size <input id="pfw-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="_renderPerformance()">%</label>
-        <label class="muted" style="display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = Auto: floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="pfw-maxopen" type="number" min="0" step="1" placeholder="Auto" style="width:64px;padding:4px 6px" onchange="_renderPerformance()"></label>
+        <label class="muted" style="display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Default is floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="pfw-maxopen" type="number" min="1" step="1" value="50" style="width:64px;padding:4px 6px" onchange="_renderPerformance()"></label>
         <span id="pfw-summary" style="font-size:12px"></span>
       </span>
     </div>
@@ -3268,15 +3268,15 @@ function paintIgAccount(){
   const renderedRows=tableRows.map(r=>r._rowKind==='open'
     ? `<tr><td><span class="tag bull">Open</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${_agg?'<span class="muted">—</span>':(r.current??'<span class="muted">—</span>')}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(r.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(r.limit??'')}</td><td>${r.currency||''}</td><td>${r.opened||''}</td><td></td><td></td><td><b>${r.ticker||r.epic||''}</b></td></tr>`
     : `<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??''}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td></td><td></td><td>${r.currency||''}</td><td></td><td>${_igDateTime(r.closed)}</td><td>${_igReason(r.reason)}</td><td><b>${r.ticker||''}</b></td></tr>`);
-  if(showClosed&&IGCLOSED===null)renderedRows.push(`<tr><td colspan="16" class="empty refreshing">Data refresh underway: loading closed trades from IG history... open positions are already shown above.</td></tr>`);
+  if(showClosed&&IGCLOSED===null)renderedRows.push(`<tr><td colspan="16" class="empty refreshing">⏳ Data loading… closed trades from IG history; open positions are shown above.</td></tr>`);
   else if(showClosed&&_igClosedNote)renderedRows.push(`<tr><td colspan="16" class="empty">${_esc(_igClosedNote)}</td></tr>`);
   const profitTotals={};
   pos.concat(closed).forEach(r=>{if(r.profit==null)return;const c=_igCurrency(r.currency);profitTotals[c]=(profitTotals[c]||0)+(+r.profit||0);});
   const totalProfit=Object.entries(profitTotals).map(([c,v])=>`${_igPf(+v.toFixed(2))} <span class="muted">${c}</span>`).join(' · ');
   const actualRows=pos.length+closed.length;
   const totalRow=actualRows?`<tr style="border-top:2px solid var(--line)"><td></td><td colspan="6"><b>Total visible profit (${actualRows} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
-  $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${actualRows}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed</span>${showClosed&&IGCLOSED===null?' <span class="refreshing">· Data refresh underway: closed trades loading from IG...</span>':_igClosedNote?' <span class="muted">· '+_esc(_igClosedNote)+'</span>':''}`;
-  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="16" class="empty ${showClosed&&IGCLOSED===null?'refreshing':''}">${q?'No transactions match that search.':'Data refresh underway: no open transactions yet; closed trades are still loading from IG history.'}</td></tr>`;
+  $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${actualRows}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed</span>${showClosed&&IGCLOSED===null?' <span class="refreshing">· ⏳ Data loading… closed trades from IG</span>':_igClosedNote?' <span class="muted">· '+_esc(_igClosedNote)+'</span>':''}`;
+  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="16" class="empty ${showClosed&&IGCLOSED===null?'refreshing':''}">${q?'No transactions match that search.':'⏳ Data loading… open transactions and closed trades from IG history.'}</td></tr>`;
 
   // ── WORKING ORDERS (own strip + sortable table) ──
   const ordBase=IG_ORD.filter(hit).map(o=>Object.assign({},o,_enrCommon(o),{gtd:(o.good_till||"").slice(0,10)||"—"}));
@@ -3313,9 +3313,9 @@ function renderIgAccount(ev){
   if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
   IGCLOSED=null;_igClosedNote="";
   $("ig-note").textContent="";$("ig-acct").innerHTML="";
-  $("ig-pos-count").innerHTML=`<span class="refreshing">Data refresh underway: loading open positions and working orders... closed trades load immediately after that.</span>`;
-  $("ig-pos-rows").innerHTML=`<tr><td colspan="16" class="empty refreshing">Data refresh underway: loading open positions and working orders...</td></tr>`;
-  $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty refreshing">Data refresh underway: loading working orders...</td></tr>`;
+  $("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading… open positions, working orders and closed trades.</span>`;
+  $("ig-pos-rows").innerHTML=`<tr><td colspan="16" class="empty refreshing">⏳ Data loading… open positions and working orders.</td></tr>`;
+  $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty refreshing">⏳ Data loading… working orders.</td></tr>`;
   fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       IG_POS=j.positions||[]; IG_ORD=j.orders||[]; igOpenMonthInitialised=false;
@@ -3638,19 +3638,19 @@ function winnersRunChange(surface='pf'){
     const rows=((j&&j.rows)||[]).filter(r=>r.perf!=null);
     if(!rows.length){paint('<div class="muted" style="font-size:13px">No data to re-backtest.</div>');return;}
     const ordered=rows.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||''));
-    const plainReplay=_combReplay(ordered.filter(r=>r.perf!=null),WINNERS_STAKE,WINNERS_MAXOPEN,false,"perf");
-    const runReplay=_combReplay(ordered.filter(r=>r.run_perf!=null),WINNERS_STAKE,WINNERS_MAXOPEN,true,"run_perf");
+    const plainReplay=_combReplay(ordered.filter(r=>r.perf!=null),WINNERS_STAKE,WINNERS_MAXOPEN,false,"perf",false);
+    const runReplay=_combReplay(ordered.filter(r=>r.run_perf!=null),WINNERS_STAKE,WINNERS_MAXOPEN,true,"run_perf",false);
     const plainFinal=WINNERS_WALLET*(1+plainReplay.ret), runFinal=WINNERS_WALLET*(1+runReplay.ret), delta=runFinal-plainFinal;
     const tgt=rows.filter(r=>r.outcome==='TARGET'&&r.run_perf!=null);
     const ran=tgt.filter(r=>r.run_perf>r.perf+0.01).length, back=tgt.filter(r=>r.run_perf<r.perf-0.01).length;
-    const money=x=>`£${Math.round(x).toLocaleString()}`, col=delta>=0?'var(--bull)':'var(--bear)';
+    const money=x=>`£${Math.round(x).toLocaleString()}`, col=delta>=0?'var(--bull)':'var(--bear)', fixedStake=WINNERS_WALLET*WINNERS_STAKE;
     const big=tgt.slice().sort((a,b)=>(b.run_perf-b.perf)-(a.run_perf-a.perf)).slice(0,5);
     const stopTxt=sv>0?` (stop trailing ${j.stop_pct||sv}% before target)`:``;
     paint(`<div class="card" style="border:1px solid ${col};background:color-mix(in srgb,${col} 8%,transparent)">
       <h4 style="margin:0 0 6px">🏃 Let winners run @ ${(j.threshold_pct||v)}% run-trail${stopTxt} — illustration (live orders unaffected)</h4>
       <div class="muted" style="font-size:13px">Once a trade hits target, the stop moves <b>up to the target</b> (so it can't give back below the target gain), then trails above it.
-      ${money(WINNERS_WALLET)} compounded ends at <b>${money(runFinal)}</b> <b>letting winners run</b> vs <b>${money(plainFinal)}</b> <b>selling at target</b> —
-      a <b style="color:${col}">${delta>=0?'+':'−'}${money(Math.abs(delta))}</b> difference over ${rows.length.toLocaleString()} trades.
+      Starting with <b>${money(WINNERS_WALLET)}</b>, using a fixed <b>${money(fixedStake)}</b> stake per placed trade, the wallet ends at <b>${money(runFinal)}</b> <b>letting winners run</b> vs <b>${money(plainFinal)}</b> <b>selling at target</b> —
+      a <b style="color:${col}">${delta>=0?'+':'−'}${money(Math.abs(delta))}</b> difference over ${rows.length.toLocaleString()} trades. This comparison does not compound returns.
       Of <b>${tgt.length.toLocaleString()}</b> target hits, <b>${ran.toLocaleString()}</b> ran further and only <b>${back.toLocaleString()}</b> came in below target (price closed under target on the last available bar).
       ${delta>=0?'Letting winners run (with the stop at target) beats selling at target here — raise the Trail % to keep more of a big run, lower it to lock in sooner.':'Here it did not help.'} The replay placed <b>${runReplay.n}</b> trades, reached <b>${runReplay.cap}</b> concurrently funded positions and excluded opportunities the wallet or Max open setting could not support.</div>
       ${big.length?`<div class="muted" style="font-size:12px;margin-top:6px"><b>Biggest runners:</b> ${big.map(r=>`${_esc(r.name||disp(r.ticker))} ${r.perf>0?'+':''}${r.perf}%→${r.run_perf>0?'+':''}${r.run_perf}%`).join(' · ')}</div>`:''}
@@ -3687,7 +3687,7 @@ const _gbp2=v=>v==null?'—':`${v<0?'−':'+'}£${Math.abs(v).toLocaleString(und
 // courts ruin. The optimum is wallet-independent under %-of-wallet compounding, so the £1k…£10k examples
 // apply the SAME combo and just scale the £ outcome, flagging any wallet whose stake is below the £25 IG
 // minimum. Uses startWallet=1 so ret/dd come out as fractions.
-function _combReplay(seq,stakeFrac,maxopen,withProof=false,perfKey="perf"){
+function _combReplay(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compound=true){
   // Event-based wallet replay: settle P&L on EXIT (not prematurely at trigger), reserve the broker margin
   // stake/leverage while each trade is open, and separately enforce the user's numeric max-open cap.
   // Blank/0 auto-derives the count cap from stake exposure: floor(100 / Max position size %).
@@ -3697,7 +3697,7 @@ function _combReplay(seq,stakeFrac,maxopen,withProof=false,perfKey="perf"){
   const settle=until=>{open.sort((a,b)=>a.exit.localeCompare(b.exit));
     while(open.length&&open[0].exit<=until){const x=open.shift();w+=x.net;if(w>peak)peak=w;const dd=peak>0?(peak-w)/peak:0;if(dd>maxdd)maxdd=dd;}};
   for(const r of seq){const td=r.trig_date||"";settle(td);
-    const stake=w*stakeFrac,lev=Math.max(1,+(levOf(r)||1)),margin=stake/lev,used=open.reduce((a,x)=>a+x.margin,0);
+    const stake=(compound?w:1)*stakeFrac,lev=Math.max(1,+(levOf(r)||1)),margin=stake/lev,used=open.reduce((a,x)=>a+x.margin,0);
     if(stake+1e-12<minStake){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:`Below minimum trade — £${Math.round(stake*Math.max(1,WINNERS_WALLET||1))} < £${MIN_TRADE}`});continue;}
     if(open.length>=effectiveMax){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,reason:`Max open cap — ${effectiveMax}`});continue;}
     if(used+margin>w+1e-9){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:"Wallet / margin full"});continue;}
@@ -3987,7 +3987,7 @@ function paintWinnersDims(dims, all){
 // ── Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle table ───────────────────────────────
 let SQH=null, sqhSortK="triggered_date", sqhSortDir=-1;   // default: Triggered date descending (user 2026-08-01); header click changes it
 function renderSqueezeHist(){
-  if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Loading…</td></tr>';}
+  if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr>';}
   fetch("/api/squeeze-history").then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];paintSqueezeHist();})
     .catch(()=>{SQH=[];paintSqueezeHist();});
 }
@@ -4071,9 +4071,9 @@ function renderFees(ev){
   if(btn){btn.disabled=true;btn.textContent="↻ Loading…";}
   FEES=null;
   const ex=$("fees-example"), tx=$("fees-txns"), title=$("fees-txn-title");
-  if(ex)ex.innerHTML='<p class="refreshing" style="font-size:12px;padding:8px 0">Data refresh underway: loading fee basis from IG account and transaction history...</p>';
-  if(tx)tx.innerHTML='<p class="refreshing" style="font-size:12px;padding:8px 0">Data refresh underway: loading closed trades from IG history... this can take a moment when IG returns multiple pages.</p>';
-  if(title)title.innerHTML='<span class="refreshing">Transactions — data refresh underway</span>';
+  if(ex)ex.innerHTML='<p class="refreshing" style="font-size:12px;padding:8px 0">⏳ Data loading… fee basis from IG account and transaction history.</p>';
+  if(tx)tx.innerHTML='<p class="refreshing" style="font-size:12px;padding:8px 0">⏳ Data loading… closed trades from IG history.</p>';
+  if(title)title.innerHTML='<span class="refreshing">⏳ Data loading… Transactions</span>';
   fetch("/api/fees",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
     FEES=j||{};
     // Seed the AUM box from the REAL account equity when available (user 2026-08-02, P-12), so the
@@ -4159,7 +4159,8 @@ function paintFeesTxns(seg){
   const num=(v,dp)=>v==null?'—':(+v).toLocaleString(undefined,{minimumFractionDigits:dp,maximumFractionDigits:dp});
   let html='';
   if(!viewTxns.length){
-    html+=`<p class="muted" style="font-size:12px;padding:6px 0">No closed trades in this period.</p>`;
+    const sourceNote=seg&&seg.source==='app_fallback'?'IG history returned no trades during refresh; showing the application trade ledger instead.':'No closed trades were returned for this period.';
+    html+=`<p class="muted" style="font-size:12px;padding:6px 0">${sourceNote}</p>`;
   }else{
     let rows='', tot=0;
     viewTxns.forEach((t,i)=>{

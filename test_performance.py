@@ -54,14 +54,15 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert 'used+margin>w+1e-9' in html
     assert 'effectiveMax=maxopen>0?Math.min(maxopen,_fundedMaxOpen(stakeFrac))' in html
     assert 'Blank/0 Max open uses Auto' in html
-    assert 'placeholder="Auto"' in html
+    assert 'id="ordp-maxopen" type="number" min="1" step="1" value="50"' in html
+    assert 'id="pfw-maxopen" type="number" min="1" step="1" value="50"' in html
     assert "Below minimum trade" in html
     assert "stake<MIN_TRADE" in html
     assert 'id="pf-backtest-settings"' in html
     assert "Back Test settings used" in html
     assert "Market scope" in html
     assert "Markets kept" not in html
-    assert "Data refresh underway" in html
+    assert "⏳ Data loading…" in html
     assert ".refreshing" in html
     assert 'renderDecisionProof(\'best-proof\',best.proof)' in html
     assert "renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true})" in html

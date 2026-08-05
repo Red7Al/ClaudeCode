@@ -2965,6 +2965,12 @@ def api_fees():
             with ig_shim._IG_LOCK, ig_shim.acting_session(_viewer):
                 _bal = ig_shim.get_account_balance() or {}
                 _ig_txns = ig_shim.get_transactions(first_last.strftime("%Y-%m-%dT00:00:00"))
+            # IG can return an empty history during a transient/rate-limited read even though the
+            # application's trade log contains the closed transactions. Do not present that as a
+            # confirmed empty month; use the local ledger fallback and let the payload identify it.
+            if not any(t.get("kind") == "TRADE" for t in (_ig_txns or [])):
+                log.warning("fees IG history returned no closed trades for %s; using app ledger fallback", _viewer)
+                _ig_txns = None
             _b = float(_bal.get("balance") or 0)
             _pl = float(_bal.get("profit_loss") or 0)
             _real_aum = round(_b + _pl, 2)      # account equity = ledger balance + open P&L
@@ -2975,7 +2981,7 @@ def api_fees():
     payload = {"mgmt_pct": 1.0, "perf_pct": 10.0, "last_month": None, "this_month": None,
                "discount": _disc, "user": _viewer or None,
                "real_aum": _real_aum, "aum_currency": _aum_ccy,
-               "source": ("ig" if _ig_txns is not None else "app"),
+               "source": ("ig" if _ig_txns is not None else "app_fallback"),
                "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
     try:
         if _ig_txns is not None:
