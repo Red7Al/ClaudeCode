@@ -3230,9 +3230,9 @@ function paintIgAccount(){
 
   // ── OPEN POSITIONS (own strip + aggregate toggle + sortable table, user 2026-08-01) ──
   if(!igOpenMonthInitialised){
-    const months=IG_POS.map(p=>(p.opened||'').slice(0,7))
-      .concat((IGCLOSED||[]).map(c=>(c.date||'').slice(0,7))).filter(Boolean).sort();
-    if(months.length&&$("igp_open_month"))$("igp_open_month").value=months[months.length-1];
+    // Load the complete returned history first. A month is a chart filter, not an implicit default;
+    // defaulting to the newest month hid older closed transactions from the main table.
+    if($("igp_open_month"))$("igp_open_month").value="";
     igOpenMonthInitialised=true;
   }
   const posRaw=IG_POS.filter(hit).map(p=>Object.assign({},p,_enrCommon(p),{open_month:(p.opened||'').slice(0,7)||'—'}));

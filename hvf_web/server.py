@@ -3001,7 +3001,11 @@ def api_fees():
         if _viewer and ig_shim.session_for(_viewer) is not None:
             with ig_shim._IG_LOCK, ig_shim.acting_session(_viewer):
                 _bal = ig_shim.get_account_balance() or {}
-                _ig_txns = ig_shim.get_transactions(first_last.strftime("%Y-%m-%dT00:00:00"))
+                # Load a broad history first. The period renderer then filters by close/charge date;
+                # this preserves trades opened before the billed month but closed inside it.
+                history_from = first_last - _dt.timedelta(days=365)
+                _ig_txns = ig_shim.get_transactions(history_from.strftime("%Y-%m-%dT00:00:00"),
+                                                     today.strftime("%Y-%m-%dT23:59:59"))
             # IG can return an empty history during a transient/rate-limited read even though the
             # application's trade log contains the closed transactions. Do not present that as a
             # confirmed empty month; use the local ledger fallback and let the payload identify it.
@@ -3399,7 +3403,7 @@ def api_ig_closed():
         if ig_shim.session_for(name) is None:
             return jsonify({"trades": [], "note": "No IG credentials of your own — set them in Configuration → IG."})
         try:
-            days = max(1, min(365, int(request.args.get("days", 120))))
+            days = max(1, min(365, int(request.args.get("days", 365))))
         except Exception:
             days = 120
         frm = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
