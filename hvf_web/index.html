@@ -911,7 +911,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <section class="gsec" style="border-left-color:var(--accent);flex:1 1 680px;min-width:0">
       <div class="count" style="padding-left:0"><span id="jobs-count"></span></div>
       <div class="tablewrap"><table>
-        <thead><tr><th data-jk="title">Job</th><th data-jk="category">Category</th><th data-jk="trading_style">Style</th><th data-jk="frequency">Frequency (UTC)</th><th data-jk="last_status">Last status</th><th data-jk="last_time">Last run</th><th data-jk="executions">Runs</th><th data-jk="failures">Failures</th><th data-jk="workflow">Workflow</th></tr></thead>
+        <thead><tr><th data-jk="title">Job</th><th data-jk="category">Category</th><th data-jk="trading_style">Style</th><th data-jk="frequency">Frequency (UTC)</th><th data-jk="last_status">Last status</th><th data-jk="last_time">Last run (UTC)</th><th data-jk="last_duration_s">Duration</th><th data-jk="executions">Runs</th><th data-jk="failures">Failures</th><th data-jk="workflow">Workflow</th></tr></thead>
         <tbody id="jobs-rows"></tbody>
       </table></div>
     </section>
@@ -2533,20 +2533,21 @@ function paintJobs(){
     <td><b style="color:${_jstyleCol(e.trading_style)}">${e.trading_style||""}</b></td>
     <td>${e.frequency||e.cron||""}</td>
     <td><b style="color:${_jstCol(e.last_status)}">${e.last_status||"—"}</b></td>
-    <td>${e.last_time?e.last_time.replace("T"," ").replace("Z",""):""}</td>
+    <td>${e.last_time?e.last_time.replace("T"," ").replace("Z",""):"—"}</td>
+    <td>${e.last_duration_s!=null?(e.last_duration_s<60?e.last_duration_s+"s":Math.floor(e.last_duration_s/60)+"m "+(e.last_duration_s%60)+"s"):"—"}</td>
     <td>${e.executions!=null?e.executions:""}</td>
     <td>${e.failures!=null?`<b style="color:${e.failures?"var(--bear)":"var(--muted)"}">${e.failures}</b>${e.failures_window?` <span class="muted" style="font-size:11px">/${e.failures_window}</span>`:""}`:""}</td>
     <td class="muted" style="font-size:12px">${e.workflow||""}</td></tr>`).join("")||`<tr><td colspan="9" class="empty">No scheduled jobs found.</td></tr>`;
 }
 function renderJobs(force){
-  $("jobs-rows").innerHTML=`<tr><td colspan="9" class="empty sqh-loading">⏳ Data loading… run stats.</td></tr>`;
+  $("jobs-rows").innerHTML=`<tr><td colspan="10" class="empty sqh-loading">⏳ Data loading… run stats.</td></tr>`;
   fetch("/api/scheduled-jobs"+(force?"?refresh=1":""),{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{JOB_ROWS=j.jobs||[];
       const totF=JOB_ROWS.reduce((s,e)=>s+(e.failures||0),0);
       const cards=[["Jobs",JOB_ROWS.length],["Categories",new Set(JOB_ROWS.map(e=>e.category)).size],["Recent failures",totF]];   // "Stats/GitHub API" card removed (user 2026-07-11)
       $("jobs-health").innerHTML=cards.map(([k,v])=>`<div class="fcard"><div class="body"><div class="muted" style="font-size:12px">${k}</div><div style="font-size:20px;font-weight:800">${v}</div></div></div>`).join("")+(j.generated_utc?`<div class="fcard"><div class="body"><div class="muted" style="font-size:12px">As of</div><div style="font-size:13px">${j.generated_utc} UTC</div>${j.error?`<div style="color:#d29922;font-size:11px;margin-top:4px">${j.error}</div>`:""}</div></div>`:"");
       paintJobs();})
-    .catch(()=>{$("jobs-rows").innerHTML=`<tr><td colspan="9" class="empty" style="color:var(--bear)">Run stats could not be loaded. Use Refresh to retry.</td></tr>`;});
+    .catch(()=>{$("jobs-rows").innerHTML=`<tr><td colspan="10" class="empty" style="color:var(--bear)">Run stats could not be loaded. Use Refresh to retry.</td></tr>`;});
 }
 document.querySelectorAll("th[data-jk]").forEach(th=>th.onclick=()=>{const k=th.dataset.jk;jSortDir=(jSortK===k)?-jSortDir:1;jSortK=k;paintJobs();_sortArrows("data-jk",jSortK,jSortDir);});
 function renderSyslogs(){

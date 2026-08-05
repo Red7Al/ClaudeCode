@@ -29,3 +29,12 @@ def test_price_data_refresh_runs_at_0430_utc_monday_to_saturday(monkeypatch):
         "months": [-1],
         "wdays": [1, 2, 3, 4, 5, 6],
     }
+
+
+def test_scheduled_jobs_use_squeeze_display_names_without_changing_workflows():
+    from hvf_web import scheduled_jobs
+
+    assert scheduled_jobs._display_name("HVF Daily Report") == "Squeeze Daily Report"
+    assert scheduled_jobs._display_name("HVF Orders") == "Squeeze Orders"
+    assert scheduled_jobs._display_name("UK HVF Watch") == "UK Squeeze Watch"
+    assert scheduled_jobs._display_name("Price Data Refresh") == "Price Data Refresh"

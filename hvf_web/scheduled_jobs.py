@@ -135,6 +135,13 @@ _MOMENTUM_JOBS = {"AUS Open", "AUS Monitor", "Commodity Monitor AM", "Commodity 
                   "Sunday Readiness Check", "Sunday Pre-Open Commodity Scan", "COT Report"}
 _SQUEEZE_JOBS = {"HVF Daily Report", "HVF Orders", "UK HVF Watch", "US HVF Watch"}
 
+_DISPLAY_NAMES = {
+    "HVF Daily Report": "Squeeze Daily Report",
+    "HVF Orders": "Squeeze Orders",
+    "UK HVF Watch": "UK Squeeze Watch",
+    "US HVF Watch": "US Squeeze Watch",
+}
+
 
 def _trading_style(title: str) -> str:
     if title in _MOMENTUM_JOBS:
@@ -142,6 +149,10 @@ def _trading_style(title: str) -> str:
     if title in _SQUEEZE_JOBS:
         return "Squeeze"
     return "Support / ops"
+
+
+def _display_name(title: str) -> str:
+    return _DISPLAY_NAMES.get(title, title)
 
 
 # What each scheduled job is FOR (user 2026-07-31, P-15 — "determine the purpose of each job"). Keyed by
@@ -216,12 +227,23 @@ def _fetch_runs(session, workflow_file: str) -> dict:
     fail_concl = {"failure", "timed_out", "startup_failure"}
     failures = sum(1 for x in runs if (x.get("conclusion") or "") in fail_concl)
     last = runs[0] if runs else {}
+    duration_s = None
+    started, finished = last.get("run_started_at"), last.get("updated_at")
+    if started and finished:
+        try:
+            from datetime import datetime
+            a = datetime.fromisoformat(started.replace("Z", "+00:00"))
+            b = datetime.fromisoformat(finished.replace("Z", "+00:00"))
+            duration_s = max(0, int((b - a).total_seconds()))
+        except Exception:
+            duration_s = None
     return {
         "executions": j.get("total_count", len(runs)),
         "failures": failures,
         "failures_window": len(runs),                       # how many runs the failure count covers
         "last_status": (last.get("conclusion") or last.get("status") or "-"),
         "last_time": last.get("created_at"),
+        "last_duration_s": duration_s,
     }
 
 
@@ -236,7 +258,7 @@ def get_jobs(force: bool = False) -> dict:
     if not JOBS:
         return {"jobs": [], "error": "job registry (setup_cronjobs.JOBS) unreadable"}
 
-    jobs = [{"title": ti, "cron": cr, "workflow": wf,
+    jobs = [{"title": _display_name(ti), "raw_title": ti, "cron": cr, "workflow": wf,
              "frequency": _cron_human(cr), "category": _category(ti),
              "trading_style": _trading_style(ti), "purpose": _purpose(ti)}
             for (ti, cr, wf) in JOBS]
