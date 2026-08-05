@@ -42,6 +42,8 @@ def test_performance_has_dedicated_let_winners_run_tab():
     assert 'id="pf-panel-run" class="hidden"' in html
     assert 'if(run)run.classList.toggle("hidden",which!=="run")' in html
     assert 'if(which==="run")which="settings"' in html
+    assert 'id="pf-advanced-nav"' not in html
+    assert 'Which market and signal attributes were associated with the strongest outcomes.' in html
     assert 'id="pf-run-stop"' in html
     assert 'id="pf-run-in"' in html
     assert "winnersRunChange('pf')" in html

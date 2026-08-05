@@ -1297,9 +1297,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="pf-pill-group" style="display:none"><span class="muted pf-pill-desc">How many observed triggers gained, lost, or remain open.</span><button class="pill" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button></div>
     <div class="pf-pill-group" id="pf-advanced-group" style="display:none"><span class="muted pf-pill-desc">Explore the evidence behind the recommended settings (Silver/Gold admin).</span><button class="pill" id="pf-pill-advanced" type="button" onclick="toggleAdvancedPf()" title="Open specialist winner-analysis.">⚙ Advanced analysis</button></div>
   </div>
-  <div id="pf-advanced-nav" class="hidden" style="display:flex;justify-content:center;align-items:flex-end;gap:8px;flex-wrap:wrap;margin:-4px 0 12px">
-    <div class="pf-pill-group"><span class="muted pf-pill-desc">Which market and signal attributes were associated with the strongest outcomes.</span><button class="pill" data-pfpanel="analysis" onclick="pfPanel('analysis')">🏆 What separates the winners</button></div>
-  </div>
   <!-- Shared compounded-wallet assumptions for the analytical reports. Signal rules such as Quality,
        R:R, RVOL, VWAP and ATR are selected in Best settings/User Configuration, not here. -->
   <div id="pf-shared-model" class="card hidden" style="margin-bottom:10px;display:none;align-items:center;gap:14px;flex-wrap:wrap">
@@ -1324,6 +1321,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        shown only when the "What separates the winners" sub-tab is active (toggled in pfPanel). -->
   <div id="pf-winners-head" class="hidden">
     <h2 class="sec" style="margin-top:0">What separates the winners?</h2>
+    <p class="muted" style="font-size:12px;margin:-8px 0 6px">Which market and signal attributes were associated with the strongest outcomes.</p>
     <p class="muted" style="font-size:13px;margin-top:-8px">Every tradeable setup over the <b>last 12 months</b> (user 2026-07-18),
     replayed from price history — the full period, not just the recent recorded triggers. Assume each was placed, so this is the
     performance of <b>what's possible</b>. Return % uses the same direction-aware, marked-to-market definition as the Results

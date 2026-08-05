@@ -62,6 +62,7 @@ import io
 import json
 import logging
 import math
+import numbers
 
 from flask import Flask, jsonify, send_file, request, Response
 
@@ -86,8 +87,12 @@ def _json_safe(value):
             value = item()
         except Exception:
             pass
-    if isinstance(value, float) and not math.isfinite(value):
-        return None
+    if isinstance(value, numbers.Real):
+        try:
+            if not math.isfinite(float(value)):
+                return None
+        except (TypeError, ValueError, OverflowError):
+            return None
     if isinstance(value, dict):
         return {k: _json_safe(v) for k, v in value.items()}
     if isinstance(value, list):
