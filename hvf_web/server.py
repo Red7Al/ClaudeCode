@@ -78,6 +78,14 @@ _X_HANDLE = "SqueezeSignals"   # our X account (config.py / publish_one_to_x X_H
 
 def _json_safe(value):
     """Convert non-finite numeric values to JSON null before browser responses are emitted."""
+    # NumPy scalar values (used by the replay calculations) are not always instances of built-in
+    # float, so normalise scalar wrappers before checking finiteness.
+    item = getattr(value, "item", None)
+    if callable(item) and not isinstance(value, (dict, list, tuple)):
+        try:
+            value = item()
+        except Exception:
+            pass
     if isinstance(value, float) and not math.isfinite(value):
         return None
     if isinstance(value, dict):

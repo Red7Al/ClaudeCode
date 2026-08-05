@@ -28,13 +28,20 @@ def test_json_safe_converts_non_finite_numbers_for_browser_payloads():
                               "nested": [float("-inf"), 2]})
     assert safe == {"rvol": None, "inf": None, "ok": 1.25, "nested": [None, 2]}
 
+    class ScalarWrapper:
+        def item(self):
+            return float("nan")
+
+    assert server._json_safe(ScalarWrapper()) is None
+
 
 def test_performance_has_dedicated_let_winners_run_tab():
     html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
 
-    assert 'data-pfpanel="run" onclick="pfPanel(\'run\')"' in html
+    assert 'data-pfpanel="run" onclick="pfPanel(\'run\')"' not in html
     assert 'id="pf-panel-run" class="hidden"' in html
     assert 'if(run)run.classList.toggle("hidden",which!=="run")' in html
+    assert 'if(which==="run")which="settings"' in html
     assert 'id="pf-run-stop"' in html
     assert 'id="pf-run-in"' in html
     assert "winnersRunChange('pf')" in html
@@ -44,7 +51,7 @@ def test_performance_has_dedicated_let_winners_run_tab():
     assert "What separates the winners — what's possible over 12 months" not in html
     assert 'id="ordp-ledger-q"' not in html
     assert "Every trade — oldest first, wallet after each" not in html
-    assert html.index('data-pfpanel="results"') < html.index('data-pfpanel="summary"')
+    assert html.index('data-pfpanel="settings"') < html.index('data-pfpanel="results"')
     assert ".doc .tclist li::marker{font-size:.65em;color:var(--muted)}" in html
     assert "top:calc(var(--hdr-h,49px) - 1px)" in html
 
