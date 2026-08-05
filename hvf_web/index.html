@@ -705,7 +705,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="confpanel hidden" data-panel="preferences">
     <div class="card"><h4>My filter defaults</h4>
       <p class="muted" style="font-size:12px">Set the Scanner filters exactly how you like them, then save — they'll be applied automatically every time <b>you</b> log in (and "Reset filters" returns to them). Each user has their own.</p>
-      <div id="cfg-defaults" class="muted" style="font-size:12px;margin:8px 0">loading…</div>
+<div id="cfg-defaults" class="sqh-loading" style="font-size:12px;margin:8px 0">⏳ Data loading…</div>
       <button class="btn" onclick="saveFilterDefaults()">Save current filters as my defaults</button>
       <button class="btn" onclick="clearFilterDefaults()">Clear my defaults</button>
     </div>
@@ -747,7 +747,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="confpanel hidden" data-panel="tabvis">
     <div class="card" style="margin-bottom:0"><h4>Tab visibility</h4>
       <p class="muted" style="font-size:12px;margin:0 0 8px">Tick the tabs you want to see. Configuration always stays visible.</p>
-      <div id="tabvis-list" style="display:flex;flex-wrap:wrap;gap:6px 14px">loading…</div>
+<div id="tabvis-list" class="sqh-loading" style="display:flex;flex-wrap:wrap;gap:6px 14px">⏳ Data loading…</div>
       <div class="credrow" id="featrow-xposts" style="display:none"><span class="clabel">Show "X Posts" tab <span class="muted">(admin feature, applies to all admins)</span></span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="feat-xposts" onchange="saveFeatures()"> Enabled</label></div>
       <button class="btn" style="margin-top:10px" onclick="saveTabVis()">Save tab visibility</button>
       <span id="tabvis-msg" style="font-size:12px;margin-left:8px"></span>
@@ -773,7 +773,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <p class="muted" style="font-size:12px;margin:0 0 14px">Which squeeze setups may be traded on the live IG account.</p>
     <div class="card" ><h4>Trade filters — direction</h4>
       <p class="muted" style="font-size:12px">Only ticked directions may be traded. Ticking both (or neither) = no restriction. To control which <b>markets</b> may be traded, use <b>Markets (User)</b> — that switch now governs both what you see and what you trade.</p>
-      <div id="cfg-trade">loading…</div>
+<div id="cfg-trade" class="sqh-loading">⏳ Data loading…</div>
       <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
       <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
     </div>
@@ -812,14 +812,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <p class="muted" style="font-size:12px;margin:0 0 14px">Which monitor sources may place live orders.</p>
     <div class="card" style="margin-bottom:0"><h4>Trade execution by source</h4>
       <p class="muted" style="font-size:12px">Yes = that source may place live IG trades/orders; No = it scans and reports but places <b>nothing</b>. These switches are shared (one trading account) — the change is attributed to you.</p>
-      <div id="cfg-exec">loading…</div>
+<div id="cfg-exec" class="sqh-loading">⏳ Data loading…</div>
       <button class="btn" style="margin-top:8px" onclick="saveExec()">Save execution switches</button>
       <div id="cfg-msg2" style="font-size:12px;margin-top:8px"></div>
     </div>
   </div>
 
   <!-- Credential panels — one per section; renderCredentials() populates #cfg-creds with a panel each -->
-  <div id="cfg-creds">loading…</div>
+<div id="cfg-creds" class="sqh-loading">⏳ Data loading…</div>
 </div>
 
 <div id="view-batch" class="hidden doc" style="max-width:1240px">
@@ -1363,7 +1363,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
   <h2 class="sec">Best Quality / R:R combinations / Volume Score</h2>
   <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide), R:R bands (1 wide) and Volume Score bands (8+ / 4–7 / 0–3); ranked by average direction-aware return across the recorded triggers, <b>reacting to the charts above</b>. Only buckets with at least 3 triggers are shown.</p>
-  <div id="pf-combos" class="fgrid" style="margin-bottom:8px">loading…</div>
+<div id="pf-combos" class="fgrid sqh-loading" style="margin-bottom:8px">⏳ Data loading…</div>
   <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
 
   <h2 class="sec">Every recorded trigger</h2>
@@ -1449,7 +1449,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <span id="ordp-sl-busy" class="muted" style="font-size:12px"></span>
     </div>
     <div id="ordp-sl" style="margin-bottom:10px;display:none"></div>
-    <div id="ordp-summary" class="fgrid" style="margin-bottom:10px">loading…</div>
+<div id="ordp-summary" class="fgrid sqh-loading" style="margin-bottom:10px">⏳ Data loading…</div>
     <!-- Monthly %-growth chart moved to the Report tab (user 2026-07-18, P-01) — see #pf-monthly. -->
     <!-- Click-to-filter holders for the winners charts (user 2026-07-27, P-10 L122/L123): clicking a
          Location/Market/Sector/Direction/Outcome bar narrows the summary cards + ledger below, like the
@@ -1459,12 +1459,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <!-- VolumeScore impact report (user 2026-07-24, P-02 L55) — how filtering on VolumeScore changes the book. -->
     <h3 class="sec" style="font-size:15px;margin:16px 0 2px">📊 VolumeScore impact — how volume confirmation filters the winners</h3>
     <p class="muted" style="font-size:12px;margin:2px 0 6px">Same 12-month replayed population as above. Win rate, average return and the concurrency-capped £ for the whole book vs the VolumeScore ≥ 8 subset, and where profit concentrates by score band.</p>
-    <div id="volscore-report">loading…</div>
+<div id="volscore-report" class="sqh-loading">⏳ Data loading…</div>
     <!-- Best settings by quarter (user 2026-07-25, P-04 L59) — best Market/Quality/R:R per quarter over
          the available data (up to 3 years). -->
     <h3 class="sec" style="font-size:15px;margin:16px 0 2px">🏅 Best settings by quarter <span id="best-span" class="muted" style="font-size:12px;font-weight:400"></span></h3>
     <p class="muted" style="font-size:12px;margin:2px 0 6px">For each calendar quarter over the available replayed data (up to 3 years — extends as history grows), the Market, Quality band and R:R band with the highest average return (min 3 trades). Answers "which settings worked, and how that shifts over time".</p>
-    <div id="best-settings-report">loading…</div>
+<div id="best-settings-report" class="sqh-loading">⏳ Data loading…</div>
   </div>
 </div>
 
@@ -1490,7 +1490,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <!-- Every header sorts (user 2026-07-18, P-01) — data-sqh drives sqhSort(). -->
     <div class="tablewrap"><table>
       <thead><tr><th class="clk" data-sqh="name">Name</th><th class="clk" data-sqh="direction">Dir</th><th class="clk" data-sqh="market">Market</th><th class="clk" data-sqh="timeframe">TF</th><th class="clk" data-sqh="first_seen" title="First replay step this funnel existed">Developing</th><th class="clk" data-sqh="ready_date" title="First step seen READY">Ready</th><th class="clk" data-sqh="triggered_date" title="First close beyond entry after the pivots">Triggered</th><th class="clk" data-sqh="outcome">Outcome</th><th class="clk" data-sqh="outcome_date">Closed</th><th class="clk" data-sqh="return_pct">Return</th><th class="clk" data-sqh="quality">Quality</th><th class="clk" data-sqh="rr">R:R</th><th class="clk" data-sqh="sector">Sector</th><th class="clk" data-sqh="ticker">Ticker</th></tr></thead>
-      <tbody id="sqh-rows"><tr><td colspan="14" class="empty sqh-loading">⏳ Loading…</td></tr></tbody>
+<tbody id="sqh-rows"><tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
     </table></div>
   </section>
 </div>
@@ -1627,7 +1627,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="credrow"><span class="clabel">Superinvestor lookback (days)</span><input type="number" min="0" step="1" id="eng-superinvestor_lookback_days" style="max-width:120px"></div>
     <div class="credrow"><span class="clabel">Min senator trades <span class="muted" style="font-weight:400">(not currently consumed by the engine)</span></span><input type="number" min="0" step="1" id="eng-min_senator_trades" style="max-width:120px"></div>
     <div style="margin-top:12px"><span class="clabel" style="display:block;margin-bottom:6px">Morning Squeeze tweets — markets to publish <span class="muted" style="font-weight:400">(default FTSE 100, FTSE 250, NASDAQ 100, S&amp;P 500)</span></span>
-      <div id="xhvf-markets" style="display:flex;flex-wrap:wrap;gap:8px">loading…</div></div>
+<div id="xhvf-markets" class="sqh-loading" style="display:flex;flex-wrap:wrap;gap:8px">⏳ Data loading…</div></div>
     <button class="btn" style="margin-top:10px" onclick="saveXPub()">Save X publishing settings</button>
     <span id="xpub-msg" style="font-size:12px;margin-left:8px"></span>
   </div>
@@ -2068,10 +2068,10 @@ function showDetail(t){
     ${AUTH&&r.has_signal?`<button class="btn" onclick="pushToPreorder('${r.ticker}')" style="float:right;margin-right:8px">${(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker)))?'✓ In Pre-orders':'➕ Push to Pre-orders'}</button>`:''}
     <h2>${disp(r.ticker)} <span class="muted" style="font-size:13px">${r.name||''}</span> <span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></h2>
     <div class="sub">${locName(r.location)} · ${r.market||''} · ${r.sector||''} · ${r.status||''} · Q${r.quality??'?'} · R:R ${r.rr!=null?r.rr.toFixed(2):'?'} · ${(r.timeframe||'').replace('daily-','D')}</div>
-    ${IS_ADMIN?`<div class="card"><h4>Squeeze Rules 1–5 — justification</h4><div id="rulesbox">loading…</div></div>`:''}
+    ${IS_ADMIN?`<div class="card"><h4>Squeeze Rules 1–5 — justification</h4><div id="rulesbox" class="sqh-loading">⏳ Data loading…</div></div>`:''}
     <div class="card"><h4>Quality (${r.quality??'?'}/100) — how it's scored</h4>
       <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the funnel is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric funnel; a low Q means a loose, older, or lopsided one.</div></div>
-    ${AUTH?`<div class="card"><h4>VolumeScore — breakout confirmation (0–12)</h4><div id="volscorebox">loading…</div></div>`:''}
+    ${AUTH?`<div class="card"><h4>VolumeScore — breakout confirmation (0–12)</h4><div id="volscorebox" class="sqh-loading">⏳ Data loading…</div></div>`:''}
     <div class="card"><h4>Price — last ${days} days (filter-reactive)</h4>
       <img id="pw" src="/api/pricewin/${r.ticker}?days=${days}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}"></div>
     <div class="card"><h4>X post card</h4><img loading="lazy" src="/api/card/${r.ticker}"></div>
@@ -2083,10 +2083,10 @@ function showDetail(t){
       <div class="kv"><span>Dist to entry</span><b>${r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'?'}</b></div>
       ${r.pe!=null?`<div class="kv"><span>P/E</span><b>${r.pe}</b></div>`:''}
       ${r.insider_pct!=null?`<div class="kv"><span>Insider %</span><b>${r.insider_pct.toFixed(2)}%</b></div>`:''}</div>
-    <div class="card"><h4>Fundamentals — key metrics</h4><div id="fundbox">loading…</div></div>
+    <div class="card"><h4>Fundamentals — key metrics</h4><div id="fundbox" class="sqh-loading">⏳ Data loading…</div></div>
     <div class="card" id="brokercard" style="${r.broker?'':'display:none'}"><h4>Broker analysis</h4><span id="brokerbase">${broker}</span><div id="brokerchg" class="muted" style="margin-top:6px">loading 6–12mo change…</div></div>
-    <div class="card"><h4>On X</h4><div id="xlinks">loading…</div></div>
-    <div class="card"><h4>X thread (all pages)</h4><div class="tweet" id="tweetbox">loading…</div></div>`;
+    <div class="card"><h4>On X</h4><div id="xlinks" class="sqh-loading">⏳ Data loading…</div></div>
+    <div class="card"><h4>X thread (all pages)</h4><div class="tweet sqh-loading" id="tweetbox">⏳ Data loading…</div></div>`;
   fetch(`/api/thread/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("tweetbox"); if(!el||SEL!==r.ticker)return;
     const parts=j.parts||[]; if(!parts.length){el.textContent="(no thread — not a publishable setup)";return;}
@@ -2322,12 +2322,12 @@ function pollRefresh(){
       const p=s.progress||{}, done=p.done||0, total=p.total||0;
       let eta="";
       if(_refStart&&done>0&&total>0){const rate=done/((Date.now()-_refStart)/1000); if(rate>0){const mins=Math.max(1,Math.ceil((total-done)/rate/60)); eta=` · ~${mins} min to complete`;}}
-      $("refresh").textContent=total?`↻ ${done}/${total}${eta}`:"↻ Refreshing…";
+      $("refresh").className="sqh-loading";$("refresh").textContent=total?`⏳ Data loading… ${done}/${total}${eta}`:"⏳ Data loading…";
       // Flash green for a second each time another 10 instruments complete (user 2026-06-29).
       const tens=Math.floor(done/10);
       if(tens>_lastTens){_lastTens=tens;$("refresh").style.color="var(--bull)";setTimeout(()=>{$("refresh").style.color="";},1000);}
       setTimeout(pollRefresh,3000);
-    } else {$("refresh").style.color="";$("refresh").textContent="↻ Done — reloading…"; setTimeout(()=>location.reload(),800);}
+    } else {$("refresh").className="";$("refresh").style.color="";$("refresh").textContent="↻ Done — reloading…"; setTimeout(()=>location.reload(),800);}
   }).catch(()=>setTimeout(pollRefresh,5000));
 }
 $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light");$("theme").textContent=l?"☀️ Light":"🌙 Dark";if(SEL)showDetail(SEL);};
@@ -2641,7 +2641,7 @@ function _igAuditCell(u){
 function toggleIgAudit(name){
   const box=$("igaud-"+name); if(!box)return;
   if(box.style.display!=="none"){box.style.display="none";return;}
-  box.innerHTML="Loading…"; box.style.display="";
+  box.innerHTML="⏳ Data loading…"; box.className="sqh-loading"; box.style.display="";
   fetch("/api/ig-account-audit?user="+encodeURIComponent(name),{headers:{"X-Auth":AUTH}})
     .then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{
       const a=j.audit||[];
@@ -3149,8 +3149,8 @@ function renderMarkets(){
 // Now it re-reads /api/records and shows an hourglass on the button until the rows repaint.
 function refreshMarkets(ev){
   const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
-  if(btn){btn.disabled=true;btn.textContent="⏳ Refreshing…";}
-  $("mk-count").innerHTML='<span class="muted">⏳ Loading…</span>';
+  if(btn){btn.disabled=true;btn.textContent="⏳ Data loading…";}
+  $("mk-count").innerHTML='<span class="sqh-loading">⏳ Data loading…</span>';
   fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{DATA=j.records||[];if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;DATA.forEach(augment);renderMarkets();})
     .catch(()=>{$("mk-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not refresh — try again.</td></tr>`;})
@@ -3310,7 +3310,7 @@ function _igReason(r){
 }
 function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
-  if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
+  if(btn){btn.disabled=true;btn.className="sqh-loading";btn.textContent="⏳ Data loading…";}
   IGCLOSED=null;_igClosedNote="";
   $("ig-note").textContent="";$("ig-acct").innerHTML="";
   $("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading… open positions, working orders and closed trades.</span>`;
@@ -3438,13 +3438,13 @@ function renderPerformance(){
   const _pfl=$("pf-loading");
   if(PERF_DATA===null){                       // fetch the recorded-trigger report once, then render
     PERF_DATA=[];                             // in-flight guard
-    if(_pfl)_pfl.innerHTML=`<span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#d29922;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ processing the 12-month replay…</span>`;
+    if(_pfl)_pfl.innerHTML=`<span class="sqh-loading" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ Data loading… 12-month replay.</span>`;
     fetch("/api/performance").then(r=>r.ok?r.json():{rows:[]})
       .then(j=>{
         // Server is still building the 12-month replay (cold cache, first load after a restart, user
         // 2026-08-03 P-01): it returns {warming:true} instantly instead of blocking ~40s. Keep the badge
         // and poll until the rows are ready, so the tab never hangs.
-        if(j.warming){PERF_DATA=null;if($("pf-loading"))$("pf-loading").innerHTML=`<span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#d29922;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ processing the 12-month replay… (one-off after a restart)</span>`;setTimeout(renderPerformance,3000);return;}
+        if(j.warming){PERF_DATA=null;if($("pf-loading"))$("pf-loading").innerHTML=`<span class="sqh-loading" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ Data loading… 12-month replay (after restart).</span>`;setTimeout(renderPerformance,3000);return;}
         PERF_DATA=j.rows||[];PERF_GEN=j.generated||"";if($("pf-loading"))$("pf-loading").innerHTML="";_renderPerformance();})
       .catch(()=>{PERF_DATA=null;if($("pf-loading"))$("pf-loading").innerHTML=`<span style="color:var(--bear);font-size:12.5px">Performance data did not load. <button class="subpill" onclick="renderPerformance()">Retry</button></span>`;});
     // The analysis loads lazily when its sub-tab is opened (pfPanel), not here.
@@ -4070,7 +4070,7 @@ document.querySelectorAll("th[data-sqh]").forEach(th=>th.onclick=()=>sqhSort(th.
 let FEES=null, FEES_PER='this';
 function renderFees(ev){
   const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
-  if(btn){btn.disabled=true;btn.textContent="↻ Loading…";}
+  if(btn){btn.disabled=true;btn.textContent="⏳ Data loading…";}
   FEES=null;
   const ex=$("fees-example"), tx=$("fees-txns"), title=$("fees-txn-title");
   if(ex)ex.innerHTML='<p class="refreshing" style="font-size:12px;padding:8px 0">⏳ Data loading… fee basis from IG account and transaction history.</p>';
@@ -4091,7 +4091,7 @@ function renderFees(ev){
     if(tb&&FEES.this_month&&FEES.this_month.label)tb.textContent=FEES.this_month.label;
     paintFees();
   }).catch(()=>{FEES={note:"Could not load fee data or IG transaction history."};paintFees();})
-    .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
+    .finally(()=>{if(btn){btn.disabled=false;btn.className="btn";btn.textContent=was;}});
 }
 function feesPeriod(p){
   FEES_PER=p;
@@ -4517,13 +4517,13 @@ let crdSortK="row", crdSortDir=1;   // detail-table sort (user 2026-07-24, P-03)
 function renderCR(ev){
   // Visible feedback on refresh (user 2026-07-11): spin the button + show a loading row.
   const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
-  if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
-  $("cr-count").innerHTML='<span class="muted">Loading…</span>';
+  if(btn){btn.disabled=true;btn.textContent="⏳ Data loading…";}
+  $("cr-count").innerHTML='<span class="sqh-loading">⏳ Data loading…</span>';
   $("cr-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading change-request files…</td></tr>`;
   fetch("/api/change-requests",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{CR_FILES=j.files||[];paintCR();})
     .catch(()=>{$("cr-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not load (admin only).</td></tr>`;})
-    .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
+    .finally(()=>{if(btn){btn.disabled=false;btn.className="btn";btn.textContent=was;}});
 }
 function paintCR(){
   // Flatten the per-status counts onto each row so EVERY column sorts (user 2026-07-24, P-02): the count
