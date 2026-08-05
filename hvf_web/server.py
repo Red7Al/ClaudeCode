@@ -61,6 +61,7 @@ import os
 import io
 import json
 import logging
+import math
 
 from flask import Flask, jsonify, send_file, request, Response
 
@@ -73,6 +74,19 @@ SNAPSHOT = os.path.join(_HERE, "snapshot.json")
 app = Flask(__name__)
 _PNG_CACHE: dict = {}
 _X_HANDLE = "SqueezeSignals"   # our X account (config.py / publish_one_to_x X_HANDLE)
+
+
+def _json_safe(value):
+    """Convert non-finite numeric values to JSON null before browser responses are emitted."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_safe(v) for v in value]
+    return value
 
 # matplotlib pyplot is NOT thread-safe and the server is threaded=True. The detail panel fires the
 # card + price-window renders in the same instant, so two concurrent plt.figure/savefig calls stomped
@@ -2365,7 +2379,7 @@ def api_squeeze_analysis():
     except Exception as ex:
         log.warning(f"squeeze analysis failed: {ex}")
     _SQA_CACHE.update(ts=now, data=payload, key=ckey)
-    return jsonify(payload)
+    return jsonify(_json_safe(payload))
 
 
 def _sl_path(direction, entry, stop, target, bars, thr):
@@ -3042,7 +3056,7 @@ def api_winners():
     except Exception as ex:
         log.warning(f"winners rows failed: {ex}")
         payload["error"] = "The annual trade dataset could not be built."
-    return jsonify(payload)
+    return jsonify(_json_safe(payload))
 
 
 _CR_DIR = os.path.join(_REPO_ROOT, "ChangeRequests")

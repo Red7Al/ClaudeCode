@@ -23,6 +23,12 @@ def test_performance_inline_javascript_parses():
             Path(path).unlink(missing_ok=True)
 
 
+def test_json_safe_converts_non_finite_numbers_for_browser_payloads():
+    safe = server._json_safe({"rvol": float("nan"), "inf": float("inf"), "ok": 1.25,
+                              "nested": [float("-inf"), 2]})
+    assert safe == {"rvol": None, "inf": None, "ok": 1.25, "nested": [None, 2]}
+
+
 def test_performance_has_dedicated_let_winners_run_tab():
     html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
 
