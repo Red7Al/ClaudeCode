@@ -28,6 +28,7 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 #tab-sysdocs{max-width:112px;padding-inline:10px;line-height:1.15;white-space:normal}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
 .sqh-loading{color:#d29922!important;font-weight:700;letter-spacing:.02em;animation:sqhPulse .9s ease-in-out infinite alternate}
+.cfg-defaults-ready{color:var(--muted)!important;font-weight:400!important;letter-spacing:normal!important;animation:none!important}
 @keyframes sqhPulse{from{opacity:.4}to{opacity:1;text-shadow:0 0 10px color-mix(in srgb,#d29922 65%,transparent)}}
 .refreshing,.sqh-loading{color:#d29922!important;font-weight:700;letter-spacing:.02em;animation:sqhPulse .9s ease-in-out infinite alternate}
 @keyframes refreshPulse{from{opacity:.45}to{opacity:1;text-shadow:0 0 10px color-mix(in srgb,var(--bull) 70%,transparent)}}
@@ -2908,6 +2909,7 @@ function renderConfig(){
       SLACK_CHANNELS=j.slack_channels||{}; _applySlackToggles();   // per-channel Slack send/off (user 2026-08-01)
       const n=Object.keys(USER_FILTERS).length;
       $("cfg-defaults").classList.remove("sqh-loading");
+      $("cfg-defaults").classList.add("cfg-defaults-ready");
       $("cfg-defaults").textContent=n?("Saved defaults: "+Object.entries(USER_FILTERS).map(([k,v])=>`${k.replace('f_','')}=${v}`).join(" · ")):"No saved defaults yet — using the built-in ones.";
       const _xd=j.exec_descriptions||{};
       $("cfg-exec").innerHTML=(j.exec_sources||[]).map(s=>{const on=(j.exec||{})[s]!==false;
