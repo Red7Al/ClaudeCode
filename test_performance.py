@@ -1,10 +1,26 @@
 """Offline regressions for Performance report calculations."""
 
 import datetime as dt
+import re
+import subprocess
+import tempfile
 from pathlib import Path
 
 import ig_shim
 from hvf_web import server
+
+
+def test_performance_inline_javascript_parses():
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    scripts = re.findall(r"<script(?:\s[^>]*)?>(.*?)</script>", html, re.I | re.S)
+    for script in scripts:
+        with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
+            handle.write(script)
+            path = handle.name
+        try:
+            subprocess.run(["node", "--check", path], check=True, capture_output=True, timeout=20)
+        finally:
+            Path(path).unlink(missing_ok=True)
 
 
 def test_performance_has_dedicated_let_winners_run_tab():
@@ -35,7 +51,12 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert 'id="ordp-bestcombo"' in html
     assert html.count('id="ordp-bestcombo"') == 1
     assert 'which==="analysis"||which==="settings"' in html
-    assert 'Math.floor(1/stakeFrac)' in html
+    assert 'used+margin>w+1e-9' in html
+    assert 'maxopen>0&&open.length>=maxopen' in html
+    assert 'renderDecisionProof(\'best-proof\',best.proof)' in html
+    assert "renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true})" in html
+    assert "decisionProofFilter" in html
+    assert "achievable P&amp;L" in html
     assert 'seq.length<20' in html
     for metric in ("r.rr", "r.quality", "r.mcap", "r.sector", "r.market", "r.rvol",
                    "r.volume_score", "r.above_vwap", "r.atr_expanding"):
@@ -61,6 +82,11 @@ def test_let_winners_run_never_gives_back_below_bull_target(monkeypatch):
 
     assert outcome == "RAN"
     assert exit_price == 110.0
+
+    outcome, exit_price, exit_date = server._run_path(
+        "BULLISH", 100.0, 90.0, 110.0, bars, 0.25, return_date=True
+    )
+    assert (outcome, exit_price, exit_date) == ("RAN", 110.0, "2026-01-03")
 
 
 def test_let_winners_run_never_gives_back_above_bear_target(monkeypatch):

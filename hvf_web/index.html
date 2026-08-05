@@ -372,11 +372,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .pf-setcard-h{font-weight:700;margin-bottom:4px;font-size:12px}
 .pf-setcard-grid{display:grid;grid-template-columns:repeat(2,minmax(140px,1fr));gap:1px 18px}   /* two columns leaves room for up to three readable rows (user 2026-08-05) */
 .pf-filter-row{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
-.pf-filter-controls{display:flex;flex:1 1 540px;min-width:0;flex-direction:column;align-items:flex-end;gap:8px}
+.pf-filter-controls{display:grid;grid-template-columns:minmax(360px,1fr) auto;align-items:start;gap:12px;flex:1 1 720px;min-width:0}
 .pf-loc-group{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px;width:100%}
 #pf-loc-btns{display:grid!important;grid-template-columns:repeat(4,max-content);gap:5px;justify-content:end;flex:none!important}
 .pf-date-group{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:nowrap;width:100%}
-@media(max-width:760px){.pf-setcard{min-width:0;max-width:none;width:100%}.pf-filter-controls{flex-basis:100%}#pf-loc-btns{grid-template-columns:repeat(2,max-content)}.pf-date-group{overflow-x:auto;justify-content:flex-start}}
+@media(max-width:980px){.pf-filter-controls{grid-template-columns:1fr}.pf-loc-group,.pf-date-group{justify-content:flex-start}}
+@media(max-width:760px){.pf-setcard{min-width:0;max-width:none;width:100%}.pf-filter-controls{flex-basis:100%}#pf-loc-btns{grid-template-columns:repeat(2,max-content)}.pf-date-group{overflow-x:auto}}
 /* Tab-visibility panel readability (user 2026-08-01) — hard to read on iPad mini. Bigger chips + checkboxes,
    clearer section headers, and one chip per line on small screens so labels never truncate. */
 #tabvis-list label{font-size:14px;padding:8px 12px;gap:9px}
@@ -3477,6 +3478,7 @@ let WINNERS_WALLET=10000, WINNERS_STAKE=0.02, WINNERS_MAXOPEN=0;   // £ wallet 
 let WINNERS_HIDE_MISSED=false;   // "hide trades missed" toggle on the winners ledger (P-07 #30)
 function winnersToggleMissed(){WINNERS_HIDE_MISSED=!!($("ordp-hide-missed")||{}).checked;const t=$("ordp-table");if(t)t.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);}
 let WIN=null;
+let WIN_LOADING=false;
 // Wallet £ (L211), Max position size % (L200), Max open positions (L199) are variables on the winners tab.
 const MIN_TRADE=25;   // IG minimum stake (£), read-only floor (user 2026-07-18, P-05 L253)
 function winnersParamsChange(){
@@ -3525,10 +3527,11 @@ function renderSqueezeAnalysis(){
   renderVolScoreReport();   // VolumeScore impact report (user 2026-07-24, P-02) — loads once, server-cached
   renderBestSettings();     // best settings by quarter (user 2026-07-25, P-04 L59) — loads once, server-cached
   if(WIN!==null)return winnersParamsChange();   // route through winnersParamsChange so the derived Min/Max Trade populate (P-05)
-  WIN=[]; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="muted" style="font-size:13px;padding:10px">⏳ Loading 12 months of trades…</div>';
+  if(WIN_LOADING)return;
+  WIN_LOADING=true; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="muted" style="font-size:13px;padding:10px">⏳ Loading 12 months of trades…</div>';
   fetch("/api/winners").then(r=>r.ok?r.json():{rows:[]})
-    .then(j=>{WIN=j.rows||[];winnersParamsChange();})
-    .catch(()=>{WIN=[];winnersParamsChange();});
+    .then(j=>{WIN_LOADING=false;WIN=j.rows||[];winnersParamsChange();})
+    .catch(()=>{WIN_LOADING=false;WIN=null;const b=$("ordp-bestcombo");if(b)b.innerHTML='<div class="empty">Annual settings data did not load. Reopen this tab to retry.</div>';});
 }
 // VolumeScore impact report (user 2026-07-24, P-02 L55): admin-only; fetched once (server-cached). Shows
 // whole book vs the ≥threshold subset (win rate, avg return, compounded £) and per-band profitability.
@@ -3617,8 +3620,10 @@ function winnersRunChange(surface='pf'){
     if(busy)busy.textContent="";
     const rows=((j&&j.rows)||[]).filter(r=>r.perf!=null);
     if(!rows.length){paint('<div class="muted" style="font-size:13px">No data to re-backtest.</div>');return;}
-    const comp=key=>{let w=WINNERS_WALLET;for(const r of rows){const p=r[key];if(p!=null)w+=w*WINNERS_STAKE*p/100;}return w;};
-    const plainFinal=comp("perf"), runFinal=comp("run_perf"), delta=runFinal-plainFinal;
+    const ordered=rows.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||''));
+    const plainReplay=_combReplay(ordered.filter(r=>r.perf!=null),WINNERS_STAKE,WINNERS_MAXOPEN,false,"perf");
+    const runReplay=_combReplay(ordered.filter(r=>r.run_perf!=null),WINNERS_STAKE,WINNERS_MAXOPEN,true,"run_perf");
+    const plainFinal=WINNERS_WALLET*(1+plainReplay.ret), runFinal=WINNERS_WALLET*(1+runReplay.ret), delta=runFinal-plainFinal;
     const tgt=rows.filter(r=>r.outcome==='TARGET'&&r.run_perf!=null);
     const ran=tgt.filter(r=>r.run_perf>r.perf+0.01).length, back=tgt.filter(r=>r.run_perf<r.perf-0.01).length;
     const money=x=>`£${Math.round(x).toLocaleString()}`, col=delta>=0?'var(--bull)':'var(--bear)';
@@ -3630,9 +3635,11 @@ function winnersRunChange(surface='pf'){
       ${money(WINNERS_WALLET)} compounded ends at <b>${money(runFinal)}</b> <b>letting winners run</b> vs <b>${money(plainFinal)}</b> <b>selling at target</b> —
       a <b style="color:${col}">${delta>=0?'+':'−'}${money(Math.abs(delta))}</b> difference over ${rows.length.toLocaleString()} trades.
       Of <b>${tgt.length.toLocaleString()}</b> target hits, <b>${ran.toLocaleString()}</b> ran further and only <b>${back.toLocaleString()}</b> came in below target (price closed under target on the last available bar).
-      ${delta>=0?'Letting winners run (with the stop at target) beats selling at target here — raise the Trail % to keep more of a big run, lower it to lock in sooner.':'Here it did not help.'}</div>
+      ${delta>=0?'Letting winners run (with the stop at target) beats selling at target here — raise the Trail % to keep more of a big run, lower it to lock in sooner.':'Here it did not help.'} The replay placed <b>${runReplay.n}</b> trades, reached <b>${runReplay.cap}</b> concurrently funded positions and excluded opportunities the wallet or Max open setting could not support.</div>
       ${big.length?`<div class="muted" style="font-size:12px;margin-top:6px"><b>Biggest runners:</b> ${big.map(r=>`${_esc(r.name||disp(r.ticker))} ${r.perf>0?'+':''}${r.perf}%→${r.run_perf>0?'+':''}${r.run_perf}%`).join(' · ')}</div>`:''}
+      <div id="${prefix}-run-proof"></div>
     </div>`);
+    renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true});
   }).catch(()=>{if(busy)busy.textContent="";paint('<div class="muted" style="font-size:13px">Re-backtest failed.</div>');});
 }
 // Compact market-cap format (user 2026-08-01): 1.23T / 340B / 12M. No currency symbol (values are in each
@@ -3663,20 +3670,55 @@ const _gbp2=v=>v==null?'—':`${v<0?'−':'+'}£${Math.abs(v).toLocaleString(und
 // courts ruin. The optimum is wallet-independent under %-of-wallet compounding, so the £1k…£10k examples
 // apply the SAME combo and just scale the £ outcome, flagging any wallet whose stake is below the £25 IG
 // minimum. Uses startWallet=1 so ret/dd come out as fractions.
-function _combReplay(seq,stakeFrac,maxopen){
-  // Concurrency is bounded by the WALLET (user 2026-07-28 — fixes the impossible ×468 best-combination and
-  // the deferred L119 "586 open trades not possible with 2% margin, max 50"): a stake of s% of the wallet
-  // funds at most floor(1/s) positions AT ONCE, so an "∞" (maxopen=0) or a larger cap is bounded to that.
-  // Without it, ∞ open + a big stake compounds every one of ~1,925 OVERLAPPING trades sequentially — an
-  // impossible return with an impossibly small single-curve drawdown, so the optimiser railed to 10%/∞.
-  const fund=Math.max(1,Math.floor(1/stakeFrac));
-  const cap=maxopen>0?Math.min(maxopen,fund):fund;
-  const taken=[];const openExits=[];
-  for(const r of seq){for(let i=openExits.length-1;i>=0;i--){if(openExits[i]<=(r.trig_date||''))openExits.splice(i,1);}
-    if(openExits.length<cap){taken.push(r);openExits.push(r.exit_date||_pfAddDays(r.trig_date,r.days_open||0));}}
-  let w=1,peak=1,maxdd=0;
-  for(const r of taken){w+=w*stakeFrac*r.perf/100; if(w>peak)peak=w; const dd=peak>0?(peak-w)/peak:0; if(dd>maxdd)maxdd=dd;}
-  return {ret:w-1,dd:maxdd,n:taken.length,cap};
+function _combReplay(seq,stakeFrac,maxopen,withProof=false,perfKey="perf"){
+  // Event-based wallet replay: settle P&L on EXIT (not prematurely at trigger), reserve the broker margin
+  // stake/leverage while each trade is open, and separately enforce the user's numeric max-open cap.
+  // Blank/∞ removes only the count cap; insufficient available wallet still rejects the trade.
+  let w=1,peak=1,maxdd=0,peakOpen=0;const taken=[],open=[],proof=[];
+  const settle=until=>{open.sort((a,b)=>a.exit.localeCompare(b.exit));
+    while(open.length&&open[0].exit<=until){const x=open.shift();w+=x.net;if(w>peak)peak=w;const dd=peak>0?(peak-w)/peak:0;if(dd>maxdd)maxdd=dd;}};
+  for(const r of seq){const td=r.trig_date||"";settle(td);
+    const stake=w*stakeFrac,lev=Math.max(1,+(levOf(r)||1)),margin=stake/lev,used=open.reduce((a,x)=>a+x.margin,0);
+    if(maxopen>0&&open.length>=maxopen){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,reason:`Max open cap — ${maxopen}`});continue;}
+    if(used+margin>w+1e-9){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:"Wallet / margin full"});continue;}
+    const exit=(perfKey==="run_perf"&&r.run_exit_date)||r.exit_date||_pfAddDays(r.trig_date,r.days_open||0)||"9999-99-99";
+    const result=+r[perfKey];
+    open.push({exit,margin,net:stake*result/100});taken.push(r);peakOpen=Math.max(peakOpen,open.length);
+    if(withProof)proof.push({r,placed:true,open:open.length,w,stake,margin,available:Math.max(0,w-used-margin),reason:"Placed"});}
+  settle("9999-99-99");
+  return {ret:w-1,dd:maxdd,n:taken.length,cap:peakOpen,proof};
+}
+const DECISION_PROOFS={};
+function decisionProofFilter(id,dim,value){
+  const s=DECISION_PROOFS[id];if(!s)return;const filters={...(s.opts.filters||{})};
+  if(filters[dim]===value)delete filters[dim];else filters[dim]=value;
+  renderDecisionProof(id,s.proof,{...s.opts,filters});
+}
+function renderDecisionProof(id,proof,opts={}){
+  const target=$(id);if(!target)return; DECISION_PROOFS[id]={proof,opts};
+  const show=!!opts.showMissed, missed=proof.filter(x=>!x.placed).length, run=opts.run, filters=opts.filters||{};
+  const pct=v=>v==null?'—':`${+v>=0?'+':''}${(+v).toFixed(2)}%`, num=v=>v==null?'—':(+v).toFixed(1);
+  const bucket=(r,d)=>d==='quality'?(r.quality==null?'Unknown':r.quality>=75?'75+':r.quality>=50?'50–74':'<50'):String(r[d]||'Unknown');
+  const filtered=proof.filter(x=>Object.entries(filters).every(([d,v])=>bucket(x.r,d)===v));
+  const chart=(dim,title)=>{const grouped={};proof.filter(x=>x.placed).forEach(x=>{const k=bucket(x.r,dim),ret=+(x.r[run?'run_perf':'perf']||0);grouped[k]=(grouped[k]||0)+x.stake*ret/100*WINNERS_WALLET;});
+    const vals=Object.entries(grouped).sort((a,b)=>b[1]-a[1]).slice(0,7),mx=Math.max(1,...vals.map(x=>Math.abs(x[1])));
+    return `<div class="card" style="min-width:210px;flex:1;padding:9px"><b style="font-size:11px">${title} · achievable P&amp;L</b>${vals.map(([k,v])=>`<button onclick="decisionProofFilter('${id}','${dim}',decodeURIComponent('${encodeURIComponent(k).replace(/'/g,'%27')}'))" title="Cross-filter transactions to ${_esc(k)}" style="display:grid;grid-template-columns:75px 1fr 54px;gap:5px;align-items:center;width:100%;border:0;background:${filters[dim]===k?'color-mix(in srgb,var(--accent) 18%,transparent)':'transparent'};color:var(--fg);cursor:pointer;padding:3px"><span style="overflow:hidden;text-overflow:ellipsis;text-align:left">${_esc(k)}</span><span style="height:7px;background:${v>=0?'var(--bull)':'var(--bear)'};width:${Math.max(3,Math.abs(v)/mx*100)}%"></span><span style="text-align:right">${v>=0?'+':''}£${Math.round(v)}</span></button>`).join('')}</div>`;};
+  const rows=filtered.filter(x=>show||x.placed).map(x=>{const r=x.r, good=+(r[run?'run_perf':'perf'])>0;
+    return `<tr style="${x.placed?'':good?'background:color-mix(in srgb,#d29922 12%,transparent)':'opacity:.7'}">
+      <td>${_esc(String(r.trig_date||'').replace('T',' ').slice(0,16))}</td><td>${_esc(r.name||disp(r.ticker))}</td>
+      <td>${x.placed?'<b style="color:var(--bull)">Placed</b>':`<b style="color:#d29922">Missed</b><div class="muted" style="font-size:10px">${_esc(x.reason)}</div>`}</td>
+      <td>${x.open}</td><td>${pct(r.perf)}</td>${run?`<td><b>${pct(r.run_perf)}</b></td>`:''}
+      <td>${num(r.rr)}</td><td>${num(r.quality)}</td><td>${num(r.volume_score)}</td><td>${num(r.rvol)}</td>
+      <td>${r.above_vwap==null?'—':r.above_vwap?'Above':'Below'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'Expanding':'Not expanding'}</td>
+      <td>${_esc(r.market||'—')}</td><td>${_esc(r.sector||'—')}</td><td>${_esc(r.ticker||'—')}</td></tr>`;}).join('');
+  target.innerHTML=`<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">${chart('market','Market')}${chart('sector','Sector')}${chart('quality','Quality')}</div>
+    ${Object.keys(filters).length?`<div class="muted" style="font-size:11px;margin-top:6px">Cross-filter: ${Object.entries(filters).map(([d,v])=>`${d} = ${_esc(v)}`).join(' · ')} <button class="btn" style="padding:2px 7px" onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,filters:{}})">Clear</button></div>`:''}
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;margin:14px 0 6px;flex-wrap:wrap">
+    <div><h4 style="margin:0">Transaction evidence</h4><div class="muted" style="font-size:11px">Chronological decisions prove which opportunities the settings selected and whether the wallet could fund them. Positive missed rows expose profit the proposed setup could not actually capture.</div></div>
+    <fieldset style="border:0;margin:0;padding:0;white-space:nowrap"><legend class="muted" style="font-size:10px">Missed transactions (${missed})</legend>
+      <label><input type="radio" name="${id}-missed" ${!show?'checked':''} onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,showMissed:false})"> Hide</label>
+      <label style="margin-left:8px"><input type="radio" name="${id}-missed" ${show?'checked':''} onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,showMissed:true})"> Show</label></fieldset></div>
+    <div class="tablewrap"><table><thead><tr><th>Triggered</th><th>Name</th><th>Decision / constraint</th><th>Open after decision</th><th>Sell at target</th>${run?'<th>Let run</th>':''}<th>R:R</th><th>Quality</th><th>VolumeScore</th><th>RVOL</th><th>VWAP</th><th>ATR</th><th>Market</th><th>Sector</th><th>Ticker</th></tr></thead><tbody>${rows||'<tr><td colspan="15" class="muted">No transactions match this view.</td></tr>'}</tbody></table></div>`;
 }
 function renderBestCombo(all){
   const box=$("ordp-bestcombo"); if(!box)return;
@@ -3714,6 +3756,7 @@ function renderBestCombo(all){
     if(!best||z.score>best.score)best={...c,st,mo,...z};
   }
   if(!best){box.innerHTML="";return;}
+  best.proof=_combReplay(best.seq,best.st/100,best.mo,true).proof;
   // Very large compounded returns read better as a growth MULTIPLE than a 5-digit percentage (user
   // 2026-07-27, P-03 D — "+46747.6% looks ridiculous"): ≥ +900% → "×468"; below that, the usual "+12.3%".
   const pct=v=>v>=9?'×'+(1+v).toLocaleString(undefined,{maximumFractionDigits:(1+v)>=100?0:1})
@@ -3726,7 +3769,7 @@ function renderBestCombo(all){
   // (user 2026-08-01): the best mix and its % return are wallet-independent, so one worked row is enough.
   const w=Math.max(1,WINNERS_WALLET||1000);
   const stake=w*best.st/100,end=w*(1+best.ret),net=end-w,feas=stake>=25;
-  const bestCfg={min_risk_reward:best.rr,min_quality:best.q,min_volume_score:best.vs,max_position_pct:best.st,max_open:best.cap};
+  const bestCfg={min_risk_reward:best.rr,min_quality:best.q,min_volume_score:best.vs,max_position_pct:best.st,max_open:best.mo};
   if(best.scope.kind==="mcap"){bestCfg.min_instrument_value=best.scope.min||0;bestCfg.max_instrument_value=best.scope.max||0;}
   const rows=`<tr><td><b>${gbp(w)}</b></td><td class="muted">${gbp(stake)}${feas?'':' <span style="color:var(--bear)" title="Below the £25 IG minimum — raise the stake % or the wallet">⚠</span>'}</td>
       <td><b style="color:${net>=0?'var(--bull)':'var(--bear)'}">${gbp(end)}</b></td>
@@ -3735,7 +3778,7 @@ function renderBestCombo(all){
     <h4 style="margin:0 0 4px">🥇 Best combination <span class="muted" style="font-weight:400;font-size:11px">— ranked by return per unit of drawdown, over ${best.n.toLocaleString()} trades in this window</span></h4>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:6px 0 8px">
       <div><div class="muted" style="font-size:11px">Max position size</div><b style="font-size:16px;color:var(--fg)">${best.st}%</b></div>
-      <div><div class="muted" style="font-size:11px">Max open positions</div><b style="font-size:16px;color:var(--fg)" title="Bounded by the wallet: a ${best.st}% stake funds at most ${best.cap} positions at once (100% exposure)${best.mo>0&&best.mo<=best.cap?'':' — the ∞/large setting is capped to this'}">${best.cap}</b></div>
+      <div><div class="muted" style="font-size:11px">Max open positions</div><b style="font-size:16px;color:var(--fg)" title="${best.mo>0?`Numeric cap ${best.mo}; peak concurrent positions actually funded ${best.cap}.`:`No numeric cap; wallet/margin affordability funded a peak of ${best.cap} concurrent positions.`}">${best.mo>0?best.mo:'∞'} <span class="muted" style="font-size:11px;font-weight:400">(${best.cap} peak funded)</span></b></div>
       <div><div class="muted" style="font-size:11px">R:R floor</div><b style="font-size:16px;color:var(--fg)">≥ ${best.rr}</b></div>
       <div><div class="muted" style="font-size:11px">Quality floor</div><b style="font-size:16px;color:var(--fg)">${best.q>0?'≥ '+best.q:'any'}</b></div>
       <div><div class="muted" style="font-size:11px">VolumeScore floor</div><b style="font-size:16px;color:var(--fg)">${best.vs>0?'≥ '+best.vs:'any'}</b></div>
@@ -3752,7 +3795,9 @@ function renderBestCombo(all){
     <div style="margin-top:8px"><button class="btn" onclick='applyConfigFromReport(${JSON.stringify(bestCfg)},this)' title="Copy supported values into your personal trading configuration">⬇ Copy supported settings to my configuration</button>
       <span class="muted" style="font-size:11px;margin-left:8px">copies R:R, Quality, VolumeScore, position size, funded max-open and any MCap band. Market/Sector, RVOL, VWAP and ATR remain report recommendations until matching live controls exist.</span></div>
     <div class="muted" style="font-size:11px;margin-top:6px">On your <b>${gbp(w)}</b> Model wallet. Ranking rewards annual return per unit of drawdown, requires at least 20 eligible trades, and discounts settings that were inconsistent across quarters. Blank/∞ Max open is still bounded by what the wallet can fund. This is historical evidence, not a guaranteed return.</div>
+    <div id="best-proof"></div>
   </div>`;
+  renderDecisionProof('best-proof',best.proof);
 }
 // Copy a winning configuration (from the Best-combination card or a combos row) into the user's personal
 // trading limits (user 2026-08-02, ToDo P-08) — "replicate those results in our trading". Confirms first,
@@ -3808,6 +3853,10 @@ const _owPass=(r,except)=>_owDims.every(([id,fn])=>id===except||inSet(id,fn(r)||
 function paintOrdersPerf(){
   const box=$("ordp-summary"), dims=$("ordp-dims"), tb=$("ordp-table"), tc=$("ordp-count");
   if(!box)return;
+  // Best settings is an annual decision model. Do not silently train it on the descriptive Results tab's
+  // date, saved-setting or chart selections: those would bias the recommendation toward today's setup.
+  const decisionRows=(WIN||[]).filter(r=>r&&r.entry&&r.stop&&r.perf!=null&&r.trig_date);
+  renderBestCombo(decisionRows);
   // Personal Minimum Volume Score floor filters the winners population too (user 2026-07-28), keeping it on
   // ONE dataset with the Results tab; unscored rows (null) pass, matching My Pre-orders.
   const _vsF=(typeof num==='function')?num(MY_LIMITS.min_volume_score):(+MY_LIMITS.min_volume_score||null);
@@ -3815,14 +3864,13 @@ function paintOrdersPerf(){
   const all=(WIN||[]).filter(r=>r&&r.entry&&r.stop&&pfDateOk(r.trig_date)&&(!_vsFloor||r.volume_score==null||r.volume_score>=_vsFloor)&&tradeVisible(r));   // shared date-window + Volume Score floor (P-01 / 2026-07-28) + user direction/market filter (2026-08-01)
   if(!all.length){
     box.innerHTML=`<div class="muted" style="font-size:13px">No trades in this date window — widen the date filter above (or clear it for the full 12 months).</div>`;
-    if(dims)dims.innerHTML="";if(tb)tb.innerHTML="";renderBestCombo([]);return;}
+    if(dims)dims.innerHTML="";if(tb)tb.innerHTML="";return;}
   // Apply the winners-chart click-to-filter selection (L122/L123) — the cards + ledger below reflect it.
   const fsel=all.filter(r=>_owPass(r,null)), _filtered=fsel.length!==all.length;
   paintWinnersDims(dims,all);   // brushed, clickable net-£ attribution charts (built from `all`, own filter excluded)
   if(!fsel.length){
     box.innerHTML=`<div class="muted" style="font-size:13px">No trades match the selected chart filters. Clear a filter (the ▶ ✕ on a chart header) to widen.</div>`;
-    if(tb)tb.innerHTML="";if(tc)tc.textContent="(0 of "+all.length+")";renderBestCombo([]);return;}
-  renderBestCombo(fsel);   // best-combination card (P-05 L132/L133) — over the current selection
+    if(tb)tb.innerHTML="";if(tc)tc.textContent="(0 of "+all.length+")";return;}
   const money=v=>v==null?'—':`£${Math.round(v).toLocaleString()}`;
   const wp=fsel.filter(r=>r.perf!=null);                       // returns available (incl. open, marked-to-market)
   const wins=wp.filter(r=>r.perf>PF_BE),losses=wp.filter(r=>r.perf<-PF_BE),be=wp.filter(r=>Math.abs(r.perf)<=PF_BE);

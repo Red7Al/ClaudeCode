@@ -2392,7 +2392,7 @@ def _sl_path(direction, entry, stop, target, bars, thr):
     return "OPEN", last
 
 
-def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0):
+def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0, return_date=False):
     """Let a winner RUN but ratchet the stop UP TO THE TARGET the moment target is reached, so the trade can
     never give back below the target gain (user 2026-08-01: "put a stop near target so 17 doesn't go to 7").
     Two configurable trailing knobs (user 2026-08-02):
@@ -2406,18 +2406,21 @@ def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0):
     buy = direction == "BULLISH"
     cur = stop
     floored = False   # has the stop been ratcheted up to the target yet?
-    last = None
+    last = last_date = None
     for _bd, hi, lo, cl in bars:
+        last_date = str(_bd)
         last = cl
         if buy:
             if lo <= cur:
-                return ("RAN" if floored else "STOPPED"), cur
+                result = (("RAN" if floored else "STOPPED"), cur, last_date)
+                return result if return_date else result[:2]
             if not floored and target and hi >= target:
                 floored = True
                 cur = max(cur, target)
         else:
             if hi >= cur:
-                return ("RAN" if floored else "STOPPED"), cur
+                result = (("RAN" if floored else "STOPPED"), cur, last_date)
+                return result if return_date else result[:2]
             if not floored and target and lo <= target:
                 floored = True
                 cur = min(cur, target)
@@ -2427,7 +2430,8 @@ def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0):
             ns = ig_shim.compute_trailing_stop(direction, entry, cur, cl, t)
             if ns is not None:
                 cur = max(cur, ns) if buy else min(cur, ns)
-    return "OPEN", (last if last is not None else None)
+    result = ("OPEN", (last if last is not None else None), last_date)
+    return result if return_date else result[:2]
 
 
 # VolumeScore impact report (user 2026-07-24, ToDo P-02 L55). Uses the SAME 12-month replay population as
@@ -2768,26 +2772,33 @@ def _winners_run_rows(threshold_pct, stop_pct=0):
                 continue
             by_tk.setdefault(tk, []).append((str(bd), float(hi), float(lo), float(cl)))
         _SLBARS.update(ts=now, by_tk=by_tk)
+    vsmap = _volscore_trigger_map()
+    vfmap = _volscore_trigger_feature_map()
     out = []
     for r in rows:
         plain = r["return_pct"]
-        run_perf, run_out = plain, r["outcome"]
+        run_perf, run_out, run_exit_date = plain, r["outcome"], r.get("exit_date")
         if r.get("entry") and r.get("stop") and r.get("trig_date"):
             bars = [b for b in by_tk.get(r["ticker"], []) if b[0] >= r["trig_date"]]
             if bars:
                 # Stop ratchets to the target once reached, then trails above it (user 2026-08-01) — so a
                 # target-hitter never falls back below its target gain; only genuine runners beat it.
-                run_out, ex = _run_path(r["direction"], r["entry"], r["stop"], r.get("target"), bars, thr, sthr)
+                run_out, ex, run_exit_date = _run_path(r["direction"], r["entry"], r["stop"], r.get("target"), bars, thr, sthr, True)
                 if ex is not None:
                     buy = r["direction"] == "BULLISH"
                     run_perf = round(((ex - r["entry"]) / r["entry"] * 100.0) if buy
                                      else ((r["entry"] - ex) / r["entry"] * 100.0), 2)
+        key = (r["ticker"], str(r.get("trig_date") or "")[:10])
+        vf = vfmap.get(key, {})
         out.append({"ticker": r["ticker"], "name": r["name"], "market": r["market"], "sector": r["sector"],
                     "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
-                    "trig_date": r["trig_date"], "entry": r["entry"], "stop": r["stop"],
+                    "trig_date": r["trig_date"], "exit_date": r.get("exit_date"), "run_exit_date": run_exit_date,
+                    "entry": r["entry"], "stop": r["stop"],
                     "outcome": r["outcome"], "perf": plain,
                     "run_outcome": run_out, "run_perf": run_perf,
-                    "quality": r["quality"], "rr": r["rr"]})
+                    "quality": r["quality"], "rr": r["rr"], "rvol": r.get("rvol"),
+                    "volume_score": vsmap.get(key),
+                    "above_vwap": vf.get("above_vwap"), "atr_expanding": vf.get("atr_expanding")})
     return out
 
 
