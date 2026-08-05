@@ -44,6 +44,7 @@ def test_performance_has_dedicated_let_winners_run_tab():
     assert 'if(which==="run")which="settings"' in html
     assert 'id="pf-advanced-nav"' not in html
     assert 'Which market and signal attributes were associated with the strongest outcomes.' in html
+    assert 'id="pf-pill-advanced" data-pfpanel="analysis"' in html
     assert 'id="pf-run-stop"' in html
     assert 'id="pf-run-in"' in html
     assert "winnersRunChange('pf')" in html
