@@ -3448,7 +3448,39 @@ def api_ig_closed():
         frm = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
         with ig_shim._IG_LOCK, ig_shim.acting_session(name):
             trades = ig_shim.get_closed_trades(frm) or []
-        return jsonify({"trades": trades, "days": days})
+        if trades:
+            return jsonify({"trades": trades, "days": days})
+        # IG can return an empty history during a transient/rate-limited read. Keep the account view
+        # useful and explicit by showing the application's closed-trade ledger rather than claiming
+        # that no closed trades exist.
+        try:
+            from db_pool import get_db
+            db = get_db()
+            try:
+                rows = db.run(
+                    "select ticker, direction, size, open_price, close_price, pnl, pnl_pct, "
+                    "opened_at, closed_at, close_reason from trade_log "
+                    "where closed_at >= :frm order by closed_at desc",
+                    frm=frm) or []
+            finally:
+                db.close()
+            fallback = []
+            for tk, dr, sz, op, cp, pl, plp, oa, ca, reason in rows:
+                fallback.append({
+                    "date": ca.isoformat() if ca else "", "instrument": tk, "direction": dr,
+                    "size": float(sz) if sz is not None else None,
+                    "open_level": float(op) if op is not None else None,
+                    "close_level": float(cp) if cp is not None else None,
+                    "pnl": float(pl) if pl is not None else 0.0,
+                    "pnl_pct": float(plp) if plp is not None else None,
+                    "currency": "GBP", "reason": reason or "UNKNOWN"})
+            if fallback:
+                return jsonify({"trades": fallback, "days": days,
+                                "note": "IG returned no closed trades; showing the application ledger fallback."})
+        except Exception as fallback_ex:
+            log.warning(f"ig-closed ledger fallback failed for {name}: {fallback_ex}")
+        return jsonify({"trades": [], "days": days,
+                        "note": "IG returned no closed trades for this period. The result may be incomplete; use Refresh to retry."})
     except Exception as e:
         log.warning(f"ig-closed failed for {name}: {e}")
         return jsonify({"trades": [], "note": "Could not read your closed trades right now — try again."})
