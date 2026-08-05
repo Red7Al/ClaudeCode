@@ -256,6 +256,7 @@ def build(markets=None):
                 "timeframe": r.get("hvf_timeframe"),
                 "months_to_go": _months_to_go(r),
                 "rr": r.get("risk_reward"),
+                "above_vwap": r.get("above_vwap"), "atr_expanding": r.get("atr_expanding"),
                 "insider_pct": f.get("insider_pct"),
                 "entry": r.get("h3_level"), "stop": r.get("stop_level"), "target": r.get("target"),
                 "current_price": r.get("current_price"),

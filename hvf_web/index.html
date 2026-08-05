@@ -560,18 +560,17 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <!-- Ticker sits FAR RIGHT (user 2026-07-17, P-11b); ★ stays leftmost. -->
           <th data-k="_fav" title="Favourite (click to sort)">★</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
           <!-- RVOL + Vol kept together as early breakout-confirmation columns (user 2026-08-05, P-07). -->
-          <th data-k="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank for setups that have not triggered, and for instruments with no real volume (FX, indices).">RVOL</th>
+          <th data-k="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank for setups that have not triggered, and for instruments with no real volume (FX, indices).">RVOL</th><th data-k="above_vwap" title="Price above VWAP on the trigger bar">VWAP</th><th data-k="atr_expanding" title="ATR expanding on the trigger bar">ATR</th>
           <th data-k="volume_score" title="VolumeScore (0–12) on the break bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank until triggered.">Vol</th>
           <th data-k="rr">R:R</th><th data-k="quality">Quality</th>
           <th data-k="market">Market</th><th data-k="dist_entry" title="Distance from the live price to the entry level (sorted closest-first)">Dist→Entry</th><th data-k="status">Status</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
           <th data-k="current_price" title="Latest price">Now</th>
-          <th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
-          <th style="cursor:default" title="Whether this instrument is already in your My Pre-orders">In Pre-orders?</th>
+          <th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th>
           <th data-k="pe">P/E</th><th data-k="insider_pct" title="Insider ownership %">Insider %</th><th data-k="timeframe">TF</th>
-          <th data-k="location">Location</th>
-          <th data-k="sector">Sector</th><th data-k="ticker">Ticker</th>
+          <th data-k="location">Location</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th>
+          <th data-k="sector">Sector</th><th data-k="ticker">Ticker</th><th style="cursor:default" title="Whether this instrument is already in your My Pre-orders">In Pre-orders?</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -615,7 +614,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <th style="cursor:default"><input type="checkbox" id="po-all" onclick="poToggleAll(this)"></th>
         <th data-pk="_fav" title="Favourite (click to sort)">★</th>
         <!-- Ticker sits FAR RIGHT (user 2026-07-17, P-11b). -->
-        <th data-pk="name">Name</th><th style="cursor:default">Action</th><th data-pk="direction">Dir</th><th data-pk="rvol">RVOL</th><th data-pk="volume_score" title="VolumeScore (0–12) on the break bar — breakout confirmation. 8+ (green) = well-confirmed. Blank until the setup has triggered. Early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
+        <th data-pk="name">Name</th><th style="cursor:default">Action</th><th data-pk="direction">Dir</th><th data-pk="rvol">RVOL</th><th data-pk="above_vwap">VWAP</th><th data-pk="atr_expanding">ATR</th><th data-pk="volume_score" title="VolumeScore (0–12) on the break bar — breakout confirmation. 8+ (green) = well-confirmed. Blank until the setup has triggered. Early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
         <th data-pk="current_price">Now</th><th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
         <th data-pk="added" title="When the setup completed and joined the dataset">Added</th><th data-pk="source">Source</th><th data-pk="sector">Sector</th><th data-pk="ticker">Ticker</th>
       </tr></thead>
@@ -1390,7 +1389,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
     <div class="tablewrap"><table id="pf-table">
       <!-- Ticker sits FAR RIGHT on every table that has one (user 2026-07-17, P-11b). -->
-      <thead><tr><th style="cursor:default" title="Row number (in the current sort order)">#</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="rvol">RVOL</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="mcap" title="Market capitalisation (in the instrument's own currency). Blank until the market-cap backfill lands.">MCap</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="exit_date" title="Date the trade closed (hit target or stop). Blank while still OPEN.">Closed</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Equity</th><th class="wcol" data-pf="_open" title="Number of positions open (including this one) at this trade's trigger date — how full the book was.">Open</th><th data-pf="sector">Sector</th><th data-pf="ticker">Ticker</th></tr></thead>
+      <thead><tr><th style="cursor:default" title="Row number (in the current sort order)">#</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="rvol">RVOL</th><th data-pf="above_vwap">VWAP</th><th data-pf="atr_expanding">ATR</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="mcap" title="Market capitalisation (in the instrument's own currency). Blank until the market-cap backfill lands.">MCap</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="exit_date" title="Date the trade closed (hit target or stop). Blank while still OPEN.">Closed</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Equity</th><th class="wcol" data-pf="_open" title="Number of positions open (including this one) at this trade's trigger date — how full the book was.">Open</th><th data-pf="sector">Sector</th><th data-pf="ticker">Ticker</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -2025,17 +2024,16 @@ function render(){
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
     ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
-    <td>${ob(rvolCell(r.rvol))}</td><td>${ob(volScoreCell(r.volume_score))}</td>
+    <td>${ob(rvolCell(r.rvol))}</td><td>${r.above_vwap==null?'—':r.above_vwap?'✓':'✗'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'✓':'✗'}</td><td>${ob(volScoreCell(r.volume_score))}</td>
     <td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td><td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td>
     <td>${r.market||''}</td><td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.days_since??'')}</td>
     <td>${ob(f2(r.current_price))}</td>
-    <td>${ob(r.tgt_str||'')}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
-    <td>${AUTH&&isPreorder(r)?'<span style="color:var(--bull)" title="In your My Pre-orders">✓</span>':''}</td>
+    <td>${ob(r.tgt_str||'')}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td>
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
-    <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td>
-    <td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
+    <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td>
+    <td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td><td>${AUTH&&isPreorder(r)?'<span style="color:var(--bull)" title="In your My Pre-orders">✓</span>':''}</td></tr>`).join("")
     || `<tr><td colspan="24" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
@@ -3049,7 +3047,7 @@ function paintOrderOps(){
   rows.forEach(r=>r._fav=FAVS.has(disp(r.ticker))?1:0);   // favourite column sortable (user 2026-07-11)
   $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>
     ${_favCell(r.ticker)}<td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td>${nm40(r.name)}</td>
-    <td>${rvolCell(r.rvol)}</td><td>${volScoreCell(r.volume_score)}</td><td>${r.rr!=null?(+r.rr).toFixed(1):'<span class="muted">—</span>'}</td>
+    <td>${rvolCell(r.rvol)}</td><td>${r.above_vwap==null?'—':r.above_vwap?'✓':'✗'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'✓':'✗'}</td><td>${volScoreCell(r.volume_score)}</td><td>${r.rr!=null?(+r.rr).toFixed(1):'<span class="muted">—</span>'}</td>
     <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'<span class="muted">—</span>'}</td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
     <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td>
@@ -4371,7 +4369,7 @@ function _renderPerformance(){
     <td class="muted">${__i+1}</td>
     <td>${nm40(r.name)}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
-    <td>${ob(rvolCell(r.rvol))}</td><td>${ob(volScoreCell(r.volume_score))}</td>
+    <td>${ob(rvolCell(r.rvol))}</td><td>${r.above_vwap==null?'—':r.above_vwap?'✓':'✗'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'✓':'✗'}</td><td>${ob(volScoreCell(r.volume_score))}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td>
     <td>${ob(`<b style="color:${_stcol(r.state)}">${r.state||''}</b>`)}</td>
     <!-- Market and Triggered stay visible logged-out (user 2026-07-17, P-26 and P-17b); the rest of the
