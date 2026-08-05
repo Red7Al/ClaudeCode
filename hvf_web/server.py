@@ -3028,6 +3028,7 @@ def api_winners():
             for r in rows]
     except Exception as ex:
         log.warning(f"winners rows failed: {ex}")
+        payload["error"] = "The annual trade dataset could not be built."
     return jsonify(payload)
 
 

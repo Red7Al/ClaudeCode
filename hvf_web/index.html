@@ -3545,10 +3545,12 @@ function renderSqueezeAnalysis(){
   renderBestSettings();     // best settings by quarter (user 2026-07-25, P-04 L59) — loads once, server-cached
   if(WIN!==null)return winnersParamsChange();   // route through winnersParamsChange so the derived Min/Max Trade populate (P-05)
   if(WIN_LOADING)return;
-  WIN_LOADING=true; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="muted" style="font-size:13px;padding:10px">⏳ Loading 12 months of trades…</div>';
-  fetch("/api/winners").then(r=>r.ok?r.json():{rows:[]})
-    .then(j=>{WIN_LOADING=false;WIN=j.rows||[];winnersParamsChange();})
-    .catch(()=>{WIN_LOADING=false;WIN=null;const b=$("ordp-bestcombo");if(b)b.innerHTML='<div class="empty">Annual settings data did not load. Reopen this tab to retry.</div>';});
+  WIN_LOADING=true; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading… 12 months of trades.</div>';
+  const loadWinners=(attempt=0)=>fetch("/api/winners").then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
+    .then(j=>{if(j.error)throw new Error(j.error);WIN_LOADING=false;WIN=j.rows||[];winnersParamsChange();})
+    .catch(err=>{if(attempt<3){if(s)s.innerHTML=`<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading… retry ${attempt+1} of 3.</div>`;setTimeout(()=>loadWinners(attempt+1),1500*(attempt+1));return;}
+      WIN_LOADING=false;WIN=null;const b=$("ordp-bestcombo");if(b)b.innerHTML=`<div class="empty">Annual settings could not be loaded: ${_esc(err.message||'unknown error')}. <button class="btn" onclick="renderSqueezeAnalysis()">↻ Retry</button></div>`;});
+  loadWinners();
 }
 // VolumeScore impact report (user 2026-07-24, P-02 L55): admin-only; fetched once (server-cached). Shows
 // whole book vs the ≥threshold subset (win rate, avg return, compounded £) and per-band profitability.
