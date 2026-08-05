@@ -3205,7 +3205,9 @@ def api_change_requests():
         except Exception as e:
             log.warning(f"change-request parse failed for {f}: {e}")
     out.sort(key=lambda r: (r.get("created") or "", r.get("file") or ""), reverse=True)
-    return jsonify({"files": out})
+    resp = jsonify({"files": out})
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
 
 
 @app.route("/api/ig-status")

@@ -4530,7 +4530,7 @@ function renderCR(ev){
   if(btn){btn.disabled=true;btn.textContent="⏳ Data loading…";}
   $("cr-count").innerHTML='<span class="sqh-loading">⏳ Data loading…</span>';
   $("cr-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading change-request files…</td></tr>`;
-  fetch("/api/change-requests",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+  fetch("/api/change-requests?refresh="+Date.now(),{headers:{"X-Auth":AUTH},cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{CR_FILES=j.files||[];paintCR();})
     .catch(()=>{$("cr-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not load (admin only).</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.className="btn";btn.textContent=was;}});
