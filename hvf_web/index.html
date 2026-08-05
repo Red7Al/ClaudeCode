@@ -3598,9 +3598,9 @@ function winnersLedgerFilter(){
 function winnersSLChange(){
   const v=+(($("ordp-sl-in")||{}).value||0), box=$("ordp-sl"), busy=$("ordp-sl-busy");
   if(!(v>0)){if(box)box.innerHTML="";return;}
-  if(busy)busy.textContent="⏳ re-backtesting…";
+  if(busy){busy.className="sqh-loading";busy.textContent="⏳ Data loading… re-backtesting.";}
   fetch("/api/winners-sl?sl="+v).then(r=>r.ok?r.json():null).then(j=>{
-    if(busy)busy.textContent="";
+    if(busy){busy.className="muted";busy.textContent="";}
     const rows=((j&&j.rows)||[]).filter(r=>r.perf!=null);
     if(!rows.length){if(box)box.innerHTML='<div class="muted" style="font-size:13px">No data to re-backtest.</div>';return;}
     const comp=key=>{let w=WINNERS_WALLET;for(const r of rows){const p=r[key];if(p!=null)w+=w*WINNERS_STAKE*p/100;}return w;};
@@ -3614,7 +3614,7 @@ function winnersSLChange(){
       a <b style="color:${col}">${delta>=0?'+':'−'}${money(Math.abs(delta))}</b> difference over ${rows.length.toLocaleString()} trades.
       <b>${improved.toLocaleString()}</b> trades came out better (loss cut or gain locked in), <b>${cut.toLocaleString()}</b> were cut short of a bigger win.
       ${delta>=0?'Here the trailing stop would have helped.':'Here it would have hurt — it cuts winners short more than it saves losers.'}</div></div>`;
-  }).catch(()=>{if(busy)busy.textContent="";if(box)box.innerHTML='<div class="muted" style="font-size:13px">Re-backtest failed.</div>';});
+  }).catch(()=>{if(busy){busy.className="muted";busy.textContent="";}if(box)box.innerHTML='<div class="muted" style="font-size:13px">Re-backtest failed.</div>';});
 }
 // Let winners run (user 2026-08-01/02, ToDo P-08): re-backtest each trade with the target exit REMOVED — once
 // a trade hits target the stop ratchets UP TO the target (so it can't give back below the target gain, e.g. 17%
@@ -3634,9 +3634,9 @@ function winnersRunChange(surface='pf'){
   if(inT&&!inT.dataset.seed){inT.value=(MY_LIMITS.let_winners_run_trail??25);inT.dataset.seed="1";}
   if(inS&&!inS.dataset.seed){inS.value=(MY_LIMITS.let_winners_run_stop??0);inS.dataset.seed="1";}
   const v=+((inT||{}).value||(MY_LIMITS.let_winners_run_trail??25)), sv=+((inS||{}).value||(MY_LIMITS.let_winners_run_stop??0));
-  if(busy)busy.textContent="⏳ re-backtesting…";
+  if(busy){busy.className="sqh-loading";busy.textContent="⏳ Data loading… re-backtesting.";}
   fetch("/api/winners-run?thr="+v+"&stop="+sv).then(r=>r.ok?r.json():null).then(j=>{
-    if(busy)busy.textContent="";
+    if(busy){busy.className="muted";busy.textContent="";}
     const rows=((j&&j.rows)||[]).filter(r=>r.perf!=null);
     if(!rows.length){paint('<div class="muted" style="font-size:13px">No data to re-backtest.</div>');return;}
     const ordered=rows.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||''));
@@ -3659,7 +3659,7 @@ function winnersRunChange(surface='pf'){
       <div id="${prefix}-run-proof"></div>
     </div>`);
     renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true});
-  }).catch(()=>{if(busy)busy.textContent="";paint('<div class="muted" style="font-size:13px">Re-backtest failed.</div>');});
+  }).catch(()=>{if(busy){busy.className="muted";busy.textContent="";}paint('<div class="muted" style="font-size:13px">Re-backtest failed.</div>');});
 }
 // Compact market-cap format (user 2026-08-01): 1.23T / 340B / 12M. No currency symbol (values are in each
 // instrument's own currency). Blank when absent — mcap is not captured in the pipeline yet, so this reads
