@@ -311,6 +311,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-fees table.fees-charges{width:auto;max-width:100%}
 #view-fees #fees-txns table{width:100%;table-layout:auto}
 #view-fees #fees-txns th,#view-fees #fees-txns td{white-space:normal}
+/* Squeeze History uses the full report width; its dense table should not inherit a
+   shrink-to-content width that creates avoidable desktop scrolling. */
+#view-squeezehist{box-sizing:border-box;padding-left:16px;padding-right:16px}
+#view-squeezehist .tablewrap{width:100%;overflow-x:auto;padding-bottom:22px}
+#view-squeezehist .tablewrap table{width:100%;table-layout:fixed}
+#view-squeezehist .tablewrap th,#view-squeezehist .tablewrap td{padding-left:6px;padding-right:6px;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:760px){#view-squeezehist .tablewrap table{width:max-content;min-width:100%;table-layout:auto}}
 .datecard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 12px;box-shadow:var(--sh-sm);display:inline-flex;align-items:center;gap:8px;font-size:13px}
 /* Admin pages get the amber treatment (user 2026-07-04) */
 #view-batch .gsec,#view-users .gsec,#view-version .gsec,#view-syslogs .gsec,#view-xposts .gsec,#view-jobs .gsec{border-left-color:#d29922}
