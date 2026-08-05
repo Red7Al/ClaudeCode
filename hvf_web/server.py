@@ -2868,16 +2868,28 @@ def api_fees():
     the period profit (reconciled per row-count/total)."""
     import datetime as _dt
 
+    def _ig_day(value):
+        """Normalise IG ISO or locale date strings to YYYY-MM-DD for month filtering."""
+        s = str(value or "")
+        m = _re.search(r"(20\d{2})[-/](\d{1,2})[-/](\d{1,2})", s)
+        if m:
+            return f"{int(m.group(1)):04d}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+        m = _re.search(r"(\d{1,2})/(\d{1,2})/(\d{2,4})", s)
+        if m:
+            year = int(m.group(3)); year += 2000 if year < 100 else 0
+            return f"{year:04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+        return s[:10]
+
     def _period_ig(start, end, label, ig_txns):
         """Build a period from the viewer's REAL IG transaction history (user 2026-08-02, P-06) — the source
         of truth, so ALL closed trades show (not just the sparse trade_log) and IG's own charges (overnight
         funding/interest) are surfaced. `pnl` is the NET realised profit (trade P&L + charges)."""
         a, b = start.isoformat(), end.isoformat()
-        inwin = [t for t in ig_txns if a <= str(t.get("date") or "")[:10] <= b]
+        inwin = [t for t in ig_txns if a <= _ig_day(t.get("date")) <= b]
         trades = [t for t in inwin if t.get("kind") == "TRADE"]
         charges = [t for t in inwin if t.get("kind") == "CHARGE"]
         txns = []
-        for t in trades:
+        for t in sorted(trades, key=lambda x: str(x.get("date") or x.get("open_date") or ""), reverse=True):
             sz = t.get("size")
             op, cp = t.get("open_level"), t.get("close_level")
             direction = "BUY" if (sz is not None and sz > 0) else "SELL"
@@ -2893,7 +2905,8 @@ def api_fees():
                 "opened_at": t.get("open_date"), "closed_at": t.get("date"),
                 "reason": t.get("type")})
         chg_rows = [{"date": t.get("date"), "instrument": t.get("instrument"),
-                     "type": t.get("type"), "pnl": round(float(t.get("pnl") or 0), 2)} for t in charges]
+                     "type": t.get("type"), "pnl": round(float(t.get("pnl") or 0), 2)} for t in
+                    sorted(charges, key=lambda x: str(x.get("date") or ""), reverse=True)]
         trade_pnl = round(sum(t["pnl"] for t in txns), 2)
         charges_total = round(sum(c["pnl"] for c in chg_rows), 2)
         net = round(trade_pnl + charges_total, 2)

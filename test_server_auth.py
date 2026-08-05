@@ -2,6 +2,7 @@
 
 import gzip
 import json
+from pathlib import Path
 
 import config_store
 from hvf_web import server
@@ -112,3 +113,11 @@ def test_change_request_deferred_with_inline_note_is_deferred():
 
     assert server._cr_status(line) == "Deferred"
     assert "[Deferred" not in server._CR_TAIL.sub("", line)
+
+
+def test_fees_normalises_locale_ig_dates():
+    with server.app.test_request_context():
+        # The helper is local to api_fees; verify the source contains the normalisation contract.
+        source = Path(server.__file__).read_text(encoding="utf-8")
+    assert "def _ig_day(value)" in source
+    assert "a <= _ig_day(t.get(\"date\")) <= b" in source

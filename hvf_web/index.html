@@ -2539,14 +2539,14 @@ function paintJobs(){
     <td class="muted" style="font-size:12px">${e.workflow||""}</td></tr>`).join("")||`<tr><td colspan="9" class="empty">No scheduled jobs found.</td></tr>`;
 }
 function renderJobs(force){
-  $("jobs-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading run stats…</td></tr>`;
+  $("jobs-rows").innerHTML=`<tr><td colspan="9" class="empty sqh-loading">⏳ Data loading… run stats.</td></tr>`;
   fetch("/api/scheduled-jobs"+(force?"?refresh=1":""),{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{JOB_ROWS=j.jobs||[];
       const totF=JOB_ROWS.reduce((s,e)=>s+(e.failures||0),0);
       const cards=[["Jobs",JOB_ROWS.length],["Categories",new Set(JOB_ROWS.map(e=>e.category)).size],["Recent failures",totF]];   // "Stats/GitHub API" card removed (user 2026-07-11)
       $("jobs-health").innerHTML=cards.map(([k,v])=>`<div class="fcard"><div class="body"><div class="muted" style="font-size:12px">${k}</div><div style="font-size:20px;font-weight:800">${v}</div></div></div>`).join("")+(j.generated_utc?`<div class="fcard"><div class="body"><div class="muted" style="font-size:12px">As of</div><div style="font-size:13px">${j.generated_utc} UTC</div>${j.error?`<div style="color:#d29922;font-size:11px;margin-top:4px">${j.error}</div>`:""}</div></div>`:"");
       paintJobs();})
-    .catch(()=>{$("jobs-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not load — admin only; try logging in again.</td></tr>`;});
+    .catch(()=>{$("jobs-rows").innerHTML=`<tr><td colspan="9" class="empty" style="color:var(--bear)">Run stats could not be loaded. Use Refresh to retry.</td></tr>`;});
 }
 document.querySelectorAll("th[data-jk]").forEach(th=>th.onclick=()=>{const k=th.dataset.jk;jSortDir=(jSortK===k)?-jSortDir:1;jSortK=k;paintJobs();_sortArrows("data-jk",jSortK,jSortDir);});
 function renderSyslogs(){
@@ -3316,7 +3316,7 @@ function renderIgAccount(ev){
   $("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading… open positions, working orders and closed trades.</span>`;
   $("ig-pos-rows").innerHTML=`<tr><td colspan="16" class="empty refreshing">⏳ Data loading… open positions and working orders.</td></tr>`;
   $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty refreshing">⏳ Data loading… working orders.</td></tr>`;
-  fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+  const loadAccount=(attempt=0)=>fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
     .then(j=>{
       IG_POS=j.positions||[]; IG_ORD=j.orders||[]; igOpenMonthInitialised=false;
       // Account name + obfuscated number above the positions (user 2026-07-20). Number is already masked
@@ -3333,8 +3333,13 @@ function renderIgAccount(ev){
       // Load closed trades directly into the main transaction table (user 2026-08-04).
       if(!noCreds)loadIgClosed(true);
     })
-    .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="16" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;})
-    .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
+    .catch(err=>{if(attempt<3){$("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading… retry ${attempt+1} of 3.</span>`;setTimeout(()=>loadAccount(attempt+1),1500*(attempt+1));return;}
+      $("ig-note").innerHTML=`<span style="color:var(--bear)">IG account read failed: ${_esc(err.message||"unknown error")}.</span>`;
+      $("ig-pos-count").innerHTML=`<span style="color:var(--bear)">Open positions could not be loaded.</span>`;
+      $("ig-pos-rows").innerHTML=`<tr><td colspan="16" class="empty" style="color:var(--bear)">IG did not return open positions. Use Refresh to retry.</td></tr>`;
+      $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty" style="color:var(--bear)">IG did not return working orders.</td></tr>`;})
+    .finally(()=>{if(btn){btn.disabled=false;btn.className="btn";btn.textContent=was;}});
+  loadAccount();
 }
 // Jump from the IG Account warning straight to Configuration → IG (user 2026-07-26, P-07 #91). The IG
 // credential panel is built ASYNCHRONOUSLY by renderCredentials(), so poll for it before confShow('IG').
@@ -4142,7 +4147,11 @@ function paintFeesTxns(seg){
   const ti=$("fees-txn-title");
   const txns=(seg&&seg.txns)||[], charges=(seg&&seg.charges)||[];
   const aggregate=((document.querySelector('input[name="fees-txn-view"]:checked')||{}).value==='agg');
-  let viewTxns=txns;
+  // API page order is not guaranteed; render by the actual close event, newest first.
+  let viewTxns=txns.slice().sort((a,b)=>{
+    const ad=String(a.closed_at||a.opened_at||""), bd=String(b.closed_at||b.opened_at||"");
+    return bd.localeCompare(ad)||String(a.ticker||"").localeCompare(String(b.ticker||""));
+  });
   if(aggregate){
     const grouped={};
     txns.forEach(t=>{const key=[t.ticker,t.direction].join('|');
@@ -4154,6 +4163,7 @@ function paintFeesTxns(seg){
     viewTxns=Object.values(grouped).map(a=>{a.open=a._weight?+(a._openW/a._weight).toFixed(4):a.open;
       a.close=a._weight?+(a._closeW/a._weight).toFixed(4):a.close;a.size=+a.size.toFixed(4);a.pnl=+a.pnl.toFixed(2);
       a.pnl_pct=(a.open&&a.close!=null)?+(((a.direction==='SELL'?a.open-a.close:a.close-a.open)/a.open)*100).toFixed(2):null;return a;});
+    viewTxns.sort((a,b)=>String(b.closed_at||b.opened_at||"").localeCompare(String(a.closed_at||a.opened_at||""))||String(a.ticker||"").localeCompare(String(b.ticker||"")));
   }
   if(ti)ti.textContent=`Transactions — ${seg?seg.label:'—'}`;
   const gbp=_feesGbp;
