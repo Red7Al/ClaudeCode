@@ -60,6 +60,12 @@ VolumeScore's left. Reuse `rvolCell()` and `volScoreCell()` so blanks and format
 move an existing RVOL column instead of duplicating it. Update sortable field keys and every affected
 `colspan` when adding the column.
 
+**Shared report controls belong above sub-tab titles.** If one model/control set drives more than one
+sub-tab, render one shared instance above the page title and toggle its visibility for only the consumers;
+do not duplicate IDs or let one sub-tab appear to own shared assumptions. For the Performance filter
+header, reserve the left column for a two-column “Settings used” grid (up to three rows) and constrain the
+seven Location choices to a four-column grid (two rows), with date controls on their own row.
+
 **Every column sorts.** EVERY table column must be clickable to sort by that column (user 2026-07-20).
 The house pattern, reused across Scanner / Performance / Order Ops / Squeeze History:
 

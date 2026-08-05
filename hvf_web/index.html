@@ -368,9 +368,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
    .wallet-on to #pf-table. display:none on th/td removes the column cleanly. */
 #pf-table:not(.wallet-on) .wcol{display:none}
 /* "Settings used" card on the Summary sub-tab (user 2026-07-24, P-02) — compact, left of the filters. */
-.pf-setcard{max-width:660px;min-width:190px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:11.5px}
+.pf-setcard{max-width:520px;min-width:320px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:11.5px}
 .pf-setcard-h{font-weight:700;margin-bottom:4px;font-size:12px}
-.pf-setcard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px 18px}   /* up to 3 columns when there's room (user 2026-08-01) */
+.pf-setcard-grid{display:grid;grid-template-columns:repeat(2,minmax(140px,1fr));gap:1px 18px}   /* two columns leaves room for up to three readable rows (user 2026-08-05) */
+.pf-filter-row{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.pf-filter-controls{display:flex;flex:1 1 540px;min-width:0;flex-direction:column;align-items:flex-end;gap:8px}
+.pf-loc-group{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px;width:100%}
+#pf-loc-btns{display:grid!important;grid-template-columns:repeat(4,max-content);gap:5px;justify-content:end;flex:none!important}
+.pf-date-group{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:nowrap;width:100%}
+@media(max-width:760px){.pf-setcard{min-width:0;max-width:none;width:100%}.pf-filter-controls{flex-basis:100%}#pf-loc-btns{grid-template-columns:repeat(2,max-content)}.pf-date-group{overflow-x:auto;justify-content:flex-start}}
 /* Tab-visibility panel readability (user 2026-08-01) — hard to read on iPad mini. Bigger chips + checkboxes,
    clearer section headers, and one chip per line on small screens so labels never truncate. */
 #tabvis-list label{font-size:14px;padding:8px 12px;gap:9px}
@@ -1261,10 +1267,25 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <input type="hidden" id="pff_sector"><input type="hidden" id="pff_market"><input type="hidden" id="pff_status"><input type="hidden" id="pff_location"><input type="hidden" id="pff_direction"><input type="hidden" id="pff_wl"><input type="hidden" id="pff_month"><input type="hidden" id="pff_mweek"><input type="hidden" id="pff_daysopen">
   <!-- Sub-tab pills at the very TOP, centred (user 2026-07-24, P-03) — above the title/lede. -->
   <div id="pf-pills" style="display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px">
-    <button class="pill" data-pfpanel="results" onclick="pfPanel('results')" title="Back test over the last 12 months for YOUR current configuration (your Trading (Squeeze) direction filter, Markets (User) and personal floors): every setup as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Back Test</button>
-    <button class="pill active" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button>
+    <button class="pill active" data-pfpanel="results" onclick="pfPanel('results')" title="Back test over the last 12 months for YOUR current configuration (your Trading (Squeeze) direction filter, Markets (User) and personal floors): every setup as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Back Test</button>
+    <button class="pill" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button>
     <button class="pill" id="pf-pill-winners" data-pfpanel="analysis" onclick="pfPanel('analysis')" title="Admin: the same 12-month population expressed as a compounding £ wallet — what's POSSIBLE if every setup were placed, and which attributes (market, R:R, quality, volume) separate the winners. Answers 'how to size and pick for the best return'.">🏆 What separates the winners</button>
     <button class="pill" data-pfpanel="run" onclick="pfPanel('run')" title="Compare selling at target with locking in the target and trailing the remaining move. Illustration only; live orders are never changed.">🏃 Let winners run</button>
+  </div>
+  <!-- Shared compounded-wallet model: Summary, What separates the winners and Let winners run all use
+       these values, so it lives above the Performance title instead of inside one sub-tab (P-07). -->
+  <div id="pf-shared-model" class="card hidden" style="margin-bottom:10px;display:none;align-items:center;gap:14px;flex-wrap:wrap">
+    <b style="font-size:13px">💷 Model</b>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Wallet £ <input id="ordp-wallet" type="number" min="100" step="500" value="10000" style="width:100px;padding:4px 6px" onchange="winnersParamsChange()"></label>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="The smallest position IG will accept. Read-only.">Minimum Trade £<b id="ordp-mintrade" style="color:var(--fg)">25</b></label>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Max position size <input id="ordp-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="winnersParamsChange()">%</label>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = no numeric cap; available wallet exposure still limits the number that can be funded.">Max open positions <input id="ordp-maxopen" type="number" min="0" step="1" placeholder="∞" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()"></label>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ Max open positions. With no numeric cap, available wallet exposure remains the constraint.">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
+    <span class="muted" style="font-size:11px">each trade stakes this % of the running wallet</span>
+    <button class="btn" id="ordp-save-defaults" style="padding:4px 10px;font-size:12px" onclick="winnersSaveDefaults()" title="Save Wallet / Max position size / Max open positions as your defaults (Configuration → My trading limits)">💾 Save as my defaults</button>
+    <span id="ordp-save-msg" style="font-size:11px"></span>
+    <span id="ordp-model-msg" style="font-size:11px;flex-basis:100%"></span>
+    <span class="muted" style="font-size:11px;flex-basis:100%;line-height:1.4">⚖️ <b style="color:var(--fg)">Leverage &amp; the wallet:</b> leverage does not change the £ or % return; it changes the margin each position ties up. A blank/∞ Max open removes the numeric cap, but the available wallet still limits funded positions.</span>
   </div>
   <span class="eyebrow">Results</span>
   <!-- Processing badge (user 2026-08-02, P-06) — shown next to the title while /api/performance is still
@@ -1292,32 +1313,33 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
          filter row remains here. -->
     <!-- Date filter row, kept on the RIGHT (user 2026-07-18, P-01). The quick-window dropdown sits
          immediately beside the From/To inputs. Narrows the trigger-date window for every figure on both tabs. -->
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <div class="pf-filter-row">
       <!-- "Settings used" card (user 2026-07-24, P-02): summarises the settings that produced the Summary
            chart + table (date window, location, market, any cross-filters). Left of the filters; Summary sub-tab only. -->
       <div id="pf-settings-card" class="pf-setcard" style="display:none"></div>
-      <span class="grow" style="flex:1"></span>
+      <div class="pf-filter-controls">
       <!-- Location quick-filter buttons, moved up next to the dates (user 2026-07-20). Drive the summary
            table AND the monthly-growth chart; the selected button turns green. These are by LOCATION, not
            market — e.g. Nasdaq 100 / S&P 500 sit under "United States" (user 2026-07-24, P-04 L82). For
            market-level filtering, click a bar on the Market chart (Results sub-tab). -->
-      <span class="muted" id="pf-loc-lbl" style="font-size:12px;align-self:center" title="Filter by location. Markets like Nasdaq 100 / S&P 500 are under 'United States'. To filter by a specific market, click a bar on the Market chart in the Results sub-tab.">Location:</span>
-      <span id="pf-loc-btns" style="display:flex;gap:5px;flex-wrap:wrap;flex:1 1 auto;min-width:0;justify-content:flex-end"></span>   <!-- may wrap over two lines when there are many locations (user 2026-08-01) -->
+      <div class="pf-loc-group"><span class="muted" id="pf-loc-lbl" style="font-size:12px;padding-top:5px" title="Filter by location. Markets like Nasdaq 100 / S&P 500 are under 'United States'. To filter by a specific market, click a bar on the Market chart in the Results sub-tab.">Location:</span>
+      <span id="pf-loc-btns"></span></div>
       <!-- width:auto defeats the global select{width:100%} that made this dropdown span the whole row
            and wrap above the calendar (user 2026-07-20). Order: dropdown left, From/To calendar far right.
            The "Custom / all" option clears the window, so the separate "All 12mo" button was removed (redundant). -->
-      <select id="pf-date-preset" onchange="pfDatePreset(this.value)" style="padding:4px 6px;font-size:12px;width:auto;flex:none" title="Quick date window">
+      <div class="pf-date-group"><select id="pf-date-preset" onchange="pfDatePreset(this.value)" style="padding:4px 6px;font-size:12px;width:auto;flex:none" title="Quick date window">
         <option value="12">Last 12 months</option><option value="9">Last 9 months</option>
         <option value="6">Last 6 months</option><option value="3">Last 3 months</option>
         <option value="4w">Last 4 weeks</option><option value="tm">This month</option>
         <option value="">Custom / all</option></select>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">From <input id="pf-date-from" type="date" onchange="pfDateChange(true)" style="padding:4px 6px"></label>
-      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">To <input id="pf-date-to" type="date" onchange="pfDateChange(true)" style="padding:4px 6px"></label>
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">To <input id="pf-date-to" type="date" onchange="pfDateChange(true)" style="padding:4px 6px"></label></div>
+      </div>
     </div>
   </nav>
   <!-- Summary sub-tab (user 2026-07-20): the compounded-wallet monthly chart + the Segment summary table,
        both full width. Its own pill, left of Results. -->
-  <div id="pf-panel-summary">   <!-- default sub-tab (user 2026-07-20) -->
+  <div id="pf-panel-summary" class="hidden">
     <!-- Monthly growth of the compounded wallet (user 2026-07-18/20): full width. Shown to everyone,
          including logged-out visitors, because it sells the product (user 2026-07-20). -->
     <div id="pf-monthly" style="margin:0 0 14px"></div>
@@ -1327,7 +1349,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div id="pf-summary" class="tablewrap" style="margin-bottom:8px"></div>
     </div>
   </div>
-  <div id="pf-panel-results" class="hidden">
+  <div id="pf-panel-results">
   <h2 class="sec" style="margin-top:0">Back Test</h2>
   <p class="muted" style="font-size:13px;margin-top:-8px">These are <b>back-test results over the last 12 months</b>, replayed against your <b>current configuration</b> — your Trading (Squeeze) <b>direction</b> filter, your <b>Markets (User)</b> selection and your personal <b>Volume Score / Quality / R:R</b> floors. Change any of those and this back test updates to match. Each setup is measured from its trigger to <b style="color:var(--bull)">TARGET</b>, <b style="color:var(--bear)">STOPPED</b> or <b style="color:#d29922">OPEN</b> (marked to the latest price).</p>
   <div id="pf-charts">
@@ -1387,26 +1409,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- 15-month squeeze analysis (user 2026-07-17, P-21b) — its own sub-tab (P-21b follow-up). -->
   <div id="pf-panel-analysis" class="hidden">
     <!-- Title + lede for this panel now render ABOVE the shared filter row (#pf-winners-head, P-07 L289). -->
-    <!-- Wallet + stake variables (user 2026-07-18, P-05): drive every £ figure on the winners tab. -->
-    <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-      <b style="font-size:13px">💷 Model</b>
-      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Wallet £ <input id="ordp-wallet" type="number" min="100" step="500" value="10000" style="width:100px;padding:4px 6px" onchange="winnersParamsChange()"></label>
-      <!-- Minimum Trade: read-only IG floor (user 2026-07-18, P-05 L253) — the smallest stake IG will accept. -->
-      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="The smallest position IG will accept. Read-only.">Minimum Trade £<b id="ordp-mintrade" style="color:var(--fg)">25</b></label>
-      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Max position size <input id="ordp-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="winnersParamsChange()">%</label>
-      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = no cap. A low cap skips trades that trigger while you're already full — far fewer trades.">Max open positions <input id="ordp-maxopen" type="number" min="0" step="1" placeholder="∞" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()"></label>
-      <!-- Maximum Trade: read-only, derived = Wallet ÷ Max open positions (user 2026-07-18, P-05 L254). The
-           identity Wallet = Max open × Maximum Trade (L255/L256) is enforced by deriving it here. -->
-      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ Max open positions — so Wallet = Max open × Maximum Trade. With no cap it's the whole wallet.">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
-      <span class="muted" style="font-size:11px">each trade stakes this % of the running wallet; both drive every £ figure below</span>
-      <!-- Save the winners Model variables (Wallet / Max position size / Max open) as the user's persistent
-           defaults in Configuration (user 2026-07-28, P-10 L158), so the tab remembers them next login. -->
-      <button class="btn" id="ordp-save-defaults" style="padding:4px 10px;font-size:12px" onclick="winnersSaveDefaults()" title="Save Wallet / Max position size / Max open positions as your defaults (Configuration → My trading limits)">💾 Save as my defaults</button>
-      <span id="ordp-save-msg" style="font-size:11px"></span>
-      <span id="ordp-model-msg" style="font-size:11px;flex-basis:100%"></span>
-      <!-- Leverage clarity (user 2026-08-02, P-12): the compounded wallet/equity figures are leverage-neutral. -->
-      <span class="muted" style="font-size:11px;flex-basis:100%;line-height:1.4">⚖️ <b style="color:var(--fg)">Leverage &amp; the wallet:</b> leverage does <b>not</b> change the £ or % return shown here — the compounded equity is identical at any leverage. It only sets the <b>margin</b> each position ties up (stake ÷ leverage), i.e. how much cash is freed to hold more positions at once. The concurrency cap (Max open) is what limits the wallet, not leverage.</span>
-    </div>
     <!-- Best-combination card (user 2026-07-26, P-05 L132/L133): grid-searches Max position size / Max open
          positions / R:R floor over these trades and recommends the mix with the best RISK-ADJUSTED return,
          with worked examples at £1k…£10k. Rendered by renderBestCombo() from paintOrdersPerf. -->
@@ -3445,6 +3447,7 @@ function pfPanel(which){
   if(res)res.classList.toggle("hidden",which!=="results");
   if(an)an.classList.toggle("hidden",which!=="analysis");
   if(run)run.classList.toggle("hidden",which!=="run");
+  const model=$("pf-shared-model");if(model)model.style.display=which==="results"?"none":"flex";   // shared by Summary / analysis / run; Results has its own recorded-trigger wallet control (P-07)
   const filters=$("pf-subnav");if(filters)filters.classList.toggle("hidden",which==="run");   // date/location filters do not feed /api/winners-run
   const wh=$("pf-winners-head");if(wh)wh.classList.toggle("hidden",which!=="analysis");   // winners title/lede above the filters (P-07 L289)
   if(which==="analysis")renderSqueezeAnalysis();
