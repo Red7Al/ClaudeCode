@@ -733,6 +733,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div class="credrow"><span class="clabel">Minimum Quality (Q)</span><input type="number" min="0" max="100" step="1" id="lim-min_quality" style="max-width:120px"></div>
       <!-- Personal VolumeScore floor (user 2026-07-27, P-03) — filters My Pre-orders + gates manual actions, exactly like Minimum Quality. Default 1. -->
       <div class="credrow"><span class="clabel" title="VolumeScore (0–12) floor: breakout-confirmation. Filters My Pre-orders and blocks push-to-pre-orders / place-on-IG below this, exactly like Minimum Quality. Default 1.">Minimum Volume Score (0–12)</span><input type="number" min="0" max="12" step="1" id="lim-min_volume_score" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="Minimum relative volume on the trigger bar. Blank/0 means no RVOL floor.">Minimum RVOL</span><input type="number" min="0" step="0.1" id="lim-min_rvol" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="Only allow setups where price was above VWAP on the trigger bar.">Require price above VWAP</span><label><input type="checkbox" id="lim-require_above_vwap"> Yes</label></div>
+      <div class="credrow"><span class="clabel" title="Only allow setups where ATR was expanding on the trigger bar.">Require ATR expanding</span><label><input type="checkbox" id="lim-require_atr_expanding"> Yes</label></div>
       <!-- Min/Max tradeable instrument VALUE (user 2026-07-27, P-07) — for equities the value is market cap.
            0 = off. Enforced like the Quality floor once records carry an mcap value (data pipeline pending);
            the variable is stored and honoured now. -->
@@ -1291,7 +1294,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div id="pf-pills" style="display:flex;justify-content:center;align-items:flex-end;gap:8px;flex-wrap:wrap;margin:0 0 12px">
     <div class="pf-pill-group"><span class="muted pf-pill-desc">What your current filters would have produced over the selected period.</span><button class="pill active" data-pfpanel="results" onclick="pfPanel('results')" title="Back test over the last 12 months for YOUR current configuration (your Trading (Squeeze) direction filter, Markets (User) and personal floors): every setup as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Back Test</button></div>
     <div class="pf-pill-group"><span class="muted pf-pill-desc">Which tested settings survived wallet, margin, trade-count, and drawdown constraints.</span><button class="pill" data-pfpanel="settings" onclick="pfPanel('settings')" title="Rank realistic annual settings using wallet-constrained replay, profit, drawdown, robustness and trade count.">🥇 Best settings</button></div>
-    <div class="pf-pill-group"><span class="muted pf-pill-desc">How many observed triggers gained, lost, or remain open.</span><button class="pill" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button></div>
+    <div class="pf-pill-group" style="display:none"><span class="muted pf-pill-desc">How many observed triggers gained, lost, or remain open.</span><button class="pill" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button></div>
     <div class="pf-pill-group" id="pf-advanced-group" style="display:none"><span class="muted pf-pill-desc">Open specialist analysis for Silver/Gold admin users.</span><button class="pill" id="pf-pill-advanced" type="button" onclick="toggleAdvancedPf()" title="Open specialist winner-analysis and exit-simulation reports.">⚙ Advanced analysis</button></div>
   </div>
   <div id="pf-advanced-nav" class="hidden" style="display:flex;justify-content:center;align-items:flex-end;gap:8px;flex-wrap:wrap;margin:-4px 0 12px">
@@ -2978,7 +2981,9 @@ function saveLimits(){
   const num=(id,int)=>{const el=$("lim-"+id);if(!el)return undefined;const v=(int?parseInt:parseFloat)(el.value);return isFinite(v)&&v>=0?v:undefined;};
   const lim={};
   [["min_risk_reward",0],["bounce_alert_pct",0],["min_instrument_value",0],["max_instrument_value",0],["preorder_threshold_pct",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
-  [["min_quality",1],["min_volume_score",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["rebalance_weeks",1],["wo_lifespan_days",1],["let_winners_run_trail",1],["let_winners_run_stop",1]].forEach(([k])=>{const v=num(k,1);if(v!==undefined)lim[k]=v;});
+  [["min_quality",1],["min_volume_score",1],["min_rvol",0],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["rebalance_weeks",1],["wo_lifespan_days",1],["let_winners_run_trail",1],["let_winners_run_stop",1]].forEach(([k,int])=>{const v=num(k,int);if(v!==undefined)lim[k]=v;});
+  lim.require_above_vwap=$("lim-require_above_vwap").checked?1:0;
+  lim.require_atr_expanding=$("lim-require_atr_expanding").checked?1:0;
   lim.adaptive_filters=($("lim-adaptive_filters")||{}).checked?1:0;   // adaptive-filters enable toggle (user 2026-07-27, P-07)
   lim.let_winners_run=($("lim-let_winners_run")||{}).checked?1:0;   // "Let winners run" report opt-in, default OFF (user 2026-08-02)
   const _er=$("lim-email_recipients"); if(_er)lim.email_recipients=(_er.value||"").split(",").map(x=>x.trim()).filter(Boolean);
@@ -3410,7 +3415,7 @@ async function maRebuild(){
 // ── Performance tab (user 2026-07-13): every RECORDED trigger (hvf_triggers) with its committed
 //    entry/stop/target/date, classified STOPPED / TARGET / OPEN from price history since the trigger.
 //    Served pre-computed by /api/performance (source of truth = the recorded events, not the snapshot). ──
-let pfSortK="trig_date", pfSortDir=1, PERF_DATA=null, PERF_GEN="", PF_LOC_FILTER="";   // default: Triggered date ascending / oldest first (user 2026-08-01)
+let pfSortK="trig_date", pfSortDir=1, PERF_DATA=null, PERF_GEN="", PF_LOC_FILTER="", PF_INITIALISED=false;   // default: Triggered date ascending / oldest first (user 2026-08-01)
 let PF_COMBO=null;   // clicked "Best Quality / R:R combination" card → filter the Results table to that band (user 2026-07-27, P-10 L292)
 let PF_VS_FLOOR=0;   // active personal Minimum Volume Score floor applied to the Performance population (user 2026-07-28); 0 = off
 // Quality / R:R / Volume-Score band click-to-filter (user 2026-07-27 P-10 L292; volume added 2026-08-01).
@@ -3469,6 +3474,7 @@ function renderPerformance(){
   if(_ag)_ag.style.display=advancedPfAllowed()?'':'none';
   const _lg=document.querySelector(".pf-loc-group");
   if(_lg)_lg.style.display=document.querySelector("#pf-panel-summary:not(.hidden)")?"":"none";
+  if(!PF_INITIALISED){PF_INITIALISED=true;pfPanel("settings");}
   if(!advancedPfAllowed() && (!$("pf-panel-analysis").classList.contains("hidden")||!$("pf-panel-run").classList.contains("hidden")))pfPanel('results');
   const _pfl=$("pf-loading");
   if(PERF_DATA===null){                       // fetch the recorded-trigger report once, then render
@@ -3489,6 +3495,7 @@ function renderPerformance(){
 // Performance sub-tabs (user 2026-07-17): Results vs the 15-month analysis. The analysis fetches lazily
 // on first open, so the Results view is never slowed by it.
 function pfPanel(which){
+  if(which==="summary")which="settings";
   if((which==="analysis"||which==="run")&&!advancedPfAllowed())which="results";
   document.querySelectorAll("#pf-pills .pill,#pf-advanced-nav .pill").forEach(b=>b.classList.toggle("active",b.dataset.pfpanel===which));
   const advNav=$("pf-advanced-nav");
@@ -3835,8 +3842,11 @@ function renderBestCombo(all){
   // (user 2026-08-01): the best mix and its % return are wallet-independent, so one worked row is enough.
   const w=Math.max(1,WINNERS_WALLET||1000);
   const stake=w*best.st/100,end=w*(1+best.ret),net=end-w,feas=stake>=25;
-  const cfgFor=x=>{const cfg={min_risk_reward:x.rr,min_quality:x.q,min_volume_score:x.vs,max_position_pct:x.st,max_open:x.mo};
-    if(x.scope.kind==="mcap"){cfg.min_instrument_value=x.scope.min||0;cfg.max_instrument_value=x.scope.max||0;} return cfg;};
+  const cfgFor=x=>{const limits={min_risk_reward:x.rr,min_quality:x.q,min_volume_score:x.vs,min_rvol:x.rv,max_position_pct:x.st,max_open:x.mo,
+      require_above_vwap:x.vw?1:0,require_atr_expanding:x.atr?1:0};
+    if(x.scope.kind==="mcap"){limits.min_instrument_value=x.scope.min||0;limits.max_instrument_value=x.scope.max||0;}
+    const filters={f_mkt:x.scope.kind==="market"?x.scope.value:"",f_sec:x.scope.kind==="sector"?x.scope.value:""};
+    return {limits,filters};};
   const bestCfg=cfgFor(best);
   const eligible=evaluated.filter(x=>x.n>=20), positive=eligible.filter(x=>x.ret>0);
   const highest=[...(positive.length?positive:eligible)].sort((a,b)=>b.ret-a.ret||b.score-a.score)[0]||best;
@@ -3846,11 +3856,11 @@ function renderBestCombo(all){
     ["Highest return",highest,"Highest historical compounded return in the tested set."],
     ["Lowest drawdown",lowest,"Smallest historical peak-to-trough decline among positive-return options."]
   ];
-  const changed="R:R floor · Quality floor · Volume Score floor · Max position size · Max open positions";
+  const changed="R:R · Quality · VolumeScore · RVOL · VWAP · ATR · position size · max open · market/sector scope";
   const choiceCards=choices.map(([label,x,why])=>`<div class="fcard" style="min-width:220px;flex:1">
     <h3>${label}</h3><div class="muted" style="font-size:11px;min-height:28px">${why}</div>
     <div class="body"><div><b style="font-size:17px;color:${x.ret>=0?'var(--bull)':'var(--bear)'}">${pct(x.ret)}</b> return · <b>${(x.dd*100).toFixed(1)}%</b> max drawdown</div>
-      <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} eligible trades · ${x.scope.label} · ${x.st}% position · ${x.mo>0?x.mo:'Auto'} max open</div>
+      <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} eligible trades · ${x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo>0?x.mo:'Auto'} max open</div>
       <div class="muted" style="font-size:10px;margin-top:7px"><b style="color:var(--fg)">Changes User Configuration:</b> ${changed}${x.scope.kind==='mcap'?' · MCap band':''}</div>
       <button class="btn" style="margin-top:8px" onclick='applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">⬇ Apply this configuration</button>
     </div></div>`).join('');
@@ -3888,15 +3898,16 @@ function renderBestCombo(all){
 // POSTs only the provided keys to /api/config, refreshes MY_LIMITS + the config inputs, and re-renders the
 // dependent views. Values map: min_risk_reward, min_quality, min_volume_score, max_position_pct, max_open.
 function applyConfigFromReport(cfg, btn){
-  cfg=cfg||{};
-  const labels={min_risk_reward:"R:R floor",min_quality:"Quality floor",min_volume_score:"VolumeScore floor",max_position_pct:"Max position size %",max_open:"Max open positions",min_instrument_value:"Minimum instrument value",max_instrument_value:"Maximum instrument value"};
-  const summary=Object.keys(cfg).map(k=>`• ${labels[k]||k}: ${cfg[k]}`).join("\n");
-  if(!confirm("Copy this configuration to your personal trading settings?\n\n"+summary+"\n\nThis updates your live trading filters (Configuration → My trading limits). It does not place or change any orders.")) return;
+  cfg=cfg||{}; const limits=cfg.limits||cfg, filters=cfg.filters||{};
+  const labels={min_risk_reward:"R:R floor",min_quality:"Quality floor",min_volume_score:"VolumeScore floor",min_rvol:"RVOL floor",require_above_vwap:"Require above VWAP",require_atr_expanding:"Require ATR expanding",max_position_pct:"Max position size %",max_open:"Max open positions",min_instrument_value:"Minimum instrument value",max_instrument_value:"Maximum instrument value"};
+  const summary=Object.keys(limits).map(k=>`• ${labels[k]||k}: ${limits[k]}`).concat(Object.entries(filters).map(([k,v])=>`• Saved filter ${k.replace(/^f_/,'')}: ${v||'all'}`)).join("\n");
+  if(!confirm("Copy this complete configuration to your personal settings?\n\n"+summary+"\n\nThis updates User Configuration only. It does not place or change any orders.")) return;
   if(btn){btn.disabled=true;btn.textContent="Saving…";}
-  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:cfg})})
+  const nextFilters={...USER_FILTERS,...filters};
+  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits,filters:nextFilters})})
     .then(r=>{if(!r.ok)throw 0;
-      MY_LIMITS={...MY_LIMITS,...cfg};
-      Object.entries(cfg).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v;}});
+      MY_LIMITS={...MY_LIMITS,...limits}; USER_FILTERS=nextFilters; applyUserDefaults();
+      Object.entries(limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v;}});
       if(btn){btn.textContent="✓ Copied to my settings";setTimeout(()=>{btn.disabled=false;btn.textContent="⬇ Copy this configuration to my settings";},4000);}
       if(typeof renderPreorders==='function')renderPreorders();
       if(typeof _renderPerformance==='function')_renderPerformance();
@@ -4710,12 +4721,15 @@ function renderPreorders(){
   // list setups below the floors in Configuration → My trading limits. isPreorder() auto-qualifies any
   // READY/DEVELOPING setup at the system baseline (Q≥25), so without this a Q<40 or R:R<5 row still showed.
   // null rr/quality passes (nothing to compare against).
-  {const rrMin=num(MY_LIMITS.min_risk_reward), qMin=num(MY_LIMITS.min_quality), vsMin=num(MY_LIMITS.min_volume_score);
+  {const rrMin=num(MY_LIMITS.min_risk_reward), qMin=num(MY_LIMITS.min_quality), vsMin=num(MY_LIMITS.min_volume_score), rvMin=num(MY_LIMITS.min_rvol);
    // Instrument-value band (user 2026-07-27, P-07) — MCAP for equities; only bites when the row carries an
    // `mcap` value AND the bound is set (0 = off), so it's a no-op until that data lands (like the server gate).
    const ivMin=num(MY_LIMITS.min_instrument_value), ivMax=num(MY_LIMITS.max_instrument_value);
    po=po.filter(r=>!(rrMin!=null&&r.rr!=null&&r.rr<rrMin) && !(qMin!=null&&r.quality!=null&&r.quality<qMin)
                 && !(vsMin!=null&&r.volume_score!=null&&r.volume_score<vsMin)
+                && !(rvMin!=null&&rvMin>0&&r.rvol!=null&&r.rvol<rvMin)
+                && !(+MY_LIMITS.require_above_vwap&&r.above_vwap===false)
+                && !(+MY_LIMITS.require_atr_expanding&&r.atr_expanding===false)
                 && !(r.mcap!=null&&ivMin!=null&&ivMin>0&&r.mcap<ivMin) && !(r.mcap!=null&&ivMax!=null&&ivMax>0&&r.mcap>ivMax));}   // personal VolumeScore floor + instrument-value band (P-03/P-07), like Quality
   // Chart-click filters (user 2026-07-03): each pof_* holds a SET of selected values (multi-select).
   // Applied to the TABLE (poRows below); the CHARTS brush — each is counted over all OTHER pof_* but not

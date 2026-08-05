@@ -409,6 +409,9 @@ def _limit_defaults() -> dict:
     base = {"min_risk_reward": float(getattr(_cfg, "MIN_RISK_REWARD", 3.0)),
             "min_quality": int(getattr(_cfg, "MIN_PUBLISH_QUALITY", 25)),
             "min_volume_score": int(getattr(_cfg, "MIN_VOLUME_SCORE", 1)),   # personal VolumeScore floor (user 2026-07-27, P-03) — default 1
+            "min_rvol": float(getattr(_cfg, "MIN_RVOL", 0)),
+            "require_above_vwap": int(getattr(_cfg, "REQUIRE_ABOVE_VWAP", 0)),
+            "require_atr_expanding": int(getattr(_cfg, "REQUIRE_ATR_EXPANDING", 0)),
             # Min/Max tradeable instrument VALUE (user 2026-07-27, P-07) — for equities the value is market
             # cap; 0 = off. Enforced (like the Quality floor) once records carry an `mcap` field; until that
             # data pipeline lands the gate is a graceful no-op, so the variable exists and is honoured now.
@@ -469,6 +472,13 @@ def _limit_block(name: str, tk: str, on: bool = True) -> str:
     vs = rec.get("volume_score")
     if isinstance(vs, (int, float)) and vs < lim.get("min_volume_score", 1):
         return f"VolumeScore {vs} is below your personal floor of {lim['min_volume_score']} (Configuration → My trading limits)"
+    rvol = rec.get("rvol")
+    if isinstance(rvol, (int, float)) and lim.get("min_rvol", 0) > 0 and rvol < lim["min_rvol"]:
+        return f"RVOL {rvol:g} is below your personal floor of {lim['min_rvol']:g} (Configuration → My trading limits)"
+    if lim.get("require_above_vwap") and rec.get("above_vwap") is False:
+        return "Price is below VWAP (Configuration → My trading limits)"
+    if lim.get("require_atr_expanding") and rec.get("atr_expanding") is False:
+        return "ATR is not expanding (Configuration → My trading limits)"
     # Instrument-value band (user 2026-07-27, P-07) — MCAP for equities; only gates when the record carries
     # a value AND the user set a bound (0 = off). No-op until the `mcap` data lands, so it's safe now.
     val, vmin, vmax = rec.get("mcap"), lim.get("min_instrument_value", 0), lim.get("max_instrument_value", 0)
@@ -570,12 +580,12 @@ def api_config():
         s = _wu.get_settings(name)
         cur = s.get("limits") or {}
         b = body["limits"] or {}
-        for k in ("min_risk_reward", "bounce_alert_pct", "min_instrument_value", "max_instrument_value",
+        for k in ("min_risk_reward", "bounce_alert_pct", "min_instrument_value", "max_instrument_value", "min_rvol",
                   "wallet", "max_position_pct", "preorder_threshold_pct"):
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = float(v)
-        for k in ("min_quality", "min_volume_score", "max_trades_per_instrument_per_day", "bounce_lookback_hours",
+        for k in ("min_quality", "min_volume_score", "require_above_vwap", "require_atr_expanding", "max_trades_per_instrument_per_day", "bounce_lookback_hours",
                   "adaptive_filters", "rebalance_weeks", "max_open", "wo_lifespan_days",
                   "let_winners_run", "let_winners_run_trail", "let_winners_run_stop"):
             v = b.get(k)

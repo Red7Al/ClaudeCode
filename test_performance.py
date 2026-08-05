@@ -91,6 +91,12 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert '"atr_expanding": vf.get("atr_expanding")' in server
     assert "new ResizeObserver(syncStickyOffsets)" in html
     assert "return jsonify(_json_safe(_best_settings()))" in server
+    assert 'id="lim-min_rvol"' in html
+    assert 'id="lim-require_above_vwap"' in html
+    assert 'id="lim-require_atr_expanding"' in html
+    assert 'min_rvol' in server and 'require_above_vwap' in server and 'require_atr_expanding' in server
+    assert 'const limits=cfg.limits||cfg, filters=cfg.filters||{}' in html
+    assert 'data-pfpanel="summary"' in html and 'style="display:none"' in html
 
 
 def test_let_winners_run_never_gives_back_below_bull_target(monkeypatch):
