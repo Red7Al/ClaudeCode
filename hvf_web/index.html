@@ -2907,6 +2907,7 @@ function renderConfig(){
       if(j.features){FEATURES=j.features;if($("feat-xposts"))$("feat-xposts").checked=!!j.features.xposts;}
       SLACK_CHANNELS=j.slack_channels||{}; _applySlackToggles();   // per-channel Slack send/off (user 2026-08-01)
       const n=Object.keys(USER_FILTERS).length;
+      $("cfg-defaults").classList.remove("sqh-loading");
       $("cfg-defaults").textContent=n?("Saved defaults: "+Object.entries(USER_FILTERS).map(([k,v])=>`${k.replace('f_','')}=${v}`).join(" · ")):"No saved defaults yet — using the built-in ones.";
       const _xd=j.exec_descriptions||{};
       $("cfg-exec").innerHTML=(j.exec_sources||[]).map(s=>{const on=(j.exec||{})[s]!==false;
