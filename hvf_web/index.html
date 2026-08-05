@@ -2802,7 +2802,8 @@ const goldOnly=()=>ROLE==="gold";
 const advancedPfAllowed=()=>IS_ADMIN&&(ROLE==="silver"||ROLE==="gold");
 function toggleAdvancedPf(){
   if(!advancedPfAllowed())return;
-  const nav=$("pf-advanced-nav"); if(nav)nav.classList.toggle("hidden");
+  const nav=$("pf-advanced-nav"); if(nav)nav.classList.remove("hidden");
+  pfPanel("analysis");
 }
 // Configuration card navigation (user 2026-07-03): show one config panel at a time.
 function confShow(panel){
@@ -3466,6 +3467,8 @@ function renderPerformance(){
   if(_pills)_pills.style.display='flex';
   const _ag=$("pf-advanced-group");
   if(_ag)_ag.style.display=advancedPfAllowed()?'':'none';
+  const _lg=document.querySelector(".pf-loc-group");
+  if(_lg)_lg.style.display=document.querySelector("#pf-panel-summary:not(.hidden)")?"":"none";
   if(!advancedPfAllowed() && (!$("pf-panel-analysis").classList.contains("hidden")||!$("pf-panel-run").classList.contains("hidden")))pfPanel('results');
   const _pfl=$("pf-loading");
   if(PERF_DATA===null){                       // fetch the recorded-trigger report once, then render
@@ -3499,6 +3502,9 @@ function pfPanel(which){
   if(settings)settings.classList.toggle("hidden",which!=="settings");
   const model=$("pf-shared-model");if(model)model.style.display=which==="results"?"none":"flex";   // shared by Summary / analysis / run; Results has its own recorded-trigger wallet control (P-07)
   const filters=$("pf-subnav");if(filters)filters.classList.toggle("hidden",which==="run"||which==="settings");   // these filters feed neither annual settings nor /api/winners-run
+  const locGroup=document.querySelector(".pf-loc-group");
+  if(locGroup)locGroup.style.display=which==="summary"?"":"none";
+  if(which==="results"&&PF_LOC_FILTER){PF_LOC_FILTER="";if(typeof _renderPerformance==="function")_renderPerformance();}
   const wh=$("pf-winners-head");if(wh)wh.classList.toggle("hidden",which!=="analysis");   // winners title/lede above the filters (P-07 L289)
   if(which==="analysis"||which==="settings")renderSqueezeAnalysis();
   if(which==="run")winnersRunChange('pf');

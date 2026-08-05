@@ -85,6 +85,7 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert '"above_vwap": vf.get("above_vwap")' in server
     assert '"atr_expanding": vf.get("atr_expanding")' in server
     assert "new ResizeObserver(syncStickyOffsets)" in html
+    assert "return jsonify(_json_safe(_best_settings()))" in server
 
 
 def test_let_winners_run_never_gives_back_below_bull_target(monkeypatch):

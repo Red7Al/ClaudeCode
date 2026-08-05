@@ -2681,7 +2681,7 @@ def api_best_settings():
     if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
         return jsonify({"error": "admin only"}), 403
     try:
-        return jsonify(_best_settings())
+        return jsonify(_json_safe(_best_settings()))
     except Exception as ex:
         log.warning(f"best-settings report failed: {ex}")
         return jsonify({"error": "report unavailable"}), 500
