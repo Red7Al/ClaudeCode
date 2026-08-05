@@ -74,6 +74,11 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert "renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true})" in html
     assert "decisionProofFilter" in html
     assert "achievable P&amp;L" in html
+    assert '"Balanced",best,"Best return relative to drawdown."' in html
+    assert '"Highest return",highest' in html
+    assert '"Lowest drawdown",lowest' in html
+    assert "Changes User Configuration:" in html
+    assert "Apply this configuration" in html
     assert 'seq.length<20' in html
     for metric in ("r.rr", "r.quality", "r.mcap", "r.sector", "r.market", "r.rvol",
                    "r.volume_score", "r.above_vwap", "r.atr_expanding"):

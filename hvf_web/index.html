@@ -3815,10 +3815,11 @@ function renderBestCombo(all){
     candidates.push({scope,rr,q,vs,rv,vw,atr,seq,pre});
   }
   candidates.sort((a,b)=>b.pre.score-a.pre.score);
-  let best=null;
+  let best=null, evaluated=[];
   for(const c of candidates.slice(0,30))for(const mo of OPENS)for(const st of STAKES){
     const z=robust(c.seq,st/100,mo);if(z.n<20)continue;
-    if(!best||z.score>best.score)best={...c,st,mo,...z};
+    const option={...c,st,mo,...z}; evaluated.push(option);
+    if(!best||z.score>best.score)best=option;
   }
   if(!best){box.innerHTML="";return;}
   best.proof=_combReplay(best.seq,best.st/100,best.mo,true).proof;
@@ -3834,12 +3835,30 @@ function renderBestCombo(all){
   // (user 2026-08-01): the best mix and its % return are wallet-independent, so one worked row is enough.
   const w=Math.max(1,WINNERS_WALLET||1000);
   const stake=w*best.st/100,end=w*(1+best.ret),net=end-w,feas=stake>=25;
-  const bestCfg={min_risk_reward:best.rr,min_quality:best.q,min_volume_score:best.vs,max_position_pct:best.st,max_open:best.mo};
-  if(best.scope.kind==="mcap"){bestCfg.min_instrument_value=best.scope.min||0;bestCfg.max_instrument_value=best.scope.max||0;}
+  const cfgFor=x=>{const cfg={min_risk_reward:x.rr,min_quality:x.q,min_volume_score:x.vs,max_position_pct:x.st,max_open:x.mo};
+    if(x.scope.kind==="mcap"){cfg.min_instrument_value=x.scope.min||0;cfg.max_instrument_value=x.scope.max||0;} return cfg;};
+  const bestCfg=cfgFor(best);
+  const eligible=evaluated.filter(x=>x.n>=20), positive=eligible.filter(x=>x.ret>0);
+  const highest=[...(positive.length?positive:eligible)].sort((a,b)=>b.ret-a.ret||b.score-a.score)[0]||best;
+  const lowest=[...(positive.length?positive:eligible)].sort((a,b)=>a.dd-b.dd||b.score-a.score)[0]||best;
+  const choices=[
+    ["Balanced",best,"Best return relative to drawdown."],
+    ["Highest return",highest,"Highest historical compounded return in the tested set."],
+    ["Lowest drawdown",lowest,"Smallest historical peak-to-trough decline among positive-return options."]
+  ];
+  const changed="R:R floor · Quality floor · Volume Score floor · Max position size · Max open positions";
+  const choiceCards=choices.map(([label,x,why])=>`<div class="fcard" style="min-width:220px;flex:1">
+    <h3>${label}</h3><div class="muted" style="font-size:11px;min-height:28px">${why}</div>
+    <div class="body"><div><b style="font-size:17px;color:${x.ret>=0?'var(--bull)':'var(--bear)'}">${pct(x.ret)}</b> return · <b>${(x.dd*100).toFixed(1)}%</b> max drawdown</div>
+      <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} eligible trades · ${x.scope.label} · ${x.st}% position · ${x.mo>0?x.mo:'Auto'} max open</div>
+      <div class="muted" style="font-size:10px;margin-top:7px"><b style="color:var(--fg)">Changes User Configuration:</b> ${changed}${x.scope.kind==='mcap'?' · MCap band':''}</div>
+      <button class="btn" style="margin-top:8px" onclick='applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">⬇ Apply this configuration</button>
+    </div></div>`).join('');
   const rows=`<tr><td><b>${gbp(w)}</b></td><td class="muted">${gbp(stake)}${feas?'':' <span style="color:var(--bear)" title="Below the £25 IG minimum — raise the stake % or the wallet">⚠</span>'}</td>
       <td><b style="color:${net>=0?'var(--bull)':'var(--bear)'}">${gbp(end)}</b></td>
       <td style="color:${net>=0?'var(--bull)':'var(--bear)'}">${net>=0?'+':'−'}${gbp(Math.abs(net))}</td></tr>`;
-  box.innerHTML=`<div class="card" style="margin:0">
+  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}</div>
+  <div class="card" style="margin:0">
     <h4 style="margin:0 0 4px">🥇 Best combination <span class="muted" style="font-weight:400;font-size:11px">— ranked by return per unit of drawdown, over ${best.n.toLocaleString()} trades in this window</span></h4>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:6px 0 8px">
       <div><div class="muted" style="font-size:11px">Max position size</div><b style="font-size:16px;color:var(--fg)">${best.st}%</b></div>
