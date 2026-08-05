@@ -1268,6 +1268,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- Sub-tab pills at the very TOP, centred (user 2026-07-24, P-03) — above the title/lede. -->
   <div id="pf-pills" style="display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px">
     <button class="pill active" data-pfpanel="results" onclick="pfPanel('results')" title="Back test over the last 12 months for YOUR current configuration (your Trading (Squeeze) direction filter, Markets (User) and personal floors): every setup as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Back Test</button>
+    <button class="pill" data-pfpanel="settings" onclick="pfPanel('settings')" title="Rank realistic annual settings using wallet-constrained replay, profit, drawdown, robustness and trade count.">🥇 Best settings</button>
     <button class="pill" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button>
     <button class="pill" id="pf-pill-winners" data-pfpanel="analysis" onclick="pfPanel('analysis')" title="Admin: the same 12-month population expressed as a compounding £ wallet — what's POSSIBLE if every setup were placed, and which attributes (market, R:R, quality, volume) separate the winners. Answers 'how to size and pick for the best return'.">🏆 What separates the winners</button>
     <button class="pill" data-pfpanel="run" onclick="pfPanel('run')" title="Compare selling at target with locking in the target and trailing the remaining move. Illustration only; live orders are never changed.">🏃 Let winners run</button>
@@ -1406,13 +1407,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
   </div>
 
+  <div id="pf-panel-settings" class="hidden">
+    <h2 class="sec" style="margin-top:0">Best settings for annual profit</h2>
+    <p class="muted" style="font-size:13px;margin-top:-8px">Compares the settings collected with each trigger over the last 12 months and replays only positions the Model wallet could actually fund. Recommendations are ranked using profit and drawdown, with trade count and consistency retained so a tiny lucky sample cannot appear to be the best setup.</p>
+    <div id="ordp-bestcombo" style="margin-bottom:10px">Loading annual settings analysis…</div>
+  </div>
+
   <!-- 15-month squeeze analysis (user 2026-07-17, P-21b) — its own sub-tab (P-21b follow-up). -->
   <div id="pf-panel-analysis" class="hidden">
     <!-- Title + lede for this panel now render ABOVE the shared filter row (#pf-winners-head, P-07 L289). -->
-    <!-- Best-combination card (user 2026-07-26, P-05 L132/L133): grid-searches Max position size / Max open
-         positions / R:R floor over these trades and recommends the mix with the best RISK-ADJUSTED return,
-         with worked examples at £1k…£10k. Rendered by renderBestCombo() from paintOrdersPerf. -->
-    <div id="ordp-bestcombo" style="margin-bottom:10px"></div>
     <!-- Let winners run (user 2026-08-01/02, ToDo P-08): re-backtests each trade WITHOUT selling at target,
          ratcheting the stop up to target then trailing past it, and shows the compounded impact. Per-user
          opt-in (Configuration → Trading (Squeeze) → Let winners run); hidden unless the user turns it on. -->
@@ -3442,15 +3445,16 @@ function renderPerformance(){
 function pfPanel(which){
   if(which==="analysis"&&!IS_ADMIN)which="results";   // admin-only analysis (user 2026-07-18)
   document.querySelectorAll("#pf-pills .pill").forEach(b=>b.classList.toggle("active",b.dataset.pfpanel===which));   // pills live in #pf-pills since the P-03 L258 move — the old #pf-subnav selector matched nothing, so the active colour never updated (user 2026-07-27, P-03 A)
-  const sm=$("pf-panel-summary"), res=$("pf-panel-results"), an=$("pf-panel-analysis"), run=$("pf-panel-run");
+  const sm=$("pf-panel-summary"), res=$("pf-panel-results"), an=$("pf-panel-analysis"), run=$("pf-panel-run"), settings=$("pf-panel-settings");
   if(sm)sm.classList.toggle("hidden",which!=="summary");   // Summary sub-tab (user 2026-07-20)
   if(res)res.classList.toggle("hidden",which!=="results");
   if(an)an.classList.toggle("hidden",which!=="analysis");
   if(run)run.classList.toggle("hidden",which!=="run");
+  if(settings)settings.classList.toggle("hidden",which!=="settings");
   const model=$("pf-shared-model");if(model)model.style.display=which==="results"?"none":"flex";   // shared by Summary / analysis / run; Results has its own recorded-trigger wallet control (P-07)
-  const filters=$("pf-subnav");if(filters)filters.classList.toggle("hidden",which==="run");   // date/location filters do not feed /api/winners-run
+  const filters=$("pf-subnav");if(filters)filters.classList.toggle("hidden",which==="run"||which==="settings");   // these filters feed neither annual settings nor /api/winners-run
   const wh=$("pf-winners-head");if(wh)wh.classList.toggle("hidden",which!=="analysis");   // winners title/lede above the filters (P-07 L289)
-  if(which==="analysis")renderSqueezeAnalysis();
+  if(which==="analysis"||which==="settings")renderSqueezeAnalysis();
   if(which==="run")winnersRunChange('pf');
   if(which==="summary"&&typeof _renderPerformance==="function")_renderPerformance();   // rebuild the "Settings used" card for this sub-tab (user 2026-07-24, P-02)
 }
@@ -3678,30 +3682,36 @@ function renderBestCombo(all){
   const box=$("ordp-bestcombo"); if(!box)return;
   const wp=(all||[]).filter(r=>r.perf!=null&&r.trig_date);
   if(wp.length<10){box.innerHTML="";return;}   // too few trades to optimise meaningfully
-  // Grid-search all factors (user 2026-08-01): stake %, max open, R:R floor, PLUS Quality floor and
-  // VolumeScore floor — so the best combination reflects every lever, not just stake/open/R:R. Filters
-  // narrow progressively (rr → quality → volume) to keep the search cheap. Null quality/volume_score pass
-  // a floor, matching the rest of the app (My Pre-orders / Back Test).
-  const STAKES=[1,2,3,5,7.5,10], OPENS=[0,3,5,8,12,20], RRS=[3,5,8], QUALS=[0,25,50,75], VSCORES=[0,4,8];
+  // Two-stage annual search (P-01, user 2026-08-05): first rank metric/filter candidates using the
+  // current Model, then replay only the strongest candidates across stake/open grids. This covers the
+  // collected decision metrics without freezing the browser under a combinatorial full cross-product.
+  const STAKES=[1,2,3,5,7.5,10], OPENS=[0,3,5,8,12,20], RRS=[3,5,8], QUALS=[0,50,75],
+        VSCORES=[0,4,8], RVOLS=[0,1.5,1.8], BOOLS=[false,true];
   const byDate=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
+  const topScopes=(key,label)=>Object.entries(byDate.reduce((m,r)=>{const v=r[key];if(v)m[v]=(m[v]||0)+1;return m;},{}))
+    .filter(([,n])=>n>=30).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([v])=>({kind:key,label:`${label}: ${v}`,test:r=>r[key]===v,value:v}));
+  const scopes=[{kind:"all",label:"All markets",test:()=>true},...topScopes("market","Market"),...topScopes("sector","Sector"),
+    {kind:"mcap",label:"MCap < 2bn",min:0,max:2e9,test:r=>r.mcap!=null&&r.mcap<2e9},
+    {kind:"mcap",label:"MCap 2–10bn",min:2e9,max:1e10,test:r=>r.mcap>=2e9&&r.mcap<1e10},
+    {kind:"mcap",label:"MCap 10–100bn",min:1e10,max:1e11,test:r=>r.mcap>=1e10&&r.mcap<1e11},
+    {kind:"mcap",label:"MCap 100bn+",min:1e11,max:0,test:r=>r.mcap>=1e11}];
+  const robust=(seq,st,mo)=>{const x=_combReplay(seq,st,mo), periods={};
+    seq.forEach(r=>{const d=String(r.trig_date||"");if(d.length>=7){const p=d.slice(0,4)+" Q"+(Math.floor((+d.slice(5,7)-1)/3)+1);(periods[p]||(periods[p]=[])).push(r);}});
+    const prs=Object.values(periods).map(s=>_combReplay(s,st,mo).ret),pos=prs.filter(v=>v>0).length,cons=prs.length?pos/prs.length:0;
+    return {...x,periods:prs.length,posPeriods:pos,consistency:cons,score:(x.ret/(x.dd+.02))*(.5+.5*cons)*Math.min(1,x.n/40)};};
+  const candidates=[];
+  for(const scope of scopes)for(const rr of RRS)for(const q of QUALS)for(const vs of VSCORES)for(const rv of RVOLS)for(const vw of BOOLS)for(const atr of BOOLS){
+    const seq=byDate.filter(r=>scope.test(r)&&r.rr!=null&&r.rr>=rr&&(!q||(r.quality!=null&&r.quality>=q))&&
+      (!vs||(r.volume_score!=null&&r.volume_score>=vs))&&(!rv||(r.rvol!=null&&r.rvol>=rv))&&(!vw||r.above_vwap===true)&&(!atr||r.atr_expanding===true));
+    if(seq.length<20)continue;
+    const pre=robust(seq,Math.max(.01,WINNERS_STAKE),WINNERS_MAXOPEN);
+    candidates.push({scope,rr,q,vs,rv,vw,atr,seq,pre});
+  }
+  candidates.sort((a,b)=>b.pre.score-a.pre.score);
   let best=null;
-  for(const rr of RRS){
-    const seqR=byDate.filter(r=>r.rr!=null&&r.rr>=rr);
-    if(seqR.length<5)continue;
-    for(const q of QUALS){
-      const seqQ=q>0?seqR.filter(r=>r.quality==null||r.quality>=q):seqR;
-      if(seqQ.length<5)continue;
-      for(const vs of VSCORES){
-        const seq=vs>0?seqQ.filter(r=>r.volume_score==null||r.volume_score>=vs):seqQ;
-        if(seq.length<5)continue;
-        for(const mo of OPENS)for(const st of STAKES){
-          const {ret,dd,n,cap}=_combReplay(seq,st/100,mo);
-          if(n<5)continue;
-          const score=dd>0?ret/dd:(ret>0?ret*1e3:ret);   // return per unit drawdown; no drawdown + positive → rank top
-          if(!best||score>best.score)best={st,mo,rr,q,vs,ret,dd,n,score,cap};
-        }
-      }
-    }
+  for(const c of candidates.slice(0,30))for(const mo of OPENS)for(const st of STAKES){
+    const z=robust(c.seq,st/100,mo);if(z.n<20)continue;
+    if(!best||z.score>best.score)best={...c,st,mo,...z};
   }
   if(!best){box.innerHTML="";return;}
   // Very large compounded returns read better as a growth MULTIPLE than a 5-digit percentage (user
@@ -3710,12 +3720,14 @@ function renderBestCombo(all){
     :(v>=0?'+':'')+(v*100).toFixed(1)+'%';
   const gbp=v=>'£'+Math.round(v).toLocaleString();
   // Win : loss of the best combo's eligible trades (user 2026-08-01).
-  const _bseq=byDate.filter(r=>r.perf!=null&&r.rr!=null&&r.rr>=best.rr&&(best.q<=0||r.quality==null||r.quality>=best.q)&&(best.vs<=0||r.volume_score==null||r.volume_score>=best.vs));
+  const _bseq=best.seq;
   const _bw=_bseq.filter(r=>r.perf>0).length,_bl=_bseq.filter(r=>r.perf<0).length,_bwl=(_bw+_bl)?Math.round(_bw/(_bw+_bl)*100):null;
   // Only the wallet actually IN USE (the Model wallet above) — the £1k…£10k example rows were dropped
   // (user 2026-08-01): the best mix and its % return are wallet-independent, so one worked row is enough.
   const w=Math.max(1,WINNERS_WALLET||1000);
   const stake=w*best.st/100,end=w*(1+best.ret),net=end-w,feas=stake>=25;
+  const bestCfg={min_risk_reward:best.rr,min_quality:best.q,min_volume_score:best.vs,max_position_pct:best.st,max_open:best.cap};
+  if(best.scope.kind==="mcap"){bestCfg.min_instrument_value=best.scope.min||0;bestCfg.max_instrument_value=best.scope.max||0;}
   const rows=`<tr><td><b>${gbp(w)}</b></td><td class="muted">${gbp(stake)}${feas?'':' <span style="color:var(--bear)" title="Below the £25 IG minimum — raise the stake % or the wallet">⚠</span>'}</td>
       <td><b style="color:${net>=0?'var(--bull)':'var(--bear)'}">${gbp(end)}</b></td>
       <td style="color:${net>=0?'var(--bull)':'var(--bear)'}">${net>=0?'+':'−'}${gbp(Math.abs(net))}</td></tr>`;
@@ -3727,15 +3739,19 @@ function renderBestCombo(all){
       <div><div class="muted" style="font-size:11px">R:R floor</div><b style="font-size:16px;color:var(--fg)">≥ ${best.rr}</b></div>
       <div><div class="muted" style="font-size:11px">Quality floor</div><b style="font-size:16px;color:var(--fg)">${best.q>0?'≥ '+best.q:'any'}</b></div>
       <div><div class="muted" style="font-size:11px">VolumeScore floor</div><b style="font-size:16px;color:var(--fg)">${best.vs>0?'≥ '+best.vs:'any'}</b></div>
+      <div><div class="muted" style="font-size:11px">Market / Sector / MCap scope</div><b style="font-size:16px;color:var(--fg)">${best.scope.label}</b></div>
+      <div><div class="muted" style="font-size:11px">RVOL floor</div><b style="font-size:16px;color:var(--fg)">${best.rv>0?'≥ '+best.rv:'any'}</b></div>
+      <div><div class="muted" style="font-size:11px">VWAP / ATR</div><b style="font-size:16px;color:var(--fg)">${best.vw?'favourable VWAP':'any VWAP'} · ${best.atr?'ATR expanding':'any ATR'}</b></div>
       <div style="border-left:1px solid var(--line);padding-left:18px"><div class="muted" style="font-size:11px">Total return</div><b style="font-size:16px;color:${best.ret>=0?'var(--bull)':'var(--bear)'}">${pct(best.ret)}</b></div>
       <div><div class="muted" style="font-size:11px">Max drawdown</div><b style="font-size:16px;color:var(--bear)">−${(best.dd*100).toFixed(1)}%</b></div>
       <div><div class="muted" style="font-size:11px">Return ÷ drawdown</div><b style="font-size:16px;color:var(--fg)">${best.dd>0?(best.ret/best.dd).toFixed(2):'∞'}</b></div>
       <div><div class="muted" style="font-size:11px">Win : Loss</div><b style="font-size:16px;color:var(--fg)" title="Wins vs losses among this combination's eligible trades">${_bw} : ${_bl}${_bwl!=null?` <span class="muted" style="font-weight:400;font-size:12px">(${_bwl}%)</span>`:''}</b></div>
+      <div><div class="muted" style="font-size:11px">Positive quarters</div><b style="font-size:16px;color:${best.consistency>=.75?'var(--bull)':'#d29922'}">${best.posPeriods} / ${best.periods}</b></div>
     </div>
     <div class="tablewrap"><table><thead><tr><th>Equity</th><th title="First trade's stake = Max position size % of the wallet">Opening stake</th><th>Ending equity</th><th>Net P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div style="margin-top:8px"><button class="btn" onclick='applyConfigFromReport(${JSON.stringify({min_risk_reward:best.rr,min_quality:best.q,min_volume_score:best.vs,max_position_pct:best.st,max_open:best.cap})},this)' title="Copy this winning combination into your personal trading configuration so your live trading replicates it">⬇ Copy this configuration to my settings</button>
-      <span class="muted" style="font-size:11px;margin-left:8px">writes R:R ≥ ${best.rr}, Quality ${best.q>0?'≥ '+best.q:'any'}, VolumeScore ${best.vs>0?'≥ '+best.vs:'any'}, position ${best.st}%, max open ${best.cap} to your settings</span></div>
-    <div class="muted" style="font-size:11px;margin-top:6px">On your <b>${gbp(w)}</b> Model wallet. Because each stake is a fixed % of the running wallet, the best mix and its <b>%</b> return are the same at every wallet size — only the £ amounts scale. Set the Model above to these values to see the full ledger. This maximises return <b>per unit of risk</b>, not raw return (the biggest stake always compounds hardest but risks ruin). ⚠ marks a wallet whose opening stake is below the £25 IG minimum.</div>
+    <div style="margin-top:8px"><button class="btn" onclick='applyConfigFromReport(${JSON.stringify(bestCfg)},this)' title="Copy supported values into your personal trading configuration">⬇ Copy supported settings to my configuration</button>
+      <span class="muted" style="font-size:11px;margin-left:8px">copies R:R, Quality, VolumeScore, position size, funded max-open and any MCap band. Market/Sector, RVOL, VWAP and ATR remain report recommendations until matching live controls exist.</span></div>
+    <div class="muted" style="font-size:11px;margin-top:6px">On your <b>${gbp(w)}</b> Model wallet. Ranking rewards annual return per unit of drawdown, requires at least 20 eligible trades, and discounts settings that were inconsistent across quarters. Blank/∞ Max open is still bounded by what the wallet can fund. This is historical evidence, not a guaranteed return.</div>
   </div>`;
 }
 // Copy a winning configuration (from the Best-combination card or a combos row) into the user's personal
@@ -3744,7 +3760,7 @@ function renderBestCombo(all){
 // dependent views. Values map: min_risk_reward, min_quality, min_volume_score, max_position_pct, max_open.
 function applyConfigFromReport(cfg, btn){
   cfg=cfg||{};
-  const labels={min_risk_reward:"R:R floor",min_quality:"Quality floor",min_volume_score:"VolumeScore floor",max_position_pct:"Max position size %",max_open:"Max open positions"};
+  const labels={min_risk_reward:"R:R floor",min_quality:"Quality floor",min_volume_score:"VolumeScore floor",max_position_pct:"Max position size %",max_open:"Max open positions",min_instrument_value:"Minimum instrument value",max_instrument_value:"Maximum instrument value"};
   const summary=Object.keys(cfg).map(k=>`• ${labels[k]||k}: ${cfg[k]}`).join("\n");
   if(!confirm("Copy this configuration to your personal trading settings?\n\n"+summary+"\n\nThis updates your live trading filters (Configuration → My trading limits). It does not place or change any orders.")) return;
   if(btn){btn.disabled=true;btn.textContent="Saving…";}

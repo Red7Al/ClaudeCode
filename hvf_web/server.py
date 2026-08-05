@@ -1926,9 +1926,11 @@ def _build_perf_payload():
             except Exception:
                 return None
         vsmap = _volscore_trigger_map()   # per-trigger VolumeScore for the Results Vol column (P-03, 2026-07-27)
+        vfmap = _volscore_trigger_feature_map()
         for r in _sqa_all_rows():
             if (r.get("trig_date") or "") < cut12:
                 continue
+            vf = vfmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]), {})
             out.append({
                 "ticker": r["ticker"], "name": r["name"], "mcap": r.get("mcap"),
                 "market": r["market"], "sector": r["sector"], "location": r["location"],
@@ -1941,7 +1943,8 @@ def _build_perf_payload():
                 "exit_date": r.get("exit_date"),   # close/outcome date (blank while OPEN) — Back Test "Closed" column (user 2026-08-01)
                 "perf": (round(r["return_pct"], 2) if r["return_pct"] is not None else None),
                 "rvol": r["rvol"],
-                "volume_score": vsmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]))})
+                "volume_score": vsmap.get((r["ticker"], str(r.get("trig_date") or "")[:10])),
+                "above_vwap": vf.get("above_vwap"), "atr_expanding": vf.get("atr_expanding")})
         out.sort(key=lambda r: (r.get("perf") is None, -(r.get("perf") or 0)))
     except Exception as ex:
         log.warning(f"performance report failed: {ex}")
@@ -2479,6 +2482,9 @@ def _volscore_scored():
         res = _vscore.volume_score(bars, td, bull, squeeze_strong=strong)
         rr = dict(r)
         rr["volume_score"] = res["score"]
+        components = {c["key"]: c.get("got") for c in res.get("components", [])}
+        rr["above_vwap"] = components.get("above_vwap")
+        rr["atr_expanding"] = components.get("atr_expanding")
         scored.append(rr)
     _VSCORED_CACHE.update(ts=now, data=scored)
     return scored
@@ -2493,6 +2499,15 @@ def _volscore_trigger_map():
     m = {(r["ticker"], str(r["trig_date"])[:10]): r.get("volume_score") for r in _volscore_scored()}
     _VSMAP_CACHE.update(ts=now, data=m)
     return m
+
+
+def _volscore_trigger_feature_map():
+    """Per-trigger confirmations used by Performance's annual settings optimiser."""
+    return {(r["ticker"], str(r["trig_date"])[:10]): {
+                "volume_score": r.get("volume_score"),
+                "above_vwap": r.get("above_vwap"),
+                "atr_expanding": r.get("atr_expanding")}
+            for r in _volscore_scored()}
 
 
 def _volscore_report(model=None):
@@ -2979,13 +2994,16 @@ def api_winners():
         rows = [r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cut12]
         rows.sort(key=lambda r: (r.get("trig_date") or ""))
         vsmap = _volscore_trigger_map()   # per-trigger VolumeScore for the ledger Vol column (P-03, 2026-07-27)
+        vfmap = _volscore_trigger_feature_map()
         payload["rows"] = [
             {"ticker": r["ticker"], "name": r["name"], "market": r["market"], "mcap": r.get("mcap"), "sector": r["sector"],
              "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
              "trig_date": r["trig_date"], "exit_date": r.get("exit_date"), "entry": r["entry"], "stop": r["stop"],
              "outcome": r["outcome"], "perf": r["return_pct"],
              "quality": r["quality"], "rr": r["rr"], "rvol": r["rvol"],
-             "volume_score": vsmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]))}
+             "volume_score": vsmap.get((r["ticker"], str(r.get("trig_date") or "")[:10])),
+             "above_vwap": vfmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]), {}).get("above_vwap"),
+             "atr_expanding": vfmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]), {}).get("atr_expanding")}
             for r in rows]
     except Exception as ex:
         log.warning(f"winners rows failed: {ex}")

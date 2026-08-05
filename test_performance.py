@@ -25,6 +25,27 @@ def test_performance_has_dedicated_let_winners_run_tab():
     assert html.index('data-pfpanel="results"') < html.index('data-pfpanel="summary"')
     assert ".doc .tclist li::marker{font-size:.65em;color:var(--muted)}" in html
     assert "top:calc(var(--hdr-h,49px) - 1px)" in html
+
+
+def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+
+    assert 'data-pfpanel="settings" onclick="pfPanel(\'settings\')"' in html
+    assert 'id="pf-panel-settings" class="hidden"' in html
+    assert 'id="ordp-bestcombo"' in html
+    assert html.count('id="ordp-bestcombo"') == 1
+    assert 'which==="analysis"||which==="settings"' in html
+    assert 'Math.floor(1/stakeFrac)' in html
+    assert 'seq.length<20' in html
+    for metric in ("r.rr", "r.quality", "r.mcap", "r.sector", "r.market", "r.rvol",
+                   "r.volume_score", "r.above_vwap", "r.atr_expanding"):
+        assert metric in html
+
+    server = (Path(__file__).parent / "hvf_web" / "server.py").read_text(encoding="utf-8")
+    assert 'rr["above_vwap"] = components.get("above_vwap")' in server
+    assert 'rr["atr_expanding"] = components.get("atr_expanding")' in server
+    assert '"above_vwap": vf.get("above_vwap")' in server
+    assert '"atr_expanding": vf.get("atr_expanding")' in server
     assert "new ResizeObserver(syncStickyOffsets)" in html
 
 
