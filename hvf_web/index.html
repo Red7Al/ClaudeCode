@@ -3592,12 +3592,13 @@ function renderBestSettings(){
   const ret=v=>v==null?'—':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>0?'+':''}${v}%</span>`;
   const b=x=>x?`<b>${x.value}</b> <span class="muted">(${ret(x.avg)}, ${x.n})</span>`:'—';
   fetch("/api/best-settings",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
+    box.classList.remove("sqh-loading");
     if(!j||j.error){box.innerHTML=`<span class="muted" style="font-size:12px">${(j&&j.error)||'Best-settings report unavailable.'}</span>`;BEST_LOADED=false;return;}
     if($("best-span"))$("best-span").textContent=j.span?`· ${j.span}`:'';
     const rows=(j.quarters||[]).map(q=>`<tr><td><b>${q.quarter}</b></td><td>${q.trades}</td><td>${q.win_pct==null?'—':q.win_pct+'%'}</td><td>${ret(q.avg_return)}</td><td>${b(q.best_market)}</td><td>${b(q.best_quality)}</td><td>${b(q.best_rr)}</td></tr>`).join('');
     box.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Quarter</th><th>Trades</th><th>Win %</th><th>Avg return</th><th title="Market with the highest avg return that quarter">Best Market</th><th title="Quality band (10-wide) with the highest avg return">Best Quality</th><th title="R:R band with the highest avg return">Best R:R</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">No data.</td></tr>'}</tbody></table></div>`+
       `<div class="muted" style="font-size:11px;margin-top:6px">Best = highest average return, min 3 trades per bucket (shown as value (avg return, n)). ${j.note||''} · generated ${j.generated||''}</div>`;
-  }).catch(()=>{box.innerHTML='<span class="muted" style="font-size:12px">Best-settings report unavailable.</span>';BEST_LOADED=false;});
+  }).catch(()=>{box.classList.remove("sqh-loading");box.innerHTML='<span class="muted" style="font-size:12px">Best-settings report unavailable.</span>';BEST_LOADED=false;});
 }
 let VSR_LOADED=false;
 function renderVolScoreReport(){
@@ -3606,6 +3607,7 @@ function renderVolScoreReport(){
   const pct=v=>v==null?'—':v+'%', gbp=v=>v==null?'—':'£'+Math.round(v).toLocaleString();
   const ret=v=>v==null?'—':`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${v>0?'+':''}${v}%</span>`;
   fetch("/api/volscore-report",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
+    box.classList.remove("sqh-loading");
     if(!j||j.error){box.innerHTML=`<span class="muted" style="font-size:12px">${(j&&j.error)||'VolumeScore report unavailable.'}</span>`;VSR_LOADED=false;return;}
     const seg=(t,ic,s)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:16px;color:var(--fg)">${s.avail||0}</b> trades · <b style="color:var(--bull)">${pct(s.win_pct)}</b> win · avg ${ret(s.avg_return)}</div></div>`;
     const comp=(t,c)=>c?`<div class="fcard"><div class="ic">£</div><h3>${t}</h3><div class="body"><b style="font-size:16px;color:${c.gain>=0?'var(--bull)':'var(--bear)'}">${gbp(c.final)}</b> from ${gbp(c.start)} <span class="muted">(${c.trades} trades)</span></div></div>`:'';
@@ -3615,7 +3617,7 @@ function renderVolScoreReport(){
       `<div class="tablewrap"><table><thead><tr><th>VolumeScore band</th><th>Trades</th><th>Win %</th><th>Avg return</th><th title="£ P&L on a £10k wallet, one trade at 2% risk">£/10k per trade</th></tr></thead><tbody>${(j.buckets||[]).map(rowc).join('')||'<tr><td colspan="5" class="empty">No data.</td></tr>'}</tbody></table></div>`+
       ((j.advice||[]).length?`<ul class="muted" style="font-size:12px;margin:8px 0 0;padding-left:18px">${j.advice.map(a=>`<li>${a.replace(/</g,'&lt;')}</li>`).join('')}</ul>`:'')+
       `<div class="muted" style="font-size:11px;margin-top:6px">Same 12-month replay population as the tabs above · generated ${j.generated||''}</div>`;
-  }).catch(()=>{box.innerHTML='<span class="muted" style="font-size:12px">VolumeScore report unavailable.</span>';VSR_LOADED=false;});
+  }).catch(()=>{box.classList.remove("sqh-loading");box.innerHTML='<span class="muted" style="font-size:12px">VolumeScore report unavailable.</span>';VSR_LOADED=false;});
 }
 // Name search on the winners ledger (user 2026-07-18, P-05) — filters the visible rows by name/ticker;
 // the compounding stays over all trades. (General rule: any table with a Name column is searchable.)
