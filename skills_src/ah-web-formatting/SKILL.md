@@ -50,6 +50,11 @@ shrink-to-fit because its columns are numeric and stretching them reads worse.
 **Instrument names.** Use `nm40(name)` in table cells — 40 chars, full name in a `title`, HTML-escaped.
 Michelin's legal name is 80 chars and wrecks layout. Detail views keep the full name.
 
+**Sector placement.** In every table with a Ticker column, Sector sits immediately to Ticker's left.
+If a table has Sector but no Ticker, Sector is the far-right column. Move the header and its matching row
+cell together and recheck empty-state `colspan` values; this is a global table standard, not a per-view
+preference.
+
 **Every column sorts.** EVERY table column must be clickable to sort by that column (user 2026-07-20).
 The house pattern, reused across Scanner / Performance / Order Ops / Squeeze History:
 
