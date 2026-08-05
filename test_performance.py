@@ -52,9 +52,17 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert html.count('id="ordp-bestcombo"') == 1
     assert 'which==="analysis"||which==="settings"' in html
     assert 'used+margin>w+1e-9' in html
-    assert 'maxopen>0&&open.length>=maxopen' in html
+    assert 'effectiveMax=maxopen>0?Math.min(maxopen,_fundedMaxOpen(stakeFrac))' in html
+    assert 'Blank/0 Max open uses Auto' in html
+    assert 'placeholder="Auto"' in html
     assert "Below minimum trade" in html
     assert "stake<MIN_TRADE" in html
+    assert 'id="pf-backtest-settings"' in html
+    assert "Back Test settings used" in html
+    assert "Market scope" in html
+    assert "Markets kept" not in html
+    assert "Data refresh underway" in html
+    assert ".refreshing" in html
     assert 'renderDecisionProof(\'best-proof\',best.proof)' in html
     assert "renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true})" in html
     assert "decisionProofFilter" in html
@@ -136,6 +144,21 @@ def test_server_wallet_enforces_max_open_and_available_margin(monkeypatch):
 
     assert capped["trades"] == 1 and capped["skipped"] == 1
     assert no_cash["trades"] == 1 and no_cash["skipped"] == 1
+
+
+def test_server_wallet_auto_caps_max_open_from_position_size(monkeypatch):
+    monkeypatch.setattr(server, "_sqa_bridge_min_quality", lambda: 0)
+    rows = [
+        _portfolio_trade("2026-01-01", "2026-01-10"),
+        _portfolio_trade("2026-01-02", "2026-01-10"),
+        _portfolio_trade("2026-01-03", "2026-01-10"),
+    ]
+
+    result = server._sqa_compound(rows, start=10_000, position_pct=50, max_concurrent=0)
+
+    assert result["max_concurrent"] == 2
+    assert result["trades"] == 2
+    assert result["skipped"] == 1
 
 
 def test_server_wallet_enforces_minimum_trade(monkeypatch):

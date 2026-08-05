@@ -2102,14 +2102,17 @@ def _sqa_compound(rows, start=10000.0, max_concurrent=_SQA_MAX_CONCURRENT,
     """Replay a funded portfolio using the same contract as the browser wallet.
 
     Position size is ``position_pct`` of equity at entry and P&L is position size × actual return%.
-    Margin (position size ÷ instrument leverage) remains reserved until exit. A trigger is skipped if
-    the position is below the broker minimum, the user's maximum-open limit is reached, or available
+    The effective max-open cap can never exceed ``floor(100 / position_pct)``: a 4% model cannot hold
+    more than 25 positions. Margin (position size ÷ instrument leverage) remains reserved until exit.
+    A trigger is skipped if the position is below the broker minimum, the cap is reached, or available
     cash cannot fund its margin.
     """
     import heapq, itertools
     leverage = {**{"fx": 30.0, "equities": 5.0, "commodities": 10.0, "indices": 20.0}, **(leverage or {})}
-    max_concurrent = max(1, int(max_concurrent or 1))
     position_fraction = max(0.0, float(position_pct)) / 100.0
+    funded_cap = max(1, int(1.0 // position_fraction)) if position_fraction > 0 else 1
+    requested_cap = int(max_concurrent or 0)
+    max_concurrent = min(max(1, requested_cap), funded_cap) if requested_cap > 0 else funded_cap
 
     def _lev(trade):
         market = trade.get("market") or ""
@@ -3026,11 +3029,10 @@ _CR_DIR = os.path.join(_REPO_ROOT, "ChangeRequests")
 # Status a requirement line can carry (user 2026-07-10, Change Requests tab). A line is Completed/In
 # Progress/Cancelled/Requested when it ends with a bracketed marker (e.g. "[Completed]") or carries a
 # short leading tag ([x] done, [~] wip, [-] cancelled, [?] requested); otherwise it is Not Started.
-# The marker may be followed by a short parenthetical note (user 2026-07-17) — e.g.
-# "[Completed]  (superseded by P-11a)" or "[In Progress]  (finishing last 264 tickers)". Without the
-# optional `(...)$` this was end-anchored, so any noted line silently read as Not Started.
+# The marker may include a short inline note (e.g. "[Deferred - user 2026-08-05]") or be followed by a
+# parenthetical note (user 2026-07-17). Without those allowances, noted rows silently read as Not Started.
 _CR_TAIL = _re.compile(
-    r"\[(completed|in[\s-]?progress|not[\s-]?started|cancelled|canceled|requested|deferred)\]\s*(?:\([^)]*\)\s*)?$",
+    r"\[(completed|in[\s-]?progress|not[\s-]?started|cancelled|canceled|requested|deferred)(?:\s+-[^\]]*)?\]\s*(?:\([^)]*\)\s*)?$",
     _re.I)
 _CR_LEAD = {"[x]": "Completed", "[X]": "Completed", "[~]": "In Progress",
             "[-]": "Cancelled", "[?]": "Requested"}

@@ -105,3 +105,10 @@ def test_performance_warm_claim_allows_only_one_builder():
         assert server._claim_perf_warm() is False
     finally:
         server._finish_perf_warm()
+
+
+def test_change_request_deferred_with_inline_note_is_deferred():
+    line = "* P-08 Availability - Available to all [Deferred - user 2026-08-05]"
+
+    assert server._cr_status(line) == "Deferred"
+    assert "[Deferred" not in server._CR_TAIL.sub("", line)

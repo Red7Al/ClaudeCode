@@ -29,6 +29,8 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
 .sqh-loading{color:#d29922!important;font-weight:700;letter-spacing:.02em;animation:sqhPulse .9s ease-in-out infinite alternate}
 @keyframes sqhPulse{from{opacity:.4}to{opacity:1;text-shadow:0 0 10px color-mix(in srgb,#d29922 65%,transparent)}}
+.refreshing{color:var(--bull)!important;font-weight:700;letter-spacing:.02em;animation:refreshPulse .8s ease-in-out infinite alternate}
+@keyframes refreshPulse{from{opacity:.45}to{opacity:1;text-shadow:0 0 10px color-mix(in srgb,var(--bull) 70%,transparent)}}
 /* Operations / Settings sub-navigation (user 2026-07-10) */
 .subnav{display:flex;gap:6px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;align-items:center;justify-content:center;position:sticky;top:var(--sticky-top,90px);z-index:3}
 .subnav .subpill{background:var(--chip);border:1px solid var(--line);border-radius:6px;color:var(--muted);padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600}
@@ -389,6 +391,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .pf-setcard-v{text-align:right;font-weight:600}
 .tablewrap table th,.tablewrap table td{padding:5px 8px}
 #view-scanner main section.gsec{padding:10px;margin:0 8px 12px}
+#view-scanner .tablewrap{padding-bottom:22px}
 .confnav .adminpill{border-color:#d29922}
 .confnav .adminpill.active{background:linear-gradient(135deg,#d29922,#b8801a);border-color:transparent}
 .confpanel{animation:fadeIn .2s ease}
@@ -1281,13 +1284,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Wallet £ <input id="ordp-wallet" type="number" min="100" step="500" value="10000" style="width:100px;padding:4px 6px" onchange="winnersParamsChange()"></label>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="The smallest position IG will accept. Read-only.">Minimum Trade £<b id="ordp-mintrade" style="color:var(--fg)">25</b></label>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Max position size <input id="ordp-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="winnersParamsChange()">%</label>
-    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = no numeric cap; available wallet exposure still limits the number that can be funded.">Max open positions <input id="ordp-maxopen" type="number" min="0" step="1" placeholder="∞" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()"></label>
-    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ Max open positions. With no numeric cap, available wallet exposure remains the constraint.">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = Auto: floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="ordp-maxopen" type="number" min="0" step="1" placeholder="Auto" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()"></label>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ effective Max open positions. Auto is floor(100 ÷ Max position size %).">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
     <span class="muted" style="font-size:11px">each trade stakes this % of the running wallet</span>
     <button class="btn" id="ordp-save-defaults" style="padding:4px 10px;font-size:12px" onclick="winnersSaveDefaults()" title="Save Wallet / Max position size / Max open positions as your defaults (Configuration → My trading limits)">💾 Save as my defaults</button>
     <span id="ordp-save-msg" style="font-size:11px"></span>
     <span id="ordp-model-msg" style="font-size:11px;flex-basis:100%"></span>
-    <span class="muted" style="font-size:11px;flex-basis:100%;line-height:1.4">⚖️ <b style="color:var(--fg)">Leverage &amp; the wallet:</b> leverage does not change the £ or % return; it changes the margin each position ties up. A blank/∞ Max open removes the numeric cap, but the available wallet still limits funded positions.</span>
+    <span class="muted" style="font-size:11px;flex-basis:100%;line-height:1.4">⚖️ <b style="color:var(--fg)">Leverage &amp; the wallet:</b> leverage does not change the £ or % return; it changes the margin each position ties up. Blank/0 Max open means Auto, capped by the stake exposure: 100 ÷ Max position size.</span>
   </div>
   <span class="eyebrow">Results</span>
   <!-- Processing badge (user 2026-08-02, P-06) — shown next to the title while /api/performance is still
@@ -1354,6 +1357,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div id="pf-panel-results">
   <h2 class="sec" style="margin-top:0">Back Test</h2>
   <p class="muted" style="font-size:13px;margin-top:-8px">These are <b>back-test results over the last 12 months</b>, replayed against your <b>current configuration</b> — your Trading (Squeeze) <b>direction</b> filter, your <b>Markets (User)</b> selection and your personal <b>Volume Score / Quality / R:R</b> floors. Change any of those and this back test updates to match. Each setup is measured from its trigger to <b style="color:var(--bull)">TARGET</b>, <b style="color:var(--bear)">STOPPED</b> or <b style="color:#d29922">OPEN</b> (marked to the latest price).</p>
+  <div id="pf-backtest-settings" class="pf-setcard" style="display:none;margin:0 0 10px;max-width:none"></div>
   <div id="pf-charts">
     <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
   </div>
@@ -1378,7 +1382,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <span id="pfw-inputs" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <label class="muted" style="display:flex;align-items:center;gap:5px">Wallet £ <input id="pfw-wallet" type="number" min="100" step="500" value="10000" style="width:100px;padding:4px 6px" onchange="_renderPerformance()"></label>
         <label class="muted" style="display:flex;align-items:center;gap:5px" title="Each trade stakes this % of the running wallet at that moment (compounding).">Max position size <input id="pfw-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="_renderPerformance()">%</label>
-        <label class="muted" style="display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = no cap. A low cap skips a trade that triggers while you're already full.">Max open positions <input id="pfw-maxopen" type="number" min="0" step="1" placeholder="∞" style="width:64px;padding:4px 6px" onchange="_renderPerformance()"></label>
+        <label class="muted" style="display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Blank/0 = Auto: floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="pfw-maxopen" type="number" min="0" step="1" placeholder="Auto" style="width:64px;padding:4px 6px" onchange="_renderPerformance()"></label>
         <span id="pfw-summary" style="font-size:12px"></span>
       </span>
     </div>
@@ -1493,7 +1497,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <!-- Fees (Admin) (user 2026-07-18) — management + performance fees, with a last-month worked example. -->
 <div id="view-fees" class="hidden doc" style="max-width:min(1600px,97vw)">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderFees()">↻ Refresh</button></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderFees(event)">↻ Refresh</button></div>
   <h1>Fees</h1>
   <p class="lede">How the account is charged. Two monthly fees, both billed monthly.</p>
   <div class="fgrid" style="margin-bottom:12px">
@@ -3264,12 +3268,15 @@ function paintIgAccount(){
   const renderedRows=tableRows.map(r=>r._rowKind==='open'
     ? `<tr><td><span class="tag bull">Open</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${_agg?'<span class="muted">—</span>':(r.current??'<span class="muted">—</span>')}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(r.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(r.limit??'')}</td><td>${r.currency||''}</td><td>${r.opened||''}</td><td></td><td></td><td><b>${r.ticker||r.epic||''}</b></td></tr>`
     : `<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??''}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td></td><td></td><td>${r.currency||''}</td><td></td><td>${_igDateTime(r.closed)}</td><td>${_igReason(r.reason)}</td><td><b>${r.ticker||''}</b></td></tr>`);
+  if(showClosed&&IGCLOSED===null)renderedRows.push(`<tr><td colspan="16" class="empty refreshing">Data refresh underway: loading closed trades from IG history... open positions are already shown above.</td></tr>`);
+  else if(showClosed&&_igClosedNote)renderedRows.push(`<tr><td colspan="16" class="empty">${_esc(_igClosedNote)}</td></tr>`);
   const profitTotals={};
   pos.concat(closed).forEach(r=>{if(r.profit==null)return;const c=_igCurrency(r.currency);profitTotals[c]=(profitTotals[c]||0)+(+r.profit||0);});
   const totalProfit=Object.entries(profitTotals).map(([c,v])=>`${_igPf(+v.toFixed(2))} <span class="muted">${c}</span>`).join(' · ');
-  const totalRow=renderedRows.length?`<tr style="border-top:2px solid var(--line)"><td></td><td colspan="6"><b>Total visible profit (${renderedRows.length} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
-  $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${pos.length+closed.length}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed${IGCLOSED===null?' (loading…)':''}</span>`;
-  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="16" class="empty">${q?'No transactions match that search.':'No open or recently closed transactions.'}</td></tr>`;
+  const actualRows=pos.length+closed.length;
+  const totalRow=actualRows?`<tr style="border-top:2px solid var(--line)"><td></td><td colspan="6"><b>Total visible profit (${actualRows} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
+  $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${actualRows}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed</span>${showClosed&&IGCLOSED===null?' <span class="refreshing">· Data refresh underway: closed trades loading from IG...</span>':_igClosedNote?' <span class="muted">· '+_esc(_igClosedNote)+'</span>':''}`;
+  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="16" class="empty ${showClosed&&IGCLOSED===null?'refreshing':''}">${q?'No transactions match that search.':'Data refresh underway: no open transactions yet; closed trades are still loading from IG history.'}</td></tr>`;
 
   // ── WORKING ORDERS (own strip + sortable table) ──
   const ordBase=IG_ORD.filter(hit).map(o=>Object.assign({},o,_enrCommon(o),{gtd:(o.good_till||"").slice(0,10)||"—"}));
@@ -3292,6 +3299,7 @@ function paintIgAccount(){
 let IGCLOSED=null, _igClosedNote="";
 function loadIgClosed(force){
   if(IGCLOSED!==null&&!force){paintIgAccount();return;}
+  IGCLOSED=null;_igClosedNote="Closed trades are still loading from IG history.";paintIgAccount();
   fetch("/api/ig-closed",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{trades:[]})
     .then(j=>{IGCLOSED=j.trades||[];_igClosedNote=j.note||"";igOpenMonthInitialised=false;paintIgAccount();})
     .catch(()=>{IGCLOSED=[];_igClosedNote="Could not load closed trades.";paintIgAccount();});
@@ -3303,9 +3311,11 @@ function _igReason(r){
 function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="↻ Refreshing…";}
+  IGCLOSED=null;_igClosedNote="";
   $("ig-note").textContent="";$("ig-acct").innerHTML="";
-  $("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading…</td></tr>`;
-  $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading…</td></tr>`;
+  $("ig-pos-count").innerHTML=`<span class="refreshing">Data refresh underway: loading open positions and working orders... closed trades load immediately after that.</span>`;
+  $("ig-pos-rows").innerHTML=`<tr><td colspan="16" class="empty refreshing">Data refresh underway: loading open positions and working orders...</td></tr>`;
+  $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty refreshing">Data refresh underway: loading working orders...</td></tr>`;
   fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       IG_POS=j.positions||[]; IG_ORD=j.orders||[]; igOpenMonthInitialised=false;
@@ -3323,7 +3333,7 @@ function renderIgAccount(ev){
       // Load closed trades directly into the main transaction table (user 2026-08-04).
       if(!noCreds)loadIgClosed(true);
     })
-    .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;})
+    .catch(()=>{$("ig-note").innerHTML=`<span style="color:var(--bear)">Could not load — try logging in again.</span>`;$("ig-pos-rows").innerHTML=`<tr><td colspan="16" class="empty">—</td></tr>`;$("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty">—</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
 // Jump from the IG Account warning straight to Configuration → IG (user 2026-07-26, P-07 #91). The IG
@@ -3481,6 +3491,7 @@ let WIN=null;
 let WIN_LOADING=false;
 // Wallet £ (L211), Max position size % (L200), Max open positions (L199) are variables on the winners tab.
 const MIN_TRADE=25;   // IG minimum stake (£), read-only floor (user 2026-07-18, P-05 L253)
+const _fundedMaxOpen=stakeFrac=>Math.max(1,Math.floor(1/Math.max(0.000001,+stakeFrac||0.000001)));
 function winnersParamsChange(){
   const wEl=$("ordp-wallet"), moEl=$("ordp-maxopen");
   let w=+((wEl||{}).value||0), s=+(($("ordp-stake")||{}).value||0), mo=+((moEl||{}).value||0);
@@ -3493,17 +3504,20 @@ function winnersParamsChange(){
   if(mo<0){mo=0; if(moEl)moEl.value="";}
   WINNERS_WALLET=w;
   if(s>0)WINNERS_STAKE=s/100;
-  WINNERS_MAXOPEN=mo>0?mo:0;
-  // Maximum Trade = Wallet ÷ Max open positions (L254); with no cap it's the whole wallet.
-  const maxTrade=mo>0?w/mo:w;
-  const mt=$("ordp-maxtrade"); if(mt)mt.textContent=mo>0?fmt(maxTrade):fmt(w)+" (no cap)";
+  const autoMax=_fundedMaxOpen(WINNERS_STAKE);
+  WINNERS_MAXOPEN=mo>0?Math.min(mo,autoMax):autoMax;
+  // Maximum Trade = Wallet ÷ effective Max open positions; blank/0 derives from 100 ÷ stake%.
+  const maxTrade=w/WINNERS_MAXOPEN;
+  const mt=$("ordp-maxtrade"); if(mt)mt.textContent=`${fmt(maxTrade)} (${mo>0?WINNERS_MAXOPEN:'Auto '+WINNERS_MAXOPEN})`;
   const mn=$("ordp-mintrade"); if(mn)mn.textContent=MIN_TRADE;
   const openingStake=w*WINNERS_STAKE;
   // If the wallet can't fund that many positions at the IG minimum, warn (L257).
   if(openingStake<MIN_TRADE && !warn)
     warn=`Max position size gives an opening stake of ${fmt(openingStake)}, below the £${MIN_TRADE} minimum — raise the Wallet or Max position size.`;
-  if(mo>0 && maxTrade<MIN_TRADE && !warn)
-    warn=`Wallet ÷ ${mo} = ${fmt(maxTrade)} per trade, below the £${MIN_TRADE} minimum — reduce Max open positions or raise the Wallet.`;
+  if(mo>autoMax && !warn)
+    warn=`Max open positions capped at ${autoMax} because ${(WINNERS_STAKE*100).toFixed(1)}% size can fund at most ${autoMax} positions.`;
+  if(maxTrade<MIN_TRADE && !warn)
+    warn=`Wallet ÷ ${WINNERS_MAXOPEN} = ${fmt(maxTrade)} per trade, below the £${MIN_TRADE} minimum — reduce Max open positions or raise the Wallet.`;
   const msg=$("ordp-model-msg"); if(msg){msg.textContent=warn; msg.style.color=warn?"var(--bear)":"";}
   paintOrdersPerf(); winnersSLChange(); winnersRunChange('ordp');   // re-render the plain view + SL + let-winners-run illustrations
 }
@@ -3523,7 +3537,7 @@ function applyWinnersDefaults(){
   const set=(id,v)=>{const e=$(id);if(e&&v!=null&&v!=="")e.value=v;};
   if(MY_LIMITS.wallet!=null)set("ordp-wallet",MY_LIMITS.wallet);
   if(MY_LIMITS.max_position_pct!=null)set("ordp-stake",MY_LIMITS.max_position_pct);
-  const moEl=$("ordp-maxopen"); if(moEl&&MY_LIMITS.max_open!=null)moEl.value=MY_LIMITS.max_open>0?MY_LIMITS.max_open:"";   // 0 = ∞ → blank (set() skips "" so do it directly)
+  const moEl=$("ordp-maxopen"); if(moEl&&MY_LIMITS.max_open!=null)moEl.value=MY_LIMITS.max_open>0?MY_LIMITS.max_open:"";   // 0 = Auto from stake% (set() skips "" so do it directly)
   if(typeof winnersParamsChange==="function")winnersParamsChange();
 }
 function renderSqueezeAnalysis(){
@@ -3676,15 +3690,16 @@ const _gbp2=v=>v==null?'—':`${v<0?'−':'+'}£${Math.abs(v).toLocaleString(und
 function _combReplay(seq,stakeFrac,maxopen,withProof=false,perfKey="perf"){
   // Event-based wallet replay: settle P&L on EXIT (not prematurely at trigger), reserve the broker margin
   // stake/leverage while each trade is open, and separately enforce the user's numeric max-open cap.
-  // Blank/∞ removes only the count cap; insufficient available wallet still rejects the trade.
+  // Blank/0 auto-derives the count cap from stake exposure: floor(100 / Max position size %).
   let w=1,peak=1,maxdd=0,peakOpen=0;const taken=[],open=[],proof=[];
   const minStake=(typeof MIN_TRADE==='number'?MIN_TRADE:0)/Math.max(1,WINNERS_WALLET||1);
+  const effectiveMax=maxopen>0?Math.min(maxopen,_fundedMaxOpen(stakeFrac)):_fundedMaxOpen(stakeFrac);
   const settle=until=>{open.sort((a,b)=>a.exit.localeCompare(b.exit));
     while(open.length&&open[0].exit<=until){const x=open.shift();w+=x.net;if(w>peak)peak=w;const dd=peak>0?(peak-w)/peak:0;if(dd>maxdd)maxdd=dd;}};
   for(const r of seq){const td=r.trig_date||"";settle(td);
     const stake=w*stakeFrac,lev=Math.max(1,+(levOf(r)||1)),margin=stake/lev,used=open.reduce((a,x)=>a+x.margin,0);
     if(stake+1e-12<minStake){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:`Below minimum trade — £${Math.round(stake*Math.max(1,WINNERS_WALLET||1))} < £${MIN_TRADE}`});continue;}
-    if(maxopen>0&&open.length>=maxopen){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,reason:`Max open cap — ${maxopen}`});continue;}
+    if(open.length>=effectiveMax){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,reason:`Max open cap — ${effectiveMax}`});continue;}
     if(used+margin>w+1e-9){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:"Wallet / margin full"});continue;}
     const exit=(perfKey==="run_perf"&&r.run_exit_date)||r.exit_date||_pfAddDays(r.trig_date,r.days_open||0)||"9999-99-99";
     const result=+r[perfKey];
@@ -3783,7 +3798,7 @@ function renderBestCombo(all){
     <h4 style="margin:0 0 4px">🥇 Best combination <span class="muted" style="font-weight:400;font-size:11px">— ranked by return per unit of drawdown, over ${best.n.toLocaleString()} trades in this window</span></h4>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:6px 0 8px">
       <div><div class="muted" style="font-size:11px">Max position size</div><b style="font-size:16px;color:var(--fg)">${best.st}%</b></div>
-      <div><div class="muted" style="font-size:11px">Max open positions</div><b style="font-size:16px;color:var(--fg)" title="${best.mo>0?`Numeric cap ${best.mo}; peak concurrent positions actually funded ${best.cap}.`:`No numeric cap; wallet/margin affordability funded a peak of ${best.cap} concurrent positions.`}">${best.mo>0?best.mo:'∞'} <span class="muted" style="font-size:11px;font-weight:400">(${best.cap} peak funded)</span></b></div>
+      <div><div class="muted" style="font-size:11px">Max open positions</div><b style="font-size:16px;color:var(--fg)" title="${best.mo>0?`Numeric cap ${best.mo}, capped by stake exposure where lower; peak concurrent positions actually funded ${best.cap}.`:`Auto cap from stake exposure; peak concurrent positions actually funded ${best.cap}.`}">${best.mo>0?best.mo:'Auto'} <span class="muted" style="font-size:11px;font-weight:400">(${best.cap} peak funded)</span></b></div>
       <div><div class="muted" style="font-size:11px">R:R floor</div><b style="font-size:16px;color:var(--fg)">≥ ${best.rr}</b></div>
       <div><div class="muted" style="font-size:11px">Quality floor</div><b style="font-size:16px;color:var(--fg)">${best.q>0?'≥ '+best.q:'any'}</b></div>
       <div><div class="muted" style="font-size:11px">VolumeScore floor</div><b style="font-size:16px;color:var(--fg)">${best.vs>0?'≥ '+best.vs:'any'}</b></div>
@@ -3799,7 +3814,7 @@ function renderBestCombo(all){
     <div class="tablewrap"><table><thead><tr><th>Equity</th><th title="First trade's stake = Max position size % of the wallet">Opening stake</th><th>Ending equity</th><th>Net P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div style="margin-top:8px"><button class="btn" onclick='applyConfigFromReport(${JSON.stringify(bestCfg)},this)' title="Copy supported values into your personal trading configuration">⬇ Copy supported settings to my configuration</button>
       <span class="muted" style="font-size:11px;margin-left:8px">copies R:R, Quality, VolumeScore, position size, funded max-open and any MCap band. Market/Sector, RVOL, VWAP and ATR remain report recommendations until matching live controls exist.</span></div>
-    <div class="muted" style="font-size:11px;margin-top:6px">On your <b>${gbp(w)}</b> Model wallet. Ranking rewards annual return per unit of drawdown, requires at least 20 eligible trades, and discounts settings that were inconsistent across quarters. Blank/∞ Max open is still bounded by what the wallet can fund. This is historical evidence, not a guaranteed return.</div>
+    <div class="muted" style="font-size:11px;margin-top:6px">On your <b>${gbp(w)}</b> Model wallet. Ranking rewards annual return per unit of drawdown, requires at least 20 eligible trades, and discounts settings that were inconsistent across quarters. Blank/0 Max open uses Auto: floor(100 ÷ Max position size %). This is historical evidence, not a guaranteed return.</div>
     <div id="best-proof"></div>
   </div>`;
   renderDecisionProof('best-proof',best.proof);
@@ -3835,7 +3850,7 @@ function _winLedger(rows){
   // Same affordability model as _combReplay: settle P&L when exits occur, reserve broker margin
   // (position size / leverage) while positions are open, enforce Max open separately, and skip below the
   // broker's minimum trade size.
-  const cap=WINNERS_MAXOPEN>0?WINNERS_MAXOPEN:0;
+  const cap=WINNERS_MAXOPEN>0?WINNERS_MAXOPEN:_fundedMaxOpen(WINNERS_STAKE);
   let w=WINNERS_WALLET,reserved=0;const ledger=[];const _openEx=[];
   const exitOf=r=>r.exit_date||_pfAddDays(r.trig_date,r.days_open||0)||'9999-99-99';
   const gbpAbs=v=>'£'+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -3898,14 +3913,14 @@ function paintOrdersPerf(){
   const gain=w-WINNERS_WALLET;
   const mls=takenRows.map(x=>x.maxloss).sort((a,b)=>a-b);const medML=mls.length?mls[Math.floor(mls.length/2)]:0;
   const span=taken.length?`${taken[0].r.trig_date} → ${taken[taken.length-1].r.trig_date}`:'';
-  const capNote=WINNERS_MAXOPEN>0?` · capped at ${WINNERS_MAXOPEN} open → <b>${taken.length}</b> taken, ${skipped} skipped`:'';
+  const capNote=` · capped at ${WINNERS_MAXOPEN} open → <b>${taken.length}</b> taken, ${skipped} skipped`;
   const openStake=money(WINNERS_WALLET*WINNERS_STAKE);
   const card=(ic,t,v,sub)=>`<div class="fcard"><div class="ic">${ic}</div><h3>${t}</h3><div class="body"><b style="font-size:17px;color:var(--fg)">${v}</b><br><span class="muted">${sub}</span></div></div>`;
   box.innerHTML=
     card("📊","Trades placed · "+(typeof PF_WINDOW_LABEL!=='undefined'?PF_WINDOW_LABEL:'12 months'),taken.length.toLocaleString(),`<b>${taken.length.toLocaleString()}</b> actually placed of <b>${all.length.toLocaleString()}</b> tradeable${skipped?` · <b>${skipped.toLocaleString()}</b> skipped (book/wallet full)`:''}${_filtered?` · ${fsel.length.toLocaleString()} after chart filters`:''} · ${span}${_filtered?' · filtered by the charts (click a bar to change)':' · tradeable universe (R:R≥3, FX/Crypto excluded)'}`)+
     card("🎯","Win vs loss",`${winpct==null?'—':winpct+'%'} / ${losspct==null?'':losspct+'%'}`,`a win is <b>any gain</b>, a loss is <b>any loss</b> (open trades included) — same definition as the Results report · avg return ${avgRet>=0?'+':''}${avgRet.toFixed(1)}%`)+
     card("💷","Net P&L",`<span style="color:${_pnlc(gain)}">${_gbp2(gain)}</span>`,`from staking <b>${stakePct}% of the wallet</b> on every trade (compounding). Stake starts at ${openStake}; typical max loss <b>£${medML.toFixed(2)}</b> (= stake × the stop distance %).`)+
-    card("📈",money(WINNERS_WALLET)+" compounded",`<span style="color:${w>=WINNERS_WALLET?'var(--bull)':'var(--bear)'}">${money(w)}</span> <span class="muted" style="font-size:12px">total</span>`,`each stake = ${stakePct}% of the wallet <i>at that moment</i>, so winners raise the next stake. ${money(gain)} gain over ${taken.length.toLocaleString()} trades${WINNERS_MAXOPEN>0?' taken':''} — every one in the ledger below, oldest first.`);
+    card("📈",money(WINNERS_WALLET)+" compounded",`<span style="color:${w>=WINNERS_WALLET?'var(--bull)':'var(--bear)'}">${money(w)}</span> <span class="muted" style="font-size:12px">total</span>`,`each stake = ${stakePct}% of the wallet <i>at that moment</i>, so winners raise the next stake. ${money(gain)} gain over ${taken.length.toLocaleString()} trades taken — every one in the ledger below, oldest first.`);
   // (Monthly %-growth chart now lives on the Report tab — _pfMonthly, driven by _renderPerformance.)
   // The net-£ attribution charts (which attributes separated the winners) are painted by paintWinnersDims()
   // ABOVE (they're click-to-filter now, L122/L123, so they drive this very render and must be built first).
@@ -4051,7 +4066,14 @@ document.querySelectorAll("th[data-sqh]").forEach(th=>th.onclick=()=>sqhSort(th.
 // Two selectable periods (user 2026-07-31, P-05): "Last month" (billed) + "This month (so far)"; each
 // shows the fee example AND the underlying transactions (trade_log) that explain the realised profit.
 let FEES=null, FEES_PER='this';
-function renderFees(){
+function renderFees(ev){
+  const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
+  if(btn){btn.disabled=true;btn.textContent="↻ Loading…";}
+  FEES=null;
+  const ex=$("fees-example"), tx=$("fees-txns"), title=$("fees-txn-title");
+  if(ex)ex.innerHTML='<p class="refreshing" style="font-size:12px;padding:8px 0">Data refresh underway: loading fee basis from IG account and transaction history...</p>';
+  if(tx)tx.innerHTML='<p class="refreshing" style="font-size:12px;padding:8px 0">Data refresh underway: loading closed trades from IG history... this can take a moment when IG returns multiple pages.</p>';
+  if(title)title.innerHTML='<span class="refreshing">Transactions — data refresh underway</span>';
   fetch("/api/fees",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
     FEES=j||{};
     // Seed the AUM box from the REAL account equity when available (user 2026-08-02, P-12), so the
@@ -4066,7 +4088,8 @@ function renderFees(){
     if(lb&&FEES.last_month&&FEES.last_month.label)lb.textContent=FEES.last_month.label;
     if(tb&&FEES.this_month&&FEES.this_month.label)tb.textContent=FEES.this_month.label;
     paintFees();
-  }).catch(()=>{FEES={};paintFees();});
+  }).catch(()=>{FEES={note:"Could not load fee data or IG transaction history."};paintFees();})
+    .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
 function feesPeriod(p){
   FEES_PER=p;
@@ -4077,6 +4100,11 @@ function _feesGbp(v){return `£${(v||0).toLocaleString(undefined,{minimumFractio
 function paintFees(){
   const box=$("fees-example"); if(!box)return;
   const f=FEES||{}, seg=(FEES_PER==='this'?f.this_month:f.last_month)||null;
+  if(f.note&&!seg){
+    box.innerHTML=`<p style="color:var(--bear);font-size:12px;padding:8px 0">${_esc(f.note)}</p>`;
+    const tx=$("fees-txns");if(tx)tx.innerHTML=`<p style="color:var(--bear);font-size:12px;padding:8px 0">${_esc(f.note)}</p>`;
+    return;
+  }
   const aum=+(($("fees-aum")||{}).value||0)||10000;
   // Rates are PER ANNUM (user 2026-08-02, P-06 — fees were 12× too high). The MONTHLY charge = rate ÷ 12.
   const mgmtRate=(f.mgmt_pct!=null?f.mgmt_pct:1), perfRate=(f.perf_pct!=null?f.perf_pct:10);
@@ -4207,7 +4235,8 @@ function _pfAddDays(d,n){if(!d)return'9999-99-99';const t=new Date(d+'T00:00:00Z
 function _pfWalletLedger(sel){
   const wallet=Math.max(1,+(($("pfw-wallet")||{}).value)||1000);
   const stakeFrac=(Math.max(0.01,+(($("pfw-stake")||{}).value)||2))/100;
-  const maxopen=Math.max(0,Math.floor(+(($("pfw-maxopen")||{}).value)||0));
+  const requestedMax=Math.max(0,Math.floor(+(($("pfw-maxopen")||{}).value)||0));
+  const maxopen=requestedMax>0?Math.min(requestedMax,_fundedMaxOpen(stakeFrac)):_fundedMaxOpen(stakeFrac);
   sel.forEach(r=>{r._stake=r._net=r._cum=r._open=null;});
   const wp=sel.filter(r=>r.perf!=null);
   const seq=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
@@ -4221,7 +4250,7 @@ function _pfWalletLedger(sel){
     const net=stake*r.perf/100;reserved+=margin;open.push({exit:exitOf(r),margin,net});
     taken++;r._open=open.length;r._stake=stake;r._net=net;r._cum=w+net;}
   settle('9999-99-99');
-  return {wallet,endWallet:w,taken,skipped,maxopen};
+  return {wallet,endWallet:w,taken,skipped,maxopen,requestedMax};
 }
 function _renderPerformance(){
   // Personal Minimum Volume Score floor now filters the Performance tab too (user 2026-07-28 — "volume-score
@@ -4314,9 +4343,10 @@ function _renderPerformance(){
   const rows=pfwOn?selT.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''))
                   :genSort(selT,pfSortK,pfSortDir);
   $("pf-table")&&$("pf-table").classList.toggle("wallet-on",pfwOn);
-  if($("pfw-summary"))$("pfw-summary").innerHTML=(pfwOn&&led)?`<b style="color:var(--fg)">£${Math.round(led.wallet).toLocaleString()}</b> → <b style="color:${led.endWallet>=led.wallet?'var(--bull)':'var(--bear)'}">£${Math.round(led.endWallet).toLocaleString()}</b> over ${led.taken.toLocaleString()} trade${led.taken===1?'':'s'}${led.maxopen>0?` · cap ${led.maxopen} open → ${led.skipped.toLocaleString()} skipped`:''} <span class="muted">· recorded triggers shown, oldest first (same model as “What separates the winners”)</span>`:"";
+  if($("pfw-summary"))$("pfw-summary").innerHTML=(pfwOn&&led)?`<b style="color:var(--fg)">£${Math.round(led.wallet).toLocaleString()}</b> → <b style="color:${led.endWallet>=led.wallet?'var(--bull)':'var(--bear)'}">£${Math.round(led.endWallet).toLocaleString()}</b> over ${led.taken.toLocaleString()} trade${led.taken===1?'':'s'} · ${led.requestedMax>0&&led.requestedMax!==led.maxopen?`requested ${led.requestedMax}, capped at ${led.maxopen}`:led.requestedMax>0?`cap ${led.maxopen}`:`Auto cap ${led.maxopen}`} open → ${led.skipped.toLocaleString()} skipped <span class="muted">· recorded triggers shown, oldest first (same model as “What separates the winners”)</span>`:"";
   const nT=selT.filter(r=>r.state==="TARGET").length, nS=selT.filter(r=>r.state==="STOPPED").length, nO=selT.filter(r=>r.state==="OPEN").length;
   $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} · ${PF_COMBO.vb} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb},${PF_COMBO.vlo==null?'null':PF_COMBO.vlo},${PF_COMBO.vhi==null?'null':PF_COMBO.vhi},'${PF_COMBO.vb}');return false" style="color:var(--accent)">✕ clear</a>`:''}${PF_VS_FLOOR?` · <b style="color:var(--fg)">Volume Score ≥ ${PF_VS_FLOOR}</b> (your floor)`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
+  _pfBacktestSettingsCard(selT,all,led);
   $("pftab-count").textContent=`(${selT.length})`;
   const visibleRows=rows.slice(0,PF_RENDER_LIMIT);   // summaries/wallet/counts above still use ALL selected rows
   $("pf-rows").innerHTML=visibleRows.map((r,__i)=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
@@ -4344,6 +4374,44 @@ function _renderPerformance(){
     (rows.length>visibleRows.length?`<tr><td colspan="24" class="empty"><button class="subpill" onclick="pfShowMore()">Show ${Math.min(PF_RENDER_STEP,rows.length-visibleRows.length)} more</button> <span class="muted">Showing ${visibleRows.length.toLocaleString()} of ${rows.length.toLocaleString()} filtered triggers</span></td></tr>`:"")
     ||`<tr><td colspan="${pfwOn?24:20}" class="empty">No recorded triggers yet.</td></tr>`;
 }
+function _pfBacktestSettingsCard(sel,all,led){
+  const card=$("pf-backtest-settings");if(!card)return;
+  if(LIMITED){card.style.display="none";return;}
+  const _num=v=>(typeof num==='function')?num(v):(v==null||v===''?null:+v);
+  const list=id=>{const s=setOf(id);return s?[...s]:null;};
+  const nice=a=>!a||!a.length?null:(a.length<=3?a.join(", "):a.length+" selected");
+  const marketScope=chartSelection=>{
+    const uni=(typeof uniq==='function')?uniq("market"):[];
+    if(!uni.length)return chartSelection||"All configured markets";
+    const kept=uni.filter(m=>!(MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m)));
+    const removed=uni.filter(m=>MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m));
+    const configured=removed.length===0
+      ?`all ${uni.length} configured markets`
+      :(kept.length<=8?`${kept.join(", ")} (${kept.length} of ${uni.length} available)`:`${kept.length} configured markets (${kept.length} of ${uni.length} available)`);
+    return chartSelection?`${chartSelection} within ${configured}`:configured;
+  };
+  const esc=v=>String(v).replace(/</g,"&lt;");
+  const rr=_num(MY_LIMITS.min_risk_reward), ql=_num(MY_LIMITS.min_quality), vs=_num(MY_LIMITS.min_volume_score);
+  const chartMarket=nice(list("pff_market"));
+  const items=[
+    ["R:R floor","≥ "+(rr!=null?rr:3)],
+    ["Quality floor","≥ "+(ql!=null?ql:25)],
+    ["Volume Score floor","≥ "+(vs!=null?vs:1)+" (unscored rows still pass)"],
+    ["Date window",PF_WINDOW_LABEL||"all 12 months"],
+    ["Location",PF_LOC_FILTER||nice(list("pff_location"))||"All locations"],
+    ["Market scope",marketScope(chartMarket)],
+    ["Wallet model",led?`£${Math.round(led.wallet).toLocaleString()}, ${(Math.max(0.01,+(($("pfw-stake")||{}).value)||2)).toFixed(1)}% position, ${led.requestedMax>0&&led.requestedMax!==led.maxopen?`requested ${led.requestedMax} capped to ${led.maxopen}`:led.requestedMax>0?`${led.maxopen} max open`:`Auto ${led.maxopen} max open`}`:"—"],
+  ];
+  const dirs=(TRADE_HIDE&&TRADE_HIDE.directions)||[];if(dirs.length)items.push(["Direction filter",dirs.join(", ")]);
+  const opt=(lab,id)=>{const v=nice(list(id));if(v)items.push([lab,v]);};
+  opt("Sector","pff_sector");opt("Outcome","pff_status");opt("Win/Loss","pff_wl");opt("Days open","pff_daysopen");opt("Month","pff_month");
+  if(PF_COMBO)items.push(["Combo filter",`Quality ${PF_COMBO.qb}-${PF_COMBO.qb+10}, R:R ${PF_COMBO.rb.toFixed(1)}-${(PF_COMBO.rb+1).toFixed(1)}, ${PF_COMBO.vb}`]);
+  const q=(($("pf-search")||{}).value||"").trim();if(q)items.push(["Search",'"'+q+'"']);
+  card.style.display="";
+  card.innerHTML=`<div class="pf-setcard-h">Back Test settings used</div><div class="pf-setcard-grid">`+
+    items.map(([k,v])=>`<div class="pf-setcard-row"><span class="pf-setcard-k">${k}</span><span class="pf-setcard-v">${esc(v)}</span></div>`).join("")+
+    `</div><div class="pf-setcard-row" style="border-top:1px solid var(--line);margin-top:4px;padding-top:4px"><span class="pf-setcard-k">Triggers</span><span class="pf-setcard-v"><b>${sel.length}</b>${sel.length!==all.length?` of ${all.length}`:""}</span></div>`;
+}
 // "Settings used" card (user 2026-07-24, P-02): a provenance card, left of the filters on the Summary
 // sub-tab, stating the settings behind the monthly chart + summary table — the date window, location, the
 // market scope, plus any chart cross-filters carried over from Results, and the resulting trigger count.
@@ -4353,10 +4421,21 @@ function _pfSettingsCard(sel,all){
   if(!onSummary||LIMITED){card.style.display="none";return;}
   const list=id=>{const s=setOf(id);return s?[...s]:null;};
   const nice=a=>!a||!a.length?null:(a.length<=3?a.join(", "):a.length+" selected");
+  const marketScope=chartSelection=>{
+    const uni=(typeof uniq==='function')?uniq("market"):[];
+    if(!uni.length)return chartSelection||"All configured markets";
+    const kept=uni.filter(m=>!(MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m)));
+    const removed=uni.filter(m=>MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m));
+    const configured=removed.length===0
+      ?`all ${uni.length} configured markets`
+      :(kept.length<=8?`${kept.join(", ")} (${kept.length} of ${uni.length} available)`:`${kept.length} configured markets (${kept.length} of ${uni.length} available)`);
+    return chartSelection?`${chartSelection} within ${configured}`:configured;
+  };
   const esc=v=>String(v).replace(/</g,"&lt;");
+  const chartMarket=nice(list("pff_market"));
   const items=[["Date window",PF_WINDOW_LABEL||"all 12 months"],
     ["Location",PF_LOC_FILTER||nice(list("pff_location"))||"All locations"],
-    ["Market",nice(list("pff_market"))||"All markets"]];
+    ["Market scope",marketScope(chartMarket)]];
   const opt=(lab,id)=>{const v=nice(list(id));if(v)items.push([lab,v]);};
   opt("Sector","pff_sector"); opt("Direction","pff_direction"); opt("Outcome","pff_status"); opt("Win/Loss","pff_wl");
   // Your CONFIGURED floors + filters that shape the back test (user 2026-08-01): R:R / Quality / Volume Score
@@ -4370,13 +4449,6 @@ function _pfSettingsCard(sel,all){
   items.push(["Volume Score floor","≥ "+(vs!=null?vs:1)]);
   const dirs=(TRADE_HIDE&&TRADE_HIDE.directions)||[];
   if(dirs.length===1)items.push(["Direction (yours)",dirs.join(", ")]);
-  const uni=(typeof uniq==='function')?uniq("market"):[];
-  if(uni.length){
-    const removed=uni.filter(m=>MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m)), keptN=uni.length-removed.length;
-    if(removed.length===0)items.push(["Markets (yours)","all "+uni.length]);
-    else if(removed.length<=keptN)items.push(["Markets removed",(removed.length<=5?removed.join(", "):removed.length+" markets")+" · "+keptN+" of "+uni.length+" kept"]);
-    else{const kept=uni.filter(m=>!(MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m)));items.push(["Markets kept",(kept.length<=5?kept.join(", "):kept.length+" markets")+" · "+keptN+" of "+uni.length]);}
-  }
   const q=(($("pf-search")||{}).value||"").trim(); if(q)items.push(["Search",'"'+q+'"']);
   card.style.display="";
   card.innerHTML=`<div class="pf-setcard-h">⚙️ Settings used</div>`+
