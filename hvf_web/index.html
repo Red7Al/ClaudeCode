@@ -311,7 +311,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
    #view-preorders already chose deliberately. */
 .doc .tablewrap table th,.doc .tablewrap table td{white-space:nowrap;word-break:break-word}
 #view-fees .fees-charges-wrap{display:inline-block;max-width:100%;padding-bottom:8px}
-#view-fees table.fees-charges{width:auto;max-width:100%}
+#view-fees .fees-charges-wrap{overflow-x:visible}
+#view-fees table.fees-charges{width:100%;max-width:100%;table-layout:fixed}
 #view-fees #fees-txns table{width:100%;table-layout:auto}
 #view-fees #fees-txns th,#view-fees #fees-txns td{white-space:normal}
 /* Squeeze History uses the full report width; its dense table should not inherit a

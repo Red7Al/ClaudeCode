@@ -3049,6 +3049,25 @@ def api_fees():
             # Truth: the account's real transaction history (all closed trades + IG charges).
             payload["last_month"] = _period_ig(first_last, last_month_end, first_last.strftime("%B %Y"), _ig_txns)
             payload["this_month"] = _period_ig(first_this, today, today.strftime("%B %Y") + " (so far)", _ig_txns)
+            # IG can return a valid-looking history response while omitting a month (or returning only
+            # charges). Compare each period with the application's closed-trade ledger so an empty IG
+            # slice is never presented as proof that no trades occurred.
+            from db_pool import get_db
+            _db = get_db()
+            try:
+                _app_last = _period(_db, first_last, last_month_end, first_last.strftime("%B %Y"))
+                _app_this = _period(_db, first_this, today, today.strftime("%B %Y") + " (so far)")
+            finally:
+                _db.close()
+            for _key, _app_seg in (("last_month", _app_last), ("this_month", _app_this)):
+                _ig_seg = payload[_key]
+                if len(_app_seg.get("txns") or []) > len(_ig_seg.get("txns") or []):
+                    payload[_key] = _app_seg
+                    payload[_key]["source"] = "app_fallback"
+                    _fees_warning = (_fees_warning or "") + (
+                        f" IG history was incomplete for {_app_seg['label']}; "
+                        "the fuller application ledger is shown for that period."
+                    )
         else:
             # Fallback: the app's own record (daily_pnl + trade_log).
             from db_pool import get_db
