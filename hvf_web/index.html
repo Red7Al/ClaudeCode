@@ -4176,8 +4176,9 @@ function _feesGbp(v){return `£${(v||0).toLocaleString(undefined,{minimumFractio
 function paintFees(){
   const box=$("fees-example"); if(!box)return;
   const f=FEES||{}, seg=(FEES_PER==='this'?f.this_month:f.last_month)||null;
+  const warning=f.data_warning?`<div class="card" style="border-color:#d29922;background:color-mix(in srgb,#d29922 12%,transparent);color:var(--fg);font-size:12px;padding:8px 10px;margin:0 0 8px">⚠️ <b>IG data warning:</b> ${_esc(f.data_warning)}</div>`:'';
   if(f.note&&!seg){
-    box.innerHTML=`<p style="color:var(--bear);font-size:12px;padding:8px 0">${_esc(f.note)}</p>`;
+    box.innerHTML=warning+`<p style="color:var(--bear);font-size:12px;padding:8px 0">${_esc(f.note)}</p>`;
     const tx=$("fees-txns");if(tx)tx.innerHTML=`<p style="color:var(--bear);font-size:12px;padding:8px 0">${_esc(f.note)}</p>`;
     return;
   }
@@ -4201,7 +4202,7 @@ function paintFees(){
       row(`IG charges`, colr(seg.charges_total||0), `overnight funding / interest / fees${seg.charges&&seg.charges.length?` · ${seg.charges.length} item${seg.charges.length>1?'s':''}`:''}`)+
       row(`Net realised profit`, `<b>${colr(profit)}</b>`, `trading P&L + IG charges — the fee basis`)
     : row(`Realised profit`, colr(profit), isThis?`this month's total_pnl to date`:`last month's total_pnl`);
-  box.innerHTML=`<table><thead><tr><th>Item</th><th style="text-align:right">Amount</th><th>Basis</th></tr></thead><tbody>`+
+  box.innerHTML=warning+`<table><thead><tr><th>Item</th><th style="text-align:right">Amount</th><th>Basis</th></tr></thead><tbody>`+
     row(`Period`, seg?seg.label:'—', seg?`${seg.trades} trades · ${seg.wins} win / ${seg.losses} loss${isIg?' · from your IG history':''}`:'no data recorded')+
     pnlRows+
     row(`Management fee (${mgmtRate}% p.a.)`, gbp(mgmt), dm>0?`(${mgmtRate}% ÷ 12) × AUM ${gbp(aum)}, less ${dm}% discount`:`(${mgmtRate}% ÷ 12) × AUM ${gbp(aum)}`)+
@@ -4238,7 +4239,7 @@ function paintFeesTxns(seg){
   const gbp=_feesGbp;
   const fdate=s=>{if(!s)return '';const d=new Date(s);return isNaN(d)?String(s).slice(0,19).replace('T',' '):d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'});};
   const num=(v,dp)=>v==null?'—':(+v).toLocaleString(undefined,{minimumFractionDigits:dp,maximumFractionDigits:dp});
-  let html='';
+  let html=FEES&&FEES.data_warning?`<div class="card" style="border-color:#d29922;background:color-mix(in srgb,#d29922 12%,transparent);color:var(--fg);font-size:12px;padding:8px 10px;margin:0 0 8px">⚠️ <b>IG data warning:</b> ${_esc(FEES.data_warning)}</div>`:'';
   if(!viewTxns.length){
     const sourceNote=seg&&seg.source==='app_fallback'?'IG history returned no trades during refresh; showing the application trade ledger instead.':'No closed trades were returned for this period.';
     html+=`<p class="muted" style="font-size:12px;padding:6px 0">${sourceNote}</p>`;

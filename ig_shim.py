@@ -647,7 +647,7 @@ def _parse_money(v) -> float:
         return 0.0
 
 
-def get_transactions(from_iso: str, to_iso: str = None) -> list:
+def get_transactions(from_iso: str, to_iso: str = None, strict: bool = False) -> list:
     """The account's transaction history over [from_iso, to_iso] (IG /history/transactions, v2), normalised
     and CLASSIFIED (user 2026-08-02, P-06). Each row:
       {date, open_date, instrument, type, pnl, open_level, close_level, size, currency, kind}
@@ -655,7 +655,9 @@ def get_transactions(from_iso: str, to_iso: str = None) -> list:
       'TRADE'  — a closed deal (has numeric open & close levels); pnl = realised P&L (net of spread)
       'CHARGE' — an IG cost that hits P&L: overnight funding/interest, borrowing, dividends adj, fees
       'CASH'   — a deposit/withdrawal of funds (excluded from both trade P&L and charges)
-    Best-effort; returns [] on any failure. The caller runs it inside the acting user's session."""
+    Best-effort by default; returns [] on failure. ``strict=True`` re-raises a broker/API
+    failure so user-facing reports can distinguish missing data from a confirmed empty history.
+    The caller runs it inside the acting user's session."""
     params = {"type": "ALL", "from": from_iso, "pageSize": 500, "pageNumber": 1}
     if to_iso:
         params["to"] = to_iso
@@ -665,6 +667,8 @@ def get_transactions(from_iso: str, to_iso: str = None) -> list:
             data = session.get("/history/transactions", version="2", params=params) or {}
         except Exception as e:
             log.warning(f"get_transactions failed: {e}")
+            if strict:
+                raise
             if not raw:
                 return []
             break

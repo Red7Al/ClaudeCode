@@ -3004,6 +3004,7 @@ def api_fees():
     _real_aum = None
     _aum_ccy = None
     _ig_txns = None
+    _fees_warning = None
     try:
         import ig_shim
         if _viewer and ig_shim.session_for(_viewer) is not None:
@@ -3013,12 +3014,14 @@ def api_fees():
                 # this preserves trades opened before the billed month but closed inside it.
                 history_from = first_last - _dt.timedelta(days=365)
                 _ig_txns = ig_shim.get_transactions(history_from.strftime("%Y-%m-%dT00:00:00"),
-                                                     today.strftime("%Y-%m-%dT23:59:59"))
+                                                     today.strftime("%Y-%m-%dT23:59:59"), strict=True)
             # IG can return an empty history during a transient/rate-limited read even though the
             # application's trade log contains the closed transactions. Do not present that as a
             # confirmed empty month; use the local ledger fallback and let the payload identify it.
             if not any(t.get("kind") == "TRADE" for t in (_ig_txns or [])):
                 log.warning("fees IG history returned no closed trades for %s; using app ledger fallback", _viewer)
+                _fees_warning = ("IG returned no closed trades in the requested history window. "
+                                 "The figures below use the application ledger and may be incomplete.")
                 _ig_txns = None
             _b = float(_bal.get("balance") or 0)
             _pl = float(_bal.get("profit_loss") or 0)
@@ -3026,11 +3029,15 @@ def api_fees():
             _aum_ccy = _bal.get("currency")
     except Exception as _ex:
         log.warning(f"fees IG data unavailable: {_ex}")
+        _fees_warning = ("IG transaction history could not be read. "
+                         "The figures below use the application ledger and may be incomplete. "
+                         f"Broker error: {_ex}")
 
     payload = {"mgmt_pct": 1.0, "perf_pct": 10.0, "last_month": None, "this_month": None,
                "discount": _disc, "user": _viewer or None,
                "real_aum": _real_aum, "aum_currency": _aum_ccy,
                "source": ("ig" if _ig_txns is not None else "app_fallback"),
+               "data_warning": _fees_warning,
                "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
     try:
         if _ig_txns is not None:
