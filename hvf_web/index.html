@@ -3435,7 +3435,7 @@ function pfLocFilter(loc){PF_LOC_FILTER=(PF_LOC_FILTER===loc)?"":loc;PF_RENDER_L
 // Date filter (user 2026-07-18, P-01) — one trigger-date window drives BOTH Performance sub-tabs. A preset
 // dropdown (Last 3/6/9/12 months) sets it quickly; the window label feeds the "Trades" card title (P-01).
 let PF_DATE_FROM="", PF_DATE_TO="", PF_WINDOW_LABEL="last 12 months";
-const PF_RENDER_STEP=250;                 // keep the 23-column Back Test DOM responsive with 5k+ triggers
+const PF_RENDER_STEP=500;                 // reduce paging while keeping the 23-column Back Test DOM responsive
 let PF_RENDER_LIMIT=PF_RENDER_STEP, PF_SEARCH_TIMER=null;
 function pfSearchChange(){clearTimeout(PF_SEARCH_TIMER);PF_SEARCH_TIMER=setTimeout(()=>{PF_RENDER_LIMIT=PF_RENDER_STEP;_renderPerformance();},150);}
 function pfShowMore(){PF_RENDER_LIMIT+=PF_RENDER_STEP;_renderPerformance();}
