@@ -2098,12 +2098,13 @@ _SQA_MAX_CONCURRENT = 50
 
 
 def _sqa_compound(rows, start=10000.0, max_concurrent=_SQA_MAX_CONCURRENT,
-                  position_pct=2.0, leverage=None):
+                  position_pct=2.0, leverage=None, min_trade=25.0):
     """Replay a funded portfolio using the same contract as the browser wallet.
 
     Position size is ``position_pct`` of equity at entry and P&L is position size × actual return%.
     Margin (position size ÷ instrument leverage) remains reserved until exit. A trigger is skipped if
-    either the user's maximum-open limit is reached or available cash cannot fund its margin.
+    the position is below the broker minimum, the user's maximum-open limit is reached, or available
+    cash cannot fund its margin.
     """
     import heapq, itertools
     leverage = {**{"fx": 30.0, "equities": 5.0, "commodities": 10.0, "indices": 20.0}, **(leverage or {})}
@@ -2149,7 +2150,7 @@ def _sqa_compound(rows, start=10000.0, max_concurrent=_SQA_MAX_CONCURRENT,
             _close(heapq.heappop(open_pos))
         position = wallet * position_fraction
         margin = position / _lev(t)
-        if len(open_pos) < max_concurrent and margin <= wallet - reserved_margin:
+        if position >= float(min_trade or 0) and len(open_pos) < max_concurrent and margin <= wallet - reserved_margin:
             reserved_margin += margin
             heapq.heappush(open_pos, (t["exit_date"], next(_seq), position, margin, t["return_pct"], t))
             taken += 1

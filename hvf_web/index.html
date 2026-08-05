@@ -3498,7 +3498,10 @@ function winnersParamsChange(){
   const maxTrade=mo>0?w/mo:w;
   const mt=$("ordp-maxtrade"); if(mt)mt.textContent=mo>0?fmt(maxTrade):fmt(w)+" (no cap)";
   const mn=$("ordp-mintrade"); if(mn)mn.textContent=MIN_TRADE;
+  const openingStake=w*WINNERS_STAKE;
   // If the wallet can't fund that many positions at the IG minimum, warn (L257).
+  if(openingStake<MIN_TRADE && !warn)
+    warn=`Max position size gives an opening stake of ${fmt(openingStake)}, below the £${MIN_TRADE} minimum — raise the Wallet or Max position size.`;
   if(mo>0 && maxTrade<MIN_TRADE && !warn)
     warn=`Wallet ÷ ${mo} = ${fmt(maxTrade)} per trade, below the £${MIN_TRADE} minimum — reduce Max open positions or raise the Wallet.`;
   const msg=$("ordp-model-msg"); if(msg){msg.textContent=warn; msg.style.color=warn?"var(--bear)":"";}
@@ -3675,10 +3678,12 @@ function _combReplay(seq,stakeFrac,maxopen,withProof=false,perfKey="perf"){
   // stake/leverage while each trade is open, and separately enforce the user's numeric max-open cap.
   // Blank/∞ removes only the count cap; insufficient available wallet still rejects the trade.
   let w=1,peak=1,maxdd=0,peakOpen=0;const taken=[],open=[],proof=[];
+  const minStake=(typeof MIN_TRADE==='number'?MIN_TRADE:0)/Math.max(1,WINNERS_WALLET||1);
   const settle=until=>{open.sort((a,b)=>a.exit.localeCompare(b.exit));
     while(open.length&&open[0].exit<=until){const x=open.shift();w+=x.net;if(w>peak)peak=w;const dd=peak>0?(peak-w)/peak:0;if(dd>maxdd)maxdd=dd;}};
   for(const r of seq){const td=r.trig_date||"";settle(td);
     const stake=w*stakeFrac,lev=Math.max(1,+(levOf(r)||1)),margin=stake/lev,used=open.reduce((a,x)=>a+x.margin,0);
+    if(stake+1e-12<minStake){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:`Below minimum trade — £${Math.round(stake*Math.max(1,WINNERS_WALLET||1))} < £${MIN_TRADE}`});continue;}
     if(maxopen>0&&open.length>=maxopen){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,reason:`Max open cap — ${maxopen}`});continue;}
     if(used+margin>w+1e-9){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:"Wallet / margin full"});continue;}
     const exit=(perfKey==="run_perf"&&r.run_exit_date)||r.exit_date||_pfAddDays(r.trig_date,r.days_open||0)||"9999-99-99";
@@ -3827,19 +3832,26 @@ function applyConfigFromReport(cfg, btn){
 function _winLedger(rows){
   const stopPct=r=>Math.abs(r.entry-r.stop)/r.entry;
   const seq=rows.filter(r=>r.perf!=null).slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
-  // Concurrency is bounded by the WALLET (user 2026-07-28, L119): a WINNERS_STAKE fraction funds at most
-  // floor(1/stake) positions at once, so an "∞" (WINNERS_MAXOPEN=0) or larger cap can't exceed 100%
-  // exposure — you can't hold 586 open trades on a 2% stake, only 50. Keeps this in step with _combReplay.
-  const fund=Math.max(1,Math.floor(1/WINNERS_STAKE));
-  const cap=WINNERS_MAXOPEN>0?Math.min(WINNERS_MAXOPEN,fund):fund;
-  let w=WINNERS_WALLET;const ledger=[];const _openEx=[];
+  // Same affordability model as _combReplay: settle P&L when exits occur, reserve broker margin
+  // (position size / leverage) while positions are open, enforce Max open separately, and skip below the
+  // broker's minimum trade size.
+  const cap=WINNERS_MAXOPEN>0?WINNERS_MAXOPEN:0;
+  let w=WINNERS_WALLET,reserved=0;const ledger=[];const _openEx=[];
+  const exitOf=r=>r.exit_date||_pfAddDays(r.trig_date,r.days_open||0)||'9999-99-99';
+  const gbpAbs=v=>'£'+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const settle=td=>{_openEx.sort((a,b)=>a.exit.localeCompare(b.exit));
+    while(_openEx.length&&_openEx[0].exit<=td){const x=_openEx.shift();w+=x.net;reserved=Math.max(0,reserved-x.margin);}};
   for(const r of seq){
     const td=r.trig_date||'';
-    for(let i=_openEx.length-1;i>=0;i--){if(_openEx[i]<=td)_openEx.splice(i,1);}
-    if(_openEx.length>=cap){ledger.push({r,missed:true,reason:WINNERS_MAXOPEN>0&&WINNERS_MAXOPEN<=fund?`Book full — ${cap} open`:`Wallet full — ${cap} open (a ${(WINNERS_STAKE*100).toFixed(1)}% stake funds ${fund})`,open:_openEx.length});continue;}
-    _openEx.push(r.exit_date||'9999-99-99');
-    const stake=w*WINNERS_STAKE,net=stake*r.perf/100;w+=net;
-    ledger.push({r,stake,net,maxloss:stake*stopPct(r),cum:w,open:_openEx.length,missed:false});}
+    settle(td);
+    const stake=w*WINNERS_STAKE,lev=Math.max(1,+(levOf(r)||1)),margin=stake/lev,available=Math.max(0,w-reserved);
+    if(stake<MIN_TRADE){ledger.push({r,missed:true,reason:`Below minimum trade — ${gbpAbs(stake)} < £${MIN_TRADE}`,open:_openEx.length});continue;}
+    if(cap>0&&_openEx.length>=cap){ledger.push({r,missed:true,reason:`Book full — ${cap} open`,open:_openEx.length});continue;}
+    if(margin>available+1e-9){ledger.push({r,missed:true,reason:`Wallet / margin full — ${gbpAbs(available)} available`,open:_openEx.length});continue;}
+    const net=stake*r.perf/100,exit=exitOf(r);
+    reserved+=margin;_openEx.push({exit,margin,net});
+    ledger.push({r,stake,margin,available:Math.max(0,w-reserved),net,maxloss:stake*stopPct(r),cum:w+net,open:_openEx.length,missed:false});}
+  settle('9999-99-99');
   return {ledger,endWallet:w};
 }
 // Winners-chart filter dims (user 2026-07-27, P-10 L122/L123): clicking a Location/Market/Sector/Direction/
@@ -3915,11 +3927,11 @@ function paintOrdersPerf(){
       <td style="color:${_pnlc(r.perf)}">${r.perf==null?'—':(r.perf>0?'+':'')+r.perf+'%'}</td>
       <td>${rvolCell(r.rvol)}</td><td>${volScoreCell(r.volume_score)}</td>
       <td class="muted">${money(x.stake)}</td>
-      <td class="muted" title="position size ÷ leverage">${levOf(r)?money(x.stake/levOf(r)):'—'}</td>
+      <td class="muted" title="position size ÷ leverage">${x.margin!=null?money(x.margin):(levOf(r)?money(x.stake/levOf(r)):'—')}</td>
       <td style="color:${_pnlc(x.net)}">${_gbp2(x.net)}</td>
       <td class="muted">£${x.maxloss.toFixed(2)}</td>
       <td><b>${money(x.cum)}</b></td>
-      <td class="muted">${levOf(r)?money(x.cum-x.stake/levOf(r)):money(x.cum)}</td>
+      <td class="muted">${x.available!=null?money(x.available):(levOf(r)?money(x.cum-x.stake/levOf(r)):money(x.cum))}</td>
       <td class="muted">—</td></tr>`;}).join("")+
     `</tbody></table>`;
   if(tb)tb.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);
@@ -4196,22 +4208,20 @@ function _pfWalletLedger(sel){
   const wallet=Math.max(1,+(($("pfw-wallet")||{}).value)||1000);
   const stakeFrac=(Math.max(0.01,+(($("pfw-stake")||{}).value)||2))/100;
   const maxopen=Math.max(0,Math.floor(+(($("pfw-maxopen")||{}).value)||0));
-  sel.forEach(r=>{r._stake=r._net=r._cum=null;});
+  sel.forEach(r=>{r._stake=r._net=r._cum=r._open=null;});
   const wp=sel.filter(r=>r.perf!=null);
   const seq=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
   const exitOf=r=>r.state==='OPEN'?'9999-99-99':_pfAddDays(r.trig_date,r.days_open||0);   // when the slot frees
-  let taken=seq, skipped=0;
-  if(maxopen>0){taken=[];const openExits=[];
-    for(const r of seq){for(let i=openExits.length-1;i>=0;i--){if(openExits[i]<=(r.trig_date||''))openExits.splice(i,1);}
-      if(openExits.length<maxopen){taken.push(r);openExits.push(exitOf(r));}else skipped++;}}
-  // Running wallet + concurrently-open count per trade (user 2026-08-01): _open = how many positions were
-  // open (including this one) at this trade's trigger date, so the back test shows the book's fullness.
-  let w=wallet;const _open=[];
-  for(const r of taken){const td=r.trig_date||'';
-    for(let i=_open.length-1;i>=0;i--){if(_open[i]<=td)_open.splice(i,1);}
-    _open.push(exitOf(r));r._open=_open.length;
-    const stake=w*stakeFrac,net=stake*r.perf/100;w+=net;r._stake=stake;r._net=net;r._cum=w;}
-  return {wallet,endWallet:w,taken:taken.length,skipped,maxopen};
+  let w=wallet,reserved=0,taken=0,skipped=0;const open=[];
+  const settle=td=>{open.sort((a,b)=>a.exit.localeCompare(b.exit));
+    while(open.length&&open[0].exit<=td){const x=open.shift();w+=x.net;reserved=Math.max(0,reserved-x.margin);}};
+  for(const r of seq){const td=r.trig_date||'';settle(td);
+    const stake=w*stakeFrac,lev=Math.max(1,+(levOf(r)||1)),margin=stake/lev,available=Math.max(0,w-reserved);
+    if(stake<MIN_TRADE||(maxopen>0&&open.length>=maxopen)||margin>available+1e-9){skipped++;continue;}
+    const net=stake*r.perf/100;reserved+=margin;open.push({exit:exitOf(r),margin,net});
+    taken++;r._open=open.length;r._stake=stake;r._net=net;r._cum=w+net;}
+  settle('9999-99-99');
+  return {wallet,endWallet:w,taken,skipped,maxopen};
 }
 function _renderPerformance(){
   // Personal Minimum Volume Score floor now filters the Performance tab too (user 2026-07-28 — "volume-score
