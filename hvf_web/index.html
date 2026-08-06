@@ -725,10 +725,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <nav class="confnav" id="confnav">
     <button class="pill active" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
     <button class="pill" data-panel="tabvis" onclick="confShow('tabvis')">👁️ Tab visibility</button>
-    <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG</button>
+    <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG Credentials</button>
+    <button class="pill" data-panel="limits" onclick="confShow('limits')">🛡️ My trading limits</button>
+    <button class="pill" data-panel="igopen" onclick="confShow('igopen')">📂 IG Open Trades</button>
     <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>   <!-- next to IG (user 2026-08-01) -->
-    <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ Leverage</button>
-    <button class="pill" data-panel="adaptive" onclick="confShow('adaptive')">🎯 Adaptive Filters</button>   <!-- moved to the end (user 2026-08-01) -->
+    <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ IG Leverage</button>
+    <button class="pill" data-panel="adaptive" disabled title="Adaptive Filters is disabled until the walk-forward implementation exists">🎯 Adaptive Filters</button>   <!-- moved to the end (user 2026-08-01) -->
     <!-- Gold-tier only (user 2026-07-17, P-06): ships HIDDEN and is revealed by renderConfig() only for a
          Gold account, so a failure to run the gate leaves the feature hidden rather than exposed. -->
     <button class="pill" data-panel="trading_mo" style="display:none" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
@@ -744,28 +746,24 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <button class="btn" onclick="saveFilterDefaults()">Save current filters as my defaults</button>
       <button class="btn" onclick="clearFilterDefaults()">Clear my defaults</button>
     </div>
+  </div>
+
+  <div class="confpanel hidden" data-panel="limits">
     <div class="card"><h4>My trading limits</h4>
-      <p class="muted" style="font-size:12px">Your personal floors. <b>R:R</b> and <b>Quality</b> are enforced on <b>your own</b> manual actions — pushing a setup to Pre-orders or placing it on IG is blocked below these. The rest are stored against your login. The shared automated engine (one IG account, run by GitHub Actions) keeps using the system baseline.</p>
+      <p class="muted" style="font-size:12px">Your personal floors. <b>R:R</b> and <b>Quality</b> are enforced on <b>your own</b> manual actions — pushing a setup to Pre-orders or placing it on IG is blocked below these. The rest are stored against your login. The shared automated engine keeps using the system baseline.</p>
       <div class="credrow"><span class="clabel" title="IG minimum accepted stake. This is a broker/system constraint and cannot be changed here.">Minimum trade (£, read-only)</span><b style="color:var(--fg)">25</b></div>
-      <div class="credrow"><span class="clabel" title="Percentage of the running wallet used for each trade in Performance replay and saved user model defaults.">Max position size (% of wallet)</span><input type="number" min="0.1" max="100" step="0.1" id="lim-max_position_pct" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel" title="Maximum number of positions open at once in Performance replay. 0 means Auto: floor(100 ÷ Max position size %).">Max open positions (0 = Auto)</span><input type="number" min="0" step="1" id="lim-max_open" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">Minimum R:R <span class="muted" style="display:block;font-size:11px;font-weight:400;line-height:1.3">Reward:Risk compares the potential gain from entry to target with the potential loss from entry to stop. R:R 3 means the target is 3 times as far away as the stop, so one full winner can cover three full stop losses before costs.</span></span><input type="number" min="0" step="0.1" id="lim-min_risk_reward" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Max position size (% of wallet)</span><input type="number" min="0.1" max="100" step="0.1" id="lim-max_position_pct" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="0 means Auto: floor(100 ÷ Max position size %).">Max open positions (0 = Auto)</span><input type="number" min="0" step="1" id="lim-max_open" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Minimum R:R <span class="muted" style="display:block;font-size:11px;font-weight:400;line-height:1.3">Reward:Risk compares potential gain from entry to target with potential loss from entry to stop. R:R 3 means the target is 3 times as far away as the stop.</span></span><input type="number" min="0" step="0.1" id="lim-min_risk_reward" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Minimum Quality (Q)</span><input type="number" min="0" max="100" step="1" id="lim-min_quality" style="max-width:120px"></div>
-      <!-- Personal VolumeScore floor (user 2026-07-27, P-03) — filters My Pre-orders + gates manual actions, exactly like Minimum Quality. Default 1. -->
-      <div class="credrow"><span class="clabel" title="VolumeScore (0–12) floor: breakout-confirmation. Filters My Pre-orders and blocks push-to-pre-orders / place-on-IG below this, exactly like Minimum Quality. Default 1.">Minimum Volume Score (0–12)</span><input type="number" min="0" max="12" step="1" id="lim-min_volume_score" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel" title="Minimum relative volume on the trigger bar. Blank/0 means no RVOL floor.">Minimum RVOL</span><input type="number" min="0" step="0.1" id="lim-min_rvol" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel" title="Only allow setups where price was above VWAP on the trigger bar.">Require price above VWAP</span><label><input type="checkbox" id="lim-require_above_vwap"> Yes</label></div>
-      <div class="credrow"><span class="clabel" title="Only allow setups where ATR was expanding on the trigger bar.">Require ATR expanding</span><label><input type="checkbox" id="lim-require_atr_expanding"> Yes</label></div>
-      <!-- Min/Max tradeable instrument VALUE (user 2026-07-27, P-07) — for equities the value is market cap.
-           0 = off. Enforced like the Quality floor once records carry an mcap value (data pipeline pending);
-           the variable is stored and honoured now. -->
-      <div class="credrow"><span class="clabel" title="Only trade instruments whose value is at least this. For equities the value is MARKET CAP (e.g. £/$). 0 = no minimum. Enforced like Minimum Quality once instrument values are available in the scan.">Min instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-min_instrument_value" style="max-width:160px"></div>
-      <div class="credrow"><span class="clabel" title="Only trade instruments whose value is at most this. For equities the value is MARKET CAP. 0 = no maximum.">Max instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-max_instrument_value" style="max-width:160px"></div>
-      <!-- Adaptive filters + Rebalance window moved to their own "Adaptive Filters" panel (user 2026-08-01).
-           Max trades per instrument/day moved to Trading (Squeeze). Bounce alert/lookback disabled — inputs
-           kept hidden so saveLimits still round-trips their stored values. -->
-      <div class="credrow" style="display:none"><span class="clabel">Bounce alert (fraction — 0.02 = 2%)</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct" style="max-width:120px"></div>
-      <div class="credrow" style="display:none"><span class="clabel">Bounce lookback (hours)</span><input type="number" min="0" step="1" id="lim-bounce_lookback_hours" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="VolumeScore floor for Pre-orders and manual actions.">Minimum Volume Score (0–12)</span><input type="number" min="0" max="12" step="1" id="lim-min_volume_score" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="Minimum relative volume on the trigger bar.">Minimum RVOL</span><input type="number" min="0" step="0.1" id="lim-min_rvol" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel">Require price above VWAP</span><label><input type="checkbox" id="lim-require_above_vwap"> Yes</label></div>
+      <div class="credrow"><span class="clabel">Require ATR expanding</span><label><input type="checkbox" id="lim-require_atr_expanding"> Yes</label></div>
+      <div class="credrow"><span class="clabel">Min instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-min_instrument_value" style="max-width:160px"></div>
+      <div class="credrow"><span class="clabel">Max instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-max_instrument_value" style="max-width:160px"></div>
+      <div class="credrow" style="display:none"><span class="clabel">Bounce alert</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct"></div>
+      <div class="credrow" style="display:none"><span class="clabel">Bounce lookback (hours)</span><input type="number" min="0" step="1" id="lim-bounce_lookback_hours"></div>
       <div class="credrow"><span class="clabel">Email recipients (comma-separated)</span><input type="text" id="lim-email_recipients" class="cred-in" style="flex:1 1 260px"></div>
       <button class="btn" style="margin-top:10px" onclick="saveLimits()">Save my trading limits</button>
       <span id="lim-msg" style="font-size:12px;margin-left:8px"></span>
@@ -795,7 +793,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
 
   <div class="confpanel hidden" data-panel="leverage">
-    <div class="card" style="margin-bottom:0"><h4>Leverage (Broker) — by instrument type</h4>
+    <div class="card" style="margin-bottom:0"><h4>IG Leverage (Broker) — by instrument type</h4>
       <p class="muted" style="font-size:12px">Your broker's leverage for each instrument type. Shown as the <b>Leverage</b> column in the Scanner. Defaults match <b>IG UK retail</b> margin (FCA/ESMA caps): FX 30, Indices 20, Commodities 10, Equities 5.</p>
       <div class="credrow"><span class="clabel">FX</span><input type="number" min="1" step="1" id="lev-fx" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Equities</span><input type="number" min="1" step="1" id="lev-equities" style="max-width:120px"></div>
@@ -832,15 +830,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <button class="btn" style="margin-top:8px" onclick="saveLimits()">Save order controls</button>
       <span id="lim-msg3" style="font-size:12px;margin-left:8px"></span>
     </div>
-    <!-- Let winners run (user 2026-08-02): per-user opt-in for the winners-run illustration on the Winners
-         tab. OFF by default; when on, the report shows how gains look if you keep a winner running with the
-         stop ratcheted up to target (so it can't decay below the target gain), trailing above by Trail %.
-         Report-only — it never changes your live orders. -->
+  </div>
+
+  <div class="confpanel hidden" data-panel="igopen">
     <div class="card"><h4>🏃 Let winners run</h4>
-      <p class="muted" style="font-size:12px;margin:0 0 8px">Adds the "Let winners run" illustration to your Winners tab: once a trade hits target the stop moves <b>up to the target</b> (locking the target gain, so 17% can't drop back to 7%), then trails above it. This is an <b>illustration</b> — it never changes your live IG orders.</p>
+      <p class="muted" style="font-size:12px;margin:0 0 8px">Adds the "Let winners run" illustration to the Performance tab. Once a trade hits target, the stop moves <b>up to the target</b> and then trails above it. This is an <b>illustration</b> — it never changes live IG orders.</p>
       <div class="credrow"><span class="clabel">Show the "Let winners run" report</span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="lim-let_winners_run" onchange="saveLimits()"> On</label></div>
-      <div class="credrow"><span class="clabel" title="Stop-loss trailing % applied BEFORE target is reached — the stop follows price up on the way to target. 0 = keep the original hard stop until target.">Stop-loss trail before target (%)</span><input type="number" min="0" max="100" step="5" id="lim-let_winners_run_stop" placeholder="0" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel" title="How far above the target the stop trails once target is reached. Higher = keep more of a big run; lower = lock in sooner.">Trail above target (%)</span><input type="number" min="0" max="100" step="5" id="lim-let_winners_run_trail" placeholder="25" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="Stop-loss trailing % applied before target is reached.">Stop-loss trail before target (%)</span><input type="number" min="0" max="100" step="5" id="lim-let_winners_run_stop" placeholder="0" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="How far above the target the stop trails once target is reached.">Trail above target (%)</span><input type="number" min="0" max="100" step="5" id="lim-let_winners_run_trail" placeholder="25" style="max-width:120px"></div>
       <button class="btn" style="margin-top:8px" onclick="saveLimits()">Save</button>
       <span id="lim-msg4" style="font-size:12px;margin-left:8px"></span>
     </div>
