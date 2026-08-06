@@ -54,3 +54,4 @@ Application Focus - Ad-hoc requests requiring P-14
     * P-14 Configuration - Move IG Open Trades to the right-hand side of its row. -- Codex 2026-08-06: placed it to the right of Trading (Squeeze) on the second centred row. [Completed]
     * P-14 User Configuration - Align the Yes option controls for Require price above VWAP and Require ATR expanding with the input controls above. -- Codex 2026-08-06: added a shared fixed-width option slot with the mobile reset retained. [Completed]
     * P-14 Configuration - Rename the Trading (Squeeze) button to IG Orders. [Completed]
+    * P-14 User Configuration - Make Minimum trade (£) editable instead of read-only and apply the saved value to replay affordability checks. -- Codex 2026-08-06: added the saved min_trade limit and applied it to the replay model. [Completed]
