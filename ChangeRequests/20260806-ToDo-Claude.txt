@@ -27,3 +27,4 @@ Application Focus - Ad-hoc requests 2026-08-06
     * P-11 Scanner - Reorder columns so Market is immediately before X posts and P/E, and Triggered is immediately before Days since. -- Codex 2026-08-06: reordered the header and row renderer consistently. [Completed]
     * P-11 Configuration - Rename IG to IG Credentials, give My trading limits its own adjacent button, disable Adaptive Filters navigation, and move Let winners run to IG Open Trades. -- Codex 2026-08-06: reorganised the configuration navigation and panels. [Completed]
     * P-11 Configuration - Rename Leverage to IG Leverage. -- Codex 2026-08-06: renamed the navigation button and panel heading. [Completed]
+    * P-11 Configuration - Group all IG buttons behind a light-grey rectangle and use a trading icon for IG Open Trades. -- Codex 2026-08-06: grouped IG Credentials, limits, open trades, Trading (Squeeze) and IG Leverage; replaced the folder icon. [Completed]
