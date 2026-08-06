@@ -286,7 +286,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 /* Configuration card navigation (user 2026-07-03) */
 .confnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;justify-content:center}
-.confnav-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;padding:7px;background:color-mix(in srgb,#d9dde3 50%,var(--bg) 50%);border:1px solid #b8bec7;border-radius:8px}
+.confnav-group{display:grid;grid-template-columns:repeat(3,max-content);gap:6px;align-items:center;justify-content:center;padding:7px;background:color-mix(in srgb,#d9dde3 50%,var(--bg) 50%);border:1px solid #b8bec7;border-radius:8px}
+.confnav-group [data-panel="igopen"]{grid-column:1;grid-row:2}
+.confnav-group [data-panel="leverage"]{grid-column:2;grid-row:2}
 .confnav .pill{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;
   color:var(--muted);cursor:pointer;transition:all .15s ease;display:flex;align-items:center;gap:7px}
 .confnav .pill:hover{border-color:var(--accent);color:var(--fg)}
@@ -435,7 +437,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 @media(max-width:820px){
   .doc{padding:28px 18px} .doc h1{font-size:26px} .hero{grid-template-columns:1fr;padding:20px}
-  .gcols{columns:1} .confnav{gap:6px} .fgrid.two{grid-template-columns:1fr}
+  .gcols{columns:1} .confnav{gap:6px} .confnav-group{display:flex;flex-wrap:wrap} .fgrid.two{grid-template-columns:1fr}
 }
 /* Performance card strip (user 2026-08-02, P-12): when 4 stat cards can't sit on one row (iPad and
    narrower) the 4th ("≥threshold book" compounded) would wrap onto a second row — hide it there and keep
@@ -730,8 +732,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="pill" data-panel="adaptive" disabled title="Adaptive Filters is disabled until the walk-forward implementation exists">🎯 Adaptive Filters</button>
     <span class="confnav-group" aria-label="IG settings">
       <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG Credentials</button>
-      <button class="pill" data-panel="limits" onclick="confShow('limits')">🛡️ My trading limits</button>
-      <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 My Trading Filters</button>
+      <button class="pill" data-panel="limits" onclick="confShow('limits')">🛡️ My Trading Filters</button>
+      <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>
       <button class="pill" data-panel="igopen" onclick="confShow('igopen')">📈 IG Open Trades</button>
       <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ IG Leverage</button>
     </span>
@@ -753,7 +755,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
 
   <div class="confpanel hidden" data-panel="limits">
-    <div class="card"><h4>My trading limits</h4>
+    <div class="card"><h4>My Trading Filters</h4>
       <p class="muted" style="font-size:12px">Your personal floors. <b>R:R</b> and <b>Quality</b> are enforced on <b>your own</b> manual actions — pushing a setup to Pre-orders or placing it on IG is blocked below these. The rest are stored against your login. The shared automated engine keeps using the system baseline.</p>
       <div class="credrow"><span class="clabel" title="IG minimum accepted stake. This is a broker/system constraint and cannot be changed here.">Minimum trade (£, read-only)</span><b style="color:var(--fg)">25</b></div>
       <div class="credrow"><span class="clabel">Max position size (% of wallet)</span><input type="number" min="0.1" max="100" step="0.1" id="lim-max_position_pct" style="max-width:120px"></div>
@@ -769,7 +771,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div class="credrow" style="display:none"><span class="clabel">Bounce alert</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct"></div>
       <div class="credrow" style="display:none"><span class="clabel">Bounce lookback (hours)</span><input type="number" min="0" step="1" id="lim-bounce_lookback_hours"></div>
       <div class="credrow"><span class="clabel">Email recipients (comma-separated)</span><input type="text" id="lim-email_recipients" class="cred-in" style="flex:1 1 260px"></div>
-      <button class="btn" style="margin-top:10px" onclick="saveLimits()">Save my trading limits</button>
+      <button class="btn" style="margin-top:10px" onclick="saveLimits()">Save My Trading Filters</button>
       <span id="lim-msg" style="font-size:12px;margin-left:8px"></span>
     </div>
   </div>

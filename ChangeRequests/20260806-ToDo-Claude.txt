@@ -42,3 +42,4 @@ Application Focus - Ad-hoc requests requiring P-12
 
     * P-12 Scanner - Change the default Scanner Report chart status selection from Ready to Triggered. [Not Started]
     * P-12 Trading - Enable the "Bridge may place orders" option while retaining the complete-IG-credentials safety gate. [Not Started]
+    * P-12 Configuration - Force the IG group into two rows with IG Open Trades left of IG Leverage on the bottom row. -- Codex 2026-08-06: added an explicit desktop grid layout with responsive mobile fallback. [Completed]
