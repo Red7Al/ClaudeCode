@@ -183,7 +183,7 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--chip)} tr.sel{backgroun
 #view-config .credrow>input:not(.cred-in),#view-config .credrow>label:not(.clabel){margin-right:auto;margin-left:5cm}
 #view-config .credrow>label.cfg-option{display:inline-flex;align-items:center;min-width:120px}
 #view-config .credrow>b.cfg-readonly-value{margin-left:5cm;margin-right:auto;min-width:120px}
-#view-config .credrow>input.cred-in{margin-left:5cm}
+#view-config .credrow>input.cred-in{flex:0 1 340px;margin-left:5cm;max-width:340px}
 @media(max-width:680px){#view-config .credrow .clabel{flex:1 1 100%}#view-config .credrow>input:not(.cred-in),#view-config .credrow>input.cred-in,#view-config .credrow>label:not(.clabel),#view-config .credrow>b.cfg-readonly-value{margin-left:0}#view-config .credrow>label.cfg-option{min-width:0}}
 img{max-width:100%;border-radius:6px;display:block}
 .rule{padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
@@ -781,7 +781,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div class="credrow"><span class="clabel">Max instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-max_instrument_value" style="max-width:160px"></div>
       <div class="credrow" style="display:none"><span class="clabel">Bounce alert</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct"></div>
       <div class="credrow" style="display:none"><span class="clabel">Bounce lookback (hours)</span><input type="number" min="0" step="1" id="lim-bounce_lookback_hours"></div>
-      <div class="credrow"><span class="clabel">Email recipients (comma-separated)</span><input type="text" id="lim-email_recipients" class="cred-in" style="flex:1 1 260px"></div>
+      <div class="credrow"><span class="clabel">Email recipients (comma-separated)</span><input type="text" id="lim-email_recipients" class="cred-in" style="flex:0 1 340px;max-width:340px"></div>
       <button class="btn" style="margin-top:10px" onclick="saveLimits()">Save My Trading Filters</button>
       <span id="lim-msg" style="font-size:12px;margin-left:8px"></span>
     </div>
