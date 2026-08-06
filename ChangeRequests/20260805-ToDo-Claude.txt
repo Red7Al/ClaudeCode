@@ -1,0 +1,358 @@
+===============================================================================================================================================================
+= HVF Web Application
+===============================================================================================================================================================
+
+===============================================================================================================================================================
+= Setting priorities
+===============================================================================================================================================================
+
+    These are guidelines for tasks that do not have set priorities - these are NOT actions
+
+    -- P-01 for BUGS
+    -- P-02 for queries
+    -- P-06 for move, remove, change tasks
+    -- P-10 for new functionality
+    -- P-20 for documentation
+    -- P-25 for Mobile device tasks
+    -- Completed rows must include OpenAI near the end of the completion note, immediately before the final status marker
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Standards and Guidelines
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    Standards and Guidelines (IT IS IMPERATIVE THAT ALL THESE ARE APPLIED AND CONTINUE TO BE IMPLEMENTED)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - BUGS
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-01 Security/Auth - Disabling a web account must immediately revoke its existing X-Auth token and API access. -- Codex 2026-08-04: valid_tokens and name_for_token now exclude disabled accounts on every request; added isolated enabled/disabled token regression tests. Verified 13 pytest tests passed. [Completed]
+    * P-01 Security/Trading - Restrict the shared live Squeeze bridge toggle to administrators and cover both denied and permitted requests with regression tests. -- Codex 2026-08-04: the global exec_WEB_BRIDGE toggle is now admin-only; denial and permitted-write tests added; Flask added to runtime dependencies after clean-environment collection exposed the missing declaration. Verified 15 pytest tests passed. [Completed]
+    * P-01 Test infrastructure - Make pytest a reproducible development dependency, make every regression test pytest-collectable, and run the complete offline suite in GitHub Actions. -- Codex 2026-08-04: added requirements-dev.txt and pytest.ini; converted bounce tests to import-safe pytest tests; exposed the complete frozen-data squeeze regression suite to pytest; prevented operational Slack probes from test discovery; updated CI to install development dependencies and run pytest. Verified 11 passed, pip check clean, compileall clean. [Completed]
+    * P-01 Refresh of performance tab is still too slow -- Codex 2026-08-04: reopened twice after user validation showed zero rows then a Retry error. Root causes fixed: failed fetches no longer become false zero; startup and first request cannot launch competing builds; cached payloads use gzip; the table renders progressively; and non-finite database numbers such as RVOL NaN are now converted to JSON null because browsers reject NaN tokens. Server restarted and verified with the exact browser fetch-json path: 5,270 rows parsed successfully from gzip; 20 pytest tests passed. [Completed]
+    * P-01 Performance wallet regression - The legacy server analysis compounds 2% of wallet by R-multiple and ignores the user's actual maximum-open and available-capital limits, recreating implausible £10k→£1.498m results despite the browser model having previously corrected the return basis. -- Root cause traced to the server model retained since commits 55bbf80/17ba1f9 while a separate browser model was corrected later. The shared server replay now uses position × actual return%, reserves margin until exit, skips trades on either user max-open or insufficient available cash, and the VolumeScore report reads the authenticated user's wallet/position/max-open/leverage settings. Regression tests cover the original inflation and both capacity constraints; 29 tests passed. OpenAI. [Completed]
+    * P-04 Closed trades are not being returned in "IG Account" - plus they should be with transactions in top table of transactions -- Fixed the closed-trade renderer's out-of-scope JavaScript formatters, which failed as soon as real rows arrived; the top IG table now combines open and closed transactions with Status, realised P&L, close time and closure reason. JavaScript syntax validated and 30 pytest tests passed. OpenAI. [Completed]
+    * P-03 This is false from "Fees" tab - "Transactions — July 2026 - No closed trades in this period." -- Fixed at the IG-history boundary: closed transactions now prefer sortable ISO dateUtc instead of locale display dates, and every paginated history page is fetched rather than page one only. Added date/pagination regression coverage; 30 tests passed; web service restarted and verified HTTP 200. OpenAI. [Completed]
+    * P-07 If a login has not provided IG credentials then the "Bridge ON — placing orders on IG" setting is off -- `/api/config` now returns an effective Bridge OFF state for logins without complete IG credentials, disables their checkbox, and rejects attempts by an unconfigured administrator to enable it without changing the shared switch. Added GET and denied-enable regression tests; 32 tests passed. OpenAI. [Completed]
+    * P-03 The sticker tabs need to move up to meet the header area - at the moment, as we move down the page, part of it is visible above tabs -- Added ResizeObserver-based remeasurement when header/tab contents dynamically resize and a 1px header-border overlap so scrolled content cannot show through a stale gap or seam. Verified on the running page; 30 tests passed. OpenAI. [Completed]
+    * P-11 Now that tabs are sticky at the top - sometimes a tab that should be fully grey is partly green (horizontal divider between colours) -- Changed the active-tab accent from a shared bottom border to an inset accent contained within the active tab, preventing green from bleeding into the sticky strip divider. OpenAI. [Completed]
+    * P-09 In cron scheduler, the last run date used to be there and is now gone - I would like it back -- Added Last run (UTC) visibility and retained run timestamps. [Completed]
+    * P-07 I am still seeing cards over 2 rows e.g. System logs on iPad is over two rows - making the small text at bottom of each card over two lines would help -- Scoped System Logs health to four minmax columns with tighter card/icon spacing and two-line supporting text; only phones below 680px fall back to two columns. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-07 I am still seeing buttons that are not legible on iPad e.g. Bear \ Bull config needs fixing - formatting rules to skills also — fixed the direction pills as 44px iPad-friendly tap targets, prevented the global input width from crushing checkbox labels, documented the exception in the web-formatting skill, and verified 32 tests pass by OpenAI. [Completed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Scheduler
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-02 Reschedule price data import to 04:30 am (currently 5am) — Changed the authoritative cron-job.org schedule to 04:30 UTC Mon-Sat in setup_cronjobs.py; added payload regression coverage; 21 tests and commit hooks passed; deployed in commit 876d70e; live reconciliation workflow run 30928236607 succeeded. OpenAI. [Completed]
+    * P-09 The duration of the task in cron schedule would be handy e.g. price data import, add to scheduling table -- Added the last-run Duration column from workflow run timestamps. [Completed]
+    * P-15 In cron scheduler the price collection and audit should change category to "Pricing" and have a colour of amber -- Scheduler category detection now classifies price refresh and price-history audit jobs as Pricing, and the Scheduled Jobs table renders that category in amber. OpenAI. [Completed]
+    * P-15 In cron scheduler the UK and US have HVF watch jobs - what about the other two major areas e.g. AUS
+    * P-09 In cron scheduler change HVF names to Squeeze (we should not see HVF in documentation or code) -- Changed scheduler-facing labels to Squeeze while preserving internal workflow identifiers. [Completed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Volume Score (new)
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Ad-hoc requests 2026-08-03#2
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-06 Security/Credentials - Move the X (Twitter) details (and the other credential moves) from GitHub Secrets to Supabase (encrypted app_secrets store). -- Claude 2026-08-03: investigated + ready — the four X_* ARE in GitHub Secrets, seed-secrets.yml is built and correct (workflow_dispatch, fail-fast guard, seeds present secrets, verifies decrypt, prints names only), and the only missing prerequisite is the APP_SECRET_KEY GitHub Secret (= contents of data/.web_users.key). Three resolution paths exist (admin UI entry — cleanest, no key upload; I set APP_SECRET_KEY + run the workflow; or add X_* to .env + local seeder). -- Deferred by user on 2026-08-05 [Deferred]
+
+    * P-05 Global/Docs - "Hunt Volatility Funnel" and "HVF" must NOT appear in any document — both must read "The Squeeze". -- Updated all tracked Markdown, website HTML, backlog and repository skill prose; renamed `docs/HVF_METHOD.md` to `docs/SQUEEZE_METHOD.md` and updated its links. Final case-sensitive documentation scan returned zero prohibited occurrences, the old file is absent, the renamed file exists, and 32 pytest tests passed. Runtime compatibility identifiers were not renamed under this docs-only item. OpenAI. [Completed]
+
+    * P-12 Squeeze History - Use more of the screen width so less horizontal scrolling is needed. -- Scoped the report table to the full available width, tightened dense cells, and retained mobile overflow as a fallback. [Completed]
+    * P-04 Config (Admin) - If the "Engine" section is empty, remove it. -- Removed the empty Engine pill and panel, made X publishing the valid initial admin panel, and updated the page description and fallback selection. JavaScript syntax validated and 30 pytest tests passed. OpenAI. [Completed]
+
+    * P-04 IG Account - Default the view to "Aggregate rows". -- Changed the initial selection to Aggregate rows while retaining Every position. Closed fills sharing instrument, direction, currency and close timestamp now form one logical row with summed size/P&L, size-weighted levels and a fill-count indicator; Every position retains the individual fills. Removed the duplicated lower closed-transactions section so history appears only in the main table. JavaScript syntax validated and 30 pytest tests passed. OpenAI. [Completed]
+    * P-06 IG Account - Add an Open / Closed Month chart, default it to the latest available month, and widen the account layout so five charts fit across on desktop. -- Added the fifth cross-filter chart and widened the desktop view to 1680px/97vw. The chart counts raw open and closed transactions, filters open rows by opened month and closed rows by closed month, and reselects the newest month after closed history loads. Live open-position verification returned July 20 and August 8. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-06 IG Charges - Remove excess unused width so the table fits without an avoidable bottom horizontal scrollbar, and add the compact-width rule to the Guardian One report-formatting skill. -- The five-column charges table now sizes to its content within a local responsive overflow wrapper instead of stretching across the Fees page; the reusable compact-table rule was added to the formatting skill. JavaScript syntax validated and 30 pytest tests passed. OpenAI. [Completed]
+    * P-06 Navigation - When "How it works (System)" wraps, reduce the tab width instead of leaving a wide wrapped control, and add the responsive-tab rule to the Guardian One report-formatting skill. -- Capped the System tab at 112px with reduced inline padding and compact line height; added the wrapped-navigation rule to the formatting skill. JavaScript syntax validated and 30 pytest tests passed. OpenAI. [Completed]
+    * P-06 IG Account - Default the main table sort to Opened descending. -- Changed the initial sort key from Size to Opened while retaining descending order and clickable column sorting. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-06 IG Account - Add top-of-table radio controls to show or hide closed transactions. -- Added Closed: Show/Hide radios beside the aggregation controls, defaulted to Show, with local repainting and no extra IG request. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-06 IG Account - Show both date and time in the Closed UTC column. -- Renamed the heading to Closed date/time (UTC) and renders the full sortable timestamp as YYYY-MM-DD HH:MM:SS. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-06 IG Account - Add a bottom-of-table total for the visible Profit column. -- Added a footer that totals exactly the visible rows after month, closed-history and aggregation controls, with separate totals per currency to prevent invalid cross-currency addition. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-06 IG Account - Normalise equivalent currency labels in the Profit total (for example GBP and £) so one currency is not split into multiple totals. -- Canonicalised pound, dollar and euro symbols to GBP/USD/EUR before grouping; the reported +3.17 GBP and +53.13 £ now combine to +56.30 GBP. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-06 IG Account - Use profit rather than row count for the Location, Market and Sector charts. -- Replaced count/pie rendering with signed-profit bars, sorted by profit and coloured green/red; labels include the canonical currency when the visible population has one currency. Direction and month remain count-based. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-04 IG Account - Location, Market and Sector profit charts must include closed transactions, not only currently open positions (April otherwise shows no chart data). -- Enriched IG transaction names against snapshot instruments using punctuation/suffix-normalised, ambiguity-safe matching; all 23 live August fills matched unambiguously to 9 instruments. Closed P&L now feeds Location/Market/Sector and Direction charts and their filters, and matched Market/Ticker values appear in closed table rows. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-04 Bridge badge - Do not show "Bridge OFF — no orders placed on IG" before the bridge state is known to be correct. -- Changed the initial bridge state from false to unknown and suppresses the badge until `/api/config` returns an authoritative credential-aware value; ON/OFF is shown only afterward. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-04 IG Account - Sort the combined table by the maximum of each row's opened or closed timestamp, descending; closed Size must be an unsigned magnitude because Direction carries BUY/SELL. -- Open and closed objects now enter one global sort using `activity_date` (opened for live rows, closed for history), newest first; closed sizes are normalised to positive magnitudes and the header states the default ordering. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-06 Fees - Default the period to the latest/current month. -- Changed both the state and active period button from last month to this/current month while retaining access to the prior month. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-06 Squeeze History - Make the on-screen Loading message coloured and flashing/pulsing so progress is unmistakable. -- Added an amber hourglass loading state with a restrained opacity/glow pulse; the existing reduced-motion rule disables animation for users who request it. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-04 IG Account - Closed positions are not appearing/working after the combined transaction and month-filter changes. -- Deferred by user 2026-08-04. Diagnostic evidence retained: the live IG adapter returned 1,727 closed trades over 120 days, including 23 in August, so the remaining issue is likely browser loading/filter behaviour rather than missing broker history. [Deferred]
+    * P-06 Fees - Add Aggregate rows / Every trade controls using the same logical close-fill grouping as IG Account. -- Added radio controls defaulted to Aggregate rows; fills sharing instrument, direction and close timestamp now combine with summed size/P&L, weighted open/close prices and a fill-count marker, while Every trade retains source rows. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-04 IG Account/Fees - Aggregate closed rows by instrument rather than exact close timestamp; timestamp-level grouping leaves nearly every closed transaction separate. -- IG Account now groups selected-month closes by instrument/direction/currency and Fees by instrument/direction, retaining weighted prices, summed P&L/size, latest close time and fill count; differing close reasons display Mixed. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Instruments
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-08 Content - Create a new tab called "Instruments" -- Deferred by user on 2026-08-05 [Deferred]
+    * P-08 Content - Include the popular cards across the top location, market, sector and anything else worthwhile -- Deferred by user on 2026-08-05 [Deferred]
+    * P-08 Content - Each card can have multiple filter and these cross filter the other cards -- Deferred by user on 2026-08-05 [Deferred]
+    * P-08 Content - Include the column names in a table name, market, sector, direction, quality, 52wk low, 52wk high, r:r, rvol, vwap, atr, volume score, ticker -- Deferred by user on 2026-08-05 [Deferred]
+    * P-08 Content - Anyone not logged in cannot see direction, quality, r:r, rvol, vwap, atr or volume score -- Deferred by user on 2026-08-05 [Deferred]
+    * P-08 Content - Provide a history of the funnels (perhaps separate to the table) - I'll take your guidance on this for UI and UX -- Deferred by user on 2026-08-05 [Deferred]
+    * P-08 Content - Include anything else on the page that you deem relevant -- Deferred by user on 2026-08-05 [Deferred]
+
+    * P-08 Filters - Allow instrument name search on the table - similar to all other name searches we have implemented -- Deferred by user on 2026-08-05 [Deferred]
+    * P-08 Availability - Available to all (even without a login) -- Deferred by user on 2026-08-05 [Deferred]
+    * P-08 Availability - Only people logged in can see the detail reports when clicking on instrument name -- Deferred by user on 2026-08-05 [Deferred]
+    * P-08 Format - Use the "New UI Settings" layout and formatting. -- Deferred by user on 2026-08-05 [Deferred]
+    * P-08 Format - Add "Instruments" to configuration - visibility - - DEFAULT IS VISIBLE -- Deferred by user on 2026-08-05 [Deferred]
+    * P-08 Format - to the LEFT of "Squeeze History" -- Deferred by user on 2026-08-05 [Deferred]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Ad-hoc requests 2026-08-03#3
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-07 Squeeze History - Use more of the screen width (less horizontal scroll). [consolidates the earlier P-12 squeeze-width item] — removed the 1,760px view cap so the dense 14-column history table uses the full available application width, retained overflow only when genuinely needed, documented the dense-table exception in the formatting skill, and verified 32 tests pass by OpenAI. [Completed]
+    * P-07 Pre-orders to my IG - Add VolumeScore, R:R and Quality to the right of Name. — added the three columns immediately after Name, enriched rows from the current scanner snapshot so values and sorting work, corrected empty/error column spans, validated JavaScript syntax, and verified 32 tests pass by OpenAI. [Completed]
+    * P-07 Scanner Report - Add R:R and Quality to the right of VolumeScore. — moved the existing sortable R:R and Quality columns and their row values directly beside VolumeScore without duplicating data, validated JavaScript syntax, and verified 32 tests pass by OpenAI. [Completed]
+    * P-07 Global/Tables - Move Sector to the LEFT of the Ticker id column; if a table has no Ticker column, move Sector to the far RHS. — audited all Sector-bearing tables and moved Sector directly before Ticker in Scanner, My Pre-orders, Performance Results and Squeeze History; no Sector table lacks Ticker; documented the global rule, validated header order and JavaScript syntax, and verified 32 tests pass by OpenAI. [Completed]
+    * P-07 Global/Tables - Add RVOL to the LEFT of VolumeScore on every table that has a VolumeScore column. — paired RVOL immediately before every row-level VolumeScore display in Scanner, My Pre-orders, Pre-orders to my IG, Performance Results and both Back Test ledger row types; moved Scanner's existing RVOL rather than duplicating it, updated sorting/enrichment and colspans, documented the global rule, validated JavaScript syntax, and verified 32 tests pass by OpenAI. [Completed]
+    * P-07 Global/Tables - Move "In Pre-orders?" to the far RHS. -- Moved In Pre-orders to the far right of the Scanner table. [Completed]
+    * P-07 Global/Tables - Move Leverage next to Location on tables that have Location; else to the left of the Ticker id; else to the far RHS. -- Placed Leverage beside Location in the Scanner table. [Completed]
+    * P-07 Global/Tables - On every table with RVOL, add "Above VWAP" to the RIGHT of RVOL. -- Added VWAP immediately after RVOL across Scanner, Pre-orders and Performance tables. [Completed]
+    * P-07 Global/Tables - For "Above VWAP" show just "VWAP" with a tick/cross; do the SAME for ATR, placed to the right of VWAP. -- Added compact VWAP and ATR tick/cross columns. [Completed]
+
+    * P-02 Data/Analysis - The work to find a new VolumeScore over a SHORTER timescale (the early-volume metric near the funnel) is priority P-02. [ties to the P-05/P-02 VolumeScore analysis above] -- Compared 5/8/10/15-day candidates with production across 5,244 resolved replay trades using corrected position×return P&L, reserved margin, IG leverage and max-open sensitivity (3/5/10/20). Production was most profitable at caps 3, 5 and 10; 5-day only edged it at cap 20, so no universal shorter replacement is defensible. Added a repeatable read-only tool; production scoring remains unchanged; 29 tests passed. OpenAI. [Completed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Ad-hoc requests 2026-08-01
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-12 Config/Credentials - X credentials are still not in Supabase. -- Claude 2026-08-02: the encrypted secret store + admin write path EXIST (P-15); the blocker is the SOURCE — the four X_* values are not in the local .env and GitHub Secrets are write-only (unreadable), so there is nothing to seed Supabase from. To land them: EITHER enter them in Config → X Credentials (admin) which writes the encrypted app_secrets row, OR add X_API_KEY/X_API_SECRET/X_ACCESS_TOKEN/X_ACCESS_SECRET to the local .env and I run the seeder. I cannot read them from GitHub. -- Deferred by user on 2026-08-05 [Deferred]
+
+    * P-06 Config/Adaptive Filters - Send an email when the adaptive filters are automatically altered. -- Claude 2026-08-02: BLOCKED on a dependency — the adaptive-filter AUTO-ALTER engine does not exist yet. adaptive_filters/rebalance_weeks are only config knobs; the walk-forward engine that would actually re-tune a user's Market/Quality/R:R filters every rebalance_weeks is the DEFERRED task (see "Performance Tab: AI Reports" P-05 L194 — mechanic not yet decided). Nothing currently changes the filters, so there is no event to email on. REQUIREMENT CAPTURED: when that engine is built, it must email the account holder (web_users.email_for + send_trade_email/notify) a before→after diff of the changed filters. Building a standalone emailer now would never fire. [Blocked - depends on the deferred adaptive-filter engine] [Deferred]
+
+    * P-05 Security/Credentials - Get the X credentials into Supabase (they're in GitHub Secrets, used by the daily tweet job, but not in the encrypted store or local env). -- Claude 2026-08-02: confirmed x_publish.py reads X_API_KEY/SECRET/ACCESS_TOKEN/ACCESS_SECRET from os.environ only; they're MISSING locally and absent from app_secrets (store has 12: IG/Slack/FRED/EIA/cron). Since GitHub Secrets are readable BY A WORKFLOW at runtime, the fix is a one-time GitHub Actions job that reads the four X_* from its env and set_secret()s them into the encrypted app_secrets store (migrate_secrets_to_supabase.py already lists the X_* keys). After that db_pool's bootstrap loads them into env everywhere (local + Actions). PREREQUISITE (user-gated): APP_SECRET_KEY GitHub Secret must equal the contents of data/.web_users.key so the Actions-encrypted rows decrypt locally. BUILT: .github/workflows/seed-secrets.yml (workflow_dispatch; maps ALL non-bootstrap secrets — X_*, QUIVER_QUANT_API_KEY, IG/Slack/FRED/EIA, RESEND/YAHOO/GH_PAT — plus SUPABASE_* + APP_SECRET_KEY to env; guards for missing bootstrap; runs migrate_secrets_to_supabase.py + --verify; blanks skipped; prints names only). REMAINING (user): (1) add APP_SECRET_KEY GitHub Secret = contents of data/.web_users.key; (2) run the workflow from the Actions tab once. Then db_pool's bootstrap loads them into env everywhere. -- Deferred by user on 2026-08-05 [Deferred]
+
+    * P-15 Security (BACKLOG) - Secret-store phase 3-4: prune .env to bootstrap-only. -- Claude 2026-08-01: step 1 done (db_pool loads the store into env for web + all 41 Actions scripts; dual-read/fail-open so nothing changes yet). REMAINING (user-gated): (1) YOU set APP_SECRET_KEY GitHub Secret = contents of data/.web_users.key; (2) verify a green Actions run; (3) then swap each of the 41 workflows' per-secret env lines for SUPABASE_USER/SUPABASE_DB_PASSWORD/APP_SECRET_KEY, delete the redundant GitHub Secrets, and prune the non-bootstrap keys from .env. Reversible. Optional hardening: dedicated APP_SECRET_KEY + re-encrypt (MultiFernet) instead of reusing the password-store key. Design: docs/SUPABASE_SECRET_STORE_DESIGN.md. UPDATE 2026-08-02: proved .env is redundant beyond the 2 bootstrap keys (11/11 secrets resolve from the store). USER DECISION 2026-08-02: KEEP the local .env as a cold backup (do NOT prune it) — the plaintext lines are the recovery path if data/.web_users.key is ever lost. So the local prune is intentionally not done; the Actions-side migration (APP_SECRET_KEY GitHub Secret + seed-secrets.yml) still stands when wanted
+
+    * P-14 Credentials - Remove creds from .env (user believes they're pulled from Supabase). -- Claude 2026-08-01: DECLINED / surfaced — verified the app reads creds from os.environ (db_pool uses os.environ["SUPABASE_USER"] bracket-access; ig_shim IG_*, notify SLACK_*), populated by .env via load_dotenv. There is NO Supabase->env loader at runtime (app_config holds config values only; get_app_secret is used only in the credential DISPLAY UI). Removing them from .env would break DB/IG/Slack for the local server + every script. The secret-loading mechanism now EXISTS (P-15 encrypted store + db_pool loader), so the actual .env prune is the reversible, user-gated backlog item below (set APP_SECRET_KEY GitHub Secret -> verify green run -> prune).
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : AI Reports
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-07 Performance - If the Wallet / Minimum Trade / Max position size / Max open positions / Maximum Trade model is used by more than one Performance sub-tab, show it at the top above the Performance title for every tab that uses it. — moved the single shared model above the Performance title, show it for Summary, What separates the winners and Let winners run, keep Back Test's distinct recorded-trigger wallet control inside that panel, clarified blank/∞ still respects wallet funding, and verified DOM invariants, JavaScript syntax and 32 tests by OpenAI. [Completed]
+    * P-07 Performance - Spread the Location choices over two rows so there is space for Settings used to occupy three rows. — changed the Performance filter header to a two-area layout, constrained seven Location choices to four columns/two rows, gave Settings used a two-column grid with room for three rows, retained a responsive phone fallback, and verified JavaScript syntax and 32 tests by OpenAI. [Completed]
+    * P-07 Performance - Make Back Test the default Performance sub-tab. — made the Back Test pill and panel active in the initial HTML while Summary starts hidden, verified the default-state DOM invariant, and verified 32 tests by OpenAI. [Completed]
+    * P-07 Performance - Put the two-row Location choices adjacent to the Last 12 months / From / To date controls. — moved Location and date-range controls into adjacent grid columns with a responsive stacked layout; JavaScript syntax and 34 tests verified by OpenAI. [Completed]
+    * P-01 Review and improve the Performance tab as the primary decision tool for finding the most profitable setup, prioritising bug fixes, expected profit impact, robustness and risk rather than descriptive reporting alone. Evaluate R:R, Quality, MCap, Sector, Market, RVOL, VolumeScore, ATR, VWAP, Max trades/open and other useful metrics together across the year; add or remove Performance sub-tabs where needed to make the recommended settings and realistic return clear. -- Reactivated and promoted to top priority by user direction on 2026-08-05. First OpenAI increment adds a dedicated Best settings tab, exposes ATR/VWAP annual features, searches all named metrics using a two-stage wallet-constrained replay, requires at least 20 trades, discounts quarter inconsistency, reports profit/drawdown and copies supported settings; Python/JavaScript syntax and 33 tests pass. Second OpenAI increment enforces the £25 minimum trade in server and browser replays, makes Back Test / What separates the winners / Best settings use the same margin-by-leverage affordability model, and adds regression coverage; 35 pytest tests pass. Further calculation/UI bug review remains. [In Progress]
+    * P-01 Best settings and Let winners run - Add chronological decision-proof tables of replayed transactions, including concurrent open count and placed/missed status; show whether a good trade was missed because of wallet/margin affordability or the numeric Max open cap, with a Show/Hide missed-transactions control. Include the setting-relevant metrics and qualification/constraint explanation needed to understand and justify a proposed settings change. Above each table, add useful charts showing the strongest profit areas and allow chart selections to cross-filter the evidence rows. Expanded to Let winners run and decision-oriented cross-filtering by user direction on 2026-08-05. — both reports now use wallet/margin/leverage and numeric max-open constrained chronological replays; Let winners run uses its simulated exit date, not the target-sale date. Added placed/missed reasons, concurrent-open evidence, ordinary/run return and all decision metrics, Show/Hide missed controls, plus achievable-P&amp;L Market/Sector/Quality charts that cross-filter the ledger. Best settings is trained on the annual population rather than descriptive Results filters. Python and embedded JavaScript syntax plus 34 tests verified by OpenAI. [Completed]
+    * P-10 Assess whether accumulated user-facing changes justify a new named GitHub release and Windows distribution executable; if ready, build and validate the next release artifact. -- Cancelled by user direction on 2026-08-05; no release or executable work required. [Cancelled]
+
+    * P-05 Build a report showing the impact of change in best settings for Market, Quality and R:R over x weeks (variable) -- USER 2026-07-26: DEFER — mechanic (walk-forward adaptive vs in-sample drift) not yet decided; default rebalance window chosen = 4 weeks (UI-adjustable) for when resumed. Builds on L59 /api/best-settings + _sqa helpers. NOTE (2026-08-02, P-06): when this walk-forward adaptive engine is built, it MUST email the account holder a before→after diff each time it auto-alters their filters (the deferred P-06 adaptive-email item folds in here). [Deferred]
+
+    * P-10 Note: "Best Quality / R:R combinations" are in Report TAB [Cancelled]
+    * P-06 Build a report showing the impact per trade of NOT selling at TARGET but letting them run e.g. Glencore PLC -- Codex 2026-08-04: reconciled as already built. The Results and What separates the winners surfaces call /api/winners-run and show ordinary versus run return per trade, compounded wallet impact, target-hit counts and biggest runners, using per-user pre-target and post-target trail settings. Added bullish and bearish target-lock tests proving a simulated runner cannot give back below its achieved target. Verified 18 pytest tests passed. [Completed]
+    * P-03 Add a separate "Let winners run" button to Performance alongside Summary, Back Test and What separates the winners. -- Reopened and fixed 2026-08-04: the dedicated report now calculates whether the live feature is on or off, provides unsaved Stop trail and Run trail what-if controls seeded from current settings, and never changes configuration or live orders. Verified the live endpoint returned 5,270 report rows and 22 pytest tests passed. OpenAI. [Completed]
+    * P-06 Remove the duplicate Summary section from Performance → Back Test while retaining the dedicated Summary sub-tab. -- Removed the duplicate heading, explanation, table container and renderer target; verified the served page omits it and 22 pytest tests passed. OpenAI. [Completed]
+    * P-06 Change the Performance analysis heading from "What separates the winners — what's possible over 12 months" to "What separates the winners?" -- Changed exactly as requested; verified on the running site and with 22 passing pytest tests. OpenAI. [Completed]
+    * P-06 Remove the orphaned "Every trade — oldest first, wallet after each / Search name / ticker" control where no trade table is present. -- Removed the orphaned heading, explanation, search and empty table container; verified they are absent from the running site and 22 pytest tests passed. OpenAI. [Completed]
+    * P-06 Move the Back Test button to the far left of the Performance sub-tab buttons. -- Reordered the Performance pills and verified the running page serves Back Test before Summary; 29 tests passed. OpenAI. [Completed]
+    * P-06 Reduce the oversized grey bullets in Documentation without changing list markers elsewhere. -- Scoped documentation list markers to 0.65em while retaining the muted colour; verified on the running page and with 29 passing tests. OpenAI. [Completed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : All sub tabs (x3)
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-25 Add new category in the user configuration leverage to match https://www.ig.com/uk/charges/margin if required
+
+Application Focus - Performance Tab : Summary
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    Performance: Summary
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : Results
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab: Results - Filtering
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-09 In theory - If the criteria of the choice of markets and\or bull or bear changes how can Results tab handle this over x months? -- Codex 2026-08-04: answered. Results currently applies the user's CURRENT Market and Bull/Bear choices to the complete selected historical date window, so it is a consistent what-if back test: what would these settings have done over x months? It does not claim to reproduce which settings were active on each past date. A true as-traded policy history would require effective-dated settings snapshots and joining every trigger to the settings version active on its trigger date; keep that separate from the current comparable what-if view if requested. [Completed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : What separates the winners (BUGS)
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : What separates the winners
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - IG Trades - Bugs
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Other
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    ENHANCEMENTS - SPECIFIC
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Data
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - How it Works Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Instrument Details - Content
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-12 Add the latest relevant visual from @ratedmarkets on X to the HVF Details Report for the same instrument. 
+    * P-12 Add the latest relevant visual from @InvestingVisuals on X to the HVF Details Report for the same instrument. 
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Scanner Report Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - My Pre-orders
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - My Pre-orders (New)
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Pre-orders to My IG
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Main Page
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - X Posts
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - IG Account Tab : Amend
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : Summary Page
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : Results Page
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-10 On the summary section use buttons to the right of "Summary" title to filter cards e.g. Sector,  WIN / LOSS [Deferred]
+    * P-10 Data - Process 5 years of data looking for all funnels [Complete]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : What separates the winners
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : System Logs
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : Batch Activity
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : Change Requests
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Data
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-25 Data - Install postgresql-client-17 so we can back up supabase database
+    * P-25 Data - Install pg_dump so we can back up supabase database
+    * P-25 Data - Create a backup of supabase database - this is not scheduled with supabase as this is chargeable -- Claude 2026-08-02: BUILT .github/workflows/supabase-backup.yml — a free self-managed logical backup: installs postgresql-client-17 (server is PG 17.6; DB ~493 MB / 32 tables), read-only pg_dump of schema public via the SESSION pooler (custom format -Fc, compressed), uploaded as a GitHub Actions artifact (90-day retention). workflow_dispatch (no GitHub cron); a cron-job.org weekly trigger can point at it. NOTE: pg_dump isn't installed locally so I couldn't dry-run it here — needs one manual Actions run to confirm pooler compatibility; once green I'll deploy a weekly cron-job.org trigger (my remit). [In Progress - built, awaiting first Actions run]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : User Management
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Squeeze History Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Terms & Conditions Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Fees Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-07 Fees - Add a Market column next to the instrument name; widen the table if required. -- Added Market to the Fees transaction table. [Completed]
+    * P-07 Fees - Use more of the screen width to remove the horizontal scroll bar. -- Adjusted Fees transaction layout to use the available width. [Completed]
+    * P-05 Fees - Add the TIME to the close date on the Fees page. -- Expanded the Fees timestamp formatter to include year and HH:MM:SS and renamed the column Closed date/time; malformed timestamps fall back to the full first 19 ISO characters rather than date-only. JavaScript syntax validated and 32 pytest tests passed. OpenAI. [Completed]
+    * P-12 Fees - Add another previous month tab so we can see two previous months plus current month [Deferred]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Configuration
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    USER
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    DATA
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    * P-06 Data - Import all X details for Alex from GitHub Secrets. [Deferred]
+    * P-06 Data - Import all Yahoo details for Alex from GitHub Secrets. [Deferred]
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    TRADING (SQUEEZE)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Security
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    OBFUSCATION
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    RECOMMENDATIONS
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+Web App: Mobile devices
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    ENHANCEMENTS - GENERAL (mobile devices)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    BUGS - GENERAL (Mini iPad)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    BUGS - GENERAL (mobile devices)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+===============================================================================================================================================================
+= X (Twitter)
+===============================================================================================================================================================
+
+

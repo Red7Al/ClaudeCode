@@ -2451,7 +2451,8 @@ if(typeof ResizeObserver!=="undefined"){
   [document.querySelector("header"),document.querySelector(".tabs")].filter(Boolean).forEach(el=>_stickyRO.observe(el));
 }
 // Each tab a progressively darker shade of grey, left -> right (user 2026-07-03). Light text keeps
-// the darker right-hand tabs readable in both themes; the active tab gets a bright accent underline.
+// the darker right-hand tabs readable in both themes; the active tab gets a bright accent contained
+// inside its own box so it cannot bleed into the strip divider.
 function colorTabs(){
   const btns=[...document.querySelectorAll(".tabs .tab")].filter(b=>b.id!=="logout");
   const n=btns.length;
@@ -2460,15 +2461,16 @@ function colorTabs(){
     const t=i/(n-1||1);                 // 0..1 left->right
     const lum=Math.round(20+58*t);      // grey lightness 20% -> 78% (dark left -> light right)
     b.style.borderColor="transparent";
+    b.style.borderBottom="none";
+    b.style.boxShadow="none";
     if(active){                          // selected main tab -> green (user 2026-07-11)
       b.style.background="var(--bull)";
       b.style.color="#ffffff";
-      b.style.borderBottom="3px solid var(--bull)";
+      b.style.boxShadow="inset 0 -3px 0 var(--bull)";
       b.style.fontWeight="700";
     } else {
       b.style.background=`hsl(210 8% ${lum}%)`;
       b.style.color=lum<50?"#e8edf2":"#1b1f24";
-      b.style.borderBottom="3px solid transparent";
       b.style.fontWeight="500";
     }
   });
@@ -2575,6 +2577,7 @@ function paintSyslogs(){
 let JOB_ROWS=[], jSortK="last_time", jSortDir=-1;   // default: last run, newest first (user 2026-07-11)
 function _jstCol(k){return k==="success"?"var(--bull)":(k==="failure"||k==="timed_out"||k==="startup_failure")?"var(--bear)":(k==="in_progress"||k==="queued")?"var(--accent)":"var(--muted)";}
 function _jstyleCol(k){return k==="Multi-factor momentum"?"var(--accent)":k==="Squeeze"?"var(--bull)":"var(--muted)";}
+function _jcatCol(k){return k==="Pricing"?"#d29922":"var(--fg)";}
 function paintJobs(){
   const by=fn=>JOB_ROWS.reduce((m,e)=>{const v=fn(e)||"—";m[v]=(m[v]||0)+1;return m;},{});
   const failByJob=JOB_ROWS.reduce((m,e)=>{if(e.failures)m[e.title]=e.failures;return m;},{});
@@ -2588,7 +2591,7 @@ function paintJobs(){
   const totF=JOB_ROWS.reduce((s,e)=>s+(e.failures||0),0);
   $("jobs-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> scheduled jobs${rows.length!==JOB_ROWS.length?` <span class="muted">of ${JOB_ROWS.length}</span>`:""} <span class="muted">· ${totF} recent failure(s)</span>`;
   $("jobs-rows").innerHTML=rows.map(e=>`<tr>
-    <td><b>${e.title||""}</b>${e.purpose?`<div class="muted" style="font-size:11.5px;max-width:360px;white-space:normal;line-height:1.35;margin-top:3px">${e.purpose}</div>`:""}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||""}</span></td>
+    <td><b>${e.title||""}</b>${e.purpose?`<div class="muted" style="font-size:11.5px;max-width:360px;white-space:normal;line-height:1.35;margin-top:3px">${e.purpose}</div>`:""}</td><td><span class="tag" style="background:var(--chip);color:${_jcatCol(e.category)}">${e.category||""}</span></td>
     <td><b style="color:${_jstyleCol(e.trading_style)}">${e.trading_style||""}</b></td>
     <td>${e.frequency||e.cron||""}</td>
     <td><b style="color:${_jstCol(e.last_status)}">${e.last_status||"—"}</b></td>

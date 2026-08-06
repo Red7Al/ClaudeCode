@@ -197,6 +197,8 @@ def _purpose(title: str) -> str:
 
 def _category(title: str) -> str:
     t = title.lower()
+    if "price" in t:
+        return "Pricing"
     if "monitor" in t:
         return "Session monitors"
     if "open" in t or "close" in t:
