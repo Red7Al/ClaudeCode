@@ -768,6 +768,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="confpanel hidden" data-panel="limits">
     <div class="card"><h4>My Trading Filters</h4>
       <p class="muted" style="font-size:12px">Your personal floors. <b>R:R</b> and <b>Quality</b> are enforced on <b>your own</b> manual actions — pushing a setup to Pre-orders or placing it on IG is blocked below these. The rest are stored against your login. The shared automated engine keeps using the system baseline.</p>
+      <div style="padding:4px 0 10px;border-bottom:1px solid var(--line)"><h4 style="margin:0 0 4px">Trade filters — direction</h4>
+        <p class="muted" style="font-size:12px;margin:0 0 8px">Only ticked directions may be traded. Ticking both (or neither) = no restriction.</p>
+        <div id="cfg-trade" class="sqh-loading">⏳ Data loading…</div>
+        <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
+        <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
+      </div>
       <div class="credrow"><span class="clabel" title="Smallest trade value used by your replay and order affordability checks.">Minimum trade (£)</span><input type="number" min="0" step="0.01" id="lim-min_trade" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Max position size (% of wallet)</span><input type="number" min="0.1" max="100" step="0.1" id="lim-max_position_pct" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel" title="0 means Auto: floor(100 ÷ Max position size %).">Max open positions (0 = Auto)</span><input type="number" min="0" step="1" id="lim-max_open" style="max-width:120px"></div>
@@ -826,12 +832,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="confpanel hidden" data-panel="trading_sq">
     <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">My Trading Filters — affects live orders</h3>
     <p class="muted" style="font-size:12px;margin:0 0 14px">Which squeeze setups may be traded on the live IG account.</p>
-    <div class="card" ><h4>Trade filters — direction</h4>
-      <p class="muted" style="font-size:12px">Only ticked directions may be traded. Ticking both (or neither) = no restriction. To control which <b>markets</b> may be traded, use <b>Markets (User)</b> — that switch now governs both what you see and what you trade.</p>
-<div id="cfg-trade" class="sqh-loading">⏳ Data loading…</div>
-      <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
-      <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
-    </div>
     <div class="card"><h4>Automatic bridge execution</h4>
       <p class="muted" style="font-size:12px">Yes = the 2-hourly bridge (and 28-day lifespan orders) may place squeeze setups as live IG working orders. No = the bridge scans and reports but places nothing.</p>
       <div class="credrow"><span class="clabel">Bridge may place orders</span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="cfg-bridge" onchange="saveBridge()"> Yes</label></div>
@@ -2961,6 +2961,7 @@ function renderConfig(){
       // per-user Markets (User) on/off switch now governs both visibility AND trading. Empty stored = all allowed.
       const tf=j.trade||{}, groups=[["directions",["BULL","BEAR"]]];
       TRADE_HIDE=tf;   // sync per-user hide (user 2026-07-06)
+      $("cfg-trade").className="";
       $("cfg-trade").innerHTML=groups.map(([g,opts])=>{
         const allowed=tf[g]||[];
         return `<div style="margin:10px 0"><b style="font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em">${g}</b><div class="cfg-tf-options">`+

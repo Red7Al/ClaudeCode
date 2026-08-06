@@ -55,3 +55,4 @@ Application Focus - Ad-hoc requests requiring P-14
     * P-14 User Configuration - Align the Yes option controls for Require price above VWAP and Require ATR expanding with the input controls above. -- Codex 2026-08-06: added a shared fixed-width option slot with the mobile reset retained. [Completed]
     * P-14 Configuration - Rename the Trading (Squeeze) button to IG Orders. [Completed]
     * P-14 User Configuration - Make Minimum trade (£) editable instead of read-only and apply the saved value to replay affordability checks. -- Codex 2026-08-06: added the saved min_trade limit and applied it to the replay model. [Completed]
+    * P-14 User Configuration - Stop the Directions controls flashing after they load and move them to the top of My Trading Filters. -- Codex 2026-08-06: removed the stale loading class after rendering and moved the direction section into the top of the filters panel. [Completed]
