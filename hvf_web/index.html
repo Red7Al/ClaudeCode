@@ -1338,12 +1338,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Minimum trade from User Configuration.">Minimum Trade £<b id="ordp-mintrade" style="color:var(--fg)">25</b></label>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Max position size <input id="ordp-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="winnersParamsChange()">%</label>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Default is floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="ordp-maxopen" type="number" min="1" step="1" value="50" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()"></label>
-    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ effective Max open positions. Auto is floor(100 ÷ Max position size %).">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ effective Max open positions.">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
     <span class="muted" style="font-size:11px;flex-basis:100%;line-height:1.4">These are wallet and capacity assumptions only. Signal rules (Quality, R:R, VolumeScore, RVOL, VWAP, ATR and market/sector scope) are chosen in <b style="color:var(--fg)">Best settings</b> and saved in <b style="color:var(--fg)">User Configuration</b>.</span>
     <button class="btn" id="ordp-save-defaults" style="padding:4px 10px;font-size:12px" onclick="winnersSaveDefaults()" title="Save Wallet / Max position size / Max open positions as your defaults (Configuration → My trading limits)">💾 Save as my defaults</button>
     <span id="ordp-save-msg" style="font-size:11px"></span>
     <span id="ordp-model-msg" style="font-size:11px;flex-basis:100%"></span>
-    <span class="muted" style="font-size:11px;flex-basis:100%;line-height:1.4">⚖️ <b style="color:var(--fg)">Leverage &amp; the wallet:</b> leverage does not change the £ or % return; it changes the margin each position ties up. Blank/0 Max open means Auto, capped by the stake exposure: 100 ÷ Max position size.</span>
+    <span class="muted" style="font-size:11px;flex-basis:100%;line-height:1.4">⚖️ <b style="color:var(--fg)">Leverage &amp; the wallet:</b> leverage does not change the £ or % return; it changes the margin each position ties up. Max open is always numeric and cannot exceed the stake exposure: 100 ÷ Max position size.</span>
   </div>
   <span class="eyebrow">Results</span>
   <!-- Processing badge (user 2026-08-02, P-06) — shown next to the title while /api/performance is still
@@ -1410,7 +1410,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
   <div id="pf-panel-results">
   <h2 class="sec" style="margin-top:0">Back Test</h2>
-  <p class="muted" style="font-size:13px;margin-top:-8px">These are <b>back-test results over the last 12 months</b>, replayed against your <b>current configuration</b> — your Trading (Squeeze) <b>direction</b> filter, your <b>Markets (User)</b> selection and your personal <b>Volume Score / Quality / R:R</b> floors. Change any of those and this back test updates to match. Each setup is measured from its trigger to <b style="color:var(--bull)">TARGET</b>, <b style="color:var(--bear)">STOPPED</b> or <b style="color:#d29922">OPEN</b> (marked to the latest price).</p>
+  <p class="muted" style="font-size:13px;margin-top:-8px">These are <b>back-test results over the last 12 months</b>, replayed against your <b>complete current configuration</b>: direction, enabled markets, saved market/sector scope, R:R, Quality, Volume Score, RVOL, VWAP, ATR, instrument value and wallet limits. Applying a Best Settings option updates this replay immediately. Each setup is measured from its trigger to <b style="color:var(--bull)">TARGET</b>, <b style="color:var(--bear)">STOPPED</b> or <b style="color:#d29922">OPEN</b> (marked to the latest price).</p>
   <div id="pf-backtest-settings" class="pf-setcard" style="display:none;margin:0 0 10px;max-width:none"></div>
   <div id="pf-charts">
     <div class="viz" id="pf-viz" style="border-bottom:none;padding:0 0 10px"></div>
@@ -1463,11 +1463,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
   <div id="pf-panel-settings" class="hidden">
     <h2 class="sec" style="margin-top:0">Best settings for annual profit</h2>
-    <p class="muted" style="font-size:13px;margin-top:-8px">Compares the settings collected with each trigger over the last 12 months and replays only positions the Model wallet could actually fund. Recommendations are ranked using profit and drawdown, with trade count and consistency retained so a tiny lucky sample cannot appear to be the best setup.</p>
-    <h2 class="sec">Best Quality / R:R combinations / Volume Score</h2>
-    <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide), R:R bands (1 wide) and Volume Score bands (8+ / 4–7 / 0–3); ranked by average direction-aware return across the recorded triggers. Only buckets with at least 3 triggers are shown.</p>
-    <div id="pf-combos" class="fgrid sqh-loading" style="margin-bottom:8px">⏳ Data loading…</div>
-    <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric squeeze — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
+    <p class="muted" style="font-size:13px;margin-top:-8px">Compares complete configurations over the last 12 months and replays only positions the Model wallet could actually fund. Choose between several distinct objectives rather than one unexplained answer. Every option includes the signal floors, scope and trading limits that will change; after applying one, Back Test immediately uses the same complete configuration.</p>
+    <div id="pf-combos" class="hidden"></div>
     <div id="ordp-bestcombo" style="margin-bottom:10px"><span class="sqh-loading">⏳ Data loading…</span></div>
   </div>
 
@@ -3576,7 +3573,7 @@ const _cherryEq=(a,b)=>JSON.stringify(a||{})===JSON.stringify(b||{});
 // (user 2026-07-18: "369 rows in main performance tab can be used"), expressed in £ as a fixed 2%-of-wallet
 // stake (£200 on £10k) × each trade's actual return%. So it reconciles with Results by construction — no
 // separate population, no R-multiple, no compounding-to-millions.
-let WINNERS_WALLET=10000, WINNERS_STAKE=0.02, WINNERS_MAXOPEN=0;   // £ wallet (default £10,000, user 2026-08-01), stake fraction, concurrency cap (P-05)
+let WINNERS_WALLET=10000, WINNERS_STAKE=0.02, WINNERS_MAXOPEN=50;   // £ wallet, stake fraction and explicit concurrency cap
 let WINNERS_HIDE_MISSED=false;   // "hide trades missed" toggle on the winners ledger (P-07 #30)
 function winnersToggleMissed(){WINNERS_HIDE_MISSED=!!($("ordp-hide-missed")||{}).checked;const t=$("ordp-table");if(t)t.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);}
 let WIN=null;
@@ -3593,14 +3590,14 @@ function winnersParamsChange(){
   // are clamped so the derived figures never break.
   if(!(w>0)){w=1000; if(wEl)wEl.value=w; warn=`Wallet must be a positive number — reset to £1,000.`;}
   else if(w>1e8){w=1e8; if(wEl)wEl.value=w; warn=`Wallet capped at £100,000,000.`;}
-  if(mo<0){mo=0; if(moEl)moEl.value="";}
   WINNERS_WALLET=w;
   if(s>0)WINNERS_STAKE=s/100;
   const autoMax=_fundedMaxOpen(WINNERS_STAKE);
-  WINNERS_MAXOPEN=mo>0?Math.min(mo,autoMax):autoMax;
-  // Maximum Trade = Wallet ÷ effective Max open positions; blank/0 derives from 100 ÷ stake%.
+  if(!(mo>0)){mo=autoMax;if(moEl)moEl.value=mo;}
+  WINNERS_MAXOPEN=Math.min(mo,autoMax);
+  // Maximum Trade = Wallet ÷ effective Max open positions.
   const maxTrade=w/WINNERS_MAXOPEN;
-  const mt=$("ordp-maxtrade"); if(mt)mt.textContent=`${fmt(maxTrade)} (${mo>0?WINNERS_MAXOPEN:'Auto '+WINNERS_MAXOPEN})`;
+  const mt=$("ordp-maxtrade"); if(mt)mt.textContent=`${fmt(maxTrade)} (${WINNERS_MAXOPEN})`;
   const mn=$("ordp-mintrade"); if(mn)mn.textContent=MIN_TRADE;
   const openingStake=w*WINNERS_STAKE;
   // If the wallet can't fund that many positions at the IG minimum, warn (L257).
@@ -3618,7 +3615,7 @@ function winnersParamsChange(){
 function winnersSaveDefaults(){
   const wallet=Math.max(1,+(($("ordp-wallet")||{}).value)||1000);
   const stake=Math.max(0.1,+(($("ordp-stake")||{}).value)||2);
-  const mo=Math.max(0,Math.floor(+(($("ordp-maxopen")||{}).value)||0));
+  const mo=Math.max(1,Math.floor(+(($("ordp-maxopen")||{}).value)||_fundedMaxOpen(stake/100)));
   const msg=$("ordp-save-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:{wallet,max_position_pct:stake,max_open:mo}})})
     .then(r=>{if(!r.ok)throw 0;MY_LIMITS={...MY_LIMITS,wallet,max_position_pct:stake,max_open:mo};if(msg){msg.style.color="var(--bull)";msg.textContent="✓ Saved as your defaults.";setTimeout(()=>{if(msg)msg.textContent="";},4000);}})
@@ -3630,7 +3627,11 @@ function applyWinnersDefaults(){
   const set=(id,v)=>{const e=$(id);if(e&&v!=null&&v!=="")e.value=v;};
   if(MY_LIMITS.wallet!=null)set("ordp-wallet",MY_LIMITS.wallet);
   if(MY_LIMITS.max_position_pct!=null)set("ordp-stake",MY_LIMITS.max_position_pct);
-  const moEl=$("ordp-maxopen"); if(moEl&&MY_LIMITS.max_open!=null)moEl.value=MY_LIMITS.max_open>0?MY_LIMITS.max_open:"";   // 0 = Auto from stake% (set() skips "" so do it directly)
+  const derivedMax=Math.max(1,Math.floor(100/Math.max(.1,+MY_LIMITS.max_position_pct||2)));
+  const moEl=$("ordp-maxopen"); if(moEl&&MY_LIMITS.max_open!=null)moEl.value=MY_LIMITS.max_open>0?MY_LIMITS.max_open:derivedMax;
+  if(MY_LIMITS.wallet!=null)set("pfw-wallet",MY_LIMITS.wallet);
+  if(MY_LIMITS.max_position_pct!=null)set("pfw-stake",MY_LIMITS.max_position_pct);
+  const pfMo=$("pfw-maxopen");if(pfMo&&MY_LIMITS.max_open!=null)pfMo.value=MY_LIMITS.max_open>0?MY_LIMITS.max_open:derivedMax;
   if(typeof winnersParamsChange==="function")winnersParamsChange();
 }
 function renderSqueezeAnalysis(){
@@ -3844,7 +3845,7 @@ function renderBestCombo(all){
   // Two-stage annual search (P-01, user 2026-08-05): first rank metric/filter candidates using the
   // current Model, then replay only the strongest candidates across stake/open grids. This covers the
   // collected decision metrics without freezing the browser under a combinatorial full cross-product.
-  const STAKES=[1,2,3,5,7.5,10], OPENS=[0,3,5,8,12,20], RRS=[3,5,8], QUALS=[0,50,75],
+  const STAKES=[1,2,3,5,7.5,10], OPENS=[3,5,8,12,20,25,50], RRS=[3,5,8], QUALS=[0,50,75],
         VSCORES=[0,4,8], RVOLS=[0,1.5,1.8], BOOLS=[false,true];
   const byDate=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
   const topScopes=(key,label)=>Object.entries(byDate.reduce((m,r)=>{const v=r[key];if(v)m[v]=(m[v]||0)+1;return m;},{}))
@@ -3895,34 +3896,46 @@ function renderBestCombo(all){
   const w=Math.max(1,WINNERS_WALLET||1000);
   const stake=w*best.st/100,end=w*(1+best.ret),net=end-w,feas=stake>=25;
   const cfgFor=x=>{const limits={min_risk_reward:x.rr,min_quality:x.q,min_volume_score:x.vs,min_rvol:x.rv,max_position_pct:x.st,max_open:x.mo,
-      require_above_vwap:x.vw?1:0,require_atr_expanding:x.atr?1:0};
+      require_above_vwap:x.vw?1:0,require_atr_expanding:x.atr?1:0,min_instrument_value:0,max_instrument_value:0};
     if(x.scope.kind==="mcap"){limits.min_instrument_value=x.scope.min||0;limits.max_instrument_value=x.scope.max||0;}
     const market=x.scope.kind==="market"?x.scope.value:"", sector=x.scope.kind==="sector"?x.scope.value:"";
     const filters={f_mkt:market,f_sec:sector,pof_market:market,pof_sector:sector};
     return {limits,filters};};
-  const bestCfg=cfgFor(best);
   const eligible=evaluated.filter(x=>x.n>=20), positive=eligible.filter(x=>x.ret>0);
-  // Do not present three cosmetic variations of one answer. A recommendation must differ in at least
-  // two meaningful configuration dimensions (for example R:R + position size) before it earns its own
-  // choice card; otherwise the next genuinely different candidate is more useful to the user.
+  // Options must represent different decisions, not cosmetic variations. Prefer at least two changed
+  // dimensions; if the tested population cannot support that, allow one difference but never duplicate.
   const configDistance=(a,b)=>['rr','q','vs','rv','vw','atr','st','mo'].reduce((n,k)=>n+(a[k]!==b[k]?1:0),0)+
     (a.scope.label===b.scope.label?0:1);
-  const pickDistinct=(pool,chosen,score,minDistance=2)=>[...pool].sort((a,b)=>score(a,b)||b.score-a.score)
-    .find(x=>chosen.every(y=>configDistance(x,y)>=minDistance))||[...pool].sort((a,b)=>b.score-a.score).find(x=>chosen.every(y=>configDistance(x,y)>0))||best;
   const basePool=positive.length?positive:eligible;
-  const highest=pickDistinct(basePool,[best],(a,b)=>b.ret-a.ret,2);
-  const lowest=pickDistinct(basePool,[best,highest],(a,b)=>a.dd-b.dd,2);
+  const choose=(pool,chosen,compare)=>{
+    const ranked=[...pool].sort((a,b)=>compare(a,b)||b.score-a.score);
+    return ranked.find(x=>chosen.every(y=>configDistance(x,y)>=2))||ranked.find(x=>chosen.every(y=>configDistance(x,y)>=1))||null;
+  };
+  const chosen=[best];
+  const growth=choose(basePool,chosen,(a,b)=>b.ret-a.ret);if(growth)chosen.push(growth);
+  const defensive=choose(basePool,chosen,(a,b)=>a.dd-b.dd);if(defensive)chosen.push(defensive);
+  const broad=choose(basePool,chosen,(a,b)=>b.consistency-a.consistency||b.n-a.n||b.ret-a.ret);if(broad)chosen.push(broad);
   const choices=[
-    ["Balanced",best,"Best return relative to drawdown."],
-    ["Highest return",highest,"Highest historical compounded return in the tested set."],
-    ["Lowest drawdown",lowest,"Smallest historical peak-to-trough decline among positive-return options."]
-  ];
-  const changed="R:R · Quality · VolumeScore · RVOL · VWAP · ATR · position size · max open · market/sector scope";
-  const choiceCards=choices.map(([label,x,why])=>`<div class="fcard" style="min-width:220px;flex:1">
-    <h3>${label}</h3><div class="muted" style="font-size:11px;min-height:28px">${why}</div>
+    ["Balanced",best,"Best return relative to drawdown, with quarterly consistency included.","var(--bull)"],
+    growth&&["Growth",growth,"Highest-return alternative with a materially different configuration.","var(--accent)"],
+    defensive&&["Defensive",defensive,"Lowest historical peak-to-trough drawdown while retaining a positive return.","#d29922"],
+    broad&&["Broad evidence",broad,"Favours positive quarters and a larger funded trade sample over a narrow winner.","var(--muted)"]
+  ].filter(Boolean);
+  const current={rr:Number(MY_LIMITS.min_risk_reward??3),q:Number(MY_LIMITS.min_quality??25),vs:Number(MY_LIMITS.min_volume_score??1),rv:+MY_LIMITS.min_rvol||0,
+    vw:!!+MY_LIMITS.require_above_vwap,atr:!!+MY_LIMITS.require_atr_expanding,st:+MY_LIMITS.max_position_pct||WINNERS_STAKE*100,mo:+MY_LIMITS.max_open||WINNERS_MAXOPEN,
+    scope:_pfSavedScope("market")[0]?`Market: ${_pfSavedScope("market").join(", ")}`:_pfSavedScope("sector")[0]?`Sector: ${_pfSavedScope("sector").join(", ")}`:"All markets"};
+  const displayValue=(key,v)=>key==="vw"||key==="atr"?(v?"Yes":"No"):key==="st"?v+"%":key==="mo"?String(v):key==="scope"?v:String(v||"Any");
+  const changedFor=x=>{
+    const target={rr:x.rr,q:x.q,vs:x.vs,rv:x.rv,vw:x.vw,atr:x.atr,st:x.st,mo:x.mo,scope:x.scope.label};
+    const labels={rr:"R:R",q:"Quality",vs:"VolumeScore",rv:"RVOL",vw:"VWAP required",atr:"ATR expanding",st:"Position size",mo:"Max open",scope:"Scope"};
+    return Object.keys(target).filter(k=>String(current[k])!==String(target[k])).map(k=>`${labels[k]}: ${displayValue(k,current[k])} → ${displayValue(k,target[k])}`).join(" · ")||"No change from your current configuration";
+  };
+  const choiceCards=choices.map(([label,x,why,colour])=>`<div class="fcard" style="min-width:240px;flex:1;border-top:3px solid ${colour}">
+    <h3 style="color:${colour}">${label}</h3><div class="muted" style="font-size:11px;min-height:30px">${why}</div>
     <div class="body"><div><b style="font-size:17px;color:${x.ret>=0?'var(--bull)':'var(--bear)'}">${pct(x.ret)}</b> return · <b>${(x.dd*100).toFixed(1)}%</b> max drawdown</div>
-      <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} eligible trades · ${x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo>0?x.mo:'Auto'} max open</div>
-      <div class="muted" style="font-size:10px;margin-top:7px"><b style="color:var(--fg)">Changes User Configuration:</b> ${changed}${x.scope.kind==='mcap'?' · MCap band':''}</div>
+      <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} funded of ${x.seq.length.toLocaleString()} eligible · ${x.posPeriods}/${x.periods} positive quarters</div>
+      <div style="font-size:11px;margin-top:6px">${x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo} max open</div>
+      <div class="muted" style="font-size:10px;margin-top:7px;line-height:1.4"><b style="color:var(--fg)">Changes:</b> ${changedFor(x)}</div>
       <button class="btn" style="margin-top:8px" onclick='applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">⬇ Apply this configuration</button>
     </div></div>`).join('');
   const rows=`<tr><td><b>${gbp(w)}</b></td><td class="muted">${gbp(stake)}${feas?'':' <span style="color:var(--bear)" title="Below the £25 IG minimum — raise the stake % or the wallet">⚠</span>'}</td>
@@ -3930,10 +3943,10 @@ function renderBestCombo(all){
       <td style="color:${net>=0?'var(--bull)':'var(--bear)'}">${net>=0?'+':'−'}${gbp(Math.abs(net))}</td></tr>`;
   box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}</div>
   <div class="card" style="margin:0">
-    <h4 style="margin:0 0 4px">🥇 Best combination <span class="muted" style="font-weight:400;font-size:11px">— ranked by return per unit of drawdown, over ${best.n.toLocaleString()} trades in this window</span></h4>
+    <h4 style="margin:0 0 4px">Balanced recommendation detail <span class="muted" style="font-weight:400;font-size:11px">— ranked by return per unit of drawdown, over ${best.n.toLocaleString()} funded trades</span></h4>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:6px 0 8px">
       <div><div class="muted" style="font-size:11px">Max position size</div><b style="font-size:16px;color:var(--fg)">${best.st}%</b></div>
-      <div><div class="muted" style="font-size:11px">Max open positions</div><b style="font-size:16px;color:var(--fg)" title="${best.mo>0?`Numeric cap ${best.mo}, capped by stake exposure where lower; peak concurrent positions actually funded ${best.cap}.`:`Auto cap from stake exposure; peak concurrent positions actually funded ${best.cap}.`}">${best.mo>0?best.mo:'Auto'} <span class="muted" style="font-size:11px;font-weight:400">(${best.cap} peak funded)</span></b></div>
+      <div><div class="muted" style="font-size:11px">Max open positions</div><b style="font-size:16px;color:var(--fg)" title="Numeric cap ${best.mo}, capped by stake exposure where lower; peak concurrent positions actually funded ${best.cap}.">${best.mo} <span class="muted" style="font-size:11px;font-weight:400">(${best.cap} peak funded)</span></b></div>
       <div><div class="muted" style="font-size:11px">R:R floor</div><b style="font-size:16px;color:var(--fg)">≥ ${best.rr}</b></div>
       <div><div class="muted" style="font-size:11px">Quality floor</div><b style="font-size:16px;color:var(--fg)">${best.q>0?'≥ '+best.q:'any'}</b></div>
       <div><div class="muted" style="font-size:11px">VolumeScore floor</div><b style="font-size:16px;color:var(--fg)">${best.vs>0?'≥ '+best.vs:'any'}</b></div>
@@ -3947,9 +3960,7 @@ function renderBestCombo(all){
       <div><div class="muted" style="font-size:11px">Positive quarters</div><b style="font-size:16px;color:${best.consistency>=.75?'var(--bull)':'#d29922'}">${best.posPeriods} / ${best.periods}</b></div>
     </div>
     <div class="tablewrap"><table><thead><tr><th>Equity</th><th title="First trade's stake = Max position size % of the wallet">Opening stake</th><th>Ending equity</th><th>Net P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div style="margin-top:8px"><button class="btn" onclick='applyConfigFromReport(${JSON.stringify(bestCfg)},this)' title="Copy supported values into your personal trading configuration">⬇ Copy supported settings to my configuration</button>
-      <span class="muted" style="font-size:11px;margin-left:8px">copies R:R, Quality, VolumeScore, position size, funded max-open and any MCap band. Market/Sector, RVOL, VWAP and ATR remain report recommendations until matching live controls exist.</span></div>
-    <div class="muted" style="font-size:11px;margin-top:6px">On your <b>${gbp(w)}</b> Model wallet. Ranking rewards annual return per unit of drawdown, requires at least 20 eligible trades, and discounts settings that were inconsistent across quarters. Blank/0 Max open uses Auto: floor(100 ÷ Max position size %). This is historical evidence, not a guaranteed return.</div>
+    <div class="muted" style="font-size:11px;margin-top:6px">On your <b>${gbp(w)}</b> Model wallet. Ranking rewards annual return per unit of drawdown, requires at least 20 funded trades, and discounts settings that were inconsistent across quarters. All recommendation cards use an explicit numeric Max open value. This is historical evidence, not a guaranteed return.</div>
     <div id="best-proof"></div>
   </div>`;
   renderDecisionProof('best-proof',best.proof);
@@ -3969,10 +3980,10 @@ function applyConfigFromReport(cfg, btn){
     .then(r=>{if(!r.ok)throw 0;
       MY_LIMITS={...MY_LIMITS,...limits}; USER_FILTERS=nextFilters; applyUserDefaults();
       Object.entries(limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v;}});
-      if(btn){btn.textContent="✓ Copied to my settings";setTimeout(()=>{btn.disabled=false;btn.textContent="⬇ Copy this configuration to my settings";},4000);}
+      if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();
+      if(btn){btn.textContent="✓ Applied — Back Test updated";setTimeout(()=>{btn.disabled=false;btn.textContent="⬇ Apply this configuration";},4000);}
       if(typeof renderPreorders==='function')renderPreorders();
-      if(typeof _renderPerformance==='function')_renderPerformance();
-      if(WIN!==null&&typeof winnersParamsChange==='function')winnersParamsChange();})
+      if(typeof _renderPerformance==='function')_renderPerformance();})
     .catch(()=>{if(btn){btn.disabled=false;btn.textContent="⚠ Save failed — retry";}});
 }
 // One compounding pass over a set of winners trades (user 2026-07-27, P-10 L122/L123 refactor): chronological
@@ -4397,19 +4408,36 @@ function _pfWalletLedger(sel){
   settle('9999-99-99');
   return {wallet,endWallet:w,taken,skipped,maxopen,requestedMax};
 }
+function _pfSavedScope(kind){
+  const keys=kind==="market"?["pof_market","f_mkt"]:["pof_sector","f_sec"];
+  for(const key of keys){
+    const raw=USER_FILTERS&&USER_FILTERS[key];if(raw==null||raw==="")continue;
+    const values=(Array.isArray(raw)?raw:String(raw).split(SEP)).map(v=>String(v).trim()).filter(Boolean);
+    if(values.length)return [...new Set(values)];
+  }
+  return [];
+}
+function _pfMatchesCurrentConfig(r){
+  const floor=(key,value)=>{const n=Number(MY_LIMITS&&MY_LIMITS[key]);return !isFinite(n)||n<=0||(value!=null&&isFinite(+value)&&+value>=n);};
+  if(!floor("min_risk_reward",r.rr)||!floor("min_quality",r.quality)||!floor("min_volume_score",r.volume_score)||!floor("min_rvol",r.rvol))return false;
+  if(+MY_LIMITS.require_above_vwap&&r.above_vwap!==true)return false;
+  if(+MY_LIMITS.require_atr_expanding&&r.atr_expanding!==true)return false;
+  const minValue=+MY_LIMITS.min_instrument_value||0,maxValue=+MY_LIMITS.max_instrument_value||0;
+  if((minValue>0||maxValue>0)&&(r.mcap==null||!isFinite(+r.mcap)))return false;
+  if(minValue>0&&+r.mcap<minValue)return false;
+  if(maxValue>0&&+r.mcap>maxValue)return false;
+  const markets=_pfSavedScope("market"),sectors=_pfSavedScope("sector");
+  if(markets.length&&!markets.includes(String(r.market||"")))return false;
+  if(sectors.length&&!sectors.includes(String(r.sector||"")))return false;
+  return tradeVisible(r);
+}
 function _renderPerformance(){
-  // Personal Minimum Volume Score floor now filters the Performance tab too (user 2026-07-28 — "volume-score
-  // is very important"): setting it to 9 in Configuration narrows Results + Summary + count to setups scoring
-  // ≥ 9. Unscored rows (volume_score null) pass, matching the My Pre-orders behaviour. PF_VS_FLOOR drives the
-  // count note so it's clear WHY the population shrank.
+  // Back Test applies the complete saved configuration. A configured floor requires a scored value,
+  // matching the annual optimiser; otherwise an unscored row could enter a replay it never qualified for.
   const _vsFloor=(typeof num==='function')?num(MY_LIMITS.min_volume_score):(+MY_LIMITS.min_volume_score||null);
   PF_VS_FLOOR=(_vsFloor!=null&&_vsFloor>0)?_vsFloor:0;
   let all=(PERF_DATA||[]).filter(r=>pfDateOk(r.trig_date));   // date-window filter (P-01) drives everything below
-  if(PF_VS_FLOOR)all=all.filter(r=>r.volume_score==null||r.volume_score>=PF_VS_FLOOR);   // personal Volume Score floor
-  const _qFloor=+MY_LIMITS.min_quality||0, _rrFloor=+MY_LIMITS.min_risk_reward||0;
-  if(_qFloor>0)all=all.filter(r=>r.quality==null||+r.quality>=_qFloor);
-  if(_rrFloor>0)all=all.filter(r=>r.rr==null||+r.rr>=_rrFloor);
-  all=all.filter(r=>tradeVisible(r));   // respect the user's Trading (Squeeze) direction filter + Markets (User) (user 2026-08-01): BULL/BEAR removed or a market switched off must not appear in the back test
+  all=all.filter(_pfMatchesCurrentConfig);
   const _wlCol=k=>k==="Win"?"var(--bull)":k==="Loss"?"var(--bear)":"#d29922";
   // Cross-filter (user 2026-07-24, P-04 L107/L109): each chart counts the population filtered by the OTHER
   // charts' selections (plus the Location button + search), so selecting e.g. Location=US narrows the
@@ -4540,15 +4568,23 @@ function _pfBacktestSettingsCard(sel,all,led){
     return chartSelection?`${chartSelection} within ${configured}`:configured;
   };
   const esc=v=>String(v).replace(/</g,"&lt;");
-  const rr=_num(MY_LIMITS.min_risk_reward), ql=_num(MY_LIMITS.min_quality), vs=_num(MY_LIMITS.min_volume_score);
+  const rr=_num(MY_LIMITS.min_risk_reward), ql=_num(MY_LIMITS.min_quality), vs=_num(MY_LIMITS.min_volume_score),rv=_num(MY_LIMITS.min_rvol);
   const chartMarket=nice(list("pff_market"));
+  const savedMarkets=nice(_pfSavedScope("market")),savedSectors=nice(_pfSavedScope("sector"));
+  const minValue=_num(MY_LIMITS.min_instrument_value),maxValue=_num(MY_LIMITS.max_instrument_value);
   const items=[
     ["R:R floor","≥ "+(rr!=null?rr:3)],
     ["Quality floor","≥ "+(ql!=null?ql:25)],
-    ["Volume Score floor","≥ "+(vs!=null?vs:1)+" (unscored rows still pass)"],
+    ["Volume Score floor","≥ "+(vs!=null?vs:1)],
+    ["RVOL floor",rv>0?"≥ "+rv:"Any"],
+    ["Require above VWAP",+MY_LIMITS.require_above_vwap?"Yes":"No"],
+    ["Require ATR expanding",+MY_LIMITS.require_atr_expanding?"Yes":"No"],
+    ["Instrument value",minValue>0||maxValue>0?`${minValue>0?"≥ "+Math.round(minValue).toLocaleString():"no minimum"} · ${maxValue>0?"≤ "+Math.round(maxValue).toLocaleString():"no maximum"}`:"Any"],
     ["Date window",PF_WINDOW_LABEL||"all 12 months"],
     ["Location",PF_LOC_FILTER||nice(list("pff_location"))||"All locations"],
-    ["Market scope",marketScope(chartMarket)],
+    ["Saved market scope",savedMarkets||"All"],
+    ["Saved sector scope",savedSectors||"All"],
+    ["Chart market filter",marketScope(chartMarket)],
     ["Wallet model",led?`£${Math.round(led.wallet).toLocaleString()}, ${(Math.max(0.01,+(($("pfw-stake")||{}).value)||2)).toFixed(1)}% position, ${led.requestedMax>0&&led.requestedMax!==led.maxopen?`requested ${led.requestedMax} capped to ${led.maxopen}`:led.requestedMax>0?`${led.maxopen} max open`:`Auto ${led.maxopen} max open`}`:"—"],
   ];
   const dirs=(TRADE_HIDE&&TRADE_HIDE.directions)||[];if(dirs.length)items.push(["Direction filter",dirs.join(", ")]);

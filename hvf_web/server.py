@@ -3106,12 +3106,12 @@ def api_winners():
         vsmap = _volscore_trigger_map()   # per-trigger VolumeScore for the ledger Vol column (P-03, 2026-07-27)
         vfmap = _volscore_trigger_feature_map()
         payload["rows"] = [
-            {"ticker": r["ticker"], "name": r["name"], "market": r["market"], "mcap": r.get("mcap"), "sector": r["sector"],
+            {"ticker": r["ticker"], "name": r["name"], "market": r["market"], "mcap": _json_safe(r.get("mcap")), "sector": r["sector"],
              "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
-             "trig_date": r["trig_date"], "exit_date": r.get("exit_date"), "entry": r["entry"], "stop": r["stop"],
-             "outcome": r["outcome"], "perf": r["return_pct"],
-             "quality": r["quality"], "rr": r["rr"], "rvol": r["rvol"],
-             "volume_score": vsmap.get((r["ticker"], str(r.get("trig_date") or "")[:10])),
+             "trig_date": r["trig_date"], "exit_date": r.get("exit_date"), "entry": _json_safe(r["entry"]), "stop": _json_safe(r["stop"]),
+             "outcome": r["outcome"], "perf": _json_safe(r["return_pct"]),
+             "quality": _json_safe(r["quality"]), "rr": _json_safe(r["rr"]), "rvol": _json_safe(r["rvol"]),
+             "volume_score": _json_safe(vsmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]))),
              "above_vwap": vfmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]), {}).get("above_vwap"),
              "atr_expanding": vfmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]), {}).get("atr_expanding")}
             for r in rows]
@@ -3540,5 +3540,6 @@ if __name__ == "__main__":
     threading.Thread(target=_refresh_loop, daemon=True).start()
     threading.Thread(target=_bridge_loop, daemon=True).start()
     threading.Thread(target=_perf_warm_loop, daemon=True).start()   # keep Performance caches warm (user 2026-08-03)
-    log.info("HVF site on http://127.0.0.1:5057  (ngrok http 5057 to share)")
-    app.run(host="0.0.0.0", port=5057, debug=False, threaded=True)
+    web_port = int(os.environ.get("HVF_WEB_PORT", "5057"))
+    log.info(f"HVF site on http://127.0.0.1:{web_port}  (ngrok http {web_port} to share)")
+    app.run(host="0.0.0.0", port=web_port, debug=False, threaded=True)

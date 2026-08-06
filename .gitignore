@@ -60,3 +60,4 @@ hvf_web/run.log
 
 # Personal ToDo / change-request notes to Claude — local working notes, not tracked
 ChangeRequests/
+tests_fixtures/performance-best-settings.png

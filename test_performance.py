@@ -35,6 +35,26 @@ def test_json_safe_converts_non_finite_numbers_for_browser_payloads():
     assert server._json_safe(ScalarWrapper()) is None
 
 
+def test_winners_endpoint_never_emits_nan(monkeypatch):
+    row = {
+        "ticker": "TEST", "name": "Test", "market": "Test", "mcap": float("nan"),
+        "sector": "Test", "location": "Test", "direction": "BULLISH",
+        "trig_date": dt.date.today().isoformat(), "exit_date": None, "entry": 100.0,
+        "stop": 90.0, "outcome": "OPEN", "return_pct": 2.0, "quality": 50.0,
+        "rr": 3.0, "rvol": float("nan"),
+    }
+    monkeypatch.setattr(server, "_sqa_all_rows", lambda: [row])
+    monkeypatch.setattr(server, "_volscore_trigger_map", lambda: {})
+    monkeypatch.setattr(server, "_volscore_trigger_feature_map", lambda: {})
+
+    response = server.app.test_client().get("/api/winners")
+
+    assert response.status_code == 200
+    assert b"NaN" not in response.data
+    assert response.get_json()["rows"][0]["rvol"] is None
+    assert response.get_json()["rows"][0]["mcap"] is None
+
+
 def test_performance_has_dedicated_let_winners_run_tab():
     html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
 
@@ -69,7 +89,10 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert 'which==="analysis"||which==="settings"' in html
     assert 'used+margin>w+1e-9' in html
     assert 'effectiveMax=maxopen>0?Math.min(maxopen,_fundedMaxOpen(stakeFrac))' in html
-    assert 'Blank/0 Max open uses Auto' in html
+    assert 'All recommendation cards use an explicit numeric Max open value.' in html
+    assert 'OPENS=[3,5,8,12,20,25,50]' in html
+    assert 'WINNERS_MAXOPEN=50' in html
+    assert 'Max open is always numeric' in html
     assert 'id="ordp-maxopen" type="number" min="1" step="1" value="50"' in html
     assert 'id="pfw-maxopen" type="number" min="1" step="1" value="50"' in html
     assert "Below minimum trade" in html
@@ -84,11 +107,21 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert "renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true})" in html
     assert "decisionProofFilter" in html
     assert "achievable P&amp;L" in html
-    assert '"Balanced",best,"Best return relative to drawdown."' in html
-    assert '"Highest return",highest' in html
-    assert '"Lowest drawdown",lowest' in html
-    assert "Changes User Configuration:" in html
+    assert '"Balanced",best,"Best return relative to drawdown, with quarterly consistency included."' in html
+    assert '"Growth",growth,"Highest-return alternative with a materially different configuration."' in html
+    assert '"Defensive",defensive' in html
+    assert '"Broad evidence",broad' in html
+    assert '<b style="color:var(--fg)">Changes:</b>' in html
     assert "Apply this configuration" in html
+    assert "function _pfMatchesCurrentConfig(r)" in html
+    assert '!floor("min_risk_reward",r.rr)' in html
+    assert '!floor("min_rvol",r.rvol)' in html
+    assert 'r.above_vwap!==true' in html
+    assert 'r.atr_expanding!==true' in html
+    assert 'const markets=_pfSavedScope("market"),sectors=_pfSavedScope("sector")' in html
+    assert 'all=all.filter(_pfMatchesCurrentConfig)' in html
+    assert 'if(MY_LIMITS.max_position_pct!=null)set("pfw-stake",MY_LIMITS.max_position_pct)' in html
+    assert '✓ Applied — Back Test updated' in html
     assert 'seq.length<20' in html
     for metric in ("r.rr", "r.quality", "r.mcap", "r.sector", "r.market", "r.rvol",
                    "r.volume_score", "r.above_vwap", "r.atr_expanding"):
