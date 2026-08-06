@@ -180,6 +180,7 @@ _PURPOSE = {
     "Pre-Order Report": "Summarises the working orders queued for the next session so they can be reviewed before the open.",
     "Data Quality Audit": "Nightly Yahoo-vs-IG price / data integrity audit; flags gaps and mismatches.",
     "Price History Audit": "Nightly re-fetch and completeness check of the universe's price history.",
+    "Supabase Database Backup": "Weekly read-only PostgreSQL dump uploaded as a 90-day GitHub Actions artifact.",
     "Session Watchdog": "Every 10 min, health-checks that the session jobs and the IG order bridge are alive; alerts on failure.",
     "Daily Diagnostics": "Morning system diagnostics — data freshness, connectivity and credentials.",
     "Weekend Review": "Saturday review of the week's trades and overall system performance.",
@@ -201,6 +202,8 @@ def _category(title: str) -> str:
     t = title.lower()
     if "price" in t:
         return "Pricing"
+    if "backup" in t:
+        return "Data"
     if "monitor" in t:
         return "Session monitors"
     if "open" in t or "close" in t:

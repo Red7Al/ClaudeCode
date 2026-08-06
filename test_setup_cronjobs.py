@@ -53,3 +53,10 @@ def test_price_jobs_are_in_the_pricing_category():
 
     assert scheduled_jobs._category("Price Data Refresh") == "Pricing"
     assert scheduled_jobs._category("Price History Audit") == "Pricing"
+
+
+def test_supabase_backup_runs_daily_at_2330_utc(monkeypatch):
+    schedules = _load_schedule_module(monkeypatch)
+    jobs = {title: (cron, workflow) for title, cron, workflow in schedules.JOBS}
+
+    assert jobs["Supabase Database Backup"] == ("30 23 * * *", "supabase-backup.yml")
