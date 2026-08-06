@@ -3794,7 +3794,7 @@ function renderDecisionProof(id,proof,opts={}){
 function renderBestCombo(all){
   const box=$("ordp-bestcombo"); if(!box)return;
   const wp=(all||[]).filter(r=>r.perf!=null&&r.trig_date);
-  if(wp.length<10){box.innerHTML="";return;}   // too few trades to optimise meaningfully
+  if(wp.length<10){box.innerHTML='<div class="muted" style="font-size:13px">Not enough usable trades to recommend settings (minimum 10).</div>';return;}
   // Two-stage annual search (P-01, user 2026-08-05): first rank metric/filter candidates using the
   // current Model, then replay only the strongest candidates across stake/open grids. This covers the
   // collected decision metrics without freezing the browser under a combinatorial full cross-product.
@@ -3817,12 +3817,19 @@ function renderBestCombo(all){
     const seq=byDate.filter(r=>scope.test(r)&&r.rr!=null&&r.rr>=rr&&(!q||(r.quality!=null&&r.quality>=q))&&
       (!vs||(r.volume_score!=null&&r.volume_score>=vs))&&(!rv||(r.rvol!=null&&r.rvol>=rv))&&(!vw||r.above_vwap===true)&&(!atr||r.atr_expanding===true));
     if(seq.length<20)continue;
-    const pre=robust(seq,Math.max(.01,WINNERS_STAKE),WINNERS_MAXOPEN);
-    candidates.push({scope,rr,q,vs,rv,vw,atr,seq,pre});
+    // Cheap pre-ranking across the complete configuration grid. The funded replay is much more
+    // expensive; only the strongest candidates reach it below. This keeps the 5k-row page responsive
+    // without dropping any of the tested signal variables from consideration.
+    const mean=seq.reduce((sum,r)=>sum+(+r.perf||0),0)/seq.length;
+    const quick=mean*Math.min(1,seq.length/40);
+    candidates.push({scope,rr,q,vs,rv,vw,atr,seq,quick});
   }
-  candidates.sort((a,b)=>b.pre.score-a.pre.score);
+  candidates.sort((a,b)=>b.quick-a.quick);
+  const shortlist=candidates.slice(0,40);
+  shortlist.forEach(c=>{c.pre=robust(c.seq,Math.max(.01,WINNERS_STAKE),WINNERS_MAXOPEN);});
+  shortlist.sort((a,b)=>b.pre.score-a.pre.score);
   let best=null, evaluated=[];
-  for(const c of candidates.slice(0,30))for(const mo of OPENS)for(const st of STAKES){
+  for(const c of shortlist.slice(0,12))for(const mo of OPENS)for(const st of STAKES){
     const z=robust(c.seq,st/100,mo);if(z.n<20)continue;
     const option={...c,st,mo,...z}; evaluated.push(option);
     if(!best||z.score>best.score)best=option;
