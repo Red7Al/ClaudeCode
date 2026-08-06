@@ -65,3 +65,9 @@ Application Focus - Ad-hoc requests requiring P-15
     * P-15 User Configuration - Ensure Minimum trade (£) and Require ATR expanding save correctly. -- Codex 2026-08-06: added server persistence for min_trade and immediate ATR save on change. [Completed]
     * P-15 IG Orders - Enable changing Bridge may place orders while retaining the complete-IG-credentials safety gate and show the rejection reason. -- Codex 2026-08-06: removed the misleading disabled UI state and surfaced the server prerequisite message. [Completed]
     * P-15 Scheduled Jobs - Repair and verify the 04:30 UTC Price Data Refresh cron job. -- Codex 2026-08-06: loaded the cron-job.org API key from Supabase, confirmed the job was ON, reconciled it to `30 4 * * 1-6`, and verified GitHub Actions run `31071449577` started at 04:30:36 UTC and completed successfully at 04:55:30 UTC. [Completed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Ad-hoc requests requiring P-16
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-16 Scheduled Jobs - Verify whether the 04:30 UTC Price Data Refresh failed by checking both the cron dispatch and the GitHub workflow completion. -- Codex 2026-08-06: confirmed cron dispatch success plus GitHub Actions run `31071449577` completed successfully after approximately 25 minutes. [Completed]
