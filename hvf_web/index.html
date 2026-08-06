@@ -2491,7 +2491,7 @@ function showTab(name){
   // Header controls are Scanner tools; Refresh is admin-only (user 2026-07-03). "Show Filters" also serves
   // My Pre-orders and Pre-orders-to-IG, same placement as the Scanner (user 2026-07-18, P-03).
   const sc=(name==="scanner")&&!locked;
-  const filterTab=["scanner","preorders","orderops"].includes(name)&&!locked;
+  const filterTab=name==="scanner"&&!locked;
   ["signalonly","reset","showall"].forEach(id=>{const b=$(id);if(b)b.style.display=sc?"":"none";});
   const tf=$("togglefilters");
   if(tf){tf.style.display=filterTab?"":"none";
