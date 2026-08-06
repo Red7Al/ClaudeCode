@@ -774,7 +774,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <button class="btn" style="margin-top:8px" onclick="saveTradeFilters()">Save trade filters</button>
         <div id="cfg-msg" style="font-size:12px;margin-top:8px"></div>
       </div>
-      <div class="credrow"><span class="clabel" title="Smallest trade value used by your replay and order affordability checks.">Minimum trade (£)</span><input type="number" min="0" step="0.01" id="lim-min_trade" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="Smallest trade value used by your replay and order affordability checks.">Minimum trade (£)</span><input type="number" min="0" step="0.01" id="lim-min_trade" style="max-width:120px" onchange="saveLimits()"></div>
       <div class="credrow"><span class="clabel">Max position size (% of wallet)</span><input type="number" min="0.1" max="100" step="0.1" id="lim-max_position_pct" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel" title="0 means Auto: floor(100 ÷ Max position size %).">Max open positions (0 = Auto)</span><input type="number" min="0" step="1" id="lim-max_open" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Minimum R:R <span class="muted" style="display:block;font-size:11px;font-weight:400;line-height:1.3">Reward:Risk compares potential gain from entry to target with potential loss from entry to stop. R:R 3 means the target is 3 times as far away as the stop.</span></span><input type="number" min="0" step="0.1" id="lim-min_risk_reward" style="max-width:120px"></div>
@@ -782,7 +782,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div class="credrow"><span class="clabel" title="VolumeScore floor for Pre-orders and manual actions.">Minimum Volume Score (0–12)</span><input type="number" min="0" max="12" step="1" id="lim-min_volume_score" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel" title="Minimum relative volume on the trigger bar.">Minimum RVOL</span><input type="number" min="0" step="0.1" id="lim-min_rvol" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Require price above VWAP</span><label class="cfg-option"><input type="checkbox" id="lim-require_above_vwap"> Yes</label></div>
-      <div class="credrow"><span class="clabel">Require ATR expanding</span><label class="cfg-option"><input type="checkbox" id="lim-require_atr_expanding"> Yes</label></div>
+      <div class="credrow"><span class="clabel">Require ATR expanding</span><label class="cfg-option"><input type="checkbox" id="lim-require_atr_expanding" onchange="saveLimits()"> Yes</label></div>
       <div class="credrow"><span class="clabel">Min instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-min_instrument_value" style="max-width:160px"></div>
       <div class="credrow"><span class="clabel">Max instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-max_instrument_value" style="max-width:160px"></div>
       <div class="credrow" style="display:none"><span class="clabel">Bounce alert</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct"></div>
@@ -2944,7 +2944,7 @@ function renderConfig(){
         const mkts=(typeof _refreshMktList==='function'?_refreshMktList():uniq("market"));
         $("xhvf-markets").innerHTML=(mkts.length?mkts:[...picked]).map(m=>{const on=picked.has(m);
           return `<label style="display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--fg);background:${on?'color-mix(in srgb,var(--accent) 16%,transparent)':'var(--chip)'};border:1px solid ${on?'var(--accent)':'var(--line)'};border-radius:999px;padding:8px 14px;cursor:pointer;line-height:1"><input type="checkbox" class="xhvf-mk" data-v="${m}" ${on?"checked":""} style="width:17px;height:17px;accent-color:var(--accent);margin:0" onchange="this.parentElement.style.background=this.checked?'color-mix(in srgb,var(--accent) 16%,transparent)':'var(--chip)';this.parentElement.style.borderColor=this.checked?'var(--accent)':'var(--line)'"> ${m}</label>`;}).join("");}
-      if($("cfg-bridge")){$("cfg-bridge").checked=!!j.bridge;$('cfg-bridge').disabled=!j.has_ig_creds;}
+      if($("cfg-bridge")){$("cfg-bridge").checked=!!j.bridge;$("cfg-bridge").title=j.has_ig_creds?"Toggle the shared bridge execution setting.":"IG credentials are required before turning this on; the control remains available so the missing prerequisite is clear.";}
       BRIDGE_ON=!!j.bridge; if(typeof paintBridgeBadge==='function')paintBridgeBadge();   // Pre-orders bridge badge (P-06)
       if($("featrow-xposts"))$("featrow-xposts").style.display=j.is_admin?"":"none";
       if(j.features){FEATURES=j.features;if($("feat-xposts"))$("feat-xposts").checked=!!j.features.xposts;}
@@ -2988,7 +2988,8 @@ function saveFeatures(){
 }
 function saveBridge(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({bridge:$("cfg-bridge").checked})})
-    .then(r=>{const el=$("bridge-msg");if(r.ok){el.style.color="var(--bull)";el.textContent="Bridge setting saved.";BRIDGE_ON=$("cfg-bridge").checked;paintBridgeBadge();}else{el.style.color="var(--bear)";el.textContent="Save failed.";}});
+    .then(async r=>{const el=$("bridge-msg"),j=await r.json().catch(()=>({}));if(r.ok){el.style.color="var(--bull)";el.textContent="Bridge setting saved.";BRIDGE_ON=$("cfg-bridge").checked;paintBridgeBadge();}else{el.style.color="var(--bear)";el.textContent=j.error||"Bridge setting could not be saved.";$("cfg-bridge").checked=false;}})
+    .catch(()=>{$("bridge-msg").style.color="var(--bear)";$("bridge-msg").textContent="Bridge setting could not be saved.";$("cfg-bridge").checked=false;});
 }
 function saveEngine(){
   const eng={};["wo_lifespan_days","x_max_per_day","superinvestor_lookback_days","min_senator_trades","spread_retry_attempts","spread_retry_wait_secs","bridge_min_quality","stop_amend_threshold"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});

@@ -421,6 +421,7 @@ def _limit_defaults() -> dict:
     import config as _cfg
     base = {"min_risk_reward": float(getattr(_cfg, "MIN_RISK_REWARD", 3.0)),
             "min_quality": int(getattr(_cfg, "MIN_PUBLISH_QUALITY", 25)),
+            "min_trade": float(getattr(_cfg, "MIN_TRADE", 25)),
             "min_volume_score": int(getattr(_cfg, "MIN_VOLUME_SCORE", 1)),   # personal VolumeScore floor (user 2026-07-27, P-03) — default 1
             "min_rvol": float(getattr(_cfg, "MIN_RVOL", 0)),
             "require_above_vwap": int(getattr(_cfg, "REQUIRE_ABOVE_VWAP", 0)),
@@ -593,7 +594,7 @@ def api_config():
         s = _wu.get_settings(name)
         cur = s.get("limits") or {}
         b = body["limits"] or {}
-        for k in ("min_risk_reward", "bounce_alert_pct", "min_instrument_value", "max_instrument_value", "min_rvol",
+        for k in ("min_risk_reward", "min_trade", "bounce_alert_pct", "min_instrument_value", "max_instrument_value", "min_rvol",
                   "wallet", "max_position_pct", "preorder_threshold_pct"):
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
