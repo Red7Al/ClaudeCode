@@ -20,3 +20,4 @@ Application Focus - Ad-hoc requests 2026-08-06
     * P-11 User Configuration - Add a description of Reward:Risk to the R:R section. -- Codex 2026-08-06: added the explanatory R:R description. [Completed]
     * P-11 Performance - Copying Best Settings to personal configuration must make the next Back Test use the copied settings. -- Codex 2026-08-06: Back Test now reapplies current Quality, R:R and VolumeScore floors and refreshes when the Results panel is selected. [Completed]
     * P-11 Scanner - Make the radio/selection filter section clearer. -- Codex 2026-08-06: grouped the Scanner filters into labelled sections and added explicit selection guidance. [Completed]
+    * P-11 Performance/Best Settings - When recommendations have almost identical settings and performance, provide a more useful alternative choice. -- Codex 2026-08-06: recommendation cards now require meaningful configuration distance before presenting a separate alternative. [Completed]

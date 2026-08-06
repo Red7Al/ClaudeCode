@@ -3877,8 +3877,16 @@ function renderBestCombo(all){
     return {limits,filters};};
   const bestCfg=cfgFor(best);
   const eligible=evaluated.filter(x=>x.n>=20), positive=eligible.filter(x=>x.ret>0);
-  const highest=[...(positive.length?positive:eligible)].sort((a,b)=>b.ret-a.ret||b.score-a.score)[0]||best;
-  const lowest=[...(positive.length?positive:eligible)].sort((a,b)=>a.dd-b.dd||b.score-a.score)[0]||best;
+  // Do not present three cosmetic variations of one answer. A recommendation must differ in at least
+  // two meaningful configuration dimensions (for example R:R + position size) before it earns its own
+  // choice card; otherwise the next genuinely different candidate is more useful to the user.
+  const configDistance=(a,b)=>['rr','q','vs','rv','vw','atr','st','mo'].reduce((n,k)=>n+(a[k]!==b[k]?1:0),0)+
+    (a.scope.label===b.scope.label?0:1);
+  const pickDistinct=(pool,chosen,score,minDistance=2)=>[...pool].sort((a,b)=>score(a,b)||b.score-a.score)
+    .find(x=>chosen.every(y=>configDistance(x,y)>=minDistance))||[...pool].sort((a,b)=>b.score-a.score).find(x=>chosen.every(y=>configDistance(x,y)>0))||best;
+  const basePool=positive.length?positive:eligible;
+  const highest=pickDistinct(basePool,[best],(a,b)=>b.ret-a.ret,2);
+  const lowest=pickDistinct(basePool,[best,highest],(a,b)=>a.dd-b.dd,2);
   const choices=[
     ["Balanced",best,"Best return relative to drawdown."],
     ["Highest return",highest,"Highest historical compounded return in the tested set."],
