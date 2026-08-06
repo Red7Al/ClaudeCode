@@ -2112,7 +2112,7 @@ function showDetail(t){
       ${r.pe!=null?`<div class="kv"><span>P/E</span><b>${r.pe}</b></div>`:''}
       ${r.insider_pct!=null?`<div class="kv"><span>Insider %</span><b>${r.insider_pct.toFixed(2)}%</b></div>`:''}</div>
     <div class="card"><h4>Fundamentals — key metrics</h4><div id="fundbox" class="sqh-loading">⏳ Data loading…</div></div>
-    <div class="card" id="brokercard" style="${r.broker?'':'display:none'}"><h4>Broker analysis</h4><span id="brokerbase">${broker}</span><div id="brokerchg" class="muted" style="margin-top:6px">loading 6–12mo change…</div></div>
+    <div class="card" id="brokercard" style="${r.broker?'':'display:none'}"><h4>Broker analysis</h4><span id="brokerbase">${broker}</span><div id="brokerchg" class="muted sqh-loading" style="margin-top:6px">⏳ Data loading… 6–12mo change</div></div>
     <div class="card"><h4>On X</h4><div id="xlinks" class="sqh-loading">⏳ Data loading…</div></div>
     <div class="card"><h4>X thread (all pages)</h4><div class="tweet sqh-loading" id="tweetbox">⏳ Data loading…</div></div>`;
   fetch(`/api/thread/${r.ticker}`).then(x=>x.json()).then(j=>{
@@ -2568,7 +2568,7 @@ function paintJobs(){
     <td class="muted" style="font-size:12px">${e.workflow||""}</td></tr>`).join("")||`<tr><td colspan="9" class="empty">No scheduled jobs found.</td></tr>`;
 }
 function renderJobs(force){
-  $("jobs-rows").innerHTML=`<tr><td colspan="10" class="empty sqh-loading">⏳ Data loading… run stats.</td></tr>`;
+  $("jobs-rows").innerHTML=`<tr><td colspan="10" class="empty"><span class="sqh-loading">⏳ Data loading… run stats.</span></td></tr>`;
   fetch("/api/scheduled-jobs"+(force?"?refresh=1":""),{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{JOB_ROWS=j.jobs||[];
       const totF=JOB_ROWS.reduce((s,e)=>s+(e.failures||0),0);
@@ -4616,7 +4616,7 @@ function renderCR(ev){
   const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="⏳ Data loading…";}
   $("cr-count").innerHTML='<span class="sqh-loading">⏳ Data loading…</span>';
-  $("cr-rows").innerHTML=`<tr><td colspan="9" class="empty">Loading change-request files…</td></tr>`;
+  $("cr-rows").innerHTML=`<tr><td colspan="9" class="empty"><span class="sqh-loading">⏳ Data loading… change-request files</span></td></tr>`;
   fetch("/api/change-requests?refresh="+Date.now(),{headers:{"X-Auth":AUTH},cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{CR_FILES=j.files||[];paintCR();})
     .catch(()=>{$("cr-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not load (admin only).</td></tr>`;})
