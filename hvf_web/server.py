@@ -985,9 +985,16 @@ def api_records():
     if authed:
         rvol = _snapshot_rvol(snap)                       # RVOL at the real break bar (P-30)
         vscore = _snapshot_volscore(snap)                 # VolumeScore 0–12 at the break bar (P-02 L49)
-        recs = [dict({k: v for k, v in r.items() if k != "_card"}, rvol=rvol.get(r.get("ticker")),
-                     volume_score=(vscore.get(r.get("ticker")) or {}).get("score"))
-                for r in snap.get("records", [])]
+        def _component(result, key):
+            return next((c.get("got") for c in (result or {}).get("components", []) if c.get("key") == key), None)
+        recs = []
+        for r in snap.get("records", []):
+            result = vscore.get(r.get("ticker")) or {}
+            recs.append(dict({k: v for k, v in r.items() if k != "_card"},
+                             rvol=rvol.get(r.get("ticker")),
+                             volume_score=result.get("score"),
+                             above_vwap=_component(result, "above_vwap"),
+                             atr_expanding=_component(result, "atr_expanding")))
         # Canonical market list (user 2026-07-31, P-15) — drives the Scanner "Refresh a choice of markets"
         # picker independent of which fields the client keeps on DATA.
         markets = sorted({r.get("market") for r in snap.get("records", []) if r.get("market")})

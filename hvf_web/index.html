@@ -596,7 +596,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <th data-k="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank for setups that have not triggered, and for instruments with no real volume (FX, indices).">RVOL</th><th data-k="above_vwap" title="Price above VWAP on the trigger bar">VWAP</th><th data-k="atr_expanding" title="ATR expanding on the trigger bar">ATR</th>
           <th data-k="volume_score" title="VolumeScore (0–12) on the break bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank until triggered.">Vol</th>
           <th data-k="rr">R:R</th><th data-k="quality">Quality</th>
-          <th data-k="market">Market</th><th data-k="dist_entry" title="Distance from the live price to the entry level (sorted closest-first)">Dist→Entry</th><th data-k="status">Status</th>
+          <th data-k="market">Market</th><th data-k="dist_entry" title="Absolute distance from the live price to the entry level (sorted furthest-first)">Dist→Entry</th><th data-k="status">Status</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
           <th data-k="current_price" title="Latest price">Now</th>
           <th data-k="tgt_months" title="Expected time to reach the target (the squeeze's formation span)">To target</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
@@ -1735,7 +1735,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <script>
-let DATA=[], SEL=null, sortK="days_since", sortDir=-1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: most days since trigger first (user 2026-08-01)
+let DATA=[], SEL=null, sortK="dist_entry", sortDir=-1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: absolute Dist→Entry descending
 const $=id=>document.getElementById(id);
 // In-app confirm (user 2026-07-18): the native confirm() prefixes the ngrok host ("…ngrok-free.dev
 // says"), which looks broken. This styled dialog keeps the message clean and on-brand. Returns a Promise.
