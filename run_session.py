@@ -1199,14 +1199,23 @@ if __name__ == "__main__":
         from intraday_signals import hvf_watch_us_equities
         from config import SESSION_INSTRUMENTS
         tickers = set(SESSION_INSTRUMENTS.get("US_OPEN", []))
-        hvf_watch_us_equities(tickers, notify_slack=True)
+        hvf_watch_us_equities(tickers, notify_slack=True, session_key="US_OPEN",
+                              watch_label="US Equities", state_key="us_equities")
     elif session == "UK_HVF_WATCH":
         # 2-hourly HVF watch for UK/FTSE250 instruments — mirrors US_HVF_WATCH cadence.
         # Uses UK_OPEN instrument list; deduplicates via hvf_watch_state fingerprint.
         from intraday_signals import hvf_watch_us_equities
         from config import SESSION_INSTRUMENTS
         tickers = set(SESSION_INSTRUMENTS.get("UK_OPEN", []))
-        hvf_watch_us_equities(tickers, notify_slack=True)
+        hvf_watch_us_equities(tickers, notify_slack=True, session_key="UK_OPEN",
+                              watch_label="UK / FTSE", state_key="uk_equities")
+    elif session == "AUS_HVF_WATCH":
+        # Two-hourly Squeeze visibility for the Asia/AUS session universe.
+        from intraday_signals import hvf_watch_us_equities
+        from config import SESSION_INSTRUMENTS
+        tickers = set(SESSION_INSTRUMENTS.get("AUS_OPEN", []))
+        hvf_watch_us_equities(tickers, notify_slack=True, session_key="AUS_OPEN",
+                              watch_label="AUS / Asia", state_key="aus_session")
     elif session == "SESSION_CLOSE":
         run_session_close()
     elif session == "WEEKEND_REVIEW":

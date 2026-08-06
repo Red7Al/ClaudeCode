@@ -683,10 +683,11 @@ def scan_intraday(ticker: str) -> dict:
 US_NON_EQUITY = {"SPX500", "XAUUSD", "OIL", "BTCUSD", "ETHUSD", "XRPUSD", "SOLUSD", "BNBUSD"}
 
 
-def hvf_watch_us_equities(open_tickers: set, notify_slack: bool = True) -> list:
+def hvf_watch_us_equities(session_tickers: set, notify_slack: bool = True,
+                          session_key: str = "US_OPEN", watch_label: str = "US Equities",
+                          state_key: str = "us_equities") -> list:
     """
-    Run the multi-timeframe HVF scan over the US EQUITIES already in our list
-    (SESSION_INSTRUMENTS["US_OPEN"] minus index/commodity/crypto) and surface
+    Run the multi-timeframe HVF scan over the supplied session universe and surface
     tradeable + developing funnels to #signals.
 
     This is the always-on HVF VISIBILITY layer for the US Monitor so a funnel on
@@ -699,8 +700,9 @@ def hvf_watch_us_equities(open_tickers: set, notify_slack: bool = True) -> list:
     from price_action import get_hvf_signal_mtf, get_trend_structure
     from config import SESSION_INSTRUMENTS, HVF_MIN_RR
 
-    equities = [t for t in SESSION_INSTRUMENTS.get("US_OPEN", [])
-                if t not in US_NON_EQUITY and t not in (open_tickers or set())]
+    non_equity = US_NON_EQUITY if session_key == "US_OPEN" else set()
+    equities = [t for t in (session_tickers or SESSION_INSTRUMENTS.get(session_key, []))
+                if t not in non_equity]
 
     tradeable, developing = [], []
     for ticker in equities:
@@ -742,11 +744,11 @@ def hvf_watch_us_equities(open_tickers: set, notify_slack: bool = True) -> list:
     tradeable = _still
 
     developing.sort(key=lambda r: r.get("risk_reward") or 0, reverse=True)
-    log.info(f"HVF watch (US equities): {len(equities)} scanned, "
+    log.info(f"HVF watch ({watch_label}): {len(equities)} scanned, "
              f"{len(tradeable)} tradeable, {len(developing)} developing")
 
     if notify_slack and (tradeable or developing):
-        _post_hvf_watch(tradeable, developing, HVF_MIN_RR)
+        _post_hvf_watch(tradeable, developing, HVF_MIN_RR, watch_label, state_key)
         if tradeable:
             _generate_x_drafts(tradeable)
     return tradeable
@@ -779,12 +781,13 @@ def _hvf_fingerprint(tradeable: list, developing: list) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
 
-def _hvf_last_fingerprint() -> str:
+def _hvf_last_fingerprint(state_key: str = "us_equities") -> str:
     """Read the last-posted HVF watch fingerprint from DB. Returns '' on any error."""
     try:
         conn = _pool_get_db()
         rows = conn.run(
-            "SELECT fingerprint FROM hvf_watch_state WHERE key = 'us_equities' LIMIT 1"
+            "SELECT fingerprint FROM hvf_watch_state WHERE key = :state_key LIMIT 1",
+            state_key=state_key,
         )
         conn.close()
         return rows[0][0] if rows else ""
@@ -793,24 +796,25 @@ def _hvf_last_fingerprint() -> str:
         return ""
 
 
-def _hvf_save_fingerprint(fp: str):
+def _hvf_save_fingerprint(fp: str, state_key: str = "us_equities"):
     """Upsert the current HVF watch fingerprint into DB."""
     try:
         conn = _pool_get_db()
         conn.run(
             """INSERT INTO hvf_watch_state (key, fingerprint, posted_at)
-               VALUES ('us_equities', :fp, now())
+               VALUES (:state_key, :fp, now())
                ON CONFLICT (key) DO UPDATE
                SET fingerprint = EXCLUDED.fingerprint,
                    posted_at   = EXCLUDED.posted_at""",
-            fp=fp,
+            state_key=state_key, fp=fp,
         )
         conn.close()
     except Exception as e:
         log.warning(f"hvf_save_fingerprint failed (non-critical): {e}")
 
 
-def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
+def _post_hvf_watch(tradeable: list, developing: list, min_rr: float,
+                    watch_label: str = "US Equities", state_key: str = "us_equities"):
     """
     Post the HVF equity-watch to #claude-trading-signals.
 
@@ -832,13 +836,13 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
 
     # ── Deduplication check ───────────────────────────────────────────────────────────────────────────────────────────
     current_fp  = _hvf_fingerprint(tradeable, developing)
-    last_fp     = _hvf_last_fingerprint()
+    last_fp     = _hvf_last_fingerprint(state_key)
 
     if current_fp == last_fp:
         # Nothing changed — send a lightweight "no change" notice and return
         blocks = [
             {"type": "header",
-             "text": {"type": "plain_text", "text": "🌀 HVF Watch — US Equities (US Monitor)"}},
+             "text": {"type": "plain_text", "text": f"🌀 Squeeze Watch — {watch_label}"}},
             {"type": "section",
              "text": {"type": "mrkdwn",
                       "text": (f"*No changes in the latest period.*\n"
@@ -874,15 +878,15 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
 
     text = ""
     if tradeable:
-        text += f"*⚡ Tradeable HVF on our US equities — {len(tradeable)} (R:R ≥ {min_rr:.0f}:1)*\n"
+        text += f"*⚡ Tradeable Squeeze setups — {len(tradeable)} (R:R ≥ {min_rr:.0f}:1)*\n"
         text += "\n".join(_line(r) for r in sorted(tradeable, key=_weight)[:15]) + "\n\n"
     if developing:
-        text += f"*👀 Developing HVF — {len(developing)} (watch, R:R < {min_rr:.0f}:1)*\n"
+        text += f"*👀 Developing Squeeze setups — {len(developing)} (watch, R:R < {min_rr:.0f}:1)*\n"
         text += "\n".join(_line(r) for r in sorted(developing, key=_weight)[:15])
 
     blocks = [
         {"type": "header",
-         "text": {"type": "plain_text", "text": "🌀 HVF Watch — US Equities (US Monitor)"}},
+         "text": {"type": "plain_text", "text": f"🌀 Squeeze Watch — {watch_label}"}},
         {"type": "section", "text": {"type": "mrkdwn", "text": text.strip()[:2900]}},
         {"type": "context",
          "elements": [{"type": "mrkdwn",
@@ -891,7 +895,7 @@ def _post_hvf_watch(tradeable: list, developing: list, min_rr: float):
     ]
     try:
         requests.post(slack_url, json={"blocks": blocks}, timeout=10)
-        _hvf_save_fingerprint(current_fp)
+        _hvf_save_fingerprint(current_fp, state_key)
     except Exception as e:
         log.error(f"HVF watch post failed: {e}")
 

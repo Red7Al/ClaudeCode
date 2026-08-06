@@ -37,4 +37,19 @@ def test_scheduled_jobs_use_squeeze_display_names_without_changing_workflows():
     assert scheduled_jobs._display_name("HVF Daily Report") == "Squeeze Daily Report"
     assert scheduled_jobs._display_name("HVF Orders") == "Squeeze Orders"
     assert scheduled_jobs._display_name("UK HVF Watch") == "UK Squeeze Watch"
+    assert scheduled_jobs._display_name("AUS HVF Watch") == "AUS Squeeze Watch"
     assert scheduled_jobs._display_name("Price Data Refresh") == "Price Data Refresh"
+
+
+def test_aus_squeeze_watch_is_scheduled_during_the_aus_session(monkeypatch):
+    schedules = _load_schedule_module(monkeypatch)
+    jobs = {title: (cron, workflow) for title, cron, workflow in schedules.JOBS}
+
+    assert jobs["AUS HVF Watch"] == ("30 0,2,4 * * 1-5", "trading-aus-hvf-watch.yml")
+
+
+def test_price_jobs_are_in_the_pricing_category():
+    from hvf_web import scheduled_jobs
+
+    assert scheduled_jobs._category("Price Data Refresh") == "Pricing"
+    assert scheduled_jobs._category("Price History Audit") == "Pricing"

@@ -133,13 +133,14 @@ _MOMENTUM_JOBS = {"AUS Open", "AUS Monitor", "Commodity Monitor AM", "Commodity 
                   "UK Open", "UK Monitor", "US Open", "US Monitor",
                   # user 2026-07-11: these serve the multi-factor momentum pipeline too
                   "Sunday Readiness Check", "Sunday Pre-Open Commodity Scan", "COT Report"}
-_SQUEEZE_JOBS = {"HVF Daily Report", "HVF Orders", "UK HVF Watch", "US HVF Watch"}
+_SQUEEZE_JOBS = {"HVF Daily Report", "HVF Orders", "AUS HVF Watch", "UK HVF Watch", "US HVF Watch"}
 
 _DISPLAY_NAMES = {
     "HVF Daily Report": "Squeeze Daily Report",
     "HVF Orders": "Squeeze Orders",
     "UK HVF Watch": "UK Squeeze Watch",
     "US HVF Watch": "US Squeeze Watch",
+    "AUS HVF Watch": "AUS Squeeze Watch",
 }
 
 
@@ -171,6 +172,7 @@ _PURPOSE = {
     "US Monitor": "Every 5 min through US hours, manages open US-session positions.",
     "US HVF Watch": "Four intraday checks of US Squeeze setups approaching their trigger, alerting as they near entry.",
     "UK HVF Watch": "Four intraday checks of UK Squeeze setups approaching their trigger, alerting as they near entry.",
+    "AUS HVF Watch": "Three intraday checks of the Asia/AUS Squeeze universe approaching its trigger, alerting as setups near entry.",
     "Social Monitor": "Every 15 min, watches X / social feeds for relevant market signals and mentions.",
     "Commodity Monitor PM": "Evening intraday scan of commodities for momentum signals.",
     "Session Close": "End-of-session housekeeping — settles the day's session positions and records realised P&L.",

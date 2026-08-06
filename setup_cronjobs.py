@@ -106,6 +106,7 @@ JOBS = [
     # ── Asia / AUS session ────────────────────────────────────────────────────────────────────────────────────────────
     ("AUS Open",            "0 0 * * 1-5",    "trading-aus-open.yml"),
     ("AUS Monitor",          "*/5 0-6 * * 1-5", "trading-aus-monitor.yml"),
+    ("AUS HVF Watch",        "30 0,2,4 * * 1-5", "trading-aus-hvf-watch.yml"),
     ("Commodity Monitor AM", "*/10 4-8 * * 1-5", "trading-commodity-monitor.yml"),
     # ── Pre-UK ────────────────────────────────────────────────────────────────────────────────────────────────────────
     ("Price Data Refresh",  "30 4 * * 1-6",   "trading-price-audit.yml"),  # 04:30 UTC Mon-Sat — refresh price_history BEFORE the 05:30 HVF Daily Report, which needs current bars (user 2026-08-04, ToDo P-02). Reuses the audit workflow (re-fetch trailing window + upsert; idempotent). The 23:00 "Price History Audit" still does the nightly IG-truth correction.
