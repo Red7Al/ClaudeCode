@@ -181,8 +181,9 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--chip)} tr.sel{backgroun
 #view-config .confpanel[data-panel="trading"] .card>h4,#view-config .confpanel[data-panel="trading_squeeze"] .card>h4{border-left-color:#cc5de8;color:#cc5de8}
 #view-config .credrow .clabel{flex:0 0 300px}
 #view-config .credrow>input:not(.cred-in),#view-config .credrow>label:not(.clabel){margin-right:auto;margin-left:5cm}
+#view-config .credrow>label.cfg-option{display:inline-flex;align-items:center;min-width:120px}
 #view-config .credrow>input.cred-in{margin-left:5cm}
-@media(max-width:680px){#view-config .credrow .clabel{flex:1 1 100%}#view-config .credrow>input:not(.cred-in),#view-config .credrow>input.cred-in,#view-config .credrow>label:not(.clabel){margin-left:0}}
+@media(max-width:680px){#view-config .credrow .clabel{flex:1 1 100%}#view-config .credrow>input:not(.cred-in),#view-config .credrow>input.cred-in,#view-config .credrow>label:not(.clabel){margin-left:0}#view-config .credrow>label.cfg-option{min-width:0}}
 img{max-width:100%;border-radius:6px;display:block}
 .rule{padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
 .rule .top{display:flex;gap:8px;align-items:center}
@@ -769,8 +770,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div class="credrow"><span class="clabel">Minimum Quality (Q)</span><input type="number" min="0" max="100" step="1" id="lim-min_quality" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel" title="VolumeScore floor for Pre-orders and manual actions.">Minimum Volume Score (0–12)</span><input type="number" min="0" max="12" step="1" id="lim-min_volume_score" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel" title="Minimum relative volume on the trigger bar.">Minimum RVOL</span><input type="number" min="0" step="0.1" id="lim-min_rvol" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel">Require price above VWAP</span><label><input type="checkbox" id="lim-require_above_vwap"> Yes</label></div>
-      <div class="credrow"><span class="clabel">Require ATR expanding</span><label><input type="checkbox" id="lim-require_atr_expanding"> Yes</label></div>
+      <div class="credrow"><span class="clabel">Require price above VWAP</span><label class="cfg-option"><input type="checkbox" id="lim-require_above_vwap"> Yes</label></div>
+      <div class="credrow"><span class="clabel">Require ATR expanding</span><label class="cfg-option"><input type="checkbox" id="lim-require_atr_expanding"> Yes</label></div>
       <div class="credrow"><span class="clabel">Min instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-min_instrument_value" style="max-width:160px"></div>
       <div class="credrow"><span class="clabel">Max instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-max_instrument_value" style="max-width:160px"></div>
       <div class="credrow" style="display:none"><span class="clabel">Bounce alert</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct"></div>
