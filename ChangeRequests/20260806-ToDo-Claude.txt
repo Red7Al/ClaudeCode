@@ -30,5 +30,7 @@ Application Focus - Ad-hoc requests 2026-08-06
     * P-11 Configuration - Group all IG buttons behind a light-grey rectangle and use a trading icon for IG Open Trades. -- Codex 2026-08-06: grouped IG Credentials, limits, open trades, Trading (Squeeze) and IG Leverage; replaced the folder icon. [Completed]
     * P-11 Configuration - Make the IG button group rectangle 50% darker between its current grey and the page background. -- Codex 2026-08-06: changed the group background to a 50/50 colour blend. [Completed]
     * P-11 Configuration - Move the disabled Adaptive Filters button next to Tab visibility. -- Codex 2026-08-06: repositioned it outside the IG group beside Tab visibility. [Completed]
+    * P-11 Configuration - Rename Trading (Squeeze) to My Trading Filters and place IG Open Trades beside IG Leverage on the left of the bottom IG row. -- Codex 2026-08-06: updated the label and reordered the IG group. [Completed]
     * P-11 Configuration - Make clear that My filter defaults belong to the Scanner Report page. -- Codex 2026-08-06: renamed the card and clarified its scope. [Completed]
     * P-11 Configuration - Centre all buttons inside the IG button group. -- Codex 2026-08-06: centred the grouped IG controls. [Completed]
+    * P-11 Configuration - Move VWAP/ATR Yes controls to the right and shift User Configuration input boxes 5 cm further right. -- Codex 2026-08-06: applied the desktop control offset with a narrow-screen reset. [Completed]

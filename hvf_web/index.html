@@ -180,8 +180,9 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--chip)} tr.sel{backgroun
 #view-config .confpanel[data-panel="leverage"] .card>h4{border-left-color:#51cf66;color:#51cf66}
 #view-config .confpanel[data-panel="trading"] .card>h4,#view-config .confpanel[data-panel="trading_squeeze"] .card>h4{border-left-color:#cc5de8;color:#cc5de8}
 #view-config .credrow .clabel{flex:0 0 300px}
-#view-config .credrow>input:not(.cred-in),#view-config .credrow>label:not(.clabel){margin-right:auto}
-@media(max-width:680px){#view-config .credrow .clabel{flex:1 1 100%}}
+#view-config .credrow>input:not(.cred-in),#view-config .credrow>label:not(.clabel){margin-right:auto;margin-left:5cm}
+#view-config .credrow>input.cred-in{margin-left:5cm}
+@media(max-width:680px){#view-config .credrow .clabel{flex:1 1 100%}#view-config .credrow>input:not(.cred-in),#view-config .credrow>input.cred-in,#view-config .credrow>label:not(.clabel){margin-left:0}}
 img{max-width:100%;border-radius:6px;display:block}
 .rule{padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
 .rule .top{display:flex;gap:8px;align-items:center}
@@ -730,8 +731,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <span class="confnav-group" aria-label="IG settings">
       <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG Credentials</button>
       <button class="pill" data-panel="limits" onclick="confShow('limits')">🛡️ My trading limits</button>
+      <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 My Trading Filters</button>
       <button class="pill" data-panel="igopen" onclick="confShow('igopen')">📈 IG Open Trades</button>
-      <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>
       <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ IG Leverage</button>
     </span>
     <!-- Gold-tier only (user 2026-07-17, P-06): ships HIDDEN and is revealed by renderConfig() only for a
@@ -810,7 +811,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- Trading panel — completely separate from everything else (user 2026-07-03), warning-tinted -->
   <!-- Trading (Squeeze) — the trade filters that gate squeeze-setup orders (user 2026-07-03 split) -->
   <div class="confpanel hidden" data-panel="trading_sq">
-    <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">Trading (Squeeze) — affects live orders</h3>
+    <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px">My Trading Filters — affects live orders</h3>
     <p class="muted" style="font-size:12px;margin:0 0 14px">Which squeeze setups may be traded on the live IG account.</p>
     <div class="card" ><h4>Trade filters — direction</h4>
       <p class="muted" style="font-size:12px">Only ticked directions may be traded. Ticking both (or neither) = no restriction. To control which <b>markets</b> may be traded, use <b>Markets (User)</b> — that switch now governs both what you see and what you trade.</p>
