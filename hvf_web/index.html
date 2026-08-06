@@ -2827,7 +2827,7 @@ let _statusSeeded=false;
 function _seedStatusDefaults(){
   if(_statusSeeded)return; _statusSeeded=true;
   const seed=(id,vals)=>{const el=$(id); if(el&&!el.value)el.value=vals.join(SEP);};
-  if(!(USER_FILTERS&&USER_FILTERS.mf_status))seed("mf_status",["READY"]);   // Scanner default = Ready (user 2026-08-01, reverted)
+  if(!(USER_FILTERS&&USER_FILTERS.mf_status))seed("mf_status",["TRIGGERED"]);   // Scanner default = Triggered (user 2026-08-06)
   seed("pof_status",["READY","TRIGGERED"]);   // My Pre-orders (L203)
   seed("oof_status",["PENDING","WATCHING"]);  // Pre-orders to IG — Pending + Waiting (L225)
   // Squeeze History: no default outcome pre-selection (user 2026-08-01) — show every outcome, sorted by
