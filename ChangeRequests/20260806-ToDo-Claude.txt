@@ -1,0 +1,22 @@
+===============================================================================================================================================================
+= HVF Web Application — Ad-hoc requests
+===============================================================================================================================================================
+
+Date: 2026-08-06
+Timezone: Europe/London
+Contents: Outstanding and completed ad-hoc requests recorded under P-11
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Ad-hoc requests 2026-08-06
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-11 Loading states - Areas that display data loading, including Scheduled Jobs, must use the coloured flashing hourglass loading state. -- Codex 2026-08-06: standardised the remaining Scheduled Jobs, Change Requests and broker-detail loading messages. [Completed]
+    * P-11 Configuration - Disable Adaptive Filters until the walk-forward implementation exists. -- Codex 2026-08-06: disabled the control and forced the saved effective value to 0 without deleting stored configuration. [Completed]
+    * P-11 Terminology - Replace all user-facing "funnel" text with "squeeze". -- Codex 2026-08-06: updated the Squeeze Scanner UI text and labels. [Completed]
+    * P-11 Mobile - When an iPad mini is recognised, reduce excess horizontal padding on the widest tabs. -- Codex 2026-08-06: added iPad mini detection and compact tab sizing. [Completed]
+    * P-11 X Posts - Remove the admin option to show or hide the X Posts tab; it must always be available as an admin tab. -- Codex 2026-08-06: removed the visibility control while retaining admin access gating. [Completed]
+    * P-11 User Configuration - Left-align input boxes and checkboxes in User Configuration. -- Codex 2026-08-06: fixed the configuration control column alignment. [Completed]
+    * P-11 User Configuration - Make configuration card headers distinguishable by colour. -- Codex 2026-08-06: added restrained per-panel header accents. [Completed]
+    * P-11 User Configuration - Add a description of Reward:Risk to the R:R section. -- Codex 2026-08-06: added the explanatory R:R description. [Completed]
+    * P-11 Performance - Copying Best Settings to personal configuration must make the next Back Test use the copied settings. -- Codex 2026-08-06: Back Test now reapplies current Quality, R:R and VolumeScore floors and refreshes when the Results panel is selected. [Completed]
+    * P-11 Scanner - Make the radio/selection filter section clearer. -- Codex 2026-08-06: grouped the Scanner filters into labelled sections and added explicit selection guidance. [Completed]

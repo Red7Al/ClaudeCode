@@ -433,7 +433,7 @@ def _limit_defaults() -> dict:
             # Adaptive filters (user 2026-07-27, P-07): when on, the user's Market/Quality/R:R filters are
             # re-tuned from the recent best-settings analysis every `rebalance_weeks`. The walk-forward
             # engine that applies it is the separate (deferred) L58 task; this is the configuration knob.
-            "adaptive_filters": int(getattr(_cfg, "ADAPTIVE_FILTERS", 0)),
+            "adaptive_filters": 0,  # disabled pending a completed walk-forward implementation
             "rebalance_weeks": int(getattr(_cfg, "REBALANCE_WEEKS", 4)),
             # "What separates the winners" model variables saved as the user's defaults (user 2026-07-28,
             # P-10 L158) — Wallet £, Max position size %, Max open positions — so the winners tab remembers them.
@@ -604,6 +604,7 @@ def api_config():
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:
                 cur[k] = int(v)
+        cur["adaptive_filters"] = 0  # disabled pending a completed walk-forward implementation
         if isinstance(b.get("email_recipients"), list):
             cur["email_recipients"] = [str(x).strip() for x in b["email_recipients"] if str(x).strip()]
         s["limits"] = cur

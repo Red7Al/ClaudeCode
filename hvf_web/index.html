@@ -26,6 +26,9 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .tabs{display:flex;gap:4px;padding:6px 16px 0;border-bottom:1px solid var(--line);position:sticky;top:calc(var(--hdr-h,49px) - 1px);z-index:4;background:var(--bg)}
 .tab{background:none;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;color:var(--muted);padding:6px 16px;cursor:pointer;font-size:13px}
 #tab-sysdocs{max-width:112px;padding-inline:10px;line-height:1.15;white-space:normal}
+.ipad-mini .tab{padding-inline:9px;font-size:12px}
+.ipad-mini :where(#tab-welcome,#tab-whatwedo,#tab-intro,#tab-appendix,#tab-terms,#tab-fees,#tab-igaccount){padding-inline:6px}
+.ipad-mini :where(#tab-performance,#tab-scanner,#tab-preorders,#tab-orderops,#tab-activity,#tab-mfm){padding-inline:8px}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
 .sqh-loading{color:#d29922!important;font-weight:700;letter-spacing:.02em;animation:sqhPulse .9s ease-in-out infinite alternate}
 .cfg-defaults-ready{color:var(--muted)!important;font-weight:400!important;letter-spacing:normal!important;animation:none!important}
@@ -78,6 +81,9 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .layout{display:flex;gap:0;min-height:calc(100vh - 49px)}
 aside{width:270px;flex:none;border-right:1px solid var(--line);padding:12px;overflow:auto;max-height:calc(100vh - var(--sticky-top,90px));position:sticky;top:var(--sticky-top,90px)}
 aside h3{font-size:11px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;letter-spacing:.04em}
+.scanner-filter-note{font-size:11px;line-height:1.4;color:var(--muted);background:color-mix(in srgb,var(--accent) 8%,transparent);border:1px solid var(--line);border-radius:6px;padding:7px 8px;margin:0 0 10px}
+.scanner-filter-group{border-top:1px solid var(--line);padding-top:7px;margin-top:10px}
+.scanner-filter-group h3{margin-top:0;color:var(--fg)}
 .f{margin-bottom:8px} label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
 .f select[multiple]{width:100%;height:auto;padding:2px 4px;font-size:12px}   /* multi-select filters (user 2026-07-06) */
 .f select[multiple] option{padding:2px 4px}
@@ -254,7 +260,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #sl-health .fcard>.muted{font-size:11px!important;line-height:1.25;min-height:2.5em;white-space:normal;overflow-wrap:anywhere}
 @media(max-width:680px){#sl-health{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-/* Hero panel with the funnel illustration */
+/* Hero panel with the squeeze illustration */
 .hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:28px;box-shadow:var(--sh);
   display:grid;grid-template-columns:1.1fr 1fr;gap:28px;align-items:center;margin-bottom:8px}
 .hero .htext h3{font-size:20px;font-weight:800;letter-spacing:-.01em;margin:0 0 10px}
@@ -547,25 +553,26 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <h3>Cherry-pick <span class="muted" style="font-weight:400;font-size:10px;text-transform:none;letter-spacing:0">(from 15-month analysis)</span></h3>
     <div id="scanner-presets" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>
     <div class="f"><label>Search name / ticker</label><input id="f_search" type="text" placeholder="e.g. Howden, ABF, gold"></div>
-    <h3>Direction & place <span class="muted" style="font-weight:400;font-size:10px;text-transform:none;letter-spacing:0">(tick any number)</span></h3>
+    <div class="scanner-filter-note"><b>How filters work</b><br>Choose one or more values. Leave a filter unselected to include everything. The green outline shows an active selection.</div>
+    <div class="scanner-filter-group"><h3>Direction &amp; place</h3>
     <div class="f"><label>Direction</label><select id="f_dir" multiple size="3"><option>BULL</option><option>BEAR</option><option value="—">— (none)</option></select></div>
     <div class="f"><label>Location (Geography)</label><select id="f_loc" multiple size="4"></select></div>
     <div class="f"><label>Market</label><select id="f_mkt" multiple size="5"></select></div>
-    <div class="f"><label>Sector</label><select id="f_sec" multiple size="5"></select></div>
-    <h3>Squeeze</h3>
+    <div class="f"><label>Sector</label><select id="f_sec" multiple size="5"></select></div></div>
+    <div class="scanner-filter-group"><h3>Squeeze state &amp; quality</h3>
     <div class="f"><label>Status</label><select id="f_stat" multiple size="4"><option>TRIGGERED</option><option>READY</option><option>DEVELOPING</option><option value="—">— (none)</option></select></div>
     <div class="f"><label>Timeframe</label><select id="f_tf" multiple size="4"></select></div>
     <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" value="45" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
     <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" value="3.1" placeholder="min"><input id="f_rrmax" type="number" step="0.1" placeholder="max"></div></div>
     <div class="f"><label>Dist to entry % range</label><div class="row2"><input id="f_demin" type="number" step="0.1" value="-10" placeholder="min"><input id="f_demax" type="number" step="0.1" value="10" placeholder="max"></div></div>
     <div class="f"><label>Days since setup range</label><div class="row2"><input id="f_dsmin" type="number" placeholder="min"><input id="f_dsmax" type="number" value="90" placeholder="max"></div></div>
-    <div class="f"><label>RVOL range (at trigger)</label><div class="row2"><input id="f_rvmin" type="number" step="0.1" placeholder="min"><input id="f_rvmax" type="number" step="0.1" placeholder="max"></div></div>
-    <h3>Fundamentals</h3>
+    <div class="f"><label>RVOL range (at trigger)</label><div class="row2"><input id="f_rvmin" type="number" step="0.1" placeholder="min"><input id="f_rvmax" type="number" step="0.1" placeholder="max"></div></div></div>
+    <div class="scanner-filter-group"><h3>Fundamentals</h3>
     <div class="f"><label>P/E range</label><div class="row2"><input id="f_pemin" type="number" placeholder="min"><input id="f_pemax" type="number" placeholder="max"></div></div>
-    <div class="f"><label>Insider % range</label><div class="row2"><input id="f_inmin" type="number" step="0.1" placeholder="min"><input id="f_inmax" type="number" step="0.1" placeholder="max"></div></div>
-    <h3>Chart window</h3>
+    <div class="f"><label>Insider % range</label><div class="row2"><input id="f_inmin" type="number" step="0.1" placeholder="min"><input id="f_inmax" type="number" step="0.1" placeholder="max"></div></div></div>
+    <div class="scanner-filter-group"><h3>Chart window</h3>
     <div class="f"><label>Price chart: last <span id="dlbl">365</span> days</label>
-      <div class="slider"><input id="f_days" type="range" min="30" max="1095" step="5" value="365"></div></div>
+      <div class="slider"><input id="f_days" type="range" min="30" max="1095" step="5" value="365"></div></div></div>
     <small class="muted">Drives the "Price — last N days" chart only.</small>
   </aside>
 
@@ -575,7 +582,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="doc" style="max-width:none;margin:0;padding:24px 16px 0">
       <span class="eyebrow">Scanner</span>
       <h1 style="margin:6px 0 4px">Scanner Report</h1>
-      <p class="lede" style="margin:0">Every instrument we scan across shares, indices, FX and commodities — funnels spotted early, with the exact levels to act on. Use the charts or <b>Filters</b> to narrow; click a row for full detail.</p>
+      <p class="lede" style="margin:0">Every instrument we scan across shares, indices, FX and commodities — squeezes spotted early, with the exact levels to act on. Use the charts or <b>Filters</b> to narrow; click a row for full detail.</p>
     </div>
     <div class="viz" id="viz"></div>
     <div class="count" id="count"></div>
@@ -592,7 +599,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <th data-k="market">Market</th><th data-k="dist_entry" title="Distance from the live price to the entry level (sorted closest-first)">Dist→Entry</th><th data-k="status">Status</th>
           <th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
           <th data-k="current_price" title="Latest price">Now</th>
-          <th data-k="tgt_months" title="Expected time to reach the target (the funnel's formation span)">To target</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
+          <th data-k="tgt_months" title="Expected time to reach the target (the squeeze's formation span)">To target</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th data-k="trig_date">Triggered</th><th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th>
           <th data-k="pe">P/E</th><th data-k="insider_pct" title="Insider ownership %">Insider %</th><th data-k="timeframe">TF</th>
           <th data-k="location">Location</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th>
@@ -765,7 +772,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="confpanel hidden" data-panel="adaptive">
     <div class="card" style="margin-bottom:0"><h4>Adaptive Filters</h4>
       <p class="muted" style="font-size:12px">When on, your Market / Quality / R:R filters are periodically re-tuned from the recent <b>best-settings</b> analysis (every N weeks). The auto-tuning engine is being built (deferred); this stores your preference + cadence. Saved with your other trading limits.</p>
-      <div class="credrow"><span class="clabel" title="When on, your Market / Quality / R:R filters are periodically re-tuned from the recent 'best settings' analysis (every N weeks below).">Adaptive filters — auto-tune Market / Quality / R:R</span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="lim-adaptive_filters"> enable</label></div>
+      <div class="credrow"><span class="clabel" title="Disabled pending a completed walk-forward implementation.">Adaptive filters — disabled pending implementation</span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="lim-adaptive_filters" disabled> off</label></div>
       <div class="credrow"><span class="clabel" title="How often the adaptive filters re-tune, in weeks (e.g. 4 = every 4 weeks). Only used when 'Adaptive filters' is enabled.">Rebalance window (weeks)</span><input type="number" min="1" max="52" step="1" id="lim-rebalance_weeks" placeholder="4" style="max-width:120px"></div>
       <button class="btn" style="margin-top:10px" onclick="saveLimits()">Save adaptive filters</button>
       <span id="lim-msg2" style="font-size:12px;margin-left:8px"></span>
@@ -778,7 +785,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="card" style="margin-bottom:0"><h4>Tab visibility</h4>
       <p class="muted" style="font-size:12px;margin:0 0 8px">Tick the tabs you want to see. Configuration always stays visible.</p>
 <div id="tabvis-list" class="sqh-loading" style="display:flex;flex-wrap:wrap;gap:6px 14px">⏳ Data loading…</div>
-      <div class="credrow" id="featrow-xposts" style="display:none"><span class="clabel">Show "X Posts" tab <span class="muted">(admin feature, applies to all admins)</span></span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="feat-xposts" onchange="saveFeatures()"> Enabled</label></div>
       <button class="btn" style="margin-top:10px" onclick="saveTabVis()">Save tab visibility</button>
       <span id="tabvis-msg" style="font-size:12px;margin-left:8px"></span>
     </div>
@@ -955,16 +961,16 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <p class="lede">The plumbing behind the product: where code runs, how the external services connect, and how the system is patched, secured and restarted — and, first, the market hypothesis it all exists to trade.</p>
 
   <h2 class="sec">The hypothesis — The Squeeze</h2>
-  <p style="max-width:760px">Markets alternate between <b>calm</b> and <b>movement</b>. When a price coils — its swing highs stepping <b>down</b> while its swing lows step <b>up</b> — volatility is contracting into a <b>funnel</b>: the same information that once needed a wide range to digest is now being priced in an ever-tighter one. That compression is unstable. Energy stored during the squeeze is released when price finally breaks one edge, and the resulting move tends to travel about as far as the funnel was <b>tall at its mouth</b> — so the funnel that hid the setup also <b>measures</b> it. The system hunts these funnels across every instrument, and the moment one breaks it already knows the three numbers that matter: where to enter, where the idea is wrong, and how far it should run.</p>
+  <p style="max-width:760px">Markets alternate between <b>calm</b> and <b>movement</b>. When a price coils — its swing highs stepping <b>down</b> while its swing lows step <b>up</b> — volatility is contracting into a <b>squeeze</b>: the same information that once needed a wide range to digest is now being priced in an ever-tighter one. That compression is unstable. Energy stored during the squeeze is released when price finally breaks one edge, and the resulting move tends to travel about as far as the squeeze was <b>tall at its mouth</b> — so the squeeze that hid the setup also <b>measures</b> it. The system hunts these squeezes across every instrument, and the moment one breaks it already knows the three numbers that matter: where to enter, where the idea is wrong, and how far it should run.</p>
 
-  <svg viewBox="0 0 680 380" style="width:100%;max-width:660px;margin:6px auto 10px;display:block" role="img" aria-label="Diagram: converging price funnel breaking out to a measured target">
+  <svg viewBox="0 0 680 380" style="width:100%;max-width:660px;margin:6px auto 10px;display:block" role="img" aria-label="Diagram: converging price squeeze breaking out to a measured target">
     <defs>
       <marker id="hvfUp" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--bull)"/></marker>
       <marker id="hvfM" markerWidth="9" markerHeight="9" refX="4" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--muted)"/></marker>
       <marker id="hvfMs" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto"><path d="M6,0 L0,3 L6,6 Z" fill="var(--muted)"/></marker>
     </defs>
     <g font-size="12" text-anchor="middle">
-      <!-- funnel envelope (highs falling, lows rising → converging) -->
+      <!-- squeeze envelope (highs falling, lows rising → converging) -->
       <path d="M70,150 L160,172 L260,190 L360,205 L360,215 L260,232 L160,252 L70,270 Z"
             fill="color-mix(in srgb,var(--accent) 10%,transparent)" stroke="none"/>
       <polyline points="70,150 160,172 260,190 360,205" fill="none" stroke="var(--muted)" stroke-width="1.5"/>
@@ -975,7 +981,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <line x1="360" y1="85" x2="630" y2="85" stroke="var(--bull)" stroke-width="1.3" stroke-dasharray="5 4"/>
       <line x1="70" y1="232" x2="600" y2="232" stroke="var(--bear)" stroke-width="1.2" stroke-dasharray="4 4"/>
 
-      <!-- price: damped oscillation inside the funnel, then the breakout -->
+      <!-- price: damped oscillation inside the squeeze, then the breakout -->
       <polyline points="70,168 110,255 150,180 195,242 240,198 285,228 325,208 360,205"
                 fill="none" stroke="var(--muted)" stroke-width="1.6"/>
       <polyline points="360,205 420,158 490,120 560,92 600,86"
@@ -997,7 +1003,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
       <!-- labels -->
       <text x="150" y="120" fill="var(--fg)" font-size="11">① the squeeze — highs fall, lows rise</text>
-      <text x="18" y="215" fill="var(--muted)" font-size="10" text-anchor="middle" transform="rotate(-90 18,210)">funnel mouth</text>
+      <text x="18" y="215" fill="var(--muted)" font-size="10" text-anchor="middle" transform="rotate(-90 18,210)">squeeze mouth</text>
       <text x="392" y="200" fill="var(--accent)" font-size="10.5" text-anchor="start">H3 · entry (break level)</text>
       <text x="470" y="78" fill="var(--bull)" font-size="11" text-anchor="start">③ target</text>
       <text x="450" y="150" fill="var(--fg)" font-size="11" text-anchor="start">② breaks H3</text>
@@ -1006,7 +1012,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <text x="634" y="160" fill="var(--muted)" font-size="10" text-anchor="start">height</text>
     </g>
   </svg>
-  <p class="muted" style="font-size:12px;max-width:760px;margin:0 auto 26px">The <b>funnel mouth</b> (its full height at the left, when volatility was widest) is projected up from the break to set the <b>target</b> — the move is expected to travel roughly the funnel's own height. Entry is the last swing high <b>H3</b>; the <b>stop</b> sits just past the opposite pivot <b>L3</b>, so the risk is defined before a penny is committed. A short is the mirror image: highs and lows swap, price breaks <b>L3</b> downward, target projects <b>down</b>.</p>
+  <p class="muted" style="font-size:12px;max-width:760px;margin:0 auto 26px">The <b>squeeze mouth</b> (its full height at the left, when volatility was widest) is projected up from the break to set the <b>target</b> — the move is expected to travel roughly the squeeze's own height. Entry is the last swing high <b>H3</b>; the <b>stop</b> sits just past the opposite pivot <b>L3</b>, so the risk is defined before a penny is committed. A short is the mirror image: highs and lows swap, price breaks <b>L3</b> downward, target projects <b>down</b>.</p>
 
   <h2 class="sec">The system that runs it</h2>
   <svg viewBox="0 0 680 720" style="width:100%;max-width:560px;margin:8px auto 24px;display:block">
@@ -1157,9 +1163,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
   <div class="fgrid two">
     <div class="fcard"><div class="ic">🔎</div><h3>Spot the structure</h3><div class="body">
-      Prices coil into a tightening funnel before they break. The engine scans the whole universe every day and flags these setups the moment they form — so you're looking at a <b>shortlist of ready trades</b>, not a wall of charts.</div></div>
+      Prices coil into a tightening squeeze before they break. The engine scans the whole universe every day and flags these setups the moment they form — so you're looking at a <b>shortlist of ready trades</b>, not a wall of charts.</div></div>
     <div class="fcard"><div class="ic">🎯</div><h3>Entry, Stop and Target</h3><div class="body">
-      Every setup arrives with the three numbers that matter: the <b>entry</b> where the breakout triggers, a <b>stop</b> just past the far side of the funnel to cap the loss, and a <b>target</b> projected from the funnel's own size. You know your risk and reward <b>before</b> you commit.</div></div>
+      Every setup arrives with the three numbers that matter: the <b>entry</b> where the breakout triggers, a <b>stop</b> just past the far side of the squeeze to cap the loss, and a <b>target</b> projected from the squeeze's own size. You know your risk and reward <b>before</b> you commit.</div></div>
     <div class="fcard"><div class="ic">🛡️</div><h3>Risk management</h3><div class="body">
       Risk is built in, not bolted on. Position size is a small, fixed fraction of your wallet, the stop defines the most any trade can lose, and your personal floors — minimum Quality, R:R and Volume Score — filter out the weaker setups. You set the limits; we respect them.</div></div>
     <div class="fcard"><div class="ic">⚙️</div><h3>Automation</h3><div class="body">
@@ -1184,12 +1190,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="htext">
       <h3>The idea — a "squeeze"</h3>
       <p>Price coils into an ever-tighter range: each swing high sits a little lower (the <span style="color:var(--bear)">red upper jaw</span> H1→H2→H3) and each swing low a little higher (the <span style="color:var(--bull)">green lower jaw</span> L1→L2→L3). The market is compressing like a spring.</p>
-      <p>When price finally breaks out, it tends to move <b>fast and far</b>. The scanner finds these funnels and computes the <b>entry</b>, <b>stop</b> and <b>target</b> for you.</p>
-      <p style="font-size:13px">The funnel's mouth (H1−L1) is <b>FNM1</b>; the target is projected one FNM1 beyond the midpoint and the stop just past the opposite jaw — that's the R:R.</p>
+      <p>When price finally breaks out, it tends to move <b>fast and far</b>. The scanner finds these squeezes and computes the <b>entry</b>, <b>stop</b> and <b>target</b> for you.</p>
+      <p style="font-size:13px">The squeeze's mouth (H1−L1) is <b>FNM1</b>; the target is projected one FNM1 beyond the midpoint and the stop just past the opposite jaw — that's the R:R.</p>
     </div>
     <div>
-      <img id="intro-card" loading="lazy" alt="real funnel example" onerror="this.style.display='none'" style="width:100%">
-      <p class="muted" id="intro-card-cap" style="font-size:12px;margin:8px 0 0">A real setup, swing highs <span style="color:var(--bear)">H1·H2·H3</span> and lows <span style="color:var(--bull)">L1·L2·L3</span> converging into the funnel, with Entry / Stop / Target labelled.</p>
+      <img id="intro-card" loading="lazy" alt="real squeeze example" onerror="this.style.display='none'" style="width:100%">
+      <p class="muted" id="intro-card-cap" style="font-size:12px;margin:8px 0 0">A real setup, swing highs <span style="color:var(--bear)">H1·H2·H3</span> and lows <span style="color:var(--bull)">L1·L2·L3</span> converging into the squeeze, with Entry / Stop / Target labelled.</p>
     </div>
   </div>
 
@@ -1219,26 +1225,26 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <div class="gcols">
     <section class="gsec"><h3>The pattern</h3><dl>
       <div class="term"><dt>Squeeze</dt><dd>A volatility contraction where price coils between converging highs and lows before a momentum breakout.</dd></div>
-      <div class="term"><dt>Upper jaw / Lower jaw</dt><dd>The line through the swing highs (descending) and through the swing lows (ascending). They converge to form the funnel.</dd></div>
+      <div class="term"><dt>Upper jaw / Lower jaw</dt><dd>The line through the swing highs (descending) and through the swing lows (ascending). They converge to form the squeeze.</dd></div>
       <div class="term"><dt>H1, H2, H3</dt><dd>The three successive swing <b>highs</b> (each lower than the last) that define the upper jaw. H3 is the most recent.</dd></div>
       <div class="term"><dt>L1, L2, L3</dt><dd>The three successive swing <b>lows</b> (each higher than the last) that define the lower jaw. L3 is the most recent.</dd></div>
-      <div class="term"><dt>FNM1</dt><dd>"Funnel mouth 1" = H1 − L1, the height of the funnel's mouth. The target is projected one FNM1 beyond the midpoint.</dd></div>
+      <div class="term"><dt>FNM1</dt><dd>"Squeeze mouth 1" = H1 − L1, the height of the squeeze's mouth. The target is projected one FNM1 beyond the midpoint.</dd></div>
     </dl></section>
     <section class="gsec"><h3>Levels &amp; the trade</h3><dl>
       <div class="term"><dt>Entry</dt><dd>The break level that triggers the setup: H3 for a long, L3 for a short.</dd></div>
       <div class="term"><dt>Stop</dt><dd>Protective exit just beyond the opposite jaw.</dd></div>
-      <div class="term"><dt>Target</dt><dd>Projected objective: funnel midpoint ± FNM1.</dd></div>
+      <div class="term"><dt>Target</dt><dd>Projected objective: squeeze midpoint ± FNM1.</dd></div>
       <div class="term"><dt>R:R (Reward : Risk)</dt><dd>(target − entry) ÷ (entry − stop). We look for ≥ 3 : 1.</dd></div>
       <div class="term"><dt>Dist→Entry</dt><dd>How far (%) the current price is from the entry level.</dd></div>
       <div class="term"><dt>Since trig</dt><dd>Price change since it triggered, from the entry level (green = in the trade's favour).</dd></div>
     </dl></section>
     <section class="gsec"><h3>Status &amp; timing</h3><dl>
       <div class="term"><dt>TRIGGERED</dt><dd>Price has crossed the entry; actionable now.</dd></div>
-      <div class="term"><dt>READY</dt><dd>Funnel complete, waiting for price to cross the entry (a "pre-order").</dd></div>
-      <div class="term"><dt>DEVELOPING</dt><dd>The funnel is still forming.</dd></div>
+      <div class="term"><dt>READY</dt><dd>Squeeze complete, waiting for price to cross the entry (a "pre-order").</dd></div>
+      <div class="term"><dt>DEVELOPING</dt><dd>The squeeze is still forming.</dd></div>
       <div class="term"><dt>Triggered (date)</dt><dd>The date the trigger pivot (L3 long / H3 short) formed.</dd></div>
       <div class="term"><dt>Days since</dt><dd>Days since that trigger date.</dd></div>
-      <div class="term"><dt>Timeframe (D240 / D180 / D90 / weekly …)</dt><dd>The chart window the funnel was found on. The engine scans several and reports only the strongest per instrument.</dd></div>
+      <div class="term"><dt>Timeframe (D240 / D180 / D90 / weekly …)</dt><dd>The chart window the squeeze was found on. The engine scans several and reports only the strongest per instrument.</dd></div>
       <div class="term"><dt>Pre-order</dt><dd>A READY / DEVELOPING setup that hasn't triggered, so no order exists yet.</dd></div>
       <div class="term"><dt>#Open / X posts</dt><dd>Open IG positions in that name / how many X posts we've published for it.</dd></div>
     </dl></section>
@@ -1443,7 +1449,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <h2 class="sec">Best Quality / R:R combinations / Volume Score</h2>
     <p class="muted" style="font-size:13px;margin-top:-8px">Grouped into Quality bands (10 wide), R:R bands (1 wide) and Volume Score bands (8+ / 4–7 / 0–3); ranked by average direction-aware return across the recorded triggers. Only buckets with at least 3 triggers are shown.</p>
     <div id="pf-combos" class="fgrid sqh-loading" style="margin-bottom:8px">⏳ Data loading…</div>
-    <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric funnel — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
+    <p class="muted" style="font-size:13px"><b>Why these tend to win:</b> a high Quality score means a tight, fresh, symmetric squeeze — a cleaner, more decisive breakout — while a higher R:R means the target sits far from the stop, so each winner pays for several small losers. Buckets that pair both usually deliver the best average return.</p>
     <div id="ordp-bestcombo" style="margin-bottom:10px"><span class="sqh-loading">⏳ Data loading…</span></div>
   </div>
 
@@ -1497,7 +1503,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
 </div>
 
-<!-- Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle: developing → ready → triggered → outcome. -->
+<!-- Squeeze History (Admin) (user 2026-07-18) — squeeze lifecycle: developing → ready → triggered → outcome. -->
 <div id="view-squeezehist" class="hidden doc" style="width:100%;max-width:none;margin-inline:0">
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderSqueezeHist()">↻ Refresh</button></div>
   <!-- Title row shares the year filter (multi-select, middle/right) + a compact Direction chart next to the
@@ -1508,7 +1514,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <span style="flex:1"></span>
     <div id="sqh-years" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end"></div>
   </div>
-  <p class="lede">Every squeeze funnel's journey through the engine — <b>developing → ready → triggered → outcome</b> — replayed over the price history. Each row is one funnel with the dates it changed state and how it resolved (<b style="color:var(--bull)">TARGET</b> / <b style="color:var(--bear)">STOPPED</b> / <b style="color:#d29922">OPEN</b> / NEVER&nbsp;TRIGGERED). Newest first.</p>
+  <p class="lede">Every squeeze's journey through the engine — <b>developing → ready → triggered → outcome</b> — replayed over the price history. Each row is one squeeze with the dates it changed state and how it resolved (<b style="color:var(--bull)">TARGET</b> / <b style="color:var(--bear)">STOPPED</b> / <b style="color:#d29922">OPEN</b> / NEVER&nbsp;TRIGGERED). Newest first.</p>
   <!-- Standard chart strip (user 2026-07-18, P-01): Location, Market, Sector, Quality, Status — the same
        click-to-filter charts as the other tabs, driving the table below. Hidden inputs hold each filter set.
        Direction lives in the compact title chart; Year is the button row above (all cross-filter). -->
@@ -1518,7 +1524,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="sqh-count"></span><span class="grow"></span><input id="sqh-search" placeholder="Search name / ticker…" oninput="paintSqueezeHist()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
     <!-- Every header sorts (user 2026-07-18, P-01) — data-sqh drives sqhSort(). -->
     <div class="tablewrap"><table>
-      <thead><tr><th class="clk" data-sqh="name">Name</th><th class="clk" data-sqh="direction">Dir</th><th class="clk" data-sqh="market">Market</th><th class="clk" data-sqh="timeframe">TF</th><th class="clk" data-sqh="first_seen" title="First replay step this funnel existed">Developing</th><th class="clk" data-sqh="ready_date" title="First step seen READY">Ready</th><th class="clk" data-sqh="triggered_date" title="First close beyond entry after the pivots">Triggered</th><th class="clk" data-sqh="outcome">Outcome</th><th class="clk" data-sqh="outcome_date">Closed</th><th class="clk" data-sqh="return_pct">Return</th><th class="clk" data-sqh="quality">Quality</th><th class="clk" data-sqh="rr">R:R</th><th class="clk" data-sqh="sector">Sector</th><th class="clk" data-sqh="ticker">Ticker</th></tr></thead>
+      <thead><tr><th class="clk" data-sqh="name">Name</th><th class="clk" data-sqh="direction">Dir</th><th class="clk" data-sqh="market">Market</th><th class="clk" data-sqh="timeframe">TF</th><th class="clk" data-sqh="first_seen" title="First replay step this squeeze existed">Developing</th><th class="clk" data-sqh="ready_date" title="First step seen READY">Ready</th><th class="clk" data-sqh="triggered_date" title="First close beyond entry after the pivots">Triggered</th><th class="clk" data-sqh="outcome">Outcome</th><th class="clk" data-sqh="outcome_date">Closed</th><th class="clk" data-sqh="return_pct">Return</th><th class="clk" data-sqh="quality">Quality</th><th class="clk" data-sqh="rr">R:R</th><th class="clk" data-sqh="sector">Sector</th><th class="clk" data-sqh="ticker">Ticker</th></tr></thead>
 <tbody id="sqh-rows"><tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
     </table></div>
   </section>
@@ -1801,7 +1807,7 @@ function augment(r){
   r.days_since=daysSince(_trigref);
   r.trig_date=(r.status==="TRIGGERED")?_trigref:null;
   r.added=_trigref?String(_trigref).slice(0,10):null;   // when the setup completed (joined the dataset)
-  // Expected time-to-target = the funnel's H1->H3 formation span (same heuristic as the Slack report).
+  // Expected time-to-target = the squeeze's H1->H3 formation span (same heuristic as the Slack report).
   if(r.h1_date&&r.h3_date){const _sp=Math.round((Date.parse(r.h3_date)-Date.parse(r.h1_date))/864e5);
     r.tgt_months=_sp>0? +(_sp/30.44).toFixed(1):null;
     r.tgt_str=_sp>0?(_sp<63?`~${Math.max(1,Math.round(_sp/7))}wk`:`~${Math.round(_sp/30.44)}mo`):null;
@@ -2098,7 +2104,7 @@ function showDetail(t){
     <div class="sub">${locName(r.location)} · ${r.market||''} · ${r.sector||''} · ${r.status||''} · Q${r.quality??'?'} · R:R ${r.rr!=null?r.rr.toFixed(2):'?'} · ${(r.timeframe||'').replace('daily-','D')}</div>
     ${IS_ADMIN?`<div class="card"><h4>Squeeze Rules 1–5 — justification</h4><div id="rulesbox" class="sqh-loading">⏳ Data loading…</div></div>`:''}
     <div class="card"><h4>Quality (${r.quality??'?'}/100) — how it's scored</h4>
-      <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the funnel is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric funnel; a low Q means a loose, older, or lopsided one.</div></div>
+      <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the squeeze is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric squeeze; a low Q means a loose, older, or lopsided one.</div></div>
     ${AUTH?`<div class="card"><h4>VolumeScore — breakout confirmation (0–12)</h4><div id="volscorebox" class="sqh-loading">⏳ Data loading…</div></div>`:''}
     <div class="card"><h4>Price — last ${days} days (filter-reactive)</h4>
       <img id="pw" src="/api/pricewin/${r.ticker}?days=${days}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}"></div>
@@ -2370,7 +2376,7 @@ const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
 const TABS=["welcome","whatwedo","intro","appendix","terms","scanner","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
 const PUBLIC_TABS=["welcome","whatwedo","intro","appendix","terms","scanner","performance"];   // visible when logged out (Performance blurs all but ticker/name/return); "What we do" + "T&C" are for everyone (user 2026-07-27, P-10 L169 / P-25)
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin","squeezehist","fees"];  // admin only
-const FEATURE_TABS=["xposts"];                                // off by default, enabled in Configuration
+const FEATURE_TABS=[];                                         // X Posts is always available to admin users
 // Tabs hidden by DEFAULT (user 2026-07-10): visible only once the user opts in via Tab Visibility.
 const DEFAULT_HIDDEN=new Set(["mfm"]);   // IG Account is now default-visible (user 2026-07-11)
 // Parent tabs (user 2026-07-10): the grouped children are reached through a sub-nav. Operations =
@@ -2411,8 +2417,15 @@ function syncStickyOffsets(){
   rs.setProperty("--hdr-h", h+"px");
   rs.setProperty("--sticky-top", (h+t-1)+"px");   // tabs overlap the header border by 1px: no content seam
 }
-window.addEventListener("resize", syncStickyOffsets);
+function detectIPadMini(){
+  const ua=navigator.userAgent||"", appleTouch=/Macintosh/.test(ua)&&navigator.maxTouchPoints>1;
+  const ipad=/iPad/.test(ua)||appleTouch, shortSide=Math.min(screen.width||0,screen.height||0);
+  document.documentElement.classList.toggle("ipad-mini",ipad&&shortSide>=700&&shortSide<=820);
+  syncStickyOffsets();
+}
+window.addEventListener("resize", detectIPadMini);
 window.addEventListener("load", syncStickyOffsets);
+detectIPadMini();
 // Header controls change after login/role/config loading and may wrap without a window resize. Observe the
 // actual sticky elements so their offsets stay joined to the header at all times (user 2026-08-04, P-03).
 if(typeof ResizeObserver!=="undefined"){
@@ -2761,9 +2774,8 @@ function renderTabVis(hidden){
   const grouped=new Set([].concat(...Object.values(TAB_GROUPS),INSTR,["activity"]));   // My Activity shown under Application Operations (user 2026-07-11)
   // Settings, Instrument Operations, Application Operations, then everything else (user 2026-07-11).
   const setg=TAB_GROUPS.settings.filter(t=>t!=="config"&&allow(t));
-  // X Posts is governed by its OWN global feature toggle (featrow-xposts) — exclude it from the per-user
-  // list so there aren't two overlapping controls for the same tab (user 2026-07-26, P-07/L149).
-  const ops=[...TAB_GROUPS.operations,"activity"].filter(t=>t!=="xposts").filter(allow);
+  // X Posts is an admin Operations tab and is not user-configurable.
+  const ops=[...TAB_GROUPS.operations,"activity"].filter(allow);
   const instr=INSTR.filter(allow);
   const rest=TABS.filter(t=>t!=="config"&&!grouped.has(t)&&allow(t));
   const chipUsers=t=>(t==="users"&&IS_ADMIN)?chip(t,true,true):chipFor(t);   // admins can't disable User Management
@@ -2990,7 +3002,7 @@ function saveLimits(){
   [["min_quality",1],["min_volume_score",1],["min_rvol",0],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["rebalance_weeks",1],["wo_lifespan_days",1],["let_winners_run_trail",1],["let_winners_run_stop",1]].forEach(([k,int])=>{const v=num(k,int);if(v!==undefined)lim[k]=v;});
   lim.require_above_vwap=$("lim-require_above_vwap").checked?1:0;
   lim.require_atr_expanding=$("lim-require_atr_expanding").checked?1:0;
-  lim.adaptive_filters=($("lim-adaptive_filters")||{}).checked?1:0;   // adaptive-filters enable toggle (user 2026-07-27, P-07)
+  lim.adaptive_filters=0;   // disabled pending a completed walk-forward implementation
   lim.let_winners_run=($("lim-let_winners_run")||{}).checked?1:0;   // "Let winners run" report opt-in, default OFF (user 2026-08-02)
   const _er=$("lim-email_recipients"); if(_er)lim.email_recipients=(_er.value||"").split(",").map(x=>x.trim()).filter(Boolean);
   // Show the "Saved." message in whichever panel's save button was clicked (limits / adaptive / squeeze / winners-run).
@@ -3522,6 +3534,7 @@ function pfPanel(which){
   const wh=$("pf-winners-head");if(wh)wh.classList.toggle("hidden",which!=="analysis");   // winners title/lede above the filters (P-07 L289)
   if(which==="analysis"||which==="settings")renderSqueezeAnalysis();
   if(which==="run")winnersRunChange('pf');
+  if(which==="results"&&typeof _renderPerformance==='function')_renderPerformance();
   if(which==="summary"&&typeof _renderPerformance==="function")_renderPerformance();   // rebuild the "Settings used" card for this sub-tab (user 2026-07-24, P-02)
 }
 // ── 15-month squeeze analysis (user 2026-07-17, P-21b) ───────────────────────────────────────────────
@@ -3930,7 +3943,7 @@ function applyConfigFromReport(cfg, btn){
     .catch(()=>{if(btn){btn.disabled=false;btn.textContent="⚠ Save failed — retry";}});
 }
 // One compounding pass over a set of winners trades (user 2026-07-27, P-10 L122/L123 refactor): chronological
-// by trigger date, applies the Max-open-positions cap (a funnel that triggers while the book is full is a
+// by trigger date, applies the Max-open-positions cap (a squeeze that triggers while the book is full is a
 // MISSED row), and stakes WINNERS_STAKE % of the running wallet on each taken trade. Returns the ledger
 // (taken + missed rows, in order) and the final wallet. Extracted so the brushed per-chart net-£ attribution
 // can re-run it over each chart's filtered subset (compounding is path-dependent → one pass per subset).
@@ -4017,10 +4030,10 @@ function paintOrdersPerf(){
   if(tc)tc.textContent=`(${takenRows.length} trades${skipped?` · ${skipped} missed`:''}${_filtered?` · filtered`:''}, ${span} · ${money(WINNERS_WALLET)} → ${money(w)})`;
   const oc=st=>st==='TARGET'?'var(--bull)':st==='STOPPED'?'var(--bear)':'#d29922';
   let _ti=0;
-  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="Market cap (instrument currency); blank until the mcap backfill lands.">MCap</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th>RVOL</th><th title="VolumeScore (0–12) on the trigger bar — breakout confirmation (Strong squeeze, RVOL, breakout volume, VWAP, OBV, low-volume node, ATR). 8+ = well-confirmed. Blank where it can't be scored.">Vol</th><th title="2% of the wallet at this point in time">Stake</th><th title="Margin required to open = position size ÷ leverage (IG UK retail rates by instrument type: equities 5×, indices 20×, commodities 10×)">Margin</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Account equity after this trade = the running compounded wallet incl. realised P&amp;L; last row = the compounded figure">Equity</th><th title="Available to open further positions = Equity − Margin (user 2026-07-24, P-04)">Available</th><th title="Why a triggered funnel was NOT placed — 'Book full' means all Max-open-position slots were already taken (no capital free). Blank = it was placed.">Reason</th></tr></thead><tbody>`+
+  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="Market cap (instrument currency); blank until the mcap backfill lands.">MCap</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th>RVOL</th><th title="VolumeScore (0–12) on the trigger bar — breakout confirmation (Strong squeeze, RVOL, breakout volume, VWAP, OBV, low-volume node, ATR). 8+ = well-confirmed. Blank where it can't be scored.">Vol</th><th title="2% of the wallet at this point in time">Stake</th><th title="Margin required to open = position size ÷ leverage (IG UK retail rates by instrument type: equities 5×, indices 20×, commodities 10×)">Margin</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Account equity after this trade = the running compounded wallet incl. realised P&amp;L; last row = the compounded figure">Equity</th><th title="Available to open further positions = Equity − Margin (user 2026-07-24, P-04)">Available</th><th title="Why a triggered squeeze was NOT placed — 'Book full' means all Max-open-position slots were already taken (no capital free). Blank = it was placed.">Reason</th></tr></thead><tbody>`+
     ledger.map(x=>{const r=x.r;
       if(x.missed)return `<tr class="missed-row" style="opacity:.6"><td class="muted">—</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td><td class="muted">${_mcapFmt(r.mcap)}</td>
-      <td class="muted" title="positions already open when this funnel triggered">${x.open}</td>
+      <td class="muted" title="positions already open when this squeeze triggered">${x.open}</td>
       <td><b style="color:var(--muted)">MISSED</b></td>
       <td class="muted" title="would-be return had it been placed — NOT realised">${r.perf==null?'—':(r.perf>0?'+':'')+r.perf+'%'}</td>
       <td class="muted">${rvolCell(r.rvol)}</td><td class="muted">${volScoreCell(r.volume_score)}</td>
@@ -4074,7 +4087,7 @@ function paintWinnersDims(dims, all){
       `</div></div></div>`;
   }).join("");
 }
-// ── Squeeze History (Admin) (user 2026-07-18) — funnel lifecycle table ───────────────────────────────
+// ── Squeeze History (Admin) (user 2026-07-18) — squeeze lifecycle table ───────────────────────────────
 let SQH=null, sqhSortK="triggered_date", sqhSortDir=-1;   // default: Triggered date descending (user 2026-08-01); header click changes it
 function renderSqueezeHist(){
   if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr>';}
@@ -4119,7 +4132,7 @@ function paintSqueezeHist(){
   const yc=byX("sqf_year"), ysel=setOf("sqf_year");
   const yrsAll=[...new Set(rows.map(_sqYearOf).filter(y=>y&&y!=='—'))].sort().reverse();
   if($("sqh-years"))$("sqh-years").innerHTML=`<span class="muted" style="font-size:11px">Year</span>`+
-    yrsAll.map(y=>{const on=ysel&&ysel.has(y);return `<button class="btn clk" data-fk="sqf_year" data-fv="${y}" style="padding:3px 9px;font-size:12px;${on?'border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--fg)':''}" title="${yc[y]||0} funnels">${y}</button>`;}).join("")+
+    yrsAll.map(y=>{const on=ysel&&ysel.has(y);return `<button class="btn clk" data-fk="sqf_year" data-fv="${y}" style="padding:3px 9px;font-size:12px;${on?'border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--fg)':''}" title="${yc[y]||0} squeezes">${y}</button>`;}).join("")+
     (ysel&&ysel.size?` <span class="afilt clk" data-fk="sqf_year" data-fv="" title="clear year filter" style="font-size:12px">✕</span>`:'');
   // Compact Direction chart next to the title (click-to-filter) — freed the strip for a Quality chart.
   const dc=byX("sqf_direction"), dsel=setOf("sqf_direction");
@@ -4134,13 +4147,13 @@ function paintSqueezeHist(){
   packViz("sqh-viz");
   let shown=base.filter((r,i)=>{const o=dv[i];for(const [id] of _sqDims){if(!_pass(id,o[id]))return false;}return true;});
   if(sqhSortK)shown=genSort(shown,sqhSortK,sqhSortDir);
-  // Cap the rendered rows (user 2026-08-02, P-06) — the store is now 32k+ funnels; drawing 12k <tr> each
+  // Cap the rendered rows (user 2026-08-02, P-06) — the store is now 32k+ squeezes; drawing 12k <tr> each
   // repaint made clicking Sector/Status take ~2s. The charts + count still cover the FULL filtered set; only
   // the table display is capped (narrow the filters — or the year — to see more specific rows).
   const SQH_CAP=1500;
   const capped=shown.length>SQH_CAP;
   const view=capped?shown.slice(0,SQH_CAP):shown;
-  if($("sqh-count"))$("sqh-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> funnels${rows.length!==shown.length?` of ${rows.length.toLocaleString()}`:''}${capped?` <span class="muted" style="font-size:11px">· showing first ${SQH_CAP.toLocaleString()} — filter to narrow</span>`:''}`;
+  if($("sqh-count"))$("sqh-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> squeezes${rows.length!==shown.length?` of ${rows.length.toLocaleString()}`:''}${capped?` <span class="muted" style="font-size:11px">· showing first ${SQH_CAP.toLocaleString()} — filter to narrow</span>`:''}`;
   if($("sqhtab-count"))$("sqhtab-count").textContent=`(${shown.length.toLocaleString()})`;   // row count in the tab name (user 2026-07-20, P-01)
   if($("sqh-rows"))$("sqh-rows").innerHTML=view.map(r=>`<tr>
     <td class="clk" style="cursor:pointer;color:var(--accent)" title="Open the detail report" onclick="openDetailFrom('squeezehist','${(r.ticker||'').replace(/'/g,'')}')">${nm40(r.name)}</td><td>${r.direction}</td><td>${r.market||''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td>
@@ -4360,6 +4373,9 @@ function _renderPerformance(){
   PF_VS_FLOOR=(_vsFloor!=null&&_vsFloor>0)?_vsFloor:0;
   let all=(PERF_DATA||[]).filter(r=>pfDateOk(r.trig_date));   // date-window filter (P-01) drives everything below
   if(PF_VS_FLOOR)all=all.filter(r=>r.volume_score==null||r.volume_score>=PF_VS_FLOOR);   // personal Volume Score floor
+  const _qFloor=+MY_LIMITS.min_quality||0, _rrFloor=+MY_LIMITS.min_risk_reward||0;
+  if(_qFloor>0)all=all.filter(r=>r.quality==null||+r.quality>=_qFloor);
+  if(_rrFloor>0)all=all.filter(r=>r.rr==null||+r.rr>=_rrFloor);
   all=all.filter(r=>tradeVisible(r));   // respect the user's Trading (Squeeze) direction filter + Markets (User) (user 2026-08-01): BULL/BEAR removed or a market switched off must not appear in the back test
   const _wlCol=k=>k==="Win"?"var(--bull)":k==="Loss"?"var(--bear)":"#d29922";
   // Cross-filter (user 2026-07-24, P-04 L107/L109): each chart counts the population filtered by the OTHER
@@ -4876,7 +4892,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     msyncAll();   // options only exist now — repaint the P-08 dropdown buttons (incl. any user defaults)
     render();
     $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)
-    // Introduction example: a real funnel card — Howden if it's a current setup, else the best triggered name.
+    // Introduction example: a real squeeze card — Howden if it's a current setup, else the best triggered name.
     // Use an EQUITY as the worked example, never an index/FX/commodity (user 2026-07-03).
     const _isEq=r=>["FTSE 100","FTSE 250","NASDAQ 100","S&P 500"].includes(r.market);
     const _ex=(DATA.some(r=>r.ticker==="HWDN.L"&&r.has_signal))?"HWDN.L":((DATA.filter(r=>r.has_signal&&r.status==="TRIGGERED"&&_isEq(r)).sort((a,b)=>(b.quality||0)-(a.quality||0))[0]||{}).ticker);
