@@ -285,7 +285,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 /* Configuration card navigation (user 2026-07-03) */
 .confnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;justify-content:center}
-.confnav-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:7px;background:#d9dde3;border:1px solid #b8bec7;border-radius:8px}
+.confnav-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:7px;background:color-mix(in srgb,#d9dde3 50%,var(--bg) 50%);border:1px solid #b8bec7;border-radius:8px}
 .confnav .pill{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;
   color:var(--muted);cursor:pointer;transition:all .15s ease;display:flex;align-items:center;gap:7px}
 .confnav .pill:hover{border-color:var(--accent);color:var(--fg)}
@@ -726,6 +726,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <nav class="confnav" id="confnav">
     <button class="pill active" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
     <button class="pill" data-panel="tabvis" onclick="confShow('tabvis')">👁️ Tab visibility</button>
+    <button class="pill" data-panel="adaptive" disabled title="Adaptive Filters is disabled until the walk-forward implementation exists">🎯 Adaptive Filters</button>
     <span class="confnav-group" aria-label="IG settings">
       <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG Credentials</button>
       <button class="pill" data-panel="limits" onclick="confShow('limits')">🛡️ My trading limits</button>
@@ -733,7 +734,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <button class="pill" data-panel="trading_sq" onclick="confShow('trading_sq')">📈 Trading (Squeeze)</button>
       <button class="pill" data-panel="leverage" onclick="confShow('leverage')">⚖️ IG Leverage</button>
     </span>
-    <button class="pill" data-panel="adaptive" disabled title="Adaptive Filters is disabled until the walk-forward implementation exists">🎯 Adaptive Filters</button>   <!-- moved to the end (user 2026-08-01) -->
     <!-- Gold-tier only (user 2026-07-17, P-06): ships HIDDEN and is revealed by renderConfig() only for a
          Gold account, so a failure to run the gate leaves the feature hidden rather than exposed. -->
     <button class="pill" data-panel="trading_mo" style="display:none" onclick="confShow('trading_mo')">⚡ Trading (Momentum)</button>
