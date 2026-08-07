@@ -65,6 +65,7 @@ import math
 import numbers
 
 from flask import Flask, jsonify, send_file, request, Response
+from flask.json.provider import DefaultJSONProvider
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("hvf_web.server")
@@ -100,6 +101,17 @@ def _json_safe(value):
     if isinstance(value, tuple):
         return [_json_safe(v) for v in value]
     return value
+
+
+class _StrictJSONProvider(DefaultJSONProvider):
+    """Apply the non-finite-number contract to every Flask JSON response."""
+
+    def dumps(self, obj, **kwargs):
+        kwargs["allow_nan"] = False
+        return super().dumps(_json_safe(obj), **kwargs)
+
+
+app.json = _StrictJSONProvider(app)
 
 # matplotlib pyplot is NOT thread-safe and the server is threaded=True. The detail panel fires the
 # card + price-window renders in the same instant, so two concurrent plt.figure/savefig calls stomped
@@ -221,7 +233,8 @@ def _version_entries():
 def api_scheduled_jobs():
     """Scheduled-job definitions + GitHub Actions run stats (user 2026-07-06, admin Scheduled Jobs tab).
     ?refresh=1 bypasses the 30-min cache."""
-    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+    _n = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not (_wu.is_admin(_n) or _wu.is_support(_n)):
         return jsonify({"error": "admin only"}), 403
     from hvf_web import scheduled_jobs as _sj
     return jsonify(_sj.get_jobs(force=(request.args.get("refresh") == "1")))
@@ -230,7 +243,8 @@ def api_scheduled_jobs():
 @app.route("/api/system-logs")
 def api_system_logs():
     """System health + recent server log records (user 2026-07-04, admin System Logs tab)."""
-    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+    _n = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not (_wu.is_admin(_n) or _wu.is_support(_n)):
         return jsonify({"error": "admin only"}), 403
     import sys as _sys
     from datetime import datetime, timezone
@@ -275,7 +289,8 @@ def api_version_history():
 
 @app.route("/api/batch-activity")
 def api_batch_activity():
-    if not _wu.is_admin(_wu.name_for_token(request.headers.get("X-Auth") or "")):
+    _n = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not (_wu.is_admin(_n) or _wu.is_support(_n)):
         return jsonify({"error": "admin only"}), 403
     try:
         import web_store
@@ -290,8 +305,9 @@ def api_me():
     """The logged-in user's identity + role, for client-side gating (user 2026-07-03)."""
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
     if not name:
-        return jsonify({"name": None, "subscription": "guest", "is_admin": False})
-    return jsonify({"name": name, "subscription": _wu.get_subscription(name), "is_admin": _wu.is_admin(name)})
+        return jsonify({"name": None, "subscription": "guest", "is_admin": False, "is_support": False})
+    return jsonify({"name": name, "subscription": _wu.get_subscription(name), "is_admin": _wu.is_admin(name),
+                    "is_support": _wu.is_support(name)})
 
 
 @app.route("/api/request-account", methods=["POST"])
@@ -321,6 +337,22 @@ def api_users():
     target = (body.get("name") or "").strip()
     if not target:
         return jsonify({"ok": False, "error": "no user"}), 400
+    # Admin-initiated direct account creation (user 2026-08-07, User Management "Add user") — no
+    # self-service request needed. New account is LOCKED; the user sets their password via the
+    # email-gated reset flow, so we fire that email immediately (best-effort, never blocks creation).
+    if body.get("action") == "create":
+        email = (body.get("email") or "").strip()
+        ok = _wu.admin_create_user(target, email, body.get("subscription") or "guest",
+                                   bool(body.get("admin")))
+        if ok:
+            _wu.log_event(name, f"Created account: {target} ({body.get('subscription') or 'guest'}"
+                                 f"{', admin' if body.get('admin') else ''})")
+            try:
+                _wu.request_reset_code(target, email)
+            except Exception:
+                pass
+        return jsonify({"ok": ok, "error": None if ok else "name already taken or invalid email",
+                        "users": _wu.list_users(), "requests": _wu.list_requests()})
     # Approve / reject a pending account request.
     if body.get("action") == "approve":
         ok = _wu.approve_request(target)
@@ -337,6 +369,8 @@ def api_users():
     if "admin" in body and target != name and _wu.set_admin(target, bool(body["admin"])):
         # guard: an admin can't remove their own admin and lock themselves out of maintenance
         changed.append(f"admin={bool(body['admin'])}")
+    if "support" in body and _wu.set_support(target, bool(body["support"])):
+        changed.append(f"support={bool(body['support'])}")
     if "enabled" in body and target != name and _wu.set_enabled(target, bool(body["enabled"])):
         changed.append(f"enabled={bool(body['enabled'])}")
     # Per-user fee discount (user 2026-08-02, P-20/P-40) — mgmt/perf % + optional start/end dates.
@@ -1052,6 +1086,19 @@ def api_links(ticker):
     and every tracked account we follow that posted about it (notable_investors.post_url). Queried
     live at selection time so the links are always current; never raises."""
     ours, mentions = None, []
+    visual_sources = {
+        "ratedmarkets": {"key": "ratedmarkets", "account": "@ratedmarkets", "url": None, "date": None},
+        "investingvisual": {"key": "investingvisual", "account": "@InvestingVisual", "url": None, "date": None},
+    }
+
+    def visual_key(account):
+        key = "".join(ch for ch in str(account or "").lower() if ch.isalnum())
+        if key in ("ratedmarket", "ratedmarkets"):
+            return "ratedmarkets"
+        if key in ("investingvisual", "investingvisuals"):
+            return "investingvisual"
+        return None
+
     try:
         from db_pool import get_db
         db = get_db()
@@ -1062,18 +1109,23 @@ def api_links(ticker):
                 tid = rows[0][0]
                 ours = {"tweet_id": str(tid), "url": f"https://x.com/{_X_HANDLE}/status/{tid}"}
             mrows = db.run("select investor_name, post_url, disclosed_at from notable_investors "
-                           "where ticker = :t and post_url is not null order by disclosed_at desc limit 15", t=ticker)
+                           "where ticker = :t and post_url is not null "
+                           "order by disclosed_at desc, recorded_at desc limit 100", t=ticker)
             seen = set()
             for inv, url, dt in (mrows or []):
                 if not url or url in seen:
                     continue
                 seen.add(url)
                 mentions.append({"account": inv, "url": url, "date": str(dt) if dt else None})
+                source_key = visual_key(inv)
+                if source_key and visual_sources[source_key]["url"] is None:
+                    visual_sources[source_key].update({"url": url, "date": str(dt) if dt else None})
         finally:
             db.close()
     except Exception as e:
         log.warning(f"links lookup failed for {ticker}: {e}")
-    return jsonify({"ticker": ticker, "ours": ours, "mentions": mentions})
+    return jsonify({"ticker": ticker, "ours": ours, "mentions": mentions,
+                    "visuals": list(visual_sources.values())})
 
 
 @app.route("/api/tweet/<ticker>")
@@ -2717,6 +2769,94 @@ def api_best_settings():
     except Exception as ex:
         log.warning(f"best-settings report failed: {ex}")
         return jsonify({"error": "report unavailable"}), 500
+
+
+_BEST_HISTORY_LABELS = ("Balanced", "Growth", "Defensive", "Broad evidence")
+_BEST_HISTORY_SETTING_KEYS = (
+    "scope", "min_rr", "min_quality", "min_volume_score", "min_rvol",
+    "require_above_vwap", "require_atr_expanding", "max_position_pct", "max_open",
+)
+_BEST_HISTORY_RESULT_KEYS = (
+    "annual_return", "max_drawdown", "funded_trades", "eligible_trades",
+    "positive_quarters", "quarters",
+)
+
+
+def _normalise_best_history_snapshot(body):
+    """Allow only the calculated settings/results fields used by the history UI."""
+    if not isinstance(body, dict):
+        raise ValueError("snapshot required")
+
+    def finite(value, *, integer=False, minimum=None):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+            raise ValueError("invalid numeric value")
+        value = int(value) if integer else float(value)
+        if minimum is not None and value < minimum:
+            raise ValueError("numeric value below minimum")
+        return value
+
+    raw_model = body.get("model") or {}
+    model = {
+        "wallet": finite(raw_model.get("wallet"), minimum=1),
+        "minimum_trade": finite(raw_model.get("minimum_trade"), minimum=0),
+        "position_pct": finite(raw_model.get("position_pct"), minimum=0.1),
+        "max_open": finite(raw_model.get("max_open"), integer=True, minimum=1),
+    }
+    options = []
+    seen = set()
+    for raw in body.get("options") or []:
+        label = str((raw or {}).get("label") or "")
+        if label not in _BEST_HISTORY_LABELS or label in seen:
+            raise ValueError("invalid recommendation label")
+        seen.add(label)
+        raw_settings, raw_results = raw.get("settings") or {}, raw.get("results") or {}
+        settings = {
+            "scope": str(raw_settings.get("scope") or "All markets")[:120],
+            "min_rr": finite(raw_settings.get("min_rr"), minimum=0),
+            "min_quality": finite(raw_settings.get("min_quality"), minimum=0),
+            "min_volume_score": finite(raw_settings.get("min_volume_score"), minimum=0),
+            "min_rvol": finite(raw_settings.get("min_rvol"), minimum=0),
+            "require_above_vwap": bool(raw_settings.get("require_above_vwap")),
+            "require_atr_expanding": bool(raw_settings.get("require_atr_expanding")),
+            "max_position_pct": finite(raw_settings.get("max_position_pct"), minimum=0.1),
+            "max_open": finite(raw_settings.get("max_open"), integer=True, minimum=1),
+        }
+        results = {}
+        for key in _BEST_HISTORY_RESULT_KEYS:
+            results[key] = finite(raw_results.get(key),
+                                  integer=key in ("funded_trades", "eligible_trades", "positive_quarters", "quarters"),
+                                  minimum=0 if key != "annual_return" else None)
+        options.append({"label": label, "settings": settings, "results": results})
+    if not options or options[0]["label"] != "Balanced":
+        raise ValueError("Balanced recommendation required")
+    generated = str(body.get("dataset_generated") or "")[:40]
+    data_through = str(body.get("data_through") or "")[:10]
+    if data_through and not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", data_through):
+        raise ValueError("invalid data-through date")
+    return {"dataset_generated": generated, "data_through": data_through,
+            "model": model, "options": options}
+
+
+@app.route("/api/best-settings-history", methods=["GET", "POST"])
+def api_best_settings_history():
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    import web_store
+    if request.method == "POST":
+        try:
+            snapshot = _normalise_best_history_snapshot(request.get_json(silent=True))
+        except ValueError as ex:
+            return jsonify({"error": str(ex)}), 400
+        result = web_store.record_best_settings_history(name, snapshot)
+        if result == "error":
+            return jsonify({"error": "history could not be saved"}), 503
+        if result != "unchanged":
+            _wu.log_event(name, f"Best Settings daily snapshot {result}")
+    else:
+        result = "loaded"
+    return jsonify({"ok": True, "result": result,
+                    "history": web_store.list_best_settings_history(name, 90)})
 
 
 _SLBARS = {"ts": 0.0, "by_tk": None}

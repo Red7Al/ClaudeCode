@@ -1,73 +1,304 @@
 ===============================================================================================================================================================
-= HVF Web Application — Ad-hoc requests
+= HVF Web Application
 ===============================================================================================================================================================
 
-Date: 2026-08-06
-Timezone: Europe/London
-Contents: Outstanding and completed ad-hoc requests recorded under P-11
+===============================================================================================================================================================
+= Setting priorities
+===============================================================================================================================================================
+
+    These are guidelines for tasks that do not have set priorities - these are NOT actions
+
+    -- P-01 for BUGS
+    -- P-02 for queries
+    -- P-06 for move, remove, change tasks
+    -- P-10 for new functionality
+    -- P-20 for documentation
+    -- P-25 for Mobile device tasks
 
 ------------------------------------------------------------------------------------------------------------------------------------------------
-Application Focus - Ad-hoc requests 2026-08-06
-------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Standards and Guidelines
 
-    * P-11 Loading states - Areas that display data loading, including Scheduled Jobs, must use the coloured flashing hourglass loading state. -- Codex 2026-08-06: standardised the remaining Scheduled Jobs, Change Requests and broker-detail loading messages. [Completed]
-    * P-11 Configuration - Disable Adaptive Filters until the walk-forward implementation exists. -- Codex 2026-08-06: disabled the control and forced the saved effective value to 0 without deleting stored configuration. [Completed]
-    * P-11 Terminology - Replace all user-facing "funnel" text with "squeeze". -- Codex 2026-08-06: updated the Squeeze Scanner UI text and labels. [Completed]
-    * P-11 Mobile - When an iPad mini is recognised, reduce excess horizontal padding on the widest tabs. -- Codex 2026-08-06: added iPad mini detection and compact tab sizing. [Completed]
-    * P-11 X Posts - Remove the admin option to show or hide the X Posts tab; it must always be available as an admin tab. -- Codex 2026-08-06: removed the visibility control while retaining admin access gating. [Completed]
-    * P-11 User Configuration - Left-align input boxes and checkboxes in User Configuration. -- Codex 2026-08-06: fixed the configuration control column alignment. [Completed]
-    * P-11 User Configuration - Make configuration card headers distinguishable by colour. -- Codex 2026-08-06: added restrained per-panel header accents. [Completed]
-    * P-11 User Configuration - Add a description of Reward:Risk to the R:R section. -- Codex 2026-08-06: added the explanatory R:R description. [Completed]
-    * P-11 Performance - Copying Best Settings to personal configuration must make the next Back Test use the copied settings. -- Codex 2026-08-06: Back Test now reapplies current Quality, R:R and VolumeScore floors and refreshes when the Results panel is selected. [Completed]
-    * P-11 Scanner - Make the radio/selection filter section clearer. -- Codex 2026-08-06: grouped the Scanner filters into labelled sections and added explicit selection guidance. [Completed]
-    * P-11 Performance/Best Settings - When recommendations have almost identical settings and performance, provide a more useful alternative choice. -- Codex 2026-08-06: recommendation cards now require meaningful configuration distance before presenting a separate alternative. [Completed]
-    * P-11 User Configuration - Show Minimum Trade, Max position size and Max open positions with clear ownership and Auto behaviour. -- Codex 2026-08-06: added the fixed £25 broker floor as read-only plus editable position-size and max-open defaults, synchronised with Performance Replay Model. [Completed]
-    * P-11 Scanner - Default the Scanner Report table to absolute Dist→Entry descending. -- Codex 2026-08-06: changed the default sort to furthest distance first while retaining clickable sorting. [Completed]
-    * P-11 Scanner - VWAP and ATR are blank for triggered items. -- Codex 2026-08-06: exposed the computed VolumeScore component flags in `/api/records` so triggered Scanner rows render VWAP and ATR. [Completed]
-    * P-11 Scanner - Reorder columns so Market is immediately before X posts and P/E, and Triggered is immediately before Days since. -- Codex 2026-08-06: reordered the header and row renderer consistently. [Completed]
-    * P-11 Configuration - Rename IG to IG Credentials, give My trading limits its own adjacent button, disable Adaptive Filters navigation, and move Let winners run to IG Open Trades. -- Codex 2026-08-06: reorganised the configuration navigation and panels. [Completed]
-    * P-11 Configuration - Rename Leverage to IG Leverage. -- Codex 2026-08-06: renamed the navigation button and panel heading. [Completed]
-    * P-11 Configuration - Group all IG buttons behind a light-grey rectangle and use a trading icon for IG Open Trades. -- Codex 2026-08-06: grouped IG Credentials, limits, open trades, Trading (Squeeze) and IG Leverage; replaced the folder icon. [Completed]
-    * P-11 Configuration - Make the IG button group rectangle 50% darker between its current grey and the page background. -- Codex 2026-08-06: changed the group background to a 50/50 colour blend. [Completed]
-    * P-11 Configuration - Move the disabled Adaptive Filters button next to Tab visibility. -- Codex 2026-08-06: repositioned it outside the IG group beside Tab visibility. [Completed]
-    * P-11 Configuration - Rename Trading (Squeeze) to My Trading Filters and place IG Open Trades beside IG Leverage on the left of the bottom IG row. -- Codex 2026-08-06: updated the label and reordered the IG group. [Completed]
-    * P-11 Navigation - Show Scanner header controls only when Scanner Report is selected. -- Codex 2026-08-06: hid Show Filters, Show Squeeze Only, market refresh, Refresh data, Reset filters and Remove all filters on other tabs. [Completed]
-    * P-11 Configuration - Make clear that My filter defaults belong to the Scanner Report page. -- Codex 2026-08-06: renamed the card and clarified its scope. [Completed]
-    * P-11 Configuration - Centre all buttons inside the IG button group. -- Codex 2026-08-06: centred the grouped IG controls. [Completed]
-    * P-11 Configuration - Move VWAP/ATR Yes controls to the right and shift User Configuration input boxes 5 cm further right. -- Codex 2026-08-06: applied the desktop control offset with a narrow-screen reset. [Completed]
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    Standards and Guidelines (IT IS IMPERATIVE THAT ALL THESE ARE APPLIED AND CONTINUE TO BE IMPLEMENTED)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+the no. of instruments processed changes, update all documentation e.g. "of 1309 scanned", "37/1342", "~600", "Scan 600+", "Over 1200"
 
 ------------------------------------------------------------------------------------------------------------------------------------------------
-Application Focus - Ad-hoc requests requiring P-12
+Application Focus - Volume Score (new)
 ------------------------------------------------------------------------------------------------------------------------------------------------
 
-    * P-12 Scanner - Change the default Scanner Report chart status selection from Ready to Triggered. -- Codex 2026-08-06: Scanner now seeds `TRIGGERED` when the user has no saved status preference. [Completed]
-    * P-12 Trading - Enable the "Bridge may place orders" option while retaining the complete-IG-credentials safety gate. -- Codex 2026-08-06: the control is enabled in the UI, server-side credentials and admin checks remain enforced, and rejection reasons are shown. [Completed]
-    * P-12 Configuration - Force the IG group into two rows with IG Open Trades left of IG Leverage on the bottom row. -- Codex 2026-08-06: added an explicit desktop grid layout with responsive mobile fallback. [Completed]
-
 ------------------------------------------------------------------------------------------------------------------------------------------------
-Application Focus - Ad-hoc requests requiring P-14
+Application Focus - Ad-hoc requests 2026-08-03
 ------------------------------------------------------------------------------------------------------------------------------------------------
 
-    * P-14 Configuration - Keep all buttons in the grey IG settings group centred by centring each row independently. -- Codex 2026-08-06: replaced the biased explicit grid placement with two independently centred rows and retained responsive wrapping. [Completed]
-    * P-14 Configuration - Increase the grey IG settings group width by approximately 10% without stretching or offsetting its buttons. -- Codex 2026-08-06: widened only the background container and preserved centred controls. [Completed]
-    * P-14 Configuration - Move IG Leverage immediately to the right of IG Credentials. -- Codex 2026-08-06: placed both controls together on the first centred row. [Completed]
-    * P-14 Configuration - Move IG Open Trades to the right-hand side of its row. -- Codex 2026-08-06: placed it to the right of Trading (Squeeze) on the second centred row. [Completed]
-    * P-14 User Configuration - Align the Yes option controls for Require price above VWAP and Require ATR expanding with the input controls above. -- Codex 2026-08-06: added a shared fixed-width option slot with the mobile reset retained. [Completed]
-    * P-14 Configuration - Rename the Trading (Squeeze) button to IG Orders. [Completed]
-    * P-14 User Configuration - Make Minimum trade (£) editable instead of read-only and apply the saved value to replay affordability checks. -- Codex 2026-08-06: added the saved min_trade limit and applied it to the replay model. [Completed]
-    * P-14 User Configuration - Stop the Directions controls flashing after they load and move them to the top of My Trading Filters. -- Codex 2026-08-06: removed the stale loading class after rendering and moved the direction section into the top of the filters panel. [Completed]
-
 ------------------------------------------------------------------------------------------------------------------------------------------------
-Application Focus - Ad-hoc requests requiring P-15
+Application Focus - Ad-hoc requests 2026-08-03 (batch 2)
 ------------------------------------------------------------------------------------------------------------------------------------------------
 
-    * P-15 User Configuration - Stop Directions in User Configuration flashing and move the direction controls to the top of My Trading Filters. -- Codex 2026-08-06: completed in the configuration layout and loading-state fix. [Completed]
-    * P-15 User Configuration - Ensure Minimum trade (£) and Require ATR expanding save correctly. -- Codex 2026-08-06: added server persistence for min_trade and immediate ATR save on change. [Completed]
-    * P-15 IG Orders - Enable changing Bridge may place orders while retaining the complete-IG-credentials safety gate and show the rejection reason. -- Codex 2026-08-06: removed the misleading disabled UI state and surfaced the server prerequisite message. [Completed]
-    * P-15 Scheduled Jobs - Repair and verify the 04:30 UTC Price Data Refresh cron job. -- Codex 2026-08-06: loaded the cron-job.org API key from Supabase, confirmed the job was ON, reconciled it to `30 4 * * 1-6`, and verified GitHub Actions run `31071449577` started at 04:30:36 UTC and completed successfully at 04:55:30 UTC. [Completed]
+    * P-76 Security/Credentials - Move the X (Twitter) details (and the other credential moves) from GitHub Secrets to Supabase (encrypted app_secrets store). -- Claude 2026-08-03: investigated + ready — the four X_* ARE in GitHub Secrets, seed-secrets.yml is built and correct (workflow_dispatch, fail-fast guard, seeds present secrets, verifies decrypt, prints names only), and the only missing prerequisite is the APP_SECRET_KEY GitHub Secret (= contents of data/.web_users.key). Three resolution paths exist (admin UI entry — cleanest, no key upload; I set APP_SECRET_KEY + run the workflow; or add X_* to .env + local seeder). USER DECISION 2026-08-03: DEFER — "I will pick them up next week". [Deferred] Pick up next week
+
+    * P-100 Global/Docs - "Hunt Volatility Funnel" and "HVF" must NOT appear in any document — both must read "The Squeeze". (User 2026-08-03: set to P-100 for next week.)
+    * P-11 Main tabs - The "X" tab has disappeared — bring it back. [Deferred - user 2026-08-03] [Deferred]
+
+    * P-12 Squeeze History - Use more of the screen width so less horizontal scrolling is needed.
+    * P-12 Config (Admin) - If the "Engine" section is empty, remove it. [Deferred - user 2026-08-03]
+
+    * P-25 Instruments (NEW TAB) - Create an "Instruments" tab to the LEFT of Squeeze History: search by instrument name or ticker; show the detail report, the history of funnels, and anything else relevant. [Deferred - user 2026-08-03]
+    * P-15 IG Account - Default the view to "Aggregate rows". [Deferred - user 2026-08-03]
 
 ------------------------------------------------------------------------------------------------------------------------------------------------
-Application Focus - Ad-hoc requests requiring P-16
+Application Focus - Ad-hoc requests 2026-08-03 (batch 3)
 ------------------------------------------------------------------------------------------------------------------------------------------------
 
-    * P-16 Scheduled Jobs - Verify whether the 04:30 UTC Price Data Refresh failed by checking both the cron dispatch and the GitHub workflow completion. -- Codex 2026-08-06: confirmed cron dispatch success plus GitHub Actions run `31071449577` completed successfully after approximately 25 minutes. [Completed]
+    * P-14 Squeeze History - Use more of the screen width (less horizontal scroll). [consolidates the earlier P-12 squeeze-width item]
+    * P-14 Fees - Add the TIME to the close date on the Fees page.
+    * P-14 Pre-orders to my IG - Add VolumeScore, R:R and Quality to the right of Name.
+    * P-14 Scanner Report - Add R:R and Quality to the right of VolumeScore.
+    * P-14 Global/Tables - Move Sector to the LEFT of the Ticker id column; if a table has no Ticker column, move Sector to the far RHS.
+    * P-14 Global/Tables - Add RVOL to the LEFT of VolumeScore on every table that has a VolumeScore column.
+    * P-14 Global/Tables - Move "In Pre-orders?" to the far RHS.
+    * P-14 Global/Tables - Move Leverage next to Location on tables that have Location; else to the left of the Ticker id; else to the far RHS.
+    * P-14 Global/Tables - On every table with RVOL, add "Above VWAP" to the RIGHT of RVOL.
+    * P-14 Global/Tables - For "Above VWAP" show just "VWAP" with a tick/cross; do the SAME for ATR, placed to the right of VWAP.
+    * P-02 Data/Analysis - The work to find a new VolumeScore over a SHORTER timescale (the early-volume metric near the funnel) is priority P-02. [ties to the P-05/P-02 VolumeScore analysis above]
+    * P-14 Fees - Add a Market column next to the instrument name; widen the table if required.
+    * P-14 Fees - Use more of the screen width to remove the horizontal scroll bar.
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Ad-hoc requests 2026-08-01 (all P-03)
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    -- 2026-08-02 batch (user tagged P-08) --
+
+    -- 2026-08-02 batch (user tagged P-12) --
+
+    * P-12 Config/Credentials - X credentials are still not in Supabase. -- Claude 2026-08-02: the encrypted secret store + admin write path EXIST (P-15); the blocker is the SOURCE — the four X_* values are not in the local .env and GitHub Secrets are write-only (unreadable), so there is nothing to seed Supabase from. To land them: EITHER enter them in Config → X Credentials (admin) which writes the encrypted app_secrets row, OR add X_API_KEY/X_API_SECRET/X_ACCESS_TOKEN/X_ACCESS_SECRET to the local .env and I run the seeder. I cannot read them from GitHub. UPDATE 2026-08-03: user directed "skip all credentials work" — parked; see the consolidated P-76 item. [Deferred - all credentials work parked (user 2026-08-03)]
+
+    -- 2026-08-02 batch (user tagged P-06) --
+
+    * P-06 Config/Adaptive Filters - Send an email when the adaptive filters are automatically altered. -- Claude 2026-08-02: BLOCKED on a dependency — the adaptive-filter AUTO-ALTER engine does not exist yet. adaptive_filters/rebalance_weeks are only config knobs; the walk-forward engine that would actually re-tune a user's Market/Quality/R:R filters every rebalance_weeks is the DEFERRED task (see "Performance Tab: AI Reports" P-05 L194 — mechanic not yet decided). Nothing currently changes the filters, so there is no event to email on. REQUIREMENT CAPTURED: when that engine is built, it must email the account holder (web_users.email_for + send_trade_email/notify) a before→after diff of the changed filters. Building a standalone emailer now would never fire. [Blocked - depends on the deferred adaptive-filter engine]
+
+    -- 2026-08-02 batch (user tagged P-05) --
+
+    * P-05 Security/Credentials - Get the X credentials into Supabase (they're in GitHub Secrets, used by the daily tweet job, but not in the encrypted store or local env). -- Claude 2026-08-02: confirmed x_publish.py reads X_API_KEY/SECRET/ACCESS_TOKEN/ACCESS_SECRET from os.environ only; they're MISSING locally and absent from app_secrets (store has 12: IG/Slack/FRED/EIA/cron). Since GitHub Secrets are readable BY A WORKFLOW at runtime, the fix is a one-time GitHub Actions job that reads the four X_* from its env and set_secret()s them into the encrypted app_secrets store (migrate_secrets_to_supabase.py already lists the X_* keys). After that db_pool's bootstrap loads them into env everywhere (local + Actions). PREREQUISITE (user-gated): APP_SECRET_KEY GitHub Secret must equal the contents of data/.web_users.key so the Actions-encrypted rows decrypt locally. BUILT: .github/workflows/seed-secrets.yml (workflow_dispatch; maps ALL non-bootstrap secrets — X_*, QUIVER_QUANT_API_KEY, IG/Slack/FRED/EIA, RESEND/YAHOO/GH_PAT — plus SUPABASE_* + APP_SECRET_KEY to env; guards for missing bootstrap; runs migrate_secrets_to_supabase.py + --verify; blanks skipped; prints names only). REMAINING (user): (1) add APP_SECRET_KEY GitHub Secret = contents of data/.web_users.key; (2) run the workflow from the Actions tab once. Then db_pool's bootstrap loads them into env everywhere. UPDATE 2026-08-03: user directed "skip all credentials work" — parked; see the consolidated P-76 item. [Deferred - all credentials work parked (user 2026-08-03)]
+
+    -- 2026-08-01 later batch (user tagged P-06 / P-07 / P-08 / P-09) --
+
+    -- 2026-08-01 P-09/P-10/P-12 batch --
+
+    -- 2026-08-01 P-08 late batch --
+
+    -- 2026-08-01 P-15 secret store --
+    * P-15 Security (BACKLOG) - Secret-store phase 3-4: prune .env to bootstrap-only. -- Claude 2026-08-01: step 1 done (db_pool loads the store into env for web + all 41 Actions scripts; dual-read/fail-open so nothing changes yet). REMAINING (user-gated): (1) YOU set APP_SECRET_KEY GitHub Secret = contents of data/.web_users.key; (2) verify a green Actions run; (3) then swap each of the 41 workflows' per-secret env lines for SUPABASE_USER/SUPABASE_DB_PASSWORD/APP_SECRET_KEY, delete the redundant GitHub Secrets, and prune the non-bootstrap keys from .env. Reversible. Optional hardening: dedicated APP_SECRET_KEY + re-encrypt (MultiFernet) instead of reusing the password-store key. Design: docs/SUPABASE_SECRET_STORE_DESIGN.md. UPDATE 2026-08-02: proved .env is redundant beyond the 2 bootstrap keys (11/11 secrets resolve from the store). USER DECISION 2026-08-02: KEEP the local .env as a cold backup (do NOT prune it) — the plaintext lines are the recovery path if data/.web_users.key is ever lost. So the local prune is intentionally not done; the Actions-side migration (APP_SECRET_KEY GitHub Secret + seed-secrets.yml) still stands when wanted. [Deferred - user keeps .env as cold backup]
+
+    -- 2026-08-01 P-14 batch --
+    * P-14 Credentials - Remove creds from .env (user believes they're pulled from Supabase). -- Claude 2026-08-01: DECLINED / surfaced — verified the app reads creds from os.environ (db_pool uses os.environ["SUPABASE_USER"] bracket-access; ig_shim IG_*, notify SLACK_*), populated by .env via load_dotenv. There is NO Supabase->env loader at runtime (app_config holds config values only; get_app_secret is used only in the credential DISPLAY UI). Removing them from .env would break DB/IG/Slack for the local server + every script. The secret-loading mechanism now EXISTS (P-15 encrypted store + db_pool loader), so the actual .env prune is the reversible, user-gated backlog item below (set APP_SECRET_KEY GitHub Secret -> verify green run -> prune). [Deferred]
+
+    -- 2026-08-01 P-12 batch --
+
+    -- 2026-08-01 P-08/P-11 later-session batch --
+
+    -- 2026-08-01 P-09/P-10 batch --
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : AI Reports
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+ 
+    * P-05 Build a report showing the impact of change in best settings for Market, Quality and R:R over x weeks (variable) -- USER 2026-07-26: DEFER — mechanic (walk-forward adaptive vs in-sample drift) not yet decided; default rebalance window chosen = 4 weeks (UI-adjustable) for when resumed. Builds on L59 /api/best-settings + _sqa helpers. NOTE (2026-08-02, P-06): when this walk-forward adaptive engine is built, it MUST email the account holder a before→after diff each time it auto-alters their filters (the deferred P-06 adaptive-email item folds in here). [Deferred]
+
+    * P-10 Note: "Best Quality / R:R combinations" are in Report TAB [Deferred]
+    * P-10 Build a report showing the impact per trade of NOT selling at TARGET but letting them run e.g. Glencore PLC [Deferred]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : All sub tabs (x3)
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-06 Add new category in the user configuration leverage to match https://www.ig.com/uk/charges/margin if required [Deferred]
+
+Application Focus - Performance Tab : Summary
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    Performance: Summary
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : Results
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab: Results - Filtering
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-10 In theory - If the criteria of the choice of markets and\or bull or bear changes how can Results tab handle this? [Deferred]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : What separates the winners (BUGS)
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : What separates the winners
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - IG Trades - Bugs
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Other
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    ENHANCEMENTS - SPECIFIC
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Data
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - How it Works Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Instrument Details - Content
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-10 Add the latest relevant visual from @ratedmarkets on X to the HVF Details Report for the same instrument. 
+    * P-10 Add the latest relevant visual from @InvestingVisuals on X to the HVF Details Report for the same instrument. 
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Scanner Report Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - My Pre-orders
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - My Pre-orders (New)
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Pre-orders to My IG
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Main Page
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - X Posts
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - IG Account Tab : Amend
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : Summary Page
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : Results Page
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-10 On the summary section use buttons to the right of "Summary" title to filter cards e.g. Sector,  WIN / LOSS [Deferred]
+    * P-10 Data - Process 5 years of data looking for all funnels
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : What separates the winners
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : System Logs
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : Batch Activity
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : Change Requests
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Data
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-25 Data - Create a backup of supabase database - this is not scheduled with supabase as this is chargeable -- Claude 2026-08-02: BUILT .github/workflows/supabase-backup.yml — a free self-managed logical backup: installs postgresql-client-17 (server is PG 17.6; DB ~493 MB / 32 tables), read-only pg_dump of schema public via the SESSION pooler (custom format -Fc, compressed), uploaded as a GitHub Actions artifact (90-day retention). workflow_dispatch (no GitHub cron); a cron-job.org weekly trigger can point at it. NOTE: pg_dump isn't installed locally so I couldn't dry-run it here — needs one manual Actions run to confirm pooler compatibility; once green I'll deploy a weekly cron-job.org trigger (my remit). [Complete]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : User Management
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Squeeze History Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Terms & Conditions Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Fees Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Configuration
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    USER
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    DATA
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    * P-80 Data - Import all X details for Alex from GitHub Secrets. 
+    * P-80 Data - Import all Yahoo details for Alex from GitHub Secrets. 
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    TRADING (SQUEEZE)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Security
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    OBFUSCATION
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    RECOMMENDATIONS
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+Web App: Mobile devices
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    ENHANCEMENTS - GENERAL (mobile devices)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    BUGS - GENERAL (Mini iPad)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    BUGS - GENERAL (mobile devices)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+===============================================================================================================================================================
+= X (Twitter)
+===============================================================================================================================================================
+
+

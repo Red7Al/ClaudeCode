@@ -65,8 +65,28 @@ if (!result.labels.includes("Balanced") || !result.labels.includes("Growth") || 
 }
 if (result.distinct !== result.settings.length) throw new Error("recommendation configurations are duplicated");
 
+let history;
+const historyDeadline = Date.now() + 30_000;
+while (Date.now() < historyDeadline) {
+  await new Promise(resolve => setTimeout(resolve, 500));
+  history = await evaluate(`(() => {
+    const box=document.getElementById("best-settings-history");
+    const rows=box?[...box.querySelectorAll("tbody tr")]:[];
+    return {ready:rows.length>0, rows:rows.length, text:(box?.textContent||"").trim().slice(0,700)};
+  })()`);
+  if (history?.ready) break;
+  if (history?.text?.includes("could not")) throw new Error(history.text);
+}
+if (!history?.ready) throw new Error(`Best Settings history did not render: ${JSON.stringify(history)}`);
+
 await send("Emulation.setDeviceMetricsOverride", {width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false});
 const shot = await send("Page.captureScreenshot", {format: "png", captureBeyondViewport: false});
 fs.writeFileSync("tests_fixtures/performance-best-settings.png", Buffer.from(shot.data, "base64"));
-console.log(JSON.stringify({labels: result.labels, distinct: result.distinct, screenshot: "tests_fixtures/performance-best-settings.png"}));
+await evaluate(`document.getElementById("best-settings-history").scrollIntoView({block:"start"})`);
+await new Promise(resolve => setTimeout(resolve, 300));
+const historyShot = await send("Page.captureScreenshot", {format: "png", captureBeyondViewport: false});
+fs.writeFileSync("tests_fixtures/performance-best-settings-history.png", Buffer.from(historyShot.data, "base64"));
+console.log(JSON.stringify({labels: result.labels, distinct: result.distinct, historyRows:history.rows,
+  screenshot: "tests_fixtures/performance-best-settings.png",
+  historyScreenshot: "tests_fixtures/performance-best-settings-history.png"}));
 ws.close();

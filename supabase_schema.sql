@@ -310,3 +310,22 @@ create table if not exists hvf_scan_log (
     target          numeric,
     recorded_at     timestamptz default now()
 );
+
+
+-- ---------------------------------------------------------------------------
+-- web_best_settings_history  (one persistent recommendation snapshot/user/day)
+-- ---------------------------------------------------------------------------
+create table if not exists web_best_settings_history (
+    id                bigserial primary key,
+    ts                timestamptz not null default now(),
+    user_id           text not null,
+    snapshot_day      date not null default current_date,
+    dataset_generated text,
+    data_through      text,
+    model_json        jsonb not null,
+    options_json      jsonb not null,
+    fingerprint       text not null,
+    unique (user_id, snapshot_day)
+);
+create index if not exists idx_web_best_settings_user
+    on web_best_settings_history (user_id, snapshot_day desc);

@@ -35,6 +35,15 @@ def test_json_safe_converts_non_finite_numbers_for_browser_payloads():
     assert server._json_safe(ScalarWrapper()) is None
 
 
+def test_flask_json_provider_never_emits_non_finite_tokens():
+    payload = server.app.json.dumps({"nan": float("nan"), "positive": float("inf"),
+                                     "negative": float("-inf")})
+
+    assert payload == '{"nan": null, "negative": null, "positive": null}'
+    assert "NaN" not in payload
+    assert "Infinity" not in payload
+
+
 def test_winners_endpoint_never_emits_nan(monkeypatch):
     row = {
         "ticker": "TEST", "name": "Test", "market": "Test", "mcap": float("nan"),
@@ -56,12 +65,18 @@ def test_winners_endpoint_never_emits_nan(monkeypatch):
 
 
 def test_performance_has_dedicated_let_winners_run_tab():
+    # NOTE (2026-08-07, ChangeRequest P-06 "Fix Let winners run navigation regression"): commit bb23c0f
+    # (2026-08-05) removed the "Let winners run" pill and silently redirected pfPanel('run') to
+    # 'settings' in the SAME commit that flipped these two assertions to match — with no change-request
+    # note explaining an intentional removal, while the feature itself had just been built and marked
+    # [Completed] the day before (20260805-ToDo-Claude.txt L154). The user re-filed the identical request
+    # on 2026-08-07, confirming this was an accidental regression, not a deliberate removal. Restored.
     html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
 
-    assert 'data-pfpanel="run" onclick="pfPanel(\'run\')"' not in html
+    assert 'data-pfpanel="run" onclick="pfPanel(\'run\')"' in html
     assert 'id="pf-panel-run" class="hidden"' in html
     assert 'if(run)run.classList.toggle("hidden",which!=="run")' in html
-    assert 'if(which==="run")which="settings"' in html
+    assert 'if(which==="run")which="settings"' not in html
     assert 'id="pf-advanced-nav"' not in html
     assert 'Which market and signal attributes were associated with the strongest outcomes.' in html
     assert 'id="pf-pill-advanced" data-pfpanel="analysis"' in html
@@ -92,7 +107,8 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert 'All recommendation cards use an explicit numeric Max open value.' in html
     assert 'OPENS=[3,5,8,12,20,25,50]' in html
     assert 'WINNERS_MAXOPEN=50' in html
-    assert 'Max open is always numeric' in html
+    # "Leverage & the wallet" explanatory text removed per ChangeRequest 2026-08-07 P-06.
+    assert 'Leverage &amp; the wallet' not in html
     assert 'id="ordp-maxopen" type="number" min="1" step="1" value="50"' in html
     assert 'id="pfw-maxopen" type="number" min="1" step="1" value="50"' in html
     assert "Below minimum trade" in html
@@ -103,7 +119,13 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert "Markets kept" not in html
     assert "⏳ Data loading…" in html
     assert ".refreshing" in html
-    assert 'renderDecisionProof(\'best-proof\',best.proof)' in html
+    # Detail card follows whichever choice card is clicked (ChangeRequest 2026-08-07 P-06) — previously
+    # only "best" (Balanced) ever got a detail card, hardcoded via renderDecisionProof('best-proof',
+    # best.proof) inside renderBestCombo; that's now selectBestChoice(label), called for whichever of the
+    # 4 choices is selected, with the proof computed lazily per-choice.
+    assert "function selectBestChoice(label)" in html
+    assert "let BEST_CHOICES=[], BEST_SELECTED=" in html
+    assert "renderDecisionProof('best-proof',x.proof)" in html
     assert "renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true})" in html
     assert "decisionProofFilter" in html
     assert "achievable P&amp;L" in html
@@ -113,6 +135,8 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert '"Broad evidence",broad' in html
     assert '<b style="color:var(--fg)">Changes:</b>' in html
     assert "Apply this configuration" in html
+    assert 'onclick="selectBestChoice(' in html
+    assert "fcard-selected" in html
     assert "function _pfMatchesCurrentConfig(r)" in html
     assert '!floor("min_risk_reward",r.rr)' in html
     assert '!floor("min_rvol",r.rvol)' in html
@@ -140,6 +164,15 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert 'min_rvol' in server and 'require_above_vwap' in server and 'require_atr_expanding' in server
     assert 'const limits=cfg.limits||cfg, filters=cfg.filters||{}' in html
     assert 'data-pfpanel="summary"' in html and 'style="display:none"' in html
+    assert 'id="best-settings-history"' in html
+    assert 'function recordBestSettingsSnapshot(snapshot)' in html
+    assert 'function paintBestSettingsHistory(history)' in html
+    assert 'Changes from previous snapshot' in html
+    assert 'data_through:String((byDate[byDate.length-1]||{}).trig_date||"").slice(0,10)' in html
+    assert 'id="best-settings-personalisation"' in html
+    assert '<b>Personalised using:</b>' in html
+    assert 'function paintBestSettingsPersonalisation()' in html
+    assert 'paintBestSettingsPersonalisation();' in html
 
 
 def test_let_winners_run_never_gives_back_below_bull_target(monkeypatch):

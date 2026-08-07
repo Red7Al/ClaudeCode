@@ -31,6 +31,8 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.17.0  2026-08-06  OpenAI      (user 2026-08-05 P-12) Track @ratedmarkets and keep each tracked account/ticker row
+#                                 pointed at its latest post, so HVF Details can show current instrument-matched visuals.
 # 1.16.1  2026-06-30  Alex Hind   (user 2026-06-30) alert_new_picks: skip the Slack post entirely when the WAIT-noise
 #                                 filter suppressed every line — no more bare "New X mentions" header with no details.
 # 1.16.0  2026-06-30  Alex Hind   (user 2026-06-30) TRACKED_ACCOUNTS += @CyclesFan, @CapfFlowsData, @Rektfence,
@@ -142,10 +144,12 @@ TRACKED_ACCOUNTS = [
     {"handle": "TheStockWhale",     "name": "The Stock Whale",     "source": "X/@TheStockWhale"},
     # Added 2026-06-22 (user) — crypto/market commentary.
     {"handle": "crypto_banter",     "name": "Crypto Banter",       "source": "X/@crypto_banter"},
-    # Added 2026-06-24 (user).
+    # Added 2026-06-24 (user). @InvestingVisual is the live handle for the requested Investing Visuals source.
     {"handle": "investingvisual",   "name": "Investing Visual",    "source": "X/@investingvisual"},
     {"handle": "brikka_trading",    "name": "Brikka Trading",      "source": "X/@brikka_trading"},
     {"handle": "sam_Badawi",        "name": "Sam Badawi",          "source": "X/@sam_Badawi"},
+    # Added 2026-08-06 (user request dated 2026-08-05) for instrument-matched HVF detail visuals.
+    {"handle": "ratedmarkets",      "name": "Rated Markets",       "source": "X/@ratedmarkets"},
     # Added 2026-06-30 (user) — eight more (@JPATrades was already tracked above).
     {"handle": "CyclesFan",         "name": "CyclesFan",           "source": "X/@CyclesFan"},
     {"handle": "CapfFlowsData",     "name": "CapfFlowsData",       "source": "X/@CapfFlowsData"},
@@ -373,6 +377,23 @@ def save_new_pick(ticker: str, investor_name: str, source: str, post_url: str):
             time.sleep(0.3)
     except Exception as e:
         log.warning(f"Epic lookup failed for {ticker}: {e}")
+
+
+def refresh_pick_link(ticker: str, investor_name: str, source: str, post_url: str):
+    """Point an existing account/ticker record at its latest durable X post."""
+    url = _canonical_x_url(post_url)
+    if not url:
+        return
+    db_run(
+        """update notable_investors
+           set post_url=:v_url, source=:v_source, disclosed_at=current_date, recorded_at=now()
+           where id = (
+               select id from notable_investors
+               where ticker=:v_ticker and investor_name=:v_investor
+               order by disclosed_at desc, recorded_at desc limit 1
+           ) and post_url is distinct from :v_url""",
+        v_url=url, v_source=source, v_ticker=ticker, v_investor=investor_name,
+    )
 
 
 # ======================================================================================================================
@@ -645,11 +666,17 @@ def scan_social_feeds(max_age_hours: int = 24) -> list:
         if not posts:
             continue
 
+        # RSS feeds are newest-first. Only process the first mention of a ticker from this account so
+        # an older post in the same feed cannot overwrite the latest visual/link.
+        seen_tickers = set()
         for post in posts:
             text    = f"{post['title']} {post['content']}"
             tickers = extract_tickers(text)
 
             for ticker in tickers:
+                if ticker in seen_tickers:
+                    continue
+                seen_tickers.add(ticker)
                 if is_new_ticker(ticker, name):
                     log.info(f"NEW PICK: {ticker} from @{handle}")
                     save_new_pick(ticker, name, source, post.get("url", ""))
@@ -661,6 +688,8 @@ def scan_social_feeds(max_age_hours: int = 24) -> list:
                         "post_content": post["title"][:100],
                         "url":          post.get("url", ""),   # tweet link (user 2026-06-24)
                     })
+                else:
+                    refresh_pick_link(ticker, name, source, post.get("url", ""))
 
     if all_new_picks:
         alert_new_picks(all_new_picks)

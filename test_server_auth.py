@@ -44,6 +44,72 @@ def test_admin_can_change_shared_bridge(monkeypatch):
     assert events and events[0][0][0] == "Admin"
 
 
+def test_non_admin_cannot_create_user(monkeypatch):
+    _identity(monkeypatch, "Silver", admin=False)
+    calls = []
+    monkeypatch.setattr(server._wu, "admin_create_user", lambda *a, **k: calls.append((a, k)) or True)
+
+    response = server.app.test_client().post(
+        "/api/users", headers={"X-Auth": "token"},
+        json={"name": "NewPerson", "action": "create", "email": "new@example.com"})
+
+    assert response.status_code == 403
+    assert calls == []
+
+
+def test_admin_can_create_user(monkeypatch):
+    _identity(monkeypatch, "Admin", admin=True)
+    created = []
+    events = []
+    monkeypatch.setattr(server._wu, "admin_create_user",
+                        lambda name, email, sub, adm: created.append((name, email, sub, adm)) or True)
+    monkeypatch.setattr(server._wu, "request_reset_code", lambda *a, **k: True)
+    monkeypatch.setattr(server._wu, "log_event", lambda *args, **kwargs: events.append((args, kwargs)))
+    monkeypatch.setattr(server._wu, "list_users", lambda: [])
+    monkeypatch.setattr(server._wu, "list_requests", lambda: [])
+
+    response = server.app.test_client().post(
+        "/api/users", headers={"X-Auth": "token"},
+        json={"name": "NewPerson", "action": "create", "email": "new@example.com",
+              "subscription": "silver", "admin": False})
+
+    assert response.status_code == 200
+    assert response.get_json()["ok"] is True
+    assert created == [("NewPerson", "new@example.com", "silver", False)]
+    assert events and events[0][0][0] == "Admin"
+
+
+def _identity_with_support(monkeypatch, name, *, admin, support):
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: name if token == "token" else "")
+    monkeypatch.setattr(server._wu, "is_admin", lambda candidate: admin and candidate == name)
+    monkeypatch.setattr(server._wu, "is_support", lambda candidate: support and candidate == name)
+
+
+def test_support_role_can_read_ops_endpoints_but_not_admin_only(monkeypatch):
+    """Support (2026-08-07): read-only System Logs / Batch Activity / Scheduled Jobs, nothing else."""
+    _identity_with_support(monkeypatch, "Ops", admin=False, support=True)
+    monkeypatch.setattr(server, "_read_json_entries", lambda *a, **k: [])
+    monkeypatch.setattr("web_store.list_batch", lambda: [], raising=False)
+
+    batch = server.app.test_client().get("/api/batch-activity", headers={"X-Auth": "token"})
+    syslogs = server.app.test_client().get("/api/system-logs", headers={"X-Auth": "token"})
+    version = server.app.test_client().get("/api/version-history", headers={"X-Auth": "token"})
+    users = server.app.test_client().get("/api/users", headers={"X-Auth": "token"})
+
+    assert batch.status_code == 200
+    assert syslogs.status_code == 200
+    assert version.status_code == 403   # Support does not get Version History
+    assert users.status_code == 403     # or User Management
+
+
+def test_guest_without_support_cannot_read_ops_endpoints(monkeypatch):
+    _identity_with_support(monkeypatch, "Guest", admin=False, support=False)
+
+    response = server.app.test_client().get("/api/batch-activity", headers={"X-Auth": "token"})
+
+    assert response.status_code == 403
+
+
 def test_login_without_ig_credentials_sees_bridge_off(monkeypatch):
     _identity(monkeypatch, "NoBroker", admin=False)
     monkeypatch.setattr(server, "_user_has_ig_creds", lambda name: False)
@@ -121,3 +187,82 @@ def test_fees_normalises_locale_ig_dates():
         source = Path(server.__file__).read_text(encoding="utf-8")
     assert "def _ig_day(value)" in source
     assert "a <= _ig_day(t.get(\"date\")) <= b" in source
+
+
+def test_hvf_links_return_latest_requested_visuals(monkeypatch):
+    import db_pool
+
+    class FakeDb:
+        def run(self, query, **params):
+            if "x_publications" in query:
+                return []
+            return [
+                ("Investing Visual", "https://x.com/InvestingVisual/status/222", "2026-08-06"),
+                ("Investing Visual", "https://x.com/InvestingVisual/status/111", "2026-08-01"),
+                ("Rated Markets", "https://x.com/ratedmarkets/status/333", "2026-08-05"),
+            ]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(db_pool, "get_db", lambda: FakeDb())
+    response = server.app.test_client().get("/api/links/NVDA")
+
+    assert response.status_code == 200
+    visuals = {row["key"]: row for row in response.get_json()["visuals"]}
+    assert visuals["investingvisual"]["url"].endswith("/222")
+    assert visuals["ratedmarkets"]["url"].endswith("/333")
+
+
+def _best_history_snapshot():
+    option = {
+        "label": "Balanced",
+        "settings": {"scope": "All markets", "min_rr": 3, "min_quality": 50,
+                     "min_volume_score": 4, "min_rvol": 1.5,
+                     "require_above_vwap": True, "require_atr_expanding": False,
+                     "max_position_pct": 2, "max_open": 25},
+        "results": {"annual_return": 0.25, "max_drawdown": 0.08,
+                    "funded_trades": 40, "eligible_trades": 45,
+                    "positive_quarters": 4, "quarters": 4},
+    }
+    return {"dataset_generated": "2026-08-06 11:30 UTC", "data_through": "2026-08-05",
+            "model": {"wallet": 10000, "minimum_trade": 25,
+                      "position_pct": 2, "max_open": 50}, "options": [option]}
+
+
+def test_best_settings_history_requires_login():
+    response = server.app.test_client().get("/api/best-settings-history")
+
+    assert response.status_code == 401
+
+
+def test_best_settings_history_records_normalised_daily_snapshot(monkeypatch):
+    import web_store
+
+    captured = []
+    _identity(monkeypatch, "Silver", admin=False)
+    monkeypatch.setattr(web_store, "record_best_settings_history",
+                        lambda user, snapshot: captured.append((user, snapshot)) or "inserted")
+    monkeypatch.setattr(web_store, "list_best_settings_history",
+                        lambda user, limit: [{"snapshot_day": "2026-08-06", **captured[0][1]}])
+    monkeypatch.setattr(server._wu, "log_event", lambda *args, **kwargs: None)
+
+    response = server.app.test_client().post(
+        "/api/best-settings-history", headers={"X-Auth": "token"}, json=_best_history_snapshot())
+
+    assert response.status_code == 200
+    assert response.get_json()["result"] == "inserted"
+    assert captured[0][0] == "Silver"
+    assert captured[0][1]["options"][0]["settings"]["max_open"] == 25
+
+
+def test_best_settings_history_rejects_non_finite_results():
+    snapshot = _best_history_snapshot()
+    snapshot["options"][0]["results"]["annual_return"] = float("nan")
+
+    try:
+        server._normalise_best_history_snapshot(snapshot)
+    except ValueError as exc:
+        assert "numeric" in str(exc)
+    else:
+        raise AssertionError("non-finite annual return was accepted")

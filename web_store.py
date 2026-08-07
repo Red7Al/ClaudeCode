@@ -19,7 +19,10 @@
 # 1.0.0   2026-07-04  Alex Hind   Initial build — web_batch_activity + web_activity_log tables, append/list, migration.
 # ======================================================================================================================
 
+import hashlib
+import json
 import logging
+import threading
 
 log = logging.getLogger("web_store")
 
@@ -32,6 +35,13 @@ _DDL = [
         id bigserial primary key, ts timestamptz not null default now(),
         user_id text not null, event text)""",
     "create index if not exists idx_web_activity_user on web_activity_log (user_id, ts desc)",
+    """create table if not exists web_best_settings_history (
+        id bigserial primary key, ts timestamptz not null default now(),
+        user_id text not null, snapshot_day date not null default current_date,
+        dataset_generated text, data_through text,
+        model_json jsonb not null, options_json jsonb not null, fingerprint text not null,
+        unique (user_id, snapshot_day))""",
+    "create index if not exists idx_web_best_settings_user on web_best_settings_history (user_id, snapshot_day desc)",
     # IG account audit trail (user 2026-08-03, P-25): append-only ENCRYPTED history of each user's IG
     # account identity. This store holds only CIPHERTEXT (the *_enc columns) — the Fernet encrypt/decrypt
     # lives in web_users, which owns the key. account_number_last3 is cleartext for masked display.
@@ -42,6 +52,7 @@ _DDL = [
     "create index if not exists idx_web_ig_audit_user on web_ig_account_audit (user_id, ts desc)",
 ]
 _ready = False
+_best_history_lock = threading.Lock()
 
 
 def _db():
@@ -117,6 +128,72 @@ def list_activity(user_id: str, limit: int = 200) -> list:
             db.close()
     except Exception as e:
         log.warning(f"list_activity failed: {e}")
+        return []
+
+
+# ── Per-user Best Settings history ─────────────────────────────────────────────────────────────────────
+def record_best_settings_history(user_id: str, snapshot: dict) -> str:
+    """Save at most one snapshot per user/day; repeated identical calculations are no-ops."""
+    model = snapshot.get("model") or {}
+    options = snapshot.get("options") or []
+    canonical = json.dumps({"model": model, "options": options}, sort_keys=True,
+                           separators=(",", ":"), ensure_ascii=True)
+    fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    try:
+        with _best_history_lock:
+            db = _db()
+            try:
+                prior = db.run("select fingerprint from web_best_settings_history "
+                               "where user_id=:u and snapshot_day=current_date", u=user_id) or []
+                if prior and prior[0][0] == fingerprint:
+                    return "unchanged"
+                db.run("""insert into web_best_settings_history
+                              (user_id, snapshot_day, dataset_generated, data_through,
+                               model_json, options_json, fingerprint)
+                           values (:u, current_date, :g, :d, cast(:m as jsonb), cast(:o as jsonb), :f)
+                           on conflict (user_id, snapshot_day) do update set
+                              ts=now(), dataset_generated=excluded.dataset_generated,
+                              data_through=excluded.data_through, model_json=excluded.model_json,
+                              options_json=excluded.options_json, fingerprint=excluded.fingerprint""",
+                       u=user_id, g=snapshot.get("dataset_generated", ""),
+                       d=snapshot.get("data_through", ""),
+                       m=json.dumps(model, separators=(",", ":")),
+                       o=json.dumps(options, separators=(",", ":")), f=fingerprint)
+                return "updated" if prior else "inserted"
+            finally:
+                db.close()
+    except Exception as e:
+        log.warning(f"record_best_settings_history failed: {e}")
+        return "error"
+
+
+def _json_value(value, fallback):
+    if isinstance(value, type(fallback)):
+        return value
+    try:
+        parsed = json.loads(value) if isinstance(value, str) else value
+        return parsed if isinstance(parsed, type(fallback)) else fallback
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return fallback
+
+
+def list_best_settings_history(user_id: str, limit: int = 90) -> list:
+    try:
+        db = _db()
+        try:
+            rows = db.run("""select snapshot_day, ts, dataset_generated, data_through,
+                                    model_json, options_json
+                               from web_best_settings_history where user_id=:u
+                               order by snapshot_day desc limit :n""",
+                          u=user_id, n=max(1, min(int(limit), 365))) or []
+            return [{"snapshot_day": str(r[0]), "recorded_at": _fmt(r[1]),
+                     "dataset_generated": r[2] or "", "data_through": r[3] or "",
+                     "model": _json_value(r[4], {}), "options": _json_value(r[5], [])}
+                    for r in rows]
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"list_best_settings_history failed: {e}")
         return []
 
 

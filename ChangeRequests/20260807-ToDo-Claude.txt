@@ -1,0 +1,313 @@
+===============================================================================================================================================================
+= HVF Web Application
+===============================================================================================================================================================
+
+===============================================================================================================================================================
+= Setting priorities
+===============================================================================================================================================================
+
+    These are guidelines for tasks that do not have set priorities - these are NOT actions
+
+    -- P-01 for BUGS
+    -- P-02 for queries
+    -- P-06 for move, remove, change tasks
+    -- P-10 for new functionality
+    -- P-20 for documentation
+    -- P-25 for Mobile device tasks
+    -- Completed rows must include Claude near the end of the completion note, immediately before the final status marker (changed from "OpenAI" 2026-08-07 per user — the prior wording misattributed the work)
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - BUGS
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-03 "VolumeScore — breakout confirmation (0–12)" is flashing … and content below -- Root cause: the 2026-08-05 "standardize loading states" commit added the pulsing `sqh-loading` CSS class to the placeholder div, but the fetch success-handler never removed it after painting real content, so the box (and everything below it) kept pulsing forever. Added `classList.remove("sqh-loading")` to the handler, matching the already-correct pattern used elsewhere (e.g. paintXVisuals). 32 tests passed. Claude. [Completed]
+    * P-03 "Tab visibility" is flashing … and content below -- Same root cause and fix as the VolumeScore card, applied to `renderTabVis()`'s `tabvis-list` div. 32 tests passed. Claude. [Completed]
+    * P-03 "Squeeze Rules 1–5 — justification no rule detail" is flashing -- Same root cause and fix, applied to the rules handler's `rulesbox` div. While investigating, found the identical defect (class added 2026-08-05/06, never cleared) on two unreported cards — Fundamentals (`fundbox`) and Broker analysis (`brokerchg`) — and fixed those too since the cause and fix are identical. 32 tests passed. Claude. [Completed]
+    * P-03 Full sitewide audit (user 2026-08-07, "look at all text that flashes... it is only when data is loading that it is used") -- Claude 2026-08-07: checked every element that can carry the pulsing `sqh-loading` class (39 occurrences) against every code path that could complete its load. Found and fixed 7 more with the identical missing-`classList.remove` defect, all previously unreported: On X panel (`xlinks`), X thread (`tweetbox`), Configuration → Execution sources (`cfg-exec`) and Credentials (`cfg-creds`), Configuration (Admin) → Squeeze markets picker (`xhvf-markets`), the Best Settings summary cards wrapper (`ordp-summary` — the outer div itself carried the class in static markup), and the User Management → IG account audit reveal (which used to overwrite its whole className, dropping both the loading AND its normal "muted" style — moved to classList add/remove so the base style survives too). Verified every remaining instance is either already correct (e.g. `cfg-defaults`, `best-settings-report`, `paintXVisuals`) or self-resolving (the whole element carrying the class gets replaced wholesale by real content, e.g. `sqh-rows`, `jobs-rows`, `mk-count`) — including the "refresh" button's pulse, which is intentionally tied to a real in-progress snapshot rebuild, not a bug. 38 tests passed. Claude. [Completed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - General
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-06 Colour of card header titles needs to be clear enough to be different from rest of text e.g. Transaction evidence -- User decision 2026-08-07: change all cards. Changed `.card h4` from `var(--muted)` to `var(--fg)` with bold weight, sitewide. 12 tests passed. Claude. [Completed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Standards and Guidelines
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    Standards and Guidelines (IT IS IMPERATIVE THAT ALL THESE ARE APPLIED AND CONTINUE TO BE IMPLEMENTED)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-02 Global/Docs - "Hunt Volatility Funnel" and "HVF" and "funnel" must NOT appear in any document — each must appear as "The Squeeze"
+    * P-12 Update *.docs files in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs (How_The_Trading_System_Works_PlainEnglish)
+
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "User Guide: Making your way around the web application."
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "User Guide: What is the squeeze?"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "User Guide: The importance of volume"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "User Guide: Adding IG credentials" - how to get API key etc
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "User Guide: Configuration"
+
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "User Guide: Feature - Tab Visibility"
+
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Support: Adding Users"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Support: Adding Markets"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Support: Adding Instruments"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Support: Configuration tabs"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Support: Posting reports to X"
+
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Operations: System Logs"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Operations: Scheduled Jobs"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Operations: Batch Activity"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Operations: Funding X publications"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Operations: Patching software e.g. choco"
+
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Operations: Change Control"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Operations: Version History"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Operations: User Management"
+    * P-12 Create a document in C:\Users\eahin\OneDrive\ClaudeCode\EndToEndTrading\docs for "Operations: Other"
+
+    * P-13 Create a new tab for "Documentation" links (available to Admin \ Support logins) - to right of "How it works (System)"
+    * P-13 All User Guide in "Documentation" tab to be available to all logins.
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - BUGS
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Scheduler
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-08 The job names look peculiar, please check them out
+    * P-09 Allow all charts to have multi select and cross filter
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Volume Score (new)
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Instruments
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-08 Content - Create a new tab called "Instruments"
+    * P-08 Content - Include the popular cards across the top location, market, sector and anything else worthwhile
+    * P-08 Content - Each card can have multiple filter and these cross filter the other cards
+    * P-08 Content - Include the column names in a table name, market, sector, direction, quality, 52wk low, 52wk high, r:r, rvol, vwap, atr, volume score, ticker
+    * P-08 Content - Anyone not logged in cannot see direction, quality, r:r, rvol, vwap, atr or volume score
+    * P-08 Content - Provide a history of the funnels (perhaps separate to the table) - I'll take your guidance on this for UI and UX
+    * P-08 Content - Include anything else on the page that you deem relevant
+
+    * P-08 Filters - Allow instrument name search on the table - similar to all other name searches we have implemented
+    * P-08 Availability - Available to all (even without a login)
+    * P-08 Availability - Only people logged in can see the detail reports when clicking on instrument name
+    * P-08 Format - Use the "New UI Settings" layout and formatting.
+    * P-08 Format - Add "Instruments" to configuration - visibility - - DEFAULT IS VISIBLE
+    * P-08 Format - to the LEFT of "Squeeze History"
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-04 Add new category in the user configuration leverage to match https://www.ig.com/uk/charges/margin if required -- Checked, Claude 2026-08-07: this is a re-file of the item already audited and completed in 20260805-ToDo-Claude.txt L165 — LEVERAGE={fx:30,equities:5,commodities:10,indices:20} still matches IG UK's four retail margin groups (Indices/Forex/Commodities/Shares) exactly. Still no additional category required; no code change. [Completed — confirmed still accurate, no action needed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : Best Settings
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-03 3 of the 4 cards are using the same sector - is there anything else that gives more choice?
+    * P-03 If one of the 4 cards (Balanced, Growth, Defensive or Broad evidence) is clicked, change the contents of table below to use this cfg -- User decision 2026-08-07: detail follows whichever is clicked. Refactored renderBestCombo so the four choice cards call selectBestChoice(label); the detail card (metrics grid + Transaction evidence) below now re-renders for whichever option was last clicked, defaulting to Balanced, with the clicked card highlighted. The funded replay proof is computed lazily per choice (only when actually viewed) to avoid 4x the replay cost on every render. 34 tests passed (2 rewritten to match the new per-choice call). Claude. [Completed]
+    * P-04 Look at multiple rows for one instrument on the same day e.g. "Domino's Pizza Enterprises Limited" -- User decision 2026-08-07: dedupe, best outcome wins. Collapsed same-ticker/same-day rows in Best Settings' input population (renderBestCombo) to one row, keeping whichever recorded the better return; scoped to Best Settings only (not Squeeze History, which remains the full trigger log). 34 tests passed. Claude. [Completed]
+    * P-04 Allow merge transactions - as we use in fees and IG account [Cancelled]
+    * P-05 Transaction evidence needs to contain columns to confirm the performance e.g. wallet, no. open transactions, net gain -- User decision 2026-08-07: build it now. Confirmed genuinely outstanding (not a duplicate of the similarly-worded, already-completed 20260805 L142 item, which only moved the shared Wallet/Position/Max-open control panel above the title). Added a Wallet column (the model wallet immediately before each decision — the replay already tracked this per row, just wasn't displayed) and a Net gain column (£ profit/loss for placed trades, computed from stake × that trade's return%; blank for missed trades). "Open after decision" already covered the open-transactions-count part of the request. 34 tests passed. Claude. [Completed]
+
+    * P-02 Missed transactions Hide \ Show is difficult to see - please resolve
+    * P-03 Move "Replay model card" to above "Best settings for annual profit"
+    * P-06 On all other tables BEAR and BULL are colour coded i.e. RED and GREEN -- Squeeze History's Dir column was the odd one out (rendered as plain text, no other table was). Added the same `<span class="tag bull/bear">` colour coding used everywhere else. 34 tests passed. Claude. [Completed]
+    * P-06 Remove table containing "Equity	Opening stake	Ending equity	Net P&L" -- Removed the single-row summary table (and its now-unused row-building code) from Best Settings' Balanced recommendation detail card; the same figures already appear in the metrics grid above it. 34 tests passed. Claude. [Completed]
+    * P-06 "Balanced recommendation detail — ranked by return …. " looks lost - is it better to have all 4 cards in here?" -- User decision 2026-08-07: detail follows whichever is clicked (same fix as the L118 item above — one refactor covers both). [Completed]
+
+    * P-04 With so few bars in "Market · achievable P&L" and "Quality · achievable P&L", these maybe better not using charts e.g. PIE chart [Cancelled]
+    * P-04 With so few bars in "Market · achievable P&L" and "Quality · achievable P&L", it may be better to add other charts stacked e.g. VWAP, ATR, RVOL range -- User initially chose "skip for now", then asked to resume, Claude 2026-08-07: added RVOL/VWAP/ATR achievable-P&L charts alongside Market/Sector/Quality (6 total). RVOL bands match the existing rvolCell() convention used everywhere else (≥2 spike / ≥1 above normal / <1 thin) rather than inventing a new one; VWAP/ATR use their existing true/false/null values with readable labels instead of new logic. 12 tests passed. Claude. [Completed]
+    * P-04 Whilst adding extra charts, keep them all on one row unless told otherwise -- User decision 2026-08-07: one row for charts. Switched the achievable-P&L chart strip to the site's existing "chart strip never wraps" convention (the same `.viz` rule already used by Scanner/Performance Results): flex-wrap:nowrap, cards shrink to fit (flex:1 1 auto;min-width:0), overflow-x:auto only in the extreme case where even shrunk cards can't fit. All 6 charts (Market/Sector/Quality/RVOL/VWAP/ATR) now stay on one row. 12 tests passed. Claude. [Completed]
+    * P-06 Remove "⚖️ Leverage & the wallet: leverage does not change the £ or % return; it changes the margin each position ties up. Max open …" -- Removed exactly this text from the Replay model card. 34 tests passed (also updated a regression test that had locked in the old wording as required). Claude. [Completed]
+    * P-05 In "💷 Replay model" set Max position size 5% Max open positions 50" -- Max open positions already defaulted to 50 (no change needed); changed Max position size default from 2% to 5%, including the JS fallback defaults used before the DOM value loads. 34 tests passed. Claude. [Completed]
+    * P-06 Is there any point in "Back Test" if we have "Transaction evidence" - do NOT make changes, it is a question for now!!!
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : Back Test
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-09 As with all tables, allow sort by column header
+    * P-09 Default sort on table is "TRIGGERED" ASCENDING
+    * P-09 Move MCAP to far right
+    * P-09 Use colour codes for ticks and crosses i.e. RED and GREEN
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : Advanced Analysis
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-05 Move all "Let winners run" objects into it's own page with a button next to "back test" -- Found and fixed a regression, Claude 2026-08-07: this was already built and marked [Completed] on 2026-08-04 (20260805-ToDo-Claude.txt L154), but a same-day follow-up commit (bb23c0f, later that evening) accidentally removed the pill button and silently redirected pfPanel('run') to 'settings', with no change-request note explaining an intentional removal — and a regression test was edited in the SAME commit to lock in the broken state, which is why it went unnoticed. Restored the "🏃 Let winners run" pill next to Back Test (gated to Silver/Gold admin, same as before) and removed the redirect; the dedicated page, its illustration and its render logic were never actually deleted, only unreachable. Updated the two regression tests that had encoded the broken behaviour as expected, with a note explaining why. 34 tests passed. Claude. [Completed]
+    * P-06 In "Transaction evidence" add column for difference between "Sell at target" and "Let run" -- Both values were already computed and both already had columns; added a Difference column (colour-coded like the others) that only appears in the "Let run" view, and corrected the empty-state colspan to match. 34 tests passed. Claude. [Completed]
+    * P-07 Above "Transaction evidence" add: All the charts used in "Back test" above "Every recorded trigger" i.e. location through to month -- Claude 2026-08-07: renderDecisionProof() (the shared Transaction evidence renderer used by both Let Winners Run and Best Settings) already had its own achievable-P&L chart strip above the table (Market/Sector/Quality/RVOL/VWAP/ATR, added earlier this session for P-04). Extended it with Back Test's own 6 remaining charts — Location, Direction, Outcome, Win/Loss, Days Open and Month — using the same field names and bands Back Test itself uses (locName, _doBand, PF_BE win/loss split), so all 8 of Back Test's charts now sit above Transaction evidence too, in the same order. 12 tests passed. Claude. [Completed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : All
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-03 Reconcile all reports on all the tabs to make sure they back each other up for evidence
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Other
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Data
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - How it Works Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Instrument Details - Content
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-03 Add the latest relevant visual from @ratedmarkets on X to the HVF Details Report for the same instrument. 
+    * P-03 Add the latest relevant visual from @InvestingVisuals on X to the HVF Details Report for the same instrument. 
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Scanner Report Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-07 Email the scanner report each day to the account holder -- Claude 2026-08-07: added run_scanner_report_email.py — for every ENABLED web user with a registered email, sends today's Squeeze-only setups (has_signal, the Scanner's own default view) from hvf_web/snapshot.json, enriched with RVOL/VolumeScore exactly like /api/records, filtered by that user's own saved Quality/R:R/RVOL floors (Configuration -> Preferences -> "Scanner Report filter defaults") if they've set any. One user's bad email/send failure never blocks the rest; each successful send is logged to their account activity and the run as a whole to Batch Activity. Reused the existing trade_email.send_simple_email provider plumbing (Resend/Yahoo) — no new email infrastructure. IMPORTANT — scheduling: hvf_web/snapshot.json and data/web_users.json are LOCAL, gitignored files that only exist on the machine running the Flask server (confirmed by reading hvf_web/build_snapshot.py and hvf_web/scheduled_jobs.py, not assumed) — a GitHub Actions runner has neither, so unlike the other scheduled jobs this can NOT be wired into the cron-job.org -> GitHub Actions pipeline; it needs a LOCAL daily scheduler (e.g. Windows Task Scheduler) on the same machine as the web server, run after the day's snapshot rebuild. 8 new tests (including a regression test for a malformed-HTML bug caught and fixed during review — a style attribute's closing quote landed before extra CSS was appended). 44 tests passed (full run: performance + web_users + server_auth + scanner_report_email). Claude. [Completed — scheduling is local-only per the note above, not yet wired to an actual OS scheduler]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - My Pre-orders
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - My Pre-orders (New)
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Pre-orders to My IG
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Main Page
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - X Posts
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - IG Account Tab : Amend
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : Summary Page
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : Results Page
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Performance Tab : What separates the winners
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : System Logs
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : Batch Activity
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : Change Requests
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Data
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Operations Tab : User Management
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-10 Add a button in User Management for "Add User" (ad-hoc request, user 2026-08-07). -- Added a "+ Add user" button that opens a modal (name, email, subscription, admin checkbox) and creates the account directly via a new admin-only `action:"create"` on POST /api/users (`web_users.admin_create_user`), gated the same way as every other admin branch on that route. Matches the existing "approve request" security model: the account is created LOCKED (unusable random password) and enabled, and a password-reset-code email is fired immediately so the new user can set their own password — no admin ever sees or sets a real password. 32 tests passed, including 5 new ones covering admin_create_user (locked/enabled account, duplicate-name and invalid-email rejection) and the endpoint's admin gating (non-admin 403, admin success). Claude. [Completed]
+
+    * P-04 Add a new role for Support - if it is easier to have a role that is "Admin \ Support \ User" to manage less data that is fine. -- User decision 2026-08-07: Support = read-only System Logs, Batch Activity and Scheduled Jobs, nothing else admin-only. Added a `support` field independent of `admin` in web_users.py (is_support/set_support), gated the 3 endpoints to admin-OR-support, carved SUPPORT_TABS=[batch,syslogs,jobs] out of the front-end ADMIN_TABS check, exposed is_support via /api/me, and added a Support checkbox in User Management next to Admin. Verified Support can reach the 3 endpoints and NOT Version History or User Management; verified a plain guest gets 403 on both. 38 tests passed (3 new: independence of the two flags, set_support, and endpoint-gating for support/non-support). Claude. [Completed]
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Squeeze History Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Terms & Conditions Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Fees Tab
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    * P-09 Fees - Add another previous month tab so we can see two previous months plus current month
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Configuration
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    USER
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    DATA
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    * P-06 Data - Import all X details for Alex from GitHub Secrets [Cancelled]
+    * P-06 Data - Import all Yahoo details for Alex from GitHub Secrets [Cancelled]
+    * P-11 Data - Import all from GitHub Secrets \ .env that are not in Supabase
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    TRADING (SQUEEZE)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+Application Focus - Security
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    OBFUSCATION
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    RECOMMENDATIONS
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+Web App: Mobile devices
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    ENHANCEMENTS - GENERAL (mobile devices)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    BUGS - GENERAL (Mini iPad)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    BUGS - GENERAL (mobile devices)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+
+===============================================================================================================================================================
+= X (Twitter)
+===============================================================================================================================================================

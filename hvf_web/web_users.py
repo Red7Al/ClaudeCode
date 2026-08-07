@@ -57,10 +57,14 @@ _SEED = [
     ("Rich", "richard.williams@aztecsolarenergy.co.uk"),
 ]
 
-# Access model (user 2026-07-03): two independent axes.
-#   admin (bool)  — full access: user maintenance, admin tabs, shared config, data refresh.
-#   subscription  — gold: read/write incl. pre-orders + monitor exec · silver: read/write incl.
-#                   pre-orders · guest: read-only (incl. configuration), no pre-orders.
+# Access model (user 2026-07-03): two independent axes, plus a narrow third flag added 2026-08-07.
+#   admin (bool)   — full access: user maintenance, admin tabs, shared config, data refresh.
+#   support (bool) — read-only operational visibility ONLY: System Logs, Batch Activity, Scheduled Jobs.
+#                    Does not grant User Management, Configuration (Admin), or any write/admin action —
+#                    those all still gate on `admin` alone. Independent of `admin` (an admin does not need
+#                    `support` set; it is for a lesser role that can monitor without full access).
+#   subscription   — gold: read/write incl. pre-orders + monitor exec · silver: read/write incl.
+#                    pre-orders · guest: read-only (incl. configuration), no pre-orders.
 SUBSCRIPTIONS = ["gold", "silver", "guest"]
 _SEED_ADMINS = {"Alex", "Rich"}
 
@@ -152,6 +156,13 @@ def is_admin(name: str) -> bool:
     return bool((u or {}).get("admin", _default_admin(name)))
 
 
+def is_support(name: str) -> bool:
+    """Read-only operational tier (2026-08-07): System Logs / Batch Activity / Scheduled Jobs only.
+    Independent of `admin` — an admin does not need this set, and it grants nothing admin-only."""
+    u = _ensure_seeded().get(name)
+    return bool((u or {}).get("support", False))
+
+
 def get_subscription(name: str) -> str:
     u = _ensure_seeded().get(name)
     return (u or {}).get("subscription", _default_subscription(name))
@@ -162,8 +173,9 @@ def is_enabled(name: str) -> bool:
 
 
 def list_users() -> list:
-    """[{name, email, admin, subscription, enabled}] for the user-maintenance area (admin only)."""
+    """[{name, email, admin, support, subscription, enabled}] for the user-maintenance area (admin only)."""
     return [{"name": n, "email": u.get("email", ""), "admin": bool(u.get("admin", _default_admin(n))),
+             "support": bool(u.get("support", False)),
              "subscription": u.get("subscription", _default_subscription(n)),
              "enabled": bool(u.get("enabled", True)),
              "pwd_strength": (u.get("pwd_strength") or ("Locked" if u.get("locked") else "unknown")),
@@ -191,6 +203,10 @@ def _set_field(name: str, field: str, value) -> bool:
 
 def set_admin(name: str, admin: bool) -> bool:
     return _set_field(name, "admin", bool(admin))
+
+
+def set_support(name: str, support: bool) -> bool:
+    return _set_field(name, "support", bool(support))
 
 
 def set_subscription(name: str, sub: str) -> bool:
@@ -611,6 +627,30 @@ def reject_request(name: str) -> bool:
         users = _load()
         _remove_request(name, users)
         _save(users)
+    return True
+
+
+def admin_create_user(name: str, email: str, subscription: str = "guest", admin: bool = False) -> bool:
+    """Admin-initiated account creation (user 2026-08-07, User Management "Add user"): create a LOCKED
+    (no usable password), enabled account directly — no pending self-service request needed. The new
+    user sets their password via the email-gated 'Forgot password?' flow, same as an approved request.
+    Clears any pending request with the same name so the two paths never collide."""
+    name = (name or "").strip()
+    email = (email or "").strip()
+    if not name or "@" not in email:
+        return False
+    with _LOCK:
+        users = _load()
+        if name in users:
+            return False
+        salt = _secrets.token_hex(16)
+        users[name] = {"salt": salt, "pwd_hash": _hash_pwd(_secrets.token_hex(24), salt),
+                       "email": email, "secrets": {}, "admin": bool(admin),
+                       "subscription": subscription if subscription in SUBSCRIPTIONS else "guest",
+                       "enabled": True}
+        _remove_request(name, users)
+        _save(users)
+    log.info(f"account created directly by admin: {name}")
     return True
 
 
