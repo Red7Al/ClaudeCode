@@ -2773,9 +2773,9 @@ function renderUsers(){
         <td><select onchange="saveUser('${u.name}',{subscription:this.value})" style="width:auto">${subs.map(s=>`<option ${u.subscription===s?'selected':''}>${s}</option>`).join("")}</select></td>
         <td><button class="btn" onclick="saveUser('${u.name}',{enabled:${!u.enabled}})">${u.enabled?'<span style="color:var(--bull)">Enabled</span> — disable':'<span style="color:var(--bear)">Disabled</span> — enable'}</button></td>
         <td>${_discEditor(u)}</td>
-        <td>${pwStrength(u.pwd_strength)}${u.has_ig
-            ? `<div class="muted" style="font-size:10.5px;margin-top:4px" title="This account has IG credentials, so a temporary password cannot be set here — it must use the email-based reset.">🔒 IG-linked — use email reset</div>`
-            : `<div><button class="btn" style="padding:2px 6px;font-size:11px;margin-top:4px" title="Set a temporary password to give to the user out-of-band (e.g. when email isn't configured). Admin only; not available for IG-linked accounts." onclick="setTempPassword('${u.name}')">Set temp password</button></div>`}</td>
+        <td>${pwStrength(u.pwd_strength)}${u.has_ig===false
+            ? `<div><button class="btn" style="padding:2px 6px;font-size:11px;margin-top:4px" title="Set a temporary password to give to the user out-of-band (e.g. when email isn't configured). Admin only; not available for IG-linked accounts." onclick="setTempPassword('${u.name}')">Set temp password</button></div>`
+            : (u.has_ig===true ? `<div class="muted" style="font-size:10.5px;margin-top:4px" title="This account has IG credentials, so a temporary password cannot be set here — it must use the email-based reset.">🔒 IG-linked — use email reset</div>` : ``)}</td>
         <td>${_igAuditCell(u)}</td></tr>`).join("");
       paintRequests(j.requests||[]);})
     .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not load (admin only).</td></tr>`;});
