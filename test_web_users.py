@@ -71,6 +71,28 @@ def test_admin_create_user_rejects_invalid_email(monkeypatch):
     assert "Someone" not in store["users"]
 
 
+def test_valid_email_rejects_clearly_invalid_addresses():
+    """user 2026-08-08: a comma (or missing dotted domain / spaces) must be rejected, not accepted
+    just because an '@' is present — this is how 'c.d.mason@gmail,com' previously slipped through."""
+    assert wu.valid_email("c.d.mason@gmail.com") is True
+    assert wu.valid_email("  spaced@example.com  ") is True   # trimmed
+    for bad in ("c.d.mason@gmail,com", "no-at-sign", "x@y", "a b@c.com", "a@@b.com", "", "@nolocal.com"):
+        assert wu.valid_email(bad) is False, bad
+
+
+def test_admin_create_user_rejects_comma_email(monkeypatch):
+    store = _store(monkeypatch)
+    assert wu.admin_create_user("Carl Mason", "c.d.mason@gmail,com") is False
+    assert "Carl Mason" not in store["users"]
+
+
+def test_admin_create_user_persists_support_flag(monkeypatch):
+    store = _store(monkeypatch)
+    assert wu.admin_create_user("Ops", "ops@example.com", support=True) is True
+    assert store["users"]["Ops"]["support"] is True
+    assert store["users"]["Ops"]["admin"] is False
+
+
 def test_support_flag_is_independent_of_admin(monkeypatch):
     """Support role (2026-08-07): a narrow read-only tier, independent of the admin flag."""
     salt = "00" * 16

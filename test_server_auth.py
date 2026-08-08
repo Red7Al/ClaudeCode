@@ -62,7 +62,7 @@ def test_admin_can_create_user(monkeypatch):
     created = []
     events = []
     monkeypatch.setattr(server._wu, "admin_create_user",
-                        lambda name, email, sub, adm: created.append((name, email, sub, adm)) or True)
+                        lambda name, email, sub, adm, sup: created.append((name, email, sub, adm, sup)) or True)
     monkeypatch.setattr(server._wu, "request_reset_code", lambda *a, **k: True)
     monkeypatch.setattr(server._wu, "log_event", lambda *args, **kwargs: events.append((args, kwargs)))
     monkeypatch.setattr(server._wu, "list_users", lambda: [])
@@ -75,8 +75,102 @@ def test_admin_can_create_user(monkeypatch):
 
     assert response.status_code == 200
     assert response.get_json()["ok"] is True
-    assert created == [("NewPerson", "new@example.com", "silver", False)]
+    assert created == [("NewPerson", "new@example.com", "silver", False, False)]
     assert events and events[0][0][0] == "Admin"
+
+
+def test_admin_create_user_passes_support_flag(monkeypatch):
+    """Support can be set at creation (user 2026-08-08): the create action forwards `support`."""
+    _identity(monkeypatch, "Admin", admin=True)
+    created = []
+    monkeypatch.setattr(server._wu, "admin_create_user",
+                        lambda name, email, sub, adm, sup: created.append((name, email, sub, adm, sup)) or True)
+    monkeypatch.setattr(server._wu, "request_reset_code", lambda *a, **k: True)
+    monkeypatch.setattr(server._wu, "log_event", lambda *a, **k: None)
+    monkeypatch.setattr(server._wu, "list_users", lambda: [])
+    monkeypatch.setattr(server._wu, "list_requests", lambda: [])
+
+    response = server.app.test_client().post(
+        "/api/users", headers={"X-Auth": "token"},
+        json={"name": "Sup", "action": "create", "email": "sup@example.com",
+              "subscription": "guest", "admin": False, "support": True})
+
+    assert response.status_code == 200
+    assert created == [("Sup", "sup@example.com", "guest", False, True)]
+
+
+def test_approving_request_emails_the_new_user(monkeypatch):
+    """user 2026-08-08: approving a pending request must notify the person (fire a setup email to
+    their registered address), matching the '+ Add user' path — not create the account silently."""
+    _identity(monkeypatch, "Admin", admin=True)
+    reset_calls = []
+    monkeypatch.setattr(server._wu, "approve_request", lambda target: True)
+    monkeypatch.setattr(server._wu, "email_for", lambda target: "carl@example.com")
+    monkeypatch.setattr(server._wu, "request_reset_code",
+                        lambda name, email: reset_calls.append((name, email)) or True)
+    monkeypatch.setattr(server._wu, "log_event", lambda *a, **k: None)
+    monkeypatch.setattr(server._wu, "list_users", lambda: [])
+    monkeypatch.setattr(server._wu, "list_requests", lambda: [])
+
+    response = server.app.test_client().post(
+        "/api/users", headers={"X-Auth": "token"},
+        json={"name": "Carl", "action": "approve"})
+
+    assert response.status_code == 200
+    assert reset_calls == [("Carl", "carl@example.com")]
+
+
+def test_set_temp_password_works_for_non_ig_account(monkeypatch):
+    """user 2026-08-08: admin can set a temporary password for an account WITHOUT IG credentials."""
+    _identity(monkeypatch, "Admin", admin=True)
+    monkeypatch.setattr(server, "_user_has_ig_creds", lambda n: False)
+    calls = []
+    monkeypatch.setattr(server._wu, "reset_password",
+                        lambda name, email, pwd, ip="": calls.append((name, email, pwd)) or True)
+    monkeypatch.setattr(server._wu, "email_for", lambda n: "carl@example.com")
+    monkeypatch.setattr(server._wu, "log_event", lambda *a, **k: None)
+    monkeypatch.setattr(server._wu, "list_users", lambda: [])
+
+    response = server.app.test_client().post(
+        "/api/users", headers={"X-Auth": "token"},
+        json={"name": "Carl", "action": "set_temp_password", "new_pwd": "TempPass1"})
+
+    assert response.status_code == 200
+    assert response.get_json()["ok"] is True
+    assert calls == [("Carl", "carl@example.com", "TempPass1")]
+
+
+def test_set_temp_password_blocked_for_ig_linked_account(monkeypatch):
+    """The no-IG guard is enforced server-side, not just hidden in the UI."""
+    _identity(monkeypatch, "Admin", admin=True)
+    monkeypatch.setattr(server, "_user_has_ig_creds", lambda n: True)
+    calls = []
+    monkeypatch.setattr(server._wu, "reset_password", lambda *a, **k: calls.append(a) or True)
+    monkeypatch.setattr(server._wu, "email_for", lambda n: "trader@example.com")
+    monkeypatch.setattr(server._wu, "log_event", lambda *a, **k: None)
+    monkeypatch.setattr(server._wu, "list_users", lambda: [])
+
+    response = server.app.test_client().post(
+        "/api/users", headers={"X-Auth": "token"},
+        json={"name": "Trader", "action": "set_temp_password", "new_pwd": "TempPass1"})
+
+    assert response.status_code == 400
+    assert calls == []   # never touched the password
+
+
+def test_set_temp_password_denied_for_non_admin(monkeypatch):
+    """Only admins can use it (the whole /api/users route is admin-gated)."""
+    _identity(monkeypatch, "Silver", admin=False)
+    monkeypatch.setattr(server, "_user_has_ig_creds", lambda n: False)
+    calls = []
+    monkeypatch.setattr(server._wu, "reset_password", lambda *a, **k: calls.append(a) or True)
+
+    response = server.app.test_client().post(
+        "/api/users", headers={"X-Auth": "token"},
+        json={"name": "Carl", "action": "set_temp_password", "new_pwd": "TempPass1"})
+
+    assert response.status_code == 403
+    assert calls == []
 
 
 def _identity_with_support(monkeypatch, name, *, admin, support):
@@ -187,6 +281,47 @@ def test_fees_normalises_locale_ig_dates():
         source = Path(server.__file__).read_text(encoding="utf-8")
     assert "def _ig_day(value)" in source
     assert "a <= _ig_day(t.get(\"date\")) <= b" in source
+
+
+def test_fees_returns_a_third_two_months_ago_period(monkeypatch):
+    """ChangeRequest P-09 (2026-08-07): "add another previous month tab so we can see two previous months
+    plus current month" — /api/fees now returns prev_month alongside last_month/this_month, covering the
+    calendar month before last_month, via the same app-ledger fallback path (no IG session -> _period())."""
+    import datetime as _dt
+
+    class FakeDb:
+        def run(self, query, **params):
+            if "trade_log" in query:
+                return []
+            return [(0, 0, 0, 0)]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("db_pool.get_db", lambda: FakeDb(), raising=False)
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "")   # no viewer -> skips the IG branch entirely
+
+    response = server.app.test_client().get("/api/fees")
+
+    assert response.status_code == 200
+    j = response.get_json()
+    assert j["prev_month"] is not None and j["last_month"] is not None and j["this_month"] is not None
+
+    today = _dt.date.today()
+    first_this = today.replace(day=1)
+    last_month_end = first_this - _dt.timedelta(days=1)
+    first_last = last_month_end.replace(day=1)
+    prev_month_end = first_last - _dt.timedelta(days=1)
+    first_prev = prev_month_end.replace(day=1)
+
+    assert j["prev_month"]["start"] == first_prev.isoformat()
+    assert j["prev_month"]["end"] == prev_month_end.isoformat()
+    assert j["prev_month"]["label"] == first_prev.strftime("%B %Y")
+    # The three periods are contiguous, oldest to newest, with no gap or overlap.
+    assert j["last_month"]["start"] == first_last.isoformat()
+    assert prev_month_end.isoformat() < first_last.isoformat()
+    assert j["this_month"]["start"] == first_this.isoformat()
+    assert last_month_end.isoformat() < first_this.isoformat()
 
 
 def test_hvf_links_return_latest_requested_visuals(monkeypatch):

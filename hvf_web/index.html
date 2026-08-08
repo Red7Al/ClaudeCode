@@ -480,6 +480,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="btn" id="reset">Reset filters</button>
   <button class="btn" id="showall">Remove all filters (show all)</button>
   <button class="btn" id="theme">🌙 Dark</button>
+  <!-- Logged-out visitors get a clear way in, right next to the theme button (user 2026-08-08). Hidden
+       once authenticated; the Log out button (mutually exclusive) takes its place. -->
+  <button class="btn" id="loginbtn" onclick="showLogin()" style="border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)">Log in / Create account</button>
   <button class="btn" id="logout" onclick="doLogout()" style="display:none">Log out</button>
 </header>
 <div class="tabs">
@@ -502,6 +505,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- T&C on the RIGHT of all tabs, visible to everyone incl. logged-out (user 2026-07-27, P-25); hideable
        via Tab visibility, default visible. Leads the right-aligned cluster (the others are admin-gated). -->
   <button class="tab" id="tab-terms" onclick="showTab('terms')">T&amp;C</button>
+  <!-- Instruments (user 2026-08-07, ChangeRequest P-08): public — full instrument universe, available even
+       logged out — placed immediately LEFT of Squeeze History as requested. Default-visible (not in
+       DEFAULT_HIDDEN); hideable via Tab Visibility like any other tab. -->
+  <button class="tab" id="tab-instruments" onclick="showTab('instruments')">Instruments</button>
   <!-- Squeeze History sits at the right, next to Operations (user 2026-07-20). -->
   <button class="tab" id="tab-squeezehist" onclick="showTab('squeezehist')" style="display:none">Squeeze History <span id="sqhtab-count"></span></button>
   <button class="tab" id="tab-settings" onclick="showTab('settings')" style="display:none">⚙️ Settings</button>
@@ -966,7 +973,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <div id="view-jobs" class="hidden doc" style="max-width:1240px">
-  <input type="hidden" id="jf_style"><input type="hidden" id="jf_cat"><input type="hidden" id="jf_status"><input type="hidden" id="jf_none">
+  <input type="hidden" id="jf_style"><input type="hidden" id="jf_cat"><input type="hidden" id="jf_status"><input type="hidden" id="jf_job">
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderJobs(true)" style="font-size:12px">↻ Refresh stats</button></div>
   <h1>Scheduled Jobs</h1>
   <p class="lede">Every scheduled job that drives the system — its cadence, category and recent GitHub&nbsp;Actions run history. Definitions come from the cron registry; run stats from the Actions API (cached ~30&nbsp;min). Click a chart to filter the table.</p>
@@ -1447,7 +1454,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
     <div class="tablewrap"><table id="pf-table">
       <!-- Ticker sits FAR RIGHT on every table that has one (user 2026-07-17, P-11b). -->
-      <thead><tr><th style="cursor:default" title="Row number (in the current sort order)">#</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="rvol">RVOL</th><th data-pf="above_vwap">VWAP</th><th data-pf="atr_expanding">ATR</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="mcap" title="Market capitalisation (in the instrument's own currency). Blank until the market-cap backfill lands.">MCap</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="exit_date" title="Date the trade closed (hit target or stop). Blank while still OPEN.">Closed</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Equity</th><th class="wcol" data-pf="_open" title="Number of positions open (including this one) at this trade's trigger date — how full the book was.">Open</th><th data-pf="sector">Sector</th><th data-pf="ticker">Ticker</th></tr></thead>
+      <thead><tr><th style="cursor:default" title="Row number (in the current sort order)">#</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="rvol">RVOL</th><th data-pf="above_vwap">VWAP</th><th data-pf="atr_expanding">ATR</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="exit_date" title="Date the trade closed (hit target or stop). Blank while still OPEN.">Closed</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Equity</th><th class="wcol" data-pf="_open" title="Number of positions open (including this one) at this trade's trigger date — how full the book was.">Open</th><th data-pf="mcap" title="Market capitalisation (in the instrument's own currency). Blank until the market-cap backfill lands. Moved to the far right (2026-08-07, ChangeRequest P-09), keeping Sector/Ticker as the site's universal rightmost pair.">MCap</th><th data-pf="sector">Sector</th><th data-pf="ticker">Ticker</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -1533,6 +1540,51 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
 </div>
 
+<!-- Instruments (user 2026-08-07, ChangeRequest P-08) — the full instrument universe, public (available even
+     logged out, like the Scanner teaser). Location/Market/Sector/Status cards cross-filter the table;
+     Direction is a 4th card but only once logged in (it's one of the columns hidden pre-login). Direction,
+     Quality, R:R, RVOL, VWAP, ATR and VolumeScore cells use the same ob() teaser convention as every other
+     table on the site; 52-week Low/High are public. Clicking a name (logged in only) opens the same rich
+     instrument detail as the Scanner via openDetailFrom(). "New UI Settings" layout: doc/gsec/table, same
+     as Squeeze History below. -->
+<div id="view-instruments" class="hidden doc" style="width:100%;max-width:none;margin-inline:0">
+  <h1>Instruments</h1>
+  <p class="lede">The full universe we scan — search by name or ticker, filter by Location / Market / Sector / Status, and (once logged in) see Direction, Quality, R:R, RVOL, VWAP, ATR and VolumeScore. Click a name to open its full detail report.<span id="instr-loginhint" class="muted"> <a href="#" onclick="showLogin();return false">Log in</a> to see the trading signals and open a detail report.</span></p>
+  <input type="hidden" id="inf_location"><input type="hidden" id="inf_market"><input type="hidden" id="inf_sector"><input type="hidden" id="inf_status"><input type="hidden" id="inf_direction">
+  <div id="instr-viz" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
+  <section class="gsec" style="border-left-color:var(--accent)">
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="instr-count"></span><span class="grow"></span><input id="instr-search" placeholder="Search name / ticker…" oninput="paintInstruments()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
+    <div class="tablewrap"><table>
+      <thead><tr>
+        <th class="clk" data-instrk="name">Name</th>
+        <th class="clk" data-instrk="market">Market</th>
+        <th class="clk" data-instrk="sector">Sector</th>
+        <th class="clk" data-instrk="direction">Dir</th>
+        <th class="clk" data-instrk="quality">Quality</th>
+        <th class="clk" data-instrk="wk52_low" title="Lowest close over the trailing 52 weeks">52wk Low</th>
+        <th class="clk" data-instrk="wk52_high" title="Highest close over the trailing 52 weeks">52wk High</th>
+        <th class="clk" data-instrk="rr">R:R</th>
+        <th class="clk" data-instrk="rvol">RVOL</th>
+        <th class="clk" data-instrk="above_vwap">VWAP</th>
+        <th class="clk" data-instrk="atr_expanding">ATR</th>
+        <th class="clk" data-instrk="volume_score">Vol</th>
+        <th class="clk" data-instrk="ticker">Ticker</th>
+      </tr></thead>
+      <tbody id="instr-rows"><tr><td colspan="13" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <!-- "Provide a history of the funnels" (P-08) — a compact, separate recent-activity table (developing →
+       ready → triggered → outcome), reusing /api/squeeze-history (already public server-side) and
+       reflecting the SAME Location/Market/Sector/search selections as the table above. -->
+  <h3 class="sec" style="font-size:15px;margin:16px 0 2px">📜 Funnel history</h3>
+  <p class="muted" style="font-size:12px;margin:2px 0 6px">Recent squeeze lifecycle events — developing → ready → triggered → outcome — for the instruments shown above (newest first, capped at 30 rows).</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Name</th><th>Market</th><th>Sector</th><th>Dir</th><th>Ready</th><th>Triggered</th><th>Outcome</th><th>Closed</th><th>Return</th></tr></thead>
+    <tbody id="instr-funnel-rows"><tr><td colspan="9" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
+  </table></div>
+</div>
+
 <!-- Squeeze History (Admin) (user 2026-07-18) — squeeze lifecycle: developing → ready → triggered → outcome. -->
 <div id="view-squeezehist" class="hidden doc" style="width:100%;max-width:none;margin-inline:0">
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderSqueezeHist()">↻ Refresh</button></div>
@@ -1573,8 +1625,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <h3 class="sec" style="margin-top:0" id="fees-title">Worked example — last month</h3>
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <span class="muted" style="font-size:12px">Period</span>
+      <!-- Third "two months ago" tab (2026-08-07, ChangeRequest P-09 — "add another previous month tab so
+           we can see two previous months plus current month"). -->
       <div id="fees-period" style="display:inline-flex;gap:0;border:1px solid var(--line);border-radius:7px;overflow:hidden">
-        <button class="btn fees-per" data-per="last" onclick="feesPeriod('last')" style="border:0;border-radius:0;padding:5px 12px">Last month</button>
+        <button class="btn fees-per" data-per="prev" onclick="feesPeriod('prev')" style="border:0;border-radius:0;padding:5px 12px">Two months ago</button>
+        <button class="btn fees-per" data-per="last" onclick="feesPeriod('last')" style="border:0;border-radius:0;padding:5px 12px;border-left:1px solid var(--line)">Last month</button>
         <button class="btn fees-per on" data-per="this" onclick="feesPeriod('this')" style="border:0;border-radius:0;padding:5px 12px;border-left:1px solid var(--line)">This month (so far)</button>
       </div>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">AUM £ <input id="fees-aum" type="number" min="0" step="1000" value="10000" style="width:110px;padding:4px 6px" onchange="paintFees()"> <span id="fees-aum-hint" style="font-size:11px;font-style:italic"></span></label>
@@ -2369,6 +2424,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   else if(k.startsWith("xf_"))paintXposts();
   else if(k.startsWith("slf_"))paintSyslogs();
   else if(k.startsWith("igo_")||k.startsWith("igp_"))paintIgAccount();
+  else if(k.startsWith("inf_"))paintInstruments();   // Instruments cross-filter cards (user 2026-08-07, ChangeRequest P-08)
   else applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
 const MF_IDS=["mf_sector","mf_direction","mf_status","mf_location","mf_market","mf_timeframe"];
@@ -2451,8 +2507,8 @@ let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/
 let MY_LIMITS={};   // the user's personal floors from Configuration → My trading limits (min_risk_reward, min_quality) — applied to My Pre-orders (user 2026-07-24, P-02)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","whatwedo","intro","appendix","terms","scanner","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
-const PUBLIC_TABS=["welcome","whatwedo","intro","appendix","terms","scanner","performance"];   // visible when logged out (Performance blurs all but ticker/name/return); "What we do" + "T&C" are for everyone (user 2026-07-27, P-10 L169 / P-25)
+const TABS=["welcome","whatwedo","intro","appendix","terms","scanner","instruments","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
+const PUBLIC_TABS=["welcome","whatwedo","intro","appendix","terms","scanner","instruments","performance"];   // visible when logged out (Performance blurs all but ticker/name/return); "What we do" + "T&C" are for everyone (user 2026-07-27, P-10 L169 / P-25); Instruments joined the list 2026-08-07 (ChangeRequest P-08 — "available to all, even without a login")
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin","squeezehist","fees"];  // admin only
 const SUPPORT_TABS=["batch","syslogs","jobs"];   // Support role (2026-08-07): read-only ops visibility carved out of ADMIN_TABS — Batch Activity, System Logs, Scheduled Jobs only, nothing else admin-only
 const FEATURE_TABS=[];                                         // X Posts is always available to admin users
@@ -2582,7 +2638,7 @@ function showTab(name){
     config:renderConfig,configadmin:renderConfig,users:renderUsers,syslogs:renderSyslogs,jobs:renderJobs,
     version:renderVersion,batch:renderBatch,markets:renderMarkets,marketsadmin:renderMarketsAdmin,
     performance:renderPerformance,changereq:renderCR,igaccount:renderIgAccount,
-    squeezehist:renderSqueezeHist,fees:renderFees};
+    squeezehist:renderSqueezeHist,fees:renderFees,instruments:renderInstruments};
   if(R[name])R[name]();
 }
 // ── X Posts tab (user 2026-07-03): all published tweets + charts, click-to-filter, sortable. ──
@@ -2613,7 +2669,7 @@ const TAB_LABELS={welcome:"Introduction",whatwedo:"What we do",intro:"How it wor
   users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)",
   config:"Configuration (User)",markets:"Markets (User)",marketsadmin:"Markets (Admin)",configadmin:"Configuration (Admin)",
   performance:"Performance",mfm:"Trading (Multi-Factor Momentum)",changereq:"Change Requests",igaccount:"IG Account",
-  squeezehist:"Squeeze History",fees:"Fees"};
+  squeezehist:"Squeeze History",fees:"Fees",instruments:"Instruments"};
 // ── System Logs (admin, user 2026-07-04): health cards + log table + clickable charts ──────────────
 let SL_ROWS=[], slSortK="ts", slSortDir=-1;
 function paintSyslogs(){
@@ -2639,15 +2695,26 @@ let JOB_ROWS=[], jSortK="last_time", jSortDir=-1;   // default: last run, newest
 function _jstCol(k){return k==="success"?"var(--bull)":(k==="failure"||k==="timed_out"||k==="startup_failure")?"var(--bear)":(k==="in_progress"||k==="queued")?"var(--accent)":"var(--muted)";}
 function _jstyleCol(k){return k==="Multi-factor momentum"?"var(--accent)":k==="Squeeze"?"var(--bull)":"var(--muted)";}
 function _jcatCol(k){return k==="Pricing"?"#d29922":"var(--fg)";}
+// Cross-filter (2026-08-07, ChangeRequest P-09 — Scheduler "allow all charts to have multi select and
+// cross filter"): each chart now counts rows passing every OTHER chart's selection (same brushed pattern as
+// Squeeze History/Back Test), not the full unfiltered JOB_ROWS as before. "Recent failures" also used to be
+// wired to a dead filter key ("jf_none", never checked by the table filter below) — clicking a bar there
+// silently did nothing; it's now a real per-job filter ("jf_job", matched against the job title).
 function paintJobs(){
-  const by=fn=>JOB_ROWS.reduce((m,e)=>{const v=fn(e)||"—";m[v]=(m[v]||0)+1;return m;},{});
-  const failByJob=JOB_ROWS.reduce((m,e)=>{if(e.failures)m[e.title]=e.failures;return m;},{});
+  const _jDims=[["jf_style",e=>e.trading_style],["jf_cat",e=>e.category],["jf_status",e=>e.last_status],["jf_job",e=>e.title]];
+  const _pass=(id,v)=>inSet(id,v||"—");
+  const byX=exceptId=>{const m={};JOB_ROWS.forEach(e=>{
+    for(const [id,fn] of _jDims){if(id!==exceptId&&!_pass(id,fn(e)))return;}
+    const v=_jDims.find(d=>d[0]===exceptId)[1](e)||"—"; m[v]=(m[v]||0)+1;});return m;};
+  const failByJob=exceptId=>{const m={};JOB_ROWS.forEach(e=>{if(!e.failures)return;
+    for(const [id,fn] of _jDims){if(id!==exceptId&&!_pass(id,fn(e)))return;}
+    m[e.title]=e.failures;});return m;};
   $("jobs-viz").innerHTML=
-    `<div class="vizsector">`+barChart("Trading style",by(e=>e.trading_style),"jf_style",_jstyleCol)+`</div>`+
-    `<div class="vizsector">`+barChart("Category",by(e=>e.category),"jf_cat")+`</div>`+
-    `<div class="vizsector">`+barChart("Last status",by(e=>e.last_status),"jf_status",_jstCol)+`</div>`+
-    `<div class="vizsector">`+barChart("Recent failures",failByJob,"jf_none",()=>"var(--bear)")+`</div>`;
-  let rows=JOB_ROWS.filter(e=>inSet("jf_style",e.trading_style)&&inSet("jf_cat",e.category)&&inSet("jf_status",e.last_status));
+    `<div class="vizsector">`+barChart("Trading style",byX("jf_style"),"jf_style",_jstyleCol)+`</div>`+
+    `<div class="vizsector">`+barChart("Category",byX("jf_cat"),"jf_cat")+`</div>`+
+    `<div class="vizsector">`+barChart("Last status",byX("jf_status"),"jf_status",_jstCol)+`</div>`+
+    `<div class="vizsector">`+barChart("Recent failures",failByJob("jf_job"),"jf_job",()=>"var(--bear)")+`</div>`;
+  let rows=JOB_ROWS.filter(e=>_jDims.every(([id,fn])=>_pass(id,fn(e))));
   rows=genSort(rows,jSortK,jSortDir);
   const totF=JOB_ROWS.reduce((s,e)=>s+(e.failures||0),0);
   $("jobs-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> scheduled jobs${rows.length!==JOB_ROWS.length?` <span class="muted">of ${JOB_ROWS.length}</span>`:""} <span class="muted">· ${totF} recent failure(s)</span>`;
@@ -2701,12 +2768,14 @@ function renderUsers(){
       $("users-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${(j.users||[]).length}</b> accounts`;
       $("users-rows").innerHTML=(j.users||[]).map(u=>`<tr>
         <td><b>${u.name}</b></td><td>${u.email||''}</td>
-        <td><label style="cursor:pointer;font-size:13px"><input type="checkbox" ${u.admin?'checked':''} onchange="saveUser('${u.name}',{admin:this.checked})"> Admin</label></td>
-        <td><label style="cursor:pointer;font-size:13px" title="Read-only: System Logs, Batch Activity, Scheduled Jobs — nothing else admin-only"><input type="checkbox" ${u.support?'checked':''} onchange="saveUser('${u.name}',{support:this.checked})"> Support</label></td>
+        <td style="text-align:center"><label style="cursor:pointer" title="Admin — full access"><input type="checkbox" ${u.admin?'checked':''} onchange="saveUser('${u.name}',{admin:this.checked})"></label></td>
+        <td style="text-align:center"><label style="cursor:pointer" title="Support — read-only: System Logs, Batch Activity, Scheduled Jobs — nothing else admin-only"><input type="checkbox" ${u.support?'checked':''} onchange="saveUser('${u.name}',{support:this.checked})"></label></td>
         <td><select onchange="saveUser('${u.name}',{subscription:this.value})" style="width:auto">${subs.map(s=>`<option ${u.subscription===s?'selected':''}>${s}</option>`).join("")}</select></td>
         <td><button class="btn" onclick="saveUser('${u.name}',{enabled:${!u.enabled}})">${u.enabled?'<span style="color:var(--bull)">Enabled</span> — disable':'<span style="color:var(--bear)">Disabled</span> — enable'}</button></td>
         <td>${_discEditor(u)}</td>
-        <td>${pwStrength(u.pwd_strength)}</td>
+        <td>${pwStrength(u.pwd_strength)}${u.has_ig
+            ? `<div class="muted" style="font-size:10.5px;margin-top:4px" title="This account has IG credentials, so a temporary password cannot be set here — it must use the email-based reset.">🔒 IG-linked — use email reset</div>`
+            : `<div><button class="btn" style="padding:2px 6px;font-size:11px;margin-top:4px" title="Set a temporary password to give to the user out-of-band (e.g. when email isn't configured). Admin only; not available for IG-linked accounts." onclick="setTempPassword('${u.name}')">Set temp password</button></div>`}</td>
         <td>${_igAuditCell(u)}</td></tr>`).join("");
       paintRequests(j.requests||[]);})
     .catch(()=>{$("users-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not load (admin only).</td></tr>`;});
@@ -2779,6 +2848,9 @@ function toggleIgAudit(name){
 }
 // Admin "+ Add user" modal (user 2026-08-07): creates a locked account directly, no self-service
 // request needed. Styled to match appConfirm. Resolves {name,email,subscription,admin} or null.
+// Pragmatic client-side email check (user 2026-08-08) — mirrors web_users.valid_email server-side.
+// Rejects clearly-invalid addresses (no "@", spaces/commas, missing dotted domain) e.g. "x@gmail,com".
+function validEmail(e){return /^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/.test((e||"").trim());}
 function appAddUser(){
   return new Promise(res=>{
     const ov=document.createElement("div");
@@ -2791,6 +2863,7 @@ function appAddUser(){
       +`<label>Email<br><input id="au-email" type="email" style="width:100%;margin-top:4px;box-sizing:border-box" autocomplete="off"></label>`
       +`<label>Subscription<br><select id="au-sub" style="width:100%;margin-top:4px"><option value="guest">guest</option><option value="silver">silver</option><option value="gold">gold</option></select></label>`
       +`<label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input id="au-admin" type="checkbox"> Admin</label>`
+      +`<label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input id="au-support" type="checkbox"> Support <span class="muted" style="font-size:11px">(read-only ops: System Logs, Batch Activity, Scheduled Jobs)</span></label>`
       +`<div class="muted" style="font-size:11.5px">Created locked — the new user sets their password via 'Forgot password?' using this email.</div>`
       +`<div id="au-err" style="color:var(--bear);font-size:12px;min-height:16px"></div>`
       +`</div>`
@@ -2801,8 +2874,8 @@ function appAddUser(){
     const submit=()=>{
       const nm=box.querySelector("#au-name").value.trim(), em=box.querySelector("#au-email").value.trim();
       if(!nm){box.querySelector("#au-err").textContent="Name is required.";return;}
-      if(!em.includes("@")){box.querySelector("#au-err").textContent="A valid email is required.";return;}
-      done({name:nm,email:em,subscription:box.querySelector("#au-sub").value,admin:box.querySelector("#au-admin").checked});
+      if(!validEmail(em)){box.querySelector("#au-err").textContent="Enter a valid email address (e.g. name@example.com).";return;}
+      done({name:nm,email:em,subscription:box.querySelector("#au-sub").value,admin:box.querySelector("#au-admin").checked,support:box.querySelector("#au-support").checked});
     };
     const onKey=e=>{if(e.key==="Escape")done(null);else if(e.key==="Enter"&&document.activeElement?.tagName!=="SELECT")submit();};
     box.querySelector("[data-x]").onclick=()=>done(null);
@@ -2817,7 +2890,7 @@ async function addUser(){
   const r=await appAddUser();
   if(!r)return;
   fetch("/api/users",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},
-    body:JSON.stringify({name:r.name,action:"create",email:r.email,subscription:r.subscription,admin:r.admin})})
+    body:JSON.stringify({name:r.name,action:"create",email:r.email,subscription:r.subscription,admin:r.admin,support:r.support})})
     .then(x=>x.json())
     .then(j=>{
       if(!j.ok){$("users-msg").style.color="var(--bear)";$("users-msg").textContent=j.error||"Could not create user.";return;}
@@ -2834,7 +2907,7 @@ function paintRequests(reqs){
     <td><button class="btn" style="padding:3px 8px" onclick="reqAction('${r.name}','approve')">✓ Approve</button> <button class="btn" style="padding:3px 8px" onclick="reqAction('${r.name}','reject')">✕ Reject</button></td></tr>`).join("");
 }
 async function reqAction(name,action){
-  if(action==="approve"&&!await appConfirm(`Creates a guest account (locked). They set their password via 'Forgot password?' with their registered email.`,{title:`Approve '${name}'?`,ok:"✓ Approve"}))return;
+  if(action==="approve"&&!await appConfirm(`Creates a guest account (locked) and emails them a setup link at their registered address so they can set a password.`,{title:`Approve '${name}'?`,ok:"✓ Approve"}))return;
   fetch("/api/users",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({name,action})})
     .then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(()=>{$("users-msg").style.color="var(--bull)";$("users-msg").textContent=`${action==='approve'?'Approved':'Rejected'} ${name}.`;renderUsers();})
@@ -2845,6 +2918,58 @@ function saveUser(name,patch){
     .then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(()=>{$("users-msg").style.color="var(--bull)";$("users-msg").textContent=`Updated ${name}.`;renderUsers();})
     .catch(()=>{$("users-msg").style.color="var(--bear)";$("users-msg").textContent="Update failed.";});
+}
+// Admin-only temporary-password modal (user 2026-08-08): for activating a locked account out-of-band when
+// email isn't configured. Only offered for accounts WITHOUT IG credentials (the server enforces this too).
+function _genTempPassword(){
+  const cs="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const a=new Uint32Array(14); (crypto||window.crypto).getRandomValues(a);
+  return Array.from(a,x=>cs[x%cs.length]).join("");
+}
+function appSetTempPassword(name){
+  return new Promise(res=>{
+    const ov=document.createElement("div");
+    ov.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px";
+    const box=document.createElement("div");
+    box.style.cssText="background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;max-width:440px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.5);overflow:hidden";
+    box.innerHTML=`<div style="padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700">Set temporary password — ${name}</div>`
+      +`<div style="padding:16px 18px;display:flex;flex-direction:column;gap:10px;font-size:13.5px">`
+      +`<div class="muted" style="font-size:11.5px">For activating an account out-of-band when email isn't configured. Give this password to the user through a secure channel; they can change it later. Not available for accounts with IG credentials.</div>`
+      +`<label>Temporary password<br><div style="display:flex;gap:6px;margin-top:4px"><input id="stp-pwd" type="text" style="flex:1;box-sizing:border-box" autocomplete="off" spellcheck="false"><button class="btn" data-gen type="button" style="white-space:nowrap">Generate</button></div></label>`
+      +`<div id="stp-err" style="color:var(--bear);font-size:12px;min-height:16px"></div>`
+      +`</div>`
+      +`<div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">`
+      +`<button class="btn" data-x>Cancel</button>`
+      +`<button class="btn" data-ok style="border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)">Set password</button></div>`;
+    const done=v=>{ov.remove();document.removeEventListener("keydown",onKey);res(v);};
+    box.querySelector("#stp-pwd").value=_genTempPassword();
+    box.querySelector("[data-gen]").onclick=()=>{box.querySelector("#stp-pwd").value=_genTempPassword();};
+    const submit=()=>{
+      const pw=box.querySelector("#stp-pwd").value.trim();
+      if(pw.length<4){box.querySelector("#stp-err").textContent="At least 4 characters.";return;}
+      done(pw);
+    };
+    const onKey=e=>{if(e.key==="Escape")done(null);else if(e.key==="Enter")submit();};
+    box.querySelector("[data-x]").onclick=()=>done(null);
+    box.querySelector("[data-ok]").onclick=submit;
+    ov.onclick=e=>{if(e.target===ov)done(null);};
+    document.addEventListener("keydown",onKey);
+    ov.appendChild(box);document.body.appendChild(ov);
+    box.querySelector("#stp-pwd").focus();box.querySelector("#stp-pwd").select();
+  });
+}
+async function setTempPassword(name){
+  const pw=await appSetTempPassword(name);
+  if(!pw)return;
+  fetch("/api/users",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},
+    body:JSON.stringify({name,action:"set_temp_password",new_pwd:pw})})
+    .then(x=>x.json())
+    .then(j=>{
+      if(!j.ok){$("users-msg").style.color="var(--bear)";$("users-msg").textContent=j.error||"Could not set the password.";return;}
+      $("users-msg").style.color="var(--bull)";$("users-msg").textContent=`Temporary password set for ${name}: ${pw} — give it to them securely; they can change it later.`;
+      renderUsers();
+    })
+    .catch(()=>{$("users-msg").style.color="var(--bear)";$("users-msg").textContent="Could not set the password.";});
 }
 let VER_ROWS=[], verSortK="date", verSortDir=-1;
 const _vmonth=e=>(e.date||'').slice(0,7);   // YYYY-MM
@@ -2903,7 +3028,7 @@ function renderTabVis(hidden){
   // Default-hidden tabs tick only when opted in (SHOWN_TABS); others tick unless hidden.
   const chipFor=t=>chip(t,DEFAULT_HIDDEN.has(t)?SHOWN_TABS.includes(t):!hidden.has(t),false);
   const head=x=>`<div class="muted" style="width:100%;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:12px 0 2px">${x}</div>`;
-  const INSTR=["performance","scanner","preorders","orderops","igaccount"];   // Instrument Operations group (user 2026-07-11)
+  const INSTR=["performance","scanner","instruments","preorders","orderops","igaccount"];   // Instrument Operations group (user 2026-07-11; "instruments" joined 2026-08-07, ChangeRequest P-08)
   const grouped=new Set([].concat(...Object.values(TAB_GROUPS),INSTR,["activity"]));   // My Activity shown under Application Operations (user 2026-07-11)
   // Settings, Instrument Operations, Application Operations, then everything else (user 2026-07-11).
   const setg=TAB_GROUPS.settings.filter(t=>t!=="config"&&allow(t));
@@ -3892,6 +4017,9 @@ function winnersRunChange(surface='pf'){
 function _mcapFmt(v){if(v==null||!isFinite(+v))return'—';v=+v;const a=Math.abs(v);
   if(a>=1e12)return(v/1e12).toFixed(2)+'T';if(a>=1e9)return(v/1e9).toFixed(1)+'B';
   if(a>=1e6)return(v/1e6).toFixed(0)+'M';return Math.round(v).toLocaleString();}
+// Colour-coded tick/cross for boolean columns (2026-08-07, ChangeRequest P-09 — Back Test's VWAP/ATR ticks
+// were plain uncoloured text; every other BULL/BEAR-style indicator on the site is green/red).
+const _tickCross=v=>v==null?'<span class="muted">—</span>':v?'<span style="color:var(--bull);font-weight:700">✓</span>':'<span style="color:var(--bear);font-weight:700">✗</span>';
 // Same presets on the SCANNER (user 2026-07-18): set the RVOL / Quality / R:R range filters so you can
 // pick instruments the analysis says are best. A preset field not in the preset is cleared.
 function setCherry(id){
@@ -4377,6 +4505,75 @@ function paintWinnersDims(dims, all){
       `</div></div></div>`;
   }).join("");
 }
+// ── Instruments (public) (user 2026-08-07, ChangeRequest P-08) ─────────────────────────────────────────
+// Reuses the SAME global DATA array the Scanner already loads via /api/records (now enriched with
+// wk52_low/wk52_high, see server.py api_records()) — no extra fetch for the main table. The funnel-history
+// mini-table below it lazy-loads /api/squeeze-history once and is cached in INSTR_FUNNEL.
+let INSTR_FUNNEL=null, instrSortK="", instrSortDir=1;
+function renderInstruments(){
+  if($("instr-loginhint"))$("instr-loginhint").style.display=LIMITED?"":"none";
+  if(INSTR_FUNNEL===null){
+    INSTR_FUNNEL=[];
+    fetch("/api/squeeze-history").then(r=>r.ok?r.json():{rows:[]}).then(j=>{INSTR_FUNNEL=j.rows||[];paintInstrFunnel();})
+      .catch(()=>{INSTR_FUNNEL=[];paintInstrFunnel();});
+  }
+  paintInstruments();
+}
+function instrSort(k){instrSortDir=(instrSortK===k)?-instrSortDir:1;instrSortK=k;paintInstruments();_sortArrows("data-instrk",instrSortK,instrSortDir);}
+// Cross-filter cards: Location/Market/Sector/Status are public; Direction is a 4th "worthwhile" card but
+// only once logged in — it's one of the columns hidden pre-login (same rule as the table below).
+function paintInstruments(){
+  const rows=DATA||[], q=(($("instr-search")||{}).value||"").trim().toLowerCase();
+  const base=q?rows.filter(r=>((r.name||"")+" "+disp(r.ticker)+" "+(r.ticker||"")).toLowerCase().includes(q)):rows;
+  const _idims=[["inf_location",r=>locName(r.location)],["inf_market",r=>r.market],["inf_sector",r=>r.sector],
+                ["inf_status",r=>r.has_signal?(r.status||"ACTIVE"):"—"],["inf_direction",r=>r.direction||"—"]];
+  const byX=exceptId=>{const m={};base.forEach(r=>{
+    for(const [id,fn] of _idims){if(id!==exceptId&&!inSet(id,fn(r)||"—"))return;}
+    const v=_idims.find(d=>d[0]===exceptId)[1](r)||"—"; m[v]=(m[v]||0)+1;});return m;};
+  let viz=`<div class="vizsector">`+barChart("Location",byX("inf_location"),"inf_location")+`</div>`+
+    `<div class="vizsector">`+barChart("Market",byX("inf_market"),"inf_market")+`</div>`+
+    `<div class="vizsector">`+pieChart("Sector",byX("inf_sector"),"inf_sector")+`</div>`+
+    `<div class="vizsector">`+barChart("Status",byX("inf_status"),"inf_status",_stcol)+`</div>`;
+  if(!LIMITED)viz+=`<div class="vizsector">`+barChart("Direction",byX("inf_direction"),"inf_direction",k=>k==="BULL"?"var(--bull)":k==="BEAR"?"var(--bear)":"var(--muted)")+`</div>`;
+  if($("instr-viz")){$("instr-viz").innerHTML=viz;packViz("instr-viz");}
+  let shown=base.filter(r=>_idims.every(([id,fn])=>inSet(id,fn(r)||"—")));
+  if(instrSortK)shown=genSort(shown,instrSortK,instrSortDir);
+  if($("instr-count"))$("instr-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> instruments${rows.length!==shown.length?` <span class="muted">of ${rows.length.toLocaleString()}</span>`:""}`;
+  if($("instr-rows"))$("instr-rows").innerHTML=shown.map(r=>{
+    const tk=(r.ticker||"").replace(/'/g,"");
+    return `<tr>
+    <td class="clk" style="cursor:pointer;color:var(--accent)" title="${AUTH?"Open the detail report":"Log in to open the detail report"}" onclick="${AUTH?`openDetailFrom('instruments','${tk}')`:"showLogin()"}">${nm40(r.name)}</td>
+    <td>${r.market||""}</td><td>${r.sector||""}</td>
+    <td>${ob(r.direction?`<span class="tag ${r.direction==="BULL"?"bull":"bear"}">${r.direction}</span>`:"")}</td>
+    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:"")}</td>
+    <td>${r.wk52_low!=null?f2(r.wk52_low):"—"}</td><td>${r.wk52_high!=null?f2(r.wk52_high):"—"}</td>
+    <td>${ob(r.rr!=null?(+r.rr).toFixed(1):"")}</td>
+    <td>${ob(rvolCell(r.rvol))}</td>
+    <td>${ob(r.above_vwap==null?"—":r.above_vwap?"✓":"✗")}</td>
+    <td>${ob(r.atr_expanding==null?"—":r.atr_expanding?"✓":"✗")}</td>
+    <td>${ob(volScoreCell(r.volume_score))}</td>
+    <td><b>${disp(r.ticker)}</b></td></tr>`;}).join("")||`<tr><td colspan="13" class="empty">No instruments match.</td></tr>`;
+  paintInstrFunnel();
+}
+document.querySelectorAll("th[data-instrk]").forEach(th=>th.onclick=()=>instrSort(th.dataset.instrk));
+// "Provide a history of the funnels" (P-08) — reuses /api/squeeze-history (public server-side already),
+// filtered by the SAME Location/Market/Sector/Direction cards + name search as the table above. Direction
+// and Return stay behind the same ob() teaser as the main table.
+function paintInstrFunnel(){
+  const box=$("instr-funnel-rows"); if(!box)return;
+  if(INSTR_FUNNEL===null){box.innerHTML='<tr><td colspan="9" class="empty sqh-loading">⏳ Data loading…</td></tr>';return;}
+  const q=(($("instr-search")||{}).value||"").trim().toLowerCase();
+  let shown=(INSTR_FUNNEL||[]).filter(r=>inSet("inf_location",locName(r.location)||"—")&&inSet("inf_market",r.market||"—")
+    &&inSet("inf_sector",r.sector||"—")&&inSet("inf_direction",r.direction||"—"));
+  if(q)shown=shown.filter(r=>((r.name||"")+" "+disp(r.ticker)+" "+(r.ticker||"")).toLowerCase().includes(q));
+  box.innerHTML=shown.slice(0,30).map(r=>`<tr>
+    <td>${nm40(r.name)}</td><td>${r.market||""}</td><td>${r.sector||""}</td>
+    <td>${ob(r.direction?`<span class="tag ${r.direction==="BULL"?"bull":"bear"}">${r.direction}</span>`:"")}</td>
+    <td>${r.ready_date||"—"}</td><td>${r.triggered_date||"—"}</td>
+    <td><b style="color:${_stcol(r.outcome)}">${r.outcome||""}</b></td><td>${r.outcome_date||"—"}</td>
+    <td>${ob(r.return_pct!=null?((r.return_pct>0?"+":"")+r.return_pct+"%"):"—")}</td></tr>`).join("")
+    ||`<tr><td colspan="9" class="empty">No funnel history for this selection.</td></tr>`;
+}
 // ── Squeeze History (Admin) (user 2026-07-18) — squeeze lifecycle table ───────────────────────────────
 let SQH=null, sqhSortK="triggered_date", sqhSortDir=-1;   // default: Triggered date descending (user 2026-08-01); header click changes it
 function renderSqueezeHist(){
@@ -4476,8 +4673,10 @@ function renderFees(ev){
     const hint=$("fees-aum-hint");
     if(hint)hint.textContent=(FEES.real_aum!=null)?`live IG account value${FEES.aum_currency?' ('+FEES.aum_currency+')':''}`:`no live balance — enter your account value`;
     // Period toggle buttons show the actual YEAR + MONTH (user 2026-08-02, P-06), e.g. "July 2026".
+    const pb=document.querySelector('#fees-period .fees-per[data-per="prev"]');   // two months ago (2026-08-07, ChangeRequest P-09)
     const lb=document.querySelector('#fees-period .fees-per[data-per="last"]');
     const tb=document.querySelector('#fees-period .fees-per[data-per="this"]');
+    if(pb&&FEES.prev_month&&FEES.prev_month.label)pb.textContent=FEES.prev_month.label;
     if(lb&&FEES.last_month&&FEES.last_month.label)lb.textContent=FEES.last_month.label;
     if(tb&&FEES.this_month&&FEES.this_month.label)tb.textContent=FEES.this_month.label;
     paintFees();
@@ -4492,7 +4691,8 @@ function feesPeriod(p){
 function _feesGbp(v){return `£${(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;}
 function paintFees(){
   const box=$("fees-example"); if(!box)return;
-  const f=FEES||{}, seg=(FEES_PER==='this'?f.this_month:f.last_month)||null;
+  // Three periods (2026-08-07, ChangeRequest P-09): 'prev' (two months ago), 'last', 'this' (so far).
+  const f=FEES||{}, seg=({prev:f.prev_month,last:f.last_month,this:f.this_month}[FEES_PER])||null;
   const warning=f.data_warning?`<div class="card" style="border-color:#d29922;background:color-mix(in srgb,#d29922 12%,transparent);color:var(--fg);font-size:12px;padding:8px 10px;margin:0 0 8px">⚠️ <b>IG data warning:</b> ${_esc(f.data_warning)}</div>`:'';
   if(f.note&&!seg){
     box.innerHTML=warning+`<p style="color:var(--bear);font-size:12px;padding:8px 0">${_esc(f.note)}</p>`;
@@ -4509,7 +4709,8 @@ function paintFees(){
   const mgmt=mgmtGross*(1-dm/100), perf=perfGross*(1-dp/100);
   const isThis=(FEES_PER==='this');
   const gbp=_feesGbp;
-  const ti=$("fees-title"); if(ti)ti.textContent=`Worked example — ${seg?seg.label:(isThis?'this month (so far)':'last month')}`;
+  const _perFallback={prev:'two months ago',last:'last month',this:'this month (so far)'}[FEES_PER]||'last month';
+  const ti=$("fees-title"); if(ti)ti.textContent=`Worked example — ${seg?seg.label:_perFallback}`;
   const row=(k,v,note)=>`<tr><td>${k}</td><td style="text-align:right"><b>${v}</b></td><td class="muted">${note||''}</td></tr>`;
   const isIg=(seg&&seg.source==='ig');
   const colr=v=>`<span style="color:${v>=0?'var(--bull)':'var(--bear)'}">${gbp(v)}</span>`;
@@ -4518,7 +4719,7 @@ function paintFees(){
     ? row(`Realised trading P&L`, colr(seg.trade_pnl||0), `${seg.trades} closed trades (net of spread)`)+
       row(`IG charges`, colr(seg.charges_total||0), `overnight funding / interest / fees${seg.charges&&seg.charges.length?` · ${seg.charges.length} item${seg.charges.length>1?'s':''}`:''}`)+
       row(`Net realised profit`, `<b>${colr(profit)}</b>`, `trading P&L + IG charges — the fee basis`)
-    : row(`Realised profit`, colr(profit), isThis?`this month's total_pnl to date`:`last month's total_pnl`);
+    : row(`Realised profit`, colr(profit), isThis?`this month's total_pnl to date`:`${_perFallback}'s total_pnl`);
   box.innerHTML=warning+`<table><thead><tr><th>Item</th><th style="text-align:right">Amount</th><th>Basis</th></tr></thead><tbody>`+
     row(`Period`, seg?seg.label:'—', seg?`${seg.trades} trades · ${seg.wins} win / ${seg.losses} loss${isIg?' · from your IG history':''}`:'no data recorded')+
     pnlRows+
@@ -4759,14 +4960,17 @@ function _renderPerformance(){
   // Best-combination card click (user 2026-07-27, P-10 L292): filter the TABLE (and its count + wallet) to
   // the picked Quality/R:R/Volume band, while the cards above still show every bucket so you can re-pick.
   const selT = PF_COMBO ? sel.filter(_pfInCombo) : sel;
-  // Wallet model (P-05 L98/L271): when ON, compute the running wallet over the shown triggers and force
-  // strict trigger-date order (a running wallet only reads correctly chronologically); else the usual sort.
+  // Wallet model (P-05 L98/L271) is always on; it needs strict trigger-date order internally to compound
+  // correctly, but that no longer has to be the DISPLAY order. _pfWalletLedger sorts its own internal copy
+  // chronologically regardless of selT's order, so it's safe to compute unconditionally and separately sort
+  // the DISPLAYED rows by whichever column header the user clicked (2026-08-07, ChangeRequest P-09 — header
+  // clicks used to update pfSortK/pfSortDir but the old hardcoded chronological branch below ignored them,
+  // so "allow sort by column header" silently did nothing). Default stays Triggered ascending (pfSortK).
   const pfwOn=$("pfw-on")?$("pfw-on").checked:true;   // wallet model is always on now — the toggle was removed (user 2026-08-01)
-  const led=pfwOn?_pfWalletLedger(selT):null;
-  const rows=pfwOn?selT.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''))
-                  :genSort(selT,pfSortK,pfSortDir);
+  const led=_pfWalletLedger(selT);
+  const rows=genSort(selT,pfSortK,pfSortDir);
   $("pf-table")&&$("pf-table").classList.toggle("wallet-on",pfwOn);
-  if($("pfw-summary"))$("pfw-summary").innerHTML=(pfwOn&&led)?`<b style="color:var(--fg)">£${Math.round(led.wallet).toLocaleString()}</b> → <b style="color:${led.endWallet>=led.wallet?'var(--bull)':'var(--bear)'}">£${Math.round(led.endWallet).toLocaleString()}</b> over ${led.taken.toLocaleString()} trade${led.taken===1?'':'s'} · ${led.requestedMax>0&&led.requestedMax!==led.maxopen?`requested ${led.requestedMax}, capped at ${led.maxopen}`:led.requestedMax>0?`cap ${led.maxopen}`:`Auto cap ${led.maxopen}`} open → ${led.skipped.toLocaleString()} skipped <span class="muted">· recorded triggers shown, oldest first (same model as “What separates the winners”)</span>`:"";
+  if($("pfw-summary"))$("pfw-summary").innerHTML=led?`<b style="color:var(--fg)">£${Math.round(led.wallet).toLocaleString()}</b> → <b style="color:${led.endWallet>=led.wallet?'var(--bull)':'var(--bear)'}">£${Math.round(led.endWallet).toLocaleString()}</b> over ${led.taken.toLocaleString()} trade${led.taken===1?'':'s'} · ${led.requestedMax>0&&led.requestedMax!==led.maxopen?`requested ${led.requestedMax}, capped at ${led.maxopen}`:led.requestedMax>0?`cap ${led.maxopen}`:`Auto cap ${led.maxopen}`} open → ${led.skipped.toLocaleString()} skipped <span class="muted">· wallet computed oldest first (same model as “What separates the winners”); table sorted by your chosen column, Triggered ascending by default</span>`:"";
   const nT=selT.filter(r=>r.state==="TARGET").length, nS=selT.filter(r=>r.state==="STOPPED").length, nO=selT.filter(r=>r.state==="OPEN").length;
   $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} · ${PF_COMBO.vb} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb},${PF_COMBO.vlo==null?'null':PF_COMBO.vlo},${PF_COMBO.vhi==null?'null':PF_COMBO.vhi},'${PF_COMBO.vb}');return false" style="color:var(--accent)">✕ clear</a>`:''}${PF_VS_FLOOR?` · <b style="color:var(--fg)">Volume Score ≥ ${PF_VS_FLOOR}</b> (your floor)`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   _pfBacktestSettingsCard(selT,all,led);
@@ -4776,12 +4980,12 @@ function _renderPerformance(){
     <td class="muted">${__i+1}</td>
     <td>${nm40(r.name)}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
-    <td>${ob(rvolCell(r.rvol))}</td><td>${r.above_vwap==null?'—':r.above_vwap?'✓':'✗'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'✓':'✗'}</td><td>${ob(volScoreCell(r.volume_score))}</td>
+    <td>${ob(rvolCell(r.rvol))}</td><td>${_tickCross(r.above_vwap)}</td><td>${_tickCross(r.atr_expanding)}</td><td>${ob(volScoreCell(r.volume_score))}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td>
     <td>${ob(`<b style="color:${_stcol(r.state)}">${r.state||''}</b>`)}</td>
     <!-- Market and Triggered stay visible logged-out (user 2026-07-17, P-26 and P-17b); the rest of the
          row is still obfuscated by ob(). /api/performance is public and already returns both. -->
-    <td>${r.market||''}</td><td>${ob(_mcapFmt(r.mcap))}</td><td>${r.trig_date||'—'}</td>
+    <td>${r.market||''}</td><td>${r.trig_date||'—'}</td>
     <td>${r.days_open!=null?r.days_open:'—'}</td>
     <td>${(()=>{let cd=r.exit_date?String(r.exit_date).slice(0,10):null;
       if(!cd&&(r.state==='TARGET'||r.state==='STOPPED')&&r.trig_date!=null&&r.days_open!=null){cd=_pfAddDays(r.trig_date,r.days_open);if(cd==='9999-99-99')cd=null;}
@@ -4793,6 +4997,7 @@ function _renderPerformance(){
     <td class="wcol">${r._net!=null?`<span style="color:${r._net>=0?'var(--bull)':'var(--bear)'}">${r._net>=0?'+':'−'}£${Math.abs(r._net).toFixed(2)}</span>`:'—'}</td>
     <td class="wcol"><b>${r._cum!=null?'£'+Math.round(r._cum).toLocaleString():'—'}</b></td>
     <td class="wcol">${r._open!=null?r._open:'—'}</td>
+    <td>${ob(_mcapFmt(r.mcap))}</td>
     <td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")+
     (rows.length>visibleRows.length?`<tr><td colspan="24" class="empty"><button class="subpill" onclick="pfShowMore()">Show ${Math.min(PF_RENDER_STEP,rows.length-visibleRows.length)} more</button> <span class="muted">Showing ${visibleRows.length.toLocaleString()} of ${rows.length.toLocaleString()} filtered triggers</span></td></tr>`:"")
     ||`<tr><td colspan="${pfwOn?24:20}" class="empty">No recorded triggers yet.</td></tr>`;
@@ -5027,6 +5232,8 @@ function doLogout(){localStorage.removeItem("sq_auth");location.reload();}
 function showLogin(){$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");window.scrollTo(0,0);const n=$("li_name");if(n)n.focus();}
 function doRequestAccount(){
   const m=$("rq_msg");
+  if(!($("rq_name").value||"").trim()){m.style.color="var(--bear)";m.textContent="Please enter your name.";return;}
+  if(!validEmail($("rq_email").value)){m.style.color="var(--bear)";m.textContent="Enter a valid email address (e.g. name@example.com).";return;}
   fetch("/api/request-account",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({name:$("rq_name").value,email:$("rq_email").value,note:$("rq_note").value})})
     .then(r=>{if(r.ok){m.style.color="var(--bull)";m.textContent="Request sent — an administrator will review it.";$("rq_name").value=$("rq_email").value=$("rq_note").value="";}
@@ -5186,7 +5393,7 @@ fetch("/api/me",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(m=>{
     // Return to the tab we were on before a reload (e.g. after a data refresh); fresh visits open Introduction.
     let _t=null; try{_t=sessionStorage.getItem("sq_tab");}catch(e){}
     showTab(_t&&tabAllowed(_t)?_t:"welcome");});
-if(AUTH)$("logout").style.display="";
+if(AUTH){$("logout").style.display="";$("loginbtn").style.display="none";}   // logged in: swap Log in → Log out (user 2026-08-08)
 let LIMITED=false;
 const ob=h=>LIMITED?'<span class="muted">•••</span>':h;   // obfuscated cell for logged-out visitors
 Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.status===401)throw "auth";return r.json();}),
@@ -5206,6 +5413,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");
     msyncAll();   // options only exist now — repaint the P-08 dropdown buttons (incl. any user defaults)
     render();
+    if($("view-instruments"))paintInstruments();   // Instruments reuses this same DATA load (user 2026-08-07, ChangeRequest P-08) — repaint if it's already the active/cached tab
     $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)
     // Introduction example: a real squeeze card — Howden if it's a current setup, else the best triggered name.
     // Use an EQUITY as the worked example, never an index/FX/commodity (user 2026-07-03).
@@ -5216,7 +5424,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     fetch("/api/status").then(x=>x.json()).then(s=>{if(s.refreshing){$("refresh").disabled=true;_refStart=Date.now();pollRefresh();}}).catch(()=>{});
   })
   .catch(e=>{ // 401 = no/stale login: clear the token; the login panel appears when a data tab is opened.
-    if(e==="auth"){AUTH="";localStorage.removeItem("sq_auth");$("logout").style.display="none";}
+    if(e==="auth"){AUTH="";localStorage.removeItem("sq_auth");$("logout").style.display="none";$("loginbtn").style.display="";}
   });
 // Default-sort arrow on first paint (user 2026-07-25, P-03 L39): the click handlers stamp the ▲/▼ on
 // click, but a DEFAULT-sorted column had no arrow until first clicked. Stamp each table's default now —
@@ -5228,7 +5436,7 @@ function _stampSortDefaults(){
    // admin tables (var names from their th[data-*] click wiring)
    ["data-xk",()=>[xSortK,xSortDir]],["data-jk",()=>[jSortK,jSortDir]],["data-sk",()=>[slSortK,slSortDir]],
    ["data-vk",()=>[verSortK,verSortDir]],["data-bk",()=>[batchSortK,batchSortDir]],["data-ak",()=>[acSortK,acSortDir]],
-   ["data-sqh",()=>[sqhSortK,sqhSortDir]],
+   ["data-sqh",()=>[sqhSortK,sqhSortDir]],["data-instrk",()=>[instrSortK,instrSortDir]],
    ["data-igp",()=>[igpSortK,igpSortDir]],["data-igo",()=>[igoSortK,igoSortDir]]];   // IG Account tables (user 2026-08-01)
   pairs.forEach(([a,get])=>{try{const [k,d]=get();_sortArrows(a,k,d);}catch(e){}});   // per-pair guard: a missing var just skips that table
 }

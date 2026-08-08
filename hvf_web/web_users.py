@@ -38,6 +38,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets as _secrets
 import threading
 
@@ -568,12 +569,24 @@ def reset_password_with_code(name: str, code: str, new_pwd: str, ip: str = "") -
 _REQ_KEY = "__requests__"
 
 
+# Pragmatic email validation (user 2026-08-08): reject clearly-invalid addresses rather than accepting
+# anything containing "@" — e.g. "c.d.mason@gmail,com" (comma) previously slipped through. This is a
+# sanity check (local part, single @, a dotted domain, no spaces/commas), NOT full RFC 5322 parsing.
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
+
+def valid_email(email: str) -> bool:
+    """True when the address is well-formed enough to accept. Trims first; caps overall length."""
+    email = (email or "").strip()
+    return bool(email) and len(email) <= 254 and _EMAIL_RE.match(email) is not None
+
+
 def add_request(name: str, email: str, note: str = "") -> bool:
     """Store a public account request (unauthenticated). Deduped by name; capped. Never creates a login."""
     from datetime import datetime, timezone
     name = (name or "").strip()
     email = (email or "").strip()
-    if not name or "@" not in email:
+    if not name or not valid_email(email):
         return False
     with _LOCK:
         users = _load()
@@ -630,14 +643,16 @@ def reject_request(name: str) -> bool:
     return True
 
 
-def admin_create_user(name: str, email: str, subscription: str = "guest", admin: bool = False) -> bool:
+def admin_create_user(name: str, email: str, subscription: str = "guest", admin: bool = False,
+                      support: bool = False) -> bool:
     """Admin-initiated account creation (user 2026-08-07, User Management "Add user"): create a LOCKED
     (no usable password), enabled account directly — no pending self-service request needed. The new
     user sets their password via the email-gated 'Forgot password?' flow, same as an approved request.
-    Clears any pending request with the same name so the two paths never collide."""
+    Clears any pending request with the same name so the two paths never collide. `support` (user
+    2026-08-08) lets the Support tier be set at creation, matching the Admin checkbox."""
     name = (name or "").strip()
     email = (email or "").strip()
-    if not name or "@" not in email:
+    if not name or not valid_email(email):
         return False
     with _LOCK:
         users = _load()
@@ -645,7 +660,7 @@ def admin_create_user(name: str, email: str, subscription: str = "guest", admin:
             return False
         salt = _secrets.token_hex(16)
         users[name] = {"salt": salt, "pwd_hash": _hash_pwd(_secrets.token_hex(24), salt),
-                       "email": email, "secrets": {}, "admin": bool(admin),
+                       "email": email, "secrets": {}, "admin": bool(admin), "support": bool(support),
                        "subscription": subscription if subscription in SUBSCRIPTIONS else "guest",
                        "enabled": True}
         _remove_request(name, users)

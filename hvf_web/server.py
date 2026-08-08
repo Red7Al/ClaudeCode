@@ -331,7 +331,12 @@ def api_users():
     if not _wu.is_admin(name):
         return jsonify({"error": "admin only"}), 403
     if request.method == "GET":
-        return jsonify({"users": _wu.list_users(), "subscriptions": _wu.SUBSCRIPTIONS,
+        users = _wu.list_users()
+        # has_ig drives the "Set temp password" affordance (user 2026-08-08): it is offered only for
+        # accounts with NO IG credentials, since an IG-linked account can place real trades.
+        for u in users:
+            u["has_ig"] = _user_has_ig_creds(u["name"])
+        return jsonify({"users": users, "subscriptions": _wu.SUBSCRIPTIONS,
                         "requests": _wu.list_requests()})
     body = request.get_json(silent=True) or {}
     target = (body.get("name") or "").strip()
@@ -343,10 +348,11 @@ def api_users():
     if body.get("action") == "create":
         email = (body.get("email") or "").strip()
         ok = _wu.admin_create_user(target, email, body.get("subscription") or "guest",
-                                   bool(body.get("admin")))
+                                   bool(body.get("admin")), bool(body.get("support")))
         if ok:
             _wu.log_event(name, f"Created account: {target} ({body.get('subscription') or 'guest'}"
-                                 f"{', admin' if body.get('admin') else ''})")
+                                 f"{', admin' if body.get('admin') else ''}"
+                                 f"{', support' if body.get('support') else ''})")
             try:
                 _wu.request_reset_code(target, email)
             except Exception:
@@ -358,11 +364,33 @@ def api_users():
         ok = _wu.approve_request(target)
         if ok:
             _wu.log_event(name, f"Approved account request: {target}")
+            # Notify the new user the same way "+ Add user" does (user 2026-08-08): fire a password-setup
+            # email to their registered address so they know the account exists and can set a password.
+            # Best-effort — an email failure never undoes the approval.
+            try:
+                _wu.request_reset_code(target, _wu.email_for(target))
+            except Exception:
+                pass
         return jsonify({"ok": ok, "users": _wu.list_users(), "requests": _wu.list_requests()})
     if body.get("action") == "reject":
         _wu.reject_request(target)
         _wu.log_event(name, f"Rejected account request: {target}")
         return jsonify({"ok": True, "users": _wu.list_users(), "requests": _wu.list_requests()})
+    # Admin sets a temporary password directly (user 2026-08-08) — for use when outbound email is not
+    # configured, so a locked account can be activated out-of-band. Refused for any account that holds
+    # IG credentials (an IG-linked login can place real trades; it must use the email-based reset). The
+    # route is already admin-only, so only admins reach this branch.
+    if body.get("action") == "set_temp_password":
+        if _user_has_ig_creds(target):
+            return jsonify({"ok": False, "error": "This account has IG credentials — a temporary "
+                            "password cannot be set for it. It must use the email-based reset."}), 400
+        new_pwd = (body.get("new_pwd") or "").strip()
+        ok = _wu.reset_password(target, _wu.email_for(target), new_pwd, ip=request.remote_addr or "")
+        if ok:
+            _wu.log_event(name, f"Set a temporary password for {target}")
+        return jsonify({"ok": ok, "error": None if ok else "Could not set the password. It must be at "
+                        "least 4 characters and the account must exist.",
+                        "users": _wu.list_users()})
     changed = []
     if "subscription" in body and _wu.set_subscription(target, body["subscription"]):
         changed.append(f"subscription={body['subscription']}")
@@ -777,7 +805,14 @@ CRED_SECTIONS = [
     {"id": "Slack", "scope": "app", "admin_only": True, "note": "Shared Slack incoming-webhook URLs.",
      "fields": [("slack_alerts", "#alerts webhook", "SLACK_ALERTS"), ("slack_daily", "#daily webhook", "SLACK_DAILY"),
                 ("slack_signals", "#signals webhook", "SLACK_SIGNALS"), ("slack_trades", "#trades webhook", "SLACK_TRADES"),
-                ("slack_weekly", "#weekly webhook", "SLACK_WEEKLY")]},
+                ("slack_weekly", "#weekly webhook", "SLACK_WEEKLY"),
+                # P-11 (2026-08-08): these existed only as GitHub Secrets — no local .env / Credentials-UI
+                # path had ever seeded them, so import_credentials_from_env couldn't reach them either.
+                ("slack_orders", "#orders webhook", "SLACK_ORDERS"), ("slack_rw_hvf", "RW HVF webhook", "SLACK_RW_HVF"),
+                ("slack_twitter", "#twitter webhook", "SLACK_TWITTER"),
+                ("slack_bot_token", "Bot token (file uploads)", "SLACK_BOT_TOKEN"),
+                ("slack_signals_channel_id", "#signals channel ID", "SLACK_SIGNALS_CHANNEL_ID"),
+                ("slack_twitter_channel_id", "#twitter channel ID", "SLACK_TWITTER_CHANNEL_ID")]},
     {"id": "Server", "scope": "app", "admin_only": True, "note": "Server-side data API keys.",
      "fields": [("fred_api_key", "FRED API key", "FRED_API_KEY"), ("eia_api_key", "EIA API key", "EIA_API_KEY"),
                 ("quiver_quant_api_key", "Quiver Quant API key", "QUIVER_QUANT_API_KEY"),
@@ -1000,6 +1035,42 @@ def _snapshot_volscore(snap: dict) -> dict:
     return out
 
 
+# 52-week Low/High (user 2026-08-07, ChangeRequest P-08 — Instruments tab): the trailing-year price range
+# for EVERY instrument in the snapshot (not just triggered setups), unlike RVOL/VolumeScore above which are
+# scoped to TRIGGERED rows only. Cached against the snapshot's generated_utc, same reasoning as the caches
+# above — the trailing range only changes when the snapshot (and its underlying price_history) is rebuilt.
+_WK52_CACHE = {"gen": None, "data": {}}
+_WK52_LOOKBACK_DAYS = 365
+
+
+def _snapshot_52wk(snap: dict) -> dict:
+    """{ticker: (low, high)} over the trailing 52 weeks of price_history. Public data (unlike RVOL/Quality/
+    R:R/VolumeScore) — the Instruments tab shows it to logged-out visitors too."""
+    gen = snap.get("generated_utc")
+    if _WK52_CACHE["gen"] == gen and _WK52_CACHE["data"]:
+        return _WK52_CACHE["data"]
+    out = {}
+    try:
+        tickers = sorted({r.get("ticker") for r in snap.get("records", []) if r.get("ticker")})
+        if tickers:
+            from db_pool import get_db
+            today = _dt.date.today()
+            db = get_db()
+            try:
+                bars_by_tk = _perf_bars(db, {tk: today for tk in tickers}, lookback_days=_WK52_LOOKBACK_DAYS)
+            finally:
+                db.close()
+            for tk, bars in bars_by_tk.items():
+                highs = [b[1] for b in bars if b[1] is not None]
+                lows = [b[2] for b in bars if b[2] is not None]
+                if highs and lows:
+                    out[tk] = (min(lows), max(highs))
+    except Exception as ex:
+        log.warning(f"52wk high/low failed (columns blank): {ex}")
+    _WK52_CACHE.update(gen=gen, data=out)
+    return out
+
+
 @app.route("/api/volscore/<ticker>")
 def api_volscore(ticker):
     """VolumeScore breakdown for one triggered setup (user 2026-07-24, P-02). Logged-in only —
@@ -1014,6 +1085,9 @@ def api_volscore(ticker):
 def api_records():
     snap = _load_snapshot()
     authed = request.headers.get("X-Auth") in _wu.valid_tokens()
+    # 52-week Low/High (user 2026-08-07, ChangeRequest P-08 — Instruments tab): PUBLIC, unlike RVOL/
+    # VolumeScore/Quality/R:R below, so it is computed for both branches, not just the authed one.
+    wk52 = _snapshot_52wk(snap)
     # The Scanner shows the FULL universe to every user — the Config trade filters gate only what the
     # operator TRADES (enforced in ig_shim at order time), never what is shown (user 2026-07-06).
     markets = None
@@ -1025,18 +1099,25 @@ def api_records():
         recs = []
         for r in snap.get("records", []):
             result = vscore.get(r.get("ticker")) or {}
+            w = wk52.get(r.get("ticker")) or (None, None)
             recs.append(dict({k: v for k, v in r.items() if k != "_card"},
                              rvol=rvol.get(r.get("ticker")),
                              volume_score=result.get("score"),
                              above_vwap=_component(result, "above_vwap"),
-                             atr_expanding=_component(result, "atr_expanding")))
+                             atr_expanding=_component(result, "atr_expanding"),
+                             wk52_low=w[0], wk52_high=w[1]))
         # Canonical market list (user 2026-07-31, P-15) — drives the Scanner "Refresh a choice of markets"
         # picker independent of which fields the client keeps on DATA.
         markets = sorted({r.get("market") for r in snap.get("records", []) if r.get("market")})
     else:
         # Teaser mode (user 2026-07-03): only the first-5-column fields leave the server — the rest
         # are stripped HERE, not hidden client-side, so logged-out users cannot fetch them at all.
-        recs = [{k: r.get(k) for k in _PUBLIC_FIELDS} for r in snap.get("records", [])]
+        recs = []
+        for r in snap.get("records", []):
+            row = {k: r.get(k) for k in _PUBLIC_FIELDS}
+            w = wk52.get(r.get("ticker")) or (None, None)
+            row["wk52_low"], row["wk52_high"] = w
+            recs.append(row)
     return jsonify({"generated_utc": snap.get("generated_utc"), "count": len(recs),
                     "records": recs, "limited": not authed, "markets": markets})
 
@@ -3048,10 +3129,12 @@ def api_squeeze_history():
 @app.route("/api/fees")
 def api_fees():
     """Fees (Admin) tab (user 2026-07-18): management fee (1%/mo of AUM) + performance fee (10%/mo of
-    profits). Returns TWO periods (user 2026-07-31, P-05): "last_month" (the billed month) and
-    "this_month" (month-to-date, "so far"). Each carries the daily_pnl aggregate PLUS the underlying
-    per-trade transactions (trade_log) that EXPLAIN the realised profit — the transaction pnl sums back to
-    the period profit (reconciled per row-count/total)."""
+    profits). Returns THREE periods (user 2026-07-31, P-05; third period added 2026-08-07, ChangeRequest
+    P-09 — "add another previous month tab so we can see two previous months plus current month"):
+    "prev_month" (two months ago), "last_month" (the billed month) and "this_month" (month-to-date, "so
+    far"). Each carries the daily_pnl aggregate PLUS the underlying per-trade transactions (trade_log) that
+    EXPLAIN the realised profit — the transaction pnl sums back to the period profit (reconciled per
+    row-count/total)."""
     import datetime as _dt
 
     def _ig_day(value):
@@ -3152,6 +3235,8 @@ def api_fees():
     first_this = today.replace(day=1)
     last_month_end = first_this - _dt.timedelta(days=1)
     first_last = last_month_end.replace(day=1)
+    prev_month_end = first_last - _dt.timedelta(days=1)   # two months ago (2026-08-07, ChangeRequest P-09)
+    first_prev = prev_month_end.replace(day=1)
 
     # One IG session block (user 2026-08-02): fetch the real account equity (AUM basis) AND the full
     # transaction history spanning both periods, so the fees reflect the ACTUAL closed trades + IG charges.
@@ -3187,7 +3272,7 @@ def api_fees():
                          "The figures below use the application ledger and may be incomplete. "
                          f"Broker error: {_ex}")
 
-    payload = {"mgmt_pct": 1.0, "perf_pct": 10.0, "last_month": None, "this_month": None,
+    payload = {"mgmt_pct": 1.0, "perf_pct": 10.0, "prev_month": None, "last_month": None, "this_month": None,
                "discount": _disc, "user": _viewer or None,
                "real_aum": _real_aum, "aum_currency": _aum_ccy,
                "source": ("ig" if _ig_txns is not None else "app_fallback"),
@@ -3196,6 +3281,7 @@ def api_fees():
     try:
         if _ig_txns is not None:
             # Truth: the account's real transaction history (all closed trades + IG charges).
+            payload["prev_month"] = _period_ig(first_prev, prev_month_end, first_prev.strftime("%B %Y"), _ig_txns)
             payload["last_month"] = _period_ig(first_last, last_month_end, first_last.strftime("%B %Y"), _ig_txns)
             payload["this_month"] = _period_ig(first_this, today, today.strftime("%B %Y") + " (so far)", _ig_txns)
             # IG can return a valid-looking history response while omitting a month (or returning only
@@ -3204,11 +3290,12 @@ def api_fees():
             from db_pool import get_db
             _db = get_db()
             try:
+                _app_prev = _period(_db, first_prev, prev_month_end, first_prev.strftime("%B %Y"))
                 _app_last = _period(_db, first_last, last_month_end, first_last.strftime("%B %Y"))
                 _app_this = _period(_db, first_this, today, today.strftime("%B %Y") + " (so far)")
             finally:
                 _db.close()
-            for _key, _app_seg in (("last_month", _app_last), ("this_month", _app_this)):
+            for _key, _app_seg in (("prev_month", _app_prev), ("last_month", _app_last), ("this_month", _app_this)):
                 _ig_seg = payload[_key]
                 if len(_app_seg.get("txns") or []) > len(_ig_seg.get("txns") or []):
                     payload[_key] = _app_seg
@@ -3222,6 +3309,7 @@ def api_fees():
             from db_pool import get_db
             db = get_db()
             try:
+                payload["prev_month"] = _period(db, first_prev, prev_month_end, first_prev.strftime("%B %Y"))
                 payload["last_month"] = _period(db, first_last, last_month_end, first_last.strftime("%B %Y"))
                 payload["this_month"] = _period(db, first_this, today, today.strftime("%B %Y") + " (so far)")
             finally:
