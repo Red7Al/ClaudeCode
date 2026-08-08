@@ -926,7 +926,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </table></div>
   </section>
   <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px"><span id="users-count"></span><span class="grow"></span><button class="btn" onclick="addUser()">+ Add user</button></div>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px"><span id="users-count"></span><span class="grow"></span><button class="btn" onclick="renderUsers()" title="Reload the account list from the server">↻ Refresh data</button><button class="btn" onclick="addUser()">+ Add user</button></div>
     <div class="tablewrap"><table>
       <thead><tr><th>Name</th><th>Email</th><th>Admin</th><th title="Read-only operational tier: System Logs, Batch Activity, Scheduled Jobs only">Support</th><th>Subscription</th><th>Status</th><th title="Management &amp; performance fee discounts for this account, with an optional start/end window. Both default to 0.">Fees discount</th><th title="Password complexity, recorded when the password was last set — never derived from stored (hashed) passwords" style="white-space:normal;width:1%;text-align:center;line-height:1.2">Password Complexity</th><th title="Audit trail of this account's IG identity (account name + masked number), encrypted in Supabase. Captured whenever the credentials change or the IG Account tab is opened." style="white-space:normal;width:1%;text-align:center;line-height:1.2">IG account (audit)</th></tr></thead>
       <tbody id="users-rows"></tbody>
