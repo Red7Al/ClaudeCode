@@ -401,3 +401,45 @@ def test_best_settings_history_rejects_non_finite_results():
         assert "numeric" in str(exc)
     else:
         raise AssertionError("non-finite annual return was accepted")
+
+
+# ── Documentation guides access (user 2026-08-08, P-13) ──────────────────────────────────────────────
+_GUIDES_SAMPLE = [
+    {"slug": "user-guide-x", "title": "UG", "category": "User Guide", "subtitle": "", "access": "login",
+     "file": "user-guide-x.html"},
+    {"slug": "support-y", "title": "SUP", "category": "Support", "subtitle": "", "access": "staff",
+     "file": "support-y.html"},
+]
+
+
+def test_guides_list_requires_login():
+    resp = server.app.test_client().get("/api/guides")   # no X-Auth
+    assert resp.status_code == 401
+
+
+def test_guides_list_filters_staff_guides_for_plain_user(monkeypatch):
+    """A logged-in non-staff user sees User Guides only; staff guides are withheld."""
+    _identity(monkeypatch, "Guest", admin=False)
+    monkeypatch.setattr(server._wu, "is_support", lambda n: False)
+    monkeypatch.setattr(server, "_load_guides_manifest", lambda: list(_GUIDES_SAMPLE))
+    slugs = [g["slug"] for g in server.app.test_client()
+             .get("/api/guides", headers={"X-Auth": "token"}).get_json()["guides"]]
+    assert slugs == ["user-guide-x"]   # staff-only "support-y" excluded
+
+
+def test_guides_list_includes_staff_guides_for_admin(monkeypatch):
+    _identity(monkeypatch, "Admin", admin=True)
+    monkeypatch.setattr(server._wu, "is_support", lambda n: False)
+    monkeypatch.setattr(server, "_load_guides_manifest", lambda: list(_GUIDES_SAMPLE))
+    slugs = [g["slug"] for g in server.app.test_client()
+             .get("/api/guides", headers={"X-Auth": "token"}).get_json()["guides"]]
+    assert set(slugs) == {"user-guide-x", "support-y"}
+
+
+def test_guide_file_denied_for_plain_user(monkeypatch):
+    """The file route enforces the same role rule — a staff guide is 404 for a non-staff user."""
+    _identity(monkeypatch, "Guest", admin=False)
+    monkeypatch.setattr(server._wu, "is_support", lambda n: False)
+    monkeypatch.setattr(server, "_load_guides_manifest", lambda: list(_GUIDES_SAMPLE))
+    resp = server.app.test_client().get("/api/guides/support-y", headers={"X-Auth": "token"})
+    assert resp.status_code == 404

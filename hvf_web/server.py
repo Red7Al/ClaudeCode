@@ -922,6 +922,64 @@ def api_userlog():
     return jsonify({"name": name, "log": _wu.get_log(name)})
 
 
+# ── Documentation guides (user 2026-08-08, P-13) ──────────────────────────────────────────────────────
+# Serves the guide .docx built into docs/guides/ (with _manifest.json). Access: "login" guides (the User
+# Guides) to any logged-in user; "staff" guides (Support/Operations) to admin or support only. The role
+# filter is enforced here, not just in the UI. docs/guides/ is gitignored and built by docs/_build_guides.js,
+# so the files must be present on the server machine.
+_GUIDES_DIR = os.path.join(os.path.dirname(_HERE), "docs", "guides")
+
+
+def _load_guides_manifest() -> list:
+    try:
+        with open(os.path.join(_GUIDES_DIR, "_manifest.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _guide_allowed(entry: dict, name: str, admin: bool, support: bool) -> bool:
+    access = entry.get("access", "staff")
+    if access == "login":
+        return bool(name)              # any authenticated user
+    if access == "staff":
+        return bool(admin or support)  # Support or Admin only
+    return False                       # unknown access → deny
+
+
+@app.route("/api/guides")
+def api_guides():
+    """The guide list the caller's role may see (user 2026-08-08, P-13)."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    admin, support = _wu.is_admin(name), _wu.is_support(name)
+    guides = [{"slug": g.get("slug"), "title": g.get("title", ""),
+               "category": g.get("category", ""), "subtitle": g.get("subtitle", ""),
+               "access": g.get("access", "staff")}
+              for g in _load_guides_manifest()
+              if g.get("slug") and _guide_allowed(g, name, admin, support)]
+    return jsonify({"guides": guides})
+
+
+@app.route("/api/guides/<slug>")
+def api_guide_file(slug):
+    """Serve one guide as an HTML fragment (rendered in-app), gated by the same role rule as the list."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    admin, support = _wu.is_admin(name), _wu.is_support(name)
+    entry = next((g for g in _load_guides_manifest() if g.get("slug") == slug), None)
+    if not entry or not _guide_allowed(entry, name, admin, support):
+        return jsonify({"error": "not found"}), 404
+    fname = os.path.basename(entry.get("file") or (slug + ".html"))   # no path traversal
+    path = os.path.join(_GUIDES_DIR, fname)
+    if not os.path.isfile(path):
+        return jsonify({"error": "document not built on this server"}), 404
+    return send_file(path, mimetype="text/html")
+
+
 def _load_snapshot() -> dict:
     try:
         with open(SNAPSHOT, "r", encoding="utf-8") as f:

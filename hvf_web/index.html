@@ -241,6 +241,39 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .doc .tclist li::marker{font-size:.65em;color:var(--muted)}
 /* T&C caveat notes — one consistent style across every section (user 2026-08-02, P-25). */
 .tcnote{color:var(--muted);font-size:13px;line-height:1.5;max-width:820px;margin:8px 0 0}
+/* Documentation tab (user 2026-08-08, P-13): category cards + tiles, and in-app guide rendering. */
+.doc-cat{margin:0 0 24px}
+.doc-cat-head{display:flex;gap:12px;align-items:baseline;margin:0 0 12px}
+.doc-cat-head .num{color:var(--accent);font-weight:800;font-size:13px;letter-spacing:.05em}
+.doc-cat-head h2{margin:0;font-size:18px;color:var(--fg)}
+.doc-cat-head p{margin:3px 0 0;color:var(--muted);font-size:12.5px}
+.doc-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.doc-tile{text-align:left;cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;color:var(--fg);font:inherit;transition:border-color .15s,transform .15s,box-shadow .15s}
+.doc-tile:hover,.doc-tile:focus-visible{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.18);outline:none}
+.doc-tile .doc-tile-type{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.doc-tile h4{margin:0;font-size:14.5px;color:var(--fg)}
+.doc-tile p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.45;flex:1}
+.doc-tile strong{color:var(--accent);font-size:12.5px}
+.guide-doc{max-width:820px}
+.guide-hero{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:8px}
+.guide-hero .eyebrow{text-transform:uppercase;letter-spacing:.08em;font-size:11px;font-weight:700;color:var(--accent);margin:0 0 6px}
+.guide-hero h1{font-size:27px;margin:0 0 6px;color:var(--fg);line-height:1.2}
+.guide-hero .guide-lead{color:var(--muted);font-size:15px;margin:0;line-height:1.5}
+.guide-sec{margin:22px 0 0}
+.guide-sec-head{display:flex;gap:12px;align-items:baseline;margin:0 0 8px}
+.guide-sec-head .num{color:var(--accent);font-weight:800;font-size:13px;letter-spacing:.05em;flex:0 0 auto}
+.guide-sec-head h2{margin:0;font-size:18px;color:var(--fg)}
+.guide-sec-body{padding-left:34px;border-left:2px solid var(--line);margin-left:6px}
+.guide-doc h3{font-size:14.5px;margin:16px 0 6px;color:var(--fg)}
+.guide-doc p{font-size:14px;line-height:1.6;margin:0 0 12px;color:var(--fg)}
+.guide-doc ul,.guide-doc ol{margin:0 0 12px;padding-left:22px}
+.guide-doc li{font-size:14px;line-height:1.55;margin:0 0 6px;color:var(--fg)}
+.guide-note{background:color-mix(in srgb,var(--accent) 8%,transparent);border-left:3px solid var(--accent);padding:10px 14px;margin:0 0 14px;font-size:13px;color:var(--fg);border-radius:0 6px 6px 0}
+.guide-table{border-collapse:collapse;width:100%;margin:0 0 14px;font-size:13px}
+.guide-table th,.guide-table td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+.guide-table th{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--fg);font-weight:700}
+.guide-foot{color:var(--muted);font-size:12px;font-style:italic;border-top:1px solid var(--line);padding-top:12px;margin-top:24px}
+@media(max-width:640px){.guide-sec-body{padding-left:16px}}
 .doc .eyebrow{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);padding:5px 12px;border-radius:999px;margin-bottom:16px}
 .doc h1{font-size:34px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:0 0 12px}
@@ -474,7 +507,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="btn" id="signalonly">Show Squeeze Only <span style="color:var(--bull)">✓</span></button>
   <span id="refresh-mkt-wrap" style="display:none;position:relative">
     <button class="btn" id="refresh-mkt-btn" onclick="toggleRefreshMkt(event)" title="Choose which markets the Refresh rescans (default: all)">Markets: All ▾</button>
-    <div id="refresh-mkt-panel" style="display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:60;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:210px;max-height:360px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.35)"></div>
+    <div id="refresh-mkt-panel" style="display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:60;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:210px;max-height:360px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.35)"></div>
   </span>
   <button class="btn" id="refresh">↻ Refresh data</button>
   <button class="btn" id="reset">Reset filters</button>
@@ -499,6 +532,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="tab" id="tab-activity" onclick="showTab('activity')" style="display:none">My Activity <span id="actab-count"></span></button>
   <button class="tab" id="tab-mfm" onclick="showTab('mfm')" style="display:none">Trading (Multi-Factor Momentum)</button>
   <button class="tab" id="tab-sysdocs" onclick="showTab('sysdocs')" style="display:none">How it works (System)</button>
+  <!-- Documentation (user 2026-08-08, P-13) — links to the guide .docx. Visible to any logged-in user;
+       User Guides are shown to everyone, Support/Operations guides only to admin/support (role-filtered
+       server-side and in renderDocs). Placed immediately right of "How it works (System)". -->
+  <button class="tab" id="tab-docs" onclick="showTab('docs')" style="display:none">Documentation</button>
   <!-- grouped children (Batch/Users/X Posts/Version/System Logs/Scheduled Jobs/Change Requests, and
        Config/Config-Admin/Markets/Markets-Admin) live under the Operations / Settings parents below. -->
   <span class="grow"></span>
@@ -990,6 +1027,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
 </div>
 
+<div id="view-docs" class="hidden doc" style="max-width:900px">
+  <h1>Documentation</h1>
+  <p class="lede">Guides for using and supporting the platform, as Word documents. You see the guides available to your role — everyone gets the User Guides; Support and Operations guides are shown to Support and Admin staff.</p>
+  <div id="docs-list"></div>
+</div>
 <div id="view-sysdocs" class="hidden doc" style="max-width:1120px">
   <span class="eyebrow">Admin</span>
   <h1>How it works (System)</h1>
@@ -2507,7 +2549,7 @@ let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/
 let MY_LIMITS={};   // the user's personal floors from Configuration → My trading limits (min_risk_reward, min_quality) — applied to My Pre-orders (user 2026-07-24, P-02)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","whatwedo","intro","appendix","terms","scanner","instruments","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
+const TABS=["welcome","whatwedo","intro","appendix","terms","scanner","instruments","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","docs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
 const PUBLIC_TABS=["welcome","whatwedo","intro","appendix","terms","scanner","instruments","performance"];   // visible when logged out (Performance blurs all but ticker/name/return); "What we do" + "T&C" are for everyone (user 2026-07-27, P-10 L169 / P-25); Instruments joined the list 2026-08-07 (ChangeRequest P-08 — "available to all, even without a login")
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin","squeezehist","fees"];  // admin only
 const SUPPORT_TABS=["batch","syslogs","jobs"];   // Support role (2026-08-07): read-only ops visibility carved out of ADMIN_TABS — Batch Activity, System Logs, Scheduled Jobs only, nothing else admin-only
@@ -2638,7 +2680,7 @@ function showTab(name){
     config:renderConfig,configadmin:renderConfig,users:renderUsers,syslogs:renderSyslogs,jobs:renderJobs,
     version:renderVersion,batch:renderBatch,markets:renderMarkets,marketsadmin:renderMarketsAdmin,
     performance:renderPerformance,changereq:renderCR,igaccount:renderIgAccount,
-    squeezehist:renderSqueezeHist,fees:renderFees,instruments:renderInstruments};
+    squeezehist:renderSqueezeHist,fees:renderFees,instruments:renderInstruments,docs:renderDocs};
   if(R[name])R[name]();
 }
 // ── X Posts tab (user 2026-07-03): all published tweets + charts, click-to-filter, sortable. ──
@@ -2918,6 +2960,48 @@ function saveUser(name,patch){
     .then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(()=>{$("users-msg").style.color="var(--bull)";$("users-msg").textContent=`Updated ${name}.`;renderUsers();})
     .catch(()=>{$("users-msg").style.color="var(--bear)";$("users-msg").textContent="Update failed.";});
+}
+// Documentation tab (user 2026-08-08, P-13): lists the guide .docx the current role may see and downloads
+// them. The server filters by role too; downloads go through fetch with the X-Auth header (a plain <a>
+// link can't carry it), so the token never appears in a URL.
+const DOC_CATS={"User Guide":{n:"01",blurb:"Everyday guides for anyone with a login."},
+                "Support":{n:"02",blurb:"For Support and Admin staff helping users and running the desk."},
+                "Operations":{n:"03",blurb:"For Admin staff operating and maintaining the platform."}};
+function renderDocs(){
+  const box=$("docs-list");
+  if(!box)return;
+  box.innerHTML=`<div class="muted">Loading…</div>`;
+  fetch("/api/guides",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
+    .then(j=>{
+      const gs=j.guides||[];
+      if(!gs.length){box.innerHTML=`<div class="empty">No documents are available for your role yet.</div>`;return;}
+      const byCat={}; gs.forEach(g=>{(byCat[g.category]=byCat[g.category]||[]).push(g);});
+      const order=[...Object.keys(DOC_CATS).filter(c=>byCat[c]),...Object.keys(byCat).filter(c=>!DOC_CATS[c])];
+      box.innerHTML=order.map(c=>{
+        const m=DOC_CATS[c]||{n:"",blurb:""};
+        return `<section class="doc-cat">
+          <div class="doc-cat-head">${m.n?`<span class="num">${m.n}</span>`:""}<div><h2>${c}</h2>${m.blurb?`<p>${m.blurb}</p>`:""}</div></div>
+          <div class="doc-tiles">`+
+          byCat[c].map(g=>`<button class="doc-tile" onclick="openGuide('${g.slug}')">
+            <span class="doc-tile-type">Guide</span>
+            <h4>${(g.title||g.slug).replace(/</g,"&lt;")}</h4>
+            <p>${(g.subtitle||"").replace(/</g,"&lt;")}</p>
+            <strong>Read →</strong></button>`).join("")+
+          `</div></section>`;
+      }).join("");
+    })
+    .catch(()=>{box.innerHTML=`<div class="empty">Could not load the documentation list.</div>`;});
+}
+function openGuide(slug){
+  const box=$("docs-list");
+  if(!box)return;
+  const back=`<button class="btn" style="margin-bottom:14px" onclick="renderDocs()">← All documents</button>`;
+  box.innerHTML=`<div class="muted">Loading…</div>`;
+  // The HTML is our own build-time content (escaped in _build_guides.js) and role-gated by the server.
+  fetch("/api/guides/"+encodeURIComponent(slug),{headers:{"X-Auth":AUTH}})
+    .then(r=>{if(!r.ok)throw 0;return r.text();})
+    .then(html=>{box.innerHTML=back+html;window.scrollTo(0,0);})
+    .catch(()=>{box.innerHTML=back+`<div class="empty">Could not open that document — you may not have access.</div>`;});
 }
 // Admin-only temporary-password modal (user 2026-08-08): for activating a locked account out-of-band when
 // email isn't configured. Only offered for accounts WITHOUT IG credentials (the server enforces this too).
