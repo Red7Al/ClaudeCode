@@ -153,14 +153,14 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   134 vs price 334) now returns empty; USDJPY/ABF.L TRIGGERED retained (within 20%). Kept OUT of
   `check_hvf_invariants` (that stays pure-geometry). Investigation showed ARM's levels were NOT a
   unit/instrument mismatch — yfinance confirmed ARM really was ~134 in Feb 2026 and has since run to
-  334, i.e. a genuinely resolved funnel, not the MSTR-class bug. NaN current_price (transient yfinance)
+  334, i.e. a genuinely resolved squeeze, not the MSTR-class bug. NaN current_price (transient yfinance)
   is safely ignored by the gate rather than dropped. Suite green (21/21). Original item below.
 - [ ] ~~**(J) Sanity-gate nonsensical TRIGGERED setups**~~ — ARM showed weekly TRIGGERED with Entry 134.25
   vs Now 347.71 (entry -61% BELOW price). A real TRIGGERED long has price AT/just above the H3 entry;
-  entry far below price means a STALE funnel (triggered long ago) or a current-price/level source
+  entry far below price means a STALE squeeze (triggered long ago) or a current-price/level source
   mismatch (same class as the MSTR wrong-instrument bug). Add a gate: reject/flag any TRIGGERED long
   whose entry is more than ~X% below the live price (and the mirror for shorts). Relatedly verify the
-  weekly current-price and the funnel levels come from the SAME instrument/units. See J diagnosis.
+  weekly current-price and the squeeze levels come from the SAME instrument/units. See J diagnosis.
 
 ## Trades failing to be placed — added 2026-06-24
 
@@ -194,7 +194,7 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
 - [ ] **Prior-trend magnitude gate — DISABLED 2026-06-20, needs a calibration DECISION.** Built
   (config.MIN_PRIOR_TREND_PCT, shared price_action._prior_trend_pct, daily+weekly), then disabled
   because at **20%** it broke CI regression case 10: the **HIK.L frozen known-good** has a prior
-  impulse of only **12.5%**, so the gate rejected a colleague-validated funnel AND the MTF then
+  impulse of only **12.5%**, so the gate rejected a colleague-validated squeeze AND the MTF then
   surfaced a wrong-direction bearish override. This is the crux of the 20% question: RW/Hunt's
   "~20%" is an interpretation (per the official-method audit), and a validated real setup (HIK.L)
   sits at 12.5%. **Decision needed before re-enabling:** (a) lower the threshold (≈10-12% would keep

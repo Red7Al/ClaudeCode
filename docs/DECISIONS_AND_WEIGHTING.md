@@ -1,6 +1,6 @@
 # From a signal to a decision — weighting & publication
 
-How a detected funnel (see [SQUEEZE_METHOD.md](SQUEEZE_METHOD.md)) becomes an ordered, gated, published
+How a detected squeeze (see [SQUEEZE_METHOD.md](SQUEEZE_METHOD.md)) becomes an ordered, gated, published
 decision. Generated from the live code (`hvf_clean.detect_hvf`, `price_action.hvf_weight`,
 `config.py`, `intraday_signals.py`, `run_hvf_report.py`).
 
@@ -11,11 +11,11 @@ decision. Generated from the live code (`hvf_clean.detect_hvf`, `price_action.hv
 1. **Scan** every timeframe (daily 30/60/90/180/240 + weekly).
 2. **Detect** with the single clean RW ruleset (`hvf_clean.detect_hvf`, cut over 2026-06-22): strict
    alternating swings, a real L3 (no synthetic), no flat-top tolerance, no Method-A/B override,
-   funnel **tightness ≤ 35%**, **R:R ≥ 3** — one engine for every timeframe. See the method doc.
+   squeeze **tightness ≤ 35%**, **R:R ≥ 3** — one engine for every timeframe. See the method doc.
 3. Keep the **best** timeframe and validate against IG. The target is AMP1 = H1−L1 measured from
-   midpoint(H3, L3), taken from the funnel's own pivots (the earlier exhaustion-AMP1 re-anchor was
+   midpoint(H3, L3), taken from the squeeze's own pivots (the earlier exhaustion-AMP1 re-anchor was
    removed in the 2026-06-22 cut-over; the weekly timeframe's ~3-year reach still catches
-   long-formed funnels whose true exhaustion top predates the daily windows).
+   long-formed squeezes whose true exhaustion top predates the daily windows).
 4. Apply the **gates**: `R:R ≥ 3` decides *tradeable vs developing*; `quality ≥ MIN_PUBLISH_QUALITY`
    (now **25**) decides *publishable to X*.
 5. **Order** every candidate by the single weighting key below.
@@ -69,7 +69,7 @@ identically. Changing the rule in one place changes every list.
 
 | Constant (source) | Default | Effect |
 |---|---|---|
-| `MIN_RISK_REWARD` (`config.py`) | 3.0 | Below it a funnel is **DEVELOPING** (watch), not tradeable. |
+| `MIN_RISK_REWARD` (`config.py`) | 3.0 | Below it a squeeze is **DEVELOPING** (watch), not tradeable. |
 | `MIN_PUBLISH_QUALITY` (`config.py`) | 25 | Setups below it are **not published** to X / live-X (lowered 70→25 on 2026-06-22 — the clean RW rules already gate hard on structure, so quality is a softer ranking floor). |
 | `X_DRAFT_PER_MARKET` (`config.py`) | 5 | Top-5 per market are drafted to the X-drafts channel. |
 | `X_PUBLISH_TOP_N` (`config.py`) | 2 | Top-2 per market of the changed set auto-publish to live X. |

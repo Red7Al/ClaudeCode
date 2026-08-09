@@ -5,7 +5,7 @@ EndToEndTrading project — what exists today, and the candidates worth adding �
 set of skills, memory items and documents stays discoverable._
 
 The system in one line: a **Squeeze Scanner engine** scans 1,300+ instruments across every asset
-type, records Squeeze (funnel) setups with entry/stop/target, tracks them to outcome, and (per user)
+type, records Squeeze setups with entry/stop/target, tracks them to outcome, and (per user)
 places them as IG working orders — surfaced through a web app, Slack reports and X publications,
 driven by scheduled jobs.
 
