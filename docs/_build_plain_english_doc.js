@@ -87,12 +87,12 @@ const doc = new Document({
 
       // ── 2 ──
       h1("2. The core idea — the “coiling spring”"),
-      p("The method we use is called the Hunt Volatility Funnel. The idea is simple to picture. After a market " +
+      p("The method we use is called The Squeeze. The idea is simple to picture. After a market " +
         "has had a strong run in one direction, it often pauses and “coils” — the price swings get " +
-        "smaller and smaller, squeezing into a tightening funnel, like a spring being wound up. When the spring " +
+        "smaller and smaller, squeezing into a tighter and tighter range, like a spring being wound up. When the spring " +
         "finally releases, the price often moves quickly in the direction of the original trend."),
-      img("hvf_funnel.png", 560, 304, "The funnel pattern"),
-      caption("The funnel: the ceiling (red) drifts down while the floor (green) rises, squeezing price to a point. " +
+      img("hvf_funnel.png", 560, 304, "The squeeze pattern"),
+      caption("The squeeze: the ceiling (red) drifts down while the floor (green) rises, squeezing price to a point. " +
               "The system marks where to get in, where the safety exit (stop) sits, and a realistic target."),
       p("Three things matter: the highs keep getting lower, the lows keep getting higher, and the gap between " +
         "them shrinks. That squeeze is the “wound spring.” The tighter it gets, the more meaningful the " +
@@ -101,13 +101,13 @@ const doc = new Document({
         "fall, the same coil breaking downward is a “bearish” one. The system only ever calls it in the direction " +
         "the market is actually trending — it will not flag a bullish idea on a market that has been falling."),
       h2("How far it could go — the target (AMP1)"),
-      p("Every funnel has a height: the distance from the first high to the first low of the squeeze. The method " +
+      p("Every squeeze has a height: the distance from the first high to the first low of the coil. The method " +
         "calls this the amplitude, or AMP1 (you can see it marked on the picture above). When the spring releases, " +
-        "the system projects that FULL height from the middle of the funnel, in the breakout direction, to set the " +
+        "the system projects that FULL height from the middle of the squeeze, in the breakout direction, to set the " +
         "target. It uses the full amplitude — not a watered-down version — which is deliberate, and it is why some " +
         "setups show a large reward-to-risk."),
-      p("So the three trade levels come straight from the funnel: the entry is the breakout level itself (the third " +
-        "pivot); the safety exit (stop) sits just beyond the opposite side of the funnel; and the target is one full " +
+      p("So the three trade levels come straight from the squeeze: the entry is the breakout level itself (the third " +
+        "pivot); the safety exit (stop) sits just beyond the opposite side of the coil; and the target is one full " +
         "AMP1 away from the middle. Reward-to-risk is then simply the distance to the target divided by the distance " +
         "to the stop."),
 
@@ -212,10 +212,10 @@ function twoColTable(rows, leftHdr, rightHdr, lw, rw) {
 
 function rulesTable() {
   return twoColTable([
-    ["1. Prior trend", "A confirmed weekly trend in the trade's direction (up for a bullish funnel, down for bearish). Choppy/flat markets are rejected."],
+    ["1. Prior trend", "A confirmed weekly trend in the trade's direction (up for a bullish squeeze, down for bearish). Choppy/flat markets are rejected."],
     ["2. Lower highs", "Three peaks, each lower than the last (H1 > H2 > H3) — the ceiling coming down."],
     ["3. Higher lows", "Three dips, each higher than the last (L1 < L2 < L3) — the floor coming up."],
-    ["4. Real squeeze", "The funnel must tighten by at least 30% — its mouth shrinks to under 70% of its starting width."],
+    ["4. Real squeeze", "The coil must tighten by at least 30% — its mouth shrinks to under 70% of its starting width."],
     ["5. Fresh breakout", "The breakout pivot (H3 / L3) must have formed within the last 60 bars, not weeks ago."],
     ["Tradeable gate", "Reward-to-risk must be at least 3 : 1, or the idea goes on the watch-list, not the trade list."],
     ["Publish gate", "Pattern quality must be at least 70 / 100 to be published; weaker patterns stay internal."],
@@ -227,7 +227,7 @@ function glossary() {
     ["Reward-to-risk (R:R)", "How much you could make versus how much you risk. 3:1 means three times the reward for the risk."],
     ["Entry / Stop / Target", "Where you get in, where you get out if it goes wrong (the safety exit), and where you aim to take profit."],
     ["Support / Resistance", "Price levels where a market has tended to stop falling (support) or stop rising (resistance)."],
-    ["The funnel (HVF)", "The coiling-spring pattern: smaller and smaller price swings after a strong trend, then a breakout."],
+    ["The Squeeze", "The coiling-spring pattern: smaller and smaller price swings after a strong trend, then a breakout."],
     ["Smart money (COT)", "What large professional hedgers are doing — often a useful tell on direction."],
     ["Quality score", "A 0–100 mark for how clean and textbook the pattern looks (weak ones aren’t published)."],
     ["Peer / competitor", "The main rival (e.g. Lululemon for Nike) — how the two compare, and related news."],

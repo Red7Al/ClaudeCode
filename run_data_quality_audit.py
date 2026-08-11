@@ -376,6 +376,11 @@ def main():
         _save(rows)
         _post_slack(rows, remaining)
     log.info(f"Audit complete: {len(rows)} tickers, allowance remaining {remaining}")
+    try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)
+        from web_store import append_batch
+        append_batch("cron-job.org", f"Data quality audit — {len(rows)} ticker(s)", by="cron")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

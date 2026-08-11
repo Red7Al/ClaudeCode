@@ -93,6 +93,19 @@ def run_bridge() -> dict:
     from ig_shim import place_hvf_order_from_sig
     profile = get_user_profile()
 
+    # Real above_vwap/atr_expanding (user 2026-08-11, data-completeness audit): each record's OWN fields
+    # from hvf_web/build_snapshot.py are ALWAYS None — get_hvf_signal_mtf() never computes them. server.py's
+    # api_records() avoids this by recomputing live from volume_score.py; this bridge (which runs in the
+    # same Flask process — see the module docstring) reuses that exact source so "Require above VWAP" /
+    # "Require ATR expanding" actually gate the 2h automated sweep, not just the session monitors.
+    try:
+        from hvf_web.server import _live_vwap_atr, _load_snapshot
+        vwap_atr = _live_vwap_atr(_load_snapshot())
+    except Exception as e:
+        log.warning(f"bridge: live VWAP/ATR lookup unavailable, falling back to snapshot fields (likely "
+                    f"None — see hvf_web/server.py _live_vwap_atr docstring): {e}")
+        vwap_atr = {}
+
     for r in cands:
         if summary["placed"] >= BRIDGE_MAX_PER_RUN:
             log.info(f"bridge: per-run cap ({BRIDGE_MAX_PER_RUN}) reached - remaining candidates wait for the next pass.")
@@ -110,6 +123,10 @@ def run_bridge() -> dict:
             "hvf_quality": r.get("quality"), "hvf_risk_reward": r.get("rr"),
             "hvf_timeframe": r.get("timeframe"),
             "index": r.get("market"), "location": r.get("location"),   # for the Config trade filters
+            # For the owner's personal trading-limit floors (user 2026-08-11) — real values from
+            # _live_vwap_atr above, NOT the snapshot record's own (always-None) fields.
+            "above_vwap": vwap_atr.get(tk, (None, None))[0],
+            "atr_expanding": vwap_atr.get(tk, (None, None))[1],
         }
         summary["attempted"] += 1
         try:

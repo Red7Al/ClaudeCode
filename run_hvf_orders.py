@@ -116,6 +116,11 @@ def main():
     log.info(f"Scan complete: {len(tradeable)} actionable (tradeable) setup(s)")
     blocks = build_orders_blocks(tradeable, scan_time)
     post_to_slack(blocks)
+    try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)
+        from web_store import append_batch
+        append_batch("cron-job.org", f"HVF orders — {len(tradeable)} actionable", by="cron")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

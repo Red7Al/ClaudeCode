@@ -43,6 +43,43 @@ def test_user_rows_excludes_unscored_rows_when_a_floor_is_set():
     assert out == []
 
 
+def test_user_rows_hard_filters_by_my_trading_filters(monkeypatch):
+    """User instruction (2026-08-11): "The scanner report MUST also match the user trading filter
+    settings" -> Hard filter. A row passing the display-only 'Scanner Report filter defaults' must still
+    be excluded if it fails the user's saved My Trading Filters (trading_limits.check_limits)."""
+    import trading_limits
+    monkeypatch.setattr(trading_limits, "user_limits",
+                         lambda name: {**trading_limits.limit_defaults(), "require_above_vwap": 1})
+    rows = [_row(ticker="BELOW_VWAP", above_vwap=False), _row(ticker="ABOVE_VWAP", above_vwap=True)]
+
+    out = rse.user_rows(rows, {}, "Alex")
+
+    assert [r["ticker"] for r in out] == ["ABOVE_VWAP"]
+
+
+def test_user_rows_unknown_vwap_atr_fails_open_like_the_order_placement_gate(monkeypatch):
+    """Consistent with trading_limits.check_limits everywhere else it's used: a row with no VWAP/ATR data
+    (e.g. a READY/DEVELOPING setup _live_vwap_atr couldn't fetch bars for) is NOT excluded just because
+    it's unproven — matches the fail-open behaviour of the automated order-placement path."""
+    import trading_limits
+    monkeypatch.setattr(trading_limits, "user_limits",
+                         lambda name: {**trading_limits.limit_defaults(), "require_above_vwap": 1,
+                                       "require_atr_expanding": 1})
+    rows = [_row(ticker="UNKNOWN", above_vwap=None, atr_expanding=None)]
+
+    out = rse.user_rows(rows, {}, "Alex")
+
+    assert [r["ticker"] for r in out] == ["UNKNOWN"]
+
+
+def test_user_rows_no_username_falls_back_to_code_defaults(monkeypatch):
+    """user_rows() must stay usable without a real login (e.g. ad-hoc testing) — trading_limits.user_limits
+    already returns code defaults for an empty/None name, so this should behave the same as before this
+    fix for any row that already passed the Scanner Report filter defaults."""
+    out = rse.user_rows([_row(ticker="ABC")], {})
+    assert [r["ticker"] for r in out] == ["ABC"]
+
+
 def test_email_body_lists_setups_and_reflects_saved_filters_note():
     subject, text, html = rse.email_body("Silver", [_row(ticker="ABC")], "2026-08-07T05:30:00Z")
 
@@ -86,6 +123,7 @@ def test_main_sends_one_email_per_enabled_user_with_an_email(monkeypatch):
     monkeypatch.setattr(server, "_load_snapshot", lambda: snap)
     monkeypatch.setattr(server, "_snapshot_rvol", lambda s: {"ABC": 2.0})
     monkeypatch.setattr(server, "_snapshot_volscore", lambda s: {})
+    monkeypatch.setattr(server, "_live_vwap_atr", lambda s: {})   # no DB in this test — see its own docstring
     monkeypatch.setattr(wu, "list_users", lambda: [
         {"name": "Silver", "email": "silver@example.com", "enabled": True},
         {"name": "NoEmail", "email": "", "enabled": True},

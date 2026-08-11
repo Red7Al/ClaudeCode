@@ -533,6 +533,11 @@ def main():
     report = build_report(rows, refreshed=refreshed)
     log.info("Report built. Posting to Slack...")
     post_to_slack(report)
+    try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)
+        from web_store import append_batch
+        append_batch("cron-job.org", f"COT report — {len(rows)} instrument(s)" + (" (self-healed)" if refreshed else ""), by="cron")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

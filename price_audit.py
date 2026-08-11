@@ -249,6 +249,13 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None):
             _post_text_to_slack(summary)
         except Exception as e:
             log.warning(f"slack summary skipped: {e}")
+    try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12). Shared by both
+        # "Price Data Refresh" (04:30 UTC) and "Price History Audit" (23:00 UTC) — same script/mode
+        # ("daily") at both cron times, so this can't distinguish which job triggered it by name alone.
+        from web_store import append_batch
+        append_batch("cron-job.org", f"Price audit [{mode}] — {checked} instruments, {tot_written} bars written", by="cron")
+    except Exception:
+        pass
     return summary
 
 

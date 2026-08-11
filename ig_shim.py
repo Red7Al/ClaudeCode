@@ -2957,6 +2957,38 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         log.info(f"{ticker}: HVF quality {_q} not > {_minq} — no working order (below quality floor).")
         return None
 
+    # Personal trading-limit floors (user 2026-08-11): until today this automated path only enforced the
+    # SHARED admin quality floor above — a login's own "My trading limits" (R:R, Quality, VWAP, ATR-
+    # expanding, RVOL, VolumeScore, instrument value, set in Configuration) only gated that same person's
+    # OWN manual actions (/api/preorder-pin, /api/place-order in hvf_web/server.py), never this shared
+    # engine. Verified by reading every caller before changing anything. profile["name"] is the account
+    # owner this run is trading as (OWNER for the bridge/session jobs; the acting user for a manual place).
+    # RVOL/VolumeScore/instrument-value aren't available in `sig` at any current caller (see
+    # trading_limits.py's module docstring for why) so those specific checks no-op here for now — R:R,
+    # Quality, above-VWAP and ATR-expanding ARE enforced.
+    try:
+        import trading_limits
+        # Two different sig shapes reach this function: hvf_web/build_snapshot.py's (order_bridge.py,
+        # manual place-order) uses boolean above_vwap/atr_expanding; signals.scan_instrument's (the
+        # session monitors/opens in run_session.py & intraday_signals.py) uses vwap_position
+        # ("ABOVE"/"BELOW") and pa_atr_expanding instead. Check both so every automated caller is covered,
+        # not just the ones that happen to use the web snapshot's field names.
+        _above_vwap = sig.get("above_vwap")
+        if _above_vwap is None and sig.get("vwap_position") in ("ABOVE", "BELOW"):
+            _above_vwap = (sig.get("vwap_position") == "ABOVE")
+        _atr_expanding = sig.get("atr_expanding")
+        if _atr_expanding is None:
+            _atr_expanding = sig.get("pa_atr_expanding")
+        _reason = trading_limits.check_limits(
+            profile.get("name"), ticker, quality=_q, rr=sig.get("hvf_risk_reward"),
+            above_vwap=_above_vwap, atr_expanding=_atr_expanding)
+        if _reason:
+            log.info(f"{ticker}: blocked by personal trading limits — {_reason}.")
+            return None
+    except Exception as e:
+        log.warning(f"{ticker}: personal trading-limit check failed (allowing — fails open like the other "
+                    f"Config gates above): {e}")
+
     # Tight-stop skip (backlog #9b): a funnel whose stop is closer than
     # TIGHT_STOP_MIN_PCT of price is structurally untradeable at IG intraday — spread
     # + tick noise stop it out for pennies (SNDK 0.35%, AMD 0.098%). The flag is set

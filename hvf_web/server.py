@@ -535,11 +535,19 @@ def _user_limits(s: dict) -> dict:
 
 def _limit_block(name: str, tk: str, on: bool = True) -> str:
     """If the acting user's personal R:R / Quality floor excludes this setup, return a reason; else ''.
-    Gates the user's OWN manual actions only (user 2026-07-10) — never the shared automated engine."""
+    Gates the user's OWN manual actions (/api/preorder-pin, /api/place-order).
+
+    2026-08-11 (user, P-verify): the automated engine (order_bridge.py + run_session.py/intraday_signals.py,
+    via ig_shim.place_hvf_order_from_sig) now ALSO enforces these same personal floors for the account
+    owner — see trading_limits.py, the shared module this function delegates to so both paths use one
+    rulebook. This function keeps its own web-facing wording ("your personal floor ... Configuration →
+    My trading limits") since it's shown directly to the user in the UI; trading_limits.check_limits()
+    returns a plainer engine-facing reason used only in logs."""
     if not on:
         return ""
     rec = _record(tk) or {}
-    lim = _user_limits(_wu.get_settings(name))
+    import trading_limits
+    lim = trading_limits.user_limits(name)
     rr, q = rec.get("rr"), rec.get("quality")
     if isinstance(rr, (int, float)) and rr < lim["min_risk_reward"]:
         return f"R:R {rr} is below your personal floor of {lim['min_risk_reward']:g} (Configuration → My trading limits)"
@@ -1093,6 +1101,64 @@ def _snapshot_volscore(snap: dict) -> dict:
     return out
 
 
+_LIVE_VWAP_ATR_CACHE = {"gen": None, "data": {}}
+# ATR_PERIOD(14)*2 + VWAP_BARS(20) trading bars needed (volume_score.py) => >=48 bars; 90 calendar days
+# gives comfortable headroom (~62 trading bars) without the size of the RVOL/VolumeScore lookback.
+_LIVE_VWAP_ATR_LOOKBACK_DAYS = 90
+
+
+def _live_vwap_atr(snap: dict) -> dict:
+    """{ticker: (above_vwap, atr_expanding)} for EVERY has_signal record — TRIGGERED, READY and
+    DEVELOPING alike — using the most recent available bar (today) as the reference point.
+
+    Found via the data-completeness audit (user 2026-08-11, "check all instruments have current rvol,
+    volumescore, above VWAP and above ATR metrics"): build_snapshot.py's own above_vwap/atr_expanding
+    fields are ALWAYS None — price_action.get_hvf_signal_mtf() (the function that actually produces the
+    snapshot's signal rows) never computes VWAP position and never merges in atr_expanding from the
+    separate analyse_price_action() helper.
+
+    First fix (same day) routed this through _snapshot_volscore() instead — correct for TRIGGERED rows,
+    but volume_score.py only scores TRIGGERED setups on their break bar (RVOL/VolumeScore are inherently
+    about the break itself), so READY/DEVELOPING setups — ~45% of a typical day's has_signal rows — got
+    above_vwap=atr_expanding=None regardless of their true state, which silently let them through both
+    the Scanner Report's hard filter (fails open on unknown) and the personal-limit order-placement gate.
+    User pushback (2026-08-11) was the right call: "for any one day you should be able to calculate these
+    values, shouldn't you?" — yes. volume_score._above_vwap(bars, i, bull) and _atr_expanding(bars, i)
+    take ANY bar index, not specifically a trigger bar; they only need enough daily history before it.
+    "Is this currently above VWAP / is ATR currently expanding" is a plain today's-state read, and is
+    arguably the MORE correct thing to gate a live decision on anyway (a setup that triggered days ago and
+    has since gone flat should not still read as "above VWAP" from its trigger day). So this now fetches
+    fresh bars for every has_signal ticker and reads the LATEST bar directly, instead of going via
+    volume_score()'s trigger-bar-scored output. Cached per snapshot generation like every sibling here."""
+    gen = snap.get("generated_utc")
+    if _LIVE_VWAP_ATR_CACHE["gen"] == gen and _LIVE_VWAP_ATR_CACHE["data"]:
+        return _LIVE_VWAP_ATR_CACHE["data"]
+    out = {}
+    try:
+        import volume_score as _vscore
+        want = [(r.get("ticker"), r.get("direction") == "BULL")
+                for r in snap.get("records", []) if r.get("has_signal") and r.get("ticker")]
+        if want:
+            from db_pool import get_db
+            today = _dt.date.today()
+            db = get_db()
+            try:
+                bars_by_tk = _perf_bars(db, {tk: today for tk, _bull in want},
+                                        lookback_days=_LIVE_VWAP_ATR_LOOKBACK_DAYS)
+            finally:
+                db.close()
+            for tk, bull in want:
+                bars = bars_by_tk.get(tk, [])
+                if not bars:
+                    continue
+                i = len(bars) - 1   # most recent bar = "today" (or the last trading day on record)
+                out[tk] = (_vscore._above_vwap(bars, i, bull), _vscore._atr_expanding(bars, i))
+    except Exception as ex:
+        log.warning(f"live VWAP/ATR failed (columns blank): {ex}")
+    _LIVE_VWAP_ATR_CACHE.update(gen=gen, data=out)
+    return out
+
+
 # 52-week Low/High (user 2026-08-07, ChangeRequest P-08 — Instruments tab): the trailing-year price range
 # for EVERY instrument in the snapshot (not just triggered setups), unlike RVOL/VolumeScore above which are
 # scoped to TRIGGERED rows only. Cached against the snapshot's generated_utc, same reasoning as the caches
@@ -1150,19 +1216,24 @@ def api_records():
     # operator TRADES (enforced in ig_shim at order time), never what is shown (user 2026-07-06).
     markets = None
     if authed:
-        rvol = _snapshot_rvol(snap)                       # RVOL at the real break bar (P-30)
-        vscore = _snapshot_volscore(snap)                 # VolumeScore 0–12 at the break bar (P-02 L49)
-        def _component(result, key):
-            return next((c.get("got") for c in (result or {}).get("components", []) if c.get("key") == key), None)
+        rvol = _snapshot_rvol(snap)                       # RVOL at the real break bar (P-30) — TRIGGERED only
+        vscore = _snapshot_volscore(snap)                 # VolumeScore 0–12 at the break bar (P-02 L49) — TRIGGERED only
+        # above_vwap/atr_expanding (user 2026-08-11): current-state reads, computed for EVERY has_signal
+        # row (TRIGGERED/READY/DEVELOPING) from today's bar — NOT scoped to TRIGGERED like RVOL/VolumeScore
+        # above, which are inherently about the break bar itself. See _live_vwap_atr's docstring: previously
+        # this came from vscore's per-ticker "components" (TRIGGERED-only), which silently left READY/
+        # DEVELOPING rows' VWAP/ATR ticks blank/unknown even though they ARE computable.
+        vwap_atr = _live_vwap_atr(snap)
         recs = []
         for r in snap.get("records", []):
             result = vscore.get(r.get("ticker")) or {}
             w = wk52.get(r.get("ticker")) or (None, None)
+            av, ae = vwap_atr.get(r.get("ticker"), (None, None))
             recs.append(dict({k: v for k, v in r.items() if k != "_card"},
                              rvol=rvol.get(r.get("ticker")),
                              volume_score=result.get("score"),
-                             above_vwap=_component(result, "above_vwap"),
-                             atr_expanding=_component(result, "atr_expanding"),
+                             above_vwap=av,
+                             atr_expanding=ae,
                              wk52_low=w[0], wk52_high=w[1]))
         # Canonical market list (user 2026-07-31, P-15) — drives the Scanner "Refresh a choice of markets"
         # picker independent of which fields the client keeps on DATA.
@@ -1719,7 +1790,17 @@ def _refresh_loop():
                     need = True
             if need:
                 log.info("snapshot refresh (12h): building ...")
-                _do_rebuild()
+                ok = _do_rebuild()
+                if ok:
+                    try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12: this
+                        # automatic path previously ran silently — only the manual "Refresh data" button
+                        # logged. "Did this morning's batch run?" surfaced the gap: any batch activity with
+                        # frequency under 6x/day should appear in Batch Activity.)
+                        from web_store import append_batch
+                        n = _load_snapshot().get("count") or 0
+                        append_batch("Auto refresh (12h)", f"Full universe snapshot rebuild ({n} instruments)", by="system")
+                    except Exception:
+                        pass
         except Exception as e:
             log.warning(f"snapshot refresh failed (will retry): {e}")
         _t.sleep(6 * 3600)
@@ -1852,12 +1933,16 @@ def _sig_from_snapshot(tk, user=None):
     ov = {}
     if user:
         ov = (_wu.get_settings(user).get("pinned_overrides") or {}).get(tk) or {}
+    # above_vwap/atr_expanding: the snapshot record's OWN fields are always None (data-completeness audit,
+    # user 2026-08-11 — see _live_vwap_atr's docstring); use the same live computation api_records() shows.
+    _av, _ae = _live_vwap_atr(_load_snapshot()).get(tk, (None, None))
     return {"ticker": tk, "direction": "BUY" if r.get("direction") == "BULL" else "SELL",
             "hvf_type": card.get("hvf_type") or ("BULLISH" if r.get("direction") == "BULL" else "BEARISH"),
             "hvf_signal": r.get("status"), "hvf_h3_level": ov.get("entry", r.get("entry")),
             "hvf_stop_level": ov.get("stop", r.get("stop")), "hvf_target": ov.get("target", r.get("target")),
             "hvf_quality": r.get("quality"), "hvf_risk_reward": r.get("rr"),
-            "hvf_timeframe": r.get("timeframe"), "index": r.get("market"), "location": r.get("location")}
+            "hvf_timeframe": r.get("timeframe"), "index": r.get("market"), "location": r.get("location"),
+            "above_vwap": _av, "atr_expanding": _ae}
 
 
 @app.route("/api/place-order", methods=["POST"])

@@ -28,6 +28,14 @@ jobs:
             echo "MISSING SUPABASE_USER / SUPABASE_DB_PASSWORD secrets."; exit 1
           fi
           echo "Bootstrap creds present."
+      # Checkout + Python added 2026-08-11 (user, P-12) solely so the final step below can call
+      # web_store.append_batch — this job otherwise only shells out to pg_dump.
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
       - name: Install PostgreSQL 17 client
         run: |
           sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
@@ -54,3 +62,14 @@ jobs:
           path: supabase-*.dump
           retention-days: 90
           if-no-files-found: error
+      - name: Record in Batch Activity (user 2026-08-11, P-12 — any batch activity under 6x/day should log)
+        run: |
+          python - <<'PY'
+          import os
+          from web_store import append_batch
+          size = 0
+          for f in os.listdir("."):
+              if f.startswith("supabase-") and f.endswith(".dump"):
+                  size = os.path.getsize(f)
+          append_batch("cron-job.org", f"Supabase database backup — {size/1_048_576:.1f} MB", by="cron")
+          PY

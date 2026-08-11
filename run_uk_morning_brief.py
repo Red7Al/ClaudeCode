@@ -337,6 +337,11 @@ def main():
 
     post_slack(blocks)
     log.info("UK morning brief sent")
+    try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)
+        from web_store import append_batch
+        append_batch("cron-job.org", "UK morning brief sent", by="cron")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

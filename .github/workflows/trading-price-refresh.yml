@@ -1,0 +1,55 @@
+name: Price Data Refresh (pre-report — 2026-08-07)
+
+# Split out from trading-price-audit.yml (ChangeRequest P-08, 2026-08-07: "the job names look peculiar" —
+# "Price Data Refresh" (04:30 UTC) and "Price History Audit" (23:00 UTC) were two differently-scheduled
+# cron-job.org jobs both dispatching this SAME workflow file. hvf_web/scheduled_jobs.py caches GitHub
+# Actions run stats PER WORKFLOW FILE (get_jobs(): "for jb in jobs: ... if wf not in stats_cache"), so the
+# Scheduled Jobs tab showed both jobs with byte-identical Last status/Last time/Executions/Failures — which
+# reads as if one is a stray duplicate of the other, despite running 18.5 hours apart for different reasons
+# (pre-report refresh vs. nightly IG-truth audit). Splitting the workflow file is the real fix: each job's
+# run history is now genuinely its own, not a display bug papered over. Runs the identical script
+# (price_audit.py — same golden-dataset re-fetch/UPSERT); only the workflow identity differs. Triggered by
+# cron-job.org via workflow_dispatch — NEVER add a schedule: block (GitHub-native cron is banned, user
+# directive 2026-06-07).
+on:
+  workflow_dispatch:
+    inputs:
+      backfill_days:
+        description: 'One-off deep backfill window in days (e.g. 1100 ~ 3y) to populate full history. Empty = normal daily audit (last 30 days).'
+        required: false
+        default: ''
+      tickers:
+        description: 'Comma-separated subset to audit. Empty = whole universe.'
+        required: false
+        default: ''
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      # IG creds — prefers IG as the truth (user 2026-06-29); without these it falls back to YF-only (the
+      # IG cross-check is wrapped so a missing/failed IG session never breaks the refresh).
+      IG_API_KEY:           ${{ secrets.IG_API_KEY }}
+      IG_USERNAME:          ${{ secrets.IG_USERNAME }}
+      IG_PASSWORD:          ${{ secrets.IG_PASSWORD }}
+      IG_ACCOUNT_ID:        ${{ secrets.IG_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python run_schema.py
+      - name: Refresh price history
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.tickers }}" ]; then ARGS="$ARGS --tickers ${{ inputs.tickers }}"; fi
+          if [ -n "${{ inputs.backfill_days }}" ]; then
+            python price_audit.py --backfill ${{ inputs.backfill_days }} $ARGS
+          else
+            python price_audit.py $ARGS
+          fi

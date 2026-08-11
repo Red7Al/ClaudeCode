@@ -23,6 +23,11 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.14.0  2026-08-07  Claude      (ChangeRequest P-08, "the job names look peculiar") "Price Data Refresh" moved off
+#                                 trading-price-audit.yml onto its own trading-price-refresh.yml — it was sharing a
+#                                 workflow file with "Price History Audit" (different schedules, same script), which
+#                                 made the two show byte-identical GitHub Actions run stats in the Scheduled Jobs tab
+#                                 (hvf_web/scheduled_jobs.py caches stats per workflow FILE, not per cron-job.org job).
 # 1.13.0  2026-08-04  Alex Hind   Move "Price Data Refresh" from 05:00 to 04:30 UTC Mon-Sat, retaining a full hour
 #                                 before the 05:30 HVF Daily Report (user 2026-08-04, ToDo P-02).
 # 1.12.0  2026-06-19  Alex Hind   Add "HVF Orders" job (0 6 * * 1-6 -> trading-hvf-orders.yml): daily actionable HVF setups
@@ -109,7 +114,7 @@ JOBS = [
     ("AUS HVF Watch",        "30 0,2,4 * * 1-5", "trading-aus-hvf-watch.yml"),
     ("Commodity Monitor AM", "*/10 4-8 * * 1-5", "trading-commodity-monitor.yml"),
     # ── Pre-UK ────────────────────────────────────────────────────────────────────────────────────────────────────────
-    ("Price Data Refresh",  "30 4 * * 1-6",   "trading-price-audit.yml"),  # 04:30 UTC Mon-Sat — refresh price_history BEFORE the 05:30 HVF Daily Report, which needs current bars (user 2026-08-04, ToDo P-02). Reuses the audit workflow (re-fetch trailing window + upsert; idempotent). The 23:00 "Price History Audit" still does the nightly IG-truth correction.
+    ("Price Data Refresh",  "30 4 * * 1-6",   "trading-price-refresh.yml"),  # 04:30 UTC Mon-Sat — refresh price_history BEFORE the 05:30 HVF Daily Report, which needs current bars (user 2026-08-04, ToDo P-02). Own workflow file since 2026-08-07 (ChangeRequest P-08 "job names look peculiar") — was sharing trading-price-audit.yml with the 23:00 "Price History Audit" job, which made the two show byte-identical run stats in the Scheduled Jobs tab (hvf_web/scheduled_jobs.py caches GitHub Actions stats per WORKFLOW FILE); splitting the file gives each job its own genuine history. Same script (re-fetch trailing window + upsert; idempotent).
     ("HVF Daily Report",    "30 5 * * 1-6",   "trading-hvf-report.yml"),  # 05:30 UTC Mon-Sat -> all publications (report + X drafts + live-X) done before 07:00 UTC (8am BST) (user 2026-06-19)
     ("HVF Orders",          "0 6 * * 1-6",    "trading-hvf-orders.yml"),  # 06:00 UTC Mon-Sat -> actionable HVF setups to #arw-claude-orders, before 07:00 UTC (8am BST) (user 2026-06-19)
     # "HVF Quality Reports" removed 2026-06-16: the long quality report now rides with EVERY

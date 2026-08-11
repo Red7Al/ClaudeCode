@@ -12,6 +12,14 @@
 #
 #   python migrate_secrets_to_supabase.py            # seed
 #   python migrate_secrets_to_supabase.py --verify   # decrypt-read every key back and compare to source
+#
+# 2026-08-08 (user, P-11)  _ENV_SECRETS gained CRONJOB_API_KEY + 6 Slack secrets (SLACK_BOT_TOKEN,
+#                          SLACK_ORDERS, SLACK_RW_HVF, SLACK_SIGNALS_CHANNEL_ID, SLACK_TWITTER,
+#                          SLACK_TWITTER_CHANNEL_ID) — these were live GitHub Secrets read by app code
+#                          (notify.py, run_hvf_report.py, social_monitor.py, instrument_dossier.py,
+#                          intraday_signals.py, setup_cronjobs.py) with no path into the encrypted store.
+#                          GITLEAKS_LICENSE deliberately excluded — consumed directly by the gitleaks
+#                          Action in trading-secret-scan.yml, never read by app code via os.environ.
 # ======================================================================================================================
 
 import argparse
@@ -24,13 +32,21 @@ import app_secrets
 
 _BOOTSTRAP = {"SUPABASE_USER", "SUPABASE_DB_PASSWORD", "APP_SECRET_KEY"}
 
-# Secrets currently sourced from .env that should move into the store.
+# Secrets currently sourced from .env / GitHub Secrets that should move into the store.
+# Kept in sync with every `secrets.X` referenced across .github/workflows/*.yml — see
+# test_migrate_secrets.py::test_every_workflow_secret_is_covered_or_explicitly_excluded, which fails the
+# build if a new GitHub Secret is added to a workflow but never wired into this list (P-11, 2026-08-08:
+# CRONJOB_API_KEY and 6 Slack secrets were being read by app code at runtime but had no way to reach
+# Supabase — added below).
 _ENV_SECRETS = [
     "IG_API_KEY", "IG_USERNAME", "IG_PASSWORD", "IG_ACCOUNT_ID",
     "SLACK_ALERTS", "SLACK_DAILY", "SLACK_SIGNALS", "SLACK_TRADES", "SLACK_WEEKLY",
+    "SLACK_BOT_TOKEN", "SLACK_ORDERS", "SLACK_RW_HVF", "SLACK_SIGNALS_CHANNEL_ID",
+    "SLACK_TWITTER", "SLACK_TWITTER_CHANNEL_ID",
     "FRED_API_KEY", "EIA_API_KEY", "QUIVER_QUANT_API_KEY",
     "X_API_KEY", "X_API_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_SECRET",
     "RESEND_API_KEY", "YAHOO_USER", "YAHOO_APP_PASSWORD", "GITHUB_TOKEN", "GH_PAT",
+    "CRONJOB_API_KEY",
 ]
 
 

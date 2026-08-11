@@ -265,3 +265,82 @@ def test_server_wallet_enforces_minimum_trade(monkeypatch):
     assert result["trades"] == 0
     assert result["skipped"] == 1
     assert result["final"] == 1_000
+
+
+def _extract_function(html, name):
+    """Return the raw source of a top-level `function NAME(...){...}` block in index.html -- from its
+    declaration up to (but not including) the next top-level `function` declaration. This file writes
+    every top-level function starting at column 0, so "the next line starting with 'function '" is a
+    reliable boundary even though this isn't a real JS parser (inline arrow functions inside the body
+    don't start a line with 'function ', so they don't false-trigger the boundary)."""
+    m = re.search(rf"\nfunction {re.escape(name)}\([^)]*\)\{{", html)
+    assert m, f"function {name}(...) not found in hvf_web/index.html"
+    start = m.start()
+    nxt = html.find("\nfunction ", m.end())
+    return html[start: nxt if nxt != -1 else len(html)]
+
+
+def test_scanner_rerenders_after_every_my_limits_mutation():
+    """Regression guard (2026-08-11, user report): the Scanner table hard-filters its rows on
+    MY_LIMITS via pass() (P-01, 2026-08-11 -- "the scanner report MUST also match the user trading
+    filter settings"), but an audit triggered by the user seeing stale ATR-failing rows found THREE
+    separate places that change MY_LIMITS without re-rendering the Scanner table to match:
+      1. saveLimits() -- the Configuration -> My Trading Filters Save button. Updated MY_LIMITS and
+         re-rendered My Pre-orders + Performance, but never the Scanner table itself, so a just-saved
+         floor (e.g. "Require ATR expanding") left stale rows on screen until something else (a sort
+         click, a search, a page reload) happened to trigger a re-render.
+      2. applyConfigFromReport() -- the Best Settings "Apply this configuration" button. Identical gap.
+      3. The initial page-load boot sequence (the big Promise.all fetching /api/records + /api/config
+         together) -- this NEVER loaded cfg.limits into MY_LIMITS at all (only cfg.filters/cfg.trade/
+         cfg.markets_off), so MY_LIMITS stayed {} for the entire session unless the user happened to
+         visit the Configuration tab (the only OTHER place that read cfg.limits). This is almost
+         certainly what the user actually hit: a previously-saved "Require ATR expanding" floor from
+         an earlier session had no effect on a fresh page load, no Save click involved at all.
+    All three are fixed. This test guards against any of them regressing, and against a future
+    MY_LIMITS-mutating function being added with the same gap. It was written because the bug shipped
+    without one -- this repo's client-JS has no execution test harness, so these are static structural
+    checks against the real index.html source, following the pattern already established by
+    test_performance_best_settings_is_a_dedicated_wallet_constrained_tab above (assertions on function
+    bodies, not a full behavioural test) -- not a substitute for one, but real coverage where none
+    existed before.
+    """
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+
+    save_limits = _extract_function(html, "saveLimits")
+    assert "if(typeof render==='function')render();" in save_limits, (
+        "saveLimits() must re-render the Scanner table (render()) after saving My Trading Filters, "
+        "not just renderPreorders()/_renderPerformance() -- otherwise a just-saved floor leaves stale "
+        "rows on screen (user 2026-08-11)."
+    )
+
+    apply_cfg = _extract_function(html, "applyConfigFromReport")
+    assert "if(typeof render==='function')render();" in apply_cfg, (
+        "applyConfigFromReport() ('Apply this configuration' on a Best Settings card) must also "
+        "re-render the Scanner table after copying a config into MY_LIMITS -- same gap as saveLimits()."
+    )
+
+    # Boot sequence: the Promise.all handler must load cfg.limits into MY_LIMITS BEFORE calling
+    # render(), not just cfg.filters/cfg.trade/cfg.markets_off -- otherwise the Scanner's very first
+    # paint of the session ignores every saved My Trading Filters floor, with no Save click involved.
+    boot_start = html.index('Promise.all([fetch("/api/records"')
+    boot_end = html.index("\nfunction ", boot_start)
+    boot = html[boot_start:boot_end]
+    assert "if(cfg&&cfg.limits){MY_LIMITS=cfg.limits" in boot, (
+        "the initial-load Promise.all handler must populate MY_LIMITS from cfg.limits, like it "
+        "already does for USER_FILTERS/TRADE_HIDE/MARKETS_DISABLED/MARKETS_OFF from the same response."
+    )
+    assert boot.index("MY_LIMITS=cfg.limits") < boot.index("render();"), (
+        "MY_LIMITS must be assigned BEFORE the first render() call in the boot sequence, or the "
+        "Scanner's first paint still runs against an empty {} and this test would be a false pass."
+    )
+
+
+def test_pass_still_hard_filters_on_my_limits_atr_and_vwap():
+    """Companion to the regression guard above: confirms pass() -- the Scanner's single filter
+    chokepoint -- still contains the ATR/VWAP floor checks this whole bug class depends on, so the
+    re-render fixes above are guarding something real and can't quietly become a no-op if pass()
+    itself is ever refactored."""
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    pass_fn = _extract_function(html, "pass")
+    assert "if(+MY_LIMITS.require_above_vwap&&r.above_vwap===false)return false;" in pass_fn
+    assert "if(+MY_LIMITS.require_atr_expanding&&r.atr_expanding===false)return false;" in pass_fn

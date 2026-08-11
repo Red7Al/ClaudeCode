@@ -1186,8 +1186,20 @@ if __name__ == "__main__":
     log.info(f"Starting session: {session}")
     ensure_schema()
 
+    # Record this run in the web app's Batch Activity (user 2026-08-11, P-12: "any batch activity with
+    # frequency less than 6 times per day should write to the batch log"). AUS/UK/US_MONITOR and
+    # POSITION_MONITOR run every ~5 min (well over 6x/day) so they're deliberately excluded below —
+    # everything else in this dispatcher runs at most a handful of times a day.
+    def _log_batch(event: str):
+        try:
+            from web_store import append_batch
+            append_batch("cron-job.org", event, by="cron")
+        except Exception:
+            pass
+
     if session in ("AUS_OPEN", "UK_OPEN", "US_OPEN"):
         run_session_open(session)
+        _log_batch(f"{session.replace('_', ' ').title()} session")
     elif session in ("AUS_MONITOR", "UK_MONITOR", "POSITION_MONITOR"):
         run_monitor(session)
     elif session == "US_MONITOR":
@@ -1201,6 +1213,7 @@ if __name__ == "__main__":
         tickers = set(SESSION_INSTRUMENTS.get("US_OPEN", []))
         hvf_watch_us_equities(tickers, notify_slack=True, session_key="US_OPEN",
                               watch_label="US Equities", state_key="us_equities")
+        _log_batch("US HVF Watch")
     elif session == "UK_HVF_WATCH":
         # 2-hourly HVF watch for UK/FTSE250 instruments — mirrors US_HVF_WATCH cadence.
         # Uses UK_OPEN instrument list; deduplicates via hvf_watch_state fingerprint.
@@ -1209,6 +1222,7 @@ if __name__ == "__main__":
         tickers = set(SESSION_INSTRUMENTS.get("UK_OPEN", []))
         hvf_watch_us_equities(tickers, notify_slack=True, session_key="UK_OPEN",
                               watch_label="UK / FTSE", state_key="uk_equities")
+        _log_batch("UK HVF Watch")
     elif session == "AUS_HVF_WATCH":
         # Two-hourly Squeeze visibility for the Asia/AUS session universe.
         from intraday_signals import hvf_watch_us_equities
@@ -1216,15 +1230,19 @@ if __name__ == "__main__":
         tickers = set(SESSION_INSTRUMENTS.get("AUS_OPEN", []))
         hvf_watch_us_equities(tickers, notify_slack=True, session_key="AUS_OPEN",
                               watch_label="AUS / Asia", state_key="aus_session")
+        _log_batch("AUS HVF Watch")
     elif session == "SESSION_CLOSE":
         run_session_close()
+        _log_batch("Session Close")
     elif session == "WEEKEND_REVIEW":
         run_weekend_review()
+        _log_batch("Weekend Review")
     elif session == "PREMARKET_BRIEF":
         # Sunday pre-market scan — 24/7 instruments (crypto, gold, FX) before Asia open.
         # Instruments defined in config.SESSION_INSTRUMENTS["PREMARKET_BRIEF"].
         # HVF report (run_hvf_report.py) is run separately by the SKILL.md prompt.
         run_session_open(session)
+        _log_batch("Sunday Pre-Open Commodity Scan")
     else:
         log.error(f"Unknown session: {session}")
         sys.exit(1)

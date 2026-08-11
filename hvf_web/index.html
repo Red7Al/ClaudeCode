@@ -648,6 +648,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <span class="eyebrow">Scanner</span>
       <h1 style="margin:6px 0 4px">Scanner Report</h1>
       <p class="lede" style="margin:0">Every instrument we scan across shares, indices, FX and commodities — squeezes spotted early, with the exact levels to act on. Use the charts or <b>Filters</b> to narrow; click a row for full detail.</p>
+      <p class="muted" style="font-size:12px;margin-top:6px">This is a live list of what's actionable <b>right now</b>, not a history — a squeeze that has gone stale or already resolved drops off here even though it's still recorded. For the full historical record, see <b>Squeeze History</b> or <b>Performance</b>.</p>
     </div>
     <div class="viz" id="viz"></div>
     <div class="count" id="count"></div>
@@ -821,7 +822,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
   <div class="confpanel hidden" data-panel="limits">
     <div class="card"><h4>My Trading Filters</h4>
-      <p class="muted" style="font-size:12px">Your personal floors. <b>R:R</b> and <b>Quality</b> are enforced on <b>your own</b> manual actions — pushing a setup to Pre-orders or placing it on IG is blocked below these. The rest are stored against your login. The shared automated engine keeps using the system baseline.</p>
+      <p class="muted" style="font-size:12px">Your personal floors. <b>R:R</b>, <b>Quality</b>, <b>VWAP</b> and <b>ATR expanding</b> are enforced on <b>your own</b> manual actions (pushing a setup to Pre-orders or placing it on IG is blocked below these) and, as of 2026-08-11, on the automated engine's own order placement too — every setup it places for you is checked against these same floors. RVOL, VolumeScore and instrument value are stored against your login but not yet enforced on the automated engine (only your manual actions).</p>
       <div style="padding:4px 0 10px;border-bottom:1px solid var(--line)"><h4 style="margin:0 0 4px">Trade filters — direction</h4>
         <p class="muted" style="font-size:12px;margin:0 0 8px">Only ticked directions may be traded. Ticking both (or neither) = no restriction.</p>
         <div id="cfg-trade" class="sqh-loading">⏳ Data loading…</div>
@@ -1997,6 +1998,22 @@ function pass(r,except){
   if(!rng(r.rvol,"f_rvmin","f_rvmax"))return false;   // RVOL at trigger (user 2026-07-17)
   if(!rng(r.pe,"f_pemin","f_pemax"))return false;
   if(!rng(r.insider_pct,"f_inmin","f_inmax"))return false;
+  // Personal "My Trading Filters" floors (user 2026-08-11: "the scanner report MUST also match the user
+  // trading filter settings") — HARD filter (user's explicit choice, not just a visual flag): a setup you
+  // couldn't pin or place yourself (My Pre-orders / place-order, per Configuration → My Trading Filters)
+  // is hidden from the Scanner Report table too, not just excluded from My Pre-orders. Same fields/logic
+  // as renderPreorders() below so the two views can never silently disagree. Logged-out/no-limits-set
+  // users have MY_LIMITS={}, so every num() call below is null and this is a no-op for them.
+  {const rrMin=num(MY_LIMITS.min_risk_reward), qMin=num(MY_LIMITS.min_quality), vsMin=num(MY_LIMITS.min_volume_score), rvMin=num(MY_LIMITS.min_rvol);
+   const ivMin=num(MY_LIMITS.min_instrument_value), ivMax=num(MY_LIMITS.max_instrument_value);
+   if(rrMin!=null&&r.rr!=null&&r.rr<rrMin)return false;
+   if(qMin!=null&&r.quality!=null&&r.quality<qMin)return false;
+   if(vsMin!=null&&r.volume_score!=null&&r.volume_score<vsMin)return false;
+   if(rvMin!=null&&rvMin>0&&r.rvol!=null&&r.rvol<rvMin)return false;
+   if(+MY_LIMITS.require_above_vwap&&r.above_vwap===false)return false;
+   if(+MY_LIMITS.require_atr_expanding&&r.atr_expanding===false)return false;
+   if(r.mcap!=null&&ivMin!=null&&ivMin>0&&r.mcap<ivMin)return false;
+   if(r.mcap!=null&&ivMax!=null&&ivMax>0&&r.mcap>ivMax)return false;}
   return true;
 }
 
@@ -3359,6 +3376,7 @@ function saveLimits(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
     .then(r=>{if(r.ok){_setMsg("Saved.",true);
       MY_LIMITS={...MY_LIMITS,...lim};if(typeof renderPreorders==='function')renderPreorders();   // apply new floors to My Pre-orders now (user 2026-07-24, P-02)
+      if(typeof render==='function')render();   // Scanner table/charts also hard-filter on MY_LIMITS (P-01 2026-08-11) — must re-render on save, not just on the next filter change, or a just-saved floor (e.g. "Require ATR expanding") silently leaves stale rows on screen (user 2026-08-11, MARUTI.BO showing ATR ✗ after saving)
       if(typeof _renderPerformance==='function')_renderPerformance();   // Performance respects the personal Volume Score floor now too (user 2026-07-28)
       if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();   // keep Performance's Replay Model in sync with User Configuration
       else if(WIN!==null&&typeof winnersParamsChange==='function')winnersParamsChange();   // re-render the winners tab with the new floor
@@ -3856,7 +3874,7 @@ function renderPerformance(){
         // 2026-08-03 P-01): it returns {warming:true} instantly instead of blocking ~40s. Keep the badge
         // and poll until the rows are ready, so the tab never hangs.
         if(j.warming){PERF_DATA=null;if($("pf-loading"))$("pf-loading").innerHTML=`<span class="sqh-loading" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ Data loading… 12-month replay (after restart).</span>`;setTimeout(renderPerformance,3000);return;}
-        PERF_DATA=j.rows||[];PERF_GEN=j.generated||"";if($("pf-loading"))$("pf-loading").innerHTML="";_renderPerformance();})
+        PERF_DATA=_dedupeSameDayRows(j.rows||[]);PERF_GEN=j.generated||"";if($("pf-loading"))$("pf-loading").innerHTML="";_renderPerformance();})
       .catch(()=>{PERF_DATA=null;if($("pf-loading"))$("pf-loading").innerHTML=`<span style="color:var(--bear);font-size:12.5px">Performance data did not load. <button class="subpill" onclick="renderPerformance()">Retry</button></span>`;});
     // The analysis loads lazily when its sub-tab is opened (pfPanel), not here.
   } else if(_pfl && PERF_DATA.length){_pfl.innerHTML="";}
@@ -3971,6 +3989,23 @@ function applyWinnersDefaults(){
   const pfMo=$("pfw-maxopen");if(pfMo&&MY_LIMITS.max_open!=null)pfMo.value=MY_LIMITS.max_open>0?MY_LIMITS.max_open:derivedMax;
   if(typeof winnersParamsChange==="function")winnersParamsChange();
 }
+// Shared same-ticker/same-day dedup (user 2026-08-11, P-03 "reconcile all reports on all the tabs to make
+// sure they back each other up for evidence"): the scanner runs multiple independent lookback windows
+// (daily-30/60/90/180/240 + weekly), and more than one can trigger the same ticker on the same day,
+// double-counting it in any report built from raw trigger rows (e.g. "Domino's Pizza Enterprises Limited",
+// ChangeRequest P-04). That was fixed for Best Settings' own LOCAL population on 2026-08-07, but WIN and
+// PERF_DATA themselves — the shared arrays EVERY Performance report reads from (Best Settings, Back Test,
+// Summary, Let winners run) — stayed raw/undeduped, so those other reports could silently disagree with
+// Best Settings' already-deduped counts/win-loss ratios for what should be the same underlying trades.
+// Deduping ONCE here, at the shared source, means every report reads the same consistent population
+// instead of each one needing to remember to dedup itself (renderBestCombo's own local dedup below is now
+// redundant against this but kept — deduping already-deduped rows is a harmless no-op, not a risk).
+function _dedupeSameDayRows(rows){
+  const byKey={};
+  (rows||[]).forEach(r=>{const k=(r.ticker||'')+'|'+String(r.trig_date||'').slice(0,10);
+    const cur=byKey[k]; if(!cur||(+r.perf||-Infinity)>(+cur.perf||-Infinity))byKey[k]=r;});
+  return Object.values(byKey);
+}
 function renderSqueezeAnalysis(){
   loadBestSettingsHistory();
   renderVolScoreReport();   // VolumeScore impact report (user 2026-07-24, P-02) — loads once, server-cached
@@ -3979,7 +4014,7 @@ function renderSqueezeAnalysis(){
   if(WIN_LOADING)return;
   WIN_LOADING=true; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading… 12 months of trades.</div>';
   const loadWinners=(attempt=0)=>fetch("/api/winners").then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
-    .then(j=>{if(j.error)throw new Error(j.error);WIN_LOADING=false;WIN_GENERATED=j.generated||"";WIN=j.rows||[];winnersParamsChange();})
+    .then(j=>{if(j.error)throw new Error(j.error);WIN_LOADING=false;WIN_GENERATED=j.generated||"";WIN=_dedupeSameDayRows(j.rows||[]);winnersParamsChange();})
     .catch(err=>{if(attempt<3){if(s)s.innerHTML=`<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading… retry ${attempt+1} of 3.</div>`;setTimeout(()=>loadWinners(attempt+1),1500*(attempt+1));return;}
       WIN_LOADING=false;WIN=null;const b=$("ordp-bestcombo");if(b)b.innerHTML=`<div class="empty">Annual settings could not be loaded: ${_esc(err.message||'unknown error')}. <button class="btn" onclick="renderSqueezeAnalysis()">↻ Retry</button></div>`;});
   loadWinners();
@@ -4190,9 +4225,14 @@ function renderDecisionProof(id,proof,opts={}){
     ${Object.keys(filters).length?`<div class="muted" style="font-size:11px;margin-top:6px">Cross-filter: ${Object.entries(filters).map(([d,v])=>`${d} = ${_esc(v)}`).join(' · ')} <button class="btn" style="padding:2px 7px" onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,filters:{}})">Clear</button></div>`:''}
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;margin:14px 0 6px;flex-wrap:wrap">
     <div><h4 style="margin:0">Transaction evidence</h4><div class="muted" style="font-size:11px">Chronological decisions prove which opportunities the settings selected and whether the wallet could fund them. Positive missed rows expose profit the proposed setup could not actually capture.</div></div>
-    <fieldset style="border:0;margin:0;padding:0;white-space:nowrap"><legend class="muted" style="font-size:10px">Missed transactions (${missed})</legend>
-      <label><input type="radio" name="${id}-missed" ${!show?'checked':''} onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,showMissed:false})"> Hide</label>
-      <label style="margin-left:8px"><input type="radio" name="${id}-missed" ${show?'checked':''} onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,showMissed:true})"> Show</label></fieldset></div>
+    <div style="white-space:nowrap;text-align:right">
+      <div style="font-size:11px;font-weight:600;margin-bottom:4px">Missed transactions (${missed})</div>
+      <div style="display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden">
+        <button type="button" onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,showMissed:false})"
+          style="padding:5px 14px;font-size:12px;font-weight:600;border:0;cursor:pointer;${!show?'background:var(--accent);color:#fff':'background:transparent;color:var(--fg)'}">Hide</button>
+        <button type="button" onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,showMissed:true})"
+          style="padding:5px 14px;font-size:12px;font-weight:600;border:0;border-left:1px solid var(--line);cursor:pointer;${show?'background:var(--accent);color:#fff':'background:transparent;color:var(--fg)'}">Show</button>
+      </div></div></div>
     <div class="tablewrap"><table><thead><tr><th>Triggered</th><th>Name</th><th>Decision / constraint</th><th>Open after decision</th><th title="Model wallet immediately before this decision">Wallet</th><th>Sell at target</th>${run?'<th>Let run</th><th>Difference</th>':''}<th title="£ profit/loss from this trade alone — blank for missed trades">Net gain</th><th>R:R</th><th>Quality</th><th>VolumeScore</th><th>RVOL</th><th>VWAP</th><th>ATR</th><th>Market</th><th>Sector</th><th>Ticker</th></tr></thead><tbody>${rows||`<tr><td colspan="${run?18:16}" class="muted">No transactions match this view.</td></tr>`}</tbody></table></div>`;
 }
 
@@ -4338,7 +4378,18 @@ function renderBestCombo(all){
   const basePool=positive.length?positive:eligible;
   const choose=(pool,chosen,compare)=>{
     const ranked=[...pool].sort((a,b)=>compare(a,b)||b.score-a.score);
-    return ranked.find(x=>chosen.every(y=>configDistance(x,y)>=2))||ranked.find(x=>chosen.every(y=>configDistance(x,y)>=1))||null;
+    // Prefer a candidate whose SCOPE (market/sector/mcap band) differs from every already-chosen card, on
+    // top of the existing "materially different overall configuration" bar — otherwise the 4 cards tend to
+    // converge on whichever single sector dominates every objective's ranking, since scope is just 1 of 9
+    // dimensions configDistance counts and the other 8 alone can satisfy "differs by >=2" (user 2026-08-11,
+    // P-03: "3 of the 4 cards are using the same sector - is there anything else that gives more choice?").
+    // This is a PREFERENCE, not a requirement: it only ever picks a scope-diverse candidate that already
+    // clears the same evidence bar (>=2 dimensions different, ranked by this card's own objective) as the
+    // original logic — never trades away return/drawdown/consistency quality just to force sector variety,
+    // and falls straight through to the original two tiers if no such candidate exists.
+    return ranked.find(x=>chosen.every(y=>configDistance(x,y)>=2 && x.scope.label!==y.scope.label))
+        ||ranked.find(x=>chosen.every(y=>configDistance(x,y)>=2))
+        ||ranked.find(x=>chosen.every(y=>configDistance(x,y)>=1))||null;
   };
   const chosen=[best];
   const growth=choose(basePool,chosen,(a,b)=>b.ret-a.ret);if(growth)chosen.push(growth);
@@ -4440,6 +4491,7 @@ function applyConfigFromReport(cfg, btn){
       if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();
       if(btn){btn.textContent="✓ Applied — Back Test updated";setTimeout(()=>{btn.disabled=false;btn.textContent="⬇ Apply this configuration";},4000);}
       if(typeof renderPreorders==='function')renderPreorders();
+      if(typeof render==='function')render();   // Scanner table hard-filters on MY_LIMITS too (P-01 2026-08-11) — same gap as saveLimits(), same fix
       if(typeof _renderPerformance==='function')_renderPerformance();})
     .catch(()=>{if(btn){btn.disabled=false;btn.textContent="⚠ Save failed — retry";}});
 }
@@ -5491,6 +5543,16 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     USER_FILTERS=(cfg&&cfg.filters)||{}; applyUserDefaults(); _seedStatusDefaults();   // user saved defaults, then built-in default Status selections (P-05)
     TRADE_HIDE=(cfg&&cfg.trade)||{};   // per-user Trading (Squeeze) filter -> hides excluded markets (user 2026-07-06)
     MARKETS_DISABLED=new Set((cfg&&cfg.markets_disabled)||[]); MARKETS_OFF=new Set((cfg&&cfg.markets_off)||[]);   // market on/off switches (user 2026-07-11)
+    // My Trading Filters (user 2026-08-11): MY_LIMITS previously stayed {} for the WHOLE session until the
+    // user happened to open the Configuration tab (renderConfig() was the only place that ever read
+    // cfg.limits) — so the Scanner's first render(), which runs a few lines below, hard-filtered against
+    // an empty MY_LIMITS even though the user's floors (R:R/Quality/RVOL/VWAP/ATR/instrument value) were
+    // already saved server-side from a previous session. Symptom: freshly-loading the Scanner showed rows
+    // that violated a saved "Require ATR expanding"/"Require above VWAP" floor, with no Save click involved
+    // at all — a bigger version of the same-day Save-time gap fixed alongside this. Load it here too, from
+    // the SAME /api/config response already being fetched for filters/trade/markets, so the very first
+    // Scanner render is correctly filtered without needing a visit to Configuration first.
+    if(cfg&&cfg.limits){MY_LIMITS=cfg.limits;Object.entries(cfg.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=Array.isArray(v)?v.join(", "):v;}});}
     DATA=j.records||[]; DATA.forEach(augment);
     if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;   // canonical market list for the Refresh picker (P-15)
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";

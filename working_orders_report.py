@@ -279,6 +279,11 @@ def main():
         log.info("--dry: nothing posted.")
         return
     post(blocks)
+    try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)
+        from web_store import append_batch
+        append_batch("cron-job.org", f"Pre-order report — {len(live)} live / {len(changes)} settled today", by="cron")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

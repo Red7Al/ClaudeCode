@@ -811,6 +811,12 @@ def main():
         # Fallback — print to stdout (visible in GitHub Actions logs)
         print(report)
 
+    try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)
+        from web_store import append_batch
+        append_batch("cron-job.org", f"Daily report — {len(trades_opened)} opened / {len(trades_closed)} closed", by="cron")
+    except Exception:
+        pass
+
 
 if __name__ == "__main__":
     main()

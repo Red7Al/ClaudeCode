@@ -509,6 +509,12 @@ def main():
 
     # Exit 1 if any failures (useful for CI)
     n_fail = sum(1 for r in results if r["status"] == "fail")
+    try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12). Shared by both
+        # "Daily Diagnostics" and "Sunday Readiness Check" (same script, no distinguishing arg).
+        from web_store import append_batch
+        append_batch("cron-job.org", f"Diagnostics — {len(results)} check(s), {n_fail} failed", by="cron")
+    except Exception:
+        pass
     if n_fail:
         log.error(f"{n_fail} test(s) failed")
         sys.exit(1)
