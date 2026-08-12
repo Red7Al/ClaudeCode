@@ -178,8 +178,10 @@ def test_ionos_shared_hosting_routes_only_api_to_protected_cgi_adapter():
     adapter = (build_ionos_package.ROOT / "cgi-bin" / "app.py").read_text(encoding="utf-8")
 
     assert "RewriteRule ^api" in htaccess and "cgi-bin/app.py/api/$1" in htaccess
-    assert "data|\\.venv_linux" in htaccess
+    assert "data|docs|\\.venv_linux" in htaccess
     assert "THE_REQUEST" in htaccess
+    for suffix in ("json", "log", "zip", "docx", "pkl"):
+        assert suffix in htaccess
     assert 'RewriteRule ^cgi-bin/ - [F,L]' in htaccess
     assert 'ROOT = Path(__file__).resolve().parents[1]' in adapter
     assert 'hosted["SCRIPT_NAME"] = ""' in adapter

@@ -343,3 +343,28 @@ create table if not exists web_json_store (
     updated_at  timestamptz not null default now()
 );
 alter table web_json_store add column if not exists revision bigint not null default 1;
+
+
+-- ---------------------------------------------------------------------------
+-- Scanner snapshot publication (large immutable JSON lives in private Storage)
+-- ---------------------------------------------------------------------------
+-- A worker uploads and verifies the complete object before atomically advancing scanner_snapshot_current.
+-- The database stores metadata only; the IONOS host keeps one bounded last-known-good local cache.
+create table if not exists scanner_snapshot_versions (
+    id              bigserial primary key,
+    generated_utc   timestamptz not null,
+    object_path     text not null unique,
+    sha256          text not null,
+    record_count    integer not null check (record_count >= 0),
+    byte_count      bigint not null check (byte_count > 0),
+    schema_version  integer not null default 1,
+    source          text not null default 'unknown',
+    published_at    timestamptz not null default now()
+);
+create index if not exists idx_scanner_snapshot_generated
+    on scanner_snapshot_versions (generated_utc desc);
+create table if not exists scanner_snapshot_current (
+    singleton   boolean primary key default true check (singleton),
+    version_id  bigint not null references scanner_snapshot_versions(id),
+    updated_at  timestamptz not null default now()
+);

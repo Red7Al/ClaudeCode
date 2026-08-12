@@ -1083,6 +1083,21 @@ def _publish_top_per_market_to_x(posted: list):
     publish_tickers_to_x(tickers)
 
 
+def _publish_scanner_snapshot(all_results: dict) -> None:
+    """Reuse this job's expensive scan and publish the web Scanner state from the worker."""
+    if not os.environ.get("SUPABASE_SCANNER_PUBLISH_KEY"):
+        log.info("Scanner snapshot publication skipped (publisher key not configured in this runtime).")
+        return
+    from hvf_web.build_snapshot import build
+    from scanner_snapshot_store import publish_snapshot, verify_current
+    snapshot = build(scan_results=all_results)
+    meta = publish_snapshot(snapshot, source="hvf-daily-report")
+    verified = verify_current()
+    if verified.get("sha256") != meta.get("sha256"):
+        raise RuntimeError("Scanner snapshot publication did not read-verify the new version")
+    log.info(f"Scanner snapshot published: {meta['record_count']} records, version {meta['version_id']}")
+
+
 def main():
     scan_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     log.info(f"HVF Daily Report starting — {scan_time} UTC")
@@ -1150,6 +1165,10 @@ def main():
 
     # Log to DB
     log_to_db(tradeable, developing, scan_time)
+
+    # The Scanner no longer repeats this heavy full-universe scan on the web host. Reuse the completed
+    # report scan, enrich it into the snapshot, publish it immutably, then read-verify the active pointer.
+    _publish_scanner_snapshot(all_results)
 
     log.info("HVF Daily Report complete.")
 

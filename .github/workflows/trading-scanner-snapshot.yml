@@ -1,0 +1,41 @@
+name: Scanner Snapshot Publish
+
+# Heavy Scanner compute runs on the Actions worker, never on the IONOS web process. Scheduling remains in
+# cron-job.org (GitHub-native cron is banned); the admin Refresh button dispatches this workflow as well.
+on:
+  workflow_dispatch:
+    inputs:
+      markets:
+        description: 'Optional comma-separated markets to refresh; empty = full universe.'
+        required: false
+        default: ''
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SUPABASE_USER:                    ${{ secrets.SUPABASE_USER }}
+  SUPABASE_DB_PASSWORD:             ${{ secrets.SUPABASE_DB_PASSWORD }}
+  SUPABASE_SCANNER_PUBLISH_KEY:     ${{ secrets.SUPABASE_SCANNER_PUBLISH_KEY }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Check publication prerequisites without printing values
+        run: |
+          python - <<'PY'
+          import os, sys
+          required = ("SUPABASE_USER", "SUPABASE_DB_PASSWORD", "SUPABASE_SCANNER_PUBLISH_KEY")
+          missing = [name for name in required if not os.environ.get(name)]
+          print("Scanner publication prerequisites:", "present" if not missing else "missing " + ", ".join(missing))
+          if missing:
+              sys.exit(1)
+          PY
+      - name: Build, publish and read-verify immutable Scanner snapshot
+        run: python publish_scanner_snapshot.py --build --markets "${{ inputs.markets }}" --source github-actions

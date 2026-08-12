@@ -133,7 +133,8 @@ _MOMENTUM_JOBS = {"AUS Open", "AUS Monitor", "Commodity Monitor AM", "Commodity 
                   "UK Open", "UK Monitor", "US Open", "US Monitor",
                   # user 2026-07-11: these serve the multi-factor momentum pipeline too
                   "Sunday Readiness Check", "Sunday Pre-Open Commodity Scan", "COT Report"}
-_SQUEEZE_JOBS = {"HVF Daily Report", "HVF Orders", "AUS HVF Watch", "UK HVF Watch", "US HVF Watch"}
+_SQUEEZE_JOBS = {"HVF Daily Report", "HVF Orders", "AUS HVF Watch", "UK HVF Watch", "US HVF Watch",
+                 "Scanner Snapshot Refresh"}
 
 _DISPLAY_NAMES = {
     "HVF Daily Report": "Squeeze Daily Report",
@@ -165,6 +166,7 @@ _PURPOSE = {
     "Price Data Refresh": "Re-fetches and upserts the universe's daily price history so the HVF report that follows runs on fresh data.",
     "HVF Daily Report": "Runs the daily Squeeze (HVF) scan across the whole universe and publishes the shortlist / report.",
     "HVF Orders": "Places the day's qualifying Squeeze setups on IG as working orders (entry, stop and target attached).",
+    "Scanner Snapshot Refresh": "Builds the Scanner on an external worker and publishes the validated result to private Supabase Storage, keeping compute off the web host.",
     "UK Open": "Opens the UK / Europe (LSE) session — momentum scan plus the session's opening trades.",
     "UK Morning Brief": "Emails / posts the UK morning market brief (Mondays & Fridays).",
     "UK Monitor": "Every 5 min through London hours, manages open UK-session positions.",

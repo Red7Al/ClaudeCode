@@ -170,12 +170,11 @@ def _months_to_go(r: dict):
         return None
 
 
-def build(markets=None):
+def build(markets=None, scan_results=None):
     """Build the full-universe snapshot. markets (user 2026-07-31, P-15) — when given a collection of
     market names, ONLY those markets are rescanned and their records are MERGED into the existing snapshot
     (records of the other markets are kept untouched), so an admin can refresh a choice of markets quickly
     instead of the whole universe."""
-    from run_hvf_report import scan_universe
     from quality_report import fundamentals
     import yfinance as yf
     try:
@@ -205,7 +204,15 @@ def build(markets=None):
                 if _mkt in sel:
                     _total += 1
     PROGRESS.update(done=0, total=_total)
-    scan = scan_universe(progress_cb=lambda d, t: PROGRESS.update(done=d, total=_total), markets=sel)
+    if scan_results is None:
+        from run_hvf_report import scan_universe
+        scan = scan_universe(progress_cb=lambda d, t: PROGRESS.update(done=d, total=_total), markets=sel)
+    else:
+        if sel is not None:
+            raise ValueError("scan_results can only be reused for a full-universe snapshot")
+        scan = scan_results
+        PROGRESS.update(done=_total, total=_total)
+        log.info("reusing the completed daily-report scan for the Scanner snapshot")
     # Record every TRIGGERED funnel to Supabase for performance tracking (user 2026-06-30, HVF status).
     # Deduped per funnel instance inside the recorder; a failure never blocks the build.
     try:
@@ -324,9 +331,23 @@ def build(markets=None):
 
     snapshot = {"generated_utc": datetime.now(timezone.utc).isoformat(),
                 "count": len(out), "records": out}
-    with open(SNAPSHOT, "w", encoding="utf-8") as fh:
-        json.dump(snapshot, fh, indent=2, default=str)
+    # Never expose a half-written snapshot to the web process. Publication to Supabase is handled by
+    # publish_scanner_snapshot.py only after this complete local candidate validates successfully.
+    _tmp = SNAPSHOT + f".tmp-{os.getpid()}"
+    try:
+        with open(_tmp, "w", encoding="utf-8") as fh:
+            json.dump(snapshot, fh, indent=2, default=str)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(_tmp, SNAPSHOT)
+    finally:
+        try:
+            if os.path.exists(_tmp):
+                os.unlink(_tmp)
+        except OSError:
+            pass
     log.info(f"wrote {SNAPSHOT} ({len(out)} records)")
+    return snapshot
 
 
 if __name__ == "__main__":

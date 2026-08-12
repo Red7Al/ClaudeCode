@@ -74,7 +74,8 @@ def test_seed_secrets_workflow_env_block_matches_ENV_SECRETS():
 
 def test_sources_never_includes_bootstrap_keys(monkeypatch):
     """_sources() must never pick up a bootstrap secret even if it happens to be in os.environ or the
-    local __app__ store — those three stay environment-provided by design (see docs/SUPABASE_SECRET_STORE_DESIGN.md).
+    local __app__ store — bootstrap credentials stay environment-provided by design (see
+    docs/SUPABASE_SECRET_STORE_DESIGN.md).
 
     _sources() imports `web_users` (bare name) via its own sys.path.insert(hvf_web) — a different
     sys.modules entry than the package-qualified `hvf_web.web_users`. Mimic the same sys.path insert here

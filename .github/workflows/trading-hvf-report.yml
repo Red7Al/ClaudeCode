@@ -32,6 +32,7 @@ jobs:
           HVF_REPORT_MODE:       ${{ inputs.report_mode }}  # normal | slack_only | slack_png (user 2026-06-22)
           SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_SCANNER_PUBLISH_KEY: ${{ secrets.SUPABASE_SCANNER_PUBLISH_KEY }}
           SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
           SLACK_RW_HVF:          ${{ secrets.SLACK_RW_HVF }}   # extra HVF-report channel (user 2026-06-26, C)
           SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}

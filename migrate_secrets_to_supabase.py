@@ -30,7 +30,12 @@ from dotenv import load_dotenv; load_dotenv(override=True)
 
 import app_secrets
 
-_BOOTSTRAP = {"SUPABASE_USER", "SUPABASE_DB_PASSWORD", "APP_SECRET_KEY"}
+_BOOTSTRAP = {
+    "SUPABASE_USER", "SUPABASE_DB_PASSWORD", "APP_SECRET_KEY",
+    # Dedicated Storage publisher key: Actions needs it before it can publish and it bypasses RLS, so it
+    # stays in the workflow's secret environment rather than inside the application secret document.
+    "SUPABASE_SCANNER_PUBLISH_KEY",
+}
 
 # Secrets currently sourced from .env / GitHub Secrets that should move into the store.
 # Kept in sync with every `secrets.X` referenced across .github/workflows/*.yml — see

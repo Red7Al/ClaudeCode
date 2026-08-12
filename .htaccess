@@ -4,10 +4,11 @@ RewriteEngine On
 RewriteBase /
 
 # Durable local fallbacks and the hosted virtual environment are never public assets.
-RewriteRule ^(?:data|\.venv_linux)(?:/|$) - [F,L,NC]
+RewriteRule ^(?:data|docs|\.venv_linux)(?:/|$) - [F,L,NC]
 
-# Reject direct requests for server-side source/configuration. The internal API rewrite below remains allowed.
-RewriteCond %{THE_REQUEST} "\s/+[^?\s]*\.(?:py|sql|md|txt|key|env)(?:[?\s])" [NC]
+# Reject direct requests for server-side source/configuration, operational output and internal data. Flask may
+# still read these files after an /api/* rewrite; THE_REQUEST limits the rule to a browser asking for the file.
+RewriteCond %{THE_REQUEST} "\s/+[^?\s]*\.(?:py|sql|md|txt|key|env|json|log|zip|docx|pkl)(?:[?\s])" [NC]
 RewriteRule ^ - [F,L]
 
 # The adapter is an internal rewrite target, not a second public API prefix.

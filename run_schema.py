@@ -427,6 +427,35 @@ MIGRATIONS = [
         )"""
     ),
 
+    # Scanner publication metadata. The large immutable JSON objects live in a PRIVATE Supabase Storage
+    # bucket; these two tables provide an atomic current-version pointer and an auditable version history.
+    (
+        "create scanner_snapshot_versions",
+        """CREATE TABLE IF NOT EXISTS scanner_snapshot_versions (
+            id              bigserial primary key,
+            generated_utc   timestamptz not null,
+            object_path     text not null unique,
+            sha256          text not null,
+            record_count    integer not null check (record_count >= 0),
+            byte_count      bigint not null check (byte_count > 0),
+            schema_version  integer not null default 1,
+            source          text not null default 'unknown',
+            published_at    timestamptz not null default now()
+        )"""
+    ),
+    (
+        "scanner snapshot: index generated time",
+        "CREATE INDEX IF NOT EXISTS idx_scanner_snapshot_generated ON scanner_snapshot_versions(generated_utc DESC)"
+    ),
+    (
+        "create scanner_snapshot_current",
+        """CREATE TABLE IF NOT EXISTS scanner_snapshot_current (
+            singleton   boolean primary key default true check (singleton),
+            version_id  bigint not null references scanner_snapshot_versions(id),
+            updated_at  timestamptz not null default now()
+        )"""
+    ),
+
 ]
 
 

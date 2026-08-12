@@ -998,11 +998,18 @@ def api_guide_file(slug):
 
 
 def _load_snapshot() -> dict:
+    # Supabase is the durable published source when its Storage key is configured. The helper verifies
+    # SHA-256 before atomically advancing this local last-known-good cache and fails back to the file.
     try:
-        with open(SNAPSHOT, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"generated_utc": None, "count": 0, "records": []}
+        import scanner_snapshot_store
+        return scanner_snapshot_store.load_snapshot(SNAPSHOT)
+    except Exception as exc:
+        log.warning(f"Scanner snapshot store unavailable; using local file: {exc}")
+        try:
+            with open(SNAPSHOT, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {"generated_utc": None, "count": 0, "records": []}
 
 
 def _record(ticker: str) -> dict:
@@ -1524,7 +1531,7 @@ def api_working_orders():
     return jsonify({"tickers": tickers})
 
 
-_REFRESHING = {"on": False}
+_REFRESHING = {"on": False, "mode": None, "requested_at": 0.0, "base_generated": None}
 
 
 def _do_rebuild(markets=None) -> bool:
@@ -1548,10 +1555,35 @@ def _do_rebuild(markets=None) -> bool:
         _REFRESHING["on"] = False
 
 
+def _dispatch_snapshot_rebuild(markets=None) -> bool:
+    """Dispatch the external publisher so the web host never performs the heavy scan."""
+    try:
+        import app_secrets
+        token = app_secrets.get_secret("GH_PAT") or app_secrets.get_secret("GITHUB_TOKEN")
+        if not token:
+            raise RuntimeError("no GitHub dispatch token configured")
+        import requests
+        repo = os.environ.get("GITHUB_REPO", "Red7Al/ClaudeCode")
+        response = requests.post(
+            f"https://api.github.com/repos/{repo}/actions/workflows/trading-scanner-snapshot.yml/dispatches",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                     "X-GitHub-Api-Version": "2022-11-28"},
+            json={"ref": os.environ.get("GITHUB_REF_NAME", "main"),
+                  "inputs": {"markets": ",".join(markets or [])}}, timeout=20,
+        )
+        response.raise_for_status()
+        snap = _load_snapshot()
+        _REFRESHING.update(on=True, mode="external", requested_at=_time.time(),
+                           base_generated=snap.get("generated_utc"))
+        return True
+    except Exception as exc:
+        log.error(f"external Scanner refresh dispatch failed: {exc}")
+        return False
+
+
 @app.route("/api/refresh", methods=["POST", "GET"])
 def api_refresh():
-    """Trigger an on-demand snapshot rebuild in a background thread (user 2026-06-28). Login-gated,
-    and the request is recorded in the acting user's activity log (user 2026-07-03)."""
+    """Queue an external snapshot rebuild. The web host never performs the heavy scan."""
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
     if not name:
         return jsonify({"error": "login required"}), 401
@@ -1574,17 +1606,28 @@ def api_refresh():
     _append_batch("Refresh button",
                   ("Snapshot rebuild started — " + ", ".join(markets)) if markets
                   else "Full universe snapshot rebuild started", by=name)
-    import threading
-    threading.Thread(target=lambda: _do_rebuild(markets), daemon=True).start()
-    return jsonify({"started": True, "markets": markets})
+    if not _dispatch_snapshot_rebuild(markets):
+        _append_batch("Refresh button", "External Scanner rebuild dispatch failed", by=name)
+        return jsonify({"started": False, "error": "external refresh could not be queued"}), 503
+    return jsonify({"started": True, "queued": True, "worker": "GitHub Actions", "markets": markets})
 
 
 @app.route("/api/status")
 def api_status():
     snap = _load_snapshot()
+    if _REFRESHING["on"] and _REFRESHING.get("mode") == "external":
+        advanced = snap.get("generated_utc") and snap.get("generated_utc") != _REFRESHING.get("base_generated")
+        expired = _time.time() - float(_REFRESHING.get("requested_at") or 0) > 2 * 3600
+        if advanced or expired:
+            _REFRESHING.update(on=False, mode=None, requested_at=0.0, base_generated=None)
+            if advanced:
+                _PNG_CACHE.clear()
     resp = {"refreshing": _REFRESHING["on"], "generated_utc": snap.get("generated_utc"),
             "count": snap.get("count")}
-    if _REFRESHING["on"]:                     # live "34/424" progress while a build runs (user 2026-06-29)
+    if _REFRESHING["on"] and _REFRESHING.get("mode") == "external":
+        resp["worker"] = "GitHub Actions"
+        resp["queued"] = True
+    elif _REFRESHING["on"]:                   # local development build progress
         try:
             from hvf_web.build_snapshot import PROGRESS
             resp["progress"] = {"done": PROGRESS.get("done", 0), "total": PROGRESS.get("total", 0)}
@@ -3917,7 +3960,10 @@ if __name__ == "__main__":
                                      users_file=os.path.join(_DATA_DIR, "web_users.json"))
     except Exception as _e:
         log.warning(f"web_store migration skipped: {_e}")
-    threading.Thread(target=_refresh_loop, daemon=True).start()
+    # Production Scanner builds run on the external worker and publish to Supabase. Keep the legacy local
+    # loop opt-in for isolated development only; CGI/WSGI hosts must never spend web CPU rebuilding data.
+    if os.environ.get("HVF_ENABLE_LOCAL_SNAPSHOT_REBUILD", "").strip().lower() in ("1", "true", "yes"):
+        threading.Thread(target=_refresh_loop, daemon=True).start()
     threading.Thread(target=_bridge_loop, daemon=True).start()
     threading.Thread(target=_perf_warm_loop, daemon=True).start()   # keep Performance caches warm (user 2026-08-03)
     web_port = int(os.environ.get("HVF_WEB_PORT", "5057"))

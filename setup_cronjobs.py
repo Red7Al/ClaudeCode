@@ -130,6 +130,7 @@ JOBS = [
     ("US Monitor",           "*/5 14-21 * * 1-5","trading-us-monitor.yml"),
     ("US HVF Watch",         "30 14,16,18,20 * * 1-5", "trading-us-hvf-watch.yml"),
     ("UK HVF Watch",         "30 8,10,12,14 * * 1-5",  "trading-uk-hvf-watch.yml"),
+    ("Scanner Snapshot Refresh", "30 18 * * *", "trading-scanner-snapshot.yml"),  # external full rebuild + private Supabase publication; IONOS remains the thin web tier
     ("Social Monitor",       "*/15 7-22 * * 1-5",   "trading-social-monitor.yml"),
     # ── Close & reports ───────────────────────────────────────────────────────────────────────────────────────────────
     ("Commodity Monitor PM", "*/10 21-23 * * 1-5","trading-commodity-monitor.yml"),
