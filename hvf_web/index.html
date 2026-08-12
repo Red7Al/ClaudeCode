@@ -180,7 +180,6 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--chip)} tr.sel{backgroun
 .card h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;color:var(--fg);font-weight:700}
 #view-config .confpanel .card>h4{padding:6px 0 6px 9px;border-left:4px solid var(--accent);color:var(--accent)}
 #view-config .confpanel[data-panel="preferences"] .card>h4{border-left-color:#4dabf7;color:#4dabf7}
-#view-config .confpanel[data-panel="adaptive"] .card>h4{border-left-color:#f59f00;color:#f59f00}
 #view-config .confpanel[data-panel="leverage"] .card>h4{border-left-color:#51cf66;color:#51cf66}
 #view-config .confpanel[data-panel="trading"] .card>h4,#view-config .confpanel[data-panel="trading_squeeze"] .card>h4{border-left-color:#cc5de8;color:#cc5de8}
 #view-config .credrow .clabel{flex:0 0 300px}
@@ -662,7 +661,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <th data-k="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank for setups that have not triggered, and for instruments with no real volume (FX, indices).">RVOL</th><th data-k="above_vwap" title="Price above VWAP on the trigger bar">VWAP</th><th data-k="atr_expanding" title="ATR expanding on the trigger bar">ATR</th>
           <th data-k="volume_score" title="VolumeScore (0–12) on the break bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank until triggered.">Vol</th>
           <th data-k="rr">R:R</th><th data-k="quality">Quality</th>
-          <th data-k="dist_entry" title="Absolute distance from the live price to the entry level (sorted furthest-first)">Dist→Entry</th><th data-k="status">Status</th>
+          <th data-k="dist_entry" title="Absolute distance from the live price to the entry level (sorted closest-first)">Dist→Entry</th><th data-k="status">Status</th>
           <th data-k="trig_date">Triggered</th><th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
           <th data-k="current_price" title="Latest price">Now</th>
           <th data-k="tgt_months" title="Expected time to reach the target (the squeeze's formation span)">To target</th>
@@ -791,7 +790,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <nav class="confnav" id="confnav">
     <button class="pill active" data-panel="preferences" onclick="confShow('preferences')">⚙️ Preferences</button>
     <button class="pill" data-panel="tabvis" onclick="confShow('tabvis')">👁️ Tab visibility</button>
-    <button class="pill" data-panel="adaptive" disabled title="Adaptive Filters is disabled until the walk-forward implementation exists">🎯 Adaptive Filters</button>
     <span class="confnav-group" aria-label="IG settings">
       <span class="confnav-row">
         <button class="pill" data-panel="IG" onclick="confShow('IG')">🔑 IG Credentials</button>
@@ -845,17 +843,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div class="credrow"><span class="clabel">Email recipients (comma-separated)</span><input type="text" id="lim-email_recipients" class="cred-in" style="flex:0 1 340px;max-width:340px"></div>
       <button class="btn" style="margin-top:10px" onclick="saveLimits()">Save My Trading Filters</button>
       <span id="lim-msg" style="font-size:12px;margin-left:8px"></span>
-    </div>
-  </div>
-
-  <!-- Adaptive Filters — its own panel (user 2026-08-01): moved out of My trading limits. -->
-  <div class="confpanel hidden" data-panel="adaptive">
-    <div class="card" style="margin-bottom:0"><h4>Adaptive Filters</h4>
-      <p class="muted" style="font-size:12px">When on, your Market / Quality / R:R filters are periodically re-tuned from the recent <b>best-settings</b> analysis (every N weeks). The auto-tuning engine is being built (deferred); this stores your preference + cadence. Saved with your other trading limits.</p>
-      <div class="credrow"><span class="clabel" title="Disabled pending a completed walk-forward implementation.">Adaptive filters — disabled pending implementation</span><label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="lim-adaptive_filters" disabled> off</label></div>
-      <div class="credrow"><span class="clabel" title="How often the adaptive filters re-tune, in weeks (e.g. 4 = every 4 weeks). Only used when 'Adaptive filters' is enabled.">Rebalance window (weeks)</span><input type="number" min="1" max="52" step="1" id="lim-rebalance_weeks" placeholder="4" style="max-width:120px"></div>
-      <button class="btn" style="margin-top:10px" onclick="saveLimits()">Save adaptive filters</button>
-      <span id="lim-msg2" style="font-size:12px;margin-left:8px"></span>
     </div>
   </div>
 
@@ -1646,7 +1633,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <input type="hidden" id="sqf_market"><input type="hidden" id="sqf_location"><input type="hidden" id="sqf_sector"><input type="hidden" id="sqf_direction"><input type="hidden" id="sqf_status"><input type="hidden" id="sqf_year"><input type="hidden" id="sqf_quality">
   <div id="sqh-viz" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="sqh-count"></span><span class="grow"></span><input id="sqh-search" placeholder="Search name / ticker…" oninput="paintSqueezeHist()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="sqh-count"></span><span id="sqh-freshness" class="muted" style="font-size:11px"></span><span class="grow"></span><input id="sqh-search" placeholder="Search name / ticker…" oninput="paintSqueezeHist()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
     <!-- Every header sorts (user 2026-07-18, P-01) — data-sqh drives sqhSort(). -->
     <div class="tablewrap"><table>
       <thead><tr><th class="clk" data-sqh="name">Name</th><th class="clk" data-sqh="direction">Dir</th><th class="clk" data-sqh="market">Market</th><th class="clk" data-sqh="timeframe">TF</th><th class="clk" data-sqh="first_seen" title="First replay step this squeeze existed">Developing</th><th class="clk" data-sqh="ready_date" title="First step seen READY">Ready</th><th class="clk" data-sqh="triggered_date" title="First close beyond entry after the pivots">Triggered</th><th class="clk" data-sqh="outcome">Outcome</th><th class="clk" data-sqh="outcome_date">Closed</th><th class="clk" data-sqh="return_pct">Return</th><th class="clk" data-sqh="quality">Quality</th><th class="clk" data-sqh="rr">R:R</th><th class="clk" data-sqh="sector">Sector</th><th class="clk" data-sqh="ticker">Ticker</th></tr></thead>
@@ -1860,7 +1847,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <script>
-let DATA=[], SEL=null, sortK="dist_entry", sortDir=-1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: absolute Dist→Entry descending
+let DATA=[], SEL=null, sortK="dist_entry", sortDir=1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: ABS(Dist→Entry) ascending (closest first)
 const $=id=>document.getElementById(id);
 // In-app confirm (user 2026-07-18): the native confirm() prefixes the ngrok host ("…ngrok-free.dev
 // says"), which looks broken. This styled dialog keeps the message clean and on-brand. Returns a Promise.
@@ -2497,7 +2484,7 @@ $("togglefilters").onclick=()=>{
   if(CUR_TAB==="orderops")return toggleOoFilters();
   const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").innerHTML="Show Filters "+(hidden?'<span style="color:var(--bear)">✗</span>':'<span style="color:var(--bull)">✓</span>');};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").innerHTML="Show Squeeze Only "+(signalOnly?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');applyAll();};
-let _refStart=0, _lastTens=-1;
+let _refStart=0, _refBase=null, _lastTens=-1;
 // Refresh a CHOICE of markets (user 2026-07-31, P-15). REFRESH_MARKETS empty = the whole universe;
 // otherwise only the picked markets are rescanned and merged into the snapshot.
 let REFRESH_MARKETS=new Set();
@@ -2541,20 +2528,22 @@ $("refresh").onclick=async()=>{ if($("refresh").disabled)return;
   if(!await appConfirm(`Rescans ${scope} — takes a few minutes. The page keeps working with the current data and reloads automatically when the rebuild finishes.`,{title:"Rebuild the snapshot now?",ok:"↻ Rebuild"}))return;
   $("refresh").disabled=true; $("refresh").textContent="↻ Starting…"; _refStart=Date.now(); _lastTens=-1;
   fetch("/api/refresh",{method:"POST",headers:{"X-Auth":AUTH,"Content-Type":"application/json"},
-        body:JSON.stringify(picked.length?{markets:picked}:{})}).then(x=>x.json()).then(j=>{ pollRefresh(); })
-    .catch(()=>{$("refresh").textContent="↻ Refresh failed";$("refresh").disabled=false;});};
+        body:JSON.stringify(picked.length?{markets:picked}:{})}).then(async x=>{const j=await x.json().catch(()=>({}));if(!x.ok||!j.started)throw new Error(j.error||(j.busy?"A refresh is already running.":`HTTP ${x.status}`));return j;})
+    .then(j=>{_refBase=j.base_generated||null;$("refresh").title="";$("refresh").textContent=`⏳ Queued via ${j.worker||'external worker'}…`;pollRefresh();})
+    .catch(err=>{$("refresh").textContent="↻ Refresh failed";$("refresh").title=err.message||"Refresh could not be queued";$("refresh").disabled=false;});};
 function pollRefresh(){
   fetch("/api/status").then(x=>x.json()).then(s=>{
-    if(s.refreshing){
+    const waitingForExternal=_refBase&&s.generated_utc===_refBase&&(Date.now()-_refStart)<2*60*60*1000;
+    if(s.refreshing||waitingForExternal){
       const p=s.progress||{}, done=p.done||0, total=p.total||0;
       let eta="";
       if(_refStart&&done>0&&total>0){const rate=done/((Date.now()-_refStart)/1000); if(rate>0){const mins=Math.max(1,Math.ceil((total-done)/rate/60)); eta=` · ~${mins} min to complete`;}}
-      $("refresh").className="sqh-loading";$("refresh").textContent=total?`⏳ Data loading… ${done}/${total}${eta}`:"⏳ Data loading…";
+      $("refresh").className="sqh-loading";$("refresh").textContent=total?`⏳ Data loading… ${done}/${total}${eta}`:(waitingForExternal?"⏳ Queued/running on GitHub Actions…":"⏳ Data loading…");
       // Flash green for a second each time another 10 instruments complete (user 2026-06-29).
       const tens=Math.floor(done/10);
       if(tens>_lastTens){_lastTens=tens;$("refresh").style.color="var(--bull)";setTimeout(()=>{$("refresh").style.color="";},1000);}
       setTimeout(pollRefresh,3000);
-    } else {$("refresh").className="";$("refresh").style.color="";$("refresh").textContent="↻ Done — reloading…"; setTimeout(()=>location.reload(),800);}
+    } else {_refBase=null;$("refresh").className="";$("refresh").style.color="";$("refresh").textContent="↻ Done — reloading…"; setTimeout(()=>location.reload(),800);}
   }).catch(()=>setTimeout(pollRefresh,5000));
 }
 $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light");$("theme").textContent=l?"☀️ Light":"🌙 Dark";if(SEL)showDetail(SEL);};
@@ -3365,13 +3354,13 @@ function saveLimits(){
   const num=(id,int)=>{const el=$("lim-"+id);if(!el)return undefined;const v=(int?parseInt:parseFloat)(el.value);return isFinite(v)&&v>=0?v:undefined;};
   const lim={};
   [["min_risk_reward",0],["min_trade",0],["bounce_alert_pct",0],["min_instrument_value",0],["max_instrument_value",0],["preorder_threshold_pct",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
-  [["min_quality",1],["min_volume_score",1],["min_rvol",0],["max_position_pct",0],["max_open",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["rebalance_weeks",1],["wo_lifespan_days",1],["let_winners_run_trail",1],["let_winners_run_stop",1]].forEach(([k,int])=>{const v=num(k,int);if(v!==undefined)lim[k]=v;});
+  [["min_quality",1],["min_volume_score",1],["min_rvol",0],["max_position_pct",0],["max_open",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["wo_lifespan_days",1],["let_winners_run_trail",1],["let_winners_run_stop",1]].forEach(([k,int])=>{const v=num(k,int);if(v!==undefined)lim[k]=v;});
   lim.require_above_vwap=$("lim-require_above_vwap").checked?1:0;
   lim.require_atr_expanding=$("lim-require_atr_expanding").checked?1:0;
-  lim.adaptive_filters=0;   // disabled pending a completed walk-forward implementation
+  lim.adaptive_filters=0;   // compatibility only; the unused Adaptive Filters UI has been removed
   lim.let_winners_run=($("lim-let_winners_run")||{}).checked?1:0;   // "Let winners run" report opt-in, default OFF (user 2026-08-02)
   const _er=$("lim-email_recipients"); if(_er)lim.email_recipients=(_er.value||"").split(",").map(x=>x.trim()).filter(Boolean);
-  // Show the "Saved." message in whichever panel's save button was clicked (limits / adaptive / squeeze / winners-run).
+  // Show the "Saved." message in whichever remaining panel's save button was clicked.
   const _setMsg=(txt,ok)=>["lim-msg","lim-msg2","lim-msg3","lim-msg4"].forEach(id=>{const el=$(id);if(el){el.style.color=ok?"var(--bull)":"var(--bear)";el.textContent=txt;}});
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
     .then(r=>{if(r.ok){_setMsg("Saved.",true);
@@ -4099,6 +4088,20 @@ function _winnerRunComparison(plainReplay,runReplay,wallet){
     drawdownDelta:(Number((runReplay||{}).dd)||0)-(Number((plainReplay||{}).dd)||0),
     verdict:returnDelta>tolerance?"improved":returnDelta< -tolerance?"worse":"equal"};
 }
+function _winnerRunAttribution(plainReplay,runReplay,wallet){
+  // Attribute the exact fixed-stake wallet delta. Shared row objects identify the identical eligible trade
+  // in each proof: trades funded in both isolate exit-method impact; one-sided funding isolates capacity.
+  const p=new Map(((plainReplay||{}).proof||[]).filter(x=>x.placed).map(x=>[x.r,x]));
+  const q=new Map(((runReplay||{}).proof||[]).filter(x=>x.placed).map(x=>[x.r,x]));
+  let commonCount=0,plainOnlyCount=0,runOnlyCount=0,commonExitDelta=0,capacityDelta=0;
+  p.forEach((x,r)=>{const y=q.get(r);if(y){commonCount++;commonExitDelta+=wallet*((y.stake*(+r.run_perf||0))-(x.stake*(+r.perf||0)))/100;}
+    else{plainOnlyCount++;capacityDelta-=wallet*x.stake*(+r.perf||0)/100;}});
+  q.forEach((x,r)=>{if(!p.has(r)){runOnlyCount++;capacityDelta+=wallet*x.stake*(+r.run_perf||0)/100;}});
+  const totalDelta=wallet*((Number((runReplay||{}).ret)||0)-(Number((plainReplay||{}).ret)||0));
+  const reconciliation=totalDelta-commonExitDelta-capacityDelta;
+  return {commonCount,plainOnlyCount,runOnlyCount,commonExitDelta,capacityDelta,totalDelta,reconciliation,
+          reconciled:Math.abs(reconciliation)<.005};
+}
 function winnersRunChange(surface='pf'){
   // The report is shown on TWO surfaces: the "What separates the winners" tab (#ordp-run, with its own
   // trail inputs) and the dedicated Performance sub-tab (#pf-run, editable what-if values seeded from config).
@@ -4126,29 +4129,36 @@ function winnersRunChange(surface='pf'){
     const plainReplay=_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"perf",false);
     const runReplay=_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"run_perf",false);
     const comparison=_winnerRunComparison(plainReplay,runReplay,WINNERS_WALLET),
+          attribution=_winnerRunAttribution(plainReplay,runReplay,WINNERS_WALLET),
           {plainFinal,runFinal,returnDelta,drawdownDelta,verdict}=comparison, delta=runFinal-plainFinal;
     const tgt=commonRows.filter(r=>r.outcome==='TARGET');
     const ran=tgt.filter(r=>r.run_perf>r.perf+0.01).length, back=tgt.filter(r=>r.run_perf<r.perf-0.01).length;
     const improvedTrades=commonRows.filter(r=>r.run_perf>r.perf+0.01).length,
           worseTrades=commonRows.filter(r=>r.run_perf<r.perf-0.01).length,
           sameTrades=commonRows.length-improvedTrades-worseTrades;
-    const money=x=>`£${Number(x||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+    const targetLockValid=back===0, evidenceValid=targetLockValid&&attribution.reconciled,
+          money=x=>`£${Number(x||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
           signedMoney=x=>`${x>0?'+':x<0?'−':''}£${Math.abs(x).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
           pct=x=>`${x>0?'+':''}${(x*100).toFixed(2)}%`, pp=x=>`${x>0?'+':''}${(x*100).toFixed(2)} pp`,
-          col=verdict==='improved'?'var(--bull)':verdict==='worse'?'var(--bear)':'#d29922', fixedStake=WINNERS_WALLET*WINNERS_STAKE,
+          col=!evidenceValid?'var(--bear)':verdict==='improved'?'var(--bull)':verdict==='worse'?'var(--bear)':'#d29922', fixedStake=WINNERS_WALLET*WINNERS_STAKE,
           firstDate=String((commonRows[0]||{}).trig_date||'').slice(0,10),lastDate=String((commonRows[commonRows.length-1]||{}).trig_date||'').slice(0,10),
-          verdictTitle=verdict==='improved'?'Improved historical return':verdict==='worse'?'Reduced historical return':'No historical return improvement',
-          verdictText=verdict==='improved'
+          verdictTitle=!evidenceValid?'Evidence invalid — integrity check failed':verdict==='improved'?'Improved historical return':verdict==='worse'?'Reduced historical return':'No historical return improvement',
+          verdictText=!targetLockValid
+            ?`${back.toLocaleString()} normal target hit(s) finished below their target return in the simulation. The portfolio verdict is withheld until that invariant is restored.`
+            :!attribution.reconciled
+              ?`The exit/capacity attribution differs from the wallet result by ${signedMoney(attribution.reconciliation)}. The portfolio verdict is withheld until the replay reconciles.`
+            :verdict==='improved'
             ?`The trailing-stop replay finished ${signedMoney(delta)} ahead of selling at target.`
             :verdict==='worse'
               ?`The trailing-stop replay finished ${money(Math.abs(delta))} behind selling at target.`
               :`The trailing-stop replay produced the same return as selling at target; this is not evidence of improvement.`;
+    const attributionText=`On ${attribution.commonCount.toLocaleString()} trades funded in both replays, changing only the exit produced ${signedMoney(attribution.commonExitDelta)}. Different exit dates changed which later trades could be funded (${attribution.plainOnlyCount.toLocaleString()} baseline-only; ${attribution.runOnlyCount.toLocaleString()} runner-only), producing ${signedMoney(attribution.capacityDelta)}. ${attribution.reconciled?`Together these reconcile to ${signedMoney(attribution.totalDelta)}.`:`These components do not yet reconcile to the observed ${signedMoney(attribution.totalDelta)} wallet difference.`}`;
     const big=tgt.filter(r=>r.run_perf>r.perf+0.01).sort((a,b)=>(b.run_perf-b.perf)-(a.run_perf-a.perf)).slice(0,5);
     const stopTxt=sv>0?` (stop trailing ${j.stop_pct||sv}% before target)`:``;
     paint(`<div class="card" style="border:1px solid ${col};background:color-mix(in srgb,${col} 8%,transparent)">
       <h4 style="margin:0 0 6px">🏃 Let winners run @ ${(j.threshold_pct||v)}% run-trail${stopTxt} — illustration (live orders unaffected)</h4>
       <div style="border-left:4px solid ${col};padding:8px 10px;margin:8px 0;background:color-mix(in srgb,${col} 10%,transparent)">
-        <b style="color:${col}">Evidence verdict: ${verdictTitle}</b><div class="muted" style="font-size:12px;margin-top:3px">${verdictText} Historical evidence only; it does not guarantee a future improvement.</div>
+        <b style="color:${col}">Evidence verdict: ${verdictTitle}</b><div class="muted" style="font-size:12px;margin-top:3px">${verdictText} ${attributionText} Historical evidence only; it does not guarantee a future improvement.</div>
       </div>
       <div class="muted" style="font-size:12px;margin-bottom:8px"><b>Like-for-like basis:</b> the same <b>${commonRows.length.toLocaleString()}</b> eligible trades (${firstDate||'—'} to ${lastDate||'—'}), <b>${money(WINNERS_WALLET)}</b> starting wallet, fixed <b>${money(fixedStake)}</b> stake (${(WINNERS_STAKE*100).toFixed(2)}%), Max open <b>${WINNERS_MAXOPEN}</b>, minimum-trade, leverage and margin rules. This comparison does not compound returns. Funded counts may differ because a trailing exit can keep capital occupied for longer; that capacity cost is part of the evidence.</div>
       <div class="tablewrap"><table><thead><tr><th>Evidence</th><th>Sell at target</th><th>Let winners run</th><th>Difference</th></tr></thead><tbody>
@@ -4158,6 +4168,10 @@ function winnersRunChange(surface='pf'){
         <tr><td>Funded / eligible trades</td><td>${plainReplay.n.toLocaleString()} / ${commonRows.length.toLocaleString()}</td><td>${runReplay.n.toLocaleString()} / ${commonRows.length.toLocaleString()}</td><td>${runReplay.n-plainReplay.n>0?'+':''}${(runReplay.n-plainReplay.n).toLocaleString()} funded</td></tr>
         <tr><td>Missed through constraints</td><td>${(commonRows.length-plainReplay.n).toLocaleString()}</td><td>${(commonRows.length-runReplay.n).toLocaleString()}</td><td>${(plainReplay.n-runReplay.n)>0?'+':''}${(plainReplay.n-runReplay.n).toLocaleString()} missed</td></tr>
         <tr><td>Peak open positions</td><td>${plainReplay.cap}</td><td>${runReplay.cap}</td><td>${runReplay.cap-plainReplay.cap>0?'+':''}${runReplay.cap-plainReplay.cap}</td></tr>
+        <tr><td>Exit-method impact · funded in both</td><td colspan="2">${attribution.commonCount.toLocaleString()} common funded trades</td><td><b style="color:${_pnlc(attribution.commonExitDelta)}">${signedMoney(attribution.commonExitDelta)}</b></td></tr>
+        <tr><td>Capacity impact · funded in only one</td><td>${attribution.plainOnlyCount.toLocaleString()} baseline-only</td><td>${attribution.runOnlyCount.toLocaleString()} runner-only</td><td><b style="color:${_pnlc(attribution.capacityDelta)}">${signedMoney(attribution.capacityDelta)}</b></td></tr>
+        <tr><td>Target-lock integrity</td><td>${tgt.length.toLocaleString()} normal target hits</td><td>${(tgt.length-back).toLocaleString()} protected at/above target</td><td><b style="color:${targetLockValid?'var(--bull)':'var(--bear)'}">${back.toLocaleString()} below target</b></td></tr>
+        <tr><td>Attribution reconciliation</td><td colspan="2">End-wallet difference minus exit and capacity impacts</td><td><b style="color:${attribution.reconciled?'var(--bull)':'var(--bear)'}">${signedMoney(attribution.reconciliation)} unexplained</b></td></tr>
       </tbody></table></div>
       <div class="muted" style="font-size:12px;margin-top:8px">Across all eligible trades, the trailing result was better on <b>${improvedTrades.toLocaleString()}</b>, equal on <b>${sameTrades.toLocaleString()}</b>, and worse on <b>${worseTrades.toLocaleString()}</b>. Of <b>${tgt.length.toLocaleString()}</b> normal target hits, <b>${ran.toLocaleString()}</b> ran further and <b>${back.toLocaleString()}</b> finished below the normal target result.</div>
       ${big.length?`<div class="muted" style="font-size:12px;margin-top:6px"><b>Largest per-trade improvements (not the portfolio verdict):</b> ${big.map(r=>`${_esc(r.name||disp(r.ticker))} ${r.perf>0?'+':''}${r.perf}%→${r.run_perf>0?'+':''}${r.run_perf}%`).join(' · ')}</div>`:''}
@@ -4447,7 +4461,8 @@ function renderBestCombo(all){
   // ranks on. Deliberately NOT run through choose()'s difference bar: the DEFINING property here is the
   // sample-size floor, not being unlike the other cards, so it shows the genuine best at that threshold
   // even if it coincides with another card. Guarded (&&) so each card only appears when the data supports
-  // a config above that floor.
+  // a config above that floor. Unsupported thresholds remain visible as evidence-status cards below rather
+  // than disappearing and looking like a render fault.
   const trades250=_bestSettingsByFundedTrades(basePool,250), trades500=_bestSettingsByFundedTrades(basePool,500);
   const choices=[
     ["Balanced",best,"Best return relative to drawdown, with quarterly consistency included.","var(--bull)"],
@@ -4474,7 +4489,13 @@ function renderBestCombo(all){
       <div class="muted" style="font-size:10px;margin-top:7px;line-height:1.4"><b style="color:var(--fg)">Changes:</b> ${changedFor(x)}</div>
       <button class="btn" style="margin-top:8px" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">⬇ Apply this configuration</button>
     </div></div>`).join('');
-  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}</div>
+  const unsupportedCards=[
+    !trades250&&[">250 trades",250,"#a371f7"],!trades500&&[">500 trades",500,"#1f6feb"]
+  ].filter(Boolean).map(([label,min,colour])=>`<div class="fcard" data-choice-unavailable="${label}" style="min-width:240px;flex:1;border-top:3px solid ${colour};opacity:.8" title="No tested annual configuration funded strictly more than ${min} trades">
+    <h3 style="color:${colour}">${label}</h3><div class="muted" style="font-size:11px;min-height:30px">Evidence threshold not met by the current annual dataset.</div>
+    <div class="body"><b style="font-size:15px;color:#d29922">No supported recommendation</b><div class="muted" style="font-size:11px;margin-top:5px">None of the tested configurations funded strictly more than ${min} trades. The card remains visible so an evidence shortfall is not mistaken for a missing feature.</div></div>
+  </div>`).join('');
+  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}</div>
   <div class="card" style="margin:0" id="best-detail"></div>`;
   BEST_CHOICES=choices; BEST_MODEL_W=w;
   // Detail card follows whichever choice is clicked (user 2026-08-07, ChangeRequest P-06); defaults to
@@ -4770,7 +4791,7 @@ function paintInstrFunnel(){
 let SQH=null, sqhSortK="triggered_date", sqhSortDir=-1;   // default: Triggered date descending (user 2026-08-01); header click changes it
 function renderSqueezeHist(){
   if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr>';}
-  fetch("/api/squeeze-history").then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];paintSqueezeHist();})
+  fetch("/api/squeeze-history").then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];const f=$("sqh-freshness");if(f)f.textContent=j.data_through?`data through ${j.data_through}${j.refreshed_at?` · refreshed ${String(j.refreshed_at).replace('T',' ').slice(0,16)} UTC`:''}`:'';paintSqueezeHist();})
     .catch(()=>{SQH=[];paintSqueezeHist();});
 }
 // Header sort (user 2026-07-18, P-01): click toggles asc/desc on that column; "" restores server order.

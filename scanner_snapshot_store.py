@@ -151,6 +151,21 @@ def _request(method: str, url: str, **kwargs):
     return response
 
 
+def _bucket_is_missing(response) -> bool:
+    """Supabase Storage wraps NoSuchBucket as HTTP 400 with an inner 404 code."""
+    if response.status_code == 404:
+        return True
+    if response.status_code != 400:
+        return False
+    try:
+        body = response.json() if response.content else {}
+    except (TypeError, ValueError):
+        body = {}
+    code = str(body.get("statusCode") or body.get("status") or "")
+    detail = " ".join(str(body.get(key) or "") for key in ("error", "message")).lower()
+    return code == "404" and "bucket" in detail and "not found" in detail
+
+
 def ensure_private_bucket() -> str:
     """Create the private bucket when absent; never changes an existing bucket."""
     bucket = _bucket()
@@ -161,7 +176,7 @@ def ensure_private_bucket() -> str:
         if body.get("public") is True:
             raise SnapshotStoreError(f"Storage bucket {bucket!r} exists but is public")
         return bucket
-    if response.status_code != 404:
+    if not _bucket_is_missing(response):
         raise SnapshotStoreError(f"could not inspect Storage bucket ({response.status_code})")
     response = _request(
         "POST", f"{base}/bucket", headers=_headers("publish", "application/json"),

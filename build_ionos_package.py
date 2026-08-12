@@ -13,11 +13,17 @@ def include_path(relative: Path) -> bool:
     parts = relative.parts
     if not parts:
         return False
+    # The admin Change Requests tab reads these source-of-record registers at runtime. They are protected
+    # by the API's admin gate and the root .htaccess denial for direct .txt requests.
+    if parts[0] == "ChangeRequests":
+        return len(parts) == 2 and relative.suffix.lower() == ".txt"
     if parts[0] in {
         ".git", ".github", ".claude", ".obsidian", ".pytest_cache", ".venv", "node_modules",
-        "ChangeRequests", "aa_images", "dossier", "x_drafts", "tests_fixtures", "skills_src", "dist",
+        "aa_images", "dossier", "x_drafts", "tests_fixtures", "skills_src", "dist",
         "data",
     }:
+        return False
+    if parts[0].startswith(".pytest_"):
         return False
     if "__pycache__" in parts or "price_cache" in parts:
         return False

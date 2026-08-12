@@ -830,10 +830,11 @@ CRED_SECTIONS = [
                 ("slack_bot_token", "Bot token (file uploads)", "SLACK_BOT_TOKEN"),
                 ("slack_signals_channel_id", "#signals channel ID", "SLACK_SIGNALS_CHANNEL_ID"),
                 ("slack_twitter_channel_id", "#twitter channel ID", "SLACK_TWITTER_CHANNEL_ID")]},
-    {"id": "Server", "scope": "app", "admin_only": True, "note": "Server-side data API keys.",
+    {"id": "Server", "scope": "app", "admin_only": True, "note": "Server-side data API keys and narrowly scoped automation credentials.",
      "fields": [("fred_api_key", "FRED API key", "FRED_API_KEY"), ("eia_api_key", "EIA API key", "EIA_API_KEY"),
                 ("quiver_quant_api_key", "Quiver Quant API key", "QUIVER_QUANT_API_KEY"),
-                ("cronjob_api_key", "cron-job.org API key", "CRONJOB_API_KEY")]},
+                ("cronjob_api_key", "cron-job.org API key", "CRONJOB_API_KEY"),
+                ("gh_pat", "GitHub workflow dispatch token (Actions: write; this repository only)", "GH_PAT")]},
     {"id": "Email (Yahoo)", "scope": "app", "admin_only": False, "note": "Yahoo SMTP account for outbound email.",
      "fields": [("yahoo_user", "Yahoo user", "YAHOO_USER"), ("yahoo_app_password", "Yahoo app password", "YAHOO_APP_PASSWORD")]},
 ]
@@ -1532,6 +1533,8 @@ def api_working_orders():
 
 
 _REFRESHING = {"on": False, "mode": None, "requested_at": 0.0, "base_generated": None}
+_SCANNER_CRON_TITLE = "Scanner Snapshot Refresh"
+_SCANNER_ON_DEMAND_TITLE = "Scanner Snapshot Refresh On Demand"
 
 
 def _do_rebuild(markets=None) -> bool:
@@ -1555,30 +1558,98 @@ def _do_rebuild(markets=None) -> bool:
         _REFRESHING["on"] = False
 
 
+def _dispatch_via_cron_broker(api_key: str, markets=None) -> str:
+    """Schedule one expiring cron-job.org dispatch, reusing its existing GitHub credential.
+
+    cron-job.org has no run-now REST method. A fixed on-demand job is therefore scheduled two minutes ahead
+    and expires shortly afterwards. Later clicks reschedule the same job, so requests do not accumulate jobs
+    or expose a GitHub token on the web host.
+    """
+    import datetime as _dt
+    import json as _json
+    import requests
+
+    endpoint = "https://api.cron-job.org"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    jobs_response = requests.get(f"{endpoint}/jobs", headers=headers, timeout=20)
+    jobs_response.raise_for_status()
+    jobs = jobs_response.json().get("jobs", [])
+    by_title = {job.get("title"): job.get("jobId") for job in jobs}
+    target_id = by_title.get(_SCANNER_ON_DEMAND_TITLE)
+    source_id = target_id or by_title.get(_SCANNER_CRON_TITLE)
+    if not source_id:
+        raise RuntimeError("cron-job.org Scanner dispatcher was not found")
+
+    detail_response = requests.get(f"{endpoint}/jobs/{int(source_id)}", headers=headers, timeout=20)
+    detail_response.raise_for_status()
+    source = detail_response.json().get("jobDetails") or {}
+    expected_tail = "/actions/workflows/trading-scanner-snapshot.yml/dispatches"
+    if not str(source.get("url") or "").endswith(expected_tail):
+        raise RuntimeError("cron-job.org Scanner dispatcher URL did not match the expected workflow")
+    extended = dict(source.get("extendedData") or {})
+    auth_headers = dict(extended.get("headers") or {})
+    if not str(auth_headers.get("Authorization") or "").startswith("Bearer "):
+        raise RuntimeError("cron-job.org Scanner dispatcher has no reusable GitHub authorization header")
+    extended["headers"] = auth_headers
+    extended["body"] = _json.dumps({"ref": os.environ.get("GITHUB_REF_NAME", "main"),
+                                     "inputs": {"markets": ",".join(markets or [])}}, separators=(",", ":"))
+
+    run_at = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(minutes=2)).replace(second=0, microsecond=0)
+    expires = run_at + _dt.timedelta(minutes=3)
+    schedule = {"timezone": "UTC", "expiresAt": int(expires.strftime("%Y%m%d%H%M%S")),
+                "minutes": [run_at.minute], "hours": [run_at.hour], "mdays": [run_at.day],
+                "months": [run_at.month], "wdays": [-1]}
+    delta = {"enabled": True, "schedule": schedule, "extendedData": extended}
+    if target_id:
+        response = requests.patch(f"{endpoint}/jobs/{int(target_id)}", headers=headers,
+                                  json={"job": delta}, timeout=20)
+    else:
+        create = {key: source[key] for key in ("url", "saveResponses", "requestTimeout", "redirectSuccess",
+                                                "folderId", "requestMethod", "auth", "notification") if key in source}
+        create.update(delta)
+        create["title"] = _SCANNER_ON_DEMAND_TITLE
+        response = requests.put(f"{endpoint}/jobs", headers=headers, json={"job": create}, timeout=20)
+    response.raise_for_status()
+    return run_at.isoformat()
+
+
 def _dispatch_snapshot_rebuild(markets=None) -> bool:
     """Dispatch the external publisher so the web host never performs the heavy scan."""
-    try:
-        import app_secrets
-        token = app_secrets.get_secret("GH_PAT") or app_secrets.get_secret("GITHUB_TOKEN")
-        if not token:
-            raise RuntimeError("no GitHub dispatch token configured")
-        import requests
-        repo = os.environ.get("GITHUB_REPO", "Red7Al/ClaudeCode")
-        response = requests.post(
-            f"https://api.github.com/repos/{repo}/actions/workflows/trading-scanner-snapshot.yml/dispatches",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
-                     "X-GitHub-Api-Version": "2022-11-28"},
-            json={"ref": os.environ.get("GITHUB_REF_NAME", "main"),
-                  "inputs": {"markets": ",".join(markets or [])}}, timeout=20,
-        )
-        response.raise_for_status()
-        snap = _load_snapshot()
-        _REFRESHING.update(on=True, mode="external", requested_at=_time.time(),
-                           base_generated=snap.get("generated_utc"))
-        return True
-    except Exception as exc:
-        log.error(f"external Scanner refresh dispatch failed: {exc}")
-        return False
+    import app_secrets
+    import requests
+
+    errors = []
+    token = app_secrets.get_secret("GH_PAT") or app_secrets.get_secret("GITHUB_TOKEN")
+    if token:
+        try:
+            repo = os.environ.get("GITHUB_REPO", "Red7Al/ClaudeCode")
+            response = requests.post(
+                f"https://api.github.com/repos/{repo}/actions/workflows/trading-scanner-snapshot.yml/dispatches",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                         "X-GitHub-Api-Version": "2022-11-28"},
+                json={"ref": os.environ.get("GITHUB_REF_NAME", "main"),
+                      "inputs": {"markets": ",".join(markets or [])}}, timeout=20,
+            )
+            response.raise_for_status()
+            worker, queued_for = "GitHub Actions", None
+        except Exception as exc:
+            errors.append(f"direct GitHub dispatch: {exc}")
+            token = None
+    if not token:
+        try:
+            cron_key = app_secrets.get_secret("CRONJOB_API_KEY")
+            if not cron_key:
+                raise RuntimeError("no cron-job.org API key configured")
+            queued_for = _dispatch_via_cron_broker(cron_key, markets)
+            worker = "cron-job.org → GitHub Actions"
+        except Exception as exc:
+            errors.append(f"cron-job.org dispatch: {exc}")
+            log.error("external Scanner refresh dispatch failed: " + "; ".join(errors))
+            return False
+    snap = _load_snapshot()
+    _REFRESHING.update(on=True, mode="external", worker=worker, queued_for=queued_for,
+                       requested_at=_time.time(), base_generated=snap.get("generated_utc"))
+    return True
 
 
 @app.route("/api/refresh", methods=["POST", "GET"])
@@ -1609,7 +1680,9 @@ def api_refresh():
     if not _dispatch_snapshot_rebuild(markets):
         _append_batch("Refresh button", "External Scanner rebuild dispatch failed", by=name)
         return jsonify({"started": False, "error": "external refresh could not be queued"}), 503
-    return jsonify({"started": True, "queued": True, "worker": "GitHub Actions", "markets": markets})
+    return jsonify({"started": True, "queued": True, "worker": _REFRESHING.get("worker"),
+                    "queued_for": _REFRESHING.get("queued_for"), "markets": markets,
+                    "base_generated": _REFRESHING.get("base_generated")})
 
 
 @app.route("/api/status")
@@ -1619,13 +1692,14 @@ def api_status():
         advanced = snap.get("generated_utc") and snap.get("generated_utc") != _REFRESHING.get("base_generated")
         expired = _time.time() - float(_REFRESHING.get("requested_at") or 0) > 2 * 3600
         if advanced or expired:
-            _REFRESHING.update(on=False, mode=None, requested_at=0.0, base_generated=None)
+            _REFRESHING.update(on=False, mode=None, worker=None, queued_for=None,
+                               requested_at=0.0, base_generated=None)
             if advanced:
                 _PNG_CACHE.clear()
     resp = {"refreshing": _REFRESHING["on"], "generated_utc": snap.get("generated_utc"),
             "count": snap.get("count")}
     if _REFRESHING["on"] and _REFRESHING.get("mode") == "external":
-        resp["worker"] = "GitHub Actions"
+        resp["worker"] = _REFRESHING.get("worker") or "GitHub Actions"
         resp["queued"] = True
     elif _REFRESHING["on"]:                   # local development build progress
         try:
@@ -3290,12 +3364,19 @@ def api_winners_run():
 def api_squeeze_history():
     """Lifecycle history of squeeze funnels (user 2026-07-18, Squeeze History (Admin) tab): each funnel's
     developing → ready → triggered → outcome journey, replayed over price history. Newest first."""
-    payload = {"rows": [], "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
+    payload = {"rows": [], "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+               "refreshed_at": None, "data_through": None}
     try:
         snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
         from db_pool import get_db
         db = get_db()
         try:
+            freshness = db.run(
+                "select max(refreshed_at), greatest(max(last_seen),max(triggered_date),max(outcome_date)) "
+                "from squeeze_history") or []
+            if freshness:
+                payload["refreshed_at"] = str(freshness[0][0]) if freshness[0][0] else None
+                payload["data_through"] = str(freshness[0][1]) if freshness[0][1] else None
             raw = db.run(
                 "select ticker, market, timeframe, hvf_type, first_seen, first_signal, ready_date, "
                 "triggered_date, outcome, outcome_date, return_pct, quality, risk_reward "

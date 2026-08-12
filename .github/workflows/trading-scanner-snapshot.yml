@@ -10,6 +10,10 @@ on:
         required: false
         default: ''
 
+concurrency:
+  group: scanner-snapshot-publish
+  cancel-in-progress: false
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   SUPABASE_USER:                    ${{ secrets.SUPABASE_USER }}

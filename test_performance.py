@@ -89,6 +89,12 @@ def test_performance_has_dedicated_let_winners_run_tab():
     assert '_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"perf",false)' in html
     assert '_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"run_perf",false)' in html
     assert "Evidence verdict: ${verdictTitle}" in html
+    assert "function _winnerRunAttribution(plainReplay,runReplay,wallet)" in html
+    assert "Evidence invalid — integrity check failed" in html
+    assert "Exit-method impact · funded in both" in html
+    assert "Capacity impact · funded in only one" in html
+    assert "Target-lock integrity" in html
+    assert "Attribution reconciliation" in html
     assert "Maximum drawdown" in html
     assert "Funded / eligible trades" in html
     assert "Missed through constraints" in html
@@ -150,6 +156,9 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert 'trades500=_bestSettingsByFundedTrades(basePool,500)' in html
     assert '[">250 trades",trades250' in html
     assert '[">500 trades",trades500' in html
+    assert 'data-choice-unavailable="${label}"' in html
+    assert "Evidence threshold not met by the current annual dataset." in html
+    assert "No supported recommendation" in html
     assert '<b style="color:var(--fg)">Changes:</b>' in html
     assert "Apply this configuration" in html
     assert 'onclick="selectBestChoice(' in html
@@ -277,6 +286,34 @@ def test_let_winners_run_verdict_requires_a_strict_return_improvement():
     assert worse["verdict"] == "worse"
     assert below_half_penny["runFinal"] - below_half_penny["plainFinal"] < 0.005
     assert below_half_penny["verdict"] == "equal"
+
+
+def test_let_winners_run_attribution_separates_exit_and_capacity_effects():
+    """The displayed decomposition keeps exit effects separate from funding-capacity effects."""
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    match = re.search(
+        r"function _winnerRunAttribution\(plainReplay,runReplay,wallet\)\{.*?\n\}",
+        html,
+        re.S,
+    )
+    assert match, "Let Winners Run attribution helper is missing"
+    script = (
+        match.group(0)
+        + "\nconst common={perf:10,run_perf:15},plainOnly={perf:20,run_perf:25},runOnly={perf:5,run_perf:30};"
+        + "const plain={ret:.06,proof:[{r:common,placed:true,stake:.02},{r:plainOnly,placed:true,stake:.02},{r:runOnly,placed:false,stake:.02}]};"
+        + "const run={ret:.09,proof:[{r:common,placed:true,stake:.02},{r:plainOnly,placed:false,stake:.02},{r:runOnly,placed:true,stake:.02}]};"
+        + "console.log(JSON.stringify(_winnerRunAttribution(plain,run,1000)));"
+    )
+    completed = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True, timeout=20)
+    result = json.loads(completed.stdout)
+
+    assert result["commonCount"] == result["plainOnlyCount"] == result["runOnlyCount"] == 1
+    assert abs(result["commonExitDelta"] - 1) < 1e-9
+    assert abs(result["capacityDelta"] - 2) < 1e-9
+    assert abs(result["totalDelta"] - 30) < 1e-9
+    # Deliberately inconsistent synthetic totals prove that reconciliation is explicit and visible to tests.
+    assert abs(result["reconciliation"] - 27) < 1e-9
+    assert result["reconciled"] is False
 
 
 def test_let_winners_run_never_gives_back_below_bull_target(monkeypatch):

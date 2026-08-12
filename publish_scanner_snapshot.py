@@ -43,6 +43,10 @@ def main() -> int:
         verified = store.verify_current()
         if verified["sha256"] != meta["sha256"]:
             raise store.SnapshotStoreError("published snapshot verification selected a different version")
+        # Reuse the completed scan to keep the Supabase-backed lifecycle history current without another
+        # full 15-month universe replay. This advances OPEN/NEVER_TRIGGERED rows from price_history too.
+        from squeeze_history import refresh_daily
+        refresh_daily(snapshot)
         result = meta
     elif args.publish:
         result = store.publish_snapshot_file(args.snapshot, source=args.source)

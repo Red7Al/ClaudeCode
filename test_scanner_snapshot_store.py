@@ -61,6 +61,40 @@ def test_publish_uploads_immutable_object_before_advancing_pointer(monkeypatch):
     assert meta["version_id"] == 7 and meta["record_count"] == 1
 
 
+def test_missing_bucket_uses_supabase_inner_404_and_is_created_private(monkeypatch):
+    calls = []
+    missing = _Response(
+        400,
+        content=b'{"statusCode":"404","error":"Bucket not found","message":"Bucket not found"}',
+        body={"statusCode": "404", "error": "Bucket not found", "message": "Bucket not found"},
+    )
+    monkeypatch.setattr(store, "_bucket", lambda: "scanner-artifacts")
+    monkeypatch.setattr(store, "_project_url", lambda: "https://example.supabase.co")
+    monkeypatch.setattr(store, "_headers", lambda *a, **k: {"apikey": "redacted"})
+
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return missing if method == "GET" else _Response(200)
+
+    monkeypatch.setattr(store, "_request", request)
+
+    assert store.ensure_private_bucket() == "scanner-artifacts"
+    assert [call[0] for call in calls] == ["GET", "POST"]
+    assert calls[1][2]["json"]["public"] is False
+
+
+def test_unrelated_bucket_http_400_is_not_treated_as_missing(monkeypatch):
+    response = _Response(400, content=b'{"statusCode":"400","message":"Invalid request"}',
+                         body={"statusCode": "400", "message": "Invalid request"})
+    monkeypatch.setattr(store, "_bucket", lambda: "scanner-artifacts")
+    monkeypatch.setattr(store, "_project_url", lambda: "https://example.supabase.co")
+    monkeypatch.setattr(store, "_headers", lambda *a, **k: {"apikey": "redacted"})
+    monkeypatch.setattr(store, "_request", lambda *a, **k: response)
+
+    with pytest.raises(store.SnapshotStoreError, match=r"inspect Storage bucket \(400\)"):
+        store.ensure_private_bucket()
+
+
 def test_download_rejects_object_before_json_parse_when_checksum_differs(monkeypatch):
     data = json.dumps(_snapshot(), separators=(",", ":")).encode()
     meta = {
@@ -96,6 +130,8 @@ def test_new_scanner_workflow_is_external_and_has_no_github_schedule():
     assert "schedule:" not in text
     assert "publish_scanner_snapshot.py --build" in text
     assert "SUPABASE_SCANNER_PUBLISH_KEY" in text
+    assert "group: scanner-snapshot-publish" in text
+    assert "cancel-in-progress: false" in text
 
 
 def test_web_refresh_dispatches_worker_without_running_local_builder(monkeypatch):
@@ -116,6 +152,47 @@ def test_web_refresh_dispatches_worker_without_running_local_builder(monkeypatch
     assert calls[0][0].endswith("/actions/workflows/trading-scanner-snapshot.yml/dispatches")
     assert calls[0][1]["json"]["inputs"] == {"markets": "FTSE 100"}
     assert server._REFRESHING["mode"] == "external"
+
+
+def test_web_refresh_uses_expiring_cron_broker_when_github_token_is_absent(monkeypatch):
+    calls = []
+
+    class Response:
+        def __init__(self, body=None):
+            self.body = body or {}
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.body
+
+    monkeypatch.setattr("app_secrets.get_secret", lambda name: "cron-key" if name == "CRONJOB_API_KEY" else "")
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": "2026-08-12T10:14:25+00:00"})
+    monkeypatch.setitem(server._REFRESHING, "on", False)
+
+    def get(url, **kwargs):
+        calls.append(("GET", url, kwargs))
+        if url.endswith("/jobs"):
+            return Response({"jobs": [{"title": "Scanner Snapshot Refresh", "jobId": 8257085}]})
+        return Response({"jobDetails": {
+            "url": "https://api.github.com/repos/Red7Al/ClaudeCode/actions/workflows/trading-scanner-snapshot.yml/dispatches",
+            "saveResponses": False, "requestMethod": 1,
+            "extendedData": {"headers": {"Authorization": "Bearer opaque", "Content-Type": "application/json"},
+                             "body": '{"ref":"main"}'},
+        }})
+
+    monkeypatch.setattr("requests.get", get)
+    monkeypatch.setattr("requests.put", lambda url, **kwargs: calls.append(("PUT", url, kwargs)) or Response({"jobId": 9}))
+    monkeypatch.setattr("requests.post", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no direct dispatch")))
+
+    assert server._dispatch_snapshot_rebuild(["FTSE 100"]) is True
+    put = next(call for call in calls if call[0] == "PUT")
+    job = put[2]["json"]["job"]
+    assert job["title"] == "Scanner Snapshot Refresh On Demand"
+    assert job["schedule"]["expiresAt"] > 0
+    assert json.loads(job["extendedData"]["body"])["inputs"] == {"markets": "FTSE 100"}
+    assert server._REFRESHING["worker"] == "cron-job.org → GitHub Actions"
 
 
 def test_daily_report_reuses_scan_for_snapshot_publication():

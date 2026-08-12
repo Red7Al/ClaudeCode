@@ -1095,6 +1095,8 @@ def _publish_scanner_snapshot(all_results: dict) -> None:
     verified = verify_current()
     if verified.get("sha256") != meta.get("sha256"):
         raise RuntimeError("Scanner snapshot publication did not read-verify the new version")
+    from squeeze_history import refresh_daily
+    refresh_daily(snapshot)
     log.info(f"Scanner snapshot published: {meta['record_count']} records, version {meta['version_id']}")
 
 

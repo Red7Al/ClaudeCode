@@ -156,9 +156,11 @@ def test_ionos_package_manifest_excludes_private_and_development_files(tmp_path)
     assert "hvf_web/index.html" in included
     assert "hvf_web/snapshot.json" in included
     assert "docs/guides/_manifest.json" in included
+    assert "ChangeRequests/20260807-ToDo-Claude.txt" in included
     assert "data/web_users.json" not in included
     assert "data/.web_users.key" not in included
     assert "hvf_web/name_cache.json" not in included
+    assert build_ionos_package.include_path(Path(".pytest_scanner_tmp/candidate.json")) is False
     assert "sector_cache.json" not in included
     assert "test_performance.py" not in included
     assert ".github.zip" not in included
@@ -180,7 +182,7 @@ def test_ionos_shared_hosting_routes_only_api_to_protected_cgi_adapter():
     assert "RewriteRule ^api" in htaccess and "cgi-bin/app.py/api/$1" in htaccess
     assert "data|docs|\\.venv_linux" in htaccess
     assert "THE_REQUEST" in htaccess
-    for suffix in ("json", "log", "zip", "docx", "pkl"):
+    for suffix in ("json", "log", "zip", "docx", "pkl", "txt"):
         assert suffix in htaccess
     assert 'RewriteRule ^cgi-bin/ - [F,L]' in htaccess
     assert 'ROOT = Path(__file__).resolve().parents[1]' in adapter
@@ -201,3 +203,25 @@ def test_scanner_actionable_not_history_note_is_prominent_and_documented():
     guide_html = (build_ionos_package.ROOT / "docs" / "guides" / "user-guide-getting-around.html").read_text(encoding="utf-8")
     assert "not a history" in guide_source and "actionable" in guide_source
     assert "not a history" in guide_html and "actionable" in guide_html
+
+
+def test_scanner_defaults_to_absolute_distance_from_entry_ascending_and_refresh_errors_are_visible():
+    html = (build_ionos_package.ROOT / "hvf_web" / "index.html").read_text(encoding="utf-8")
+
+    assert 'sortK="dist_entry", sortDir=1' in html
+    assert "ABS(Dist→Entry) ascending (closest first)" in html
+    assert "sorted closest-first" in html
+    assert "!x.ok||!j.started" in html
+    assert "j.base_generated||null" in html
+    assert "Queued/running on GitHub Actions" in html
+
+
+def test_adaptive_filters_ui_is_removed_but_compatibility_field_is_preserved():
+    html = (build_ionos_package.ROOT / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    server = (build_ionos_package.ROOT / "hvf_web" / "server.py").read_text(encoding="utf-8")
+
+    assert "🎯 Adaptive Filters" not in html
+    assert 'data-panel="adaptive"' not in html
+    assert "lim-rebalance_weeks" not in html
+    assert "lim.adaptive_filters=0" in html
+    assert 'cur["adaptive_filters"] = 0' in server

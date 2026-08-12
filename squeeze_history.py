@@ -36,6 +36,7 @@
 import argparse
 import datetime as dt
 import logging
+from collections import defaultdict
 
 log = logging.getLogger("squeeze_history")
 
@@ -65,8 +66,10 @@ _DDL = [
         return_pct     double precision,
         rvol           double precision,
         source         text default 'replay',
+        refreshed_at   timestamptz not null default now(),
         recorded_at    timestamptz not null default now()
     )""",
+    "alter table squeeze_history add column if not exists refreshed_at timestamptz not null default now()",
     # Same funnel-instance identity as hvf_triggers, so replay and live recording agree on what "one funnel" is.
     """create unique index if not exists uq_squeeze_history_instance
        on squeeze_history (ticker, coalesce(timeframe,''), coalesce(h3_date,'1900-01-01'),
@@ -228,26 +231,150 @@ def replay_ticker(ticker: str, market: str, months: int = 15):
     return out
 
 
-def store(db, rows: list) -> int:
-    """UPSERT funnels. ON CONFLICT DO NOTHING on the instance key, so re-running is a no-op and a
-    live-recorded funnel is never duplicated by the replay."""
-    new = 0
+def store(db, rows: list, update_existing: bool = False) -> int:
+    """Store funnels without duplicating an instance.
+
+    The historical backfill keeps its original insert-only behaviour. The daily current-snapshot path uses
+    ``update_existing`` to advance mutable lifecycle fields while preserving the earliest first-seen/ready
+    evidence already recorded for that funnel.
+    """
+    changed = 0
     cols = ("ticker", "market", "timeframe", "hvf_type", "h1_level", "h2_level", "h3_level",
             "l1_level", "l2_level", "l3_level", "h1_date", "h2_date", "h3_date", "l1_date", "l2_date",
             "l3_date", "entry_level", "stop_level", "target_level", "quality", "risk_reward",
             "long_trend", "first_seen", "last_seen", "first_signal", "ready_date", "triggered_date",
             "outcome", "outcome_date", "return_pct", "rvol")
     ph = ",".join(f":{c}" for c in cols)
-    sql = (f"insert into squeeze_history ({','.join(cols)}) values ({ph}) "
-           f"on conflict (ticker, coalesce(timeframe,''), coalesce(h3_date,'1900-01-01'), "
-           f"coalesce(l3_date,'1900-01-01')) do nothing returning id")
+    conflict = ("on conflict (ticker, coalesce(timeframe,''), coalesce(h3_date,'1900-01-01'), "
+                "coalesce(l3_date,'1900-01-01')) ")
+    if update_existing:
+        conflict += """do update set
+            market=coalesce(excluded.market,squeeze_history.market),
+            hvf_type=coalesce(excluded.hvf_type,squeeze_history.hvf_type),
+            entry_level=coalesce(excluded.entry_level,squeeze_history.entry_level),
+            stop_level=coalesce(excluded.stop_level,squeeze_history.stop_level),
+            target_level=coalesce(excluded.target_level,squeeze_history.target_level),
+            quality=coalesce(excluded.quality,squeeze_history.quality),
+            risk_reward=coalesce(excluded.risk_reward,squeeze_history.risk_reward),
+            last_seen=case when squeeze_history.last_seen is null then excluded.last_seen
+                           when excluded.last_seen is null then squeeze_history.last_seen
+                           else greatest(squeeze_history.last_seen,excluded.last_seen) end,
+            first_seen=case when squeeze_history.first_seen is null then excluded.first_seen
+                            when excluded.first_seen is null then squeeze_history.first_seen
+                            else least(squeeze_history.first_seen,excluded.first_seen) end,
+            first_signal=coalesce(squeeze_history.first_signal,excluded.first_signal),
+            ready_date=case when squeeze_history.ready_date is null then excluded.ready_date
+                            when excluded.ready_date is null then squeeze_history.ready_date
+                            else least(squeeze_history.ready_date,excluded.ready_date) end,
+            refreshed_at=now() returning id"""
+    else:
+        conflict += "do nothing returning id"
+    sql = f"insert into squeeze_history ({','.join(cols)}) values ({ph}) {conflict}"
     for r in rows:
         try:
             if db.run(sql, **{c: r.get(c) for c in cols}):
-                new += 1
+                changed += 1
         except Exception as e:
             log.warning(f"store failed {r.get('ticker')}: {e}")
-    return new
+    return changed
+
+
+def _snapshot_rows(snapshot: dict) -> list:
+    """Convert the current Scanner's signal records into history-compatible funnel instances."""
+    generated = str((snapshot or {}).get("generated_utc") or dt.datetime.now(dt.timezone.utc).isoformat())[:10]
+    rows = []
+    for record in (snapshot or {}).get("records", []):
+        if not record.get("has_signal"):
+            continue
+        card = record.get("_card") or {}
+        status = str(record.get("status") or card.get("hvf_signal") or "DEVELOPING").upper()
+        row = {
+            "ticker": record.get("ticker"), "market": record.get("market"),
+            "timeframe": record.get("timeframe") or card.get("hvf_timeframe"),
+            "hvf_type": card.get("hvf_type") or ("BULLISH" if record.get("direction") == "BULL" else "BEARISH"),
+            "entry_level": record.get("entry") or card.get("h3_level"),
+            "stop_level": record.get("stop") or card.get("stop_level"),
+            "target_level": record.get("target") or card.get("target"),
+            "quality": record.get("quality"), "risk_reward": record.get("rr") or card.get("risk_reward"),
+            "long_trend": None, "first_seen": generated, "last_seen": generated,
+            "first_signal": status, "ready_date": generated if status in {"READY", "TRIGGERED"} else None,
+            "triggered_date": None, "outcome": "NEVER_TRIGGERED", "outcome_date": None,
+            "return_pct": None, "rvol": None,
+        }
+        for pivot in ("h1", "h2", "h3", "l1", "l2", "l3"):
+            row[f"{pivot}_level"] = card.get(f"{pivot}_level")
+            row[f"{pivot}_date"] = card.get(f"{pivot}_date") or record.get(f"{pivot}_date")
+        pivot_dates = [row[f"{pivot}_date"] for pivot in ("h3", "l3") if row[f"{pivot}_date"]]
+        if status in {"READY", "TRIGGERED"} and pivot_dates:
+            row["ready_date"] = max(pivot_dates)
+        if row["ticker"] and row["h3_date"] and row["l3_date"]:
+            rows.append(row)
+    return rows
+
+
+def _price_bars(db, tickers: list, start: str) -> dict:
+    """Fetch active-history bars in bounded batches to avoid one enormous IN expression."""
+    by_ticker = defaultdict(list)
+    for offset in range(0, len(tickers), 100):
+        batch = tickers[offset:offset + 100]
+        params = {f"t{i}": ticker for i, ticker in enumerate(batch)}
+        slots = ",".join(f":t{i}" for i in range(len(batch)))
+        raw = db.run(
+            f"select ticker,bar_date,high,low,close,volume from price_history "
+            f"where bar_date >= :start and ticker in ({slots}) order by ticker,bar_date",
+            start=start, **params) or []
+        for ticker, bar_date, high, low, close, volume in raw:
+            by_ticker[ticker].append((bar_date, high, low, close, volume))
+    return by_ticker
+
+
+def refresh_daily(snapshot: dict) -> dict:
+    """Incrementally refresh current funnels plus all unresolved lifecycle rows from price_history."""
+    from db_pool import get_db
+    db = get_db()
+    try:
+        ensure_schema(db)
+        current = _snapshot_rows(snapshot)
+        current_changed = store(db, current, update_existing=True)
+        active = db.run(
+            "select id,ticker,hvf_type,entry_level,stop_level,target_level,h3_date,l3_date,ready_date,"
+            "triggered_date,outcome from squeeze_history where outcome is null or outcome in ('OPEN','NEVER_TRIGGERED')") or []
+        tickers = sorted({row[1] for row in active if row[1]})
+        start = (dt.date.today() - dt.timedelta(days=18 * 31)).isoformat()
+        bars_by_ticker = _price_bars(db, tickers, start) if tickers else {}
+        refreshed = 0
+        data_through = None
+        for row_id, ticker, hvf_type, entry, stop, target, h3d, l3d, ready_date, triggered_date, _outcome in active:
+            bars = bars_by_ticker.get(ticker) or []
+            if not bars or None in (entry, stop, target):
+                continue
+            last_bar = str(bars[-1][0])[:10]
+            data_through = max(data_through or last_bar, last_bar)
+            pivot_dates = [v for v in (ready_date, h3d, l3d) if v]
+            ready = max(pivot_dates) if pivot_dates else None
+            ready = dt.date.fromisoformat(str(ready)[:10]) if ready else None
+            td = triggered_date
+            if td is None:
+                td = _trigger_date(hvf_type == "BULLISH", float(entry), ready, bars)
+            rvol = None
+            if td is None:
+                outcome, outcome_date, return_pct = "NEVER_TRIGGERED", None, None
+            else:
+                idx = next((i for i, bar in enumerate(bars) if str(bar[0])[:10] == str(td)[:10]), None)
+                if idx is None:
+                    continue
+                outcome, outcome_date, return_pct = _exit_outcome(
+                    hvf_type == "BULLISH", float(entry), float(stop), float(target), bars[idx + 1:])
+                rvol = _rvol_at(bars, td)
+            db.run("update squeeze_history set triggered_date=:td,outcome=:outcome,outcome_date=:od,"
+                   "return_pct=:ret,rvol=coalesce(:rvol,rvol),refreshed_at=now() where id=:id",
+                   td=td, outcome=outcome, od=outcome_date,
+                   ret=(round(return_pct, 2) if return_pct is not None else None), rvol=rvol, id=row_id)
+            refreshed += 1
+        return {"current_funnels": len(current), "current_upserts": current_changed,
+                "active_refreshed": refreshed, "data_through": data_through}
+    finally:
+        db.close()
 
 
 def main():
