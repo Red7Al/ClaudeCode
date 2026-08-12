@@ -205,7 +205,8 @@ _VERSION_FLOOR = "2026-06-04"   # project started 4 June 2026 — hide anything 
 
 def _version_entries():
     """Version history built LIVE from git log so it's always current (user 2026-07-03), with a
-    file fallback. Categorised. Entries before the project start are hidden."""
+    Supabase then file fallback for IONOS deployments without .git. Categorised. Entries before the
+    project start are hidden."""
     entries = []
     try:
         import subprocess
@@ -221,9 +222,17 @@ def _version_entries():
             entries.append({"date": date, "version": ver, "summary": summ.strip(),
                             "category": _version_category(summ)})
     except Exception as e:
-        log.warning(f"version history from git failed ({e}); using file")
-        entries = [e2 for e2 in _read_json_entries(_VERSION_FILE)
-                   if (e2.get("date") or "") > _VERSION_FLOOR]
+        log.warning(f"version history from git failed ({e}); using Supabase/file fallback")
+        remote = None
+        try:
+            import web_store
+            remote = web_store.load_json_store("version_history")
+        except Exception as store_ex:
+            log.warning(f"version history Supabase fallback failed: {store_ex}")
+        source = (remote or {}).get("entries", []) if isinstance(remote, dict) else []
+        if not source:
+            source = _read_json_entries(_VERSION_FILE)
+        entries = [e2 for e2 in source if (e2.get("date") or "") > _VERSION_FLOOR]
         for e2 in entries:
             e2.setdefault("category", _version_category(e2.get("summary", "")))
     return entries

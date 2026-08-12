@@ -38,6 +38,41 @@ PROGRESS = {"done": 0, "total": 0}
 NAME_CACHE = os.path.join(_HERE, "name_cache.json")   # ticker -> company name; names don't change, look up once
 
 
+def _load_name_cache() -> dict:
+    """Supabase-primary shared name cache with the original local JSON as a compatibility fallback."""
+    try:
+        import web_store
+        remote = web_store.load_json_store("name_cache")
+        if isinstance(remote, dict):
+            return remote
+    except Exception as e:
+        log.warning(f"Supabase name cache unavailable; using local compatibility copy: {e}")
+    try:
+        with open(NAME_CACHE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def _save_name_cache(names: dict) -> bool:
+    remote_ok = False
+    try:
+        import web_store
+        remote_ok = web_store.save_json_store("name_cache", names)
+    except Exception as e:
+        log.warning(f"could not write Supabase name cache: {e}")
+    local_ok = False
+    try:
+        tmp = NAME_CACHE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(names, fh, indent=2, ensure_ascii=False)
+        os.replace(tmp, NAME_CACHE)
+        local_ok = True
+    except OSError as e:
+        log.warning(f"could not write local name compatibility cache: {e}")
+    return remote_ok or local_ok
+
+
 # Regional location for index tickers (user 2026-07-03: Indices by location — US, Western Europe,
 # Eastern Europe, Asia, and other). FX is its OWN location, separate from Indices.
 _INDEX_REGION = {
@@ -189,11 +224,7 @@ def build(markets=None):
     # Persistent name cache (user 2026-06-28: 'the name will not change each time so look up once'). The
     # first build resolves all ~424 names (slow, network-bound); every later refresh only looks up tickers
     # not already cached, so it's fast. New names are written back at the end.
-    try:
-        with open(NAME_CACHE, encoding="utf-8") as fh:
-            _names = json.load(fh)
-    except Exception:
-        _names = {}
+    _names = _load_name_cache()
     _names_dirty = False
 
     def _resolve_name(tk):
@@ -272,8 +303,8 @@ def build(markets=None):
 
     if _names_dirty:
         try:
-            with open(NAME_CACHE, "w", encoding="utf-8") as fh:
-                json.dump(_names, fh, indent=2, ensure_ascii=False)
+            if not _save_name_cache(_names):
+                raise OSError("no durable name-cache destination available")
             log.info(f"name cache updated ({len(_names)} names)")
         except Exception as e:
             log.warning(f"could not write name cache: {e}")

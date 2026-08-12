@@ -8,7 +8,8 @@
 # Secure user store for the Squeeze web app (user 2026-06-30: "user specific settings are private as we will add IG
 # credentials - they must be securely stored").
 #
-#   - Users live in data/web_users.json — OUTSIDE git (data/ is gitignored). No credentials in source.
+#   - User state is Supabase-primary (`web_json_store:web_users`) with data/web_users.json retained as a
+#     compatibility/cold-backup copy. No credentials in source or git.
 #   - Passwords are NEVER stored: PBKDF2-HMAC-SHA256 (200k iterations, per-user random salt) hashes only.
 #   - Future per-user secrets (IG API key/username/password) go through set_secret/get_secret, encrypted with a
 #     Fernet key at data/.web_users.key (auto-created 0-byte-safe, gitignored). Lose the key = secrets unrecoverable.
@@ -34,6 +35,7 @@
 # ======================================================================================================================
 
 import base64
+import copy
 import hashlib
 import json
 import logging
@@ -41,14 +43,18 @@ import os
 import re
 import secrets as _secrets
 import threading
+import time
 
 log = logging.getLogger("web_users")
 
 _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-_USERS_FILE = os.path.join(_DATA_DIR, "web_users.json")
+_DEFAULT_USERS_FILE = os.path.join(_DATA_DIR, "web_users.json")
+_USERS_FILE = _DEFAULT_USERS_FILE
 _FERNET_KEY_FILE = os.path.join(_DATA_DIR, ".web_users.key")
 _PBKDF2_ITERS = 200_000
 _LOCK = threading.Lock()
+_STATE_CACHE = {"at": 0.0, "source": None, "users": None, "remote_available": None, "revision": None}
+_STATE_TTL = 15.0       # share changes across IONOS workers without a database read on every auth check
 
 # First-run seed — NAMES + EMAILS ONLY. Passwords are NEVER in source/git (user 2026-06-30): a fresh
 # store seeds each account LOCKED (random unusable password); the owner sets a real password via the
@@ -97,7 +103,13 @@ def _pwd_strength(pwd: str) -> str:
     return "Weak"
 
 
-def _load() -> dict:
+def _remote_state_enabled() -> bool:
+    """Tests/temp stores and the explicit file escape hatch retain the original file-only behaviour."""
+    return (_USERS_FILE == _DEFAULT_USERS_FILE
+            and os.environ.get("WEB_USERS_STORE", "supabase").strip().lower() != "file")
+
+
+def _load_local() -> dict:
     try:
         with open(_USERS_FILE, encoding="utf-8") as fh:
             return json.load(fh)
@@ -105,12 +117,64 @@ def _load() -> dict:
         return {}
 
 
+def _load() -> dict:
+    source = (_USERS_FILE, _remote_state_enabled())
+    now = time.monotonic()
+    if (_STATE_CACHE["users"] is not None and _STATE_CACHE["source"] == source
+            and now - _STATE_CACHE["at"] < _STATE_TTL):
+        return copy.deepcopy(_STATE_CACHE["users"])
+    users = None
+    remote_available = None
+    revision = None
+    if source[1]:
+        try:
+            import web_store
+            remote_available, remote, revision = web_store.read_json_store_versioned("web_users")
+            if isinstance(remote, dict):
+                users = remote
+        except Exception as e:
+            remote_available = False
+            log.warning(f"Supabase user-state read failed; using local compatibility copy: {e}")
+    if users is None:
+        users = _load_local()
+    _STATE_CACHE.update(at=now, source=source, users=copy.deepcopy(users),
+                        remote_available=remote_available, revision=revision)
+    return users
+
+
 def _save(users: dict):
-    os.makedirs(_DATA_DIR, exist_ok=True)
-    tmp = _USERS_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(users, fh, indent=2)
-    os.replace(tmp, _USERS_FILE)
+    """Dual-write Supabase primary + atomic local compatibility copy; succeed if either durable write does."""
+    remote_ok = False
+    next_revision = None
+    if _remote_state_enabled():
+        # Never overwrite Supabase from a possibly stale local fallback after a database read outage.
+        # Reads may fail open; state mutations fail closed until the authoritative store is reachable.
+        if _STATE_CACHE.get("remote_available") is False:
+            raise OSError("Supabase user state is unavailable; refusing a potentially stale overwrite")
+        try:
+            import web_store
+            next_revision = web_store.save_json_store_versioned(
+                "web_users", users, expected_revision=_STATE_CACHE.get("revision"))
+            remote_ok = next_revision is not None
+        except Exception as e:
+            log.warning(f"Supabase user-state write failed: {e}")
+        if not remote_ok:
+            raise OSError("Supabase user state changed concurrently or could not be saved")
+    local_ok = False
+    try:
+        os.makedirs(_DATA_DIR, exist_ok=True)
+        tmp = _USERS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(users, fh, indent=2)
+        os.replace(tmp, _USERS_FILE)
+        local_ok = True
+    except OSError as e:
+        log.warning(f"local user-state compatibility write failed: {e}")
+    if not (remote_ok or local_ok):
+        raise OSError("user state could not be saved to Supabase or the local compatibility file")
+    _STATE_CACHE.update(at=time.monotonic(), source=(_USERS_FILE, _remote_state_enabled()),
+                        users=copy.deepcopy(users), remote_available=(True if _remote_state_enabled() else None),
+                        revision=next_revision)
 
 
 def _ensure_seeded() -> dict:
@@ -700,7 +764,13 @@ def set_settings(name: str, settings: dict) -> bool:
 
 # ── Per-user encrypted secrets (for the coming IG credentials) ────────────────────────────────────────
 def _fernet():
-    from cryptography.fernet import Fernet
+    from cryptography.fernet import Fernet, MultiFernet
+    # IONOS should receive the EXISTING local key through an environment secret, keeping the decryption key
+    # outside Supabase. Comma-separated keys allow safe rotation (newest first). Local deployments retain
+    # the original file fallback, so no existing ciphertext is rewritten or invalidated.
+    env_keys = os.environ.get("WEB_USERS_FERNET_KEY", "").strip()
+    if env_keys:
+        return MultiFernet([Fernet(k.strip().encode()) for k in env_keys.split(",") if k.strip()])
     if not os.path.exists(_FERNET_KEY_FILE) or os.path.getsize(_FERNET_KEY_FILE) == 0:
         os.makedirs(_DATA_DIR, exist_ok=True)
         with open(_FERNET_KEY_FILE, "wb") as fh:

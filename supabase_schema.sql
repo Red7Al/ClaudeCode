@@ -329,3 +329,17 @@ create table if not exists web_best_settings_history (
 );
 create index if not exists idx_web_best_settings_user
     on web_best_settings_history (user_id, snapshot_day desc);
+
+
+-- ---------------------------------------------------------------------------
+-- web_json_store  (small durable stores moved from host-local JSON files)
+-- ---------------------------------------------------------------------------
+-- Values retain their existing JSON shape so deployments can dual-read/write during migration.
+-- snapshot.json and price caches are deliberately excluded: they are rebuildable runtime caches.
+create table if not exists web_json_store (
+    store_key   text primary key,
+    payload     jsonb not null,
+    revision    bigint not null default 1,
+    updated_at  timestamptz not null default now()
+);
+alter table web_json_store add column if not exists revision bigint not null default 1;

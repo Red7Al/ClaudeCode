@@ -205,13 +205,20 @@ _OVERRIDES_CACHE = None
 
 
 def _load_source_overrides() -> dict:
-    """Authoritative per-ticker fundamental overrides from data/fundamentals_overrides.json
-    (user 2026-06-19). Cached; returns {} when the file is absent or unreadable (never raises)."""
+    """Authoritative per-ticker overrides from Supabase, with the original JSON as compatibility fallback."""
     global _OVERRIDES_CACHE
     if _OVERRIDES_CACHE is not None:
         return _OVERRIDES_CACHE
     import json
     path = os.path.join(os.path.dirname(__file__), "data", "fundamentals_overrides.json")
+    try:
+        import web_store
+        remote = web_store.load_json_store("fundamentals_overrides")
+        if isinstance(remote, dict):
+            _OVERRIDES_CACHE = remote
+            return _OVERRIDES_CACHE
+    except Exception as e:
+        log.warning(f"Supabase fundamentals overrides unavailable; using local compatibility copy: {e}")
     try:
         with open(path, encoding="utf-8") as fh:
             _OVERRIDES_CACHE = json.load(fh) or {}

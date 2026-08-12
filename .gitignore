@@ -61,3 +61,14 @@ hvf_web/run.log
 # Personal ToDo / change-request notes to Claude — local working notes, not tracked
 ChangeRequests/
 tests_fixtures/performance-best-settings.png
+
+# Production packages are reproducible build outputs, never source.
+dist/
+
+# The IONOS site serves these in-app HTML guides; keep their source/builder and deployable HTML reproducible.
+# DOCX guide exports remain ignored by the global *.docx rule.
+!docs/_build_guides.js
+!docs/_guides_content.js
+!docs/guides/
+!docs/guides/*.html
+!docs/guides/_manifest.json

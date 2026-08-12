@@ -9,7 +9,8 @@
 # Replaces the local JSON files for:
 #   - batch_activity  (cron-job.org / Refresh-button execution log)   -> table web_batch_activity
 #   - activity_log    (per-user operational log: logins, config, etc.) -> table web_activity_log
-# Version History is derived live from git (no file), and snapshot.json stays a local render cache.
+#   - small durable JSON stores (users/reference caches/overrides/version fallback) -> table web_json_store
+# Version History remains derived live from git where available, and snapshot.json stays a local render cache.
 #
 # Fails soft: if Supabase is unavailable, reads/writes degrade gracefully (empty list / no-op) and log a warning —
 # the web app keeps working. One-off migration helpers import the legacy JSON rows.
@@ -50,9 +51,17 @@ _DDL = [
         user_id text not null, account_name_enc text, account_number_enc text,
         account_number_last3 text, source text, by_user text)""",
     "create index if not exists idx_web_ig_audit_user on web_ig_account_audit (user_id, ts desc)",
+    # Small, low-write durable stores formerly held only in local JSON files. One JSONB document per logical
+    # store keeps migration non-destructive and preserves the existing file shape for compatibility fallbacks.
+    """create table if not exists web_json_store (
+        store_key text primary key, payload jsonb not null,
+        revision bigint not null default 1,
+        updated_at timestamptz not null default now())""",
+    "alter table web_json_store add column if not exists revision bigint not null default 1",
 ]
 _ready = False
 _best_history_lock = threading.Lock()
+_json_store_lock = threading.Lock()
 
 
 def _db():
@@ -72,6 +81,81 @@ def _fmt(ts) -> str:
         return ts.strftime("%Y-%m-%d %H:%M:%S UTC")
     except Exception:
         return str(ts or "")
+
+
+def _decode_json(value):
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        parsed = json.loads(value) if isinstance(value, str) else None
+        return parsed if isinstance(parsed, (dict, list)) else None
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+# ── Small durable JSON stores ─────────────────────────────────────────────────────────────────────────
+def read_json_store_versioned(store_key: str) -> tuple:
+    """Return (database_available, payload-or-None, revision), distinguishing absence from an outage."""
+    try:
+        db = _db()
+        try:
+            rows = db.run("select payload, revision from web_json_store where store_key=:k", k=store_key) or []
+            return (True, _decode_json(rows[0][0]), int(rows[0][1])) if rows else (True, None, 0)
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"read_json_store failed for {store_key}: {e}")
+        return False, None, None
+
+
+def read_json_store(store_key: str) -> tuple:
+    """Return (database_available, payload-or-None), distinguishing absence from an outage."""
+    available, payload, _revision = read_json_store_versioned(store_key)
+    return available, payload
+
+
+def load_json_store(store_key: str):
+    """Compatibility helper: return a dict/list from Supabase, else None."""
+    return read_json_store(store_key)[1]
+
+
+def save_json_store_versioned(store_key: str, payload, expected_revision=None):
+    """Write one document and return its revision; expected_revision rejects a stale concurrent writer."""
+    if not isinstance(payload, (dict, list)):
+        raise TypeError("JSON store payload must be a dict or list")
+    try:
+        with _json_store_lock:
+            db = _db()
+            try:
+                encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                if expected_revision is None:
+                    rows = db.run("""insert into web_json_store (store_key, payload, revision, updated_at)
+                                     values (:k, cast(:p as jsonb), 1, now())
+                                     on conflict (store_key) do update set
+                                       payload=excluded.payload, revision=web_json_store.revision+1,
+                                       updated_at=excluded.updated_at returning revision""",
+                                  k=store_key, p=encoded) or []
+                elif int(expected_revision) == 0:
+                    rows = db.run("""insert into web_json_store (store_key, payload, revision, updated_at)
+                                     values (:k, cast(:p as jsonb), 1, now())
+                                     on conflict (store_key) do nothing returning revision""",
+                                  k=store_key, p=encoded) or []
+                else:
+                    rows = db.run("""update web_json_store set payload=cast(:p as jsonb),
+                                       revision=revision+1, updated_at=now()
+                                      where store_key=:k and revision=:r returning revision""",
+                                  k=store_key, p=encoded, r=int(expected_revision)) or []
+                return int(rows[0][0]) if rows else None
+            finally:
+                db.close()
+    except Exception as e:
+        log.warning(f"save_json_store failed for {store_key}: {e}")
+        return None
+
+
+def save_json_store(store_key: str, payload) -> bool:
+    """Unconditional compatibility upsert used for reference caches and explicit migrations."""
+    return save_json_store_versioned(store_key, payload) is not None
 
 
 # ── Batch activity ───────────────────────────────────────────────────────────────────────────────────
@@ -171,7 +255,7 @@ def _json_value(value, fallback):
     if isinstance(value, type(fallback)):
         return value
     try:
-        parsed = json.loads(value) if isinstance(value, str) else value
+        parsed = _decode_json(value)
         return parsed if isinstance(parsed, type(fallback)) else fallback
     except (TypeError, ValueError, json.JSONDecodeError):
         return fallback
@@ -238,7 +322,7 @@ def list_ig_audit(user_id: str, limit: int = 100) -> list:
 def migrate_from_files(batch_file: str = None, users_file: str = None) -> dict:
     """Import legacy rows once. Idempotent-ish: only imports when the DB tables are empty."""
     import json
-    summary = {"batch": 0, "activity": 0}
+    summary = {"batch": 0, "activity": 0, "web_users": 0}
     try:
         db = _db()
         try:
@@ -267,6 +351,16 @@ def migrate_from_files(batch_file: str = None, users_file: str = None) -> dict:
                         summary["activity"] += 1
         except Exception as e:
             log.warning(f"activity migration failed: {e}")
+    # Preserve the complete user/settings/request document in Supabase as well as the local compatibility
+    # copy. Never overwrite an existing remote document during automatic startup migration.
+    if users_file and load_json_store("web_users") is None:
+        try:
+            with open(users_file, encoding="utf-8") as fh:
+                users = json.load(fh)
+            if isinstance(users, dict) and save_json_store("web_users", users):
+                summary["web_users"] = len(users)
+        except Exception as e:
+            log.warning(f"web-users state migration failed: {e}")
     if summary["batch"] or summary["activity"]:
         log.info(f"web_store migration imported {summary}")
     return summary

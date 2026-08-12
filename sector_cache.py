@@ -9,9 +9,9 @@
 # Sector is a stable Yahoo property, but build_snapshot only fetched it for instruments with a LIVE signal — so 1059 of
 # 1309 universe tickers had sector=None, which left the P-21b squeeze analysis with almost no sector to work with.
 #
-# Same design as build_snapshot's name_cache.json: resolve once (network-bound), write back, and thereafter every reader
-# gets the sector with no network call. FX / futures / indices legitimately have no sector and cache as "" (resolved,
-# not missing) so they are not re-fetched every run.
+# Supabase is the shared primary copy (`web_json_store:sector_cache`) for multi-host/IONOS use; the original
+# sector_cache.json remains a compatibility cache. FX / futures / indices legitimately have no sector and
+# cache as "" (resolved, not missing) so they are not re-fetched every run.
 #
 # Public API:
 #   get_sector(ticker)        cached sector, or None if not yet resolved (never hits the network)
@@ -39,6 +39,14 @@ def _load():
     global _cache
     if _cache is None:
         try:
+            import web_store
+            remote = web_store.load_json_store("sector_cache")
+            if isinstance(remote, dict):
+                _cache = remote
+        except Exception as e:
+            log.warning(f"Supabase sector cache unavailable; using local compatibility copy: {e}")
+    if _cache is None:
+        try:
             with open(CACHE_PATH, encoding="utf-8") as fh:
                 _cache = json.load(fh)
         except Exception:
@@ -47,10 +55,23 @@ def _load():
 
 
 def _save(cache):
-    tmp = CACHE_PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(cache, fh, ensure_ascii=False, indent=0, sort_keys=True)
-    os.replace(tmp, CACHE_PATH)   # atomic: a killed backfill never leaves a half-written cache
+    remote_ok = False
+    try:
+        import web_store
+        remote_ok = web_store.save_json_store("sector_cache", cache)
+    except Exception as e:
+        log.warning(f"could not write Supabase sector cache: {e}")
+    local_ok = False
+    try:
+        tmp = CACHE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(cache, fh, ensure_ascii=False, indent=0, sort_keys=True)
+        os.replace(tmp, CACHE_PATH)   # atomic: a killed backfill never leaves a half-written cache
+        local_ok = True
+    except OSError as e:
+        log.warning(f"could not write local sector compatibility cache: {e}")
+    if not (remote_ok or local_ok):
+        raise OSError("sector cache could not be saved to Supabase or locally")
 
 
 def get_sector(ticker: str):

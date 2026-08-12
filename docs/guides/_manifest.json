@@ -1,0 +1,162 @@
+[
+  {
+    "slug": "user-guide-getting-around",
+    "title": "Making your way around the web application",
+    "category": "User Guide",
+    "subtitle": "A tour of the tabs and how to find what you need",
+    "access": "login",
+    "file": "user-guide-getting-around.html"
+  },
+  {
+    "slug": "user-guide-what-is-the-squeeze",
+    "title": "What is the squeeze?",
+    "category": "User Guide",
+    "subtitle": "The pattern the whole platform is built around",
+    "access": "login",
+    "file": "user-guide-what-is-the-squeeze.html"
+  },
+  {
+    "slug": "user-guide-importance-of-volume",
+    "title": "The importance of volume",
+    "category": "User Guide",
+    "subtitle": "Why the Volume Score and RVOL matter",
+    "access": "login",
+    "file": "user-guide-importance-of-volume.html"
+  },
+  {
+    "slug": "user-guide-adding-ig-credentials",
+    "title": "Adding IG credentials",
+    "category": "User Guide",
+    "subtitle": "Connecting your IG account so the platform can read positions and stage orders",
+    "access": "login",
+    "file": "user-guide-adding-ig-credentials.html"
+  },
+  {
+    "slug": "user-guide-configuration",
+    "title": "Configuration",
+    "category": "User Guide",
+    "subtitle": "Your personal preferences and platform settings",
+    "access": "login",
+    "file": "user-guide-configuration.html"
+  },
+  {
+    "slug": "user-guide-tab-visibility",
+    "title": "Feature — Tab Visibility",
+    "category": "User Guide",
+    "subtitle": "Showing and hiding tabs across the platform",
+    "access": "login",
+    "file": "user-guide-tab-visibility.html"
+  },
+  {
+    "slug": "support-adding-users",
+    "title": "Support — Adding Users",
+    "category": "Support",
+    "subtitle": "Creating accounts and approving access requests",
+    "access": "staff",
+    "file": "support-adding-users.html"
+  },
+  {
+    "slug": "support-adding-markets",
+    "title": "Support — Adding Markets",
+    "category": "Support",
+    "subtitle": "Extending the scan universe with new markets",
+    "access": "staff",
+    "file": "support-adding-markets.html"
+  },
+  {
+    "slug": "support-adding-instruments",
+    "title": "Support — Adding Instruments",
+    "category": "Support",
+    "subtitle": "Adding a single instrument to the universe",
+    "access": "staff",
+    "file": "support-adding-instruments.html"
+  },
+  {
+    "slug": "support-configuration-tabs",
+    "title": "Support — Configuration tabs",
+    "category": "Support",
+    "subtitle": "The user and admin configuration surfaces",
+    "access": "staff",
+    "file": "support-configuration-tabs.html"
+  },
+  {
+    "slug": "support-posting-reports-to-x",
+    "title": "Support — Posting reports to X",
+    "category": "Support",
+    "subtitle": "Publishing setup cards to the public X account",
+    "access": "staff",
+    "file": "support-posting-reports-to-x.html"
+  },
+  {
+    "slug": "operations-system-logs",
+    "title": "Operations — System Logs",
+    "category": "Operations",
+    "subtitle": "Health at a glance and the recent server log",
+    "access": "staff",
+    "file": "operations-system-logs.html"
+  },
+  {
+    "slug": "operations-scheduled-jobs",
+    "title": "Operations — Scheduled Jobs",
+    "category": "Operations",
+    "subtitle": "The automated jobs and their run history",
+    "access": "staff",
+    "file": "operations-scheduled-jobs.html"
+  },
+  {
+    "slug": "operations-batch-activity",
+    "title": "Operations — Batch Activity",
+    "category": "Operations",
+    "subtitle": "The record of automated batch runs",
+    "access": "staff",
+    "file": "operations-batch-activity.html"
+  },
+  {
+    "slug": "operations-funding-x-publications",
+    "title": "Operations — Funding X publications",
+    "category": "Operations",
+    "subtitle": "Keeping the X API allowance topped up",
+    "access": "staff",
+    "file": "operations-funding-x-publications.html"
+  },
+  {
+    "slug": "operations-patching-software",
+    "title": "Operations — Patching software (e.g. choco)",
+    "category": "Operations",
+    "subtitle": "Keeping the host machine's software current",
+    "access": "staff",
+    "file": "operations-patching-software.html"
+  },
+  {
+    "slug": "operations-change-control",
+    "title": "Operations — Change Control",
+    "category": "Operations",
+    "subtitle": "How change requests are captured and tracked",
+    "access": "staff",
+    "file": "operations-change-control.html"
+  },
+  {
+    "slug": "operations-version-history",
+    "title": "Operations — Version History",
+    "category": "Operations",
+    "subtitle": "The record of what shipped",
+    "access": "staff",
+    "file": "operations-version-history.html"
+  },
+  {
+    "slug": "operations-user-management",
+    "title": "Operations — User Management",
+    "category": "Operations",
+    "subtitle": "Accounts, roles and subscriptions",
+    "access": "staff",
+    "file": "operations-user-management.html"
+  },
+  {
+    "slug": "operations-other",
+    "title": "Operations — Other",
+    "category": "Operations",
+    "subtitle": "Odds and ends that keep the platform running",
+    "access": "staff",
+    "file": "operations-other.html"
+  }
+]
