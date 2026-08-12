@@ -10,5 +10,9 @@ RewriteRule ^(?:data|\.venv_linux)(?:/|$) - [F,L,NC]
 RewriteCond %{THE_REQUEST} "\s/+[^?\s]*\.(?:py|sql|md|txt|key|env)(?:[?\s])" [NC]
 RewriteRule ^ - [F,L]
 
+# The adapter is an internal rewrite target, not a second public API prefix.
+RewriteCond %{THE_REQUEST} "\s/+cgi-bin/" [NC]
+RewriteRule ^cgi-bin/ - [F,L]
+
 # Static HTML is served by Apache; only API traffic enters the Flask CGI application.
 RewriteRule ^api(?:/(.*))?$ cgi-bin/app.py/api/$1 [L,QSA]
