@@ -2,6 +2,7 @@
 
 import copy
 import json
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -149,6 +150,8 @@ def test_ionos_package_manifest_excludes_private_and_development_files(tmp_path)
     included = {p.relative_to(build_ionos_package.ROOT).as_posix() for p in build_ionos_package.package_files()}
 
     assert "wsgi.py" in included
+    assert ".htaccess" in included
+    assert "cgi-bin/app.py" in included
     assert "IONOS_DEPLOYMENT.md" in included
     assert "hvf_web/index.html" in included
     assert "hvf_web/snapshot.json" in included
@@ -163,6 +166,21 @@ def test_ionos_package_manifest_excludes_private_and_development_files(tmp_path)
 
     output, files = build_ionos_package.build(tmp_path / "ionos.zip")
     assert output.is_file() and files
+    with zipfile.ZipFile(output) as archive:
+        cgi_mode = (archive.getinfo("cgi-bin/app.py").external_attr >> 16) & 0o777
+        assert cgi_mode == 0o755
+
+
+def test_ionos_shared_hosting_routes_only_api_to_protected_cgi_adapter():
+    htaccess = (build_ionos_package.ROOT / ".htaccess").read_text(encoding="utf-8")
+    adapter = (build_ionos_package.ROOT / "cgi-bin" / "app.py").read_text(encoding="utf-8")
+
+    assert "RewriteRule ^api" in htaccess and "cgi-bin/app.py/api/$1" in htaccess
+    assert "data|\\.venv_linux" in htaccess
+    assert "THE_REQUEST" in htaccess
+    assert 'ROOT = Path(__file__).resolve().parents[1]' in adapter
+    assert 'hosted["SCRIPT_NAME"] = ""' in adapter
+    assert 'hosted["PATH_INFO"] = request_path or "/"' in adapter
 
 
 def test_scanner_actionable_not_history_note_is_prominent_and_documented():

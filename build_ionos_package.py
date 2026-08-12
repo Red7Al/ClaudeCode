@@ -1,6 +1,7 @@
 """Build a production-only IONOS zip without modifying or deleting workspace files."""
 
 import argparse
+import stat
 import zipfile
 from pathlib import Path
 
@@ -21,6 +22,8 @@ def include_path(relative: Path) -> bool:
     if "__pycache__" in parts or "price_cache" in parts:
         return False
     name, suffix = relative.name, relative.suffix.lower()
+    if relative.as_posix() == ".htaccess":
+        return True
     if name.startswith("test_") or suffix in {".zip", ".docx", ".skill", ".pkl", ".pyc", ".log", ".cmd", ".bat"}:
         return False
     if name in {".env", ".gitignore", ".gitattributes", ".gitleaks.toml", ".pre-commit-config.yaml",
@@ -56,7 +59,13 @@ def build(output: Path = DEFAULT_OUTPUT) -> tuple:
     files = package_files()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in files:
-            archive.write(path, path.relative_to(ROOT).as_posix())
+            relative = path.relative_to(ROOT).as_posix()
+            info = zipfile.ZipInfo.from_file(path, relative)
+            info.create_system = 3  # Unix permissions must survive extraction on IONOS Linux hosting.
+            mode = 0o755 if relative == "cgi-bin/app.py" else 0o644
+            info.external_attr = (stat.S_IFREG | mode) << 16
+            with path.open("rb") as source:
+                archive.writestr(info, source.read(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     return output, files
 
 

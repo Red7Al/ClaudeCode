@@ -1,0 +1,14 @@
+Options -Indexes
+
+RewriteEngine On
+RewriteBase /
+
+# Durable local fallbacks and the hosted virtual environment are never public assets.
+RewriteRule ^(?:data|\.venv_linux)(?:/|$) - [F,L,NC]
+
+# Reject direct requests for server-side source/configuration. The internal API rewrite below remains allowed.
+RewriteCond %{THE_REQUEST} "\s/+[^?\s]*\.(?:py|sql|md|txt|key|env)(?:[?\s])" [NC]
+RewriteRule ^ - [F,L]
+
+# Static HTML is served by Apache; only API traffic enters the Flask CGI application.
+RewriteRule ^api(?:/(.*))?$ cgi-bin/app.py/api/$1 [L,QSA]
