@@ -1,6 +1,7 @@
 """Offline regressions for Performance report calculations."""
 
 import datetime as dt
+import json
 import re
 import subprocess
 import tempfile
@@ -84,6 +85,18 @@ def test_performance_has_dedicated_let_winners_run_tab():
     assert 'id="pf-run-in"' in html
     assert "winnersRunChange('pf')" in html
     assert "Let winners run is off" not in html
+    assert 'const commonRows=rows.filter(r=>r.run_perf!=null)' in html
+    assert '_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"perf",false)' in html
+    assert '_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"run_perf",false)' in html
+    assert "Evidence verdict: ${verdictTitle}" in html
+    assert "Maximum drawdown" in html
+    assert "Funded / eligible trades" in html
+    assert "Missed through constraints" in html
+    assert "No historical return improvement" in html
+    assert "this is not evidence of improvement" in html
+    assert "prefix+'-baseline-proof',plainReplay.proof" in html
+    assert "prefix+'-run-proof',runReplay.proof" in html
+    assert "delta>=0?'Letting winners run" not in html
     assert 'id="pf-summary-bt"' not in html
     assert "What separates the winners?</h2>" in html
     assert "What separates the winners — what's possible over 12 months" not in html
@@ -126,13 +139,17 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert "function selectBestChoice(label)" in html
     assert "let BEST_CHOICES=[], BEST_SELECTED=" in html
     assert "renderDecisionProof('best-proof',x.proof)" in html
-    assert "renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true})" in html
+    assert "renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true,evidenceTitle:" in html
     assert "decisionProofFilter" in html
     assert "achievable P&amp;L" in html
     assert '"Balanced",best,"Best return relative to drawdown, with quarterly consistency included."' in html
     assert '"Growth",growth,"Highest-return alternative with a materially different configuration."' in html
     assert '"Defensive",defensive' in html
     assert '"Broad evidence",broad' in html
+    assert 'trades250=_bestSettingsByFundedTrades(basePool,250)' in html
+    assert 'trades500=_bestSettingsByFundedTrades(basePool,500)' in html
+    assert '[">250 trades",trades250' in html
+    assert '[">500 trades",trades500' in html
     assert '<b style="color:var(--fg)">Changes:</b>' in html
     assert "Apply this configuration" in html
     assert 'onclick="selectBestChoice(' in html
@@ -173,6 +190,93 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert '<b>Personalised using:</b>' in html
     assert 'function paintBestSettingsPersonalisation()' in html
     assert 'paintBestSettingsPersonalisation();' in html
+
+
+def test_best_settings_trade_count_cards_use_strict_funded_thresholds():
+    """Exercise the actual browser helper used by the >250 and >500 recommendation cards."""
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    match = re.search(
+        r"function _bestSettingsByFundedTrades\(pool,min\)\{.*?\n\}",
+        html,
+        re.S,
+    )
+    assert match, "Best Settings funded-trade selector is missing"
+
+    options = [
+        {"id": "exact-250", "n": 250, "score": 100, "ret": 100},
+        {"id": "over-250", "n": 251, "score": 8, "ret": 4},
+        {"id": "better-over-250", "n": 400, "score": 9, "ret": 2},
+        {"id": "exact-500", "n": 500, "score": 50, "ret": 50},
+        {"id": "over-500", "n": 501, "score": 7, "ret": 3},
+        {"id": "tie-higher-return", "n": 600, "score": 7, "ret": 5},
+    ]
+    script = (
+        match.group(0)
+        + f"\nconst pool={json.dumps(options)};"
+        + "console.log(JSON.stringify({"
+        + "over250:_bestSettingsByFundedTrades(pool,250)?.id||null,"
+        + "over500:_bestSettingsByFundedTrades(pool,500)?.id||null,"
+        + "none:_bestSettingsByFundedTrades(pool,1000)?.id||null"
+        + "}));"
+    )
+    completed = subprocess.run(
+        ["node", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert json.loads(completed.stdout) == {
+        "over250": "exact-500",
+        "over500": "tie-higher-return",
+        "none": None,
+    }
+
+
+def test_let_winners_run_verdict_requires_a_strict_return_improvement():
+    """Exercise the browser verdict helper: an equal result must never be labelled an improvement."""
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    match = re.search(
+        r"function _winnerRunComparison\(plainReplay,runReplay,wallet\)\{.*?\n\}",
+        html,
+        re.S,
+    )
+    assert match, "Let Winners Run comparison helper is missing"
+
+    script = (
+        match.group(0)
+        + "\nconsole.log(JSON.stringify(["
+        + "_winnerRunComparison({ret:.10,dd:.08},{ret:.15,dd:.06},1000),"
+        + "_winnerRunComparison({ret:.10,dd:.08},{ret:.10,dd:.12},1000),"
+        + "_winnerRunComparison({ret:.10,dd:.08},{ret:.05,dd:.10},1000),"
+        + "_winnerRunComparison({ret:.10,dd:.08},{ret:.100001,dd:.08},1000)"
+        + "]));"
+    )
+    completed = subprocess.run(
+        ["node", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    improved, equal, worse, below_half_penny = json.loads(completed.stdout)
+
+    assert improved == {
+        "plainFinal": 1100,
+        "runFinal": 1150,
+        "returnDelta": 0.04999999999999999,
+        "drawdownDelta": -0.020000000000000004,
+        "verdict": "improved",
+    }
+    assert equal["plainFinal"] == equal["runFinal"] == 1100
+    assert equal["returnDelta"] == 0
+    assert equal["verdict"] == "equal"
+    assert worse["runFinal"] == 1050
+    assert worse["returnDelta"] < 0
+    assert worse["verdict"] == "worse"
+    assert below_half_penny["runFinal"] - below_half_penny["plainFinal"] < 0.005
+    assert below_half_penny["verdict"] == "equal"
 
 
 def test_let_winners_run_never_gives_back_below_bull_target(monkeypatch):

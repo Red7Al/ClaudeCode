@@ -4089,9 +4089,19 @@ function winnersSLChange(){
 // a trade hits target the stop ratchets UP TO the target (so it can't give back below the target gain, e.g. 17%
 // stays >=17%), then trails above it by the Run-trail %; before target it trails by the Stop-trail %. Per-user
 // opt-in: hidden unless MY_LIMITS.let_winners_run is on; inputs default from the user's saved config.
+// Pure verdict helper: returns improve/equal/worse from the two like-for-like wallet replays. Equality is
+// deliberately NOT treated as an improvement (user 2026-08-12, P-10: require clear evidence it improves).
+function _winnerRunComparison(plainReplay,runReplay,wallet){
+  const start=Math.max(0,Number(wallet)||0), plainReturn=Number((plainReplay||{}).ret)||0,
+        runReturn=Number((runReplay||{}).ret)||0, returnDelta=runReturn-plainReturn,
+        tolerance=start>0?.005/start:1e-12;   // half a penny: never label a displayed £0.00 delta as better
+  return {plainFinal:start*(1+plainReturn),runFinal:start*(1+runReturn),returnDelta,
+    drawdownDelta:(Number((runReplay||{}).dd)||0)-(Number((plainReplay||{}).dd)||0),
+    verdict:returnDelta>tolerance?"improved":returnDelta< -tolerance?"worse":"equal"};
+}
 function winnersRunChange(surface='pf'){
   // The report is shown on TWO surfaces: the "What separates the winners" tab (#ordp-run, with its own
-  // trail inputs) and the dedicated Performance sub-tab (#pf-run, read-only, using the saved config).
+  // trail inputs) and the dedicated Performance sub-tab (#pf-run, editable what-if values seeded from config).
   const prefix=surface==='ordp'?'ordp':'pf', wrap=$(prefix+"-run-wrap"), box=$(prefix+"-run"), busy=$(prefix+"-run-busy");
   const paint=html=>{if(box)box.innerHTML=html;};
   // Keep the legacy admin card conditional on the live option, but the dedicated Performance report is
@@ -4108,26 +4118,54 @@ function winnersRunChange(surface='pf'){
     if(busy){busy.className="muted";busy.textContent="";}
     const rows=((j&&j.rows)||[]).filter(r=>r.perf!=null);
     if(!rows.length){paint('<div class="muted" style="font-size:13px">No data to re-backtest.</div>');return;}
-    const ordered=rows.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||''));
-    const plainReplay=_combReplay(ordered.filter(r=>r.perf!=null),WINNERS_STAKE,WINNERS_MAXOPEN,false,"perf",false);
-    const runReplay=_combReplay(ordered.filter(r=>r.run_perf!=null),WINNERS_STAKE,WINNERS_MAXOPEN,true,"run_perf",false);
-    const plainFinal=WINNERS_WALLET*(1+plainReplay.ret), runFinal=WINNERS_WALLET*(1+runReplay.ret), delta=runFinal-plainFinal;
-    const tgt=rows.filter(r=>r.outcome==='TARGET'&&r.run_perf!=null);
+    // One common eligible population, identical ordering and identical wallet/funding settings. The only
+    // variable is the exit method (and therefore its exit date/capacity cost). Both proofs are retained so
+    // a longer-running position that causes a later opportunity to be missed is visible, not averaged away.
+    const commonRows=rows.filter(r=>r.run_perf!=null).sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
+    if(!commonRows.length){paint('<div class="muted" style="font-size:13px">No trades have both baseline and trailing-stop results.</div>');return;}
+    const plainReplay=_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"perf",false);
+    const runReplay=_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"run_perf",false);
+    const comparison=_winnerRunComparison(plainReplay,runReplay,WINNERS_WALLET),
+          {plainFinal,runFinal,returnDelta,drawdownDelta,verdict}=comparison, delta=runFinal-plainFinal;
+    const tgt=commonRows.filter(r=>r.outcome==='TARGET');
     const ran=tgt.filter(r=>r.run_perf>r.perf+0.01).length, back=tgt.filter(r=>r.run_perf<r.perf-0.01).length;
-    const money=x=>`£${Math.round(x).toLocaleString()}`, col=delta>=0?'var(--bull)':'var(--bear)', fixedStake=WINNERS_WALLET*WINNERS_STAKE;
-    const big=tgt.slice().sort((a,b)=>(b.run_perf-b.perf)-(a.run_perf-a.perf)).slice(0,5);
+    const improvedTrades=commonRows.filter(r=>r.run_perf>r.perf+0.01).length,
+          worseTrades=commonRows.filter(r=>r.run_perf<r.perf-0.01).length,
+          sameTrades=commonRows.length-improvedTrades-worseTrades;
+    const money=x=>`£${Number(x||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+          signedMoney=x=>`${x>0?'+':x<0?'−':''}£${Math.abs(x).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+          pct=x=>`${x>0?'+':''}${(x*100).toFixed(2)}%`, pp=x=>`${x>0?'+':''}${(x*100).toFixed(2)} pp`,
+          col=verdict==='improved'?'var(--bull)':verdict==='worse'?'var(--bear)':'#d29922', fixedStake=WINNERS_WALLET*WINNERS_STAKE,
+          firstDate=String((commonRows[0]||{}).trig_date||'').slice(0,10),lastDate=String((commonRows[commonRows.length-1]||{}).trig_date||'').slice(0,10),
+          verdictTitle=verdict==='improved'?'Improved historical return':verdict==='worse'?'Reduced historical return':'No historical return improvement',
+          verdictText=verdict==='improved'
+            ?`The trailing-stop replay finished ${signedMoney(delta)} ahead of selling at target.`
+            :verdict==='worse'
+              ?`The trailing-stop replay finished ${money(Math.abs(delta))} behind selling at target.`
+              :`The trailing-stop replay produced the same return as selling at target; this is not evidence of improvement.`;
+    const big=tgt.filter(r=>r.run_perf>r.perf+0.01).sort((a,b)=>(b.run_perf-b.perf)-(a.run_perf-a.perf)).slice(0,5);
     const stopTxt=sv>0?` (stop trailing ${j.stop_pct||sv}% before target)`:``;
     paint(`<div class="card" style="border:1px solid ${col};background:color-mix(in srgb,${col} 8%,transparent)">
       <h4 style="margin:0 0 6px">🏃 Let winners run @ ${(j.threshold_pct||v)}% run-trail${stopTxt} — illustration (live orders unaffected)</h4>
-      <div class="muted" style="font-size:13px">Once a trade hits target, the stop moves <b>up to the target</b> (so it can't give back below the target gain), then trails above it.
-      Starting with <b>${money(WINNERS_WALLET)}</b>, using a fixed <b>${money(fixedStake)}</b> stake per placed trade, the wallet ends at <b>${money(runFinal)}</b> <b>letting winners run</b> vs <b>${money(plainFinal)}</b> <b>selling at target</b> —
-      a <b style="color:${col}">${delta>=0?'+':'−'}${money(Math.abs(delta))}</b> difference over ${rows.length.toLocaleString()} trades. This comparison does not compound returns.
-      Of <b>${tgt.length.toLocaleString()}</b> target hits, <b>${ran.toLocaleString()}</b> ran further and only <b>${back.toLocaleString()}</b> came in below target (price closed under target on the last available bar).
-      ${delta>=0?'Letting winners run (with the stop at target) beats selling at target here — raise the Trail % to keep more of a big run, lower it to lock in sooner.':'Here it did not help.'} The replay placed <b>${runReplay.n}</b> trades, reached <b>${runReplay.cap}</b> concurrently funded positions and excluded opportunities the wallet or Max open setting could not support.</div>
-      ${big.length?`<div class="muted" style="font-size:12px;margin-top:6px"><b>Biggest runners:</b> ${big.map(r=>`${_esc(r.name||disp(r.ticker))} ${r.perf>0?'+':''}${r.perf}%→${r.run_perf>0?'+':''}${r.run_perf}%`).join(' · ')}</div>`:''}
+      <div style="border-left:4px solid ${col};padding:8px 10px;margin:8px 0;background:color-mix(in srgb,${col} 10%,transparent)">
+        <b style="color:${col}">Evidence verdict: ${verdictTitle}</b><div class="muted" style="font-size:12px;margin-top:3px">${verdictText} Historical evidence only; it does not guarantee a future improvement.</div>
+      </div>
+      <div class="muted" style="font-size:12px;margin-bottom:8px"><b>Like-for-like basis:</b> the same <b>${commonRows.length.toLocaleString()}</b> eligible trades (${firstDate||'—'} to ${lastDate||'—'}), <b>${money(WINNERS_WALLET)}</b> starting wallet, fixed <b>${money(fixedStake)}</b> stake (${(WINNERS_STAKE*100).toFixed(2)}%), Max open <b>${WINNERS_MAXOPEN}</b>, minimum-trade, leverage and margin rules. This comparison does not compound returns. Funded counts may differ because a trailing exit can keep capital occupied for longer; that capacity cost is part of the evidence.</div>
+      <div class="tablewrap"><table><thead><tr><th>Evidence</th><th>Sell at target</th><th>Let winners run</th><th>Difference</th></tr></thead><tbody>
+        <tr><td>End wallet</td><td><b>${money(plainFinal)}</b></td><td><b>${money(runFinal)}</b></td><td><b style="color:${col}">${signedMoney(delta)}</b></td></tr>
+        <tr><td>Model return</td><td>${pct(plainReplay.ret)}</td><td>${pct(runReplay.ret)}</td><td><b style="color:${col}">${pp(returnDelta)}</b></td></tr>
+        <tr><td>Maximum drawdown</td><td>${(plainReplay.dd*100).toFixed(2)}%</td><td>${(runReplay.dd*100).toFixed(2)}%</td><td><b style="color:${drawdownDelta<0?'var(--bull)':drawdownDelta>0?'var(--bear)':'var(--muted)'}">${pp(drawdownDelta)}</b></td></tr>
+        <tr><td>Funded / eligible trades</td><td>${plainReplay.n.toLocaleString()} / ${commonRows.length.toLocaleString()}</td><td>${runReplay.n.toLocaleString()} / ${commonRows.length.toLocaleString()}</td><td>${runReplay.n-plainReplay.n>0?'+':''}${(runReplay.n-plainReplay.n).toLocaleString()} funded</td></tr>
+        <tr><td>Missed through constraints</td><td>${(commonRows.length-plainReplay.n).toLocaleString()}</td><td>${(commonRows.length-runReplay.n).toLocaleString()}</td><td>${(plainReplay.n-runReplay.n)>0?'+':''}${(plainReplay.n-runReplay.n).toLocaleString()} missed</td></tr>
+        <tr><td>Peak open positions</td><td>${plainReplay.cap}</td><td>${runReplay.cap}</td><td>${runReplay.cap-plainReplay.cap>0?'+':''}${runReplay.cap-plainReplay.cap}</td></tr>
+      </tbody></table></div>
+      <div class="muted" style="font-size:12px;margin-top:8px">Across all eligible trades, the trailing result was better on <b>${improvedTrades.toLocaleString()}</b>, equal on <b>${sameTrades.toLocaleString()}</b>, and worse on <b>${worseTrades.toLocaleString()}</b>. Of <b>${tgt.length.toLocaleString()}</b> normal target hits, <b>${ran.toLocaleString()}</b> ran further and <b>${back.toLocaleString()}</b> finished below the normal target result.</div>
+      ${big.length?`<div class="muted" style="font-size:12px;margin-top:6px"><b>Largest per-trade improvements (not the portfolio verdict):</b> ${big.map(r=>`${_esc(r.name||disp(r.ticker))} ${r.perf>0?'+':''}${r.perf}%→${r.run_perf>0?'+':''}${r.run_perf}%`).join(' · ')}</div>`:''}
+      <div id="${prefix}-baseline-proof"></div>
       <div id="${prefix}-run-proof"></div>
     </div>`);
-    renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true});
+    renderDecisionProof(prefix+'-baseline-proof',plainReplay.proof,{run:false,evidenceTitle:'Baseline transaction evidence — sell at target',evidenceNote:'Baseline funding decisions using the normal exit dates. Compare this with the trailing-stop evidence below.'});
+    renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true,evidenceTitle:'Trailing-stop transaction evidence — let winners run',evidenceNote:'The identical eligible population and funding rules, with trailing exit dates. Sell-at-target and trailing returns are shown side by side for every decision.'});
   }).catch(()=>{if(busy){busy.className="muted";busy.textContent="";}paint('<div class="muted" style="font-size:13px">Re-backtest failed.</div>');});
 }
 // Compact market-cap format (user 2026-08-01): 1.23T / 340B / 12M. No currency symbol (values are in each
@@ -4191,6 +4229,8 @@ function decisionProofFilter(id,dim,value){
 function renderDecisionProof(id,proof,opts={}){
   const target=$(id);if(!target)return; DECISION_PROOFS[id]={proof,opts};
   const show=!!opts.showMissed, missed=proof.filter(x=>!x.placed).length, run=opts.run, filters=opts.filters||{};
+  const evidenceTitle=opts.evidenceTitle||"Transaction evidence",
+        evidenceNote=opts.evidenceNote||"Chronological decisions prove which opportunities the settings selected and whether the wallet could fund them. Positive missed rows expose profit the proposed setup could not actually capture.";
   const pct=v=>v==null?'—':`${+v>=0?'+':''}${(+v).toFixed(2)}%`, num=v=>v==null?'—':(+v).toFixed(1);
   const gbp=v=>'£'+Math.round(v).toLocaleString();   // proof rows carry fractional wallet/stake (×WINNERS_WALLET); real £ for Wallet/Net gain columns (2026-08-07)
   // RVOL bands match the canonical rvolCell() thresholds used everywhere else (2026-08-07, ChangeRequest
@@ -4224,7 +4264,7 @@ function renderDecisionProof(id,proof,opts={}){
   target.innerHTML=`<div class="viz" style="margin-top:14px;padding:0;border-bottom:none">${chart('location','Location')}${chart('market','Market')}${chart('sector','Sector')}${chart('direction','Direction')}${chart('outcome','Outcome')}${chart('wl','Win / Loss')}${chart('days_open','Days Open')}${chart('month','Month')}${chart('quality','Quality')}${chart('rvol','RVOL')}${chart('above_vwap','VWAP')}${chart('atr_expanding','ATR')}</div>
     ${Object.keys(filters).length?`<div class="muted" style="font-size:11px;margin-top:6px">Cross-filter: ${Object.entries(filters).map(([d,v])=>`${d} = ${_esc(v)}`).join(' · ')} <button class="btn" style="padding:2px 7px" onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,filters:{}})">Clear</button></div>`:''}
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;margin:14px 0 6px;flex-wrap:wrap">
-    <div><h4 style="margin:0">Transaction evidence</h4><div class="muted" style="font-size:11px">Chronological decisions prove which opportunities the settings selected and whether the wallet could fund them. Positive missed rows expose profit the proposed setup could not actually capture.</div></div>
+    <div><h4 style="margin:0">${_esc(evidenceTitle)}</h4><div class="muted" style="font-size:11px">${_esc(evidenceNote)}</div></div>
     <div style="white-space:nowrap;text-align:right">
       <div style="font-size:11px;font-weight:600;margin-bottom:4px">Missed transactions (${missed})</div>
       <div style="display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden">
@@ -4301,6 +4341,12 @@ function recordBestSettingsSnapshot(snapshot){
   fetch("/api/best-settings-history",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:key})
     .then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>paintBestSettingsHistory(j.history||[]))
     .catch(()=>{BEST_HISTORY_POST_KEY="";const box=$("best-settings-history");if(box){box.classList.remove("sqh-loading");box.textContent="Best settings history could not be saved.";}});
+}
+// Return the strongest risk-adjusted option whose replay funded STRICTLY more than the requested number
+// of trades. Kept as a small pure helper so the >250 / >500 card boundary and ranking are executable in
+// the regression suite rather than only asserted as source text (user 2026-08-12, P-10).
+function _bestSettingsByFundedTrades(pool,min){
+  return [...(pool||[])].filter(x=>Number(x.n)>min).sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
 }
 function renderBestCombo(all){
   const box=$("ordp-bestcombo"); if(!box)return;
@@ -4395,11 +4441,21 @@ function renderBestCombo(all){
   const growth=choose(basePool,chosen,(a,b)=>b.ret-a.ret);if(growth)chosen.push(growth);
   const defensive=choose(basePool,chosen,(a,b)=>a.dd-b.dd);if(defensive)chosen.push(defensive);
   const broad=choose(basePool,chosen,(a,b)=>b.consistency-a.consistency||b.n-a.n||b.ret-a.ret);if(broad)chosen.push(broad);
+  // Best settings at a minimum funded-trade sample size (user 2026-08-12, P-10): the strongest-scoring
+  // configuration whose annual replay actually funded more than 250 / 500 trades, so the recommendation
+  // rests on a large sample. Uses x.n (funded trades) — the same "trade sample" measure Broad evidence
+  // ranks on. Deliberately NOT run through choose()'s difference bar: the DEFINING property here is the
+  // sample-size floor, not being unlike the other cards, so it shows the genuine best at that threshold
+  // even if it coincides with another card. Guarded (&&) so each card only appears when the data supports
+  // a config above that floor.
+  const trades250=_bestSettingsByFundedTrades(basePool,250), trades500=_bestSettingsByFundedTrades(basePool,500);
   const choices=[
     ["Balanced",best,"Best return relative to drawdown, with quarterly consistency included.","var(--bull)"],
     growth&&["Growth",growth,"Highest-return alternative with a materially different configuration.","var(--accent)"],
     defensive&&["Defensive",defensive,"Lowest historical peak-to-trough drawdown while retaining a positive return.","#d29922"],
-    broad&&["Broad evidence",broad,"Favours positive quarters and a larger funded trade sample over a narrow winner.","var(--muted)"]
+    broad&&["Broad evidence",broad,"Favours positive quarters and a larger funded trade sample over a narrow winner.","var(--muted)"],
+    trades250&&[">250 trades",trades250,"Best-scoring configuration whose funded sample exceeds 250 trades — a large-sample, higher-confidence setting.","#a371f7"],
+    trades500&&[">500 trades",trades500,"Best-scoring configuration whose funded sample exceeds 500 trades — the largest-sample setting available.","#1f6feb"]
   ].filter(Boolean);
   const current={rr:Number(MY_LIMITS.min_risk_reward??3),q:Number(MY_LIMITS.min_quality??25),vs:Number(MY_LIMITS.min_volume_score??1),rv:+MY_LIMITS.min_rvol||0,
     vw:!!+MY_LIMITS.require_above_vwap,atr:!!+MY_LIMITS.require_atr_expanding,st:+MY_LIMITS.max_position_pct||WINNERS_STAKE*100,mo:+MY_LIMITS.max_open||WINNERS_MAXOPEN,
@@ -4435,7 +4491,7 @@ function renderBestCombo(all){
         positive_quarters:x.posPeriods,quarters:x.periods}})),
   });
 }
-// Best Settings choice cards (Balanced/Growth/Defensive/Broad evidence): clicking one swaps the detail
+// Best Settings choice cards (Balanced/Growth/Defensive/Broad evidence/>250 trades/>500 trades): clicking one swaps the detail
 // card + Transaction evidence below to that option (user 2026-08-07, ChangeRequest P-06 — previously only
 // Balanced ever got a detail card, which is why it "looked lost" next to the other three).
 let BEST_CHOICES=[], BEST_SELECTED="Balanced", BEST_MODEL_W=1000;
