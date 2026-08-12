@@ -65,7 +65,14 @@ def build(output: Path = DEFAULT_OUTPUT) -> tuple:
             mode = 0o755 if relative == "cgi-bin/app.py" else 0o644
             info.external_attr = (stat.S_IFREG | mode) << 16
             with path.open("rb") as source:
-                archive.writestr(info, source.read(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+                contents = source.read()
+            archive.writestr(info, contents, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+            if relative == "hvf_web/index.html":
+                # Apache serves the domain root directly; retain the package copy used by Flask as well.
+                root_info = zipfile.ZipInfo.from_file(path, "index.html")
+                root_info.create_system = 3
+                root_info.external_attr = (stat.S_IFREG | 0o644) << 16
+                archive.writestr(root_info, contents, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     return output, files
 
 
@@ -75,7 +82,8 @@ def main() -> int:
     parser.add_argument("--list", action="store_true", help="list included files after building")
     args = parser.parse_args()
     output, files = build(args.output)
-    print(f"Built {output} with {len(files)} production files ({output.stat().st_size} bytes).")
+    archive_entries = len(files) + int(any(path.relative_to(ROOT).as_posix() == "hvf_web/index.html" for path in files))
+    print(f"Built {output} with {archive_entries} production files ({output.stat().st_size} bytes).")
     if args.list:
         for path in files:
             print(path.relative_to(ROOT).as_posix())

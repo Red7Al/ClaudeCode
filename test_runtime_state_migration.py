@@ -167,6 +167,8 @@ def test_ionos_package_manifest_excludes_private_and_development_files(tmp_path)
     output, files = build_ionos_package.build(tmp_path / "ionos.zip")
     assert output.is_file() and files
     with zipfile.ZipFile(output) as archive:
+        assert "index.html" in archive.namelist()
+        assert archive.read("index.html") == archive.read("hvf_web/index.html")
         cgi_mode = (archive.getinfo("cgi-bin/app.py").external_attr >> 16) & 0o777
         assert cgi_mode == 0o755
 
