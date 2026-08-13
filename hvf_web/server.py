@@ -1027,7 +1027,8 @@ def index():
 
 
 # Fields a LOGGED-OUT visitor may see (user 2026-07-03: first 5 Scanner columns; the rest obfuscated).
-_PUBLIC_FIELDS = ("ticker", "name", "direction", "h3_date", "l3_date", "sector", "has_signal", "status")
+_PUBLIC_FIELDS = ("ticker", "name", "direction", "h3_date", "l3_date", "sector", "market", "location",
+                  "has_signal", "status")
 
 # Scanner RVOL (user 2026-07-17, P-30). Cached against the snapshot's generated_utc: a trigger and the
 # volume on its bar are historical facts, so they only change when the snapshot is rebuilt.
@@ -1122,6 +1123,47 @@ _LIVE_VWAP_ATR_CACHE = {"gen": None, "data": {}}
 # ATR_PERIOD(14)*2 + VWAP_BARS(20) trading bars needed (volume_score.py) => >=48 bars; 90 calendar days
 # gives comfortable headroom (~62 trading bars) without the size of the RVOL/VolumeScore lookback.
 _LIVE_VWAP_ATR_LOOKBACK_DAYS = 90
+
+_LIVE_INSTRUMENT_METRICS_CACHE = {"gen": None, "data": {}}
+
+
+def _live_instrument_metrics(snap: dict) -> dict:
+    """Current RVOL/VWAP/ATR for every instrument, including rows with no squeeze setup."""
+    gen = snap.get("generated_utc")
+    if (_LIVE_INSTRUMENT_METRICS_CACHE["gen"] == gen
+            and _LIVE_INSTRUMENT_METRICS_CACHE["data"]):
+        return _LIVE_INSTRUMENT_METRICS_CACHE["data"]
+    out = {}
+    try:
+        import volume_score as _vscore
+        want = [r.get("ticker") for r in snap.get("records", []) if r.get("ticker")]
+        if want:
+            from db_pool import get_db
+            today = _dt.date.today()
+            db = get_db()
+            try:
+                bars_by_tk = _perf_bars(
+                    db, {ticker: today for ticker in want},
+                    lookback_days=_LIVE_VWAP_ATR_LOOKBACK_DAYS)
+            finally:
+                db.close()
+            for ticker in want:
+                bars = bars_by_tk.get(ticker, [])
+                if not bars:
+                    continue
+                index = len(bars) - 1
+                out[ticker] = {
+                    "rvol": _vscore._rvol_at(bars, index),
+                    # This is the literal current-price-above-VWAP instrument metric. Unlike the
+                    # direction-aware setup confirmation metric, a BEAR row must not invert it.
+                    "above_vwap": _vscore._above_vwap(bars, index, True),
+                    "atr_expanding": _vscore._atr_expanding(bars, index),
+                    "date": str(bars[index][0])[:10],
+                }
+    except Exception as exc:
+        log.warning("live all-instrument metrics failed (columns blank): %s", exc)
+    _LIVE_INSTRUMENT_METRICS_CACHE.update(gen=gen, data=out)
+    return out
 
 
 def _live_vwap_atr(snap: dict) -> dict:
@@ -1241,16 +1283,22 @@ def api_records():
         # this came from vscore's per-ticker "components" (TRIGGERED-only), which silently left READY/
         # DEVELOPING rows' VWAP/ATR ticks blank/unknown even though they ARE computable.
         vwap_atr = _live_vwap_atr(snap)
+        live_metrics = _live_instrument_metrics(snap)
         recs = []
         for r in snap.get("records", []):
             result = vscore.get(r.get("ticker")) or {}
             w = wk52.get(r.get("ticker")) or (None, None)
             av, ae = vwap_atr.get(r.get("ticker"), (None, None))
+            current = live_metrics.get(r.get("ticker"), {})
             recs.append(dict({k: v for k, v in r.items() if k != "_card"},
                              rvol=rvol.get(r.get("ticker")),
                              volume_score=result.get("score"),
                              above_vwap=av,
                              atr_expanding=ae,
+                             current_rvol=current.get("rvol"),
+                             current_above_vwap=current.get("above_vwap"),
+                             current_atr_expanding=current.get("atr_expanding"),
+                             current_metric_date=current.get("date"),
                              wk52_low=w[0], wk52_high=w[1]))
         # Canonical market list (user 2026-07-31, P-15) — drives the Scanner "Refresh a choice of markets"
         # picker independent of which fields the client keeps on DATA.
@@ -2885,7 +2933,8 @@ def _sl_path(direction, entry, stop, target, bars, thr):
     return "OPEN", last
 
 
-def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0, return_date=False):
+def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0, return_date=False,
+              target_already_hit=False):
     """Let a winner RUN but ratchet the stop UP TO THE TARGET the moment target is reached, so the trade can
     never give back below the target gain (user 2026-08-01: "put a stop near target so 17 doesn't go to 7").
     Two configurable trailing knobs (user 2026-08-02):
@@ -2897,8 +2946,12 @@ def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0, return_date
     >= its target return, plus any further run. Returns (outcome, exit_price)."""
     import ig_shim
     buy = direction == "BULLISH"
-    cur = stop
-    floored = False   # has the stop been ratcheted up to the target yet?
+    # For a historical TARGET row, the baseline replay is authoritative evidence that the position reached
+    # its target on outcome_date. Start the counterfactual immediately after that event with the target lock
+    # already in place. Rewalking revised/vendor-adjusted pre-target bars could otherwise manufacture an
+    # impossible early stop and compare a different history with the recorded baseline.
+    floored = bool(target_already_hit and target is not None)
+    cur = target if floored else stop
     last = last_date = None
     for _bd, hi, lo, cl in bars:
         last_date = str(_bd)
@@ -3322,6 +3375,39 @@ def api_winners_sl():
         return jsonify({"rows": [], "threshold_pct": 0, "months": 12})
 
 
+def _winner_run_target(row):
+    """Return the target used by the runner replay, including preserved historical rows.
+
+    Older ``squeeze_history`` rows can have a recorded TARGET outcome/return but no target_level.  Using a
+    null target silently turns the runner into an ordinary stop replay and makes a known target winner look
+    like a loser.  Prefer the stored level, reconstruct a recorded target outcome from its authoritative
+    return, then fall back to the stored risk/reward geometry for unresolved/stopped rows.
+    """
+    target = row.get("target")
+    if target is not None:
+        return float(target)
+    entry = row.get("entry")
+    if entry is None:
+        return None
+    entry = float(entry)
+    buy = row.get("direction") == "BULLISH"
+    perf = row.get("return_pct")
+    if row.get("outcome") == "TARGET" and perf is not None:
+        move = entry * float(perf) / 100.0
+        return entry + move if buy else entry - move
+    stop, rr = row.get("stop"), row.get("rr")
+    if stop is None or rr is None:
+        return None
+    move = abs(entry - float(stop)) * float(rr)
+    return entry + move if buy else entry - move
+
+
+def _winner_run_bars(by_ticker, ticker, triggered_date):
+    """Bars strictly after entry; the trigger bar happened before its closing-price entry."""
+    td = str(triggered_date or "")[:10]
+    return [b for b in by_ticker.get(ticker, []) if str(b[0])[:10] > td]
+
+
 def _winners_run_rows(threshold_pct, stop_pct=0):
     """Every 12-month tradeable trade with its plain return% AND the return%/outcome it WOULD have had if we
     did NOT sell at target but let it RUN — re-walk with the target exit DISABLED, so the position keeps
@@ -3359,12 +3445,19 @@ def _winners_run_rows(threshold_pct, stop_pct=0):
     for r in rows:
         plain = r["return_pct"]
         run_perf, run_out, run_exit_date = plain, r["outcome"], r.get("exit_date")
+        target = _winner_run_target(r)
         if r.get("entry") and r.get("stop") and r.get("trig_date"):
-            bars = [b for b in by_tk.get(r["ticker"], []) if b[0] >= r["trig_date"]]
+            # Match squeeze_history's execution convention: entry is the trigger bar CLOSE, therefore the
+            # trigger bar's high/low cannot stop or target a position that did not exist intraday.
+            target_hit = r.get("outcome") == "TARGET" and target is not None and r.get("exit_date")
+            replay_start = r["exit_date"] if target_hit else r["trig_date"]
+            bars = _winner_run_bars(by_tk, r["ticker"], replay_start)
             if bars:
                 # Stop ratchets to the target once reached, then trails above it (user 2026-08-01) — so a
                 # target-hitter never falls back below its target gain; only genuine runners beat it.
-                run_out, ex, run_exit_date = _run_path(r["direction"], r["entry"], r["stop"], r.get("target"), bars, thr, sthr, True)
+                run_out, ex, run_exit_date = _run_path(
+                    r["direction"], r["entry"], r["stop"], target, bars, thr, sthr, True,
+                    target_already_hit=bool(target_hit))
                 if ex is not None:
                     buy = r["direction"] == "BULLISH"
                     run_perf = round(((ex - r["entry"]) / r["entry"] * 100.0) if buy
@@ -3383,6 +3476,111 @@ def _winners_run_rows(threshold_pct, stop_pct=0):
     return out
 
 
+def _winner_run_dedupe(rows):
+    """Match the shared Performance population: one best recorded return per ticker/trigger day."""
+    selected = {}
+    for row in rows or []:
+        key = (row.get("ticker") or "", str(row.get("trig_date") or "")[:10])
+        current = selected.get(key)
+        value = row.get("perf")
+        old_value = current.get("perf") if current else None
+        if current is None or (value is not None and (old_value is None or float(value) > float(old_value))):
+            selected[key] = row
+    return sorted(selected.values(), key=lambda row: (str(row.get("trig_date") or ""), row.get("ticker") or ""))
+
+
+def _winner_run_replay(rows, wallet=10_000, position_pct=5, max_open=20, min_trade=25,
+                       perf_key="perf"):
+    """Fixed-stake, exit-settled wallet replay matching the browser's ``_combReplay(..., false)``."""
+    wallet = max(1.0, float(wallet or 0))
+    stake = wallet * max(0.0, float(position_pct or 0)) / 100.0
+    limit = max(1, int(max_open or 1))
+    if stake > 0:
+        limit = min(limit, max(1, int(wallet // stake)))
+    equity = peak = wallet
+    max_drawdown = peak_open = 0.0
+    open_positions, proof = [], []
+
+    def settle(until):
+        nonlocal equity, peak, max_drawdown
+        open_positions.sort(key=lambda item: item["exit"])
+        while open_positions and open_positions[0]["exit"] <= until:
+            item = open_positions.pop(0)
+            equity += item["net"]
+            peak = max(peak, equity)
+            max_drawdown = max(max_drawdown, ((peak - equity) / peak) if peak > 0 else 0)
+
+    for row in rows:
+        triggered = str(row.get("trig_date") or "")
+        settle(triggered)
+        market = row.get("market") or ""
+        leverage = 30 if market == "FX" else 20 if market == "Indices" else 10 if market == "Commodities" else 5
+        margin = stake / leverage
+        used = sum(item["margin"] for item in open_positions)
+        reason = None
+        if stake + 1e-9 < float(min_trade or 0):
+            reason = "Below minimum trade"
+        elif len(open_positions) >= limit:
+            reason = "Max open cap"
+        elif used + margin > equity + 1e-9:
+            reason = "Wallet / margin full"
+        key = (row.get("ticker") or "", str(row.get("trig_date") or "")[:10])
+        if reason:
+            proof.append({"key": key, "row": row, "placed": False, "reason": reason, "stake": stake})
+            continue
+        exit_date = ((row.get("run_exit_date") if perf_key == "run_perf" else None)
+                     or row.get("exit_date") or "9999-99-99")
+        result = float(row.get(perf_key) or 0)
+        open_positions.append({"exit": str(exit_date), "margin": margin, "net": stake * result / 100.0})
+        peak_open = max(peak_open, len(open_positions))
+        proof.append({"key": key, "row": row, "placed": True, "reason": "Placed", "stake": stake})
+    settle("9999-99-99")
+    return {"end_wallet": equity, "return": (equity / wallet) - 1, "max_drawdown": max_drawdown,
+            "funded": sum(1 for item in proof if item["placed"]), "peak_open": int(peak_open),
+            "proof": proof}
+
+
+def _winner_run_portfolio_evidence(rows, wallet=10_000, position_pct=5, max_open=20, min_trade=25):
+    rows = _winner_run_dedupe([row for row in (rows or []) if row.get("perf") is not None
+                               and row.get("run_perf") is not None])
+    plain = _winner_run_replay(rows, wallet, position_pct, max_open, min_trade, "perf")
+    run = _winner_run_replay(rows, wallet, position_pct, max_open, min_trade, "run_perf")
+    p = {item["key"]: item for item in plain["proof"] if item["placed"]}
+    q = {item["key"]: item for item in run["proof"] if item["placed"]}
+    common = set(p) & set(q)
+    plain_only, run_only = set(p) - set(q), set(q) - set(p)
+    exit_impact = sum(q[key]["stake"] * (float(q[key]["row"].get("run_perf") or 0)
+                                         - float(p[key]["row"].get("perf") or 0)) / 100.0
+                      for key in common)
+    capacity_impact = (-sum(p[key]["stake"] * float(p[key]["row"].get("perf") or 0) / 100.0
+                            for key in plain_only)
+                       + sum(q[key]["stake"] * float(q[key]["row"].get("run_perf") or 0) / 100.0
+                             for key in run_only))
+    total = run["end_wallet"] - plain["end_wallet"]
+    unexplained = total - exit_impact - capacity_impact
+    target_rows = [row for row in rows if row.get("outcome") == "TARGET"]
+    target_breaches = sum(1 for row in target_rows
+                          if float(row.get("run_perf") or 0) < float(row.get("perf") or 0) - .01)
+    tolerance = .005
+    verdict = "improved" if total > tolerance else "worse" if total < -tolerance else "equal"
+    return {"eligible": len(rows), "first_trigger": (rows[0].get("trig_date") if rows else None),
+            "last_trigger": (rows[-1].get("trig_date") if rows else None),
+            "model": {"wallet": wallet, "position_pct": position_pct, "max_open": max_open,
+                      "minimum_trade": min_trade},
+            "baseline": {key: value for key, value in plain.items() if key != "proof"},
+            "runner": {key: value for key, value in run.items() if key != "proof"},
+            "attribution": {"common_funded": len(common), "baseline_only": len(plain_only),
+                            "runner_only": len(run_only), "exit_impact": exit_impact,
+                            "capacity_impact": capacity_impact, "total_difference": total,
+                            "unexplained": unexplained, "reconciled": abs(unexplained) < tolerance},
+            "target_lock": {"target_hits": len(target_rows), "breaches": target_breaches},
+            "trade_comparison": {"better": sum(1 for row in rows if row["run_perf"] > row["perf"] + .01),
+                                 "equal": sum(1 for row in rows if abs(row["run_perf"] - row["perf"]) <= .01),
+                                 "worse": sum(1 for row in rows if row["run_perf"] < row["perf"] - .01)},
+            "verdict": verdict,
+            "valid": target_breaches == 0 and abs(unexplained) < tolerance}
+
+
 @app.route("/api/winners-run")
 def api_winners_run():
     """Winners rows re-backtested LETTING WINNERS RUN — no sell at target, trail past it. Query params:
@@ -3394,8 +3592,19 @@ def api_winners_run():
             thr = "25"
         stop = request.args.get("stop") or "0"
         rows = _winners_run_rows(thr, stop)
+        def _number(name, default, low, high):
+            try:
+                return min(high, max(low, float(request.args.get(name, default))))
+            except (TypeError, ValueError):
+                return default
+        wallet = _number("wallet", 10_000, 1, 100_000_000)
+        position_pct = _number("position_pct", 5, .1, 100)
+        max_open = int(_number("max_open", 20, 1, 10_000))
+        min_trade = _number("min_trade", 25, 0, 1_000_000)
+        evidence = _winner_run_portfolio_evidence(rows, wallet, position_pct, max_open, min_trade)
         return jsonify({"rows": rows, "threshold_pct": float(thr or 0), "stop_pct": float(stop or 0),
-                        "months": 12, "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())})
+                        "months": 12, "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+                        "evidence": evidence})
     except Exception as ex:
         log.warning(f"winners-run failed: {ex}")
         return jsonify({"rows": [], "threshold_pct": 0, "stop_pct": 0, "months": 12})
@@ -3407,6 +3616,8 @@ def api_squeeze_history():
     developing → ready → triggered → outcome journey, replayed over price history. Newest first."""
     payload = {"rows": [], "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
                "refreshed_at": None, "data_through": None}
+    if not _wu.name_for_token(request.headers.get("X-Auth") or ""):
+        return jsonify({"error": "login required"}), 401
     try:
         snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
         from db_pool import get_db
@@ -3420,13 +3631,17 @@ def api_squeeze_history():
                 payload["data_through"] = str(freshness[0][1]) if freshness[0][1] else None
             raw = db.run(
                 "select ticker, market, timeframe, hvf_type, first_seen, first_signal, ready_date, "
-                "triggered_date, outcome, outcome_date, return_pct, quality, risk_reward "
+                "triggered_date, outcome, outcome_date, return_pct, quality, risk_reward, rvol "
                 "from squeeze_history "
                 "order by coalesce(triggered_date, ready_date, first_seen) desc nulls last") or []   # no row cap (user 2026-07-18, P-01)
         finally:
             db.close()
-        for (tk, mk, tf, ht, fseen, fsig, rd, td, oc, od, ret, q, rr) in raw:
+        vsmap = _volscore_trigger_map()
+        vfmap = _volscore_trigger_feature_map()
+        for (tk, mk, tf, ht, fseen, fsig, rd, td, oc, od, ret, q, rr, rv) in raw:
             s = snap.get(tk, {})
+            feature_key = (tk, str(td or "")[:10])
+            features = vfmap.get(feature_key, {})
             payload["rows"].append({
                 "ticker": tk, "name": s.get("name") or tk, "market": mk or s.get("market"),
                 "location": s.get("location"),   # for the Location chart (user 2026-07-18, P-01)
@@ -3437,7 +3652,11 @@ def api_squeeze_history():
                 "outcome": oc, "outcome_date": (str(od) if od else None),
                 "return_pct": (round(ret, 2) if ret is not None else None),
                 "quality": (round(q) if q is not None else None),
-                "rr": (round(rr, 1) if rr is not None else None)})
+                "rr": (round(rr, 1) if rr is not None else None),
+                "rvol": (round(rv, 2) if rv is not None else None),
+                "volume_score": vsmap.get(feature_key),
+                "above_vwap": features.get("above_vwap"),
+                "atr_expanding": features.get("atr_expanding")})
     except Exception as ex:
         log.warning(f"squeeze history failed: {ex}")
     return jsonify(payload)

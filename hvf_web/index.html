@@ -37,6 +37,7 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 @keyframes refreshPulse{from{opacity:.45}to{opacity:1;text-shadow:0 0 10px color-mix(in srgb,var(--bull) 70%,transparent)}}
 /* Operations / Settings sub-navigation (user 2026-07-10) */
 .subnav{display:flex;gap:6px;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;align-items:center;justify-content:center;position:sticky;top:var(--sticky-top,90px);z-index:3}
+.subnav-operations{gap:3mm}
 .subnav .subpill{background:var(--chip);border:1px solid var(--line);border-radius:6px;color:var(--muted);padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600}
 .subnav .subpill:hover{color:var(--fg);border-color:var(--accent)}
 .subnav .subpill.active{background:var(--grad);color:#fff;border-color:transparent}
@@ -329,7 +330,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .gsec .term dd{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}
 
 /* Configuration card navigation (user 2026-07-03) */
-.confnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;justify-content:center}
+.confnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;justify-content:center;align-items:center}
 .confnav-group{position:relative;display:flex;flex-direction:column;gap:5px;align-items:center;justify-content:center;padding:7px 4px;background:transparent;border-color:transparent;border-radius:8px}
 .confnav-group::before{content:"";position:absolute;z-index:0;inset:0 -5%;background:color-mix(in srgb,#d9dde3 50%,var(--bg) 50%);border:1px solid #b8bec7;border-radius:8px;pointer-events:none}
 .confnav-row{position:relative;z-index:1;display:flex;gap:5px;align-items:center;justify-content:center}
@@ -648,6 +649,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <h1 style="margin:6px 0 4px">Scanner Report</h1>
       <p class="lede" style="margin:0">Every instrument we scan across shares, indices, FX and commodities — squeezes spotted early, with the exact levels to act on. Use the charts or <b>Filters</b> to narrow; click a row for full detail.</p>
       <p style="font-size:12px;margin-top:6px;color:#d29922">This is a live list of what's actionable <b>right now</b>, not a history — a squeeze that has gone stale or already resolved drops off here even though it's still recorded. For the full historical record, see <b>Squeeze History</b> or <b>Performance</b>.</p>
+      <input id="scanner-name-search" placeholder="Search name / ticker…" oninput="syncScannerNameSearch(this.value)" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px;margin-top:8px" aria-label="Search Scanner by name or ticker">
     </div>
     <div class="viz" id="viz"></div>
     <div class="count" id="count"></div>
@@ -820,7 +822,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
   <div class="confpanel hidden" data-panel="limits">
     <div class="card"><h4>My Trading Filters</h4>
-      <p class="muted" style="font-size:12px">Your personal floors. <b>R:R</b>, <b>Quality</b>, <b>VWAP</b> and <b>ATR expanding</b> are enforced on <b>your own</b> manual actions (pushing a setup to Pre-orders or placing it on IG is blocked below these) and, as of 2026-08-11, on the automated engine's own order placement too — every setup it places for you is checked against these same floors. RVOL, VolumeScore and instrument value are stored against your login but not yet enforced on the automated engine (only your manual actions).</p>
+      <p class="muted" style="font-size:12px">Your personal floors. <b>R:R</b>, <b>Quality</b>, <b>RVOL</b>, <b>VolumeScore</b>, <b>VWAP</b>, <b>ATR expanding</b> and <b>instrument value</b> are enforced on <b>your own</b> manual actions and at the automated engine's final order-placement checkpoint. If a required live metric is unavailable, an automated order is blocked rather than sent without evidence.</p>
       <div style="padding:4px 0 10px;border-bottom:1px solid var(--line)"><h4 style="margin:0 0 4px">Trade filters — direction</h4>
         <p class="muted" style="font-size:12px;margin:0 0 8px">Only ticked directions may be traded. Ticking both (or neither) = no restriction.</p>
         <div id="cfg-trade" class="sqh-loading">⏳ Data loading…</div>
@@ -1515,7 +1517,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div id="pf-combos" class="hidden"></div>
     <div id="ordp-bestcombo" style="margin-bottom:10px"><span class="sqh-loading">⏳ Data loading…</span></div>
     <div class="card" style="margin:0 0 10px">
-      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Best settings history</h3><span id="best-history-count" class="muted"></span></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Best settings history</h3><span id="best-history-count" class="muted"></span><span class="grow"></span><input id="best-history-search" placeholder="Filter changes…" oninput="paintBestSettingsHistory(BEST_HISTORY_ROWS)" style="width:auto;max-width:220px;padding:5px 9px;font-size:12px"></div>
       <div id="best-settings-history" class="sqh-loading" style="margin-top:8px">⏳ Data loading…</div>
     </div>
   </div>
@@ -1587,6 +1589,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="tablewrap"><table>
       <thead><tr>
         <th class="clk" data-instrk="name">Name</th>
+        <th class="clk" data-instrk="location">Location</th>
         <th class="clk" data-instrk="market">Market</th>
         <th class="clk" data-instrk="sector">Sector</th>
         <th class="clk" data-instrk="direction">Dir</th>
@@ -1600,19 +1603,21 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <th class="clk" data-instrk="volume_score">Vol</th>
         <th class="clk" data-instrk="ticker">Ticker</th>
       </tr></thead>
-      <tbody id="instr-rows"><tr><td colspan="13" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
+      <tbody id="instr-rows"><tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
     </table></div>
   </section>
 
   <!-- "Provide a history of the funnels" (P-08) — a compact, separate recent-activity table (developing →
-       ready → triggered → outcome), reusing /api/squeeze-history (already public server-side) and
+       ready → triggered → outcome), reusing the authenticated /api/squeeze-history endpoint and
        reflecting the SAME Location/Market/Sector/search selections as the table above. -->
-  <h3 class="sec" style="font-size:15px;margin:16px 0 2px">📜 Funnel history</h3>
-  <p class="muted" style="font-size:12px;margin:2px 0 6px">Recent squeeze lifecycle events — developing → ready → triggered → outcome — for the instruments shown above (newest first, capped at 30 rows).</p>
-  <div class="tablewrap"><table>
-    <thead><tr><th>Name</th><th>Market</th><th>Sector</th><th>Dir</th><th>Ready</th><th>Triggered</th><th>Outcome</th><th>Closed</th><th>Return</th></tr></thead>
-    <tbody id="instr-funnel-rows"><tr><td colspan="9" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
-  </table></div>
+  <div id="instr-funnel-wrap">
+    <h3 class="sec" style="font-size:15px;margin:16px 0 2px">📜 Funnel history</h3>
+    <p class="muted" style="font-size:12px;margin:2px 0 6px">Recent squeeze lifecycle events — developing → ready → triggered → outcome — for the instruments shown above (newest first, capped at 30 rows).</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Dir</th><th>Ready</th><th>Triggered</th><th>ATR</th><th>VWAP</th><th>Quality</th><th>R:R</th><th>RVOL</th><th>Vol</th><th>Outcome</th><th>Closed</th><th>Return</th></tr></thead>
+      <tbody id="instr-funnel-rows"><tr><td colspan="12" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
+    </table></div>
+  </div>
 </div>
 
 <!-- Squeeze History (Admin) (user 2026-07-18) — squeeze lifecycle: developing → ready → triggered → outcome. -->
@@ -1875,6 +1880,7 @@ function appConfirm(msg,{title="Please confirm",ok="Confirm",cancel="Cancel"}={}
 }
 const F=["f_search","f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
          "f_demin","f_demax","f_dsmin","f_dsmax","f_rvmin","f_rvmax","f_pemin","f_pemax","f_inmin","f_inmax"];
+function syncScannerNameSearch(value){if($("f_search"))$("f_search").value=value||"";applyAll();}
 const LOC={UK:"United Kingdom",US:"United States",FX:"FX",
   "Europe (West)":"Europe (West)","Europe (East)":"Europe (East)","Asia":"Asia","Other":"Other"};
 const locName=v=>LOC[v]||v||"";
@@ -2560,7 +2566,7 @@ const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
 const TABS=["welcome","whatwedo","intro","appendix","terms","scanner","instruments","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","docs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
 const PUBLIC_TABS=["welcome","whatwedo","intro","appendix","terms","scanner","instruments","performance"];   // visible when logged out (Performance blurs all but ticker/name/return); "What we do" + "T&C" are for everyone (user 2026-07-27, P-10 L169 / P-25); Instruments joined the list 2026-08-07 (ChangeRequest P-08 — "available to all, even without a login")
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin","squeezehist","fees"];  // admin only
-const SUPPORT_TABS=["batch","syslogs","jobs"];   // Support role (2026-08-07): read-only ops visibility carved out of ADMIN_TABS — Batch Activity, System Logs, Scheduled Jobs only, nothing else admin-only
+const SUPPORT_TABS=["batch","syslogs","jobs","sysdocs"];   // Support role: read-only ops visibility plus the system runbook.
 const FEATURE_TABS=[];                                         // X Posts is always available to admin users
 // Tabs hidden by DEFAULT (user 2026-07-10): visible only once the user opts in via Tab Visibility.
 const DEFAULT_HIDDEN=new Set(["mfm"]);   // IG Account is now default-visible (user 2026-07-11)
@@ -3686,7 +3692,7 @@ function paintIgAccount(){
   const actualRows=pos.length+closed.length;
   const totalRow=actualRows?`<tr style="border-top:2px solid var(--line)"><td></td><td colspan="6"><b>Total visible profit (${actualRows} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
   $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${actualRows}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed</span>${showClosed&&IGCLOSED===null?' <span class="refreshing">· ⏳ Data loading… closed trades from IG</span>':_igClosedNote?' <span class="muted">· '+_esc(_igClosedNote)+'</span>':''}`;
-  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="16" class="empty ${showClosed&&IGCLOSED===null?'refreshing':''}">${q?'No transactions match that search.':'⏳ Data loading… open transactions and closed trades from IG history.'}</td></tr>`;
+  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="16" class="empty ${showClosed&&IGCLOSED===null?'refreshing':''}">${q?'No transactions match that search.':_igNoCreds?'No IG account data — add credentials in Configuration → IG.':'⏳ Data loading… open transactions and closed trades from IG history.'}</td></tr>`;
 
   // ── WORKING ORDERS (own strip + sortable table) ──
   const ordBase=IG_ORD.filter(hit).map(o=>Object.assign({},o,_enrCommon(o),{gtd:(o.good_till||"").slice(0,10)||"—"}));
@@ -3706,7 +3712,7 @@ function paintIgAccount(){
   $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${o.market||'<span class="muted">—</span>'}</td><td>${_igDtag(o.direction)}</td><td>${_igSz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
 // Closed trades are loaded into the main transactions table (user 2026-08-04); no duplicate table below.
-let IGCLOSED=null, _igClosedNote="";
+let IGCLOSED=null, _igClosedNote="", _igNoCreds=false;
 function loadIgClosed(force){
   if(IGCLOSED!==null&&!force){paintIgAccount();return;}
   IGCLOSED=null;_igClosedNote="Closed trades are still loading from IG history.";paintIgAccount();
@@ -3721,7 +3727,7 @@ function _igReason(r){
 function renderIgAccount(ev){
   const btn=ev&&ev.target?ev.target:$("ig-refresh"), was=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.className="sqh-loading";btn.textContent="⏳ Data loading…";}
-  IGCLOSED=null;_igClosedNote="";
+  IGCLOSED=null;_igClosedNote="";_igNoCreds=false;
   $("ig-note").textContent="";$("ig-acct").innerHTML="";
   $("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading… open positions, working orders and closed trades.</span>`;
   $("ig-pos-rows").innerHTML=`<tr><td colspan="16" class="empty refreshing">⏳ Data loading… open positions and working orders.</td></tr>`;
@@ -3736,6 +3742,7 @@ function renderIgAccount(ev){
       // No IG credentials (user 2026-07-26, P-07 #91/#92): show a prominent warning AND a button that
       // jumps straight to Configuration → IG, instead of only a muted "set them in Configuration" note.
       const noCreds=j.no_creds||((j.note||"").toLowerCase().indexOf("no ig credentials")===0);
+      _igNoCreds=!!noCreds;if(noCreds)IGCLOSED=[];
       $("ig-note").innerHTML=noCreds
         ? `<div class="card" style="border-color:#d29922;background:color-mix(in srgb,#d29922 12%,transparent);display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 6px"><span style="font-size:13px">⚠️ <b style="color:var(--fg)">No IG credentials set.</b> <span class="muted">Add your IG login to see your account and place orders.</span></span><span class="grow" style="flex:1"></span><button class="btn" style="border-color:#d29922" onclick="openIgSettings()">🔑 Open IG settings</button></div>`
         : (j.note?`<span class="muted">🔒 ${j.note}</span>`:"");
@@ -3848,7 +3855,7 @@ function renderPerformance(){
   const _pills=$("pf-pills");
   if(_pills)_pills.style.display='flex';
   const _ag=$("pf-advanced-group");
-  if(_ag)_ag.style.display=advancedPfAllowed()?'':'none';
+  if(_ag)_ag.style.display='none';
   const _rg=$("pf-run-group");   // "Let winners run" pill (Silver/Gold admin, same gate as Advanced analysis)
   if(_rg)_rg.style.display=advancedPfAllowed()?'':'none';
   const _lg=document.querySelector(".pf-loc-group");
@@ -4119,9 +4126,10 @@ function winnersRunChange(surface='pf'){
   if(inS&&!inS.dataset.seed){inS.value=(MY_LIMITS.let_winners_run_stop??0);inS.dataset.seed="1";}
   const v=+((inT||{}).value||(MY_LIMITS.let_winners_run_trail??25)), sv=+((inS||{}).value||(MY_LIMITS.let_winners_run_stop??0));
   if(busy){busy.className="sqh-loading";busy.textContent="⏳ Data loading… re-backtesting.";}
-  fetch("/api/winners-run?thr="+v+"&stop="+sv).then(r=>r.ok?r.json():null).then(j=>{
+  const evidenceQuery=`&wallet=${encodeURIComponent(WINNERS_WALLET)}&position_pct=${encodeURIComponent(WINNERS_STAKE*100)}&max_open=${encodeURIComponent(WINNERS_MAXOPEN)}&min_trade=${encodeURIComponent(MIN_TRADE)}`;
+  fetch("/api/winners-run?thr="+v+"&stop="+sv+evidenceQuery).then(r=>r.ok?r.json():null).then(j=>{
     if(busy){busy.className="muted";busy.textContent="";}
-    const rows=((j&&j.rows)||[]).filter(r=>r.perf!=null);
+    const rows=_dedupeSameDayRows(((j&&j.rows)||[]).filter(r=>r.perf!=null));
     if(!rows.length){paint('<div class="muted" style="font-size:13px">No data to re-backtest.</div>');return;}
     // One common eligible population, identical ordering and identical wallet/funding settings. The only
     // variable is the exit method (and therefore its exit date/capacity cost). Both proofs are retained so
@@ -4138,7 +4146,10 @@ function winnersRunChange(surface='pf'){
     const improvedTrades=commonRows.filter(r=>r.run_perf>r.perf+0.01).length,
           worseTrades=commonRows.filter(r=>r.run_perf<r.perf-0.01).length,
           sameTrades=commonRows.length-improvedTrades-worseTrades;
-    const targetLockValid=back===0, evidenceValid=targetLockValid&&attribution.reconciled,
+    const serverEvidence=(j&&j.evidence)||null,
+          serverMatches=!serverEvidence||(Math.abs(serverEvidence.baseline.end_wallet-plainFinal)<.005&&Math.abs(serverEvidence.runner.end_wallet-runFinal)<.005),
+          targetLockValid=back===0&&(!serverEvidence||serverEvidence.target_lock.breaches===0),
+          evidenceValid=targetLockValid&&attribution.reconciled&&serverMatches,
           money=x=>`£${Number(x||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
           signedMoney=x=>`${x>0?'+':x<0?'−':''}£${Math.abs(x).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`,
           pct=x=>`${x>0?'+':''}${(x*100).toFixed(2)}%`, pp=x=>`${x>0?'+':''}${(x*100).toFixed(2)} pp`,
@@ -4149,6 +4160,8 @@ function winnersRunChange(surface='pf'){
             ?`${back.toLocaleString()} normal target hit(s) finished below their target return in the simulation. The portfolio verdict is withheld until that invariant is restored.`
             :!attribution.reconciled
               ?`The exit/capacity attribution differs from the wallet result by ${signedMoney(attribution.reconciliation)}. The portfolio verdict is withheld until the replay reconciles.`
+            :!serverMatches
+              ?`The server and browser portfolio replays do not agree within half a penny. The verdict is withheld until they reconcile.`
             :verdict==='improved'
             ?`The trailing-stop replay finished ${signedMoney(delta)} ahead of selling at target.`
             :verdict==='worse'
@@ -4174,6 +4187,7 @@ function winnersRunChange(surface='pf'){
         <tr><td>Capacity impact · funded in only one</td><td>${attribution.plainOnlyCount.toLocaleString()} baseline-only</td><td>${attribution.runOnlyCount.toLocaleString()} runner-only</td><td><b style="color:${_pnlc(attribution.capacityDelta)}">${signedMoney(attribution.capacityDelta)}</b></td></tr>
         <tr><td>Target-lock integrity</td><td>${tgt.length.toLocaleString()} normal target hits</td><td>${(tgt.length-back).toLocaleString()} protected at/above target</td><td><b style="color:${targetLockValid?'var(--bull)':'var(--bear)'}">${back.toLocaleString()} below target</b></td></tr>
         <tr><td>Attribution reconciliation</td><td colspan="2">End-wallet difference minus exit and capacity impacts</td><td><b style="color:${attribution.reconciled?'var(--bull)':'var(--bear)'}">${signedMoney(attribution.reconciliation)} unexplained</b></td></tr>
+        <tr><td>Independent replay cross-check</td><td colspan="2">Supabase/server evidence vs browser calculation</td><td><b style="color:${serverMatches?'var(--bull)':'var(--bear)'}">${serverMatches?'Matched within £0.005':'Mismatch — verdict withheld'}</b></td></tr>
       </tbody></table></div>
       <div class="muted" style="font-size:12px;margin-top:8px">Across all eligible trades, the trailing result was better on <b>${improvedTrades.toLocaleString()}</b>, equal on <b>${sameTrades.toLocaleString()}</b>, and worse on <b>${worseTrades.toLocaleString()}</b>. Of <b>${tgt.length.toLocaleString()}</b> normal target hits, <b>${ran.toLocaleString()}</b> ran further and <b>${back.toLocaleString()}</b> finished below the normal target result.</div>
       ${big.length?`<div class="muted" style="font-size:12px;margin-top:6px"><b>Largest per-trade improvements (not the portfolio verdict):</b> ${big.map(r=>`${_esc(r.name||disp(r.ticker))} ${r.perf>0?'+':''}${r.perf}%→${r.run_perf>0?'+':''}${r.run_perf}%`).join(' · ')}</div>`:''}
@@ -4243,7 +4257,9 @@ function decisionProofFilter(id,dim,value){
   renderDecisionProof(id,s.proof,{...s.opts,filters});
 }
 function renderDecisionProof(id,proof,opts={}){
-  const target=$(id);if(!target)return; DECISION_PROOFS[id]={proof,opts};
+  const target=$(id);if(!target)return;
+  if(LIMITED){target.style.display="none";target.innerHTML="";return;}
+  target.style.display="";DECISION_PROOFS[id]={proof,opts};
   const show=!!opts.showMissed, missed=proof.filter(x=>!x.placed).length, run=opts.run, filters=opts.filters||{};
   const evidenceTitle=opts.evidenceTitle||"Transaction evidence",
         evidenceNote=opts.evidenceNote||"Chronological decisions prove which opportunities the settings selected and whether the wallet could fund them. Positive missed rows expose profit the proposed setup could not actually capture.";
@@ -4292,7 +4308,7 @@ function renderDecisionProof(id,proof,opts={}){
     <div class="tablewrap"><table><thead><tr><th>Triggered</th><th>Name</th><th>Decision / constraint</th><th>Open after decision</th><th title="Model wallet immediately before this decision">Wallet</th><th>Sell at target</th>${run?'<th>Let run</th><th>Difference</th>':''}<th title="£ profit/loss from this trade alone — blank for missed trades">Net gain</th><th>R:R</th><th>Quality</th><th>VolumeScore</th><th>RVOL</th><th>VWAP</th><th>ATR</th><th>Market</th><th>Sector</th><th>Ticker</th></tr></thead><tbody>${rows||`<tr><td colspan="${run?18:16}" class="muted">No transactions match this view.</td></tr>`}</tbody></table></div>`;
 }
 
-let BEST_HISTORY_REQUESTED=false, BEST_HISTORY_POST_KEY="";
+let BEST_HISTORY_REQUESTED=false, BEST_HISTORY_POST_KEY="", BEST_HISTORY_ROWS=[];
 const BEST_HISTORY_FIELDS=[
   ["scope","Scope"],["min_rr","R:R"],["min_quality","Quality"],
   ["min_volume_score","VolumeScore"],["min_rvol","RVOL"],
@@ -4333,8 +4349,12 @@ function _bestHistoryChanges(current,previous){
 }
 function paintBestSettingsHistory(history){
   const box=$("best-settings-history"),count=$("best-history-count");if(!box)return;
-  const rows=history||[];box.classList.remove("sqh-loading");if(count)count.textContent=`${rows.length} daily snapshot${rows.length===1?'':'s'}`;
-  if(!rows.length){box.innerHTML='<span class="muted">No history yet. Today’s recommendation will be recorded when calculation completes.</span>';return;}
+  if(Array.isArray(history))BEST_HISTORY_ROWS=history;
+  const all=BEST_HISTORY_ROWS||[],query=((($("best-history-search")||{}).value)||"").trim().toLowerCase();
+  const rows=query?all.filter((row,index)=>_bestHistoryChanges(row,all[index+1]).toLowerCase().includes(query)):all;
+  box.classList.remove("sqh-loading");if(count)count.textContent=query?`${rows.length} shown of ${all.length} daily snapshots`:`${all.length} daily snapshot${all.length===1?'':'s'}`;
+  if(!all.length){box.innerHTML='<span class="muted">No history yet. Today’s recommendation will be recorded when calculation completes.</span>';return;}
+  if(!rows.length){box.innerHTML='<span class="muted">No settings changes match that search.</span>';return;}
   const body=rows.map((row,index)=>{
     const balanced=(row.options||[]).find(o=>o.label==="Balanced"),result=(balanced||{}).results||{};
     const full=(row.options||[]).map(o=>`<div><b>${_esc(o.label)}</b>: ${_esc(_bestHistoryConfig(o.settings))}</div>`).join("");
@@ -4342,7 +4362,7 @@ function paintBestSettingsHistory(history){
       `<td>${row.data_through?`through <b>${_esc(row.data_through)}</b>`:'—'}<div class="muted">built ${_esc(row.dataset_generated||'—')}</div></td>`+
       `<td>£${(+((row.model||{}).wallet)||0).toLocaleString()} · ${_bestHistoryValue('position_pct',(row.model||{}).position_pct)} · ${(row.model||{}).max_open} max</td>`+
       `<td>${balanced?`<b style="color:${result.annual_return>=0?'var(--bull)':'var(--bear)'}">${_bestHistoryPct(result.annual_return)}</b><div class="muted">${((+result.max_drawdown||0)*100).toFixed(1)}% drawdown · ${result.funded_trades} funded</div>`:'—'}</td>`+
-      `<td class="best-history-change">${_esc(_bestHistoryChanges(row,rows[index+1]))}</td>`+
+      `<td class="best-history-change">${_esc(_bestHistoryChanges(row,all[all.indexOf(row)+1]))}</td>`+
       `<td class="best-history-config"><details><summary>Full settings</summary>${full}</details></td></tr>`;
   }).join("");
   box.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Snapshot</th><th>Dataset</th><th>Model</th><th>Balanced result</th><th>Changes from previous snapshot</th><th>Configuration</th></tr></thead><tbody>${body}</tbody></table></div>`;
@@ -4433,6 +4453,26 @@ function renderBestCombo(all){
     const filters={f_mkt:market,f_sec:sector,pof_market:market,pof_sector:sector};
     return {limits,filters};};
   const eligible=evaluated.filter(x=>x.n>=20), positive=eligible.filter(x=>x.ret>0);
+  // The ordinary recommendation search intentionally concentrates on the strongest risk-adjusted
+  // finalists, which can be narrow populations. That is the wrong search for the explicit >250/>500
+  // evidence cards: 5,000+ annual rows existed, but broad candidates were pruned before the capacity grid
+  // and the grid stopped at 1% / 50 open positions. Run a bounded, dedicated large-sample search across
+  // both high-quality and widest-population candidates, allowing the smallest position that still meets
+  // this wallet's configured minimum trade and enough open slots to test the requested evidence bands.
+  const minLargeStakePct=Math.max(.1,MIN_TRADE/Math.max(1,WINNERS_WALLET)*100),
+        largeStakes=[...new Set([minLargeStakePct,.25,.5,1,2].filter(v=>v>=minLargeStakePct&&v<=100).map(v=>+v.toFixed(4)))],
+        largeOpens=[50,100,250,400],
+        largeSampleOptions=min=>{
+          const pool=candidates.filter(c=>c.seq.length>min),
+                finalists=[...pool.slice().sort((a,b)=>b.quick-a.quick).slice(0,10),
+                           ...pool.slice().sort((a,b)=>b.seq.length-a.seq.length||b.quick-a.quick).slice(0,10)],
+                unique=[...new Set(finalists)], options=[];
+          for(const c of unique)for(const st of largeStakes)for(const mo of largeOpens){
+            const z=robust(c.seq,st/100,mo);if(z.n>min)options.push({...c,st,mo,...z});
+          }
+          return options;
+        },
+        large250=largeSampleOptions(250),large500=largeSampleOptions(500);
   // Options must represent different decisions, not cosmetic variations. Prefer at least two changed
   // dimensions; if the tested population cannot support that, allow one difference but never duplicate.
   const configDistance=(a,b)=>['rr','q','vs','rv','vw','atr','st','mo'].reduce((n,k)=>n+(a[k]!==b[k]?1:0),0)+
@@ -4465,7 +4505,7 @@ function renderBestCombo(all){
   // even if it coincides with another card. Guarded (&&) so each card only appears when the data supports
   // a config above that floor. Unsupported thresholds remain visible as evidence-status cards below rather
   // than disappearing and looking like a render fault.
-  const trades250=_bestSettingsByFundedTrades(basePool,250), trades500=_bestSettingsByFundedTrades(basePool,500);
+  const trades250=_bestSettingsByFundedTrades(large250,250), trades500=_bestSettingsByFundedTrades(large500,500);
   const choices=[
     ["Balanced",best,"Best return relative to drawdown, with quarterly consistency included.","var(--bull)"],
     growth&&["Growth",growth,"Highest-return alternative with a materially different configuration.","var(--accent)"],
@@ -4522,12 +4562,14 @@ function selectBestChoice(label){
   const found=BEST_CHOICES.find(c=>c[0]===label); if(!found)return;
   const [lbl,x]=found;
   BEST_SELECTED=lbl;
+  const detail=$("best-detail"); if(!detail)return;
+  if(LIMITED){detail.style.display="none";return;}
+  detail.style.display="";
   // The funded replay proof is only computed for whichever choice has actually been viewed (lazy) — Best
   // Settings already evaluates thousands of configurations per render, so we don't pay for a full
   // chronological replay on the 3 cards a user never clicks.
   if(!x.proof)x.proof=_combReplay(x.seq,x.st/100,x.mo,true).proof;
   document.querySelectorAll('#ordp-bestcombo .fcard-choice').forEach(el=>el.classList.toggle('fcard-selected',el.dataset.choice===lbl));
-  const detail=$("best-detail"); if(!detail)return;
   const pct=v=>v>=9?'×'+(1+v).toLocaleString(undefined,{maximumFractionDigits:(1+v)>=100?0:1}):(v>=0?'+':'')+(v*100).toFixed(1)+'%';
   const gbp=v=>'£'+Math.round(v).toLocaleString();
   const seq=x.seq, w=BEST_MODEL_W;
@@ -4723,18 +4765,25 @@ function paintWinnersDims(dims, all){
 // ── Instruments (public) (user 2026-08-07, ChangeRequest P-08) ─────────────────────────────────────────
 // Reuses the SAME global DATA array the Scanner already loads via /api/records (now enriched with
 // wk52_low/wk52_high, see server.py api_records()) — no extra fetch for the main table. The funnel-history
-// mini-table below it lazy-loads /api/squeeze-history once and is cached in INSTR_FUNNEL.
-let INSTR_FUNNEL=null, instrSortK="", instrSortDir=1;
+// mini-table below it lazy-loads the authenticated /api/squeeze-history once and is cached in INSTR_FUNNEL.
+let INSTR_FUNNEL=null, instrSorts=[];
 function renderInstruments(){
   if($("instr-loginhint"))$("instr-loginhint").style.display=LIMITED?"":"none";
-  if(INSTR_FUNNEL===null){
+  if($("instr-funnel-wrap"))$("instr-funnel-wrap").style.display=AUTH?"":"none";
+  if(AUTH&&INSTR_FUNNEL===null){
     INSTR_FUNNEL=[];
-    fetch("/api/squeeze-history").then(r=>r.ok?r.json():{rows:[]}).then(j=>{INSTR_FUNNEL=j.rows||[];paintInstrFunnel();})
+    fetch("/api/squeeze-history",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]}).then(j=>{INSTR_FUNNEL=j.rows||[];paintInstrFunnel();})
       .catch(()=>{INSTR_FUNNEL=[];paintInstrFunnel();});
   }
   paintInstruments();
 }
-function instrSort(k){instrSortDir=(instrSortK===k)?-instrSortDir:1;instrSortK=k;paintInstruments();_sortArrows("data-instrk",instrSortK,instrSortDir);}
+function instrSort(k,add=false){
+  const at=instrSorts.findIndex(s=>s.k===k),next=at>=0?{k,d:-instrSorts[at].d}:{k,d:1};
+  instrSorts=add?instrSorts.filter(s=>s.k!==k):[];instrSorts.push(next);paintInstruments();
+  document.querySelectorAll("th[data-instrk]").forEach(th=>{th.querySelector(".sarr")?.remove();const i=instrSorts.findIndex(s=>s.k===th.dataset.instrk);
+    if(i>=0)th.insertAdjacentHTML("beforeend",` <span class="sarr">${instrSorts[i].d>0?"▲":"▼"}${instrSorts.length>1?i+1:""}</span>`);});
+}
+function _instrSortValue(row,key){return key==="rvol"?row.current_rvol:key==="above_vwap"?row.current_above_vwap:key==="atr_expanding"?row.current_atr_expanding:row[key];}
 // Cross-filter cards: Location/Market/Sector/Status are public; Direction is a 4th "worthwhile" card but
 // only once logged in — it's one of the columns hidden pre-login (same rule as the table below).
 function paintInstruments(){
@@ -4752,48 +4801,54 @@ function paintInstruments(){
   if(!LIMITED)viz+=`<div class="vizsector">`+barChart("Direction",byX("inf_direction"),"inf_direction",k=>k==="BULL"?"var(--bull)":k==="BEAR"?"var(--bear)":"var(--muted)")+`</div>`;
   if($("instr-viz")){$("instr-viz").innerHTML=viz;packViz("instr-viz");}
   let shown=base.filter(r=>_idims.every(([id,fn])=>inSet(id,fn(r)||"—")));
-  if(instrSortK)shown=genSort(shown,instrSortK,instrSortDir);
+  if(instrSorts.length)shown=shown.slice().sort((a,b)=>{for(const s of instrSorts){const x=_instrSortValue(a,s.k),y=_instrSortValue(b,s.k);let cmp=0;
+    if(x==null||x==="")cmp=(y==null||y==="")?0:1;else if(y==null||y==="")cmp=-1;
+    else cmp=(typeof x==="number"&&typeof y==="number")?x-y:String(x).localeCompare(String(y));
+    if(cmp)return cmp*s.d;}return 0;});
   if($("instr-count"))$("instr-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> instruments${rows.length!==shown.length?` <span class="muted">of ${rows.length.toLocaleString()}</span>`:""}`;
   if($("instr-rows"))$("instr-rows").innerHTML=shown.map(r=>{
     const tk=(r.ticker||"").replace(/'/g,"");
     return `<tr>
     <td class="clk" style="cursor:pointer;color:var(--accent)" title="${AUTH?"Open the detail report":"Log in to open the detail report"}" onclick="${AUTH?`openDetailFrom('instruments','${tk}')`:"showLogin()"}">${nm40(r.name)}</td>
-    <td>${r.market||""}</td><td>${r.sector||""}</td>
+    <td>${locName(r.location)||""}</td><td>${r.market||""}</td><td>${r.sector||""}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==="BULL"?"bull":"bear"}">${r.direction}</span>`:"")}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:"")}</td>
     <td>${r.wk52_low!=null?f2(r.wk52_low):"—"}</td><td>${r.wk52_high!=null?f2(r.wk52_high):"—"}</td>
     <td>${ob(r.rr!=null?(+r.rr).toFixed(1):"")}</td>
-    <td>${ob(rvolCell(r.rvol))}</td>
-    <td>${ob(r.above_vwap==null?"—":r.above_vwap?"✓":"✗")}</td>
-    <td>${ob(r.atr_expanding==null?"—":r.atr_expanding?"✓":"✗")}</td>
+    <td>${ob(rvolCell(r.current_rvol))}</td>
+    <td>${ob(r.current_above_vwap==null?"—":r.current_above_vwap?"✓":"✗")}</td>
+    <td>${ob(r.current_atr_expanding==null?"—":r.current_atr_expanding?"✓":"✗")}</td>
     <td>${ob(volScoreCell(r.volume_score))}</td>
-    <td><b>${disp(r.ticker)}</b></td></tr>`;}).join("")||`<tr><td colspan="13" class="empty">No instruments match.</td></tr>`;
+    <td><b>${disp(r.ticker)}</b></td></tr>`;}).join("")||`<tr><td colspan="14" class="empty">No instruments match.</td></tr>`;
   paintInstrFunnel();
 }
-document.querySelectorAll("th[data-instrk]").forEach(th=>th.onclick=()=>instrSort(th.dataset.instrk));
-// "Provide a history of the funnels" (P-08) — reuses /api/squeeze-history (public server-side already),
+document.querySelectorAll("th[data-instrk]").forEach(th=>th.onclick=e=>instrSort(th.dataset.instrk,e.shiftKey));
+// "Provide a history of the funnels" (P-08) — reuses the authenticated /api/squeeze-history endpoint,
 // filtered by the SAME Location/Market/Sector/Direction cards + name search as the table above. Direction
 // and Return stay behind the same ob() teaser as the main table.
 function paintInstrFunnel(){
   const box=$("instr-funnel-rows"); if(!box)return;
-  if(INSTR_FUNNEL===null){box.innerHTML='<tr><td colspan="9" class="empty sqh-loading">⏳ Data loading…</td></tr>';return;}
+  if(!AUTH)return;
+  if(INSTR_FUNNEL===null){box.innerHTML='<tr><td colspan="12" class="empty sqh-loading">⏳ Data loading…</td></tr>';return;}
   const q=(($("instr-search")||{}).value||"").trim().toLowerCase();
   let shown=(INSTR_FUNNEL||[]).filter(r=>inSet("inf_location",locName(r.location)||"—")&&inSet("inf_market",r.market||"—")
     &&inSet("inf_sector",r.sector||"—")&&inSet("inf_direction",r.direction||"—"));
   if(q)shown=shown.filter(r=>((r.name||"")+" "+disp(r.ticker)+" "+(r.ticker||"")).toLowerCase().includes(q));
+  shown.sort((a,b)=>String(b.triggered_date||"").localeCompare(String(a.triggered_date||"")));
   box.innerHTML=shown.slice(0,30).map(r=>`<tr>
-    <td>${nm40(r.name)}</td><td>${r.market||""}</td><td>${r.sector||""}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==="BULL"?"bull":"bear"}">${r.direction}</span>`:"")}</td>
     <td>${r.ready_date||"—"}</td><td>${r.triggered_date||"—"}</td>
+    <td>${_tickCross(r.atr_expanding)}</td><td>${_tickCross(r.above_vwap)}</td>
+    <td>${r.quality??"—"}</td><td>${r.rr??"—"}</td><td>${rvolCell(r.rvol)}</td><td>${volScoreCell(r.volume_score)}</td>
     <td><b style="color:${_stcol(r.outcome)}">${r.outcome||""}</b></td><td>${r.outcome_date||"—"}</td>
-    <td>${ob(r.return_pct!=null?((r.return_pct>0?"+":"")+r.return_pct+"%"):"—")}</td></tr>`).join("")
-    ||`<tr><td colspan="9" class="empty">No funnel history for this selection.</td></tr>`;
+    <td>${ob(r.return_pct!=null?`<b style="color:${r.return_pct>0?'var(--bull)':r.return_pct<0?'var(--bear)':'var(--muted)'}">${r.return_pct>0?"+":""}${r.return_pct}%</b>`:"—")}</td></tr>`).join("")
+    ||`<tr><td colspan="12" class="empty">No funnel history for this selection.</td></tr>`;
 }
 // ── Squeeze History (Admin) (user 2026-07-18) — squeeze lifecycle table ───────────────────────────────
 let SQH=null, sqhSortK="triggered_date", sqhSortDir=-1;   // default: Triggered date descending (user 2026-08-01); header click changes it
 function renderSqueezeHist(){
   if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr>';}
-  fetch("/api/squeeze-history").then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];const f=$("sqh-freshness");if(f)f.textContent=j.data_through?`data through ${j.data_through}${j.refreshed_at?` · refreshed ${String(j.refreshed_at).replace('T',' ').slice(0,16)} UTC`:''}`:'';paintSqueezeHist();})
+  fetch("/api/squeeze-history",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];const f=$("sqh-freshness");if(f)f.textContent=j.data_through?`data through ${j.data_through}${j.refreshed_at?` · refreshed ${String(j.refreshed_at).replace('T',' ').slice(0,16)} UTC`:''}`:'';paintSqueezeHist();})
     .catch(()=>{SQH=[];paintSqueezeHist();});
 }
 // Header sort (user 2026-07-18, P-01): click toggles asc/desc on that column; "" restores server order.
@@ -5258,8 +5313,17 @@ function _pfBacktestSettingsCard(sel,all,led){
   opt("Sector","pff_sector");opt("Outcome","pff_status");opt("Win/Loss","pff_wl");opt("Days open","pff_daysopen");opt("Month","pff_month");
   if(PF_COMBO)items.push(["Combo filter",`Quality ${PF_COMBO.qb}-${PF_COMBO.qb+10}, R:R ${PF_COMBO.rb.toFixed(1)}-${(PF_COMBO.rb+1).toFixed(1)}, ${PF_COMBO.vb}`]);
   const q=(($("pf-search")||{}).value||"").trim();if(q)items.push(["Search",'"'+q+'"']);
+  const funded=sel.filter(r=>r._stake!=null&&r.perf!=null),wins=funded.filter(r=>r.perf>0).length,
+        losses=funded.filter(r=>r.perf<0).length,breakEven=funded.length-wins-losses,
+        modelReturn=led&&led.wallet?((led.endWallet/led.wallet)-1)*100:null;
+  const returnText=modelReturn==null?"—":`${modelReturn>=0?"+":""}${modelReturn.toFixed(2)}%`;
   card.style.display="";
-  card.innerHTML=`<div class="pf-setcard-h">Back Test settings used</div><div class="pf-setcard-grid">`+
+  card.innerHTML=`<div class="pf-setcard-h">Back Test summary</div>
+    <div class="pf-setcard-grid" style="margin-bottom:7px">
+      <div class="pf-setcard-row"><span class="pf-setcard-k">Actual Win : Loss</span><span class="pf-setcard-v"><b>${wins} : ${losses}</b>${breakEven?` · ${breakEven} break-even`:""}</span></div>
+      <div class="pf-setcard-row"><span class="pf-setcard-k">Model return</span><span class="pf-setcard-v"><b style="color:${modelReturn>=0?'var(--bull)':'var(--bear)'}">${returnText}</b> · £${Math.round(led.endWallet).toLocaleString()} ending wallet</span></div>
+      <div class="pf-setcard-row"><span class="pf-setcard-k">Funded</span><span class="pf-setcard-v"><b>${led.taken}</b> trades · ${led.skipped} skipped by capacity</span></div>
+    </div><div class="pf-setcard-h">Back Test settings used</div><div class="pf-setcard-grid">`+
     items.map(([k,v])=>`<div class="pf-setcard-row"><span class="pf-setcard-k">${k}</span><span class="pf-setcard-v">${esc(v)}</span></div>`).join("")+
     `</div><div class="pf-setcard-row" style="border-top:1px solid var(--line);margin-top:4px;padding-top:4px"><span class="pf-setcard-k">Triggers</span><span class="pf-setcard-v"><b>${sel.length}</b>${sel.length!==all.length?` of ${all.length}`:""}</span></div>`;
 }
@@ -5661,7 +5725,7 @@ function _stampSortDefaults(){
    // admin tables (var names from their th[data-*] click wiring)
    ["data-xk",()=>[xSortK,xSortDir]],["data-jk",()=>[jSortK,jSortDir]],["data-sk",()=>[slSortK,slSortDir]],
    ["data-vk",()=>[verSortK,verSortDir]],["data-bk",()=>[batchSortK,batchSortDir]],["data-ak",()=>[acSortK,acSortDir]],
-   ["data-sqh",()=>[sqhSortK,sqhSortDir]],["data-instrk",()=>[instrSortK,instrSortDir]],
+   ["data-sqh",()=>[sqhSortK,sqhSortDir]],
    ["data-igp",()=>[igpSortK,igpSortDir]],["data-igo",()=>[igoSortK,igoSortDir]]];   // IG Account tables (user 2026-08-01)
   pairs.forEach(([a,get])=>{try{const [k,d]=get();_sortArrows(a,k,d);}catch(e){}});   // per-pair guard: a missing var just skips that table
 }

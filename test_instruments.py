@@ -68,6 +68,8 @@ def test_api_records_includes_52wk_fields_when_logged_in(monkeypatch):
     monkeypatch.setattr(server, "_snapshot_52wk", lambda snap: {"ABC": (8.0, 20.0)})
     monkeypatch.setattr(server, "_snapshot_rvol", lambda snap: {})
     monkeypatch.setattr(server, "_snapshot_volscore", lambda snap: {})
+    monkeypatch.setattr(server, "_live_vwap_atr", lambda snap: {})
+    monkeypatch.setattr(server, "_live_instrument_metrics", lambda snap: {})
     _identity(monkeypatch, "Silver")
 
     response = server.app.test_client().get("/api/records", headers={"X-Auth": "token"})
@@ -91,4 +93,44 @@ def test_api_records_includes_52wk_fields_when_logged_out(monkeypatch):
     assert j["limited"] is True
     row = j["records"][0]
     assert row["wk52_low"] == 8.0 and row["wk52_high"] == 20.0
+    assert row["market"] == "US" and row["location"] == "US"
     assert "quality" not in row and "rr" not in row   # unrelated to this feature, still correctly stripped
+    assert "current_rvol" not in row and "current_above_vwap" not in row
+
+
+def test_live_instrument_metrics_cover_rows_without_squeezes_and_vwap_is_literal(monkeypatch):
+    import volume_score
+
+    snap = {"generated_utc": "2026-08-13T10:00:00Z",
+            "records": [{"ticker": "BEARISH", "direction": "BEAR", "has_signal": False}]}
+    monkeypatch.setitem(server._LIVE_INSTRUMENT_METRICS_CACHE, "gen", None)
+    monkeypatch.setitem(server._LIVE_INSTRUMENT_METRICS_CACHE, "data", {})
+
+    class FakeDb:
+        def close(self):
+            pass
+
+    bars = [("2026-08-12", 11.0, 9.0, 10.0, 1000),
+            ("2026-08-13", 12.0, 10.0, 11.0, 1200)]
+    monkeypatch.setattr("db_pool.get_db", lambda: FakeDb(), raising=False)
+    monkeypatch.setattr(server, "_perf_bars", lambda db, cutoff, lookback_days=0: {"BEARISH": bars})
+    monkeypatch.setattr(volume_score, "_rvol_at", lambda got, index: 1.2)
+    vwap_directions = []
+    monkeypatch.setattr(volume_score, "_above_vwap",
+                        lambda got, index, bull: vwap_directions.append(bull) or True)
+    monkeypatch.setattr(volume_score, "_atr_expanding", lambda got, index: False)
+
+    result = server._live_instrument_metrics(snap)["BEARISH"]
+
+    assert result == {"rvol": 1.2, "above_vwap": True,
+                      "atr_expanding": False, "date": "2026-08-13"}
+    assert vwap_directions == [True]
+
+
+def test_squeeze_history_requires_a_login(monkeypatch):
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "")
+
+    response = server.app.test_client().get("/api/squeeze-history")
+
+    assert response.status_code == 401
+    assert response.get_json()["error"] == "login required"

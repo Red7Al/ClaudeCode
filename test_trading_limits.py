@@ -51,6 +51,18 @@ def test_check_limits_does_not_block_when_vwap_unknown(monkeypatch):
     assert reason == ""
 
 
+def test_check_limits_strict_automated_gate_blocks_missing_required_data(monkeypatch):
+    monkeypatch.setattr(trading_limits, "user_limits", lambda name: {
+        **trading_limits.limit_defaults(), "min_volume_score": 8, "min_rvol": 1.8,
+        "require_above_vwap": 1, "require_atr_expanding": 1,
+    })
+
+    reason = trading_limits.check_limits(
+        "Alex", "AAPL", quality=90, rr=5.0, require_data=True)
+
+    assert "VolumeScore is unavailable" in reason
+
+
 def test_check_limits_blocks_when_atr_required_and_not_expanding(monkeypatch):
     monkeypatch.setattr(trading_limits, "user_limits",
                          lambda name: {**trading_limits.limit_defaults(), "require_atr_expanding": 1})
@@ -102,6 +114,11 @@ def _pass_the_earlier_gates(monkeypatch):
     monkeypatch.setattr(config_store, "monitor_enabled", lambda session_name: True)
     monkeypatch.setattr(config_store, "trade_allowed", lambda **kw: (True, ""))
     monkeypatch.setattr(config_store, "cfg_num", lambda key, default: default)
+    import order_metrics
+    monkeypatch.setattr(order_metrics, "live_order_metrics", lambda *a, **kw: {
+        "rvol": 2.0, "volume_score": 9, "above_vwap": True, "atr_expanding": True,
+        "mcap": 2_000_000_000, "sector": "Technology", "metric_date": "2026-08-13",
+    })
 
 
 def test_place_order_blocked_by_personal_limits_never_resolves_an_epic(monkeypatch):
@@ -174,3 +191,39 @@ def test_place_order_translates_signals_py_field_names_for_vwap_and_atr(monkeypa
 
     assert seen["above_vwap"] is False
     assert seen["atr_expanding"] is True
+
+
+def test_place_order_passes_supabase_metrics_to_personal_limit_gate(monkeypatch):
+    _pass_the_earlier_gates(monkeypatch)
+    seen = {}
+
+    def _fake_check_limits(name, ticker, **kw):
+        seen.update(kw)
+        return ""
+
+    monkeypatch.setattr(trading_limits, "check_limits", _fake_check_limits)
+    monkeypatch.setattr(ig_shim, "get_epic", lambda tk: None)
+
+    ig_shim.place_hvf_order_from_sig(
+        _base_sig(), {"name": "Alex", "user_id": "u1"}, "WEB_BRIDGE", 1.0)
+
+    assert seen["volume_score"] == 9
+    assert seen["rvol"] == 2.0
+    assert seen["mcap"] == 2_000_000_000
+    assert seen["require_data"] is True
+
+
+def test_place_order_blocks_when_live_metric_evidence_cannot_be_loaded(monkeypatch):
+    """A Supabase/metric failure at the final checkpoint must never turn into an unfiltered IG order."""
+    _pass_the_earlier_gates(monkeypatch)
+    import order_metrics
+    monkeypatch.setattr(order_metrics, "live_order_metrics",
+                        lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("metrics unavailable")))
+    epic_calls = []
+    monkeypatch.setattr(ig_shim, "get_epic", lambda tk: epic_calls.append(tk) or None)
+
+    result = ig_shim.place_hvf_order_from_sig(
+        _base_sig(), {"name": "Alex", "user_id": "u1"}, "WEB_BRIDGE", 1.0)
+
+    assert result is None
+    assert epic_calls == []

@@ -1135,6 +1135,21 @@ def _competitor_angle(ticker: str):
         return None
 
 
+def _format_analyst_angle(direction, buys, holds, sells, old_buys, target_pct=None):
+    from evidence_alignment import analyst_stance, relationship
+    stance = analyst_stance(buys=buys, holds=holds, sells=sells, target_pct=target_pct)
+    rel = relationship(direction, stance)
+    trend = f"strengthening (buys {old_buys}→{buys}, 3mo)" if buys > old_buys else (
+        f"cooling (buys {old_buys}→{buys}, 3mo)" if buys < old_buys else "steady (3mo)")
+    target = f"; avg target {target_pct:+.0f}%" if isinstance(target_pct, (int, float)) else ""
+    prefix = "Counter-signal" if rel == "opposes" else "Analyst support" if rel == "supports" else "Analyst context"
+    suffix = f" — challenges the {str(direction or '').lower()} setup" if rel == "opposes" else ""
+    full = f"{prefix}: analysts {buys} buy / {holds} hold, {trend}{target}{suffix}"
+    short = (f"Counter-signal: analysts {stance.lower()}" if rel == "opposes"
+             else f"Analysts {buys}B/{holds}H, {'cooling' if buys < old_buys else ('rising' if buys > old_buys else 'steady')}")
+    return full, short
+
+
 def _analyst_angle(ticker: str, direction: str = ""):
     """Analyst stance OVER TIME for the tweet (user 2026-06-22: "analysts over time ... helps knit
     together the appearance of BULL and BEAR"). Shows the current buy/hold split, how the buy count
@@ -1170,22 +1185,14 @@ def _analyst_angle(ticker: str, direction: str = ""):
         if (cur_b + cur_h + cur_s) == 0:
             return None
 
-        # Direction of the rating drift over the window (buys rising / cooling / steady).
-        if   cur_b > old_b: trend = f"strengthening (buys {old_b}→{cur_b}, 3mo)"
-        elif cur_b < old_b: trend = f"cooling (buys {old_b}→{cur_b}, 3mo)"
-        else:               trend = "steady (3mo)"
-
         # Mean target vs spot — the bull case in one number.
         info = _yf_info(ticker)
         tgt  = info.get("targetMeanPrice")
         px   = info.get("currentPrice") or info.get("regularMarketPrice")
-        tgt_str = ""
+        target_pct = None
         if isinstance(tgt, (int, float)) and isinstance(px, (int, float)) and px:
-            tgt_str = f"; avg target {(tgt/px - 1) * 100:+.0f}%"
-
-        full  = f"Analysts {cur_b} buy / {cur_h} hold, {trend}{tgt_str}"
-        short = f"Analysts {cur_b}B/{cur_h}H, {'cooling' if cur_b < old_b else ('rising' if cur_b > old_b else 'steady')}"
-        return (full, short)
+            target_pct = (tgt / px - 1) * 100
+        return _format_analyst_angle(direction, cur_b, cur_h, cur_s, old_b, target_pct)
     except Exception:
         return None
 

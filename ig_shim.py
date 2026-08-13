@@ -2963,11 +2963,11 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
     # OWN manual actions (/api/preorder-pin, /api/place-order in hvf_web/server.py), never this shared
     # engine. Verified by reading every caller before changing anything. profile["name"] is the account
     # owner this run is trading as (OWNER for the bridge/session jobs; the acting user for a manual place).
-    # RVOL/VolumeScore/instrument-value aren't available in `sig` at any current caller (see
-    # trading_limits.py's module docstring for why) so those specific checks no-op here for now — R:R,
-    # Quality, above-VWAP and ATR-expanding ARE enforced.
+    # Fill every decision metric at this final chokepoint from Supabase. This covers both snapshot-bridge
+    # and session signals and prevents an older/lightweight caller from silently bypassing a personal floor.
     try:
         import trading_limits
+        import order_metrics
         # Two different sig shapes reach this function: hvf_web/build_snapshot.py's (order_bridge.py,
         # manual place-order) uses boolean above_vwap/atr_expanding; signals.scan_instrument's (the
         # session monitors/opens in run_session.py & intraday_signals.py) uses vwap_position
@@ -2979,15 +2979,28 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         _atr_expanding = sig.get("atr_expanding")
         if _atr_expanding is None:
             _atr_expanding = sig.get("pa_atr_expanding")
+        _metrics = order_metrics.live_order_metrics(
+            ticker, bull=(sig.get("hvf_type") == "BULLISH"), quality=_q)
+        if _above_vwap is None:
+            _above_vwap = _metrics.get("above_vwap")
+        if _atr_expanding is None:
+            _atr_expanding = _metrics.get("atr_expanding")
+        for _field in ("rvol", "volume_score", "mcap", "sector", "metric_date"):
+            if sig.get(_field) is None:
+                sig[_field] = _metrics.get(_field)
         _reason = trading_limits.check_limits(
             profile.get("name"), ticker, quality=_q, rr=sig.get("hvf_risk_reward"),
-            above_vwap=_above_vwap, atr_expanding=_atr_expanding)
+            volume_score=sig.get("volume_score"), rvol=sig.get("rvol"),
+            above_vwap=_above_vwap, atr_expanding=_atr_expanding, mcap=sig.get("mcap"),
+            require_data=True)
         if _reason:
             log.info(f"{ticker}: blocked by personal trading limits — {_reason}.")
             return None
     except Exception as e:
-        log.warning(f"{ticker}: personal trading-limit check failed (allowing — fails open like the other "
-                    f"Config gates above): {e}")
+        # This is the last checkpoint before the IG-facing path. An unavailable metric source cannot be
+        # treated as evidence that every configured personal floor passed.
+        log.warning(f"{ticker}: personal trading-limit evidence unavailable — no order: {e}")
+        return None
 
     # Tight-stop skip (backlog #9b): a funnel whose stop is closer than
     # TIGHT_STOP_MIN_PCT of price is structurally untradeable at IG intraday — spread

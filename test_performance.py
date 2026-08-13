@@ -152,8 +152,12 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert '"Growth",growth,"Highest-return alternative with a materially different configuration."' in html
     assert '"Defensive",defensive' in html
     assert '"Broad evidence",broad' in html
-    assert 'trades250=_bestSettingsByFundedTrades(basePool,250)' in html
-    assert 'trades500=_bestSettingsByFundedTrades(basePool,500)' in html
+    assert 'trades250=_bestSettingsByFundedTrades(large250,250)' in html
+    assert 'trades500=_bestSettingsByFundedTrades(large500,500)' in html
+    assert 'largeSampleOptions=min=>' in html
+    assert 'b.seq.length-a.seq.length' in html
+    assert 'largeOpens=[50,100,250,400]' in html
+    assert 'MIN_TRADE/Math.max(1,WINNERS_WALLET)*100' in html
     assert '[">250 trades",trades250' in html
     assert '[">500 trades",trades500' in html
     assert 'data-choice-unavailable="${label}"' in html
@@ -349,6 +353,69 @@ def test_let_winners_run_never_gives_back_above_bear_target(monkeypatch):
     assert exit_price == 90.0
 
 
+def test_let_winners_run_recovers_missing_historical_target_levels():
+    """Legacy target winners and unresolved rows retain a usable target in the runner replay."""
+    assert server._winner_run_target({
+        "direction": "BULLISH", "entry": 100.0, "stop": 95.0, "target": None,
+        "rr": 4.0, "outcome": "TARGET", "return_pct": 12.5,
+    }) == 112.5
+    assert server._winner_run_target({
+        "direction": "BEARISH", "entry": 100.0, "stop": 105.0, "target": None,
+        "rr": 4.0, "outcome": "TARGET", "return_pct": 12.5,
+    }) == 87.5
+    assert server._winner_run_target({
+        "direction": "BULLISH", "entry": 100.0, "stop": 95.0, "target": None,
+        "rr": 4.0, "outcome": "OPEN", "return_pct": 3.0,
+    }) == 120.0
+
+
+def test_let_winners_run_starts_after_trigger_bar():
+    """The entry-bar high/low cannot stop a trade entered at that bar's close."""
+    bars = {"TEST.L": [
+        ("2026-01-02", 111.0, 89.0, 100.0),
+        ("2026-01-03", 112.0, 99.0, 110.0),
+    ]}
+
+    assert server._winner_run_bars(bars, "TEST.L", "2026-01-02") == [bars["TEST.L"][1]]
+
+
+def test_let_winners_run_historical_target_starts_with_target_locked(monkeypatch):
+    """A recorded target winner continues after its known target event; revised earlier bars are irrelevant."""
+    monkeypatch.setattr(ig_shim, "compute_trailing_stop", lambda *args, **kwargs: 108.0)
+    bars = [
+        (dt.date(2026, 1, 4), 112.0, 109.0, 110.0),
+    ]
+
+    outcome, exit_price, exit_date = server._run_path(
+        "BULLISH", 100.0, 90.0, 110.0, bars, 0.25, return_date=True,
+        target_already_hit=True,
+    )
+
+    assert (outcome, exit_price, exit_date) == ("RAN", 110.0, "2026-01-04")
+
+
+def test_let_winners_run_portfolio_evidence_reconciles_exit_and_capacity():
+    rows = [
+        {"ticker": "A", "trig_date": "2026-01-01", "exit_date": "2026-01-03",
+         "run_exit_date": "2026-01-03", "market": "Equities", "outcome": "TARGET",
+         "perf": 10.0, "run_perf": 15.0},
+        {"ticker": "B", "trig_date": "2026-01-02", "exit_date": "2026-01-04",
+         "run_exit_date": "2026-01-04", "market": "Equities", "outcome": "STOPPED",
+         "perf": -5.0, "run_perf": -5.0},
+    ]
+
+    evidence = server._winner_run_portfolio_evidence(
+        rows, wallet=10_000, position_pct=5, max_open=20, min_trade=25)
+
+    assert evidence["eligible"] == 2
+    assert evidence["target_lock"] == {"target_hits": 1, "breaches": 0}
+    assert evidence["attribution"]["common_funded"] == 2
+    assert evidence["attribution"]["exit_impact"] == 25.0
+    assert abs(evidence["attribution"]["unexplained"]) < .005
+    assert evidence["valid"] is True
+    assert evidence["verdict"] == "improved"
+
+
 def _portfolio_trade(trigger, exit_date, return_pct=10.0):
     return {
         "ticker": "TEST.L", "market": "FTSE 100", "sector": "Test", "direction": "BULLISH",
@@ -485,3 +552,37 @@ def test_pass_still_hard_filters_on_my_limits_atr_and_vwap():
     pass_fn = _extract_function(html, "pass")
     assert "if(+MY_LIMITS.require_above_vwap&&r.above_vwap===false)return false;" in pass_fn
     assert "if(+MY_LIMITS.require_atr_expanding&&r.atr_expanding===false)return false;" in pass_fn
+
+
+def test_approved_ui_report_backlog_is_wired_to_live_render_paths():
+    """Structural regression coverage for the 2026-08-13 approved UI/report stage."""
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="scanner-name-search"' in html and 'syncScannerNameSearch(this.value)' in html
+    assert 'let INSTR_FUNNEL=null, instrSorts=[];' in html
+    assert 'e.shiftKey' in html and 'class="sarr"' in _extract_function(html, "instrSort")
+    instrument_sort = _extract_function(html, "_instrSortValue")
+    assert "row.current_rvol" in instrument_sort
+    assert "row.current_above_vwap" in instrument_sort
+    assert "row.current_atr_expanding" in instrument_sort
+
+    best_history = _extract_function(html, "paintBestSettingsHistory")
+    assert "BEST_HISTORY_ROWS=history" in best_history
+    assert "_bestHistoryChanges(row,all[index+1]).toLowerCase().includes(query)" in best_history
+    assert "No settings changes match that search" in best_history
+
+    backtest = _extract_function(html, "_pfBacktestSettingsCard")
+    assert "Back Test summary" in backtest
+    assert "Actual Win : Loss" in backtest and "Model return" in backtest
+
+    choice = _extract_function(html, "selectBestChoice")
+    evidence = _extract_function(html, "renderDecisionProof")
+    assert 'if(LIMITED){detail.style.display="none";return;}' in choice
+    assert 'if(LIMITED){target.style.display="none";target.innerHTML="";return;}' in evidence
+    assert '$("instr-funnel-wrap").style.display=AUTH?"":"none"' in _extract_function(html, "renderInstruments")
+
+    assert 'const SUPPORT_TABS=["batch","syslogs","jobs","sysdocs"]' in html
+    assert '.subnav-operations{gap:3mm}' in html
+    assert '.confnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;justify-content:center;align-items:center}' in html
+    assert '_igNoCreds?' in html and 'No IG account data — add credentials' in html
+    assert "_ag.style.display='none'" in html

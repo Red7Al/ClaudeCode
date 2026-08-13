@@ -307,6 +307,7 @@ Application Focus - Performance Tab
 Application Focus - Performance Tab : Best Settings
 ------------------------------------------------------------------------------------------------------------------------------------------------
 
+    * P-10 (user 2026-08-12) Create two more cards in "Best settings" - best settings for >250 trades, then >500 trades. -- Mirrored in the 20260813 register; the dedicated large-population annual search now supports both thresholds. Full suite: 165 passed. Claude. [Completed]
     * P-03 3 of the 4 cards are using the same sector - is there anything else that gives more choice? --
       Claude 2026-08-11: read renderBestCombo()'s card-selection algorithm rather than guess. Each of the 4
       cards (Balanced/Growth/Defensive/Broad evidence) is picked via choose(), which requires a candidate to

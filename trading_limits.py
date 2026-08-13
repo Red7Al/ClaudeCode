@@ -82,7 +82,8 @@ def user_limits(name: str) -> dict:
 
 
 def check_limits(name: str, ticker: str, *, quality=None, rr=None, volume_score=None,
-                  rvol=None, above_vwap=None, atr_expanding=None, mcap=None) -> str:
+                  rvol=None, above_vwap=None, atr_expanding=None, mcap=None,
+                  require_data=False) -> str:
     """Return a reason string if this login's personal floors exclude the setup; '' if it passes (or a
     given criterion has no data to check — fail-open per field, matching hvf_web/server.py's _limit_block).
     `name` may be None/empty (e.g. no owner resolved) -> code defaults apply, same as an unconfigured user."""
@@ -91,18 +92,26 @@ def check_limits(name: str, ticker: str, *, quality=None, rr=None, volume_score=
         return f"{ticker}: R:R {rr} is below the personal floor of {lim['min_risk_reward']:g}"
     if isinstance(quality, (int, float)) and quality < lim["min_quality"]:
         return f"{ticker}: Quality {quality} is below the personal floor of {lim['min_quality']}"
+    if require_data and lim.get("min_volume_score", 0) > 0 and not isinstance(volume_score, (int, float)):
+        return f"{ticker}: VolumeScore is unavailable, so the personal floor cannot be verified"
     if isinstance(volume_score, (int, float)) and volume_score < lim.get("min_volume_score", 1):
         return f"{ticker}: VolumeScore {volume_score} is below the personal floor of {lim['min_volume_score']}"
+    if require_data and lim.get("min_rvol", 0) > 0 and not isinstance(rvol, (int, float)):
+        return f"{ticker}: RVOL is unavailable, so the personal floor cannot be verified"
     if isinstance(rvol, (int, float)) and lim.get("min_rvol", 0) > 0 and rvol < lim["min_rvol"]:
         return f"{ticker}: RVOL {rvol:g} is below the personal floor of {lim['min_rvol']:g}"
-    if lim.get("require_above_vwap") and above_vwap is False:
-        return f"{ticker}: price is below VWAP (personal filter requires above)"
-    if lim.get("require_atr_expanding") and atr_expanding is False:
-        return f"{ticker}: ATR is not expanding (personal filter requires it)"
+    if lim.get("require_above_vwap") and (above_vwap is False or (require_data and above_vwap is None)):
+        return (f"{ticker}: VWAP position is unavailable, so the personal filter cannot be verified"
+                if above_vwap is None else f"{ticker}: price is below VWAP (personal filter requires above)")
+    if lim.get("require_atr_expanding") and (atr_expanding is False or (require_data and atr_expanding is None)):
+        return (f"{ticker}: ATR state is unavailable, so the personal filter cannot be verified"
+                if atr_expanding is None else f"{ticker}: ATR is not expanding (personal filter requires it)")
     if isinstance(mcap, (int, float)):
         vmin, vmax = lim.get("min_instrument_value", 0), lim.get("max_instrument_value", 0)
         if vmin and mcap < vmin:
             return f"{ticker}: instrument value {mcap:,.0f} is below the personal minimum of {vmin:,.0f}"
         if vmax and mcap > vmax:
             return f"{ticker}: instrument value {mcap:,.0f} is above the personal maximum of {vmax:,.0f}"
+    elif require_data and (lim.get("min_instrument_value", 0) or lim.get("max_instrument_value", 0)):
+        return f"{ticker}: instrument value is unavailable, so the personal range cannot be verified"
     return ""

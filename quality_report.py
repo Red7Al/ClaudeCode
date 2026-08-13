@@ -270,7 +270,7 @@ def fundamentals(ticker: str) -> dict:
     # target providers, f["analyst_n"]) with the grid's buy count read as a contradiction
     # ("19 analysts rate it Buy ... buys eased from 15 to 13"). The grid total / buys / holds and
     # the trend now share one source. Best-effort; left None when coverage/history is absent.
-    f["analyst_buys"] = f["analyst_holds"] = f["analyst_rated"] = f["analyst_trend"] = None
+    f["analyst_buys"] = f["analyst_holds"] = f["analyst_sells"] = f["analyst_rated"] = f["analyst_trend"] = None
     try:
         rec = t.recommendations
         if rec is not None and len(rec):
@@ -287,11 +287,12 @@ def fundamentals(ticker: str) -> dict:
             _cb, _ob = _b(_cur), _b(_old)
             f["analyst_buys"]  = _cb
             f["analyst_holds"] = _h(_cur)
-            f["analyst_rated"] = _cb + _h(_cur) + _s(_cur)   # grid total (raters), reconciles with buys
+            f["analyst_sells"] = _s(_cur)
+            f["analyst_rated"] = _cb + _h(_cur) + f["analyst_sells"]   # grid total (raters), reconciles with buys
             if _cb != _ob:
                 f["analyst_trend"] = ("cooling", _ob, _cb) if _cb < _ob else ("strengthening", _ob, _cb)
     except Exception:
-        f["analyst_buys"] = f["analyst_holds"] = f["analyst_rated"] = f["analyst_trend"] = None
+        f["analyst_buys"] = f["analyst_holds"] = f["analyst_sells"] = f["analyst_rated"] = f["analyst_trend"] = None
     f["mcap"] = info.get("marketCap")
     f["industry"] = info.get("industry")
     ins = info.get("heldPercentInsiders")
@@ -779,8 +780,14 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
 
     if f.get("target_pct") is not None or f.get("analyst_rated"):
         rec = f.get("analyst_rec")
-        buys, holds, total = f.get("analyst_buys"), f.get("analyst_holds"), f.get("analyst_rated")
+        buys, holds, sells, total = (f.get("analyst_buys"), f.get("analyst_holds"),
+                                     f.get("analyst_sells"), f.get("analyst_rated"))
         tp  = f.get("target_pct")
+        from evidence_alignment import analyst_stance, contextualise, relationship
+        _setup_direction = (r.get("hvf_type") or "").upper()
+        _analyst_stance = analyst_stance(buys=buys, holds=holds, sells=sells,
+                                          recommendation=rec, target_pct=tp)
+        _relationship = relationship(_setup_direction, _analyst_stance)
         # The ANALYST consensus price target vs the current price (user 2026-06-22, F): a near-zero
         # figure means analysts see the shares ~fairly valued (little up/downside) — it is NOT the
         # HVF trade target being met. Phrase it as "their average price target" and, when ~flat, say
@@ -803,20 +810,25 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
             _tc = _target_clause()
             if _tc:
                 _head += f"; {_tc}"
-            s_analyst.append(_head + ".")
+            s_analyst.append(contextualise(_head + ".", _setup_direction, _analyst_stance))
         elif tp is not None:
             # No ratings grid available — fall back to consensus + target.
             _recph = f'rate {disp} "{rec}" and ' if rec else ""
-            s_analyst.append(f"Analysts {_recph}{_target_clause()}.")
+            s_analyst.append(contextualise(
+                f"Analysts {_recph}{_target_clause()}.", _setup_direction, _analyst_stance))
         # Over-time drift (user 2026-06-22) — knits the bull/bear divergence. The end value {_cb}
         # equals {buys} in the grid headline above, so the two sentences now reconcile.
         _at = f.get("analyst_trend")
         if _at:
             _word, _ob, _cb = _at
             if _word == "cooling":
-                s_analyst.append(f"Their conviction has been cooling, though — buy ratings eased from {_ob} to {_cb} over the past three months.")
+                _lead = "That opposing analyst view" if _relationship == "opposes" else "Analyst conviction"
+                s_analyst.append(f"{_lead} has been cooling — buy ratings eased from {_ob} to {_cb} over the past three months.")
             else:
-                s_analyst.append(f"And their conviction is building — buy ratings rose from {_ob} to {_cb} over the past three months.")
+                _lead = "That opposing analyst view" if _relationship == "opposes" else "Analyst conviction"
+                _effect = (f" The conflict with the {_setup_direction.lower()} chart thesis is therefore getting stronger."
+                           if _relationship == "opposes" else "")
+                s_analyst.append(f"{_lead} is building — buy ratings rose from {_ob} to {_cb} over the past three months.{_effect}")
     if f.get("insider_value") is not None:
         s_own.append(_pick(_P_INSIDER, tk, "ins").format(value=_money(f["insider_value"], gbp), pct=f"{f['insider_pct']:.1f}"))
     elif f.get("insider_pct") is not None:
@@ -891,7 +903,14 @@ def build_tweet(r: dict) -> str:
         if f.get("div_streak"):
             bits.append(f"dividend raised {f['div_streak']} years")
     if f.get("target_pct") is not None and f["target_pct"] > 0:
-        bits.append(f"analysts see ~{f['target_pct']:.0f}% upside")
+        from evidence_alignment import analyst_stance, relationship
+        _stance = analyst_stance(buys=f.get("analyst_buys"), holds=f.get("analyst_holds"),
+                                  sells=f.get("analyst_sells"), recommendation=f.get("analyst_rec"),
+                                  target_pct=f.get("target_pct"))
+        if relationship(r.get("hvf_type"), _stance) == "opposes":
+            bits.append(f"{str(r.get('hvf_type') or '').lower()} chart conflicts with analysts' ~{f['target_pct']:.0f}% upside")
+        else:
+            bits.append(f"analysts see ~{f['target_pct']:.0f}% upside")
     summary = ", ".join(bits[:4]) if bits else "fundamental quality screen"
     tags = _x_market_tags(r)
     return (f"👀 ${disp} ({name}) — the quality angle\n"
