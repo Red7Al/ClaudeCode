@@ -1626,6 +1626,8 @@ def _dispatch_snapshot_rebuild(markets=None) -> bool:
     token = app_secrets.get_secret("GH_PAT") or app_secrets.get_secret("GITHUB_TOKEN")
     if token:
         try:
+            import scanner_snapshot_store as _snapshot_store
+            _snapshot_store.queue_refresh_progress(refresh_id, markets, "GitHub Actions", None)
             repo = os.environ.get("GITHUB_REPO", "Red7Al/ClaudeCode")
             response = requests.post(
                 f"https://api.github.com/repos/{repo}/actions/workflows/trading-scanner-snapshot.yml/dispatches",
@@ -1649,6 +1651,12 @@ def _dispatch_snapshot_rebuild(markets=None) -> bool:
         except Exception as exc:
             errors.append(f"cron-job.org dispatch: {exc}")
             log.error("external Scanner refresh dispatch failed: " + "; ".join(errors))
+            try:
+                progress = _snapshot_store.RefreshProgressReporter(refresh_id)
+                progress.fail("; ".join(errors))
+                progress.close()
+            except Exception:
+                pass
             return False
     snap = _load_snapshot()
     _REFRESHING.update(on=True, mode="external", worker=worker, queued_for=queued_for,

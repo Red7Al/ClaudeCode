@@ -238,7 +238,8 @@ def queue_refresh_progress(refresh_id: str, markets=None, worker: str = "", queu
                      on conflict (refresh_id) do update set
                        status='queued',stage='queued',done=0,total=0,markets=excluded.markets,
                        worker=excluded.worker,queued_for=excluded.queued_for,requested_at=now(),
-                       started_at=null,updated_at=now(),completed_at=null,generated_utc=null,error=null""",
+                       started_at=null,updated_at=now(),completed_at=null,generated_utc=null,error=null
+                     where scanner_refresh_progress.status='queued'""",
                 r=refresh_id, m=",".join(markets or []), w=(worker or "")[:100], q=queued_for,
             )
             return True

@@ -216,6 +216,23 @@ def test_external_refresh_progress_reporter_writes_lifecycle_without_blocking_sc
     assert calls[-1][0] == "close"
 
 
+def test_queue_acknowledgement_never_downgrades_a_worker_that_already_started(monkeypatch):
+    calls = []
+
+    class DB:
+        def run(self, sql, **params):
+            calls.append(" ".join(sql.split()))
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(store, "ensure_schema", lambda: None)
+    monkeypatch.setattr(store, "_db", lambda: DB())
+
+    assert store.queue_refresh_progress("refresh_123", ["Crypto"], "GitHub Actions") is True
+    assert "where scanner_refresh_progress.status='queued'" in calls[0]
+
+
 def test_status_api_returns_supabase_progress_for_external_worker(monkeypatch):
     monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": "old", "count": 1421})
     monkeypatch.setattr(
