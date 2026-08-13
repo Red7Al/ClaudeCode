@@ -110,6 +110,18 @@ def test_download_rejects_object_before_json_parse_when_checksum_differs(monkeyp
         store.download_snapshot(meta)
 
 
+def test_publication_verification_reuses_publish_key_for_readback(monkeypatch):
+    purposes = []
+    monkeypatch.setattr(
+        store,
+        "download_snapshot",
+        lambda meta=None, purpose="read": purposes.append(purpose) or (_snapshot(), {"version_id": 7}, b"{}"),
+    )
+
+    assert store.verify_current() == {"version_id": 7}
+    assert purposes == ["publish"]
+
+
 def test_remote_outage_keeps_last_known_good_local_snapshot(monkeypatch, tmp_path):
     path = tmp_path / "snapshot.json"
     path.write_text(json.dumps(_snapshot()), encoding="utf-8")

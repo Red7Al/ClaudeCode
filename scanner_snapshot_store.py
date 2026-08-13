@@ -298,14 +298,14 @@ def current_metadata() -> dict | None:
     }
 
 
-def download_snapshot(meta: dict | None = None) -> tuple[dict, dict, bytes]:
+def download_snapshot(meta: dict | None = None, purpose: str = "read") -> tuple[dict, dict, bytes]:
     meta = meta or current_metadata()
     if not meta:
         raise SnapshotStoreError("no Scanner snapshot has been published")
     bucket = _bucket()
     path = str(meta["object_path"])
     url = f"{_project_url()}/storage/v1/object/authenticated/{quote(bucket, safe='')}/{quote(path, safe='/')}"
-    response = _request("GET", url, headers=_headers("read"), timeout=90)
+    response = _request("GET", url, headers=_headers(purpose), timeout=90)
     if response.status_code != 200:
         raise SnapshotStoreError(f"snapshot download failed ({response.status_code})")
     data = response.content
@@ -397,6 +397,9 @@ def load_snapshot(path: str | os.PathLike = DEFAULT_SNAPSHOT) -> dict:
 
 
 def verify_current() -> dict:
-    snapshot, meta, _data = download_snapshot()
+    # Publication workers intentionally receive only the write-scoped Scanner
+    # secret. Reuse that credential for the immediate read-back verification;
+    # normal web/cache reads continue to require the separate web key.
+    snapshot, meta, _data = download_snapshot(purpose="publish")
     validate_snapshot(snapshot)
     return meta
