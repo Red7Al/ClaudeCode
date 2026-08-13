@@ -170,7 +170,7 @@ def _months_to_go(r: dict):
         return None
 
 
-def build(markets=None, scan_results=None):
+def build(markets=None, scan_results=None, progress_cb=None):
     """Build the full-universe snapshot. markets (user 2026-07-31, P-15) — when given a collection of
     market names, ONLY those markets are rescanned and their records are MERGED into the existing snapshot
     (records of the other markets are kept untouched), so an admin can refresh a choice of markets quickly
@@ -206,12 +206,18 @@ def build(markets=None, scan_results=None):
     PROGRESS.update(done=0, total=_total)
     if scan_results is None:
         from run_hvf_report import scan_universe
-        scan = scan_universe(progress_cb=lambda d, t: PROGRESS.update(done=d, total=_total), markets=sel)
+        def _progress(done, total):
+            PROGRESS.update(done=done, total=_total)
+            if progress_cb:
+                progress_cb(done, _total)
+        scan = scan_universe(progress_cb=_progress, markets=sel)
     else:
         if sel is not None:
             raise ValueError("scan_results can only be reused for a full-universe snapshot")
         scan = scan_results
         PROGRESS.update(done=_total, total=_total)
+        if progress_cb:
+            progress_cb(_total, _total)
         log.info("reusing the completed daily-report scan for the Scanner snapshot")
     # Record every TRIGGERED funnel to Supabase for performance tracking (user 2026-06-30, HVF status).
     # Deduped per funnel instance inside the recorder; a failure never blocks the build.

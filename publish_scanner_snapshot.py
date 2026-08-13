@@ -28,36 +28,50 @@ def main() -> int:
     parser.add_argument("--markets", default="", help="comma-separated market names for a partial build")
     parser.add_argument("--snapshot", type=Path, default=store.DEFAULT_SNAPSHOT)
     parser.add_argument("--source", default=os.environ.get("GITHUB_WORKFLOW", "manual"))
+    parser.add_argument("--refresh-id", default=os.environ.get("SCANNER_REFRESH_ID", ""))
     args = parser.parse_args()
 
-    if args.build:
-        markets = _markets(args.markets)
-        if markets:
-            # A fresh Actions checkout has no ignored boot file. Pull the published base before merging a subset.
-            store.pull_current(args.snapshot, force=True)
-        from hvf_web.build_snapshot import build
-        snapshot = build(markets=markets)
-        if not isinstance(snapshot, dict):
-            raise store.SnapshotStoreError("snapshot build produced no candidate")
-        meta = store.publish_snapshot(snapshot, source=args.source)
-        verified = store.verify_current()
-        if verified["sha256"] != meta["sha256"]:
-            raise store.SnapshotStoreError("published snapshot verification selected a different version")
-        # Reuse the completed scan to keep the Supabase-backed lifecycle history current without another
-        # full 15-month universe replay. This advances OPEN/NEVER_TRIGGERED rows from price_history too.
-        from squeeze_history import refresh_daily
-        refresh_daily(snapshot)
-        result = meta
-    elif args.publish:
-        result = store.publish_snapshot_file(args.snapshot, source=args.source)
-        verified = store.verify_current()
-        if verified["sha256"] != result["sha256"]:
-            raise store.SnapshotStoreError("published snapshot verification selected a different version")
-    elif args.pull:
-        _snapshot, result, changed = store.pull_current(args.snapshot, force=True)
-        result = {**result, "local_cache_changed": changed}
-    else:
-        result = store.verify_current()
+    progress = store.RefreshProgressReporter(args.refresh_id)
+    progress.start()
+
+    try:
+        if args.build:
+            markets = _markets(args.markets)
+            if markets:
+                # A fresh Actions checkout has no ignored boot file. Pull the published base before merging a subset.
+                store.pull_current(args.snapshot, force=True, purpose="publish")
+            from hvf_web.build_snapshot import build
+            snapshot = build(markets=markets, progress_cb=progress.update)
+            if not isinstance(snapshot, dict):
+                raise store.SnapshotStoreError("snapshot build produced no candidate")
+            progress.stage("publishing")
+            meta = store.publish_snapshot(snapshot, source=args.source)
+            verified = store.verify_current()
+            if verified["sha256"] != meta["sha256"]:
+                raise store.SnapshotStoreError("published snapshot verification selected a different version")
+            # Reuse the completed scan to keep the Supabase-backed lifecycle history current without another
+            # full 15-month universe replay. This advances OPEN/NEVER_TRIGGERED rows from price_history too.
+            progress.stage("history")
+            from squeeze_history import refresh_daily
+            refresh_daily(snapshot)
+            result = meta
+        elif args.publish:
+            progress.stage("publishing")
+            result = store.publish_snapshot_file(args.snapshot, source=args.source)
+            verified = store.verify_current()
+            if verified["sha256"] != result["sha256"]:
+                raise store.SnapshotStoreError("published snapshot verification selected a different version")
+        elif args.pull:
+            _snapshot, result, changed = store.pull_current(args.snapshot, force=True)
+            result = {**result, "local_cache_changed": changed}
+        else:
+            result = store.verify_current()
+        progress.complete(result.get("generated_utc"))
+    except Exception as exc:
+        progress.fail(exc)
+        raise
+    finally:
+        progress.close()
 
     # Metadata only. Never print a credential or the Scanner records.
     print(json.dumps({key: result[key] for key in (

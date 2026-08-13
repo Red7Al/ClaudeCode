@@ -2484,7 +2484,7 @@ $("togglefilters").onclick=()=>{
   if(CUR_TAB==="orderops")return toggleOoFilters();
   const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").innerHTML="Show Filters "+(hidden?'<span style="color:var(--bear)">✗</span>':'<span style="color:var(--bull)">✓</span>');};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").innerHTML="Show Squeeze Only "+(signalOnly?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');applyAll();};
-let _refStart=0, _refBase=null, _lastTens=-1;
+let _refStart=0, _refBase=null, _refId=null, _lastTens=-1;
 // Refresh a CHOICE of markets (user 2026-07-31, P-15). REFRESH_MARKETS empty = the whole universe;
 // otherwise only the picked markets are rescanned and merged into the snapshot.
 let REFRESH_MARKETS=new Set();
@@ -2529,10 +2529,12 @@ $("refresh").onclick=async()=>{ if($("refresh").disabled)return;
   $("refresh").disabled=true; $("refresh").textContent="↻ Starting…"; _refStart=Date.now(); _lastTens=-1;
   fetch("/api/refresh",{method:"POST",headers:{"X-Auth":AUTH,"Content-Type":"application/json"},
         body:JSON.stringify(picked.length?{markets:picked}:{})}).then(async x=>{const j=await x.json().catch(()=>({}));if(!x.ok||!j.started)throw new Error(j.error||(j.busy?"A refresh is already running.":`HTTP ${x.status}`));return j;})
-    .then(j=>{_refBase=j.base_generated||null;$("refresh").title="";$("refresh").textContent=`⏳ Queued via ${j.worker||'external worker'}…`;pollRefresh();})
+    .then(j=>{_refBase=j.base_generated||null;_refId=j.refresh_id||null;$("refresh").title="";$("refresh").textContent=`⏳ Queued via ${j.worker||'external worker'}…`;pollRefresh();})
     .catch(err=>{$("refresh").textContent="↻ Refresh failed";$("refresh").title=err.message||"Refresh could not be queued";$("refresh").disabled=false;});};
 function pollRefresh(){
-  fetch("/api/status").then(x=>x.json()).then(s=>{
+  fetch("/api/status"+(_refId?`?refresh_id=${encodeURIComponent(_refId)}`:"")).then(x=>x.json()).then(s=>{
+    if(s.refresh_id)_refId=s.refresh_id;
+    if(s.refresh_error){$("refresh").className="";$("refresh").textContent="↻ Refresh failed";$("refresh").title=s.refresh_error;$("refresh").disabled=false;_refId=null;return;}
     const waitingForExternal=_refBase&&s.generated_utc===_refBase&&(Date.now()-_refStart)<2*60*60*1000;
     if(s.refreshing||waitingForExternal){
       const p=s.progress||{}, done=p.done||0, total=p.total||0;
@@ -2543,7 +2545,7 @@ function pollRefresh(){
       const tens=Math.floor(done/10);
       if(tens>_lastTens){_lastTens=tens;$("refresh").style.color="var(--bull)";setTimeout(()=>{$("refresh").style.color="";},1000);}
       setTimeout(pollRefresh,3000);
-    } else {_refBase=null;$("refresh").className="";$("refresh").style.color="";$("refresh").textContent="↻ Done — reloading…"; setTimeout(()=>location.reload(),800);}
+    } else {_refBase=null;_refId=null;$("refresh").className="";$("refresh").style.color="";$("refresh").textContent="↻ Done — reloading…"; setTimeout(()=>location.reload(),800);}
   }).catch(()=>setTimeout(pollRefresh,5000));
 }
 $("theme").onclick=()=>{const l=document.documentElement.classList.toggle("light");$("theme").textContent=l?"☀️ Light":"🌙 Dark";if(SEL)showDetail(SEL);};

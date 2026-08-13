@@ -9,6 +9,10 @@ on:
         description: 'Optional comma-separated markets to refresh; empty = full universe.'
         required: false
         default: ''
+      refresh_id:
+        description: 'Opaque refresh request id used for Supabase progress reporting.'
+        required: false
+        default: ''
 
 concurrency:
   group: scanner-snapshot-publish
@@ -42,4 +46,4 @@ jobs:
               sys.exit(1)
           PY
       - name: Build, publish and read-verify immutable Scanner snapshot
-        run: python publish_scanner_snapshot.py --build --markets "${{ inputs.markets }}" --source github-actions
+        run: python publish_scanner_snapshot.py --build --markets "${{ inputs.markets }}" --source github-actions --refresh-id "${{ inputs.refresh_id || github.run_id }}"

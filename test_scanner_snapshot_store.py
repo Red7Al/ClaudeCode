@@ -147,14 +147,14 @@ def test_pull_current_redownloads_when_deployment_replaced_file_but_sidecar_is_n
     monkeypatch.setattr(
         store,
         "download_snapshot",
-        lambda selected: downloads.append(selected) or (current, meta, data),
+        lambda selected, purpose="read": downloads.append((selected, purpose)) or (current, meta, data),
     )
 
     snapshot, selected, changed = store.pull_current(path)
 
     assert changed is True
     assert snapshot == current and selected == meta
-    assert downloads == [meta]
+    assert downloads == [(meta, "read")]
     assert path.read_bytes() == data
 
 
@@ -180,6 +180,67 @@ def test_new_scanner_workflow_is_external_and_has_no_github_schedule():
     assert "SUPABASE_SCANNER_PUBLISH_KEY" in text
     assert "group: scanner-snapshot-publish" in text
     assert "cancel-in-progress: false" in text
+    assert "refresh_id:" in text
+    assert "--refresh-id" in text
+    publisher = (store.ROOT / "publish_scanner_snapshot.py").read_text(encoding="utf-8")
+    assert 'pull_current(args.snapshot, force=True, purpose="publish")' in publisher
+
+
+def test_external_refresh_progress_reporter_writes_lifecycle_without_blocking_scan(monkeypatch):
+    calls = []
+
+    class DB:
+        def run(self, sql, **params):
+            calls.append((" ".join(sql.split()), params))
+
+        def close(self):
+            calls.append(("close", {}))
+
+    monkeypatch.setattr(store, "ensure_schema", lambda: None)
+    monkeypatch.setattr(store, "_db", lambda: DB())
+    reporter = store.RefreshProgressReporter("refresh_123")
+
+    reporter.start()
+    reporter.update(5, 1421)
+    reporter.stage("publishing")
+    reporter.stage("history")
+    reporter.complete("2026-08-13T12:00:00+00:00")
+    reporter.close()
+
+    sql = "\n".join(call[0] for call in calls)
+    assert "status='running',stage='scanning'" in sql
+    assert any(params.get("d") == 5 and params.get("t") == 1421 for _, params in calls)
+    assert "status='publishing'" not in sql  # stage is bound, never interpolated into SQL
+    assert any(params.get("s") == "publishing" for _, params in calls)
+    assert "status='completed'" in sql
+    assert calls[-1][0] == "close"
+
+
+def test_status_api_returns_supabase_progress_for_external_worker(monkeypatch):
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": "old", "count": 1421})
+    monkeypatch.setattr(
+        store,
+        "get_refresh_progress",
+        lambda refresh_id=None: {
+            "refresh_id": refresh_id, "status": "running", "stage": "scanning",
+            "done": 230, "total": 1421, "worker": "GitHub Actions", "error": None,
+        },
+    )
+
+    response = server.app.test_client().get("/api/status?refresh_id=refresh_123")
+    body = response.get_json()
+
+    assert response.status_code == 200
+    assert body["refreshing"] is True
+    assert body["refresh_id"] == "refresh_123"
+    assert body["progress"] == {"done": 230, "total": 1421}
+
+
+def test_refresh_button_polls_request_specific_supabase_progress():
+    text = (store.ROOT / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    assert "_refId=j.refresh_id||null" in text
+    assert "?refresh_id=${encodeURIComponent(_refId)}" in text
+    assert "${done}/${total}${eta}" in text
 
 
 def test_web_refresh_dispatches_worker_without_running_local_builder(monkeypatch):
@@ -191,6 +252,7 @@ def test_web_refresh_dispatches_worker_without_running_local_builder(monkeypatch
 
     monkeypatch.setattr("app_secrets.get_secret", lambda name: "token" if name == "GH_PAT" else "")
     monkeypatch.setattr("requests.post", lambda url, **kwargs: calls.append((url, kwargs)) or _DispatchResponse())
+    monkeypatch.setattr(store, "queue_refresh_progress", lambda *args, **kwargs: True)
     monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": "2026-08-12T10:14:25+00:00"})
     monkeypatch.setitem(server._REFRESHING, "on", False)
     monkeypatch.setitem(server._REFRESHING, "mode", None)
@@ -198,7 +260,10 @@ def test_web_refresh_dispatches_worker_without_running_local_builder(monkeypatch
     assert server._dispatch_snapshot_rebuild(["FTSE 100"]) is True
     assert len(calls) == 1
     assert calls[0][0].endswith("/actions/workflows/trading-scanner-snapshot.yml/dispatches")
-    assert calls[0][1]["json"]["inputs"] == {"markets": "FTSE 100"}
+    inputs = calls[0][1]["json"]["inputs"]
+    assert inputs["markets"] == "FTSE 100"
+    assert len(inputs["refresh_id"]) == 32
+    assert server._REFRESHING["refresh_id"] == inputs["refresh_id"]
     assert server._REFRESHING["mode"] == "external"
 
 
@@ -216,6 +281,7 @@ def test_web_refresh_uses_expiring_cron_broker_when_github_token_is_absent(monke
             return self.body
 
     monkeypatch.setattr("app_secrets.get_secret", lambda name: "cron-key" if name == "CRONJOB_API_KEY" else "")
+    monkeypatch.setattr(store, "queue_refresh_progress", lambda *args, **kwargs: True)
     monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": "2026-08-12T10:14:25+00:00"})
     monkeypatch.setitem(server._REFRESHING, "on", False)
 
@@ -239,7 +305,9 @@ def test_web_refresh_uses_expiring_cron_broker_when_github_token_is_absent(monke
     job = put[2]["json"]["job"]
     assert job["title"] == "Scanner Snapshot Refresh On Demand"
     assert job["schedule"]["expiresAt"] > 0
-    assert json.loads(job["extendedData"]["body"])["inputs"] == {"markets": "FTSE 100"}
+    inputs = json.loads(job["extendedData"]["body"])["inputs"]
+    assert inputs["markets"] == "FTSE 100"
+    assert len(inputs["refresh_id"]) == 32
     assert server._REFRESHING["worker"] == "cron-job.org → GitHub Actions"
 
 

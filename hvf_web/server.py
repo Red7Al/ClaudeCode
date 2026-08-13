@@ -1532,7 +1532,8 @@ def api_working_orders():
     return jsonify({"tickers": tickers})
 
 
-_REFRESHING = {"on": False, "mode": None, "requested_at": 0.0, "base_generated": None}
+_REFRESHING = {"on": False, "mode": None, "requested_at": 0.0, "base_generated": None,
+               "refresh_id": None}
 _SCANNER_CRON_TITLE = "Scanner Snapshot Refresh"
 _SCANNER_ON_DEMAND_TITLE = "Scanner Snapshot Refresh On Demand"
 
@@ -1558,7 +1559,7 @@ def _do_rebuild(markets=None) -> bool:
         _REFRESHING["on"] = False
 
 
-def _dispatch_via_cron_broker(api_key: str, markets=None) -> str:
+def _dispatch_via_cron_broker(api_key: str, markets=None, refresh_id: str = "") -> str:
     """Schedule one expiring cron-job.org dispatch, reusing its existing GitHub credential.
 
     cron-job.org has no run-now REST method. A fixed on-demand job is therefore scheduled two minutes ahead
@@ -1592,7 +1593,8 @@ def _dispatch_via_cron_broker(api_key: str, markets=None) -> str:
         raise RuntimeError("cron-job.org Scanner dispatcher has no reusable GitHub authorization header")
     extended["headers"] = auth_headers
     extended["body"] = _json.dumps({"ref": os.environ.get("GITHUB_REF_NAME", "main"),
-                                     "inputs": {"markets": ",".join(markets or [])}}, separators=(",", ":"))
+                                     "inputs": {"markets": ",".join(markets or []),
+                                                "refresh_id": refresh_id}}, separators=(",", ":"))
 
     run_at = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(minutes=2)).replace(second=0, microsecond=0)
     expires = run_at + _dt.timedelta(minutes=3)
@@ -1617,8 +1619,10 @@ def _dispatch_snapshot_rebuild(markets=None) -> bool:
     """Dispatch the external publisher so the web host never performs the heavy scan."""
     import app_secrets
     import requests
+    import uuid
 
     errors = []
+    refresh_id = uuid.uuid4().hex
     token = app_secrets.get_secret("GH_PAT") or app_secrets.get_secret("GITHUB_TOKEN")
     if token:
         try:
@@ -1628,7 +1632,7 @@ def _dispatch_snapshot_rebuild(markets=None) -> bool:
                 headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
                          "X-GitHub-Api-Version": "2022-11-28"},
                 json={"ref": os.environ.get("GITHUB_REF_NAME", "main"),
-                      "inputs": {"markets": ",".join(markets or [])}}, timeout=20,
+                      "inputs": {"markets": ",".join(markets or []), "refresh_id": refresh_id}}, timeout=20,
             )
             response.raise_for_status()
             worker, queued_for = "GitHub Actions", None
@@ -1640,7 +1644,7 @@ def _dispatch_snapshot_rebuild(markets=None) -> bool:
             cron_key = app_secrets.get_secret("CRONJOB_API_KEY")
             if not cron_key:
                 raise RuntimeError("no cron-job.org API key configured")
-            queued_for = _dispatch_via_cron_broker(cron_key, markets)
+            queued_for = _dispatch_via_cron_broker(cron_key, markets, refresh_id)
             worker = "cron-job.org → GitHub Actions"
         except Exception as exc:
             errors.append(f"cron-job.org dispatch: {exc}")
@@ -1648,7 +1652,13 @@ def _dispatch_snapshot_rebuild(markets=None) -> bool:
             return False
     snap = _load_snapshot()
     _REFRESHING.update(on=True, mode="external", worker=worker, queued_for=queued_for,
-                       requested_at=_time.time(), base_generated=snap.get("generated_utc"))
+                       requested_at=_time.time(), base_generated=snap.get("generated_utc"),
+                       refresh_id=refresh_id)
+    try:
+        import scanner_snapshot_store as _snapshot_store
+        _snapshot_store.queue_refresh_progress(refresh_id, markets, worker, queued_for)
+    except Exception as exc:
+        log.warning("could not persist queued Scanner progress: %s", exc)
     return True
 
 
@@ -1660,7 +1670,13 @@ def api_refresh():
         return jsonify({"error": "login required"}), 401
     if not _wu.is_admin(name):                     # admin-only (user 2026-07-03)
         return jsonify({"error": "admin only"}), 403
-    if _REFRESHING["on"]:
+    remote_active = None
+    try:
+        import scanner_snapshot_store as _snapshot_store
+        remote_active = _snapshot_store.get_refresh_progress()
+    except Exception:
+        pass
+    if _REFRESHING["on"] or remote_active:
         _wu.log_event(name, "Requested data refresh (one already running)")
         return jsonify({"started": False, "busy": True})
     # Optional choice of markets to refresh (user 2026-07-31, P-15); empty/absent = full universe.
@@ -1682,22 +1698,39 @@ def api_refresh():
         return jsonify({"started": False, "error": "external refresh could not be queued"}), 503
     return jsonify({"started": True, "queued": True, "worker": _REFRESHING.get("worker"),
                     "queued_for": _REFRESHING.get("queued_for"), "markets": markets,
-                    "base_generated": _REFRESHING.get("base_generated")})
+                    "base_generated": _REFRESHING.get("base_generated"),
+                    "refresh_id": _REFRESHING.get("refresh_id")})
 
 
 @app.route("/api/status")
 def api_status():
     snap = _load_snapshot()
+    remote_progress = None
+    try:
+        import scanner_snapshot_store as _snapshot_store
+        remote_progress = _snapshot_store.get_refresh_progress(request.args.get("refresh_id") or None)
+    except Exception:
+        pass
     if _REFRESHING["on"] and _REFRESHING.get("mode") == "external":
         advanced = snap.get("generated_utc") and snap.get("generated_utc") != _REFRESHING.get("base_generated")
         expired = _time.time() - float(_REFRESHING.get("requested_at") or 0) > 2 * 3600
         if advanced or expired:
             _REFRESHING.update(on=False, mode=None, worker=None, queued_for=None,
-                               requested_at=0.0, base_generated=None)
+                               requested_at=0.0, base_generated=None, refresh_id=None)
             if advanced:
                 _PNG_CACHE.clear()
     resp = {"refreshing": _REFRESHING["on"], "generated_utc": snap.get("generated_utc"),
             "count": snap.get("count")}
+    if remote_progress:
+        active = remote_progress.get("status") in {"queued", "running", "publishing", "history"}
+        resp.update({"refreshing": active, "refresh_id": remote_progress.get("refresh_id"),
+                     "worker": remote_progress.get("worker") or "GitHub Actions",
+                     "refresh_stage": remote_progress.get("stage"),
+                     "progress": {"done": remote_progress.get("done", 0),
+                                  "total": remote_progress.get("total", 0)}})
+        if remote_progress.get("status") == "failed":
+            resp["refresh_error"] = remote_progress.get("error") or "External Scanner refresh failed"
+        return jsonify(resp)
     if _REFRESHING["on"] and _REFRESHING.get("mode") == "external":
         resp["worker"] = _REFRESHING.get("worker") or "GitHub Actions"
         resp["queued"] = True

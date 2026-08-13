@@ -45,6 +45,22 @@ _SCHEMA = (
            singleton boolean primary key default true check (singleton),
            version_id bigint not null references scanner_snapshot_versions(id),
            updated_at timestamptz not null default now())""",
+    """create table if not exists scanner_refresh_progress (
+           refresh_id text primary key,
+           status text not null default 'queued',
+           stage text not null default 'queued',
+           done integer not null default 0 check (done >= 0),
+           total integer not null default 0 check (total >= 0),
+           markets text,
+           worker text,
+           queued_for timestamptz,
+           requested_at timestamptz not null default now(),
+           started_at timestamptz,
+           updated_at timestamptz not null default now(),
+           completed_at timestamptz,
+           generated_utc text,
+           error text)""",
+    "create index if not exists idx_scanner_refresh_updated on scanner_refresh_progress(updated_at desc)",
 )
 
 
@@ -201,6 +217,171 @@ def ensure_schema() -> None:
         db.close()
 
 
+def _refresh_id(value: str) -> str:
+    value = str(value or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", value):
+        raise SnapshotStoreError("Scanner refresh id is invalid")
+    return value
+
+
+def queue_refresh_progress(refresh_id: str, markets=None, worker: str = "", queued_for=None) -> bool:
+    """Persist the browser request before the external worker starts; failure never blocks dispatch."""
+    try:
+        refresh_id = _refresh_id(refresh_id)
+        ensure_schema()
+        db = _db()
+        try:
+            db.run(
+                """insert into scanner_refresh_progress
+                       (refresh_id,status,stage,done,total,markets,worker,queued_for,requested_at,updated_at)
+                     values (:r,'queued','queued',0,0,:m,:w,cast(:q as timestamptz),now(),now())
+                     on conflict (refresh_id) do update set
+                       status='queued',stage='queued',done=0,total=0,markets=excluded.markets,
+                       worker=excluded.worker,queued_for=excluded.queued_for,requested_at=now(),
+                       started_at=null,updated_at=now(),completed_at=null,generated_utc=null,error=null""",
+                r=refresh_id, m=",".join(markets or []), w=(worker or "")[:100], q=queued_for,
+            )
+            return True
+        finally:
+            db.close()
+    except Exception as exc:
+        log.warning("could not record queued Scanner refresh %s: %s", refresh_id, exc)
+        return False
+
+
+def get_refresh_progress(refresh_id: str | None = None) -> dict | None:
+    """Read one refresh, or the most recent active refresh when no id is supplied."""
+    try:
+        db = _db()
+        try:
+            if refresh_id:
+                rows = db.run(
+                    """select refresh_id,status,stage,done,total,worker,queued_for,requested_at,
+                              started_at,updated_at,completed_at,generated_utc,error
+                         from scanner_refresh_progress where refresh_id=:r""",
+                    r=_refresh_id(refresh_id),
+                ) or []
+            else:
+                rows = db.run(
+                    """select refresh_id,status,stage,done,total,worker,queued_for,requested_at,
+                              started_at,updated_at,completed_at,generated_utc,error
+                         from scanner_refresh_progress
+                        where status in ('queued','running','publishing','history')
+                          and updated_at > now() - interval '2 hours'
+                        order by requested_at desc limit 1"""
+                ) or []
+        finally:
+            db.close()
+        if not rows:
+            return None
+        row = rows[0]
+        iso = lambda value: value.isoformat() if hasattr(value, "isoformat") else (str(value) if value else None)
+        return {
+            "refresh_id": row[0], "status": row[1], "stage": row[2],
+            "done": int(row[3] or 0), "total": int(row[4] or 0), "worker": row[5] or "",
+            "queued_for": iso(row[6]), "requested_at": iso(row[7]), "started_at": iso(row[8]),
+            "updated_at": iso(row[9]), "completed_at": iso(row[10]),
+            "generated_utc": row[11], "error": row[12],
+        }
+    except Exception as exc:
+        log.warning("could not read Scanner refresh progress: %s", exc)
+        return None
+
+
+class RefreshProgressReporter:
+    """Throttled progress writer used by the external Scanner worker."""
+
+    def __init__(self, refresh_id: str | None):
+        self.refresh_id = None
+        self.db = None
+        self.last_done = -1
+        self.last_write = 0.0
+        if not refresh_id:
+            return
+        try:
+            self.refresh_id = _refresh_id(refresh_id)
+            ensure_schema()
+            self.db = _db()
+        except Exception as exc:
+            log.warning("Scanner progress reporting unavailable: %s", exc)
+            self.db = None
+
+    def _run(self, sql: str, **params) -> bool:
+        if not self.db or not self.refresh_id:
+            return False
+        for attempt in range(2):
+            try:
+                self.db.run(sql, r=self.refresh_id, **params)
+                return True
+            except Exception as exc:
+                if attempt == 0:
+                    try:
+                        self.db.close()
+                    except Exception:
+                        pass
+                    try:
+                        self.db = _db()
+                        continue
+                    except Exception:
+                        self.db = None
+                log.warning("Scanner progress update failed: %s", exc)
+        return False
+
+    def start(self) -> None:
+        self._run(
+            """insert into scanner_refresh_progress
+                   (refresh_id,status,stage,done,total,requested_at,started_at,updated_at)
+                 values (:r,'running','scanning',0,0,now(),now(),now())
+                 on conflict (refresh_id) do update set status='running',stage='scanning',
+                   started_at=coalesce(scanner_refresh_progress.started_at,now()),updated_at=now(),error=null"""
+        )
+
+    def update(self, done: int, total: int) -> None:
+        done, total = max(0, int(done)), max(0, int(total))
+        now = time.monotonic()
+        if done < total and done - self.last_done < 5 and now - self.last_write < 10:
+            return
+        if self._run(
+            """update scanner_refresh_progress set status='running',stage='scanning',done=:d,total=:t,
+                   updated_at=now() where refresh_id=:r""",
+            d=done, t=total,
+        ):
+            self.last_done, self.last_write = done, now
+
+    def stage(self, stage: str, done: int | None = None, total: int | None = None) -> None:
+        values = {"s": stage[:30], "d": max(0, int(done or 0)), "t": max(0, int(total or 0))}
+        self._run(
+            """update scanner_refresh_progress set status=:s,stage=:s,
+                   done=case when :d > 0 then :d else done end,
+                   total=case when :t > 0 then :t else total end,updated_at=now()
+                 where refresh_id=:r""",
+            **values,
+        )
+
+    def complete(self, generated_utc: str | None = None) -> None:
+        self._run(
+            """update scanner_refresh_progress set status='completed',stage='completed',
+                   done=case when total > 0 then total else done end,generated_utc=:g,
+                   updated_at=now(),completed_at=now(),error=null where refresh_id=:r""",
+            g=generated_utc,
+        )
+
+    def fail(self, error: Exception | str) -> None:
+        self._run(
+            """update scanner_refresh_progress set status='failed',stage='failed',error=:e,
+                   updated_at=now(),completed_at=now() where refresh_id=:r""",
+            e=str(error)[:500],
+        )
+
+    def close(self) -> None:
+        if self.db:
+            try:
+                self.db.close()
+            except Exception:
+                pass
+            self.db = None
+
+
 def _record_publication(meta: dict) -> int:
     ensure_schema()
     db = _db()
@@ -354,7 +535,8 @@ def _write_atomic(path: Path, data: bytes) -> None:
             pass
 
 
-def pull_current(path: str | os.PathLike = DEFAULT_SNAPSHOT, force: bool = False) -> tuple[dict, dict, bool]:
+def pull_current(path: str | os.PathLike = DEFAULT_SNAPSHOT, force: bool = False,
+                 purpose: str = "read") -> tuple[dict, dict, bool]:
     """Synchronise the verified current object to ``path``; return snapshot, metadata, changed."""
     local_path = Path(path)
     sidecar_path = _sidecar_path(local_path)
@@ -380,7 +562,7 @@ def pull_current(path: str | os.PathLike = DEFAULT_SNAPSHOT, force: bool = False
         _write_atomic(sidecar_path, json.dumps(sidecar, separators=(",", ":")).encode("utf-8"))
         return local, meta, False
 
-    snapshot, meta, data = download_snapshot(meta)
+    snapshot, meta, data = download_snapshot(meta, purpose=purpose)
     _write_atomic(local_path, data)
     sidecar = {**meta, "checked_epoch": now}
     _write_atomic(sidecar_path, json.dumps(sidecar, separators=(",", ":")).encode("utf-8"))
