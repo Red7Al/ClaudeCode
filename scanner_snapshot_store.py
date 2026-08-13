@@ -332,6 +332,15 @@ def _read_json(path: Path):
         return None
 
 
+def _matches_digest(path: Path, expected: str | None) -> bool:
+    if not expected:
+        return False
+    try:
+        return _digest(path.read_bytes()) == expected
+    except OSError:
+        return False
+
+
 def _write_atomic(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + f".tmp-{os.getpid()}")
@@ -351,7 +360,9 @@ def pull_current(path: str | os.PathLike = DEFAULT_SNAPSHOT, force: bool = False
     sidecar_path = _sidecar_path(local_path)
     sidecar = _read_json(sidecar_path) or {}
     now = time.time()
-    if not force and local_path.is_file() and now - float(sidecar.get("checked_epoch", 0)) < CHECK_SECONDS:
+    if (not force and local_path.is_file()
+            and now - float(sidecar.get("checked_epoch", 0)) < CHECK_SECONDS
+            and _matches_digest(local_path, sidecar.get("sha256"))):
         local = _read_json(local_path)
         if isinstance(local, dict):
             validate_snapshot(local)
@@ -362,7 +373,8 @@ def pull_current(path: str | os.PathLike = DEFAULT_SNAPSHOT, force: bool = False
         raise SnapshotStoreError("no Scanner snapshot has been published")
     local = _read_json(local_path)
     if (isinstance(local, dict) and sidecar.get("object_path") == meta["object_path"]
-            and sidecar.get("sha256") == meta["sha256"]):
+            and sidecar.get("sha256") == meta["sha256"]
+            and _matches_digest(local_path, meta["sha256"])):
         validate_snapshot(local)
         sidecar = {**meta, "checked_epoch": now}
         _write_atomic(sidecar_path, json.dumps(sidecar, separators=(",", ":")).encode("utf-8"))

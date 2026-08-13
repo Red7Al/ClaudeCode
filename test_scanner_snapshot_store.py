@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 
 import pytest
 
@@ -120,6 +121,41 @@ def test_publication_verification_reuses_publish_key_for_readback(monkeypatch):
 
     assert store.verify_current() == {"version_id": 7}
     assert purposes == ["publish"]
+
+
+def test_pull_current_redownloads_when_deployment_replaced_file_but_sidecar_is_new(monkeypatch, tmp_path):
+    path = tmp_path / "snapshot.json"
+    path.write_bytes(store._encoded(_snapshot()))
+    current = {
+        **_snapshot(),
+        "generated_utc": "2026-08-13T11:26:43.055313+00:00",
+        "records": [{"ticker": "TSCO.L", "has_signal": True}],
+    }
+    data = store._encoded(current)
+    meta = {
+        "version_id": 4,
+        "object_path": "snapshots/current.json",
+        "sha256": store._digest(data),
+        "record_count": 1,
+        "generated_utc": current["generated_utc"],
+    }
+    store._sidecar_path(path).write_text(
+        json.dumps({**meta, "checked_epoch": time.time()}), encoding="utf-8",
+    )
+    downloads = []
+    monkeypatch.setattr(store, "current_metadata", lambda: meta)
+    monkeypatch.setattr(
+        store,
+        "download_snapshot",
+        lambda selected: downloads.append(selected) or (current, meta, data),
+    )
+
+    snapshot, selected, changed = store.pull_current(path)
+
+    assert changed is True
+    assert snapshot == current and selected == meta
+    assert downloads == [meta]
+    assert path.read_bytes() == data
 
 
 def test_remote_outage_keeps_last_known_good_local_snapshot(monkeypatch, tmp_path):
