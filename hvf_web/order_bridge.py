@@ -38,11 +38,25 @@ _SNAPSHOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "snapshot.j
 def _candidates() -> list:
     """READY pre-orders from the snapshot worth handing to the order engine: quality > 50 and price
     within 1.5% of entry (the engine re-checks both with live data — this is just the shortlist)."""
+    # Supabase-first, exactly like hvf_web/server._load_snapshot (user 2026-08-15: "order bridge must
+    # run"). Reading the local file directly only ever worked because this ran inside the laptop's Flask
+    # process, which kept hvf_web/snapshot.json fresh. That file is gitignored and absent on a clean
+    # runner, so a scheduled pass would have found zero candidates and reported success having done
+    # nothing at all — the worst kind of silent failure on an order path. load_snapshot() verifies the
+    # published object and still falls back to the local last-known-good copy on a configured machine.
     try:
-        with open(_SNAPSHOT, encoding="utf-8") as fh:
-            records = json.load(fh).get("records", [])
+        import scanner_snapshot_store
+        records = scanner_snapshot_store.load_snapshot(_SNAPSHOT).get("records", [])
     except Exception as e:
-        log.warning(f"bridge: snapshot unreadable: {e}")
+        log.warning(f"bridge: Scanner snapshot store unavailable ({e}); trying the local file")
+        try:
+            with open(_SNAPSHOT, encoding="utf-8") as fh:
+                records = json.load(fh).get("records", [])
+        except Exception as e2:
+            log.warning(f"bridge: snapshot unreadable: {e2}")
+            return []
+    if not records:
+        log.warning("bridge: snapshot contains no records - refusing to treat that as 'nothing to do'.")
         return []
     try:
         from config_store import cfg_num

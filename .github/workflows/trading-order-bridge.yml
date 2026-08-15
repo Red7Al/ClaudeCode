@@ -1,0 +1,65 @@
+name: Order Bridge (snapshot -> IG working orders, 2026-08-15)
+
+# Database -> IG working-order bridge (hvf_web/order_bridge.py) for the FULL scanned universe.
+#
+# WHY THIS WORKFLOW EXISTS: the bridge used to be a background thread in hvf_web/server.py, started
+# from `if __name__ == "__main__":` — so it only ever ran while the laptop hosted the site. The move to
+# IONOS (https://www.squeezescanner.cloud/, served via CGI/WSGI) means __main__ never executes and the
+# bridge stopped running anywhere. IONOS_DEPLOYMENT.md §4 says to keep order bridging "in their existing
+# scheduler" precisely because a WSGI host runs several worker processes and an order loop in each would
+# risk duplicate placement. One scheduled job is that single owner.
+#
+# Placement stays on the SAME guarded path the session monitors use — ig_shim.place_hvf_order_from_sig —
+# which enforces config_store.monitor_enabled("WEB_BRIDGE") (the Trading (Squeeze) toggle), the quality
+# floor, the 1.5% proximity band, the owner's personal trading limits with require_data=True (so an
+# unavailable VWAP/ATR BLOCKS rather than bypasses), margin-aware sizing and the circuit breakers.
+# order_bridge itself caps NEW placements at BRIDGE_MAX_PER_RUN (6) per pass.
+#
+# No schedule: block — GitHub-native cron is banned; timing lives on cron-job.org via setup_cronjobs.JOBS.
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Never let two passes overlap: the duplicate guard is a working_orders lookup at the START of a pass,
+# so concurrent runs could both see a ticker as free and place it twice. Queue instead of cancelling —
+# cancelling mid-pass could abandon a run between an IG placement and its working_orders write.
+concurrency:
+  group: order-bridge
+  cancel-in-progress: false
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python -m hvf_web.order_bridge
+        env:
+          IG_API_KEY:                  ${{ secrets.IG_API_KEY }}
+          IG_USERNAME:                 ${{ secrets.IG_USERNAME }}
+          IG_PASSWORD:                 ${{ secrets.IG_PASSWORD }}
+          IG_ACCOUNT_ID:               ${{ secrets.IG_ACCOUNT_ID }}
+          SUPABASE_USER:               ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:        ${{ secrets.SUPABASE_DB_PASSWORD }}
+          # Read-scoped Storage key: the bridge PULLS the published Scanner snapshot, never publishes.
+          SUPABASE_SCANNER_WEB_KEY:    ${{ secrets.SUPABASE_SCANNER_WEB_KEY }}
+          FRED_API_KEY:                ${{ secrets.FRED_API_KEY }}
+          SLACK_ORDERS:                ${{ secrets.SLACK_ORDERS }}
+          SLACK_TRADES:                ${{ secrets.SLACK_TRADES }}
+          SLACK_ALERTS:                ${{ secrets.SLACK_ALERTS }}
+      - name: Alert on failure
+        if: failure()
+        env:
+          SLACK_ALERTS: ${{ secrets.SLACK_ALERTS }}
+        run: |
+          curl -s -X POST -H 'Content-type: application/json' --data \
+            '{"text":"🚨 Order Bridge pass FAILED — snapshot pre-orders were not routed to IG this cycle. https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
+            "$SLACK_ALERTS"

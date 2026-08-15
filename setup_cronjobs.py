@@ -117,6 +117,13 @@ JOBS = [
     ("Price Data Refresh",  "30 4 * * 1-6",   "trading-price-refresh.yml"),  # 04:30 UTC Mon-Sat — refresh price_history BEFORE the 05:30 HVF Daily Report, which needs current bars (user 2026-08-04, ToDo P-02). Own workflow file since 2026-08-07 (ChangeRequest P-08 "job names look peculiar") — was sharing trading-price-audit.yml with the 23:00 "Price History Audit" job, which made the two show byte-identical run stats in the Scheduled Jobs tab (hvf_web/scheduled_jobs.py caches GitHub Actions stats per WORKFLOW FILE); splitting the file gives each job its own genuine history. Same script (re-fetch trailing window + upsert; idempotent).
     ("HVF Daily Report",    "30 5 * * 1-6",   "trading-hvf-report.yml"),  # 05:30 UTC Mon-Sat -> all publications (report + X drafts + live-X) done before 07:00 UTC (8am BST) (user 2026-06-19)
     ("HVF Orders",          "0 6 * * 1-6",    "trading-hvf-orders.yml"),  # 06:00 UTC Mon-Sat -> actionable HVF setups to #arw-claude-orders, before 07:00 UTC (8am BST) (user 2026-06-19)
+    # Snapshot pre-orders -> IG working orders. Restored to a scheduler 2026-08-15 (user: "order bridge
+    # must run"): it used to be a 2-hourly background thread in hvf_web/server.py started from __main__,
+    # so it died silently when the site moved to IONOS (CGI/WSGI never runs __main__). One scheduled job
+    # is deliberately the SINGLE owner — IONOS_DEPLOYMENT.md warns that a loop in every WSGI worker would
+    # risk duplicate placement. 06:00-22:00 UTC Mon-Fri at the original 2h cadence (user choice: no
+    # overnight AUS cover; those setups wait for the 06:00 pass).
+    ("Order Bridge",        "0 6-22/2 * * 1-5", "trading-order-bridge.yml"),
     # "HVF Quality Reports" removed 2026-06-16: the long quality report now rides with EVERY
     # publication (intraday_signals._generate_x_drafts -> quality_report.publish_long_report_for),
     # so a separate quality-only job would double-post AND is an incomplete publication on its own

@@ -35,6 +35,11 @@ _BOOTSTRAP = {
     # Dedicated Storage publisher key: Actions needs it before it can publish and it bypasses RLS, so it
     # stays in the workflow's secret environment rather than inside the application secret document.
     "SUPABASE_SCANNER_PUBLISH_KEY",
+    # Its read-scoped counterpart, same reasoning: the Order Bridge job (trading-order-bridge.yml) must
+    # PULL the published Scanner snapshot before any application secret is available to it, and this key
+    # bypasses RLS too. Keep it in the workflow secret environment / IONOS env only — never in the
+    # application secret document, browser code or a URL (IONOS_DEPLOYMENT.md §2). Added 2026-08-15.
+    "SUPABASE_SCANNER_WEB_KEY",
 }
 
 # Secrets currently sourced from .env / GitHub Secrets that should move into the store.
