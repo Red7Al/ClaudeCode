@@ -17,6 +17,7 @@
 #   IONOS_HOST     required  SSH/SFTP host for the hosting account
 #   IONOS_USER     required  SSH username
 #   IONOS_DIR      required  ABSOLUTE path of the domain directory on the server
+#                            (don't know it? run: ./deploy_ionos.sh --find-dir)
 #   IONOS_PORT     optional  SSH port (default 22)
 #   IONOS_KEY      optional  path to a private key; omit to use your default agent/key
 #   VERIFY_STRING  optional  literal string that must appear in the deployed page
@@ -38,7 +39,9 @@ cd "$ROOT"
 ZIP="dist/ionos/squeeze-scanner-ionos.zip"
 SITE="https://www.squeezescanner.cloud"
 DRY_RUN=0
-[ "${1:-}" = "--dry-run" ] && DRY_RUN=1
+FIND_DIR=0
+[ "${1:-}" = "--dry-run" ]  && DRY_RUN=1
+[ "${1:-}" = "--find-dir" ] && FIND_DIR=1
 
 PY=python
 [ -x ".venv/Scripts/python.exe" ] && PY=".venv/Scripts/python.exe"
@@ -75,10 +78,40 @@ fi
 # --- 3. config ------------------------------------------------------------------------------------------
 : "${IONOS_HOST:?set IONOS_HOST (see the header of this script)}"
 : "${IONOS_USER:?set IONOS_USER}"
-: "${IONOS_DIR:?set IONOS_DIR - the absolute domain directory on the server}"
 PORT="${IONOS_PORT:-22}"
-SSH_OPTS=(-p "$PORT"); SCP_OPTS=(-P "$PORT")
+
+# Reuse ONE authenticated connection for every ssh/scp below. On a password-auth account (IONOS webspace
+# accounts are password-only unless you install a key) this is the difference between typing the password
+# once and typing it three times — and a mistyped attempt halfway through a deploy is how you end up with
+# an uploaded zip that never got extracted.
+CTL="${TMPDIR:-/tmp}/ionos-deploy-$$.sock"
+SSH_OPTS=(-p "$PORT" -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=120)
+SCP_OPTS=(-P "$PORT" -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=120)
 if [ -n "${IONOS_KEY:-}" ]; then SSH_OPTS+=(-i "$IONOS_KEY"); SCP_OPTS+=(-i "$IONOS_KEY"); fi
+cleanup() { ssh -O exit -o ControlPath="$CTL" "${IONOS_USER}@${IONOS_HOST}" 2>/dev/null || true; }
+trap cleanup EXIT
+
+# --find-dir: locate the domain directory instead of deploying. The live release is wherever the existing
+# .htaccess and cgi-bin/app.py already sit, so look for that pair rather than guessing at IONOS's layout.
+if [ "$FIND_DIR" = "1" ]; then
+  say "Looking for the domain directory on ${IONOS_HOST}"
+  ssh "${SSH_OPTS[@]}" "${IONOS_USER}@${IONOS_HOST}" bash -s <<'REMOTE'
+set -u
+echo "  home: $(pwd)"
+echo "  --- directories containing BOTH .htaccess and cgi-bin/app.py (this is what IONOS_DIR should be):"
+found=0
+while IFS= read -r f; do
+  d="$(dirname "$f")"
+  if [ -f "$d/cgi-bin/app.py" ]; then echo "      $d"; found=1; fi
+done < <(find ~ / -maxdepth 4 -name .htaccess -not -path '*/.venv_linux/*' 2>/dev/null)
+[ "$found" = "1" ] || echo "      (none found - the site may live outside the searched depth; try: find / -name 'app.py' -path '*cgi-bin*' 2>/dev/null)"
+echo "  --- top level of home:"
+ls -la ~ 2>/dev/null | head -25
+REMOTE
+  exit 0
+fi
+
+: "${IONOS_DIR:?set IONOS_DIR - the absolute domain directory on the server (run: ./deploy_ionos.sh --find-dir)}"
 
 say "Deploying to ${IONOS_USER}@${IONOS_HOST}:${IONOS_DIR} (port ${PORT})"
 read -r -p "Overwrite the live release? [y/N] " reply
