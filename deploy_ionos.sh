@@ -87,15 +87,27 @@ fi
 : "${IONOS_USER:?set IONOS_USER}"
 PORT="${IONOS_PORT:-22}"
 
-# Reuse ONE authenticated connection for every ssh/scp below. On a password-auth account (IONOS webspace
-# accounts are password-only unless you install a key) this is the difference between typing the password
-# once and typing it three times — and a mistyped attempt halfway through a deploy is how you end up with
-# an uploaded zip that never got extracted.
-CTL="${TMPDIR:-/tmp}/ionos-deploy-$$.sock"
-SSH_OPTS=(-p "$PORT" -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=120)
-SCP_OPTS=(-P "$PORT" -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=120)
-if [ -n "${IONOS_KEY:-}" ]; then SSH_OPTS+=(-i "$IONOS_KEY"); SCP_OPTS+=(-i "$IONOS_KEY"); fi
-cleanup() { ssh -O exit -o ControlPath="$CTL" "${IONOS_USER}@${IONOS_HOST}" 2>/dev/null || true; }
+SSH_OPTS=(-p "$PORT")
+SCP_OPTS=(-P "$PORT")
+CTL=""
+if [ -n "${IONOS_KEY:-}" ]; then
+  # Key auth: every connection is unattended, so multiplexing buys nothing. Skip it — ControlMaster
+  # sockets are unreliable under Git Bash on Windows and failed here with "Failed to connect to new
+  # control master" AFTER the upload had succeeded, leaving a zip on the server that was never extracted.
+  SSH_OPTS+=(-o BatchMode=yes -i "$IONOS_KEY")
+  SCP_OPTS+=(-o BatchMode=yes -i "$IONOS_KEY")
+else
+  # Password auth: reuse ONE authenticated connection so the password is typed once rather than three
+  # times. Set SSH_MULTIPLEX=0 to disable if your ssh build cannot hold a control socket.
+  if [ "${SSH_MULTIPLEX:-1}" = "1" ]; then
+    CTL="${TMPDIR:-/tmp}/ionos-deploy-$$.sock"
+    SSH_OPTS+=(-o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=120)
+    SCP_OPTS+=(-o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=120)
+  fi
+fi
+cleanup() {
+  [ -n "$CTL" ] && ssh -O exit -o ControlPath="$CTL" "${IONOS_USER}@${IONOS_HOST}" 2>/dev/null || true
+}
 trap cleanup EXIT
 
 # --find-dir: locate the domain directory instead of deploying. The live release is wherever the existing
@@ -121,8 +133,12 @@ fi
 : "${IONOS_DIR:?set IONOS_DIR - the absolute domain directory on the server (run: ./deploy_ionos.sh --find-dir)}"
 
 say "Deploying to ${IONOS_USER}@${IONOS_HOST}:${IONOS_DIR} (port ${PORT})"
-read -r -p "Overwrite the live release? [y/N] " reply
-case "$reply" in [yY]*) ;; *) die "aborted by user" ;; esac
+if [ "${ASSUME_YES:-0}" = "1" ]; then
+  echo "  ASSUME_YES=1 - proceeding without the confirmation prompt"
+else
+  read -r -p "Overwrite the live release? [y/N] " reply
+  case "$reply" in [yY]*) ;; *) die "aborted by user" ;; esac
+fi
 
 # --- 4. upload + extract ----------------------------------------------------------------------------------
 say "Uploading"
@@ -139,7 +155,10 @@ cd "$DIR" || { echo "ERROR: no such directory: $DIR" >&2; exit 1; }
 if [ "$SKIP_BACKUP" != "1" ]; then
   BACKUP=~/"backup-$(date +%Y%m%d-%H%M%S).tar.gz"
   echo "  backing up current release -> $BACKUP"
-  tar czf "$BACKUP" --exclude=.venv_linux . 2>/dev/null || echo "  (backup reported warnings; continuing)"
+  # The tarball contains .env and data/, so it must not be group/world readable. umask on this host
+  # would otherwise leave it 644 under www-data.
+  ( umask 077; tar czf "$BACKUP" --exclude=.venv_linux . 2>/dev/null ) || echo "  (backup reported warnings; continuing)"
+  chmod 600 "$BACKUP" 2>/dev/null || true
 fi
 unzip -o ~/squeeze-scanner-ionos.zip >/dev/null
 chmod 755 cgi-bin/app.py
@@ -157,6 +176,25 @@ if [ "$code" = "200" ] && grep -q 'generated_utc' /tmp/ionos_status.txt; then
 else
   echo "  /api/status  FAILED (http $code) - the CGI adapter is the usual cause; check cgi-bin/app.py is 755"
   fail=1
+fi
+
+# The package ships hvf_web/snapshot.json as a BOOT CACHE, and the local copy is usually older than what
+# the nightly Scanner job has published. The first request after extraction therefore serves stale data
+# until the web tier verifies the Supabase object and advances its cache. That self-heals in seconds, but
+# report it rather than let a deploy look like it rolled the Scanner backwards (observed 2026-08-15).
+LOCAL_GEN=$("$PY" -c "import json,io;print(json.load(io.open('hvf_web/snapshot.json',encoding='utf-8')).get('generated_utc') or '')" 2>/dev/null || echo "")
+for _ in 1 2 3 4 5; do
+  LIVE_GEN=$(sed -n 's/.*"generated_utc":"\([^"]*\)".*/\1/p' /tmp/ionos_status.txt)
+  [ -n "$LIVE_GEN" ] && [ "$LIVE_GEN" != "$LOCAL_GEN" ] && break
+  echo "  snapshot     serving the shipped boot cache ($LIVE_GEN) - waiting for the Supabase pull..."
+  sleep 5
+  curl -s -o /tmp/ionos_status.txt "$SITE/api/status" || true
+done
+if [ -n "$LIVE_GEN" ] && [ "$LIVE_GEN" = "$LOCAL_GEN" ]; then
+  echo "  snapshot     WARNING: still serving the shipped boot cache ($LIVE_GEN)."
+  echo "               Not fatal - the next hosted refresh advances it - but check SUPABASE_SCANNER_WEB_KEY is set on the host."
+else
+  echo "  snapshot     live is $LIVE_GEN (shipped boot cache was $LOCAL_GEN)"
 fi
 
 size=$(curl -s "$SITE/" -o /tmp/ionos_index.html -w '%{size_download}' || echo 0)
