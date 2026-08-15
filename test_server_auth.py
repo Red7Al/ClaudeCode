@@ -4,6 +4,8 @@ import gzip
 import json
 from pathlib import Path
 
+import pytest
+
 import config_store
 from hvf_web import server
 
@@ -365,6 +367,8 @@ def _best_history_snapshot():
                       "position_pct": 2, "max_open": 50}, "options": [option]}
 
 
+# Needs live runtime state that a clean CI checkout does not have (user 2026-08-15).
+@pytest.mark.live_state
 def test_best_settings_history_requires_login():
     response = server.app.test_client().get("/api/best-settings-history")
 
@@ -412,6 +416,8 @@ _GUIDES_SAMPLE = [
 ]
 
 
+# Needs live runtime state that a clean CI checkout does not have (user 2026-08-15).
+@pytest.mark.live_state
 def test_guides_list_requires_login():
     resp = server.app.test_client().get("/api/guides")   # no X-Auth
     assert resp.status_code == 401

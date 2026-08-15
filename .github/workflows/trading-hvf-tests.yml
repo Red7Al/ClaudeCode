@@ -1,10 +1,20 @@
 name: Offline Python Regression Tests (2026-08-04)
 
-# Runs the deterministic HVF regression suite (test_hvf_method.py — offline,
-# frozen fixtures, no secrets needed) on every push that touches detection
-# code. A red run means a change altered HVF behaviour — investigate before
-# trusting any scan output. Also manually triggerable. No schedule: block
-# (GitHub-native cron is banned — scheduling stays on cron-job.org).
+# Runs the OFFLINE Python regression suite on every push that touches detection
+# code. A red run means a change altered behaviour — investigate before trusting
+# any scan output. Also manually triggerable. No schedule: block (GitHub-native
+# cron is banned — scheduling stays on cron-job.org).
+#
+# 2026-08-15: this job had failed on EVERY push since 2026-08-12 and had therefore
+# been guarding nothing (while Slack-alerting each time). `pytest` collects the whole
+# repo, and ig_shim.py / social_monitor.py read IG_API_KEY, SUPABASE_USER etc. via
+# os.environ[...] at IMPORT time, so collection died with KeyError before a single
+# test ran. Two fixes below:
+#   * placeholder env values so those modules import — deliberately fake, never real
+#     credentials; every test that touches IG or Supabase monkeypatches them anyway.
+#   * -m "not live_state" to deselect the handful of tests that genuinely need live
+#     runtime state (the Supabase user store, or a built hvf_web/snapshot.json), which
+#     a clean checkout cannot have. Those still run on a configured machine.
 on:
   workflow_dispatch:
   push:
@@ -31,7 +41,17 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: python -m pip install -r requirements-dev.txt
-      - run: python -m pytest -q
+      # Placeholders, NOT credentials — they only need to exist so import-time
+      # os.environ[...] lookups resolve. Nothing here can authenticate anywhere.
+      - run: python -m pytest -q -m "not live_state"
+        env:
+          IG_API_KEY: ci-placeholder-not-a-real-key
+          IG_USERNAME: ci-placeholder
+          IG_PASSWORD: ci-placeholder
+          IG_ACCOUNT_ID: ci-placeholder
+          SUPABASE_USER: ci-placeholder
+          SUPABASE_DB_PASSWORD: ci-placeholder
+          FRED_API_KEY: ci-placeholder
       - name: Alert on failure
         if: failure()
         env:

@@ -1,5 +1,7 @@
 """Backend tests for the Instruments tab (ChangeRequest P-08, 2026-08-07)."""
 
+import pytest
+
 from hvf_web import server
 
 
@@ -80,6 +82,8 @@ def test_api_records_includes_52wk_fields_when_logged_in(monkeypatch):
     assert row["direction"] == "BULL"   # authed sees everything, including the restricted-when-public fields
 
 
+# Needs live runtime state that a clean CI checkout does not have (user 2026-08-15).
+@pytest.mark.live_state
 def test_api_records_includes_52wk_fields_when_logged_out(monkeypatch):
     """Public teaser payload strips direction/quality/etc via _PUBLIC_FIELDS, but 52wk Low/High is
     deliberately public (Instruments tab shows it to logged-out visitors too)."""

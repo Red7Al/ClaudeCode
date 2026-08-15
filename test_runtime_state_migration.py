@@ -146,6 +146,8 @@ def test_migration_preserves_differing_remote_document(monkeypatch):
     assert results == [("web_users", "conflict", 1, "remote differs; preserved")]
 
 
+# Needs live runtime state that a clean CI checkout does not have (user 2026-08-15).
+@pytest.mark.live_state
 def test_ionos_package_manifest_excludes_private_and_development_files(tmp_path):
     included = {p.relative_to(build_ionos_package.ROOT).as_posix() for p in build_ionos_package.package_files()}
 
