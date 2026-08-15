@@ -15,7 +15,12 @@ env:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 45        # scan 200+ tickers + spaced per-market live-X publish (user 2026-06-17)
+    # 2026-08-15: was 45, which the job could not physically meet. It runs the SAME full-universe
+    # scan as trading-scanner-snapshot.yml -- which allows 120 minutes and really takes 46-56 --
+    # and then publishes and does the spaced per-market live-X posting on top. The old value dates
+    # from 2026-06-17 when the comment's "200+ tickers" was accurate; the universe is now ~1,450.
+    # Runs on 08-14 and 08-15 were killed at exactly 45m00s and delivered no morning report.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -33,6 +38,10 @@ jobs:
           SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_SCANNER_PUBLISH_KEY: ${{ secrets.SUPABASE_SCANNER_PUBLISH_KEY }}
+          # Publishing the snapshot ends with verify_current(), which is a READ and needs the
+          # read-scoped key. Without it the job died on 2026-08-13 with
+          # "no server-side Supabase Storage key configured for read" AFTER a successful publish.
+          SUPABASE_SCANNER_WEB_KEY: ${{ secrets.SUPABASE_SCANNER_WEB_KEY }}
           SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
           SLACK_RW_HVF:          ${{ secrets.SLACK_RW_HVF }}   # extra HVF-report channel (user 2026-06-26, C)
           SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
