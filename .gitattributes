@@ -1,2 +1,10 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Line endings that the interpreter actually requires, pinned so a checkout can never break them
+# (2026-08-15): cmd.exe mis-parses an LF batch file one line at a time - a REM comment surfaces as
+# "'EM' is not recognized as an internal or external command" - while a CRLF shell script fails on the
+# shebang. text=auto alone leaves this to per-machine core.autocrlf.
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+*.sh   text eol=lf

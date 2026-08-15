@@ -36,6 +36,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+# Local, gitignored settings (matched by the existing *.env rule) so the host and username never enter
+# the repo. Anything already exported wins, so CI or a one-off override still works.
+if [ -f "$ROOT/.ionos.env" ]; then
+  # shellcheck disable=SC1091
+  set -a; . "$ROOT/.ionos.env"; set +a
+fi
+
 ZIP="dist/ionos/squeeze-scanner-ionos.zip"
 SITE="https://www.squeezescanner.cloud"
 DRY_RUN=0
