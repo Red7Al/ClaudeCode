@@ -23,6 +23,15 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.15.0  2026-08-15  Claude      Add --repair "<titles>" mode. A --status check found FIVE jobs that cron-job.org had
+#                                 auto-disabled after GitHub returned an HTTP error (401/404) on dispatch — HVF Orders
+#                                 (dead since 2026-07-21), Data Quality Audit and Pre-Order Report (2026-07-27), UK and
+#                                 US HVF Watch (2026-06-30) — most likely still pointing at workflow filenames that were
+#                                 later renamed or split (cf. the 1.14.0 Price Data Refresh change). Neither --reconcile
+#                                 (schedule only) nor --prune (deletes jobs NOT in JOBS) could fix them. --repair PATCHes
+#                                 the URL, auth header, body and schedule from JOBS and sets enabled=True. Deliberately
+#                                 TITLE-SCOPED: most other OFF jobs on the account are off on purpose, and a blanket
+#                                 re-enable would restart live trading automation nobody asked for (user 2026-08-15).
 # 1.14.0  2026-08-07  Claude      (ChangeRequest P-08, "the job names look peculiar") "Price Data Refresh" moved off
 #                                 trading-price-audit.yml onto its own trading-price-refresh.yml — it was sharing a
 #                                 workflow file with "Price History Audit" (different schedules, same script), which
@@ -440,6 +449,69 @@ def _safe_detail(job_id):
         return {}
 
 
+def repair_jobs(titles):
+    """Re-point and re-enable SPECIFIC jobs by title, then switch them back on.
+
+    cron-job.org disables a job after repeated delivery failures. Five jobs on this account died with a
+    GitHub HTTP error (401/404) between 2026-06-30 and 2026-07-27 and stayed off ever since - most likely
+    still pointing at a workflow filename that was later renamed or split (see the Price Data Refresh note
+    on the JOBS entry above for exactly that kind of change). This rewrites the job's URL, auth header,
+    request body and schedule from JOBS, and sets enabled=True.
+
+    TITLE-SCOPED ON PURPOSE - this must never become a blanket sweep. Most of the OFF jobs on this account
+    (the UK/US/AUS Open and Monitor jobs, Session Close, Daily Report, the Sunday jobs) are off
+    DELIBERATELY, and re-enabling them wholesale would restart live trading automation nobody asked for.
+    Name the jobs you mean. Needs CRONJOB_API_KEY + GITHUB_TOKEN (the PAT is re-embedded in the header).
+    """
+    wanted = [t.strip() for t in titles if t.strip()]
+    by_title = {title: (cron, workflow) for title, cron, workflow in JOBS}
+    unknown = [t for t in wanted if t not in by_title]
+    if unknown:
+        print(f"  ERROR: not in JOBS, refusing to guess: {unknown}")
+        return 1
+    existing = get_existing_jobs()
+    repaired = failed = 0
+    for title in wanted:
+        cron, workflow = by_title[title]
+        job_id = existing.get(title)
+        if not job_id:
+            print(f"  SKIP (not on cron-job.org - use --create-missing): {title}")
+            continue
+        url = f"{GITHUB_API}/repos/{GITHUB_REPO}/actions/workflows/{workflow}/dispatches"
+        payload = {
+            "url":      url,
+            "enabled":  True,
+            "schedule": _cron_to_schedule(cron),
+            "requestMethod": 1,
+            "extendedData": {
+                "headers": {
+                    "Authorization":        f"Bearer {GITHUB_TOKEN}",
+                    "Accept":               "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                    "Content-Type":         "application/json",
+                },
+                "body": '{"ref":"main"}',
+            },
+        }
+        try:
+            resp = requests.patch(
+                f"{CRONJOB_API}/jobs/{job_id}",
+                headers={"Authorization": f"Bearer {CRONJOB_API_KEY}",
+                         "Content-Type": "application/json"},
+                json={"job": payload},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            print(f"  REPAIRED + ENABLED: {title}  [{cron}]  -> {workflow}  (id={job_id})")
+            repaired += 1
+        except Exception as e:
+            print(f"  FAIL: {title} - {e}")
+            failed += 1
+    print()
+    print(f"Done: {repaired} repaired, {failed} failed")
+    return 1 if failed else 0
+
+
 def main():
     # --status: read-only diagnostic of every job's enabled/last-execution state (no GitHub PAT needed).
     if "--status" in sys.argv:
@@ -462,6 +534,24 @@ def main():
         print()
         create_missing_jobs()
         return
+
+    # --repair "Job A,Job B": re-point + re-enable named jobs that cron-job.org disabled after delivery
+    # failures. Title-scoped deliberately - see repair_jobs(). Needs CRONJOB_API_KEY + GITHUB_TOKEN.
+    if "--repair" in sys.argv:
+        idx = sys.argv.index("--repair")
+        names = sys.argv[idx + 1] if len(sys.argv) > idx + 1 else ""
+        titles = [t for t in names.split(",") if t.strip()]
+        if not titles:
+            print('ERROR: --repair needs a comma-separated list of job titles, e.g.\n'
+                  '  python setup_cronjobs.py --repair "Data Quality Audit,HVF Orders"')
+            raise SystemExit(1)
+        if not GITHUB_TOKEN:
+            print("ERROR: --repair rewrites the job's auth header, so it needs GITHUB_TOKEN.")
+            raise SystemExit(1)
+        print(f"Repairing {len(titles)} cron-job.org job(s)...")
+        print(f"GitHub repo: {GITHUB_REPO}")
+        print()
+        raise SystemExit(repair_jobs(titles))
 
     # --prune: delete this-repo jobs no longer in JOBS (safely scoped). Needs only CRONJOB_API_KEY.
     if "--prune" in sys.argv:

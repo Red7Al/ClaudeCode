@@ -7,6 +7,10 @@ name: Setup Cron Jobs — reconcile / create / prune / status (2026-07-25)
 #   Safe to re-run — skips existing jobs.
 # --prune: deletes cron-job.org jobs no longer in JOBS, scoped to THIS repo's workflow
 #   dispatches only. Needs CRONJOB_API_KEY only. Won't touch unrelated jobs.
+# --repair: re-points and RE-ENABLES the named jobs (comma-separated in `titles`).
+#   For jobs cron-job.org auto-disabled after delivery failures. Needs CRONJOB_API_KEY + GH_PAT.
+#   Title-scoped on purpose: most OFF jobs on this account are off deliberately, and a blanket
+#   re-enable would restart live trading automation. Never widen this to "all disabled jobs".
 on:
   workflow_dispatch:
     inputs:
@@ -20,6 +24,11 @@ on:
           - create-missing
           - prune
           - status
+          - repair
+      titles:
+        description: 'repair mode only: comma-separated job titles, e.g. "Data Quality Audit,HVF Orders"'
+        required: false
+        default: ''
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -55,3 +64,9 @@ jobs:
         run: python setup_cronjobs.py --status
         env:
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+      - name: Repair named jobs
+        if: ${{ github.event.inputs.mode == 'repair' }}
+        run: python setup_cronjobs.py --repair "${{ github.event.inputs.titles }}"
+        env:
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          GITHUB_TOKEN:    ${{ secrets.GH_PAT }}
