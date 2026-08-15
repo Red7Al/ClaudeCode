@@ -72,3 +72,7 @@ dist/
 !docs/guides/
 !docs/guides/*.html
 !docs/guides/_manifest.json
+
+# Test fixtures are frozen INPUT DATA, not runtime state - the golden-number replay tests are
+# worthless without them. Market data only (tickers, dates, prices, returns); no credentials.
+!tests_fixtures/*.json

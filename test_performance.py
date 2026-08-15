@@ -376,6 +376,150 @@ def test_winner_run_replay_holds_unresolved_positions_in_both_arms():
     assert baseline["end_wallet"] == runner["end_wallet"]
 
 
+# ----------------------------------------------------------------------------------------------------
+# Golden-number replay tests (user 2026-08-15: "how do I get confidence in the numbers you give me?").
+#
+# Every other Best Settings test in this file asserts SOURCE TEXT -- that index.html contains a given
+# string. That can prove the code says what we wrote; it can never prove the arithmetic is right. The
+# suite stayed green for weeks while the replay funded roughly three times more trades than the wallet
+# could afford, because no test ever computed a return and checked it.
+#
+# These run the REAL _combReplay over a frozen slice of the real 12-month population and assert exact
+# figures. Any change to the wallet maths fails with a number difference, naming the old and new value.
+# If a change is intentional, update the golden values IN THE SAME COMMIT and say so -- that diff is the
+# audit trail showing which numbers moved and by how much.
+# ----------------------------------------------------------------------------------------------------
+_REPLAY_FIXTURE = Path(__file__).parent / "tests_fixtures" / "replay_population.json"
+
+
+# The exit rule as it stood BEFORE 2026-08-15, kept so the defect it caused stays measurable. Same
+# function name, so _combReplay picks it up unchanged. Swapping the DATA cannot reproduce the old
+# behaviour -- the current _pfExitDate short-circuits on outcome=="OPEN" before it ever reads exit_date.
+_LEGACY_EXIT_RULE = """function _pfExitDate(r,runner){
+  const _ad=(d,n)=>{if(!d)return "9999-99-99";const t=new Date(d+"T00:00:00Z");
+    t.setUTCDate(t.getUTCDate()+(+n||0));return t.toISOString().slice(0,10);};
+  return ((runner&&r.run_exit_date)||r.exit_date||_ad(r.trig_date,r.days_open||0)||"9999-99-99");
+}"""
+
+
+def _replay_harness(extra_js: str, exit_rule: str = None) -> dict:
+    """Run the page's own _pfExitDate/_combReplay over the frozen population, in Node."""
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+
+    def grab(pattern):
+        match = re.search(pattern, html, re.S)
+        assert match, f"replay source not found: {pattern}"
+        return match.group(0)
+
+    source = "\n".join([
+        grab(r"const _fundedMaxOpen=[^\n]*\n"),
+        exit_rule or grab(r"function _pfExitDate\(r,runner\)\{.*?\n\}"),
+        grab(r'function _combReplay\(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compound=true\)\{.*?\n\}'),
+    ])
+    rows = json.loads(_REPLAY_FIXTURE.read_text(encoding="utf-8"))["rows"]
+    script = (
+        "const MIN_TRADE=25, WINNERS_WALLET=10000;"
+        'const levOf=r=>r.market==="FX"?30:r.market==="Indices"?20:r.market==="Commodities"?10:5;'
+        + source
+        + f"\nconst seq={json.dumps(rows)};\n"
+        + extra_js
+    )
+    # Written to a file rather than passed via `node -e`: the fixture inlines ~120 rows and Windows
+    # rejects the resulting command line with "The filename or extension is too long" (WinError 206).
+    with tempfile.TemporaryDirectory() as tmp:
+        runner = Path(tmp) / "replay.js"
+        runner.write_text(script, encoding="utf-8")
+        done = subprocess.run(["node", str(runner)], check=True, capture_output=True,
+                              text=True, timeout=60)
+    return json.loads(done.stdout)
+
+
+def test_replay_golden_numbers_over_the_frozen_population():
+    """Exact returns from the real replay. A silent change to the wallet maths cannot pass this."""
+    result = _replay_harness(
+        "const out={};"
+        "for(const [st,mo] of [[0.05,50],[0.02,20],[0.10,12]]){"
+        "  const z=_combReplay(seq,st,mo);"
+        "  out[st+'/'+mo]={ret:+z.ret.toFixed(6),funded:z.n,cap:z.cap,dd:+z.dd.toFixed(6)};"
+        "}"
+        "console.log(JSON.stringify(out));"
+    )
+    assert result == {
+        "0.05/50": {"ret": 0.230815, "funded": 126, "cap": 20, "dd": 0.031791},
+        "0.02/20": {"ret": 0.091064, "funded": 126, "cap": 20, "dd": 0.012932},
+        # cap 10 against a requested 12: floor(1/0.10). The card must never claim 12 -- see below.
+        "0.1/12":  {"ret": 0.170441, "funded": 70,  "cap": 10, "dd": 0.060713},
+    }
+
+
+def test_unresolved_trades_keep_their_capital_committed():
+    """The defect that inflated every Best Settings return until 2026-08-15, pinned as numbers.
+
+    /api/winners rows carry no ``days_open``, so the old rule settled an unresolved trade on its own
+    TRIGGER day: capital returned and the mark-to-market gain banked instantly, then compounded into
+    everything after it. The wallet funded trades it could not afford -- the funded count is the clearest
+    evidence -- and the headline return was unachievable. Replays the identical population under both
+    rules so the size of the distortion is a permanent record, not a memory.
+    """
+    probe = (
+        "const out={unresolved:seq.filter(r=>!r.exit_date).length};"
+        "for(const [st,mo] of [[0.05,50],[0.10,12],[0.25,4]]){const z=_combReplay(seq,st,mo);"
+        "  out[st+'/'+mo]={ret:+z.ret.toFixed(6),funded:z.n};}"
+        "console.log(JSON.stringify(out));"
+    )
+    now = _replay_harness(probe)
+    was = _replay_harness(probe, exit_rule=_LEGACY_EXIT_RULE)
+
+    assert now["unresolved"] == 45, "fixture must contain unresolved trades or it proves nothing"
+    for key in ("0.05/50", "0.1/12", "0.25/4"):
+        assert now[key]["ret"] < was[key]["ret"], (
+            f"{key}: the old rule inflated the return ({was[key]['ret']} -> {now[key]['ret']})")
+        assert now[key]["funded"] < was[key]["funded"], (
+            f"{key}: the old rule funded trades the wallet could not afford "
+            f"({was[key]['funded']} -> {now[key]['funded']})")
+
+    # Worst observed case, held as a number so nobody has to take the scale on trust: at a 10% position
+    # the old rule reported +49.7% over 118 funded trades where the truth is +17.0% over 70.
+    assert was["0.1/12"] == {"ret": 0.497247, "funded": 118}
+    assert now["0.1/12"] == {"ret": 0.170441, "funded": 70}
+
+
+def test_max_open_is_never_reported_above_what_the_stake_can_fund():
+    """A card must never advertise a configuration the engine did not run (user 2026-08-15).
+
+    _combReplay clamps Max open to floor(1/stake), so a requested 12 at a 10% position runs as 10. The
+    summary card printed the REQUEST, advertising "10% position - 12 max open" - 120% of the wallet, a
+    setup that never existed and was never tested - and Apply wrote that untested value into the user's
+    configuration. Both grids now normalise to the effective cap before recording an option.
+    """
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    assert "const eff=Math.min(mo,_fundedMaxOpen(st/100));" in html
+    assert "const option={...c,st,mo:eff,...z}" in html
+    assert "options.push({...c,st,mo:eff,...z})" in html
+    # The request must not survive into a recorded option under either grid.
+    assert "const option={...c,st,mo,...z}" not in html
+    assert "options.push({...c,st,mo,...z})" not in html
+
+    result = _replay_harness(
+        "const z=_combReplay(seq,0.10,12);"
+        "console.log(JSON.stringify({requested:12,effective:Math.min(12,_fundedMaxOpen(0.10)),cap:z.cap}));"
+    )
+    assert result == {"requested": 12, "effective": 10, "cap": 10}
+
+
+def test_every_wallet_replay_shares_one_exit_rule():
+    """Best Settings, the winners ledger and Back Test must agree on when a trade frees its capital.
+
+    They did not, which is why an applied recommendation never reproduced its own headline figure -- the
+    complaint recorded as P-03. Structural rather than numeric: three ledgers, one rule.
+    """
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    assert 'const exit=_pfExitDate(r,perfKey==="run_perf");' in html      # _combReplay
+    assert html.count("const exitOf=r=>_pfExitDate(r,false);") == 2       # _winLedger + _pfWalletLedger
+    # No ledger may reconstruct its own convention from days_open again.
+    assert "_pfAddDays(r.trig_date,r.days_open||0)" not in html
+
+
 def test_let_winners_run_verdict_requires_a_strict_return_improvement():
     """Exercise the browser verdict helper: an equal result must never be labelled an improvement."""
     html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")

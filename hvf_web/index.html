@@ -4459,9 +4459,20 @@ function renderBestCombo(all){
   shortlist.forEach(c=>{c.pre=robust(c.seq,Math.max(.01,WINNERS_STAKE),WINNERS_MAXOPEN);});
   shortlist.sort((a,b)=>b.pre.score-a.pre.score);
   let best=null, evaluated=[];
+  // _combReplay clamps Max open to what the stake can actually fund (its effectiveMax), so a requested
+  // 12 at a 10% position runs as 10. Recording the REQUEST produced two faults: the card advertised
+  // "10% position - 12 max open", a 120%-of-wallet setup that never existed and was never tested (user
+  // 2026-08-15 "how is that possible?"), and Apply wrote that untested 12 into the user's config. It also
+  // made the grid degenerate - at 10% stake, 12/20/25/50 all collapse to 10 and scored identically, so
+  // the winner among them was arbitrary. Normalise to the effective cap here, once, and skip the
+  // duplicates: everything downstream then reports the number the calculation used.
+  const _seenMo=new Set();
   for(const c of shortlist.slice(0,12))for(const mo of OPENS)for(const st of STAKES){
-    const z=robust(c.seq,st/100,mo);if(z.n<20)continue;
-    const option={...c,st,mo,...z}; evaluated.push(option);
+    const eff=Math.min(mo,_fundedMaxOpen(st/100));
+    const dedupe=c.scope.label+"|"+c.rr+"|"+c.q+"|"+c.vs+"|"+c.rv+"|"+c.vw+"|"+c.atr+"|"+st+"|"+eff;
+    if(_seenMo.has(dedupe))continue; _seenMo.add(dedupe);
+    const z=robust(c.seq,st/100,eff);if(z.n<20)continue;
+    const option={...c,st,mo:eff,...z}; evaluated.push(option);
     if(!best||z.score>best.score)best=option;
   }
   if(!best){box.innerHTML="";return;}
@@ -4505,8 +4516,12 @@ function renderBestCombo(all){
                 finalists=[...pool.slice().sort((a,b)=>b.quick-a.quick).slice(0,10),
                            ...pool.slice().sort((a,b)=>b.seq.length-a.seq.length||b.quick-a.quick).slice(0,10)],
                 unique=[...new Set(finalists)], options=[];
+          const seenMo=new Set();
           for(const c of unique)for(const st of largeStakes)for(const mo of largeOpens){
-            const z=robustFor(c,st,mo);if(z.n>min&&(!max||z.n<=max))options.push({...c,st,mo,...z});
+            const eff=Math.min(mo,_fundedMaxOpen(st/100));          // same clamp as the main grid above
+            const key=unique.indexOf(c)+"|"+st+"|"+eff;
+            if(seenMo.has(key))continue; seenMo.add(key);
+            const z=robustFor(c,st,eff);if(z.n>min&&(!max||z.n<=max))options.push({...c,st,mo:eff,...z});
           }
           return options;
         },
