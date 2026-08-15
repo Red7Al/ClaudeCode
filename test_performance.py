@@ -507,6 +507,85 @@ def test_max_open_is_never_reported_above_what_the_stake_can_fund():
     assert result == {"requested": 12, "effective": 10, "cap": 10}
 
 
+def test_back_test_and_best_settings_produce_the_same_numbers():
+    """THE P-03 invariant: the two views must agree, or an applied recommendation is a lie.
+
+    "When apply configuration is required it does not seem to do all the config e.g. markets -- PROOF
+    BACK TEST DOES NOT SHOW THE RESULTS EXPECTED". The two surfaces ran different maths, so a
+    configuration copied out of Best Settings never reproduced its own headline in Back Test. Structural
+    checks cannot catch that; only running both and comparing can. Back Test reads its wallet model from
+    DOM inputs, so those are stubbed and the SAME population and configuration go through each.
+    """
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+
+    def grab(pattern):
+        match = re.search(pattern, html, re.S)
+        assert match, f"replay source not found: {pattern}"
+        return match.group(0)
+
+    source = "\n".join([
+        grab(r"const _fundedMaxOpen=[^\n]*\n"),
+        grab(r"function _pfAddDays\([^\n]*\n"),
+        grab(r"function _pfExitDate\(r,runner\)\{.*?\n\}"),
+        grab(r'function _combReplay\(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compound=true\)\{.*?\n\}'),
+        grab(r"function _pfWalletLedger\(sel\)\{.*?\n\}"),
+    ])
+    rows = json.loads(_REPLAY_FIXTURE.read_text(encoding="utf-8"))["rows"]
+    script = (
+        "const WALLET=10000, MIN_TRADE=25, WINNERS_WALLET=10000;"
+        'const levOf=r=>r.market==="FX"?30:r.market==="Indices"?20:r.market==="Commodities"?10:5;'
+        "let CFG={}; const $=id=>({value:CFG[id]});"
+        + source
+        + f"\nconst seq={json.dumps(rows)};\n"
+        + "const out=[];"
+        "for(const [stakePct,maxopen] of [[5,50],[2,20],[10,12],[25,4]]){"
+        '  CFG={"pfw-wallet":WALLET,"pfw-stake":stakePct,"pfw-maxopen":maxopen};'
+        "  const back=_pfWalletLedger(seq.slice()), best=_combReplay(seq,stakePct/100,maxopen);"
+        "  const br=back.endWallet/back.wallet-1;"
+        "  out.push({cfg:stakePct+'%/'+maxopen,backTest:+br.toFixed(9),bestSettings:+best.ret.toFixed(9),"
+        "            btFunded:back.taken,bsFunded:best.n});}"
+        "console.log(JSON.stringify(out));"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        runner = Path(tmp) / "recon.js"
+        runner.write_text(script, encoding="utf-8")
+        done = subprocess.run(["node", str(runner)], check=True, capture_output=True,
+                              text=True, timeout=60)
+
+    for row in json.loads(done.stdout):
+        assert row["backTest"] == row["bestSettings"], (
+            f"{row['cfg']}: Back Test {row['backTest']} != Best Settings {row['bestSettings']} -- "
+            "an applied recommendation will not reproduce its headline")
+        assert row["btFunded"] == row["bsFunded"], (
+            f"{row['cfg']}: funded {row['btFunded']} vs {row['bsFunded']}")
+
+
+def test_stake_exposure_never_exceeds_the_wallet():
+    """No configuration may stake more than 100% of the wallet (user 2026-08-15: "5% / 50 WITH 250%?").
+
+    5% x 50 positions is 250% of the wallet. It never ran - _fundedMaxOpen clamps concurrency to
+    floor(1/stake), so 50 becomes 20 and exposure lands exactly on 100%. But the REQUEST was what got
+    displayed and stored, so the interface advertised 250% and Apply wrote it into the user's limits.
+    This asserts the invariant against the real replay across the whole search grid: whatever is asked
+    for, peak funded concurrency x stake can never exceed the wallet.
+    """
+    result = _replay_harness(
+        "const out=[];"
+        "for(const st of [1,2,3,5,7.5,10,25]) for(const mo of [3,5,8,12,20,25,50,100,250,400]){"
+        "  const z=_combReplay(seq,st/100,mo);"
+        "  out.push({st,mo,eff:Math.min(mo,_fundedMaxOpen(st/100)),cap:z.cap,"
+        "            exposure:+((z.cap*st)/100).toFixed(4)});}"
+        "console.log(JSON.stringify(out));"
+    )
+    worst = max(result, key=lambda r: r["exposure"])
+    for row in result:
+        assert row["exposure"] <= 1.0 + 1e-9, (
+            f"{row['st']}% x {row['cap']} concurrent = {row['exposure'] * 100:.0f}% of the wallet")
+        assert row["cap"] <= row["eff"], (
+            f"{row['st']}%/{row['mo']}: funded {row['cap']} concurrently but the cap is {row['eff']}")
+    assert worst["exposure"] <= 1.0, f"worst case {worst}"
+
+
 def test_every_wallet_replay_shares_one_exit_rule():
     """Best Settings, the winners ledger and Back Test must agree on when a trade frees its capital.
 
