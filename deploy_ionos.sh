@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# =====================================================================================================
+# File:         deploy_ionos.sh
+# Created:      2026-08-15  (Claude, user: "I'm waiting on you for a sh file to run")
+#
+# Build and deploy the production package to IONOS (https://www.squeezescanner.cloud/).
+#
+# Pushing to GitHub updates the Actions automation immediately, but the WEBSITE only changes when this
+# runs — see IONOS_DEPLOYMENT.md.
+#
+# Usage:
+#   IONOS_HOST=… IONOS_USER=… IONOS_DIR=… ./deploy_ionos.sh            # build, upload, extract, verify
+#   ./deploy_ionos.sh --dry-run                                        # build + checks only, no upload
+#   VERIFY_STRING='">125 trades"' ./deploy_ionos.sh                    # also assert the live page contains it
+#
+# Settings (environment variables):
+#   IONOS_HOST     required  SSH/SFTP host for the hosting account
+#   IONOS_USER     required  SSH username
+#   IONOS_DIR      required  ABSOLUTE path of the domain directory on the server
+#   IONOS_PORT     optional  SSH port (default 22)
+#   IONOS_KEY      optional  path to a private key; omit to use your default agent/key
+#   VERIFY_STRING  optional  literal string that must appear in the deployed page
+#   SKIP_BACKUP    optional  set to 1 to skip the server-side backup tarball
+#
+# Put the three required values in a local, gitignored file and source it, e.g.
+#   echo 'export IONOS_HOST=… IONOS_USER=… IONOS_DIR=…' > .ionos.env   # .env* is gitignored
+#   source .ionos.env && ./deploy_ionos.sh
+#
+# SFTP-only accounts (no shell): this script needs SSH. Without it, extract the zip locally and upload
+# the contents, then chmod cgi-bin/app.py to 755 by hand — uploading extracted files does not preserve
+# the Unix mode the packager sets, and missing it makes every /api/* request return 500.
+# =====================================================================================================
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+ZIP="dist/ionos/squeeze-scanner-ionos.zip"
+SITE="https://www.squeezescanner.cloud"
+DRY_RUN=0
+[ "${1:-}" = "--dry-run" ] && DRY_RUN=1
+
+PY=python
+[ -x ".venv/Scripts/python.exe" ] && PY=".venv/Scripts/python.exe"
+[ -x ".venv/bin/python" ]         && PY=".venv/bin/python"
+
+say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+die() { printf '\033[31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
+
+# --- 1. build ----------------------------------------------------------------------------------------
+say "Building the production package"
+"$PY" build_ionos_package.py
+[ -f "$ZIP" ] || die "expected $ZIP to exist after the build"
+
+# --- 2. safety check ----------------------------------------------------------------------------------
+# Extracting over a live release must never touch the host's credentials, runtime state or virtualenv.
+# The packager already excludes them; this asserts it rather than trusting it, because `unzip -o`
+# overwrites whatever the archive happens to contain.
+say "Checking the archive cannot clobber .env / data/ / .venv_linux/"
+"$PY" - "$ZIP" <<'PYEOF'
+import sys, zipfile
+names = zipfile.ZipFile(sys.argv[1]).namelist()
+bad = [n for n in names if n == ".env" or n.startswith(("data/", ".venv_linux/"))]
+if bad:
+    sys.exit(f"ERROR: archive would overwrite protected paths: {bad}")
+print(f"  OK - {len(names)} entries, none targeting protected paths")
+PYEOF
+
+if [ "$DRY_RUN" = "1" ]; then
+  say "Dry run - built and checked, nothing uploaded"
+  ls -lh "$ZIP"
+  exit 0
+fi
+
+# --- 3. config ------------------------------------------------------------------------------------------
+: "${IONOS_HOST:?set IONOS_HOST (see the header of this script)}"
+: "${IONOS_USER:?set IONOS_USER}"
+: "${IONOS_DIR:?set IONOS_DIR - the absolute domain directory on the server}"
+PORT="${IONOS_PORT:-22}"
+SSH_OPTS=(-p "$PORT"); SCP_OPTS=(-P "$PORT")
+if [ -n "${IONOS_KEY:-}" ]; then SSH_OPTS+=(-i "$IONOS_KEY"); SCP_OPTS+=(-i "$IONOS_KEY"); fi
+
+say "Deploying to ${IONOS_USER}@${IONOS_HOST}:${IONOS_DIR} (port ${PORT})"
+read -r -p "Overwrite the live release? [y/N] " reply
+case "$reply" in [yY]*) ;; *) die "aborted by user" ;; esac
+
+# --- 4. upload + extract ----------------------------------------------------------------------------------
+say "Uploading"
+scp "${SCP_OPTS[@]}" "$ZIP" "${IONOS_USER}@${IONOS_HOST}:~/squeeze-scanner-ionos.zip"
+
+say "Extracting on the server"
+# `unzip -o` overwrites archive members only; it never deletes files that have since been removed from
+# the repo, so stale server-side files persist until cleaned by hand. The chmod is belt-and-braces: the
+# packager stamps cgi-bin/app.py 0755 inside the zip and server-side unzip honours it.
+ssh "${SSH_OPTS[@]}" "${IONOS_USER}@${IONOS_HOST}" bash -s -- "$IONOS_DIR" "${SKIP_BACKUP:-0}" <<'REMOTE'
+set -euo pipefail
+DIR="$1"; SKIP_BACKUP="$2"
+cd "$DIR" || { echo "ERROR: no such directory: $DIR" >&2; exit 1; }
+if [ "$SKIP_BACKUP" != "1" ]; then
+  BACKUP=~/"backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+  echo "  backing up current release -> $BACKUP"
+  tar czf "$BACKUP" --exclude=.venv_linux . 2>/dev/null || echo "  (backup reported warnings; continuing)"
+fi
+unzip -o ~/squeeze-scanner-ionos.zip >/dev/null
+chmod 755 cgi-bin/app.py
+rm -f ~/squeeze-scanner-ionos.zip
+echo "  extracted; cgi-bin/app.py is $(stat -c '%a' cgi-bin/app.py)"
+REMOTE
+
+# --- 5. verify ------------------------------------------------------------------------------------------
+say "Verifying the live site"
+fail=0
+
+code=$(curl -s -o /tmp/ionos_status.txt -w '%{http_code}' "$SITE/api/status" || true)
+if [ "$code" = "200" ] && grep -q 'generated_utc' /tmp/ionos_status.txt; then
+  echo "  /api/status  200 OK  $(cat /tmp/ionos_status.txt)"
+else
+  echo "  /api/status  FAILED (http $code) - the CGI adapter is the usual cause; check cgi-bin/app.py is 755"
+  fail=1
+fi
+
+size=$(curl -s "$SITE/" -o /tmp/ionos_index.html -w '%{size_download}' || echo 0)
+if [ "$size" -gt 100000 ]; then
+  echo "  /            served ${size} bytes"
+else
+  echo "  /            SUSPICIOUS - only ${size} bytes"
+  fail=1
+fi
+
+if [ -n "${VERIFY_STRING:-}" ]; then
+  if grep -qF "$VERIFY_STRING" /tmp/ionos_index.html; then
+    echo "  marker       found: $VERIFY_STRING"
+  else
+    echo "  marker       NOT FOUND: $VERIFY_STRING - the old build may still be cached or served"
+    fail=1
+  fi
+fi
+
+[ "$fail" = "0" ] || die "deployed, but verification failed - check the output above before trusting the release"
+say "Done - $SITE is serving the new build"
