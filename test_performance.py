@@ -152,14 +152,16 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert '"Growth",growth,"Highest-return alternative with a materially different configuration."' in html
     assert '"Defensive",defensive' in html
     assert '"Broad evidence",broad' in html
-    assert 'trades250=_bestSettingsByFundedTrades(large250,250)' in html
-    assert 'trades500=_bestSettingsByFundedTrades(large500,500)' in html
-    assert 'largeSampleOptions=min=>' in html
+    assert 'trades125=_bestSettingsByFundedTrades(large125,125,150)' in html
+    assert 'trades250=_bestSettingsByFundedTrades(large250,250,300)' in html
+    assert 'largeSampleOptions=(min,max)=>' in html
+    assert 'large125=largeSampleOptions(125,150),large250=largeSampleOptions(250,300)' in html
     assert 'b.seq.length-a.seq.length' in html
-    assert 'largeOpens=[50,100,250,400]' in html
+    assert 'largeOpens=[10,20,35,50,100,250,400]' in html
     assert 'MIN_TRADE/Math.max(1,WINNERS_WALLET)*100' in html
+    assert '[">125 trades",trades125' in html
     assert '[">250 trades",trades250' in html
-    assert '[">500 trades",trades500' in html
+    assert '">500 trades"' not in html
     assert 'data-choice-unavailable="${label}"' in html
     assert "Evidence threshold not met by the current annual dataset." in html
     assert "No supported recommendation" in html
@@ -188,6 +190,7 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert '"atr_expanding": vf.get("atr_expanding")' in server
     assert "new ResizeObserver(syncStickyOffsets)" in html
     assert "return jsonify(_json_safe(_best_settings()))" in server
+    assert '"9999-99-99" if row.get("run_outcome") == "OPEN"' in server
     assert 'id="lim-min_rvol"' in html
     assert 'id="lim-require_above_vwap"' in html
     assert 'id="lim-require_atr_expanding"' in html
@@ -203,33 +206,59 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert '<b>Personalised using:</b>' in html
     assert 'function paintBestSettingsPersonalisation()' in html
     assert 'paintBestSettingsPersonalisation();' in html
+    # ONE slot-release rule across every wallet replay on the page (user 2026-08-14, P-03 "apply
+    # configuration ... PROOF BACK TEST DOES NOT SHOW THE RESULTS EXPECTED"). Best Settings, the winners
+    # ledger and Back Test's ledger each had their own convention for an unresolved trade, so an applied
+    # recommendation could not reproduce its own headline numbers.
+    assert 'function _pfExitDate(r,runner){' in html
+    assert 'const exit=_pfExitDate(r,perfKey==="run_perf");' in html
+    assert html.count('const exitOf=r=>_pfExitDate(r,false);') == 2
+    assert '_pfAddDays(r.trig_date,r.days_open||0)' not in html
+    # Best Settings trains on the population Back Test actually replays (same per-user trade gate).
+    assert 'r.perf!=null&&r.trig_date&&tradeVisible(r));' in html
+    # Applying a recommendation writes every saved filter, including the ones it CLEARS, and repaints the
+    # P-08 multi-select buttons - otherwise the market never visibly applied (user 2026-08-14, P-03).
+    assert "if(typeof msyncAll==='function')msyncAll();" in html
+    assert 'if(el.multiple)[...el.options].forEach(o=>{o.selected=want.has(o.value);});' in html
+    # Sector is not an actionable scope: the live trade gate cannot enforce it (user 2026-08-14, P-05).
+    assert 'topScopes("sector","Sector")' not in html
+    assert 'topScopes("market","Market")' in html
+    assert 'sector=x.scope.kind==="sector"' not in html
 
 
-def test_best_settings_trade_count_cards_use_strict_funded_thresholds():
-    """Exercise the actual browser helper used by the >250 and >500 recommendation cards."""
+def test_best_settings_trade_count_cards_use_banded_funded_thresholds():
+    """Exercise the browser helper behind the >125 (max 150) and >250 (max 300) recommendation cards.
+
+    Banded rather than open-ended (user 2026-08-14, P-04): an open-ended floor always returned whichever
+    tested configuration simply traded the most, which answers a different question from "the best setting
+    at this sample size".
+    """
     html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
     match = re.search(
-        r"function _bestSettingsByFundedTrades\(pool,min\)\{.*?\n\}",
+        r"function _bestSettingsByFundedTrades\(pool,min,max\)\{.*?\n\}",
         html,
         re.S,
     )
     assert match, "Best Settings funded-trade selector is missing"
 
     options = [
-        {"id": "exact-250", "n": 250, "score": 100, "ret": 100},
-        {"id": "over-250", "n": 251, "score": 8, "ret": 4},
-        {"id": "better-over-250", "n": 400, "score": 9, "ret": 2},
-        {"id": "exact-500", "n": 500, "score": 50, "ret": 50},
-        {"id": "over-500", "n": 501, "score": 7, "ret": 3},
-        {"id": "tie-higher-return", "n": 600, "score": 7, "ret": 5},
+        {"id": "at-125", "n": 125, "score": 100, "ret": 100},
+        {"id": "in-band-125", "n": 126, "score": 8, "ret": 4},
+        {"id": "better-in-band-125", "n": 150, "score": 9, "ret": 2},
+        {"id": "above-band-125", "n": 151, "score": 99, "ret": 99},
+        {"id": "at-250", "n": 250, "score": 90, "ret": 90},
+        {"id": "in-band-250", "n": 260, "score": 7, "ret": 3},
+        {"id": "tie-higher-return", "n": 300, "score": 7, "ret": 5},
+        {"id": "above-band-250", "n": 301, "score": 98, "ret": 98},
     ]
     script = (
         match.group(0)
         + f"\nconst pool={json.dumps(options)};"
         + "console.log(JSON.stringify({"
-        + "over250:_bestSettingsByFundedTrades(pool,250)?.id||null,"
-        + "over500:_bestSettingsByFundedTrades(pool,500)?.id||null,"
-        + "none:_bestSettingsByFundedTrades(pool,1000)?.id||null"
+        + "band125:_bestSettingsByFundedTrades(pool,125,150)?.id||null,"
+        + "band250:_bestSettingsByFundedTrades(pool,250,300)?.id||null,"
+        + "uncapped:_bestSettingsByFundedTrades(pool,250)?.id||null,"
+        + "none:_bestSettingsByFundedTrades(pool,1000,2000)?.id||null"
         + "}));"
     )
     completed = subprocess.run(
@@ -241,10 +270,110 @@ def test_best_settings_trade_count_cards_use_strict_funded_thresholds():
     )
 
     assert json.loads(completed.stdout) == {
-        "over250": "exact-500",
-        "over500": "tie-higher-return",
+        "band125": "better-in-band-125",   # 126-150 only; the 151-trade 99-scorer is out of band
+        "band250": "tie-higher-return",    # equal score inside 251-300, higher return wins
+        "uncapped": "above-band-250",      # no ceiling supplied -> the old open-ended behaviour
         "none": None,
     }
+
+
+def test_page_replays_share_one_slot_release_rule():
+    """Every wallet replay on the page must free a slot on the same date (user 2026-08-14, P-03).
+
+    An unresolved trade has no close date. It previously settled on ``_pfAddDays(trig_date, days_open||0)``
+    inside ``_combReplay`` and the /api/winners rows carry no ``days_open``, so it settled on its own
+    TRIGGER day - releasing its capital and booking its mark-to-market gain immediately - while Back Test's
+    own ledger held the same trade to the window end.
+    """
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    match = re.search(r"function _pfExitDate\(r,runner\)\{.*?\n\}", html, re.S)
+    add_days = re.search(r"function _pfAddDays\(d,n\)\{.*?\}\n", html, re.S)
+    assert match and add_days, "Canonical replay exit-date helper is missing"
+
+    script = (
+        add_days.group(0)
+        + match.group(0)
+        + "console.log(JSON.stringify({"
+        + 'closed:_pfExitDate({exit_date:"2026-03-04"},false),'
+        + 'stillOpen:_pfExitDate({trig_date:"2026-01-01",days_open:120},false),'
+        + 'runnerClosed:_pfExitDate({exit_date:"2026-03-04",run_exit_date:"2026-05-06",run_outcome:"RAN"},true),'
+        + 'runnerStillOpen:_pfExitDate({run_exit_date:"2026-05-06",run_outcome:"OPEN"},true),'
+        + 'baselineIgnoresRunnerExit:_pfExitDate({run_exit_date:"2026-05-06",run_outcome:"RAN"},false),'
+        + 'resolvedWithoutCloseDate:_pfExitDate({state:"TARGET",trig_date:"2026-01-01",days_open:120},false)'
+        + "}));"
+    )
+    completed = subprocess.run(["node", "-e", script], check=True, capture_output=True,
+                               text=True, timeout=20)
+
+    assert json.loads(completed.stdout) == {
+        "closed": "2026-03-04",
+        "stillOpen": "9999-99-99",
+        "runnerClosed": "2026-05-06",
+        "runnerStillOpen": "9999-99-99",
+        "baselineIgnoresRunnerExit": "9999-99-99",
+        "resolvedWithoutCloseDate": "2026-05-01",   # same derivation Back Test's "Closed" column uses
+    }
+
+
+def test_best_settings_replay_keeps_an_open_trades_capital_committed():
+    """Best Settings' replay must hold an unresolved trade, exactly as Back Test's ledger does.
+
+    /api/winners rows carry no ``days_open``, so the old fallback settled every still-open trade on its own
+    trigger day: the capital came straight back AND the mark-to-market gain was banked immediately, so the
+    optimiser scored configurations that Back Test - which holds the same trade to the window end - could
+    never reproduce (user 2026-08-14, P-03).
+    """
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    exit_rule = re.search(r"function _pfExitDate\(r,runner\)\{.*?\n\}", html, re.S)
+    replay = re.search(
+        r'function _combReplay\(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compound=true\)\{.*?\n\}',
+        html, re.S)
+    assert exit_rule and replay, "replay helpers are missing"
+
+    script = (
+        "const MIN_TRADE=0, WINNERS_WALLET=10000;"
+        "const levOf=()=>1;"
+        "const _fundedMaxOpen=f=>Math.max(1,Math.floor(1/Math.max(0.000001,+f||0.000001)));"
+        + exit_rule.group(0) + replay.group(0)
+        + 'const seq=[{trig_date:"2026-01-01",exit_date:null,perf:33.52},'
+        + '{trig_date:"2026-02-01",exit_date:"2026-02-10",perf:10}];'
+        + "const z=_combReplay(seq,1,1);"
+        + "console.log(JSON.stringify({funded:z.n,ret:+z.ret.toFixed(4)}));"
+    )
+    completed = subprocess.run(["node", "-e", script], check=True, capture_output=True,
+                               text=True, timeout=20)
+
+    # The open trade owns the only slot for the whole window, so the second trade is never funded and
+    # only the first contributes. Previously both were funded and both returns were banked.
+    assert json.loads(completed.stdout) == {"funded": 1, "ret": 0.3352}
+
+
+def test_winner_run_replay_holds_unresolved_positions_in_both_arms():
+    """Let-winners-run must not fund its two arms from different books (user 2026-08-14, P-05).
+
+    ``_run_path`` reports a ``run_exit_date`` on the last bar it walked even when the position is still
+    OPEN. Settling the runner on that date while the baseline arm of the SAME row held its capital to the
+    window end handed the baseline a free capacity advantage, which is how a +33.52% baseline came to be
+    compared against a -3.58% runner.
+    """
+    rows = [
+        {"ticker": "A", "trig_date": "2026-01-01", "exit_date": None, "run_exit_date": "2026-06-30",
+         "market": "Equities", "outcome": "OPEN", "run_outcome": "OPEN",
+         "perf": 33.52, "run_perf": 33.52},
+        {"ticker": "B", "trig_date": "2026-02-01", "exit_date": "2026-02-10",
+         "run_exit_date": "2026-02-10", "market": "Equities", "outcome": "TARGET",
+         "perf": 10.0, "run_perf": 10.0},
+    ]
+
+    baseline = server._winner_run_replay(rows, wallet=10_000, position_pct=100, max_open=1,
+                                         min_trade=25)
+    runner = server._winner_run_replay(rows, wallet=10_000, position_pct=100, max_open=1,
+                                       min_trade=25, perf_key="run_perf")
+
+    # A never closes, so B is blocked by the max-open cap in BOTH arms and the two agree exactly.
+    assert baseline["funded"] == 1
+    assert runner["funded"] == 1
+    assert baseline["end_wallet"] == runner["end_wallet"]
 
 
 def test_let_winners_run_verdict_requires_a_strict_return_improvement():

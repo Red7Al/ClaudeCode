@@ -11,7 +11,8 @@
 #   /api/pricewin/<ticker>?days=N a DATE-WINDOW-REACTIVE price+funnel chart (filters live)  -> _render_price_window
 #   /api/hist3yr/<ticker>         the fixed 3-YEAR price history (always 3y, never filtered) -> render_3yr_history_card
 # The pricewin chart is a fresh, website-only renderer so the protected production card is never modified.
-# Expose to a colleague with ngrok:  ngrok http 5057
+# Live site: https://www.squeezescanner.cloud/ (IONOS — see IONOS_DEPLOYMENT.md). Running this module
+# directly starts a LOCAL DEVELOPMENT instance only; the laptop + ngrok public share was retired 2026-08-15.
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
@@ -3528,8 +3529,16 @@ def _winner_run_replay(rows, wallet=10_000, position_pct=5, max_open=20, min_tra
         if reason:
             proof.append({"key": key, "row": row, "placed": False, "reason": reason, "stake": stake})
             continue
-        exit_date = ((row.get("run_exit_date") if perf_key == "run_perf" else None)
-                     or row.get("exit_date") or "9999-99-99")
+        # Mirrors the browser's _pfExitDate (user 2026-08-14, P-03/P-05): an unresolved position never
+        # frees its slot inside the window. _run_path reports a run_exit_date on the last bar it walked
+        # even when the runner is STILL OPEN, so without this guard the runner released its capital at the
+        # window edge while the baseline arm of the same trade held it to "9999-99-99" - the two arms of a
+        # "like-for-like" comparison were then funded from different books.
+        if perf_key == "run_perf":
+            exit_date = ("9999-99-99" if row.get("run_outcome") == "OPEN"
+                         else (row.get("run_exit_date") or row.get("exit_date") or "9999-99-99"))
+        else:
+            exit_date = row.get("exit_date") or "9999-99-99"
         result = float(row.get(perf_key) or 0)
         open_positions.append({"exit": str(exit_date), "margin": margin, "net": stake * result / 100.0})
         peak_open = max(peak_open, len(open_positions))
@@ -4308,5 +4317,5 @@ if __name__ == "__main__":
     threading.Thread(target=_bridge_loop, daemon=True).start()
     threading.Thread(target=_perf_warm_loop, daemon=True).start()   # keep Performance caches warm (user 2026-08-03)
     web_port = int(os.environ.get("HVF_WEB_PORT", "5057"))
-    log.info(f"HVF site on http://127.0.0.1:{web_port}  (ngrok http {web_port} to share)")
+    log.info(f"HVF site on http://127.0.0.1:{web_port}  (local development instance)")
     app.run(host="0.0.0.0", port=web_port, debug=False, threaded=True)

@@ -4229,6 +4229,26 @@ const _gbp2=v=>v==null?'—':`${v<0?'−':'+'}£${Math.abs(v).toLocaleString(und
 // courts ruin. The optimum is wallet-independent under %-of-wallet compounding, so the £1k…£10k examples
 // apply the SAME combo and just scale the £ outcome, flagging any wallet whose stake is below the £25 IG
 // minimum. Uses startWallet=1 so ret/dd come out as fractions.
+// Canonical "when does this trade release its slot" rule, shared by EVERY wallet replay on the page
+// (user 2026-08-14, P-03 "apply configuration ... PROOF BACK TEST DOES NOT SHOW THE RESULTS EXPECTED").
+// The replays disagreed on unresolved trades: Back Test's own ledger held them to the window end, while
+// _combReplay fell back to _pfAddDays(trig_date, days_open||0) - and /api/winners + /api/winners-run rows
+// carry no days_open - so every still-open trade settled on its own TRIGGER day, instantly releasing its
+// capital and booking its mark-to-market gain. Best Settings therefore recommended configurations Back
+// Test could not reproduce. One rule now: a closed trade frees its slot on its close date, an unresolved
+// one never frees inside the window. The runner arm only takes run_exit_date when the RUNNER itself
+// closed, so "let winners run" compares two like-for-like arms instead of a baseline that settles for
+// free (user 2026-08-14, P-05 "should not see 33.52% up go to -3.58%").
+function _pfExitDate(r,runner){
+  r=r||{};
+  const state=String((runner?r.run_outcome:null)||r.state||r.outcome||"");
+  if(state==="OPEN")return "9999-99-99";                     // unresolved: still holding its slot
+  const closed=(runner&&r.run_exit_date)||r.exit_date;
+  if(closed)return String(closed).slice(0,10);
+  // Same derivation Back Test's "Closed" column uses for a resolved row that lost its outcome_date.
+  if(r.trig_date&&r.days_open!=null&&(state==="TARGET"||state==="STOPPED"))return _pfAddDays(r.trig_date,r.days_open);
+  return "9999-99-99";
+}
 function _combReplay(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compound=true){
   // Event-based wallet replay: settle P&L on EXIT (not prematurely at trigger), reserve the broker margin
   // stake/leverage while each trade is open, and separately enforce the user's numeric max-open cap.
@@ -4243,7 +4263,7 @@ function _combReplay(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compou
     if(stake+1e-12<minStake){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:`Below minimum trade — £${Math.round(stake*Math.max(1,WINNERS_WALLET||1))} < £${MIN_TRADE}`});continue;}
     if(open.length>=effectiveMax){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,reason:`Max open cap — ${effectiveMax}`});continue;}
     if(used+margin>w+1e-9){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:"Wallet / margin full"});continue;}
-    const exit=(perfKey==="run_perf"&&r.run_exit_date)||r.exit_date||_pfAddDays(r.trig_date,r.days_open||0)||"9999-99-99";
+    const exit=_pfExitDate(r,perfKey==="run_perf");
     const result=+r[perfKey];
     open.push({exit,margin,net:stake*result/100});taken.push(r);peakOpen=Math.max(peakOpen,open.length);
     if(withProof)proof.push({r,placed:true,open:open.length,w,stake,margin,available:Math.max(0,w-used-margin),reason:"Placed"});}
@@ -4379,10 +4399,12 @@ function recordBestSettingsSnapshot(snapshot){
     .catch(()=>{BEST_HISTORY_POST_KEY="";const box=$("best-settings-history");if(box){box.classList.remove("sqh-loading");box.textContent="Best settings history could not be saved.";}});
 }
 // Return the strongest risk-adjusted option whose replay funded STRICTLY more than the requested number
-// of trades. Kept as a small pure helper so the >250 / >500 card boundary and ranking are executable in
-// the regression suite rather than only asserted as source text (user 2026-08-12, P-10).
-function _bestSettingsByFundedTrades(pool,min){
-  return [...(pool||[])].filter(x=>Number(x.n)>min).sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
+// of trades, and no more than `max` (omit / 0 = no ceiling). Kept as a small pure helper so the
+// >125-150 / >250-300 card boundaries and ranking are executable in the regression suite rather than
+// only asserted as source text (user 2026-08-12, P-10; banded 2026-08-14, P-04).
+function _bestSettingsByFundedTrades(pool,min,max){
+  return [...(pool||[])].filter(x=>Number(x.n)>min&&(!max||Number(x.n)<=max))
+    .sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
 }
 function renderBestCombo(all){
   const box=$("ordp-bestcombo"); if(!box)return;
@@ -4405,7 +4427,12 @@ function renderBestCombo(all){
   const byDate=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
   const topScopes=(key,label)=>Object.entries(byDate.reduce((m,r)=>{const v=r[key];if(v)m[v]=(m[v]||0)+1;return m;},{}))
     .filter(([,n])=>n>=30).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([v])=>({kind:key,label:`${label}: ${v}`,test:r=>r[key]===v,value:v}));
-  const scopes=[{kind:"all",label:"All markets",test:()=>true},...topScopes("market","Market"),...topScopes("sector","Sector"),
+  // Sector is deliberately NOT a scope (user 2026-08-14, P-05 "We cannot filter by SECTOR so little point
+  // in these settings"): the live trade gate (_user_trade_allows) enforces direction, location and the
+  // Markets on/off switches only, so a sector-scoped recommendation can never be applied to real trading -
+  // it would look right in the replay and change nothing in the book. Market and MCap bands ARE enforceable
+  // (saved market scope + the Minimum/Maximum instrument value limits), so those stay.
+  const scopes=[{kind:"all",label:"All markets",test:()=>true},...topScopes("market","Market"),
     {kind:"mcap",label:"MCap < 2bn",min:0,max:2e9,test:r=>r.mcap!=null&&r.mcap<2e9},
     {kind:"mcap",label:"MCap 2–10bn",min:2e9,max:1e10,test:r=>r.mcap>=2e9&&r.mcap<1e10},
     {kind:"mcap",label:"MCap 10–100bn",min:1e10,max:1e11,test:r=>r.mcap>=1e10&&r.mcap<1e11},
@@ -4449,7 +4476,7 @@ function renderBestCombo(all){
   const cfgFor=x=>{const limits={min_risk_reward:x.rr,min_quality:x.q,min_volume_score:x.vs,min_rvol:x.rv,max_position_pct:x.st,max_open:x.mo,
       require_above_vwap:x.vw?1:0,require_atr_expanding:x.atr?1:0,min_instrument_value:0,max_instrument_value:0};
     if(x.scope.kind==="mcap"){limits.min_instrument_value=x.scope.min||0;limits.max_instrument_value=x.scope.max||0;}
-    const market=x.scope.kind==="market"?x.scope.value:"", sector=x.scope.kind==="sector"?x.scope.value:"";
+    const market=x.scope.kind==="market"?x.scope.value:"", sector="";   // never a recommended scope (P-05); applying a card also CLEARS any saved sector restriction
     const filters={f_mkt:market,f_sec:sector,pof_market:market,pof_sector:sector};
     return {limits,filters};};
   const eligible=evaluated.filter(x=>x.n>=20), positive=eligible.filter(x=>x.ret>0);
@@ -4461,18 +4488,28 @@ function renderBestCombo(all){
   // this wallet's configured minimum trade and enough open slots to test the requested evidence bands.
   const minLargeStakePct=Math.max(.1,MIN_TRADE/Math.max(1,WINNERS_WALLET)*100),
         largeStakes=[...new Set([minLargeStakePct,.25,.5,1,2].filter(v=>v>=minLargeStakePct&&v<=100).map(v=>+v.toFixed(4)))],
-        largeOpens=[50,100,250,400],
-        largeSampleOptions=min=>{
+        // Smaller concurrency caps matter now the cards are BANDS: landing inside 126-150 funded trades
+        // usually means holding fewer positions at once, not more.
+        largeOpens=[10,20,35,50,100,250,400],
+        // robust() replays the whole sequence plus every quarter and the two bands share most of their
+        // finalists, so cache per candidate/stake/max-open - the wider grid then costs no more than the
+        // old one did.
+        robustFor=(c,st,mo)=>{const cache=c._lz||(c._lz={}),k=st+"|"+mo;return cache[k]||(cache[k]=robust(c.seq,st/100,mo));},
+        // Funded-sample BAND search (user 2026-08-14, P-04): "> 125 Trades (but do not exceed 150)" and
+        // "> 250 Trades (but do not exceed 300)". An open-ended floor kept returning whichever setting
+        // simply traded the most, which is a different question from "the best setting at this sample
+        // size"; capping the band answers the question that was actually asked.
+        largeSampleOptions=(min,max)=>{
           const pool=candidates.filter(c=>c.seq.length>min),
                 finalists=[...pool.slice().sort((a,b)=>b.quick-a.quick).slice(0,10),
                            ...pool.slice().sort((a,b)=>b.seq.length-a.seq.length||b.quick-a.quick).slice(0,10)],
                 unique=[...new Set(finalists)], options=[];
           for(const c of unique)for(const st of largeStakes)for(const mo of largeOpens){
-            const z=robust(c.seq,st/100,mo);if(z.n>min)options.push({...c,st,mo,...z});
+            const z=robustFor(c,st,mo);if(z.n>min&&(!max||z.n<=max))options.push({...c,st,mo,...z});
           }
           return options;
         },
-        large250=largeSampleOptions(250),large500=largeSampleOptions(500);
+        large125=largeSampleOptions(125,150),large250=largeSampleOptions(250,300);
   // Options must represent different decisions, not cosmetic variations. Prefer at least two changed
   // dimensions; if the tested population cannot support that, allow one difference but never duplicate.
   const configDistance=(a,b)=>['rr','q','vs','rv','vw','atr','st','mo'].reduce((n,k)=>n+(a[k]!==b[k]?1:0),0)+
@@ -4497,22 +4534,22 @@ function renderBestCombo(all){
   const growth=choose(basePool,chosen,(a,b)=>b.ret-a.ret);if(growth)chosen.push(growth);
   const defensive=choose(basePool,chosen,(a,b)=>a.dd-b.dd);if(defensive)chosen.push(defensive);
   const broad=choose(basePool,chosen,(a,b)=>b.consistency-a.consistency||b.n-a.n||b.ret-a.ret);if(broad)chosen.push(broad);
-  // Best settings at a minimum funded-trade sample size (user 2026-08-12, P-10): the strongest-scoring
-  // configuration whose annual replay actually funded more than 250 / 500 trades, so the recommendation
-  // rests on a large sample. Uses x.n (funded trades) — the same "trade sample" measure Broad evidence
-  // ranks on. Deliberately NOT run through choose()'s difference bar: the DEFINING property here is the
-  // sample-size floor, not being unlike the other cards, so it shows the genuine best at that threshold
-  // even if it coincides with another card. Guarded (&&) so each card only appears when the data supports
-  // a config above that floor. Unsupported thresholds remain visible as evidence-status cards below rather
-  // than disappearing and looking like a render fault.
-  const trades250=_bestSettingsByFundedTrades(large250,250), trades500=_bestSettingsByFundedTrades(large500,500);
+  // Best settings at a given funded-trade sample BAND (user 2026-08-12, P-10; banded 2026-08-14, P-04
+  // "Switch 500 trades to > 125 Trades (but do not exceed 150)" / "> 250 Trades (but do not exceed 300)"):
+  // the strongest-scoring configuration whose annual replay funded inside that band. Uses x.n (funded
+  // trades) — the same "trade sample" measure Broad evidence ranks on. Deliberately NOT run through
+  // choose()'s difference bar: the DEFINING property here is the sample size, not being unlike the other
+  // cards, so it shows the genuine best in that band even if it coincides with another card. Guarded (&&)
+  // so each card only appears when the data supports a config inside the band; unsupported bands remain
+  // visible as evidence-status cards below rather than disappearing and looking like a render fault.
+  const trades125=_bestSettingsByFundedTrades(large125,125,150), trades250=_bestSettingsByFundedTrades(large250,250,300);
   const choices=[
     ["Balanced",best,"Best return relative to drawdown, with quarterly consistency included.","var(--bull)"],
     growth&&["Growth",growth,"Highest-return alternative with a materially different configuration.","var(--accent)"],
     defensive&&["Defensive",defensive,"Lowest historical peak-to-trough drawdown while retaining a positive return.","#d29922"],
     broad&&["Broad evidence",broad,"Favours positive quarters and a larger funded trade sample over a narrow winner.","var(--muted)"],
-    trades250&&[">250 trades",trades250,"Best-scoring configuration whose funded sample exceeds 250 trades — a large-sample, higher-confidence setting.","#a371f7"],
-    trades500&&[">500 trades",trades500,"Best-scoring configuration whose funded sample exceeds 500 trades — the largest-sample setting available.","#1f6feb"]
+    trades125&&[">125 trades",trades125,"Best-scoring configuration funding more than 125 and no more than 150 trades — a focused, higher-confidence sample.","#1f6feb"],
+    trades250&&[">250 trades",trades250,"Best-scoring configuration funding more than 250 and no more than 300 trades — the larger evidence band.","#a371f7"]
   ].filter(Boolean);
   const current={rr:Number(MY_LIMITS.min_risk_reward??3),q:Number(MY_LIMITS.min_quality??25),vs:Number(MY_LIMITS.min_volume_score??1),rv:+MY_LIMITS.min_rvol||0,
     vw:!!+MY_LIMITS.require_above_vwap,atr:!!+MY_LIMITS.require_atr_expanding,st:+MY_LIMITS.max_position_pct||WINNERS_STAKE*100,mo:+MY_LIMITS.max_open||WINNERS_MAXOPEN,
@@ -4532,10 +4569,10 @@ function renderBestCombo(all){
       <button class="btn" style="margin-top:8px" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">⬇ Apply this configuration</button>
     </div></div>`).join('');
   const unsupportedCards=[
-    !trades250&&[">250 trades",250,"#a371f7"],!trades500&&[">500 trades",500,"#1f6feb"]
-  ].filter(Boolean).map(([label,min,colour])=>`<div class="fcard" data-choice-unavailable="${label}" style="min-width:240px;flex:1;border-top:3px solid ${colour};opacity:.8" title="No tested annual configuration funded strictly more than ${min} trades">
+    !trades125&&[">125 trades",125,150,"#1f6feb"],!trades250&&[">250 trades",250,300,"#a371f7"]
+  ].filter(Boolean).map(([label,min,max,colour])=>`<div class="fcard" data-choice-unavailable="${label}" style="min-width:240px;flex:1;border-top:3px solid ${colour};opacity:.8" title="No tested annual configuration funded more than ${min} and no more than ${max} trades">
     <h3 style="color:${colour}">${label}</h3><div class="muted" style="font-size:11px;min-height:30px">Evidence threshold not met by the current annual dataset.</div>
-    <div class="body"><b style="font-size:15px;color:#d29922">No supported recommendation</b><div class="muted" style="font-size:11px;margin-top:5px">None of the tested configurations funded strictly more than ${min} trades. The card remains visible so an evidence shortfall is not mistaken for a missing feature.</div></div>
+    <div class="body"><b style="font-size:15px;color:#d29922">No supported recommendation</b><div class="muted" style="font-size:11px;margin-top:5px">None of the tested configurations funded more than ${min} and no more than ${max} trades. The card remains visible so an evidence shortfall is not mistaken for a missing feature.</div></div>
   </div>`).join('');
   box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}</div>
   <div class="card" style="margin:0" id="best-detail"></div>`;
@@ -4554,7 +4591,7 @@ function renderBestCombo(all){
         positive_quarters:x.posPeriods,quarters:x.periods}})),
   });
 }
-// Best Settings choice cards (Balanced/Growth/Defensive/Broad evidence/>250 trades/>500 trades): clicking one swaps the detail
+// Best Settings choice cards (Balanced/Growth/Defensive/Broad evidence/>125 trades/>250 trades): clicking one swaps the detail
 // card + Transaction evidence below to that option (user 2026-08-07, ChangeRequest P-06 — previously only
 // Balanced ever got a detail card, which is why it "looked lost" next to the other three).
 let BEST_CHOICES=[], BEST_SELECTED="Balanced", BEST_MODEL_W=1000;
@@ -4608,6 +4645,16 @@ function applyConfigFromReport(cfg, btn){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits,filters:nextFilters})})
     .then(r=>{if(!r.ok)throw 0;
       MY_LIMITS={...MY_LIMITS,...limits}; USER_FILTERS=nextFilters; applyUserDefaults();
+      // applyUserDefaults() seeds defaults and deliberately skips empty values, so on its own it can never
+      // CLEAR a filter and never repaints the P-08 multi-select buttons. That is why an applied card looked
+      // like it "does not do all the config e.g. markets" (user 2026-08-14, P-03): a "Market: US" card left
+      // the dropdown still reading "All", and an "All markets" card left the previous market selected on the
+      // Scanner, which filters from the DOM rather than USER_FILTERS. Write every applied key explicitly.
+      Object.entries(filters).forEach(([k,v])=>{const el=$(k);if(!el)return;
+        const want=new Set(String(v==null?"":v).split(SEP).filter(Boolean));
+        if(el.multiple)[...el.options].forEach(o=>{o.selected=want.has(o.value);});
+        else el.value=v==null?"":v;});
+      if(typeof msyncAll==='function')msyncAll();
       Object.entries(limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v;}});
       if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();
       if(btn){btn.textContent="✓ Applied — Back Test updated";setTimeout(()=>{btn.disabled=false;btn.textContent="⬇ Apply this configuration";},4000);}
@@ -4629,7 +4676,7 @@ function _winLedger(rows){
   // broker's minimum trade size.
   const cap=WINNERS_MAXOPEN>0?WINNERS_MAXOPEN:_fundedMaxOpen(WINNERS_STAKE);
   let w=WINNERS_WALLET,reserved=0;const ledger=[];const _openEx=[];
-  const exitOf=r=>r.exit_date||_pfAddDays(r.trig_date,r.days_open||0)||'9999-99-99';
+  const exitOf=r=>_pfExitDate(r,false);   // one shared slot-release rule (2026-08-14, P-03)
   const gbpAbs=v=>'£'+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   const settle=td=>{_openEx.sort((a,b)=>a.exit.localeCompare(b.exit));
     while(_openEx.length&&_openEx[0].exit<=td){const x=_openEx.shift();w+=x.net;reserved=Math.max(0,reserved-x.margin);}};
@@ -4660,7 +4707,11 @@ function paintOrdersPerf(){
   box.classList.remove("sqh-loading");   // the outer wrapper carries the class in static markup (2026-08-07 fix)
   // Best settings is an annual decision model. Do not silently train it on the descriptive Results tab's
   // date, saved-setting or chart selections: those would bias the recommendation toward today's setup.
-  const decisionRows=(WIN||[]).filter(r=>r&&r.entry&&r.stop&&r.perf!=null&&r.trig_date);
+  // tradeVisible(): Back Test replays only what this user may actually trade (_pfMatchesCurrentConfig
+  // ends on the same call), so Best Settings must train on the same population - otherwise it recommends a
+  // market the Markets (User)/(Admin) switches have turned off and Back Test then replays a different book
+  // (user 2026-08-14, P-03 "does not seem to do all the config e.g. markets").
+  const decisionRows=(WIN||[]).filter(r=>r&&r.entry&&r.stop&&r.perf!=null&&r.trig_date&&tradeVisible(r));
   renderBestCombo(decisionRows);
   // Personal Minimum Volume Score floor filters the winners population too (user 2026-07-28), keeping it on
   // ONE dataset with the Results tab; unscored rows (null) pass, matching My Pre-orders.
@@ -5113,7 +5164,7 @@ function _pfWalletLedger(sel){
   sel.forEach(r=>{r._stake=r._net=r._cum=r._open=null;});
   const wp=sel.filter(r=>r.perf!=null);
   const seq=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
-  const exitOf=r=>r.state==='OPEN'?'9999-99-99':_pfAddDays(r.trig_date,r.days_open||0);   // when the slot frees
+  const exitOf=r=>_pfExitDate(r,false);   // when the slot frees - one shared rule (2026-08-14, P-03)
   let w=wallet,reserved=0,taken=0,skipped=0;const open=[];
   const settle=td=>{open.sort((a,b)=>a.exit.localeCompare(b.exit));
     while(open.length&&open[0].exit<=td){const x=open.shift();w+=x.net;reserved=Math.max(0,reserved-x.margin);}};

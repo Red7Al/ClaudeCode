@@ -10,5 +10,7 @@ if "%~1"=="" (
     python -m hvf_web.build_snapshot
 )
 
-echo Starting HVF site on http://127.0.0.1:5057  (run "ngrok http 5057" in another window to share)
+REM Local development instance only. The live site is https://www.squeezescanner.cloud/ (IONOS) — the
+REM laptop + ngrok public share was retired 2026-08-15 (user: "ngrok is not required").
+echo Starting HVF site on http://127.0.0.1:5057  (local development only)
 python -m hvf_web.server
