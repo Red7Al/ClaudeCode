@@ -87,8 +87,12 @@ fi
 : "${IONOS_USER:?set IONOS_USER}"
 PORT="${IONOS_PORT:-22}"
 
-SSH_OPTS=(-p "$PORT")
-SCP_OPTS=(-P "$PORT")
+# -4 forces IPv4. The host resolves to BOTH an AAAA (2001:8d8:1001:9000::2) and an A record
+# (217.160.137.2), ssh prefers the IPv6 address, and this machine has no IPv6 route — so it fails with
+# "Network is unreachable" while the site itself is perfectly reachable over HTTPS. That is not transient
+# and survives a reboot, because it is just how DNS and the local routing table interact (2026-08-16).
+SSH_OPTS=(-4 -p "$PORT")
+SCP_OPTS=(-4 -P "$PORT")
 CTL=""
 if [ -n "${IONOS_KEY:-}" ]; then
   # Key auth: every connection is unattended, so multiplexing buys nothing. Skip it — ControlMaster
