@@ -330,9 +330,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .gsec .term dd{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}
 
 /* Configuration card navigation (user 2026-07-03) */
-.confnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;justify-content:center;align-items:center}
-.confnav-group{position:relative;display:flex;flex-direction:column;gap:5px;align-items:center;justify-content:center;padding:7px 4px;background:transparent;border-color:transparent;border-radius:8px}
-.confnav-group::before{content:"";position:absolute;z-index:0;inset:0 -5%;background:color-mix(in srgb,#d9dde3 50%,var(--bg) 50%);border:1px solid #b8bec7;border-radius:8px;pointer-events:none}
+.confnav{display:flex;flex-wrap:wrap;gap:10px 20px;margin:0 0 20px;justify-content:center;align-items:center}
+.confnav-group{position:relative;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;padding:9px 12px;background:transparent;border-color:transparent;border-radius:8px}
+.confnav-group::before{content:"";position:absolute;z-index:0;inset:0;background:color-mix(in srgb,#d9dde3 50%,var(--bg) 50%);border:1px solid #b8bec7;border-radius:8px;pointer-events:none}
 .confnav-row{position:relative;z-index:1;display:flex;gap:5px;align-items:center;justify-content:center}
 .confnav-group [data-panel="IG"]{grid-column:1;grid-row:1}
 .confnav-group [data-panel="leverage"]{grid-column:2;grid-row:1}
@@ -389,6 +389,22 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-squeezehist .tablewrap{width:100%;overflow-x:auto;padding-bottom:22px}
 #view-squeezehist .tablewrap table{width:100%;table-layout:fixed}
 #view-squeezehist .tablewrap th,#view-squeezehist .tablewrap td{padding-left:6px;padding-right:6px;overflow:hidden;text-overflow:ellipsis}
+/* Column widths for the 14-column Squeeze History grid (2026-08-15). Order: Name, Dir, Market,
+   Developing, Ready, Triggered, Outcome, Closed, Return, Quality, R:R, TF, Sector, Ticker. */
+#view-squeezehist .tablewrap th:nth-child(1),#view-squeezehist .tablewrap td:nth-child(1){width:20%}
+#view-squeezehist .tablewrap th:nth-child(2),#view-squeezehist .tablewrap td:nth-child(2){width:5%}
+#view-squeezehist .tablewrap th:nth-child(3),#view-squeezehist .tablewrap td:nth-child(3){width:8%}
+#view-squeezehist .tablewrap th:nth-child(4),#view-squeezehist .tablewrap td:nth-child(4){width:7%}
+#view-squeezehist .tablewrap th:nth-child(5),#view-squeezehist .tablewrap td:nth-child(5){width:7%}
+#view-squeezehist .tablewrap th:nth-child(6),#view-squeezehist .tablewrap td:nth-child(6){width:7%}
+#view-squeezehist .tablewrap th:nth-child(7),#view-squeezehist .tablewrap td:nth-child(7){width:6.5%}
+#view-squeezehist .tablewrap th:nth-child(8),#view-squeezehist .tablewrap td:nth-child(8){width:7%}
+#view-squeezehist .tablewrap th:nth-child(9),#view-squeezehist .tablewrap td:nth-child(9){width:5.5%}
+#view-squeezehist .tablewrap th:nth-child(10),#view-squeezehist .tablewrap td:nth-child(10){width:5.5%}
+#view-squeezehist .tablewrap th:nth-child(11),#view-squeezehist .tablewrap td:nth-child(11){width:4.5%}
+#view-squeezehist .tablewrap th:nth-child(12),#view-squeezehist .tablewrap td:nth-child(12){width:4.5%}
+#view-squeezehist .tablewrap th:nth-child(13),#view-squeezehist .tablewrap td:nth-child(13){width:8%}
+#view-squeezehist .tablewrap th:nth-child(14),#view-squeezehist .tablewrap td:nth-child(14){width:4.5%}
 @media(max-width:760px){#view-squeezehist .tablewrap table{width:max-content;min-width:100%;table-layout:auto}}
 .datecard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 12px;box-shadow:var(--sh-sm);display:inline-flex;align-items:center;gap:8px;font-size:13px}
 /* Admin pages get the amber treatment (user 2026-07-04) */
@@ -1486,7 +1502,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     </div>
     <div class="tablewrap"><table id="pf-table">
       <!-- Ticker sits FAR RIGHT on every table that has one (user 2026-07-17, P-11b). -->
-      <thead><tr><th style="cursor:default" title="Row number (in the current sort order)">#</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="rvol">RVOL</th><th data-pf="above_vwap">VWAP</th><th data-pf="atr_expanding">ATR</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="trig_date">Triggered</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="exit_date" title="Date the trade closed (hit target or stop). Blank while still OPEN.">Closed</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Equity</th><th class="wcol" data-pf="_open" title="Number of positions open (including this one) at this trade's trigger date — how full the book was.">Open</th><th data-pf="mcap" title="Market capitalisation (in the instrument's own currency). Blank until the market-cap backfill lands. Moved to the far right (2026-08-07, ChangeRequest P-09), keeping Sector/Ticker as the site's universal rightmost pair.">MCap</th><th data-pf="sector">Sector</th><th data-pf="ticker">Ticker</th></tr></thead>
+      <thead><tr><th style="cursor:default" title="Row number (in the current sort order)">#</th><th data-pf="name">Name</th><th data-pf="direction">Dir</th><th data-pf="rvol">RVOL</th><th data-pf="above_vwap">VWAP</th><th data-pf="atr_expanding">ATR</th><th data-pf="volume_score" title="VolumeScore (0–12) on the trigger bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank where it can't be scored. Moved to an early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pf="quality">Quality</th><th data-pf="rr">R:R</th><th data-pf="state">Outcome</th><th data-pf="market">Market</th><th data-pf="trig_date">Triggered</th><th data-pf="perf">Return</th><th class="wcol" data-pf="_stake" title="Stake on this trade = Max position size % of the running wallet at that point (compounding). Wallet-model column (P-05 L98/L271).">Stake</th><th class="wcol" data-pf="_net" title="Net £ this trade added or lost = stake × return%.">Net £</th><th class="wcol" data-pf="_cum" title="Running compounded wallet AFTER this trade, in strict trigger-date order. Only meaningful chronologically — that's why the table sorts oldest-first while the wallet model is shown.">Equity</th><th class="wcol" data-pf="_open" title="Number of positions open (including this one) at this trade's trigger date — how full the book was.">Open</th><th data-pf="days_open" title="Days the trade was (or has been) active: outcome date − triggered date; open trades counted to today (user 2026-07-25, P-05 L99)">Days Open</th><th data-pf="exit_date" title="Date the trade closed (hit target or stop). Blank while still OPEN.">Closed</th><th data-pf="stop">Stop</th><th data-pf="entry">Entry</th><th data-pf="target">Target</th><th data-pf="current_price">Now</th><th data-pf="mcap" title="Market capitalisation (in the instrument's own currency). Blank until the market-cap backfill lands. Moved to the far right (2026-08-07, ChangeRequest P-09), keeping Sector/Ticker as the site's universal rightmost pair.">MCap</th><th data-pf="sector">Sector</th><th data-pf="ticker">Ticker</th></tr></thead>
       <tbody id="pf-rows"></tbody>
     </table></div>
   </section>
@@ -1641,7 +1657,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="sqh-count"></span><span id="sqh-freshness" class="muted" style="font-size:11px"></span><span class="grow"></span><input id="sqh-search" placeholder="Search name / ticker…" oninput="paintSqueezeHist()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
     <!-- Every header sorts (user 2026-07-18, P-01) — data-sqh drives sqhSort(). -->
     <div class="tablewrap"><table>
-      <thead><tr><th class="clk" data-sqh="name">Name</th><th class="clk" data-sqh="direction">Dir</th><th class="clk" data-sqh="market">Market</th><th class="clk" data-sqh="timeframe">TF</th><th class="clk" data-sqh="first_seen" title="First replay step this squeeze existed">Developing</th><th class="clk" data-sqh="ready_date" title="First step seen READY">Ready</th><th class="clk" data-sqh="triggered_date" title="First close beyond entry after the pivots">Triggered</th><th class="clk" data-sqh="outcome">Outcome</th><th class="clk" data-sqh="outcome_date">Closed</th><th class="clk" data-sqh="return_pct">Return</th><th class="clk" data-sqh="quality">Quality</th><th class="clk" data-sqh="rr">R:R</th><th class="clk" data-sqh="sector">Sector</th><th class="clk" data-sqh="ticker">Ticker</th></tr></thead>
+      <thead><tr><th class="clk" data-sqh="name">Name</th><th class="clk" data-sqh="direction">Dir</th><th class="clk" data-sqh="market">Market</th><th class="clk" data-sqh="first_seen" title="First replay step this squeeze existed">Developing</th><th class="clk" data-sqh="ready_date" title="First step seen READY">Ready</th><th class="clk" data-sqh="triggered_date" title="First close beyond entry after the pivots">Triggered</th><th class="clk" data-sqh="outcome">Outcome</th><th class="clk" data-sqh="outcome_date">Closed</th><th class="clk" data-sqh="return_pct">Return</th><th class="clk" data-sqh="quality">Quality</th><th class="clk" data-sqh="rr">R:R</th><th class="clk" data-sqh="timeframe">TF</th><th class="clk" data-sqh="sector">Sector</th><th class="clk" data-sqh="ticker">Ticker</th></tr></thead>
 <tbody id="sqh-rows"><tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
     </table></div>
   </section>
@@ -1857,18 +1873,36 @@ const $=id=>document.getElementById(id);
 // In-app confirm (user 2026-07-18): the native confirm() prefixes the host ("…says"), which looked
 // broken behind the old ngrok tunnel and is still noise on squeezescanner.cloud. This styled dialog
 // keeps the message clean and on-brand. Returns a Promise.
-function appConfirm(msg,{title="Please confirm",ok="Confirm",cancel="Cancel"}={}){
+// `rows` (optional) renders [label, value] pairs as a compact TWO-COLUMN grid instead of forcing the
+// caller to jam everything into the message as bullet lines - fourteen of those in a 440px box needed a
+// scroll bar (user 2026-08-15: "Apply this configuration should give a form that does NOT need a scroll
+// bar"). Values are still written with textContent, so nothing here can inject markup. The box is capped
+// to the viewport with only the grid allowed to scroll, so the buttons can never be pushed out of reach.
+function appConfirm(msg,{title="Please confirm",ok="Confirm",cancel="Cancel",rows=null}={}){
   return new Promise(res=>{
     const ov=document.createElement("div");
     ov.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px";
     const box=document.createElement("div");
-    box.style.cssText="background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;max-width:440px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.5);overflow:hidden";
-    box.innerHTML=`<div style="padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700">${title}</div>`
-      +`<div style="padding:16px 18px;font-size:13.5px;line-height:1.5;color:var(--fg)"></div>`
-      +`<div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">`
+    box.style.cssText="background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;max-width:"
+      +(rows?"660px":"440px")+";width:100%;box-shadow:0 12px 40px rgba(0,0,0,.5);overflow:hidden;"
+      +"max-height:calc(100vh - 32px);display:flex;flex-direction:column";
+    box.innerHTML=`<div style="padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700;flex:0 0 auto">${title}</div>`
+      +`<div data-msg style="padding:14px 18px ${rows?'8px':'16px'};font-size:13.5px;line-height:1.5;color:var(--fg);flex:0 0 auto"></div>`
+      +(rows?`<div data-rows style="padding:0 18px 14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px;font-size:12.5px;overflow:auto;min-height:0"></div>`:``)
+      +`<div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;flex:0 0 auto">`
       +`<button class="btn" data-x>${cancel}</button>`
       +`<button class="btn" data-ok style="border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)">${ok}</button></div>`;
-    box.children[1].textContent=msg;   // textContent so the message can't inject markup
+    box.querySelector("[data-msg]").textContent=msg;   // textContent so the message can't inject markup
+    if(rows){
+      const grid=box.querySelector("[data-rows]");
+      rows.forEach(([label,value])=>{
+        const line=document.createElement("div");
+        line.style.cssText="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:4px 0;border-bottom:1px solid var(--line)";
+        const l=document.createElement("span"); l.className="muted"; l.textContent=label;
+        const v=document.createElement("b"); v.style.cssText="text-align:right;white-space:nowrap"; v.textContent=String(value);
+        line.append(l,v); grid.appendChild(line);
+      });
+    }
     const done=v=>{ov.remove();document.removeEventListener("keydown",onKey);res(v);};
     const onKey=e=>{if(e.key==="Escape")done(false);else if(e.key==="Enter")done(true);};
     box.querySelector("[data-x]").onclick=()=>done(false);
@@ -4349,8 +4383,21 @@ function _bestHistoryPct(value){
 function _bestHistoryConfig(settings){
   return BEST_HISTORY_FIELDS.map(([key,label])=>`${label}: ${_bestHistoryValue(key,(settings||{})[key])}`).join(" · ");
 }
+// Identifies the replay maths a snapshot was produced by. Until 2026-08-15 an unresolved trade
+// settled on its own trigger day, so returns were inflated and funded counts unachievable; every
+// snapshot recorded before then is a record of numbers that were wrong. Bump this whenever a change
+// moves the figures, so history stays comparable only within a model (user 2026-08-15: "best settings
+// history of little relevance if the calculations during that period were wrong").
+const BEST_CALC_MODEL="2026-08-15-exit-rule";
+const _bestCalcModel=row=>String((row&&row.model||{}).calc_model||"pre-2026-08-15");
 function _bestHistoryChanges(current,previous){
   if(!previous)return "Baseline snapshot";
+  // Comparing across a change in the replay maths would report a methodology correction as though the
+  // strategy had deteriorated - the corrected model returns far less than the inflated one on identical
+  // data. Refuse the comparison rather than draw a misleading delta.
+  if(_bestCalcModel(current)!==_bestCalcModel(previous))
+    return `Not comparable - calculation model changed (${_bestCalcModel(previous)} → ${_bestCalcModel(current)}). `+
+           `Earlier returns were inflated by open positions releasing their capital on the trigger day.`;
   const changes=[];
   const cm=current.model||{},pm=previous.model||{};
   [["wallet","Model wallet","£",""],["minimum_trade","Minimum trade","£",""],["position_pct","Model position size","","%"],["max_open","Model max open","",""]].forEach(([key,label,prefix,suffix])=>{
@@ -4379,7 +4426,9 @@ function paintBestSettingsHistory(history){
   const body=rows.map((row,index)=>{
     const balanced=(row.options||[]).find(o=>o.label==="Balanced"),result=(balanced||{}).results||{};
     const full=(row.options||[]).map(o=>`<div><b>${_esc(o.label)}</b>: ${_esc(_bestHistoryConfig(o.settings))}</div>`).join("");
-    return `<tr><td><b>${_esc(row.snapshot_day||"")}</b><div class="muted">${_esc(String(row.recorded_at||"").slice(11,19))} UTC</div></td>`+
+    const stale=_bestCalcModel(row)!==BEST_CALC_MODEL;
+    const flag=stale?`<div style="margin-top:3px"><span title="Recorded before the 2026-08-15 exit-rule correction: unresolved trades settled on their own trigger day, so returns were inflated and funded counts were not achievable. Kept as an audit trail, not as evidence." style="font-size:10px;font-weight:700;color:#d29922;border:1px solid #d29922;border-radius:3px;padding:1px 4px">SUPERSEDED MATHS</span></div>`:"";
+    return `<tr${stale?' style="opacity:.65"':''}><td><b>${_esc(row.snapshot_day||"")}</b><div class="muted">${_esc(String(row.recorded_at||"").slice(11,19))} UTC</div>${flag}</td>`+
       `<td>${row.data_through?`through <b>${_esc(row.data_through)}</b>`:'—'}<div class="muted">built ${_esc(row.dataset_generated||'—')}</div></td>`+
       `<td>£${(+((row.model||{}).wallet)||0).toLocaleString()} · ${_bestHistoryValue('position_pct',(row.model||{}).position_pct)} · ${(row.model||{}).max_open} max</td>`+
       `<td>${balanced?`<b style="color:${result.annual_return>=0?'var(--bull)':'var(--bear)'}">${_bestHistoryPct(result.annual_return)}</b><div class="muted">${((+result.max_drawdown||0)*100).toFixed(1)}% drawdown · ${result.funded_trades} funded</div>`:'—'}</td>`+
@@ -4599,7 +4648,8 @@ function renderBestCombo(all){
   recordBestSettingsSnapshot({
     dataset_generated:WIN_GENERATED,
     data_through:String((byDate[byDate.length-1]||{}).trig_date||"").slice(0,10),
-    model:{wallet:w,minimum_trade:MIN_TRADE,position_pct:WINNERS_STAKE*100,max_open:WINNERS_MAXOPEN},
+    model:{wallet:w,minimum_trade:MIN_TRADE,position_pct:WINNERS_STAKE*100,max_open:WINNERS_MAXOPEN,
+           calc_model:BEST_CALC_MODEL},
     options:choices.map(([label,x])=>({label,
       settings:{scope:x.scope.label,min_rr:x.rr,min_quality:x.q,min_volume_score:x.vs,min_rvol:x.rv,
         require_above_vwap:!!x.vw,require_atr_expanding:!!x.atr,max_position_pct:x.st,max_open:x.mo},
@@ -4651,11 +4701,21 @@ function selectBestChoice(label){
 // trading limits (user 2026-08-02, ToDo P-08) — "replicate those results in our trading". Confirms first,
 // POSTs only the provided keys to /api/config, refreshes MY_LIMITS + the config inputs, and re-renders the
 // dependent views. Values map: min_risk_reward, min_quality, min_volume_score, max_position_pct, max_open.
-function applyConfigFromReport(cfg, btn){
+async function applyConfigFromReport(cfg, btn){
   cfg=cfg||{}; const limits=cfg.limits||cfg, filters=cfg.filters||{};
   const labels={min_risk_reward:"R:R floor",min_quality:"Quality floor",min_volume_score:"VolumeScore floor",min_rvol:"RVOL floor",require_above_vwap:"Require above VWAP",require_atr_expanding:"Require ATR expanding",max_position_pct:"Max position size %",max_open:"Max open positions",min_instrument_value:"Minimum instrument value",max_instrument_value:"Maximum instrument value"};
-  const summary=Object.keys(limits).map(k=>`• ${labels[k]||k}: ${limits[k]}`).concat(Object.entries(filters).map(([k,v])=>`• Saved filter ${k.replace(/^f_/,'')}: ${v||'all'}`)).join("\n");
-  if(!confirm("Copy this complete configuration to your personal settings?\n\n"+summary+"\n\nThis updates User Configuration only. It does not place or change any orders.")) return;
+  // Booleans and money read as raw 0/1/numbers otherwise, and f_mkt/pof_market (and f_sec/pof_sector)
+  // are the same decision stored twice - listing all four padded the dialog for no information.
+  const shown=v=>v===1||v===true?"Yes":v===0||v===false?"No":(v===""||v==null?"Any":String(v));
+  const money=v=>+v>0?(+v).toLocaleString():"Any";
+  const rows=Object.keys(limits).map(k=>[labels[k]||k,
+    (k==="require_above_vwap"||k==="require_atr_expanding")?shown(limits[k])
+    :(k==="min_instrument_value"||k==="max_instrument_value")?money(limits[k])
+    :(k==="max_position_pct")?limits[k]+"%":shown(limits[k])]);
+  if("f_mkt" in filters)rows.push(["Market scope",filters.f_mkt||"All markets"]);
+  if("f_sec" in filters)rows.push(["Sector scope",filters.f_sec||"All sectors"]);
+  if(!await appConfirm("This updates your User Configuration only. It does not place or change any orders.",
+      {title:"Apply this configuration",ok:"Apply",rows})) return;
   if(btn){btn.disabled=true;btn.textContent="Saving…";}
   const nextFilters={...USER_FILTERS,...filters};
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits,filters:nextFilters})})
@@ -4980,11 +5040,11 @@ function paintSqueezeHist(){
   if($("sqh-count"))$("sqh-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> squeezes${rows.length!==shown.length?` of ${rows.length.toLocaleString()}`:''}${capped?` <span class="muted" style="font-size:11px">· showing first ${SQH_CAP.toLocaleString()} — filter to narrow</span>`:''}`;
   if($("sqhtab-count"))$("sqhtab-count").textContent=`(${shown.length.toLocaleString()})`;   // row count in the tab name (user 2026-07-20, P-01)
   if($("sqh-rows"))$("sqh-rows").innerHTML=view.map(r=>`<tr>
-    <td class="clk" style="cursor:pointer;color:var(--accent)" title="Open the detail report" onclick="openDetailFrom('squeezehist','${(r.ticker||'').replace(/'/g,'')}')">${nm40(r.name)}</td><td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td><td>${r.market||''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td>
+    <td class="clk" style="cursor:pointer;color:var(--accent)" title="Open the detail report" onclick="openDetailFrom('squeezehist','${(r.ticker||'').replace(/'/g,'')}')">${nm40(r.name)}</td><td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td><td>${r.market||''}</td>
     <td>${r.first_seen||'—'}</td><td>${r.ready_date||'—'}</td><td>${r.triggered_date||'—'}</td>
     <td><b style="color:${_stcol(r.outcome)}">${r.outcome||''}</b></td><td>${r.outcome_date||'—'}</td>
     <td style="color:${(r.return_pct||0)>=0?'var(--bull)':'var(--bear)'}">${r.return_pct!=null?(r.return_pct>0?'+':'')+r.return_pct+'%':'—'}</td>
-    <td>${r.quality!=null?r.quality:''}</td><td>${r.rr!=null?(+r.rr).toFixed(1):''}</td><td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
+    <td>${r.quality!=null?r.quality:''}</td><td>${r.rr!=null?(+r.rr).toFixed(1):''}</td><td>${(r.timeframe||'').replace('daily-','D')}</td><td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")
     ||`<tr><td colspan="14" class="empty">No squeeze history yet.</td></tr>`;
 }
 // Wire the sortable Squeeze-History headers (mirrors the Performance th[data-pf] wiring).
@@ -5186,7 +5246,14 @@ function _pfWalletLedger(sel){
     while(open.length&&open[0].exit<=td){const x=open.shift();w+=x.net;reserved=Math.max(0,reserved-x.margin);}};
   for(const r of seq){const td=r.trig_date||'';settle(td);
     const stake=w*stakeFrac,lev=Math.max(1,+(levOf(r)||1)),margin=stake/lev,available=Math.max(0,w-reserved);
-    if(stake<MIN_TRADE||(maxopen>0&&open.length>=maxopen)||margin>available+1e-9){skipped++;continue;}
+    if(stake<MIN_TRADE||(maxopen>0&&open.length>=maxopen)||margin>available+1e-9){
+      // Record the book state even when the trade is NOT funded. Leaving Equity and Open blank on every
+      // skipped row made the columns unreadable -- on a typical run more than half the rows are skipped,
+      // and they are overwhelmingly "book full" (user 2026-08-15: "many EQUITY values ... have no setting
+      // e.g. STOPPED and OPEN transactions"). The wallet really was worth `w` at that moment and the book
+      // really did hold `open.length` positions, which is precisely what explains the skip. Stake and Net
+      // stay blank because nothing was staked and nothing was won or lost.
+      r._cum=w; r._open=open.length; skipped++; continue;}
     const net=stake*r.perf/100;reserved+=margin;open.push({exit:exitOf(r),margin,net});
     taken++;r._open=open.length;r._stake=stake;r._net=net;r._cum=w+net;}
   settle('9999-99-99');
@@ -5323,17 +5390,17 @@ function _renderPerformance(){
     <!-- Market and Triggered stay visible logged-out (user 2026-07-17, P-26 and P-17b); the rest of the
          row is still obfuscated by ob(). /api/performance is public and already returns both. -->
     <td>${r.market||''}</td><td>${r.trig_date||'—'}</td>
+    <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
+    <td class="wcol muted">${r._stake!=null?'£'+Math.round(r._stake).toLocaleString():'—'}</td>
+    <td class="wcol">${r._net!=null?`<span style="color:${r._net>=0?'var(--bull)':'var(--bear)'}">${r._net>=0?'+':'−'}£${Math.abs(r._net).toFixed(2)}</span>`:'—'}</td>
+    <td class="wcol"><b>${r._cum!=null?'£'+Math.round(r._cum).toLocaleString():'—'}</b></td>
+    <td class="wcol">${r._open!=null?r._open:'—'}</td>
     <td>${r.days_open!=null?r.days_open:'—'}</td>
     <td>${(()=>{let cd=r.exit_date?String(r.exit_date).slice(0,10):null;
       if(!cd&&(r.state==='TARGET'||r.state==='STOPPED')&&r.trig_date!=null&&r.days_open!=null){cd=_pfAddDays(r.trig_date,r.days_open);if(cd==='9999-99-99')cd=null;}
       return cd?cd:(r.state==='OPEN'?'<span class="muted">open</span>':'—');})()}</td>
     <td style="color:var(--bear)">${ob(f2(r.stop))}</td><td>${ob(f2(r.entry))}</td><td style="color:var(--bull)">${ob(f2(r.target))}</td>
     <td>${ob(f2(r.current_price))}</td>
-    <td>${r.perf!=null?`<b style="color:${r.perf>=0?'var(--bull)':'var(--bear)'}">${r.perf>0?'+':''}${r.perf.toFixed(1)}%</b>`:'<span class="muted">—</span>'}</td>
-    <td class="wcol muted">${r._stake!=null?'£'+Math.round(r._stake).toLocaleString():'—'}</td>
-    <td class="wcol">${r._net!=null?`<span style="color:${r._net>=0?'var(--bull)':'var(--bear)'}">${r._net>=0?'+':'−'}£${Math.abs(r._net).toFixed(2)}</span>`:'—'}</td>
-    <td class="wcol"><b>${r._cum!=null?'£'+Math.round(r._cum).toLocaleString():'—'}</b></td>
-    <td class="wcol">${r._open!=null?r._open:'—'}</td>
     <td>${ob(_mcapFmt(r.mcap))}</td>
     <td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")+
     (rows.length>visibleRows.length?`<tr><td colspan="24" class="empty"><button class="subpill" onclick="pfShowMore()">Show ${Math.min(PF_RENDER_STEP,rows.length-visibleRows.length)} more</button> <span class="muted">Showing ${visibleRows.length.toLocaleString()} of ${rows.length.toLocaleString()} filtered triggers</span></td></tr>`:"")

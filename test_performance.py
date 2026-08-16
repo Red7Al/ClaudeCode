@@ -832,12 +832,16 @@ def _extract_function(html, name):
     declaration up to (but not including) the next top-level `function` declaration. This file writes
     every top-level function starting at column 0, so "the next line starting with 'function '" is a
     reliable boundary even though this isn't a real JS parser (inline arrow functions inside the body
-    don't start a line with 'function ', so they don't false-trigger the boundary)."""
-    m = re.search(rf"\nfunction {re.escape(name)}\([^)]*\)\{{", html)
+    don't start a line with 'function ', so they don't false-trigger the boundary).
+
+    An `async ` prefix is allowed: applyConfigFromReport became async on 2026-08-15 when its native
+    confirm() was replaced with the awaited appConfirm dialog, and without this the helper stopped
+    finding it. The boundary search has to know about async declarations for the same reason."""
+    m = re.search(rf"\n(?:async )?function {re.escape(name)}\([^)]*\)\{{", html)
     assert m, f"function {name}(...) not found in hvf_web/index.html"
     start = m.start()
-    nxt = html.find("\nfunction ", m.end())
-    return html[start: nxt if nxt != -1 else len(html)]
+    nxt = re.search(r"\n(?:async )?function ", html[m.end():])
+    return html[start: m.end() + nxt.start() if nxt else len(html)]
 
 
 def test_scanner_rerenders_after_every_my_limits_mutation():
@@ -935,6 +939,12 @@ def test_approved_ui_report_backlog_is_wired_to_live_render_paths():
 
     assert 'const SUPPORT_TABS=["batch","syslogs","jobs","sysdocs"]' in html
     assert '.subnav-operations{gap:3mm}' in html
-    assert '.confnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;justify-content:center;align-items:center}' in html
+    # Gap widened 8px -> 10px/20px on 2026-08-15: at 8px the IG group card sat hard against Preferences
+    # and Tab visibility, and its ::before background used inset:0 -5%, bleeding the card OUTSIDE the
+    # group and into the neighbouring pills (user: "too close - especially the card to right of tab
+    # visibility"). The inset is now 0 and the group has real horizontal padding.
+    assert '.confnav{display:flex;flex-wrap:wrap;gap:10px 20px;margin:0 0 20px;justify-content:center;align-items:center}' in html
+    assert '.confnav-group::before{content:"";position:absolute;z-index:0;inset:0;' in html
+    assert 'padding:9px 12px;background:transparent' in html
     assert '_igNoCreds?' in html and 'No IG account data — add credentials' in html
     assert "_ag.style.display='none'" in html
