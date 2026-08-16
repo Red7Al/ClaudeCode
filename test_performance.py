@@ -522,6 +522,75 @@ def test_max_open_is_never_reported_above_what_the_stake_can_fund():
     assert result == {"requested": 12, "effective": 10, "cap": 10}
 
 
+def test_scanner_still_hard_filters_on_my_trading_filters():
+    """P-01 REGRESSION GUARD. The Scanner's filter sidebar moved to Squeeze History on 2026-08-16, but
+    pass() was never only the sidebar: it also carries tradeVisible() and the MY_LIMITS hard-filter block
+    added 2026-08-12, which hides setups failing My Trading Filters from the Scanner table AND excludes
+    them from the daily email. Removing the sidebar must not take those with it.
+    """
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    body = _extract_function(html, "pass")
+
+    assert "tradeVisible(r)" in body, "per-user market/direction/location trade gate lost from pass()"
+    for floor in ("min_risk_reward", "min_quality", "min_volume_score", "min_rvol",
+                  "require_above_vwap", "require_atr_expanding",
+                  "min_instrument_value", "max_instrument_value"):
+        assert floor in body, f"MY_LIMITS hard filter lost {floor} — P-01 regression"
+
+
+def test_scanner_filters_moved_and_left_nothing_dangling():
+    """Every loop over F / MSEL_IDS / FILTER_IDS dereferences $(id) unguarded, so an id that no longer
+    has an element throws on load. Assert the removed ids are gone from BOTH the markup and the wiring.
+    """
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+
+    for gone in ("f_dir", "f_stat", "f_loc", "f_tf", "f_qmin", "f_qmax", "f_rrmin", "f_rrmax",
+                 "f_demin", "f_demax", "f_dsmin", "f_dsmax", "f_rvmin", "f_rvmax",
+                 "f_pemin", "f_pemax", "f_inmin", "f_inmax"):
+        assert f'"{gone}"' not in html and f"'{gone}'" not in html, f"{gone} still referenced"
+        assert f'id="{gone}"' not in html, f"{gone} element still present"
+
+    # Kept deliberately: the search box, the chart window, and the hidden scope carriers.
+    assert 'id="f_search"' in html and 'id="f_days"' in html
+    assert 'id="f_mkt" multiple hidden' in html and 'id="f_sec" multiple hidden' in html
+    assert 'const F=["f_search","f_mkt","f_sec"];' in html
+    # dm()/sel() combined a sidebar dropdown with a chart set; with no sidebar they are dead.
+    assert "const dm=" not in html
+
+
+def test_back_test_saved_scope_survives_the_filter_move():
+    """_pfSavedScope and applyConfigFromReport read USER_FILTERS.f_mkt / f_sec. Dropping those ids would
+    silently cost Back Test its market/sector scope and break Apply-this-configuration, which is why the
+    two selects are retained (hidden) rather than deleted.
+    """
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    assert 'const keys=kind==="market"?["pof_market","f_mkt"]:["pof_sector","f_sec"];' in html
+    assert 'fillSel("f_mkt","market");fillSel("f_sec","sector");' in html, (
+        "the hidden scope selects still need their options, or Apply-config cannot select one")
+
+
+def test_squeeze_history_owns_the_filters_now():
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="sqh-filters"' in html and 'class="sidefilt"' in html
+    for control in ("sqf_dir", "sqf_loc", "sqf_mkt", "sqf_sec", "sqf_tf", "sqf_out",
+                    "sqfr_qmin", "sqfr_rrmax", "sqfr_rvmin", "sqfr_retmax", "sqfr_dmin",
+                    "sqfr_vsmax", "sqf_vwap", "sqf_atr"):
+        assert f'id="{control}"' in html, f"{control} missing from the Squeeze History sidebar"
+
+    # Header buttons act on this tab, and Squeeze-only stays Scanner-only (no has_signal on history).
+    assert 'if(CUR_TAB==="squeezehist")return toggleSqhFilters();' in html
+    assert 'if(CUR_TAB==="squeezehist")return sqhReset();' in html
+    assert '$("signalonly").style.display=sc?"":"none";' in html
+
+    # The dim cache is keyed on the sidebar too, or it serves rows the filters just excluded.
+    assert "_sqDvSig===_sqSig" in html
+    # Options come from the history, not the current snapshot.
+    assert "function fillSqhFilterOptions()" in html
+    # Saved defaults cover the moved controls.
+    assert "SQH_FILTER_IDS());" in html
+
+
 def test_order_ops_rows_carry_the_setup_metrics_that_caused_them(monkeypatch):
     """Pre-orders to my IG showed "—" for RVOL / VolumeScore / Quality / R:R on EVERY row, always.
 

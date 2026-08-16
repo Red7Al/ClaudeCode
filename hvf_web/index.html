@@ -633,28 +633,17 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div class="layout" id="view-scanner">
   <aside id="aside" class="collapsed">
-    <!-- Cherry-pick presets from the 15-month analysis (user 2026-07-18): set RVOL / Quality / R:R to
-         the filters that separate the best setups. Same presets as the Performance analysis panel. -->
-    <h3>Cherry-pick <span class="muted" style="font-weight:400;font-size:10px;text-transform:none;letter-spacing:0">(from 15-month analysis)</span></h3>
-    <div id="scanner-presets" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>
+    <!-- Filters moved to Squeeze History on 2026-08-16 (user: "filters on scanner report are not much
+         use now"). The Scanner shows the CURRENT universe, already hard-filtered by My Trading Filters,
+         so slicing it further added little; the 12-month history is where slicing answers questions.
+         What stays here: the search box, and the price-chart window (never a row filter).
+         f_mkt / f_sec remain as HIDDEN multi-selects. They are no longer Scanner filters — pass() does
+         not read them any more — but they are the storage for the saved market/sector scope that
+         _pfSavedScope() (Back Test) and applyConfigFromReport() ("Apply this configuration") read via
+         USER_FILTERS. Deleting them breaks both; showing them keeps a filter the user asked to move. -->
     <div class="f"><label>Search name / ticker</label><input id="f_search" type="text" placeholder="e.g. Howden, ABF, gold"></div>
-    <div class="scanner-filter-note"><b>How filters work</b><br>Choose one or more values. Leave a filter unselected to include everything. The green outline shows an active selection.</div>
-    <div class="scanner-filter-group"><h3>Direction &amp; place</h3>
-    <div class="f"><label>Direction</label><select id="f_dir" multiple size="3"><option>BULL</option><option>BEAR</option><option value="—">— (none)</option></select></div>
-    <div class="f"><label>Location (Geography)</label><select id="f_loc" multiple size="4"></select></div>
-    <div class="f"><label>Market</label><select id="f_mkt" multiple size="5"></select></div>
-    <div class="f"><label>Sector</label><select id="f_sec" multiple size="5"></select></div></div>
-    <div class="scanner-filter-group"><h3>Squeeze state &amp; quality</h3>
-    <div class="f"><label>Status</label><select id="f_stat" multiple size="4"><option>TRIGGERED</option><option>READY</option><option>DEVELOPING</option><option value="—">— (none)</option></select></div>
-    <div class="f"><label>Timeframe</label><select id="f_tf" multiple size="4"></select></div>
-    <div class="f"><label>Quality range</label><div class="row2"><input id="f_qmin" type="number" value="45" placeholder="min"><input id="f_qmax" type="number" placeholder="max"></div></div>
-    <div class="f"><label>R:R range</label><div class="row2"><input id="f_rrmin" type="number" step="0.1" value="3.1" placeholder="min"><input id="f_rrmax" type="number" step="0.1" placeholder="max"></div></div>
-    <div class="f"><label>Dist to entry % range</label><div class="row2"><input id="f_demin" type="number" step="0.1" value="-10" placeholder="min"><input id="f_demax" type="number" step="0.1" value="10" placeholder="max"></div></div>
-    <div class="f"><label>Days since setup range</label><div class="row2"><input id="f_dsmin" type="number" placeholder="min"><input id="f_dsmax" type="number" value="90" placeholder="max"></div></div>
-    <div class="f"><label>RVOL range (at trigger)</label><div class="row2"><input id="f_rvmin" type="number" step="0.1" placeholder="min"><input id="f_rvmax" type="number" step="0.1" placeholder="max"></div></div></div>
-    <div class="scanner-filter-group"><h3>Fundamentals</h3>
-    <div class="f"><label>P/E range</label><div class="row2"><input id="f_pemin" type="number" placeholder="min"><input id="f_pemax" type="number" placeholder="max"></div></div>
-    <div class="f"><label>Insider % range</label><div class="row2"><input id="f_inmin" type="number" step="0.1" placeholder="min"><input id="f_inmax" type="number" step="0.1" placeholder="max"></div></div></div>
+    <div class="scanner-filter-note"><b>Filters have moved</b><br>Direction, market, sector, quality, R:R and the rest now live on <b>Squeeze History</b>, where they filter 12 months of finished trades. This list is already limited to what passes <b>My Trading Filters</b>.</div>
+    <select id="f_mkt" multiple hidden></select><select id="f_sec" multiple hidden></select>
     <div class="scanner-filter-group"><h3>Chart window</h3>
     <div class="f"><label>Price chart: last <span id="dlbl">365</span> days</label>
       <div class="slider"><input id="f_days" type="range" min="30" max="1095" step="5" value="365"></div></div></div>
@@ -832,8 +821,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
   <!-- Preferences panel (hidden by default — IG is the leftmost/default panel, user 2026-07-03) -->
   <div class="confpanel hidden" data-panel="preferences">
-    <div class="card"><h4>Scanner Report filter defaults</h4>
-      <p class="muted" style="font-size:12px">These defaults belong to the <b>Scanner Report</b> page only. Set its filters exactly how you like them, then save — they'll be applied automatically every time <b>you</b> log in (and "Reset filters" returns to them).</p>
+    <div class="card"><h4>Saved filter defaults</h4>
+      <p class="muted" style="font-size:12px">Covers the <b>Squeeze History</b> filters, the <b>Pre-orders</b> filters and what remains on the <b>Scanner Report</b>. Set them how you like, then save — they're applied automatically every time <b>you</b> log in, and Reset returns to them. Separate from <b>My Trading Filters</b>, which gate what may actually be traded.</p>
 <div id="cfg-defaults" class="sqh-loading" style="font-size:12px;margin:8px 0">⏳ Data loading…</div>
       <button class="btn" onclick="saveFilterDefaults()">Save current filters as my defaults</button>
       <button class="btn" onclick="clearFilterDefaults()">Clear my defaults</button>
@@ -1659,6 +1648,34 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        Direction lives in the compact title chart; Year is the button row above (all cross-filter). -->
   <input type="hidden" id="sqf_market"><input type="hidden" id="sqf_location"><input type="hidden" id="sqf_sector"><input type="hidden" id="sqf_direction"><input type="hidden" id="sqf_status"><input type="hidden" id="sqf_year"><input type="hidden" id="sqf_quality">
   <div id="sqh-viz" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
+  <div class="sidefilt">
+  <!-- Filter sidebar (user 2026-08-16: "filters on scanner report are not much use now - move these
+       buttons and functionality to Squeeze History"). Uses the lighter .sidefilt/.sidebar pattern the
+       Pre-orders tabs use, not the Scanner's .layout>aside, because this view is full-width.
+       Only filters whose field actually EXISTS on a squeeze-history row are offered -- a control that
+       silently matches nothing is worse than no control. Dropped from the Scanner set: Status (its
+       TRIGGERED/READY/DEVELOPING values are a different concept from outcome), Dist-to-entry, Days-since,
+       P/E and Insider %, none of which the history carries. Added, because history HAS them and the
+       Scanner never could: Outcome, Return %, Days held, VWAP and ATR. -->
+  <aside id="sqh-filters" class="sidebar hidden">
+    <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 6px">Cherry-pick <span class="muted" style="font-weight:400;font-size:10px;text-transform:none;letter-spacing:0">(from 15-month analysis)</span></h3>
+    <div id="sqh-presets" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px"></div>
+    <div class="f"><label>Direction</label><select id="sqf_dir" multiple size="3"><option>BULL</option><option>BEAR</option><option value="—">— (none)</option></select></div>
+    <div class="f"><label>Location (Geography)</label><select id="sqf_loc" multiple size="4"></select></div>
+    <div class="f"><label>Market</label><select id="sqf_mkt" multiple size="5"></select></div>
+    <div class="f"><label>Sector</label><select id="sqf_sec" multiple size="5"></select></div>
+    <div class="f"><label>Timeframe</label><select id="sqf_tf" multiple size="4"></select></div>
+    <div class="f"><label>Outcome</label><select id="sqf_out" multiple size="4"><option>TARGET</option><option>STOPPED</option><option>OPEN</option><option>NEVER_TRIGGERED</option></select></div>
+    <div class="f"><label>Quality range</label><div class="row2"><input id="sqfr_qmin" type="number" placeholder="min"><input id="sqfr_qmax" type="number" placeholder="max"></div></div>
+    <div class="f"><label>R:R range</label><div class="row2"><input id="sqfr_rrmin" type="number" step="0.1" placeholder="min"><input id="sqfr_rrmax" type="number" step="0.1" placeholder="max"></div></div>
+    <div class="f"><label>RVOL range (at trigger)</label><div class="row2"><input id="sqfr_rvmin" type="number" step="0.1" placeholder="min"><input id="sqfr_rvmax" type="number" step="0.1" placeholder="max"></div></div>
+    <div class="f"><label>Return % range</label><div class="row2"><input id="sqfr_retmin" type="number" step="0.1" placeholder="min"><input id="sqfr_retmax" type="number" step="0.1" placeholder="max"></div></div>
+    <div class="f"><label title="Calendar days from Triggered to Closed. Open trades count to today.">Days held range</label><div class="row2"><input id="sqfr_dmin" type="number" placeholder="min"><input id="sqfr_dmax" type="number" placeholder="max"></div></div>
+    <div class="f"><label>VolumeScore range</label><div class="row2"><input id="sqfr_vsmin" type="number" placeholder="min"><input id="sqfr_vsmax" type="number" placeholder="max"></div></div>
+    <div class="f"><label>Above VWAP</label><select id="sqf_vwap"><option value="">Any</option><option value="1">Yes</option><option value="0">No</option></select></div>
+    <div class="f"><label>ATR expanding</label><select id="sqf_atr"><option value="">Any</option><option value="1">Yes</option><option value="0">No</option></select></div>
+  </aside>
+  <div class="sidemain">
   <section class="gsec" style="border-left-color:var(--accent)">
     <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="sqh-count"></span><span id="sqh-freshness" class="muted" style="font-size:11px"></span><span class="grow"></span><input id="sqh-search" placeholder="Search name / ticker…" oninput="paintSqueezeHist()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
     <!-- Every header sorts (user 2026-07-18, P-01) — data-sqh drives sqhSort(). -->
@@ -1667,6 +1684,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <tbody id="sqh-rows"><tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
     </table></div>
   </section>
+  </div>
+  </div>
 </div>
 
 <!-- Fees (Admin) (user 2026-07-18) — management + performance fees, with a last-month worked example. -->
@@ -1919,8 +1938,11 @@ function appConfirm(msg,{title="Please confirm",ok="Confirm",cancel="Cancel",row
     box.querySelector("[data-ok]").focus();
   });
 }
-const F=["f_search","f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf","f_qmin","f_qmax","f_rrmin","f_rrmax",
-         "f_demin","f_demax","f_dsmin","f_dsmax","f_rvmin","f_rvmax","f_pemin","f_pemax","f_inmin","f_inmax"];
+// Trimmed 2026-08-16 when the filters moved to Squeeze History. f_mkt/f_sec stay because they still
+// carry the saved market/sector scope for Back Test and Apply-this-configuration, even though pass() no
+// longer filters on them. Every loop over F dereferences $(id) unguarded, so an id listed here that has
+// no element throws on load.
+const F=["f_search","f_mkt","f_sec"];
 function syncScannerNameSearch(value){if($("f_search"))$("f_search").value=value||"";applyAll();}
 const LOC={UK:"United Kingdom",US:"United States",FX:"FX",
   "Europe (West)":"Europe (West)","Europe (East)":"Europe (East)","Asia":"Asia","Other":"Other"};
@@ -2006,32 +2028,22 @@ function pass(r,except){
   if(signalOnly && r.has_signal===false)return false;
   if(!tradeVisible(r))return false;   // per-user Trading (Squeeze) market/direction/location filter (user 2026-07-06)
   const g=id=>$(id).value;
-  // Each field is gated by BOTH the sidebar dropdown (single) AND the chart multi-select set (mf_*).
+  // Only the CHART multi-select sets (mf_*) gate these fields now. dm()/sel(), which combined a sidebar
+  // dropdown with the chart set, went with the sidebar to Squeeze History on 2026-08-16 and were left
+  // uncalled; removed rather than kept as dead code implying a filter that no longer exists.
   // "—" is the missing-value bucket (no-signal rows have null direction/status/etc.).
-  // A multi-select dropdown (user 2026-07-06): no selection = no restriction; else the row value
-  // (or "—" when it is missing) must be among the picked options.
-  const sel=(v,id)=>{const opts=[...$(id).selectedOptions].map(o=>o.value).filter(x=>x!=="");
-    if(!opts.length)return true; return opts.includes((v==null||v==="")?"—":v);};
-  const dm=(v,id,mfid)=>sel(v,id) && inSet(mfid,v);
   // except===true skips ALL chart-dimension filters (keeps search / signalOnly / numeric ranges) — used to
   // build the chart-selection-INDEPENDENT seed base so brushed charts keep a constant bar set (P-04 #65).
   const _all=(except===true);
-  if(!_all && except!=="direction" && !dm(r.direction,"f_dir","mf_direction"))return false;
-  if(!_all && except!=="location"  && !dm(r.location,"f_loc","mf_location"))return false;
-  if(!_all && except!=="market"    && !dm(r.market,"f_mkt","mf_market"))return false;
-  if(!_all && except!=="sector"    && !dm(r.sector,"f_sec","mf_sector"))return false;
-  if(!_all && except!=="status"    && !dm(r.status,"f_stat","mf_status"))return false;
-  if(!_all && except!=="timeframe" && !dm(r.timeframe,"f_tf","mf_timeframe"))return false;
-  // null value passes a range (a no-signal / missing-field row is never excluded by a numeric range —
-  // so toggling "Squeeze only" off shows the whole monitored universe).
-  const rng=(v,lo,hi)=>{const a=num(g(lo)),b=num(g(hi));if(v==null)return true;if(a!=null&&v<a)return false;if(b!=null&&v>b)return false;return true;};
-  if(!rng(r.quality,"f_qmin","f_qmax"))return false;
-  if(!rng(r.rr,"f_rrmin","f_rrmax"))return false;
-  if(!rng(r.dist_entry,"f_demin","f_demax"))return false;
-  if(!rng(r.days_since,"f_dsmin","f_dsmax"))return false;
-  if(!rng(r.rvol,"f_rvmin","f_rvmax"))return false;   // RVOL at trigger (user 2026-07-17)
-  if(!rng(r.pe,"f_pemin","f_pemax"))return false;
-  if(!rng(r.insider_pct,"f_inmin","f_inmax"))return false;
+  if(!_all && except!=="direction" && !inSet("mf_direction",r.direction||"—"))return false;
+  if(!_all && except!=="location"  && !inSet("mf_location",r.location||"—"))return false;
+  if(!_all && except!=="market"    && !inSet("mf_market",r.market||"—"))return false;
+  if(!_all && except!=="sector"    && !inSet("mf_sector",r.sector||"—"))return false;
+  if(!_all && except!=="status"    && !inSet("mf_status",r.status||"—"))return false;
+  if(!_all && except!=="timeframe" && !inSet("mf_timeframe",r.timeframe||"—"))return false;
+  // The numeric range filters (quality, R:R, dist-to-entry, days-since, RVOL, P/E, insider %) moved to
+  // Squeeze History on 2026-08-16 along with their controls. Reading a removed element here would throw
+  // on every row. The equivalents there are in SQH_RANGES, with the same null-passes rule.
   // Personal "My Trading Filters" floors (user 2026-08-11: "the scanner report MUST also match the user
   // trading filter settings") — HARD filter (user's explicit choice, not just a visual flag): a setup you
   // couldn't pin or place yourself (My Pre-orders / place-order, per Configuration → My Trading Filters)
@@ -2441,7 +2453,10 @@ function applyAll(){render(); if(SEL&&!$("detail").classList.contains("hidden"))
 // list (no ctrl/cmd-click). The <select> stays the single source of truth — every read (pass()), every
 // write (reset / showall / applyUserDefaults / chart clicks) keeps working untouched; msyncAll() just
 // repaints the button + boxes from it. Options arrive later via fillSel(), so the list is built on open.
-const MSEL_IDS=["f_dir","f_loc","f_mkt","f_sec","f_stat","f_tf"];
+// Scanner entries removed 2026-08-16: those selects have moved to Squeeze History, and the two that
+// remain (f_mkt/f_sec) are hidden scope carriers -- wrapping them would render a dropdown button for a
+// control the user cannot see.
+const MSEL_IDS=["sqf_dir","sqf_loc","sqf_mkt","sqf_sec","sqf_tf","sqf_out"];
 function _mselLabel(sel){
   const on=[...sel.selectedOptions].filter(o=>o.value!=="");
   if(!on.length)return "All";
@@ -2521,14 +2536,21 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   else applyAll();});
 $("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
 const MF_IDS=["mf_sector","mf_direction","mf_status","mf_location","mf_market","mf_timeframe"];
-$("reset").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");
+$("reset").onclick=()=>{
+  if(CUR_TAB==="squeezehist")return sqhReset();
+  F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");
   // Built-in defaults first, then the user's OWN saved defaults on top (Config tab, user 2026-07-03).
-  $("f_qmin").value=45;$("f_rrmin").value=3.1;$("f_dsmax").value=90;$("f_demin").value=-10;$("f_demax").value=10;$("f_days").value=365;$("dlbl").textContent=365;
+  // The Quality/R:R/Dist/Days defaults went with their controls to Squeeze History on 2026-08-16; only
+  // the chart window is still a Scanner setting.
+  $("f_days").value=365;$("dlbl").textContent=365;
   applyUserDefaults();msyncAll();applyAll();};   // msyncAll: repaint the P-08 dropdowns after a bulk write
-$("showall").onclick=()=>{F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");signalOnly=false;$("signalonly").innerHTML='Show Squeeze Only <span style="color:var(--bear)">✗</span>';$("f_days").value=365;$("dlbl").textContent=365;msyncAll();applyAll();};
+$("showall").onclick=()=>{
+  if(CUR_TAB==="squeezehist")return sqhReset();
+  F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");signalOnly=false;$("signalonly").innerHTML='Show Squeeze Only <span style="color:var(--bear)">✗</span>';$("f_days").value=365;$("dlbl").textContent=365;msyncAll();applyAll();};
 $("togglefilters").onclick=()=>{
   if(CUR_TAB==="preorders")return togglePoFilters();      // same header button drives the Pre-orders asides (P-03)
   if(CUR_TAB==="orderops")return toggleOoFilters();
+  if(CUR_TAB==="squeezehist")return toggleSqhFilters();   // filters moved here from the Scanner (2026-08-16)
   const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").innerHTML="Show Filters "+(hidden?'<span style="color:var(--bear)">✗</span>':'<span style="color:var(--bull)">✓</span>');};
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").innerHTML="Show Squeeze Only "+(signalOnly?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');applyAll();};
 let _refStart=0, _refBase=null, _refId=null, _lastTens=-1;
@@ -2771,12 +2793,17 @@ function showTab(name){
   // Header controls are Scanner tools; Refresh is admin-only (user 2026-07-03). "Show Filters" also serves
   // My Pre-orders and Pre-orders-to-IG, same placement as the Scanner (user 2026-07-18, P-03).
   const sc=(name==="scanner")&&!locked;
-  const filterTab=name==="scanner"&&!locked;
-  ["signalonly","reset","showall"].forEach(id=>{const b=$(id);if(b)b.style.display=sc?"":"none";});
+  // Squeeze History owns the filter sidebar since 2026-08-16, so it gets Reset / Show all / Show Filters.
+  // "Squeeze Only" stays Scanner-only: a history row has no has_signal field for it to act on.
+  const sqh=(name==="squeezehist")&&!locked;
+  const filterTab=(name==="scanner"||name==="squeezehist")&&!locked;
+  $("signalonly").style.display=sc?"":"none";
+  ["reset","showall"].forEach(id=>{const b=$(id);if(b)b.style.display=(sc||sqh)?"":"none";});
   const tf=$("togglefilters");
   if(tf){tf.style.display=filterTab?"":"none";
     if(filterTab){const shown=name==="preorders"?!( $("po-filters")||{classList:{contains:()=>true}}).classList.contains("hidden")
         :name==="orderops"?!( $("oo-filters")||{classList:{contains:()=>true}}).classList.contains("hidden")
+        :name==="squeezehist"?!( $("sqh-filters")||{classList:{contains:()=>true}}).classList.contains("hidden")
         :!( $("aside")||{classList:{contains:()=>true}}).classList.contains("collapsed");
       tf.innerHTML="Show Filters "+(shown?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');}}
   const rb=$("refresh"); if(rb) rb.style.display=(sc&&IS_ADMIN)?"":"none";
@@ -3247,7 +3274,11 @@ document.querySelectorAll("th[data-vk]").forEach(th=>th.onclick=()=>{const k=th.
 document.querySelectorAll("th[data-bk]").forEach(th=>th.onclick=()=>{const k=th.dataset.bk;batchSortDir=(batchSortK===k)?-batchSortDir:-1;batchSortK=k;paintBatch();_sortArrows("data-bk",batchSortK,batchSortDir);});
 // ── Configuration tab (user 2026-07-03): per-user filter defaults + shared execution switches ──────
 let USER_FILTERS={};
-const FILTER_IDS=()=>F.concat(["f_days","pof_direction","pof_status","pof_location","pof_market","pof_timeframe","pof_sector"]);   // incl. the per-user Pre-orders filters
+// Saved filter defaults now span three surfaces: what is left of the Scanner (search + the hidden
+// market/sector scope + the chart window), the Pre-orders tabs, and the Squeeze History filters that
+// moved off the Scanner on 2026-08-16.
+const FILTER_IDS=()=>F.concat(["f_days","pof_direction","pof_status","pof_location","pof_market","pof_timeframe","pof_sector"],
+                              SQH_FILTER_IDS());
 function applyUserDefaults(){
   Object.entries(USER_FILTERS).forEach(([k,v])=>{const el=$(k);if(el&&v!=null&&v!=="")el.value=v;});
   if(USER_FILTERS.f_days){$("dlbl").textContent=USER_FILTERS.f_days;}
@@ -4339,16 +4370,19 @@ function _mcapFmt(v){if(v==null||!isFinite(+v))return'—';v=+v;const a=Math.abs
 // Colour-coded tick/cross for boolean columns (2026-08-07, ChangeRequest P-09 — Back Test's VWAP/ATR ticks
 // were plain uncoloured text; every other BULL/BEAR-style indicator on the site is green/red).
 const _tickCross=v=>v==null?'<span class="muted">—</span>':v?'<span style="color:var(--bull);font-weight:700">✓</span>':'<span style="color:var(--bear);font-weight:700">✗</span>';
-// Same presets on the SCANNER (user 2026-07-18): set the RVOL / Quality / R:R range filters so you can
-// pick instruments the analysis says are best. A preset field not in the preset is cleared.
+// Cherry-pick presets (user 2026-07-18): set the RVOL / Quality / R:R thresholds the 15-month analysis
+// says separate the best setups. Moved from the Scanner to Squeeze History on 2026-08-16 with the filters
+// they drive — the presets ARE range filters, so they belong wherever the ranges live, and they are more
+// useful against finished trades than against a live list. A preset field not in the preset is cleared.
 function setCherry(id){
   const p=CHERRY_PRESETS.find(x=>x.id===id); if(!p)return;
-  $("f_rvmin").value=p.f.rvmin??''; $("f_qmin").value=p.f.qmin??''; $("f_rrmin").value=p.f.rrmin??'';
-  document.querySelectorAll('#scanner-presets .pill').forEach(b=>b.classList.toggle('active',b.dataset.p===id));
-  applyAll();
+  const set=(el,v)=>{const n=$(el);if(n)n.value=v??'';};
+  set("sqfr_rvmin",p.f.rvmin); set("sqfr_qmin",p.f.qmin); set("sqfr_rrmin",p.f.rrmin);
+  document.querySelectorAll('#sqh-presets .pill').forEach(b=>b.classList.toggle('active',b.dataset.p===id));
+  paintSqueezeHist();
 }
 function paintScannerPresets(){
-  const n=$("scanner-presets"); if(!n)return;
+  const n=$("sqh-presets"); if(!n)return;
   n.innerHTML=CHERRY_PRESETS.map(p=>`<button class="pill" data-p="${p.id}" onclick="setCherry('${p.id}')" style="font-size:11px;padding:4px 9px">${p.label}</button>`).join("");
 }
 paintScannerPresets();   // render now — CHERRY_PRESETS is defined above (user 2026-07-18)
@@ -5089,7 +5123,7 @@ function paintInstrFunnel(){
 let SQH=null, sqhSortK="triggered_date", sqhSortDir=-1;   // default: Triggered date descending (user 2026-08-01); header click changes it
 function renderSqueezeHist(){
   if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr>';}
-  fetch("/api/squeeze-history",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];const f=$("sqh-freshness");if(f)f.textContent=j.data_through?`data through ${j.data_through}${j.refreshed_at?` · refreshed ${String(j.refreshed_at).replace('T',' ').slice(0,16)} UTC`:''}`:'';paintSqueezeHist();})
+  fetch("/api/squeeze-history",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];const f=$("sqh-freshness");if(f)f.textContent=j.data_through?`data through ${j.data_through}${j.refreshed_at?` · refreshed ${String(j.refreshed_at).replace('T',' ').slice(0,16)} UTC`:''}`:'';fillSqhFilterOptions();paintSqueezeHist();})
     .catch(()=>{SQH=[];paintSqueezeHist();});
 }
 // Header sort (user 2026-07-18, P-01): click toggles asc/desc on that column; "" restores server order.
@@ -5098,7 +5132,55 @@ function _sqYearOf(r){return String(r.triggered_date||r.ready_date||r.first_seen
 function _sqQBand(r){const q=r.quality;if(q==null)return '—';if(q>=75)return '75–100';if(q>=50)return '50–74';if(q>=25)return '25–49';return '0–24';}
 const _sqQCol=k=>k==='75–100'?'var(--bull)':k==='0–24'?'var(--bear)':'var(--accent)';
 let _sqYearSeeded=false;
-let _sqDvSrc=null,_sqDvQ=null,_sqDv=null;   // cached precomputed dim values (P-06 perf)
+let _sqDvSrc=null,_sqDvQ=null,_sqDv=null,_sqDvSig=null;   // cached precomputed dim values (P-06 perf)
+// Squeeze History filter controls (user 2026-08-16). Ranges are kept separate from the chart-brushing
+// sqf_* sets because they behave differently: a set is "one of these", a range is "between these", and
+// only the sets participate in the per-chart `except` brushing.
+const SQH_MSELS=["sqf_dir","sqf_loc","sqf_mkt","sqf_sec","sqf_tf","sqf_out"];
+const SQH_RANGES=[["sqfr_qmin","sqfr_qmax",r=>r.quality],["sqfr_rrmin","sqfr_rrmax",r=>r.rr],
+  ["sqfr_rvmin","sqfr_rvmax",r=>r.rvol],["sqfr_retmin","sqfr_retmax",r=>r.return_pct],
+  ["sqfr_dmin","sqfr_dmax",r=>_sqDaysHeld(r)],["sqfr_vsmin","sqfr_vsmax",r=>r.volume_score]];
+const SQH_TRI=[["sqf_vwap",r=>r.above_vwap],["sqf_atr",r=>r.atr_expanding]];
+const SQH_FILTER_IDS=()=>[...SQH_MSELS,...SQH_RANGES.flatMap(([a,b])=>[a,b]),...SQH_TRI.map(([id])=>id)];
+// Calendar days from Triggered to Closed; an unresolved trade counts to today, matching how Back Test's
+// days_open is derived server-side (hvf_web/server.py _days_open).
+function _sqDaysHeld(r){
+  if(!r.triggered_date)return null;
+  const a=new Date(String(r.triggered_date).slice(0,10)+"T00:00:00Z");
+  const b=r.outcome_date?new Date(String(r.outcome_date).slice(0,10)+"T00:00:00Z"):new Date();
+  return (isNaN(a)||isNaN(b))?null:Math.max(0,Math.round((b-a)/86400000));
+}
+// Options come from SQH itself, not /api/records: the history spans instruments and markets the current
+// snapshot no longer contains, and offering a value that can never match is the fault we are avoiding.
+function fillSqhFilterOptions(){
+  const opts=(get)=>[...new Set((SQH||[]).map(get).filter(v=>v!=null&&v!==""))].sort();
+  [["sqf_loc",r=>locName(r.location)],["sqf_mkt",r=>r.market],
+   ["sqf_sec",r=>r.sector],["sqf_tf",r=>r.timeframe]].forEach(([id,get])=>{
+    const el=$(id); if(!el)return;
+    const keep=new Set([...el.selectedOptions].map(o=>o.value));
+    el.innerHTML=opts(get).map(v=>`<option${keep.has(v)?" selected":""}>${_esc(v)}</option>`).join("");
+  });
+  if(typeof msyncAll==="function")msyncAll();
+}
+function sqhFiltersActive(){
+  return SQH_FILTER_IDS().some(id=>{const el=$(id);return el&&(el.multiple?[...el.selectedOptions].some(o=>o.value!==""):el.value!=="");});
+}
+function sqhReset(){
+  SQH_FILTER_IDS().forEach(id=>{const el=$(id);if(!el)return;
+    if(el.multiple)[...el.options].forEach(o=>{o.selected=false;}); else el.value="";});
+  // The chart-brushing sets are part of "what is filtered", so Reset clears them too.
+  ["sqf_market","sqf_location","sqf_sector","sqf_direction","sqf_status","sqf_year","sqf_quality"]
+    .forEach(id=>{const el=$(id);if(el)el.value="";});
+  _sqYearSeeded=true;                      // do not re-seed the two-most-recent-years default on reset
+  if(typeof msyncAll==="function")msyncAll();
+  paintSqueezeHist();
+}
+function toggleSqhFilters(){
+  const a=$("sqh-filters"); if(!a)return;
+  const hidden=a.classList.toggle("hidden");
+  const b=$("togglefilters");
+  if(b)b.innerHTML="Show Filters "+(hidden?'<span style="color:var(--bear)">✗</span>':'<span style="color:var(--bull)">✓</span>');
+}
 function paintSqueezeHist(){
   const rows=SQH||[], q=(($("sqh-search")||{}).value||"").trim().toLowerCase();
   // Default the year filter to the most recent TWO years, once, when the data first loads (user 2026-08-02,
@@ -5109,7 +5191,36 @@ function paintSqueezeHist(){
     const recent=yrs.slice(-2);
     if(recent.length && $("sqf_year") && !$("sqf_year").value) $("sqf_year").value=recent.join(SEP);
   }
-  const base=q?rows.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(q)):rows;
+  // Sidebar filters narrow the population BEFORE the chart strip is built, so the charts describe what
+  // the table is actually showing rather than rows it has just excluded.
+  const _sqSel=id=>{const el=$(id);if(!el||!el.multiple)return null;
+    const v=[...el.selectedOptions].map(o=>o.value).filter(x=>x!=="");return v.length?new Set(v):null;};
+  const _sqRng=(lo,hi)=>{const a=$(lo),b=$(hi);
+    const mn=(a&&a.value!=="")?+a.value:null, mx=(b&&b.value!=="")?+b.value:null;
+    return (mn==null&&mx==null)?null:[mn,mx];};
+  const _msel={dir:_sqSel("sqf_dir"),loc:_sqSel("sqf_loc"),mkt:_sqSel("sqf_mkt"),
+               sec:_sqSel("sqf_sec"),tf:_sqSel("sqf_tf"),out:_sqSel("sqf_out")};
+  const _rngs=SQH_RANGES.map(([lo,hi,get])=>[_sqRng(lo,hi),get]).filter(([r])=>r);
+  const _tris=SQH_TRI.map(([id,get])=>[(($(id)||{}).value)||"",get]).filter(([v])=>v!=="");
+  const _sqSig=SQH_FILTER_IDS().map(id=>{const el=$(id);
+    return el?(el.multiple?[...el.selectedOptions].map(o=>o.value).join(","):el.value):"";}).join("|");
+  const sideOn=Object.values(_msel).some(Boolean)||_rngs.length>0||_tris.length>0;
+  const _sideKeep=r=>{
+    if(_msel.dir&&!_msel.dir.has(r.direction||"—"))return false;
+    if(_msel.loc&&!_msel.loc.has(locName(r.location)||"—"))return false;
+    if(_msel.mkt&&!_msel.mkt.has(r.market||"—"))return false;
+    if(_msel.sec&&!_msel.sec.has(r.sector||"—"))return false;
+    if(_msel.tf&&!_msel.tf.has(r.timeframe||"—"))return false;
+    if(_msel.out&&!_msel.out.has(r.outcome||"—"))return false;
+    // A missing value expresses no opinion and passes, exactly as the Scanner's rng() does — otherwise
+    // typing one bound silently deletes every row that has never been scored.
+    for(const [rg,get] of _rngs){const v=get(r); if(v==null||!isFinite(+v))continue;
+      if(rg[0]!=null&&+v<rg[0])return false; if(rg[1]!=null&&+v>rg[1])return false;}
+    for(const [want,get] of _tris){const v=get(r); if(v==null)continue;
+      if(String(v?1:0)!==want)return false;}
+    return true;};
+  const _searched=q?rows.filter(r=>((r.name||'')+' '+disp(r.ticker)+' '+(r.ticker||'')).toLowerCase().includes(q)):rows;
+  const base=sideOn?_searched.filter(_sideKeep):_searched;
   // Chart strip with BRUSHING (user 2026-08-01): each chart counts over rows passing every OTHER sqf_ filter
   // but not its own. Year + Quality are now dims too, and Direction drives the compact title chart.
   const _sqDims=[["sqf_market",r=>r.market],["sqf_location",r=>locName(r.location)],["sqf_sector",r=>r.sector],["sqf_direction",r=>r.direction],["sqf_status",r=>r.outcome],["sqf_year",_sqYearOf],["sqf_quality",_sqQBand]];
@@ -5118,8 +5229,11 @@ function paintSqueezeHist(){
   // Precomputed dim values are cached across paints (user 2026-08-02, P-06): they depend only on the data +
   // search, NOT the filter selections, so clicking a filter reuses them instead of rebuilding 32k×7.
   let dv;
-  if(_sqDvSrc===SQH && _sqDvQ===q && _sqDv){dv=_sqDv;}
-  else{dv=base.map(r=>{const o={};_sqDims.forEach(([id,f])=>{const v=f(r);o[id]=(v==null||v==='')?'—':String(v);});return o;});_sqDvSrc=SQH;_sqDvQ=q;_sqDv=dv;}
+  // _sqSig is part of the key: the cache is indexed positionally against `base`, and the sidebar
+  // changes what `base` contains, so keying on (data, search) alone would hand back dim values for a
+  // different set of rows.
+  if(_sqDvSrc===SQH && _sqDvQ===q && _sqDvSig===_sqSig && _sqDv){dv=_sqDv;}
+  else{dv=base.map(r=>{const o={};_sqDims.forEach(([id,f])=>{const v=f(r);o[id]=(v==null||v==='')?'—':String(v);});return o;});_sqDvSrc=SQH;_sqDvQ=q;_sqDvSig=_sqSig;_sqDv=dv;}
   // Hoist each dim's selected-set ONCE per paint (user 2026-08-02, P-06) — inSet() rebuilt a Set from a
   // string split on every call, which over 32k rows × 7 charts was ~1.8M splits (the real slowness).
   const _sel={}; _sqDims.forEach(([id])=>_sel[id]=setOf(id));
@@ -5163,6 +5277,9 @@ function paintSqueezeHist(){
 }
 // Wire the sortable Squeeze-History headers (mirrors the Performance th[data-pf] wiring).
 document.querySelectorAll("th[data-sqh]").forEach(th=>th.onclick=()=>sqhSort(th.dataset.sqh));
+// Repaint on any sidebar change. "input" covers typing in a range; the msel wrapper dispatches
+// "input" on the underlying <select> too (see _mselBuild), so one listener serves both kinds.
+SQH_FILTER_IDS().forEach(id=>{const el=$(id);if(el)el.addEventListener("input",()=>paintSqueezeHist());});
 // ── Fees (Admin) (user 2026-07-18) — management + performance fees ─────────────────────────────────────
 // Two selectable periods (user 2026-07-31, P-05): "Last month" (billed) + "This month (so far)"; each
 // shows the fee example AND the underlying transactions (trade_log) that explain the realised profit.
@@ -5947,7 +6064,10 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     DATA=j.records||[]; DATA.forEach(augment);
     if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;   // canonical market list for the Refresh picker (P-15)
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
-    fillSel("f_loc","location",locName);fillSel("f_mkt","market");fillSel("f_sec","sector");fillSel("f_tf","timeframe");
+    // f_loc/f_tf went to Squeeze History with the filters (2026-08-16) and fillSel dereferences $(id)
+    // unguarded. f_mkt/f_sec are still populated: they are hidden now, but applyConfigFromReport selects
+    // options on them to carry the saved market/sector scope, which needs the options to exist.
+    fillSel("f_mkt","market");fillSel("f_sec","sector");
     msyncAll();   // options only exist now — repaint the P-08 dropdown buttons (incl. any user defaults)
     render();
     if($("view-instruments"))paintInstruments();   // Instruments reuses this same DATA load (user 2026-08-07, ChangeRequest P-08) — repaint if it's already the active/cached tab
