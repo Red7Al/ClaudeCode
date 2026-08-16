@@ -3151,11 +3151,21 @@ def update_stop(deal_id: str, new_stop_level: float) -> bool:
 # Automated Stop-Loss Amendment (user 2026-07-18)
 # ----------------------------------------------------------------------------------------------------------------------
 # As a position moves into profit, lock some of that gain in by trailing the stop up (a long) / down (a short).
-#   gain      = favourable % move from entry
-#   increment = entry * gain * threshold          (threshold is a fraction; 0.5 = keep half the run)
-#   new_stop  = current_stop + increment          (BUY; minus for SELL — i.e. move the stop toward price)
+#   gain     = favourable % move from entry
+#   locked   = entry * gain * threshold           (threshold is a fraction; 0.9 = keep 90% of the run)
+#   new_stop = entry + locked                     (BUY; entry - locked for SELL)
 # The stop is only ever TIGHTENED, never widened. OFF unless the `stop_amend_threshold` config value > 0.
-# Examples (user, all BUY): stop100/entry105/price120/thr50% -> +7.5 -> 107.5 ; thr0% -> none ; price85 -> none.
+# Examples (BUY): entry105/price120/thr50% -> 112.5 (keeps 7.5 of the 15 points) ; thr0% -> none ;
+#                 price85 -> none (never trail at a loss).
+#
+# CORRECTED 2026-08-16. The rule was `new_stop = current_stop + entry*gain*threshold`, an increment added
+# to the previous stop. It let a 31% gain give back to 13% (user 600048.SS, 2025-09-03), because the stop
+# was anchored below entry and the increment accumulated per bar. The original worked example recorded
+# here — stop100/entry105/price120/thr50% -> 107.5 — was itself derived from that model and protected
+# only 2.4 of 14.3 points, 17% of the run, not the 50% the setting claimed. The user's requirement of
+# 2026-08-16 ("if we achieved 31% ... we must get at least 28%") settles it in favour of the documented
+# INTENT: threshold now means the share of the run actually retained, so 0.9 turns +31% into +27.9% and
+# 0.92 into +28.5%. Setting `stop_amend_threshold` to 90+ is what delivers that requirement.
 # ======================================================================================================================
 
 def compute_trailing_stop(direction, entry, current_stop, price, threshold, min_move_pct: float = 0.0):
@@ -3173,14 +3183,32 @@ def compute_trailing_stop(direction, entry, current_stop, price, threshold, min_
     gain = (price - entry) / entry if buy else (entry - price) / entry
     if gain <= 0:                                   # only trail once in profit
         return None
-    increment = entry * gain * threshold
-    new_stop = current_stop + increment if buy else current_stop - increment
+    # An absolute LEVEL that keeps `threshold` of the run measured from entry, ratcheted by the
+    # never-widen check below.
+    #
+    # Until 2026-08-16 this was `current_stop + entry*gain*threshold` -- an increment added to the
+    # PREVIOUS STOP -- which was wrong twice over (user: "the stop loss is set incorrectly if I've gone
+    # from 31% gain to 13%"):
+    #   * anchored to the stop, not the price. The stop starts BELOW entry, so it lagged permanently:
+    #     entry 100, stop 95, price 131, threshold 0.25 put the stop at 102.75 -- protecting 2.8% of a
+    #     31% run.
+    #   * cumulative. Each bar added another increment, so the level became entry*threshold*SUM(gain per
+    #     bar) -- the stop depended on how many bars the position was held rather than on the peak, and
+    #     the same price path sampled at a different frequency produced a different stop.
+    # As a level it now delivers the documented meaning of the setting ("% of the profit run to lock in"):
+    # entry 100, price 131, threshold 0.9 -> stop 127.9, keeping 27.9 of the 31 points.
+    locked = entry * gain * threshold
+    new_stop = entry + locked if buy else entry - locked
     better = new_stop > current_stop if buy else new_stop < current_stop
     if not better:                                  # never widen
         return None
     if min_move_pct and abs(new_stop - current_stop) < abs(current_stop) * (min_move_pct / 100.0):
         return None                                 # move too small to bother
-    return round(new_stop, 2)
+    rounded = round(new_stop, 4)
+    # Rounding must never loosen the stop it just tightened.
+    if (rounded < current_stop) if buy else (rounded > current_stop):
+        return None
+    return rounded
 
 
 def stop_amend_threshold() -> float:
