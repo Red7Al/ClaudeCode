@@ -82,3 +82,54 @@ def test_ratchets_upward_as_price_advances():
         levels.append(stop)
     assert levels == sorted(levels), f"stop must only tighten: {levels}"
     assert levels[-1] > entry, "after a 30% run the stop must be above entry"
+
+
+# ------------------------------------------------------------------------------------------------------
+# ABOVE TARGET the rule is different, and must stay different (user 2026-08-16: "once the target is
+# reached and we let it run, the stop loss should be minimal"). The target gain is already banked, so the
+# only question is how little to hand back -- a tight distance below the running price, NOT a share of
+# the run measured from entry. Sharing compute_trailing_stop here meant the trail level (entry+gain*thr)
+# stayed under the target until the gain reached 1/thr times the target return, so a trade could run to
+# +79% and fall all the way back to a +20% target before stopping.
+# ------------------------------------------------------------------------------------------------------
+def _bars(closes):
+    return [(f"2026-01-{i + 1:02d}", c * 1.005, c * 0.995, c) for i, c in enumerate(closes)]
+
+
+def _run(direction, entry, stop, target, closes, thr, stop_thr=0.0):
+    from hvf_web import server
+    outcome, exit_price = server._run_path(direction, entry, stop, target, _bars(closes), thr, stop_thr)
+    gain = ((exit_price - entry) / entry * 100.0) if direction == "BULLISH" else ((entry - exit_price) / entry * 100.0)
+    return outcome, exit_price, gain
+
+
+def test_above_target_hands_back_only_the_trail_distance():
+    """A long that runs to +79% past a +20% target must not collapse back to the target."""
+    closes = [100, 112, 125, 140, 155, 170, 179, 150, 130, 118, 105]
+    _, _, gain = _run("BULLISH", 100.0, 95.0, 120.0, closes, 0.02)
+    assert gain > 70.0, f"only {gain:.2f}% realised from a 79% peak -- the post-target trail is too loose"
+    # Give-back is bounded by the trail distance, not by the distance back to target.
+    assert 79.0 - gain < 5.0, f"gave back {79.0 - gain:.2f} points on a 2% trail"
+
+
+def test_a_tighter_post_target_trail_keeps_more():
+    closes = [100, 112, 125, 140, 155, 170, 179, 150, 130, 118, 105]
+    tight = _run("BULLISH", 100.0, 95.0, 120.0, closes, 0.02)[2]
+    loose = _run("BULLISH", 100.0, 95.0, 120.0, closes, 0.10)[2]
+    assert tight > loose, f"tighter trail must retain more: 2% -> {tight:.2f}%, 10% -> {loose:.2f}%"
+
+
+def test_the_target_gain_is_never_surrendered():
+    """Target hit then an immediate collapse: the exit must be the target, never worse."""
+    closes = [100, 112, 121, 108, 99, 94]
+    for thr in (0.02, 0.25):
+        outcome, exit_price, gain = _run("BULLISH", 100.0, 95.0, 120.0, closes, thr)
+        assert exit_price >= 120.0 - 1e-9, f"thr={thr}: exited at {exit_price}, below the 120 target"
+        assert gain >= 20.0 - 1e-9
+
+
+def test_short_above_target_behaves_as_the_mirror():
+    closes = [100, 88, 75, 60, 45, 30, 21, 50, 70, 82]      # short running to +79%
+    _, exit_price, gain = _run("BEARISH", 100.0, 105.0, 80.0, closes, 0.02)
+    assert gain > 70.0, f"short only realised {gain:.2f}% from a 79% peak"
+    assert exit_price <= 80.0 + 1e-9, "short must never exit above its target level"

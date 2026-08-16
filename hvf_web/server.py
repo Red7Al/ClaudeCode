@@ -2971,10 +2971,23 @@ def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0, return_date
             if not floored and target and lo <= target:
                 floored = True
                 cur = min(cur, target)
-        # Trail the stop toward price: above target by `thr`, before target by the stop-loss trail `stop_thr`.
-        t = thr if floored else stop_thr
-        if t and t > 0:
-            ns = ig_shim.compute_trailing_stop(direction, entry, cur, cl, t)
+        # The two phases need DIFFERENT rules (user 2026-08-16: "once the target is reached and we let it
+        # run, the stop loss should be minimal").
+        #
+        # BEFORE target the gain is unbanked, so `stop_thr` means "keep this share of the run measured
+        # from entry" -- compute_trailing_stop, which is what turns +31% into +28.5% at 0.92.
+        #
+        # AFTER target the target gain is already secured and the only question is how little to give
+        # back, so `thr` is a tight distance BELOW the running price. Sharing compute_trailing_stop here
+        # was badly wrong: its level is entry + gain*thr, which stays UNDER the target until the gain is
+        # 1/thr times the target return. With a +20% target and thr 25% a trade could run to +79% and
+        # fall all the way back to +20% before stopping -- 59 points handed back.
+        if floored:
+            if thr and thr > 0:
+                ns = cl * (1 - thr) if buy else cl * (1 + thr)
+                cur = max(cur, ns) if buy else min(cur, ns)
+        elif stop_thr and stop_thr > 0:
+            ns = ig_shim.compute_trailing_stop(direction, entry, cur, cl, stop_thr)
             if ns is not None:
                 cur = max(cur, ns) if buy else min(cur, ns)
     result = ("OPEN", (last if last is not None else None), last_date)
