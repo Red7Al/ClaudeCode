@@ -525,6 +525,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="btn" id="refresh-mkt-btn" onclick="toggleRefreshMkt(event)" title="Choose which markets the Refresh rescans (default: all)">Markets: All ▾</button>
     <div id="refresh-mkt-panel" style="display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:60;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:210px;max-height:360px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.35)"></div>
   </span>
+  <span id="refresh-loc-wrap" style="display:none;position:relative">
+    <button class="btn" id="refresh-loc-btn" onclick="toggleRefreshLoc(event)" title="Choose which locations the Refresh rescans. A location is a group of markets, so picking one selects its markets.">Locations: All ▾</button>
+    <div id="refresh-loc-panel" style="display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:60;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:230px;max-height:360px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.35)"></div>
+  </span>
   <button class="btn" id="refresh">↻ Refresh data</button>
   <button class="btn" id="reset">Reset filters</button>
   <button class="btn" id="showall">Remove all filters (show all)</button>
@@ -2564,10 +2568,61 @@ function toggleRefreshMkt(e){
   // close on next outside click
   setTimeout(()=>{const h=ev=>{if(!$("refresh-mkt-wrap").contains(ev.target)){p.style.display="none";document.removeEventListener("click",h);}};document.addEventListener("click",h);},0);
 }
+// Rebuild a CHOICE of LOCATIONS (user 2026-08-16: "rebuild snapshot would also be good to filter which
+// markets / locations - just do locations for now"). A location is a GROUP of markets, so this resolves
+// to markets and reuses the existing, proven refresh path -- no scanner, workflow or server change, and
+// no second filter for the backend to disagree with. Picking "US" is exactly picking its markets.
+let REFRESH_LOCATIONS=new Set();
+function _locMarketMap(){
+  const m={};
+  (DATA||[]).forEach(r=>{const l=locName(r.location)||"", k=r.market;
+    if(l&&k)(m[l]||(m[l]=new Set())).add(k);});
+  return m;
+}
+function _refreshMarketsForLocations(){
+  const map=_locMarketMap(), out=new Set();
+  REFRESH_LOCATIONS.forEach(l=>(map[l]||new Set()).forEach(k=>out.add(k)));
+  return out;
+}
+function buildRefreshLocPanel(){
+  const p=$("refresh-loc-panel"); if(!p)return;
+  const map=_locMarketMap(), locs=Object.keys(map).sort(), all=REFRESH_LOCATIONS.size===0;
+  const rows=locs.map(l=>{
+    const on=!all&&REFRESH_LOCATIONS.has(l), n=map[l].size;
+    return `<label style="display:flex;align-items:center;gap:7px;padding:3px 4px;font-size:12.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" data-loc="${l.replace(/"/g,'&quot;')}" ${on?'checked':''} onchange="onRefreshLocToggle(this)"> ${_esc(l)} <span class="muted" style="font-size:11px">(${n} market${n===1?'':'s'})</span></label>`;
+  }).join("");
+  p.innerHTML=`<label style="display:flex;align-items:center;gap:7px;padding:3px 4px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--line);margin-bottom:4px"><input type="checkbox" id="refresh-loc-all" ${all?'checked':''} onchange="onRefreshLocAll(this)"> <b>All locations</b></label>`+rows
+    +(locs.length?'':'<div class="muted" style="font-size:12px;padding:4px">No locations in the current snapshot.</div>');
+  updateRefreshLocLabel();
+}
+function onRefreshLocAll(cb){ if(cb.checked)REFRESH_LOCATIONS.clear(); buildRefreshLocPanel(); }
+function onRefreshLocToggle(cb){
+  const l=cb.getAttribute("data-loc");
+  if(cb.checked)REFRESH_LOCATIONS.add(l); else REFRESH_LOCATIONS.delete(l);
+  buildRefreshLocPanel();
+}
+function updateRefreshLocLabel(){
+  const b=$("refresh-loc-btn"); if(!b)return;
+  const n=REFRESH_LOCATIONS.size;
+  b.textContent = n===0 ? "Locations: All ▾" : (n===1 ? `Locations: ${[...REFRESH_LOCATIONS][0]} ▾` : `Locations: ${n} selected ▾`);
+}
+function toggleRefreshLoc(e){
+  if(e)e.stopPropagation();
+  const p=$("refresh-loc-panel"); if(!p)return;
+  if(p.style.display!=="none"){p.style.display="none";return;}
+  buildRefreshLocPanel(); p.style.display="block";
+  setTimeout(()=>{const h=ev=>{if(!$("refresh-loc-wrap").contains(ev.target)){p.style.display="none";document.removeEventListener("click",h);}};document.addEventListener("click",h);},0);
+}
 $("refresh").onclick=async()=>{ if($("refresh").disabled)return;
-  const picked=[...REFRESH_MARKETS];
-  const scope = picked.length ? `the selected market${picked.length>1?'s':''} (${picked.join(', ')})`
-                              : `the full universe (${DATA.length||'884+'} instruments)`;
+  // Markets and locations UNION rather than intersect: both name markets to include, so ticking "US" and
+  // then "FTSE 100" means both, which is what picking two things reads as.
+  const fromLoc=_refreshMarketsForLocations();
+  const picked=[...new Set([...REFRESH_MARKETS,...fromLoc])];
+  const locs=[...REFRESH_LOCATIONS];
+  const scope = picked.length
+    ? (locs.length ? `${locs.join(', ')} — ${picked.length} market${picked.length>1?'s':''} (${picked.join(', ')})`
+                   : `the selected market${picked.length>1?'s':''} (${picked.join(', ')})`)
+    : `the full universe (${DATA.length||'884+'} instruments)`;
   if(!await appConfirm(`Rescans ${scope} — takes a few minutes. The page keeps working with the current data and reloads automatically when the rebuild finishes.`,{title:"Rebuild the snapshot now?",ok:"↻ Rebuild"}))return;
   $("refresh").disabled=true; $("refresh").textContent="↻ Starting…"; _refStart=Date.now(); _lastTens=-1;
   fetch("/api/refresh",{method:"POST",headers:{"X-Auth":AUTH,"Content-Type":"application/json"},
@@ -2726,6 +2781,7 @@ function showTab(name){
       tf.innerHTML="Show Filters "+(shown?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');}}
   const rb=$("refresh"); if(rb) rb.style.display=(sc&&IS_ADMIN)?"":"none";
   const rmw=$("refresh-mkt-wrap"); if(rmw){rmw.style.display=(sc&&IS_ADMIN)?"":"none"; if(sc&&IS_ADMIN)updateRefreshMktLabel();}
+  const rlw=$("refresh-loc-wrap"); if(rlw){rlw.style.display=(sc&&IS_ADMIN)?"":"none"; if(sc&&IS_ADMIN)updateRefreshLocLabel();}
   if(locked)return;
   const R={preorders:renderPreorders,activity:renderActivity,orderops:renderOrderOps,xposts:renderXposts,
     config:renderConfig,configadmin:renderConfig,users:renderUsers,syslogs:renderSyslogs,jobs:renderJobs,
