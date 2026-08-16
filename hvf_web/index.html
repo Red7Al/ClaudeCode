@@ -4169,15 +4169,28 @@ function winnersRunChange(surface='pf'){
     // One common eligible population, identical ordering and identical wallet/funding settings. The only
     // variable is the exit method (and therefore its exit date/capacity cost). Both proofs are retained so
     // a longer-running position that causes a later opportunity to be missed is visible, not averaged away.
-    const commonRows=rows.filter(r=>r.run_perf!=null).sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
-    if(!commonRows.length){paint('<div class="muted" style="font-size:13px">No trades have both baseline and trailing-stop results.</div>');return;}
+    // RESOLVED trades only (user 2026-08-16). An unresolved position's baseline "return" is a
+    // mark-to-market on money still at risk, not a banked result, so setting it against a simulated
+    // realised exit is not a comparison -- it is two different quantities. It also breaks the invariant
+    // the whole feature rests on: a trade that banked its target can never do worse by running (the stop
+    // is floored at the target), but a position still open at +31% can perfectly well show a runner that
+    // took +28% and read as a loss. That is where "how was this loss possible" came from on 600048.SS.
+    const openRows=rows.filter(r=>r.run_perf!=null&&r.outcome==='OPEN').length;
+    const commonRows=rows.filter(r=>r.run_perf!=null&&r.outcome!=='OPEN').sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
+    if(!commonRows.length){paint('<div class="muted" style="font-size:13px">No resolved trades have both baseline and trailing-stop results.</div>');return;}
     const plainReplay=_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"perf",false);
     const runReplay=_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"run_perf",false);
     const comparison=_winnerRunComparison(plainReplay,runReplay,WINNERS_WALLET),
           attribution=_winnerRunAttribution(plainReplay,runReplay,WINNERS_WALLET),
           {plainFinal,runFinal,returnDelta,drawdownDelta,verdict}=comparison, delta=runFinal-plainFinal;
     const tgt=commonRows.filter(r=>r.outcome==='TARGET');
-    const ran=tgt.filter(r=>r.run_perf>r.perf+0.01).length, back=tgt.filter(r=>r.run_perf<r.perf-0.01).length;
+    const ran=tgt.filter(r=>r.run_perf>r.perf+0.01).length;
+    // The invariant, stated by the user 2026-08-16: "the return should not be any lower than prior to the
+    // change and the gains beyond the original target should add to the net gain". Now checked across
+    // EVERY resolved trade, not just target-hitters -- a stopped trade must come out identical (nothing
+    // trails below target) and a target-hitter can only improve. Any row that goes backwards is a fault
+    // in the exit model and withholds the verdict.
+    const back=commonRows.filter(r=>r.run_perf<r.perf-0.01).length;
     const improvedTrades=commonRows.filter(r=>r.run_perf>r.perf+0.01).length,
           worseTrades=commonRows.filter(r=>r.run_perf<r.perf-0.01).length,
           sameTrades=commonRows.length-improvedTrades-worseTrades;
@@ -4192,7 +4205,7 @@ function winnersRunChange(surface='pf'){
           firstDate=String((commonRows[0]||{}).trig_date||'').slice(0,10),lastDate=String((commonRows[commonRows.length-1]||{}).trig_date||'').slice(0,10),
           verdictTitle=!evidenceValid?'Evidence invalid — integrity check failed':verdict==='improved'?'Improved historical return':verdict==='worse'?'Reduced historical return':'No historical return improvement',
           verdictText=!targetLockValid
-            ?`${back.toLocaleString()} normal target hit(s) finished below their target return in the simulation. The portfolio verdict is withheld until that invariant is restored.`
+            ?`${back.toLocaleString()} resolved trade(s) finished BELOW their original result. Letting a winner run must never return less than selling at target, so the portfolio verdict is withheld until that is restored.`
             :!attribution.reconciled
               ?`The exit/capacity attribution differs from the wallet result by ${signedMoney(attribution.reconciliation)}. The portfolio verdict is withheld until the replay reconciles.`
             :!serverMatches
@@ -4210,7 +4223,7 @@ function winnersRunChange(surface='pf'){
       <div style="border-left:4px solid ${col};padding:8px 10px;margin:8px 0;background:color-mix(in srgb,${col} 10%,transparent)">
         <b style="color:${col}">Evidence verdict: ${verdictTitle}</b><div class="muted" style="font-size:12px;margin-top:3px">${verdictText} ${attributionText} Historical evidence only; it does not guarantee a future improvement.</div>
       </div>
-      <div class="muted" style="font-size:12px;margin-bottom:8px"><b>Like-for-like basis:</b> the same <b>${commonRows.length.toLocaleString()}</b> eligible trades (${firstDate||'—'} to ${lastDate||'—'}), <b>${money(WINNERS_WALLET)}</b> starting wallet, fixed <b>${money(fixedStake)}</b> stake (${(WINNERS_STAKE*100).toFixed(2)}%), Max open <b>${WINNERS_MAXOPEN}</b>, minimum-trade, leverage and margin rules. This comparison does not compound returns. Funded counts may differ because a trailing exit can keep capital occupied for longer; that capacity cost is part of the evidence.</div>
+      <div class="muted" style="font-size:12px;margin-bottom:8px"><b>Like-for-like basis:</b> the same <b>${commonRows.length.toLocaleString()}</b> RESOLVED trades (${firstDate||'—'} to ${lastDate||'—'}), <b>${money(WINNERS_WALLET)}</b> starting wallet, fixed <b>${money(fixedStake)}</b> stake (${(WINNERS_STAKE*100).toFixed(2)}%), Max open <b>${WINNERS_MAXOPEN}</b>, minimum-trade, leverage and margin rules. This comparison does not compound returns. Funded counts may differ because a trailing exit can keep capital occupied for longer; that capacity cost is part of the evidence.</div>
       <div class="tablewrap"><table><thead><tr><th>Evidence</th><th>Sell at target</th><th>Let winners run</th><th>Difference</th></tr></thead><tbody>
         <tr><td>End wallet</td><td><b>${money(plainFinal)}</b></td><td><b>${money(runFinal)}</b></td><td><b style="color:${col}">${signedMoney(delta)}</b></td></tr>
         <tr><td>Model return</td><td>${pct(plainReplay.ret)}</td><td>${pct(runReplay.ret)}</td><td><b style="color:${col}">${pp(returnDelta)}</b></td></tr>
@@ -4220,7 +4233,8 @@ function winnersRunChange(surface='pf'){
         <tr><td>Peak open positions</td><td>${plainReplay.cap}</td><td>${runReplay.cap}</td><td>${runReplay.cap-plainReplay.cap>0?'+':''}${runReplay.cap-plainReplay.cap}</td></tr>
         <tr><td>Exit-method impact · funded in both</td><td colspan="2">${attribution.commonCount.toLocaleString()} common funded trades</td><td><b style="color:${_pnlc(attribution.commonExitDelta)}">${signedMoney(attribution.commonExitDelta)}</b></td></tr>
         <tr><td>Capacity impact · funded in only one</td><td>${attribution.plainOnlyCount.toLocaleString()} baseline-only</td><td>${attribution.runOnlyCount.toLocaleString()} runner-only</td><td><b style="color:${_pnlc(attribution.capacityDelta)}">${signedMoney(attribution.capacityDelta)}</b></td></tr>
-        <tr><td>Target-lock integrity</td><td>${tgt.length.toLocaleString()} normal target hits</td><td>${(tgt.length-back).toLocaleString()} protected at/above target</td><td><b style="color:${targetLockValid?'var(--bull)':'var(--bear)'}">${back.toLocaleString()} below target</b></td></tr>
+        <tr><td>Never worse than selling at target</td><td>${commonRows.length.toLocaleString()} resolved trades</td><td>${(commonRows.length-back).toLocaleString()} at or above their original result</td><td><b style="color:${targetLockValid?'var(--bull)':'var(--bear)'}">${back.toLocaleString()} worse</b></td></tr>
+        <tr><td>Unresolved positions set aside</td><td colspan="2">Still open, so their baseline is a mark-to-market rather than a banked return -- not comparable with a simulated exit</td><td><b>${openRows.toLocaleString()} excluded</b></td></tr>
         <tr><td>Attribution reconciliation</td><td colspan="2">End-wallet difference minus exit and capacity impacts</td><td><b style="color:${attribution.reconciled?'var(--bull)':'var(--bear)'}">${signedMoney(attribution.reconciliation)} unexplained</b></td></tr>
         <tr><td>Independent replay cross-check</td><td colspan="2">Supabase/server evidence vs browser calculation</td><td><b style="color:${serverMatches?'var(--bull)':'var(--bear)'}">${serverMatches?'Matched within £0.005':'Mismatch — verdict withheld'}</b></td></tr>
       </tbody></table></div>

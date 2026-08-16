@@ -85,7 +85,15 @@ def test_performance_has_dedicated_let_winners_run_tab():
     assert 'id="pf-run-in"' in html
     assert "winnersRunChange('pf')" in html
     assert "Let winners run is off" not in html
-    assert 'const commonRows=rows.filter(r=>r.run_perf!=null)' in html
+    # RESOLVED trades only since 2026-08-16. An open position's baseline is a mark-to-market on money
+    # still at risk, so comparing it with a simulated realised exit is not like-for-like -- and it can
+    # show a "loss" that breaks the invariant a banked target makes impossible.
+    assert "const commonRows=rows.filter(r=>r.run_perf!=null&&r.outcome!=='OPEN')" in html
+    assert "const openRows=rows.filter(r=>r.run_perf!=null&&r.outcome==='OPEN').length;" in html
+    assert 'Unresolved positions set aside' in html
+    # The invariant is now checked across every resolved trade, not only target-hitters.
+    assert "const back=commonRows.filter(r=>r.run_perf<r.perf-0.01).length;" in html
+    assert 'Never worse than selling at target' in html
     assert '_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"perf",false)' in html
     assert '_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"run_perf",false)' in html
     assert "Evidence verdict: ${verdictTitle}" in html
@@ -93,7 +101,9 @@ def test_performance_has_dedicated_let_winners_run_tab():
     assert "Evidence invalid — integrity check failed" in html
     assert "Exit-method impact · funded in both" in html
     assert "Capacity impact · funded in only one" in html
-    assert "Target-lock integrity" in html
+    # "Target-lock integrity" broadened on 2026-08-16 — the row now states the full invariant across
+    # every resolved trade rather than only target-hitters.
+    assert "Never worse than selling at target" in html
     assert "Attribution reconciliation" in html
     assert "Maximum drawdown" in html
     assert "Funded / eligible trades" in html
