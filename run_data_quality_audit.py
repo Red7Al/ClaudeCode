@@ -337,6 +337,97 @@ def _verify_epics(tickers: list):
             log.error(f"{t}: verify failed — {e}")
 
 
+# Absurd-outcome sweep (user 2026-08-16: "the status of 9844% growth is nonsense ... continue with
+# price checks each night to flush these out"). Costs no IG allowance -- pure SQL over squeeze_history.
+#
+# The existing audit compares our prices against IG tick by tick, which catches a wrong CANDLE. It cannot
+# catch a setup whose GEOMETRY is impossible, and that is what produced 9844%: a stop placed a fraction
+# of a percent from entry inflates R:R, inflates the recorded return against a trivial risk, and then
+# compounds. Those are now excluded from the analysis population at read time (server.py _sqa_all_rows),
+# but exclusion is a bandage -- the rows are still being WRITTEN, so they are still worth reporting.
+_ABSURD_RETURN_PCT = 300.0        # a single squeeze returning more than this is a data fault, not a win
+_MIN_STOP_DISTANCE_PCT = 0.5      # matches ig_shim's live tight-stop guard and server._MIN_STOP_DISTANCE
+
+
+def _absurd_outcomes(days: int = 400) -> list:
+    """Rows in squeeze_history whose numbers cannot be true. Read-only; returns dicts for the digest."""
+    try:
+        from config import MAX_RISK_REWARD as _max_rr
+    except Exception:
+        _max_rr = 10.0
+    out = []
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            rows = db.run(
+                "select ticker, market, triggered_date, outcome, return_pct, risk_reward, "
+                "       entry_level, stop_level, target_level, hvf_type "
+                "  from squeeze_history "
+                " where triggered_date >= (current_date - make_interval(days => :d)) "
+                "   and entry_level is not null and stop_level is not null and entry_level <> 0",
+                d=days) or []
+        finally:
+            db.close()
+    except Exception as exc:
+        log.warning(f"absurd-outcome sweep skipped: {exc}")
+        return out
+
+    for tk, mkt, td, oc, ret, rr, entry, stop, target, side in rows:
+        faults = []
+        entry, stop = float(entry), float(stop)
+        stop_pct = abs(entry - stop) / abs(entry) * 100.0
+        bull = str(side or "").upper().startswith("BULL")
+        if ret is not None and abs(float(ret)) > _ABSURD_RETURN_PCT:
+            faults.append(f"return {float(ret):+.0f}%")
+        if rr is not None and float(rr) > _max_rr:
+            faults.append(f"R:R {float(rr):.1f} > {_max_rr:g}")
+        if stop_pct < _MIN_STOP_DISTANCE_PCT:
+            faults.append(f"stop {stop_pct:.2f}% from entry")
+        # Geometry that cannot be right whatever the prices did: a long stopped above its entry, or
+        # targeting below it (and the mirror for a short). Cheap, and it catches a whole class the
+        # numeric bounds never would.
+        if bull and stop > entry:
+            faults.append("BULL stop above entry")
+        if (not bull) and stop < entry:
+            faults.append("BEAR stop below entry")
+        if target is not None:
+            target = float(target)
+            if bull and target < entry:
+                faults.append("BULL target below entry")
+            if (not bull) and target > entry:
+                faults.append("BEAR target above entry")
+        if faults:
+            out.append({"ticker": tk, "market": mkt or "", "triggered_date": str(td or ""),
+                        "outcome": oc or "", "faults": faults})
+    out.sort(key=lambda r: (-len(r["faults"]), r["ticker"]))
+    return out
+
+
+def _post_absurd_slack(fresh: list, backlog: int, window_days: int) -> None:
+    from notify import slack_enabled                      # every direct poster must ask (memory rule)
+    if not slack_enabled("alerts"):
+        return
+    import os
+    import requests
+    url = os.environ.get("SLACK_ALERTS", "")
+    if not url:
+        return
+    top = fresh[:15]
+    lines = [f"*Absurd squeeze outcomes* — {len(fresh)} NEW row(s) in the last {window_days} days "
+             f"whose numbers cannot be true."]
+    lines += [f"• `{r['ticker']}` {r['triggered_date']} {r['outcome']} — {', '.join(r['faults'])}"
+              for r in top]
+    if len(fresh) > len(top):
+        lines.append(f"…and {len(fresh) - len(top)} more new.")
+    lines.append(f"_{backlog} such rows exist in the last 400 days. They are excluded from Best Settings "
+                 "and Back Test at read time, but are still being written._")
+    try:
+        requests.post(url, json={"text": "\n".join(lines)}, timeout=10)
+    except Exception as exc:
+        log.warning(f"absurd-outcome Slack post failed: {exc}")
+
+
 def main():
     args = sys.argv[1:]
     # Epic-lookup diagnostic — run BEFORE the audit-batch parsing so it never triggers a price audit.
@@ -375,6 +466,27 @@ def main():
     if rows:
         _save(rows)
         _post_slack(rows, remaining)
+
+    # Absurd-outcome sweep — no IG allowance, so it runs even when the price batch stopped early.
+    # Alert on what is NEW. The backlog is ~1,800 rows and re-listing it nightly would be noise that
+    # trains everyone to ignore the channel; it is carried as a single number so a rising trend is still
+    # visible. Roughly 1-2 genuinely new rows appear per day, which is an alert worth reading.
+    import datetime as _dt
+    _WINDOW_DAYS = 2
+    bad = _absurd_outcomes()
+    cutoff = _dt.date.today() - _dt.timedelta(days=_WINDOW_DAYS)
+    fresh = [r for r in bad if r["triggered_date"]
+             and _dt.date.fromisoformat(r["triggered_date"][:10]) >= cutoff]
+    if bad:
+        log.warning(f"Absurd outcomes: {len(fresh)} new in {_WINDOW_DAYS}d, {len(bad)} in 400d")
+        for r in fresh[:20]:
+            log.warning(f"  {r['ticker']:<10} {r['triggered_date']} {r['outcome']:<10} "
+                        f"{', '.join(r['faults'])}")
+    else:
+        log.info("Absurd outcomes: none")
+    if fresh:
+        _post_absurd_slack(fresh, len(bad), _WINDOW_DAYS)
+
     log.info(f"Audit complete: {len(rows)} tickers, allowance remaining {remaining}")
     try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)
         from web_store import append_batch
