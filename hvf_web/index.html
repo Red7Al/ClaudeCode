@@ -522,11 +522,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="btn" id="togglefilters">Show Filters <span style="color:var(--bear)">✗</span></button>
   <button class="btn" id="signalonly">Show Squeeze Only <span style="color:var(--bull)">✓</span></button>
   <span id="refresh-mkt-wrap" style="display:none;position:relative">
-    <button class="btn" id="refresh-mkt-btn" onclick="toggleRefreshMkt(event)" title="Choose which markets the Refresh rescans (default: all)">Markets: All ▾</button>
+    <button class="btn" id="refresh-mkt-btn" onclick="toggleRefreshMkt(event)" title="Choose which markets the Refresh rescans (default: all). This scopes the REBUILD, not the table.">Rebuild markets: All ▾</button>
     <div id="refresh-mkt-panel" style="display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:60;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:210px;max-height:360px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.35)"></div>
   </span>
   <span id="refresh-loc-wrap" style="display:none;position:relative">
-    <button class="btn" id="refresh-loc-btn" onclick="toggleRefreshLoc(event)" title="Choose which locations the Refresh rescans. A location is a group of markets, so picking one selects its markets.">Locations: All ▾</button>
+    <button class="btn" id="refresh-loc-btn" onclick="toggleRefreshLoc(event)" title="Choose which locations the Refresh rescans. A location is a group of markets, so picking one selects its markets. This scopes the REBUILD, not the table.">Rebuild locations: All ▾</button>
     <div id="refresh-loc-panel" style="display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:60;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:230px;max-height:360px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.35)"></div>
   </span>
   <button class="btn" id="refresh">↻ Refresh data</button>
@@ -632,23 +632,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <div class="layout" id="view-scanner">
-  <aside id="aside" class="collapsed">
-    <!-- Filters moved to Squeeze History on 2026-08-16 (user: "filters on scanner report are not much
-         use now"). The Scanner shows the CURRENT universe, already hard-filtered by My Trading Filters,
-         so slicing it further added little; the 12-month history is where slicing answers questions.
-         What stays here: the search box, and the price-chart window (never a row filter).
-         f_mkt / f_sec remain as HIDDEN multi-selects. They are no longer Scanner filters — pass() does
-         not read them any more — but they are the storage for the saved market/sector scope that
-         _pfSavedScope() (Back Test) and applyConfigFromReport() ("Apply this configuration") read via
-         USER_FILTERS. Deleting them breaks both; showing them keeps a filter the user asked to move. -->
-    <div class="f"><label>Search name / ticker</label><input id="f_search" type="text" placeholder="e.g. Howden, ABF, gold"></div>
-    <div class="scanner-filter-note"><b>Filters have moved</b><br>Direction, market, sector, quality, R:R and the rest now live on <b>Squeeze History</b>, where they filter 12 months of finished trades. This list is already limited to what passes <b>My Trading Filters</b>.</div>
-    <select id="f_mkt" multiple hidden></select><select id="f_sec" multiple hidden></select>
-    <div class="scanner-filter-group"><h3>Chart window</h3>
-    <div class="f"><label>Price chart: last <span id="dlbl">365</span> days</label>
-      <div class="slider"><input id="f_days" type="range" min="30" max="1095" step="5" value="365"></div></div></div>
-    <small class="muted">Drives the "Price — last N days" chart only.</small>
-  </aside>
 
   <main>
     <!-- Scanner chart multi-select filter inputs (separate from the sidebar single-select dropdowns) -->
@@ -658,7 +641,18 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <h1 style="margin:6px 0 4px">Scanner Report</h1>
       <p class="lede" style="margin:0">Every instrument we scan across shares, indices, FX and commodities — squeezes spotted early, with the exact levels to act on. Use the charts or <b>Filters</b> to narrow; click a row for full detail.</p>
       <p style="font-size:12px;margin-top:6px;color:#d29922">This is a live list of what's actionable <b>right now</b>, not a history — a squeeze that has gone stale or already resolved drops off here even though it's still recorded. For the full historical record, see <b>Squeeze History</b> or <b>Performance</b>.</p>
-      <input id="scanner-name-search" placeholder="Search name / ticker…" oninput="syncScannerNameSearch(this.value)" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px;margin-top:8px" aria-label="Search Scanner by name or ticker">
+      <!-- The Scanner filter sidebar moved to Squeeze History on 2026-08-16. These three survive it:
+           f_search is hidden and mirrors the visible box below (pass() reads f_search, and
+           syncScannerNameSearch writes it); f_mkt/f_sec are hidden and NO LONGER FILTER -- they only carry
+           the saved market/sector scope that _pfSavedScope (Back Test) and applyConfigFromReport read;
+           f_days is the price-chart window, never a row filter, so it sits beside the search box. -->
+      <input id="f_search" type="hidden"><select id="f_mkt" multiple hidden></select><select id="f_sec" multiple hidden></select>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px">
+        <input id="scanner-name-search" placeholder="Search name / ticker…" oninput="syncScannerNameSearch(this.value)" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px" aria-label="Search Scanner by name or ticker">
+        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:7px">Price chart: last <span id="dlbl">365</span> days
+          <input id="f_days" type="range" min="30" max="1095" step="5" value="365" style="width:150px"></label>
+        <span class="muted" style="font-size:11px">Filters now live on <b>Squeeze History</b>. This list already shows only what passes <b>My Trading Filters</b>.</span>
+      </div>
     </div>
     <div class="viz" id="viz"></div>
     <div class="count" id="count"></div>
@@ -2551,7 +2545,7 @@ $("togglefilters").onclick=()=>{
   if(CUR_TAB==="preorders")return togglePoFilters();      // same header button drives the Pre-orders asides (P-03)
   if(CUR_TAB==="orderops")return toggleOoFilters();
   if(CUR_TAB==="squeezehist")return toggleSqhFilters();   // filters moved here from the Scanner (2026-08-16)
-  const hidden=$("aside").classList.toggle("collapsed");$("togglefilters").innerHTML="Show Filters "+(hidden?'<span style="color:var(--bear)">✗</span>':'<span style="color:var(--bull)">✓</span>');};
+};   // the Scanner has no filter panel any more — nothing left to toggle
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").innerHTML="Show Squeeze Only "+(signalOnly?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');applyAll();};
 let _refStart=0, _refBase=null, _refId=null, _lastTens=-1;
 // Refresh a CHOICE of markets (user 2026-07-31, P-15). REFRESH_MARKETS empty = the whole universe;
@@ -2579,7 +2573,8 @@ function onRefreshMktToggle(cb){
 function updateRefreshMktLabel(){
   const b=$("refresh-mkt-btn"); if(!b)return;
   const n=REFRESH_MARKETS.size;
-  b.textContent = n===0 ? "Markets: All ▾" : (n===1 ? `Markets: ${[...REFRESH_MARKETS][0]} ▾` : `Markets: ${n} selected ▾`);
+  // "Rebuild" prefix so it cannot be mistaken for a table filter now the real filters have moved.
+  b.textContent = n===0 ? "Rebuild markets: All ▾" : (n===1 ? `Rebuild markets: ${[...REFRESH_MARKETS][0]} ▾` : `Rebuild markets: ${n} selected ▾`);
 }
 function toggleRefreshMkt(e){
   if(e)e.stopPropagation();
@@ -2626,7 +2621,7 @@ function onRefreshLocToggle(cb){
 function updateRefreshLocLabel(){
   const b=$("refresh-loc-btn"); if(!b)return;
   const n=REFRESH_LOCATIONS.size;
-  b.textContent = n===0 ? "Locations: All ▾" : (n===1 ? `Locations: ${[...REFRESH_LOCATIONS][0]} ▾` : `Locations: ${n} selected ▾`);
+  b.textContent = n===0 ? "Rebuild locations: All ▾" : (n===1 ? `Rebuild locations: ${[...REFRESH_LOCATIONS][0]} ▾` : `Rebuild locations: ${n} selected ▾`);
 }
 function toggleRefreshLoc(e){
   if(e)e.stopPropagation();
@@ -2796,15 +2791,19 @@ function showTab(name){
   // Squeeze History owns the filter sidebar since 2026-08-16, so it gets Reset / Show all / Show Filters.
   // "Squeeze Only" stays Scanner-only: a history row has no has_signal field for it to act on.
   const sqh=(name==="squeezehist")&&!locked;
-  const filterTab=(name==="scanner"||name==="squeezehist")&&!locked;
+  // Scanner dropped from filterTab on 2026-08-16: its sidebar is gone, so offering "Show Filters" there
+  // would open nothing.
+  const filterTab=(name==="squeezehist"||name==="preorders"||name==="orderops")&&!locked;
   $("signalonly").style.display=sc?"":"none";
-  ["reset","showall"].forEach(id=>{const b=$(id);if(b)b.style.display=(sc||sqh)?"":"none";});
+  // Scanner dropped 2026-08-16: with its sidebar gone there is nothing there to reset, and offering
+  // the buttons implied filters that no longer exist (user: "All these buttons are on the scanner
+  // report page"). "Show Squeeze Only" stays -- it is a real Scanner control over has_signal.
+  ["reset","showall"].forEach(id=>{const b=$(id);if(b)b.style.display=sqh?"":"none";});
   const tf=$("togglefilters");
   if(tf){tf.style.display=filterTab?"":"none";
     if(filterTab){const shown=name==="preorders"?!( $("po-filters")||{classList:{contains:()=>true}}).classList.contains("hidden")
         :name==="orderops"?!( $("oo-filters")||{classList:{contains:()=>true}}).classList.contains("hidden")
-        :name==="squeezehist"?!( $("sqh-filters")||{classList:{contains:()=>true}}).classList.contains("hidden")
-        :!( $("aside")||{classList:{contains:()=>true}}).classList.contains("collapsed");
+        :!( $("sqh-filters")||{classList:{contains:()=>true}}).classList.contains("hidden");
       tf.innerHTML="Show Filters "+(shown?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');}}
   const rb=$("refresh"); if(rb) rb.style.display=(sc&&IS_ADMIN)?"":"none";
   const rmw=$("refresh-mkt-wrap"); if(rmw){rmw.style.display=(sc&&IS_ADMIN)?"":"none"; if(sc&&IS_ADMIN)updateRefreshMktLabel();}
