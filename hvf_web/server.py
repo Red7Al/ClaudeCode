@@ -2275,6 +2275,63 @@ def api_x_posts():
     return jsonify({"rows": rows})
 
 
+def _attach_setup_metrics(rows: list) -> None:
+    """Attach RVOL / VolumeScore / Quality / R:R / VWAP / ATR to working-order rows, in place.
+
+    working_orders stores none of them -- the table has no such columns -- so the Pre-orders to my IG
+    grid rendered "—" in all six for every row ever (user 2026-08-16: "there are many rows without RVOl,
+    VOLUMESCORE and QUALITY - these should be available for any instrument for any day").
+
+    Resolved from the SETUP THAT CAUSED THE ORDER rather than from today's snapshot: the most recent
+    squeeze_history trigger for that ticker at or before the order was placed. That is point-in-time
+    correct, and it backfills every historical row at read time instead of needing a migration that would
+    still leave the past blank. VolumeScore and the VWAP/ATR flags come from the same per-trigger maps
+    /api/winners and the Back Test use, so all three surfaces report identical figures for a given setup.
+    """
+    tickers = sorted({r.get("ticker") for r in rows if r.get("ticker")})
+    if not tickers:
+        return
+    setups = {}
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            for tk, td, q, rr, rv in (db.run(
+                    "select ticker, triggered_date, quality, risk_reward, rvol from squeeze_history "
+                    "where ticker = any(:tks) and triggered_date is not null "
+                    "order by ticker, triggered_date", tks=list(tickers)) or []):
+                setups.setdefault(tk, []).append((str(td)[:10], q, rr, rv))
+        finally:
+            db.close()
+    except Exception as exc:
+        log.warning(f"order-ops setup metrics unavailable: {exc}")
+        return
+    try:
+        vsmap, vfmap = _volscore_trigger_map(), _volscore_trigger_feature_map()
+    except Exception:
+        vsmap, vfmap = {}, {}
+    for row in rows:
+        hist = setups.get(row.get("ticker")) or []
+        if not hist:
+            continue
+        placed = str(row.get("placed_at") or "")[:10]
+        # Latest trigger at or before placement; fall back to the earliest if the order predates them all.
+        match = None
+        for entry in hist:
+            if not placed or entry[0] <= placed:
+                match = entry
+            else:
+                break
+        match = match or hist[0]
+        td, q, rr, rv = match
+        key = (row.get("ticker"), td)
+        feat = vfmap.get(key, {})
+        row.update({"setup_date": td, "quality": q, "rr": rr, "rvol": rv,
+                    "volume_score": vsmap.get(key),
+                    "above_vwap": feat.get("above_vwap"),
+                    "atr_expanding": feat.get("atr_expanding")})
+
+
 @app.route("/api/order-ops")
 def api_order_ops():
     """Operational record of database -> IG order moves (user 2026-06-30): the working_orders rows,
@@ -2300,9 +2357,10 @@ def api_order_ops():
                              "size": r[7], "status": r[8], "session": r[9], "notes": r[10] or ""})
         finally:
             db.close()
+        _attach_setup_metrics(rows)
     except Exception as e:
         log.warning(f"order-ops lookup failed: {e}")
-    return jsonify({"rows": rows})
+    return jsonify(_json_safe({"rows": rows}))
 
 
 # ── Accurate performance report (user 2026-07-13) ─────────────────────────────────────────────────────

@@ -517,6 +517,46 @@ def test_max_open_is_never_reported_above_what_the_stake_can_fund():
     assert result == {"requested": 12, "effective": 10, "cap": 10}
 
 
+def test_order_ops_rows_carry_the_setup_metrics_that_caused_them(monkeypatch):
+    """Pre-orders to my IG showed "—" for RVOL / VolumeScore / Quality / R:R on EVERY row, always.
+
+    working_orders has no such columns, so /api/order-ops never sent them and the six metric columns had
+    never worked (user 2026-08-16). They are resolved from the setup that caused the order -- the latest
+    squeeze_history trigger at or before placement -- so the figures are point-in-time correct rather
+    than today's snapshot, and historical rows are filled without a migration.
+    """
+    class _Cur:
+        def run(self, sql, **kw):
+            assert "squeeze_history" in sql and "tks" in kw
+            return [("AAA", "2026-01-10", 60.0, 4.0, 1.2),      # older setup
+                    ("AAA", "2026-03-02", 80.0, 6.5, 2.4),      # the one that caused the order
+                    ("AAA", "2026-07-01", 30.0, 3.1, 0.8),      # AFTER placement - must not be used
+                    ("BBB", "2026-05-05", 55.0, 3.4, 1.1)]
+
+        def close(self):
+            pass
+
+    import db_pool
+    monkeypatch.setattr(db_pool, "get_db", lambda: _Cur())
+    monkeypatch.setattr(server, "_volscore_trigger_map", lambda: {("AAA", "2026-03-02"): 9})
+    monkeypatch.setattr(server, "_volscore_trigger_feature_map",
+                        lambda: {("AAA", "2026-03-02"): {"above_vwap": True, "atr_expanding": False}})
+
+    rows = [{"ticker": "AAA", "placed_at": "2026-03-04 09:15:00"},
+            {"ticker": "BBB", "placed_at": "2026-05-06 10:00:00"},
+            {"ticker": "ZZZ", "placed_at": "2026-05-06 10:00:00"}]   # no history at all
+    server._attach_setup_metrics(rows)
+
+    aaa = rows[0]
+    assert aaa["setup_date"] == "2026-03-02", "must use the trigger at or before placement, not a later one"
+    assert (aaa["quality"], aaa["rr"], aaa["rvol"]) == (80.0, 6.5, 2.4)
+    assert aaa["volume_score"] == 9
+    assert aaa["above_vwap"] is True and aaa["atr_expanding"] is False
+
+    assert rows[1]["quality"] == 55.0 and rows[1]["volume_score"] is None
+    assert "quality" not in rows[2], "a ticker with no setup history must be left untouched, not zeroed"
+
+
 def test_the_analysis_population_enforces_the_documented_rr_cap():
     """config.MAX_RISK_REWARD must actually be ENFORCED, not merely declared.
 
