@@ -88,7 +88,12 @@ def test_performance_has_dedicated_let_winners_run_tab():
     # RESOLVED trades only since 2026-08-16. An open position's baseline is a mark-to-market on money
     # still at risk, so comparing it with a simulated realised exit is not like-for-like -- and it can
     # show a "loss" that breaks the invariant a banked target makes impossible.
-    assert "const commonRows=rows.filter(r=>r.run_perf!=null&&r.outcome!=='OPEN')" in html
+    assert "const commonRows=rows.filter(r=>r.run_perf!=null&&r.outcome!=='OPEN'" in html
+    # Scopeable to a Best Settings recommendation's own population (2026-08-16) — testing the exit theory
+    # across the whole tradeable universe answers a question nobody asked.
+    assert 'id="pf-run-scope"' in html
+    assert "function _syncRunScopeOptions(prefix)" in html
+    assert "const scoped=BEST_CHOICES.find(c=>c[0]===scopeLabel);" in html
     assert "const openRows=rows.filter(r=>r.run_perf!=null&&r.outcome==='OPEN').length;" in html
     assert 'Unresolved positions set aside' in html
     # The invariant is now checked across every resolved trade, not only target-hitters.

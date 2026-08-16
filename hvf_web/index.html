@@ -1517,8 +1517,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <b style="font-size:13px">What-if settings</b>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Trailing stop applied before target. Zero keeps the original hard stop until target.">Stop trail
         <input id="pf-run-stop" type="number" min="0" max="100" step="5" value="0" style="width:64px;padding:4px 6px" onchange="winnersRunChange('pf')">%</label>
-      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="After target, the stop locks the target gain and trails the remaining move by this percentage.">Run trail
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Once target is reached the take-profit is dropped and the stop trails this far BELOW the running price, floored at the target.">Run trail
         <input id="pf-run-in" type="number" min="0" max="100" step="1" value="4" style="width:64px;padding:4px 6px" onchange="winnersRunChange('pf')">%</label>
+      <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Test the theory on the trades a Best Settings recommendation would actually have taken, rather than the whole tradeable universe.">Population
+        <select id="pf-run-scope" onchange="winnersRunChange('pf')" style="width:auto;padding:4px 6px;font-size:12px"><option value="">All resolved trades</option></select></label>
       <span id="pf-run-busy" class="muted" style="font-size:12px"></span>
     </div>
     <div id="pf-run-wrap" style="margin-bottom:14px">
@@ -4146,6 +4148,20 @@ function _winnerRunAttribution(plainReplay,runReplay,wallet){
   return {commonCount,plainOnlyCount,runOnlyCount,commonExitDelta,capacityDelta,totalDelta,reconciliation,
           reconciled:Math.abs(reconciliation)<.005};
 }
+// The card list is built by renderBestCombo, which may not have run yet and whose cards vary with the
+// data (the >125/>250 bands only appear when the evidence supports them). Rebuild the options each time
+// rather than wiring them once, and keep the current selection if it still exists.
+function _syncRunScopeOptions(prefix){
+  const sel=$(prefix+"-run-scope"); if(!sel)return;
+  const labels=(BEST_CHOICES||[]).map(c=>c[0]);
+  const want="All resolved trades|"+labels.join("|");
+  if(sel.dataset.built===want)return;
+  const keep=sel.value;
+  sel.innerHTML='<option value="">All resolved trades</option>'
+    +labels.map(l=>`<option value="${_esc(l)}">${_esc(l)}</option>`).join("");
+  sel.value=labels.includes(keep)?keep:"";
+  sel.dataset.built=want;
+}
 function winnersRunChange(surface='pf'){
   // The report is shown on TWO surfaces: the "What separates the winners" tab (#ordp-run, with its own
   // trail inputs) and the dedicated Performance sub-tab (#pf-run, editable what-if values seeded from config).
@@ -4176,7 +4192,18 @@ function winnersRunChange(surface='pf'){
     // is floored at the target), but a position still open at +31% can perfectly well show a runner that
     // took +28% and read as a loss. That is where "how was this loss possible" came from on 600048.SS.
     const openRows=rows.filter(r=>r.run_perf!=null&&r.outcome==='OPEN').length;
-    const commonRows=rows.filter(r=>r.run_perf!=null&&r.outcome!=='OPEN').sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
+    // Scope to a Best Settings recommendation's own population (user 2026-08-16: "we are not using that
+    // many trades so we must think about what we test this theory on e.g. each of the 6 cards"). Testing
+    // the exit theory across the whole tradeable universe answers a question nobody asked -- most of
+    // those setups would never have been taken under any configuration you would actually run. Matched on
+    // ticker+trigger date because the two datasets come from different endpoints and share no row object.
+    _syncRunScopeOptions(prefix);
+    const scopeSel=$(prefix+"-run-scope"), scopeLabel=(scopeSel||{}).value||"";
+    const scoped=BEST_CHOICES.find(c=>c[0]===scopeLabel);
+    const scopeKeys=scoped?new Set((scoped[1].seq||[]).map(r=>(r.ticker||'')+'|'+String(r.trig_date||'').slice(0,10))):null;
+    const commonRows=rows.filter(r=>r.run_perf!=null&&r.outcome!=='OPEN'
+        &&(!scopeKeys||scopeKeys.has((r.ticker||'')+'|'+String(r.trig_date||'').slice(0,10))))
+      .sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
     if(!commonRows.length){paint('<div class="muted" style="font-size:13px">No resolved trades have both baseline and trailing-stop results.</div>');return;}
     const plainReplay=_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"perf",false);
     const runReplay=_combReplay(commonRows,WINNERS_STAKE,WINNERS_MAXOPEN,true,"run_perf",false);
@@ -4223,7 +4250,7 @@ function winnersRunChange(surface='pf'){
       <div style="border-left:4px solid ${col};padding:8px 10px;margin:8px 0;background:color-mix(in srgb,${col} 10%,transparent)">
         <b style="color:${col}">Evidence verdict: ${verdictTitle}</b><div class="muted" style="font-size:12px;margin-top:3px">${verdictText} ${attributionText} Historical evidence only; it does not guarantee a future improvement.</div>
       </div>
-      <div class="muted" style="font-size:12px;margin-bottom:8px"><b>Like-for-like basis:</b> the same <b>${commonRows.length.toLocaleString()}</b> RESOLVED trades (${firstDate||'—'} to ${lastDate||'—'}), <b>${money(WINNERS_WALLET)}</b> starting wallet, fixed <b>${money(fixedStake)}</b> stake (${(WINNERS_STAKE*100).toFixed(2)}%), Max open <b>${WINNERS_MAXOPEN}</b>, minimum-trade, leverage and margin rules. This comparison does not compound returns. Funded counts may differ because a trailing exit can keep capital occupied for longer; that capacity cost is part of the evidence.</div>
+      <div class="muted" style="font-size:12px;margin-bottom:8px"><b>Like-for-like basis:</b> ${scopeLabel?`the <b>${_esc(scopeLabel)}</b> recommendation's own population — `:``}the same <b>${commonRows.length.toLocaleString()}</b> RESOLVED trades (${firstDate||'—'} to ${lastDate||'—'}), <b>${money(WINNERS_WALLET)}</b> starting wallet, fixed <b>${money(fixedStake)}</b> stake (${(WINNERS_STAKE*100).toFixed(2)}%), Max open <b>${WINNERS_MAXOPEN}</b>, minimum-trade, leverage and margin rules. This comparison does not compound returns. Funded counts may differ because a trailing exit can keep capital occupied for longer; that capacity cost is part of the evidence.</div>
       <div class="tablewrap"><table><thead><tr><th>Evidence</th><th>Sell at target</th><th>Let winners run</th><th>Difference</th></tr></thead><tbody>
         <tr><td>End wallet</td><td><b>${money(plainFinal)}</b></td><td><b>${money(runFinal)}</b></td><td><b style="color:${col}">${signedMoney(delta)}</b></td></tr>
         <tr><td>Model return</td><td>${pct(plainReplay.ret)}</td><td>${pct(runReplay.ret)}</td><td><b style="color:${col}">${pp(returnDelta)}</b></td></tr>
@@ -4440,9 +4467,7 @@ function paintBestSettingsHistory(history){
   const body=rows.map((row,index)=>{
     const balanced=(row.options||[]).find(o=>o.label==="Balanced"),result=(balanced||{}).results||{};
     const full=(row.options||[]).map(o=>`<div><b>${_esc(o.label)}</b>: ${_esc(_bestHistoryConfig(o.settings))}</div>`).join("");
-    const stale=_bestCalcModel(row)!==BEST_CALC_MODEL;
-    const flag=stale?`<div style="margin-top:3px"><span title="Recorded before the 2026-08-15 exit-rule correction: unresolved trades settled on their own trigger day, so returns were inflated and funded counts were not achievable. Kept as an audit trail, not as evidence." style="font-size:10px;font-weight:700;color:#d29922;border:1px solid #d29922;border-radius:3px;padding:1px 4px">SUPERSEDED MATHS</span></div>`:"";
-    return `<tr${stale?' style="opacity:.65"':''}><td><b>${_esc(row.snapshot_day||"")}</b><div class="muted">${_esc(String(row.recorded_at||"").slice(11,19))} UTC</div>${flag}</td>`+
+    return `<tr><td><b>${_esc(row.snapshot_day||"")}</b><div class="muted">${_esc(String(row.recorded_at||"").slice(11,19))} UTC</div></td>`+
       `<td>${row.data_through?`through <b>${_esc(row.data_through)}</b>`:'—'}<div class="muted">built ${_esc(row.dataset_generated||'—')}</div></td>`+
       `<td>£${(+((row.model||{}).wallet)||0).toLocaleString()} · ${_bestHistoryValue('position_pct',(row.model||{}).position_pct)} · ${(row.model||{}).max_open} max</td>`+
       `<td>${balanced?`<b style="color:${result.annual_return>=0?'var(--bull)':'var(--bear)'}">${_bestHistoryPct(result.annual_return)}</b><div class="muted">${((+result.max_drawdown||0)*100).toFixed(1)}% drawdown · ${result.funded_trades} funded</div>`:'—'}</td>`+
@@ -4609,10 +4634,27 @@ function renderBestCombo(all){
         ||ranked.find(x=>chosen.every(y=>configDistance(x,y)>=2))
         ||ranked.find(x=>chosen.every(y=>configDistance(x,y)>=1))||null;
   };
+  // Win:loss and capital efficiency, measured over each candidate's own eligible population.
+  // Ratio, not win rate: the user asked for "best win:loss ratio". Break-even trades (|perf| <= PF_BE)
+  // count as neither, matching how the Results tab segments outcomes, and a candidate with no losses at all
+  // sorts above one with any -- Infinity is the honest ranking there, not a divide-by-zero guard.
+  const _wl=x=>{const w=x.seq.filter(r=>+r.perf>0.5).length,l=x.seq.filter(r=>+r.perf<-0.5).length;
+    return l?w/l:(w?Infinity:0);};
+  // Return per DAY of capital committed. A configuration earning 20% while holding positions for three
+  // weeks is doing more with the book than one earning 25% over six months -- and today's work showed
+  // exactly why that matters: unresolved positions hold their slot, the book saturates, and every later
+  // setup is refused on the max-open cap. This card surfaces the settings that keep capital turning.
+  const _days=x=>{const d=x.seq.map(r=>{if(!r.exit_date||!r.trig_date)return null;
+      const a=new Date(r.trig_date+"T00:00:00Z"),b=new Date(String(r.exit_date).slice(0,10)+"T00:00:00Z");
+      return isNaN(a)||isNaN(b)?null:Math.max(1,(b-a)/86400000);}).filter(v=>v!=null);
+    return d.length?d.reduce((s,v)=>s+v,0)/d.length:null;};
+  const _perDay=x=>{const d=_days(x);return d?x.ret/d:-Infinity;};
   const chosen=[best];
   const growth=choose(basePool,chosen,(a,b)=>b.ret-a.ret);if(growth)chosen.push(growth);
   const defensive=choose(basePool,chosen,(a,b)=>a.dd-b.dd);if(defensive)chosen.push(defensive);
   const broad=choose(basePool,chosen,(a,b)=>b.consistency-a.consistency||b.n-a.n||b.ret-a.ret);if(broad)chosen.push(broad);
+  const winloss=choose(basePool,chosen,(a,b)=>_wl(b)-_wl(a)||b.ret-a.ret);if(winloss)chosen.push(winloss);
+  const efficient=choose(basePool,chosen,(a,b)=>_perDay(b)-_perDay(a));if(efficient)chosen.push(efficient);
   // Best settings at a given funded-trade sample BAND (user 2026-08-12, P-10; banded 2026-08-14, P-04
   // "Switch 500 trades to > 125 Trades (but do not exceed 150)" / "> 250 Trades (but do not exceed 300)"):
   // the strongest-scoring configuration whose annual replay funded inside that band. Uses x.n (funded
@@ -4628,7 +4670,9 @@ function renderBestCombo(all){
     defensive&&["Defensive",defensive,"Lowest historical peak-to-trough drawdown while retaining a positive return.","#d29922"],
     broad&&["Broad evidence",broad,"Favours positive quarters and a larger funded trade sample over a narrow winner.","var(--muted)"],
     trades125&&[">125 trades",trades125,"Best-scoring configuration funding more than 125 and no more than 150 trades — a focused, higher-confidence sample.","#1f6feb"],
-    trades250&&[">250 trades",trades250,"Best-scoring configuration funding more than 250 and no more than 300 trades — the larger evidence band.","#a371f7"]
+    trades250&&[">250 trades",trades250,"Best-scoring configuration funding more than 250 and no more than 300 trades — the larger evidence band.","#a371f7"],
+    winloss&&["Best win : loss",winloss,`Most winners per loser — ${_wl(winloss)===Infinity?"no losing trades":_wl(winloss).toFixed(2)+" wins per loss"}. Break-even trades count as neither.`,"#3fb950"],
+    efficient&&["Capital efficient",efficient,`Most return per day of capital committed — ${_days(efficient)?Math.round(_days(efficient))+" days average hold":"hold unknown"}. Keeps the book turning instead of tying slots up.`,"#f778ba"]
   ].filter(Boolean);
   const current={rr:Number(MY_LIMITS.min_risk_reward??3),q:Number(MY_LIMITS.min_quality??25),vs:Number(MY_LIMITS.min_volume_score??1),rv:+MY_LIMITS.min_rvol||0,
     vw:!!+MY_LIMITS.require_above_vwap,atr:!!+MY_LIMITS.require_atr_expanding,st:+MY_LIMITS.max_position_pct||WINNERS_STAKE*100,mo:+MY_LIMITS.max_open||WINNERS_MAXOPEN,
