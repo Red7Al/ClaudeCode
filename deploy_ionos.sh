@@ -132,6 +132,19 @@ fi
 
 : "${IONOS_DIR:?set IONOS_DIR - the absolute domain directory on the server (run: ./deploy_ionos.sh --find-dir)}"
 
+# Fail fast if SSH is unreachable. Without this the upload sits there until something times out minutes
+# later, which on 2026-08-16 produced a "deploy" that was reported as running and had in fact gone nowhere.
+# Checked separately from the transfer so the message says WHICH thing is broken: HTTPS to the site can be
+# perfectly healthy while port 22 is blocked.
+say "Checking ${IONOS_HOST}:${PORT} is reachable"
+if ! ssh "${SSH_OPTS[@]}" -o ConnectTimeout=15 "${IONOS_USER}@${IONOS_HOST}" true 2>/dev/null; then
+  echo "  cannot open an SSH session on port ${PORT}."
+  printf '  the site itself is %s over HTTPS\n' \
+    "$(curl -s -o /dev/null --max-time 20 -w '%{http_code}' "$SITE/" || echo unreachable)"
+  die "SSH unreachable — nothing uploaded, the live release is untouched. Check the network/VPN and retry."
+fi
+echo "  reachable"
+
 say "Deploying to ${IONOS_USER}@${IONOS_HOST}:${IONOS_DIR} (port ${PORT})"
 if [ "${ASSUME_YES:-0}" = "1" ]; then
   echo "  ASSUME_YES=1 - proceeding without the confirmation prompt"
