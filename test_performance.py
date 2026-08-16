@@ -507,6 +507,41 @@ def test_max_open_is_never_reported_above_what_the_stake_can_fund():
     assert result == {"requested": 12, "effective": 10, "cap": 10}
 
 
+def test_the_analysis_population_enforces_the_documented_rr_cap():
+    """config.MAX_RISK_REWARD must actually be ENFORCED, not merely declared.
+
+    It was defined on 2026-06-09 with a comment describing this exact failure -- "ratios above this are
+    treated as bad level geometry rather than an advantage. A very distant target combined with a tight
+    stop can produce a mathematically valid but non-actionable setup" -- and referenced nowhere. 1,183 of
+    4,385 deduped 12-month trades sat above it, and Best Settings SELECTED for them because its R:R
+    filters reward a high ratio, which is where "9844% growth" came from.
+
+    A constant that documents a rule nobody applies is worse than no constant: it reads as a guarantee.
+    """
+    import config
+    assert config.MAX_RISK_REWARD == 10.0
+
+    server_src = (Path(__file__).parent / "hvf_web" / "server.py").read_text(encoding="utf-8")
+    assert "from config import MAX_RISK_REWARD as _MAX_RR" in server_src
+    assert "and risk_reward >= 3 and risk_reward <= :maxrr" in server_src
+    assert "maxrr=_MAX_RR" in server_src
+
+
+def test_the_analysis_population_matches_the_engines_tight_stop_guard():
+    """A setup the order path would refuse must not appear in the numbers that recommend settings.
+
+    ig_shim skips a trade when the stop is under 0.5% of price -- inside spread and normal noise. The
+    analysis population had no such rule, so 209 of the 12-month rows carried a stop tighter than that
+    and the reports were recommending configurations built on trades the engine would never place.
+    """
+    server_src = (Path(__file__).parent / "hvf_web" / "server.py").read_text(encoding="utf-8")
+    assert "_MIN_STOP_DISTANCE = 0.005" in server_src
+    assert "< _MIN_STOP_DISTANCE" in server_src
+
+    ig_src = (Path(__file__).parent / "ig_shim.py").read_text(encoding="utf-8")
+    assert "0.5%" in ig_src, "the engine-side guard this mirrors has moved -- keep the two in step"
+
+
 def test_back_test_and_best_settings_produce_the_same_numbers():
     """THE P-03 invariant: the two views must agree, or an applied recommendation is a lie.
 

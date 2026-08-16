@@ -2567,6 +2567,9 @@ def api_performance():
 _SQA_CACHE = {"ts": 0.0, "data": None}
 _SQA_TTL = 900   # 15 min — matches _PERF_TTL so the background warmer keeps every replay cache fresh (user 2026-08-03)
 _SQA_MIN_N = 10          # below this a bucket is reported but never called good or bad
+# Matches ig_shim's live tight-stop guard so the analysis population and the order path agree on what
+# is tradeable (user 2026-08-16).
+_MIN_STOP_DISTANCE = 0.005
 
 
 def _sqa_sector(ticker: str):
@@ -2749,11 +2752,24 @@ def _sqa_all_rows():
         denied = set()
     from db_pool import get_db
     db = get_db()
+    # config.MAX_RISK_REWARD has existed since 2026-06-09 documenting exactly this -- "ratios above this
+    # are treated as bad level geometry rather than an advantage. A very distant target combined with a
+    # tight stop can produce a mathematically valid but non-actionable setup" -- and was enforced NOWHERE.
+    # 1,183 of 4,385 deduped 12-month trades sat above it, and Best Settings SELECTED for them because its
+    # R:R filters (3/5/8) reward a high ratio. They are not better trades: measured over the live
+    # population they carry a HIGHER mean return (5.36% vs 3.22%) on a LOWER win rate (34.5% vs 38.3%),
+    # which is the signature of a near-zero stop making the return look large against a trivial risk. That
+    # is where "9844% growth" came from (user 2026-08-16: "the status of 9844% growth is nonsense").
+    try:
+        from config import MAX_RISK_REWARD as _MAX_RR
+    except Exception:
+        _MAX_RR = 10.0
     try:
         raw = db.run(
             "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
             "outcome, return_pct, triggered_date, outcome_date, entry_level, stop_level, target_level "
-            "from squeeze_history where ready_date is not null and risk_reward >= 3") or []
+            "from squeeze_history where ready_date is not null "
+            "and risk_reward >= 3 and risk_reward <= :maxrr", maxrr=_MAX_RR) or []
     finally:
         db.close()
     # Market-cap map (user 2026-08-01, P-07/P-08) — one query; attached to every row so the Back Test /
@@ -2775,6 +2791,16 @@ def _sqa_all_rows():
         market = mk or s.get("market")
         if market and market in denied:             # market disabled app-wide (Markets Admin) — exclude
             continue
+        # Mirror the engine's own tight-stop guard (ig_shim: "skip trade when stop_distance < 0.5% of
+        # price"). Without it the analysis recommends configurations built on setups the order path would
+        # refuse to place -- a stop 0.2% from entry is inside spread and normal noise, and 209 of the
+        # 12-month rows were tighter than half a percent.
+        if e and s_:
+            try:
+                if abs(float(e) - float(s_)) / float(e) < _MIN_STOP_DISTANCE:
+                    continue
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
         ret = float(ret) if ret is not None else None
         # R-multiple = the trade's return in units of what it RISKED (return% / stop-distance%): a stop is
         # -1R, a target +R:R (user 2026-07-18, matching calculate_position_size).
