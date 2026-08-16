@@ -2971,23 +2971,23 @@ def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0, return_date
             if not floored and target and lo <= target:
                 floored = True
                 cur = min(cur, target)
-        # The two phases need DIFFERENT rules (user 2026-08-16: "once the target is reached and we let it
-        # run, the stop loss should be minimal").
+        # ONE rule in both phases: keep this share of the run, measured from entry, ratcheted, and never
+        # below the target once target has been floored.
         #
-        # BEFORE target the gain is unbanked, so `stop_thr` means "keep this share of the run measured
-        # from entry" -- compute_trailing_stop, which is what turns +31% into +28.5% at 0.92.
+        # An earlier attempt used a tight distance-below-price trail above target, on the reasoning that a
+        # banked gain deserves a minimal stop. The user's question settled it -- "if we keep 95% of gain,
+        # how can number 3 allow much more to go back?" -- and they were right: the two rules used
+        # different UNITS, so a 3%-of-price trail hands back 5.37 points on a +79% run where keeping 95%
+        # of the run hands back 3.95. Proportional is both tighter and consistent, and needs one number
+        # rather than two that can silently disagree.
         #
-        # AFTER target the target gain is already secured and the only question is how little to give
-        # back, so `thr` is a tight distance BELOW the running price. Sharing compute_trailing_stop here
-        # was badly wrong: its level is entry + gain*thr, which stays UNDER the target until the gain is
-        # 1/thr times the target return. With a +20% target and thr 25% a trade could run to +79% and
-        # fall all the way back to +20% before stopping -- 59 points handed back.
-        if floored:
-            if thr and thr > 0:
-                ns = cl * (1 - thr) if buy else cl * (1 + thr)
-                cur = max(cur, ns) if buy else min(cur, ns)
-        elif stop_thr and stop_thr > 0:
-            ns = ig_shim.compute_trailing_stop(direction, entry, cur, cl, stop_thr)
+        # What made the shared rule fail before was compute_trailing_stop itself, not the sharing: its old
+        # level (entry + gain*thr) stayed UNDER the target until the gain reached 1/thr times the target
+        # return, so a trade could run to +79% and slide back to a +20% target. With the corrected formula
+        # the trail clears the target immediately and the floor never binds.
+        t = thr if floored else stop_thr
+        if t and t > 0:
+            ns = ig_shim.compute_trailing_stop(direction, entry, cur, cl, t)
             if ns is not None:
                 cur = max(cur, ns) if buy else min(cur, ns)
     result = ("OPEN", (last if last is not None else None), last_date)
