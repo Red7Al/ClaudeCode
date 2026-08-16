@@ -914,7 +914,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <p class="muted" style="font-size:12px;margin:0 0 8px">Adds the "Let winners run" illustration to the Performance tab. Once a trade hits target, the stop moves <b>up to the target</b> and then trails above it. This is an <b>illustration</b> — it never changes live IG orders.</p>
       <div class="credrow"><span class="clabel">Show the "Let winners run" report</span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="lim-let_winners_run" onchange="saveLimits()"> On</label></div>
       <div class="credrow"><span class="clabel" title="Stop-loss trailing % applied before target is reached.">Stop-loss trail before target (%)</span><input type="number" min="0" max="100" step="5" id="lim-let_winners_run_stop" placeholder="0" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel" title="How far above the target the stop trails once target is reached.">Trail above target (%)</span><input type="number" min="0" max="100" step="5" id="lim-let_winners_run_trail" placeholder="25" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="Once target is reached the take-profit is dropped and the stop trails this far BELOW the running price, so the trade keeps running while giving back at most this much from its peak. Never falls below the target.">Trail below price after target (%)</span><input type="number" min="0" max="100" step="1" id="lim-let_winners_run_trail" placeholder="4" style="max-width:120px"></div>
       <button class="btn" style="margin-top:8px" onclick="saveLimits()">Save</button>
       <span id="lim-msg4" style="font-size:12px;margin-left:8px"></span>
     </div>
@@ -1518,7 +1518,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Trailing stop applied before target. Zero keeps the original hard stop until target.">Stop trail
         <input id="pf-run-stop" type="number" min="0" max="100" step="5" value="0" style="width:64px;padding:4px 6px" onchange="winnersRunChange('pf')">%</label>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="After target, the stop locks the target gain and trails the remaining move by this percentage.">Run trail
-        <input id="pf-run-in" type="number" min="0" max="100" step="5" value="25" style="width:64px;padding:4px 6px" onchange="winnersRunChange('pf')">%</label>
+        <input id="pf-run-in" type="number" min="0" max="100" step="1" value="4" style="width:64px;padding:4px 6px" onchange="winnersRunChange('pf')">%</label>
       <span id="pf-run-busy" class="muted" style="font-size:12px"></span>
     </div>
     <div id="pf-run-wrap" style="margin-bottom:14px">
@@ -1550,7 +1550,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Stop-loss trailing % applied BEFORE target — the stop follows price up on the way to target. 0 = keep the original hard stop until target.">Stop trail
           <input id="ordp-run-stop" type="number" min="0" max="100" step="5" value="0" style="width:64px;padding:4px 6px" onchange="winnersRunChange('ordp')">%</label>
         <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Once target is reached the stop moves UP TO the target (so the gain can't decay), then trails above it by entry × gain × this %.">Run trail
-          <input id="ordp-run-in" type="number" min="0" max="100" step="5" value="25" style="width:64px;padding:4px 6px" onchange="winnersRunChange('ordp')">%</label>
+          <input id="ordp-run-in" type="number" min="0" max="100" step="1" value="4" style="width:64px;padding:4px 6px" onchange="winnersRunChange('ordp')">%</label>
         <span class="muted" style="font-size:11px">once target hits, the stop moves <b>up to target</b> then trails — so 17% can't decay to 7%. Illustration only — never moves real orders.</span>
         <span id="ordp-run-busy" class="muted" style="font-size:12px"></span>
       </div>
@@ -4157,9 +4157,9 @@ function winnersRunChange(surface='pf'){
   if(wrap)wrap.style.display="";
   // Seed each surface from saved config once; subsequent edits remain unsaved what-if values.
   const inT=$(prefix+"-run-in"), inS=$(prefix+"-run-stop");
-  if(inT&&!inT.dataset.seed){inT.value=(MY_LIMITS.let_winners_run_trail??25);inT.dataset.seed="1";}
+  if(inT&&!inT.dataset.seed){inT.value=(MY_LIMITS.let_winners_run_trail??4);inT.dataset.seed="1";}
   if(inS&&!inS.dataset.seed){inS.value=(MY_LIMITS.let_winners_run_stop??0);inS.dataset.seed="1";}
-  const v=+((inT||{}).value||(MY_LIMITS.let_winners_run_trail??25)), sv=+((inS||{}).value||(MY_LIMITS.let_winners_run_stop??0));
+  const v=+((inT||{}).value||(MY_LIMITS.let_winners_run_trail??4)), sv=+((inS||{}).value||(MY_LIMITS.let_winners_run_stop??0));
   if(busy){busy.className="sqh-loading";busy.textContent="⏳ Data loading… re-backtesting.";}
   const evidenceQuery=`&wallet=${encodeURIComponent(WINNERS_WALLET)}&position_pct=${encodeURIComponent(WINNERS_STAKE*100)}&max_open=${encodeURIComponent(WINNERS_MAXOPEN)}&min_trade=${encodeURIComponent(MIN_TRADE)}`;
   fetch("/api/winners-run?thr="+v+"&stop="+sv+evidenceQuery).then(r=>r.ok?r.json():null).then(j=>{

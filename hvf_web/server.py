@@ -2971,23 +2971,24 @@ def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0, return_date
             if not floored and target and lo <= target:
                 floored = True
                 cur = min(cur, target)
-        # ONE rule in both phases: keep this share of the run, measured from entry, ratcheted, and never
-        # below the target once target has been floored.
+        # AFTER target: `thr` is a DISTANCE below the running price (0.04 = 4%), floored at the target.
+        # BEFORE target: the hard stop stands unless `stop_thr` is set, in which case it means "keep this
+        # share of the run" via compute_trailing_stop.
         #
-        # An earlier attempt used a tight distance-below-price trail above target, on the reasoning that a
-        # banked gain deserves a minimal stop. The user's question settled it -- "if we keep 95% of gain,
-        # how can number 3 allow much more to go back?" -- and they were right: the two rules used
-        # different UNITS, so a 3%-of-price trail hands back 5.37 points on a +79% run where keeping 95%
-        # of the run hands back 3.95. Proportional is both tighter and consistent, and needs one number
-        # rather than two that can silently disagree.
-        #
-        # What made the shared rule fail before was compute_trailing_stop itself, not the sharing: its old
-        # level (entry + gain*thr) stayed UNDER the target until the gain reached 1/thr times the target
-        # return, so a trade could run to +79% and slide back to a +20% target. With the corrected formula
-        # the trail clears the target immediately and the floor never binds.
-        t = thr if floored else stop_thr
-        if t and t > 0:
-            ns = ig_shim.compute_trailing_stop(direction, entry, cur, cl, t)
+        # The units genuinely differ, and that is a deliberate choice made with the trade-off measured
+        # (user 2026-08-16: "stops are only relevant once target is met ... set the trailing stop loss to
+        # 5% from this price", then "drop to 4%"). A share-of-the-run trail is TIGHTER -- at a +79% run it
+        # hands back 4.0 points against 8.9 for a 5% distance -- but it cannot be expressed as an IG order.
+        # A distance can: IG's native trailing stop then moves the level tick by tick, continuously,
+        # including overnight and at weekends. A slightly looser stop the broker always enforces beats a
+        # tighter one that only updates when our job happens to run, which is the window a gap falls into.
+        # This models what the live order will do, so the report and the account agree.
+        if floored:
+            if thr and thr > 0:
+                ns = cl * (1 - thr) if buy else cl * (1 + thr)
+                cur = max(cur, ns) if buy else min(cur, ns)
+        elif stop_thr and stop_thr > 0:
+            ns = ig_shim.compute_trailing_stop(direction, entry, cur, cl, stop_thr)
             if ns is not None:
                 cur = max(cur, ns) if buy else min(cur, ns)
     result = ("OPEN", (last if last is not None else None), last_date)
@@ -3611,7 +3612,7 @@ def api_winners_run():
     try:
         thr = request.args.get("thr")
         if thr in (None, ""):
-            thr = "25"
+            thr = "4"     # distance below price once target is reached (user 2026-08-16)
         stop = request.args.get("stop") or "0"
         rows = _winners_run_rows(thr, stop)
         def _number(name, default, low, high):
