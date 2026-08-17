@@ -515,11 +515,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <body>
 <header>
   <h1>Squeeze Scanner</h1>
-  <!-- #gen (the "snapshot <date>" stamp) moved OUT of this global header and onto the Scanner Report
-       page on 2026-08-17 (user: "move it back to snapshot report tab"). It dates the SNAPSHOT, which is
-       what the Scanner Report is built from; sitting in the site header it appeared to date every tab,
-       including Squeeze History and Performance, which are read live from the database and are not
-       stale just because the snapshot is. -->
+  <!-- #gen, the "snapshot <date>" stamp: when the data was last imported. It has lived here since the
+       first commit (a84e28a) and belongs here. On 2026-08-17 I moved it into the Scanner Report page's
+       <h1>, reading "move it back to the snapshot report tab, same place as it was" as a request to
+       relocate it. That was wrong twice over: it had never moved, and the header is what "the same
+       place" meant -- the header shows on every tab, so from the Scanner Report it was always visible
+       right there. Moving it took the date away from where the user reads it. Reverted same day.
+       Leave it here. -->
+  <span class="count" id="gen"></span>
   <button class="btn" id="nav-back" onclick="tabHistGo(-1)" title="Back" style="padding:6px 9px">◀</button>
   <button class="btn" id="nav-fwd" onclick="tabHistGo(1)" title="Forward" style="padding:6px 9px">▶</button>
   <span class="grow"></span>
@@ -642,7 +645,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <input type="hidden" id="mf_sector"><input type="hidden" id="mf_direction"><input type="hidden" id="mf_status"><input type="hidden" id="mf_location"><input type="hidden" id="mf_market"><input type="hidden" id="mf_timeframe">
     <div class="doc" style="max-width:none;margin:0;padding:24px 16px 0">
       <span class="eyebrow">Scanner</span>
-      <h1 style="margin:6px 0 4px">Scanner Report <span class="count" id="gen" style="font-weight:400;vertical-align:middle"></span></h1>
+      <h1 style="margin:6px 0 4px">Scanner Report</h1>
       <p class="lede" style="margin:0">Every instrument we scan across shares, indices, FX and commodities — squeezes spotted early, with the exact levels to act on. Use the charts or <b>Filters</b> to narrow; click a row for full detail.</p>
       <p style="font-size:12px;margin-top:6px;color:#d29922">This is a live list of what's actionable <b>right now</b>, not a history — a squeeze that has gone stale or already resolved drops off here even though it's still recorded, and only setups passing <b>My Trading Filters</b> appear at all. For the full historical record, and to slice it, see <b>Squeeze History</b> or <b>Performance</b>.</p>
       <!-- The Scanner filter sidebar moved to Squeeze History on 2026-08-16. These three survive it:
