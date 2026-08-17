@@ -47,3 +47,19 @@ jobs:
           PY
       - name: Build, publish and read-verify immutable Scanner snapshot
         run: python publish_scanner_snapshot.py --build --markets "${{ inputs.markets }}" --source github-actions --refresh-id "${{ inputs.refresh_id || github.run_id }}"
+      # Keep the built snapshot even when publication fails (2026-08-17). The scan is the expensive part
+      # -- up to two hours of engine plus yfinance -- and publication is a separate, later step that can
+      # fail on its own: Supabase Storage started returning HTTP 402 when the free-tier egress quota was
+      # exhausted, so every run threw away a perfectly good snapshot at the last hurdle and the live site
+      # stayed frozen on 12 August. With this, a failed publish still yields a downloadable artifact that
+      # can be placed on the web host directly (hvf_web/server.py falls back to the local file whenever
+      # the Storage pull raises), which decouples "can we scan" from "can we reach Storage".
+      # if: always() so it runs on the failure path, which is the whole point.
+      - name: Upload the built snapshot as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-snapshot
+          path: hvf_web/snapshot.json
+          if-no-files-found: warn
+          retention-days: 7
