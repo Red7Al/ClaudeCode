@@ -578,10 +578,15 @@ def test_squeeze_history_owns_the_filters_now():
                     "sqfr_vsmax", "sqf_vwap", "sqf_atr"):
         assert f'id="{control}"' in html, f"{control} missing from the Squeeze History sidebar"
 
-    # Header buttons act on this tab, and Squeeze-only stays Scanner-only (no has_signal on history).
+    # Header buttons act on this tab. "Show Squeeze Only" was hidden outright on 2026-08-16 at the user's
+    # request; the button stays in the DOM and signalOnly stays false, so pass() behaves as it does with
+    # the toggle showing "off" — the full monitored universe.
     assert 'if(CUR_TAB==="squeezehist")return toggleSqhFilters();' in html
     assert 'if(CUR_TAB==="squeezehist")return sqhReset();' in html
-    assert '$("signalonly").style.display=sc?"":"none";' in html
+    assert '$("signalonly").style.display="none";' in html
+    # One rebuild scope control, not two: a location is a group of markets.
+    assert 'id="refresh-mkt-wrap"' not in html
+    assert 'id="refresh-loc-wrap"' in html
 
     # The dim cache is keyed on the sidebar too, or it serves rows the filters just excluded.
     assert "_sqDvSig===_sqSig" in html

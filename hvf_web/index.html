@@ -521,13 +521,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <span class="grow"></span>
   <button class="btn" id="togglefilters">Show Filters <span style="color:var(--bear)">✗</span></button>
   <button class="btn" id="signalonly">Show Squeeze Only <span style="color:var(--bull)">✓</span></button>
-  <span id="refresh-mkt-wrap" style="display:none;position:relative">
-    <button class="btn" id="refresh-mkt-btn" onclick="toggleRefreshMkt(event)" title="Choose which markets the Refresh rescans (default: all). This scopes the REBUILD, not the table.">Rebuild markets: All ▾</button>
-    <div id="refresh-mkt-panel" style="display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:60;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:210px;max-height:360px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.35)"></div>
-  </span>
+  <!-- The markets picker was removed 2026-08-16: a location IS a group of markets, so this one control
+       expresses every scope the pair could, and two controls for one decision was clutter. The dropdown
+       is right-aligned to its button so it opens INSIDE the viewport -- the button sits at the right-hand
+       end of the header, and a left-anchored panel ran off the edge. -->
   <span id="refresh-loc-wrap" style="display:none;position:relative">
     <button class="btn" id="refresh-loc-btn" onclick="toggleRefreshLoc(event)" title="Choose which locations the Refresh rescans. A location is a group of markets, so picking one selects its markets. This scopes the REBUILD, not the table.">Rebuild locations: All ▾</button>
-    <div id="refresh-loc-panel" style="display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:60;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:230px;max-height:360px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.35)"></div>
+    <div id="refresh-loc-panel" style="display:none;position:absolute;right:0;top:calc(100% + 4px);z-index:60;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:230px;max-height:360px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.35);text-align:left"></div>
   </span>
   <button class="btn" id="refresh">↻ Refresh data</button>
   <button class="btn" id="reset">Reset filters</button>
@@ -2794,7 +2794,7 @@ function showTab(name){
   // Scanner dropped from filterTab on 2026-08-16: its sidebar is gone, so offering "Show Filters" there
   // would open nothing.
   const filterTab=(name==="squeezehist"||name==="preorders"||name==="orderops")&&!locked;
-  $("signalonly").style.display=sc?"":"none";
+  $("signalonly").style.display="none";   // hidden 2026-08-16 (user: "can be hidden for now")
   // Scanner dropped 2026-08-16: with its sidebar gone there is nothing there to reset, and offering
   // the buttons implied filters that no longer exist (user: "All these buttons are on the scanner
   // report page"). "Show Squeeze Only" stays -- it is a real Scanner control over has_signal.
