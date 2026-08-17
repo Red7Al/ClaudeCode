@@ -550,8 +550,18 @@ def test_scanner_filters_moved_and_left_nothing_dangling():
         assert f'"{gone}"' not in html and f"'{gone}'" not in html, f"{gone} still referenced"
         assert f'id="{gone}"' not in html, f"{gone} element still present"
 
-    # Kept deliberately: the search box, the chart window, and the hidden scope carriers.
-    assert 'id="f_search"' in html and 'id="f_days"' in html
+    # f_days joined them on 2026-08-17 (user: "the date filter on scanner report is of no use as the
+    # LOGIC for squeeze has a date limit anyway"). It never filtered rows -- it set the row-detail price
+    # chart's window -- but the squeeze engine already bounds how far back a setup can form, so the
+    # slider changed the picture without changing what qualifies. showDetail() read it unguarded, so the
+    # window had to become a constant rather than the element simply being deleted.
+    assert 'id="f_days"' not in html, "the f_days slider was removed"
+    assert '$("f_days")' not in html, "nothing may still dereference f_days"
+    assert "const PRICE_CHART_DAYS=365;" in html
+    assert "const days=PRICE_CHART_DAYS;" in html, "showDetail must use the constant"
+
+    # Kept deliberately: the search box and the hidden scope carriers.
+    assert 'id="f_search"' in html
     assert 'id="f_mkt" multiple hidden' in html and 'id="f_sec" multiple hidden' in html
     assert 'const F=["f_search","f_mkt","f_sec"];' in html
     # dm()/sel() combined a sidebar dropdown with a chart set; with no sidebar they are dead.

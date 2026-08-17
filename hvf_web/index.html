@@ -652,12 +652,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
            f_search is hidden and mirrors the visible box below (pass() reads f_search, and
            syncScannerNameSearch writes it); f_mkt/f_sec are hidden and NO LONGER FILTER -- they only carry
            the saved market/sector scope that _pfSavedScope (Back Test) and applyConfigFromReport read;
-           f_days is the price-chart window, never a row filter, so it sits beside the search box. -->
+           The f_days slider went too on 2026-08-17 (user: "the date filter on scanner report is of no
+           use as the LOGIC for squeeze has a date limit anyway"). It never filtered rows -- it set the
+           window of the price chart in the row-detail popup -- but the squeeze engine already bounds
+           how far back a setup can form, so widening or narrowing the chart changed the picture without
+           changing what qualifies. The window is the PRICE_CHART_DAYS constant now. -->
       <input id="f_search" type="hidden"><select id="f_mkt" multiple hidden></select><select id="f_sec" multiple hidden></select>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px">
         <input id="scanner-name-search" placeholder="Search name / ticker…" oninput="syncScannerNameSearch(this.value)" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px" aria-label="Search Scanner by name or ticker">
-        <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:7px">Price chart: last <span id="dlbl">365</span> days
-          <input id="f_days" type="range" min="30" max="1095" step="5" value="365" style="width:150px"></label>
       </div>
     </div>
     <div class="viz" id="viz"></div>
@@ -2281,7 +2283,7 @@ function closeDetail(){
 function showDetail(t){
   SEL=t; render();
   const r=DATA.find(x=>x.ticker===t); if(!r){return;}
-  const days=+$("f_days").value;
+  const days=PRICE_CHART_DAYS;
   let broker="<span class='muted'>no broker data</span>";
   if(r.broker){const b=r.broker;let tr="";
     if(b.trend&&b.trend.length===3){tr=` · buys ${b.trend[0]}→${b.trend[1]} (${b.trend[1]>b.trend[0]?'strengthening':'cooling'}) over ~3mo`;}
@@ -2534,19 +2536,21 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-fk]");if(
   else if(k.startsWith("igo_")||k.startsWith("igp_"))paintIgAccount();
   else if(k.startsWith("inf_"))paintInstruments();   // Instruments cross-filter cards (user 2026-08-07, ChangeRequest P-08)
   else applyAll();});
-$("f_days").addEventListener("input",()=>{$("dlbl").textContent=$("f_days").value; if(SEL){const img=$("pw"); if(img) img.src=`/api/pricewin/${SEL}?days=${$("f_days").value}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}`;}});
+// Window of the row-detail price chart, in days. Was a slider on the Scanner (f_days); removed
+// 2026-08-17 because the squeeze engine already bounds how far back a setup can form, so moving it
+// changed the picture without changing what qualifies.
+const PRICE_CHART_DAYS=365;
 const MF_IDS=["mf_sector","mf_direction","mf_status","mf_location","mf_market","mf_timeframe"];
 $("reset").onclick=()=>{
   if(CUR_TAB==="squeezehist")return sqhReset();
   F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");
   // Built-in defaults first, then the user's OWN saved defaults on top (Config tab, user 2026-07-03).
-  // The Quality/R:R/Dist/Days defaults went with their controls to Squeeze History on 2026-08-16; only
-  // the chart window is still a Scanner setting.
-  $("f_days").value=365;$("dlbl").textContent=365;
+  // The Quality/R:R/Dist/Days defaults went with their controls to Squeeze History on 2026-08-16, and
+  // the chart-window slider was removed on 2026-08-17 -- nothing chart-related is a Scanner reset now.
   applyUserDefaults();msyncAll();applyAll();};   // msyncAll: repaint the P-08 dropdowns after a bulk write
 $("showall").onclick=()=>{
   if(CUR_TAB==="squeezehist")return sqhReset();
-  F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");signalOnly=false;$("signalonly").innerHTML='Show Squeeze Only <span style="color:var(--bear)">✗</span>';$("f_days").value=365;$("dlbl").textContent=365;msyncAll();applyAll();};
+  F.forEach(id=>{$(id).value="";});MF_IDS.forEach(id=>$(id).value="");signalOnly=false;$("signalonly").innerHTML='Show Squeeze Only <span style="color:var(--bear)">✗</span>';msyncAll();applyAll();};
 $("togglefilters").onclick=()=>{
   if(CUR_TAB==="preorders")return togglePoFilters();      // same header button drives the Pre-orders asides (P-03)
   if(CUR_TAB==="orderops")return toggleOoFilters();
@@ -3252,11 +3256,12 @@ let USER_FILTERS={};
 // Saved filter defaults now span three surfaces: what is left of the Scanner (search + the hidden
 // market/sector scope + the chart window), the Pre-orders tabs, and the Squeeze History filters that
 // moved off the Scanner on 2026-08-16.
-const FILTER_IDS=()=>F.concat(["f_days","pof_direction","pof_status","pof_location","pof_market","pof_timeframe","pof_sector"],
+// f_days dropped 2026-08-17 with its slider. A saved f_days may still sit in an existing user's stored
+// defaults; applyUserDefaults ignores keys whose element is gone, so it is inert rather than an error.
+const FILTER_IDS=()=>F.concat(["pof_direction","pof_status","pof_location","pof_market","pof_timeframe","pof_sector"],
                               SQH_FILTER_IDS());
 function applyUserDefaults(){
   Object.entries(USER_FILTERS).forEach(([k,v])=>{const el=$(k);if(el&&v!=null&&v!=="")el.value=v;});
-  if(USER_FILTERS.f_days){$("dlbl").textContent=USER_FILTERS.f_days;}
 }
 // Built-in default chart-Status selections (user 2026-07-25, P-05 L188/L203/L225/L341). Seeded ONCE on
 // load, only when the filter is unset, so the user's own click / saved default always wins and
