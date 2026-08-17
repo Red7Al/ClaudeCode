@@ -30,6 +30,12 @@ concurrency:
   group: order-bridge
   cancel-in-progress: false
 
+# actions: read is what lets this job fetch the Scanner snapshot artifact below. Everything else stays
+# at the default read, and nothing here needs write.
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   bridge:
     runs-on: ubuntu-latest
@@ -41,6 +47,45 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -r requirements.txt
+
+      # ── Get a snapshot without Supabase Storage (2026-08-17) ──────────────────────────────────────
+      # The bridge reads the Scanner snapshot to know which pre-orders are ready. order_bridge tries
+      # Supabase Storage first and falls back to hvf_web/snapshot.json, but that file is gitignored, so
+      # on a clean runner there was no fallback: when Storage began returning HTTP 402 (free-tier egress
+      # exhausted) the bridge went blind and placed nothing from 12 to 17 August. It failed safe -- the
+      # "no records" guard refused to read an empty snapshot as "nothing to do" -- but it failed.
+      #
+      # Scanner Snapshot Publish now uploads the built snapshot as an artifact even when publication
+      # fails, so the freshest good scan is always retrievable. Fetch it here with the automatic
+      # GITHUB_TOKEN: no new secret, no new host, and it works whatever Storage is doing.
+      - name: Fetch the latest Scanner snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=scanner-snapshot&per_page=1" \
+                 --jq '.artifacts[] | select(.expired == false) | .id' | head -1)
+          if [ -z "${ID:-}" ]; then
+            echo "::error::no unexpired scanner-snapshot artifact. Run Scanner Snapshot Publish."
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ID/zip" > /tmp/snap.zip
+          unzip -o -q /tmp/snap.zip -d hvf_web/
+          python - <<'PY'
+          import datetime as dt, json, sys
+          with open("hvf_web/snapshot.json", encoding="utf-8") as fh:
+              d = json.load(fh)
+          if d.get("count") != len(d.get("records") or []):
+              sys.exit(f"corrupt snapshot: count {d.get('count')} != {len(d.get('records') or [])}")
+          gen = dt.datetime.fromisoformat(d["generated_utc"])
+          age = (dt.datetime.now(dt.timezone.utc) - gen).total_seconds() / 3600
+          print(f"snapshot {d['generated_utc']}  {d['count']} records  ({age:.1f}h old)")
+          # Refuse to place real orders against stale prices. Scanner Snapshot Publish runs daily, so
+          # 36h means two consecutive scans failed -- at which point not trading is the right answer.
+          if age > 36:
+              sys.exit(f"snapshot is {age:.1f}h old (limit 36h) - refusing to place orders on stale prices")
+          PY
+
       - run: python -m hvf_web.order_bridge
         env:
           IG_API_KEY:                  ${{ secrets.IG_API_KEY }}
