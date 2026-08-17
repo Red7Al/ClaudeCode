@@ -1,0 +1,38 @@
+name: DB Index Audit (weekly — 2026-08-17)
+
+# Weekly index-health review of the Supabase Postgres database (user 2026-08-17: "also review this
+# weekly to see what is required"). Triggered by cron-job.org via workflow_dispatch at 08:00 UTC on
+# Sundays — NEVER add a schedule: block (GitHub-native cron is banned, user directive 2026-06-07).
+#
+# READ-ONLY. It reports duplicate indexes, indexes unused since the stats were last reset, and foreign
+# keys with no covering index — and changes nothing. The 2026-08-17 clean-up (six duplicates dropped,
+# one FK index added) was applied deliberately as reviewed migrations in run_schema.py, which is where
+# any action from this report belongs too. Auto-dropping an index on a live trading database because a
+# counter reads zero is not a trade worth making; noticing drift within a week instead of discovering
+# it after three months is.
+#
+# Silent when there is nothing to report, so a post in #alerts means something actually changed.
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
+      PYTHONIOENCODING:      utf-8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Audit indexes and report anything worth acting on
+        run: python run_db_index_audit.py

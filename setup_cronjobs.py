@@ -189,6 +189,10 @@ JOBS = [
     # unseen for eight weeks. Sunday 07:00 UTC: a fortnight of Mondays' warning before anything is due
     # to trade, and it fires on the quietest day so a red alert means the token and nothing else.
     ("GH PAT Expiry Check",            "0 7 * * 0",   "trading-pat-check.yml"),
+    # Weekly index-health review (2026-08-17, user: "also review this weekly to see what is required").
+    # Read-only: duplicate indexes, unused indexes, uncovered foreign keys. Silent on a clean week.
+    # 08:00 Sunday, an hour behind the PAT check so the two never contend for the same runner minute.
+    ("DB Index Audit",                 "0 8 * * 0",   "trading-db-index-audit.yml"),
 ]
 
 

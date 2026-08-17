@@ -19,6 +19,13 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.7.0   2026-08-17  Claude      Index hygiene (user: "apply the fixes if the database will let you"). Drop five
+#                                 IDENTICAL duplicate indexes found by the Supabase performance linter and confirmed
+#                                 against 87 days of pg_stat_user_indexes — a duplicate can never be chosen twice by
+#                                 the planner but is maintained on every write. Add the one missing FK covering index
+#                                 on scanner_snapshot_current(version_id). Supabase-managed schemas (auth/storage/
+#                                 realtime) deliberately untouched. Ongoing drift is reported by the new weekly
+#                                 run_db_index_audit.py rather than fixed blind.
 # 1.6.0   2026-06-16  Alex Hind   x_publications table — dedup record for live X publications (publish_one_to_x skips
 #                                 re-publishing a ticker within 12h). user 2026-06-16: duplicate publications.
 # 1.5.0   2026-06-15  Alex Hind   signal_log: add analyst_signal + analyst_recommendation (broker recommendation, so the
@@ -454,6 +461,53 @@ MIGRATIONS = [
             version_id  bigint not null references scanner_snapshot_versions(id),
             updated_at  timestamptz not null default now()
         )"""
+    ),
+    # ── Index hygiene, 2026-08-17 (user: "apply the fixes if the database will let you") ──────────────
+    # Supabase's performance linter found five pairs of IDENTICAL indexes. A duplicate earns nothing:
+    # the planner can only use one, while EVERY insert and update has to maintain both. Verified over
+    # 87 days of pg_stat_user_indexes before dropping, and in each pair the one dropped is the one with
+    # ZERO scans (where both were unused the better-named survivor was kept). None of these is created
+    # anywhere in this file, so re-running the migration will not resurrect them.
+    #
+    # Deliberately NOT touched: everything in the auth/storage/realtime schemas. Those are Supabase's
+    # own, several are also flagged unused, and they are not ours to manage. Nor the remaining unused
+    # PUBLIC indexes (idx_senator_scores_win_rate, idx_scanner_snapshot_generated, idx_positions_epic,
+    # idx_social_mentions_author) -- ~56 kB between them, two of them created by this very file, and
+    # "unused for 87 days" is not the same as "never needed" for a rarely-hit query path. They are
+    # reported weekly by run_db_index_audit.py instead of being guessed at.
+    (
+        "index hygiene: drop duplicate index signal_log(ticker)",          # keeps idx_signal_log_ticker
+        "DROP INDEX IF EXISTS idx_signal_ticker"                            # 2456 kB, the largest of the set
+    ),
+    (
+        "index hygiene: drop duplicate index positions(user_id)",          # keeps idx_positions_user_id
+        "DROP INDEX IF EXISTS idx_positions_user"
+    ),
+    (
+        "index hygiene: drop duplicate index trade_log(user_id)",          # keeps idx_trade_log_user_id
+        "DROP INDEX IF EXISTS idx_trade_log_user"
+    ),
+    (
+        "index hygiene: drop duplicate index trade_log(closed_at)",        # keeps idx_trade_log_closed_at
+        "DROP INDEX IF EXISTS idx_trade_log_closed"
+    ),
+    (
+        "index hygiene: drop duplicate index social_mentions(tickers_found)",  # keeps idx_social_mentions_tickers
+        "DROP INDEX IF EXISTS idx_social_tickers"
+    ),
+    (
+        # Found by run_db_index_audit.py, not by Supabase's linter: idx_daily_pnl_user_date is byte-identical
+        # to the index backing the UNIQUE(user_id, trade_date) constraint. The constraint index has to stay --
+        # it enforces correctness, not just speed -- so the plain one is the redundant half.
+        "index hygiene: drop duplicate index daily_pnl(user_id, trade_date)",
+        "DROP INDEX IF EXISTS idx_daily_pnl_user_date"
+    ),
+    (
+        # The linter's one MISSING index: a foreign key with no covering index makes the referenced-side
+        # delete/update scan the whole child table, and cascades take a stronger lock while they do it.
+        "index hygiene: cover scanner_snapshot_current.version_id FK",
+        "CREATE INDEX IF NOT EXISTS idx_scanner_snapshot_current_version "
+        "ON scanner_snapshot_current(version_id)"
     ),
 
 ]
