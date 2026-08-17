@@ -30,9 +30,19 @@ _DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]   # cron wday 1..6,0(S
 
 
 def _gh_token() -> str:
-    """The gh CLI token (the web server runs on the operator's laptop where gh is logged in), falling
-    back to GH_PAT / GITHUB_TOKEN env vars. Empty string if none — the caller then serves definitions
-    only (no run stats)."""
+    """GH_PAT / GITHUB_TOKEN from the environment; the `gh` CLI only as a local-development fallback.
+    Empty string if none — the caller then serves definitions only (no run stats).
+
+    Corrected 2026-08-17. This used to describe the gh CLI as the PRIMARY source because "the web
+    server runs on the operator's laptop where gh is logged in". It does not: the site moved to IONOS,
+    where each request is a fresh CGI process with no `gh` binary and nobody logged in. The subprocess
+    call there fails and costs up to 8s of timeout before falling through, so the env var is not just
+    the preferred path, it is the only one that works in production.
+
+    The token also expires. GH_PAT ran out on 2026-06-10 and nothing noticed until 2026-08-17, by which
+    time three cron jobs had been dead for weeks — see setup_cronjobs.check_github_token(), and the
+    "GH_PAT Expiry Check" job that now watches for exactly this.
+    """
     for env in ("GH_PAT", "GITHUB_TOKEN"):
         if os.environ.get(env):
             return os.environ[env]

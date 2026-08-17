@@ -1,0 +1,47 @@
+name: GH PAT Expiry Check (weekly — 2026-08-17)
+
+# Is GH_PAT still able to dispatch? Triggered by cron-job.org via workflow_dispatch at 07:00 UTC on
+# Sundays — NEVER add a schedule: block (GitHub-native cron is banned, user directive 2026-06-07).
+#
+# WHY THIS EXISTS. Every cron-job.org job calls the GitHub API with GH_PAT baked into its stored
+# Authorization header. When that token expires they all stop at once, and they stop SILENTLY: a
+# rejected dispatch creates no Actions run, so there is no failed workflow to notice — only an absence,
+# on a page nobody opens. GH_PAT expired on 2026-06-10 and it was not spotted until 2026-08-17, by
+# which time Data Quality Audit and Pre-Order Report had been dead since 27 July, US HVF Watch since
+# 30 June, and a morning of live trading automation had quietly not happened.
+#
+# Read-only: it asks GitHub whether the token can see this repo's workflows. Nothing is written, no
+# job is modified, no order is placed. On failure it posts to #alerts via notify.alert_system_error
+# (gated by the per-channel Slack switch like every other poster) and exits non-zero so the cron-job.org
+# entry shows red too.
+#
+# LIMIT: a 200 proves the token is live and can READ Actions. Dispatching also needs Actions: WRITE,
+# which cannot be probed without firing a real workflow — and firing one places real orders. This
+# catches expiry and revocation, which is the failure that actually happened; it will not catch a
+# PAT that was re-created with read-only scope.
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GITHUB_TOKEN:          ${{ secrets.GH_PAT }}
+      SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
+      # notify imports db_pool (per-channel Slack switches are read from the database), so the check
+      # needs the full requirements and the Supabase creds even though it touches no trading data.
+      SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Check GH_PAT and alert if it has expired
+        run: python setup_cronjobs.py --check-token --alert

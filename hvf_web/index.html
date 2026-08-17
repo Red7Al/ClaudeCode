@@ -2551,43 +2551,15 @@ $("togglefilters").onclick=()=>{
 };   // the Scanner has no filter panel any more — nothing left to toggle
 $("signalonly").onclick=()=>{signalOnly=!signalOnly;$("signalonly").innerHTML="Show Squeeze Only "+(signalOnly?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');applyAll();};
 let _refStart=0, _refBase=null, _refId=null, _lastTens=-1;
-// Refresh a CHOICE of markets (user 2026-07-31, P-15). REFRESH_MARKETS empty = the whole universe;
-// otherwise only the picked markets are rescanned and merged into the snapshot.
-let REFRESH_MARKETS=new Set();
+// The markets picker (P-15, 2026-07-31) was removed on 2026-08-16 -- a location IS a group of markets,
+// so the locations picker below expresses every scope the pair could. Its five functions
+// (buildRefreshMktPanel / onRefreshMktAll / onRefreshMktToggle / updateRefreshMktLabel /
+// toggleRefreshMkt) and the REFRESH_MARKETS set went with it on 2026-08-17: nothing could add to that
+// set once the panel was gone, so the union at the Refresh handler was always union-with-empty.
+// REFRESH_MKT_LIST survives -- it is the canonical market list from /api/records and the Operations tab
+// still reads it through _refreshMktList().
 let REFRESH_MKT_LIST=null;   // canonical market list from /api/records (authed); falls back to uniq("market")
 function _refreshMktList(){return (REFRESH_MKT_LIST&&REFRESH_MKT_LIST.length)?REFRESH_MKT_LIST:uniq("market");}
-function buildRefreshMktPanel(){
-  const p=$("refresh-mkt-panel"); if(!p)return;
-  const mkts=_refreshMktList(), all=REFRESH_MARKETS.size===0;
-  const rows=mkts.map(m=>{
-    const on=all||REFRESH_MARKETS.has(m);
-    return `<label style="display:flex;align-items:center;gap:7px;padding:3px 4px;font-size:12.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" data-mkt="${m.replace(/"/g,'&quot;')}" ${on&&!all?'checked':''} onchange="onRefreshMktToggle(this)"> ${m}</label>`;
-  }).join("");
-  p.innerHTML=`<label style="display:flex;align-items:center;gap:7px;padding:3px 4px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--line);margin-bottom:4px"><input type="checkbox" id="refresh-mkt-all" ${all?'checked':''} onchange="onRefreshMktAll(this)"> <b>All markets</b></label>`+rows;
-  updateRefreshMktLabel();
-}
-function onRefreshMktAll(cb){ if(cb.checked){REFRESH_MARKETS.clear();} buildRefreshMktPanel(); }
-function onRefreshMktToggle(cb){
-  const m=cb.getAttribute("data-mkt");
-  if(cb.checked)REFRESH_MARKETS.add(m); else REFRESH_MARKETS.delete(m);
-  // Ticking a specific market means "not all"; if the user unticks everything, fall back to All.
-  buildRefreshMktPanel();
-}
-function updateRefreshMktLabel(){
-  const b=$("refresh-mkt-btn"); if(!b)return;
-  const n=REFRESH_MARKETS.size;
-  // "Rebuild" prefix so it cannot be mistaken for a table filter now the real filters have moved.
-  b.textContent = n===0 ? "Rebuild markets: All ▾" : (n===1 ? `Rebuild markets: ${[...REFRESH_MARKETS][0]} ▾` : `Rebuild markets: ${n} selected ▾`);
-}
-function toggleRefreshMkt(e){
-  if(e)e.stopPropagation();
-  const p=$("refresh-mkt-panel"); if(!p)return;
-  const open=p.style.display!=="none";
-  if(open){p.style.display="none";return;}
-  buildRefreshMktPanel(); p.style.display="block";
-  // close on next outside click
-  setTimeout(()=>{const h=ev=>{if(!$("refresh-mkt-wrap").contains(ev.target)){p.style.display="none";document.removeEventListener("click",h);}};document.addEventListener("click",h);},0);
-}
 // Rebuild a CHOICE of LOCATIONS (user 2026-08-16: "rebuild snapshot would also be good to filter which
 // markets / locations - just do locations for now"). A location is a GROUP of markets, so this resolves
 // to markets and reuses the existing, proven refresh path -- no scanner, workflow or server change, and
@@ -2634,10 +2606,9 @@ function toggleRefreshLoc(e){
   setTimeout(()=>{const h=ev=>{if(!$("refresh-loc-wrap").contains(ev.target)){p.style.display="none";document.removeEventListener("click",h);}};document.addEventListener("click",h);},0);
 }
 $("refresh").onclick=async()=>{ if($("refresh").disabled)return;
-  // Markets and locations UNION rather than intersect: both name markets to include, so ticking "US" and
-  // then "FTSE 100" means both, which is what picking two things reads as.
-  const fromLoc=_refreshMarketsForLocations();
-  const picked=[...new Set([...REFRESH_MARKETS,...fromLoc])];
+  // Locations are the only scope control now (the markets picker was removed 2026-08-16); a location
+  // resolves to its markets, so the request body the backend sees is unchanged.
+  const picked=[...new Set(_refreshMarketsForLocations())];
   const locs=[...REFRESH_LOCATIONS];
   const scope = picked.length
     ? (locs.length ? `${locs.join(', ')} — ${picked.length} market${picked.length>1?'s':''} (${picked.join(', ')})`
@@ -2809,7 +2780,6 @@ function showTab(name){
         :!( $("sqh-filters")||{classList:{contains:()=>true}}).classList.contains("hidden");
       tf.innerHTML="Show Filters "+(shown?'<span style="color:var(--bull)">✓</span>':'<span style="color:var(--bear)">✗</span>');}}
   const rb=$("refresh"); if(rb) rb.style.display=(sc&&IS_ADMIN)?"":"none";
-  const rmw=$("refresh-mkt-wrap"); if(rmw){rmw.style.display=(sc&&IS_ADMIN)?"":"none"; if(sc&&IS_ADMIN)updateRefreshMktLabel();}
   const rlw=$("refresh-loc-wrap"); if(rlw){rlw.style.display=(sc&&IS_ADMIN)?"":"none"; if(sc&&IS_ADMIN)updateRefreshLocLabel();}
   if(locked)return;
   const R={preorders:renderPreorders,activity:renderActivity,orderops:renderOrderOps,xposts:renderXposts,

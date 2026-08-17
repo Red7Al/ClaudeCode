@@ -15,12 +15,17 @@
 # settings" -> "Hard filter (Recommended)": a setup failing your own floors is excluded from the email entirely, not
 # just flagged. Best-effort per user: one bad email address or send failure never blocks the rest.
 #
-# IMPORTANT — where this runs: hvf_web/snapshot.json and data/web_users.json are LOCAL, gitignored files that only
-# exist on the machine running the Flask server (see hvf_web/build_snapshot.py's own header: "the Flask server reads
-# that file"; hvf_web/scheduled_jobs.py: "the web server runs on the operator's laptop"). A GitHub Actions runner has
-# neither file, so — unlike the other run_*.py jobs — this CANNOT be wired into the cron-job.org -> GitHub Actions
-# pipeline; it must be scheduled locally (e.g. Windows Task Scheduler) on the same machine as the web server, after
-# the day's snapshot has been (re)built. Tested by running directly, not assumed.
+# WHERE THIS RUNS — corrected 2026-08-17. This header used to state that the job "CANNOT be wired into the
+# cron-job.org -> GitHub Actions pipeline" because hvf_web/snapshot.json and data/web_users.json were local,
+# gitignored files that existed only on the operator's laptop. Both halves of that have since stopped being true:
+# the snapshot is served from Supabase Storage via scanner_snapshot_store (_load_snapshot pulls it), and web_users
+# is Supabase-primary (`web_json_store:web_users`, see hvf_web/web_users.py) with the JSON file kept only as a local
+# fallback. A runner with the Supabase keys can reach both, so the old blocker no longer applies.
+#
+# It is nevertheless still NOT SCHEDULED — nothing in setup_cronjobs.JOBS or .github/workflows references it, so it
+# only runs when invoked by hand. Wiring it up needs a workflow plus a cron-job.org entry; that has not been done and
+# should not be assumed. Also note the site no longer runs on the laptop at all: it is hosted at squeezescanner.cloud
+# on IONOS, one CGI process per request.
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------

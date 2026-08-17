@@ -23,6 +23,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.17.0  2026-08-17  Claude      Add the weekly "GH PAT Expiry Check" job (0 7 * * 0 -> trading-pat-check.yml) and a
+#                                 --alert flag on --check-token that posts to #alerts through notify (so the global
+#                                 per-channel Slack switch still applies). Detection, not just prevention: 1.16.0 stops
+#                                 a bad token being WRITTEN, but the token can expire long after it was written and a
+#                                 rejected dispatch creates no Actions run, so the failure is an absence rather than a
+#                                 red build. That is why 2026-06-10 went unnoticed until 2026-08-17.
 # 1.16.0  2026-08-17  Claude      Add --check-token (read-only) and gate --repair/--create-missing on it. The 1.15.0
 #                                 repair wrote GH_PAT into six jobs without checking it first; the PAT had expired on
 #                                 its 60-day clock, so all six returned HTTP 401 at their next fire (HVF Orders 06:00,
@@ -176,6 +182,13 @@ JOBS = [
     # ── Sunday commodity pre-open (created on the new cron-job.org account 2026-06-07) ──
     ("Sunday Readiness Check",         "30 20 * * 0", "trading-sunday-readiness.yml"),
     ("Sunday Pre-Open Commodity Scan", "0 22 * * 0",  "trading-premarket-brief.yml"),
+    # ── Housekeeping ──────────────────────────────────────────────────────────────────────────────────
+    # Weekly PAT health check (2026-08-17). Every job above dispatches GitHub Actions with GH_PAT baked
+    # into its Authorization header, so when that token expires they ALL stop — silently, because a
+    # failed dispatch produces no Actions run to notice the absence of. The 2026-06-10 expiry went
+    # unseen for eight weeks. Sunday 07:00 UTC: a fortnight of Mondays' warning before anything is due
+    # to trade, and it fires on the quietest day so a red alert means the token and nothing else.
+    ("GH PAT Expiry Check",            "0 7 * * 0",   "trading-pat-check.yml"),
 ]
 
 
@@ -575,10 +588,29 @@ def main():
         return
 
     # --check-token: read-only PAT health check. Run after every GH_PAT rotation, BEFORE any mode
-    # that embeds the token. Needs no cron-job.org key.
+    # that embeds the token. Needs no cron-job.org key. With --alert it also posts to #alerts on
+    # failure, which is how the weekly "GH PAT Expiry Check" job earns its place: the 2026-06-10
+    # expiry went unnoticed for EIGHT WEEKS, by which time Data Quality Audit and Pre-Order Report
+    # had been dead since 27 July and US HVF Watch since 30 June. Nobody reads a green cron page.
     if "--check-token" in sys.argv:
         print("Checking GITHUB_TOKEN can reach the repo...")
-        raise SystemExit(0 if check_github_token() else 1)
+        ok = check_github_token()
+        if not ok and "--alert" in sys.argv:
+            try:
+                import notify
+                notify.alert_system_error(
+                    session="Scheduled",
+                    component="GH_PAT (GitHub personal access token)",
+                    summary="GH_PAT can no longer reach the repo. Every cron-job.org job dispatches "
+                            "GitHub Actions with this token, so they will fail silently at their next "
+                            "scheduled run until it is renewed.",
+                    detail="Renew at https://github.com/settings/personal-access-tokens (fine-grained, "
+                           "Red7Al/ClaudeCode, Actions: Read and write), save it as the GH_PAT repo "
+                           "secret, then run trading-setup-cronjobs.yml with mode=check-token to "
+                           "confirm and mode=repair to re-point the jobs.")
+            except Exception as exc:                       # never let alerting mask the exit code
+                print(f"  (could not post the alert: {exc})")
+        raise SystemExit(0 if ok else 1)
 
     # --create-missing: create any JOBS not yet on cron-job.org. Skips existing.
     if "--create-missing" in sys.argv:
