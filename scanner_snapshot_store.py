@@ -8,6 +8,7 @@ Supabase outage does not blank the Scanner.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import logging
@@ -157,9 +158,44 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _object_path(generated: str, digest: str) -> str:
+def _object_path(generated: str, digest: str, compressed: bool = True) -> str:
     stamp = datetime.fromisoformat(generated.replace("Z", "+00:00")).astimezone(timezone.utc)
-    return f"snapshots/{stamp:%Y/%m/%d}/{stamp:%Y%m%dT%H%M%SZ}-{digest[:16]}.json"
+    ext = ".json.gz" if compressed else ".json"
+    return f"snapshots/{stamp:%Y/%m/%d}/{stamp:%Y%m%dT%H%M%SZ}-{digest[:16]}{ext}"
+
+
+# Gzip magic number. Objects published before 2026-08-17 are plain JSON and must keep loading, so the
+# reader sniffs these two bytes rather than trusting the file extension or a stored flag.
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def _compress(data: bytes) -> bytes:
+    """Gzip the encoded snapshot for storage.
+
+    Why (2026-08-17): the encoded snapshot is ~816 KB of highly repetitive JSON and compresses to
+    ~77 KB, a 10.6x cut (measured on the 2026-08-12 snapshot, 1,421 records). Supabase's free tier
+    allows 5 GB of egress a month and Storage began returning HTTP 402 once that ran out, which froze
+    the live Scanner on 12 August data. Uncompressed that budget is ~6,580 downloads; compressed it is
+    ~69,900. Note the on-DISK hvf_web/snapshot.json is larger again (~1.29 MB) because it is written
+    with default separators -- _encoded re-serialises compactly, so the published payload is smaller
+    than the file before compression even starts.
+
+    mtime=0 makes the output deterministic. Publication relies on immutable, content-addressed object
+    names so that retrying the exact same publish is safe (it tolerates the 409 "already exists"), and
+    that promise only holds if identical input produces identical bytes -- the gzip default stamps the
+    current time into the header and would break it.
+    """
+    return gzip.compress(data, compresslevel=9, mtime=0)
+
+
+def _decompress(data: bytes) -> bytes:
+    """Inverse of _compress, transparently passing through pre-2026-08-17 uncompressed objects."""
+    if data[:2] != _GZIP_MAGIC:
+        return data
+    try:
+        return gzip.decompress(data)
+    except (OSError, EOFError) as exc:
+        raise SnapshotStoreError("stored snapshot is not readable gzip") from exc
 
 
 def _request(method: str, url: str, **kwargs):
@@ -428,12 +464,22 @@ def publish_snapshot(snapshot: dict, source: str = "manual") -> dict:
     generated, count = validate_snapshot(snapshot)
     data = _encoded(snapshot)
     digest = _digest(data)
+    # sha256 and byte_count describe the RAW JSON, not the stored bytes, and must keep doing so:
+    # _matches_digest hashes the web host's UNCOMPRESSED snapshot.json against this value to decide
+    # whether a download is needed at all, and validate_snapshot's byte_count is the snapshot's real
+    # size. Only the transfer is compressed; the identity of the thing is unchanged.
+    body = _compress(data)
     object_path = _object_path(generated, digest)
     bucket = ensure_private_bucket()
     url = f"{_project_url()}/storage/v1/object/{quote(bucket, safe='')}/{quote(object_path, safe='/')}"
-    headers = _headers("publish", "application/json")
+    # application/gzip, not application/json with Content-Encoding: gzip -- a proxy or CDN that helpfully
+    # decompresses on the way out would silently undo the saving and break the digest check. Opaque
+    # bytes we decompress ourselves are predictable.
+    headers = _headers("publish", "application/gzip")
     headers.update({"x-upsert": "false", "cache-control": "3600"})
-    response = _request("POST", url, headers=headers, data=data, timeout=90)
+    log.info("publishing snapshot: %d bytes raw -> %d gzipped (%.1fx)",
+             len(data), len(body), (len(data) / len(body)) if body else 1.0)
+    response = _request("POST", url, headers=headers, data=body, timeout=90)
     if response.status_code not in (200, 201):
         # Immutable names make retrying the exact same publication safe.
         detail = (response.text or "").lower()
@@ -490,7 +536,9 @@ def download_snapshot(meta: dict | None = None, purpose: str = "read") -> tuple[
     response = _request("GET", url, headers=_headers(purpose), timeout=90)
     if response.status_code != 200:
         raise SnapshotStoreError(f"snapshot download failed ({response.status_code})")
-    data = response.content
+    # Objects published from 2026-08-17 are gzipped; older ones are plain JSON and pass straight through.
+    # Everything below this line works on the raw JSON, so the digest still verifies what was published.
+    data = _decompress(response.content)
     if _digest(data) != meta["sha256"]:
         raise SnapshotStoreError("downloaded snapshot checksum does not match metadata")
     try:

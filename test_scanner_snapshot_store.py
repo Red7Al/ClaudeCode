@@ -58,7 +58,18 @@ def test_publish_uploads_immutable_object_before_advancing_pointer(monkeypatch):
     assert calls[0][1].startswith("https://example.supabase.co/storage/v1/object/scanner-artifacts/snapshots/")
     assert calls[1][0] == "pointer"
     assert calls[0][1].endswith(meta["object_path"])
-    assert hashlib.sha256(calls[0][2]).hexdigest() == meta["sha256"]
+    # Objects are gzipped from 2026-08-17 (~10.6x egress saving), so the UPLOADED bytes deliberately no
+    # longer hash to meta["sha256"]. That digest identifies the raw JSON and must keep doing so: the web
+    # host compares it against its own uncompressed snapshot.json to decide whether to download at all.
+    body = calls[0][2]
+    assert body[:2] == b"\x1f\x8b", "the stored object must be gzipped"
+    assert hashlib.sha256(store._decompress(body)).hexdigest() == meta["sha256"], (
+        "sha256 must identify the RAW json, recoverable by decompressing what was uploaded"
+    )
+    assert meta["byte_count"] == len(store._decompress(body)), "byte_count is the snapshot's real size"
+    # Deliberately NOT asserting len(body) < byte_count here: this fixture is a single record, and
+    # gzip's ~20-byte header exceeds any saving on a payload that small. The saving is a property of
+    # real snapshots (816 KB -> 77 KB on the 1,421-record 2026-08-12 one), not of the format.
     assert meta["version_id"] == 7 and meta["record_count"] == 1
 
 

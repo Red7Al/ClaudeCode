@@ -1167,3 +1167,43 @@ def test_order_ops_backfills_rvol_from_price_history():
         "point-in-time value and wins."
     )
     assert "_fill_missing_rvol(matched)" in src, "_attach_setup_metrics must invoke the backfill."
+
+
+def test_snapshot_storage_round_trips_through_gzip():
+    """Snapshot objects are gzipped in Supabase Storage from 2026-08-17 (user: "ok let's do zip file
+    for now").
+
+    The encoded snapshot is ~816 KB of repetitive JSON that compresses to ~77 KB, 10.6x (measured on
+    the 2026-08-12 snapshot, 1,421 records). Supabase's free tier allows 5 GB of egress a month;
+    Storage started returning HTTP 402 when that ran out and froze the live Scanner on 12 August data.
+    Uncompressed that budget is ~6,580 downloads; compressed, ~69,900.
+
+    Three properties matter and each is checked:
+      1. Round trip is lossless.
+      2. Pre-2026-08-17 objects are plain JSON and MUST keep loading -- the reader sniffs the gzip magic
+         number rather than trusting the extension, so old and new both work.
+      3. Compression is deterministic. Publication uses immutable content-addressed names and tolerates
+         a 409 "already exists" on retry; that is only safe if identical input gives identical bytes,
+         which the gzip default (current time in the header) would break.
+    """
+    import scanner_snapshot_store as store
+
+    raw = json.dumps({"generated_utc": "2026-08-17T10:00:00+00:00", "count": 2,
+                      "records": [{"ticker": "AAA"}, {"ticker": "BBB"}]}).encode("utf-8")
+
+    packed = store._compress(raw)
+    assert packed[:2] == b"\x1f\x8b", "compressed payload must be gzip"
+    assert store._decompress(packed) == raw, "gzip round trip must be lossless"
+    assert store._decompress(raw) == raw, (
+        "an uncompressed object published before 2026-08-17 must still read back unchanged"
+    )
+    assert store._compress(raw) == packed, (
+        "compression must be deterministic (mtime=0) or retrying an immutable publish is unsafe"
+    )
+    assert len(packed) < len(raw)
+
+    # The digest identifies the RAW json, never the stored bytes: _matches_digest hashes the web host's
+    # uncompressed snapshot.json against it to decide whether a download is needed at all.
+    assert store._digest(raw) != store._digest(packed)
+    assert store._object_path("2026-08-17T10:00:00+00:00", "abc123", compressed=True).endswith(".json.gz")
+    assert store._object_path("2026-08-17T10:00:00+00:00", "abc123", compressed=False).endswith(".json")
