@@ -1657,22 +1657,12 @@ def open_trade(
 
     # Step 5 — Live trade: build and submit order
     #
-    # LET WINNERS RUN (user 2026-08-17). With lwr_enabled the take-profit is omitted, so IG does not close
-    # the position at its target; run_let_winners_run() then moves the stop TO the target once it is
-    # touched, and hands over to IG's native trailing stop once price is 5% beyond it. The target is still
-    # recorded on the position row -- that is where the monitor reads it from, and it is the only place it
-    # survives once the order carries no limit.
-    #
-    # This is the whole point of the change: measured over 3,851 trades, closing at target averages +3.16%
-    # per trade and letting them run averages +3.40%.
-    #
-    # Gated on THIS user's own `let_winners_run` switch (Configuration -> My Trading Filters), not an
-    # app-wide flag -- user 2026-08-17: "let winners run settings must only be used if that setting is
-    # enabled in settings for a user". profile["name"] is the account owner this run trades as (OWNER for
-    # the bridge and session jobs, the acting login for a manual place), the same identity the personal
-    # trading-limit checks above use. Switch off and the take-profit goes back on the order, restoring
-    # the previous behaviour exactly.
-    _lwr_on, _, _ = _lwr_cfg((profile or {}).get("name"))
+    # NOT the let-winners-run path. open_trade places an immediate MARKET order and is used by the session
+    # monitors, which are OFF -- WEB_BRIDGE is the only enabled execution source, and it reaches IG through
+    # place_working_order() below, where the take-profit is actually gated. An earlier version of this
+    # change gated it here instead, which (a) would never have fired for a single real trade and (b)
+    # referenced a `profile` this function does not take, so it would have raised NameError the first time
+    # a session monitor was re-enabled. Left alone deliberately.
     body = {
         "epic":           epic,
         "direction":      direction,
@@ -1681,17 +1671,15 @@ def open_trade(
         "timeInForce":    "FILL_OR_KILL",
         "guaranteedStop": False,
         "stopDistance":   str(stop_distance),
+        "limitDistance":  str(limit_distance),
         "currencyCode":   "GBP",
         "expiry":         "DFB",    # Daily Funded Bet — correct expiry for rolling CFD contracts
         "forceOpen":      True,
     }
-    if not _lwr_on:
-        body["limitDistance"] = str(limit_distance)
 
     log.info(
         f"Placing {direction} {size} x {ticker} (epic={epic}) | "
-        f"stop={stop_distance} " + (f"limit={limit_distance}" if not _lwr_on
-                                    else "NO take-profit (let winners run; stop moves to target on touch)")
+        f"stop={stop_distance} limit={limit_distance}"
     )
 
     try:
@@ -1715,18 +1703,6 @@ def open_trade(
         level      = confirm.get("level", 0)
         stop_level = confirm.get("stopLevel", 0)
         limit_level = confirm.get("limitLevel", 0)
-        # With let-winners-run the order carries NO take-profit, so IG confirms limitLevel as null and the
-        # position row would store take_profit NULL -- leaving run_let_winners_run() with no target and the
-        # whole design inert. Derive the intended target from the fill and the distance we would have sent,
-        # so the level is recorded even though it was never given to IG as an order.
-        if not limit_level and limit_distance and level:
-            try:
-                _lvl = float(level)
-                limit_level = round(_lvl + float(limit_distance), 4) if direction == "BUY" \
-                    else round(_lvl - float(limit_distance), 4)
-                log.info(f"No take-profit sent (let winners run) — recording intended target {limit_level}")
-            except (TypeError, ValueError):
-                pass
 
         if status != "ACCEPTED":
             reason_code = confirm.get("reason", "UNKNOWN")
@@ -2150,6 +2126,7 @@ def place_working_order(
     hvf_type:       str = None,
     max_entry_distance_pct: float = 0.90,   # sanity guard: entry vs current price (after unit conversion)
     proximity_pct:  float = None,   # None -> per-user placement band (config_store wo_proximity_pct, default WO_PROXIMITY_PCT)
+    let_run:        bool = False,   # omit the take-profit so a winner is not capped at target (see below)
 ) -> Optional[dict]:
     """
     Place (or amend) a PENDING entry order on IG at the HVF level.
@@ -2430,15 +2407,27 @@ def place_working_order(
         "goodTillDate":   _good_till_str(good_till),
         "guaranteedStop": False,
         "stopLevel":      str(stop_level),
-        "limitLevel":     str(limit_level),
         "currencyCode":   "GBP",
         "expiry":         "DFB",
         "forceOpen":      True,
     }
+    # LET WINNERS RUN (user 2026-08-17). With the caller's user opted in, the order carries NO take-profit,
+    # so IG does not close the position at its target. run_let_winners_run() then moves the stop TO the
+    # target once touched, and hands over to IG's native trailing stop once price is 5% beyond it.
+    # Measured over 3,851 trades: closing at target averages +3.16% per trade, this +3.40%.
+    #
+    # limit_level is STILL written to the working_orders row below and still logged. That is deliberate and
+    # load-bearing: when the order fills, reconcile reads the target from that row (IG reports no
+    # limitLevel on an order that never had one) and writes it to positions.take_profit, which is the only
+    # place the monitor can learn what this trade's target was.
+    if not let_run:
+        body["limitLevel"] = str(limit_level)
 
     log.info(f"Placing working order: {direction} {otype} {size} x {ticker} (epic={epic}) | "
-             f"entry={entry_level} stop={stop_level} target={limit_level} "
-             f"current={current} goodTill={body['goodTillDate']}")
+             f"entry={entry_level} stop={stop_level} "
+             + (f"target={limit_level}" if not let_run
+                else f"NO take-profit, let winners run (target {limit_level} tracked for the stop) ")
+             + f"current={current} goodTill={body['goodTillDate']}")
 
     try:
         resp     = session.post("/workingorders/otc", body=body, version="2")
@@ -3119,7 +3108,14 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         good_till_days=profile.get("wo_lifespan_days"),
         # Per-user Pre-order proximity band (user 2026-08-03, P-75): same pattern — the web place path
         # carries the acting user's own %; None falls back to the shared config_store default.
-        proximity_pct=profile.get("preorder_threshold_pct"))
+        proximity_pct=profile.get("preorder_threshold_pct"),
+        # Let winners run, gated on THIS user's own switch (Configuration -> My Trading Filters), never an
+        # app-wide flag -- user 2026-08-17: "let winners run settings must only be used if that setting is
+        # enabled in settings for a user", "by default let winners run is off and is user specific".
+        # profile["name"] is the account owner this run trades as: 'Owner' for the bridge and session
+        # jobs, the acting login for a manual place. The decision is made HERE, where the profile is
+        # known, rather than inside place_working_order, which only ever receives a user_id.
+        let_run=_lwr_cfg(profile.get("name"))[0])
 
     if result and not result.get("updated") and not result.get("watching"):
         try:
@@ -3390,6 +3386,21 @@ def _lwr_cfg(user: str | None) -> tuple:
     trail = float(limits.get("let_winners_run_trail") or 0) / 100.0
     if not 0 < trail < 1:
         log.warning(f"let-winners-run: {user} has let_winners_run on but trail={trail}; treating as OFF")
+        return off
+    # THE INVARIANT. Handover happens at target x (1 + uplift); the stop then sits trail% below that. For
+    # the guarantee to survive, that level must clear the target:
+    #     target x (1+uplift) x (1-trail) > target      <=>      trail < uplift / (1 + uplift)
+    # At a 5% uplift that means under 4.76%. A 25% trail -- which is what was actually saved before the
+    # user caught it -- would put the stop at target x 1.05 x 0.75 = target x 0.7875, TWENTY-ONE PERCENT
+    # BELOW the target. That does not merely weaken the "can never finish below target" guarantee, it
+    # inverts it, and it is precisely the give-back this whole feature exists to stop.
+    #
+    # Checked here rather than trusted to the setting: a number that breaks the invariant is a bug, not a
+    # preference, and the first version of this code would have accepted 25 and silently shipped it.
+    if trail >= uplift / (1 + uplift):
+        log.error(f"let-winners-run OFF for {user}: trail {trail:.0%} is too wide for a {uplift:.0%} "
+                  f"uplift -- the stop would land {(1 - (1 + uplift) * (1 - trail)):.1%} BELOW target, "
+                  f"breaking the guarantee. Needs trail < {uplift / (1 + uplift):.2%}.")
         return off
     return (True, uplift, trail)
 

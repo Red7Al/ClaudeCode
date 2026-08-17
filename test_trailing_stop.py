@@ -290,3 +290,77 @@ def test_lwr_reads_the_users_own_setting(monkeypatch):
         raise RuntimeError("settings store down")
     monkeypatch.setattr("hvf_web.web_users.get_settings", _boom)
     assert ig_shim._lwr_cfg("Alex")[0] is False, "unreadable settings must fail closed"
+
+
+def test_lwr_refuses_a_trail_wider_than_the_uplift(monkeypatch):
+    """The invariant the whole design rests on (user 2026-08-17: "is 25% off the target price not
+    nonsense to you?").
+
+    Handover is at target x (1+uplift) and the stop then sits trail% below it, so the guarantee only
+    holds while  trail < uplift / (1 + uplift)  -- under 4.76% for a 5% uplift.
+
+    25% was what was actually saved before the user caught it: target x 1.05 x 0.75 = target x 0.7875,
+    twenty-one percent BELOW target. That inverts the "can never finish below target" guarantee instead
+    of merely weakening it. A value that breaks the invariant is a bug, not a preference, so the code
+    must refuse it rather than trust the setting.
+    """
+    def _settings(trail):
+        return lambda n: {"limits": {"let_winners_run": 1, "let_winners_run_trail": trail}}
+
+    monkeypatch.setattr("hvf_web.web_users.get_settings", _settings(25))
+    assert ig_shim._lwr_cfg("Alex")[0] is False, "a 25% trail must be refused, not honoured"
+
+    monkeypatch.setattr("hvf_web.web_users.get_settings", _settings(4))
+    on, uplift, trail = ig_shim._lwr_cfg("Alex")
+    assert on is True and trail == 0.04
+
+    # The boundary is 5/105 = 4.76190...%, where the stop lands exactly ON the target rather than above
+    # it. Test either side of it with values that are unambiguous in binary floating point -- 4.7619
+    # itself is a hair BELOW the true ratio and is legitimately accepted.
+    monkeypatch.setattr("hvf_web.web_users.get_settings", _settings(4.77))
+    assert ig_shim._lwr_cfg("Alex")[0] is False, "at or past the boundary the stop is not above target"
+    monkeypatch.setattr("hvf_web.web_users.get_settings", _settings(4.7))
+    assert ig_shim._lwr_cfg("Alex")[0] is True
+
+    # And the property that matters, stated directly.
+    on, uplift, trail = ig_shim._lwr_cfg("Alex")
+    assert (1 + uplift) * (1 - trail) > 1.0, "handover stop must sit ABOVE the target"
+
+
+def test_lwr_gates_the_working_order_path_not_the_market_order_path():
+    """Regression guard for a mistake worth not repeating (2026-08-17).
+
+    The first version of this feature omitted the take-profit in open_trade(), which places an immediate
+    MARKET order via /positions/otc. That path belongs to the session monitors, which are OFF -- WEB_BRIDGE
+    is the only enabled execution source, and it reaches IG through place_working_order() ->
+    /workingorders/otc. So the change would never have affected a single real trade. It also referenced a
+    `profile` argument open_trade does not take, which would have raised NameError the moment a session
+    monitor was re-enabled.
+
+    Structural check against the source: the gate must live on the working-order payload, open_trade must
+    keep its unconditional limitDistance, and the working_orders ROW must still record the target even
+    when IG is not told about it -- reconcile reads it from there on fill, and it is the only place the
+    monitor can learn the target.
+    """
+    import inspect
+
+    wo_src = inspect.getsource(ig_shim.place_working_order)
+    assert 'if not let_run:\n        body["limitLevel"] = str(limit_level)' in wo_src, (
+        "the take-profit must be omitted on the WORKING ORDER payload when let_run is set"
+    )
+    assert "v_limit=limit_level" in inspect.getsource(ig_shim), (
+        "the working_orders row must still store the target; reconcile reads it on fill"
+    )
+
+    ot_src = inspect.getsource(ig_shim.open_trade)
+    assert '"limitDistance":  str(limit_distance),' in ot_src, (
+        "open_trade is NOT the let-winners-run path and must keep its take-profit"
+    )
+    assert "profile" not in ot_src.replace("# ", "").split("body = {")[1], (
+        "open_trade takes no profile argument - referencing one is a NameError waiting to happen"
+    )
+
+    sig_src = inspect.getsource(ig_shim.place_hvf_order_from_sig)
+    assert 'let_run=_lwr_cfg(profile.get("name"))[0]' in sig_src, (
+        "the gate decision belongs where the profile is known, not inside place_working_order"
+    )
