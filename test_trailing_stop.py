@@ -149,3 +149,144 @@ def test_short_above_target_behaves_as_the_mirror():
     _, exit_price, gain = _run("BEARISH", 100.0, 105.0, 80.0, closes, TRAIL)
     assert gain > 70.0, f"short only realised {gain:.2f}% from a 79% peak"
     assert exit_price <= 80.0 + 1e-9, "short must never exit above its target level"
+
+
+# ======================================================================================================
+# Let winners run, live (user 2026-08-17: "wire in to stop costing money").
+#
+# Three phases: hard stop -> stop moved TO target when touched -> IG native trailing once price is 5%
+# beyond target. The ordering is the whole safety argument, so it is what these tests pin.
+# ======================================================================================================
+def _pos(deal_id="D1", direction="BUY", stop=90.0, bid=100.0, offer=100.2, epic="E", **extra):
+    return {"position": dict({"dealId": deal_id, "direction": direction, "stopLevel": stop}, **extra),
+            "market": {"bid": bid, "offer": offer, "epic": epic}}
+
+
+def _wire(monkeypatch, positions, targets, enabled=True, uplift=0.05, trail=0.04):
+    calls = {"stop": [], "trail": []}
+    monkeypatch.setattr(ig_shim, "_lwr_cfg", lambda user: (enabled, uplift, trail))
+    monkeypatch.setattr(ig_shim, "_lwr_targets", lambda: targets)
+    monkeypatch.setattr(ig_shim, "get_open_positions", lambda: positions)
+    monkeypatch.setattr(ig_shim, "update_stop",
+                        lambda d, lvl: calls["stop"].append((d, lvl)) or True)
+    monkeypatch.setattr(ig_shim, "attach_trailing_stop",
+                        lambda d, dist, increment=None: calls["trail"].append((d, round(dist, 4))) or True)
+    return calls
+
+
+def test_lwr_below_target_touches_nothing(monkeypatch):
+    """Before the target is reached the original hard stop must stand -- untouched."""
+    calls = _wire(monkeypatch, [_pos(bid=95.0)], {"D1": (110.0, "Alex")})
+    out = ig_shim.run_let_winners_run()
+    assert calls["stop"] == [] and calls["trail"] == []
+    assert out["skipped"] == 1
+
+
+def test_lwr_moves_stop_to_target_on_touch(monkeypatch):
+    """Phase 2. Target touched but not yet 5% beyond: the stop goes ON the target and no trail is set.
+
+    Attaching a 4% trail here would place the stop at 110*0.96 = 105.6, BELOW the target -- handing back
+    the gain this phase exists to lock. That is why the trail waits.
+    """
+    calls = _wire(monkeypatch, [_pos(bid=112.0)], {"D1": (110.0, "Alex")})
+    ig_shim.run_let_winners_run()
+    assert calls["stop"] == [("D1", 110.0)]
+    assert calls["trail"] == []
+
+
+def test_lwr_hands_over_to_ig_once_five_percent_beyond(monkeypatch):
+    """Phase 3. At target x1.05 the 4% trail sits at target x1.008 -- already above target, and a
+    trailing stop only ratchets up, so the guarantee survives the handover."""
+    calls = _wire(monkeypatch, [_pos(bid=115.5)], {"D1": (110.0, "Alex")})     # 110 * 1.05 = 115.5
+    ig_shim.run_let_winners_run()
+    assert calls["trail"] == [("D1", round(115.5 * 0.04, 4))]
+    assert calls["stop"] == []
+    # The level IG will hold must clear the original target, or the whole design is unsound.
+    assert 115.5 - 115.5 * 0.04 > 110.0
+
+
+def test_lwr_does_not_re_attach_when_already_trailing(monkeypatch):
+    calls = _wire(monkeypatch, [_pos(bid=130.0, trailingStopDistance=5.0)], {"D1": (110.0, "Alex")})
+    ig_shim.run_let_winners_run()
+    assert calls["trail"] == [] and calls["stop"] == []
+
+
+def test_lwr_short_mirrors_the_long(monkeypatch):
+    """A SELL runs the other way: target BELOW entry, handover at target x0.95, trail above price."""
+    calls = _wire(monkeypatch, [_pos(direction="SELL", stop=110.0, bid=94.0, offer=94.5)], {"D1": (100.0, "Alex")})
+    ig_shim.run_let_winners_run()
+    assert calls["trail"] == [("D1", round(94.5 * 0.04, 4))]   # offer is the exit side for a short
+
+
+def test_lwr_short_locks_at_target_before_handover(monkeypatch):
+    calls = _wire(monkeypatch, [_pos(direction="SELL", stop=110.0, bid=98.0, offer=98.5)], {"D1": (100.0, "Alex")})
+    ig_shim.run_let_winners_run()
+    assert calls["stop"] == [("D1", 100.0)] and calls["trail"] == []
+
+
+def test_lwr_never_widens_a_stop(monkeypatch):
+    """A stop already tighter than the target must not be loosened back to it."""
+    calls = _wire(monkeypatch, [_pos(stop=112.0, bid=113.0)], {"D1": (110.0, "Alex")})
+    ig_shim.run_let_winners_run()
+    assert calls["stop"] == [] and calls["trail"] == []
+
+
+def test_lwr_disabled_does_nothing(monkeypatch):
+    calls = _wire(monkeypatch, [_pos(bid=200.0)], {"D1": (110.0, "Alex")}, enabled=False)
+    out = ig_shim.run_let_winners_run()
+    assert calls["stop"] == [] and calls["trail"] == [] and out["users_on"] == []
+
+
+def test_lwr_skips_positions_with_no_recorded_target(monkeypatch):
+    """No target means no phase boundary. Leave the position entirely alone rather than guess."""
+    calls = _wire(monkeypatch, [_pos(bid=500.0)], {"OTHER": (110.0, "Alex")})
+    ig_shim.run_let_winners_run()
+    assert calls["stop"] == [] and calls["trail"] == []
+
+
+def test_lwr_is_gated_per_user_not_globally(monkeypatch):
+    """User 2026-08-17: "let winners run settings must only be used if that setting is enabled in
+    settings for a user".
+
+    Two open positions, two owners, one switch on. Only the enabled owner's position may be touched --
+    one login turning the feature on must never change how another login's money is managed.
+    """
+    calls = {"stop": [], "trail": []}
+    monkeypatch.setattr(ig_shim, "_lwr_cfg",
+                        lambda user: (user == "Alex", 0.05, 0.04))
+    monkeypatch.setattr(ig_shim, "_lwr_targets",
+                        lambda: {"D1": (110.0, "Alex"), "D2": (110.0, "Sam")})
+    monkeypatch.setattr(ig_shim, "get_open_positions",
+                        lambda: [_pos("D1", bid=115.5), _pos("D2", bid=115.5)])
+    monkeypatch.setattr(ig_shim, "update_stop", lambda d, lvl: calls["stop"].append(d) or True)
+    monkeypatch.setattr(ig_shim, "attach_trailing_stop",
+                        lambda d, dist, increment=None: calls["trail"].append(d) or True)
+
+    out = ig_shim.run_let_winners_run()
+
+    assert calls["trail"] == ["D1"], "only the owner who enabled it may be managed"
+    assert "D2" not in calls["trail"] and "D2" not in calls["stop"]
+    assert out["users_on"] == ["Alex"]
+
+
+def test_lwr_reads_the_users_own_setting(monkeypatch):
+    """_lwr_cfg must consult that login's saved limits, and fail CLOSED on anything unexpected."""
+    monkeypatch.setattr("hvf_web.web_users.get_settings",
+                        lambda n: {"limits": {"let_winners_run": 1, "let_winners_run_trail": 4}}
+                        if n == "Alex" else {})
+    on, uplift, trail = ig_shim._lwr_cfg("Alex")
+    assert on is True
+    assert trail == 0.04, "the trail must come from the USER's let_winners_run_trail, not an app setting"
+    assert uplift == 0.05
+    assert ig_shim._lwr_cfg("Sam")[0] is False, "a user who never set it is OFF"
+    assert ig_shim._lwr_cfg(None)[0] is False, "no user means OFF, never a default-on"
+
+    # Switch on but no trail configured: fail closed rather than invent a percentage.
+    monkeypatch.setattr("hvf_web.web_users.get_settings",
+                        lambda n: {"limits": {"let_winners_run": 1, "let_winners_run_trail": 0}})
+    assert ig_shim._lwr_cfg("Alex")[0] is False
+
+    def _boom(_n):
+        raise RuntimeError("settings store down")
+    monkeypatch.setattr("hvf_web.web_users.get_settings", _boom)
+    assert ig_shim._lwr_cfg("Alex")[0] is False, "unreadable settings must fail closed"

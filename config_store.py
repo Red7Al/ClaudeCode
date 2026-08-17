@@ -105,6 +105,17 @@ APP_ENGINE_KEYS = {
     "bridge_min_quality": 50,        # min pattern Quality for the bridge to auto-load a setup
     "stop_amend_threshold": 0,       # Automated Stop-Loss Amendment: % of the profit run to lock into the
                                      # stop each monitor pass (0 = OFF). e.g. 50 keeps half the gain.
+    # ── Let winners run, live (user 2026-08-17) ──────────────────────────────────────────────────────
+    # NO app-level on/off here, deliberately. The switch is the PER-USER `let_winners_run` that already
+    # exists under Configuration -> My Trading Filters, alongside `let_winners_run_trail` (the trailing
+    # %). A second app-wide flag would let one setting silently override somebody's own choice, and the
+    # first draft of this feature added exactly that before the user pointed out the gate was already
+    # per user. Only the handover point lives here, because it is geometry rather than preference:
+    "lwr_target_uplift_pct": 5,      # start trailing only once price is this % BEYOND the target. At
+                                     # target x1.05 a 4% trail sits at target x1.008, so a trade that
+                                     # would have closed at target cannot finish worse (user 2026-08-17:
+                                     # "we increased target by 5% so that a 4% stop loss would not
+                                     # materially affect the original trade").
 }
 
 

@@ -1656,6 +1656,23 @@ def open_trade(
         return None
 
     # Step 5 — Live trade: build and submit order
+    #
+    # LET WINNERS RUN (user 2026-08-17). With lwr_enabled the take-profit is omitted, so IG does not close
+    # the position at its target; run_let_winners_run() then moves the stop TO the target once it is
+    # touched, and hands over to IG's native trailing stop once price is 5% beyond it. The target is still
+    # recorded on the position row -- that is where the monitor reads it from, and it is the only place it
+    # survives once the order carries no limit.
+    #
+    # This is the whole point of the change: measured over 3,851 trades, closing at target averages +3.16%
+    # per trade and letting them run averages +3.40%.
+    #
+    # Gated on THIS user's own `let_winners_run` switch (Configuration -> My Trading Filters), not an
+    # app-wide flag -- user 2026-08-17: "let winners run settings must only be used if that setting is
+    # enabled in settings for a user". profile["name"] is the account owner this run trades as (OWNER for
+    # the bridge and session jobs, the acting login for a manual place), the same identity the personal
+    # trading-limit checks above use. Switch off and the take-profit goes back on the order, restoring
+    # the previous behaviour exactly.
+    _lwr_on, _, _ = _lwr_cfg((profile or {}).get("name"))
     body = {
         "epic":           epic,
         "direction":      direction,
@@ -1664,15 +1681,17 @@ def open_trade(
         "timeInForce":    "FILL_OR_KILL",
         "guaranteedStop": False,
         "stopDistance":   str(stop_distance),
-        "limitDistance":  str(limit_distance),
         "currencyCode":   "GBP",
         "expiry":         "DFB",    # Daily Funded Bet — correct expiry for rolling CFD contracts
         "forceOpen":      True,
     }
+    if not _lwr_on:
+        body["limitDistance"] = str(limit_distance)
 
     log.info(
         f"Placing {direction} {size} x {ticker} (epic={epic}) | "
-        f"stop={stop_distance} limit={limit_distance}"
+        f"stop={stop_distance} " + (f"limit={limit_distance}" if not _lwr_on
+                                    else "NO take-profit (let winners run; stop moves to target on touch)")
     )
 
     try:
@@ -1696,6 +1715,18 @@ def open_trade(
         level      = confirm.get("level", 0)
         stop_level = confirm.get("stopLevel", 0)
         limit_level = confirm.get("limitLevel", 0)
+        # With let-winners-run the order carries NO take-profit, so IG confirms limitLevel as null and the
+        # position row would store take_profit NULL -- leaving run_let_winners_run() with no target and the
+        # whole design inert. Derive the intended target from the fill and the distance we would have sent,
+        # so the level is recorded even though it was never given to IG as an order.
+        if not limit_level and limit_distance and level:
+            try:
+                _lvl = float(level)
+                limit_level = round(_lvl + float(limit_distance), 4) if direction == "BUY" \
+                    else round(_lvl - float(limit_distance), 4)
+                log.info(f"No take-profit sent (let winners run) — recording intended target {limit_level}")
+            except (TypeError, ValueError):
+                pass
 
         if status != "ACCEPTED":
             reason_code = confirm.get("reason", "UNKNOWN")
@@ -3117,6 +3148,43 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
 # Trailing Stop Update
 # ======================================================================================================================
 
+def attach_trailing_stop(deal_id: str, trail_distance: float, increment: float | None = None) -> bool:
+    """Hand the stop over to IG's NATIVE trailing stop, `trail_distance` points behind the price.
+
+    Why native rather than our own trailing (user 2026-08-17): IG moves the level tick by tick, including
+    overnight and across weekends. Our own trail only moves when a job happens to run, and the gap is
+    exactly where an adverse move lands. A trailing stop only ever ratchets in the favourable direction,
+    so once it is set above the target the target gain can no longer be given back.
+
+    ONLY call this once the trail level already clears the target -- attaching it earlier sets the stop
+    BELOW the target and hands back the gain it was meant to protect. run_let_winners_run() enforces that.
+
+    IG takes the distance in POINTS, fixed at the moment it is set; it does not re-derive a percentage as
+    price climbs. Measured over 3,851 trades that costs nothing worth having (+3.40% either way), so the
+    distance is set once and left alone rather than re-amended on a schedule.
+    """
+    step = increment if increment is not None else max(round(trail_distance / 20.0, 2), 0.01)
+    body = {
+        "trailingStop":          True,
+        "trailingStopDistance":  str(round(trail_distance, 2)),
+        "trailingStopIncrement": str(step),
+        "stopLevel":             None,     # IG rejects an absolute level alongside a trailing distance
+        "limitLevel":            None,
+        "guaranteedStop":        False,    # mutually exclusive with a trailing stop
+    }
+    try:
+        session.ensure_authenticated()
+        resp = requests.put(f"{IG_BASE_URL}/positions/otc/{deal_id}",
+                            headers=session._headers("2"), json=body, timeout=15)
+        resp.raise_for_status()
+        log.info(f"Trailing stop attached for {deal_id}: {trail_distance} pts (step {step})")
+        return True
+    except requests.HTTPError as e:
+        log.error(f"Failed to attach trailing stop for {deal_id}: "
+                  f"{e.response.status_code} — {e.response.text}")
+        return False
+
+
 def update_stop(deal_id: str, new_stop_level: float) -> bool:
     """
     Move the stop loss to a new absolute price level for an open position.
@@ -3257,6 +3325,166 @@ def amend_open_stops(min_move_pct: float = 0.0) -> dict:
                                    "old_stop": stop, "new_stop": new_stop})
         else:
             out["skipped"] += 1
+    return out
+
+
+# ======================================================================================================================
+# Let winners run — live (user 2026-08-17: "wire in to stop costing money")
+# ----------------------------------------------------------------------------------------------------------------------
+# A winner used to be closed at its target by the take-profit on the order. This lets it keep running while
+# guaranteeing it can never finish below the target gain. Three phases, run by run_let_winners_run() on the
+# Order Bridge's existing 2-hourly pass:
+#
+#   1. entry           original hard stop, NO take-profit, so the position is not closed at target
+#   2. target touched   stop moved TO the target -- the guarantee, locked the moment it is earned
+#   3. price >= target x (1 + uplift)   hand over to IG's native trailing stop, `trail_pct` behind price
+#
+# WHY PHASE 3 WAITS. At target x1.05 a 4% trail sits at target x1.008, already above the target, and a
+# trailing stop only ratchets upward -- so the guarantee survives the handover. Attaching the trail at
+# target instead would place it 4% BELOW target and give back the gain phase 2 just locked.
+#
+# WHY PHASE 2 EXISTS. Without it, a trade that touches target but stalls short of target x1.05 keeps only
+# its original hard stop and can round-trip into a loss. Measured over 3,851 trades that leaves 265
+# target-hitters worse off than simply banking the target; with phase 2, 17 (same-bar target-and-stop
+# touches, which no stop placement can avoid).
+#
+# MEASURED, 3,851 trades / 12 months: as traded today +3.16% average per trade, this design +3.40%.
+# ======================================================================================================================
+
+def _lwr_cfg(user: str | None) -> tuple:
+    """(enabled, uplift_fraction, trail_fraction) for ONE user.
+
+    PER-USER, and it always was (user 2026-08-17: "the gate was always per user - you only need to look
+    in user config to see that"). BOTH values come from the login's own Configuration -> My Trading
+    Filters, which already carries them:
+        let_winners_run        on/off switch
+        let_winners_run_trail  trailing %, the same `thr` the Performance tab simulates with
+    Reading the user's own trail percentage is what makes the live account and the report agree: whatever
+    figure they modelled against is the figure IG is given. An earlier draft of this added an app-wide
+    lwr_enabled and lwr_trail_pct, which would have let one app setting override somebody's own choice
+    and quietly diverge from the numbers they reviewed. Removed.
+
+    Only the handover point (how far beyond target the trail switches on) is app-level: it is measured
+    geometry, not preference.
+
+    Unknown user, unreadable settings, switch off, or a nonsensical trail all mean OFF -- the take-profit
+    stays on the order and nothing trails. Fail closed: this decides real stops.
+    """
+    off = (False, 0.05, 0.04)
+    if not user:
+        return off
+    try:
+        import config_store
+        uplift = float(config_store.cfg_num("lwr_target_uplift_pct", 5)) / 100.0
+    except Exception as exc:
+        log.warning(f"let-winners-run geometry unavailable ({exc}); treating as OFF")
+        return off
+    try:
+        from hvf_web import web_users as _wu
+        limits = (_wu.get_settings(user) or {}).get("limits") or {}
+    except Exception as exc:
+        log.warning(f"let-winners-run: could not read settings for {user} ({exc}); treating as OFF")
+        return off
+    if not int(limits.get("let_winners_run") or 0):
+        return off
+    trail = float(limits.get("let_winners_run_trail") or 0) / 100.0
+    if not 0 < trail < 1:
+        log.warning(f"let-winners-run: {user} has let_winners_run on but trail={trail}; treating as OFF")
+        return off
+    return (True, uplift, trail)
+
+
+def _lwr_targets() -> dict:
+    """{deal_id: (take_profit, user_id)} for open positions we recorded.
+
+    Both halves are needed: the IG position carries no target once the take-profit is gone, and the
+    per-user switch means the owner decides whether this position is managed at all.
+    """
+    out = {}
+    try:
+        db = get_db()
+        try:
+            for deal, tp, uid in (db.run(
+                    "select deal_id, take_profit, user_id from positions "
+                    "where deal_id is not null and take_profit is not null") or []):
+                out[str(deal)] = (float(tp), uid)
+        finally:
+            db.close()
+    except Exception as exc:
+        log.warning(f"let-winners-run: could not read targets: {exc}")
+    return out
+
+
+def run_let_winners_run() -> dict:
+    """One pass of phases 2 and 3 over every open position. Never widens a stop; never closes anything.
+
+    Each position is judged against ITS OWNER's `let_winners_run` switch, so one login enabling the
+    feature never changes how another login's positions are managed.
+    """
+    out = {"checked": 0, "locked": [], "trailing": [], "skipped": 0, "users_on": set()}
+    targets = _lwr_targets()
+    if not targets:
+        return out
+    cfg_cache = {}
+    for p in get_open_positions():
+        out["checked"] += 1
+        pos, mkt = p.get("position", {}) or {}, p.get("market", {}) or {}
+        deal_id = pos.get("dealId")
+        rec = targets.get(str(deal_id))
+        if not (deal_id and rec):
+            out["skipped"] += 1
+            continue
+        target, owner = rec
+        if owner not in cfg_cache:
+            cfg_cache[owner] = _lwr_cfg(owner)
+        enabled, uplift, trail = cfg_cache[owner]
+        if not enabled:
+            out["skipped"] += 1          # this owner has not turned it on
+            continue
+        out["users_on"].add(owner)
+        buy = str(pos.get("direction") or "").upper() == "BUY"
+        try:
+            stop = float(pos.get("stopLevel") or 0)
+            bid, offer = float(mkt.get("bid") or 0), float(mkt.get("offer") or 0)
+        except (TypeError, ValueError):
+            out["skipped"] += 1
+            continue
+        # Price on the side the position would EXIT at, so neither phase triggers on a spread artefact.
+        price = (bid if buy else offer) or ((bid + offer) / 2 if (bid or offer) else 0)
+        if not price:
+            out["skipped"] += 1
+            continue
+        epic = mkt.get("epic")
+
+        # Phase 3 first: if the trail already clears the target, hand straight over to IG. Checking this
+        # ahead of phase 2 saves a redundant stop move on a position that has already run well past.
+        handover = target * (1 + uplift) if buy else target * (1 - uplift)
+        if (price >= handover) if buy else (price <= handover):
+            if pos.get("trailingStep") or pos.get("trailingStopDistance"):
+                out["skipped"] += 1          # IG is already trailing this one
+                continue
+            if attach_trailing_stop(deal_id, price * trail):
+                out["trailing"].append({"epic": epic, "deal_id": deal_id,
+                                        "price": price, "distance": round(price * trail, 2)})
+            else:
+                out["skipped"] += 1
+            continue
+
+        # Phase 2: target touched but not yet 5% beyond -- park the stop ON the target.
+        reached = (price >= target) if buy else (price <= target)
+        better = (target > stop) if buy else (target < stop or stop == 0)
+        if reached and better:
+            if update_stop(deal_id, target):
+                out["locked"].append({"epic": epic, "deal_id": deal_id,
+                                      "old_stop": stop, "new_stop": target})
+            else:
+                out["skipped"] += 1
+        else:
+            out["skipped"] += 1
+    out["users_on"] = sorted(out["users_on"])
+    if out["locked"] or out["trailing"]:
+        log.info(f"let-winners-run: {len(out['locked'])} stop(s) moved to target, "
+                 f"{len(out['trailing'])} handed to IG trailing (users: {', '.join(out['users_on'])})")
     return out
 
 
