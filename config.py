@@ -844,6 +844,17 @@ MIN_CONFIRMATION_SIGNALS  = 1   # Minimum confirmation signals required to trade
 MIN_CALL_PUT_RATIO_BULL   = 1.2 # Call/put ratio above this = bullish options signal
 MAX_CALL_PUT_RATIO_BEAR   = 0.8 # Call/put ratio below this = bearish options signal
 
+# ── price_history retention (user 2026-08-17: "5 years can go to 4.5 years of data") ─────────────────
+# price_history is by far the largest table: 399 MB of a 521 MB database, against a 500 MB Supabase
+# free-tier allowance. It held five years of bars (2021-08-17 onwards); 4.5 years drops the oldest 10%,
+# about 175,000 rows and ~40 MB, which brings the database back under the limit.
+#
+# Do not lower this casually. The HVF engine needs deep lookback to find H1/H2/H3 levels, the Scanner's
+# price-chart slider reaches 1,095 days (3 years), and squeeze_history carries triggers back to 2021
+# whose outcome walks read these bars. Stored outcomes survive a prune -- squeeze_history keeps outcome,
+# outcome_date and return_pct -- but a pruned trigger can no longer be RE-derived from raw bars.
+PRICE_HISTORY_RETENTION_YEARS = 4.5
+
 # Senator scoring
 MIN_SENATOR_TRADES = 5          # Minimum trades for a senator to qualify
 
