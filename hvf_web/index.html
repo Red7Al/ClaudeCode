@@ -515,7 +515,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <body>
 <header>
   <h1>Squeeze Scanner</h1>
-  <span class="count" id="gen"></span>
+  <!-- #gen (the "snapshot <date>" stamp) moved OUT of this global header and onto the Scanner Report
+       page on 2026-08-17 (user: "move it back to snapshot report tab"). It dates the SNAPSHOT, which is
+       what the Scanner Report is built from; sitting in the site header it appeared to date every tab,
+       including Squeeze History and Performance, which are read live from the database and are not
+       stale just because the snapshot is. -->
   <button class="btn" id="nav-back" onclick="tabHistGo(-1)" title="Back" style="padding:6px 9px">◀</button>
   <button class="btn" id="nav-fwd" onclick="tabHistGo(1)" title="Forward" style="padding:6px 9px">▶</button>
   <span class="grow"></span>
@@ -638,9 +642,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <input type="hidden" id="mf_sector"><input type="hidden" id="mf_direction"><input type="hidden" id="mf_status"><input type="hidden" id="mf_location"><input type="hidden" id="mf_market"><input type="hidden" id="mf_timeframe">
     <div class="doc" style="max-width:none;margin:0;padding:24px 16px 0">
       <span class="eyebrow">Scanner</span>
-      <h1 style="margin:6px 0 4px">Scanner Report</h1>
+      <h1 style="margin:6px 0 4px">Scanner Report <span class="count" id="gen" style="font-weight:400;vertical-align:middle"></span></h1>
       <p class="lede" style="margin:0">Every instrument we scan across shares, indices, FX and commodities — squeezes spotted early, with the exact levels to act on. Use the charts or <b>Filters</b> to narrow; click a row for full detail.</p>
-      <p style="font-size:12px;margin-top:6px;color:#d29922">This is a live list of what's actionable <b>right now</b>, not a history — a squeeze that has gone stale or already resolved drops off here even though it's still recorded. For the full historical record, see <b>Squeeze History</b> or <b>Performance</b>.</p>
+      <p style="font-size:12px;margin-top:6px;color:#d29922">This is a live list of what's actionable <b>right now</b>, not a history — a squeeze that has gone stale or already resolved drops off here even though it's still recorded, and only setups passing <b>My Trading Filters</b> appear at all. For the full historical record, and to slice it, see <b>Squeeze History</b> or <b>Performance</b>.</p>
       <!-- The Scanner filter sidebar moved to Squeeze History on 2026-08-16. These three survive it:
            f_search is hidden and mirrors the visible box below (pass() reads f_search, and
            syncScannerNameSearch writes it); f_mkt/f_sec are hidden and NO LONGER FILTER -- they only carry
@@ -651,7 +655,6 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <input id="scanner-name-search" placeholder="Search name / ticker…" oninput="syncScannerNameSearch(this.value)" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px" aria-label="Search Scanner by name or ticker">
         <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:7px">Price chart: last <span id="dlbl">365</span> days
           <input id="f_days" type="range" min="30" max="1095" step="5" value="365" style="width:150px"></label>
-        <span class="muted" style="font-size:11px">Filters now live on <b>Squeeze History</b>. This list already shows only what passes <b>My Trading Filters</b>.</span>
       </div>
     </div>
     <div class="viz" id="viz"></div>
@@ -3579,8 +3582,18 @@ function paintOrderOps(){
   const _ooRec=t=>DATA.find(x=>x.ticker===t||disp(x.ticker)===t);
   // Distance to price % (user 2026-08-01): how far the live price is from the order's entry level,
   // as a % of the live price. Live price comes from the loaded snapshot for this ticker.
+  // The SERVER value wins (2026-08-17). /api/order-ops resolves RVOL/VolumeScore/R:R/Quality from the
+  // squeeze_history trigger that CAUSED each order, which is point-in-time correct. This block used to
+  // assign d?.x ?? null unconditionally and so overwrote all four with today's snapshot -- and the
+  // snapshot only carries rvol for instruments that triggered TODAY (_snapshot_rvol is triggered-only),
+  // so for a historical order the record was found (the Name rendered) but rvol/volume_score came back
+  // null and blanked the correct figure. That is the "many rows without RVOL" the user reported: the
+  // data was right in the response and thrown away in the browser. Snapshot is now a FALLBACK only.
+  // Name and dist_pct still come from the snapshot -- neither is returned by /api/order-ops.
   rows.forEach(r=>{const d=_ooRec(r.ticker),p=d&&d.current_price;
-    r.name=d?.name||'';r.rvol=d?.rvol??null;r.volume_score=d?.volume_score??null;r.rr=d?.rr??null;r.quality=d?.quality??null;
+    r.name=d?.name||r.name||'';
+    r.rvol=r.rvol??d?.rvol??null;r.volume_score=r.volume_score??d?.volume_score??null;
+    r.rr=r.rr??d?.rr??null;r.quality=r.quality??d?.quality??null;
     r.dist_pct=(r.entry!=null&&p)?+(((r.entry-p)/p)*100).toFixed(2):null;});
   rows.forEach(r=>r._fav=FAVS.has(disp(r.ticker))?1:0);   // favourite column sortable (user 2026-07-11)
   $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>

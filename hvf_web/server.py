@@ -2310,6 +2310,7 @@ def _attach_setup_metrics(rows: list) -> None:
         vsmap, vfmap = _volscore_trigger_map(), _volscore_trigger_feature_map()
     except Exception:
         vsmap, vfmap = {}, {}
+    matched = []
     for row in rows:
         hist = setups.get(row.get("ticker")) or []
         if not hist:
@@ -2330,6 +2331,57 @@ def _attach_setup_metrics(rows: list) -> None:
                     "volume_score": vsmap.get(key),
                     "above_vwap": feat.get("above_vwap"),
                     "atr_expanding": feat.get("atr_expanding")})
+        matched.append((row, td))
+    _fill_missing_rvol(matched)
+
+
+def _fill_missing_rvol(matched: list) -> None:
+    """Second pass: compute RVOL from price_history where squeeze_history stored none.
+
+    815 of 30,408 triggered squeeze_history rows carry rvol NULL (2026-08-17 measurement). Most are FX
+    and indices, which have no real volume -- _rvol_at returns None there deliberately, and a fabricated
+    1.0 would read as "average participation" rather than "not applicable", so those stay blank and
+    should. The rest are equities whose row was written before the volume bar landed: IWG.L's 2026-08-04
+    trigger is stored NULL but computes to 1.10 from bars we already hold, and that is the row the user
+    reported (2026-08-17, "these should be available for any instrument for any day").
+
+    Uses hvf_web.server._rvol_at -- the same function the Scanner column and volume_score._rvol_at
+    mirror -- rather than a second formula, so all three surfaces cannot drift apart. One _perf_bars
+    round trip for every ticker needing a fill, not one per row.
+    """
+    need = {}
+    for row, td in matched:
+        if row.get("rvol") is not None:
+            continue
+        try:
+            d = _dt.date.fromisoformat(td)
+        except Exception:
+            continue
+        need.setdefault(row.get("ticker"), d)
+        need[row["ticker"]] = min(need[row["ticker"]], d)
+    if not need:
+        return
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            # RVOL_BARS is a count of TRADING bars; widen generously in calendar days to cover them.
+            bars = _perf_bars(db, need, lookback_days=RVOL_BARS * 3)
+        finally:
+            db.close()
+    except Exception as exc:
+        log.warning(f"order-ops RVOL backfill unavailable: {exc}")
+        return
+    for row, td in matched:
+        if row.get("rvol") is not None:
+            continue
+        b = bars.get(row.get("ticker"))
+        if not b:
+            continue
+        try:
+            row["rvol"] = _rvol_at(b, _dt.date.fromisoformat(td))
+        except Exception:
+            pass
 
 
 @app.route("/api/order-ops")

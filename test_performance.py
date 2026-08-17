@@ -1112,3 +1112,58 @@ def test_approved_ui_report_backlog_is_wired_to_live_render_paths():
     assert 'padding:9px 12px;background:transparent' in html
     assert '_igNoCreds?' in html and 'No IG account data — add credentials' in html
     assert "_ag.style.display='none'" in html
+
+
+def test_order_ops_keeps_the_servers_point_in_time_metrics():
+    """Regression guard (2026-08-17, user: "on 'pre-orders to my ig' there are still missing RVOL
+    figures - these should be available for any date and for any screen").
+
+    /api/order-ops resolves RVOL / VolumeScore / R:R / Quality from the squeeze_history trigger that
+    CAUSED each working order -- point-in-time correct, and measured at 200/200 rows populated. The
+    browser then threw it away: paintOrderOps enriched each row from the current scanner snapshot with
+
+        r.rvol = d?.rvol ?? null
+
+    which is unconditional. _snapshot_rvol only carries rvol for instruments that triggered TODAY, so
+    for a historical order the snapshot record was found (hence the Name rendered fine) but rvol came
+    back null and overwrote the correct figure with a blank. IWG.L placed 2026-08-11 was the reported
+    case: server said 1.10, screen said nothing.
+
+    The snapshot must stay a FALLBACK. Name and dist_pct legitimately come from it -- neither is
+    returned by /api/order-ops -- so those are excluded from the check.
+    """
+    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    paint = _extract_function(html, "paintOrderOps")
+
+    for field in ("rvol", "volume_score", "rr", "quality"):
+        assert f"r.{field}=r.{field}??d?.{field}??null" in paint, (
+            f"paintOrderOps must prefer the server's r.{field} and fall back to the snapshot, not "
+            f"overwrite it. Writing `r.{field}=d?.{field}??null` blanks every order whose instrument "
+            f"did not trigger today (user 2026-08-17)."
+        )
+        assert f"r.{field}=d?.{field}??null" not in paint, (
+            f"paintOrderOps still clobbers r.{field} with the snapshot value."
+        )
+
+
+def test_order_ops_backfills_rvol_from_price_history():
+    """The other half of the same report: 815 of 30,408 triggered squeeze_history rows store rvol NULL.
+    Most are FX and indices, which have no real volume and must stay blank -- _rvol_at returns None
+    there on purpose, because a fabricated 1.0 would read as 'average participation' rather than 'not
+    applicable'. The rest are equities whose row was written before the volume bar landed (IWG.L
+    2026-08-04: stored NULL, computes to 1.10 from bars already held).
+
+    _fill_missing_rvol must reuse server._rvol_at rather than carry a second formula, so the Scanner
+    column, volume_score._rvol_at and this backfill cannot drift apart.
+    """
+    src = (Path(__file__).parent / "hvf_web" / "server.py").read_text(encoding="utf-8")
+    assert "def _fill_missing_rvol" in src
+    body = src[src.index("def _fill_missing_rvol"):]
+    body = body[:body.index("\n@app.route") if "\n@app.route" in body else len(body)]
+    assert "_rvol_at(" in body, "_fill_missing_rvol must call the canonical _rvol_at, not reimplement RVOL."
+    assert "_perf_bars(" in body, "_fill_missing_rvol must batch its bars via _perf_bars (one round trip)."
+    assert 'row.get("rvol") is not None' in body, (
+        "_fill_missing_rvol must only touch rows the trigger left blank -- a stored rvol is the "
+        "point-in-time value and wins."
+    )
+    assert "_fill_missing_rvol(matched)" in src, "_attach_setup_metrics must invoke the backfill."
