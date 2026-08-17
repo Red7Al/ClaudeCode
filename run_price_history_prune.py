@@ -70,16 +70,21 @@ def main() -> int:
         log.info(f"older than cutoff: {doomed:,} rows "
                  f"({(100.0 * doomed / before[0]) if before[0] else 0:.1f}%)")
 
+        # --vacuum must work on its own. Reclaiming is a SEPARATE operation from deleting: the normal
+        # sequence is --apply now and --vacuum later, in a window where nothing is reading the table.
+        # The first version returned here when there was nothing left to delete, so the second run
+        # silently skipped the vacuum it was invoked for.
         if not doomed:
             log.info("nothing to prune.")
-            return 0
-        if not apply:
+            if not vacuum:
+                return 0
+        elif not apply:
             log.info("DRY RUN - nothing deleted. Re-run with --apply to delete, "
                      "and --vacuum as well to return the space to the operating system.")
             return 0
 
         removed = 0
-        while True:
+        while doomed and apply:
             n = db.run("""delete from price_history
                            where ctid in (select ctid from price_history
                                            where bar_date < :c limit :n)""",
