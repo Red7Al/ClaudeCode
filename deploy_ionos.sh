@@ -177,7 +177,20 @@ if [ "$SKIP_BACKUP" != "1" ]; then
   ( umask 077; tar czf "$BACKUP" --exclude=.venv_linux . 2>/dev/null ) || echo "  (backup reported warnings; continuing)"
   chmod 600 "$BACKUP" 2>/dev/null || true
 fi
-unzip -o ~/squeeze-scanner-ionos.zip >/dev/null
+# NEVER overwrite a snapshot the host already has. The package carries hvf_web/snapshot.json as a
+# last-known-good BOOT cache for a fresh install; on an upgrade it is actively harmful. It replaces
+# current data with whatever the build machine happened to hold (here, 2026-08-12) while the sidecar still
+# describes the newer object -- so every subsequent request sees a digest mismatch and re-downloads ~830KB
+# from Supabase Storage. Under CGI there is no process memory to damp that, and several deploys in a day
+# was enough to exhaust the Storage egress allowance and start getting HTTP 402 on the download, leaving
+# the site pinned to five-day-old data (2026-08-17).
+if [ -f hvf_web/snapshot.json ]; then
+  echo "  keeping the host's existing snapshot cache (not shipping the boot copy over it)"
+  unzip -o ~/squeeze-scanner-ionos.zip -x 'hvf_web/snapshot.json' >/dev/null
+else
+  echo "  no snapshot on the host — installing the packaged boot cache"
+  unzip -o ~/squeeze-scanner-ionos.zip >/dev/null
+fi
 chmod 755 cgi-bin/app.py
 rm -f ~/squeeze-scanner-ionos.zip
 echo "  extracted; cgi-bin/app.py is $(stat -c '%a' cgi-bin/app.py)"
