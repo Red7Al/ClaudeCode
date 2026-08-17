@@ -23,6 +23,12 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.16.0  2026-08-17  Claude      Add --check-token (read-only) and gate --repair/--create-missing on it. The 1.15.0
+#                                 repair wrote GH_PAT into six jobs without checking it first; the PAT had expired on
+#                                 its 60-day clock, so all six returned HTTP 401 at their next fire (HVF Orders 06:00,
+#                                 Order Bridge 08:00, UK HVF Watch 08:30) and the morning's automation silently did
+#                                 nothing. Any mode that BAKES the token into a job's auth header now validates it
+#                                 first and refuses rather than shipping a dud.
 # 1.15.0  2026-08-15  Claude      Add --repair "<titles>" mode. A --status check found FIVE jobs that cron-job.org had
 #                                 auto-disabled after GitHub returned an HTTP error (401/404) on dispatch — HVF Orders
 #                                 (dead since 2026-07-21), Data Quality Audit and Pre-Order Report (2026-07-27), UK and
@@ -92,10 +98,12 @@ CRONJOB_API_KEY = os.environ.get("CRONJOB_API_KEY", "")
 GITHUB_TOKEN    = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO     = "Red7Al/ClaudeCode"
 
-# CRONJOB_API_KEY is always required. GITHUB_TOKEN is only needed to CREATE jobs
-# (it is baked into the new job's auth header); --reconcile (retune schedules of
-# existing jobs) and --prune (delete this-repo jobs no longer in JOBS) do not need it.
-if not CRONJOB_API_KEY:
+# CRONJOB_API_KEY is required for every mode that TOUCHES cron-job.org. GITHUB_TOKEN is only
+# needed to CREATE or REPAIR jobs (it is baked into the job's auth header); --reconcile (retune
+# schedules of existing jobs) and --prune (delete this-repo jobs no longer in JOBS) do not need it.
+# --check-token is the sole exception in the other direction: it never calls cron-job.org at all,
+# only GitHub, so requiring the cron key would stop the workflow validating a freshly rotated PAT.
+if not CRONJOB_API_KEY and "--check-token" not in sys.argv:
     print("ERROR: Set CRONJOB_API_KEY environment variable")
     raise SystemExit(1)
 
@@ -449,6 +457,45 @@ def _safe_detail(job_id):
         return {}
 
 
+def check_github_token() -> bool:
+    """Can GITHUB_TOKEN actually dispatch a workflow? Read-only -- asks GitHub for the workflow list.
+
+    Added 2026-08-17 after a real failure. --repair and --create-missing BAKE this token into each
+    cron-job.org job's Authorization header, so an expired one is written into every job they touch and
+    the jobs then fail silently at their next scheduled time -- which is exactly what happened: GH_PAT had
+    quietly expired on its 60-day clock, six jobs were repaired with it, and every one returned HTTP 401
+    hours later with nothing to show for it until someone read the cron-job.org status page.
+
+    Cheap to check, expensive to skip: a bad token is invisible until the next scheduled fire.
+
+    LIMIT: this proves the token is live and can SEE the repo's Actions (read scope). Dispatching
+    additionally needs Actions: WRITE, which cannot be probed without actually firing a workflow --
+    and firing one here would place real orders. So a 200 rules out the expiry/revocation case that
+    bit us, not a mis-scoped PAT. If jobs still 403 after this passes, the PAT is read-only.
+    """
+    if not GITHUB_TOKEN:
+        print("  GITHUB_TOKEN is empty — nothing to check.")
+        return False
+    try:
+        resp = requests.get(f"{GITHUB_API}/repos/{GITHUB_REPO}/actions/workflows",
+                            headers=GITHUB_HEADERS, timeout=15)
+    except Exception as exc:
+        print(f"  token check could not reach GitHub: {exc}")
+        return False
+    if resp.status_code == 200:
+        print(f"  token OK — can read {GITHUB_REPO} workflows (HTTP 200)")
+        return True
+    if resp.status_code == 401:
+        print("  token REJECTED (HTTP 401) — expired, revoked, or not a valid PAT.")
+    elif resp.status_code == 403:
+        print("  token lacks permission (HTTP 403) — needs Actions: Read and write on this repo.")
+    elif resp.status_code == 404:
+        print(f"  token cannot see {GITHUB_REPO} (HTTP 404) — check the repository is selected on the PAT.")
+    else:
+        print(f"  token check returned HTTP {resp.status_code}")
+    return False
+
+
 def repair_jobs(titles):
     """Re-point and re-enable SPECIFIC jobs by title, then switch them back on.
 
@@ -527,9 +574,19 @@ def main():
         reconcile_schedules()
         return
 
+    # --check-token: read-only PAT health check. Run after every GH_PAT rotation, BEFORE any mode
+    # that embeds the token. Needs no cron-job.org key.
+    if "--check-token" in sys.argv:
+        print("Checking GITHUB_TOKEN can reach the repo...")
+        raise SystemExit(0 if check_github_token() else 1)
+
     # --create-missing: create any JOBS not yet on cron-job.org. Skips existing.
     if "--create-missing" in sys.argv:
         print("Creating missing cron-job.org jobs...")
+        print("Validating GITHUB_TOKEN before embedding it...")
+        if not check_github_token():
+            print("REFUSING to create: the new job would carry a bad token and fail at its first run.")
+            raise SystemExit(1)
         print(f"GitHub repo: {GITHUB_REPO}")
         print()
         create_missing_jobs()
@@ -547,6 +604,11 @@ def main():
             raise SystemExit(1)
         if not GITHUB_TOKEN:
             print("ERROR: --repair rewrites the job's auth header, so it needs GITHUB_TOKEN.")
+            raise SystemExit(1)
+        print("Validating GITHUB_TOKEN before embedding it...")
+        if not check_github_token():
+            print("REFUSING to repair: a bad token would be written into every job named, and they would\n"
+                  "fail silently at their next scheduled run. Renew the PAT and try again.")
             raise SystemExit(1)
         print(f"Repairing {len(titles)} cron-job.org job(s)...")
         print(f"GitHub repo: {GITHUB_REPO}")

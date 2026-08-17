@@ -1,4 +1,4 @@
-name: Setup Cron Jobs — reconcile / create / prune / status (2026-07-25)
+name: Setup Cron Jobs — reconcile / create / prune / status (2026-08-17)
 
 # --reconcile (default): PATCHes ONLY each existing job's schedule.
 #   Needs CRONJOB_API_KEY only. Use after changing cadence in setup_cronjobs.py.
@@ -11,11 +11,16 @@ name: Setup Cron Jobs — reconcile / create / prune / status (2026-07-25)
 #   For jobs cron-job.org auto-disabled after delivery failures. Needs CRONJOB_API_KEY + GH_PAT.
 #   Title-scoped on purpose: most OFF jobs on this account are off deliberately, and a blanket
 #   re-enable would restart live trading automation. Never widen this to "all disabled jobs".
+# --check-token: read-only. Asks GitHub whether GH_PAT can still see this repo's workflows.
+#   Run this FIRST whenever GH_PAT has been rotated. --create-missing and --repair bake the PAT
+#   into each job's Authorization header, so an expired one is written into every job they touch
+#   and then fails silently at that job's next scheduled fire — which is what happened on
+#   2026-08-16 (six jobs repaired with a PAT that had expired; all 401'd the next morning).
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'reconcile = retune schedules | create-missing = add new | prune = delete removed | status = read-only diagnostic'
+        description: 'reconcile = retune schedules | create-missing = add new | prune = delete removed | status = read-only diagnostic | check-token = is GH_PAT still valid?'
         required: false
         default: 'reconcile'
         type: choice
@@ -25,6 +30,7 @@ on:
           - prune
           - status
           - repair
+          - check-token
       titles:
         description: 'repair mode only: comma-separated job titles, e.g. "Data Quality Audit,HVF Orders"'
         required: false
@@ -64,6 +70,11 @@ jobs:
         run: python setup_cronjobs.py --status
         env:
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+      - name: Check GH_PAT is still valid
+        if: ${{ github.event.inputs.mode == 'check-token' }}
+        run: python setup_cronjobs.py --check-token
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
       - name: Repair named jobs
         if: ${{ github.event.inputs.mode == 'repair' }}
         run: python setup_cronjobs.py --repair "${{ github.event.inputs.titles }}"
