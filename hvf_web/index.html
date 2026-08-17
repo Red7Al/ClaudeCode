@@ -658,12 +658,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
            how far back a setup can form, so widening or narrowing the chart changed the picture without
            changing what qualifies. The window is the PRICE_CHART_DAYS constant now. -->
       <input id="f_search" type="hidden"><select id="f_mkt" multiple hidden></select><select id="f_sec" multiple hidden></select>
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px">
-        <input id="scanner-name-search" placeholder="Search name / ticker…" oninput="syncScannerNameSearch(this.value)" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px" aria-label="Search Scanner by name or ticker">
-      </div>
     </div>
     <div class="viz" id="viz"></div>
-    <div class="count" id="count"></div>
+    <!-- Name search sits far RIGHT on the count row, matching every other table with a Name column
+         (Squeeze History, Instruments, Pre-orders to my IG, Performance): count left, .grow spacer,
+         search right. It was under the page title until 2026-08-17 -- the odd one out (user: "Scanner
+         Report search name should be on RHS like all other pages with a name search").
+         #count keeps its own span because render() writes innerHTML to it, which would otherwise
+         destroy the input on every repaint. -->
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="count"></span><span class="grow"></span><input id="scanner-name-search" placeholder="Search name / ticker…" oninput="syncScannerNameSearch(this.value)" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px" aria-label="Search Scanner by name or ticker"></div>
     <section class="gsec" style="border-left-color:var(--accent);margin:0 16px 16px">
     <div class="tablewrap">
       <table>
