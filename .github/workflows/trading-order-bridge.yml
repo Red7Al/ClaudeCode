@@ -63,8 +63,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=scanner-snapshot&per_page=1" \
-                 --jq '.artifacts[] | select(.expired == false) | .id' | head -1)
+          # Pick the newest unexpired one INSIDE jq. Piping to `head -1` under `set -o pipefail` makes
+          # head close the pipe, gh take SIGPIPE, and the step fail with "no artifact" while two sat
+          # there unexpired -- which is exactly what happened on the first run of this step.
+          ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=scanner-snapshot&per_page=20" \
+                 --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .id // empty')
           if [ -z "${ID:-}" ]; then
             echo "::error::no unexpired scanner-snapshot artifact. Run Scanner Snapshot Publish."
             exit 1
