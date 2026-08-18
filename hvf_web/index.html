@@ -90,6 +90,15 @@ aside h3{font-size:11px;text-transform:uppercase;color:var(--muted);margin:14px 
 .f select[multiple] option{padding:2px 4px}
 .f select[multiple] option:checked{background:linear-gradient(var(--accent),var(--accent));color:#fff}
 select,input{width:100%;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:5px}
+/* The width:100% above is for FORM FIELDS. A checkbox or radio inheriting it stretches to fill its
+   container and shoves its own label to the far right -- the "huge white space between check boxes and
+   text" the user reported on 2026-08-18 ("Rebuild locations ... but this is not the only one"). The file
+   already carried three one-off exceptions (.msel-pop, #tabvis-list, .cfg-tf-option) and a comment
+   describing the cause, which meant every checkbox added since inherited the bug by default. This is the
+   general rule, so the next one is right without anybody remembering: 18 of the 21 checkboxes in this
+   file were relying on nothing at all. Type selectors are specific enough to beat the bare element rule
+   while still losing to the sized exceptions above. */
+input[type="checkbox"],input[type="radio"]{width:auto;flex:none;padding:0;margin:0;accent-color:var(--accent)}
 .row2{display:flex;gap:6px} .row2 input{width:50%}
 main{flex:1;display:flex;flex-direction:column;min-width:0}
 .count{padding:8px 16px;color:var(--muted);font-size:12px}
