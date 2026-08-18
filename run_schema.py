@@ -509,6 +509,34 @@ MIGRATIONS = [
         "CREATE INDEX IF NOT EXISTS idx_scanner_snapshot_current_version "
         "ON scanner_snapshot_current(version_id)"
     ),
+    # ── Brute-force protection for /api/login (user 2026-08-18, SECURITY_RECOMMENDATIONS HIGH #1) ─────
+    # api_login accepted unlimited password guesses: no per-IP cap, no per-account cap, no lockout, no
+    # alert. Logins are guessable names (Alex, Owner, Rich) rather than emails, the site is now on a
+    # stable public domain instead of a random tunnel hostname, and a successful guess reaches the order
+    # path -- not just data.
+    #
+    # The counter has to be PERSISTED, not held in memory. The 2026-07-28 advice ("a small in-memory
+    # counter is enough for a single-process app") is void: under CGI every request is a fresh Python
+    # process, so an in-memory counter is created and destroyed inside one attempt. It counts to one
+    # forever and looks like protection while providing none.
+    (
+        "create login_attempts (persisted brute-force counter)",
+        """CREATE TABLE IF NOT EXISTS login_attempts (
+            ip             text        not null,
+            name           text        not null,
+            attempts       integer     not null default 0,
+            first_attempt  timestamptz not null default now(),
+            last_attempt   timestamptz not null default now(),
+            locked_until   timestamptz,
+            primary key (ip, name)
+        )"""
+    ),
+    (
+        # Sweeping expired locks and counting a burst across many usernames from one IP both scan by
+        # time, not by the primary key.
+        "login_attempts: index last_attempt",
+        "CREATE INDEX IF NOT EXISTS idx_login_attempts_last ON login_attempts(last_attempt DESC)"
+    ),
 
 ]
 

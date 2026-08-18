@@ -154,9 +154,22 @@ from hvf_web import web_users as _wu
 def api_login():
     body = request.get_json(silent=True) or {}
     name, pwd = (body.get("name") or "").strip(), body.get("pwd") or ""
+    # Brute-force protection (2026-08-18, SECURITY_RECOMMENDATIONS HIGH #1). This endpoint previously
+    # accepted unlimited guesses. The check runs BEFORE verify() on purpose: a locked-out attacker must
+    # not reach PBKDF2, both to deny them the answer and because verification is deliberately expensive
+    # and would otherwise make this endpoint a CPU amplifier.
+    import login_throttle
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0].strip()
+    allowed, retry_after = login_throttle.check(ip, name)
+    if not allowed:
+        _wu.log_event(name, f"Login BLOCKED — too many attempts (from {ip})")
+        return jsonify({"ok": False, "error": "Too many attempts. Try again shortly.",
+                        "retry_after": retry_after}), 429
     if _wu.verify(name, pwd):
-        _wu.log_event(name, f"Logged in (from {request.remote_addr})")
+        login_throttle.record_success(ip, name)
+        _wu.log_event(name, f"Logged in (from {ip})")
         return jsonify({"ok": True, "token": _wu.token_for(name), "name": name})
+    login_throttle.record_failure(ip, name)
     return jsonify({"ok": False}), 401
 
 
