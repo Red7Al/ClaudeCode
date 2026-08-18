@@ -1908,6 +1908,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <script>
 let DATA=[], SEL=null, sortK="dist_entry", sortDir=1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: ABS(Dist→Entry) ascending (closest first)
+// Has the snapshot fetch come back yet? DATA starts empty, so without this a tab rendering before the
+// fetch resolves shows an empty table that looks exactly like "nothing matched" -- the user could not
+// tell a slow load from a genuinely empty result (user 2026-08-18: "when preorders loads to screen
+// there is no message for 'Data loading' whilst we wait for content").
+let DATA_LOADED=false;
 const $=id=>document.getElementById(id);
 // In-app confirm (user 2026-07-18): the native confirm() prefixes the host ("…says"), which looked
 // broken behind the old ngrok tunnel and is still noise on squeezescanner.cloud. This styled dialog
@@ -3694,7 +3699,7 @@ function refreshMarkets(ev){
   if(btn){btn.disabled=true;btn.textContent="⏳ Data loading…";}
   $("mk-count").innerHTML='<span class="sqh-loading">⏳ Data loading…</span>';
   fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{DATA=j.records||[];if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;DATA.forEach(augment);renderMarkets();})
+    .then(j=>{DATA=j.records||[];DATA_LOADED=true;if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;DATA.forEach(augment);renderMarkets();})
     .catch(()=>{$("mk-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not refresh — try again.</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
@@ -5912,6 +5917,13 @@ function ooClearFilters(){["oo-from","oo-to"].forEach(id=>{const el=$(id);if(el)
 function poClearFilters(){["po_qmin","po_qmax","po_rrmin","po_rrmax","po_demin","po_demax"].forEach(id=>{const el=$(id);if(el)el.value="";});renderPreorders();}
 function renderPreorders(){
   renderIgCredWarn("po-igwarn");   // no-IG-credentials warning + Open IG settings button (P-10 L218 / P-25 L219)
+  // Say "loading" rather than showing an empty table. DATA is [] until /api/records returns, and an
+  // empty Pre-orders table is indistinguishable from one where nothing qualified (user 2026-08-18).
+  if(!DATA_LOADED){
+    const _b=$("po-rows"); if(_b)_b.innerHTML='<tr><td colspan="24" class="muted" style="padding:18px;text-align:center">Loading pre-orders…</td></tr>';
+    const _c=$("po-count-text"); if(_c)_c.textContent="Loading…";
+    return;
+  }
   let po=DATA.filter(r=>isPreorder(r)&&tradeVisible(r));   // hide the user's excluded markets (user 2026-07-06)
   // Do not publish stale snapshot rows whose geometry is now rejected by the engine.
   // This keeps the browser view consistent before the next full data refresh.
@@ -6063,7 +6075,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     // the SAME /api/config response already being fetched for filters/trade/markets, so the very first
     // Scanner render is correctly filtered without needing a visit to Configuration first.
     if(cfg&&cfg.limits){MY_LIMITS=cfg.limits;Object.entries(cfg.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=Array.isArray(v)?v.join(", "):v;}});}
-    DATA=j.records||[]; DATA.forEach(augment);
+    DATA=j.records||[]; DATA_LOADED=true; DATA.forEach(augment);
     if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;   // canonical market list for the Refresh picker (P-15)
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     // f_loc/f_tf went to Squeeze History with the filters (2026-08-16) and fillSel dereferences $(id)
