@@ -1,0 +1,4794 @@
+{
+ "entries": [
+  {
+   "date": "2026-08-18",
+   "version": "c6d595e",
+   "summary": "Stop the global input width stretching every checkbox"
+  },
+  {
+   "date": "2026-08-18",
+   "version": "c79b9fb",
+   "summary": "Brute-force protection on /api/login (SECURITY_RECOMMENDATIONS HIGH #1)"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "d0c3e84",
+   "summary": "QA: execute the client JS, and detect look-ahead in every replay"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "23d2499",
+   "summary": "Let winners run: gate the path that actually executes, and refuse a trail that breaks the guarantee"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "193afc9",
+   "summary": "Let winners run, live: three-phase stop, gated on each user's own switch"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "47c444e",
+   "summary": "Scanner: name search to the right, matching every other table"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "8aef2bb",
+   "summary": "Record the IONOS snapshot-channel script (route on hold)"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "d0eb89d",
+   "summary": "Scanner: remove the price-chart day slider"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "3a5cfc6",
+   "summary": "Order Bridge: fix the artifact lookup (pipefail + head killed it)"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "8aa85f4",
+   "summary": "Order Bridge: get the snapshot from the artifact, not Supabase Storage"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "8daed9c",
+   "summary": "Revert: put the snapshot date back in the site header where it always was"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "1b94e53",
+   "summary": "price_history prune: let --vacuum run on its own, and execute it"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "70ef3a2",
+   "summary": "price_history retention: 5 years -> 4.5 (user 2026-08-17)"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "84cbcd2",
+   "summary": "Gzip the Scanner snapshot in Storage: 10.6x less egress"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "4af6c64",
+   "summary": "Index hygiene: drop six duplicate indexes, cover one FK, review it weekly"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "8319a5a",
+   "summary": "Scanner Snapshot Publish: keep the snapshot when publication fails"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "97ccd42",
+   "summary": "Weekly GH_PAT expiry check; drop the dead markets picker; fix two stale headers"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "d3b2f12",
+   "summary": "Pre-orders to my IG: stop the browser blanking the RVOL the server sent"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "3bdd1a1",
+   "summary": "setup_cronjobs: validate GH_PAT before baking it into a job"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "b81feef",
+   "summary": "deploy_ionos.sh: never overwrite the host's snapshot cache"
+  },
+  {
+   "date": "2026-08-17",
+   "version": "8cc1689",
+   "summary": "Scanner header: one rebuild control, right-aligned, Squeeze Only hidden"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "7de0da1",
+   "summary": "deploy_ionos.sh: force IPv4"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "fb96654",
+   "summary": "deploy_ionos.sh: fail fast when SSH is unreachable"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "6a6e090",
+   "summary": "Scanner: remove the filter sidebar and the buttons that implied it"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "91c0cd5",
+   "summary": "Data Quality Audit: nightly sweep for absurd squeeze outcomes"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "fc36686",
+   "summary": "Move the Scanner filters to Squeeze History"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "fbff246",
+   "summary": "Rebuild snapshot: choose which LOCATIONS to rescan"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "4cfbcd6",
+   "summary": "Best Settings: two more cards, scopeable let-it-run, and drop the dead history"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "ae6bbb6",
+   "summary": "Pre-orders to my IG: fill RVOL, VolumeScore, Quality, R:R, VWAP and ATR"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "f46e8f8",
+   "summary": "Let it run: compare resolved trades only, and check the invariant on all of them"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "a0f89b7",
+   "summary": "Enforce MAX_RISK_REWARD and the tight-stop guard in the analysis population"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "03478a5",
+   "summary": "Let it run: 4% trailing distance below price once target is reached"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "3f276d3",
+   "summary": "Let it run: one trailing rule, one number -- 95% of the run, both phases"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "dc85347",
+   "summary": "Let it run: above target the stop must be minimal, not a share of the run"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "eb2ee65",
+   "summary": "Fix the trailing stop: a 31% gain could give back to 13%"
+  },
+  {
+   "date": "2026-08-16",
+   "version": "21be549",
+   "summary": "UI: Back Test column order, readable wallet columns, and three fixes"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "dba3fb4",
+   "summary": "HVF Daily Report: restore it -- no morning report since 2026-08-12"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "3feeaae",
+   "summary": "Tests: prove Back Test and Best Settings agree, and cap stake exposure"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "bea5aa8",
+   "summary": "Best Settings: report the max-open the engine used, and guard the numbers"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "2c39d46",
+   "summary": "deploy_ionos.sh: fixes found by running a real deploy"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "9d0813c",
+   "summary": "setup_cronjobs: add --repair for jobs cron-job.org auto-disabled"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "273398b",
+   "summary": "Add Deploy-IONOS.cmd so the deploy runs from cmd.exe"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "612f094",
+   "summary": "deploy_ionos.sh: --find-dir, and one password prompt instead of three"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "9dacebb",
+   "summary": "Add deploy_ionos.sh — one command to publish the site"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "a8cc540",
+   "summary": "Docs: re-review the security recommendations against the IONOS deployment"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "833104d",
+   "summary": "Docs: describe how the system actually runs now (IONOS, not a laptop)"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "a1a4952",
+   "summary": "Restore the Order Bridge: it has run nowhere since the IONOS move"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "2b690f3",
+   "summary": "CI: repair the offline regression job (red on every push since 2026-08-12)"
+  },
+  {
+   "date": "2026-08-15",
+   "version": "6eb57b8",
+   "summary": "Best Settings: banded trade-count cards, one replay rule, drop sector scope"
+  },
+  {
+   "date": "2026-08-13",
+   "version": "fcce99e",
+   "summary": "Complete evidence and trading filter rollout"
+  },
+  {
+   "date": "2026-08-13",
+   "version": "b960978",
+   "summary": "fix: preserve running scanner progress state"
+  },
+  {
+   "date": "2026-08-13",
+   "version": "01d6c93",
+   "summary": "feat: restore external scanner progress"
+  },
+  {
+   "date": "2026-08-13",
+   "version": "1837fb2",
+   "summary": "fix: validate scanner cache before reuse"
+  },
+  {
+   "date": "2026-08-13",
+   "version": "61619a9",
+   "summary": "fix: verify scanner snapshots with publisher key"
+  },
+  {
+   "date": "2026-08-12",
+   "version": "52ef1d8",
+   "summary": "fix: restore scanner refresh and daily history"
+  },
+  {
+   "date": "2026-08-12",
+   "version": "90abf24",
+   "summary": "feat: offload scanner snapshots to Supabase"
+  },
+  {
+   "date": "2026-08-12",
+   "version": "795710b",
+   "summary": "fix: restrict direct CGI access"
+  },
+  {
+   "date": "2026-08-12",
+   "version": "98e5231",
+   "summary": "fix: include IONOS root page"
+  },
+  {
+   "date": "2026-08-12",
+   "version": "a4aeb29",
+   "summary": "fix: support IONOS shared hosting"
+  },
+  {
+   "date": "2026-08-12",
+   "version": "172495c",
+   "summary": "feat: prepare IONOS deployment state"
+  },
+  {
+   "date": "2026-08-12",
+   "version": "5c45a55",
+   "summary": "feat: strengthen performance evidence"
+  },
+  {
+   "date": "2026-08-11",
+   "version": "2eb4199",
+   "summary": "Trading filter gating + Scanner re-render fixes, doc corrections"
+  },
+  {
+   "date": "2026-08-09",
+   "version": "e6347dd",
+   "summary": "Change log: mark the 20 P-12 guide items complete"
+  },
+  {
+   "date": "2026-08-09",
+   "version": "8c9fb2c",
+   "summary": "Docs: reword \"funnel\"/\"HVF\" to \"The Squeeze\" (P-02)"
+  },
+  {
+   "date": "2026-08-09",
+   "version": "f49861d",
+   "summary": "Add Documentation tab with role-gated in-app guides"
+  },
+  {
+   "date": "2026-08-08",
+   "version": "51fa75b",
+   "summary": "Add Refresh button to User Management"
+  },
+  {
+   "date": "2026-08-08",
+   "version": "e9d8b92",
+   "summary": "Harden temp-password button to fail safe on missing has_ig"
+  },
+  {
+   "date": "2026-08-08",
+   "version": "05168bd",
+   "summary": "Log outbound-email setup as deferred"
+  },
+  {
+   "date": "2026-08-08",
+   "version": "e0aaa4c",
+   "summary": "User Management: account-creation flow, roles, email validation, temp passwords"
+  },
+  {
+   "date": "2026-08-07",
+   "version": "c99d350",
+   "summary": "Squeeze Scanner: P-01-P-07 fixes, Support role, Add User, Back Test charts in Advanced Analysis, daily scanner report email"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "20b467a",
+   "summary": "Complete performance settings decision tool"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "1daf177",
+   "summary": "Run Supabase backups daily"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "2d12e4c",
+   "summary": "Record AUS schedule deployment"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "15221c3",
+   "summary": "Add AUS squeeze watch schedule"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "8d56bcd",
+   "summary": "Fix sticky tabs and price job categories"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "81a5710",
+   "summary": "Complete remaining P-12 requests"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "797cb94",
+   "summary": "Record P-16 cron verification"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "964c4d6",
+   "summary": "Confirm price refresh workflow completion"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "3b8f7ac",
+   "summary": "Verify price refresh cron schedule"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "19b75a9",
+   "summary": "Fix configuration saves and bridge toggle"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "9619bdf",
+   "summary": "Record P-15 direction request"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "aad437f",
+   "summary": "Fix and relocate direction filters"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "93e2315",
+   "summary": "Make minimum trade configurable"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "0ae2e35",
+   "summary": "Align email configuration field"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "0ac6eae",
+   "summary": "Rename trading configuration button"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "5add499",
+   "summary": "Align minimum trade field"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "dffefae",
+   "summary": "Record P-14 configuration requests"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "ecaa512",
+   "summary": "Center IG settings rows"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "e296b40",
+   "summary": "Align VWAP and ATR options"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "bb92a09",
+   "summary": "Move IG open trades right"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "b0637cb",
+   "summary": "Widen centered IG settings box"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "913a585",
+   "summary": "Place IG leverage beside credentials"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "793c02d",
+   "summary": "Balance IG settings container width"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "4d3e6bd",
+   "summary": "Tighten IG settings container"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "3a648d2",
+   "summary": "Arrange IG configuration controls"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "ba89a7d",
+   "summary": "Restrict Scanner header controls"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "48aff1b",
+   "summary": "Record remaining P-12 ad hoc requests"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "559b605",
+   "summary": "Refine IG filter navigation"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "005ae85",
+   "summary": "Center IG configuration buttons"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "78574f1",
+   "summary": "Clarify Scanner filter defaults"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "1e928c4",
+   "summary": "Refine configuration navigation grouping"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "93eae23",
+   "summary": "Group IG configuration controls"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "e576376",
+   "summary": "Organize configuration controls"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "176a783",
+   "summary": "Reorder Scanner report columns"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "d607b63",
+   "summary": "Fix Scanner defaults and confirmation columns"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "0d5c809",
+   "summary": "Expose replay limits in user configuration"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "e47699b",
+   "summary": "Improve distinct Best Settings choices"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "5231ece",
+   "summary": "Apply P-11 UI and performance fixes"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "5cc7748",
+   "summary": "Standardize flashing loading states"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "8d2aec5",
+   "summary": "Improve configuration card hierarchy"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "5925318",
+   "summary": "Explain reward risk configuration"
+  },
+  {
+   "date": "2026-08-06",
+   "version": "d870c64",
+   "summary": "Keep best settings analysis responsive"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "2a70621",
+   "summary": "Keep IG closed transactions visible"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "1742d50",
+   "summary": "Prevent empty fee periods and charge scrollbars"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "10ff879",
+   "summary": "Increase performance result batches"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "80d25c1",
+   "summary": "Highlight active advanced analysis"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "c795c88",
+   "summary": "Align winner analysis and sanitize annual settings"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "a78493d",
+   "summary": "Surface incomplete IG fee history"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "bb23c0f",
+   "summary": "Clarify performance settings and IG account defaults"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "5c34b42",
+   "summary": "Load complete IG history before applying period filters"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "c9e3b32",
+   "summary": "Standardize annual settings loading state"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "ddc6724",
+   "summary": "Apply recommended market and sector scopes"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "6c2a21a",
+   "summary": "Complete best settings user configuration"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "ee382e8",
+   "summary": "Add client-facing performance configuration choices"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "287f670",
+   "summary": "Clarify performance navigation and sanitize settings data"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "bc1e95a",
+   "summary": "Place performance descriptions above controls"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "80c89bc",
+   "summary": "Group advanced performance analysis by admin tier"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "9f617ff",
+   "summary": "Stop performance reports flashing after load"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "69df708",
+   "summary": "Move performance recommendations to best settings"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "476096d",
+   "summary": "Show performance tab descriptions above buttons"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "8897b8d",
+   "summary": "Stop performance combination cards flashing"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "a366512",
+   "summary": "Stop saved defaults message flashing"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "1bf5f50",
+   "summary": "Stop saved defaults loading animation"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "2eab749",
+   "summary": "Prevent invalid annual settings JSON"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "37ba1ad",
+   "summary": "Clarify performance report structure"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "6e1fdc3",
+   "summary": "Use full width for squeeze history"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "1b2f461",
+   "summary": "Align scanner metric columns"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "28115be",
+   "summary": "Improve fees transaction layout"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "a63a39a",
+   "summary": "Improve scheduled job run visibility"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "99a6454",
+   "summary": "Add confirmation rule for destructive data changes"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "e6e439b",
+   "summary": "Refresh change request summaries without cache"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "f794776",
+   "summary": "Show deferred status in change request summary"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "ad39e0e",
+   "summary": "Hide rejected ratios from preorders"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "91568cb",
+   "summary": "Reject extreme risk reward setups"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "fe0ccc2",
+   "summary": "Fix transaction ordering and loading indicators"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "409a8a0",
+   "summary": "Standardize loading states across pages"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "1c97ba2",
+   "summary": "Standardize replay loading indicator"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "ade87fb",
+   "summary": "Make annual settings loading recoverable"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "a9a36ba",
+   "summary": "Fix performance figures and data loading states"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "92570a1",
+   "summary": "Fix backtest settings and account refresh states"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "7caea5b",
+   "summary": "Fix performance replay affordability"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "f7fc3a3",
+   "summary": "Add decision evidence to performance reports"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "9644d0d",
+   "summary": "Add annual best settings analysis"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "84cdeb3",
+   "summary": "Rework performance header controls"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "5ed054d",
+   "summary": "Pair RVOL with volume score"
+  },
+  {
+   "date": "2026-08-05",
+   "version": "41570db",
+   "summary": "Standardise sector table placement"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "d214f7e",
+   "summary": "Group scanner scoring columns"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "e275195",
+   "summary": "Add order operation scoring columns"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "18f84eb",
+   "summary": "Widen squeeze history view"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "6018ef7",
+   "summary": "Fix iPad direction filter controls"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "ee736fa",
+   "summary": "Keep system health cards on one iPad row"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "3317012",
+   "summary": "Show full close time on Fees"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "f400773",
+   "summary": "Use The Squeeze throughout documentation"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "5e72051",
+   "summary": "Refine transaction ordering and loading states"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "ad38a00",
+   "summary": "Hide bridge badge until state loads"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "13e8405",
+   "summary": "Include closed profit in IG account charts"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "ef0d872",
+   "summary": "Rename Squeeze terminology in primary docs"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "45ba22f",
+   "summary": "Aggregate closed transactions by instrument"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "cdb2249",
+   "summary": "Use profit charts and aggregate fee trades"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "05d7863",
+   "summary": "Normalise IG profit total currencies"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "3bbf0fe",
+   "summary": "Total visible IG account profit"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "648144c",
+   "summary": "Filter IG transactions by open or closed month"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "4d55670",
+   "summary": "Refine IG account controls and bridge state"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "072b1ba",
+   "summary": "Improve IG account and compact layouts"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "11227e1",
+   "summary": "Remove duplicate IG closed trades table"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "0de6029",
+   "summary": "Aggregate IG closed transaction fills"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "2c4690d",
+   "summary": "Improve IG account transaction view"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "692a821",
+   "summary": "Keep sticky tabs joined to header"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "ab2a681",
+   "summary": "Fix paginated IG fee transactions"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "e41308e",
+   "summary": "Correct performance wallet constraints"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "d686084",
+   "summary": "Simplify winners analysis presentation"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "e453e04",
+   "summary": "Make winners-run report a what-if tool"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "1ec1691",
+   "summary": "Add winners-run performance tab"
+  },
+  {
+   "date": "2026-08-04",
+   "version": "876d70e",
+   "summary": "Fix performance data and strengthen regression checks"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "8b64db2",
+   "summary": "P-01 (2026-08-03): make /api/performance non-blocking (never hangs the tab)"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "ffdda5e",
+   "summary": "P-14 (2026-08-03): widen Fees + Squeeze History views to reduce horizontal scroll"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "8ff0ff3",
+   "summary": "P-10/P-12 (2026-08-03): closed trades auto-load with account, date-ordered"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "db64b63",
+   "summary": "P-10/P-12 (2026-08-03): IG Account — closed trades with reason for closure"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "c40362b",
+   "summary": "P-10 (2026-08-03): IG Account — add Market column to both tables"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "b3e372c",
+   "summary": "P-11 (2026-08-03): wrap IG account (audit) header to free discount width"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "afe5320",
+   "summary": "@ P-11 (2026-08-03): discount cell polish — wrap Password Complexity, lighter box"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "a162727",
+   "summary": "P-11/P-12 (2026-08-03): User Management — clearer discount UI + wider table"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "22e82fe",
+   "summary": "P-01 (2026-08-03): fix Performance hang — fast NOW-price query + cache pre-warm"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "6871910",
+   "summary": "P-75 (2026-08-03): per-user Pre-order-to-IG proximity threshold"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "67477f1",
+   "summary": "P-75 (2026-08-03): sticky tab bar — enabled tabs no longer scroll away"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "b262b03",
+   "summary": "P-25 (2026-08-03): encrypted IG-account audit trail in Supabase"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "1c4c12e",
+   "summary": "P-30 (2026-08-03): explain the HVF hypothesis (with diagram) on How it works (System)"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "de648ef",
+   "summary": "P-30 (2026-08-03): add cron-job.org card to Technical Fundamentals"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "866243c",
+   "summary": "P-01 (2026-08-03): get_snapshot resilient to per-epic 403/404 (fix UK Monitor)"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "577154b",
+   "summary": "P-65 (2026-08-03): Batch Activity — Operator filter dropdown"
+  },
+  {
+   "date": "2026-08-03",
+   "version": "ce3682c",
+   "summary": "P-01 (2026-08-03): honour per-channel Slack switch in every direct poster"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "5cb50e5",
+   "summary": "P-06 (2026-08-02): Performance processing badge + wider table-scrollbar gap"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "43d7548",
+   "summary": "P-06 (2026-08-02): Pre-orders to my IG — bridge on/off status badge"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "771c1ed",
+   "summary": "P-06 (2026-08-02): Squeeze History — year filter, Direction/Quality charts, faster"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "5cfaaa4",
+   "summary": "P-06/P-25 (2026-08-02): Fees from real IG history — all closed trades + IG charges"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "5c9744e",
+   "summary": "P-06 (2026-08-02): fees are per-annum (÷12 fix) + month labels + drop admin WO-lifespan"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "3bca9d4",
+   "summary": "P-25 (2026-08-02): consistent T&C caveat-note formatting"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "dc7e69f",
+   "summary": "P-25 (2026-08-02): free self-managed Supabase DB backup workflow"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "9bf20a5",
+   "summary": "P-05 (2026-08-02): broaden secret-seeding workflow to all non-bootstrap secrets"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "54de967",
+   "summary": "P-05 (2026-08-02): workflow to seed X credentials into Supabase from GitHub Secrets"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "d9c1d4f",
+   "summary": "P-12 (2026-08-02): fees AUM from real account equity + X-markets iPad readability"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "0c1b8e7",
+   "summary": "P-12 (2026-08-02): iPad card strip, leverage clarity, clearer Slack save message"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "7694562",
+   "summary": "P-20/P-40 (2026-08-02): per-user fee discounts with start/end window + history"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "299797b",
+   "summary": "data: raise price_history retention 3y -> 5y (user 2026-08-02)"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "02eb413",
+   "summary": "P-15 (2026-08-02): Scanner refresh-by-market + Scheduled Jobs purpose/frequency"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "292cdd8",
+   "summary": "P-05 (2026-08-02): Fees tab — two periods (Last month / This month so far) + explaining transactions"
+  },
+  {
+   "date": "2026-08-02",
+   "version": "605b3b8",
+   "summary": "P-08 (2026-08-02): \"Let winners run\" report + per-user opt-in, stop-loss config, copy-config"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "761f22e",
+   "summary": "task #53 step 1: wire the secret-store loader at the db_pool chokepoint"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "761ca77",
+   "summary": "P-15 / task #53: Supabase-backed encrypted secret store (Phase 1-2 + admin editable)"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "511e97f",
+   "summary": "docs: design for a Supabase-backed encrypted secret store (task #53)"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "bdf2c3e",
+   "summary": "P-11 (2026-08-01): apply the per-user IG working-order lifespan at placement"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "9075261",
+   "summary": "P-08 (2026-08-01): config polish + Squeeze History clickthrough & chart brushing"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "4528868",
+   "summary": "P-14 (2026-08-01): clearer Slack save message (toggles save instantly)"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "360776c",
+   "summary": "P-14 (2026-08-01): move Slack per-channel \"send\" toggles to the RHS of each row"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "d454947",
+   "summary": "P-14 (2026-08-01): per-webhook Slack send/off toggles"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "c6b6623",
+   "summary": "P-12 (2026-08-01): IG positions view radio + size rounding; tab-visibility readability"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "8433464",
+   "summary": "P-11 (2026-08-01): IG Account open positions — live Profit £ and %"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "8ec2015",
+   "summary": "P-11 (2026-08-01): config reorg — Adaptive Filters panel, Trading (Squeeze) controls"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "a7112aa",
+   "summary": "P-08 (2026-08-01): IG Account sortable + aggregate + per-table charts; Scanner defaults"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "1545ffd",
+   "summary": "P-07/P-08 (2026-08-01): market-cap backfill + join into perf/winners"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "9d73f6d",
+   "summary": "P-07 (2026-08-01): add MCap column to Back Test + winners tables"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "6dbaea4",
+   "summary": "P-08 (2026-08-01): chart strips never wrap to a second row"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "2300d18",
+   "summary": "P-09 (2026-08-01): IG Account — charts above both tables + Direction + Good-till"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "39ccb6e",
+   "summary": "P-12 (2026-08-01): configurable email FROM (default eahind@yahoo.co.uk)"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "adbc684",
+   "summary": "P-12 (2026-08-01): route trade-open email to the account holder"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "8685a26",
+   "summary": "P-01 (2026-08-01): fix get_open_positions — wrong endpoint hid all IG positions"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "9797b7b",
+   "summary": "P-01 (2026-08-01): get_epic resolves foreign numeric tickers by company name"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "1a7a3df",
+   "summary": "P-09/P-10 (2026-08-01): Squeeze History, tab order, config-disables, tab counts"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "2fb412e",
+   "summary": "P-08/P-09 (2026-08-01): formatting rules, table scrollbar gap, T&C finalised"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "fef4966",
+   "summary": "P-06/P-07 (2026-08-01): monthly chart, wallet default, closed-date fix"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "7c98312",
+   "summary": "P-03 (2026-08-01): Back Test polish + winners fixes"
+  },
+  {
+   "date": "2026-08-01",
+   "version": "9909690",
+   "summary": "P-03 (2026-08-01): user-settings isolation, Markets(User) gating, Back Test overhaul"
+  },
+  {
+   "date": "2026-07-31",
+   "version": "81afe45",
+   "summary": "P-10 L256: security review — recommendations document"
+  },
+  {
+   "date": "2026-07-31",
+   "version": "28ee7e6",
+   "summary": "P-02: Performance respects the personal Minimum Volume Score floor"
+  },
+  {
+   "date": "2026-07-31",
+   "version": "10d8e66",
+   "summary": "P-10 L158: save the \"What separates the winners\" Model variables as user defaults"
+  },
+  {
+   "date": "2026-07-31",
+   "version": "767d364",
+   "summary": "Fix: cap best-combination/ledger concurrency at wallet-funded max (L119)"
+  },
+  {
+   "date": "2026-07-27",
+   "version": "2df893d",
+   "summary": "P-10 L292/L300: click-to-filter the Quality/R:R combination cards"
+  },
+  {
+   "date": "2026-07-27",
+   "version": "fece7b3",
+   "summary": "P-07: Min/Max instrument-value + adaptive-filter config knobs"
+  },
+  {
+   "date": "2026-07-27",
+   "version": "fa3a76c",
+   "summary": "P-06/P-10: no priority on deferred CRs; new \"What we do\" tab"
+  },
+  {
+   "date": "2026-07-27",
+   "version": "ef2b39e",
+   "summary": "P-03 A/B/C/D: Performance pills colour, IG charts centred, Vol column, big-return format"
+  },
+  {
+   "date": "2026-07-27",
+   "version": "bba3af3",
+   "summary": "P-06: packViz only stacks chart cards when the strip wraps"
+  },
+  {
+   "date": "2026-07-27",
+   "version": "5edd901",
+   "summary": "P-10 L122/L123: make the \"What separates the winners\" charts click-to-filter"
+  },
+  {
+   "date": "2026-07-27",
+   "version": "055d19c",
+   "summary": "P-03: VolumeScore column on the Performance detail tables"
+  },
+  {
+   "date": "2026-07-27",
+   "version": "56fe161",
+   "summary": "P-03: Minimum Volume Score personal trading limit (default 1)"
+  },
+  {
+   "date": "2026-07-27",
+   "version": "c76fb2e",
+   "summary": "P-06/P-07/P-10: chart-card stacking rule, winners heading, IG-settings warnings, FX fundamentals"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "e539d43",
+   "summary": "P-07 #28/#29/#30: show 'trades missed' on the winners ledger"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "19e5c01",
+   "summary": "P-07 #91/#92: IG Account no-credentials warning + Open IG settings button"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "7fbe9e2",
+   "summary": "P-06 #125: active filter pills now show a distinct colour"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "6010121",
+   "summary": "P-04 #94/#65/#66: IG Amend charts + stabilise chart strips on selection"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "d6fe15f",
+   "summary": "P-07 L149: remove redundant per-user X Posts checkbox from Tab visibility"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "9ffd44d",
+   "summary": "CR tab L317: filter the detail view by priority band (P01-05…P26+)"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "8b716e6",
+   "summary": "P-05 L132/L133: best-combination card with £1k-£10k examples"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "70b75ed",
+   "summary": "P-05 L98/L271: wallet model on the Results table (Stake / Net £ / running Wallet)"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "fd54043",
+   "summary": "P-05 L281: colour + order the Results Market/Location charts by avg return"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "a53474b",
+   "summary": "Charts: brush instead of collapse, so default selections show as selected (P-03 L31)"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "a47e820",
+   "summary": "P-05 L315/L316: CR report Scope + priority-range columns"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "ac50a36",
+   "summary": "P-05 L210/L211: Pre-orders-to-IG — widen Notes, narrow Ticker"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "e607ca5",
+   "summary": "P-05 L342/L245: sort defaults (Squeeze History Return-desc, IG Amend Good-till-desc)"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "09cc756",
+   "summary": "P-05 L188/L203/L225/L341: default Status-chart selection per screen"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "404066f",
+   "summary": "P-05 L193: widen the instrument detail panel +15% (800 -> 920px)"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "10e2b40",
+   "summary": "P-05 L182/L340 (+L29): chart order Location -> Market -> Sector everywhere"
+  },
+  {
+   "date": "2026-07-26",
+   "version": "ca17f66",
+   "summary": "P-05 L97/L99: Results table — swap Entry/Stop, add Days Open"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "590709a",
+   "summary": "P-02 L319: drop TATAMOTORS.BO (Yahoo \"Quote not found\")"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "02d3742",
+   "summary": "P-02 L319/L320: add BSE India + Shenzhen (SZSE) scan-only markets"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "2d53eb6",
+   "summary": "P-02 L79/L251/L252: grey Performance buttons, accent when active"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "e3d9dc7",
+   "summary": "P-02 L305: split Requirement from Delivery notes in the Change Requests tab"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "0e4d6a7",
+   "summary": "P-03 L31: show selection impact on Performance charts without hiding bars"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "7e5643d",
+   "summary": "P-03 L24: Month + Month-Week charts on the Performance (date-filtered) screen"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "4579ccc",
+   "summary": "P-03 L39: show the default-sort arrow on first paint"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "16679b8",
+   "summary": "P-04 L59: best Market/Quality/R:R by quarter (3-year / available data)"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "5c02396",
+   "summary": "P-04 L82: clarify Performance location buttons are by location, not market"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "2adf978",
+   "summary": "P-04 L107-113 + L97: Performance Results cross-filter + purpose tooltips"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "1879153",
+   "summary": "P-04 L75: Available column (Equity − Margin) on the winners ledger"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "c9f2c52",
+   "summary": "Cron diagnostic: add --status mode to inspect cron-job.org job health"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "2fe43f0",
+   "summary": "P-03 batch 2: leverage-impact report, fundamentals resilience, artifacts catalogue"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "d84b295",
+   "summary": "P-03 standards: bold chart headers + codify chart/table standards in skill"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "6be65a5",
+   "summary": "P-03 L252 (+P-05): Minimum/Maximum Trade variables on the winners Model card"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "5b0ac30",
+   "summary": "P-03 L69/L128/L129: Margin + Equity columns on the Winners ledger"
+  },
+  {
+   "date": "2026-07-25",
+   "version": "9e05c68",
+   "summary": "P-03 batch 1: perf pills to top, NOW-price fallback, CR scope docs, counts"
+  },
+  {
+   "date": "2026-07-24",
+   "version": "02d51d9",
+   "summary": "P-02 batch: VolumeScore, scanner/pre-order/perf fixes, bond ETFs, cron"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "5c46102",
+   "summary": "How-it-works: drop the admin-only 'Refresh data' card"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "b609862",
+   "summary": "Winners ledger: add concurrent open-positions column"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "15f113a",
+   "summary": "IG Account: show account name + obfuscated number above open positions"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "4220de1",
+   "summary": "Summary chart public + 50% taller; Squeeze History row count in tab"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "b253811",
+   "summary": "Summary tab: wider monthly bars, location buttons next to dates (green when selected)"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "52fa77f",
+   "summary": "Performance: default to Summary tab, drop redundant All 12mo, hide trailing-stop illustration"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "3c446d9",
+   "summary": "Monthly growth chart: force full page width regardless of bar count"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "f19ad1f",
+   "summary": "Performance date filter: keep it on one right-aligned row"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "e0ec721",
+   "summary": "Performance: new 'Summary' sub-tab (left of Results)"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "883a2a7",
+   "summary": "Move Squeeze History tab to the right, next to Operations"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "7937621",
+   "summary": "Easy UI wins: wider HVF Details, one-line summary headers"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "03fad88",
+   "summary": "ah-web-formatting skill: every table column must be sortable"
+  },
+  {
+   "date": "2026-07-20",
+   "version": "0b82edd",
+   "summary": "Performance + Squeeze History P-01 batch"
+  },
+  {
+   "date": "2026-07-19",
+   "version": "acfb05d",
+   "summary": "Two new admin tabs: Squeeze History (P-05) and Fees (P-35)"
+  },
+  {
+   "date": "2026-07-19",
+   "version": "806ec11",
+   "summary": "Winners tab P-05: monthly growth chart + ledger name search"
+  },
+  {
+   "date": "2026-07-19",
+   "version": "a2b03f1",
+   "summary": "Winners tab P-05: Wallet £, Max position size %, Max open positions variables"
+  },
+  {
+   "date": "2026-07-19",
+   "version": "79162c6",
+   "summary": "Performance P-01: win=any gain/loss, date-preset dropdown, dynamic card title"
+  },
+  {
+   "date": "2026-07-19",
+   "version": "4ebf541",
+   "summary": "Performance: trailing-stop illustration (re-backtest), live stops untouched"
+  },
+  {
+   "date": "2026-07-19",
+   "version": "12977c2",
+   "summary": "Stop-loss amendment: illustration-only, not live (user 2026-07-18)"
+  },
+  {
+   "date": "2026-07-19",
+   "version": "36a9269",
+   "summary": "P-01: Automated Stop-Loss Amendment (trailing stop), OFF by default"
+  },
+  {
+   "date": "2026-07-19",
+   "version": "d340e56",
+   "summary": "CR tab: add a \"Deferred\" status + column (P-10)"
+  },
+  {
+   "date": "2026-07-19",
+   "version": "1f60473",
+   "summary": "P-03: Pre-orders filter button matches the Scanner (header \"Show Filters\")"
+  },
+  {
+   "date": "2026-07-19",
+   "version": "242d324",
+   "summary": "Performance P-01/P-02: date filter, Sector columns, name-not-ticker, Outcome chart"
+  },
+  {
+   "date": "2026-07-19",
+   "version": "17ba1f9",
+   "summary": "Performance: one 12-month dataset for Results + \"What separates the winners\""
+  },
+  {
+   "date": "2026-07-18",
+   "version": "c2380a4",
+   "summary": "Scanner charts: Location right of Market (P-01), matching Performance"
+  },
+  {
+   "date": "2026-07-18",
+   "version": "80b8a55",
+   "summary": "Performance: Location/Direction/Win-Loss charts, full-width summary, location quick-filters, <=4 cards"
+  },
+  {
+   "date": "2026-07-18",
+   "version": "cc90c43",
+   "summary": "Scanner: \"Since trig\" return is direction-aware (bear wins when price falls)"
+  },
+  {
+   "date": "2026-07-18",
+   "version": "24ad7ee",
+   "summary": "Web: styled in-app confirm (no ngrok host) + keep active tab across refresh reload"
+  },
+  {
+   "date": "2026-07-18",
+   "version": "4ecabf3",
+   "summary": "Squeeze analysis: concurrency dial, per-trade table, FX excluded, admin-gated"
+  },
+  {
+   "date": "2026-07-18",
+   "version": "435e6b7",
+   "summary": "Cherry-pick presets on the analysis panel AND the Scanner (user 2026-07-18)"
+  },
+  {
+   "date": "2026-07-18",
+   "version": "2dff884",
+   "summary": "Squeeze analysis: concurrency cap is risk-based (50 = 100% heat), and flag its sensitivity"
+  },
+  {
+   "date": "2026-07-18",
+   "version": "55bbf80",
+   "summary": "Squeeze analysis: reconcile win/loss and £ to the existing report + real sizing (QA fix)"
+  },
+  {
+   "date": "2026-07-18",
+   "version": "355237d",
+   "summary": "Squeeze analysis: fix win/loss (trigger-bar + R:R>=3) and add a realistic compounded £10k"
+  },
+  {
+   "date": "2026-07-18",
+   "version": "1580a2c",
+   "summary": "Scanner: RVOL added to the filter options (user 2026-07-17)"
+  },
+  {
+   "date": "2026-07-18",
+   "version": "78f9f6f",
+   "summary": "Squeeze analysis: the £10,000 impact is LEVERAGED per instrument (user 2026-07-17)"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "8479f48",
+   "summary": "Performance: split into Results / analysis sub-tabs (user 2026-07-17)"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "b616d4f",
+   "summary": "Squeeze analysis: show loss rate and £10,000-per-trade impact (user 2026-07-17)"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "ed5d936",
+   "summary": "Web app: drop the IG Account search; Change Requests \"Not Started\" count in amber"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "ed36da7",
+   "summary": "Change Requests: a status marker may carry a trailing note (fixes hidden In Progress / superseded)"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "1a068c8",
+   "summary": "Sector for every ticker, not just those with a live signal (user 2026-07-17)"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "6019af2",
+   "summary": "Intro: fix the 'A real setup' caption (P01 text bug)"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "10551bc",
+   "summary": "Tab Visibility: let admins hide 'How it works (System)' (P-25)"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "126a2ce",
+   "summary": "System Logs + Batch Activity: free-text search boxes"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "b8b11d7",
+   "summary": "Performance: don't false-stop on the trigger bar or on bad-tick wicks (P-01)"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "e3aba58",
+   "summary": "gitignore: stop tracking ChangeRequests/ (personal ToDo notes to Claude)"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "9e908aa",
+   "summary": "Restart-Web: library preflight check — skip stdlib/local modules, only pip 3rd-party"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "48faa93",
+   "summary": "Performance: 15-month squeeze analysis — which filters actually separate the winners (P-21b)"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "cbf193b",
+   "summary": "Squeeze history: 15-month engine replay + the trend split it needed (P-09, P-21a)"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "c162787",
+   "summary": "Markets (User): warn that the switch is view-only, not a trading control"
+  },
+  {
+   "date": "2026-07-17",
+   "version": "b7a9117",
+   "summary": "Web app: Ticker column moves to the far right on every table (P-11b)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "3771fa1",
+   "summary": "Web app: RVOL at the trigger on the Scanner and Performance tabs (P-30)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "3e666e7",
+   "summary": "Web app: Euronext tradeable (P-27), Configuration (Admin) sub-tabs (P-28), detail returns to its tab (P-29)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "82f0f12",
+   "summary": "Web app: show Market logged-out (P-26); order layer agrees with the scanner on Euronext (P-27, partial)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "d139df9",
+   "summary": "Web app: Change Requests gets a Prioritised column (P-22)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "a61ab75",
+   "summary": "Web app: Pre-orders tabs get the Scanner's collapsible left-hand filter (P-18, P-19)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "e8f7328",
+   "summary": "Web app: name/ticker search on the Performance and IG Account tables (P-17)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "438b902",
+   "summary": "Web app: Performance chart cards match the Summary table's height (P-16c)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "f26f6ee",
+   "summary": "Web app: bars scale to the card, removing wasted width inside chart cards (P-16a, P-16b)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "87e6549",
+   "summary": "Skill: ah-web-formatting — layout rules + verification recipe for hvf_web/index.html"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "a2f1b95",
+   "summary": "Web app: User Management stops scrolling and stops wasting half the page"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "0682d18",
+   "summary": "Web app: doc tables stop wrapping by default — fix the root cause of the spacing issues"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "51721b2",
+   "summary": "Web app: stop the Change Requests status column wrapping mid-word"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "7c4d56a",
+   "summary": "Web app: chart cards spend the row's spare width, fixing crammed labels (fixes a P-16 regression)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "d4b36d9",
+   "summary": "Web app: stack short charts into shared columns (P-15)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "a6ee9c1",
+   "summary": "Web app: show the Triggered date to logged-out visitors (P-17b, fixes P-17c)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "3d3cfb4",
+   "summary": "Web app: chart cards share a row height and fill their space (P-14, P-16)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "c6d1b81",
+   "summary": "Web app: Performance tab ~9x faster — kill the N+1 price_history query (P-17a)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "69f5b4f",
+   "summary": "Web app: chart order — Market+Sector far left, Ticker far right (P-11a, P-12a)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "3682565",
+   "summary": "Web app: Scanner filters become compact multi-select dropdowns (P-08)"
+  },
+  {
+   "date": "2026-07-16",
+   "version": "7607262",
+   "summary": "Web app: correct Performance trigger dates, Gold-tier gating, config layout (P-01..P-13, P-23..P-25)"
+  },
+  {
+   "date": "2026-07-14",
+   "version": "494afd2",
+   "summary": "Add top 100 Euronext equities to the scan universe"
+  },
+  {
+   "date": "2026-07-14",
+   "version": "434d8f4",
+   "summary": "Web app: Performance \"Now\" price falls back to freshest stored close"
+  },
+  {
+   "date": "2026-07-13",
+   "version": "5b1117b",
+   "summary": "Web app: remove Open column from Performance summary"
+  },
+  {
+   "date": "2026-07-13",
+   "version": "4937bfe",
+   "summary": "Web app: Performance summary includes Open trades in the calculations"
+  },
+  {
+   "date": "2026-07-13",
+   "version": "62f2544",
+   "summary": "Web app: Performance summary sits beside the 3 charts"
+  },
+  {
+   "date": "2026-07-13",
+   "version": "8cff7eb",
+   "summary": "Web app: Performance summary — add Open column (trades still running)"
+  },
+  {
+   "date": "2026-07-13",
+   "version": "e32f5f3",
+   "summary": "Web app: Performance tab summary — Overall/Bull/Bear split with coloured gradients"
+  },
+  {
+   "date": "2026-07-13",
+   "version": "fb7575d",
+   "summary": "Web app: charts hug their content — no wasted horizontal white space (user 2026-07-13)"
+  },
+  {
+   "date": "2026-07-13",
+   "version": "c96d5dd",
+   "summary": "Web app: Settings sub-tabs to a left-hand sidebar; schedule the daily Price History Audit (user 2026-07-13)"
+  },
+  {
+   "date": "2026-07-13",
+   "version": "a122bdf",
+   "summary": "Web app: accurate Performance report from recorded triggers + chart white-space fix (user 2026-07-13)"
+  },
+  {
+   "date": "2026-07-13",
+   "version": "f428b3e",
+   "summary": "Web app: Pre-orders-to-my-IG adheres to the standard interface + Notes readable (user 2026-07-13)"
+  },
+  {
+   "date": "2026-07-13",
+   "version": "09a0bf0",
+   "summary": "Web app: Performance measures IG-placed orders irrespective of squeeze; IG Account fixes; market-filter order gate; My Pre-orders filters (user 2026-07-13)"
+  },
+  {
+   "date": "2026-07-13",
+   "version": "77d4787",
+   "summary": "Web app: Pre-orders-to-IG default; Scanner Dist->Entry to col 6 + closest-first; sort arrows; sysdocs admin-default (user 2026-07-11)"
+  },
+  {
+   "date": "2026-07-12",
+   "version": "6556915",
+   "summary": "Web app: Performance charts + click-to-filter that recomputes the top cards (user 2026-07-11 #33/#34)"
+  },
+  {
+   "date": "2026-07-12",
+   "version": "e2d58b6",
+   "summary": "Web app: layout pass — data views use the screen width; tighter cells; less scroll/white space (user 2026-07-11)"
+  },
+  {
+   "date": "2026-07-12",
+   "version": "3705581",
+   "summary": "Trading: circuit breakers no longer gate the HVF working-order path (user 2026-07-11)"
+  },
+  {
+   "date": "2026-07-12",
+   "version": "5b88e6b",
+   "summary": "Web app: sortable Favourite column; Performance fallback return (user 2026-07-11)"
+  },
+  {
+   "date": "2026-07-12",
+   "version": "f0c039d",
+   "summary": "Web app: rebuild the System architecture diagram — clean, crossing-free, matches the supplied visual"
+  },
+  {
+   "date": "2026-07-12",
+   "version": "cffda41",
+   "summary": "Web app: How-it-works diagram fixes — Flow badge + crossing line (user 2026-07-10 #83/#84)"
+  },
+  {
+   "date": "2026-07-12",
+   "version": "9ec3589",
+   "summary": "Web app: favourites star column on Scanner / My Pre-orders / Pre-orders to my IG (user 2026-07-10 #73)"
+  },
+  {
+   "date": "2026-07-12",
+   "version": "d54df6d",
+   "summary": "Web app: fix Pre-orders-to-IG chart filter + Markets switch clarity; jobs + limits tweaks (user 2026-07-11)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "ef6e3d7",
+   "summary": "Web app: Change Requests detail — filter requirements by status (user 2026-07-11)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "594a971",
+   "summary": "Web app: Scanner Report + My Pre-orders adopt the doc/card \"new style UI\" (user 2026-07-11)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "b5f7f63",
+   "summary": "Web app: per-market enable/disable switches on Markets (User) + Markets (Admin) (user 2026-07-11)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "25c6965",
+   "summary": "Web app: Scanner shows market/sector logged-out; config/tab-visibility polish; nav history (user 2026-07-11)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "2187287",
+   "summary": "Web app: new IG Account tab — the acting user's own positions + working orders (user 2026-07-10)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "8fd671d",
+   "summary": "Web app: My Pre-orders — Place-on-IG button moved next to the instrument name (user 2026-07-10 #76)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "59fec79",
+   "summary": "Web app: logged-out blur of Sector/Days-since; Pre-orders-to-IG hides closed; Momentum Gold-only"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "ffcba73",
+   "summary": "Web app: selected main tab turns green for clearer selection (user 2026-07-11)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "fdd992a",
+   "summary": "Web app: Settings/Config polish, Markets indicators, Jobs + Change Requests tweaks (user 2026-07-11)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "e1d04e3",
+   "summary": "Config->DB: per-user trading limits (R:R/Quality/max-trades/bounce/email) (user 2026-07-10)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "0f4e2c1",
+   "summary": "Config->DB: make X-publishing settings admin-editable; x_max_per_day default 2"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "75b3a28",
+   "summary": "Config: X_MAX_PER_DAY 5 -> 2 (user 2026-07-10)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "ca6cf40",
+   "summary": "Web app: fix grouped tabs crashing (Change Requests/X Posts/Batch/Version/Markets)"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "94cc35d",
+   "summary": "Web app: drop dead pill-engine line; update Introduction instrument count to 1,200+"
+  },
+  {
+   "date": "2026-07-11",
+   "version": "907e517",
+   "summary": "Web app: group tabs under Operations / Settings; Performance + admin-tab work (user 2026-07-10)"
+  },
+  {
+   "date": "2026-07-10",
+   "version": "89bffc3",
+   "summary": "Docs: bring decisions/weighting + method-audit up to the 2026-06-22 clean-ruleset cut-over"
+  },
+  {
+   "date": "2026-07-10",
+   "version": "a730dc3",
+   "summary": "X publishing: reduce repeat HVF publications (user 2026-07-10)"
+  },
+  {
+   "date": "2026-07-10",
+   "version": "26dbab2",
+   "summary": "Web app: snug User Management + Performance tables; batch-file cleanups (user 2026-07-10)"
+  },
+  {
+   "date": "2026-07-10",
+   "version": "b88dccf",
+   "summary": "Web app: fix Pre-orders delete/duplicate/place-in-IG bugs (user 2026-07-10)"
+  },
+  {
+   "date": "2026-07-10",
+   "version": "830af8a",
+   "summary": "Web app: quick UI wins + 4 New-Delivery tabs (user 2026-07-10)"
+  },
+  {
+   "date": "2026-07-06",
+   "version": "50c242f",
+   "summary": "Web app: password-complexity column + fix Pre-orders tab count"
+  },
+  {
+   "date": "2026-07-06",
+   "version": "a48885e",
+   "summary": "Web app: Scheduled Jobs trading-style category + chart; Welcome cards 2x2"
+  },
+  {
+   "date": "2026-07-06",
+   "version": "07be583",
+   "summary": "Web app: make Trading (Squeeze) market/direction/location filters per-user"
+  },
+  {
+   "date": "2026-07-06",
+   "version": "c1d0a63",
+   "summary": "Web app: DAX/market renames, X-tweet markets, Scheduled Jobs tab, filter UX + Supabase RLS"
+  },
+  {
+   "date": "2026-07-05",
+   "version": "d6d12dc",
+   "summary": "Japan/Australia/India equities (universe -> 1209); admin System Logs + How it works (System) tabs"
+  },
+  {
+   "date": "2026-07-05",
+   "version": "d432af0",
+   "summary": "Date filters in title row; Month-Week charts; version search + start-date floor; viz 2-col; spread retries to Momentum"
+  },
+  {
+   "date": "2026-07-05",
+   "version": "8ec094a",
+   "summary": "Big UI/config tranche (user 2026-07-03/04)"
+  },
+  {
+   "date": "2026-07-05",
+   "version": "430b5c7",
+   "summary": "Secure password reset: email one-time code (user 2026-07-03)"
+  },
+  {
+   "date": "2026-07-05",
+   "version": "8bc70e6",
+   "summary": "Per-user IG live routing for the web server: manual orders use the acting user's own account (user 2026-07-03, #11)"
+  },
+  {
+   "date": "2026-07-05",
+   "version": "0dd5e6a",
+   "summary": "Account request form: public request -> admin approve/reject (user 2026-07-03, #10)"
+  },
+  {
+   "date": "2026-07-05",
+   "version": "df844f5",
+   "summary": "Introduction: layman primer on the 4 instrument types + price drivers (user 2026-07-03)"
+  },
+  {
+   "date": "2026-07-05",
+   "version": "659c60e",
+   "summary": "X Posts tab is admin-only (user 2026-07-03)"
+  },
+  {
+   "date": "2026-07-05",
+   "version": "963df51",
+   "summary": "X Posts tab (all published tweets, charts, filter/sort) — hidden by default, enabled in Config"
+  },
+  {
+   "date": "2026-07-05",
+   "version": "7027d87",
+   "summary": "Universe: add top German / Shanghai / Hong Kong equities (user 2026-07-03)"
+  },
+  {
+   "date": "2026-07-04",
+   "version": "244cdba",
+   "summary": "Credentials editable again — GitHub Secrets are only the one-off seed (user 2026-07-03)"
+  },
+  {
+   "date": "2026-07-04",
+   "version": "fa9d824",
+   "summary": "UI tweaks: activity chart to RHS, drop trading red box, reverse tab greys, config nav IG->Trading->Preferences"
+  },
+  {
+   "date": "2026-07-04",
+   "version": "6cad4b2",
+   "summary": "Consistent doc styling on My activity; readable credential values"
+  },
+  {
+   "date": "2026-07-04",
+   "version": "174ce94",
+   "summary": "Credentials come from GitHub Secrets — app keeps no copy (user 2026-07-03)"
+  },
+  {
+   "date": "2026-07-04",
+   "version": "5c49141",
+   "summary": "Modern SaaS redesign (Intro/How-it-works/Appendix) + Config card nav; per-user IG creds enabling layer"
+  },
+  {
+   "date": "2026-07-04",
+   "version": "e848764",
+   "summary": "Configuration: credentials sections (IG/Supabase/X/Slack/Other), encrypted, owner-gated"
+  },
+  {
+   "date": "2026-07-03",
+   "version": "d2d8927",
+   "summary": "Style + terminology + location batch (user 2026-07-03)"
+  },
+  {
+   "date": "2026-07-03",
+   "version": "2bad615",
+   "summary": "Security: per-user data separation, logged-out teaser Scanner, execution defaults No"
+  },
+  {
+   "date": "2026-07-03",
+   "version": "00159cb",
+   "summary": "Trade filters (direction/market/location) enforced live per trade; bridge takes READY+TRIGGERED"
+  },
+  {
+   "date": "2026-07-03",
+   "version": "8f79d3d",
+   "summary": "Squeeze site UI batch: Introduction tab, counts, new columns, isolated Market chart, po/oo chart filters, activity categories"
+  },
+  {
+   "date": "2026-07-03",
+   "version": "67ee6f0",
+   "summary": "Configuration tab: per-user filter defaults + per-source trade-execution switches"
+  },
+  {
+   "date": "2026-07-03",
+   "version": "58ffec9",
+   "summary": "Data-refresh requests recorded in the user's activity log"
+  },
+  {
+   "date": "2026-07-03",
+   "version": "5912b3a",
+   "summary": "Pre-orders: multi-delete to Order (Operations); chart visuals on both tabs; rename"
+  },
+  {
+   "date": "2026-07-03",
+   "version": "d78603f",
+   "summary": "Record every TRIGGERED HVF to Supabase for performance tracking"
+  },
+  {
+   "date": "2026-07-02",
+   "version": "ec5493a",
+   "summary": "All tables sortable by clicking column titles (Order ops + My activity)"
+  },
+  {
+   "date": "2026-07-02",
+   "version": "4050384",
+   "summary": "Header controls are Scanner-only: hidden on Order ops / Pre-orders / other tabs"
+  },
+  {
+   "date": "2026-07-02",
+   "version": "df46b71",
+   "summary": "Order bridge for the full universe (2h) + Order-ops tab + sortable Pre-orders"
+  },
+  {
+   "date": "2026-07-02",
+   "version": "d93b04a",
+   "summary": "Detail panel: no placeholder rows (P/E '?', Insider '?', empty broker card)"
+  },
+  {
+   "date": "2026-07-02",
+   "version": "8b322f3",
+   "summary": "Per-user activity log (My activity tab) + password-change email with not-you warning"
+  },
+  {
+   "date": "2026-07-02",
+   "version": "40f807c",
+   "summary": "Markets split (Indices/FX), login-gated tabs, secure user store (no credentials in git)"
+  },
+  {
+   "date": "2026-07-02",
+   "version": "83b3867",
+   "summary": "Daily hot-stock three-topic X tweet (user 2026-06-30)"
+  },
+  {
+   "date": "2026-07-02",
+   "version": "c912e26",
+   "summary": "signals-from-feeds: no empty 'New X mentions' post when all lines suppressed"
+  },
+  {
+   "date": "2026-07-02",
+   "version": "9a0af74",
+   "summary": "Social monitor: track 8 more X accounts (user 2026-06-30)"
+  },
+  {
+   "date": "2026-07-02",
+   "version": "5ebe7db",
+   "summary": "Instrument names: ALL-CAPS FX pairs + curated index explanations"
+  },
+  {
+   "date": "2026-07-02",
+   "version": "e6e7f76",
+   "summary": "HVF Slack report: drop setups longer than 9 months to target"
+  },
+  {
+   "date": "2026-07-01",
+   "version": "81dfbbc",
+   "summary": "signals-from-feeds: suppress low-conviction WAIT lines (|score| <= 25)"
+  },
+  {
+   "date": "2026-07-01",
+   "version": "2449592",
+   "summary": "Squeeze site: drop a pre-order once it's a live IG working order"
+  },
+  {
+   "date": "2026-07-01",
+   "version": "b34e16e",
+   "summary": "IG working-order bridge: place at 1.5% proximity, only when Quality > 50"
+  },
+  {
+   "date": "2026-06-30",
+   "version": "b1ce2cf",
+   "summary": "Squeeze site: Intro uses a real funnel card; drop pre-orders with Q<25"
+  },
+  {
+   "date": "2026-06-30",
+   "version": "79e3d47",
+   "summary": "Squeeze site: default R:R min 3.1 + days-since max 90; Slack link-only; Intro + Appendix tabs"
+  },
+  {
+   "date": "2026-06-30",
+   "version": "da0aef4",
+   "summary": "Squeeze site: name/ticker search filter + Pre-orders tab"
+  },
+  {
+   "date": "2026-06-30",
+   "version": "3208558",
+   "summary": "Squeeze site: sync 'Days since' with the Triggered date (same pivot)"
+  },
+  {
+   "date": "2026-06-30",
+   "version": "87060c0",
+   "summary": "X publication: hard cap of 5 per day (user 2026-06-29)"
+  },
+  {
+   "date": "2026-06-30",
+   "version": "060ebd5",
+   "summary": "Squeeze site: refresh warning uses live count; disable Refresh while one is running"
+  },
+  {
+   "date": "2026-06-30",
+   "version": "4c46658",
+   "summary": "X publication: prioritise trigger recency in the per-market ranking"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "b57aa94",
+   "summary": "Squeeze site: move Dist->Entry to the far-right column"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "c96de76",
+   "summary": "Squeeze site: narrower bar charts (auto-fit) so visuals use fewer rows"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "cd33a3c",
+   "summary": "Squeeze site: Location chart as a bar (not a pie), in the bars group"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "7bb3e9c",
+   "summary": "Squeeze site: Location pie next to Sector; Restart-Web.bat one-click launcher"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "27a7386",
+   "summary": "Squeeze site: move Filters toggle to immediately left of 'Squeeze only'"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "5f2727c",
+   "summary": "Squeeze: all indices/FX/commodities (universe -> 600); Since-trig moved + red-for-negative; filters button far left"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "7873183",
+   "summary": "Universe: add NASDAQ 100 + top-100 S&P 500 (deduped) — 424 -> 535 instruments"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "2ae03ba",
+   "summary": "Squeeze site: 'Since trig' column, refresh ETA + 10-tick green flash, filters hidden by default"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "41050a6",
+   "summary": "Price store: 3y retention, double_checked, IG-as-truth audit, refresh progress"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "d64fdaa",
+   "summary": "Price history -> Supabase: golden store + daily audit + source tracking"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "4746183",
+   "summary": "Fix blank card (real cause: /api/thread render unlocked); wider detail; KPIs above broker"
+  },
+  {
+   "date": "2026-06-29",
+   "version": "8e80bbf",
+   "summary": "Squeeze site: colour-code KPIs, 0–12mo analyst window label, KPI card under Quality"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "c43fe6d",
+   "summary": "Squeeze site: company KPI card (A); backlog NASDAQ instruments for Mon (B)"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "cc7a8b9",
+   "summary": "Fix blank X card: serialise chart renders (pyplot not thread-safe)"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "054edf6",
+   "summary": "Squeeze site: filter the '—' (missing) bucket; tidy 2x2 bar grid"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "82452aa",
+   "summary": "Squeeze site: 'X posts' column + sector pie in its own side column"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "6c77c02",
+   "summary": "Backlog: move price history to DB (~2026-07-01, user deferred 3 days)"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "73b311c",
+   "summary": "Squeeze site: dist-to-entry default -10..10, 'Filters (Toggle)' label"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "292fbd1",
+   "summary": "Squeeze site: disk price cache (no DB), sector pie on its own row"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "d6fd4fe",
+   "summary": "Fix recurring empty X post card: don't cache a throttled render"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "64c6461",
+   "summary": "Squeeze site: persistent name cache — look names up once, not every refresh"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "10f4d68",
+   "summary": "Squeeze site: default sort by triggered desc, layout moves, labelled funnel pivots"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "02a2500",
+   "summary": "Squeeze site: detail close, quality colour, timeframe viz, show-all, drop #open, de-RW"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "e5e0ff1",
+   "summary": "Squeeze site: full universe + signal toggle, refresh button, Quality label, default 45"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "fabd1e8",
+   "summary": "Squeeze site: indicate the active filter on the visuals"
+  },
+  {
+   "date": "2026-06-28",
+   "version": "9ce7dc9",
+   "summary": "Squeeze site: clickable visuals, defaults, broker 6-12mo, filters toggle, rename"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "0664b3a",
+   "summary": "HVF site: fix empty Funnel-age (months_to_go), Name own column, Location right, visible count"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "b36cd03",
+   "summary": "HVF site: resolve real company names (fundamentals has no name field)"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "6d115d3",
+   "summary": "Backlog: HVF site exact triggered date (user: do tomorrow)"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "8786202",
+   "summary": "HVF site batch: columns/filters, visuals, full thread, per-rule report"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "e2463cb",
+   "summary": "HVF site: X links (ours + tracked accounts) + 12h snapshot auto-refresh"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "a84e28a",
+   "summary": "Add HVF Scanner website (hvf_web/) — filterable UI + ngrok-shareable"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "a45fa65",
+   "summary": "Fix NaN \"now\" price (SBUX) + close the audit gap"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "13fab4b",
+   "summary": "Suppress UK (.L) holder line — yfinance data is index-ETF noise"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "85081af",
+   "summary": "Fund detector: match 'TRUST PLC' as substring (catches MUT.L)"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "b3202c0",
+   "summary": "Fix implausible published figures (funds, holder %, sanity guards)"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "58a195b",
+   "summary": "C: also post the HVF Daily Report to the SLACK_RW_HVF channel"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "4905b97",
+   "summary": "F leftover: insider holdings change over ~9 months in _kpi_block"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "c25d61c",
+   "summary": "E: URGENT email on a bounce in a recently-sold instrument"
+  },
+  {
+   "date": "2026-06-27",
+   "version": "3bc869a",
+   "summary": "J: sanity-gate stale TRIGGERED HVF setups (ARM weekly entry 134 vs price 334)"
+  },
+  {
+   "date": "2026-06-26",
+   "version": "24ea6b7",
+   "summary": "Backlog: mark D and F done (2026-06-26)"
+  },
+  {
+   "date": "2026-06-26",
+   "version": "a11b2b9",
+   "summary": "F: KPIs in the X long report — _kpi_block \"Key numbers\" paragraph"
+  },
+  {
+   "date": "2026-06-26",
+   "version": "55147db",
+   "summary": "D: HVF daily report hides DEVELOPING for a market with >10 tradeable"
+  },
+  {
+   "date": "2026-06-26",
+   "version": "6142549",
+   "summary": "Better Slack explanation for size-zero errors (user 2026-06-26)"
+  },
+  {
+   "date": "2026-06-26",
+   "version": "d6d54d4",
+   "summary": "Fix UK250 unmapped on Yahoo (recurring 404 every run) -> ^FTMC (FTSE 250); found via log sweep"
+  },
+  {
+   "date": "2026-06-26",
+   "version": "d673c00",
+   "summary": "Backlog: record new feature requests C/D/E/F/I + J sanity-gate (2026-06-26 user batch)"
+  },
+  {
+   "date": "2026-06-26",
+   "version": "9afcd64",
+   "summary": "H: working-order size=0 uses ACCOUNT_TOO_SMALL classification (IREN no longer pages)"
+  },
+  {
+   "date": "2026-06-26",
+   "version": "2d209cb",
+   "summary": "FIX dossier/card PNG never uploading: requests not imported in upload_png_to_slack"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "5d6440a",
+   "summary": "Backlog: working-order size=0 (IREN) still pages — needs ACCOUNT_TOO_SMALL classification"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "3195fc2",
+   "summary": "Instrument name: single source of truth (fixes MSTR showing the Morningstar ETF in the dossier)"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "f78da29",
+   "summary": "X-mentions cross-account sub-lines: add tweet link + stored sentiment"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "e785fcf",
+   "summary": "Fix dossier PNG never attaching: pass SLACK_BOT_TOKEN + SLACK_SIGNALS_CHANNEL_ID to the social monitor"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "eb65b2d",
+   "summary": "Tweet polish: 3 new tracked accounts; hook full stop; sentence-case + clearer competitor angle"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "f0ec79a",
+   "summary": "X-mentions: clickable tweet link + cross-account positions; silence INSUFFICIENT_FUNDS"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "486eac2",
+   "summary": "Mark the 9 epic pins done in the backlog (verified TRADEABLE 2026-06-24)"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "e52039e",
+   "summary": "Pin 9 verified IG epics (get_epic Step 0) + --verify-epic check"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "6e46202",
+   "summary": "Record verified IG epics for the backlog pin-decisions (2026-06-24 lookup)"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "323ba95",
+   "summary": "Add read-only --lookup-epic diagnostic for epic pin decisions"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "2785d1a",
+   "summary": "Resolve (not silence) size/margin skips: classify ACCOUNT_TOO_SMALL with the funding gap"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "3b1bcf7",
+   "summary": "Silence un-actionable size/margin alerts (daily summary instead) + self-service X tweet-id listing"
+  },
+  {
+   "date": "2026-06-24",
+   "version": "ccf986d",
+   "summary": "X publication fixes: keep full name, fill chart axis, despike 3yr, dedup size-skip alert"
+  },
+  {
+   "date": "2026-06-23",
+   "version": "2426f34",
+   "summary": "X card: FIX missing graph on FX/index tweets (USDJPY) — user 2026-06-23"
+  },
+  {
+   "date": "2026-06-23",
+   "version": "a5d04e8",
+   "summary": "X card: restore funnel overlay (B); Slack summary: add market (A) — user 2026-06-23"
+  },
+  {
+   "date": "2026-06-23",
+   "version": "0b91571",
+   "summary": "X batch: post a consolidated 'published to X' summary to Slack when done (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "86e50f5",
+   "summary": "config: MIN_PUBLISH_QUALITY 70 -> 25 (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "21f456d",
+   "summary": "X: store thread tweet-ids at publish for precise deletes (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "9a2fd49",
+   "summary": "HVF: cut over to the clean RW engine + delete the duplicate detectors (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "8a76082",
+   "summary": "Add clean RW-ruleset HVF engine (standalone, not wired in) — user 2026-06-22"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "3998fb5",
+   "summary": "HVF trend: medium-term reconciliation — fix wrong-direction on a counter-trend bounce (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "9031286",
+   "summary": "Tweet head: instrument on top line (A); HVF report slack_png mode (B) — user 2026-06-22"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "d4b466c",
+   "summary": "Tweet head: state in words, not the hourglass icon (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "2b35ea0",
+   "summary": "HVF report: Slack-only mode (no X) for reviewing the order (user 2026-06-22, G)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "65a3b21",
+   "summary": "Tweet/report polish: head format, paragraphs, analyst wording (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "93fb45d",
+   "summary": "action_score: quality-weighted blend (R:R x quality/100) / max(dist%,0.5) (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "cd7a261",
+   "summary": "X tweet: 3yr PNG on lead (C), subject paragraph breaks (D), full-thread delete (A) — user 2026-06-22"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "fcb9953",
+   "summary": "X: add delete capability to remove incorrect published threads (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "6b991a5",
+   "summary": "HVF: all-markets universe (C), action sort (D), quiet invalidation alerts (B), HVF spread-skip — user 2026-06-22"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "f79dc04",
+   "summary": "Long report: clearer distance line — price + above/below (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "e4d69be",
+   "summary": "HVF: publish gate (A), Indices & FX universe (B), CONFIRM_SHORT dossier (C) — user 2026-06-22"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "6256aa3",
+   "summary": "Long report: fix inconsistent analyst sentence (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "2dc1c5f",
+   "summary": "X publication: restore 3-yr history + explicit BULL/BEAR at the top (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "8604c92",
+   "summary": "Add HVF-Analysis-AH-RW.cmd: run AH (engine) + RW (manual) HVF analysis for a ticker (default ABF.L)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "1494039",
+   "summary": "HVF (A): recognise + comment on a prolonged consolidation (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "ceff26d",
+   "summary": "HVF report (D): move tradeable setups with entry >10% from price to developing (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "ab493a3",
+   "summary": "Long report: analyst conviction OVER TIME knits bull/bear (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "e76154f",
+   "summary": "Tweet: weave analyst stance OVER TIME into the X justifications (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "3deab20",
+   "summary": "HVF report: commodities scan + now-vs-entry developing filter + clearer headers (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "57b0304",
+   "summary": "social_monitor 1.8.0: track @crypto_banter (user 2026-06-22)"
+  },
+  {
+   "date": "2026-06-22",
+   "version": "6ab7d4a",
+   "summary": "Tidy: remove redundant one-off .py scripts"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "c30600e",
+   "summary": "Fix X 403: competitor angle added a second cashtag (the real cause of the NKE 403s)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "7231741",
+   "summary": "docx: add the documentation items that were still missing (user 2026-06-21)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "38058ff",
+   "summary": "Refresh the plain-English Word guide with the recent features (user 2026-06-21)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "a26c469",
+   "summary": "Standalone 3-yr history PNG as an extra Slack visual + --slack-only run (user 2026-06-21)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "5562c49",
+   "summary": "Fix trend misclassification: respect the dominant direction (user 2026-06-21, D)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "b4e7631",
+   "summary": "Card prices to 2 decimal places (user 2026-06-21, A)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "65ebf3b",
+   "summary": "Competitor NEWS narrative in the Slack draft (user 2026-06-21, A)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "7ee9d1a",
+   "summary": "Show institutional holder again (C), 3-yr history on card+Slack (D), Support/Resistance (E)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "aae3e09",
+   "summary": "Fix misleading holder line (C) + P/E vs market context (D)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "cc867b3",
+   "summary": "Competitor angle: high priority + compact short form so it survives the tweet trim"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "914ea08",
+   "summary": "Competitor angle on X tweets + --no-register test mode (user 2026-06-21)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "19b98dd",
+   "summary": "Disable prior-trend gate pending calibration (fixes CI regression, restores trust)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "00f78af",
+   "summary": "Code-review fixes: weekly prior-trend gate bypass + stale fingerprint-diff key"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "31c7280",
+   "summary": "HVF Rule 1: prior-trend >=20% magnitude gate at detection (user 2026-06-20)"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "471a773",
+   "summary": "Quality-gate Slack tradeable count, flag inflated R:R, expand X copy; log backlog"
+  },
+  {
+   "date": "2026-06-21",
+   "version": "a802997",
+   "summary": "Publication quality: drop missed entries, fix ABF duplicate, S/R window, Slack polish"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "bc89fee",
+   "summary": "Add plain-English (non-techie) guide to the system, as a Word doc"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "d71024f",
+   "summary": "Add ah-hvf-orders skill (the daily HVF orders publication)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "5f6f213",
+   "summary": "Code-review fixes: UK-brief DB connection across scan; dead var in orders report"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "3bc56fc",
+   "summary": "Docs: add execution node to the decision flow (separate system)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "8a829b3",
+   "summary": "working_orders report: current price + % from price + R:R on WATCHING/Settled (New B#1/#2, C#3)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "66d7fad",
+   "summary": "UK morning brief: self-heal empty scan window (scan-only, never trades)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "59da1cd",
+   "summary": "Follow-ups: source not in X, holder 5%+direction, near-S/R caution, P/E/insider in tweets, Slack-before-X"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "d64d611",
+   "summary": "Trust reputable data sources: cite + override yfinance on conflict (Phase A)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "10635ec",
+   "summary": "New daily HVF orders publication to #arw-claude-orders (Phase C)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "f5ab3e4",
+   "summary": "Docs: HVF method + decisions/weighting, with rendered visuals"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "139bcf6",
+   "summary": "Expected time-to-target with R:R in Slack (not X)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "beef607",
+   "summary": "Make large single holdings clear (e.g. Berkshire >20%)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "d686fcc",
+   "summary": "Dossier: plain-English 'Rolls-Royce style' narrative report (Phase A)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "e99dd0a",
+   "summary": "COT report: self-heal stale/empty data instead of warning (user 2026-06-19)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "5bcbb72",
+   "summary": "Fix stale R:R-gate comment in price_action (said 2.5; live is 3.0)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "768dbed",
+   "summary": "Dossier: FIVE HVF rules + thresholds with per-instrument status"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "439dc47",
+   "summary": "Current price + % distance: quality long report + trade email"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "7348122",
+   "summary": "social_monitor: R:R + entry % from price on X-mentions line"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "1d51d88",
+   "summary": "X card: support/resistance after R:R, sector name, % from price on level labels"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "d5f6295",
+   "summary": "Show current price + % distance on level reports (Phase B/C)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "58f0964",
+   "summary": "Add 6 trusted X accounts (user 2026-06-19)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "72712e0",
+   "summary": "D220 -> D240: long-term daily HVF scan window is now 240 bars"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "ef87895",
+   "summary": "Dossier: show ALL HVF comments (Current #5)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "71b1ccc",
+   "summary": "HVF daily report: per-market numbering from 1 + \"top N of M candidates\""
+  },
+  {
+   "date": "2026-06-20",
+   "version": "1659ea7",
+   "summary": "X drafts: levels-based changed-detection, \"seen before\" delta, \"top N of M\", nothing-new banner"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "ff6166f",
+   "summary": "Publication correctness: R:R-first ordering, quality>=70 floor, before-8am schedule"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "1785d0b",
+   "summary": "Merge: BACKLOG.md (deferred epic resolution)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "1145911",
+   "summary": "Add BACKLOG.md: deferred epic_lookup resolution items (PYPL, MSTR, GLD/DJT, etc.)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "83d08e5",
+   "summary": "Merge: working epic identity guard + exchange-pinned epics (AXP)"
+  },
+  {
+   "date": "2026-06-20",
+   "version": "8b38c2e",
+   "summary": "Fix wrong-instrument epic resolution: working identity guard + exchange-pinned epics"
+  },
+  {
+   "date": "2026-06-19",
+   "version": "159153d",
+   "summary": "Merge: fix wrong instrument name (AXP)"
+  },
+  {
+   "date": "2026-06-19",
+   "version": "fb17831",
+   "summary": "Fix wrong instrument name in publications (AXP -> American Express, not AXP Energy)"
+  },
+  {
+   "date": "2026-06-17",
+   "version": "dc3a889",
+   "summary": "Merge: morning X — top-5 changed-only drafts + auto top-2/market live to X"
+  },
+  {
+   "date": "2026-06-17",
+   "version": "8db294f",
+   "summary": "Morning X: top-5 drafts (changed-only) + auto-publish top-2/market live to X"
+  },
+  {
+   "date": "2026-06-17",
+   "version": "0e4975e",
+   "summary": "Merge: chain X thread pages in order"
+  },
+  {
+   "date": "2026-06-17",
+   "version": "821cad5",
+   "summary": "X thread: chain pages in order (fix 1/4, 4/4, 3/4, 2/4 jumble)"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "b193a80",
+   "summary": "Merge: X thread delays + duplicate-publication dedup"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "135bc28",
+   "summary": "X thread: more delays + dedup duplicate publications"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "0e89455",
+   "summary": "Merge: pass SLACK_TWITTER to trading-x-publish for the confirmation"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "75cbf4c",
+   "summary": "trading-x-publish: pass SLACK_TWITTER so the X-publish confirmation posts"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "1713ada",
+   "summary": "Merge: ah-x-writing-style skill"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "a94c916",
+   "summary": "Add ah-x-writing-style skill: vary tone/structure, human rhythm for X posts"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "865af8e",
+   "summary": "Merge: X lead-first + long report main-page/comments structure"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "a4a5316",
+   "summary": "X thread: lead-first (short+card) then long report as main page (1/n) + comments"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "c17801b",
+   "summary": "Merge: full X publication thread + confirmation + CONFIRM_LONG dossier; revert de-brand"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "b66db46",
+   "summary": "Full publication on X (thread), X-publish confirmation, CONFIRM_LONG dossier; revert de-brand"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "10f70c6",
+   "summary": "Merge: de-brand publications + full X process in skills"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "424e464",
+   "summary": "De-brand publications: no 'quality' wording; document full X process in skills"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "1aab7c6",
+   "summary": "Merge: --prune mode + retire standalone HVF Quality Reports cron"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "02ccd83",
+   "summary": "Add --prune to setup_cronjobs; retire standalone HVF Quality Reports cron"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "98f4b24",
+   "summary": "Merge: complete publication (card + short + long always together)"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "99aa7f7",
+   "summary": "Complete publication: long 1/n report always runs with card + short tweet"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "f58e660",
+   "summary": "Merge: tweet spacing tweaks"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "b274378",
+   "summary": "Tweet spacing: blank line after hook/company line and before confirmations"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "b8d873c",
+   "summary": "Merge: track sanitized instrument_dossier.CMD (secrets out of repo)"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "9f49ed1",
+   "summary": "Track a sanitized instrument_dossier.CMD (secrets moved to gitignored launcher_secrets.cmd)"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "eb78463",
+   "summary": "Merge: quality-report growth-claim fix + working-orders skill + untrack local launcher"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "f039049",
+   "summary": "Untrack instrument_dossier.CMD (local launcher holding hardcoded Slack creds)"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "925b494",
+   "summary": "Fix misleading growth claims in quality report + add working-orders skill"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "c75c597",
+   "summary": "Merge: schedule the daily pre-order report"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "3eb651a",
+   "summary": "Schedule the daily pre-order report (cron-job.org)"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "bc9f5ce",
+   "summary": "Merge: daily pre-order report to #arw-claude-orders"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "48f65bc",
+   "summary": "Daily pre-order report to #arw-claude-orders"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "fa4c95e",
+   "summary": "Merge: chart-setup read in long quality report + X-mentions gap"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "bea89b8",
+   "summary": "Long quality report reads the chart setup (public-safe) + X-mentions gap"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "c4ab081",
+   "summary": "Merge: per-market HVF reports + quality text thread + live X publish"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "70e68ce",
+   "summary": "Per-market HVF reports + quality report as text thread + live X publish"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "e61b38c",
+   "summary": "Bundle the long narrative report into the HVF Watch tweet feed"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "9f512a3",
+   "summary": "#4: surface broker/analyst recommendations as a confirmation"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "7eb365d",
+   "summary": "#5: technical-indicator read (MA/RSI/Stoch/ATR/ADX/CCI + dividend growth)"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "bb68d15",
+   "summary": "Remove brand text from tweets/reports; \"Or\"->Ord name fix; +TrendSpider feed"
+  },
+  {
+   "date": "2026-06-16",
+   "version": "e1f3c22",
+   "summary": "Dossier: add --check-slack to verify posting keys without revealing them"
+  },
+  {
+   "date": "2026-06-15",
+   "version": "ac37110",
+   "summary": "Hold HVF positions overnight (A) + dossier posts tweet to Slack in Actions (B)"
+  },
+  {
+   "date": "2026-06-15",
+   "version": "5fb80fe",
+   "summary": "Fail-closed market pre-checks (#1) + per-timeframe figures in HVF report (#3)"
+  },
+  {
+   "date": "2026-06-15",
+   "version": "0356cbd",
+   "summary": "Dossier: show full figures per timeframe (date range), not just the best"
+  },
+  {
+   "date": "2026-06-15",
+   "version": "e0cf01f",
+   "summary": "Sync stale epics: QCOM/MU UA->UC verified; add TSM UA unverified"
+  },
+  {
+   "date": "2026-06-15",
+   "version": "40d5ce8",
+   "summary": "#9b behaviour: skip trading tight-stop funnels; report-label + X caution"
+  },
+  {
+   "date": "2026-06-15",
+   "version": "dfc7046",
+   "summary": "#9b groundwork (inert): tight-stop flag at HVF pattern evaluation"
+  },
+  {
+   "date": "2026-06-15",
+   "version": "d146c51",
+   "summary": "Add ah-instrument-dossier: full Slack/email/X pack for one instrument"
+  },
+  {
+   "date": "2026-06-15",
+   "version": "0e7ff69",
+   "summary": "HVF report: show full instrument name next to every ticker"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "8a0a373",
+   "summary": "Code-review #7: memoise yfinance .info per process in the X-card path"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "0abc157",
+   "summary": "Code-review #6: consolidate weight-order sort into price_action.hvf_weight()"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "f8a1ec7",
+   "summary": "Merge: tidy gitignore + remove X-verify diagnostic"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "7ef12b6",
+   "summary": "@ Tidy: gitignore generated artifacts; remove temp X-verify diagnostic"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "70e09aa",
+   "summary": "Merge: X verify secret-length diagnostic"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "329d40d",
+   "summary": "@ Add safe secret-length diagnostic to X verify workflow"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "b61b061",
+   "summary": "X publishing: switch twikit -> official X API v2 (tweepy)"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "c5db8ea",
+   "summary": "Merge: twikit auth-verify workflow"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "95d53da",
+   "summary": "Add twikit auth-verify workflow (--verify, posts nothing)"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "9ffa65c",
+   "summary": "Merge: X-publication polish, twikit publisher, daily scheduling, skills"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "366be1e",
+   "summary": "X-publication polish + twikit publisher + daily scheduling + skills"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "f1b2fd0",
+   "summary": "Merge: quality-report publication + workflow"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "8cf122f",
+   "summary": "Add quality-report publication: sector-aware prose PNG + skim tweet, daily change-detection"
+  },
+  {
+   "date": "2026-06-14",
+   "version": "e7cfd6f",
+   "summary": "Merge: tweet uses real listing exchange hashtag"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "a0b33ec",
+   "summary": "Tweet hashtag: use real listing exchange for US (#NASDAQ/#NYSE), UK keeps index"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "f0ce884",
+   "summary": "Merge: report top-N weight order, tweet market hashtags, name-casing fix"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "8152574",
+   "summary": "Report top-N weight order; tweet market/country hashtags; name-casing fix"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "f6c0b9a",
+   "summary": "Merge: HVF invariant suppressions log to hvf_suppressed_log (no Slack alert)"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "a0e29c7",
+   "summary": "HVF invariant suppressions -> hvf_suppressed_log (no Slack alert)"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "4fbdec3",
+   "summary": "Merge: HVF liquidity scoring, multi-timeframe grouping, X-draft publication overhaul"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "db56e0a",
+   "summary": "ah-x-publications: lock delivery contract — text+PNG per instrument, weight-ordered; secrets in GitHub (DO NOT BREAK)"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "1abd71b",
+   "summary": "X drafts: direction-aware hooks, primary-signal explainer, bold-italic disclaimer"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "8581c27",
+   "summary": "Consolidate COT direction-alignment onto signals.bias_aligned()"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "1e1f1b6",
+   "summary": "HVF: liquidity-aware scoring + multi-timeframe grouping; X-draft publication overhaul"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "528939f",
+   "summary": "calculate_position_size: guard comment — spread-bet margin has NO FX (verified)"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "ce26da3",
+   "summary": "Fix INSUFFICIENT_FUNDS: margin-aware sizing in the US monitor path"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "fba6761",
+   "summary": "X drafts to SLACK_TWITTER in best→worst order with explicit rank"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "04da69f",
+   "summary": "X post format: 52w high/low on card, prices+timeframe out of tweet text"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "b1aefe6",
+   "summary": "MERGE 9a: official-method AMP1 exhaustion anchor into live detection"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "182876c",
+   "summary": "Prototype 9a: official-method AMP1 exhaustion anchor + shadow-diff (NOT merged)"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "0744a9a",
+   "summary": "AH-hvf-analysis: audit vs Francis Hunt's official public method"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "0df043d",
+   "summary": "AH-signal-stack skill: the trade-decision pipeline"
+  },
+  {
+   "date": "2026-06-13",
+   "version": "65e3886",
+   "summary": "Format-spec template line: Now: {current_price} added (doc consistency)"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "220ca99",
+   "summary": "Current price ('Now:') added to tweet and post card levels line"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "5e6702e",
+   "summary": "AH-hvf-report skill: narrative chart-read report format"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "bef1706",
+   "summary": "AH-x-publications skill: the X post format as a shareable package"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "d6e64b3",
+   "summary": "price_action.py v1.9.0: add daily-180 HVF timeframe"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "1f655cb",
+   "summary": "Nightly identity sweep over ALL cached epics + shared name matcher"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "096fce3",
+   "summary": "Wrong-instrument hardening: ASX incident root-caused (3 layers) + TE->TEL"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "8b5b6a2",
+   "summary": "Absurd-target rejection + pre-commit test gate + alert-sweep findings"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "25154e6",
+   "summary": "price_action.py v1.8.1: fix bearish invariant false positive (META suppression)"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "3388a79",
+   "summary": "AH-hvf-analysis skill: our HVF method as a packaged skill"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "45ef61e",
+   "summary": "Commit frozen HVF regression fixtures (gitignore exception for tests_fixtures)"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "f2a7240",
+   "summary": "HVF correctness guarantees: regression suite + invariant guard + CI gate"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "68f5a72",
+   "summary": "Audit v1.1.0: instrument identity reconciliation (recon register #4)"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "0577b57",
+   "summary": "Nightly Yahoo-vs-IG data quality audit + IG validation daily cache"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "da512b5",
+   "summary": "IG broker data as arbiter for UK HVF setups + wrong-instrument epic fix"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "31b7940",
+   "summary": "price_action.py v1.6.0: three HVF detection fixes - RR.L funnel was real"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "1648d67",
+   "summary": "Instrument cap 2->5, COT staleness decay, shared X card renderer + local generator"
+  },
+  {
+   "date": "2026-06-12",
+   "version": "98253ea",
+   "summary": "Confirmations must agree with trade direction + lists in weight order"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "733944d",
+   "summary": "intraday_signals.py v1.4.4: fix X draft chart MultiIndex crash"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "40a0752",
+   "summary": "intraday_signals.py v1.4.3: fix X draft chart tz crash + TRIGGERED-first + quality in tweet"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "91ed6b7",
+   "summary": "Spacers to 120 chars + plain-English corrective actions with context"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "c768806",
+   "summary": "Retrofit all header comments to 120-char max width (was 80)"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "ec0a942",
+   "summary": "intraday_signals.py v1.4.2: all confirmations in X tweets, plain English"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "12fbe46",
+   "summary": "notify.py v1.7.1: abbreviation key in signal-message footers"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "3f98ae3",
+   "summary": "Missed-trade alert dedupe + corrective actions + Confs names"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "0342f7e",
+   "summary": "intraday_signals.py v1.3.1: attach X post card image to Slack + fix stale SLACK_X in workflows"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "cb3b175",
+   "summary": "intraday_signals.py v1.2.5: revert SLACK_CLAUDE_TWITTER — SLACK_TWITTER only"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "d5d4221",
+   "summary": "intraday_signals.py v1.2.4: X draft chart = agreed post card format"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "e09cd73",
+   "summary": "intraday_signals.py v1.2.3: dual-channel posting for X drafts (#claude-twitter)"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "e3726ad",
+   "summary": "intraday_signals.py v1.2.2: always append 'Not financial advice.' to X drafts"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "42391c3",
+   "summary": "Fix FTSE100 to 100 and FTSE250 to 250 — full Wikipedia constituents 2026-06-11"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "8f348d1",
+   "summary": "Expand FTSE250 from 40 to 250 constituents (full index 2026-06-11)"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "a070591",
+   "summary": "Fix 4 issues: .L epic lookup, SLACK_TWITTER, INSUFFICIENT_FUNDS retry, tight-stop guard, trade_opened distances"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "5913160",
+   "summary": "RSS alert: sort by verdict, @ prefix on handles, no X Pick header"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "8a10f25",
+   "summary": "Fix RIOT rejection, WATCHING→placed bug, orders channel, vol ratio cap"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "c4ce0f1",
+   "summary": "Fix 4 issues: WATCHING clarity, GBX unit fix follow-on, SLACK_TWITTER scope, email proximity"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "1dc848b",
+   "summary": "Fix GBX unit mismatch for US stocks quoted on IG UK in pence"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "bdd11f6",
+   "summary": "Add 8 new trusted X accounts to social monitor"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "9453702",
+   "summary": "SLACK_ORDERS + SLACK_TWITTER channels; instrument name fix in social monitor"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "be73d18",
+   "summary": "Fix SLACK_DAILY missing from trading-diagnostics.yml"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "ec2e1df",
+   "summary": "Proximity band, post-trade review fix, UK HVF Watch"
+  },
+  {
+   "date": "2026-06-11",
+   "version": "aa9c4f5",
+   "summary": "Post-trade review: GOOD/MARGINAL/POOR verdict to #alerts on every close"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "2e2723a",
+   "summary": "X-draft chart: dynamic history window, remove in-chart legend and R:R"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "02cae1a",
+   "summary": "Fix X-draft funnel chart: draw jaws through real H1/H2/H3 and L1/L2/L3 pivots"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "6a4628c",
+   "summary": "X drafts: C/P -> call/put, IV rank long text, space-fitting 2026-06-10"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "c1d852e",
+   "summary": "X drafts: add options flow + insider buying justification line 2026-06-10"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "034ed19",
+   "summary": "X drafts: remove HVF name, natural description, funnel chart 2026-06-10"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "101bddf",
+   "summary": "Setup cron: add --create-missing mode + GH_PAT support 2026-06-10"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "fb0e36d",
+   "summary": "Remove one-off resend workflow — run resend_working_order_emails.py locally instead"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "84b0ace",
+   "summary": "Add US HVF Watch cron job entry 2026-06-10"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "dd27c0c",
+   "summary": "HVF Watch: dedup + 2-hourly standalone workflow 2026-06-10"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "dc768a9",
+   "summary": "Director buys: Form 4 transaction detail + X (Twitter) draft reports 2026-06-10"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "21325c6",
+   "summary": "Remove HVF funnel schematic (chart 3) from trade emails"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "bfc78b1",
+   "summary": "ensure_schema alert: clarify it's a warning, not a blocker"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "ad53eb5",
+   "summary": "Fix chart scale + resend emails: IG levels normalised to yfinance units"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "70a1419",
+   "summary": "HVF setups now placed as IG WORKING ORDERS (entry at H3, HVF stop+target attached)"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "a5fce72",
+   "summary": "Trade-email detail: enrich Options/Director/COT + overlay HVF funnel on price chart"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "151d115",
+   "summary": "Harden ALL DB connections: shared resilient session-pooler helper (db_pool.get_db)"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "9708641",
+   "summary": "A: HVF email chart now shows all 3 highs + 3 lows (the full funnel)"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "f0efcb0",
+   "summary": "Trade email A: explain WHY (named primaries+confirmations) + reliable HVF funnel chart"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "9a22947",
+   "summary": "Watchdog: retry DB connect + explicit timeout (5432 session-pool exhaustion)"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "8539182",
+   "summary": "Add RESEND_API_KEY to the 6 session workflows — real trade emails now send via Resend"
+  },
+  {
+   "date": "2026-06-10",
+   "version": "5fdeba6",
+   "summary": "trade_email: add Resend HTTP API sender (preferred), Yahoo SMTP as fallback"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "3198c68",
+   "summary": "Move ALL pg8000 connections to Supabase session pooler (5432)"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "ec6fbeb",
+   "summary": "trade_email: strip spaces from Yahoo app password (535 auth fix)"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "0975f1e",
+   "summary": "trade_email: SMTP debug + precise exception logging to diagnose Yahoo connection drop"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "a80b582",
+   "summary": "trade_email: Yahoo SMTP via implicit SSL (465) — 587/STARTTLS dropped the connection"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "a324aca",
+   "summary": "D: email investment case + price/volume/HVF charts on every trade open"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "9b167cb",
+   "summary": "B+C: loud \"tradeable signal NOT placed\" alert on EVERY block reason"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "7372292",
+   "summary": "Per-session + per-instrument trade caps; wider stops on volatile small-caps"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "163720b",
+   "summary": "Fix why strong setups weren't trading: wrong epics + candidate ordering/cap"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "5d4131d",
+   "summary": "US Monitor: HVF watch over our US equities (user directive B)"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "7d6c61b",
+   "summary": "Spread retry 3->15 attempts (user: missed NBIS after only 3x30s)"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "49c01ff",
+   "summary": "Watchdog: session pooler (5432) — harden the safety net vs pooler statement collisions"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "67d7220",
+   "summary": "Daily report: explain WHY no trades, label the trigger (user directive E)"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "97a2ed7",
+   "summary": "Trade-closed: show hold duration, real P&L, clearer reason (was \"Unknown\" + £0.00)"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "f2881d7",
+   "summary": "Social monitor: use Supabase session pooler (5432) — fixes pg8000 statement collisions"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "f4c3c14",
+   "summary": "Stop false 'System Error' for non-critical data gaps (FX missing volume)"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "2ca3f23",
+   "summary": "Fix Social Feed Monitor crash — retry transient pooler 26000; rename workflow"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "885e01e",
+   "summary": "Switch risk:reward to 3:1 (user directive — \"same as Richie Williams\")"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "287355d",
+   "summary": "Gate periodic monitor summary to <= every 2 hours (user directive)"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "6496e30",
+   "summary": "Increase monitoring frequency (aggressive) + add --reconcile deploy path"
+  },
+  {
+   "date": "2026-06-09",
+   "version": "5e54583",
+   "summary": "Full instrument name every time a ticker is shown (TICKER (Full Name))"
+  },
+  {
+   "date": "2026-06-08",
+   "version": "e1bbb8f",
+   "summary": "compute_rsi: return 100 on zero-loss period instead of NaN"
+  },
+  {
+   "date": "2026-06-08",
+   "version": "87843c0",
+   "summary": "Fix HVF swing-low wick filter — documented logic was missing (dead variable)"
+  },
+  {
+   "date": "2026-06-08",
+   "version": "6fb5122",
+   "summary": "run_self_audit v1.1.0 — retry + WARN/FAIL split (transient timeout != bug)"
+  },
+  {
+   "date": "2026-06-08",
+   "version": "4e3d906",
+   "summary": "Add run_self_audit.py — automated external-ID + DB-constraint integrity audit"
+  },
+  {
+   "date": "2026-06-08",
+   "version": "fd0a5a4",
+   "summary": "setup_cronjobs: consolidate JOBS to the live schedule + add Daily Diagnostics"
+  },
+  {
+   "date": "2026-06-08",
+   "version": "76127dd",
+   "summary": "Remove last GitHub-native cron (watchdog + commodity-monitor) — now on cron-job.org"
+  },
+  {
+   "date": "2026-06-08",
+   "version": "1f37d2e",
+   "summary": "CRITICAL: enforce the daily loss limit (was completely unenforced)"
+  },
+  {
+   "date": "2026-06-08",
+   "version": "ce2f61e",
+   "summary": "Fix remaining stale \"GitHub cron\" wording (user-facing + comment)"
+  },
+  {
+   "date": "2026-06-08",
+   "version": "29990a3",
+   "summary": "watchdog: fix misleading \"GitHub Actions cron missed\" alert wording"
+  },
+  {
+   "date": "2026-06-08",
+   "version": "f290a4b",
+   "summary": "run_diagnostics: sync signal_log test INSERT to production (44 -> 45 cols)"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "2507186",
+   "summary": "setup_cronjobs: fix cron-job.org payload (HTTP 500) + add Sunday jobs"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "896ecbf",
+   "summary": "Revert GitHub-native cron from COT + Sunday workflows (user directive)"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "1355e85",
+   "summary": "Fix EIA refinery-utilisation series ID (verified vs live API)"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "50b1581",
+   "summary": "temp EIA probe + COT report → GitHub cron"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "b6389ac",
+   "summary": "Sunday commodity readiness + pre-open scan (every Sunday evening)"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "d3e9221",
+   "summary": "signals: fix POTUS primary query — wrong columns errored on every scan"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "d51b988",
+   "summary": "setup_cronjobs: add COT Report job (Sat 10:00 UTC)"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "a77e625",
+   "summary": "watchdog: fix critical pg8000 binding — safety net was crashing every run"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "5f3ead0",
+   "summary": "COT report: own schedule + market-context for metals, US indices & UK proxy"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "c59b0ad",
+   "summary": "run_cot_report: drop redundant f-string prefix on static header line"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "35e6bb8",
+   "summary": "Add weekly COT report → #claude-trading-weekly"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "9adcb12",
+   "summary": "Correct Gold/Silver CFTC codes after verifying all codes vs live CFTC API"
+  },
+  {
+   "date": "2026-06-07",
+   "version": "d8ccc27",
+   "summary": "Fix 2 bugs from fourth code-review pass (2026-06-06)"
+  },
+  {
+   "date": "2026-06-06",
+   "version": "2e95e23",
+   "summary": "Fix 4 bugs from third code-review pass (2026-06-06)"
+  },
+  {
+   "date": "2026-06-06",
+   "version": "15528ce",
+   "summary": "Fix 6 bugs found in second code-review pass (2026-06-06)"
+  },
+  {
+   "date": "2026-06-06",
+   "version": "1158fe9",
+   "summary": "Fix 6 bugs found in second code-review pass (2026-06-06)"
+  },
+  {
+   "date": "2026-06-06",
+   "version": "f345b5f",
+   "summary": "Fix circuit breaker alert user field and version history ordering"
+  },
+  {
+   "date": "2026-06-06",
+   "version": "654eb47",
+   "summary": "Fix 4 missed-trade root causes identified from week of 2026-06-06 review"
+  },
+  {
+   "date": "2026-06-06",
+   "version": "2058eb1",
+   "summary": "Fix session_heartbeat false '1386min late' when session runs early"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "bf19a0b",
+   "summary": "ig_shim: try IG minimum deal size when calculated size falls below it"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "5613205",
+   "summary": "Fix missed shorts: per-class PA thresholds, HVF bypass, silent size=0 alert"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "d5f203b",
+   "summary": "Fix 3 medium-severity issues from second code audit"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "fdb98ab",
+   "summary": "Fix: 3 HIGH bugs — paper trade crash, intraday fallback, 0.5 size"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "446bf9c",
+   "summary": "Restore SLACK_DAILY (5th channel); centralise HVF_MIN_RR; full names in signals"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "32e29c3",
+   "summary": "Fix 7 bugs found in code audit"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "1647b44",
+   "summary": "Fix: signal_log INSERT retry + diagnostic test synced to 44 columns"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "a74d75a",
+   "summary": "Fix: retry Supabase user_profile query in check_circuit_breakers"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "08d7c10",
+   "summary": "Add setup_cronjobs.py; update .gitignore to exclude .docx files"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "c938e93",
+   "summary": "Remove DAX from all instrument maps and HVF scanner"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "3d540b1",
+   "summary": "Add version history headers to all scripts; update changed-file entries"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "7202273",
+   "summary": "Raise HVF R:R threshold to 2.5:1 and show ratio in trade signals"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "85f9b96",
+   "summary": "Fix UK Morning Brief showing wrong date"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "c7cfb89",
+   "summary": "Remove GitHub Actions cron triggers — Claude Routines are primary scheduler"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "d0d5fa6",
+   "summary": "Add python-dotenv to all partial-install workflow pip installs"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "66682de",
+   "summary": "Fix watchdog ModuleNotFoundError: add python-dotenv to pip install"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "603a2e4",
+   "summary": "Loosen standalone bypass: elite senate OR POTUS sufficient (not both)"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "e7a7b81",
+   "summary": "Director cluster buys (3+) as developing watchlist candidates"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "d78f729",
+   "summary": "Add BOTH (elite senator + POTUS) as second standalone primary bypass"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "c0e16c2",
+   "summary": "Add Elite Senator / POTUS as Primary #7 signal"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "00b4925",
+   "summary": "Add daily HVF report: FTSE100/250, S&P500, DAX scan with MTF scanner"
+  },
+  {
+   "date": "2026-06-05",
+   "version": "5620d68",
+   "summary": "Major signal stack upgrade: HVF improvements, new primaries, data integrity"
+  },
+  {
+   "date": "2026-06-04",
+   "version": "6965eda",
+   "summary": "Add top 5 crypto to all session lists — BTC ETH XRP SOL BNB (2026-06-04)"
+  },
+  {
+   "date": "2026-06-04",
+   "version": "3ec7150",
+   "summary": "Fix HVF L3 detection + add HVF columns to run_schema.py (2026-06-04)"
+  },
+  {
+   "date": "2026-06-04",
+   "version": "efdcff3",
+   "summary": "Add Hunt Volatility Funnel (HVF) as primary signal (2026-06-04)"
+  },
+  {
+   "date": "2026-06-04",
+   "version": "5f2d530",
+   "summary": "Fix GitHub cron reliability: fire every 10 min within window (2026-06-04)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "bcf5d63",
+   "summary": "use SLACK_DAILY secret for daily channel (dedicated #claude-trading-daily)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "ed6af01",
+   "summary": "fix morning brief: pass full KEY=VALUE to GITHUB_ENV, not just the value"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "beb1541",
+   "summary": "Fix SLACK_DAILY: map to SLACK_SIGNALS secret; add python-dotenv to morning brief (2026-06-03)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "9a1833d",
+   "summary": "Block US equity trades outside NYSE hours 14:30-21:00 UTC (2026-06-03)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "7b098d5",
+   "summary": "Detect and alert on stop slippage — proven by IBM trade today (2026-06-03)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "a76ed87",
+   "summary": "Add once-per-day guard to session opens (2026-06-03)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "6a164c9",
+   "summary": "fix query workflow: add python-dotenv, add SPOTLIGHT_TICKER"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "40f1a7c",
+   "summary": "run query: read actual signal_log state"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "1a4d563",
+   "summary": "trigger query [skip ci]"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "45d9641",
+   "summary": "Fix pg8000 param bug definitively: v_ named params everywhere (2026-06-03)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "7c1078f",
+   "summary": "Add Deployment Diagnostics workflow — post-deploy verification (2026-06-03)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "dfc0cb8",
+   "summary": "Enable live trading: 1 primary signal, ETF options proxies for indices (2026-06-03)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "9cf6a02",
+   "summary": "Raise intraday guard multiplier 1.5x → 2.0x; move thresholds to config.py (2026-06-03)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "b799855",
+   "summary": "Add market stress gate, intraday guard, session heartbeats (2026-06-03)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "cacd37d",
+   "summary": "Fix pg8000 multi-param bug, GEX gamma, FRED key, watchdog auto-trigger (2026-06-03)"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "0437c1d",
+   "summary": "Spread retry loop — waits for spread to narrow before blocking"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "21cee55",
+   "summary": "Three pre-trade guards + close price fallback + daily_pnl fix"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "0a67cce",
+   "summary": "Fix entry/stop/target in trade opened notification"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "3f6f9be",
+   "summary": "Read risk_per_trade from user_profiles; wire paper_trade flag"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "6979abb",
+   "summary": "Margin-aware position sizing — fixes INSUFFICIENT_FUNDS"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "efa6518",
+   "summary": "Alert on deal rejection; enforce IG min stop distance; fix user IDs"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "b3e2af7",
+   "summary": "Fix Owner user_id; alert_circuit_breaker on trade block; update IG account in DB"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "a10872b",
+   "summary": "load_dotenv(override=True) across all scripts; fix emoji in slack test output"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "2e5a634",
+   "summary": "create-env (2026-06-03c): write to trading_config.txt not .env; add verify step"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "379ca10",
+   "summary": "create-env (2026-06-03b): Python writer avoids shell mangling; upgrade to upload-artifact@v5"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "1be0b2d",
+   "summary": "Rename workflow to include date per naming convention"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "1c27828",
+   "summary": "create-env: add checkout step; write to explicit GITHUB_WORKSPACE path"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "b0ebefa",
+   "summary": "Fix create-env: use echo per line (heredoc indentation broke file creation); add FORCE_NODE24"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "8917089",
+   "summary": "Add dotenv support to all scripts; create-env workflow for one-time .env download"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "79d868f",
+   "summary": "Add push triggers to slack-test and us-open; fire both now"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "5aee043",
+   "summary": "Self-healing schema: ensure_schema() runs at every session start"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "229663e",
+   "summary": "daily report: use stored primary_count/direction/macro_gate_pass from signal_log"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "baced2b",
+   "summary": "Add session watchdog; add push trigger to schema workflow; trigger schema migration"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "163ea86",
+   "summary": "Fixed-window UK brief; replay today UK_OPEN 07:00-11:00 UTC"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "d4952d4",
+   "summary": "Resend missed morning messages — UK brief + spotlight"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "d40125c",
+   "summary": "Add #claude-trading-daily channel (SLACK_DAILY); route daily report and UK brief to it"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "f45d40d",
+   "summary": "Add Slack webhook test — verifies all 4 channels after secret rotation"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "3926abc",
+   "summary": "Add Slack-direct spotlight workflow; trigger PLTR,DELL,NBIS"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "76388f3",
+   "summary": "Fix commit-then-rebase order; trigger PLTR,DELL,NBIS spotlight"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "7d8f7ff",
+   "summary": "Fix workflow push rebase; multi-ticker spotlight; trigger PLTR,DELL,NBIS"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "5825755",
+   "summary": "Fix spotlight query columns; retrigger PLTR"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "9fc30de",
+   "summary": "Fix SPOTLIGHT_TICKER env parsing; retrigger PLTR"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "d525eef",
+   "summary": "Add ticker spotlight to query; trigger PLTR lookup"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "a906799",
+   "summary": "Add 5 social monitor accounts: TheProfInvestor, theaiportfolios, BlackPantherCapital, pdicarlotrader, polymarketmoney"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "e83c842",
+   "summary": "Add UK morning brief — Mon & Fri 9am UTC; trigger first run"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "934f45d",
+   "summary": "query output [skip ci]"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "dac8506",
+   "summary": "Trigger schema migration for 4 new signal_log columns"
+  },
+  {
+   "date": "2026-06-03",
+   "version": "ab51f98",
+   "summary": "Remove remaining hardcoded Slack URL; fix daily report crash; add 4 signal_log columns"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "711705e",
+   "summary": "Fix four bugs: direction/UnboundLocalError, FRED crash, P&L=0 closures, duplicate ATR map"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "33d3a95",
+   "summary": "Surface session errors to Slack #alerts channel"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "7b1536e",
+   "summary": "query output [skip ci]"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "0f6839f",
+   "summary": "Add schema check and signal_log row counts to query; retrigger"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "d2079a4",
+   "summary": "query output [skip ci]"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "906dfbe",
+   "summary": "Add signal_log detail to query; retrigger"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "4edc10f",
+   "summary": "query output [skip ci]"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "a883ed8",
+   "summary": "Fix workflow permissions and retrigger query"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "2511bbc",
+   "summary": "Trigger auto-query"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "85668a9",
+   "summary": "Add auto-query workflow; trigger first run [skip ci]"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "508cf55",
+   "summary": "Add run_query.py diagnostic — today's trades, open positions, P&L, macro snapshots"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "14426e6",
+   "summary": "Fix NameError in US Monitor alerts; remove broken premarket_brief; add Dataroma superinvestor refresh"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "927dc7e",
+   "summary": "Add run_schema.py for signal_log column migration; add Hedgeye/pelositracker/KobeissiLetter to social monitor"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "17db3fc",
+   "summary": "Merge branch 'main' of https://github.com/Red7Al/ClaudeCode"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "e98d32b",
+   "summary": "Merge branch 'main' of https://github.com/Red7Al/ClaudeCode"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "459ac29",
+   "summary": "Move company name to end of line as italic reference"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "1b9ea66",
+   "summary": "Add company names to all reports"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "ace119a",
+   "summary": "Add Grafana dashboard and Quiver Quant senator scoring"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "287e4ce",
+   "summary": "Add secret scanning — gitleaks on every push + local pre-commit hook"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "efd403a",
+   "summary": "Remove hardcoded Slack webhook URL from social_monitor.py"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "4eb4fe6",
+   "summary": "Expand primary signals from 2-of-3 to 2-of-6"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "06e44a4",
+   "summary": "Remove one-shot ALTER TABLE script (migration complete)"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "bb39312",
+   "summary": "Remove one-shot ALTER TABLE script (migration complete)"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "b02807a",
+   "summary": "Add ALTER TABLE for ADX/OBV/volume columns in signal_log"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "a2a9b0f",
+   "summary": "Add ALTER TABLE for ADX/OBV/volume columns in signal_log"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "809a7dc",
+   "summary": "Three improvements: public repo, cleanup, richer notable-move explanations"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "c57b0cc",
+   "summary": "Three improvements: public repo, cleanup, richer notable-move explanations"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "f295c04",
+   "summary": "Fix yesterday macro query — compute date in Python not SQL interval"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "11050b2",
+   "summary": "Fix yesterday macro query — compute date in Python not SQL interval"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "52aad4d",
+   "summary": "Enrich macro section with plain-English context and direction arrows"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "c6cc92a",
+   "summary": "Enrich macro section with plain-English context and direction arrows"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "26b43e6",
+   "summary": "Add ADX, OBV, and candlestick patterns to signal stack"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "d1c65b6",
+   "summary": "Add ADX, OBV, and candlestick patterns to signal stack"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "f2231fa",
+   "summary": "Remove one-shot alter script (migration complete)"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "c21a5ab",
+   "summary": "Remove one-shot alter script (migration complete)"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "6ca103b",
+   "summary": "Add volume primary signal + AUS/UK monitors scan for new entries"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "58f6fb3",
+   "summary": "Add volume primary signal + AUS/UK monitors scan for new entries"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "4ae6320",
+   "summary": "Fix broken items: signal_log columns, schema doc, remove debug scripts"
+  },
+  {
+   "date": "2026-06-02",
+   "version": "6207c92",
+   "summary": "Fix broken items: signal_log columns, schema doc, remove debug scripts"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "442dadf",
+   "summary": "Fix move calculation — use previous close not today's open as base"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "f5812ed",
+   "summary": "Fix move calculation — use previous close not today's open as base"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "334a770",
+   "summary": "Reformat notable moves: instruments listed first, one group summary below"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "b8b5e31",
+   "summary": "Reformat notable moves: instruments listed first, one group summary below"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "47e152e",
+   "summary": "Three fixes: monitor scans for new trades, group report by reason, add volume"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "ebdf45d",
+   "summary": "Three fixes: monitor scans for new trades, group report by reason, add volume"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "535d01e",
+   "summary": "Use intraday High/Low vs Open for notable move detection"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "2dd6ef0",
+   "summary": "Use intraday High/Low vs Open for notable move detection"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "16db45d",
+   "summary": "Temporarily add signal_log check to fix script"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "6f17463",
+   "summary": "Temporarily add signal_log check to fix script"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "f6e1134",
+   "summary": "Improve daily report notable-mover explanations"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "57135cb",
+   "summary": "Improve daily report notable-mover explanations"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "4ecdcad",
+   "summary": "Fix run_daily_report.py to match actual Supabase schema"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "df660ba",
+   "summary": "Fix run_daily_report.py to match actual Supabase schema"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "eab499d",
+   "summary": "tee output to both logs and step summary"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "9c5e4c1",
+   "summary": "tee output to both logs and step summary"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "a193071",
+   "summary": "Expand check to show all tables and all columns with types"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "47ac8c5",
+   "summary": "Expand check to show all tables and all columns with types"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "315b76b",
+   "summary": "Correct user_profiles column names to match actual schema from previous session"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "cde9072",
+   "summary": "Correct user_profiles column names to match actual schema from previous session"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "1e86066",
+   "summary": "Fix user_profiles column check — query actual columns not assumed names"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "075bead",
+   "summary": "Fix user_profiles column check — query actual columns not assumed names"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "2afba48",
+   "summary": "Fix users table naming — use user_profiles to match existing schema"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "aa69d32",
+   "summary": "Fix users table naming — use user_profiles to match existing schema"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "1097268",
+   "summary": "Output table check to GitHub Actions step summary"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "9f37ebb",
+   "summary": "Output table check to GitHub Actions step summary"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "610117a",
+   "summary": "Post table check results to Slack alerts channel"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "5be2067",
+   "summary": "Post table check results to Slack alerts channel"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "476a2d7",
+   "summary": "Add table check script (one-shot)"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "192ed2c",
+   "summary": "Add table check script (one-shot)"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "bc62495",
+   "summary": "Upgrade to Node.js 24 native action versions"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "597bf62",
+   "summary": "Upgrade to Node.js 24 native action versions"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "ced09e3",
+   "summary": "Move Node.js 24 opt-in to top-level workflow env"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "b1efd1a",
+   "summary": "Move Node.js 24 opt-in to top-level workflow env"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "6cf316e",
+   "summary": "Opt into Node.js 24 for all GitHub Actions workflows"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "8d0c50b",
+   "summary": "Opt into Node.js 24 for all GitHub Actions workflows"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "3de1311",
+   "summary": "Pin actions to Node.js 22 compatible versions"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "2331d1c",
+   "summary": "Pin actions to Node.js 22 compatible versions"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "43e3153",
+   "summary": "Clean up duplicate subfolder, add schema + daily report"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "45fbe3b",
+   "summary": "Clean up duplicate subfolder, add schema + daily report"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "4500f52",
+   "summary": "Add 24/5 commodity monitor for XAU/XAG/CL"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "82fa903",
+   "summary": "Add 24/5 commodity monitor for XAU/XAG/CL"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "b26fecf",
+   "summary": "Reduce AUS monitor to 30 min — US/UK are primary sessions"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "e2f2960",
+   "summary": "Reduce AUS monitor to 30 min — US/UK are primary sessions"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "0930fb1",
+   "summary": "Add China A50 (CN50) to AUS/Asia Open session"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "e6a943b",
+   "summary": "Add China A50 (CN50) to AUS/Asia Open session"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "ae1629d",
+   "summary": "All monitors to 20 min, social to hourly during trading hours"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "4dc8f25",
+   "summary": "All monitors to 20 min, social to hourly during trading hours"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "2a816d6",
+   "summary": "Replace 10-min position monitor with 15-min UK/US/AUS session monitors"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "4ef5188",
+   "summary": "Replace 10-min position monitor with 15-min UK/US/AUS session monitors"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "0032a7b",
+   "summary": "Add new multi-source confirmed picks to US_OPEN session list"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "b586a14",
+   "summary": "Add new multi-source confirmed picks to US_OPEN session list"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "b63b4a5",
+   "summary": "Fix social monitor workflow - inline Python quotes caused YAML failure"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "f841067",
+   "summary": "Fix social monitor workflow - inline Python quotes caused YAML failure"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "edda9c6",
+   "summary": "Show instrument name alongside ticker in all Slack trade notifications"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "5dd6d84",
+   "summary": "Show instrument name alongside ticker in all Slack trade notifications"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "8225f00",
+   "summary": "Fix @Asklivermore handle (was @Asklivermoe)"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "1c5e892",
+   "summary": "Fix @Asklivermore handle (was @Asklivermoe)"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "a84292c",
+   "summary": "Add automated X/Twitter RSS social feed monitor"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "ea808aa",
+   "summary": "Add automated X/Twitter RSS social feed monitor"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "51a90b9",
+   "summary": "Add new equity picks to US_OPEN session list"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "04d9bcb",
+   "summary": "Update position monitor to every 10 minutes"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "d21023d",
+   "summary": "Merge branch 'main' of https://github.com/red7al/ClaudeCode"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "57c39d9",
+   "summary": "Remove node_modules and generated files from tracking"
+  },
+  {
+   "date": "2026-06-01",
+   "version": "29f33b1",
+   "summary": "Initial EndToEndTrading system"
+  },
+  {
+   "date": "2026-05-31",
+   "version": "5be6065",
+   "summary": "Initial commit"
+  }
+ ]
+}
