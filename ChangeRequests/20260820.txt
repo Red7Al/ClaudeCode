@@ -14,6 +14,13 @@ Contents: Outstanding and deferred requests
    Result: Scanner Snapshot Publish run 32391792121 was dispatched against the corrected workflow and is performing the full scan. It must finish with either verified Supabase publication or verified IONOS SSH fallback before completion.
    Status: in progress
 
+## Executable/installation/release
+
+1. Time: 16:24:00
+   Request: Deploy the completed Best Settings card changes so users receive the latest UI.
+   Result: Deployment to IONOS is in progress. The host snapshot cache will be retained; completion requires live file and user-facing verification.
+   Status: in progress
+
 3. Time: 2026-08-20
    Request: Guardian One — cover page.
    Result: Recorded as a separate report-formatting item; this repository contains the trading scanner, not the Guardian One report generator.
