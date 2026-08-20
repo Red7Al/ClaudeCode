@@ -2198,6 +2198,7 @@ def api_place_order():
     for the 2-hour bridge. MONEY PATH: subscription must allow pre-orders; the order uses the user's
     OWN IG account (owner = env creds; a non-owner must have supplied their own IG credentials — else
     blocked so no one trades on another account). Goes through the same guarded place_hvf_order_from_sig."""
+    import config_store as _cs
     if not _cs.PREORDERS_TO_IG_ENABLED:
         return jsonify({"ok": False, "error": "Pre-orders to IG are disabled for all users."}), 503
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
