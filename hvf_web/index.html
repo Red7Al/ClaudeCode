@@ -4775,17 +4775,32 @@ function renderBestCombo(all){
   // twenty-percentage-point subtraction.
   const threeYearRaw=Array.isArray(WIN_3Y)?WIN_3Y:[], threeYearByKey={};
   threeYearRaw.filter(r=>r.perf!=null&&r.trig_date).forEach(r=>{const k=_dedupeKey(r),cur=threeYearByKey[k];if(!cur||(+r.perf||-Infinity)>(+cur.perf||-Infinity))threeYearByKey[k]=r;});
-  const threeYearRows=Object.values(threeYearByKey), threeYearOptions=[];
-  if(threeYearRows.length>=20){
-    for(const candidate of [best,growth,defensive,broad,winloss,efficient].filter(Boolean)){
-      const seq=threeYearRows.filter(r=>candidate.scope.test(r)&&r.rr!=null&&r.rr>=candidate.rr&&
-        (!candidate.q||(r.quality!=null&&r.quality>=candidate.q))&&(!candidate.vs||(r.volume_score!=null&&r.volume_score>=candidate.vs))&&
-        (!candidate.rv||(r.rvol!=null&&r.rvol>=candidate.rv))&&(!candidate.vw||r.above_vwap===true)&&(!candidate.atr||r.atr_expanding===true));
-      const z=_combReplay(seq,candidate.st/100,candidate.mo);
-      if(z.n>125&&z.ret>=best.ret*.8)threeYearOptions.push({...candidate,seq,...z});
-    }
+  const threeYearRows=Object.values(threeYearByKey), threeYearCandidates=[];
+  // This is a genuine three-year optimisation: it searches the complete retained three-year population,
+  // not a replay of configurations that happened to win over one year. Use the same bounded grid and
+  // risk-adjusted replay model as the annual cards so the comparison remains enforceable and fair.
+  const threeMarkets=Object.entries(threeYearRows.reduce((m,r)=>{const v=r.market;if(v)m[v]=(m[v]||0)+1;return m;},{}))
+    .filter(([,n])=>n>=30).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([v])=>({kind:"market",label:`Market: ${v}`,test:r=>r.market===v,value:v}));
+  const threeScopes=[{kind:"all",label:"All markets",test:()=>true},...threeMarkets,...scopes.filter(s=>s.kind==="mcap")];
+  for(const scope of threeScopes)for(const rr of RRS)for(const q of QUALS)for(const vs of VSCORES)for(const rv of RVOLS)for(const vw of BOOLS)for(const atr of BOOLS){
+    const seq=threeYearRows.filter(r=>scope.test(r)&&r.rr!=null&&r.rr>=rr&&(!q||(r.quality!=null&&r.quality>=q))&&
+      (!vs||(r.volume_score!=null&&r.volume_score>=vs))&&(!rv||(r.rvol!=null&&r.rvol>=rv))&&(!vw||r.above_vwap===true)&&(!atr||r.atr_expanding===true));
+    if(seq.length<20)continue;
+    const mean=seq.reduce((sum,r)=>sum+(+r.perf||0),0)/seq.length;
+    threeYearCandidates.push({scope,rr,q,vs,rv,vw,atr,seq,quick:mean*Math.min(1,seq.length/40)});
   }
-  const threeYear=threeYearOptions.sort((a,b)=>b.ret/(b.dd+.02)-a.ret/(a.dd+.02)||b.ret-a.ret)[0]||null;
+  threeYearCandidates.sort((a,b)=>b.quick-a.quick);
+  const threeShortlist=threeYearCandidates.slice(0,40);
+  threeShortlist.forEach(c=>{c.pre=robust(c.seq,Math.max(.01,WINNERS_STAKE),WINNERS_MAXOPEN);});
+  threeShortlist.sort((a,b)=>b.pre.score-a.pre.score);
+  const threeSeen=new Set(), threeEvaluated=[];
+  for(const c of threeShortlist.slice(0,12))for(const mo of OPENS)for(const st of STAKES){
+    const eff=Math.min(mo,_fundedMaxOpen(st/100)), key=c.scope.label+"|"+c.rr+"|"+c.q+"|"+c.vs+"|"+c.rv+"|"+c.vw+"|"+c.atr+"|"+st+"|"+eff;
+    if(threeSeen.has(key))continue; threeSeen.add(key);
+    const z=robust(c.seq,st/100,eff);if(z.n>=20)threeEvaluated.push({...c,st,mo:eff,...z});
+  }
+  let threeYear=threeEvaluated.filter(x=>x.n>125&&x.ret>=best.ret*.8).sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
+  if(threeYear)threeYear.proof=_combReplay(threeYear.seq,threeYear.st/100,threeYear.mo,true).proof;
   const choices=[
     ["Balanced",best,"Best return relative to drawdown, with quarterly consistency included.","var(--bull)"],
     growth&&["Growth",growth,"Highest-return alternative with a materially different configuration.","var(--accent)"],
@@ -4825,10 +4840,9 @@ function renderBestCombo(all){
     <h3 style="color:${colour}">${label}</h3><div class="muted" style="font-size:11px;min-height:30px">Evidence threshold not met by the current annual dataset.</div>
     <div class="body"><b style="font-size:15px;color:#d29922">No supported recommendation</b><div class="muted" style="font-size:11px;margin-top:5px">None of the tested configurations funded more than ${min} and no more than ${max} trades. The card remains visible so an evidence shortfall is not mistaken for a missing feature.</div></div>
   </div>`).join('');
-  const threeYearEvidence=!threeYear?`<div class="fcard" data-choice-unavailable="Best over 3 years" style="min-width:240px;flex:1;border-top:3px solid #00a8a8;opacity:.8" title="The qualifying three-year configuration must fund more than 125 trades and retain at least 80% of the best annual card's return.">
-    <h3 style="color:#00a8a8">Best over 3 years</h3><div class="muted" style="font-size:11px;min-height:30px">Three-year evidence threshold not currently met.</div>
-    <div class="body"><b style="font-size:15px;color:#d29922">No supported recommendation</b><div class="muted" style="font-size:11px;margin-top:5px">No tested three-year configuration currently funds more than 125 trades while retaining at least 80% of the best annual card’s return.</div></div></div>`:"";
-  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearEvidence}</div>
+  // A three-year option is a recommendation only when it meets its stated evidence threshold. If it does
+  // not, omit it rather than occupying a trader-facing card with a non-actionable rejection message.
+  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}</div>
   <div class="card" style="margin:0" id="best-detail"></div>`;
   // Defensive is intentionally last. If responsive wrapping leaves it alone on a final row, remove it
   // rather than spending an entire row on the least-useful alternative (user 2026-08-18).

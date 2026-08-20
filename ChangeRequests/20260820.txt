@@ -2,6 +2,13 @@ Date: 2026-08-20
 Timezone: Europe/London
 Contents: Outstanding and deferred requests
 
+## Website and portal
+
+1. Time: 18:20:00
+   Request: Remove the non-actionable Best over 3 years evidence-shortfall placeholder from trader recommendation cards.
+   Result: In progress. The original instruction was to hide the card when it fails the >125-trade and 80%-of-best threshold.
+   Status: in progress
+
 ## Testing and quality
 
 1. Time: 13:02:00
