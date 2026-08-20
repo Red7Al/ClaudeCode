@@ -2,6 +2,13 @@ Date: 2026-08-20
 Timezone: Europe/London
 Contents: Outstanding and deferred requests
 
+## Website and portal
+
+1. Time: 17:41:10
+   Request: Correct all outstanding Best Settings UI fixes: evidence-table column placement, requested card order, Short Duration and Defensive-card behaviour, and visible three-year evidence status.
+   Result: Implementation and live deployment are in progress.
+   Status: in progress
+
 ## Testing and quality
 
 1. Time: 13:02:00

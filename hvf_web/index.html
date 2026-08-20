@@ -4489,6 +4489,9 @@ function renderDecisionProof(id,proof,opts={}){
       <td>${num(r.rr)}</td><td>${num(r.quality)}</td><td>${num(r.volume_score)}</td><td>${num(r.rvol)}</td>
       <td>${r.above_vwap==null?'—':r.above_vwap?'Above':'Below'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'Expanding':'Not expanding'}</td>
       <td>${_esc(r.market||'—')}</td><td>${_esc(r.sector||'—')}</td><td>${_esc(r.ticker||'—')}</td></tr>`;}).join('');
+  // Decision and capacity explain why a row was taken or missed; keep that repeat evidence at the far
+  // right so the trading outcome and signal fields remain readable without horizontal scrolling first.
+  queueMicrotask(()=>{const t=target.querySelector('table');if(!t)return;[...t.querySelectorAll('thead tr,tbody tr')].forEach(row=>{const cells=[...row.children];if(cells.length>=4){row.append(cells[2],cells[3]);}});});
   target.innerHTML=`<div class="viz" style="margin-top:14px;padding:0;border-bottom:none">${chart('location','Location')}${chart('market','Market')}${chart('sector','Sector')}${chart('direction','Direction')}${chart('outcome','Outcome')}${chart('wl','Win / Loss')}${chart('days_open','Days Open')}${chart('month','Month')}${chart('quality','Quality')}${chart('rvol','RVOL')}${chart('above_vwap','VWAP')}${chart('atr_expanding','ATR')}</div>
     ${Object.keys(filters).length?`<div class="muted" style="font-size:11px;margin-top:6px">Cross-filter: ${Object.entries(filters).map(([d,v])=>`${d} = ${_esc(v)}`).join(' · ')} <button class="btn" style="padding:2px 7px" onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,filters:{}})">Clear</button></div>`:''}
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;margin:14px 0 6px;flex-wrap:wrap">
@@ -4755,6 +4758,7 @@ function renderBestCombo(all){
   const broad=choose(basePool,chosen,(a,b)=>b.consistency-a.consistency||b.n-a.n||b.ret-a.ret);if(broad)chosen.push(broad);
   const winloss=choose(basePool,chosen,(a,b)=>_wl(b)-_wl(a)||b.ret-a.ret);if(winloss)chosen.push(winloss);
   const efficient=choose(basePool,chosen,(a,b)=>_perDay(b)-_perDay(a));if(efficient)chosen.push(efficient);
+  const shortDuration=choose(basePool,chosen,(a,b)=>(_days(a)??Infinity)-(_days(b)??Infinity)||b.ret-a.ret);if(shortDuration)chosen.push(shortDuration);
   // Best settings at a given funded-trade sample BAND (user 2026-08-12, P-10; banded 2026-08-14, P-04
   // "Switch 500 trades to > 125 Trades (but do not exceed 150)" / "> 250 Trades (but do not exceed 300)"):
   // the strongest-scoring configuration whose annual replay funded inside that band. Uses x.n (funded
@@ -4793,6 +4797,11 @@ function renderBestCombo(all){
     efficient&&["Capital efficient",efficient,`Most return per day of capital committed — ${_days(efficient)?Math.round(_days(efficient))+" days average hold":"hold unknown"}. Keeps the book turning instead of tying slots up.`,"#f778ba"]
   ].filter(Boolean);
   if(threeYear)choices.push(["Best over 3 years",threeYear,"Three-year replay with more than 125 funded trades and at least 80% of the best card’s return (20% relative tolerance).","#00a8a8"]);
+  // Requested display order: win/loss, capital efficient, Short Duration fifth, population cards seventh/eighth,
+  // and Defensive last. Sorting presentation does not change any candidate's calculation or replay evidence.
+  const cardOrder=["Best win : loss","Capital efficient","Balanced","Growth","Short Duration","Broad evidence",">250 trades",">125 trades","Best over 3 years","Defensive"];
+  if(shortDuration)choices.push(["Short Duration",shortDuration,`Shortest average completed holding period — ${_days(shortDuration)?Math.round(_days(shortDuration))+" days average hold":"hold unknown"}.","#58a6ff"]);
+  choices.sort((a,b)=>cardOrder.indexOf(a[0])-cardOrder.indexOf(b[0]));
   const current={rr:Number(MY_LIMITS.min_risk_reward??3),q:Number(MY_LIMITS.min_quality??25),vs:Number(MY_LIMITS.min_volume_score??1),rv:+MY_LIMITS.min_rvol||0,
     vw:!!+MY_LIMITS.require_above_vwap,atr:!!+MY_LIMITS.require_atr_expanding,st:+MY_LIMITS.max_position_pct||WINNERS_STAKE*100,mo:+MY_LIMITS.max_open||WINNERS_MAXOPEN,
     scope:_pfSavedScope("market")[0]?`Market: ${_pfSavedScope("market").join(", ")}`:_pfSavedScope("sector")[0]?`Sector: ${_pfSavedScope("sector").join(", ")}`:"All markets"};
@@ -4811,12 +4820,15 @@ function renderBestCombo(all){
       <button class="btn" style="margin-top:8px" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">⬇ Apply this configuration</button>
     </div></div>`).join('');
   const unsupportedCards=[
-    !trades125&&[">125 trades",125,150,"#1f6feb"],!trades250&&[">250 trades",250,300,"#a371f7"]
+    !trades250&&[">250 trades",250,300,"#a371f7"],!trades125&&[">125 trades",125,150,"#1f6feb"]
   ].filter(Boolean).map(([label,min,max,colour])=>`<div class="fcard" data-choice-unavailable="${label}" style="min-width:240px;flex:1;border-top:3px solid ${colour};opacity:.8" title="No tested annual configuration funded more than ${min} and no more than ${max} trades">
     <h3 style="color:${colour}">${label}</h3><div class="muted" style="font-size:11px;min-height:30px">Evidence threshold not met by the current annual dataset.</div>
     <div class="body"><b style="font-size:15px;color:#d29922">No supported recommendation</b><div class="muted" style="font-size:11px;margin-top:5px">None of the tested configurations funded more than ${min} and no more than ${max} trades. The card remains visible so an evidence shortfall is not mistaken for a missing feature.</div></div>
   </div>`).join('');
-  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}</div>
+  const threeYearEvidence=!threeYear?`<div class="fcard" data-choice-unavailable="Best over 3 years" style="min-width:240px;flex:1;border-top:3px solid #00a8a8;opacity:.8" title="The qualifying three-year configuration must fund more than 125 trades and retain at least 80% of the best annual card's return.">
+    <h3 style="color:#00a8a8">Best over 3 years</h3><div class="muted" style="font-size:11px;min-height:30px">Three-year evidence threshold not currently met.</div>
+    <div class="body"><b style="font-size:15px;color:#d29922">No supported recommendation</b><div class="muted" style="font-size:11px;margin-top:5px">No tested three-year configuration currently funds more than 125 trades while retaining at least 80% of the best annual card’s return.</div></div></div>`:"";
+  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearEvidence}</div>
   <div class="card" style="margin:0" id="best-detail"></div>`;
   BEST_CHOICES=choices; BEST_MODEL_W=w;
   // Detail card follows whichever choice is clicked (user 2026-08-07, ChangeRequest P-06); defaults to
