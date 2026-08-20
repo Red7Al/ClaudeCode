@@ -4053,7 +4053,7 @@ const _cherryEq=(a,b)=>JSON.stringify(a||{})===JSON.stringify(b||{});
 let WINNERS_WALLET=10000, WINNERS_STAKE=0.05, WINNERS_MAXOPEN=50;   // £ wallet, stake fraction and explicit concurrency cap
 let WINNERS_HIDE_MISSED=false;   // "hide trades missed" toggle on the winners ledger (P-07 #30)
 function winnersToggleMissed(){WINNERS_HIDE_MISSED=!!($("ordp-hide-missed")||{}).checked;const t=$("ordp-table");if(t)t.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);}
-let WIN=null, WIN_GENERATED="";
+let WIN=null, WIN_GENERATED="", WIN_3Y=null;
 let WIN_LOADING=false;
 // Wallet £ (L211), Max position size % (L200), Max open positions (L199) are variables on the winners tab.
 let MIN_TRADE=25;   // User-configured minimum trade (£), default 25 (user 2026-07-18, P-05 L253)
@@ -4142,8 +4142,11 @@ function renderSqueezeAnalysis(){
   if(WIN!==null)return winnersParamsChange();   // route through winnersParamsChange so the derived Min/Max Trade populate (P-05)
   if(WIN_LOADING)return;
   WIN_LOADING=true; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading… 12 months of trades.</div>';
-  const loadWinners=(attempt=0)=>fetch("/api/winners").then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
-    .then(j=>{if(j.error)throw new Error(j.error);WIN_LOADING=false;WIN_GENERATED=j.generated||"";WIN=_dedupeSameDayRows(j.rows||[]);winnersParamsChange();})
+  const loadWinners=(attempt=0)=>Promise.all([fetch("/api/winners"),fetch("/api/winners?years=3")]).then(async ([annual,threeYear])=>{
+      if(!annual.ok)throw new Error(`HTTP ${annual.status}`); if(!threeYear.ok)throw new Error(`HTTP ${threeYear.status}`);
+      return [await annual.json(),await threeYear.json()];
+    })
+    .then(([j,j3])=>{if(j.error)throw new Error(j.error);if(j3.error)throw new Error(j3.error);WIN_LOADING=false;WIN_GENERATED=j.generated||"";WIN=_dedupeSameDayRows(j.rows||[]);WIN_3Y=_dedupeSameDayRows(j3.rows||[]);winnersParamsChange();})
     .catch(err=>{if(attempt<3){if(s)s.innerHTML=`<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading… retry ${attempt+1} of 3.</div>`;setTimeout(()=>loadWinners(attempt+1),1500*(attempt+1));return;}
       WIN_LOADING=false;WIN=null;const b=$("ordp-bestcombo");if(b)b.innerHTML=`<div class="empty">Annual settings could not be loaded: ${_esc(err.message||'unknown error')}. <button class="btn" onclick="renderSqueezeAnalysis()">↻ Retry</button></div>`;});
   loadWinners();
@@ -4761,6 +4764,24 @@ function renderBestCombo(all){
   // so each card only appears when the data supports a config inside the band; unsupported bands remain
   // visible as evidence-status cards below rather than disappearing and looking like a render fault.
   const trades125=_bestSettingsByFundedTrades(large125,125,150), trades250=_bestSettingsByFundedTrades(large250,250,300);
+  // Three-year evidence card (ChangeRequests/20260818, clarified 2026-08-20): reuse the tested,
+  // enforceable configurations, replay them against the complete three-year population, and only show
+  // the strongest one when it funds strictly more than 125 trades and remains within 20% of the best
+  // card's return. “20% relative” is therefore a ratio (>= 80% of the current best card), not a
+  // twenty-percentage-point subtraction.
+  const threeYearRaw=Array.isArray(WIN_3Y)?WIN_3Y:[], threeYearByKey={};
+  threeYearRaw.filter(r=>r.perf!=null&&r.trig_date).forEach(r=>{const k=_dedupeKey(r),cur=threeYearByKey[k];if(!cur||(+r.perf||-Infinity)>(+cur.perf||-Infinity))threeYearByKey[k]=r;});
+  const threeYearRows=Object.values(threeYearByKey), threeYearOptions=[];
+  if(threeYearRows.length>=20){
+    for(const candidate of [best,growth,defensive,broad,winloss,efficient].filter(Boolean)){
+      const seq=threeYearRows.filter(r=>candidate.scope.test(r)&&r.rr!=null&&r.rr>=candidate.rr&&
+        (!candidate.q||(r.quality!=null&&r.quality>=candidate.q))&&(!candidate.vs||(r.volume_score!=null&&r.volume_score>=candidate.vs))&&
+        (!candidate.rv||(r.rvol!=null&&r.rvol>=candidate.rv))&&(!candidate.vw||r.above_vwap===true)&&(!candidate.atr||r.atr_expanding===true));
+      const z=_combReplay(seq,candidate.st/100,candidate.mo);
+      if(z.n>125&&z.ret>=best.ret*.8)threeYearOptions.push({...candidate,seq,...z});
+    }
+  }
+  const threeYear=threeYearOptions.sort((a,b)=>b.ret/(b.dd+.02)-a.ret/(a.dd+.02)||b.ret-a.ret)[0]||null;
   const choices=[
     ["Balanced",best,"Best return relative to drawdown, with quarterly consistency included.","var(--bull)"],
     growth&&["Growth",growth,"Highest-return alternative with a materially different configuration.","var(--accent)"],
@@ -4771,6 +4792,7 @@ function renderBestCombo(all){
     winloss&&["Best win : loss",winloss,`Most winners per loser — ${_wl(winloss)===Infinity?"no losing trades":_wl(winloss).toFixed(2)+" wins per loss"}. Break-even trades count as neither.`,"#3fb950"],
     efficient&&["Capital efficient",efficient,`Most return per day of capital committed — ${_days(efficient)?Math.round(_days(efficient))+" days average hold":"hold unknown"}. Keeps the book turning instead of tying slots up.`,"#f778ba"]
   ].filter(Boolean);
+  if(threeYear)choices.push(["Best over 3 years",threeYear,"Three-year replay with more than 125 funded trades and at least 80% of the best card’s return (20% relative tolerance).","#00a8a8"]);
   const current={rr:Number(MY_LIMITS.min_risk_reward??3),q:Number(MY_LIMITS.min_quality??25),vs:Number(MY_LIMITS.min_volume_score??1),rv:+MY_LIMITS.min_rvol||0,
     vw:!!+MY_LIMITS.require_above_vwap,atr:!!+MY_LIMITS.require_atr_expanding,st:+MY_LIMITS.max_position_pct||WINNERS_STAKE*100,mo:+MY_LIMITS.max_open||WINNERS_MAXOPEN,
     scope:_pfSavedScope("market")[0]?`Market: ${_pfSavedScope("market").join(", ")}`:_pfSavedScope("sector")[0]?`Sector: ${_pfSavedScope("sector").join(", ")}`:"All markets"};

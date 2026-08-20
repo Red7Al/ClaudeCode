@@ -1,5 +1,17 @@
 Options -Indexes
 
+# Security headers apply at Apache's static-file layer as well as to the Flask CGI responses. CSP is
+# report-only for now: index.html deliberately contains inline script and style, so enforcement needs a
+# later nonce/hash pass rather than risking a blank production page.
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "no-referrer"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+  Header always set Strict-Transport-Security "max-age=31536000"
+  Header always set Content-Security-Policy-Report-Only "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+</IfModule>
+
 RewriteEngine On
 RewriteBase /
 

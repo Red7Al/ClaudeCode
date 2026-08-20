@@ -1792,6 +1792,22 @@ def api_status():
     resp = {"refreshing": _REFRESHING["on"], "generated_utc": snap.get("generated_utc"),
             "count": snap.get("count")}
     if remote_progress:
+        # A completed external worker has published a new immutable snapshot, but _load_snapshot() may
+        # legitimately have returned the local copy from its 60-second metadata-check window.  The browser
+        # reloads as soon as this endpoint says the rebuild is complete; without this forced one-time pull,
+        # that reload simply paints the old records and, most visibly, the old header timestamp.  Restrict
+        # the forced synchronisation to a terminal refresh whose reported generation differs, so ordinary
+        # status polling keeps the cache protection.
+        if (remote_progress.get("status") == "completed"
+                and remote_progress.get("generated_utc")
+                and remote_progress.get("generated_utc") != snap.get("generated_utc")):
+            try:
+                snap, _meta, _changed = _snapshot_store.pull_current(SNAPSHOT, force=True)
+                resp.update({"generated_utc": snap.get("generated_utc"), "count": snap.get("count")})
+            except Exception as exc:
+                # Keep the verified local snapshot available.  A later page/API request retries the normal
+                # synchronisation path; do not turn a successfully completed external refresh into a UI error.
+                log.warning("could not synchronise completed Scanner snapshot: %s", exc)
         active = remote_progress.get("status") in {"queued", "running", "publishing", "history"}
         resp.update({"refreshing": active, "refresh_id": remote_progress.get("refresh_id"),
                      "worker": remote_progress.get("worker") or "GitHub Actions",
@@ -3467,7 +3483,10 @@ def api_best_settings_history():
                     "history": web_store.list_best_settings_history(name, 90)})
 
 
-_SLBARS = {"ts": 0.0, "by_tk": None}
+# Bar cache PER WINDOW LENGTH (2026-08-18). Was a single slot shared by the stop-loss report and the
+# winners replay, which was fine while both were fixed at twelve months. Once a 3-year window exists,
+# one slot would serve a 3-year replay from 1-year bars and manufacture stop-outs that never happened.
+_SLBARS = {}
 
 
 def _winners_sl_rows(threshold_pct):
@@ -3482,8 +3501,11 @@ def _winners_sl_rows(threshold_pct):
     if thr > 0:
         # Load the bars we need once, keyed by ticker (cached 10 min). Only when the feature is on.
         now = _time.time()
-        if _SLBARS["by_tk"] is not None and now - _SLBARS["ts"] < _SQA_TTL:
-            by_tk = _SLBARS["by_tk"]
+        # Own slot in the per-window cache. This report is always twelve months, so it takes "y1" -- the
+        # same slot the default winners replay uses, which is correct because the window is identical.
+        _slot = _SLBARS.setdefault("y1", {"ts": 0.0, "by_tk": None})
+        if _slot["by_tk"] is not None and now - _slot["ts"] < _SQA_TTL:
+            by_tk = _slot["by_tk"]
         else:
             # One bulk query for every bar in the window (all trades trigger within the last 12 months, so
             # their forward paths live in [cut12, now]) — 1000+ per-ticker round-trips were ~80s.
@@ -3499,7 +3521,7 @@ def _winners_sl_rows(threshold_pct):
                 if hi is None or lo is None or cl is None:
                     continue
                 by_tk.setdefault(tk, []).append((str(bd), float(hi), float(lo), float(cl)))
-            _SLBARS.update(ts=now, by_tk=by_tk)
+            _slot.update(ts=now, by_tk=by_tk)
     out = []
     for r in rows:
         plain = r["return_pct"]
@@ -3572,7 +3594,7 @@ def _winner_run_bars(by_ticker, ticker, triggered_date):
     return [b for b in by_ticker.get(ticker, []) if str(b[0])[:10] > td]
 
 
-def _winners_run_rows(threshold_pct, stop_pct=0):
+def _winners_run_rows(threshold_pct, stop_pct=0, years=1):
     """Every 12-month tradeable trade with its plain return% AND the return%/outcome it WOULD have had if we
     did NOT sell at target but let it RUN — re-walk with the target exit DISABLED, so the position keeps
     trailing past target and exits only on the trailing stop, the hard stop, or the window end.
@@ -3582,27 +3604,36 @@ def _winners_run_rows(threshold_pct, stop_pct=0):
     import datetime as _dt
     thr = (float(threshold_pct or 0) or 0) / 100.0
     sthr = (float(stop_pct or 0) or 0) / 100.0
-    cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
-    rows = sorted((r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cut12),
+    # Window length in YEARS (user 2026-08-18: "add a card on best settings for best over three years").
+    # Default 1 so every existing caller keeps the twelve-month population it has always had; only the
+    # three-year card asks for more. Measured 2026-08-18: 1y = 3,866 rows / 3,104 resolved, 3y = 11,731 /
+    # 10,831. price_history retains 4.5 years, so a 3y window is covered -- had yesterday's prune gone to
+    # 2 years instead of 4.5 this card could not exist.
+    years = max(1.0, min(4.0, float(years or 1)))
+    cutoff = (_dt.date.today() - _dt.timedelta(days=int(365 * years))).isoformat()
+    rows = sorted((r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cutoff),
                   key=lambda r: (r.get("trig_date") or ""))
-    # Reuse the SL report's bar cache (same window / shape).
+    # Bar cache is keyed by WINDOW. It used to be shared outright with the stop-loss report, which was
+    # safe only while both were fixed at twelve months; serving a 3-year request from a 1-year cache would
+    # silently truncate every older trade's forward path and report stop-outs that never happened.
     now = _time.time()
-    if _SLBARS["by_tk"] is not None and now - _SLBARS["ts"] < _SQA_TTL:
-        by_tk = _SLBARS["by_tk"]
+    slot = _SLBARS.setdefault(f"y{years:g}", {"ts": 0.0, "by_tk": None})
+    if slot["by_tk"] is not None and now - slot["ts"] < _SQA_TTL:
+        by_tk = slot["by_tk"]
     else:
         by_tk = {}
         from db_pool import get_db
         db = get_db()
         try:
             raw = db.run("select ticker, bar_date, high, low, close from price_history "
-                         "where bar_date >= :d order by ticker, bar_date", d=cut12) or []
+                         "where bar_date >= :d order by ticker, bar_date", d=cutoff) or []
         finally:
             db.close()
         for tk, bd, hi, lo, cl in raw:
             if hi is None or lo is None or cl is None:
                 continue
             by_tk.setdefault(tk, []).append((str(bd), float(hi), float(lo), float(cl)))
-        _SLBARS.update(ts=now, by_tk=by_tk)
+        slot.update(ts=now, by_tk=by_tk)
     vsmap = _volscore_trigger_map()
     vfmap = _volscore_trigger_feature_map()
     out = []
@@ -3763,7 +3794,13 @@ def api_winners_run():
         if thr in (None, ""):
             thr = "4"     # distance below price once target is reached (user 2026-08-16)
         stop = request.args.get("stop") or "0"
-        rows = _winners_run_rows(thr, stop)
+        # `years` = replay window (user 2026-08-18, three-year card). Default 1 keeps every existing
+        # caller on the twelve-month population.
+        try:
+            years = max(1.0, min(4.0, float(request.args.get("years", 1))))
+        except (TypeError, ValueError):
+            years = 1.0
+        rows = _winners_run_rows(thr, stop, years)
         def _number(name, default, low, high):
             try:
                 return min(high, max(low, float(request.args.get(name, default))))
@@ -4034,10 +4071,14 @@ def api_winners():
     return% — the SAME definition the Performance report uses. The frontend applies a 2%-of-the-running-wallet
     stake to compound the £. Chronological so the wallet can be built oldest-first."""
     import datetime as _dt
-    payload = {"rows": [], "months": 12, "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
     try:
-        cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
-        rows = [r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cut12]
+        years = max(1, min(4, int(request.args.get("years", "1"))))
+    except (TypeError, ValueError):
+        years = 1
+    payload = {"rows": [], "months": years * 12, "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
+    try:
+        cutoff = (_dt.date.today() - _dt.timedelta(days=365 * years)).isoformat()
+        rows = [r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cutoff]
         rows.sort(key=lambda r: (r.get("trig_date") or ""))
         vsmap = _volscore_trigger_map()   # per-trigger VolumeScore for the ledger Vol column (P-03, 2026-07-27)
         vfmap = _volscore_trigger_feature_map()
