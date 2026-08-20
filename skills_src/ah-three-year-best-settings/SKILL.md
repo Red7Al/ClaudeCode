@@ -16,6 +16,12 @@ Three-year recommendations are a primary trading-analysis result. They must be c
 - Apply the user-approved threshold after optimisation: a three-year recommendation must fund more than 125 trades and retain at least 80% of the best annual card's return. If it does not qualify, do not show it as a trader recommendation.
 - If no recommendation qualifies, preserve the calculated result in auditable evidence or diagnostics; do not fill the trader-facing card grid with a non-actionable rejection message.
 
+## All-card and daily validation
+
+- Apply the same full-grid principle independently to every Best Settings objective (return/drawdown, growth, broad evidence, win/loss, capital efficiency, duration, and funded-trade bands). A card may reuse cached replay results, but it must not inherit a small finalist list selected for another card's objective.
+- Run a daily server-side validation after the squeeze dataset refresh. Store an auditable snapshot for each card: dataset generation, window, searched grid dimensions and candidate count, selected enforceable configuration, return, drawdown, funded/eligible counts, and whether the card was withheld by its rule.
+- The daily validator must fail visibly if the retained history, required signal fields, or replay input is incomplete. It must not silently retain yesterday's recommendation as if it had been recalculated.
+
 ## Verification before handoff
 
 1. Validate the complete inline JavaScript syntax, not only extracted functions.

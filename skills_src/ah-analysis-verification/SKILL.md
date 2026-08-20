@@ -5,7 +5,7 @@ description: Verify trading-analysis results before they are presented, stored, 
 
 # Analysis verification
 
-Never present a computed trading result as “best”, “optimal”, “verified”, or actionable without evidence that the calculation searched the intended population and configuration space.
+Never present a computed trading result as "best", "optimal", "verified", or actionable without evidence that the calculation searched the intended population and configuration space.
 
 ## Before presenting analysis
 
