@@ -120,12 +120,13 @@ jobs:
           printf '%s\n' "$IONOS_SSH_KEY" > "$key"
           chmod 600 "$key"
           ssh_opts=(-i "$key" -p "$IONOS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
-          scp_opts=(-i "$key" -P "$IONOS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
           remote="${IONOS_USER}@${IONOS_HOST}"
           target="${IONOS_DIR}/hvf_web/snapshot.json"
           tmp="${target}.tmp-${GITHUB_RUN_ID}"
           echo "Uploading the completed snapshot to IONOS fallback: ${remote}:${target}"
-          scp "${scp_opts[@]}" hvf_web/snapshot.json "${remote}:${tmp}"
+          # Modern scp defaults to SFTP, which can apply a different chroot from the shell used by SSH
+          # on IONOS shared hosting. Stream over the already validated SSH route instead.
+          ssh "${ssh_opts[@]}" "$remote" "umask 077; cat > '$tmp'" < hvf_web/snapshot.json
           ssh "${ssh_opts[@]}" "$remote" "set -eu; test -s '$tmp'; python3 -c \"import json; json.load(open('$tmp', encoding='utf-8'))\"; mv -f '$tmp' '$target'"
           echo "IONOS fallback snapshot installed atomically"
           expected=$(python -c "import json; print(json.load(open('hvf_web/snapshot.json', encoding='utf-8'))['generated_utc'])")

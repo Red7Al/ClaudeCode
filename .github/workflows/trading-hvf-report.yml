@@ -114,11 +114,12 @@ jobs:
           printf '%s\n' "$IONOS_SSH_KEY" > "$key"
           chmod 600 "$key"
           ssh_opts=(-i "$key" -p "$IONOS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
-          scp_opts=(-i "$key" -P "$IONOS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
           remote="${IONOS_USER}@${IONOS_HOST}"
           target="${IONOS_DIR}/hvf_web/snapshot.json"
           tmp="${target}.tmp-${GITHUB_RUN_ID}"
-          scp "${scp_opts[@]}" hvf_web/snapshot.json "${remote}:${tmp}"
+          # Use SSH streaming rather than SFTP-backed scp: IONOS applies the validated shell path
+          # consistently to SSH, whereas its SFTP view may be chrooted differently.
+          ssh "${ssh_opts[@]}" "$remote" "umask 077; cat > '$tmp'" < hvf_web/snapshot.json
           ssh "${ssh_opts[@]}" "$remote" "set -eu; test -s '$tmp'; python3 -c \"import json; json.load(open('$tmp', encoding='utf-8'))\"; mv -f '$tmp' '$target'"
           expected=$(python -c "import json; print(json.load(open('hvf_web/snapshot.json', encoding='utf-8'))['generated_utc'])")
           live=$(curl --fail --silent --show-error --retry 3 "${IONOS_SITE%/}/api/status" | python -c "import json,sys; print(json.load(sys.stdin).get('generated_utc',''))")
