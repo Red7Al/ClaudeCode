@@ -1,0 +1,3 @@
+interface:
+  display_name: "Analysis verification"
+  short_description: "Validate trading analysis before it is used"
