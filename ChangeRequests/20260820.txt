@@ -1,0 +1,20 @@
+Date: 2026-08-20
+Timezone: Europe/London
+Contents: Outstanding and deferred requests
+
+## Testing and quality
+
+1. Time: 13:02:00
+   Request: Failing cron jobs also.
+   Evidence: GitHub Actions runs 32335857828 (HVF Daily Report, 2026-08-20) and 32287758396 (Scanner Snapshot Publish, 2026-08-19), plus repeated earlier runs, fail after the workload completes when publish_scanner_snapshot.py raises SnapshotStoreError: could not inspect Storage bucket (402). Recent Session Watchdog, Social Feed Monitor, UK HVF Watch, and Order Bridge runs are succeeding. The failure is an external Supabase Storage billing/project-state dependency, not a cron expression or local scheduler defect.
+   Status: blocked
+
+2. Time: 13:18:00
+   Request: Whilst Supabase is causing an issue through the end of August, use IONOS as the best way forward; stop leaving this sort of work partially completed. Add a durable process or skill guard against incomplete operational handoffs.
+   Result: Added atomic IONOS fallback publication and live `/api/status` timestamp verification to both Scanner Snapshot Publish and HVF Daily Report workflows. Added end-to-end closure rules to `skills_src/ah-change-control/SKILL.md` and `skills_src/ah-deploy/SKILL.md`. Temporary GitHub Actions secrets were provisioned from the approved local `.ionos.env` connection and should remain active through 2026-08-31; later migration to Supabase remains planned. Verification run 32367978348 is currently scanning.
+   Status: in progress
+
+3. Time: 2026-08-20
+   Request: Guardian One — cover page.
+   Result: Recorded as a separate report-formatting item; this repository contains the trading scanner, not the Guardian One report generator.
+   Status: requested
