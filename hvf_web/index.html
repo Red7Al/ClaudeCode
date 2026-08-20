@@ -4598,7 +4598,11 @@ function _bestSettingsByFundedTrades(pool,min,max){
   return [...(pool||[])].filter(x=>Number(x.n)>min&&(!max||Number(x.n)<=max))
     .sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
 }
-function renderBestCombo(all){
+let _bestDecisionRows=null, _bestCardCapacity=null, _bestSettingsResizeTimer=null;
+const bestCardCapacity=()=>window.matchMedia("(max-width: 600px)").matches?6:9;
+function renderBestCombo(all,{recordSnapshot=true}={}){
+  _bestDecisionRows=all;
+  _bestCardCapacity=bestCardCapacity();
   const box=$("ordp-bestcombo"); if(!box)return;
   const wpRaw=(all||[]).filter(r=>r.perf!=null&&r.trig_date);
   // Dedupe same-instrument/same-day rows (user 2026-08-07, ChangeRequest P-04, e.g. "Domino's Pizza
@@ -4817,6 +4821,17 @@ function renderBestCombo(all){
   const cardOrder=["Best win : loss","Capital efficient","Balanced","Growth","Short Duration","Broad evidence",">250 trades",">125 trades","Best over 3 years","Defensive"];
   if(shortDuration)choices.push(["Short Duration",shortDuration,`Shortest average completed holding period — ${_days(shortDuration)?Math.round(_days(shortDuration))+" days average hold":"hold unknown"}.`,"#58a6ff"]);
   choices.sort((a,b)=>cardOrder.indexOf(a[0])-cardOrder.indexOf(b[0]));
+  // Keep the decision surface compact. If the available recommendations exceed nine, Defensive and the
+  // narrower >125-trade band are deliberately the first candidates removed; neither should displace a
+  // stronger return, duration, capacity or three-year decision card.
+  // Phone-sized screens receive at most six cards; mini iPad and larger retain the nine-card surface.
+  const MAX_BEST_CARDS=_bestCardCapacity;
+  let showUnsupported125=!trades125, showUnsupported250=!trades250;
+  const trimCard=label=>{const i=choices.findIndex(x=>x[0]===label);if(i>=0){choices.splice(i,1);return true;}if(label===">125 trades"&&showUnsupported125){showUnsupported125=false;return true;}return false;};
+  while(choices.length+Number(showUnsupported125)+Number(showUnsupported250)>MAX_BEST_CARDS){
+    if(trimCard("Defensive")||trimCard(">125 trades")||trimCard("Broad evidence"))continue;
+    break;
+  }
   const current={rr:Number(MY_LIMITS.min_risk_reward??3),q:Number(MY_LIMITS.min_quality??25),vs:Number(MY_LIMITS.min_volume_score??1),rv:+MY_LIMITS.min_rvol||0,
     vw:!!+MY_LIMITS.require_above_vwap,atr:!!+MY_LIMITS.require_atr_expanding,st:+MY_LIMITS.max_position_pct||WINNERS_STAKE*100,mo:+MY_LIMITS.max_open||WINNERS_MAXOPEN,
     scope:_pfSavedScope("market")[0]?`Market: ${_pfSavedScope("market").join(", ")}`:_pfSavedScope("sector")[0]?`Sector: ${_pfSavedScope("sector").join(", ")}`:"All markets"};
@@ -4832,10 +4847,10 @@ function renderBestCombo(all){
       <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} funded of ${x.seq.length.toLocaleString()} eligible · ${x.posPeriods}/${x.periods} positive quarters</div>
       <div style="font-size:11px;margin-top:6px">${x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo} max open</div>
       <div class="muted" style="font-size:10px;margin-top:7px;line-height:1.4"><b style="color:var(--fg)">Changes:</b> ${changedFor(x)}</div>
-      <button class="btn" style="margin-top:8px" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">⬇ Apply this configuration</button>
+      <button class="btn" style="margin-top:8px" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">Apply this configuration</button>
     </div></div>`).join('');
   const unsupportedCards=[
-    !trades250&&[">250 trades",250,300,"#a371f7"],!trades125&&[">125 trades",125,150,"#1f6feb"]
+    showUnsupported250&&[">250 trades",250,300,"#a371f7"],showUnsupported125&&[">125 trades",125,150,"#1f6feb"]
   ].filter(Boolean).map(([label,min,max,colour])=>`<div class="fcard" data-choice-unavailable="${label}" style="min-width:240px;flex:1;border-top:3px solid ${colour};opacity:.8" title="No tested annual configuration funded more than ${min} and no more than ${max} trades">
     <h3 style="color:${colour}">${label}</h3><div class="muted" style="font-size:11px;min-height:30px">Evidence threshold not met by the current annual dataset.</div>
     <div class="body"><b style="font-size:15px;color:#d29922">No supported recommendation</b><div class="muted" style="font-size:11px;margin-top:5px">None of the tested configurations funded more than ${min} and no more than ${max} trades. The card remains visible so an evidence shortfall is not mistaken for a missing feature.</div></div>
@@ -4851,7 +4866,7 @@ function renderBestCombo(all){
   // Detail card follows whichever choice is clicked (user 2026-08-07, ChangeRequest P-06); defaults to
   // Balanced on first render, and stays on the same choice across data refreshes where still present.
   selectBestChoice(choices.some(([l])=>l===BEST_SELECTED)?BEST_SELECTED:"Balanced");
-  recordBestSettingsSnapshot({
+  if(recordSnapshot)recordBestSettingsSnapshot({
     dataset_generated:WIN_GENERATED,
     data_through:String((byDate[byDate.length-1]||{}).trig_date||"").slice(0,10),
     model:{wallet:w,minimum_trade:MIN_TRADE,position_pct:WINNERS_STAKE*100,max_open:WINNERS_MAXOPEN,
@@ -4863,6 +4878,13 @@ function renderBestCombo(all){
         positive_quarters:x.posPeriods,quarters:x.periods}})),
   });
 }
+window.addEventListener("resize",()=>{
+  clearTimeout(_bestSettingsResizeTimer);
+  _bestSettingsResizeTimer=setTimeout(()=>{
+    const capacity=bestCardCapacity();
+    if(_bestDecisionRows&&capacity!==_bestCardCapacity)renderBestCombo(_bestDecisionRows,{recordSnapshot:false});
+  },150);
+});
 // Best Settings choice cards (Balanced/Growth/Defensive/Broad evidence/>125 trades/>250 trades): clicking one swaps the detail
 // card + Transaction evidence below to that option (user 2026-08-07, ChangeRequest P-06 — previously only
 // Balanced ever got a detail card, which is why it "looked lost" next to the other three).
@@ -4939,7 +4961,7 @@ async function applyConfigFromReport(cfg, btn){
       if(typeof msyncAll==='function')msyncAll();
       Object.entries(limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v;}});
       if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();
-      if(btn){btn.textContent="✓ Applied — Back Test updated";setTimeout(()=>{btn.disabled=false;btn.textContent="⬇ Apply this configuration";},4000);}
+      if(btn){btn.textContent="✓ Applied — Back Test updated";setTimeout(()=>{btn.disabled=false;btn.textContent="Apply this configuration";},4000);}
       if(typeof renderPreorders==='function')renderPreorders();
       if(typeof render==='function')render();   // Scanner table hard-filters on MY_LIMITS too (P-01 2026-08-11) — same gap as saveLimits(), same fix
       if(typeof _renderPerformance==='function')_renderPerformance();})

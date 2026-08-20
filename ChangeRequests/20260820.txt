@@ -9,6 +9,11 @@ Contents: Outstanding and deferred requests
    Result: In progress. The original instruction was to hide the card when it fails the >125-trade and 80%-of-best threshold.
    Status: in progress
 
+2. Time: 18:45:00
+   Request: Limit Best Settings to no more than nine cards; always consider Best defensive and >125 trades for removal when trimming.
+   Result: In progress. The card renderer caps mini iPad and larger at nine cards and phone-width screens at six, prioritising removal of Defensive, then >125 trades, before lower-priority Broad evidence.
+   Status: in progress
+
 ## Testing and quality
 
 1. Time: 13:02:00
