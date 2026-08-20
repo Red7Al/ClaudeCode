@@ -4800,7 +4800,7 @@ function renderBestCombo(all){
   // Requested display order: win/loss, capital efficient, Short Duration fifth, population cards seventh/eighth,
   // and Defensive last. Sorting presentation does not change any candidate's calculation or replay evidence.
   const cardOrder=["Best win : loss","Capital efficient","Balanced","Growth","Short Duration","Broad evidence",">250 trades",">125 trades","Best over 3 years","Defensive"];
-  if(shortDuration)choices.push(["Short Duration",shortDuration,`Shortest average completed holding period — ${_days(shortDuration)?Math.round(_days(shortDuration))+" days average hold":"hold unknown"}.","#58a6ff"]);
+  if(shortDuration)choices.push(["Short Duration",shortDuration,`Shortest average completed holding period — ${_days(shortDuration)?Math.round(_days(shortDuration))+" days average hold":"hold unknown"}.`,"#58a6ff"]);
   choices.sort((a,b)=>cardOrder.indexOf(a[0])-cardOrder.indexOf(b[0]));
   const current={rr:Number(MY_LIMITS.min_risk_reward??3),q:Number(MY_LIMITS.min_quality??25),vs:Number(MY_LIMITS.min_volume_score??1),rv:+MY_LIMITS.min_rvol||0,
     vw:!!+MY_LIMITS.require_above_vwap,atr:!!+MY_LIMITS.require_atr_expanding,st:+MY_LIMITS.max_position_pct||WINNERS_STAKE*100,mo:+MY_LIMITS.max_open||WINNERS_MAXOPEN,
