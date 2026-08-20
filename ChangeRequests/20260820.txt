@@ -16,7 +16,12 @@ Contents: Outstanding and deferred requests
 
 ## Testing and quality
 
-1. Time: 13:02:00
+1. Time: 19:45:00
+   Request: Hide Scanner header filter controls while the page is loading; make Performance replay-capacity controls unambiguous on narrow screens.
+   Result: In progress.
+   Status: in progress
+
+2. Time: 13:02:00
    Request: Failing cron jobs also.
    Evidence: GitHub Actions runs 32335857828 (HVF Daily Report, 2026-08-20) and 32287758396 (Scanner Snapshot Publish, 2026-08-19), plus repeated earlier runs, fail after the workload completes when publish_scanner_snapshot.py raises SnapshotStoreError: could not inspect Storage bucket (402). Recent Session Watchdog, Social Feed Monitor, UK HVF Watch, and Order Bridge runs are succeeding. The failure is an external Supabase Storage billing/project-state dependency, not a cron expression or local scheduler defect.
    Status: blocked

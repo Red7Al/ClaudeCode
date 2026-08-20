@@ -31,6 +31,10 @@ header h1{font-size:16px;margin:0} .grow{flex:1}
 .ipad-mini :where(#tab-performance,#tab-scanner,#tab-preorders,#tab-orderops,#tab-activity,#tab-mfm){padding-inline:8px}
 .tab.active{background:var(--panel);color:var(--fg);font-weight:600}
 .sqh-loading{color:#d29922!important;font-weight:700;letter-spacing:.02em;animation:sqhPulse .9s ease-in-out infinite alternate}
+/* Header filter controls are contextual. Do not flash Scanner-only controls while the app is still
+   resolving the saved tab and loading its data. */
+body.app-loading #togglefilters,body.app-loading #signalonly,body.app-loading #refresh,body.app-loading #reset,body.app-loading #showall{display:none!important}
+.replay-capacity-control{white-space:nowrap}
 .cfg-defaults-ready{color:var(--muted)!important;font-weight:400!important;letter-spacing:normal!important;animation:none!important}
 @keyframes sqhPulse{from{opacity:.4}to{opacity:1;text-shadow:0 0 10px color-mix(in srgb,#d29922 65%,transparent)}}
 .refreshing,.sqh-loading{color:#d29922!important;font-weight:700;letter-spacing:.02em;animation:sqhPulse .9s ease-in-out infinite alternate}
@@ -521,7 +525,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
-<body>
+<body class="app-loading">
 <header>
   <h1>Squeeze Scanner</h1>
   <!-- #gen, the "snapshot <date>" stamp: when the data was last imported. It has lived here since the
@@ -1409,8 +1413,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <b style="font-size:13px">💷 Replay model</b>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Wallet £ <input id="ordp-wallet" type="number" min="100" step="500" value="10000" style="width:100px;padding:4px 6px" onchange="winnersParamsChange()"></label>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Minimum trade from User Configuration.">Minimum Trade £<b id="ordp-mintrade" style="color:var(--fg)">25</b></label>
-    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Max position size <input id="ordp-stake" type="number" min="0.1" max="100" step="0.5" value="5" style="width:70px;padding:4px 6px" onchange="winnersParamsChange()">%</label>
-    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Default is floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="ordp-maxopen" type="number" min="1" step="1" value="50" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()"></label>
+    <label class="muted replay-capacity-control" style="font-size:12px;display:flex;align-items:center;gap:5px">Max position size <input id="ordp-stake" type="number" min="0.1" max="100" step="0.5" value="5" style="width:70px;padding:4px 6px" onchange="winnersParamsChange()">% of wallet</label>
+    <label class="muted replay-capacity-control" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Default is floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="ordp-maxopen" type="number" min="1" step="1" value="50" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()">at once</label>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ effective Max open positions.">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
     <span class="muted" style="font-size:11px;flex-basis:100%;line-height:1.4">These are wallet and capacity assumptions only. Signal rules (Quality, R:R, VolumeScore, RVOL, VWAP, ATR and market/sector scope) are chosen in <b style="color:var(--fg)">Best settings</b> and saved in <b style="color:var(--fg)">User Configuration</b>.</span>
     <button class="btn" id="ordp-save-defaults" style="padding:4px 10px;font-size:12px" onclick="winnersSaveDefaults()" title="Save Wallet / Max position size / Max open positions as your defaults (Configuration → My trading limits)">💾 Save as my defaults</button>
@@ -1502,8 +1506,8 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <b style="color:var(--fg)">💷 Wallet model</b> <span class="muted">— Stake / Net £ / running Wallet / Open</span>
       <span id="pfw-inputs" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <label class="muted" style="display:flex;align-items:center;gap:5px">Wallet £ <input id="pfw-wallet" type="number" min="100" step="500" value="10000" style="width:100px;padding:4px 6px" onchange="_renderPerformance()"></label>
-        <label class="muted" style="display:flex;align-items:center;gap:5px" title="Each trade stakes this % of the running wallet at that moment (compounding).">Max position size <input id="pfw-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="_renderPerformance()">%</label>
-        <label class="muted" style="display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Default is floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="pfw-maxopen" type="number" min="1" step="1" value="50" style="width:64px;padding:4px 6px" onchange="_renderPerformance()"></label>
+        <label class="muted replay-capacity-control" style="display:flex;align-items:center;gap:5px" title="Each trade stakes this % of the running wallet at that moment (compounding).">Max position size <input id="pfw-stake" type="number" min="0.1" max="100" step="0.5" value="2" style="width:70px;padding:4px 6px" onchange="_renderPerformance()">% of wallet</label>
+        <label class="muted replay-capacity-control" style="display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Default is floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="pfw-maxopen" type="number" min="1" step="1" value="50" onchange="_renderPerformance()">at once</label>
         <span id="pfw-summary" style="font-size:12px"></span>
       </span>
     </div>
@@ -6157,6 +6161,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     fillSel("f_mkt","market");fillSel("f_sec","sector");
     msyncAll();   // options only exist now — repaint the P-08 dropdown buttons (incl. any user defaults)
     render();
+    document.body.classList.remove("app-loading");
     if($("view-instruments"))paintInstruments();   // Instruments reuses this same DATA load (user 2026-08-07, ChangeRequest P-08) — repaint if it's already the active/cached tab
     $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)
     // Introduction example: a real squeeze card — Howden if it's a current setup, else the best triggered name.
@@ -6169,6 +6174,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
   })
   .catch(e=>{ // 401 = no/stale login: clear the token; the login panel appears when a data tab is opened.
     if(e==="auth"){AUTH="";localStorage.removeItem("sq_auth");$("logout").style.display="none";$("loginbtn").style.display="";}
+    document.body.classList.remove("app-loading");
   });
 // Default-sort arrow on first paint (user 2026-07-25, P-03 L39): the click handlers stamp the ▲/▼ on
 // click, but a DEFAULT-sorted column had no arrow until first clicked. Stamp each table's default now —
