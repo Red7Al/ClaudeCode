@@ -23,6 +23,13 @@ env:
   SUPABASE_USER:                    ${{ secrets.SUPABASE_USER }}
   SUPABASE_DB_PASSWORD:             ${{ secrets.SUPABASE_DB_PASSWORD }}
   SUPABASE_SCANNER_PUBLISH_KEY:     ${{ secrets.SUPABASE_SCANNER_PUBLISH_KEY }}
+  # Temporary publication route while Supabase Storage is unavailable. These are the same SSH
+  # connection values used by deploy_ionos.sh; the key must be stored as a multiline Actions secret.
+  IONOS_HOST:                       ${{ secrets.IONOS_HOST }}
+  IONOS_USER:                       ${{ secrets.IONOS_USER }}
+  IONOS_DIR:                        ${{ secrets.IONOS_DIR }}
+  IONOS_PORT:                       ${{ secrets.IONOS_PORT || '22' }}
+  IONOS_SITE:                       ${{ secrets.IONOS_SITE || 'https://www.squeezescanner.cloud' }}
 
 jobs:
   publish:
@@ -46,6 +53,8 @@ jobs:
               sys.exit(1)
           PY
       - name: Build, publish and read-verify immutable Scanner snapshot
+        id: publish
+        continue-on-error: true
         run: python publish_scanner_snapshot.py --build --markets "${{ inputs.markets }}" --source github-actions --refresh-id "${{ inputs.refresh_id || github.run_id }}"
       # Keep the built snapshot even when publication fails (2026-08-17). The scan is the expensive part
       # -- up to two hours of engine plus yfinance -- and publication is a separate, later step that can
@@ -63,3 +72,56 @@ jobs:
           path: hvf_web/snapshot.json
           if-no-files-found: warn
           retention-days: 7
+
+      # Supabase Storage currently returns HTTP 402 after the scan has completed.  During that outage,
+      # publish the same verified local candidate directly to IONOS, where the CGI web tier already has a
+      # last-known-good local fallback.  The remote move is atomic, so a request can never observe a partial
+      # JSON file.  This route is deliberately conditional: normal successful Supabase publications do not
+      # touch IONOS, and a failed build (with no snapshot) cannot masquerade as a successful fallback.
+      - name: Publish failed snapshot to IONOS fallback
+        id: ionos_fallback
+        if: steps.publish.outcome == 'failure' && hashFiles('hvf_web/snapshot.json') != ''
+        continue-on-error: true
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${IONOS_HOST:-}" ] || missing+=(IONOS_HOST)
+          [ -n "${IONOS_USER:-}" ] || missing+=(IONOS_USER)
+          [ -n "${IONOS_DIR:-}" ] || missing+=(IONOS_DIR)
+          [ -n "${IONOS_SSH_KEY:-}" ] || missing+=(IONOS_SSH_KEY)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "IONOS fallback is not configured; missing: ${missing[*]}" >&2
+            exit 1
+          fi
+          key="$RUNNER_TEMP/ionos_snapshot_key"
+          printf '%s\n' "$IONOS_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh_opts=(-i "$key" -p "$IONOS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+          scp_opts=(-i "$key" -P "$IONOS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+          remote="${IONOS_USER}@${IONOS_HOST}"
+          target="${IONOS_DIR}/hvf_web/snapshot.json"
+          tmp="${target}.tmp-${GITHUB_RUN_ID}"
+          echo "Uploading the completed snapshot to IONOS fallback: ${remote}:${target}"
+          scp "${scp_opts[@]}" hvf_web/snapshot.json "${remote}:${tmp}"
+          ssh "${ssh_opts[@]}" "$remote" "set -eu; test -s '$tmp'; python3 -c \"import json; json.load(open('$tmp', encoding='utf-8'))\"; mv -f '$tmp' '$target'"
+          echo "IONOS fallback snapshot installed atomically"
+          expected=$(python -c "import json; print(json.load(open('hvf_web/snapshot.json', encoding='utf-8'))['generated_utc'])")
+          live=$(curl --fail --silent --show-error --retry 3 "${IONOS_SITE%/}/api/status" | python -c "import json,sys; print(json.load(sys.stdin).get('generated_utc',''))")
+          if [ "$live" != "$expected" ]; then
+            echo "IONOS live snapshot mismatch: expected $expected, got ${live:-<empty>}" >&2
+            exit 1
+          fi
+          echo "IONOS live snapshot verified: $live"
+
+      - name: Fail if no snapshot publication succeeded
+        if: always()
+        env:
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          IONOS_OUTCOME: ${{ steps.ionos_fallback.outcome }}
+        run: |
+          if [ "$PUBLISH_OUTCOME" = "failure" ] && [ "$IONOS_OUTCOME" != "success" ]; then
+            echo "Neither Supabase publication nor the IONOS fallback succeeded" >&2
+            exit 1
+          fi

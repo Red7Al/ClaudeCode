@@ -39,6 +39,9 @@ to reproduce it locally.
 6. **Verify where it actually lands** — the Slack channel / the DB / the run log
    (`gh run watch <id>`, or `gh run view <id> --log-failed`). A green run alone is not proof
    the user-visible output is correct.
+   For workflows with a fallback destination, verify that fallback too: confirm the artifact was installed
+   at its final path and compare the live consumer's generated timestamp or content with the run's output.
+   An upload-artifact step is only preservation, not publication.
 7. **Roll back if needed:** `git revert -m 1 <merge-sha> && git push origin main`, then
    re-run the workflow. To amend instead, push a fix to `main` and re-run.
 
