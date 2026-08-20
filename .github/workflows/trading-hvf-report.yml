@@ -33,6 +33,26 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
+      # Fail before the full report scan if the temporary fallback points at the wrong domain directory.
+      - name: Check IONOS fallback destination
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${IONOS_HOST:-}" ] || missing+=(IONOS_HOST)
+          [ -n "${IONOS_USER:-}" ] || missing+=(IONOS_USER)
+          [ -n "${IONOS_DIR:-}" ] || missing+=(IONOS_DIR)
+          [ -n "${IONOS_SSH_KEY:-}" ] || missing+=(IONOS_SSH_KEY)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "IONOS fallback is not configured; missing: ${missing[*]}" >&2
+            exit 1
+          fi
+          key="$RUNNER_TEMP/ionos_hvf_snapshot_key"
+          printf '%s\n' "$IONOS_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh -i "$key" -p "$IONOS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            "${IONOS_USER}@${IONOS_HOST}" "test -d '$IONOS_DIR/hvf_web' && test -f '$IONOS_DIR/hvf_web/snapshot.json'"
       - run: pip install -r requirements.txt
       - run: python run_schema.py
         env:
