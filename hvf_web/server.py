@@ -772,6 +772,8 @@ def api_config():
                 _cs.set_value(f"exec_{src}", "true" if on else "false", updated_by=name)
                 _wu.log_event(name, f"Trade execution for {src} switched {'ON' if on else 'OFF'}")
     if "bridge" in body:
+        if not _cs.PREORDERS_TO_IG_ENABLED:
+            return jsonify({"ok": False, "error": "Pre-orders to IG are disabled for all users."}), 409
         # This is a GLOBAL live-order switch for the shared bridge, not a personal preference.
         # UI visibility is not authorisation: only an administrator may change it.
         if not _wu.is_admin(name):
@@ -2196,6 +2198,8 @@ def api_place_order():
     for the 2-hour bridge. MONEY PATH: subscription must allow pre-orders; the order uses the user's
     OWN IG account (owner = env creds; a non-owner must have supplied their own IG credentials — else
     blocked so no one trades on another account). Goes through the same guarded place_hvf_order_from_sig."""
+    if not _cs.PREORDERS_TO_IG_ENABLED:
+        return jsonify({"ok": False, "error": "Pre-orders to IG are disabled for all users."}), 503
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
     if not name:
         return jsonify({"error": "login required"}), 401

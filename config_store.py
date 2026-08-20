@@ -33,6 +33,7 @@ _schema_ready = False
 # The momentum trade-execution sources the Config tab offers (the *_MONITOR sessions). The squeeze
 # bridge (WEB_BRIDGE) is gated separately in Trading (Squeeze) — user 2026-07-03: not in Momentum.
 EXEC_SOURCES = ["AUS_MONITOR", "UK_MONITOR", "US_MONITOR"]
+PREORDERS_TO_IG_ENABLED = False
 EXEC_DESCRIPTIONS = {
     "AUS_MONITOR": "Automatic trading in the Australian session (AUS equity market + overnight FX/commodities)",
     "UK_MONITOR":  "Automatic trading in the UK session (FTSE 100/250 equities)",
@@ -227,6 +228,8 @@ def monitor_enabled(session_name: str) -> bool:
     DB failure fails OPEN — a config read error must never silently stop trading."""
     if not session_name:
         return True
+    if session_name in ("WEB_BRIDGE", "WEB_MANUAL") and not PREORDERS_TO_IG_ENABLED:
+        return False
     return get_value(f"exec_{session_name}", "true").lower() != "false"
 
 
