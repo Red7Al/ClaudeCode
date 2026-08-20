@@ -36,3 +36,8 @@ Contents: Completed requests
    Request: Correct all outstanding Best Settings UI fixes: evidence-table column placement, requested card order, Short Duration and Defensive-card behaviour, and visible three-year evidence status.
    Result: Added Short Duration, moved card order to Best win:loss, Capital efficient, Balanced, Growth, Short Duration, Broad evidence, >250, >125, three-year, Defensive, and added a visible three-year evidence-status card when no recommendation qualifies. Decision / constraint and Open after decision now move to the far right of the evidence table. Built, deployed and checked the public homepage (HTTP 200) and API (1,421 records; `generated_utc` `2026-08-20T15:59:57.838029+00:00`).
    Status: complete
+
+6. Time: 18:08:50
+   Request: Restore login and tab navigation after the deployed Best Settings UI update.
+   Result: Diagnosed a missing closing backtick in the Short Duration card text, which caused a page-wide `Unexpected identifier 'Market'` JavaScript syntax error and prevented every client-side handler from loading. Corrected, tested with the full inline-script syntax check and UI regression suite, deployed to IONOS, and confirmed the browser no longer reports the syntax error.
+   Status: complete
