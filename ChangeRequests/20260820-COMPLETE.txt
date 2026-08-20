@@ -1,0 +1,24 @@
+Date: 2026-08-20
+Timezone: Europe/London
+Contents: Completed requests
+
+## Bug fix
+
+1. Time: 12:46:04
+   Request: Work with latest change request file; investigate the first outstanding snapshot date and time refresh issue in 20260818-ToDo-Claude.txt.
+   Result: The completed external refresh could race the server's 60-second verified-snapshot metadata cache: the browser immediately reloaded and displayed the old records and timestamp. `/api/status` now forces one verified pull only when the worker's completed generated time differs from the cached snapshot, before returning completion to the browser. Claude.
+   Status: complete
+
+## Research and decisions
+
+2. Time: 13:10:00
+   Request: I thought you were using IONOS whilst Supabase is blocked.
+   Result: IONOS is the web host and does retain a local last-known-good `hvf_web/snapshot.json` fallback. However, GitHub Actions performs the heavy scan and the workflow currently publishes the fresh immutable snapshot only to Supabase Storage. Failed publishes upload a GitHub Actions artifact, but there is no automatic artifact-to-IONOS transfer, so IONOS continues serving its last local snapshot. Claude.
+   Status: complete
+
+## Testing and quality
+
+3. Time: 13:18:00
+   Request: Whilst Supabase is causing an issue through the end of August, use IONOS as the best way forward; stop leaving this sort of work partially completed. Add a durable process or skill guard against incomplete operational handoffs.
+   Result: Added IONOS fallback publication with a live `/api/status` timestamp check and preflight validation of the configured host directory to both Scanner Snapshot Publish and HVF Daily Report. The failed verification runs 32367978348 and 32385881890 established that IONOS's SFTP-backed `scp` path differs from its verified SSH shell path; fallback transfers now stream atomically over SSH instead. The completed snapshot artifact from run 32385881890 was atomically installed during immediate recovery. Production `/api/status` returned 1,421 records with `generated_utc` `2026-08-20T15:59:57.838029+00:00`, matching the artifact exactly.
+   Status: complete
