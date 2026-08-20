@@ -4830,6 +4830,9 @@ function renderBestCombo(all){
     <div class="body"><b style="font-size:15px;color:#d29922">No supported recommendation</b><div class="muted" style="font-size:11px;margin-top:5px">No tested three-year configuration currently funds more than 125 trades while retaining at least 80% of the best annual card’s return.</div></div></div>`:"";
   box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearEvidence}</div>
   <div class="card" style="margin:0" id="best-detail"></div>`;
+  // Defensive is intentionally last. If responsive wrapping leaves it alone on a final row, remove it
+  // rather than spending an entire row on the least-useful alternative (user 2026-08-18).
+  requestAnimationFrame(()=>{const grid=box.querySelector('.fgrid'),def=grid&&grid.querySelector('[data-choice="Defensive"]');if(!grid||!def)return;const rowPeers=[...grid.children].filter(c=>c!==def&&c.offsetTop===def.offsetTop);if(!rowPeers.length){def.remove();if(BEST_SELECTED==="Defensive")selectBestChoice("Balanced");}});
   BEST_CHOICES=choices; BEST_MODEL_W=w;
   // Detail card follows whichever choice is clicked (user 2026-08-07, ChangeRequest P-06); defaults to
   // Balanced on first render, and stays on the same choice across data refreshes where still present.
