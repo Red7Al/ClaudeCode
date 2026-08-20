@@ -134,6 +134,7 @@
 # ======================================================================================================================
 
 import os
+import json
 import sys
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 import logging
@@ -1089,10 +1090,37 @@ def _publish_scanner_snapshot(all_results: dict) -> None:
         log.info("Scanner snapshot publication skipped (publisher key not configured in this runtime).")
         return
     from hvf_web.build_snapshot import build
-    from scanner_snapshot_store import publish_snapshot, verify_current
+    from scanner_snapshot_store import SnapshotStoreError, publish_snapshot, verify_current
     snapshot = build(scan_results=all_results)
-    meta = publish_snapshot(snapshot, source="hvf-daily-report")
-    verified = verify_current()
+    # Keep the completed candidate available for the workflow's IONOS fallback if Storage is unavailable.
+    # The file is written atomically so the artifact and any direct host upload can only contain valid JSON.
+    snapshot_path = os.path.join(os.path.dirname(__file__), "hvf_web", "snapshot.json")
+    snapshot_tmp = snapshot_path + f".tmp-{os.getpid()}"
+    try:
+        with open(snapshot_tmp, "w", encoding="utf-8") as fh:
+            json.dump(snapshot, fh, indent=2, default=str)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(snapshot_tmp, snapshot_path)
+    finally:
+        try:
+            if os.path.exists(snapshot_tmp):
+                os.unlink(snapshot_tmp)
+        except OSError:
+            pass
+    try:
+        meta = publish_snapshot(snapshot, source="hvf-daily-report")
+        verified = verify_current()
+    except SnapshotStoreError as exc:
+        if "(402)" not in str(exc):
+            raise
+        # The scan itself and the report remain useful during the known Supabase Storage outage. The
+        # workflow sees this marker and must complete the IONOS publication before it can be green.
+        marker = os.path.join(os.path.dirname(__file__), "hvf_web", ".ionos-fallback-required")
+        with open(marker, "w", encoding="utf-8") as fh:
+            fh.write(str(exc))
+        log.error("Supabase Storage unavailable (%s); requesting IONOS snapshot fallback", exc)
+        return
     if verified.get("sha256") != meta.get("sha256"):
         raise RuntimeError("Scanner snapshot publication did not read-verify the new version")
     from squeeze_history import refresh_daily

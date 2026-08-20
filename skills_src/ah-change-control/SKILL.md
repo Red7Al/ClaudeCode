@@ -67,6 +67,16 @@ TAIL = re.compile(r"\[(completed|in[\s-]?progress|not[\s-]?started|cancelled|can
 # ...replicate _cr_status; assert cr_status(line) == "In Progress"
 ```
 
+## 3a. End-to-end closure — no half-complete work
+
+For operational changes, an intermediate artifact is not completion. Trace the result through the final
+consumer and name the handoff explicitly: build -> publish -> install -> live verification. If the primary
+destination is unavailable, either implement and test the declared fallback in the same change or leave the
+request `In Progress`/`Blocked` with the missing handoff recorded. Do not mark a workflow green merely because
+an artifact was uploaded; a fallback artifact must be installed where the user-facing system reads it, and
+the live generated timestamp/content must be checked afterward. Before closing, record the exact verification
+command or run URL and the remaining external dependency, if any.
+
 ## 4. Priority scheme (guideline legend at the top of the file — NOT actions)
 
 `P-01` bugs · `P-02` queries · `P-06` move/remove/change · `P-10` new functionality · `P-20` docs ·
