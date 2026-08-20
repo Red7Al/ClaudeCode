@@ -22,3 +22,10 @@ Contents: Completed requests
    Request: Whilst Supabase is causing an issue through the end of August, use IONOS as the best way forward; stop leaving this sort of work partially completed. Add a durable process or skill guard against incomplete operational handoffs.
    Result: Added IONOS fallback publication with a live `/api/status` timestamp check and preflight validation of the configured host directory to both Scanner Snapshot Publish and HVF Daily Report. The failed verification runs 32367978348 and 32385881890 established that IONOS's SFTP-backed `scp` path differs from its verified SSH shell path; fallback transfers now stream atomically over SSH instead. The completed snapshot artifact from run 32385881890 was atomically installed during immediate recovery. Production `/api/status` returned 1,421 records with `generated_utc` `2026-08-20T15:59:57.838029+00:00`, matching the artifact exactly.
    Status: complete
+
+## Executable/installation/release
+
+4. Time: 16:24:00
+   Request: Deploy the completed Best Settings card changes so users receive the latest UI.
+   Result: Built and deployed the current 130-file IONOS release while retaining the existing snapshot cache. The public homepage returned HTTP 200 and contains the Best over 3 years card; `/api/status` returned 1,421 records with `generated_utc` `2026-08-20T15:59:57.838029+00:00`.
+   Status: complete
