@@ -23,7 +23,7 @@ Contents: Outstanding and deferred requests
 
 2. Time: 20:15:00
    Request: Disable Pre-orders to my IG for every user.
-   Result: In progress. The UI entry and all server-side placement routes will be disabled; existing orders and history will be preserved.
+   Result: In progress. Manual Place-on-IG is disabled for all users; the separate automatic bridge remains a Settings-controlled feature and is currently off. Existing orders and history are preserved.
    Status: in progress
 
 3. Time: 13:02:00

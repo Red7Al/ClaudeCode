@@ -228,7 +228,7 @@ def monitor_enabled(session_name: str) -> bool:
     DB failure fails OPEN — a config read error must never silently stop trading."""
     if not session_name:
         return True
-    if session_name in ("WEB_BRIDGE", "WEB_MANUAL") and not PREORDERS_TO_IG_ENABLED:
+    if session_name == "WEB_MANUAL" and not PREORDERS_TO_IG_ENABLED:
         return False
     return get_value(f"exec_{session_name}", "true").lower() != "false"
 
