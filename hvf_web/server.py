@@ -2200,7 +2200,7 @@ def api_place_order():
     blocked so no one trades on another account). Goes through the same guarded place_hvf_order_from_sig."""
     import config_store as _cs
     if not _cs.PREORDERS_TO_IG_ENABLED:
-        return jsonify({"ok": False, "error": "Pre-orders to IG are disabled for all users."}), 503
+        return jsonify({"ok": False, "error": "Pre-orders to IG are disabled for all users."}), 403
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
     if not name:
         return jsonify({"error": "login required"}), 401
