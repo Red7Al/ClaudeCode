@@ -11,7 +11,7 @@ Contents: Outstanding and deferred requests
 
 2. Time: 13:18:00
    Request: Whilst Supabase is causing an issue through the end of August, use IONOS as the best way forward; stop leaving this sort of work partially completed. Add a durable process or skill guard against incomplete operational handoffs.
-   Result: Added atomic IONOS fallback publication and live `/api/status` timestamp verification to both Scanner Snapshot Publish and HVF Daily Report workflows. Added end-to-end closure rules to `skills_src/ah-change-control/SKILL.md` and `skills_src/ah-deploy/SKILL.md`. Temporary GitHub Actions secrets were provisioned from the approved local `.ionos.env` connection and should remain active through 2026-08-31; later migration to Supabase remains planned. Verification run 32367978348 is currently scanning.
+   Result: The first verification run (32367978348) built successfully but exposed an incorrect GitHub `IONOS_DIR` secret at fallback upload time. The secret now matches the read-verified live directory, and both Scanner Snapshot Publish and HVF Daily Report validate that directory before their expensive scan. Replacement run 32385881890 passed that preflight and is currently building; it must complete the atomic host replacement and live `/api/status` timestamp comparison before this request can close.
    Status: in progress
 
 3. Time: 2026-08-20
