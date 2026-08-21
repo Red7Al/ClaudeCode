@@ -137,10 +137,17 @@ jobs:
             exit 1
           fi
 
-      # Authoritative Best Settings review: this is intentionally after the report's final publication
-      # guard.  It is a read-only historical replay and persistence of its audit evidence; it does not
-      # change user settings or place orders.  A missing trigger-time RVOL/VWAP/ATR/VolumeScore blocks
-      # the recommendation instead of letting a browser silently show incomplete evidence.
+      # This must run in the scanner worker, after the current snapshot has been produced.  The separate
+      # overnight broker-price audit has no snapshot and must never write a misleading zero-row result.
+      - name: Audit and repair current Instrument metrics
+        if: success()
+        run: python run_data_quality_audit.py --current-metrics-only
+        env:
+          SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      # Authoritative Best Settings review follows the current-metric repair, so its evidence cannot
+      # describe a different post-refresh data state.
       - name: Run persisted Best Settings full-grid audit
         if: success()
         run: python run_best_settings_audit.py

@@ -443,6 +443,11 @@ def _audit_current_instrument_metrics() -> dict:
     import web_store
 
     snap = server._load_snapshot()
+    if not snap.get("records"):
+        # This audit is meaningful only in the scanner worker after it has built a snapshot.  Persisting
+        # an empty green report from the standalone nightly price-audit runner would conceal the fact
+        # that no instrument rows were assessed.
+        raise RuntimeError("current instrument metric audit requires the daily scanner snapshot")
     metrics = server._live_instrument_metrics(snap)
     repairable = [r for r in snap.get("records", [])
                   if metrics.get(r.get("ticker"), {}).get("status")
@@ -490,6 +495,9 @@ def _audit_current_instrument_metrics() -> dict:
 
 def main():
     args = sys.argv[1:]
+    if args == ["--current-metrics-only"]:
+        _audit_current_instrument_metrics()
+        return
     # Epic-lookup diagnostic — run BEFORE the audit-batch parsing so it never triggers a price audit.
     if args and args[0] == "--lookup-epic":
         _lookup_epics(args[1:])
@@ -546,8 +554,6 @@ def main():
         log.info("Absurd outcomes: none")
     if fresh:
         _post_absurd_slack(fresh, len(bad), _WINDOW_DAYS)
-
-    _audit_current_instrument_metrics()
 
     log.info(f"Audit complete: {len(rows)} tickers, allowance remaining {remaining}")
     try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)
