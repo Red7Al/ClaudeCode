@@ -104,6 +104,16 @@ def test_order_ops_enrichment_keeps_the_servers_values():
     assert out["name"] == "International Workplace Group PLC", "name still comes from the snapshot"
 
 
+def test_backtest_summary_requires_exact_transaction_evidence_reconciliation():
+    source = _extract("pfLedgerReconciliation")
+    preamble = ""
+    rows = "[{perf:10,_stake:100,_net:10},{perf:-5,_stake:100,_net:-5},{perf:2,_stake:null,_net:null}]"
+    ok = run_js(preamble, source, f"pfLedgerReconciliation({rows},{{wallet:1000,endWallet:1005,taken:2,skipped:1,netTotal:5}})")
+    bad = run_js(preamble, source, f"pfLedgerReconciliation({rows},{{wallet:1000,endWallet:1006,taken:2,skipped:1,netTotal:5}})")
+    assert ok["ok"] is True
+    assert bad["ok"] is False
+
+
 def test_order_ops_enrichment_falls_back_to_the_snapshot():
     """The snapshot is still the fallback: where the server returned nothing, use it."""
     preamble = textwrap.dedent("""

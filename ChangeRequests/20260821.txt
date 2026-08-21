@@ -1,0 +1,8 @@
+HVF Web Application — Change Requests
+
+## Testing and quality
+
+1. Time: 09:00:00
+   Request: Reconcile every Back Test summary figure with its funded transaction-evidence rows.
+   Result: In progress. A replay-level reconciliation gate and regression coverage are being added; a mismatch will withhold the headline result.
+   Status: in progress

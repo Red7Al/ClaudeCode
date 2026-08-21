@@ -5558,7 +5558,7 @@ function _pfWalletLedger(sel){
   const wp=sel.filter(r=>r.perf!=null);
   const seq=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
   const exitOf=r=>_pfExitDate(r,false);   // when the slot frees - one shared rule (2026-08-14, P-03)
-  let w=wallet,reserved=0,taken=0,skipped=0;const open=[];
+  let w=wallet,reserved=0,taken=0,skipped=0,netTotal=0;const open=[];
   const settle=td=>{open.sort((a,b)=>a.exit.localeCompare(b.exit));
     while(open.length&&open[0].exit<=td){const x=open.shift();w+=x.net;reserved=Math.max(0,reserved-x.margin);}};
   for(const r of seq){const td=r.trig_date||'';settle(td);
@@ -5572,9 +5572,21 @@ function _pfWalletLedger(sel){
       // stay blank because nothing was staked and nothing was won or lost.
       r._cum=w; r._open=open.length; skipped++; continue;}
     const net=stake*r.perf/100;reserved+=margin;open.push({exit:exitOf(r),margin,net});
-    taken++;r._open=open.length;r._stake=stake;r._net=net;r._cum=w+net;}
+    taken++;netTotal+=net;r._open=open.length;r._stake=stake;r._net=net;r._cum=w+net;}
   settle('9999-99-99');
-  return {wallet,endWallet:w,taken,skipped,maxopen,requestedMax};
+  return {wallet,endWallet:w,taken,skipped,netTotal,maxopen,requestedMax};
+}
+// The Back Test headline is valid only when it reconciles to the exact rows carrying its evidence.
+// Keep this pure so a regression test can exercise it without the page DOM.
+function pfLedgerReconciliation(rows,led){
+  const evidence=(rows||[]).filter(r=>r&&r.perf!=null);
+  const funded=evidence.filter(r=>r._stake!=null), skipped=evidence.filter(r=>r._stake==null);
+  const netTotal=funded.reduce((sum,r)=>sum+(Number(r._net)||0),0);
+  const expectedEnd=(Number(led&&led.wallet)||0)+netTotal;
+  const epsilon=.005;
+  const ok=!!led&&funded.length===led.taken&&skipped.length===led.skipped&&
+    Math.abs(netTotal-(Number(led.netTotal)||0))<epsilon&&Math.abs(expectedEnd-(Number(led.endWallet)||0))<epsilon;
+  return {ok,evidence:evidence.length,funded:funded.length,skipped:skipped.length,netTotal,expectedEnd};
 }
 function _pfSavedScope(kind){
   const keys=kind==="market"?["pof_market","f_mkt"]:["pof_sector","f_sec"];
@@ -5694,7 +5706,7 @@ function _renderPerformance(){
   if($("pfw-summary"))$("pfw-summary").innerHTML=led?`<b style="color:var(--fg)">£${Math.round(led.wallet).toLocaleString()}</b> → <b style="color:${led.endWallet>=led.wallet?'var(--bull)':'var(--bear)'}">£${Math.round(led.endWallet).toLocaleString()}</b> over ${led.taken.toLocaleString()} trade${led.taken===1?'':'s'} · ${led.requestedMax>0&&led.requestedMax!==led.maxopen?`requested ${led.requestedMax}, capped at ${led.maxopen}`:led.requestedMax>0?`cap ${led.maxopen}`:`Auto cap ${led.maxopen}`} open → ${led.skipped.toLocaleString()} skipped <span class="muted">· wallet computed oldest first (same model as “What separates the winners”); table sorted by your chosen column, Triggered ascending by default</span>`:"";
   const nT=selT.filter(r=>r.state==="TARGET").length, nS=selT.filter(r=>r.state==="STOPPED").length, nO=selT.filter(r=>r.state==="OPEN").length;
   $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} · ${PF_COMBO.vb} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb},${PF_COMBO.vlo==null?'null':PF_COMBO.vlo},${PF_COMBO.vhi==null?'null':PF_COMBO.vhi},'${PF_COMBO.vb}');return false" style="color:var(--accent)">✕ clear</a>`:''}${PF_VS_FLOOR?` · <b style="color:var(--fg)">Volume Score ≥ ${PF_VS_FLOOR}</b> (your floor)`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
-  _pfBacktestSettingsCard(selT,all,led);
+  _pfBacktestSettingsCard(selT,all,led,pfLedgerReconciliation(selT,led));
   $("pftab-count").textContent=`(${selT.length})`;
   const visibleRows=rows.slice(0,PF_RENDER_LIMIT);   // summaries/wallet/counts above still use ALL selected rows
   $("pf-rows").innerHTML=visibleRows.map((r,__i)=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
@@ -5723,7 +5735,7 @@ function _renderPerformance(){
     (rows.length>visibleRows.length?`<tr><td colspan="24" class="empty"><button class="subpill" onclick="pfShowMore()">Show ${Math.min(PF_RENDER_STEP,rows.length-visibleRows.length)} more</button> <span class="muted">Showing ${visibleRows.length.toLocaleString()} of ${rows.length.toLocaleString()} filtered triggers</span></td></tr>`:"")
     ||`<tr><td colspan="${pfwOn?24:20}" class="empty">No recorded triggers yet.</td></tr>`;
 }
-function _pfBacktestSettingsCard(sel,all,led){
+function _pfBacktestSettingsCard(sel,all,led,reconciliation){
   const card=$("pf-backtest-settings");if(!card)return;
   if(LIMITED){card.style.display="none";return;}
   const _num=v=>(typeof num==='function')?num(v):(v==null||v===''?null:+v);
@@ -5769,11 +5781,15 @@ function _pfBacktestSettingsCard(sel,all,led){
         modelReturn=led&&led.wallet?((led.endWallet/led.wallet)-1)*100:null;
   const returnText=modelReturn==null?"—":`${modelReturn>=0?"+":""}${modelReturn.toFixed(2)}%`;
   card.style.display="";
-  card.innerHTML=`<div class="pf-setcard-h">Back Test summary</div>
+  const verified=!!(reconciliation&&reconciliation.ok);
+  const fundedText=verified
+    ?`<b>${led.taken}</b> trades · ${led.skipped} skipped by capacity`
+    :`— · ${reconciliation?`${reconciliation.funded} evidence rows funded, ${reconciliation.skipped} skipped`:'replay unavailable'}`;
+  card.innerHTML=`<div class="pf-setcard-h">Back Test summary ${verified?'<span style="color:var(--bull);font-size:11px">✓ reconciled to transaction evidence</span>':'<span style="color:var(--bear);font-size:11px">⚠ withheld — evidence mismatch</span>'}</div>
     <div class="pf-setcard-grid" style="margin-bottom:7px">
-      <div class="pf-setcard-row"><span class="pf-setcard-k">Actual Win : Loss</span><span class="pf-setcard-v"><b>${wins} : ${losses}</b>${breakEven?` · ${breakEven} break-even`:""}</span></div>
-      <div class="pf-setcard-row"><span class="pf-setcard-k">Model return</span><span class="pf-setcard-v"><b style="color:${modelReturn>=0?'var(--bull)':'var(--bear)'}">${returnText}</b> · £${Math.round(led.endWallet).toLocaleString()} ending wallet</span></div>
-      <div class="pf-setcard-row"><span class="pf-setcard-k">Funded</span><span class="pf-setcard-v"><b>${led.taken}</b> trades · ${led.skipped} skipped by capacity</span></div>
+      <div class="pf-setcard-row"><span class="pf-setcard-k">Actual Win : Loss</span><span class="pf-setcard-v"><b>${verified?`${wins} : ${losses}`:'—'}</b>${verified&&breakEven?` · ${breakEven} break-even`:""}</span></div>
+      <div class="pf-setcard-row"><span class="pf-setcard-k">Model return</span><span class="pf-setcard-v"><b style="color:${modelReturn>=0?'var(--bull)':'var(--bear)'}">${verified?returnText:'—'}</b>${verified?` · £${Math.round(led.endWallet).toLocaleString()} ending wallet`:''}</span></div>
+      <div class="pf-setcard-row"><span class="pf-setcard-k">Funded</span><span class="pf-setcard-v">${fundedText}</span></div>
     </div><div class="pf-setcard-h">Back Test settings used</div><div class="pf-setcard-grid">`+
     items.map(([k,v])=>`<div class="pf-setcard-row"><span class="pf-setcard-k">${k}</span><span class="pf-setcard-v">${esc(v)}</span></div>`).join("")+
     `</div><div class="pf-setcard-row" style="border-top:1px solid var(--line);margin-top:4px;padding-top:4px"><span class="pf-setcard-k">Triggers</span><span class="pf-setcard-v"><b>${sel.length}</b>${sel.length!==all.length?` of ${all.length}`:""}</span></div>`;
