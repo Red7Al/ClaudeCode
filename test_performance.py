@@ -65,6 +65,31 @@ def test_winners_endpoint_never_emits_nan(monkeypatch):
     assert response.get_json()["rows"][0]["mcap"] is None
 
 
+def test_three_year_winners_request_uses_three_year_trigger_features(monkeypatch):
+    """Older evidence must be enriched from its own review window, not a 12-month cache."""
+    row = {
+        "ticker": "OLDER", "name": "Older", "market": "Test", "mcap": None,
+        "sector": "Test", "location": "Test", "direction": "BULLISH",
+        "trig_date": (dt.date.today() - dt.timedelta(days=500)).isoformat(), "exit_date": None,
+        "entry": 100.0, "stop": 90.0, "outcome": "OPEN", "return_pct": 2.0,
+        "quality": 50.0, "rr": 3.0, "rvol": 1.5,
+    }
+    calls = []
+    monkeypatch.setattr(server, "_sqa_all_rows", lambda: [row])
+    monkeypatch.setattr(server, "_volscore_trigger_map",
+                        lambda years=1: calls.append(("score", years)) or {("OLDER", row["trig_date"]): 9})
+    monkeypatch.setattr(server, "_volscore_trigger_feature_map",
+                        lambda years=1: calls.append(("feature", years)) or
+                        {("OLDER", row["trig_date"]): {"above_vwap": True, "atr_expanding": True}})
+
+    response = server.app.test_client().get("/api/winners?years=3")
+
+    assert response.status_code == 200
+    assert calls == [("score", 3), ("feature", 3)]
+    assert response.get_json()["rows"][0]["volume_score"] == 9
+    assert response.get_json()["rows"][0]["above_vwap"] is True
+
+
 def test_performance_has_dedicated_let_winners_run_tab():
     # NOTE (2026-08-07, ChangeRequest P-06 "Fix Let winners run navigation regression"): commit bb23c0f
     # (2026-08-05) removed the "Let winners run" pill and silently redirected pfPanel('run') to

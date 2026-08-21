@@ -4,8 +4,8 @@ HVF Web Application — Change Requests
 
 1. Time: 09:00:00
    Request: Reconcile every Back Test summary figure with its funded transaction-evidence rows.
-   Result: In progress. A replay-level reconciliation gate and regression coverage are being added; a mismatch will withhold the headline result.
-   Status: in progress
+   Result: Completed and regression-tested. The Back Test summary now reconciles its funded/ skipped counts, net gain and ending wallet to the displayed transaction-evidence rows; any mismatch withholds the headline return and shows the evidence discrepancy.
+   Status: complete
 
 2. Time: 09:30:00
    Request: Set the Replay model defaults to a 5% maximum position size and 20 maximum open positions.

@@ -3188,23 +3188,31 @@ def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0, return_date
 _VSR_CACHE = {"ts": 0.0, "data": None}
 
 
-_VSCORED_CACHE = {"ts": 0.0, "data": None}
-_VSMAP_CACHE = {"ts": 0.0, "data": None}
+_VSCORED_CACHE = {"ts": 0.0, "data": None, "years": None}
+_VSMAP_CACHE = {"ts": 0.0, "data": None, "years": None}
 
 
-def _volscore_scored():
-    """Last-12mo _sqa rows, each annotated with volume_score (breakout confirmation on its trigger bar),
-    cached. Single source shared by the VolumeScore report (buckets / win-rate) AND the per-trigger map
-    that puts a Vol column on the Performance results + winners detail tables (user 2026-07-27, P-03), so
-    the report and the tables always reconcile and the expensive per-ticker bar fetch happens once."""
+def _volscore_scored(years=1):
+    """Windowed _sqa rows annotated with trigger-time VolumeScore confirmations.
+
+    The cache is deliberately keyed by ``years``.  A three-year Winners/Best Settings review must not
+    borrow the one-year feature map: that was the source of otherwise unexplained blank VWAP, ATR and
+    VolumeScore cells on older rows.  Missing values still remain missing when retained bars cannot prove
+    a feature; callers can then expose that as a data-quality exception rather than treating it as a pass.
+    """
     import datetime as _dt
     import volume_score as _vscore
     now = _time.time()
-    if _VSCORED_CACHE["data"] is not None and now - _VSCORED_CACHE["ts"] < _SQA_TTL:
+    try:
+        years = max(1, min(4, int(years)))
+    except (TypeError, ValueError):
+        years = 1
+    if (_VSCORED_CACHE["data"] is not None and _VSCORED_CACHE.get("years") == years
+            and now - _VSCORED_CACHE["ts"] < _SQA_TTL):
         return _VSCORED_CACHE["data"]
-    cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
+    cutoff = (_dt.date.today() - _dt.timedelta(days=365 * years)).isoformat()
     rows = [r for r in _sqa_all_rows()
-            if (r.get("trig_date") or "") >= cut12 and r.get("trig_date") and r.get("entry")]
+            if (r.get("trig_date") or "") >= cutoff and r.get("trig_date") and r.get("entry")]
     # One bar cutoff per ticker = its EARLIEST trigger minus the lookback, so a ticker with several trades
     # is fetched once and each trade finds its own break bar in the shared list.
     cut = {}
@@ -3237,28 +3245,29 @@ def _volscore_scored():
         rr["above_vwap"] = components.get("above_vwap")
         rr["atr_expanding"] = components.get("atr_expanding")
         scored.append(rr)
-    _VSCORED_CACHE.update(ts=now, data=scored)
+    _VSCORED_CACHE.update(ts=now, data=scored, years=years)
     return scored
 
 
-def _volscore_trigger_map():
-    """{(ticker, trig_date[:10]): volume_score} from _volscore_scored — the lookup that adds the Vol
-    column to the Performance results table and the winners ledger (user 2026-07-27, P-03)."""
+def _volscore_trigger_map(years=1):
+    """Windowed {(ticker, trigger date): VolumeScore} map for the evidence ledger."""
     now = _time.time()
-    if _VSMAP_CACHE["data"] is not None and now - _VSMAP_CACHE["ts"] < _SQA_TTL:
+    if (_VSMAP_CACHE["data"] is not None and _VSMAP_CACHE.get("years") == years
+            and now - _VSMAP_CACHE["ts"] < _SQA_TTL):
         return _VSMAP_CACHE["data"]
-    m = {(r["ticker"], str(r["trig_date"])[:10]): r.get("volume_score") for r in _volscore_scored()}
-    _VSMAP_CACHE.update(ts=now, data=m)
+    m = {(r["ticker"], str(r["trig_date"])[:10]): r.get("volume_score")
+         for r in _volscore_scored(years)}
+    _VSMAP_CACHE.update(ts=now, data=m, years=years)
     return m
 
 
-def _volscore_trigger_feature_map():
-    """Per-trigger confirmations used by Performance's annual settings optimiser."""
+def _volscore_trigger_feature_map(years=1):
+    """Windowed per-trigger confirmations used by Best Settings and its evidence table."""
     return {(r["ticker"], str(r["trig_date"])[:10]): {
                 "volume_score": r.get("volume_score"),
                 "above_vwap": r.get("above_vwap"),
                 "atr_expanding": r.get("atr_expanding")}
-            for r in _volscore_scored()}
+            for r in _volscore_scored(years)}
 
 
 def _volscore_report(model=None):
@@ -4101,8 +4110,12 @@ def api_winners():
         cutoff = (_dt.date.today() - _dt.timedelta(days=365 * years)).isoformat()
         rows = [r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cutoff]
         rows.sort(key=lambda r: (r.get("trig_date") or ""))
-        vsmap = _volscore_trigger_map()   # per-trigger VolumeScore for the ledger Vol column (P-03, 2026-07-27)
-        vfmap = _volscore_trigger_feature_map()
+        # Use the same requested review window for the population and its trigger-time features.  Do
+        # not silently borrow the annual cache for the three-year card.
+        # Keep the established no-argument annual call shape for existing integrations; the longer
+        # window is the exceptional path that must request its own feature population explicitly.
+        vsmap = _volscore_trigger_map() if years == 1 else _volscore_trigger_map(years)
+        vfmap = _volscore_trigger_feature_map() if years == 1 else _volscore_trigger_feature_map(years)
         payload["rows"] = [
             {"ticker": r["ticker"], "name": r["name"], "market": r["market"], "mcap": _json_safe(r.get("mcap")), "sector": r["sector"],
              "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
