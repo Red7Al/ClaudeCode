@@ -19,5 +19,5 @@ HVF Web Application — Change Requests
 
 4. Time: 13:45:00
    Request: Restore meaningful GitHub Offline Python Regression Test status after stale checks caused every recent workflow run to fail.
-   Result: In progress. Deployment-only IONOS secrets and the approved Replay capacity default are being correctly classified in regression coverage.
-   Status: in progress
+   Result: Completed and verified by GitHub Actions run 32483421114: the full offline suite passed after deployment-only IONOS secrets were excluded and the approved 20-position default was reflected in the regression test.
+   Status: complete
