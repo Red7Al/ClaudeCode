@@ -17,6 +17,7 @@ log = logging.getLogger("best_settings_audit")
 MODEL = {"wallet": 10000, "minimum_trade": 25, "calc_model": "2026-08-15-exit-rule"}
 STAKES, OPENS = (1, 2, 3, 5, 7.5, 10), (3, 5, 8, 12, 20, 25, 50)
 RRS, QUALS, VSCORES, RVOLS, BOOLS = (3, 5, 8), (0, 50, 75), (0, 4, 8), (0, 1.5, 1.8), (False, True)
+_NO_REPORTED_VOLUME_MARKETS = {"FX", "Indices", "Commodities"}
 
 
 def _effective_max_open(stake_fraction):
@@ -117,8 +118,12 @@ def _scopes(rows):
 def _eligible(rows, test, rr, quality, volume_score, rvol, require_vwap, require_atr):
     return [row for row in rows if test(row) and row.get("rr") is not None and float(row["rr"]) >= rr
             and (not quality or float(row["quality"]) >= quality)
-            and (not volume_score or float(row["volume_score"]) >= volume_score)
-            and (not rvol or float(row["rvol"]) >= rvol)
+            # An N/A volume-derived observation participates in an unfiltered
+            # configuration, but cannot satisfy a configuration that requires
+            # that measurement.  Never coerce it to zero or average volume.
+            and (not volume_score or (row.get("volume_score") is not None
+                                      and float(row["volume_score"]) >= volume_score))
+            and (not rvol or (row.get("rvol") is not None and float(row["rvol"]) >= rvol))
             and (not require_vwap or row["above_vwap"] is True)
             and (not require_atr or row["atr_expanding"] is True)]
 
@@ -168,19 +173,40 @@ def run():
                     if row.get("trig_date") and row.get("return_pct") is not None
                     and str(row["trig_date"]) >= (today - dt.timedelta(days=365 * 3)).isoformat()])
     features = server._volscore_trigger_feature_map(3)
-    missing = defaultdict(int)
+    missing, not_applicable = defaultdict(int), defaultdict(int)
     enriched = []
     for row in rows:
         row = dict(row)
         feature = features.get((row["ticker"], str(row["trig_date"])[:10]), {})
         row.update(feature)
+        # The historical source can explicitly report zero volume on one trading
+        # day for an otherwise volume-reporting equity.  RVOL, VolumeScore and
+        # VWAP are undefined on that exact bar; recording it as N/A preserves
+        # the evidence without pretending the feature was observed.  A filter
+        # requiring the feature excludes that row naturally.
+        trigger_volume_unavailable = bool(
+            row.get("rvol") is None
+            and row.get("trigger_volume") == 0
+        )
         for name in ("rvol", "volume_score", "above_vwap", "atr_expanding"):
             if row.get(name) is None:
-                missing[name] += 1
+                # RVOL, VolumeScore and VWAP depend on reported volume.  Do not manufacture these for
+                # FX, indices or commodity contracts whose vendor feed has no meaningful daily volume;
+                # a configuration requiring the metric excludes them naturally.  ATR does not depend
+                # on volume and remains a true data exception in every market.
+                volume_metric = name in ("rvol", "volume_score", "above_vwap")
+                if volume_metric and (
+                    row.get("market") in _NO_REPORTED_VOLUME_MARKETS
+                    or trigger_volume_unavailable
+                ):
+                    not_applicable[name] += 1
+                else:
+                    missing[name] += 1
         enriched.append(row)
     report = {"schema": 1, "audit_date": today.isoformat(), "model": MODEL,
               "data_through": max((str(r["trig_date"])[:10] for r in enriched), default=None),
               "population_rows": len(enriched), "missing_trigger_features": dict(missing),
+              "not_applicable_trigger_features": dict(not_applicable),
               "status": "blocked_data_quality" if missing else "running"}
     if missing:
         report["headline"] = "No supported recommendation: trigger-feature evidence is incomplete."

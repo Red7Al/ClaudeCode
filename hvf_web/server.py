@@ -2448,7 +2448,15 @@ def _fill_missing_rvol(matched: list) -> None:
         if not b:
             continue
         try:
-            row["rvol"] = _rvol_at(b, _dt.date.fromisoformat(td))
+            trigger_date = _dt.date.fromisoformat(td)
+            trigger_bar = next((bar for bar in b if bar[0] == trigger_date), None)
+            # Keep the source observation alongside the derived RVOL.  A zero
+            # is materially different from missing history: downstream audits
+            # can label volume-derived features N/A for that bar rather than
+            # manufacture an RVOL or silently call the dataset complete.
+            if trigger_bar is not None:
+                row["trigger_volume"] = trigger_bar[4]
+            row["rvol"] = _rvol_at(b, trigger_date)
         except Exception:
             pass
 
@@ -3001,6 +3009,11 @@ def _sqa_all_rows():
                      "current_price": s.get("current_price"),
                      "trig_date": str(td) if td else None, "exit_date": str(od) if od else None,
                      "r_mult": r_mult, "outcome": oc, "return_pct": ret})
+    # Historical rows written before the trigger-bar volume arrived retain rvol=NULL even where the
+    # durable OHLCV store can now prove it.  Backfill the in-memory canonical analysis population with
+    # the same point-in-time calculation used by operational evidence, rather than letting Best Settings
+    # silently exclude otherwise valid equity triggers.  Markets with no meaningful volume remain None.
+    _fill_missing_rvol([(row, str(row.get("trig_date") or "")[:10]) for row in rows if row.get("trig_date")])
     # NOW-price fallback (user 2026-07-24, P-03 BUG "multiple rows with blank NOW"): the snapshot only
     # covers the CURRENT universe, so a squeeze_history ticker no longer scanned had current_price=None
     # and showed a blank NOW. Fill those from the latest stored close in price_history — one query for
