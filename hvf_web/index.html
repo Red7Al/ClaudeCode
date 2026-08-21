@@ -4483,6 +4483,12 @@ function renderDecisionProof(id,proof,opts={}){
     :d==='month'?((r.trig_date||'').slice(0,7)||'Unknown')
     :String(r[d]||'Unknown');
   const filtered=proof.filter(x=>Object.entries(filters).every(([d,v])=>bucket(x.r,d)===v));
+  // Reconcile the card's compounded return to the evidence: each row's stake is the wallet at its
+  // actual decision, so summing funded row P&L equals the final wallet change.  When cross-filtered,
+  // never label the visible subset as the complete card return.
+  const netGain=xs=>xs.filter(x=>x.placed).reduce((sum,x)=>sum+x.stake*WINNERS_WALLET*(+x.r[run?'run_perf':'perf']||0)/100,0),
+        visibleNetGain=netGain(filtered), totalNetGain=netGain(proof),
+        netGainLabel=Object.keys(filters).length?"Visible Net gain subtotal":"Net gain total";
   const chart=(dim,title)=>{const grouped={};proof.filter(x=>x.placed).forEach(x=>{const k=bucket(x.r,dim),ret=+(x.r[run?'run_perf':'perf']||0);grouped[k]=(grouped[k]||0)+x.stake*ret/100*WINNERS_WALLET;});
     const vals=Object.entries(grouped).sort((a,b)=>b[1]-a[1]).slice(0,7),mx=Math.max(1,...vals.map(x=>Math.abs(x[1])));
     return `<div class="card" style="flex:1 1 auto;min-width:0;padding:9px"><b style="font-size:11px">${title} · achievable P&amp;L</b>${vals.map(([k,v])=>`<button onclick="decisionProofFilter('${id}','${dim}',decodeURIComponent('${encodeURIComponent(k).replace(/'/g,'%27')}'))" title="Cross-filter transactions to ${_esc(k)}" style="display:grid;grid-template-columns:75px 1fr 54px;gap:5px;align-items:center;width:100%;border:0;background:${filters[dim]===k?'color-mix(in srgb,var(--accent) 18%,transparent)':'transparent'};color:var(--fg);cursor:pointer;padding:3px"><span style="overflow:hidden;text-overflow:ellipsis;text-align:left">${_esc(k)}</span><span style="height:7px;background:${v>=0?'var(--bull)':'var(--bear)'};width:${Math.max(3,Math.abs(v)/mx*100)}%"></span><span style="text-align:right">${v>=0?'+':''}£${Math.round(v)}</span></button>`).join('')}</div>`;};
@@ -4510,7 +4516,7 @@ function renderDecisionProof(id,proof,opts={}){
         <button type="button" onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,showMissed:true})"
           style="padding:5px 14px;font-size:12px;font-weight:600;border:0;border-left:1px solid var(--line);cursor:pointer;${show?'background:var(--accent);color:#fff':'background:transparent;color:var(--fg)'}">Show</button>
       </div></div></div>
-    <div class="tablewrap"><table><thead><tr><th>Triggered</th><th>Name</th><th>Decision / constraint</th><th>Open after decision</th><th title="Model wallet immediately before this decision">Wallet</th><th>Sell at target</th>${run?'<th>Let run</th><th>Difference</th>':''}<th title="£ profit/loss from this trade alone — blank for missed trades">Net gain</th><th>R:R</th><th>Quality</th><th>VolumeScore</th><th>RVOL</th><th>VWAP</th><th>ATR</th><th>Market</th><th>Sector</th><th>Ticker</th></tr></thead><tbody>${rows||`<tr><td colspan="${run?18:16}" class="muted">No transactions match this view.</td></tr>`}</tbody></table></div>`;
+    <div class="tablewrap"><table><thead><tr><th>Triggered</th><th>Name</th><th>Decision / constraint</th><th>Open after decision</th><th title="Settled model wallet immediately before this decision; it excludes unrealised P&amp;L.">Settled wallet</th><th>Sell at target</th>${run?'<th>Let run</th><th>Difference</th>':''}<th title="£ profit/loss from this trade alone — blank for missed trades">Net gain</th><th>R:R</th><th>Quality</th><th>VolumeScore</th><th>RVOL</th><th>VWAP</th><th>ATR</th><th>Market</th><th>Sector</th><th>Ticker</th></tr></thead><tbody>${rows||`<tr><td colspan="${run?18:16}" class="muted">No transactions match this view.</td></tr>`}</tbody><tfoot><tr><td colspan="${run?6:4}" style="text-align:right"><b>${netGainLabel}</b></td><td><b style="color:${visibleNetGain>=0?'var(--bull)':'var(--bear)'}">${visibleNetGain>=0?'+':'−'}${gbp(Math.abs(visibleNetGain))}</b>${Object.keys(filters).length?`<div class="muted" style="font-size:10px">All funded: ${totalNetGain>=0?'+':'−'}${gbp(Math.abs(totalNetGain))}</div>`:''}</td><td colspan="${run?11:11}"></td></tr></tfoot></table></div>`;
 }
 
 let BEST_HISTORY_REQUESTED=false, BEST_HISTORY_POST_KEY="", BEST_HISTORY_ROWS=[];

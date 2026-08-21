@@ -26,3 +26,8 @@ HVF Web Application — Change Requests
    Request: Replace the Best over 3 years card's finalist shortlist with a full, auditable configuration-grid review and repeat the validation daily.
    Result: In progress. The card now replays every generated, enforceable three-year configuration rather than reducing candidates to 40 and then 12. A server-side daily persisted audit is still required so this full-grid result is revalidated after data refresh without depending on a user opening the browser page.
    Status: in progress
+
+6. Time: 14:25:00
+   Request: Make Best Settings transaction evidence reconcile visibly with its return card by adding a Net gain total at the bottom of the table.
+   Result: In progress. The total will be calculated from the same funded proof rows as the card; a cross-filter will show a labelled visible subtotal rather than an incorrectly implied full-card total.
+   Status: in progress
