@@ -58,7 +58,10 @@ import sys
 import logging
 from datetime import datetime, timezone
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+# Keep console output UTF-8 for direct scheduled execution.  Do not replace stdout while imported by
+# the test suite or another worker: replacing pytest's capture stream closes it during teardown.
+if __name__ == "__main__":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("data_quality_audit")
 
