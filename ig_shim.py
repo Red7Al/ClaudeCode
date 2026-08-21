@@ -398,6 +398,20 @@ _SESSION_POOL: dict = {}       # login -> IGSession (lazy, kept for the process 
 LIVE_LET_WINNERS_RUN_ENABLED = False
 
 
+def _web_login_for_trading_profile(profile_id: str | None) -> str | None:
+    """Return the web login authorised to manage this legacy trading profile.
+
+    The historic trading tables use `user_profiles` UUIDs (Owner/Wife/Son), whereas web settings use
+    login names.  They must never be treated as interchangeable.  Only the established Owner profile
+    maps to Alex today; unknown profiles are deliberately unmanaged until an explicit binding is added.
+    """
+    # Kept as an explicit compatibility mapping rather than renaming the database profile or rewriting
+    # positions/trade history.  The UUID is the stable owner identity already used by run_session.py.
+    if str(profile_id or "") == "770a76b5-0e84-460b-b575-186c724dabdd":
+        return _OWNER_LOGIN
+    return None
+
+
 def _resolve_ig_creds(login: str):
     """Return that web login's own IG credentials. The app's encrypted store is the source of truth
     (seeded once from GitHub Secrets, then editable); the owner falls back to process env creds when
@@ -3417,10 +3431,11 @@ def _lwr_cfg(user: str | None) -> tuple:
 
 
 def _lwr_targets() -> dict:
-    """{deal_id: (take_profit, user_id)} for open positions we recorded.
+    """{deal_id: (take_profit, web_login)} for open positions we recorded.
 
     Both halves are needed: the IG position carries no target once the take-profit is gone, and the
-    per-user switch means the owner decides whether this position is managed at all.
+    per-user switch means the owner decides whether this position is managed at all. Unknown legacy
+    profile IDs are omitted (fail closed) rather than guessed as another web user.
     """
     out = {}
     try:
@@ -3429,7 +3444,11 @@ def _lwr_targets() -> dict:
             for deal, tp, uid in (db.run(
                     "select deal_id, take_profit, user_id from positions "
                     "where deal_id is not null and take_profit is not null") or []):
-                out[str(deal)] = (float(tp), uid)
+                login = _web_login_for_trading_profile(uid)
+                if login:
+                    out[str(deal)] = (float(tp), login)
+                else:
+                    log.warning("let-winners-run: no web-user binding for trading profile %s; skipping %s", uid, deal)
         finally:
             db.close()
     except Exception as exc:

@@ -97,9 +97,17 @@ def _already_working() -> set:
 def run_bridge() -> dict:
     """One bridge pass. Returns a summary dict {candidates, attempted, placed}."""
     cands = _candidates()
-    summary = {"candidates": len(cands), "attempted": 0, "placed": 0}
+    summary = {"candidates": len(cands), "attempted": 0, "placed": 0, "let_winners_run": None}
     if not cands:
         log.info("bridge: no READY setups within 1.5% with quality > 50 - nothing to do.")
+        # Stop management is independent of whether this pass found a new candidate.  The function is
+        # currently safety-disabled in ig_shim, so this is a no-op until the full per-user live path is
+        # explicitly enabled after end-to-end verification.
+        try:
+            from ig_shim import run_let_winners_run
+            summary["let_winners_run"] = run_let_winners_run()
+        except Exception as exc:
+            log.warning(f"bridge: let-winners-run pass failed safely: {exc}")
         return summary
     skip = _already_working()
 
@@ -151,6 +159,11 @@ def run_bridge() -> dict:
         except Exception as e:
             log.warning(f"bridge: {tk} failed: {e}")
 
+    try:
+        from ig_shim import run_let_winners_run
+        summary["let_winners_run"] = run_let_winners_run()
+    except Exception as exc:
+        log.warning(f"bridge: let-winners-run pass failed safely: {exc}")
     log.info(f"bridge pass done: {summary}")
     return summary
 

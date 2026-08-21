@@ -304,6 +304,13 @@ def test_lwr_reads_the_users_own_setting(monkeypatch):
     assert ig_shim._lwr_cfg("Alex")[0] is False, "unreadable settings must fail closed"
 
 
+def test_lwr_owner_profile_has_explicit_alex_binding_only():
+    """Legacy profile UUIDs are not web logins; unknown profiles must never be guessed."""
+    assert ig_shim._web_login_for_trading_profile("770a76b5-0e84-460b-b575-186c724dabdd") == "Alex"
+    assert ig_shim._web_login_for_trading_profile("516e7f8d-59b9-42b0-978e-d676d1245385") is None
+    assert ig_shim._web_login_for_trading_profile(None) is None
+
+
 def test_lwr_refuses_a_trail_wider_than_the_uplift(monkeypatch):
     """The invariant the whole design rests on (user 2026-08-17: "is 25% off the target price not
     nonsense to you?").
