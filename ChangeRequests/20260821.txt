@@ -24,5 +24,5 @@ HVF Web Application — Change Requests
 
 5. Time: 14:10:00
    Request: Replace the Best over 3 years card's finalist shortlist with a full, auditable configuration-grid review and repeat the validation daily.
-   Result: In progress. The existing browser calculation reduces the three-year candidates to 40 and then 12 before authoritative replay; this does not satisfy the requested full-grid review. A server-side exhaustive calculation and daily persisted audit are required so the result is not constrained by browser responsiveness.
+   Result: In progress. The card now replays every generated, enforceable three-year configuration rather than reducing candidates to 40 and then 12. A server-side daily persisted audit is still required so this full-grid result is revalidated after data refresh without depending on a user opening the browser page.
    Status: in progress

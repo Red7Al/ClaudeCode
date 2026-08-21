@@ -178,6 +178,10 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert '[">250 trades",trades250' in html
     assert '">500 trades"' not in html
     assert 'data-choice-unavailable="${label}"' in html
+    # Three-year Best Settings must replay the complete generated grid rather than inheriting a small
+    # finalist set selected by a different objective.
+    assert 'for(const c of threeYearCandidates)for(const mo of OPENS)for(const st of STAKES)' in html
+    assert 'threeShortlist' not in html
     assert "Evidence threshold not met by the current annual dataset." in html
     assert "No supported recommendation" in html
     assert '<b style="color:var(--fg)">Changes:</b>' in html
