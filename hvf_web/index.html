@@ -922,10 +922,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
   <div class="confpanel hidden" data-panel="igopen">
     <div class="card"><h4>🏃 Let winners run</h4>
-      <p class="muted" style="font-size:12px;margin:0 0 8px">Adds the "Let winners run" illustration to the Performance tab. Once a trade hits target, the stop moves <b>up to the target</b> and then trails above it. This is an <b>illustration</b> — it never changes live IG orders.</p>
+      <p class="muted" style="font-size:12px;margin:0 0 8px">Adds the historical "Let winners run" illustration to the Performance tab. It compares a target-lock-and-trail exit model with selling at target. This is an <b>illustration</b> only — it never changes live IG orders.</p>
       <div class="credrow"><span class="clabel">Show the "Let winners run" report</span><label style="cursor:pointer;font-size:13px"><input type="checkbox" id="lim-let_winners_run" onchange="saveLimits()"> On</label></div>
       <div class="credrow"><span class="clabel" title="Stop-loss trailing % applied before target is reached.">Stop-loss trail before target (%)</span><input type="number" min="0" max="100" step="5" id="lim-let_winners_run_stop" placeholder="0" style="max-width:120px"></div>
-      <div class="credrow"><span class="clabel" title="Once target is reached the take-profit is dropped and the stop trails this far BELOW the running price, so the trade keeps running while giving back at most this much from its peak. Never falls below the target.">Trail below price after target (%)</span><input type="number" min="0" max="100" step="1" id="lim-let_winners_run_trail" placeholder="4" style="max-width:120px"></div>
+      <div class="credrow"><span class="clabel" title="Historical-model trail below the running price after target. It is used only in the Performance comparison.">Trail below price after target (%)</span><input type="number" min="0" max="100" step="1" id="lim-let_winners_run_trail" placeholder="4" style="max-width:120px"></div>
       <button class="btn" style="margin-top:8px" onclick="saveLimits()">Save</button>
       <span id="lim-msg4" style="font-size:12px;margin-left:8px"></span>
     </div>

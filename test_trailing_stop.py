@@ -164,6 +164,7 @@ def _pos(deal_id="D1", direction="BUY", stop=90.0, bid=100.0, offer=100.2, epic=
 
 def _wire(monkeypatch, positions, targets, enabled=True, uplift=0.05, trail=0.04):
     calls = {"stop": [], "trail": []}
+    monkeypatch.setattr(ig_shim, "LIVE_LET_WINNERS_RUN_ENABLED", True)
     monkeypatch.setattr(ig_shim, "_lwr_cfg", lambda user: (enabled, uplift, trail))
     monkeypatch.setattr(ig_shim, "_lwr_targets", lambda: targets)
     monkeypatch.setattr(ig_shim, "get_open_positions", lambda: positions)
@@ -237,6 +238,16 @@ def test_lwr_disabled_does_nothing(monkeypatch):
     assert calls["stop"] == [] and calls["trail"] == [] and out["users_on"] == []
 
 
+def test_lwr_live_management_is_safety_disabled_by_default(monkeypatch):
+    """A historical-report preference must never amend an IG stop while live routing is incomplete."""
+    monkeypatch.setattr(ig_shim, "LIVE_LET_WINNERS_RUN_ENABLED", False)
+    monkeypatch.setattr(ig_shim, "get_open_positions",
+                        lambda: (_ for _ in ()).throw(AssertionError("must not query IG when disabled")))
+    out = ig_shim.run_let_winners_run()
+    assert out["disabled"] is True
+    assert out["checked"] == 0 and out["locked"] == [] and out["trailing"] == []
+
+
 def test_lwr_skips_positions_with_no_recorded_target(monkeypatch):
     """No target means no phase boundary. Leave the position entirely alone rather than guess."""
     calls = _wire(monkeypatch, [_pos(bid=500.0)], {"OTHER": (110.0, "Alex")})
@@ -251,6 +262,7 @@ def test_lwr_is_gated_per_user_not_globally(monkeypatch):
     Two open positions, two owners, one switch on. Only the enabled owner's position may be touched --
     one login turning the feature on must never change how another login's money is managed.
     """
+    monkeypatch.setattr(ig_shim, "LIVE_LET_WINNERS_RUN_ENABLED", True)
     calls = {"stop": [], "trail": []}
     monkeypatch.setattr(ig_shim, "_lwr_cfg",
                         lambda user: (user == "Alex", 0.05, 0.04))

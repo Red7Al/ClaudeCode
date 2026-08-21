@@ -392,6 +392,11 @@ session = IGSession()
 _OWNER_LOGIN = "Alex"          # owner's stored IG creds == process env creds (verified byte-identical)
 _SESSION_POOL: dict = {}       # login -> IGSession (lazy, kept for the process lifetime)
 
+# Safety hold (2026-08-21): the historical "Let winners run" replay remains available, but live execution
+# is deliberately disabled until the runner has verified per-user account routing, a real scheduler and a
+# confirmed target-protection handover.  Never remove a take-profit merely because a report setting is on.
+LIVE_LET_WINNERS_RUN_ENABLED = False
+
 
 def _resolve_ig_creds(login: str):
     """Return that web login's own IG credentials. The app's encrypted store is the source of truth
@@ -2411,6 +2416,12 @@ def place_working_order(
         "expiry":         "DFB",
         "forceOpen":      True,
     }
+    # Let winners run is simulation-only while live execution is under safety review.  Retain the IG
+    # take-profit irrespective of the caller's historical-report preference.
+    if let_run and not LIVE_LET_WINNERS_RUN_ENABLED:
+        log.warning("Let winners run requested for %s but live execution is safety-disabled; retaining target.", ticker)
+        let_run = False
+
     # LET WINNERS RUN (user 2026-08-17). With the caller's user opted in, the order carries NO take-profit,
     # so IG does not close the position at its target. run_let_winners_run() then moves the stop TO the
     # target once touched, and hands over to IG's native trailing stop once price is 5% beyond it.
@@ -3432,6 +3443,10 @@ def run_let_winners_run() -> dict:
     Each position is judged against ITS OWNER's `let_winners_run` switch, so one login enabling the
     feature never changes how another login's positions are managed.
     """
+    if not LIVE_LET_WINNERS_RUN_ENABLED:
+        log.warning("let-winners-run live management is safety-disabled; no IG stops will be changed.")
+        return {"checked": 0, "locked": [], "trailing": [], "skipped": 0, "users_on": [],
+                "disabled": True}
     out = {"checked": 0, "locked": [], "trailing": [], "skipped": 0, "users_on": set()}
     targets = _lwr_targets()
     if not targets:

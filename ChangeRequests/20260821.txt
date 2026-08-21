@@ -11,3 +11,8 @@ HVF Web Application — Change Requests
    Request: Set the Replay model defaults to a 5% maximum position size and 20 maximum open positions.
    Result: Completed and publicly verified: Replay defaults are 5% and 20. Saved user configuration is unchanged.
    Status: complete
+
+3. Time: 10:15:00
+   Request: Following a full review, make Let winners run simulation-only until per-user account routing and a safe live handover are implemented and verified.
+   Result: In progress. The live path is being fail-closed; the historical report remains available.
+   Status: in progress
