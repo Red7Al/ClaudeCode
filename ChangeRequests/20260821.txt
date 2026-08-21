@@ -16,3 +16,8 @@ HVF Web Application — Change Requests
    Request: Following a full review, make Let winners run simulation-only until per-user account routing and a safe live handover are implemented and verified.
    Result: In progress. The live path is being fail-closed; the historical report remains available.
    Status: in progress
+
+4. Time: 13:45:00
+   Request: Restore meaningful GitHub Offline Python Regression Test status after stale checks caused every recent workflow run to fail.
+   Result: In progress. Deployment-only IONOS secrets and the approved Replay capacity default are being correctly classified in regression coverage.
+   Status: in progress

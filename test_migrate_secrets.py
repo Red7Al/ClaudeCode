@@ -26,6 +26,9 @@ _WORKFLOWS_DIR = os.path.join(_REPO_ROOT, ".github", "workflows")
 # in a workflow must be added to _ENV_SECRETS instead.
 _CI_ONLY_EXCLUSIONS = {
     "GITLEAKS_LICENSE",  # license key for the gitleaks Action itself, trading-secret-scan.yml
+    # IONOS values are consumed only by the deployment/fallback workflow. They are infrastructure
+    # connection details, not application credentials and must never be copied into app_secrets.
+    "IONOS_DIR", "IONOS_HOST", "IONOS_SSH_KEY", "IONOS_USER",
 }
 
 
