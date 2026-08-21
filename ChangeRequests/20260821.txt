@@ -74,5 +74,5 @@ HVF Web Application — Change Requests
 
 15. Time: 16:12:00
     Request: Make confirmed IG position closes auditable and unambiguous: retain each broker outcome, show it in the GUI, and never leave a user unsure whether a selected position closed.
-    Result: Completed and publicly verified. The live GUI shows an outcome for every selected deal before any refresh; the server records each IG confirmation, rejection, HTTP error or already-closed state in the user's activity log. The four earlier requests (CDW, IWG.L, SMIN.L and PNN.L) were still open at 16:11 UTC and have not been retried by deployment.
-    Status: complete
+    Result: Reopened. The GUI showed a result but IG activity contains no close submission for CDW, IWG.L, SMIN.L or PNN.L. The broker-result trace was therefore not end-to-end verified and the server-side execution/audit path is being repaired before another user-confirmed retry.
+    Status: in progress

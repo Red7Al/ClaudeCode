@@ -176,6 +176,8 @@ def api_login():
 _DATA_DIR = os.path.join(os.path.dirname(_HERE), "data")
 _VERSION_FILE = os.path.join(_DATA_DIR, "version_history.json")
 _BATCH_FILE = os.path.join(_DATA_DIR, "batch_activity.json")
+_IG_CLOSE_AUDIT_FILE = os.path.join(_DATA_DIR, "ig_close_audit.jsonl")
+_IG_CLOSE_AUDIT_LOCK = _threading.Lock()
 
 
 def _read_json_entries(path):
@@ -193,6 +195,22 @@ def _append_batch(source, event, by="system"):
         web_store.append_batch(source, event, by)
     except Exception as e:
         log.warning(f"batch log append failed: {e}")
+
+
+def _append_ig_close_audit(user: str, deal_id: str, phase: str, detail: str = "") -> None:
+    """Durable host-side evidence for a live close attempt, independent of Supabase availability."""
+    from datetime import datetime, timezone
+    entry = {"at": datetime.now(timezone.utc).isoformat(), "user": str(user),
+             "deal_id": str(deal_id), "phase": str(phase), "detail": str(detail or "")[:500]}
+    try:
+        with _IG_CLOSE_AUDIT_LOCK:
+            os.makedirs(_DATA_DIR, exist_ok=True)
+            with open(_IG_CLOSE_AUDIT_FILE, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, separators=(",", ":")) + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+    except OSError as exc:
+        log.error("Could not persist IG close audit for %s: %s", deal_id, exc)
 
 
 _REPO_ROOT = os.path.dirname(_HERE)
@@ -4444,11 +4462,17 @@ def api_ig_close_positions():
             for deal_id in deal_ids:
                 position = current.get(deal_id)
                 if not position:
+                    _append_ig_close_audit(name, deal_id, "rejected_preflight", "not currently open")
                     results.append({"deal_id": deal_id, "closed": False, "error": "not currently open"})
                     continue
+                _append_ig_close_audit(name, deal_id, "submitted", "live position re-read matched")
                 ok = bool(ig_shim.close_trade(deal_id, reason="WEB_USER_CONFIRMED"))
                 outcome = ig_shim.last_close_outcome()
                 broker_error = str(outcome.get("reason") or "")
+                if not ok and not broker_error:
+                    broker_error = "Internal close path returned no broker outcome; no IG confirmation was accepted."
+                _append_ig_close_audit(name, deal_id, "confirmed" if ok else "not_closed",
+                                       broker_error or "IG confirmation ACCEPTED")
                 results.append({"deal_id": deal_id, "closed": ok,
                                 "error": broker_error or ("IG did not confirm the close" if not ok else "")})
         closed = [r["deal_id"] for r in results if r["closed"]]

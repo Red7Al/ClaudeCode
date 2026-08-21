@@ -427,6 +427,7 @@ def test_ig_close_rereads_the_acting_users_open_positions(monkeypatch):
     monkeypatch.setattr(ig_shim, "last_close_outcome", lambda: {"closed": True, "reason": ""})
     monkeypatch.setattr(server._wu, "log_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(server, "_append_batch", lambda *args, **kwargs: None)
+    monkeypatch.setattr(server, "_append_ig_close_audit", lambda *args, **kwargs: None)
 
     response = server.app.test_client().post(
         "/api/ig-close-positions", headers={"X-Auth": "token"},
@@ -451,6 +452,8 @@ def test_ig_close_returns_and_persists_the_broker_rejection_reason(monkeypatch):
     monkeypatch.setattr(ig_shim, "last_close_outcome", lambda: {"closed": False, "reason": "MARKET_CLOSED"})
     monkeypatch.setattr(server._wu, "log_event", lambda *args: events.append(args))
     monkeypatch.setattr(server, "_append_batch", lambda *args, **kwargs: None)
+    audit = []
+    monkeypatch.setattr(server, "_append_ig_close_audit", lambda *args, **kwargs: audit.append(args))
 
     response = server.app.test_client().post(
         "/api/ig-close-positions", headers={"X-Auth": "token"}, json={"deal_ids": ["D1"], "confirmed": True})
@@ -458,6 +461,27 @@ def test_ig_close_returns_and_persists_the_broker_rejection_reason(monkeypatch):
     assert response.status_code == 200
     assert response.get_json()["results"] == [{"deal_id": "D1", "closed": False, "error": "MARKET_CLOSED"}]
     assert any("MARKET_CLOSED" in event[-1] for event in events)
+    assert [entry[2] for entry in audit] == ["submitted", "not_closed"]
+
+
+def test_ig_close_never_hides_a_missing_broker_outcome(monkeypatch):
+    import ig_shim
+    _identity(monkeypatch, "Alex", admin=True)
+    monkeypatch.setattr(ig_shim, "session_for", lambda name: object())
+    monkeypatch.setattr(ig_shim, "acting_session", lambda name: nullcontext())
+    monkeypatch.setattr(ig_shim, "get_open_positions", lambda: [{"position": {"dealId": "D1"}}])
+    monkeypatch.setattr(ig_shim, "close_trade", lambda deal_id, reason: False)
+    monkeypatch.setattr(ig_shim, "last_close_outcome", lambda: {})
+    monkeypatch.setattr(server._wu, "log_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(server, "_append_batch", lambda *args, **kwargs: None)
+    monkeypatch.setattr(server, "_append_ig_close_audit", lambda *args, **kwargs: None)
+
+    response = server.app.test_client().post(
+        "/api/ig-close-positions", headers={"X-Auth": "token"}, json={"deal_ids": ["D1"], "confirmed": True})
+
+    assert response.status_code == 200
+    assert response.get_json()["results"][0]["error"] == (
+        "Internal close path returned no broker outcome; no IG confirmation was accepted.")
 
 
 # ── Documentation guides access (user 2026-08-08, P-13) ──────────────────────────────────────────────
