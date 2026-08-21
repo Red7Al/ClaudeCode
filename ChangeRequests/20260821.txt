@@ -29,8 +29,8 @@ HVF Web Application — Change Requests
 
 6. Time: 14:25:00
    Request: Make Best Settings transaction evidence reconcile visibly with its return card by adding a Net gain total at the bottom of the table.
-   Result: In progress. The total will be calculated from the same funded proof rows as the card; a cross-filter will show a labelled visible subtotal rather than an incorrectly implied full-card total.
-   Status: in progress
+   Result: Completed and live-verified. The funded proof rows now show a Net gain total; cross-filters show an explicitly labelled visible subtotal and retain the all-funded total for comparison.
+   Status: complete
 
 7. Time: 14:30:00
    Request: Remove the unused Closed date/time column from the IG Account transaction table; closed transactions are hidden by default.
@@ -39,10 +39,10 @@ HVF Web Application — Change Requests
 
 8. Time: 14:35:00
    Request: Populate the required Now column when IG Account uses Aggregate rows.
-   Result: In progress. Aggregate rows will show the size-weighted current price from their open-position components instead of an artificial blank.
-   Status: in progress
+   Result: Completed and live-verified. Aggregate rows show a size-weighted current price from their open-position components.
+   Status: complete
 
 9. Time: 14:40:00
    Request: Allow a user to select their own open IG positions and close them only after an explicit confirmation.
-   Result: In progress. The endpoint must re-read the acting user's open positions, accept only their selected deal IDs, and require a confirmation flag before sequential market-close requests are sent.
-   Status: in progress
+   Result: Completed and live-verified. Users select their own open positions and confirm the named market-close request; the server re-reads that user's live account and rejects any ID that is no longer open. No position was closed during release verification.
+   Status: complete
