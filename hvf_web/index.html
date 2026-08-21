@@ -1414,7 +1414,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px">Wallet £ <input id="ordp-wallet" type="number" min="100" step="500" value="10000" style="width:100px;padding:4px 6px" onchange="winnersParamsChange()"></label>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Minimum trade from User Configuration.">Minimum Trade £<b id="ordp-mintrade" style="color:var(--fg)">25</b></label>
     <label class="muted replay-capacity-control" style="font-size:12px;display:flex;align-items:center;gap:5px">Max position size <input id="ordp-stake" type="number" min="0.1" max="100" step="0.5" value="5" style="width:70px;padding:4px 6px" onchange="winnersParamsChange()">% of wallet</label>
-    <label class="muted replay-capacity-control" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Default is floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="ordp-maxopen" type="number" min="1" step="1" value="50" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()">at once</label>
+    <label class="muted replay-capacity-control" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Default is floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="ordp-maxopen" type="number" min="1" step="1" value="20" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()">at once</label>
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ effective Max open positions.">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
     <span class="muted" style="font-size:11px;flex-basis:100%;line-height:1.4">These are wallet and capacity assumptions only. Signal rules (Quality, R:R, VolumeScore, RVOL, VWAP, ATR and market/sector scope) are chosen in <b style="color:var(--fg)">Best settings</b> and saved in <b style="color:var(--fg)">User Configuration</b>.</span>
     <button class="btn" id="ordp-save-defaults" style="padding:4px 10px;font-size:12px" onclick="winnersSaveDefaults()" title="Save Wallet / Max position size / Max open positions as your defaults (Configuration → My trading limits)">💾 Save as my defaults</button>
@@ -4056,7 +4056,7 @@ const _cherryEq=(a,b)=>JSON.stringify(a||{})===JSON.stringify(b||{});
 // (user 2026-07-18: "369 rows in main performance tab can be used"), expressed in £ as a fixed 2%-of-wallet
 // stake (£200 on £10k) × each trade's actual return%. So it reconciles with Results by construction — no
 // separate population, no R-multiple, no compounding-to-millions.
-let WINNERS_WALLET=10000, WINNERS_STAKE=0.05, WINNERS_MAXOPEN=50;   // £ wallet, stake fraction and explicit concurrency cap
+let WINNERS_WALLET=10000, WINNERS_STAKE=0.05, WINNERS_MAXOPEN=20;   // £ wallet, stake fraction and explicit concurrency cap
 let WINNERS_HIDE_MISSED=false;   // "hide trades missed" toggle on the winners ledger (P-07 #30)
 function winnersToggleMissed(){WINNERS_HIDE_MISSED=!!($("ordp-hide-missed")||{}).checked;const t=$("ordp-table");if(t)t.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);}
 let WIN=null, WIN_GENERATED="", WIN_3Y=null;
