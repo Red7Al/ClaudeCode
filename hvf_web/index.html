@@ -1885,7 +1885,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- No search here (user 2026-07-17): the IG account holds only a handful of live positions/orders, so
        a search is clutter. paintIgAccount tolerates the missing #ig-search input (treats it as blank). -->
   <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="ig-pos-count"></span><span class="muted" style="font-size:11.5px">Default sort: latest opened/closed ↓</span><span class="grow" style="flex:1"></span>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="ig-pos-count"></span><span class="muted" style="font-size:11.5px">Default sort: latest opened/closed ↓</span><button class="btn" id="ig-close-selected" disabled onclick="requestCloseSelected()" title="Select one or more open positions, then confirm their market close">Close selected (0)</button><span class="grow" style="flex:1"></span>
       <span class="muted" style="font-size:12.5px;display:inline-flex;align-items:center;gap:14px" title="Aggregate rows = one combined row per instrument (sum sizes, size-weighted level, summed profit)."><b style="color:var(--fg)">View:</b>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="all" onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> Every position</label>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="agg" checked onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> <b style="color:var(--fg)">Aggregate rows</b></label>
@@ -1893,7 +1893,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-closed-view" value="show" onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> Show</label>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-closed-view" value="hide" checked onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> Hide</label></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th class="clk" data-igp="status">Status</th><th class="clk" data-igp="name">Name</th><th class="clk" data-igp="market">Market</th><th class="clk" data-igp="direction">Dir</th><th class="clk" data-igp="size">Size</th><th class="clk" data-igp="level">Open</th><th class="clk" data-igp="current" title="Live close price for open positions, execution close price for closed trades">Now / Close</th><th class="clk" data-igp="profit" title="Live or realised profit in the instrument's currency">Profit</th><th class="clk" data-igp="profit_pct" title="Profit % against the open level, direction-aware">Profit %</th><th class="clk" data-igp="stop">Stop</th><th class="clk" data-igp="limit">Limit</th><th class="clk" data-igp="currency">Ccy</th><th class="clk" data-igp="opened">Opened (UTC)</th><th class="clk" data-igp="closed">Closed date/time (UTC)</th><th class="clk" data-igp="reason">Why closed</th><th class="clk" data-igp="ticker">Ticker</th></tr></thead>
+      <thead><tr><th>Select</th><th class="clk" data-igp="status">Status</th><th class="clk" data-igp="name">Name</th><th class="clk" data-igp="market">Market</th><th class="clk" data-igp="direction">Dir</th><th class="clk" data-igp="size">Size</th><th class="clk" data-igp="level">Open</th><th class="clk" data-igp="current" title="Live close price for open positions, execution close price for closed trades">Now / Close</th><th class="clk" data-igp="profit" title="Live or realised profit in the instrument's currency">Profit</th><th class="clk" data-igp="profit_pct" title="Profit % against the open level, direction-aware">Profit %</th><th class="clk" data-igp="stop">Stop</th><th class="clk" data-igp="limit">Limit</th><th class="clk" data-igp="currency">Ccy</th><th class="clk" data-igp="opened">Opened (UTC)</th><th class="clk" data-igp="closed">Closed date/time (UTC)</th><th class="clk" data-igp="reason">Why closed</th><th class="clk" data-igp="ticker">Ticker</th></tr></thead>
       <tbody id="ig-pos-rows"></tbody>
     </table></div>
   </section>
@@ -3720,7 +3720,10 @@ function renderMarketsAdmin(){
 }
 document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();_sortArrows("data-ma",maSortK,maSortDir);});
 // ── IG Account tab (user 2026-07-10): the acting user's own IG open positions + working orders ──
-let IG_POS=[], IG_ORD=[], igOpenMonthInitialised=false;
+let IG_POS=[], IG_ORD=[], IG_CLOSE_SELECTION=new Set(), igOpenMonthInitialised=false;
+function updateIgCloseButton(){const b=$("ig-close-selected");if(!b)return;const n=IG_CLOSE_SELECTION.size;b.disabled=!n;b.textContent=`Close selected (${n})`;}
+function igCloseToggle(encoded,checked){decodeURIComponent(encoded).split(',').filter(Boolean).forEach(id=>checked?IG_CLOSE_SELECTION.add(id):IG_CLOSE_SELECTION.delete(id));updateIgCloseButton();}
+async function requestCloseSelected(){const ids=[...IG_CLOSE_SELECTION];if(!ids.length)return;const names=IG_POS.filter(p=>ids.includes(String(p.deal_id||''))).map(p=>p.name||p.ticker||p.deal_id);if(!await appConfirm(`This sends market-close requests for ${ids.length} open position${ids.length===1?'':'s'}: ${names.join(', ')}. This cannot be undone.`,{title:'Close selected IG positions?',ok:'Close positions'}))return;const r=await fetch('/api/ig-close-positions',{method:'POST',headers:{'Content-Type':'application/json','X-Auth':AUTH},body:JSON.stringify({deal_ids:ids,confirmed:true})}),j=await r.json().catch(()=>({}));if(!r.ok){alert(j.error||'Close request failed; refresh the account before retrying.');return;}IG_CLOSE_SELECTION.clear();updateIgCloseButton();await renderIgAccount();}
 let igpSortK="activity_date", igpSortDir=-1, igoSortK="good_till", igoSortDir=-1;   // IG Account defaults: newest opened/closed event first; orders by good-till desc
 const _igDtag=d=>d?`<span class="tag ${d==='BUY'?'bull':'bear'}">${d}</span>`:'';
 // Shared formatters: closed-trade painting runs independently of paintIgAccount.
@@ -3768,12 +3771,15 @@ function paintIgAccount(){
   if(_agg){   // one row per instrument+direction: sum size, size-weighted average level, earliest opened
     const g={};
     posBase.forEach(p=>{const key=(p.ticker||p.epic||p.name)+'|'+p.direction+'|'+p.open_month;
-      const a=g[key]||(g[key]=Object.assign({},p,{size:0,_wsum:0,_n:0,stop:null,limit:null,current:null,profit:0,_ppw:0,_pptot:0}));
+      const a=g[key]||(g[key]=Object.assign({},p,{size:0,_wsum:0,_n:0,_deal_ids:[],stop:null,limit:null,current:null,_currentW:0,_currentWeight:0,profit:0,_ppw:0,_pptot:0}));
       const sz=+p.size||0; a.size+=sz; a._wsum+=(+p.level||0)*sz; a._n++;
+      if(p.deal_id)a._deal_ids.push(String(p.deal_id));
+      if(p.current!=null&&Number.isFinite(+p.current)){a._currentW+=(+p.current)*sz;a._currentWeight+=sz;}
       a.profit+=(+p.profit||0);
       if(p.profit_pct!=null){a._ppw+=(+p.profit_pct)*sz; a._pptot+=sz;}
       if(p.opened&&(!a.opened||p.opened<a.opened))a.opened=p.opened;});
     posBase=Object.values(g).map(a=>Object.assign(a,{level:a.size?+(a._wsum/a.size).toFixed(4):a.level,
+      current:a._currentWeight?+(a._currentW/a._currentWeight).toFixed(4):null,
       profit:+a.profit.toFixed(2), profit_pct:a._pptot?+(a._ppw/a._pptot).toFixed(2):null}));
   }
   const IGPF=[["igp_location","location"],["igp_market","market"],["igp_sector","sector"],["igp_direction","direction"],["igp_open_month","open_month"]];
@@ -3819,17 +3825,17 @@ function paintIgAccount(){
       .concat(closed.map(c=>Object.assign({},c,{_rowKind:'closed',activity_date:c.closed||''}))),
     igpSortK,igpSortDir);
   const renderedRows=tableRows.map(r=>r._rowKind==='open'
-    ? `<tr><td><span class="tag bull">Open</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${_agg?'<span class="muted">—</span>':(r.current??'<span class="muted">—</span>')}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(r.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(r.limit??'')}</td><td>${r.currency||''}</td><td>${r.opened||''}</td><td></td><td></td><td><b>${r.ticker||r.epic||''}</b></td></tr>`
-    : `<tr><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??''}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td></td><td></td><td>${r.currency||''}</td><td></td><td>${_igDateTime(r.closed)}</td><td>${_igReason(r.reason)}</td><td><b>${r.ticker||''}</b></td></tr>`);
-  if(showClosed&&IGCLOSED===null)renderedRows.push(`<tr><td colspan="16" class="empty refreshing">⏳ Data loading… closed trades from IG history; open positions are shown above.</td></tr>`);
-  else if(showClosed&&_igClosedNote)renderedRows.push(`<tr><td colspan="16" class="empty">${_esc(_igClosedNote)}</td></tr>`);
+    ? (()=>{const ids=_agg?(r._deal_ids||[]):[r.deal_id],encoded=encodeURIComponent(ids.filter(Boolean).join(','));return `<tr><td><input type="checkbox" ${ids.length?'':'disabled'} ${ids.length&&ids.every(id=>IG_CLOSE_SELECTION.has(id))?'checked':''} onchange="igCloseToggle('${encoded}',this.checked)" title="Select this open position for a confirmed market close"></td><td><span class="tag bull">Open</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??'<span class="muted">—</span>'}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(r.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(r.limit??'')}</td><td>${r.currency||''}</td><td>${r.opened||''}</td><td></td><td></td><td><b>${r.ticker||r.epic||''}</b></td></tr>`})()
+    : `<tr><td></td><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??''}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td></td><td></td><td>${r.currency||''}</td><td></td><td>${_igDateTime(r.closed)}</td><td>${_igReason(r.reason)}</td><td><b>${r.ticker||''}</b></td></tr>`);
+  if(showClosed&&IGCLOSED===null)renderedRows.push(`<tr><td colspan="17" class="empty refreshing">⏳ Data loading… closed trades from IG history; open positions are shown above.</td></tr>`);
+  else if(showClosed&&_igClosedNote)renderedRows.push(`<tr><td colspan="17" class="empty">${_esc(_igClosedNote)}</td></tr>`);
   const profitTotals={};
   pos.concat(closed).forEach(r=>{if(r.profit==null)return;const c=_igCurrency(r.currency);profitTotals[c]=(profitTotals[c]||0)+(+r.profit||0);});
   const totalProfit=Object.entries(profitTotals).map(([c,v])=>`${_igPf(+v.toFixed(2))} <span class="muted">${c}</span>`).join(' · ');
   const actualRows=pos.length+closed.length;
-  const totalRow=actualRows?`<tr style="border-top:2px solid var(--line)"><td></td><td colspan="6"><b>Total visible profit (${actualRows} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
+  const totalRow=actualRows?`<tr style="border-top:2px solid var(--line)"><td></td><td></td><td colspan="6"><b>Total visible profit (${actualRows} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
   $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${actualRows}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed</span>${showClosed&&IGCLOSED===null?' <span class="refreshing">· ⏳ Data loading… closed trades from IG</span>':_igClosedNote?' <span class="muted">· '+_esc(_igClosedNote)+'</span>':''}`;
-  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="16" class="empty ${showClosed&&IGCLOSED===null?'refreshing':''}">${q?'No transactions match that search.':_igNoCreds?'No IG account data — add credentials in Configuration → IG.':'⏳ Data loading… open transactions and closed trades from IG history.'}</td></tr>`;
+  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="17" class="empty ${showClosed&&IGCLOSED===null?'refreshing':''}">${q?'No transactions match that search.':_igNoCreds?'No IG account data — add credentials in Configuration → IG.':'⏳ Data loading… open transactions and closed trades from IG history.'}</td></tr>`;
 
   // ── WORKING ORDERS (own strip + sortable table) ──
   const ordBase=IG_ORD.filter(hit).map(o=>Object.assign({},o,_enrCommon(o),{gtd:(o.good_till||"").slice(0,10)||"—"}));
@@ -3867,11 +3873,11 @@ function renderIgAccount(ev){
   IGCLOSED=null;_igClosedNote="";_igNoCreds=false;
   $("ig-note").textContent="";$("ig-acct").innerHTML="";
   $("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading… open positions, working orders and closed trades.</span>`;
-  $("ig-pos-rows").innerHTML=`<tr><td colspan="16" class="empty refreshing">⏳ Data loading… open positions and working orders.</td></tr>`;
+  $("ig-pos-rows").innerHTML=`<tr><td colspan="17" class="empty refreshing">⏳ Data loading… open positions and working orders.</td></tr>`;
   $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty refreshing">⏳ Data loading… working orders.</td></tr>`;
   const loadAccount=(attempt=0)=>fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
     .then(j=>{
-      IG_POS=j.positions||[]; IG_ORD=j.orders||[]; igOpenMonthInitialised=false;
+      IG_POS=j.positions||[]; IG_ORD=j.orders||[]; IG_CLOSE_SELECTION.clear(); updateIgCloseButton(); igOpenMonthInitialised=false;
       // Account name + obfuscated number above the positions (user 2026-07-20). Number is already masked
       // server-side (last 3 chars only).
       $("ig-acct").innerHTML=(j.account_name||j.account_masked)

@@ -2,6 +2,7 @@
 
 import gzip
 import json
+from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
@@ -405,6 +406,37 @@ def test_best_settings_history_rejects_non_finite_results():
         assert "numeric" in str(exc)
     else:
         raise AssertionError("non-finite annual return was accepted")
+
+
+def test_ig_close_requires_explicit_confirmation(monkeypatch):
+    _identity(monkeypatch, "Alex", admin=True)
+    response = server.app.test_client().post(
+        "/api/ig-close-positions", headers={"X-Auth": "token"}, json={"deal_ids": ["D1"]})
+    assert response.status_code == 400
+    assert "confirmation" in response.get_json()["error"]
+
+
+def test_ig_close_rereads_the_acting_users_open_positions(monkeypatch):
+    import ig_shim
+    _identity(monkeypatch, "Alex", admin=True)
+    calls = []
+    monkeypatch.setattr(ig_shim, "session_for", lambda name: object() if name == "Alex" else None)
+    monkeypatch.setattr(ig_shim, "acting_session", lambda name: nullcontext())
+    monkeypatch.setattr(ig_shim, "get_open_positions", lambda: [{"position": {"dealId": "D1"}}])
+    monkeypatch.setattr(ig_shim, "close_trade", lambda deal_id, reason: calls.append((deal_id, reason)) or True)
+    monkeypatch.setattr(server._wu, "log_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(server, "_append_batch", lambda *args, **kwargs: None)
+
+    response = server.app.test_client().post(
+        "/api/ig-close-positions", headers={"X-Auth": "token"},
+        json={"deal_ids": ["D1", "OTHER"], "confirmed": True})
+
+    assert response.status_code == 200
+    assert calls == [("D1", "WEB_USER_CONFIRMED")]
+    assert response.get_json()["results"] == [
+        {"deal_id": "D1", "closed": True, "error": ""},
+        {"deal_id": "OTHER", "closed": False, "error": "not currently open"},
+    ]
 
 
 # ── Documentation guides access (user 2026-08-08, P-13) ──────────────────────────────────────────────

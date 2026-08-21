@@ -4394,7 +4394,7 @@ def api_ig_account():
         out["positions"].append({
             "ticker": tk, "name": tk2name.get(tk) or mk.get("instrumentName") or tk,
             "market": tk2market.get(tk) or "",   # Market column (user 2026-08-03, P-10)
-            "epic": epic, "direction": direction,
+            "epic": epic, "deal_id": pos.get("dealId"), "direction": direction,
             "size": pos.get("size"), "level": pos.get("level") or pos.get("openLevel"),
             "current": close, "profit": profit, "profit_pct": profit_pct,
             "currency": pos.get("currency"), "stop": pos.get("stopLevel"), "limit": pos.get("limitLevel"),
@@ -4416,6 +4416,47 @@ def api_ig_account():
     out["account_name"] = acct_info.get("account_name") or ""
     out["account_masked"] = ("••••" + aid[-3:]) if aid else ""
     return jsonify(out)
+
+
+@app.route("/api/ig-close-positions", methods=["POST"])
+def api_ig_close_positions():
+    """Close only explicitly confirmed, currently-open positions belonging to the acting web user."""
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    body = request.get_json(silent=True) or {}
+    deal_ids = list(dict.fromkeys(str(v).strip() for v in (body.get("deal_ids") or []) if str(v).strip()))
+    if not body.get("confirmed"):
+        return jsonify({"error": "explicit confirmation is required; no position was closed"}), 400
+    if not deal_ids:
+        return jsonify({"error": "select at least one open position"}), 400
+    if len(deal_ids) > 50:
+        return jsonify({"error": "too many positions requested"}), 400
+    try:
+        import ig_shim
+        if ig_shim.session_for(name) is None:
+            return jsonify({"error": "no IG credentials for this user"}), 403
+        results = []
+        # Re-read the account under this user's own session: never trust a browser row or another user's ID.
+        with ig_shim._IG_LOCK, ig_shim.acting_session(name):
+            current = {str((p.get("position") or {}).get("dealId") or ""): p
+                       for p in (ig_shim.get_open_positions() or [])}
+            for deal_id in deal_ids:
+                position = current.get(deal_id)
+                if not position:
+                    results.append({"deal_id": deal_id, "closed": False, "error": "not currently open"})
+                    continue
+                ok = bool(ig_shim.close_trade(deal_id, reason="WEB_USER_CONFIRMED"))
+                results.append({"deal_id": deal_id, "closed": ok,
+                                "error": "IG did not confirm the close" if not ok else ""})
+        closed = [r["deal_id"] for r in results if r["closed"]]
+        if closed:
+            _wu.log_event(name, f"User-confirmed IG close request: {', '.join(closed)}")
+            _append_batch("IG Account", f"User-confirmed close: {len(closed)} position(s)", by=name)
+        return jsonify({"ok": bool(closed), "results": results})
+    except Exception as exc:
+        log.warning("ig user-confirmed close failed for %s: %s", name, exc)
+        return jsonify({"error": "IG close request failed; refresh the account before retrying."}), 502
 
 
 @app.route("/api/ig-closed")
