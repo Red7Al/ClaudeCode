@@ -158,6 +158,10 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     # best.proof) inside renderBestCombo; that's now selectBestChoice(label), called for whichever of the
     # 4 choices is selected, with the proof computed lazily per-choice.
     assert "function selectBestChoice(label)" in html
+    assert "Data loading… transaction evidence for this configuration." in html
+    assert "requestAnimationFrame(()=>setTimeout" in html
+    assert 'data-choice-return="${x.ret}"' in html
+    assert 'innerWidth>=768&&new Set([...grid.children].map(c=>c.offsetTop)).size>3' in html
     assert "let BEST_CHOICES=[], BEST_SELECTED=" in html
     assert "renderDecisionProof('best-proof',x.proof)" in html
     assert "renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true,evidenceTitle:" in html

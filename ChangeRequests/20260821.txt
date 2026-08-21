@@ -46,3 +46,23 @@ HVF Web Application — Change Requests
    Request: Allow a user to select their own open IG positions and close them only after an explicit confirmation.
    Result: Completed and live-verified. Users select their own open positions and confirm the named market-close request; the server re-reads that user's live account and rejects any ID that is no longer open. No position was closed during release verification.
    Status: complete
+
+10. Time: 14:45:00
+    Request: Allow every data-table column to be sorted, including Transaction evidence in Performance.
+    Result: In progress. Existing purpose-built sorting remains authoritative; a generic sorter will cover headings without a specialised handler.
+    Status: in progress
+
+11. Time: 14:50:00
+    Request: Treat every missing trigger-time RVOL, VWAP direction, or ATR direction as a data-quality defect; audit and fix it rather than presenting a silent blank.
+    Result: In progress. The nightly audit will be extended to measure missing trigger features, backfill from retained price/volume bars where possible, and fail visibly with any unresolved count.
+    Status: in progress
+
+12. Time: 14:55:00
+    Request: Show an explicit loading state while Best Settings calculates transaction evidence for a newly selected card.
+    Result: In progress.
+    Status: in progress
+
+13. Time: 15:00:00
+    Request: At iPad mini width and above, do not allow Best Settings cards to occupy more than three rows; remove the lowest-return displayed recommendation if necessary.
+    Result: In progress.
+    Status: in progress

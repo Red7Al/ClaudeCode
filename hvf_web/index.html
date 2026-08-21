@@ -1893,7 +1893,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-closed-view" value="show" onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> Show</label>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-closed-view" value="hide" checked onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> Hide</label></span></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Select</th><th class="clk" data-igp="status">Status</th><th class="clk" data-igp="name">Name</th><th class="clk" data-igp="market">Market</th><th class="clk" data-igp="direction">Dir</th><th class="clk" data-igp="size">Size</th><th class="clk" data-igp="level">Open</th><th class="clk" data-igp="current" title="Live close price for open positions, execution close price for closed trades">Now / Close</th><th class="clk" data-igp="profit" title="Live or realised profit in the instrument's currency">Profit</th><th class="clk" data-igp="profit_pct" title="Profit % against the open level, direction-aware">Profit %</th><th class="clk" data-igp="stop">Stop</th><th class="clk" data-igp="limit">Limit</th><th class="clk" data-igp="currency">Ccy</th><th class="clk" data-igp="opened">Opened (UTC)</th><th class="clk" data-igp="closed">Closed date/time (UTC)</th><th class="clk" data-igp="reason">Why closed</th><th class="clk" data-igp="ticker">Ticker</th></tr></thead>
+      <thead><tr><th data-nosort>Select</th><th class="clk" data-igp="status">Status</th><th class="clk" data-igp="name">Name</th><th class="clk" data-igp="market">Market</th><th class="clk" data-igp="direction">Dir</th><th class="clk" data-igp="size">Size</th><th class="clk" data-igp="level">Open</th><th class="clk" data-igp="current" title="Live close price for open positions, execution close price for closed trades">Now / Close</th><th class="clk" data-igp="profit" title="Live or realised profit in the instrument's currency">Profit</th><th class="clk" data-igp="profit_pct" title="Profit % against the open level, direction-aware">Profit %</th><th class="clk" data-igp="stop">Stop</th><th class="clk" data-igp="limit">Limit</th><th class="clk" data-igp="currency">Ccy</th><th class="clk" data-igp="opened">Opened (UTC)</th><th class="clk" data-igp="closed">Closed date/time (UTC)</th><th class="clk" data-igp="reason">Why closed</th><th class="clk" data-igp="ticker">Ticker</th></tr></thead>
       <tbody id="ig-pos-rows"></tbody>
     </table></div>
   </section>
@@ -3548,6 +3548,10 @@ function genSort(rows,k,dir){
     if(typeof x==="number"&&typeof y==="number")return (x-y)*dir;
     return String(x).localeCompare(String(y))*dir;});
 }
+// Data tables with a specialised data-* header already rerender from their canonical row model. Every
+// other heading uses this DOM sorter, including transaction evidence generated after a card is selected.
+// It intentionally moves only tbody rows, leaving totals/footers and underlying calculations untouched.
+document.addEventListener('click',ev=>{const th=ev.target.closest('th');if(!th||th.dataset.nosort||Object.keys(th.dataset).length)return;const table=th.closest('table'),head=th.parentElement,body=table&&table.tBodies&&table.tBodies[0];if(!table||!head||!body)return;const col=[...head.children].indexOf(th);if(col<0)return;const dir=th.dataset.genericSortDir==='asc'?'desc':'asc',text=row=>(row.children[col]?.textContent||'').trim(),number=v=>{const s=v.replace(/[£,$,%\s,]/g,'').replace(/^−/,'-');return /^[-+]?\d+(?:\.\d+)?$/.test(s)?Number(s):null;},cmp=(a,b)=>{const x=text(a),y=text(b),nx=number(x),ny=number(y);if(nx!=null&&ny!=null)return nx-ny;const dx=Date.parse(x),dy=Date.parse(y);if(/^\d{4}-\d\d-\d\d/.test(x)&&/^\d{4}-\d\d-\d\d/.test(y)&&!isNaN(dx)&&!isNaN(dy))return dx-dy;return x.localeCompare(y,undefined,{numeric:true,sensitivity:'base'});};[...head.children].forEach(h=>{delete h.dataset.genericSortDir;const arrow=h.querySelector('.garr');if(arrow)arrow.remove();});th.dataset.genericSortDir=dir;th.insertAdjacentHTML('beforeend',` <span class="garr" style="opacity:.65;font-size:10px">${dir==='asc'?'▲':'▼'}</span>`);[...body.rows].sort((a,b)=>cmp(a,b)*(dir==='asc'?1:-1)).forEach(row=>body.append(row));});
 const _mw=d=>{if(!d)return'—';const day=+String(d).slice(8,10)||1;return String(d).slice(0,7)+' W'+Math.min(5,Math.ceil(day/7));};   // Month-Week bucket
 let OO_ROWS=[], ooSortK="updated_at", ooSortDir=-1;
 function paintOrderOps(){
@@ -4855,7 +4859,7 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
     const labels={rr:"R:R",q:"Quality",vs:"VolumeScore",rv:"RVOL",vw:"VWAP required",atr:"ATR expanding",st:"Position size",mo:"Max open",scope:"Scope"};
     return Object.keys(target).filter(k=>String(current[k])!==String(target[k])).map(k=>`${labels[k]}: ${displayValue(k,current[k])} → ${displayValue(k,target[k])}`).join(" · ")||"No change from your current configuration";
   };
-  const choiceCards=choices.map(([label,x,why,colour])=>`<div class="fcard fcard-choice${label===BEST_SELECTED?' fcard-selected':''}" data-choice="${label}" style="min-width:240px;flex:1;border-top:3px solid ${colour}" onclick="selectBestChoice('${label.replace(/'/g,"\\'")}')" title="Show this option's detail and Transaction evidence below">
+  const choiceCards=choices.map(([label,x,why,colour])=>`<div class="fcard fcard-choice${label===BEST_SELECTED?' fcard-selected':''}" data-choice="${label}" data-choice-return="${x.ret}" style="min-width:240px;flex:1;border-top:3px solid ${colour}" onclick="selectBestChoice('${label.replace(/'/g,"\\'")}')" title="Show this option's detail and Transaction evidence below">
     <h3 style="color:${colour}">${label}</h3><div class="muted" style="font-size:11px;min-height:30px">${why}</div>
     <div class="body"><div><b style="font-size:17px;color:${x.ret>=0?'var(--bull)':'var(--bear)'}">${pct(x.ret)}</b> return · <b>${(x.dd*100).toFixed(1)}%</b> max drawdown</div>
       <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} funded of ${x.seq.length.toLocaleString()} eligible · ${x.posPeriods}/${x.periods} positive quarters</div>
@@ -4875,7 +4879,9 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   <div class="card" style="margin:0" id="best-detail"></div>`;
   // Defensive is intentionally last. If responsive wrapping leaves it alone on a final row, remove it
   // rather than spending an entire row on the least-useful alternative (user 2026-08-18).
-  requestAnimationFrame(()=>{const grid=box.querySelector('.fgrid'),def=grid&&grid.querySelector('[data-choice="Defensive"]');if(!grid||!def)return;const rowPeers=[...grid.children].filter(c=>c!==def&&c.offsetTop===def.offsetTop);if(!rowPeers.length){def.remove();if(BEST_SELECTED==="Defensive")selectBestChoice("Balanced");}});
+  requestAnimationFrame(()=>{const grid=box.querySelector('.fgrid'),def=grid&&grid.querySelector('[data-choice="Defensive"]');if(!grid)return;if(def){const rowPeers=[...grid.children].filter(c=>c!==def&&c.offsetTop===def.offsetTop);if(!rowPeers.length){def.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!=="Defensive");if(BEST_SELECTED==="Defensive")selectBestChoice("Balanced");}}
+    // Laptop / iPad-mini+ decision surface: a fourth row is less useful than the weakest return card.
+    if(innerWidth>=768&&new Set([...grid.children].map(c=>c.offsetTop)).size>3){const weakest=[...grid.querySelectorAll('[data-choice-return]')].sort((a,b)=>Number(a.dataset.choiceReturn)-Number(b.dataset.choiceReturn))[0];if(weakest){const label=weakest.dataset.choice;weakest.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!==label);if(BEST_SELECTED===label)selectBestChoice("Balanced");}}});
   BEST_CHOICES=choices; BEST_MODEL_W=w;
   // Detail card follows whichever choice is clicked (user 2026-08-07, ChangeRequest P-06); defaults to
   // Balanced on first render, and stays on the same choice across data refreshes where still present.
@@ -4913,7 +4919,13 @@ function selectBestChoice(label){
   // The funded replay proof is only computed for whichever choice has actually been viewed (lazy) — Best
   // Settings already evaluates thousands of configurations per render, so we don't pay for a full
   // chronological replay on the 3 cards a user never clicks.
-  if(!x.proof)x.proof=_combReplay(x.seq,x.st/100,x.mo,true).proof;
+  if(!x.proof){
+    detail.innerHTML='<div class="refreshing" style="padding:18px 0">⏳ Data loading… transaction evidence for this configuration.</div>';
+    document.querySelectorAll('#ordp-bestcombo .fcard-choice').forEach(el=>el.classList.toggle('fcard-selected',el.dataset.choice===lbl));
+    // Let the browser paint the loading state before the potentially large chronological replay starts.
+    requestAnimationFrame(()=>setTimeout(()=>{x.proof=_combReplay(x.seq,x.st/100,x.mo,true).proof;selectBestChoice(lbl);},0));
+    return;
+  }
   document.querySelectorAll('#ordp-bestcombo .fcard-choice').forEach(el=>el.classList.toggle('fcard-selected',el.dataset.choice===lbl));
   const pct=v=>v>=9?'×'+(1+v).toLocaleString(undefined,{maximumFractionDigits:(1+v)>=100?0:1}):(v>=0?'+':'')+(v*100).toFixed(1)+'%';
   const gbp=v=>'£'+Math.round(v).toLocaleString();
