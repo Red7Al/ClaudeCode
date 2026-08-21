@@ -79,5 +79,10 @@ HVF Web Application — Change Requests
 
 16. Time: 19:00:00
     Request: Show an explicit loading message in Instruments while its data is loading.
-    Result: In progress. The tab now retains a Loading instruments state until the shared records request completes, rather than showing a misleading empty result.
+   Result: In progress. The tab now retains a Loading instruments state until the shared records request completes, rather than showing a misleading empty result.
+   Status: in progress
+
+17. Time: 19:15:00
+    Request: Resolve missing current RVOL values in Instruments, including III, ADM, ALW and AAL.
+    Result: In progress. The response now identifies the per-instrument cause instead of rendering a blank; the named equity records still require live-data inspection and backfill where price/volume history is absent or insufficient.
     Status: in progress
