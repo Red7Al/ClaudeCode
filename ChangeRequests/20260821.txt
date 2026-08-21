@@ -21,3 +21,8 @@ HVF Web Application — Change Requests
    Request: Restore meaningful GitHub Offline Python Regression Test status after stale checks caused every recent workflow run to fail.
    Result: Completed and verified by GitHub Actions run 32483421114: the full offline suite passed after deployment-only IONOS secrets were excluded and the approved 20-position default was reflected in the regression test.
    Status: complete
+
+5. Time: 14:10:00
+   Request: Replace the Best over 3 years card's finalist shortlist with a full, auditable configuration-grid review and repeat the validation daily.
+   Result: In progress. The existing browser calculation reduces the three-year candidates to 40 and then 12 before authoritative replay; this does not satisfy the requested full-grid review. A server-side exhaustive calculation and daily persisted audit are required so the result is not constrained by browser responsiveness.
+   Status: in progress

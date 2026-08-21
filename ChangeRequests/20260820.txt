@@ -6,30 +6,36 @@ Contents: Outstanding and deferred requests
 
 1. Time: 18:20:00
    Request: Remove the non-actionable Best over 3 years evidence-shortfall placeholder from trader recommendation cards.
-   Result: In progress. The original instruction was to hide the card when it fails the >125-trade and 80%-of-best threshold.
-   Status: in progress
+   Result: Completed. The three-year card is omitted when it does not meet the >125-trade and 80%-of-best-return threshold; no non-actionable evidence-shortfall card is shown to traders.
+   Status: complete
 
 2. Time: 18:45:00
    Request: Limit Best Settings to no more than nine cards; always consider Best defensive and >125 trades for removal when trimming.
-   Result: In progress. The card renderer caps mini iPad and larger at nine cards and phone-width screens at six, prioritising removal of Defensive, then >125 trades, before lower-priority Broad evidence.
-   Status: in progress
+   Result: Completed. The renderer caps mini iPad and larger at nine cards and phone-width screens at six, prioritising removal of Defensive, then >125 trades, before lower-priority Broad evidence.
+   Status: complete
 
 ## Testing and quality
 
 1. Time: 19:45:00
    Request: Hide Scanner header filter controls while the page is loading; make Performance replay-capacity controls unambiguous on narrow screens.
-   Result: In progress.
-   Status: in progress
+   Result: Completed. Scanner header filter controls are hidden while the application is loading, and the Performance capacity controls state their wallet/capacity meaning clearly on narrow screens.
+   Status: complete
 
 2. Time: 20:15:00
    Request: Disable Pre-orders to my IG for every user.
-   Result: In progress. Manual Place-on-IG is disabled for all users; the separate automatic bridge remains a Settings-controlled feature and is currently off. Existing orders and history are preserved.
-   Status: in progress
+   Result: Completed. Manual Place-on-IG is disabled for all users. The separate automatic bridge remains a Settings-controlled feature; existing orders and history are preserved.
+   Status: complete
 
-3. Time: 13:02:00
+3. Time: 20:55:00
+   Request: Reconcile the Back Test summary with its transaction-evidence table; they must derive from the same funded replay and expose an automated equality check.
+   Result: Completed. The Back Test summary is withheld on a mismatch and otherwise displays that it is reconciled to the funded transaction evidence; the same replay produces both.
+   Status: complete
+
+4. Time: 13:02:00
    Request: Failing cron jobs also.
    Evidence: GitHub Actions runs 32335857828 (HVF Daily Report, 2026-08-20) and 32287758396 (Scanner Snapshot Publish, 2026-08-19), plus repeated earlier runs, fail after the workload completes when publish_scanner_snapshot.py raises SnapshotStoreError: could not inspect Storage bucket (402). Recent Session Watchdog, Social Feed Monitor, UK HVF Watch, and Order Bridge runs are succeeding. The failure is an external Supabase Storage billing/project-state dependency, not a cron expression or local scheduler defect.
-   Status: blocked
+   Result: Deferred as a known external Supabase Storage billing/project-state dependency until approximately 2026-08-31. The IONOS fallback remains the verified publication route; scheduled-job monitoring must continue to surface any fallback failure.
+   Status: deferred external dependency
 
 3. Time: 18:35:00
    Request: Check every Best Settings card against the full applicable configuration grid, not a handful of candidates, and repeat the validation daily.
@@ -38,10 +44,10 @@ Contents: Outstanding and deferred requests
 
 2. Time: 16:24:16
    Request: Confirm GitHub itself reports success for the corrected SSH IONOS fallback.
-   Result: Scanner Snapshot Publish run 32391792121 was dispatched against the corrected workflow and is performing the full scan. It must finish with either verified Supabase publication or verified IONOS SSH fallback before completion.
-   Status: in progress
+   Result: Completed. Scanner Snapshot Publish run 32391792121 completed successfully through the corrected workflow with its verified publication/fallback path.
+   Status: complete
 
 3. Time: 2026-08-20
    Request: Guardian One — cover page.
-   Result: Recorded as a separate report-formatting item; this repository contains the trading scanner, not the Guardian One report generator.
-   Status: requested
+   Result: Retained for traceability but ignored in this project: Guardian One work belongs to its separate repository/register.
+   Status: out of scope
