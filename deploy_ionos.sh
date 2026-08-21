@@ -192,6 +192,15 @@ else
   unzip -o ~/squeeze-scanner-ionos.zip >/dev/null
 fi
 chmod 755 cgi-bin/app.py
+# IONOS can retain the imported Flask module behind the CGI/WSGI wrapper.  The archive preserves
+# app.py's timestamp when its contents have not changed, so changing only hvf_web/server.py otherwise
+# leaves an old handler serving API calls.  Touching the wrapper is the explicit reload signal.
+touch cgi-bin/app.py
+# The close-attempt audit must remain writable to the web worker even when Supabase is unavailable.
+# Keep the directory itself non-writable; this pre-created, group-writable file is the least privilege.
+touch data/ig_close_audit.jsonl
+chgrp www-data data/ig_close_audit.jsonl 2>/dev/null || true
+chmod 664 data/ig_close_audit.jsonl
 rm -f ~/squeeze-scanner-ionos.zip
 echo "  extracted; cgi-bin/app.py is $(stat -c '%a' cgi-bin/app.py)"
 REMOTE

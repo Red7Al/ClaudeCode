@@ -4480,7 +4480,8 @@ def api_ig_close_positions():
             outcome = "IG confirmed closed" if result["closed"] else f"still open / failed: {result['error']}"
             _wu.log_event(name, f"User-confirmed IG close outcome for {result['deal_id']}: {outcome}")
         _append_batch("IG Account", f"User-confirmed close outcome: {len(closed)}/{len(results)} position(s) closed", by=name)
-        return jsonify({"ok": bool(closed), "results": results})
+        return jsonify({"ok": bool(closed), "results": results,
+                        "close_handler_version": "2026-08-21-audit-v2"})
     except Exception as exc:
         log.warning("ig user-confirmed close failed for %s: %s", name, exc)
         return jsonify({"error": "IG close request failed; refresh the account before retrying."}), 502

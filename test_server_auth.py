@@ -460,6 +460,7 @@ def test_ig_close_returns_and_persists_the_broker_rejection_reason(monkeypatch):
 
     assert response.status_code == 200
     assert response.get_json()["results"] == [{"deal_id": "D1", "closed": False, "error": "MARKET_CLOSED"}]
+    assert response.get_json()["close_handler_version"] == "2026-08-21-audit-v2"
     assert any("MARKET_CLOSED" in event[-1] for event in events)
     assert [entry[2] for entry in audit] == ["submitted", "not_closed"]
 
