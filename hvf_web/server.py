@@ -4447,12 +4447,15 @@ def api_ig_close_positions():
                     results.append({"deal_id": deal_id, "closed": False, "error": "not currently open"})
                     continue
                 ok = bool(ig_shim.close_trade(deal_id, reason="WEB_USER_CONFIRMED"))
+                outcome = ig_shim.last_close_outcome()
+                broker_error = str(outcome.get("reason") or "")
                 results.append({"deal_id": deal_id, "closed": ok,
-                                "error": "IG did not confirm the close" if not ok else ""})
+                                "error": broker_error or ("IG did not confirm the close" if not ok else "")})
         closed = [r["deal_id"] for r in results if r["closed"]]
-        if closed:
-            _wu.log_event(name, f"User-confirmed IG close request: {', '.join(closed)}")
-            _append_batch("IG Account", f"User-confirmed close: {len(closed)} position(s)", by=name)
+        for result in results:
+            outcome = "IG confirmed closed" if result["closed"] else f"still open / failed: {result['error']}"
+            _wu.log_event(name, f"User-confirmed IG close outcome for {result['deal_id']}: {outcome}")
+        _append_batch("IG Account", f"User-confirmed close outcome: {len(closed)}/{len(results)} position(s) closed", by=name)
         return jsonify({"ok": bool(closed), "results": results})
     except Exception as exc:
         log.warning("ig user-confirmed close failed for %s: %s", name, exc)

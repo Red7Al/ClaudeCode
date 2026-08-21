@@ -66,3 +66,13 @@ HVF Web Application — Change Requests
     Request: At iPad mini width and above, do not allow Best Settings cards to occupy more than three rows; remove the lowest-return displayed recommendation if necessary.
     Result: In progress.
     Status: in progress
+
+14. Time: 15:10:00
+    Request: Clarify the replay model's gross exposure, reserved margin, free margin and stressed-loss illustration without changing sizing, returns or orders.
+    Result: In progress.
+    Status: in progress
+
+15. Time: 16:12:00
+    Request: Make confirmed IG position closes auditable and unambiguous: retain each broker outcome, show it in the GUI, and never leave a user unsure whether a selected position closed.
+    Result: In progress. Four explicitly confirmed close requests (CDW, IWG.L, SMIN.L and PNN.L) remained open when re-read from IG at 16:11 UTC. No retry will be made until the workflow reports per-deal outcomes.
+    Status: in progress

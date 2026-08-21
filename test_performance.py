@@ -141,6 +141,8 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert 'All recommendation cards use an explicit numeric Max open value.' in html
     assert 'OPENS=[3,5,8,12,20,25,50]' in html
     assert 'WINNERS_MAXOPEN=20' in html
+    assert 'id="ordp-exposure"' in html
+    assert 'Exposure illustration (no sizing change)' in html
     # "Leverage & the wallet" explanatory text removed per ChangeRequest 2026-08-07 P-06.
     assert 'Leverage &amp; the wallet' not in html
     assert 'id="ordp-maxopen" type="number" min="1" step="1" value="20"' in html

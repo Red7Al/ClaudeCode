@@ -457,6 +457,18 @@ def session_for(login: str = None) -> Optional["IGSession"]:
 # monitors run in a separate process with only the global session, so they're unaffected.
 import threading as _threading
 _IG_LOCK = _threading.RLock()
+_CLOSE_OUTCOME = _threading.local()
+
+
+def _set_close_outcome(deal_id: str, closed: bool, reason: str = "", deal_reference: str = "") -> None:
+    """Keep the most recent broker-close outcome for the calling request thread."""
+    _CLOSE_OUTCOME.value = {"deal_id": str(deal_id), "closed": bool(closed),
+                            "reason": str(reason or ""), "deal_reference": str(deal_reference or "")}
+
+
+def last_close_outcome() -> dict:
+    """Return a copy of the current thread's latest close result, if one exists."""
+    return dict(getattr(_CLOSE_OUTCOME, "value", {}) or {})
 
 
 import contextlib as _contextlib
@@ -1814,6 +1826,7 @@ def close_trade(deal_id: str, reason: str = "MANUAL") -> bool:
     pos = get_position_by_deal(deal_id)
     if not pos:
         log.warning(f"Position {deal_id} not found in open positions")
+        _set_close_outcome(deal_id, False, "not currently open")
         return False
 
     epic      = pos["market"]["epic"]
@@ -1838,13 +1851,20 @@ def close_trade(deal_id: str, reason: str = "MANUAL") -> bool:
         resp     = session.delete("/positions/otc", body=body, version="1")
         deal_ref = resp.get("dealReference")
 
+        if not deal_ref:
+            _set_close_outcome(deal_id, False, "IG did not return a close deal reference")
+            log.error(f"Close rejected: no deal reference for {deal_id}")
+            return False
+
         # Confirm closure
         time.sleep(1)
         confirm = session.get(f"/confirms/{deal_ref}", version="1")
         status  = confirm.get("dealStatus")
 
         if status != "ACCEPTED":
-            log.error(f"Close rejected: {confirm.get('reason', 'UNKNOWN')}")
+            reject_reason = str(confirm.get("reason") or "UNKNOWN")
+            _set_close_outcome(deal_id, False, reject_reason, deal_ref)
+            log.error(f"Close rejected: {reject_reason}")
             return False
 
         close_price  = confirm.get("level", 0)
@@ -1857,10 +1877,20 @@ def close_trade(deal_id: str, reason: str = "MANUAL") -> bool:
             close_price=close_price,
             close_reason=close_reason
         )
+        _set_close_outcome(deal_id, True, "", deal_ref)
         return True
 
     except requests.HTTPError as e:
+        status = getattr(e.response, "status_code", "unknown")
+        body_text = str(getattr(e.response, "text", "") or "").strip()
+        detail = f"IG HTTP {status}" + (f": {body_text[:300]}" if body_text else "")
+        _set_close_outcome(deal_id, False, detail)
         log.error(f"IG API error closing trade: {e.response.status_code} — {e.response.text}")
+        return False
+    except Exception as e:
+        detail = f"IG close request error: {e}"
+        _set_close_outcome(deal_id, False, detail)
+        log.exception("Unexpected IG close error for %s", deal_id)
         return False
 
 
