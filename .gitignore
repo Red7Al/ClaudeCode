@@ -58,6 +58,9 @@ launcher_secrets.cmd
 # local run logs
 hvf_web/run.log
 
+# Local assistant scratch file; never source or deployable content.
+a.tmp
+
 # Personal ToDo / change-request notes to Claude — local working notes, not tracked
 ChangeRequests/
 tests_fixtures/performance-best-settings.png
