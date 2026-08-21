@@ -136,3 +136,14 @@ jobs:
             echo "Supabase Storage was unavailable and the IONOS fallback did not verify" >&2
             exit 1
           fi
+
+      # Authoritative Best Settings review: this is intentionally after the report's final publication
+      # guard.  It is a read-only historical replay and persistence of its audit evidence; it does not
+      # change user settings or place orders.  A missing trigger-time RVOL/VWAP/ATR/VolumeScore blocks
+      # the recommendation instead of letting a browser silently show incomplete evidence.
+      - name: Run persisted Best Settings full-grid audit
+        if: success()
+        run: python run_best_settings_audit.py
+        env:
+          SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}

@@ -5176,6 +5176,14 @@ function _instrSortValue(row,key){return key==="rvol"?row.current_rvol:key==="ab
 // Cross-filter cards: Location/Market/Sector/Status are public; Direction is a 4th "worthwhile" card but
 // only once logged in — it's one of the columns hidden pre-login (same rule as the table below).
 function paintInstruments(){
+  // This tab can be selected before the shared /api/records request completes.  Do not replace the
+  // initial loading row with a misleading "No instruments match" result while DATA is still empty.
+  if(!DATA_LOADED){
+    if($("instr-count"))$("instr-count").innerHTML='<span class="muted">⏳ Loading instruments…</span>';
+    if($("instr-viz"))$("instr-viz").innerHTML='';
+    if($("instr-rows"))$("instr-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Loading instruments…</td></tr>';
+    return;
+  }
   const rows=DATA||[], q=(($("instr-search")||{}).value||"").trim().toLowerCase();
   const base=q?rows.filter(r=>((r.name||"")+" "+disp(r.ticker)+" "+(r.ticker||"")).toLowerCase().includes(q)):rows;
   const _idims=[["inf_location",r=>locName(r.location)],["inf_market",r=>r.market],["inf_sector",r=>r.sector],
