@@ -84,5 +84,10 @@ HVF Web Application — Change Requests
 
 17. Time: 19:15:00
     Request: Resolve missing current RVOL values in Instruments, including III, ADM, ALW and AAL.
-    Result: In progress. The response now identifies the per-instrument cause instead of rendering a blank; the named equity records still require live-data inspection and backfill where price/volume history is absent or insufficient.
+   Result: In progress. The response now identifies the per-instrument cause instead of rendering a blank; the named equity records still require live-data inspection and backfill where price/volume history is absent or insufficient.
+   Status: in progress
+
+18. Time: 19:30:00
+    Request: Review every current Instrument row; where expected RVOL, VWAP, ATR or VolumeScore data is missing, determine the cause and resolve it.
+    Result: In progress. A full-universe completeness audit and repair path is being added. Markets with no meaningful reported volume will be explicitly classified as not applicable; repairable equity data gaps will be backfilled from retained bars and any remaining exceptions recorded for the daily audit.
     Status: in progress

@@ -428,6 +428,66 @@ def _post_absurd_slack(fresh: list, backlog: int, window_days: int) -> None:
         log.warning(f"absurd-outcome Slack post failed: {exc}")
 
 
+def _audit_current_instrument_metrics() -> dict:
+    """Audit RVOL/VWAP/ATR coverage for EVERY current snapshot row.
+
+    A current bar with no reported volume is not made up: RVOL falls back to the latest usable volume
+    bar in server._live_instrument_metrics.  The small remaining equity set is given one bounded
+    write-through history repair attempt; failures are persisted as evidence for follow-up rather than
+    becoming a silent dash in Instruments.
+    """
+    from collections import Counter
+    from datetime import date, timedelta
+    from hvf_web import server
+    import price_store
+    import web_store
+
+    snap = server._load_snapshot()
+    metrics = server._live_instrument_metrics(snap)
+    repairable = [r for r in snap.get("records", [])
+                  if metrics.get(r.get("ticker"), {}).get("status")
+                  in ("no_price_history", "insufficient_volume_history")]
+    repairs = {}
+    # Never turn a data-quality check into an uncontrolled full-universe provider pull.  The normal
+    # scanner owns daily ingestion; this is limited to the explicit exception set.
+    for row in repairable[:50]:
+        ticker = row.get("ticker")
+        if not ticker:
+            continue
+        try:
+            frame = price_store.get_bars_or_fetch(
+                ticker, ticker, date.today() - timedelta(days=365 * 3), date.today() + timedelta(days=1),
+                source="metric-completeness-backfill", stale_days=1)
+            repairs[ticker] = 0 if frame is None else int(len(frame))
+        except Exception as exc:
+            repairs[ticker] = f"repair failed: {exc}"[:180]
+
+    # The repair may have upserted bars, so do not reuse an in-process cache built before it.
+    server._LIVE_INSTRUMENT_METRICS_CACHE.update(gen=None, data={})
+    metrics = server._live_instrument_metrics(snap)
+    statuses = Counter((metrics.get(r.get("ticker")) or {}).get("status", "not_calculated")
+                       for r in snap.get("records", []))
+    unresolved = [{"ticker": r.get("ticker"), "name": r.get("name"),
+                   "market": r.get("market"),
+                   "status": (metrics.get(r.get("ticker")) or {}).get("status", "not_calculated")}
+                  for r in snap.get("records", [])
+                  if (metrics.get(r.get("ticker")) or {}).get("status")
+                  in ("no_price_history", "insufficient_volume_history")]
+    missing_vwap = sum((metrics.get(r.get("ticker")) or {}).get("above_vwap") is None
+                       for r in snap.get("records", []))
+    missing_atr = sum((metrics.get(r.get("ticker")) or {}).get("atr_expanding") is None
+                      for r in snap.get("records", []))
+    report = {"audit_date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "rows": len(snap.get("records", [])), "metric_statuses": dict(statuses),
+              "missing_vwap": missing_vwap, "missing_atr": missing_atr,
+              "unresolved": unresolved, "repair_attempts": repairs}
+    if not web_store.save_json_store("current_instrument_metric_audit", report):
+        raise RuntimeError("current instrument metric audit could not be persisted")
+    log.info("Current metric audit: %s; unresolved equity rows=%s; VWAP missing=%s; ATR missing=%s",
+             dict(statuses), len(unresolved), missing_vwap, missing_atr)
+    return report
+
+
 def main():
     args = sys.argv[1:]
     # Epic-lookup diagnostic — run BEFORE the audit-batch parsing so it never triggers a price audit.
@@ -486,6 +546,8 @@ def main():
         log.info("Absurd outcomes: none")
     if fresh:
         _post_absurd_slack(fresh, len(bad), _WINDOW_DAYS)
+
+    _audit_current_instrument_metrics()
 
     log.info(f"Audit complete: {len(rows)} tickers, allowance remaining {remaining}")
     try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)

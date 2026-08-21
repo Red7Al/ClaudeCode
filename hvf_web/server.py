@@ -1185,10 +1185,18 @@ def _live_instrument_metrics(snap: dict) -> dict:
                     out[ticker] = {"status": "no_price_history"}
                     continue
                 index = len(bars) - 1
-                rvol = _vscore._rvol_at(bars, index)
+                # A number of otherwise complete Yahoo daily bars carry a close but not a volume value
+                # for the most recent session.  RVOL is a volume measure, so use the newest bar that
+                # actually reports volume rather than showing a false blank for the whole instrument.
+                # Keep its date separately: a trader can see that price metrics are current to a later
+                # close while RVOL is current to the latest usable volume bar.
+                rvol_index = next((i for i in range(index, -1, -1)
+                                   if bars[i][4] and _vscore._rvol_at(bars, i) is not None), None)
+                rvol = _vscore._rvol_at(bars, rvol_index) if rvol_index is not None else None
                 has_volume = any(bar[4] for bar in bars)
                 out[ticker] = {
                     "rvol": rvol,
+                    "rvol_date": str(bars[rvol_index][0])[:10] if rvol_index is not None else None,
                     # This is the literal current-price-above-VWAP instrument metric. Unlike the
                     # direction-aware setup confirmation metric, a BEAR row must not invert it.
                     "above_vwap": _vscore._above_vwap(bars, index, True),
@@ -1197,8 +1205,9 @@ def _live_instrument_metrics(snap: dict) -> dict:
                     # A missing RVOL is a data-quality state, never an unlabelled value. FX, indices
                     # and some vendor instruments do not publish meaningful daily volume; equities with
                     # a real-volume history but fewer than five usable prior bars need backfill/review.
-                    "status": ("complete" if rvol is not None else
-                               ("no_reported_volume" if not has_volume else "insufficient_volume_history")),
+                    "status": ("complete" if rvol is not None and rvol_index == index else
+                               ("complete_latest_volume_bar" if rvol is not None else
+                               ("no_reported_volume" if not has_volume else "insufficient_volume_history"))),
                 }
     except Exception as exc:
         log.warning("live all-instrument metrics failed (columns blank): %s", exc)
@@ -1336,6 +1345,7 @@ def api_records():
                              above_vwap=av,
                              atr_expanding=ae,
                              current_rvol=current.get("rvol"),
+                             current_rvol_date=current.get("rvol_date"),
                              current_above_vwap=current.get("above_vwap"),
                              current_atr_expanding=current.get("atr_expanding"),
                              current_metric_date=current.get("date"),

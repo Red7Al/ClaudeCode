@@ -65,6 +65,27 @@ def test_winners_endpoint_never_emits_nan(monkeypatch):
     assert response.get_json()["rows"][0]["mcap"] is None
 
 
+def test_current_rvol_uses_latest_usable_volume_bar(monkeypatch):
+    """A latest close with null volume must not blank an otherwise well-covered equity."""
+    dates = [dt.date(2026, 8, day) for day in range(1, 9)]
+    bars = [(day, 11.0, 9.0, 10.0, 100) for day in dates[:-1]]
+    bars.append((dates[-1], 11.0, 9.0, 10.0, None))
+
+    class DummyDb:
+        def close(self):
+            pass
+
+    import db_pool
+    monkeypatch.setattr(db_pool, "get_db", lambda: DummyDb())
+    monkeypatch.setattr(server, "_perf_bars", lambda db, cutoff, lookback_days=0: {"TEST": bars})
+    monkeypatch.setattr(server, "_LIVE_INSTRUMENT_METRICS_CACHE", {"gen": None, "data": {}})
+    metrics = server._live_instrument_metrics({"generated_utc": "test", "records": [{"ticker": "TEST"}]})
+
+    assert metrics["TEST"]["rvol"] == 1.0
+    assert metrics["TEST"]["rvol_date"] == "2026-08-07"
+    assert metrics["TEST"]["status"] == "complete_latest_volume_bar"
+
+
 def test_three_year_winners_request_uses_three_year_trigger_features(monkeypatch):
     """Older evidence must be enriched from its own review window, not a 12-month cache."""
     row = {
