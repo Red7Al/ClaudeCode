@@ -5173,6 +5173,11 @@ function instrSort(k,add=false){
     if(i>=0)th.insertAdjacentHTML("beforeend",` <span class="sarr">${instrSorts[i].d>0?"▲":"▼"}${instrSorts.length>1?i+1:""}</span>`);});
 }
 function _instrSortValue(row,key){return key==="rvol"?row.current_rvol:key==="above_vwap"?row.current_above_vwap:key==="atr_expanding"?row.current_atr_expanding:row[key];}
+function instrRvolCell(row){
+  if(row.current_rvol!=null)return rvolCell(row.current_rvol);
+  const reason={no_price_history:"Price history unavailable — requires data repair",no_reported_volume:"No reported daily volume (not applicable)",insufficient_volume_history:"Insufficient volume history — requires data repair",not_calculated:"Current RVOL has not been calculated"}[row.current_metric_status]||"Current RVOL unavailable — requires data repair";
+  return `<span class="muted" title="${_esc(reason)}">Data issue</span>`;
+}
 // Cross-filter cards: Location/Market/Sector/Status are public; Direction is a 4th "worthwhile" card but
 // only once logged in — it's one of the columns hidden pre-login (same rule as the table below).
 function paintInstruments(){
@@ -5212,7 +5217,7 @@ function paintInstruments(){
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:"")}</td>
     <td>${r.wk52_low!=null?f2(r.wk52_low):"—"}</td><td>${r.wk52_high!=null?f2(r.wk52_high):"—"}</td>
     <td>${ob(r.rr!=null?(+r.rr).toFixed(1):"")}</td>
-    <td>${ob(rvolCell(r.current_rvol))}</td>
+    <td>${ob(instrRvolCell(r))}</td>
     <td>${ob(r.current_above_vwap==null?"—":r.current_above_vwap?"✓":"✗")}</td>
     <td>${ob(r.current_atr_expanding==null?"—":r.current_atr_expanding?"✓":"✗")}</td>
     <td>${ob(volScoreCell(r.volume_score))}</td>

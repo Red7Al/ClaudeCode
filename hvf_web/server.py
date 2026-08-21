@@ -1182,15 +1182,23 @@ def _live_instrument_metrics(snap: dict) -> dict:
             for ticker in want:
                 bars = bars_by_tk.get(ticker, [])
                 if not bars:
+                    out[ticker] = {"status": "no_price_history"}
                     continue
                 index = len(bars) - 1
+                rvol = _vscore._rvol_at(bars, index)
+                has_volume = any(bar[4] for bar in bars)
                 out[ticker] = {
-                    "rvol": _vscore._rvol_at(bars, index),
+                    "rvol": rvol,
                     # This is the literal current-price-above-VWAP instrument metric. Unlike the
                     # direction-aware setup confirmation metric, a BEAR row must not invert it.
                     "above_vwap": _vscore._above_vwap(bars, index, True),
                     "atr_expanding": _vscore._atr_expanding(bars, index),
                     "date": str(bars[index][0])[:10],
+                    # A missing RVOL is a data-quality state, never an unlabelled value. FX, indices
+                    # and some vendor instruments do not publish meaningful daily volume; equities with
+                    # a real-volume history but fewer than five usable prior bars need backfill/review.
+                    "status": ("complete" if rvol is not None else
+                               ("no_reported_volume" if not has_volume else "insufficient_volume_history")),
                 }
     except Exception as exc:
         log.warning("live all-instrument metrics failed (columns blank): %s", exc)
@@ -1331,6 +1339,7 @@ def api_records():
                              current_above_vwap=current.get("above_vwap"),
                              current_atr_expanding=current.get("atr_expanding"),
                              current_metric_date=current.get("date"),
+                             current_metric_status=current.get("status", "not_calculated"),
                              wk52_low=w[0], wk52_high=w[1]))
         # Canonical market list (user 2026-07-31, P-15) — drives the Scanner "Refresh a choice of markets"
         # picker independent of which fields the client keeps on DATA.

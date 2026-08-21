@@ -1134,6 +1134,9 @@ def test_approved_ui_report_backlog_is_wired_to_live_render_paths():
     assert "row.current_rvol" in instrument_sort
     assert "row.current_above_vwap" in instrument_sort
     assert "row.current_atr_expanding" in instrument_sort
+    instrument_rvol = _extract_function(html, "instrRvolCell")
+    assert "insufficient_volume_history" in instrument_rvol
+    assert "Data issue" in instrument_rvol
 
     best_history = _extract_function(html, "paintBestSettingsHistory")
     assert "BEST_HISTORY_ROWS=history" in best_history
