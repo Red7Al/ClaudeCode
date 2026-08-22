@@ -3251,8 +3251,19 @@ def _run_path(direction, entry, stop, target, bars, thr, stop_thr=0, return_date
 _VSR_CACHE = {"ts": 0.0, "data": None}
 
 
-_VSCORED_CACHE = {"ts": 0.0, "data": None, "years": None}
-_VSMAP_CACHE = {"ts": 0.0, "data": None, "years": None}
+# Keyed BY window, one slot per `years`, not one slot total (user 2026-08-22).
+#
+# These were single-slot caches carrying a "years" tag: a hit required the tag to match, so a call for a
+# DIFFERENT window evicted the previous one instead of sitting beside it. Best Settings requests the
+# annual window and then, deliberately deferred, the three-year window -- so the two calls the page always
+# makes together evicted each other every time, and neither was ever served warm. Measured on the live
+# site 2026-08-22: /api/winners 34.9 s, /api/winners?years=3 16.9 s, the longer window FASTER only because
+# the shared _sqa_all_rows population happened to be warm from the call before it.
+#
+# `years` is clamped to 1..4 by both callers, so this is bounded at four entries per cache.
+_VSCORED_CACHE = {}      # years -> {"ts": float, "data": list}
+_VSMAP_CACHE = {}        # years -> {"ts": float, "data": dict}   (same per-window keying as above)
+_VSFEAT_CACHE = {}       # years -> {"ts": float, "data": dict}
 
 
 def _volscore_scored(years=1):
@@ -3270,9 +3281,9 @@ def _volscore_scored(years=1):
         years = max(1, min(4, int(years)))
     except (TypeError, ValueError):
         years = 1
-    if (_VSCORED_CACHE["data"] is not None and _VSCORED_CACHE.get("years") == years
-            and now - _VSCORED_CACHE["ts"] < _SQA_TTL):
-        return _VSCORED_CACHE["data"]
+    _hit = _VSCORED_CACHE.get(years)
+    if _hit is not None and now - _hit["ts"] < _SQA_TTL:
+        return _hit["data"]
     cutoff = (_dt.date.today() - _dt.timedelta(days=365 * years)).isoformat()
     rows = [r for r in _sqa_all_rows()
             if (r.get("trig_date") or "") >= cutoff and r.get("trig_date") and r.get("entry")]
@@ -3308,29 +3319,40 @@ def _volscore_scored(years=1):
         rr["above_vwap"] = components.get("above_vwap")
         rr["atr_expanding"] = components.get("atr_expanding")
         scored.append(rr)
-    _VSCORED_CACHE.update(ts=now, data=scored, years=years)
+    _VSCORED_CACHE[years] = {"ts": now, "data": scored}
     return scored
 
 
 def _volscore_trigger_map(years=1):
     """Windowed {(ticker, trigger date): VolumeScore} map for the evidence ledger."""
     now = _time.time()
-    if (_VSMAP_CACHE["data"] is not None and _VSMAP_CACHE.get("years") == years
-            and now - _VSMAP_CACHE["ts"] < _SQA_TTL):
-        return _VSMAP_CACHE["data"]
+    hit = _VSMAP_CACHE.get(years)
+    if hit is not None and now - hit["ts"] < _SQA_TTL:
+        return hit["data"]
     m = {(r["ticker"], str(r["trig_date"])[:10]): r.get("volume_score")
          for r in _volscore_scored(years)}
-    _VSMAP_CACHE.update(ts=now, data=m, years=years)
+    _VSMAP_CACHE[years] = {"ts": now, "data": m}
     return m
 
 
 def _volscore_trigger_feature_map(years=1):
-    """Windowed per-trigger confirmations used by Best Settings and its evidence table."""
-    return {(r["ticker"], str(r["trig_date"])[:10]): {
-                "volume_score": r.get("volume_score"),
-                "above_vwap": r.get("above_vwap"),
-                "atr_expanding": r.get("atr_expanding")}
-            for r in _volscore_scored(years)}
+    """Windowed per-trigger confirmations used by Best Settings and its evidence table.
+
+    Cached like its sibling above: /api/winners calls this AND _volscore_trigger_map on every request, so
+    without a cache of its own this dict was rebuilt over the whole window every time even when the
+    underlying scored rows were served warm.
+    """
+    now = _time.time()
+    hit = _VSFEAT_CACHE.get(years)
+    if hit is not None and now - hit["ts"] < _SQA_TTL:
+        return hit["data"]
+    m = {(r["ticker"], str(r["trig_date"])[:10]): {
+             "volume_score": r.get("volume_score"),
+             "above_vwap": r.get("above_vwap"),
+             "atr_expanding": r.get("atr_expanding")}
+         for r in _volscore_scored(years)}
+    _VSFEAT_CACHE[years] = {"ts": now, "data": m}
+    return m
 
 
 def _volscore_report(model=None):
