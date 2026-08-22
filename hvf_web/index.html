@@ -4832,7 +4832,8 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
     if(threeSeen.has(key))continue; threeSeen.add(key);
     const z=robust(c.seq,st/100,eff);if(z.n>=20)threeEvaluated.push({...c,st,mo:eff,...z});
   }
-  let threeYear=threeEvaluated.filter(x=>x.n>125&&x.ret>=best.ret*.8).sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
+  const bestThreeYear=threeEvaluated.sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
+  let threeYear=bestThreeYear&&bestThreeYear.n>125&&bestThreeYear.ret>=best.ret*.8?bestThreeYear:null;
   if(threeYear)threeYear.proof=_combReplay(threeYear.seq,threeYear.st/100,threeYear.mo,true).proof;
   const choices=[
     ["Balanced",best,"Best return relative to drawdown, with quarterly consistency included.","var(--bull)"],
@@ -4886,7 +4887,11 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   </div>`).join('');
   // A three-year option is a recommendation only when it meets its stated evidence threshold. If it does
   // not, omit it rather than occupying a trader-facing card with a non-actionable rejection message.
-  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}</div>
+  const threeYearInfo=WIN_3Y===null
+    ?`<div class="muted" style="margin:0 0 10px;font-size:12px">Three-year evidence is loading separately; it is not included in the card list until verified.</div>`
+    :!threeYear?`<div class="muted" style="margin:0 0 10px;padding:8px 10px;border-left:3px solid #d29922;background:color-mix(in srgb,#d29922 9%,transparent);font-size:12px"><b>Three-year evidence:</b> no supported recommendation. The strongest reviewed configuration funded <b>${bestThreeYear?bestThreeYear.n.toLocaleString():"0"}</b> trades; the evidence rule requires <b>more than 125</b> and at least 80% of the best annual card’s return.${bestThreeYear?` Its replayed return was <b>${pct(bestThreeYear.ret)}</b>.`:""}</div>`
+    :"";
+  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}</div>${threeYearInfo}
   <div class="card" style="margin:0" id="best-detail"></div>`;
   // Defensive is intentionally last. If responsive wrapping leaves it alone on a final row, remove it
   // rather than spending an entire row on the least-useful alternative (user 2026-08-18).
