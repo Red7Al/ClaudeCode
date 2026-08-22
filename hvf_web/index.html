@@ -4630,9 +4630,9 @@ function _bestSettingsByFundedTrades(pool,min,max){
     .sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
 }
 let _bestDecisionRows=null, _bestCardCapacity=null, _bestSettingsResizeTimer=null;
-// A compact iPad-mini decision surface can show nine cards; phones and desktop/laptop screens stop at
-// six, keeping the latter from becoming a wall of nine equal-looking recommendations.
-const bestCardCapacity=()=>innerWidth<=600?6:(innerWidth<=850?9:6);
+// A compact iPad-mini decision surface can show nine cards; phones stop at six.  A laptop may show up
+// to eight, but only if the actual grid can keep them within two rows (trimmed after layout below).
+const bestCardCapacity=()=>innerWidth<=600?6:(innerWidth<=850?9:8);
 function renderBestCombo(all,{recordSnapshot=true}={}){
   _bestDecisionRows=all;
   _bestCardCapacity=bestCardCapacity();
@@ -4891,8 +4891,9 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   // Defensive is intentionally last. If responsive wrapping leaves it alone on a final row, remove it
   // rather than spending an entire row on the least-useful alternative (user 2026-08-18).
   requestAnimationFrame(()=>{const grid=box.querySelector('.fgrid'),def=grid&&grid.querySelector('[data-choice="Defensive"]');if(!grid)return;if(def){const rowPeers=[...grid.children].filter(c=>c!==def&&c.offsetTop===def.offsetTop);if(!rowPeers.length){def.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!=="Defensive");if(BEST_SELECTED==="Defensive")selectBestChoice("Balanced");}}
-    // Laptop / iPad-mini+ decision surface: a fourth row is less useful than the weakest return card.
-    if(innerWidth>=768&&new Set([...grid.children].map(c=>c.offsetTop)).size>3){const weakest=[...grid.querySelectorAll('[data-choice-return]')].sort((a,b)=>Number(a.dataset.choiceReturn)-Number(b.dataset.choiceReturn))[0];if(weakest){const label=weakest.dataset.choice;weakest.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!==label);if(BEST_SELECTED===label)selectBestChoice("Balanced");}}});
+    // Laptop: up to eight only when they physically fit in two rows.  Remove the weakest-return card
+    // repeatedly until they do; a one-off trim could still leave a third or fourth row at narrower widths.
+    const maxRows=innerWidth>850?2:3;while(new Set([...grid.children].map(c=>c.offsetTop)).size>maxRows){const weakest=[...grid.querySelectorAll('[data-choice-return]')].sort((a,b)=>Number(a.dataset.choiceReturn)-Number(b.dataset.choiceReturn))[0];if(!weakest)break;const label=weakest.dataset.choice;weakest.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!==label);if(BEST_SELECTED===label)selectBestChoice("Balanced");}});
   BEST_CHOICES=choices; BEST_MODEL_W=w;
   // Detail card follows whichever choice is clicked (user 2026-08-07, ChangeRequest P-06); defaults to
   // Balanced on first render, and stays on the same choice across data refreshes where still present.
