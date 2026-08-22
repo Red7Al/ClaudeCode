@@ -4,7 +4,7 @@ _Created 2026-07-24 (ToDo P-03 L43). A single index of the artifacts that suppor
 EndToEndTrading project — what exists today, and the candidates worth adding — so the growing
 set of skills, memory items and documents stays discoverable._
 
-The system in one line: a **Squeeze Scanner engine** scans 1,300+ instruments across every asset
+The system in one line: a **Squeeze Scanner engine** scans 1,400+ instruments across every asset
 type, records Squeeze setups with entry/stop/target, tracks them to outcome, and (per user)
 places them as IG working orders — surfaced through a web app, Slack reports and X publications,
 driven by scheduled jobs.

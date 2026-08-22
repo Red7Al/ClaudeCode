@@ -109,5 +109,5 @@ HVF Web Application — Change Requests
 
 22. Time: 13:45:00
     Request: Always show a clear loading message while data is being retrieved, including Scanner Report.
-    Result: In progress. Scanner Report now has loading states for its count and table, and an explicit retry message if its initial records request fails. Live verification remains outstanding.
+    Result: In progress. Scanner Report now has loading states for its count and table, and an explicit retry message if its initial records request fails. Stale public copy was also updated from 1,300+ to 1,400+ instruments. Live verification remains outstanding.
     Status: in progress
