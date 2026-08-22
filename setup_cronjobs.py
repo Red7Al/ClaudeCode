@@ -194,6 +194,12 @@ JOBS = [
     # Read-only: duplicate indexes, unused indexes, uncovered foreign keys. Silent on a clean week.
     # 08:00 Sunday, an hour behind the PAT check so the two never contend for the same runner minute.
     ("DB Index Audit",                 "0 8 * * 0",   "trading-db-index-audit.yml"),
+    # Resolve ticker -> GICS sector for anything new in the universe (user 2026-08-22). sector_cache
+    # shipped its backfill on 2026-07-17 but nothing ever scheduled it, so the cache only grew when
+    # somebody remembered: the full S&P 500 expansion left 288 of 402 new constituents with no sector,
+    # against 98% coverage for the instruments already there. 06:00 Sunday, clear of the 08:00 index
+    # audit. Additive, resumable and skips already-resolved tickers, so a normal week is cheap.
+    ("Sector Cache Backfill",          "0 6 * * 0",   "trading-sector-backfill.yml"),
 ]
 
 

@@ -1,0 +1,49 @@
+name: Sector Cache Backfill (weekly — 2026-08-22)
+
+# Resolves the ticker -> GICS sector for any instrument the cache has not seen yet (user 2026-08-22).
+# Triggered by cron-job.org via workflow_dispatch at 06:00 UTC on Sundays — NEVER add a schedule: block
+# (GitHub-native cron is banned, user directive 2026-06-07).
+#
+# WHY THIS EXISTS. sector_cache.backfill() shipped on 2026-07-17 with a CLI, but nothing ever ran it on a
+# schedule, so the cache only grew when somebody remembered. When the universe expanded to the full S&P
+# 500 on 2026-08-22 the cache did not follow: 288 of the 402 newly added constituents had no sector at
+# all, against 98% coverage for the instruments that were already there. Sector drives the squeeze
+# analysis's sector dimension and the Instruments/Scanner sector filters, so a blank is not cosmetic.
+#
+# ADDITIVE and resumable. It resolves only tickers with no cached value and checkpoints as it goes, so a
+# timeout loses nothing; FX/futures/indices legitimately have no sector and cache as "" so they are not
+# re-fetched every week. Pass force=true only to deliberately re-resolve values already cached.
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Re-resolve tickers that already have a cached sector (slow; normally leave false).'
+        type: boolean
+        required: false
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PYTHONIOENCODING:     utf-8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Resolve sectors for instruments the cache has not seen
+        run: |
+          if [ "${{ inputs.force }}" = "true" ]; then
+            python sector_cache.py --force
+          else
+            python sector_cache.py
+          fi
