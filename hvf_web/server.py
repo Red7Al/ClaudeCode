@@ -1177,6 +1177,16 @@ def _live_instrument_metrics(snap: dict) -> dict:
                 bars_by_tk = _perf_bars(
                     db, {ticker: today for ticker in want},
                     lookback_days=_LIVE_VWAP_ATR_LOOKBACK_DAYS)
+                try:
+                    source_by_tk = {ticker: source for ticker, source in (db.run(
+                        "select distinct on (ticker) ticker, source from price_history "
+                        "where ticker = any(:tickers) order by ticker, bar_date desc",
+                        tickers=want) or [])}
+                except Exception:
+                    # Source labelling adds provenance only; it must not turn a
+                    # usable OHLCV calculation into a blank metric if metadata
+                    # is temporarily unavailable.
+                    source_by_tk = {}
             finally:
                 db.close()
             for ticker in want:
@@ -1194,6 +1204,12 @@ def _live_instrument_metrics(snap: dict) -> dict:
                                    if bars[i][4] and _vscore._rvol_at(bars, i) is not None), None)
                 rvol = _vscore._rvol_at(bars, rvol_index) if rvol_index is not None else None
                 has_volume = any(bar[4] for bar in bars)
+                source = source_by_tk.get(ticker)
+                status = ("complete" if rvol is not None and rvol_index == index else
+                          ("complete_latest_volume_bar" if rvol is not None else
+                           ("no_reported_volume" if not has_volume else "insufficient_volume_history")))
+                if source and source.startswith("YF_NSE_FALLBACK") and status.startswith("complete"):
+                    status = "complete_nse_fallback"
                 out[ticker] = {
                     "rvol": rvol,
                     "rvol_date": str(bars[rvol_index][0])[:10] if rvol_index is not None else None,
@@ -1202,12 +1218,11 @@ def _live_instrument_metrics(snap: dict) -> dict:
                     "above_vwap": _vscore._above_vwap(bars, index, True),
                     "atr_expanding": _vscore._atr_expanding(bars, index),
                     "date": str(bars[index][0])[:10],
+                    "source": source,
                     # A missing RVOL is a data-quality state, never an unlabelled value. FX, indices
                     # and some vendor instruments do not publish meaningful daily volume; equities with
                     # a real-volume history but fewer than five usable prior bars need backfill/review.
-                    "status": ("complete" if rvol is not None and rvol_index == index else
-                               ("complete_latest_volume_bar" if rvol is not None else
-                               ("no_reported_volume" if not has_volume else "insufficient_volume_history"))),
+                    "status": status,
                 }
     except Exception as exc:
         log.warning("live all-instrument metrics failed (columns blank): %s", exc)

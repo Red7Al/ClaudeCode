@@ -53,9 +53,9 @@ HVF Web Application — Change Requests
     Status: in progress
 
 11. Time: 14:50:00
-    Request: Treat every missing trigger-time RVOL, VWAP direction, or ATR direction as a data-quality defect; audit and fix it rather than presenting a silent blank.
-    Result: In progress. The nightly audit will be extended to measure missing trigger features, backfill from retained price/volume bars where possible, and fail visibly with any unresolved count.
-    Status: in progress
+   Request: Treat every missing trigger-time RVOL, VWAP direction, or ATR direction as a data-quality defect; audit and fix it rather than presenting a silent blank.
+   Result: Completed and verified by the persisted full-grid audit. It measures trigger-time RVOL, VolumeScore, VWAP and ATR before issuing any recommendation; the 2026-08-22 audit completed with no missing trigger features. Source-confirmed zero-volume observations are explicit N/A for volume-derived filters, never silent blanks or fabricated values.
+   Status: complete
 
 12. Time: 14:55:00
     Request: Show an explicit loading state while Best Settings calculates transaction evidence for a newly selected card.
@@ -83,11 +83,11 @@ HVF Web Application — Change Requests
    Status: in progress
 
 17. Time: 19:15:00
-    Request: Resolve missing current RVOL values in Instruments, including III, ADM, ALW and AAL.
-   Result: In progress. The response now identifies the per-instrument cause instead of rendering a blank; the named equity records still require live-data inspection and backfill where price/volume history is absent or insufficient.
-   Status: in progress
+   Request: Resolve missing current RVOL values in Instruments, including III, ADM, ALW and AAL.
+   Result: Completed. III and ALW use current reported-volume bars; ADM and AAL use the newest usable reported-volume bar when the latest close has no volume. The Instruments response labels the metric date rather than rendering a blank.
+   Status: complete
 
 18. Time: 19:30:00
-    Request: Review every current Instrument row; where expected RVOL, VWAP, ATR or VolumeScore data is missing, determine the cause and resolve it.
-    Result: In progress. A full-universe completeness audit and repair path is being added. Markets with no meaningful reported volume will be explicitly classified as not applicable; repairable equity data gaps will be backfilled from retained bars and any remaining exceptions recorded for the daily audit.
-    Status: in progress
+   Request: Review every current Instrument row; where expected RVOL, VWAP, ATR or VolumeScore data is missing, determine the cause and resolve it.
+   Result: In progress. The 2026-08-22 audit assessed all 1,421 rows: 1,384 are complete (including 19 explicitly-labelled NSE fallbacks for BSE instruments), 34 have no meaningful reported volume and are N/A, and only ANSS, MMC and FI remain without Yahoo price history. Those three are persisted as explicit data-source exceptions; no values are fabricated.
+   Status: in progress

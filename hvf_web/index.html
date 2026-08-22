@@ -5174,7 +5174,7 @@ function instrSort(k,add=false){
 }
 function _instrSortValue(row,key){return key==="rvol"?row.current_rvol:key==="above_vwap"?row.current_above_vwap:key==="atr_expanding"?row.current_atr_expanding:row[key];}
 function instrRvolCell(row){
-  if(row.current_rvol!=null){const date=row.current_rvol_date?`RVOL from latest usable volume bar: ${row.current_rvol_date}`:"Current RVOL";return `<span title="${_esc(date)}">${rvolCell(row.current_rvol)}</span>`;}
+  if(row.current_rvol!=null){const fallback=row.current_metric_status==="complete_nse_fallback"?" NSE-listed equivalent used for this BSE instrument.":"";const date=(row.current_rvol_date?`RVOL from latest usable volume bar: ${row.current_rvol_date}`:"Current RVOL")+fallback;return `<span title="${_esc(date)}">${rvolCell(row.current_rvol)}</span>`;}
   const reason={no_price_history:"Price history unavailable — requires data repair",no_reported_volume:"No reported daily volume (not applicable)",insufficient_volume_history:"Insufficient volume history — requires data repair",not_calculated:"Current RVOL has not been calculated"}[row.current_metric_status]||"Current RVOL unavailable — requires data repair";
   return `<span class="muted" title="${_esc(reason)}">Data issue</span>`;
 }
