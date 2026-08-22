@@ -94,5 +94,10 @@ HVF Web Application — Change Requests
 
 19. Time: 09:10:00
     Request: Resolve the web page becoming unresponsive while Best Settings loads.
-    Result: Completed and user-verified. Annual Best Settings data now renders before the expensive three-year evidence request begins, avoiding the previous simultaneous heavy requests. The user confirmed the live site is no longer raising errors.
-    Status: complete
+   Result: Completed and user-verified. Annual Best Settings data now renders before the expensive three-year evidence request begins, avoiding the previous simultaneous heavy requests. The user confirmed the live site is no longer raising errors.
+   Status: complete
+
+20. Time: 10:00:00
+    Request: Determine a safe per-user IG routing design for Let Winners Run.
+    Result: In progress. Review found that the opt-in switch is per-user but the scheduled manager still reads all positions through the shared IG session and resolves existing position ownership through a legacy profile UUID. The proposed route is owner-scoped sessions, an immutable web-login/account binding stored when an order fills, and fail-closed handling for legacy positions without an approved binding. No live routing or broker setting has changed.
+    Status: in progress
