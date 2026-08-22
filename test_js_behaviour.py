@@ -260,3 +260,78 @@ def test_apply_this_configuration_is_withheld_when_logged_out():
         "the Apply button must be rendered only when AUTH is set"
     assert re.search(r"async function applyConfigFromReport\([^)]*\)\{\s*(?://[^\n]*\n\s*)*if\(!AUTH\)", html), \
         "applyConfigFromReport must fail closed for every other caller"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Transaction-evidence render cap (user 2026-08-22: "This page isn't responding").
+#
+# paintOrdersPerf built EVERY ledger row into one innerHTML assignment. Measured against the live
+# three-year payload (11,682 rows in, 11,669 ledger entries out) that is 7.5 MB of HTML and roughly
+# 233,000 DOM elements, parsed synchronously. Building the string costs ~16 ms, so the DOM parse was the
+# whole cost. The ledger itself is only ~198 ms per pass and is NOT the bottleneck.
+# ------------------------------------------------------------------------------------------------------
+
+def _evidence_cap_source() -> str:
+    """The three lines that decide which ledger rows are materialised."""
+    html = INDEX.read_text(encoding="utf-8")
+    m = re.search(r"\n\s*const _evAll=.*?\n\s*const _evRows=[^\n]*\n", html, re.S)
+    assert m, "the evidence render cap was not found in paintOrdersPerf"
+    return "const takenRows=[];\n" + textwrap.dedent(m.group(0))
+
+
+def test_evidence_table_caps_the_rows_it_materialises():
+    src = _evidence_cap_source()
+    preamble = ("let WINNERS_EVIDENCE_LIMIT=1500, WINNERS_EVIDENCE_SHOW_ALL=false;\n"
+                "const ledger=Array.from({length:11669},(_,i)=>({i}));\n")
+
+    assert run_js(preamble, src, "_evRows.length") == 1500
+    assert run_js(preamble, src, "_evAll") is False
+
+
+def test_evidence_cap_preserves_chronological_order_and_the_first_rows():
+    """A cap that reordered or sampled rows would change what the evidence says."""
+    src = _evidence_cap_source()
+    preamble = ("let WINNERS_EVIDENCE_LIMIT=3, WINNERS_EVIDENCE_SHOW_ALL=false;\n"
+                "const ledger=[{i:0},{i:1},{i:2},{i:3},{i:4}];\n")
+
+    assert run_js(preamble, src, "_evRows.map(x=>x.i)") == [0, 1, 2]
+
+
+def test_show_all_renders_every_row():
+    src = _evidence_cap_source()
+    preamble = ("let WINNERS_EVIDENCE_LIMIT=1500, WINNERS_EVIDENCE_SHOW_ALL=true;\n"
+                "const ledger=Array.from({length:11669},(_,i)=>({i}));\n")
+
+    assert run_js(preamble, src, "_evRows.length") == 11669
+
+
+def test_a_small_ledger_is_never_capped_or_annotated():
+    src = _evidence_cap_source()
+    preamble = ("let WINNERS_EVIDENCE_LIMIT=1500, WINNERS_EVIDENCE_SHOW_ALL=false;\n"
+                "const ledger=Array.from({length:263},(_,i)=>({i}));\n")
+
+    assert run_js(preamble, src, "_evRows.length") == 263
+    assert run_js(preamble, src, "_evAll") is True
+
+
+def test_the_uncapped_render_is_what_produced_the_freeze():
+    """A guard that has never failed proves nothing: run the line that actually shipped."""
+    preamble = "const ledger=Array.from({length:11669},(_,i)=>({i}));\n"
+
+    was = run_js(preamble, "const rendered=ledger;", "rendered.length")
+    assert was == 11669, "the reconstruction must reproduce the unbounded render"
+
+    now = run_js("let WINNERS_EVIDENCE_LIMIT=1500, WINNERS_EVIDENCE_SHOW_ALL=false;\n" + preamble,
+                 _evidence_cap_source(), "_evRows.length")
+    assert now < was, "THE HARNESS CANNOT DISTINGUISH THE UNBOUNDED RENDER FROM THE CAPPED ONE"
+
+
+def test_the_headline_figures_are_read_from_the_ledger_not_the_table():
+    """The cap is only safe because nothing above the table counts DOM rows."""
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert re.search(r"tc\.textContent=`\(\$\{takenRows\.length\} trades", html), \
+        "the trade count must come from takenRows, not from the rendered table"
+    assert "querySelectorAll" not in html[html.index("function paintOrdersPerf"):
+                                          html.index("function paintOrdersPerf") + 6000], \
+        "paintOrdersPerf must not derive figures by reading rendered rows"
