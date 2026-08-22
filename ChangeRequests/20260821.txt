@@ -101,3 +101,8 @@ HVF Web Application — Change Requests
     Request: Determine a safe per-user IG routing design for Let Winners Run.
     Result: In progress. Review found that the opt-in switch is per-user but the scheduled manager still reads all positions through the shared IG session and resolves existing position ownership through a legacy profile UUID. The proposed route is owner-scoped sessions, an immutable web-login/account binding stored when an order fills, and fail-closed handling for legacy positions without an approved binding. Additive owner and hashed-account fields are now wired to new web-placed working orders; no legacy data was rewritten and the live switch remains off. Position-fill propagation and owner-scoped scheduler verification remain outstanding.
     Status: in progress
+
+21. Time: 10:30:00
+    Request: Add a Risk Awareness tab immediately to the right of How it works.
+    Result: Completed and live-verified. The public tab provides educational risk-profile prompts and a concise check of loss tolerance, concentration, correlation and leverage/margin. It does not alter trading configuration or submit orders. A missing tab-registry entry initially caused a blank panel; this was corrected and the live public page was verified to contain both the risk tab registration and the Risk Awareness view. The live API status also passed.
+    Status: complete
