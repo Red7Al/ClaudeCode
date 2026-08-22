@@ -59,8 +59,8 @@ HVF Web Application — Change Requests
 
 12. Time: 14:55:00
     Request: Show an explicit loading state while Best Settings calculates transaction evidence for a newly selected card.
-    Result: In progress. Selecting a card now immediately identifies the configuration whose chronological funding evidence is being replayed, confirms that it does not fetch data, change settings or place orders, and preserves a newer selection if an earlier calculation finishes later. It also provides a retryable error state. Live verification remains outstanding.
-    Status: in progress
+    Result: Completed and live-verified. Selecting a card immediately identifies the configuration whose chronological funding evidence is being replayed, confirms that it does not fetch data, change settings or place orders, and preserves a newer selection if an earlier calculation finishes later. It also provides a retryable error state. The deployed page was verified to contain the loading state and the live API status check passed.
+    Status: complete
 
 13. Time: 15:00:00
    Request: At iPad mini width and above, do not allow Best Settings cards to occupy more than three rows; remove the lowest-return displayed recommendation if necessary.
