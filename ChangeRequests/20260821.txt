@@ -116,3 +116,8 @@ HVF Web Application — Change Requests
     Request: Add all current S&P 500 constituents without removing instruments already covered; replace obsolete How it works pre-order language with order creation; add visual risk-profile curves.
     Result: In progress. Added the 402 missing constituents from the 2026-08-22 current 503-share-class public constituent list (Yahoo class-share notation), preserving two existing legacy tickers. How it works now describes review and IG order creation rather than pre-orders. Risk Awareness has accessible concave, linear and convex profile charts. Production snapshot rebuild and live verification remain outstanding.
     Status: in progress
+
+24. Time: 18:25:00
+    Request: After the active work is verified, update Change Requests, GitHub, and all relevant documentation/Markdown before handover; prepare for a full review of code and documents.
+    Result: In progress. This is the completion gate for the active S&P rebuild, expanded-universe analysis and Let Winners Run routing work. No item will be recorded as complete until its live consumer, register and applicable documentation are reconciled.
+    Status: in progress
