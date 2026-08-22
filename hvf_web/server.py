@@ -1160,7 +1160,13 @@ _LIVE_INSTRUMENT_METRICS_CACHE = {"gen": None, "data": {}}
 # ANSS ceased trading after Synopsys completed its acquisition in July 2025.
 # Preserve historic evidence, but never report a misleading current-data repair
 # requirement for an instrument that no longer has a tradable listing.
-_DELISTED_INSTRUMENTS = {"ANSS": "Delisted after acquisition by Synopsys (July 2025)"}
+_DELISTED_INSTRUMENTS = {
+    "ANSS": "Delisted after acquisition by Synopsys (July 2025)",
+    # Qube was suspended after its scheme became effective on 8 July 2026 and
+    # removed from the ASX on 17 August. Yahoo's later flat, zero-volume bars
+    # are the last scheme price, not live market observations.
+    "QUB.AX": "Delisted after the Rubik Australia scheme (August 2026)",
+}
 
 
 def _live_instrument_metrics(snap: dict) -> dict:

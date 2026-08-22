@@ -89,8 +89,8 @@ HVF Web Application — Change Requests
 
 18. Time: 19:30:00
    Request: Review every current Instrument row; where expected RVOL, VWAP, ATR or VolumeScore data is missing, determine the cause and resolve it.
-   Result: In progress. The 2026-08-22 audit assessed all 1,421 rows: 1,384 are complete (including 19 explicitly-labelled NSE fallbacks for BSE instruments), 34 have no meaningful reported volume and are N/A, and only ANSS, MMC and FI remain without Yahoo price history. Those three are persisted as explicit data-source exceptions; no values are fabricated.
-   Status: in progress
+   Result: Completed and verified. The refreshed 2026-08-22 audit assessed all 1,421 rows: 1,384 are complete (including 19 explicitly-labelled NSE fallbacks for BSE instruments), 34 have no meaningful reported volume and are N/A, two delisted equities are explicitly labelled, and there are zero missing VWAP values, zero missing ATR values and zero unresolved price-history rows. The final VWAP gap was QUB.AX: its repeated $5.11, zero-volume bars after 8 July are the post-suspension scheme price, not live observations, so it is classified as delisted rather than assigned a fabricated VWAP.
+   Status: complete
 
 19. Time: 09:10:00
     Request: Resolve the web page becoming unresponsive while Best Settings loads.
