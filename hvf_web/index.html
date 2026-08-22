@@ -562,6 +562,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="tab active" id="tab-welcome" onclick="showTab('welcome')">Introduction</button>
   <button class="tab" id="tab-whatwedo" onclick="showTab('whatwedo')">What we do</button>
   <button class="tab" id="tab-intro" onclick="showTab('intro')">How it works</button>
+  <button class="tab" id="tab-risk" onclick="showTab('risk')">Risk awareness</button>
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
   <button class="tab" id="tab-performance" onclick="showTab('performance')" style="display:none">Performance <span id="pftab-count"></span></button>
   <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner Report <span id="sctab-count"></span></button>
@@ -1275,6 +1276,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <p class="muted" style="font-size:12px;margin-top:16px">A research and execution tool — not financial advice. Prices can fall as well as rise, and trades can be stopped out.</p>
 </div>
 
+<div id="view-risk" class="hidden doc">
+  <span class="eyebrow">Risk awareness</span>
+  <h1>Choose risk you can live with</h1>
+  <p class="lede">Returns matter, but the more useful question is whether you can hold the plan through a normal losing run. This guide is educational, not financial advice, and does not change your trading settings.</p>
+  <h2 class="sec">Three practical profiles</h2>
+  <div class="fgrid"><div class="fcard"><h3>Risk-averse</h3><p>Prioritise preserving capital. Use smaller position sizes, fewer simultaneous trades and accept slower growth.</p></div><div class="fcard"><h3>Risk-balanced</h3><p>Accept normal drawdowns for a diversified, rules-based plan. Review results over months, not individual trades.</p></div><div class="fcard"><h3>Risk-seeking</h3><p>Can tolerate larger swings, but still needs a maximum loss, position cap and a reason to stop increasing exposure.</p></div></div>
+  <h2 class="sec">Before you trade</h2><ul class="tclist"><li>Could you tolerate the worst drawdown shown by the chosen historical model without changing the rules mid-run?</li><li>Is the maximum loss on one position affordable and understood?</li><li>Are several open positions exposed to the same market or sector?</li><li>Would leverage reduce margin only, or are you deliberately increasing market exposure?</li></ul>
+  <p class="tcnote">Start with a position size and maximum-open-position cap you can sustain. Historical results are evidence, not a promise.</p>
+</div>
 <div id="view-intro" class="hidden doc">
   <span class="eyebrow">How it works</span>
   <h1>Find the coil before the breakout</h1>
@@ -2677,7 +2687,7 @@ let MY_LIMITS={};   // the user's personal floors from Configuration → My trad
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
 const TABS=["welcome","whatwedo","intro","appendix","terms","scanner","instruments","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","docs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
-const PUBLIC_TABS=["welcome","whatwedo","intro","appendix","terms","scanner","instruments","performance"];   // visible when logged out (Performance blurs all but ticker/name/return); "What we do" + "T&C" are for everyone (user 2026-07-27, P-10 L169 / P-25); Instruments joined the list 2026-08-07 (ChangeRequest P-08 — "available to all, even without a login")
+const PUBLIC_TABS=["welcome","whatwedo","intro","risk","appendix","terms","scanner","instruments","performance"];   // visible when logged out
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin","squeezehist","fees"];  // admin only
 const SUPPORT_TABS=["batch","syslogs","jobs","sysdocs"];   // Support role: read-only ops visibility plus the system runbook.
 const FEATURE_TABS=[];                                         // X Posts is always available to admin users
