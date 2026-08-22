@@ -24,8 +24,8 @@ HVF Web Application — Change Requests
 
 5. Time: 14:10:00
    Request: Replace the Best over 3 years card's finalist shortlist with a full, auditable configuration-grid review and repeat the validation daily.
-   Result: In progress. The card now replays every generated, enforceable three-year configuration rather than reducing candidates to 40 and then 12. On 2026-08-21 the independent audit read 10,019 rows and exhaustively evaluated 39,312 annual and 68,202 three-year configurations; it correctly published no supported three-year recommendation (the leading three-year configuration funded 90 trades, below the 125-trade evidence rule). Source-confirmed zero-volume trigger bars are recorded as N/A for volume-derived filters rather than fabricated. The scheduled workflow is wired; final completion requires the committed code to run and persist the same result in GitHub Actions.
-   Status: in progress
+   Result: Completed and end-to-end verified. The card replays every generated, enforceable three-year configuration rather than reducing candidates to 40 and then 12. GitHub Actions run 32525904248 completed successfully on commit b200155: the refreshed workflow evaluated 39,000 annual and 68,226 three-year configurations over 10,006 rows, persisted a complete audit with no missing trigger features, and correctly published no supported three-year recommendation (the leading three-year configuration funded 90 trades, below the 125-trade evidence rule). Source-confirmed zero-volume trigger bars are recorded as N/A for volume-derived filters rather than fabricated.
+   Status: complete
 
 6. Time: 14:25:00
    Request: Make Best Settings transaction evidence reconcile visibly with its return card by adding a Net gain total at the bottom of the table.
