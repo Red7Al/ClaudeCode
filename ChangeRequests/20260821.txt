@@ -49,8 +49,8 @@ HVF Web Application — Change Requests
 
 10. Time: 14:45:00
     Request: Allow every data-table column to be sorted, including Transaction evidence in Performance.
-    Result: In progress. Existing purpose-built sorting remains authoritative; the shared sorter now covers headings without a specialised handler, including dynamic transaction-evidence tables, and correctly treats displayed currency, percentages, Unicode-negative values and multipliers as numbers. Live verification remains outstanding.
-    Status: in progress
+    Result: Completed and live-verified. Existing purpose-built sorting remains authoritative; the shared sorter covers headings without a specialised handler, including dynamic transaction-evidence tables, and correctly treats displayed currency, percentages, Unicode-negative values and multipliers as numbers. The live site served the deployed sorter and its status endpoint passed.
+    Status: complete
 
 11. Time: 14:50:00
    Request: Treat every missing trigger-time RVOL, VWAP direction, or ATR direction as a data-quality defect; audit and fix it rather than presenting a silent blank.
