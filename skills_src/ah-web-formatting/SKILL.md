@@ -258,5 +258,12 @@ noted as of 2026-07-24.
   (see [[deploy-cron-tasks]]); new universe additions (e.g. the 2026-07-24 bond ETFs) get a scoped backfill
   on deploy.
 
+**Universe-size copy.** Any change to the instrument universe, deduplication or eligibility rules must
+trigger a search of public website copy for the previous count (including `1,300`, `1,400`, and `Scan …+`).
+Update every user-facing statement using the latest audited `/api/status` count, expressed as a rounded
+claim such as “over 1,400 instruments” unless an exact live count is rendered dynamically. Do not leave
+marketing or explainer tabs describing a superseded universe size; verify the deployed page contains the
+new wording.
+
 When a standard is only partially met, don't silently leave it — log a specific P-03 follow-up in the
 ChangeRequests file (marker LAST on the line — see [[cr-status-live]]).

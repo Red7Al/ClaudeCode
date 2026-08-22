@@ -111,3 +111,8 @@ HVF Web Application — Change Requests
     Request: Always show a clear loading message while data is being retrieved, including Scanner Report.
     Result: In progress. Scanner Report now has loading states for its count and table, and an explicit retry message if its initial records request fails. Stale public copy was also updated from 1,300+ to 1,400+ instruments. Live verification remains outstanding.
     Status: in progress
+
+23. Time: 18:10:00
+    Request: Add all current S&P 500 constituents without removing instruments already covered; replace obsolete How it works pre-order language with order creation; add visual risk-profile curves.
+    Result: In progress. Added the 402 missing constituents from the 2026-08-22 current 503-share-class public constituent list (Yahoo class-share notation), preserving two existing legacy tickers. How it works now describes review and IG order creation rather than pre-orders. Risk Awareness has accessible concave, linear and convex profile charts. Production snapshot rebuild and live verification remain outstanding.
+    Status: in progress

@@ -211,8 +211,9 @@ FTSE250 = [
     "XPS.L", "ZIG.L",
 ]
 
-# Top ~100 S&P 500 by market cap (user 2026-06-29). Yahoo symbols (BRK-B not BRK.B). Overlaps with the
-# NASDAQ 100 list below are de-duplicated at scan time, so a name is only scanned/recorded once.
+# Complete S&P 500 list as at 2026-08-22: 503 listed share classes from the current public constituent
+# table. Yahoo class-share symbols use hyphens (BRK-B, BF-B). Overlaps with NASDAQ 100 are de-duplicated
+# at scan time, so a name is only scanned/recorded once. Existing legacy names are preserved additively.
 SP500 = [
     "NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "GOOG", "META", "AVGO", "BRK-B", "TSLA",
     "LLY", "JPM", "WMT", "V", "ORCL", "MA", "UNH", "XOM", "COST", "NFLX",
@@ -225,6 +226,47 @@ SP500 = [
     "ADI", "LMT", "BMY", "PANW", "MU", "AMAT", "PLD", "SBUX", "KKR", "ANET",
     "MO", "SO", "INTC", "NKE", "ICE", "GEV", "CME", "DUK", "SHW", "WM",
     "TMO", "PFE", "DHR",
+    "MMM", "AOS", "AES", "AFL", "A", "APD", "ABNB", "AKAM", "ALB", "ARE",
+    "ALGN", "ALLE", "LNT", "ALL", "AMCR", "AEE", "AEP", "AIG", "AMT", "AWK",
+    "AMP", "AME", "APH", "AON", "APA", "APO", "APP", "APTV", "ACGL", "ADM",
+    "ARES", "AJG", "AIZ", "ATO", "ADSK", "AZO", "AVY", "AXON", "BKR", "BALL",
+    "BAX", "BDX", "BBY", "TECH", "BIIB", "XYZ", "BNY", "BA", "BR", "BRO",
+    "BF-B", "BLDR", "BG", "BXP", "CHRW", "CDNS", "CPT", "COF", "CAH", "CCL",
+    "CARR", "CVNA", "CASY", "CBOE", "CBRE", "CDW", "COR", "CNC", "CNP", "CF",
+    "CRL", "SCHW", "CHTR", "CMG", "CHD", "CIEN", "CI", "CINF", "CTAS", "CFG",
+    "CLX", "CMS", "CTSH", "COHR", "COIN", "CL", "CMCSA", "FIX", "ED", "STZ",
+    "CEG", "COO", "CPRT", "GLW", "CPAY", "CTVA", "CSGP", "CRH", "CRWD", "CCI",
+    "CSX", "CMI", "CVS", "DRI", "DDOG", "DVA", "DECK", "DELL", "DAL", "DVN",
+    "DXCM", "FANG", "DLR", "DG", "DLTR", "D", "DPZ", "DASH", "DOV", "DOW",
+    "DHI", "DTE", "DD", "EBAY", "ECHO", "ECL", "EIX", "EW", "ELV", "EME",
+    "EMR", "ETR", "EOG", "EQT", "EFX", "EQIX", "ERIE", "ESS", "EL", "EG",
+    "EVRG", "ES", "EXC", "EXE", "EXPE", "EXPD", "EXR", "FFIV", "FDS", "FICO",
+    "FAST", "FRT", "FDX", "FDXF", "FERG", "FIS", "FITB", "FSLR", "FE", "FISV",
+    "FLEX", "F", "FTNT", "FTV", "FOXA", "FOX", "BEN", "FCX", "GRMN", "IT",
+    "GEHC", "GEN", "GNRC", "GD", "GIS", "GM", "GPC", "GPN", "GL", "GDDY",
+    "HAL", "HIG", "HAS", "HCA", "DOC", "HSIC", "HSY", "HPE", "HLT", "HONA",
+    "HRL", "HST", "HWM", "HPQ", "HUBB", "HUM", "HBAN", "HII", "IEX", "IDXX",
+    "ITW", "INCY", "IR", "PODD", "IBKR", "IFF", "IP", "IVZ", "INVH", "IQV",
+    "IRM", "JBHT", "JBL", "JKHY", "J", "JCI", "KVUE", "KDP", "KEY", "KEYS",
+    "KMB", "KIM", "KMI", "KLAC", "KHC", "KR", "LHX", "LH", "LRCX", "LVS",
+    "LDOS", "LEN", "LII", "LYV", "L", "LULU", "LITE", "LYB", "MTB", "MPC",
+    "MAR", "MRSH", "MLM", "MRVL", "MAS", "MKC", "MCK", "MET", "MTD", "MGM",
+    "MCHP", "MAA", "MRNA", "TAP", "MDLZ", "MPWR", "MNST", "MCO", "MOS", "MSI",
+    "MSCI", "NDAQ", "NTAP", "NEM", "NWSA", "NWS", "NI", "NDSN", "NSC", "NTRS",
+    "NOC", "NCLH", "NRG", "NUE", "NVR", "NXPI", "ORLY", "OXY", "ODFL", "OMC",
+    "ON", "OKE", "OTIS", "PCAR", "PKG", "PSKY", "PH", "PAYX", "PYPL", "PNR",
+    "PCG", "PSX", "PNW", "PNC", "PPG", "PPL", "PFG", "PRU", "PEG", "PTC",
+    "PSA", "PHM", "PWR", "DGX", "Q", "RL", "RJF", "RDDT", "O", "REG",
+    "REGN", "RF", "RSG", "RMD", "RVTY", "HOOD", "ROK", "ROL", "ROP", "ROST",
+    "RCL", "SNDK", "SBAC", "SLB", "STX", "SRE", "SPG", "SWKS", "SJM", "SW",
+    "SNA", "SOLV", "LUV", "SWK", "STT", "STLD", "STE", "SMCI", "SYF", "SNPS",
+    "SYY", "TROW", "TTWO", "TPR", "TRGP", "TGT", "TEL", "TDY", "TER", "TPL",
+    "TXT", "TKO", "TTD", "TSCO", "TT", "TDG", "TRV", "TRMB", "TFC", "TYL",
+    "TSN", "USB", "UBER", "UDR", "ULTA", "UAL", "UPS", "URI", "UHS", "VLO",
+    "VEEV", "VTR", "VLTO", "VRSN", "VRSK", "VRT", "VTRS", "VICI", "VST", "VMRK",
+    "VMC", "WRB", "GWW", "WAB", "WBD", "WAT", "WEC", "WELL", "WST", "WDC",
+    "WY", "WSM", "WMB", "WTW", "WDAY", "WYNN", "XEL", "XYL", "YUM", "ZBRA",
+    "ZBH", "ZTS",
 ]
 
 # NASDAQ 100 constituents (user 2026-06-29). Yahoo symbols; overlaps with the S&P 500 list above are
