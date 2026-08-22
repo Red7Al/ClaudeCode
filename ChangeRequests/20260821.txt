@@ -106,3 +106,8 @@ HVF Web Application — Change Requests
     Request: Add a Risk Awareness tab immediately to the right of How it works.
     Result: Completed and live-verified. The public tab provides educational risk-profile prompts and a concise check of loss tolerance, concentration, correlation and leverage/margin. It does not alter trading configuration or submit orders. A missing tab-registry entry initially caused a blank panel; this was corrected and the live public page was verified to contain both the risk tab registration and the Risk Awareness view. The live API status also passed.
     Status: complete
+
+22. Time: 13:45:00
+    Request: Always show a clear loading message while data is being retrieved, including Scanner Report.
+    Result: In progress. Scanner Report now has loading states for its count and table, and an explicit retry message if its initial records request fails. Live verification remains outstanding.
+    Status: in progress

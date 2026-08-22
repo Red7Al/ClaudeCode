@@ -680,7 +680,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
          Report search name should be on RHS like all other pages with a name search").
          #count keeps its own span because render() writes innerHTML to it, which would otherwise
          destroy the input on every repaint. -->
-    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="count"></span><span class="grow"></span><input id="scanner-name-search" placeholder="Search name / ticker…" oninput="syncScannerNameSearch(this.value)" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px" aria-label="Search Scanner by name or ticker"></div>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="count" class="sqh-loading">⏳ Data loading… Scanner Report</span><span class="grow"></span><input id="scanner-name-search" placeholder="Search name / ticker…" oninput="syncScannerNameSearch(this.value)" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px" aria-label="Search Scanner by name or ticker"></div>
     <section class="gsec" style="border-left-color:var(--accent);margin:0 16px 16px">
     <div class="tablewrap">
       <table>
@@ -701,7 +701,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <th data-k="location">Location</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th>
           <th data-k="sector">Sector</th><th data-k="ticker">Ticker</th><th style="cursor:default" title="Whether this instrument is already in your My Pre-orders">In Pre-orders?</th>
         </tr></thead>
-        <tbody id="rows"></tbody>
+        <tbody id="rows"><tr><td colspan="27" class="empty sqh-loading">⏳ Data loading… Scanner Report</td></tr></tbody>
       </table>
     </div>
     </section>
@@ -6308,6 +6308,9 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
   })
   .catch(e=>{ // 401 = no/stale login: clear the token; the login panel appears when a data tab is opened.
     if(e==="auth"){AUTH="";localStorage.removeItem("sq_auth");$("logout").style.display="none";$("loginbtn").style.display="";}
+    const _count=$("count"),_rows=$("rows");
+    if(_count){_count.classList.remove("sqh-loading");_count.innerHTML='<span style="color:var(--bear)">Scanner Report data did not load. Please retry.</span>';}
+    if(_rows)_rows.innerHTML='<tr><td colspan="27" class="empty">Scanner Report data did not load. Please refresh or log in again.</td></tr>';
     document.body.classList.remove("app-loading");
   });
 // Default-sort arrow on first paint (user 2026-07-25, P-03 L39): the click handlers stamp the ▲/▼ on
