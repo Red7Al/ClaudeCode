@@ -259,9 +259,9 @@ noted as of 2026-07-24.
   on deploy.
 
 **Universe-size copy.** Any change to the instrument universe, deduplication or eligibility rules must
-trigger a search of public website copy for the previous count (including `1,300`, `1,400`, and `Scan …+`).
+trigger a search of public website copy for the previous count (including `1,300`, `1,400`, `1,700`, and `Scan …+`).
 Update every user-facing statement using the latest audited `/api/status` count, expressed as a rounded
-claim such as “over 1,400 instruments” unless an exact live count is rendered dynamically. Do not leave
+claim such as “over 1,700 instruments” unless an exact live count is rendered dynamically. Do not leave
 marketing or explainer tabs describing a superseded universe size; verify the deployed page contains the
 new wording.
 
