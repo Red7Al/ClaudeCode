@@ -126,8 +126,14 @@ def test_live_instrument_metrics_cover_rows_without_squeezes_and_vwap_is_literal
 
     result = server._live_instrument_metrics(snap)["BEARISH"]
 
-    assert result == {"rvol": 1.2, "above_vwap": True,
-                      "atr_expanding": False, "date": "2026-08-13"}
+    # RVOL is only actionable when its provenance and completeness state are
+    # explicit.  Keep this contract aligned with the public Instruments API;
+    # a stale exact-dictionary expectation previously made the CI gate red
+    # despite the production response being correctly enriched.
+    assert result == {"rvol": 1.2, "rvol_date": "2026-08-13",
+                      "above_vwap": True, "atr_expanding": False,
+                      "date": "2026-08-13", "source": None,
+                      "status": "complete"}
     assert vwap_directions == [True]
 
 

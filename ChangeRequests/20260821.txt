@@ -2,6 +2,8 @@ HVF Web Application — Change Requests
 
 ## Testing and quality
 
+* P-01 BUG Restore the Offline Python Regression Tests gate after its 2026-08-22 CI failure; retain the enriched Instruments RVOL provenance/status contract and verify a fresh GitHub Actions run before release. [In Progress]
+
 1. Time: 09:00:00
    Request: Reconcile every Back Test summary figure with its funded transaction-evidence rows.
    Result: Completed and regression-tested. The Back Test summary now reconciles its funded/ skipped counts, net gain and ending wallet to the displayed transaction-evidence rows; any mismatch withholds the headline return and shows the evidence discrepancy.
