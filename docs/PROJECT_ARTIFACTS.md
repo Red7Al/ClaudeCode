@@ -27,11 +27,19 @@ driven by scheduled jobs.
 | `ah-web-formatting` | Layout/formatting rules + verification recipe for `hvf_web/index.html`. |
 | `ah-deploy` | Ship a change live (branch→commit→merge→trigger workflow→verify/rollback). |
 | `ah-change-control` | How to work the `ChangeRequests/*.txt` lists + the CR-tab parser contract. |
+| `ah-analysis-verification` | Evidence a computed trading result must carry before it is presented. |
+| `ah-three-year-best-settings` | The three-year Best Settings grid, thresholds and replay validity. |
+
+> Packaged by `python build_skills.py` (source → `AH-<name>.skill`). `test_skill_packages.py` fails if any
+> archive is missing or out of date — packaging used to be manual and all 14 had drifted by 2026-08-22.
 
 ### 1.2 Memory (`.claude/.../memory/`, indexed in `MEMORY.md`)
-`commit-workflow` · `cr-status-live` · `deploy-cron-tasks` · `equities-scan-only` ·
-`qa-reconcile-existing` · `results-winners-same-dataset` · `stop-loss-trailing` ·
-`table-name-search` · `web-formatting-skill`.
+`ci-offline-suite-live-state` · `commit-workflow` · `cr-status-live` · `deploy-cron-tasks` ·
+`env-cold-backup` · `equities-scan-only` · `flag-user-visible-number-changes` ·
+`hosting-squeezescanner-cloud` · `ionos-deploy-access` · `order-bridge-only-exec-source` ·
+`qa-before-reporting` · `qa-reconcile-existing` · `results-winners-same-dataset` ·
+`slack-gate-every-poster` · `stop-loss-trailing` · `table-name-search` ·
+`verify-before-declaring-blocked` · `verify-the-actual-claim` · `web-formatting-skill`.
 
 ### 1.3 Documents (`docs/`)
 - `SQUEEZE_METHOD.md` — the five rules + thresholds.
@@ -47,7 +55,11 @@ driven by scheduled jobs.
 - **Routines** — `routines/routine_*.md` (aus/uk/us open, monitor, session close, daily report, weekend review).
 - **Scheduled jobs** — authoritative registry in `setup_cronjobs.py::JOBS` (cron-job.org → GitHub Actions),
   surfaced read-only in the app's Scheduled Jobs tab.
-- **Tests** — `test_hvf_method.py`, `test_volume_score.py`, `test_bounce_monitor.py` + the pre-commit Squeeze suite.
+- **Tests** — 30 `test_*.py` modules run as one offline suite (`pytest`), plus the pre-commit Squeeze
+  gate. Two are harnesses rather than ordinary tests: `test_js_behaviour.py` EXECUTES extracted client
+  JavaScript in Node and asserts on the returned value, and `test_backtest_integrity.py` asserts the
+  replay's structural invariants (truncation invariance, exit-within-range, perfect-foresight bound).
+  CI runs `-m "not live_state"`; anything needing a live DB or a built snapshot must carry that marker.
 
 ---
 
