@@ -73,10 +73,24 @@ jobs:
           chmod 600 "$key"
           ssh -i "$key" -p "$IONOS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
             "${IONOS_USER}@${IONOS_HOST}" "test -d '$IONOS_DIR/hvf_web' && test -f '$IONOS_DIR/hvf_web/snapshot.json'"
+      - name: Seed partial build from IONOS during Supabase Storage outage
+        if: ${{ inputs.markets != '' }}
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/ionos_snapshot_key"
+          printf '%s\n' "$IONOS_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh -i "$key" -p "$IONOS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            "${IONOS_USER}@${IONOS_HOST}" "cat '$IONOS_DIR/hvf_web/snapshot.json'" > hvf_web/snapshot.json
+          python -c "import json; json.load(open('hvf_web/snapshot.json', encoding='utf-8'))"
       - name: Build, publish and read-verify immutable Scanner snapshot
         id: publish
         continue-on-error: true
         run: python publish_scanner_snapshot.py --build --markets "${{ inputs.markets }}" --source github-actions --refresh-id "${{ inputs.refresh_id || github.run_id }}"
+        env:
+          SCANNER_SNAPSHOT_SKIP_SUPABASE_PULL: ${{ inputs.markets != '' && '1' || '0' }}
       # Keep the built snapshot even when publication fails (2026-08-17). The scan is the expensive part
       # -- up to two hours of engine plus yfinance -- and publication is a separate, later step that can
       # fail on its own: Supabase Storage started returning HTTP 402 when the free-tier egress quota was

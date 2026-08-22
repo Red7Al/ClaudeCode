@@ -39,7 +39,18 @@ def main() -> int:
             markets = _markets(args.markets)
             if markets:
                 # A fresh Actions checkout has no ignored boot file. Pull the published base before merging a subset.
-                store.pull_current(args.snapshot, force=True, purpose="publish")
+                # During the documented Supabase Storage 402 outage (to 2026-09-01), the workflow
+                # seeds this same verified base from IONOS. Do not try Storage first in that mode: its
+                # expected 402 used to abort the partial build before any scan began.
+                if os.environ.get("SCANNER_SNAPSHOT_SKIP_SUPABASE_PULL") == "1":
+                    if not args.snapshot.is_file():
+                        raise store.SnapshotStoreError("IONOS base snapshot was not seeded for partial build")
+                    try:
+                        json.loads(args.snapshot.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError) as exc:
+                        raise store.SnapshotStoreError(f"IONOS base snapshot is invalid: {exc}") from exc
+                else:
+                    store.pull_current(args.snapshot, force=True, purpose="publish")
             from hvf_web.build_snapshot import build
             snapshot = build(markets=markets, progress_cb=progress.update)
             if not isinstance(snapshot, dict):
