@@ -126,30 +126,30 @@ HVF Web Application — Change Requests
 
 25. Time: 19:30:00
     Request: P-01 BUG Make the Change Requests tab read this register. The numbered "Time/Request/Result/Status" block format used by 20260820.txt, 20260821.txt, 20260820-COMPLETE.txt and 20260813-COMPLETE.txt is invisible to the parser, which only accepts lines beginning with "*": 33 of the 34 recorded items in those four files do not appear in the tab at all.
-    Result: In progress. Extending hvf_web/server.py to parse the numbered block format additively, without rewriting any register.
-    Status: in progress
+    Result: Completed and deployed in 00c5579. hvf_web/server.py now parses the numbered block format alongside the "*" format. Verified against all 29 real register files: every previously-parsed row is byte-identical and 50 previously-invisible rows are recovered (20260821 1 -> 26, 20260820 0 -> 9, 20260820-COMPLETE 0 -> 6, 20260813-COMPLETE 0 -> 10). Status words map correctly, including "deferred external dependency" and "out of scope". No register was reformatted. 15 new tests, one of which reconstructs the original bug. The admin tab's own render is gated behind an admin login this session does not hold, so that last visual check is the requester's.
+    Status: complete
 
 26. Time: 19:45:00
     Request: P-01 BUG "Apply this configuration" must not be enabled in Best Settings when nobody is logged in.
-    Result: In progress. Confirmed on the live logged-out view: seven enabled "Apply this configuration" buttons render for a guest. The POST to /api/config cannot succeed without a session, so the control can only ever fail.
+    Result: Deployed in 00c5579, live render not yet re-confirmed. The card renderer emits the button only when AUTH is set and offers "Log in to apply this configuration" otherwise; applyConfigFromReport also fails closed for any other caller. Both are covered by executing tests. The post-deployment logged-out check could not be repeated: both site origins now hold a session, and the in-memory logged-out re-render froze on the separate unresponsiveness defect recorded at item 29. To be confirmed on a genuinely logged-out browser.
     Status: in progress
 
 27. Time: 19:50:00
     Request: P-01 BUG The "Last 12 months / From / To" date window should not appear on Best Settings; it was expected to have been removed.
-    Result: In progress. The requester's recollection is correct and the intent is already in the code: pfPanel() adds the "hidden" class to #pf-subnav for the Best settings and Let winners run sub-tabs. The class is inert because #pf-subnav carries an INLINE display:flex, which outranks .hidden{display:none} -- the same inline-style defeat already recorded against the dead "Filters" button. Confirmed rendering on the live logged-out Best settings view.
-    Status: in progress
+    Result: Completed, deployed in 00c5579 and live-verified. The requester's recollection was correct and the intent was already in the code: pfPanel() adds the "hidden" class to #pf-subnav for the Best settings and Let winners run sub-tabs. The class was inert because #pf-subnav carried an INLINE display:flex, which outranks .hidden{display:none} -- the same inline-style defeat already recorded against the dead "Filters" button. Layout moved into CSS with a matching #pf-subnav.hidden rule. Measured on the live Best settings view before and after: the date preset and From/To inputs rendered visible before, and compute to display:none after.
+    Status: complete
 
 28. Time: 20:05:00
     Request: P-06 Sort the tabs in the Tab Visibility section into the order they appear on screen; the present order is confusing.
-    Result: Not started. renderTabVis() currently groups chips as Settings, Instrument Operations, Application Operations, Other, which does not match the on-screen navigation order.
-    Status: not started
+    Result: Deployed in 00c5579, live render not yet confirmed. renderTabVis() grouped chips as Settings, Instrument Operations, Application Operations and Other, an order unrelated to the tab bar. It now renders one flat list in navigation order, taken from the #tab-* buttons in markup order with the Settings and Operations groups expanded in place. A tab present in TABS but absent from that order still gets a chip, at the end, because a missing chip is never submitted by saveTabVis() and would strand that tab's visibility. Covered by executing tests. The panel is admin-gated, so the visual check is the requester's.
+    Status: in progress
 
 29. Time: 20:10:00
     Request: P-01 BUG "This page isn't responding" is appearing more and more, for example when clicking IG Account; filtering on Scheduled Jobs is also very slow.
-    Result: Not started. Reproduced independently: two browser evaluations against the live site timed out or failed while the main thread was blocked. Measured so far: the Scanner render() costs about 500 ms over the now 1,773-record universe. Scheduled Jobs holds only a few dozen rows, so its slowness is not proportional to row count and points at a shared per-render cost rather than data volume. Root cause not yet established.
-    Status: not started
+    Result: In progress -- root-caused, not yet fixed. Reproduced on demand against the live site: calling the Best Settings re-render froze the renderer past two separate 45-second timeouts, which is exactly the "This page isn't responding" dialog. The cost is winnersParamsChange(), which recomputes the recommendation cards SYNCHRONOUSLY on the main thread; it is re-run over the much larger three-year row set as soon as /api/winners?years=3 resolves. Item 19 deferred that FETCH so the two requests no longer overlapped, but the COMPUTATION was left blocking, so the freeze moved rather than went away, and it grows with the dataset -- which is why it is worsening now the universe is 1,773 instruments. Any tab is affected, because the browser is single-threaded while this runs. For contrast the Scanner's own render() is about 500 ms, and Scheduled Jobs holds only a few dozen rows, so neither is explained by its own row count. Fix requires moving the card search off the main thread or to the server; not attempted late in a long session because it is a change to trading-analysis numbers and needs its own verification pass.
+    Status: in progress
 
 30. Time: 20:15:00
     Request: P-01 BUG Version history is not being maintained.
-    Result: Not started.
-    Status: not started
+    Result: Deployed in 00c5579, live render not yet confirmed. Cause: server._version_entries() builds the list from `git log`, falling back to a Supabase store and then to hvf_web/data/version_history.json. On IONOS the git call ALWAYS fails, because the package deliberately excludes .git; the Supabase copy was seeded once by migrate_runtime_state_to_supabase.py and never refreshed; and the file was never shipped at all, since hvf_web/data is excluded from the package. All three sources were therefore frozen. build_ionos_package.py now generates the file from git at package time and adds it to the archive explicitly; a checkout without git history logs a warning and leaves the host's previous copy rather than failing the build. Verified in the built archive: 1,082 entries, newest 2026-08-22 1984e55. The tab is admin-gated, so the visual check is the requester's.
+    Status: in progress
