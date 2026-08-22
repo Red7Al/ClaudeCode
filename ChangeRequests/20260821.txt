@@ -2,7 +2,7 @@ HVF Web Application — Change Requests
 
 ## Testing and quality
 
-* P-01 BUG Restore the Offline Python Regression Tests gate after its 2026-08-22 CI failure; retain the enriched Instruments RVOL provenance/status contract and verify a fresh GitHub Actions run before release. [In Progress]
+* P-01 BUG Restore the Offline Python Regression Tests gate after its 2026-08-22 CI failure; retain the enriched Instruments RVOL provenance/status contract and verify a fresh GitHub Actions run before release -- fixed stale exact-response assertion; GitHub Actions run 32586311609 passed all 248 selected tests on 2026-08-22. [Completed]
 
 1. Time: 09:00:00
    Request: Reconcile every Back Test summary figure with its funded transaction-evidence rows.
@@ -101,7 +101,7 @@ HVF Web Application — Change Requests
 
 20. Time: 10:00:00
     Request: Determine a safe per-user IG routing design for Let Winners Run.
-    Result: In progress. Review found that the opt-in switch is per-user but the scheduled manager still reads all positions through the shared IG session and resolves existing position ownership through a legacy profile UUID. The proposed route is owner-scoped sessions, an immutable web-login/account binding stored when an order fills, and fail-closed handling for legacy positions without an approved binding. Additive owner and hashed-account fields are now wired to new web-placed working orders; no legacy data was rewritten and the live switch remains off. Position-fill propagation and owner-scoped scheduler verification remain outstanding.
+    Result: In progress. The opt-in switch remains per-user and globally disabled. Additive owner and hashed-account fields are wired to new web-placed working orders and positions without rewriting legacy data; the scheduled manager groups work by owner and re-enters that owner's session immediately before every trailing-stop mutation, failing closed where an approved binding is absent. Owner-scoped live scheduler verification remains outstanding; no broker action is authorised during this release-readiness pass.
     Status: in progress
 
 21. Time: 10:30:00
@@ -116,10 +116,10 @@ HVF Web Application — Change Requests
 
 23. Time: 18:10:00
     Request: Add all current S&P 500 constituents without removing instruments already covered; replace obsolete How it works pre-order language with order creation; add visual risk-profile curves.
-    Result: In progress. Added the 402 missing constituents from the 2026-08-22 current 503-share-class public constituent list (Yahoo class-share notation), preserving two existing legacy tickers. How it works now describes review and IG order creation rather than pre-orders. Risk Awareness has accessible concave, linear and convex profile charts. Production snapshot rebuild and live verification remain outstanding.
-    Status: in progress
+    Result: Completed and live-verified. Added the 402 missing constituents from the 2026-08-22 current 503-share-class public constituent list, preserving two existing legacy tickers. Scanner Snapshot Publish run 32584330544 succeeded; the live API reports 1,773 instruments generated at 2026-08-22T16:30:48Z. How it works now describes review and IG order creation rather than pre-orders, and Risk Awareness has accessible concave, linear and convex profile charts. The 2026-08-22 deployment verified those public views and the updated over-1,700-instruments copy.
+    Status: complete
 
 24. Time: 18:25:00
     Request: After the active work is verified, update Change Requests, GitHub, and all relevant documentation/Markdown before handover; prepare for a full review of code and documents.
-    Result: In progress. This is the completion gate for the active S&P rebuild, expanded-universe analysis and Let Winners Run routing work. No item will be recorded as complete until its live consumer, register and applicable documentation are reconciled.
+    Result: In progress. The S&P rebuild, expanded-universe audit, public UI, regression gate, GitHub history and relevant documentation are reconciled. This gate remains open only for Let Winners Run owner-scoped broker handover: it must be live-verified while still fail-closed before it can be marked complete.
     Status: in progress
