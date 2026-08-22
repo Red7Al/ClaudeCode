@@ -4047,6 +4047,10 @@ function pfPanel(which){
   const filters=$("pf-subnav");if(filters)filters.classList.toggle("hidden",which==="run"||which==="settings");   // these filters feed neither annual settings nor /api/winners-run
   const locGroup=document.querySelector(".pf-loc-group");
   if(locGroup)locGroup.style.display=which==="summary"?"":"none";
+  // Date windows filter the Results/Summary evidence but do not recalculate Best Settings.  Hide them
+  // on that resource-heavy analysis surface rather than implying a change to its recommendation cards.
+  const dateGroup=document.querySelector(".pf-date-group");
+  if(dateGroup)dateGroup.style.display=which==="analysis"?"none":"";
   if(which==="results"&&PF_LOC_FILTER){PF_LOC_FILTER="";if(typeof _renderPerformance==="function")_renderPerformance();}
   const wh=$("pf-winners-head");if(wh)wh.classList.toggle("hidden",which!=="analysis");   // winners title/lede above the filters (P-07 L289)
   if(which==="analysis"||which==="settings")renderSqueezeAnalysis();
