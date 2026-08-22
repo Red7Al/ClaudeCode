@@ -19,6 +19,11 @@ import price_store
 import web_store
 
 
+# Verified corporate actions.  The retained scanner ticker remains the identity
+# used throughout the application; only the Yahoo retrieval symbol changes.
+_SUCCESSOR_SYMBOLS = {"MMC": "MRSH", "FI": "FISV"}
+
+
 def _volume_count(frame):
     if frame is None or frame.empty or "Volume" not in frame:
         return 0
@@ -37,7 +42,11 @@ def _targets():
 
 def _yahoo_symbol(ticker):
     """Use NSE only as a labelled fallback for a BSE-listed instrument."""
-    return f"{ticker[:-3]}.NS" if ticker.endswith(".BO") else ticker
+    if ticker.endswith(".BO"):
+        return f"{ticker[:-3]}.NS", "YF_NSE_FALLBACK_20260822"
+    if ticker in _SUCCESSOR_SYMBOLS:
+        return _SUCCESSOR_SYMBOLS[ticker], "YF_TICKER_SUCCESSOR_20260822"
+    return ticker, "YF_DATA_QUALITY_20260822"
 
 
 def run(apply=False, days=150):
@@ -46,8 +55,7 @@ def run(apply=False, days=150):
     end = dt.date.today() + dt.timedelta(days=1)
     results = []
     for ticker in _targets():
-        yahoo_symbol = _yahoo_symbol(ticker)
-        source = "YF_NSE_FALLBACK_20260822" if yahoo_symbol != ticker else "YF_DATA_QUALITY_20260822"
+        yahoo_symbol, source = _yahoo_symbol(ticker)
         frame = yf.download(yahoo_symbol, start=start.isoformat(), end=end.isoformat(),
                             progress=False, auto_adjust=True)
         bars = 0 if frame is None else len(frame)

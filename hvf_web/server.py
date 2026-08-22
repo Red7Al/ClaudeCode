@@ -1157,6 +1157,10 @@ _LIVE_VWAP_ATR_CACHE = {"gen": None, "data": {}}
 _LIVE_VWAP_ATR_LOOKBACK_DAYS = 90
 
 _LIVE_INSTRUMENT_METRICS_CACHE = {"gen": None, "data": {}}
+# ANSS ceased trading after Synopsys completed its acquisition in July 2025.
+# Preserve historic evidence, but never report a misleading current-data repair
+# requirement for an instrument that no longer has a tradable listing.
+_DELISTED_INSTRUMENTS = {"ANSS": "Delisted after acquisition by Synopsys (July 2025)"}
 
 
 def _live_instrument_metrics(snap: dict) -> dict:
@@ -1190,6 +1194,9 @@ def _live_instrument_metrics(snap: dict) -> dict:
             finally:
                 db.close()
             for ticker in want:
+                if ticker in _DELISTED_INSTRUMENTS:
+                    out[ticker] = {"status": "delisted", "reason": _DELISTED_INSTRUMENTS[ticker]}
+                    continue
                 bars = bars_by_tk.get(ticker, [])
                 if not bars:
                     out[ticker] = {"status": "no_price_history"}
@@ -1210,6 +1217,8 @@ def _live_instrument_metrics(snap: dict) -> dict:
                            ("no_reported_volume" if not has_volume else "insufficient_volume_history")))
                 if source and source.startswith("YF_NSE_FALLBACK") and status.startswith("complete"):
                     status = "complete_nse_fallback"
+                elif source and source.startswith("YF_TICKER_SUCCESSOR") and status.startswith("complete"):
+                    status = "complete_ticker_successor"
                 out[ticker] = {
                     "rvol": rvol,
                     "rvol_date": str(bars[rvol_index][0])[:10] if rvol_index is not None else None,
@@ -1365,6 +1374,7 @@ def api_records():
                              current_atr_expanding=current.get("atr_expanding"),
                              current_metric_date=current.get("date"),
                              current_metric_status=current.get("status", "not_calculated"),
+                             current_metric_reason=current.get("reason"),
                              wk52_low=w[0], wk52_high=w[1]))
         # Canonical market list (user 2026-07-31, P-15) — drives the Scanner "Refresh a choice of markets"
         # picker independent of which fields the client keeps on DATA.

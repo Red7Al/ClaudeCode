@@ -481,13 +481,26 @@ def _audit_current_instrument_metrics() -> dict:
                   for r in snap.get("records", [])
                   if (metrics.get(r.get("ticker")) or {}).get("status")
                   in ("no_price_history", "insufficient_volume_history")]
-    missing_vwap = sum((metrics.get(r.get("ticker")) or {}).get("above_vwap") is None
-                       for r in snap.get("records", []))
-    missing_atr = sum((metrics.get(r.get("ticker")) or {}).get("atr_expanding") is None
-                      for r in snap.get("records", []))
+    not_applicable = {"no_reported_volume", "delisted"}
+    missing_vwap_rows = [{"ticker": r.get("ticker"), "name": r.get("name"),
+                          "status": (metrics.get(r.get("ticker")) or {}).get("status")}
+                         for r in snap.get("records", [])
+                         if (metrics.get(r.get("ticker")) or {}).get("above_vwap") is None
+                         and (metrics.get(r.get("ticker")) or {}).get("status") not in not_applicable]
+    missing_atr_rows = [{"ticker": r.get("ticker"), "name": r.get("name"),
+                         "status": (metrics.get(r.get("ticker")) or {}).get("status")}
+                        for r in snap.get("records", [])
+                        if (metrics.get(r.get("ticker")) or {}).get("atr_expanding") is None
+                        and (metrics.get(r.get("ticker")) or {}).get("status") not in not_applicable]
+    missing_vwap, missing_atr = len(missing_vwap_rows), len(missing_atr_rows)
     report = {"audit_date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
               "rows": len(snap.get("records", [])), "metric_statuses": dict(statuses),
               "missing_vwap": missing_vwap, "missing_atr": missing_atr,
+              "missing_vwap_rows": missing_vwap_rows, "missing_atr_rows": missing_atr_rows,
+              "not_applicable": [{"ticker": r.get("ticker"), "name": r.get("name"),
+                                  "status": (metrics.get(r.get("ticker")) or {}).get("status")}
+                                 for r in snap.get("records", [])
+                                 if (metrics.get(r.get("ticker")) or {}).get("status") in not_applicable],
               "unresolved": unresolved, "repair_attempts": repairs}
     if not web_store.save_json_store("current_instrument_metric_audit", report):
         raise RuntimeError("current instrument metric audit could not be persisted")

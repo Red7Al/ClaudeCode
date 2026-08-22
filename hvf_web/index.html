@@ -4073,7 +4073,7 @@ let WINNERS_WALLET=10000, WINNERS_STAKE=0.05, WINNERS_MAXOPEN=20;   // £ wallet
 let WINNERS_HIDE_MISSED=false;   // "hide trades missed" toggle on the winners ledger (P-07 #30)
 function winnersToggleMissed(){WINNERS_HIDE_MISSED=!!($("ordp-hide-missed")||{}).checked;const t=$("ordp-table");if(t)t.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);}
 let WIN=null, WIN_GENERATED="", WIN_3Y=null;
-let WIN_LOADING=false;
+let WIN_LOADING=false, WIN_3Y_LOADING=false;
 // Wallet £ (L211), Max position size % (L200), Max open positions (L199) are variables on the winners tab.
 let MIN_TRADE=25;   // User-configured minimum trade (£), default 25 (user 2026-07-18, P-05 L253)
 const _fundedMaxOpen=stakeFrac=>Math.max(1,Math.floor(1/Math.max(0.000001,+stakeFrac||0.000001)));
@@ -4166,11 +4166,12 @@ function renderSqueezeAnalysis(){
   if(WIN!==null)return winnersParamsChange();   // route through winnersParamsChange so the derived Min/Max Trade populate (P-05)
   if(WIN_LOADING)return;
   WIN_LOADING=true; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading… 12 months of trades.</div>';
-  const loadWinners=(attempt=0)=>Promise.all([fetch("/api/winners"),fetch("/api/winners?years=3")]).then(async ([annual,threeYear])=>{
-      if(!annual.ok)throw new Error(`HTTP ${annual.status}`); if(!threeYear.ok)throw new Error(`HTTP ${threeYear.status}`);
-      return [await annual.json(),await threeYear.json()];
-    })
-    .then(([j,j3])=>{if(j.error)throw new Error(j.error);if(j3.error)throw new Error(j3.error);WIN_LOADING=false;WIN_GENERATED=j.generated||"";WIN=_dedupeSameDayRows(j.rows||[]);WIN_3Y=_dedupeSameDayRows(j3.rows||[]);winnersParamsChange();})
+  // Load the annual decision surface first.  Starting the large three-year evidence request in parallel
+  // made the browser wait on two expensive server builds and could leave the tab unresponsive; it is
+  // now deferred and only refreshes the cards when it is ready.
+  const loadThreeYear=(attempt=0)=>{if(WIN_3Y_LOADING||WIN_3Y!==null)return;WIN_3Y_LOADING=true;fetch("/api/winners?years=3").then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();}).then(j3=>{if(j3.error)throw new Error(j3.error);WIN_3Y=_dedupeSameDayRows(j3.rows||[]);WIN_3Y_LOADING=false;winnersParamsChange();}).catch(err=>{if(attempt<2){WIN_3Y_LOADING=false;setTimeout(()=>loadThreeYear(attempt+1),2000*(attempt+1));return;}WIN_3Y_LOADING=false;console.warn("Three-year evidence unavailable",err);});};
+  const loadWinners=(attempt=0)=>fetch("/api/winners").then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
+    .then(j=>{if(j.error)throw new Error(j.error);WIN_LOADING=false;WIN_GENERATED=j.generated||"";WIN=_dedupeSameDayRows(j.rows||[]);winnersParamsChange();setTimeout(()=>loadThreeYear(),250);})
     .catch(err=>{if(attempt<3){if(s)s.innerHTML=`<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading… retry ${attempt+1} of 3.</div>`;setTimeout(()=>loadWinners(attempt+1),1500*(attempt+1));return;}
       WIN_LOADING=false;WIN=null;const b=$("ordp-bestcombo");if(b)b.innerHTML=`<div class="empty">Annual settings could not be loaded: ${_esc(err.message||'unknown error')}. <button class="btn" onclick="renderSqueezeAnalysis()">↻ Retry</button></div>`;});
   loadWinners();
@@ -4629,7 +4630,9 @@ function _bestSettingsByFundedTrades(pool,min,max){
     .sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
 }
 let _bestDecisionRows=null, _bestCardCapacity=null, _bestSettingsResizeTimer=null;
-const bestCardCapacity=()=>window.matchMedia("(max-width: 600px)").matches?6:9;
+// A compact iPad-mini decision surface can show nine cards; phones and desktop/laptop screens stop at
+// six, keeping the latter from becoming a wall of nine equal-looking recommendations.
+const bestCardCapacity=()=>innerWidth<=600?6:(innerWidth<=850?9:6);
 function renderBestCombo(all,{recordSnapshot=true}={}){
   _bestDecisionRows=all;
   _bestCardCapacity=bestCardCapacity();
@@ -5174,8 +5177,8 @@ function instrSort(k,add=false){
 }
 function _instrSortValue(row,key){return key==="rvol"?row.current_rvol:key==="above_vwap"?row.current_above_vwap:key==="atr_expanding"?row.current_atr_expanding:row[key];}
 function instrRvolCell(row){
-  if(row.current_rvol!=null){const fallback=row.current_metric_status==="complete_nse_fallback"?" NSE-listed equivalent used for this BSE instrument.":"";const date=(row.current_rvol_date?`RVOL from latest usable volume bar: ${row.current_rvol_date}`:"Current RVOL")+fallback;return `<span title="${_esc(date)}">${rvolCell(row.current_rvol)}</span>`;}
-  const reason={no_price_history:"Price history unavailable — requires data repair",no_reported_volume:"No reported daily volume (not applicable)",insufficient_volume_history:"Insufficient volume history — requires data repair",not_calculated:"Current RVOL has not been calculated"}[row.current_metric_status]||"Current RVOL unavailable — requires data repair";
+  if(row.current_rvol!=null){const fallback=row.current_metric_status==="complete_nse_fallback"?" NSE-listed equivalent used for this BSE instrument.":row.current_metric_status==="complete_ticker_successor"?" Current successor ticker used for this retained instrument.":"";const date=(row.current_rvol_date?`RVOL from latest usable volume bar: ${row.current_rvol_date}`:"Current RVOL")+fallback;return `<span title="${_esc(date)}">${rvolCell(row.current_rvol)}</span>`;}
+  const reason=row.current_metric_status==="delisted"?(row.current_metric_reason||"Instrument is delisted (not applicable)"):{no_price_history:"Price history unavailable — requires data repair",no_reported_volume:"No reported daily volume (not applicable)",insufficient_volume_history:"Insufficient volume history — requires data repair",not_calculated:"Current RVOL has not been calculated"}[row.current_metric_status]||"Current RVOL unavailable — requires data repair";
   return `<span class="muted" title="${_esc(reason)}">Data issue</span>`;
 }
 // Cross-filter cards: Location/Market/Sector/Status are public; Direction is a 4th "worthwhile" card but
