@@ -63,9 +63,9 @@ HVF Web Application — Change Requests
     Status: in progress
 
 13. Time: 15:00:00
-    Request: At iPad mini width and above, do not allow Best Settings cards to occupy more than three rows; remove the lowest-return displayed recommendation if necessary.
-    Result: In progress.
-    Status: in progress
+   Request: At iPad mini width and above, do not allow Best Settings cards to occupy more than three rows; remove the lowest-return displayed recommendation if necessary.
+   Result: Completed and live-verified. Phone screens show at most six cards; iPad-mini range may show nine; laptop screens show up to eight only when they fit in two rows, otherwise the lowest-return cards are removed until they do. The Best over 3 years evidence card is protected from trimming and remains visible with its return and trade-sample context.
+   Status: complete
 
 14. Time: 15:10:00
     Request: Clarify the replay model's gross exposure, reserved margin, free margin and stressed-loss illustration without changing sizing, returns or orders.
@@ -91,3 +91,8 @@ HVF Web Application — Change Requests
    Request: Review every current Instrument row; where expected RVOL, VWAP, ATR or VolumeScore data is missing, determine the cause and resolve it.
    Result: In progress. The 2026-08-22 audit assessed all 1,421 rows: 1,384 are complete (including 19 explicitly-labelled NSE fallbacks for BSE instruments), 34 have no meaningful reported volume and are N/A, and only ANSS, MMC and FI remain without Yahoo price history. Those three are persisted as explicit data-source exceptions; no values are fabricated.
    Status: in progress
+
+19. Time: 09:10:00
+    Request: Resolve the web page becoming unresponsive while Best Settings loads.
+    Result: Completed and user-verified. Annual Best Settings data now renders before the expensive three-year evidence request begins, avoiding the previous simultaneous heavy requests. The user confirmed the live site is no longer raising errors.
+    Status: complete
