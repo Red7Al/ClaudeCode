@@ -109,8 +109,8 @@ HVF Web Application — Change Requests
 
 22. Time: 13:45:00
     Request: Always show a clear loading message while data is being retrieved, including Scanner Report.
-    Result: In progress. Scanner Report now has loading states for its count and table, and an explicit retry message if its initial records request fails. Stale public copy was also updated from 1,300+ to 1,400+ instruments. Live verification remains outstanding.
-    Status: in progress
+    Result: Completed and live-verified. Scanner Report now has loading states for its count and table, and an explicit retry message if its initial records request fails. Stale public copy was also updated from 1,300+ to 1,400+ instruments. The deployed public page contains the Scanner loading state and the new audited wording.
+    Status: complete
 
 23. Time: 18:10:00
     Request: Add all current S&P 500 constituents without removing instruments already covered; replace obsolete How it works pre-order language with order creation; add visual risk-profile curves.
