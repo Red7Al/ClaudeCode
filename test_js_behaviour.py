@@ -174,3 +174,89 @@ def test_the_harness_would_have_caught_the_original_bug():
     now = run_js(preamble, _enrichment_loop(), "rows[0]")
     assert now["rvol"] == 1.10
     assert was["rvol"] != now["rvol"], "THE HARNESS CANNOT DISTINGUISH THE BUG FROM THE FIX"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Tab Visibility ordering (user 2026-08-22: "sort the tabs in visibility section in the order they are on
+# the screen - I was confused by the order").
+#
+# Executed rather than pattern-matched, because the failure that matters is a tab going MISSING from the
+# panel: a chip that is not rendered is never submitted by saveTabVis(), so that tab silently keeps
+# whatever hidden/shown state it was last saved with and the user has no control left to change it.
+# ------------------------------------------------------------------------------------------------------
+
+def _const(name: str) -> str:
+    """Raw source of a top-level `const NAME=...;` declaration (single statement, ends at the newline)."""
+    html = INDEX.read_text(encoding="utf-8")
+    m = re.search(rf"\nconst {re.escape(name)}=.*?;\n", html, re.S)
+    assert m, f"const {name}= not found in hvf_web/index.html"
+    return m.group(0)
+
+
+def _tab_order_source() -> str:
+    return _const("TABS") + _const("SCREEN_TAB_ORDER") + _const("screenTabOrder")
+
+
+def test_screen_tab_order_loses_no_tab():
+    """Every tab in TABS must still get a chip — order may change, membership may not."""
+    src = _tab_order_source()
+    ordered = run_js("", src, "screenTabOrder()")
+    tabs = run_js("", src, "TABS")
+
+    assert sorted(ordered) == sorted(tabs), "screenTabOrder() must be a permutation of TABS"
+    assert len(ordered) == len(set(ordered)), "a duplicated chip would submit the same tab twice"
+
+
+def test_screen_tab_order_matches_the_navigation_bar():
+    """The point of the change: the panel reads in the order the tab bar renders."""
+    ordered = run_js("", _tab_order_source(), "screenTabOrder()")
+
+    assert ordered[:6] == ["welcome", "whatwedo", "intro", "risk", "appendix", "performance"]
+    # Grouped children follow their parent's position, expanded in place.
+    assert ordered.index("config") < ordered.index("users"), "Settings group precedes Operations group"
+    assert ordered.index("scanner") < ordered.index("config"), "top-level tabs precede the grouped ones"
+
+
+def test_a_tab_missing_from_the_screen_order_still_gets_a_chip():
+    """THE REGRESSION GUARD. A new tab added to TABS but not placed in SCREEN_TAB_ORDER must not vanish."""
+    src = ('const TABS=["welcome","scanner","brandnew"];\n'
+           'const SCREEN_TAB_ORDER=["welcome","scanner"];\n'
+           + _const("screenTabOrder"))
+    ordered = run_js("", src, "screenTabOrder()")
+
+    assert ordered == ["welcome", "scanner", "brandnew"]
+
+    naive = run_js("", 'const TABS=["welcome","scanner","brandnew"];\n'
+                       'const SCREEN_TAB_ORDER=["welcome","scanner"];\n'
+                       'const screenTabOrder=()=>SCREEN_TAB_ORDER.filter(t=>TABS.includes(t));', "screenTabOrder()")
+    assert "brandnew" not in naive, "the reconstruction must drop the tab, or this test proves nothing"
+
+
+# ------------------------------------------------------------------------------------------------------
+# #pf-subnav must be hideable (user 2026-08-22: the Best Settings date window "was being removed").
+#
+# pfPanel() adds the 'hidden' class, but an INLINE display:flex on the element outranks
+# .hidden{display:none}, so the row kept rendering. This is a CSS-specificity defect, so it is asserted
+# on the markup rather than through Node — the same inline-style defeat that once made 'Filters' dead.
+# ------------------------------------------------------------------------------------------------------
+
+def test_pf_subnav_layout_is_not_inline_so_the_hidden_class_can_win():
+    html = INDEX.read_text(encoding="utf-8")
+    m = re.search(r'<nav class="confnav" id="pf-subnav" style="([^"]*)"', html)
+    assert m, "#pf-subnav nav element not found"
+
+    assert "display" not in m.group(1), (
+        "an inline display on #pf-subnav outranks .hidden{display:none} and pfPanel() cannot hide it")
+    assert re.search(r"#pf-subnav\{[^}]*display:flex", html), "#pf-subnav still needs its flex layout in CSS"
+    assert re.search(r"#pf-subnav\.hidden\{display:none\}", html), "the hidden rule needs ID+class specificity"
+    assert re.search(r"pfPanel[\s\S]{0,4000}?pf-subnav[\s\S]{0,200}?classList\.toggle\(\s*[\"']hidden[\"']", html), \
+        "pfPanel() must still be the thing that toggles it"
+
+
+def test_apply_this_configuration_is_withheld_when_logged_out():
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert re.search(r"\$\{AUTH\?`<button[^`]*Apply this configuration</button>`", html), \
+        "the Apply button must be rendered only when AUTH is set"
+    assert re.search(r"async function applyConfigFromReport\([^)]*\)\{\s*(?://[^\n]*\n\s*)*if\(!AUTH\)", html), \
+        "applyConfigFromReport must fail closed for every other caller"

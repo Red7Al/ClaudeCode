@@ -4207,6 +4207,49 @@ _CR_TAIL = _re.compile(
 _CR_LEAD = {"[x]": "Completed", "[X]": "Completed", "[~]": "In Progress",
             "[-]": "Cancelled", "[?]": "Requested"}
 
+# Second register format (used since 2026-08-13 by the *-COMPLETE.txt archives and, from 2026-08-20, by
+# the ACTIVE 20260820/20260821 registers): a numbered block instead of a "*" line.
+#
+#     ## Testing and quality
+#     3. Time: 10:15:00
+#        Request: <what was asked>
+#        Result:  <what was delivered>
+#        Status:  in progress
+#
+# Before 2026-08-22 the loop below only ever produced a requirement from a line starting with "*", so
+# every one of these blocks was silently absent from the tab -- 33 of the 34 items across the four files
+# using it, including the in-progress and deferred ones the user tracks. Parsed here rather than by
+# rewriting the registers: the files are the user's record and AGENTS.md forbids reformatting them.
+_CR_BLOCK = _re.compile(r"^\s*\d+\.\s+Time:\s*(.*)$")
+_CR_FIELD = _re.compile(r"^\s*(Request|Result|Completion|Evidence|Status|Original request date)\s*:\s*(.*)$", _re.I)
+_CR_MD_HEAD = _re.compile(r"^##\s+(\S.*?)\s*$")
+
+# Free-text status words these blocks use -> the six statuses the tab counts. Longest key first, so
+# "deferred external dependency" is not shadowed by "deferred". "out of scope" is deliberate,
+# recorded non-delivery, so it lands on Cancelled rather than defaulting to Not Started.
+_CR_WORD_STATUS = [
+    ("deferred external dependency", "Deferred"),
+    ("not started",   "Not Started"),
+    ("in progress",   "In Progress"),
+    ("out of scope",  "Cancelled"),
+    ("withdrawn",     "Cancelled"),
+    ("cancelled",     "Cancelled"),
+    ("canceled",      "Cancelled"),
+    ("completed",     "Completed"),
+    ("complete",      "Completed"),
+    ("deferred",      "Deferred"),
+    ("requested",     "Requested"),
+]
+
+
+def _cr_word_status(value: str) -> str:
+    """Map a bare 'Status: complete' value to the tab's vocabulary. Unknown -> Not Started."""
+    v = " ".join((value or "").strip().lower().replace("-", " ").split())
+    for word, status in _CR_WORD_STATUS:
+        if v.startswith(word):
+            return status
+    return "Not Started"
+
 
 # A requirement is PRIORITISED when it carries a P-number tag ("P-01 - ...", "P-16a - ...") or sits under
 # an "Explicitly prioritised work" heading (user 2026-07-17, P-22) — the two ways priority is marked in
@@ -4256,10 +4299,33 @@ def _cr_status(line: str) -> str:
     return "Not Started"
 
 
+def _cr_flush_block(block, reqs, area, scope):
+    """Append an accumulated numbered block as a requirement. Returns None (the new 'no open block')."""
+    if not block:
+        return None
+    req = (block.get("request") or "").strip()
+    if req:
+        note = " ".join(n for n in block.get("note", []) if n).strip()
+        st = _cr_word_status(block.get("status", ""))
+        deferred = (st == "Deferred")
+        reqs.append({"row": len(reqs) + 1,
+                     "text": req, "delivery_notes": note,
+                     "working_area": area, "scope": _cr_scope(req, scope), "status": st,
+                     "prange": (None if deferred else _cr_prange(req)),
+                     "prioritised": (False if deferred else _cr_prioritised(req, area))})
+    return None
+
+
 def _cr_parse(path: str) -> dict:
-    """Parse one ChangeRequests/*.txt into a summary + requirement list. A requirement is any line whose
-    trimmed form starts with '*'. The nearest preceding 'Application Focus - X' header is its Working
-    Area; a '- NEW DELIVERY' suffix on that header is the Scope."""
+    """Parse one ChangeRequests/*.txt into a summary + requirement list.
+
+    Two register formats are supported (see _CR_BLOCK above):
+      - a line whose trimmed form starts with '*', its status carried by a trailing '[Status]' marker;
+      - a numbered 'N. Time: / Request: / Result: / Status:' block, its Working Area taken from the
+        nearest preceding '## Heading'.
+    For '*' lines the nearest preceding 'Application Focus - X' header is the Working Area and a
+    '- NEW DELIVERY' suffix on it is the Scope. '## Heading' deliberately scopes ONLY numbered blocks,
+    so adding block support left every previously-parsed row byte-identical."""
     fn = os.path.basename(path)
     stem = fn[:-4] if fn.lower().endswith(".txt") else fn      # drop .txt
     name = stem.replace("-Claude", "").replace("-claude", "")  # drop -Claude (user 2026-07-10)
@@ -4272,6 +4338,7 @@ def _cr_parse(path: str) -> dict:
     except Exception:
         updated = ""
     area, scope, reqs = "", "", []
+    block_area, block = "", None      # '## Heading' area + the numbered block being accumulated
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             lines = f.read().splitlines()
@@ -4279,7 +4346,38 @@ def _cr_parse(path: str) -> dict:
         lines = []
     for raw in lines:
         s = raw.strip()
+        _h = _CR_MD_HEAD.match(raw)
+        if _h:
+            block = _cr_flush_block(block, reqs, block_area, scope)
+            block_area = _h.group(1)
+            continue
+        _b = _CR_BLOCK.match(raw)
+        if _b:
+            block = _cr_flush_block(block, reqs, block_area, scope)
+            block = {"request": "", "note": [], "status": "", "last": None}
+            continue
+        if block is not None:
+            _f = _CR_FIELD.match(raw)
+            if _f:
+                key, val = _f.group(1).lower(), _f.group(2).strip()
+                if key == "request":
+                    block["request"], block["last"] = val, "request"
+                elif key == "status":
+                    block["status"], block["last"] = val, None
+                elif key == "original request date":
+                    block["last"] = None
+                else:                                   # Result / Completion / Evidence
+                    block["note"].append(val)
+                    block["last"] = "note"
+                continue
+            if s and block["last"]:                     # wrapped continuation of the field above
+                if block["last"] == "request":
+                    block["request"] = (block["request"] + " " + s).strip()
+                else:
+                    block["note"][-1] = (block["note"][-1] + " " + s).strip()
+                continue
         if s.startswith("Application Focus"):
+            block = _cr_flush_block(block, reqs, block_area, scope)
             a = s.split("-", 1)[1].strip() if "-" in s else s
             if a.upper().endswith("NEW DELIVERY"):
                 scope = "NEW DELIVERY"
@@ -4289,6 +4387,7 @@ def _cr_parse(path: str) -> dict:
             area = a
             continue
         if s.startswith("*"):
+            block = _cr_flush_block(block, reqs, block_area, scope)
             text = s.lstrip("* ").strip()
             text = _CR_TAIL.sub("", text).strip()
             for tag in _CR_LEAD:
@@ -4309,6 +4408,7 @@ def _cr_parse(path: str) -> dict:
                          "working_area": area, "scope": _cr_scope(req, scope), "status": _st,
                          "prange": (None if _deferred else _cr_prange(req)),
                          "prioritised": (False if _deferred else _cr_prioritised(req, area))})
+    _cr_flush_block(block, reqs, block_area, scope)   # the last block in the file has no successor to flush it
     counts = {"Completed": 0, "In Progress": 0, "Not Started": 0, "Cancelled": 0, "Requested": 0, "Deferred": 0}
     pranges = {"P01-05": 0, "P06-10": 0, "P11-25": 0, "P26+": 0}
     for r in reqs:

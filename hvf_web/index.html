@@ -490,6 +490,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .pf-setcard{max-width:520px;min-width:320px;background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:11.5px}
 .pf-setcard-h{font-weight:700;margin-bottom:4px;font-size:12px}
 .pf-setcard-grid{display:grid;grid-template-columns:repeat(2,minmax(140px,1fr));gap:1px 18px}   /* two columns leaves room for up to three readable rows (user 2026-08-05) */
+/* #pf-subnav layout, moved out of its inline style attribute so pfPanel()'s "hidden" class can win
+   (user 2026-08-22). The .hidden rule is repeated at ID+class specificity for the same reason. */
+#pf-subnav{display:flex;flex-direction:column;gap:8px}
+#pf-subnav.hidden{display:none}
 .pf-filter-row{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
 .pf-filter-controls{display:grid;grid-template-columns:minmax(360px,1fr) auto;align-items:start;gap:12px;flex:1 1 720px;min-width:0}
 .pf-loc-group{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px;width:100%}
@@ -1454,7 +1458,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </div>
   <!-- Sub-tabs (user 2026-07-17): the recorded-trigger results and the 15-month analysis are two
        distinct reads, so they get their own pill instead of one long scroll. -->
-  <nav class="confnav" id="pf-subnav" style="margin:0 0 12px;display:flex;flex-direction:column;gap:8px">
+  <!-- Layout lives in CSS, NOT in this style attribute. An inline display:flex outranks .hidden{display:none},
+       which is why pfPanel() could add "hidden" for the Best settings / Let winners run sub-tabs and the date
+       window kept rendering there anyway (user 2026-08-22: "I thought that Last 12 months / From / To was being
+       removed from best settings"). Same inline-style defeat as the dead "Filters" button noted above. -->
+  <nav class="confnav" id="pf-subnav" style="margin:0 0 12px">
     <!-- Sub-tab pills moved to the very top of the view, centred (user 2026-07-24, P-03). Only the date
          filter row remains here. -->
     <!-- Date filter row, kept on the RIGHT (user 2026-07-18, P-01). The quick-window dropdown sits
@@ -2698,6 +2706,16 @@ const DEFAULT_HIDDEN=new Set(["mfm"]);   // IG Account is now default-visible (u
 const TAB_GROUPS={operations:["users","batch","xposts","changereq","syslogs","jobs","version"],
                   settings:["config","markets","configadmin","marketsadmin"]};   // user buttons left, admin right
 const parentOf=t=>{for(const p in TAB_GROUPS)if(TAB_GROUPS[p].includes(t))return p;return null;};
+// The tab bar's own left-to-right order, with each grouped parent ("Settings", "Operations") expanded in
+// place — the order a user actually sees. Used by the Tab Visibility panel so its chips read like the bar.
+// Derived from the #tab-* buttons in markup order; TABS is the membership list, not the display order.
+const SCREEN_TAB_ORDER=["welcome","whatwedo","intro","risk","appendix","performance","scanner","preorders",
+                        "orderops","igaccount","fees","activity","mfm","sysdocs","docs","terms","instruments",
+                        "squeezehist","config","markets","configadmin","marketsadmin","users","batch","xposts",
+                        "changereq","syslogs","jobs","version"];
+// Any tab added to TABS but not yet placed above still appears, at the end, rather than vanishing from the
+// visibility panel — a missing chip would silently strand that tab at whatever state it was last saved with.
+const screenTabOrder=()=>[...SCREEN_TAB_ORDER.filter(t=>TABS.includes(t)),...TABS.filter(t=>!SCREEN_TAB_ORDER.includes(t))];
 let FEATURES={xposts:false};
 const PREORDERS_TO_IG_ENABLED=false;   // server-side enforcement mirrors this UI gate
 let AUTH=localStorage.getItem("sq_auth")||"";
@@ -3259,22 +3277,15 @@ function renderTabVis(hidden){
   const chip=(t,checked,dis)=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:${dis?'default':'pointer'};${dis?'opacity:.6':''}"><input type="checkbox" ${dis?'class="" disabled':'class="tv"'} data-t="${t}" ${checked?'checked':''}> ${TAB_LABELS[t]||t}</label>`;
   // Default-hidden tabs tick only when opted in (SHOWN_TABS); others tick unless hidden.
   const chipFor=t=>chip(t,DEFAULT_HIDDEN.has(t)?SHOWN_TABS.includes(t):!hidden.has(t),false);
-  const head=x=>`<div class="muted" style="width:100%;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:12px 0 2px">${x}</div>`;
-  const INSTR=["performance","scanner","instruments","preorders","orderops","igaccount"];   // Instrument Operations group (user 2026-07-11; "instruments" joined 2026-08-07, ChangeRequest P-08)
-  const grouped=new Set([].concat(...Object.values(TAB_GROUPS),INSTR,["activity"]));   // My Activity shown under Application Operations (user 2026-07-11)
-  // Settings, Instrument Operations, Application Operations, then everything else (user 2026-07-11).
-  const setg=TAB_GROUPS.settings.filter(t=>t!=="config"&&allow(t));
-  // X Posts is an admin Operations tab and is not user-configurable.
-  const ops=[...TAB_GROUPS.operations,"activity"].filter(allow);
-  const instr=INSTR.filter(allow);
-  const rest=TABS.filter(t=>t!=="config"&&!grouped.has(t)&&allow(t));
-  const chipUsers=t=>(t==="users"&&IS_ADMIN)?chip(t,true,true):chipFor(t);   // admins can't disable User Management
-  let html=head("Settings")+chip("config",true,true)+setg.map(chipFor).join("");
-  if(instr.length)html+=head("Instrument Operations")+instr.map(chipFor).join("");
-  if(ops.length)html+=head("Application Operations")+ops.map(chipUsers).join("");
-  html+=head("Other")+rest.map(chipFor).join("");
+  // One flat list in NAVIGATION order (user 2026-08-22: "sort the tabs in visibility section in the order
+  // they are on the screen - I was confused by the order"). The previous Settings / Instrument Operations /
+  // Application Operations / Other grouping bore no relation to the tab bar, so finding a tab meant knowing
+  // which category someone had filed it under.
+  const chipUsers=t=>t==="config"?chip(t,true,true)                          // Configuration is never hideable
+                    :(t==="users"&&IS_ADMIN)?chip(t,true,true)               // admins can't disable User Management
+                    :chipFor(t);
   $("tabvis-list").classList.remove("sqh-loading");
-  $("tabvis-list").innerHTML=html;
+  $("tabvis-list").innerHTML=screenTabOrder().filter(allow).map(chipUsers).join("");
 }
 function saveTabVis(){
   const boxes=[...document.querySelectorAll(".tv")];
@@ -4926,7 +4937,11 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
       <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} funded of ${x.seq.length.toLocaleString()} eligible · ${x.posPeriods}/${x.periods} positive quarters</div>
       <div style="font-size:11px;margin-top:6px">${x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo} max open</div>
       <div class="muted" style="font-size:10px;margin-top:7px;line-height:1.4"><b style="color:var(--fg)">Changes:</b> ${changedFor(x)}</div>
-      <button class="btn" style="margin-top:8px" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">Apply this configuration</button>
+      ${AUTH?`<button class="btn" style="margin-top:8px" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">Apply this configuration</button>`
+             /* There is no User Configuration to write to when nobody is signed in, and /api/config rejects
+                the POST, so the control could only ever end at "Save failed" (user 2026-08-22). Offer the
+                sign-in that makes it work instead of an action that cannot. */
+             :`<div class="muted" style="margin-top:8px;font-size:11px">Log in to apply this configuration.</div>`}
     </div></div>`).join('');
   const unsupportedCards=[
     showUnsupported250&&[">250 trades",250,300,"#a371f7"],showUnsupported125&&[">125 trades",125,150,"#1f6feb"]
@@ -5040,6 +5055,10 @@ function selectBestChoice(label){
 // POSTs only the provided keys to /api/config, refreshes MY_LIMITS + the config inputs, and re-renders the
 // dependent views. Values map: min_risk_reward, min_quality, min_volume_score, max_position_pct, max_open.
 async function applyConfigFromReport(cfg, btn){
+  // Fail closed rather than at the POST: without a session there is no User Configuration to write to,
+  // and /api/config rejects it. The card renderer already withholds the button when logged out; this
+  // guard covers every other caller (user 2026-08-22).
+  if(!AUTH){await appConfirm("Log in to apply a configuration to your account.",{title:"Not logged in",ok:"OK"});return;}
   cfg=cfg||{}; const limits=cfg.limits||cfg, filters=cfg.filters||{};
   const labels={min_risk_reward:"R:R floor",min_quality:"Quality floor",min_volume_score:"VolumeScore floor",min_rvol:"RVOL floor",require_above_vwap:"Require above VWAP",require_atr_expanding:"Require ATR expanding",max_position_pct:"Max position size %",max_open:"Max open positions",min_instrument_value:"Minimum instrument value",max_instrument_value:"Maximum instrument value"};
   // Booleans and money read as raw 0/1/numbers otherwise, and f_mkt/pof_market (and f_sec/pof_sector)

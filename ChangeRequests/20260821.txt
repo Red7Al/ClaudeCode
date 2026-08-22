@@ -123,3 +123,33 @@ HVF Web Application — Change Requests
     Request: After the active work is verified, update Change Requests, GitHub, and all relevant documentation/Markdown before handover; prepare for a full review of code and documents.
     Result: In progress. The S&P rebuild, expanded-universe audit, public UI, regression gate, GitHub history and relevant documentation are reconciled. This gate remains open only for Let Winners Run owner-scoped broker handover: it must be live-verified while still fail-closed before it can be marked complete.
     Status: in progress
+
+25. Time: 19:30:00
+    Request: P-01 BUG Make the Change Requests tab read this register. The numbered "Time/Request/Result/Status" block format used by 20260820.txt, 20260821.txt, 20260820-COMPLETE.txt and 20260813-COMPLETE.txt is invisible to the parser, which only accepts lines beginning with "*": 33 of the 34 recorded items in those four files do not appear in the tab at all.
+    Result: In progress. Extending hvf_web/server.py to parse the numbered block format additively, without rewriting any register.
+    Status: in progress
+
+26. Time: 19:45:00
+    Request: P-01 BUG "Apply this configuration" must not be enabled in Best Settings when nobody is logged in.
+    Result: In progress. Confirmed on the live logged-out view: seven enabled "Apply this configuration" buttons render for a guest. The POST to /api/config cannot succeed without a session, so the control can only ever fail.
+    Status: in progress
+
+27. Time: 19:50:00
+    Request: P-01 BUG The "Last 12 months / From / To" date window should not appear on Best Settings; it was expected to have been removed.
+    Result: In progress. The requester's recollection is correct and the intent is already in the code: pfPanel() adds the "hidden" class to #pf-subnav for the Best settings and Let winners run sub-tabs. The class is inert because #pf-subnav carries an INLINE display:flex, which outranks .hidden{display:none} -- the same inline-style defeat already recorded against the dead "Filters" button. Confirmed rendering on the live logged-out Best settings view.
+    Status: in progress
+
+28. Time: 20:05:00
+    Request: P-06 Sort the tabs in the Tab Visibility section into the order they appear on screen; the present order is confusing.
+    Result: Not started. renderTabVis() currently groups chips as Settings, Instrument Operations, Application Operations, Other, which does not match the on-screen navigation order.
+    Status: not started
+
+29. Time: 20:10:00
+    Request: P-01 BUG "This page isn't responding" is appearing more and more, for example when clicking IG Account; filtering on Scheduled Jobs is also very slow.
+    Result: Not started. Reproduced independently: two browser evaluations against the live site timed out or failed while the main thread was blocked. Measured so far: the Scanner render() costs about 500 ms over the now 1,773-record universe. Scheduled Jobs holds only a few dozen rows, so its slowness is not proportional to row count and points at a shared per-render cost rather than data volume. Root cause not yet established.
+    Status: not started
+
+30. Time: 20:15:00
+    Request: P-01 BUG Version history is not being maintained.
+    Result: Not started.
+    Status: not started
