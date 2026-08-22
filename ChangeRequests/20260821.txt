@@ -14,7 +14,7 @@ HVF Web Application — Change Requests
 
 3. Time: 10:15:00
    Request: Following a full review, make Let winners run simulation-only until per-user account routing and a safe live handover are implemented and verified.
-   Result: In progress. The live path is fail-closed; the historical report remains available. The legacy Owner trading-profile UUID is explicitly mapped to Alex without rewriting stored positions, and the two-hour bridge now calls the guarded manager even when no new candidate is found.
+   Result: In progress. The live path is fail-closed; the historical report remains available. The legacy Owner trading-profile UUID is explicitly mapped to Alex without rewriting stored positions, and the two-hour bridge now calls the guarded manager even when no new candidate is found. The 2026-08-22 simulation review passed 68 relevant regression tests and a live historical replay: 3,212 resolved eligible trades, zero target-lock breaches, exact exit/capacity reconciliation, and a valid improved verdict. On the £10,000 / 5% / 20-position model, 1%–4% run trails all improved versus sell-at-target; 4% was strongest in that bounded range (+£387.10). This is daily-bar historical evidence, appropriate to a multi-day hold model but not an intraday execution claim.
    Status: in progress
 
 4. Time: 13:45:00
