@@ -4133,6 +4133,19 @@ const _cherryEq=(a,b)=>JSON.stringify(a||{})===JSON.stringify(b||{});
 // separate population, no R-multiple, no compounding-to-millions.
 let WINNERS_WALLET=10000, WINNERS_STAKE=0.05, WINNERS_MAXOPEN=20;   // £ wallet, stake fraction and explicit concurrency cap
 let WINNERS_HIDE_MISSED=false;   // "hide trades missed" toggle on the winners ledger (P-07 #30)
+// Transaction-evidence render cap (user 2026-08-22: "This page isn't responding").
+//
+// paintOrdersPerf built EVERY ledger entry into one innerHTML assignment. On the three-year window that
+// is 11,669 rows x 18 cells -- measured at 7.5 MB of HTML and roughly 233,000 DOM elements -- parsed
+// synchronously on the main thread, which is what produced Chrome's "This page isn't responding" dialog.
+// Building the string costs only ~16 ms; the DOM parse and layout are the whole cost, so the fix is to
+// stop materialising rows nobody has scrolled to, not to build them faster.
+//
+// This is a RENDER cap only. The ledger itself is unchanged and still computed over every row, so the
+// trade count, wallet, net £ and every dimension chart are identical to before -- they read the ledger,
+// never the DOM.
+let WINNERS_EVIDENCE_LIMIT=1500, WINNERS_EVIDENCE_SHOW_ALL=false;
+function winnersEvidenceShowAll(){WINNERS_EVIDENCE_SHOW_ALL=true;paintOrdersPerf();}
 function winnersToggleMissed(){WINNERS_HIDE_MISSED=!!($("ordp-hide-missed")||{}).checked;const t=$("ordp-table");if(t)t.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);}
 let WIN=null, WIN_GENERATED="", WIN_3Y=null;
 let WIN_LOADING=false, WIN_3Y_LOADING=false;
@@ -5189,8 +5202,17 @@ function paintOrdersPerf(){
   if(tc)tc.textContent=`(${takenRows.length} trades${skipped?` · ${skipped} missed`:''}${_filtered?` · filtered`:''}, ${span} · ${money(WINNERS_WALLET)} → ${money(w)})`;
   const oc=st=>st==='TARGET'?'var(--bull)':st==='STOPPED'?'var(--bear)':'#d29922';
   let _ti=0;
+  // Render cap (see WINNERS_EVIDENCE_LIMIT). Chronological order is preserved, so the rows shown are the
+  // same rows, in the same order, that occupied the top of this table before.
+  const _evAll=WINNERS_EVIDENCE_SHOW_ALL||ledger.length<=WINNERS_EVIDENCE_LIMIT;
+  const _evRows=_evAll?ledger:ledger.slice(0,WINNERS_EVIDENCE_LIMIT);
+  const _evNote=_evAll?"":`<tr><td colspan="18" style="text-align:center;padding:10px">`+
+    `<b>Showing the first ${_evRows.length.toLocaleString()} of ${ledger.length.toLocaleString()} rows.</b> `+
+    `<span class="muted">The ${takenRows.length.toLocaleString()}-trade count, wallet and net £ above are calculated from all ${ledger.length.toLocaleString()} rows, not from this table.</span> `+
+    `<button class="btn" style="margin-left:8px" onclick="winnersEvidenceShowAll()" title="Renders every row. On the three-year window this builds around 233,000 elements and the tab will be unresponsive while it does.">Show all rows</button>`+
+    `</td></tr>`;
   if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="Market cap (instrument currency); blank until the mcap backfill lands.">MCap</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th>RVOL</th><th title="VolumeScore (0–12) on the trigger bar — breakout confirmation (Strong squeeze, RVOL, breakout volume, VWAP, OBV, low-volume node, ATR). 8+ = well-confirmed. Blank where it can't be scored.">Vol</th><th title="2% of the wallet at this point in time">Stake</th><th title="Margin required to open = position size ÷ leverage (IG UK retail rates by instrument type: equities 5×, indices 20×, commodities 10×)">Margin</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Account equity after this trade = the running compounded wallet incl. realised P&amp;L; last row = the compounded figure">Equity</th><th title="Available to open further positions = Equity − Margin (user 2026-07-24, P-04)">Available</th><th title="Why a triggered squeeze was NOT placed — 'Book full' means all Max-open-position slots were already taken (no capital free). Blank = it was placed.">Reason</th></tr></thead><tbody>`+
-    ledger.map(x=>{const r=x.r;
+    _evRows.map(x=>{const r=x.r;
       if(x.missed)return `<tr class="missed-row" style="opacity:.6"><td class="muted">—</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td><td class="muted">${_mcapFmt(r.mcap)}</td>
       <td class="muted" title="positions already open when this squeeze triggered">${x.open}</td>
       <td><b style="color:var(--muted)">MISSED</b></td>
@@ -5209,7 +5231,7 @@ function paintOrdersPerf(){
       <td class="muted">£${x.maxloss.toFixed(2)}</td>
       <td><b>${money(x.cum)}</b></td>
       <td class="muted">${x.available!=null?money(x.available):(levOf(r)?money(x.cum-x.stake/levOf(r)):money(x.cum))}</td>
-      <td class="muted">—</td></tr>`;}).join("")+
+      <td class="muted">—</td></tr>`;}).join("")+_evNote+
     `</tbody></table>`;
   if(tb)tb.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);
   const _mc=$("ordp-missed-ctrl"); if(_mc){_mc.style.display=skipped>0?"inline-flex":"none";
