@@ -2686,7 +2686,7 @@ let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/
 let MY_LIMITS={};   // the user's personal floors from Configuration → My trading limits (min_risk_reward, min_quality) — applied to My Pre-orders (user 2026-07-24, P-02)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","whatwedo","intro","appendix","terms","scanner","instruments","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","docs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
+const TABS=["welcome","whatwedo","intro","risk","appendix","terms","scanner","instruments","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","docs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
 const PUBLIC_TABS=["welcome","whatwedo","intro","risk","appendix","terms","scanner","instruments","performance"];   // visible when logged out
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin","squeezehist","fees"];  // admin only
 const SUPPORT_TABS=["batch","syslogs","jobs","sysdocs"];   // Support role: read-only ops visibility plus the system runbook.
@@ -2854,7 +2854,7 @@ function paintXposts(){
 function renderXposts(){fetch("/api/x-posts",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{X_ROWS=j.rows||[];paintXposts();}).catch(()=>{$("x-rows").innerHTML=`<tr><td colspan="6" class="empty">Could not load — try logging in again.</td></tr>`;});}
 document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.dataset.xk;xSortDir=(xSortK===k)?-xSortDir:-1;xSortK=k;paintXposts();_sortArrows("data-xk",xSortK,xSortDir);});
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
-const TAB_LABELS={welcome:"Introduction",whatwedo:"What we do",intro:"How it works",appendix:"Appendix",terms:"T&C",scanner:"Scanner Report",xposts:"X Posts",
+const TAB_LABELS={welcome:"Introduction",whatwedo:"What we do",intro:"How it works",risk:"Risk awareness",appendix:"Appendix",terms:"T&C",scanner:"Scanner Report",xposts:"X Posts",
   preorders:"My Pre-orders",orderops:"Pre-orders to my IG",activity:"My Activity",batch:"Batch Activity",
   users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)",
   config:"Configuration (User)",markets:"Markets (User)",marketsadmin:"Markets (Admin)",configadmin:"Configuration (Admin)",
