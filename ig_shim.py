@@ -3593,7 +3593,16 @@ def run_let_winners_run() -> dict:
                 if pos.get("trailingStep") or pos.get("trailingStopDistance"):
                     out["skipped"] += 1
                     continue
-                if attach_trailing_stop(deal_id, price * trail):
+                # The quote was read through this owner's session above. Re-enter the same owner-bound
+                # session for the mutation: acting_session restores the module-global session after a
+                # context exits, so calling this bare would otherwise risk amending the default account.
+                try:
+                    with acting_session(owner):
+                        changed = attach_trailing_stop(deal_id, price * trail)
+                except Exception as exc:
+                    log.error("let-winners-run: trailing handover failed safely for %s/%s: %s", owner, deal_id, exc)
+                    changed = False
+                if changed:
                     out["trailing"].append({"epic": epic, "deal_id": deal_id,
                                             "price": price, "distance": round(price * trail, 2)})
                 else:
@@ -3604,7 +3613,13 @@ def run_let_winners_run() -> dict:
             reached = (price >= target) if buy else (price <= target)
             better = (target > stop) if buy else (target < stop or stop == 0)
             if reached and better:
-                if update_stop(deal_id, target):
+                try:
+                    with acting_session(owner):
+                        changed = update_stop(deal_id, target)
+                except Exception as exc:
+                    log.error("let-winners-run: target lock failed safely for %s/%s: %s", owner, deal_id, exc)
+                    changed = False
+                if changed:
                     out["locked"].append({"epic": epic, "deal_id": deal_id,
                                           "old_stop": stop, "new_stop": target})
                 else:
