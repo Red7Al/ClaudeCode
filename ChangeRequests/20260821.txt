@@ -59,7 +59,7 @@ HVF Web Application — Change Requests
 
 12. Time: 14:55:00
     Request: Show an explicit loading state while Best Settings calculates transaction evidence for a newly selected card.
-    Result: In progress.
+    Result: In progress. Selecting a card now immediately identifies the configuration whose chronological funding evidence is being replayed, confirms that it does not fetch data, change settings or place orders, and preserves a newer selection if an earlier calculation finishes later. It also provides a retryable error state. Live verification remains outstanding.
     Status: in progress
 
 13. Time: 15:00:00

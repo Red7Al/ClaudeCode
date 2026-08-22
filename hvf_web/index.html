@@ -4980,10 +4980,24 @@ function selectBestChoice(label){
   // Settings already evaluates thousands of configurations per render, so we don't pay for a full
   // chronological replay on the 3 cards a user never clicks.
   if(!x.proof){
-    detail.innerHTML='<div class="refreshing" style="padding:18px 0">⏳ Data loading… transaction evidence for this configuration.</div>';
     document.querySelectorAll('#ordp-bestcombo .fcard-choice').forEach(el=>el.classList.toggle('fcard-selected',el.dataset.choice===lbl));
-    // Let the browser paint the loading state before the potentially large chronological replay starts.
-    requestAnimationFrame(()=>setTimeout(()=>{x.proof=_combReplay(x.seq,x.st/100,x.mo,true).proof;selectBestChoice(lbl);},0));
+    if(x.proofError){
+      detail.innerHTML=`<div class="muted" role="alert" style="padding:18px 0;color:var(--bear)"><b>Transaction evidence could not be calculated.</b> Select the card again to retry. No settings or orders were changed.</div>`;
+      delete x.proofError;
+      return;
+    }
+    detail.innerHTML=`<div class="refreshing" role="status" aria-live="polite" style="padding:18px 0"><b>Calculating transaction evidence for ${_esc(lbl)}…</b><div class="muted" style="font-size:12px;margin-top:4px">Replaying the selected configuration's chronological funding decisions. This does not fetch data, change settings, or place orders.</div></div>`;
+    if(!x.proofLoading){
+      x.proofLoading=true;
+      // Let the browser paint the loading state before the potentially large chronological replay starts.
+      requestAnimationFrame(()=>setTimeout(()=>{
+        try{x.proof=_combReplay(x.seq,x.st/100,x.mo,true).proof;}
+        catch(error){console.error('Best Settings transaction-evidence replay failed',error);x.proofError=true;}
+        finally{x.proofLoading=false;}
+        // A user may have selected a different card while this calculation was queued: never switch it back.
+        if(BEST_SELECTED===lbl)selectBestChoice(lbl);
+      },0));
+    }
     return;
   }
   document.querySelectorAll('#ordp-bestcombo .fcard-choice').forEach(el=>el.classList.toggle('fcard-selected',el.dataset.choice===lbl));
