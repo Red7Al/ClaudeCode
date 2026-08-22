@@ -99,5 +99,5 @@ HVF Web Application — Change Requests
 
 20. Time: 10:00:00
     Request: Determine a safe per-user IG routing design for Let Winners Run.
-    Result: In progress. Review found that the opt-in switch is per-user but the scheduled manager still reads all positions through the shared IG session and resolves existing position ownership through a legacy profile UUID. The proposed route is owner-scoped sessions, an immutable web-login/account binding stored when an order fills, and fail-closed handling for legacy positions without an approved binding. No live routing or broker setting has changed.
+    Result: In progress. Review found that the opt-in switch is per-user but the scheduled manager still reads all positions through the shared IG session and resolves existing position ownership through a legacy profile UUID. The proposed route is owner-scoped sessions, an immutable web-login/account binding stored when an order fills, and fail-closed handling for legacy positions without an approved binding. Additive owner and hashed-account fields are now wired to new web-placed working orders; no legacy data was rewritten and the live switch remains off. Position-fill propagation and owner-scoped scheduler verification remain outstanding.
     Status: in progress

@@ -191,6 +191,7 @@
 # ======================================================================================================================
 
 import os
+import hashlib
 from dotenv import load_dotenv; load_dotenv(override=True)
 import math
 import time
@@ -396,6 +397,23 @@ _SESSION_POOL: dict = {}       # login -> IGSession (lazy, kept for the process 
 # is deliberately disabled until the runner has verified per-user account routing, a real scheduler and a
 # confirmed target-protection handover.  Never remove a take-profit merely because a report setting is on.
 LIVE_LET_WINNERS_RUN_ENABLED = False
+
+
+def _lwr_account_fingerprint(account_id: str | None) -> str | None:
+    """Stable non-display identifier used only to prevent cross-account LWR routing."""
+    value = str(account_id or "").strip()
+    return hashlib.sha256(value.encode("utf-8")).hexdigest() if value else None
+
+
+def _ensure_lwr_owner_columns():
+    """Additive schema support for owner-scoped LWR. Never rewrites legacy rows."""
+    db = get_db()
+    try:
+        for table in ("working_orders", "positions"):
+            db.run(f"alter table {table} add column if not exists lwr_owner_login text")
+            db.run(f"alter table {table} add column if not exists lwr_account_fingerprint text")
+    finally:
+        db.close()
 
 
 def _web_login_for_trading_profile(profile_id: str | None) -> str | None:
@@ -2078,27 +2096,31 @@ def get_working_orders() -> list:
 def _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction,
                              size, entry_level, stop_level, limit_level, otype,
                              hvf_type, good_till, paper_trade, session_name,
-                             signal_summary, status="PENDING", proximity_pct=None):
+                             signal_summary, status="PENDING", proximity_pct=None,
+                             lwr_owner_login=None, lwr_account_fingerprint=None):
     """Insert a new working-order record. status defaults to PENDING; pass WATCHING
     when price is not yet in range and no capital is committed. proximity_pct (user 2026-08-03, P-75)
     is the per-user placement band this row was queued under, so reconcile promotes a WATCHING row at
     the SAME threshold the acting user set (not the global default). Never raises."""
     try:
+        _ensure_lwr_owner_columns()
         db = get_db()
         try:
             db.run(
                 """insert into working_orders
                    (deal_ref, deal_id, user_id, ticker, epic, direction, size,
                     entry_level, stop_level, limit_level, otype, hvf_type, good_till,
-                    status, paper_trade, session, signal_summary, proximity_pct)
+                    status, paper_trade, session, signal_summary, proximity_pct,
+                    lwr_owner_login, lwr_account_fingerprint)
                    values (:v_ref, :v_deal, :v_uid, :v_ticker, :v_epic, :v_dir, :v_size,
                            :v_entry, :v_stop, :v_limit, :v_otype, :v_hvf, :v_till,
-                           :v_status, :v_paper, :v_session, :v_signal, :v_prox)""",
+                           :v_status, :v_paper, :v_session, :v_signal, :v_prox, :v_lwr_owner, :v_lwr_account)""",
                 v_ref=deal_ref, v_deal=deal_id, v_uid=user_id, v_ticker=ticker,
                 v_epic=epic, v_dir=direction, v_size=size, v_entry=entry_level,
                 v_stop=stop_level, v_limit=limit_level, v_otype=otype, v_hvf=hvf_type,
                 v_till=good_till, v_status=status, v_paper=paper_trade,
-                v_session=session_name, v_signal=signal_summary, v_prox=proximity_pct
+                v_session=session_name, v_signal=signal_summary, v_prox=proximity_pct,
+                v_lwr_owner=lwr_owner_login, v_lwr_account=lwr_account_fingerprint
             )
             log.info(f"Working order logged to Supabase: {deal_id} ({ticker} {direction} @ {entry_level}) [{status}]")
         finally:
@@ -2176,6 +2198,7 @@ def place_working_order(
     max_entry_distance_pct: float = 0.90,   # sanity guard: entry vs current price (after unit conversion)
     proximity_pct:  float = None,   # None -> per-user placement band (config_store wo_proximity_pct, default WO_PROXIMITY_PCT)
     let_run:        bool = False,   # omit the take-profit so a winner is not capped at target (see below)
+    lwr_owner_login: str = None,    # immutable web-login binding for a future owner-scoped LWR manager
 ) -> Optional[dict]:
     """
     Place (or amend) a PENDING entry order on IG at the HVF level.
@@ -2406,6 +2429,8 @@ def place_working_order(
     # Proximity band — only commit capital when price is close to the entry.
     # Beyond WO_PROXIMITY_PCT, log as WATCHING (no IG order placed, no margin
     # committed) and post a Slack alert. reconcile_working_orders will upgrade
+    lwr_account_fingerprint = _lwr_account_fingerprint(
+        getattr(session, "_account_id", None) or IG_ACCOUNT_ID) if lwr_owner_login else None
     # the WATCHING row to PENDING once price enters the band.
     if dist_pct > proximity_pct:
         watch_id  = f"WATCH-{ticker}-{int(time.time())}"
@@ -2415,7 +2440,8 @@ def place_working_order(
             size, entry_level, stop_level, limit_level,
             "STOP" if direction == "BUY" else "STOP",   # placeholder — set at placement time
             hvf_type, good_till, paper_trade, session_name, signal_summary,
-            status="WATCHING", proximity_pct=proximity_pct
+            status="WATCHING", proximity_pct=proximity_pct,
+            lwr_owner_login=lwr_owner_login, lwr_account_fingerprint=lwr_account_fingerprint
         )
         try:
             from notify import working_order_watching
@@ -2518,7 +2544,8 @@ def place_working_order(
 
         _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction,
                                  size, entry_level, stop_level, limit_level, otype,
-                                 hvf_type, good_till, False, session_name, signal_summary)
+                                 hvf_type, good_till, False, session_name, signal_summary,
+                                 lwr_owner_login=lwr_owner_login, lwr_account_fingerprint=lwr_account_fingerprint)
 
         return {"deal_id": deal_id, "deal_ref": deal_ref, "level": entry_level,
                 "stop_level": stop_level, "limit_level": limit_level, "otype": otype,
@@ -3170,7 +3197,7 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         # profile["name"] is the account owner this run trades as: 'Owner' for the bridge and session
         # jobs, the acting login for a manual place. The decision is made HERE, where the profile is
         # known, rather than inside place_working_order, which only ever receives a user_id.
-        let_run=_lwr_cfg(profile.get("name"))[0])
+        let_run=_lwr_cfg(profile.get("name"))[0], lwr_owner_login=profile.get("name"))
 
     if result and not result.get("updated") and not result.get("watching"):
         try:
