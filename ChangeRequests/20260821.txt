@@ -69,7 +69,7 @@ HVF Web Application — Change Requests
 
 14. Time: 15:10:00
     Request: Clarify the replay model's gross exposure, reserved margin, free margin and stressed-loss illustration without changing sizing, returns or orders.
-    Result: In progress.
+    Result: In progress. The replay panel now distinguishes one position's notional from broker margin, shows gross exposure at the selected position cap, and quantifies a 4% move for one position and the whole book. It explicitly states that illustrative 10x leverage reduces required margin only; it does not multiply replay returns. Release verification remains outstanding.
     Status: in progress
 
 15. Time: 16:12:00

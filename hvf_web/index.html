@@ -1415,7 +1415,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Minimum trade from User Configuration.">Minimum Trade £<b id="ordp-mintrade" style="color:var(--fg)">25</b></label>
     <label class="muted replay-capacity-control" style="font-size:12px;display:flex;align-items:center;gap:5px">Max position size <input id="ordp-stake" type="number" min="0.1" max="100" step="0.5" value="5" style="width:70px;padding:4px 6px" onchange="winnersParamsChange()">% of wallet</label>
     <label class="muted replay-capacity-control" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Cap on how many trades can be open at once. Default is floor(100 ÷ Max position size %), so 4% means 25 open positions.">Max open positions <input id="ordp-maxopen" type="number" min="1" step="1" value="20" style="width:64px;padding:4px 6px" onchange="winnersParamsChange()">at once</label>
-    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. Maximum Trade = Wallet ÷ effective Max open positions.">Maximum Trade £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
+    <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:5px" title="Read-only. The starting notional allocated to one replayed position: Wallet × Max position size.">Opening position £<b id="ordp-maxtrade" style="color:var(--fg)">—</b></label>
     <div id="ordp-exposure" class="muted" style="font-size:11px;flex-basis:100%;line-height:1.5;padding:7px 9px;border-left:3px solid var(--accent);background:color-mix(in srgb,var(--panel) 75%,var(--bg))"></div>
     <span class="muted" style="font-size:11px;flex-basis:100%;line-height:1.4">These are wallet and capacity assumptions only. Signal rules (Quality, R:R, VolumeScore, RVOL, VWAP, ATR and market/sector scope) are chosen in <b style="color:var(--fg)">Best settings</b> and saved in <b style="color:var(--fg)">User Configuration</b>.</span>
     <button class="btn" id="ordp-save-defaults" style="padding:4px 10px;font-size:12px" onclick="winnersSaveDefaults()" title="Save Wallet / Max position size / Max open positions as your defaults (Configuration → My trading limits)">💾 Save as my defaults</button>
@@ -4102,23 +4102,23 @@ function winnersParamsChange(){
   if(!(mo>0)){mo=autoMax;if(moEl)moEl.value=mo;}
   WINNERS_MAXOPEN=Math.min(mo,autoMax);
   paintBestSettingsPersonalisation();
-  // Maximum Trade = Wallet ÷ effective Max open positions.
-  const maxTrade=w/WINNERS_MAXOPEN;
-  const mt=$("ordp-maxtrade"); if(mt)mt.textContent=`${fmt(maxTrade)} (${WINNERS_MAXOPEN})`;
-  const mn=$("ordp-mintrade"); if(mn)mn.textContent=MIN_TRADE;
+  // This is the notional allocated to one position at the starting wallet.  It must not be
+  // presented as Wallet ÷ max-open: a user may deliberately choose a lower open-position cap.
   const openingStake=w*WINNERS_STAKE;
-  // The replay's position size is NOTIONAL exposure, not margin. Show the distinction explicitly:
-  // use a clearly-labelled 10× illustration because actual broker leverage varies by market.
+  const mt=$("ordp-maxtrade"); if(mt)mt.textContent=`${fmt(openingStake)} (${(WINNERS_STAKE*100).toFixed(1)}%)`;
+  const mn=$("ordp-mintrade"); if(mn)mn.textContent=MIN_TRADE;
+  // The replay's position size is NOTIONAL exposure, not margin.  Make the distinction
+  // quantitative: broker leverage changes reserved margin, not P&L, unless the user explicitly
+  // chooses a leveraged-notional strategy model (which this display-only change does not do).
   const grossExposure=openingStake*WINNERS_MAXOPEN, marginAt10x=grossExposure/10,
-        freeMargin=Math.max(0,w-marginAt10x), stress4pct=grossExposure*.04;
-  const exposure=$("ordp-exposure");if(exposure)exposure.innerHTML=`<b style="color:var(--fg)">Exposure illustration (no sizing change):</b> ${fmt(grossExposure)} gross market exposure at the ${WINNERS_MAXOPEN}-position cap · <b>${fmt(marginAt10x)}</b> margin reserved at <b>10×</b> leverage · <b>${fmt(freeMargin)}</b> free margin · a uniform <b>4%</b> adverse move would be about <b style="color:var(--bear)">−${fmt(stress4pct)}</b>. Actual leverage varies by market; these figures do not multiply the replay's trade returns.`;
+        freeMargin=Math.max(0,w-marginAt10x), move4PerPosition=openingStake*.04,
+        move4AtCapacity=grossExposure*.04, exposurePct=grossExposure/w*100;
+  const exposure=$("ordp-exposure");if(exposure)exposure.innerHTML=`<b style="color:var(--fg)">How this replay uses your £:</b> one opening position is <b>${fmt(openingStake)}</b> notional (${(WINNERS_STAKE*100).toFixed(1)}% of the ${fmt(w)} wallet). At the ${WINNERS_MAXOPEN}-position cap, gross market exposure is <b>${fmt(grossExposure)}</b> (${exposurePct.toFixed(0)}% of the starting wallet). At an illustrative <b>10×</b> broker leverage, that needs <b>${fmt(marginAt10x)}</b> margin and leaves <b>${fmt(freeMargin)}</b> free margin. <br><span class="muted">A 4% move in one ${fmt(openingStake)} position is ${fmt(move4PerPosition)} (${(WINNERS_STAKE*4).toFixed(2)}% of the wallet). If every position moved 4% together, it is ${fmt(move4AtCapacity)} (${(exposurePct*.04).toFixed(2)}% of the wallet). <b style="color:var(--fg)">10× reduces the margin needed; it does not make the replay return 10×.</b> Modelling 10× larger positions would be a separate leveraged-notional strategy change, not a display setting.</span>`;
   // If the wallet can't fund that many positions at the IG minimum, warn (L257).
   if(openingStake<MIN_TRADE && !warn)
     warn=`Max position size gives an opening stake of ${fmt(openingStake)}, below the £${MIN_TRADE} minimum — raise the Wallet or Max position size.`;
   if(mo>autoMax && !warn)
     warn=`Max open positions capped at ${autoMax} because ${(WINNERS_STAKE*100).toFixed(1)}% size can fund at most ${autoMax} positions.`;
-  if(maxTrade<MIN_TRADE && !warn)
-    warn=`Wallet ÷ ${WINNERS_MAXOPEN} = ${fmt(maxTrade)} per trade, below the £${MIN_TRADE} minimum — reduce Max open positions or raise the Wallet.`;
   const msg=$("ordp-model-msg"); if(msg){msg.textContent=warn; msg.style.color=warn?"var(--bear)":"";}
   paintOrdersPerf(); winnersSLChange(); winnersRunChange('ordp');   // re-render the plain view + SL + let-winners-run illustrations
 }
