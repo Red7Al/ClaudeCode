@@ -3553,7 +3553,44 @@ function genSort(rows,k,dir){
 // Data tables with a specialised data-* header already rerender from their canonical row model. Every
 // other heading uses this DOM sorter, including transaction evidence generated after a card is selected.
 // It intentionally moves only tbody rows, leaving totals/footers and underlying calculations untouched.
-document.addEventListener('click',ev=>{const th=ev.target.closest('th');if(!th||th.dataset.nosort||Object.keys(th.dataset).length)return;const table=th.closest('table'),head=th.parentElement,body=table&&table.tBodies&&table.tBodies[0];if(!table||!head||!body)return;const col=[...head.children].indexOf(th);if(col<0)return;const dir=th.dataset.genericSortDir==='asc'?'desc':'asc',text=row=>(row.children[col]?.textContent||'').trim(),number=v=>{const s=v.replace(/[£,$,%\s,]/g,'').replace(/^−/,'-');return /^[-+]?\d+(?:\.\d+)?$/.test(s)?Number(s):null;},cmp=(a,b)=>{const x=text(a),y=text(b),nx=number(x),ny=number(y);if(nx!=null&&ny!=null)return nx-ny;const dx=Date.parse(x),dy=Date.parse(y);if(/^\d{4}-\d\d-\d\d/.test(x)&&/^\d{4}-\d\d-\d\d/.test(y)&&!isNaN(dx)&&!isNaN(dy))return dx-dy;return x.localeCompare(y,undefined,{numeric:true,sensitivity:'base'});};[...head.children].forEach(h=>{delete h.dataset.genericSortDir;const arrow=h.querySelector('.garr');if(arrow)arrow.remove();});th.dataset.genericSortDir=dir;th.insertAdjacentHTML('beforeend',` <span class="garr" style="opacity:.65;font-size:10px">${dir==='asc'?'▲':'▼'}</span>`);[...body.rows].sort((a,b)=>cmp(a,b)*(dir==='asc'?1:-1)).forEach(row=>body.append(row));});
+function _genericTableNumber(value){
+  // Tables display £, %, the Unicode minus sign and multiplier values (for example 0.8×).
+  // Treat those as numbers rather than alphabetic labels; do not guess at mixed prose values.
+  const text=String(value||'').trim().replace(/^−/,'-').replace(/[£,$,\s]/g,'');
+  const match=text.match(/^([-+]?\d+(?:\.\d+)?)(?:%|×|x)?$/i);
+  return match?Number(match[1]):null;
+}
+function _genericTableSort(th){
+  const table=th.closest('table'), head=th.parentElement, body=table&&table.tBodies&&table.tBodies[0];
+  if(!table||!head||!body)return;
+  const column=[...head.children].indexOf(th); if(column<0)return;
+  const direction=th.dataset.genericSortDir==='asc'?'desc':'asc';
+  const value=row=>(row.children[column]?.textContent||'').trim();
+  const compare=(a,b)=>{
+    const left=value(a), right=value(b);
+    if(!left||left==='—')return (!right||right==='—')?0:1; // blanks always remain at the end
+    if(!right||right==='—')return -1;
+    const leftNumber=_genericTableNumber(left), rightNumber=_genericTableNumber(right);
+    if(leftNumber!=null&&rightNumber!=null)return leftNumber-rightNumber;
+    const leftDate=Date.parse(left), rightDate=Date.parse(right);
+    if(/^\d{4}-\d\d-\d\d/.test(left)&&/^\d{4}-\d\d-\d\d/.test(right)&&!isNaN(leftDate)&&!isNaN(rightDate))return leftDate-rightDate;
+    return left.localeCompare(right,undefined,{numeric:true,sensitivity:'base'});
+  };
+  [...head.children].forEach(header=>{
+    delete header.dataset.genericSortDir;
+    header.removeAttribute('aria-sort');
+    header.querySelector('.garr')?.remove();
+  });
+  th.dataset.genericSortDir=direction;
+  th.setAttribute('aria-sort',direction==='asc'?'ascending':'descending');
+  th.insertAdjacentHTML('beforeend',` <span class="garr" aria-hidden="true" style="opacity:.65;font-size:10px">${direction==='asc'?'▲':'▼'}</span>`);
+  [...body.rows].sort((a,b)=>compare(a,b)*(direction==='asc'?1:-1)).forEach(row=>body.append(row));
+}
+document.addEventListener('click',ev=>{
+  const th=ev.target.closest('th');
+  if(!th||th.dataset.nosort||Object.keys(th.dataset).length)return;
+  _genericTableSort(th);
+});
 const _mw=d=>{if(!d)return'—';const day=+String(d).slice(8,10)||1;return String(d).slice(0,7)+' W'+Math.min(5,Math.ceil(day/7));};   // Month-Week bucket
 let OO_ROWS=[], ooSortK="updated_at", ooSortDir=-1;
 function paintOrderOps(){

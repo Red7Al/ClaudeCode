@@ -49,7 +49,7 @@ HVF Web Application — Change Requests
 
 10. Time: 14:45:00
     Request: Allow every data-table column to be sorted, including Transaction evidence in Performance.
-    Result: In progress. Existing purpose-built sorting remains authoritative; a generic sorter will cover headings without a specialised handler.
+    Result: In progress. Existing purpose-built sorting remains authoritative; the shared sorter now covers headings without a specialised handler, including dynamic transaction-evidence tables, and correctly treats displayed currency, percentages, Unicode-negative values and multipliers as numbers. Live verification remains outstanding.
     Status: in progress
 
 11. Time: 14:50:00
