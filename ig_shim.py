@@ -2809,7 +2809,8 @@ def reconcile_working_orders() -> dict:
             rows = db.run(
                 """select deal_id, deal_ref, user_id, ticker, epic, direction, size,
                           entry_level, stop_level, limit_level, otype, session,
-                          signal_summary, good_till, hvf_type, paper_trade
+                          signal_summary, good_till, hvf_type, paper_trade,
+                          lwr_owner_login, lwr_account_fingerprint
                    from   working_orders where status in ('PENDING','WATCHING')""")
         finally:
             db.close()
@@ -2845,7 +2846,7 @@ def reconcile_working_orders() -> dict:
         # ── Pass 0: WATCHING → PENDING upgrade ────────────────────────────────────────────────────────────────────────
         # For each WATCHING row, check if price has entered the proximity band.
         for r in watching_rows:
-            deal_id, _, _, ticker, epic, direction, size, entry, stop, limit, _, sess, _, good_till, _, paper = r
+            deal_id, _, _, ticker, epic, direction, size, entry, stop, limit, _, sess, _, good_till, _, paper, _, _ = r
             if good_till and good_till < now_utc:
                 _set_working_order_status(deal_id, "EXPIRED",
                                           notes="watching order expired without reaching entry range")
@@ -2906,7 +2907,7 @@ def reconcile_working_orders() -> dict:
             db.close()
 
         for (deal_id, deal_ref, user_id, ticker, epic, direction, size, entry,
-             stop, limit, otype, sess, sig_sum, good_till, hvf_type, paper) in live_rows:
+             stop, limit, otype, sess, sig_sum, good_till, hvf_type, paper, lwr_owner, lwr_account) in live_rows:
 
             if deal_id in ig_pending:
                 # Still in IG — check if price has moved outside the cancel band.
@@ -2967,7 +2968,7 @@ def reconcile_working_orders() -> dict:
                          f"(order {deal_id} → position {fill_deal})")
                 _log_position_to_db(user_id, epic, ticker, direction, float(size),
                                     fill_level, stop_lvl, limit_lvl, fill_deal,
-                                    False, sess, sig_sum)
+                                    False, sess, sig_sum, lwr_owner, lwr_account)
                 _set_working_order_status(deal_id, "FILLED", fill_deal_id=fill_deal)
                 tracked.add(fill_deal)
                 summary["filled"].append(ticker)
@@ -3488,7 +3489,7 @@ def _lwr_cfg(user: str | None) -> tuple:
 
 
 def _lwr_targets() -> dict:
-    """{deal_id: (take_profit, web_login)} for open positions we recorded.
+    """{deal_id: immutable owner/target binding} for open positions we recorded.
 
     Both halves are needed: the IG position carries no target once the take-profit is gone, and the
     per-user switch means the owner decides whether this position is managed at all. Unknown legacy
@@ -3496,14 +3497,19 @@ def _lwr_targets() -> dict:
     """
     out = {}
     try:
+        _ensure_lwr_owner_columns()
         db = get_db()
         try:
-            for deal, tp, uid in (db.run(
-                    "select deal_id, take_profit, user_id from positions "
+            for deal, tp, uid, stored_login, stored_account in (db.run(
+                    "select deal_id, take_profit, user_id, lwr_owner_login, lwr_account_fingerprint from positions "
                     "where deal_id is not null and take_profit is not null") or []):
-                login = _web_login_for_trading_profile(uid)
+                # New positions retain both bindings from the order that created them.  Legacy rows
+                # have no account fingerprint and are only admitted through the deliberately narrow
+                # Owner -> Alex compatibility mapping; unknown legacy owners are never guessed.
+                login = str(stored_login or "").strip() or _web_login_for_trading_profile(uid)
                 if login:
-                    out[str(deal)] = (float(tp), login)
+                    out[str(deal)] = {"target": float(tp), "owner": login,
+                                      "account_fingerprint": str(stored_account or "").strip() or None}
                 else:
                     log.warning("let-winners-run: no web-user binding for trading profile %s; skipping %s", uid, deal)
         finally:
@@ -3528,61 +3534,83 @@ def run_let_winners_run() -> dict:
     if not targets:
         return out
     cfg_cache = {}
-    for p in get_open_positions():
-        out["checked"] += 1
-        pos, mkt = p.get("position", {}) or {}, p.get("market", {}) or {}
-        deal_id = pos.get("dealId")
-        rec = targets.get(str(deal_id))
-        if not (deal_id and rec):
-            out["skipped"] += 1
-            continue
-        target, owner = rec
+    targets_by_owner = {}
+    for deal_id, record in targets.items():
+        # Accept the former (target, owner) shape in test and compatibility callers while all database
+        # reads use the stronger record above.  Legacy has no fingerprint and is still constrained to
+        # the owner-scoped session.
+        if isinstance(record, tuple):
+            record = {"target": float(record[0]), "owner": record[1], "account_fingerprint": None}
+        targets_by_owner.setdefault(record["owner"], {})[deal_id] = record
+    for owner, owner_targets in targets_by_owner.items():
         if owner not in cfg_cache:
             cfg_cache[owner] = _lwr_cfg(owner)
         enabled, uplift, trail = cfg_cache[owner]
         if not enabled:
-            out["skipped"] += 1          # this owner has not turned it on
+            out["skipped"] += len(owner_targets)
+            continue
+        # A position is fetched only through its bound user's authenticated session.  This prevents a
+        # setting for one login changing a stop in another IG account even if deal IDs happen to collide.
+        try:
+            with acting_session(owner) as owner_session:
+                live_account = _lwr_account_fingerprint(getattr(owner_session, "_account_id", None))
+                positions = get_open_positions()
+        except Exception as exc:
+            log.warning("let-winners-run: cannot enter %s's IG session; skipping their positions: %s", owner, exc)
+            out["skipped"] += len(owner_targets)
             continue
         out["users_on"].add(owner)
-        buy = str(pos.get("direction") or "").upper() == "BUY"
-        try:
-            stop = float(pos.get("stopLevel") or 0)
-            bid, offer = float(mkt.get("bid") or 0), float(mkt.get("offer") or 0)
-        except (TypeError, ValueError):
-            out["skipped"] += 1
-            continue
-        # Price on the side the position would EXIT at, so neither phase triggers on a spread artefact.
-        price = (bid if buy else offer) or ((bid + offer) / 2 if (bid or offer) else 0)
-        if not price:
-            out["skipped"] += 1
-            continue
-        epic = mkt.get("epic")
-
-        # Phase 3 first: if the trail already clears the target, hand straight over to IG. Checking this
-        # ahead of phase 2 saves a redundant stop move on a position that has already run well past.
-        handover = target * (1 + uplift) if buy else target * (1 - uplift)
-        if (price >= handover) if buy else (price <= handover):
-            if pos.get("trailingStep") or pos.get("trailingStopDistance"):
-                out["skipped"] += 1          # IG is already trailing this one
+        for p in positions:
+            out["checked"] += 1
+            pos, mkt = p.get("position", {}) or {}, p.get("market", {}) or {}
+            deal_id = pos.get("dealId")
+            rec = owner_targets.get(str(deal_id))
+            if not (deal_id and rec):
+                out["skipped"] += 1
                 continue
-            if attach_trailing_stop(deal_id, price * trail):
-                out["trailing"].append({"epic": epic, "deal_id": deal_id,
-                                        "price": price, "distance": round(price * trail, 2)})
-            else:
+            if rec["account_fingerprint"] and rec["account_fingerprint"] != live_account:
+                log.error("let-winners-run: account binding mismatch for %s/%s; skipping", owner, deal_id)
                 out["skipped"] += 1
-            continue
+                continue
+            target = rec["target"]
+            buy = str(pos.get("direction") or "").upper() == "BUY"
+            try:
+                stop = float(pos.get("stopLevel") or 0)
+                bid, offer = float(mkt.get("bid") or 0), float(mkt.get("offer") or 0)
+            except (TypeError, ValueError):
+                out["skipped"] += 1
+                continue
+            # Price on the side the position would EXIT at, so neither phase triggers on a spread artefact.
+            price = (bid if buy else offer) or ((bid + offer) / 2 if (bid or offer) else 0)
+            if not price:
+                out["skipped"] += 1
+                continue
+            epic = mkt.get("epic")
 
-        # Phase 2: target touched but not yet 5% beyond -- park the stop ON the target.
-        reached = (price >= target) if buy else (price <= target)
-        better = (target > stop) if buy else (target < stop or stop == 0)
-        if reached and better:
-            if update_stop(deal_id, target):
-                out["locked"].append({"epic": epic, "deal_id": deal_id,
-                                      "old_stop": stop, "new_stop": target})
+            # Phase 3 first: if the trail already clears the target, hand straight over to IG.
+            handover = target * (1 + uplift) if buy else target * (1 - uplift)
+            if (price >= handover) if buy else (price <= handover):
+                if pos.get("trailingStep") or pos.get("trailingStopDistance"):
+                    out["skipped"] += 1
+                    continue
+                if attach_trailing_stop(deal_id, price * trail):
+                    out["trailing"].append({"epic": epic, "deal_id": deal_id,
+                                            "price": price, "distance": round(price * trail, 2)})
+                else:
+                    out["skipped"] += 1
+                continue
+
+            # Phase 2: target touched but not yet 5% beyond -- park the stop ON the target.
+            reached = (price >= target) if buy else (price <= target)
+            better = (target > stop) if buy else (target < stop or stop == 0)
+            if reached and better:
+                if update_stop(deal_id, target):
+                    out["locked"].append({"epic": epic, "deal_id": deal_id,
+                                          "old_stop": stop, "new_stop": target})
+                else:
+                    out["skipped"] += 1
             else:
                 out["skipped"] += 1
-        else:
-            out["skipped"] += 1
     out["users_on"] = sorted(out["users_on"])
     if out["locked"] or out["trailing"]:
         log.info(f"let-winners-run: {len(out['locked'])} stop(s) moved to target, "
@@ -3597,12 +3625,29 @@ def run_let_winners_run() -> dict:
 def _log_position_to_db(
     user_id, epic, ticker, direction, size,
     open_price, stop_loss, take_profit, deal_id,
-    paper_trade, session_name, signal_summary
+    paper_trade, session_name, signal_summary,
+    lwr_owner_login=None, lwr_account_fingerprint=None
 ):
     """Insert a new open position record into the Supabase positions table."""
+    if lwr_owner_login:
+        _ensure_lwr_owner_columns()
     db = get_db()
     try:
-        db.run(
+        if lwr_owner_login:
+            db.run(
+            """insert into positions
+               (user_id, epic, ticker, direction, size, open_price,
+                stop_loss, take_profit, deal_id, paper_trade, session, signal_summary,
+                lwr_owner_login, lwr_account_fingerprint)
+               values (:v_uid, :v_epic, :v_ticker, :v_dir, :v_size, :v_open,
+                       :v_stop, :v_tp, :v_deal, :v_paper, :v_session, :v_signal,
+                       :v_lwr_owner, :v_lwr_account)""",
+            v_uid=user_id, v_epic=epic, v_ticker=ticker, v_dir=direction, v_size=size,
+            v_open=open_price, v_stop=stop_loss, v_tp=take_profit,
+            v_deal=deal_id, v_paper=paper_trade, v_session=session_name, v_signal=signal_summary,
+            v_lwr_owner=lwr_owner_login, v_lwr_account=lwr_account_fingerprint)
+        else:
+            db.run(
             """insert into positions
                (user_id, epic, ticker, direction, size, open_price,
                 stop_loss, take_profit, deal_id, paper_trade, session, signal_summary)
@@ -3611,7 +3656,7 @@ def _log_position_to_db(
             v_uid=user_id, v_epic=epic, v_ticker=ticker, v_dir=direction, v_size=size,
             v_open=open_price, v_stop=stop_loss, v_tp=take_profit,
             v_deal=deal_id, v_paper=paper_trade, v_session=session_name, v_signal=signal_summary
-        )
+            )
         log.info(f"Position logged to Supabase: {deal_id}")
     except Exception as ex:
         log.error(f"Failed to log position to Supabase: {ex}")
