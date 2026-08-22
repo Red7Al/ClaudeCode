@@ -4851,14 +4851,12 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   const cardOrder=["Best win : loss","Capital efficient","Balanced","Growth","Short Duration","Broad evidence",">250 trades",">125 trades","Best over 3 years","Defensive"];
   if(shortDuration)choices.push(["Short Duration",shortDuration,`Shortest average completed holding period — ${_days(shortDuration)?Math.round(_days(shortDuration))+" days average hold":"hold unknown"}.`,"#58a6ff"]);
   choices.sort((a,b)=>cardOrder.indexOf(a[0])-cardOrder.indexOf(b[0]));
-  // Keep the decision surface compact. If the available recommendations exceed nine, Defensive and the
-  // narrower >125-trade band are deliberately the first candidates removed; neither should displace a
-  // stronger return, duration, capacity or three-year decision card.
-  // Phone-sized screens receive at most six cards; mini iPad and larger retain the nine-card surface.
+  // Keep the decision surface compact. The permanent three-year evidence card counts towards the screen
+  // limit even below its recommendation threshold, so it is never silently pushed off the page.
   const MAX_BEST_CARDS=_bestCardCapacity;
   let showUnsupported125=!trades125, showUnsupported250=!trades250;
   const trimCard=label=>{const i=choices.findIndex(x=>x[0]===label);if(i>=0){choices.splice(i,1);return true;}if(label===">125 trades"&&showUnsupported125){showUnsupported125=false;return true;}return false;};
-  while(choices.length+Number(showUnsupported125)+Number(showUnsupported250)>MAX_BEST_CARDS){
+  while(choices.length+Number(showUnsupported125)+Number(showUnsupported250)+Number(!threeYear)>MAX_BEST_CARDS){
     if(trimCard("Defensive")||trimCard(">125 trades")||trimCard("Broad evidence"))continue;
     break;
   }
@@ -4891,7 +4889,11 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
     ?`<div class="muted" style="margin:0 0 10px;font-size:12px">Three-year evidence is loading separately; it is not included in the card list until verified.</div>`
     :!threeYear?`<div class="muted" style="margin:0 0 10px;padding:8px 10px;border-left:3px solid #d29922;background:color-mix(in srgb,#d29922 9%,transparent);font-size:12px"><b>Three-year evidence:</b> no supported recommendation. The strongest reviewed configuration funded <b>${bestThreeYear?bestThreeYear.n.toLocaleString():"0"}</b> trades; the evidence rule requires <b>more than 125</b> and at least 80% of the best annual card’s return.${bestThreeYear?` Its replayed return was <b>${pct(bestThreeYear.ret)}</b>.`:""}</div>`
     :"";
-  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}</div>${threeYearInfo}
+  const threeYearStatusCard=!threeYear?`<div class="fcard" data-choice-unavailable="Best over 3 years" style="min-width:240px;flex:1;border-top:3px solid #00a8a8;opacity:.9" title="Three-year evidence; shown for comparison, not as an applicable recommendation below the evidence threshold">
+    <h3 style="color:#00a8a8">Best over 3 years</h3><div class="muted" style="font-size:11px;min-height:30px">${WIN_3Y===null?"Evidence loading separately…":"Strong return; smaller trade sample."}</div>
+    <div class="body">${WIN_3Y===null?"This card remains visible while the complete three-year evidence loads.":bestThreeYear?`<div><b style="font-size:17px;color:var(--bull)">${pct(bestThreeYear.ret)}</b> return · <b>${(bestThreeYear.dd*100).toFixed(1)}%</b> max drawdown</div><div class="muted" style="font-size:11px;margin-top:5px"><b>${bestThreeYear.n.toLocaleString()}</b> funded trades. The high-confidence evidence rule is more than <b>125</b> funded trades; this is information, not a recommendation.</div>`:"No usable three-year evidence is currently available."}</div>
+  </div>`:"";
+  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearStatusCard}</div>
   <div class="card" style="margin:0" id="best-detail"></div>`;
   // Defensive is intentionally last. If responsive wrapping leaves it alone on a final row, remove it
   // rather than spending an entire row on the least-useful alternative (user 2026-08-18).
