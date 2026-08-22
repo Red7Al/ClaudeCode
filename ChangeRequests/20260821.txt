@@ -69,8 +69,8 @@ HVF Web Application — Change Requests
 
 14. Time: 15:10:00
     Request: Clarify the replay model's gross exposure, reserved margin, free margin and stressed-loss illustration without changing sizing, returns or orders.
-    Result: In progress. The replay panel now distinguishes one position's notional from broker margin, shows gross exposure at the selected position cap, and quantifies a 4% move for one position and the whole book. It explicitly states that illustrative 10x leverage reduces required margin only; it does not multiply replay returns. Release verification remains outstanding.
-    Status: in progress
+    Result: Completed and live-verified. The replay panel distinguishes one position's notional from broker margin, shows gross exposure at the selected position cap, and quantifies a 4% move for one position and the whole book. It explicitly states that illustrative 10x leverage reduces required margin only; it does not multiply replay returns. Static live content was verified after deployment.
+    Status: complete
 
 15. Time: 16:12:00
     Request: Make confirmed IG position closes auditable and unambiguous: retain each broker outcome, show it in the GUI, and never leave a user unsure whether a selected position closed.
