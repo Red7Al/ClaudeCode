@@ -548,3 +548,77 @@ def test_the_save_outcome_survives_the_re_render():
     assert "best-apply-banner" in html
     assert 'aria-live","polite"' in html.replace("'", '"')
     assert "NOT saved." in html, "a failed apply must say so in the same place"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Every tab that fetches must show a loading state (user 2026-08-23: "check performance on each tab and
+# if a 'Data loading' message is required, it is implemented").
+#
+# Four had none when this was audited -- Documents, Order Operations, User Management and X Posts -- so
+# each showed an empty table or a bare page while its request was in flight, which during a slow admin
+# query is indistinguishable from "there is nothing here".
+# ------------------------------------------------------------------------------------------------------
+
+TAB_RENDERERS = {
+    "activity": "renderActivity", "batch": "renderBatch", "changereq": "renderCR",
+    "config": "renderConfig", "docs": "renderDocs", "fees": "renderFees",
+    "igaccount": "renderIgAccount", "instruments": "renderInstruments", "jobs": "renderJobs",
+    "orderops": "renderOrderOps", "performance": "renderPerformance", "squeezehist": "renderSqueezeHist",
+    "syslogs": "renderSyslogs", "users": "renderUsers", "version": "renderVersion",
+    "xposts": "renderXposts",
+}
+
+
+def _fn_body(html: str, name: str) -> str:
+    m = re.search(rf"function {re.escape(name)}\(", html)
+    if not m:
+        return ""
+    i, depth = html.index("{", m.start()), 0
+    for k in range(i, len(html)):
+        if html[k] == "{":
+            depth += 1
+        elif html[k] == "}":
+            depth -= 1
+            if depth == 0:
+                return html[m.start():k + 1]
+    return ""
+
+
+def _shows_loading(html: str, name: str, seen=None) -> bool:
+    """True if the renderer, or something it delegates to, puts a loading state on screen."""
+    seen = seen or set()
+    if name in seen:
+        return False
+    seen.add(name)
+    body = _fn_body(html, name)
+    if re.search(r"Data loading|_rowsLoading|sqh-loading|refreshing", body):
+        return True
+    for callee in set(re.findall(r"\b(render[A-Z]\w*|load[A-Z]\w*|paint[A-Z]\w*)\(", body)):
+        if callee != name and _shows_loading(html, callee, seen):
+            return True
+    return False
+
+
+@pytest.mark.parametrize("tab,renderer", sorted(TAB_RENDERERS.items()))
+def test_every_fetching_tab_shows_a_loading_state(tab, renderer):
+    html = INDEX.read_text(encoding="utf-8")
+    body = _fn_body(html, renderer)
+    assert body, f"{renderer} not found — the showTab dispatch map may have changed"
+
+    if "fetch(" not in body and not re.search(r"\b(render|load)[A-Z]\w*\(", body):
+        pytest.skip(f"{tab} renders from data already in memory")
+
+    assert _shows_loading(html, renderer), (
+        f"the {tab} tab fetches but shows no loading state; an empty table during a slow query is "
+        f"indistinguishable from 'there is nothing here'")
+
+
+def test_the_showTab_dispatch_map_still_matches_this_audit():
+    """If a tab is added to the dispatch map, it must be added here too or it escapes the check."""
+    html = INDEX.read_text(encoding="utf-8")
+    m = re.search(r"const R=\{(.*?)\};", html, re.S)
+    assert m, "the showTab renderer map was not found"
+    mapped = set(re.findall(r"([a-z0-9]+):render", m.group(1)))
+
+    missing = mapped - set(TAB_RENDERERS) - {"marketsadmin", "markets", "preorders", "configadmin"}
+    assert not missing, f"tabs in the dispatch map but absent from this audit: {sorted(missing)}"

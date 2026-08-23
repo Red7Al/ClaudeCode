@@ -2889,7 +2889,7 @@ function paintXposts(){
   $("x-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> tweets${rows.length!==X_ROWS.length?` <span class="muted">of ${X_ROWS.length}</span>`:''}`;
   $("x-rows").innerHTML=rows.map(e=>`<tr><td>${e.published_at||''}</td><td>${nm40(e.name)}</td><td>${e.market||''}</td><td>${e.thread>1?e.thread+' pts':'1'}</td><td><b>${disp(e.ticker)}</b></td><td><a href="${e.url}" target="_blank" rel="noopener">open ↗</a></td></tr>`).join("")||`<tr><td colspan="6" class="empty">No tweets yet.</td></tr>`;
 }
-function renderXposts(){fetch("/api/x-posts",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{X_ROWS=j.rows||[];paintXposts();}).catch(()=>{$("x-rows").innerHTML=`<tr><td colspan="6" class="empty">Could not load — try logging in again.</td></tr>`;});}
+function renderXposts(){_rowsLoading("x-rows","renderXposts()");fetch("/api/x-posts",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{_rowsLoaded("x-rows");X_ROWS=j.rows||[];paintXposts();}).catch(()=>_rowsFault("x-rows","Try signing in again.","renderXposts()"));}
 document.querySelectorAll("th[data-xk]").forEach(th=>th.onclick=()=>{const k=th.dataset.xk;xSortDir=(xSortK===k)?-xSortDir:-1;xSortK=k;paintXposts();_sortArrows("data-xk",xSortK,xSortDir);});
 // ── Admin tabs (user 2026-07-03): User Management, Version History, Batch Activity, Tab Visibility ──
 const TAB_LABELS={welcome:"Introduction",whatwedo:"What we do",intro:"How it works",risk:"Risk awareness",appendix:"Appendix",terms:"T&C",scanner:"Scanner Report",xposts:"X Posts",
@@ -2992,8 +2992,9 @@ function pwStrength(s){
   return `<span class="tag" style="background:var(--chip);color:${col};font-weight:700">${lbl}</span>`;
 }
 function renderUsers(){
+  _rowsLoading("users-rows","renderUsers()");
   fetch("/api/users",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{const subs=j.subscriptions||["gold","silver","guest"];
+    .then(j=>{_rowsLoaded("users-rows");const subs=j.subscriptions||["gold","silver","guest"];
       $("users-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${(j.users||[]).length}</b> accounts`;
       $("users-rows").innerHTML=(j.users||[]).map(u=>`<tr>
         <td><b>${u.name}</b></td><td>${u.email||''}</td>
@@ -3157,10 +3158,19 @@ const DOC_CATS={"User Guide":{n:"01",blurb:"Everyday guides for anyone with a lo
 function renderDocs(){
   const box=$("docs-list");
   if(!box)return;
-  box.innerHTML=`<div class="muted">Loading…</div>`;
+  box.innerHTML=`<div class="muted"><span class="sqh-loading">⏳ Data loading…</span></div>`;
+  // Not a table, so it cannot use _rowsLoading; same guarantee though -- a hung request must report.
+  clearTimeout(_ROWS_WATCHDOG["docs-list"]);
+  _ROWS_WATCHDOG["docs-list"]=setTimeout(()=>{
+    if(box&&/Data loading/.test(box.textContent))
+      box.innerHTML=`<div class="empty" role="alert"><b style="color:var(--bear)">⚠ Could not load.</b> `+
+        `<span class="muted">This is taking longer than expected and may have failed.</span> `+
+        `<button class="btn" style="margin-left:8px" onclick="renderDocs()">↻ Retry</button></div>`;
+  },45000);
   fetch("/api/guides",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       const gs=j.guides||[];
+      clearTimeout(_ROWS_WATCHDOG["docs-list"]);
       if(!gs.length){box.innerHTML=`<div class="empty">No documents are available for your role yet.</div>`;return;}
       const byCat={}; gs.forEach(g=>{(byCat[g.category]=byCat[g.category]||[]).push(g);});
       const order=[...Object.keys(DOC_CATS).filter(c=>byCat[c]),...Object.keys(byCat).filter(c=>!DOC_CATS[c])];
@@ -3183,7 +3193,7 @@ function openGuide(slug){
   const box=$("docs-list");
   if(!box)return;
   const back=`<button class="btn" style="margin-bottom:14px" onclick="renderDocs()">← All documents</button>`;
-  box.innerHTML=`<div class="muted">Loading…</div>`;
+  box.innerHTML=`<div class="muted"><span class="sqh-loading">⏳ Data loading…</span></div>`;
   // The HTML is our own build-time content (escaped in _build_guides.js) and role-gated by the server.
   fetch("/api/guides/"+encodeURIComponent(slug),{headers:{"X-Auth":AUTH}})
     .then(r=>{if(!r.ok)throw 0;return r.text();})
@@ -3753,9 +3763,10 @@ function paintBridgeBadge(){
 }
 function renderOrderOps(){
   paintBridgeBadge();
+  _rowsLoading("oo-rows","renderOrderOps()");
   fetch("/api/order-ops",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{OO_ROWS=j.rows||[];paintOrderOps();})
-    .catch(()=>{$("oo-rows").innerHTML=`<tr><td colspan="18" class="empty">Could not load — try logging in again.</td></tr>`;});
+    .then(j=>{_rowsLoaded("oo-rows");OO_ROWS=j.rows||[];paintOrderOps();})
+    .catch(()=>_rowsFault("oo-rows","Try signing in again.","renderOrderOps()"));
 }
 let AC_ROWS=[], acSortK="ts", acSortDir=-1;
 // Category derived from the event text (user 2026-07-03) so the log is easy to filter.
