@@ -28,7 +28,10 @@ _CI_ONLY_EXCLUSIONS = {
     "GITLEAKS_LICENSE",  # license key for the gitleaks Action itself, trading-secret-scan.yml
     # IONOS values are consumed only by the deployment/fallback workflow. They are infrastructure
     # connection details, not application credentials and must never be copied into app_secrets.
-    "IONOS_DIR", "IONOS_HOST", "IONOS_SSH_KEY", "IONOS_USER",
+    "IONOS_DIR", "IONOS_HOST", "IONOS_SSH_KEY", "IONOS_USER", "IONOS_PORT",
+    # IONOS_PORT belongs with the four above and was simply missed: every other workflow writes it as
+    # `secrets.IONOS_PORT || '22'`, which this file's regex does not match, so nothing referenced it in a
+    # form the check could see until trading-scanner-report-email.yml used the plain form (2026-08-23).
 }
 
 

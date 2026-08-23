@@ -1,0 +1,67 @@
+name: Scanner Report Email (daily — 2026-08-23)
+
+# Emails each enabled web user their own Scanner Report. Triggered by cron-job.org via workflow_dispatch —
+# NEVER add a schedule: block (GitHub-native cron is banned, user directive 2026-06-07).
+#
+# WHY THIS EXISTS NOW. run_scanner_report_email.py was written on 2026-08-07 for ChangeRequest P-07
+# ("Email the scanner report each day to the account holder"), complete with its own regression suite --
+# and nothing ever invoked it, so it had never executed once and no account holder had ever received one.
+#
+# RESTRICTED BY DEFAULT. `only` defaults to the requester's own address (user 2026-08-23: "just for
+# eahind@yahoo.co.uk for now"), because the first live send is also the first time anyone sees this
+# report's output. Clear the input to deliver to every enabled account holder, once the content has been
+# reviewed. Users outside the restriction are skipped, not failed.
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Comma-separated addresses to deliver to. EMPTY = every enabled account holder.'
+        required: false
+        default: 'eahind@yahoo.co.uk'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
+      IONOS_HOST:           ${{ secrets.IONOS_HOST }}
+      IONOS_USER:           ${{ secrets.IONOS_USER }}
+      IONOS_DIR:            ${{ secrets.IONOS_DIR }}
+      IONOS_PORT:           ${{ secrets.IONOS_PORT }}
+      PYTHONIOENCODING:     utf-8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+
+      # The report reads the SAME snapshot the Scanner tab serves, and a runner has none: the Supabase
+      # Storage pull is still returning 402, and a clean checkout has no local copy. Seed it from the
+      # verified IONOS host, exactly as the Scanner Snapshot Publish workflow does during the outage.
+      # Without this the script logs "no snapshot available" and silently sends nothing.
+      - name: Seed the live snapshot from IONOS
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/ionos_snapshot_key"
+          printf '%s\n' "$IONOS_SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh -i "$key" -p "${IONOS_PORT:-22}" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            "${IONOS_USER}@${IONOS_HOST}" "cat '$IONOS_DIR/hvf_web/snapshot.json'" > hvf_web/snapshot.json
+          python -c "import json;d=json.load(open('hvf_web/snapshot.json',encoding='utf-8'));print('snapshot',d.get('generated_utc'),len(d.get('records') or []),'records')"
+
+      - name: Send the Scanner Report
+        env:
+          SCANNER_EMAIL_ONLY: ${{ inputs.only }}
+        run: python run_scanner_report_email.py

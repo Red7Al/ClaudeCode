@@ -142,3 +142,76 @@ def test_main_sends_one_email_per_enabled_user_with_an_email(monkeypatch):
 
     assert sent == [["silver@example.com"]]
     assert events == [("Silver", "Scanner report emailed (1 setups)")]
+
+
+# ------------------------------------------------------------------------------------------------------
+# Recipient restriction (user 2026-08-23: "just for eahind@yahoo.co.uk for now").
+#
+# This report was written on 2026-08-07 and nothing ever invoked it, so it had never executed once. The
+# first live send is therefore also the first time anyone sees its output, and going straight to every
+# enabled account holder would make that debut public. SCANNER_EMAIL_ONLY narrows delivery; empty means
+# everyone, which is the intended end state.
+# ------------------------------------------------------------------------------------------------------
+
+import run_scanner_report_email as _sre
+
+
+def test_empty_means_everyone(monkeypatch):
+    """The restriction must be opt-IN, or clearing it would silently stop all delivery."""
+    monkeypatch.delenv("SCANNER_EMAIL_ONLY", raising=False)
+    assert _sre._only_recipients() == set()
+
+    monkeypatch.setenv("SCANNER_EMAIL_ONLY", "   ")
+    assert _sre._only_recipients() == set()
+
+
+def test_addresses_are_parsed_and_case_folded(monkeypatch):
+    monkeypatch.setenv("SCANNER_EMAIL_ONLY", " Eahind@Yahoo.co.uk , second@example.com ;third@example.com ")
+
+    assert _sre._only_recipients() == {"eahind@yahoo.co.uk", "second@example.com", "third@example.com"}
+
+
+def test_a_restricted_run_delivers_only_to_the_named_address(monkeypatch):
+    """THE GUARD. Everyone else must be skipped, not emailed and not counted as a failure."""
+    sent = []
+    users = [{"name": "Alex", "email": "eahind@yahoo.co.uk", "enabled": True},
+             {"name": "Sam", "email": "sam@example.com", "enabled": True},
+             {"name": "Casey", "email": "CASEY@example.com", "enabled": True}]
+
+    class _WU:
+        list_users = staticmethod(lambda: users)
+        get_settings = staticmethod(lambda name: {"filters": {}})
+        log_event = staticmethod(lambda *a, **k: None)
+
+    import sys, types
+    pkg = types.ModuleType("hvf_web"); pkg.__path__ = []
+    monkeypatch.setitem(sys.modules, "hvf_web.web_users", _WU)
+    monkeypatch.setattr(_sre, "build_rows", lambda snap: [])
+    monkeypatch.setattr(_sre, "user_rows", lambda rows, filters, name: [])
+    monkeypatch.setattr(_sre, "email_body", lambda name, rows, gen: ("s", "t", "<p>h</p>"))
+
+    import trade_email
+    monkeypatch.setattr(trade_email, "send_simple_email",
+                        lambda subject, text, html=None, recipients=None: sent.append(recipients[0]) or True)
+
+    from hvf_web import server
+    monkeypatch.setattr(server, "_load_snapshot",
+                        lambda: {"records": [{"ticker": "X"}], "generated_utc": "2026-08-23T06:00:00Z"})
+    monkeypatch.setenv("SCANNER_EMAIL_ONLY", "eahind@yahoo.co.uk")
+
+    _sre.main()
+
+    assert sent == ["eahind@yahoo.co.uk"], f"delivery escaped the restriction: {sent}"
+
+
+def test_the_workflow_defaults_to_the_restricted_address():
+    """A workflow defaulting to everyone would make one careless dispatch a public send."""
+    from pathlib import Path
+    import yaml
+    wf = yaml.safe_load((Path(__file__).parent / ".github" / "workflows"
+                         / "trading-scanner-report-email.yml").read_text(encoding="utf-8"))
+
+    assert wf[True]["workflow_dispatch"]["inputs"]["only"]["default"] == "eahind@yahoo.co.uk"
+    steps = wf["jobs"]["email"]["steps"]
+    assert any("snapshot" in (s.get("name") or "").lower() for s in steps), (
+        "a runner has no snapshot and Storage is 402; without seeding it the run silently sends nothing")

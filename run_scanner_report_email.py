@@ -37,6 +37,7 @@
 # ======================================================================================================================
 
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("run_scanner_report_email")
@@ -180,9 +181,29 @@ def email_body(name: str, rows: list, generated_utc: str):
     return subject, text, html
 
 
+def _only_recipients() -> set:
+    """Restrict the run to specific addresses (user 2026-08-23: "just for eahind@yahoo.co.uk for now").
+
+    This report has never actually run since it was written on 2026-08-07, so the first live send is also
+    the first time anyone sees its output. Going straight to every enabled account holder would make that
+    debut public. SCANNER_EMAIL_ONLY limits delivery to a named address; empty means everyone, which is the
+    intended end state once the content has been reviewed.
+
+    A user who is skipped by this filter is NOT counted as failed and gets no log_event, because nothing
+    went wrong for them -- they simply were not in scope for this run.
+    """
+    raw = os.environ.get("SCANNER_EMAIL_ONLY", "")
+    return {a.strip().lower() for a in raw.replace(";", ",").split(",") if a.strip()}
+
+
 def main():
     from hvf_web import web_users as wu
     from hvf_web.server import _load_snapshot
+
+    only = _only_recipients()
+    if only:
+        log.warning("RESTRICTED RUN: delivering only to %s; every other account holder is skipped.",
+                    ", ".join(sorted(only)))
 
     snap = _load_snapshot()
     if not snap.get("records"):
@@ -194,6 +215,9 @@ def main():
     for u in wu.list_users():
         name, email = u["name"], (u.get("email") or "").strip()
         if not u.get("enabled") or not email:
+            skipped += 1
+            continue
+        if only and email.lower() not in only:
             skipped += 1
             continue
         filters = wu.get_settings(name).get("filters", {})
@@ -215,10 +239,13 @@ def main():
             failed += 1
             log.warning(f"scanner report email NOT sent to {name} <{email}>")
 
-    log.info(f"Scanner report email run complete: {sent} sent, {skipped} skipped (disabled/no email), {failed} failed")
+    scope = f" [restricted to {', '.join(sorted(only))}]" if only else ""
+    log.info(f"Scanner report email run complete: {sent} sent, {skipped} skipped "
+             f"(disabled/no email/out of scope), {failed} failed{scope}")
     try:
         from web_store import append_batch
-        append_batch("cron-job.org", f"Scanner report email — {sent} sent, {skipped} skipped, {failed} failed", by="cron")
+        append_batch("cron-job.org",
+                     f"Scanner report email — {sent} sent, {skipped} skipped, {failed} failed{scope}", by="cron")
     except Exception as e:
         log.warning(f"batch log skipped: {e}")
 
