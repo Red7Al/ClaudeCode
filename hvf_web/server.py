@@ -4747,6 +4747,53 @@ def api_ig_close_positions():
         return jsonify({"error": "IG close request failed; refresh the account before retrying."}), 502
 
 
+@app.route("/api/ig-close-audit")
+def api_ig_close_audit():
+    """Every close attempt this user has made, with the broker outcome that was recorded at the time.
+
+    _append_ig_close_audit has written this durably since 2026-08-21, but nothing ever read it back, so
+    the evidence existed only on disk: once the result dialog was dismissed or the page reloaded, a user
+    had no way to see whether a position they asked to close actually closed (user 2026-08-22, deferred
+    to 2026-08-23). Host-side and append-only, so it survives a Supabase outage — which is the point of
+    an audit trail for a live broker action.
+
+    A user sees their OWN attempts; an admin sees every user's, because that is what makes it an audit.
+    """
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    everyone = bool(_wu.is_admin(name))
+    try:
+        limit = max(1, min(500, int(request.args.get("limit", "200"))))
+    except (TypeError, ValueError):
+        limit = 200
+    entries = []
+    try:
+        with _IG_CLOSE_AUDIT_LOCK:
+            try:
+                with open(_IG_CLOSE_AUDIT_FILE, "r", encoding="utf-8") as fh:
+                    lines = fh.readlines()
+            except FileNotFoundError:
+                lines = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue          # a torn final write must not hide the rest of the trail
+            if not isinstance(entry, dict):
+                continue
+            if everyone or str(entry.get("user") or "") == name:
+                entries.append(entry)
+    except OSError as exc:
+        log.warning("could not read the IG close audit for %s: %s", name, exc)
+        return jsonify({"error": "The close history could not be read."}), 502
+    entries.reverse()             # newest first
+    return jsonify({"entries": entries[:limit], "total": len(entries), "scope": "all" if everyone else "mine"})
+
+
 @app.route("/api/ig-closed")
 def api_ig_closed():
     """Recently CLOSED trades for the acting user's IG account, each with the REASON it closed (user

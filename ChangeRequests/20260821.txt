@@ -77,7 +77,7 @@ HVF Web Application — Change Requests
 15. Time: 16:12:00
     Request: Make confirmed IG position closes auditable and unambiguous: retain each broker outcome, show it in the GUI, and never leave a user unsure whether a selected position closed.
    Result: Deferred by requester until 2026-08-23. The shared-host API worker is serving an older Python handler; static deployment is current but the live close path is not end-to-end verified. No GUI close retry is authorised during the deferral.
-   Status: deferred
+   Status: in progress
 
 16. Time: 19:00:00
     Request: Show an explicit loading message in Instruments while its data is loading.
