@@ -5213,6 +5213,16 @@ async function applyConfigFromReport(cfg, btn){
 // (taken + missed rows, in order) and the final wallet. Extracted so the brushed per-chart net-£ attribution
 // can re-run it over each chart's filtered subset (compounding is path-dependent → one pass per subset).
 function _winLedger(rows){
+  // DO NOT "optimise" the sort below. localeCompare looks like an easy win over a plain < comparison, and
+  // it is measurably faster -- but it ORDERS TICKERS DIFFERENTLY, and this replay compounds, so the order
+  // is the answer. Benchmarked against the real 11,682-row three-year payload on 2026-08-23: swapping it
+  // ran 1.11x faster and moved funded trades 263 -> 251 and the ending wallet £10,906.85 -> £11,943.66.
+  // A £1,037 error for 11%.
+  //
+  // Hoisting the sort out of settle() IS answer-preserving (verified by fingerprint) and worth only 1.06x,
+  // which does not justify touching a replay that produces trader-facing numbers. Seven passes over the
+  // three-year window cost about 850 ms total and are not the bottleneck; the render was (see
+  // WINNERS_EVIDENCE_LIMIT) and the server build was (see run_winners_precompute.py).
   const stopPct=r=>Math.abs(r.entry-r.stop)/r.entry;
   const seq=rows.filter(r=>r.perf!=null).slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
   // Same affordability model as _combReplay: settle P&L when exits occur, reserve broker margin
