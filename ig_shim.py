@@ -2102,26 +2102,43 @@ def _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction
     when price is not yet in range and no capital is committed. proximity_pct (user 2026-08-03, P-75)
     is the per-user placement band this row was queued under, so reconcile promotes a WATCHING row at
     the SAME threshold the acting user set (not the global default). Never raises."""
+    # The owner binding is written ONLY when there is one, exactly as _log_position_to_db does. Naming the
+    # LWR columns unconditionally meant every order insert depended on runtime DDL succeeding, and this
+    # whole body is a "never raises" handler that only logs -- so an ALTER that failed (missing privilege,
+    # lock timeout) turned into a live IG order with no working_orders row at all. The columns are now
+    # declared in run_schema.py; this keeps the base insert independent of them regardless.
     try:
-        _ensure_lwr_owner_columns()
+        common = dict(v_ref=deal_ref, v_deal=deal_id, v_uid=user_id, v_ticker=ticker,
+                      v_epic=epic, v_dir=direction, v_size=size, v_entry=entry_level,
+                      v_stop=stop_level, v_limit=limit_level, v_otype=otype, v_hvf=hvf_type,
+                      v_till=good_till, v_status=status, v_paper=paper_trade,
+                      v_session=session_name, v_signal=signal_summary, v_prox=proximity_pct)
+        if lwr_owner_login:
+            _ensure_lwr_owner_columns()
         db = get_db()
         try:
-            db.run(
-                """insert into working_orders
-                   (deal_ref, deal_id, user_id, ticker, epic, direction, size,
-                    entry_level, stop_level, limit_level, otype, hvf_type, good_till,
-                    status, paper_trade, session, signal_summary, proximity_pct,
-                    lwr_owner_login, lwr_account_fingerprint)
-                   values (:v_ref, :v_deal, :v_uid, :v_ticker, :v_epic, :v_dir, :v_size,
-                           :v_entry, :v_stop, :v_limit, :v_otype, :v_hvf, :v_till,
-                           :v_status, :v_paper, :v_session, :v_signal, :v_prox, :v_lwr_owner, :v_lwr_account)""",
-                v_ref=deal_ref, v_deal=deal_id, v_uid=user_id, v_ticker=ticker,
-                v_epic=epic, v_dir=direction, v_size=size, v_entry=entry_level,
-                v_stop=stop_level, v_limit=limit_level, v_otype=otype, v_hvf=hvf_type,
-                v_till=good_till, v_status=status, v_paper=paper_trade,
-                v_session=session_name, v_signal=signal_summary, v_prox=proximity_pct,
-                v_lwr_owner=lwr_owner_login, v_lwr_account=lwr_account_fingerprint
-            )
+            if lwr_owner_login:
+                db.run(
+                    """insert into working_orders
+                       (deal_ref, deal_id, user_id, ticker, epic, direction, size,
+                        entry_level, stop_level, limit_level, otype, hvf_type, good_till,
+                        status, paper_trade, session, signal_summary, proximity_pct,
+                        lwr_owner_login, lwr_account_fingerprint)
+                       values (:v_ref, :v_deal, :v_uid, :v_ticker, :v_epic, :v_dir, :v_size,
+                               :v_entry, :v_stop, :v_limit, :v_otype, :v_hvf, :v_till,
+                               :v_status, :v_paper, :v_session, :v_signal, :v_prox,
+                               :v_lwr_owner, :v_lwr_account)""",
+                    v_lwr_owner=lwr_owner_login, v_lwr_account=lwr_account_fingerprint, **common)
+            else:
+                db.run(
+                    """insert into working_orders
+                       (deal_ref, deal_id, user_id, ticker, epic, direction, size,
+                        entry_level, stop_level, limit_level, otype, hvf_type, good_till,
+                        status, paper_trade, session, signal_summary, proximity_pct)
+                       values (:v_ref, :v_deal, :v_uid, :v_ticker, :v_epic, :v_dir, :v_size,
+                               :v_entry, :v_stop, :v_limit, :v_otype, :v_hvf, :v_till,
+                               :v_status, :v_paper, :v_session, :v_signal, :v_prox)""",
+                    **common)
             log.info(f"Working order logged to Supabase: {deal_id} ({ticker} {direction} @ {entry_level}) [{status}]")
         finally:
             db.close()

@@ -278,6 +278,28 @@ MIGRATIONS = [
         "ALTER TABLE working_orders ADD COLUMN IF NOT EXISTS proximity_pct numeric"
     ),
     (
+        # Owner-scoped Let Winners Run binding (user 2026-08-22). ig_shim created these at RUNTIME, with a
+        # DDL statement on the order-placement path, and they were declared in no schema file at all -- so a
+        # database rebuilt from the schema of record had no column the working-order INSERT names, and that
+        # INSERT sits inside a "never raises" handler that only logs. The failure mode was a live IG order
+        # with no working_orders row. Declared here so the runtime DDL is a redundant safety net, not the
+        # only thing standing between a placed order and its record.
+        "working_orders: add Let Winners Run owner binding",
+        "ALTER TABLE working_orders ADD COLUMN IF NOT EXISTS lwr_owner_login text"
+    ),
+    (
+        "working_orders: add Let Winners Run account fingerprint",
+        "ALTER TABLE working_orders ADD COLUMN IF NOT EXISTS lwr_account_fingerprint text"
+    ),
+    (
+        "positions: add Let Winners Run owner binding",
+        "ALTER TABLE positions ADD COLUMN IF NOT EXISTS lwr_owner_login text"
+    ),
+    (
+        "positions: add Let Winners Run account fingerprint",
+        "ALTER TABLE positions ADD COLUMN IF NOT EXISTS lwr_account_fingerprint text"
+    ),
+    (
         "working_orders: index on status",
         "CREATE INDEX IF NOT EXISTS idx_working_orders_status ON working_orders(status)"
     ),
