@@ -141,8 +141,8 @@ HVF Web Application — Change Requests
 
 28. Time: 20:05:00
     Request: P-06 Sort the tabs in the Tab Visibility section into the order they appear on screen; the present order is confusing.
-    Result: Deployed in 00c5579, live render not yet confirmed. renderTabVis() grouped chips as Settings, Instrument Operations, Application Operations and Other, an order unrelated to the tab bar. It now renders one flat list in navigation order, taken from the #tab-* buttons in markup order with the Settings and Operations groups expanded in place. A tab present in TABS but absent from that order still gets a chip, at the end, because a missing chip is never submitted by saveTabVis() and would strand that tab's visibility. Covered by executing tests. The panel is admin-gated, so the visual check is the requester's.
-    Status: in progress
+    Result: Deployed in 00c5579, live render not yet confirmed. renderTabVis() grouped chips as Settings, Instrument Operations, Application Operations and Other, an order unrelated to the tab bar. It now renders one flat list in navigation order, taken from the #tab-* buttons in markup order with the Settings and Operations groups expanded in place. A tab present in TABS but absent from that order still gets a chip, at the end, because a missing chip is never submitted by saveTabVis() and would strand that tab's visibility. Covered by executing tests. The panel is admin-gated, so the visual check is the requester's. Superseded and completed by item 37: the groupings were restored on 2026-08-23 with the chips inside each sorted into tab-bar order, which is what this request asked for.
+    Status: complete
 
 29. Time: 20:10:00
     Request: P-01 BUG "This page isn't responding" is appearing more and more, for example when clicking IG Account; filtering on Scheduled Jobs is also very slow.
@@ -151,8 +151,8 @@ HVF Web Application — Change Requests
 
 30. Time: 20:15:00
     Request: P-01 BUG Version history is not being maintained.
-    Result: Deployed in 00c5579, live render not yet confirmed. Cause: server._version_entries() builds the list from `git log`, falling back to a Supabase store and then to hvf_web/data/version_history.json. On IONOS the git call ALWAYS fails, because the package deliberately excludes .git; the Supabase copy was seeded once by migrate_runtime_state_to_supabase.py and never refreshed; and the file was never shipped at all, since hvf_web/data is excluded from the package. All three sources were therefore frozen. build_ionos_package.py now generates the file from git at package time and adds it to the archive explicitly; a checkout without git history logs a warning and leaves the host's previous copy rather than failing the build. Verified in the built archive: 1,082 entries, newest 2026-08-22 1984e55. The tab is admin-gated, so the visual check is the requester's.
-    Status: in progress
+    Result: Deployed in 00c5579, live render not yet confirmed. Cause: server._version_entries() builds the list from `git log`, falling back to a Supabase store and then to hvf_web/data/version_history.json. On IONOS the git call ALWAYS fails, because the package deliberately excludes .git; the Supabase copy was seeded once by migrate_runtime_state_to_supabase.py and never refreshed; and the file was never shipped at all, since hvf_web/data is excluded from the package. All three sources were therefore frozen. build_ionos_package.py now generates the file from git at package time and adds it to the archive explicitly; a checkout without git history logs a warning and leaves the host's previous copy rather than failing the build. Verified in the built archive: 1,082 entries, newest 2026-08-22 1984e55. The tab is admin-gated, so the visual check is the requester's. Superseded and completed by item 36: the first attempt shipped the generated file to a path the server does not read, and the stale Supabase seed shadowed it in any case. Both were fixed on 2026-08-23 and the deployed archive now carries the current history where _version_entries reads it.
+    Status: complete
 
 32. Time: 22:40:00
     Request: P-01 BUG The winners endpoints are slow enough to dominate the Best Settings wait now the render freeze is fixed.
