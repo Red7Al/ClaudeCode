@@ -256,8 +256,10 @@ def test_pf_subnav_layout_is_not_inline_so_the_hidden_class_can_win():
 def test_apply_this_configuration_is_withheld_when_logged_out():
     html = INDEX.read_text(encoding="utf-8")
 
-    assert re.search(r"\$\{AUTH\?`<button[^`]*Apply this configuration</button>`", html), \
-        "the Apply button must be rendered only when AUTH is set"
+    # Wrapped in .fcard-apply on 2026-08-23 to pin it to the bottom of the card; the AUTH gate is what
+    # this test actually protects.
+    assert re.search(r"\$\{AUTH\?`<div class=\"fcard-apply\"><button[^`]*Apply this configuration</button></div>`",
+                     html), "the Apply button must be rendered only when AUTH is set"
     assert re.search(r"async function applyConfigFromReport\([^)]*\)\{\s*(?://[^\n]*\n\s*)*if\(!AUTH\)", html), \
         "applyConfigFromReport must fail closed for every other caller"
 
@@ -426,10 +428,13 @@ def test_admin_tables_show_a_loading_row(tbody):
 def test_the_loading_row_spans_the_real_column_count():
     """A hardcoded colspan silently under-spans as soon as a column is added."""
     html = INDEX.read_text(encoding="utf-8")
-    m = re.search(r"function _rowsLoading\(id\)\{.*?\n\}", html, re.S)
-    assert m, "_rowsLoading not found"
+    # The span moved into _rowsCols on 2026-08-23, so the loading row and the fault row that replaces it
+    # cannot disagree about the table's width.
+    m = re.search(r"function _rowsCols\(body\)\{.*?\n\}", html, re.S)
+    assert m, "_rowsCols not found"
 
     assert 'querySelectorAll("thead th").length' in m.group(0)
+    assert "_rowsCols(body)" in html
 
 
 def test_every_loading_message_is_the_same_wording():
@@ -449,3 +454,97 @@ def test_every_loading_message_is_the_same_wording():
 
     assert not offenders, f"loading messages still name their data set: {sorted(offenders)}"
     assert "Loading instruments" not in html, "a second phrasing for the same state"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Best Settings card + evidence fixes (user 2026-08-23).
+# ------------------------------------------------------------------------------------------------------
+
+def _stale_proof_source() -> str:
+    html = INDEX.read_text(encoding="utf-8")
+    m = re.search(r"\n\s*const _proofStale=[^\n]*\n\s*if\(_proofStale\)[^\n]*\n", html)
+    assert m, "the empty-proof retry guard was not found"
+    return textwrap.dedent(m.group(0))
+
+
+def test_an_empty_proof_from_a_populated_seq_is_retried():
+    """THE BUG. `[]` is TRUTHY, so a proof computed before seq was populated was cached forever and the
+    evidence table rendered empty with no way back. Observed live on "Capital efficient": seq 64 rows,
+    45 funded, 42.4% return, stored proof 0 rows, while a fresh replay of the same inputs returned 64.
+    """
+    src = _stale_proof_source() + "\nconst out={stale:_proofStale, proof:x.proof};"
+
+    stale = run_js("const x={proof:[],seq:new Array(64).fill(0),proofAttempts:0};", src, "out.stale")
+    assert stale is True, "an empty proof over a non-empty population must be retried"
+    assert run_js("const x={proof:[],seq:new Array(64).fill(0),proofAttempts:0};", src, "out.proof") is None
+
+
+def test_a_genuinely_empty_population_is_not_retried():
+    """No eligible trades is a real answer, and must fall through to the table's own empty state."""
+    src = _stale_proof_source() + "\nconst out={stale:_proofStale};"
+
+    assert run_js("const x={proof:[],seq:[],proofAttempts:0};", src, "out.stale") is False
+
+
+def test_the_retry_is_bounded():
+    """A retry that could not succeed must stop, not loop forever."""
+    src = _stale_proof_source() + "\nconst out={stale:_proofStale};"
+
+    assert run_js("const x={proof:[],seq:new Array(9).fill(0),proofAttempts:3};", src, "out.stale") is False
+
+
+def test_a_populated_proof_is_left_alone():
+    src = _stale_proof_source() + "\nconst out={stale:_proofStale, proof:x.proof};"
+
+    assert run_js("const x={proof:[1,2],seq:[1,2],proofAttempts:0};", src, "out.stale") is False
+
+
+def test_no_template_debris_survives_in_a_loading_message():
+    """REGRESSION. Normalising the loading wording on 2026-08-23 cut at the first quote and left
+    `" "+label:""}` rendering literally, reported as 'Data loading - " " variable'."""
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "+label:" not in html
+    for tail in re.findall(r"Data loading\u2026(.{0,30})", html):
+        assert not re.match(r'^["\']\s*[+:]', tail), f"template debris after the message: {tail!r}"
+
+
+def test_a_loading_row_can_always_become_a_fault():
+    """A "Data loading" message must never be the last thing a user sees."""
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "function _rowsFault(" in html
+    assert "_ROWS_WATCHDOG" in html, "a request that hangs rather than rejects still needs to report"
+    for tbody in ("ver-rows", "batch-rows", "act-rows"):
+        assert f'_rowsFault("{tbody}"' in html, f"{tbody} cannot report a fault"
+        assert f'_rowsLoaded("{tbody}")' in html, f"{tbody} never cancels its watchdog on success"
+
+
+def test_the_card_win_loss_matches_the_detail_panel_definition():
+    """Clicking a card opens the detail panel beneath it; two different counts would read as a bug."""
+    html = INDEX.read_text(encoding="utf-8")
+    m = re.search(r"const _cardWL=x=>\{[^;]*;", html)
+    assert m, "_cardWL not found"
+
+    assert "r.perf>0" in m.group(0) and "r.perf<0" in m.group(0), (
+        "the card must use the same >0/<0 split as the detail panel, not the ranking dead-band")
+    assert "Win : Loss" in html
+
+
+def test_the_apply_button_is_pinned_to_the_bottom_and_centred():
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert re.search(r"\.fcard-apply\{[^}]*margin-top:auto", html), "the button must sit at the card bottom"
+    assert re.search(r"\.fcard-apply\{[^}]*justify-content:center", html), "and be centred"
+    assert re.search(r"\.fcard-choice \.body\{[^}]*flex:1", html), (
+        "the body must stretch, or margin-top:auto has nothing to push against")
+
+
+def test_the_save_outcome_survives_the_re_render():
+    """The button reverts after 4s and applying triggers heavy re-renders; the confirmation must persist."""
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "function _applyBanner(" in html
+    assert "best-apply-banner" in html
+    assert 'aria-live","polite"' in html.replace("'", '"')
+    assert "NOT saved." in html, "a failed apply must say so in the same place"

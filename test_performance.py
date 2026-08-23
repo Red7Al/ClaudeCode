@@ -206,7 +206,10 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     # best.proof) inside renderBestCombo; that's now selectBestChoice(label), called for whichever of the
     # 4 choices is selected, with the proof computed lazily per-choice.
     assert "function selectBestChoice(label)" in html
-    assert "Calculating transaction evidence for ${_esc(lbl)}" in html
+    # Reworded 2026-08-23 to the house "Data loading" wording, with the card it is calculating kept in the
+    # line beneath. The intent of this assertion -- the loading state says WHICH card -- is unchanged.
+    assert "Transaction evidence for <b>${_esc(lbl)}</b>" in html
+    assert "Data loading" in html
     assert "requestAnimationFrame(()=>setTimeout" in html
     assert 'data-choice-return="${x.ret}"' in html
     # The row cap moved from a bare literal into bestCardMaxRows() on 2026-08-23, so it shares

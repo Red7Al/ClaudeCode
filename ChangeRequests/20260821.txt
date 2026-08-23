@@ -233,3 +233,33 @@ HVF Web Application — Change Requests
     Request: P-20 Housekeeping, documentation and research pass.
     Result: Completed. Housekeeping: checked and found essentially clean. The five root trigger/output files that look like dead weight -- query_output.txt, query_trigger.txt, slack_test_trigger.txt, spotlight_trigger.txt and us_open_trigger.txt -- are each still referenced by a live workflow, so they were deliberately left alone rather than tidied away. What remains is one untracked Codex session pointer and some gitignored working directories, none of which are worth deleting without asking. Documentation: PROJECT_ARTIFACTS.md has listed eight candidate artifacts since 2026-07-24 and none existed. Wrote the highest-value one, docs/OPS_RUNBOOK.md, because a day of operational discovery was otherwise recorded only in commit messages and this register: health checks, deploying and the resident-worker trap, failed scheduled jobs, the scanner scan, Best Settings latency, the price and sector backfills, database size and the delete-versus-vacuum distinction, and the Resend verified-domain constraint. Every command in it was run and every figure measured on 2026-08-23. The artifact index is updated to mark it delivered.
     Status: complete
+
+48. Time: 14:10:00
+    Request: P-10 Show win:loss ratios on the Best Settings cards.
+    Result: Completed. Each card now shows Win : Loss with the win percentage, using the SAME perf>0/perf<0 split as the detail panel the card opens into, so the two cannot disagree. Deliberately not the existing _wl() helper, which ranks candidates for the "Best win : loss" card using a +/-0.5% break-even dead-band; that is a selection heuristic, this is a displayed count, and the distinction is recorded at both sites.
+    Status: complete
+
+49. Time: 14:11:00
+    Request: P-06 "Apply this configuration" button - align at the bottom of the card and centre it horizontally.
+    Result: Completed. The button is pinned to the bottom of its card and centred. The cards are equal-height flex items with variable-length copy above, so previously each button floated wherever its own card's text happened to end; the body now stretches and the button sits in an auto-margin footer.
+    Status: complete
+
+50. Time: 14:12:00
+    Request: P-01 BUG After clicking "Apply this configuration" the page can warn that it is slow, and afterwards it is not clear whether the settings saved.
+    Result: Completed. Applying triggers several heavy re-renders that can stall the tab for longer than the button's four-second confirmation lasted, so by the time the page responded the only evidence it had worked was already gone. A persistent banner above the cards now records the outcome with the time it saved, states plainly when it did NOT save and that the configuration is unchanged, and is announced to screen readers.
+    Status: complete
+
+51. Time: 14:13:00
+    Request: P-01 BUG Transaction evidence must show a "Data loading" message while it is loading.
+    Result: Completed. The transaction-evidence loading state now leads with the house "Data loading" wording, keeping the reassurance from item 12 -- which configuration is being replayed, and that it does not fetch data, change settings or place orders -- in the line beneath.
+    Status: complete
+
+52. Time: 14:14:00
+    Request: P-01 BUG "Capital efficient" card selected but the evidence table is empty.
+    Result: Completed. Root cause found by reproducing it live rather than reading the code: "Capital efficient" had 64 eligible trades, 45 funded and a 42.4% return, but a STORED proof of zero rows, while a fresh replay of the same inputs returned all 64. An empty array is truthy, so a proof calculated before seq was populated was cached permanently and the guard `if(!x.proof)` never retried it. The evidence table therefore rendered with no rows. It now retries when a stored proof disagrees with the population it came from, bounded to three attempts; a genuinely empty population still falls through to the table's own empty-state message.
+    Status: complete
+
+53. Time: 15:05:00
+    Request: P-01 BUG A "Data loading" message must not be the last thing shown when something has actually failed; and some forms display literal template text such as 'Data loading - " " variable'.
+    Result: Completed. The visible debris was self-inflicted: normalising the loading wording earlier on 2026-08-23 used a pattern that stopped at the first quote, which stripped the opening of a template expression and left `" "+label:""}` rendering literally on screen. Repaired, and a test now fails on any template fragment following a loading message. Separately, every admin loading row can now become an explicit fault: the same row is replaced with what went wrong and a retry control, driven both by the fetch's catch handler and by a watchdog that fires if the request simply HANGS rather than rejecting, which no catch handler can cover and which would otherwise spin forever and merely look like slow data.
+    Status: complete

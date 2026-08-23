@@ -498,6 +498,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
    (user 2026-08-22). The .hidden rule is repeated at ID+class specificity for the same reason. */
 #pf-subnav{display:flex;flex-direction:column;gap:8px}
 #pf-subnav.hidden{display:none}
+/* "Apply this configuration" sits at the BOTTOM of its card, horizontally centred (user 2026-08-23).
+   The cards are equal-height flex items with variable-length text above, so without this the button
+   floated at whatever height its own card's copy happened to end. margin-top:auto does the pinning. */
+.fcard-choice{display:flex;flex-direction:column}
+.fcard-choice .body{display:flex;flex-direction:column;flex:1}
+.fcard-apply{margin-top:auto;padding-top:10px;display:flex;justify-content:center;align-items:flex-end}
 .pf-filter-row{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
 .pf-filter-controls{display:grid;grid-template-columns:minmax(360px,1fr) auto;align-items:start;gap:12px;flex:1 1 720px;min-width:0}
 .pf-loc-group{display:flex;align-items:flex-start;justify-content:flex-end;gap:6px;width:100%}
@@ -2964,7 +2970,7 @@ function renderJobs(force){
 document.querySelectorAll("th[data-jk]").forEach(th=>th.onclick=()=>{const k=th.dataset.jk;jSortDir=(jSortK===k)?-jSortDir:1;jSortK=k;paintJobs();_sortArrows("data-jk",jSortK,jSortDir);});
 function renderSyslogs(){
   if(!($("slf_level")||{}).value)$("slf_level").value="ERROR"+SEP+"WARNING";   // default to problems only (user 2026-07-06)
-  _rowsLoading("sl-rows");
+  _rowsLoading("sl-rows","renderSyslogs()");
   fetch("/api/system-logs",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       const h=j.health||{},c=h.db_counts||{};
@@ -3259,13 +3265,35 @@ function paintVersion(){
 // History and My Activity showed an empty table until their fetch returned, which on a slow admin query
 // is indistinguishable from "there is nothing here".
 // The column span is read from the table's own header, so it stays right when a column is added.
-function _rowsLoading(id){
-  const body=$(id); if(!body)return;
+function _rowsCols(body){
   const table=body.closest("table");
-  const cols=table?Math.max(1,table.querySelectorAll("thead th").length):1;
-  body.innerHTML=`<tr><td colspan="${cols}" class="empty"><span class="sqh-loading">⏳ Data loading…" "+label:""}</span></td></tr>`;
+  return table?Math.max(1,table.querySelectorAll("thead th").length):1;
 }
-function renderVersion(){_rowsLoading("ver-rows");fetch("/api/version-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{VER_ROWS=j.entries||[];paintVersion();}).catch(()=>{$("ver-rows").innerHTML=`<tr><td colspan="3" class="empty">Could not load (admin only).</td></tr>`;});}
+// A "Data loading" message must never be the LAST thing a user sees. If the fetch fails, or simply never
+// returns, the same row is replaced by what went wrong plus a way to retry (user 2026-08-23: "if there is
+// a fault and you are not able to resolve - provide this as an update where you may previously put 'data
+// loading'"). The watchdog covers what no catch handler can: a request that HANGS rather than rejecting,
+// which would otherwise spin forever and merely look like slow data.
+const _ROWS_WATCHDOG={};
+function _rowsLoading(id,retry){
+  const body=$(id); if(!body)return;
+  body.innerHTML=`<tr><td colspan="${_rowsCols(body)}" class="empty"><span class="sqh-loading">⏳ Data loading…</span></td></tr>`;
+  clearTimeout(_ROWS_WATCHDOG[id]);
+  _ROWS_WATCHDOG[id]=setTimeout(()=>{
+    const b=$(id);
+    if(b&&/Data loading/.test(b.textContent))
+      _rowsFault(id,"This is taking longer than expected and may have failed.",retry);
+  },45000);
+}
+function _rowsFault(id,message,retry){
+  const body=$(id); if(!body)return;
+  clearTimeout(_ROWS_WATCHDOG[id]);
+  const again=retry?` <button class="btn" style="margin-left:8px" onclick="${retry}">↻ Retry</button>`:"";
+  body.innerHTML=`<tr><td colspan="${_rowsCols(body)}" class="empty" role="alert">`+
+    `<b style="color:var(--bear)">⚠ Could not load.</b> <span class="muted">${message||""}</span>${again}</td></tr>`;
+}
+function _rowsLoaded(id){ clearTimeout(_ROWS_WATCHDOG[id]); }
+function renderVersion(){_rowsLoading("ver-rows","renderVersion()");fetch("/api/version-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{_rowsLoaded("ver-rows");VER_ROWS=j.entries||[];paintVersion();}).catch(()=>_rowsFault("ver-rows","Version history is admin-only; check you are still signed in.","renderVersion()"));}
 let BATCH_ROWS=[], batchSortK="ts", batchSortDir=-1;
 const _bmonth=e=>(e.ts||'').slice(0,7);   // YYYY-MM (date range chart)
 function paintBatch(){
@@ -3294,7 +3322,7 @@ function paintBatch(){
   $("batab-count")&&($("batab-count").textContent=`(${BATCH_ROWS.length})`);
   $("batch-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> batch runs${rows.length!==BATCH_ROWS.length?` <span class="muted">of ${BATCH_ROWS.length}</span>`:''}`;
   $("batch-rows").innerHTML=genSort(rows,batchSortK,batchSortDir).map(e=>`<tr><td>${e.ts||''}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.source||''}</span></td><td>${(e.event||'').replace(/</g,"&lt;")}</td><td>${e.by||''}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
-function renderBatch(){_rowsLoading("batch-rows");fetch("/api/batch-activity",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{BATCH_ROWS=j.entries||[];paintBatch();}).catch(()=>{$("batch-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});}
+function renderBatch(){_rowsLoading("batch-rows","renderBatch()");fetch("/api/batch-activity",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{_rowsLoaded("batch-rows");BATCH_ROWS=j.entries||[];paintBatch();}).catch(()=>_rowsFault("batch-rows","Batch activity is admin-only; check you are still signed in.","renderBatch()"));}
 // P-65 (user 2026-08-03): the Operator dropdown writes the single-select choice into the shared bcf_by
 // filter key (empty = All), so picking here and clicking the Operator chart stay in one source of truth.
 function batchOpPick(){const el=$("batch-op"),bc=$("bcf_by");if(!el||!bc)return;bc.value=el.value||"";paintBatch();}
@@ -3760,10 +3788,10 @@ function paintActivity(){
     || `<tr><td colspan="3" class="empty">No activity recorded yet.</td></tr>`;
 }
 function renderActivity(){
-  _rowsLoading("act-rows");
+  _rowsLoading("act-rows","renderActivity()");
   fetch("/api/userlog",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{AC_ROWS=j.log||[];paintActivity();})
-    .catch(()=>{$("act-rows").innerHTML=`<tr><td colspan="2" class="empty">Could not load your activity — try logging in again.</td></tr>`;});
+    .then(j=>{_rowsLoaded("act-rows");AC_ROWS=j.log||[];paintActivity();})
+    .catch(()=>_rowsFault("act-rows","Try signing in again.","renderActivity()"));
 }
 // ── Markets tab (user 2026-07-10): live per-market coverage computed from the loaded snapshot ──
 // "Included?" = whether any instrument in that market is visible to you (passes your market filter).
@@ -5023,17 +5051,27 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
     const labels={rr:"R:R",q:"Quality",vs:"VolumeScore",rv:"RVOL",vw:"VWAP required",atr:"ATR expanding",st:"Position size",mo:"Max open",scope:"Scope"};
     return Object.keys(target).filter(k=>String(current[k])!==String(target[k])).map(k=>`${labels[k]}: ${displayValue(k,current[k])} → ${displayValue(k,target[k])}`).join(" · ")||"No change from your current configuration";
   };
+  // Win:loss shown ON a card (user 2026-08-23). Deliberately the SAME split the detail panel uses --
+  // perf > 0 and perf < 0 over the eligible trades -- because clicking the card opens that panel directly
+  // beneath it, and two different counts for one configuration would read as a bug.
+  //
+  // NOT the same as _wl() above, which RANKS candidates for the "Best win : loss" card and applies a
+  // +/-0.5% break-even dead-band so marginal trades do not decide the winner. That is a selection
+  // heuristic; this is a displayed count. Keeping them separate is intentional.
+  const _cardWL=x=>{const s=x.seq||[],w=s.filter(r=>r.perf>0).length,l=s.filter(r=>r.perf<0).length;
+    return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};
   const choiceCards=choices.map(([label,x,why,colour])=>`<div class="fcard fcard-choice${label===BEST_SELECTED?' fcard-selected':''}" data-choice="${label}" data-choice-return="${x.ret}" style="min-width:240px;flex:1;border-top:3px solid ${colour}" onclick="selectBestChoice('${label.replace(/'/g,"\\'")}')" title="Show this option's detail and Transaction evidence below">
     <h3 style="color:${colour}">${label}</h3><div class="muted" style="font-size:11px;min-height:30px">${why}</div>
     <div class="body"><div><b style="font-size:17px;color:${x.ret>=0?'var(--bull)':'var(--bear)'}">${pct(x.ret)}</b> return · <b>${(x.dd*100).toFixed(1)}%</b> max drawdown</div>
       <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} funded of ${x.seq.length.toLocaleString()} eligible · ${x.posPeriods}/${x.periods} positive quarters</div>
+      <div style="font-size:11px;margin-top:4px" title="Wins vs losses among this combination's eligible trades — the same split the detail panel below reports">Win : Loss <b style="color:var(--fg)">${_cardWL(x).w} : ${_cardWL(x).l}</b>${_cardWL(x).pct!=null?` <span class="muted">(${_cardWL(x).pct}%)</span>`:''}</div>
       <div style="font-size:11px;margin-top:6px">${x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo} max open</div>
       <div class="muted" style="font-size:10px;margin-top:7px;line-height:1.4"><b style="color:var(--fg)">Changes:</b> ${changedFor(x)}</div>
-      ${AUTH?`<button class="btn" style="margin-top:8px" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">Apply this configuration</button>`
+      ${AUTH?`<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">Apply this configuration</button></div>`
              /* There is no User Configuration to write to when nobody is signed in, and /api/config rejects
                 the POST, so the control could only ever end at "Save failed" (user 2026-08-22). Offer the
                 sign-in that makes it work instead of an action that cannot. */
-             :`<div class="muted" style="margin-top:8px;font-size:11px">Log in to apply this configuration.</div>`}
+             :`<div class="fcard-apply"><span class="muted" style="font-size:11px">Log in to apply this configuration.</span></div>`}
     </div></div>`).join('');
   const unsupportedCards=[
     showUnsupported250&&[">250 trades",250,300,"#a371f7"],showUnsupported125&&[">125 trades",125,150,"#1f6feb"]
@@ -5096,6 +5134,15 @@ function selectBestChoice(label){
   // The funded replay proof is only computed for whichever choice has actually been viewed (lazy) — Best
   // Settings already evaluates thousands of configurations per render, so we don't pay for a full
   // chronological replay on the 3 cards a user never clicks.
+  // An EMPTY proof is not a computed proof. _combReplay pushes one row per eligible trade, so a
+  // non-empty seq can never legitimately yield zero rows -- but `[]` is TRUTHY, so a proof computed
+  // before seq was populated was cached forever and the evidence table rendered empty with no way back
+  // (user 2026-08-23: "Capital efficient card selected but nothing in evidence table"). Observed live:
+  // seq 64 rows, 45 funded, 42.4% return, stored proof 0 rows, while a fresh replay of the SAME inputs
+  // returned all 64. Retry when the stored proof disagrees with the population it came from; a genuinely
+  // empty seq still falls through to the table's own "No transactions match this view" state.
+  const _proofStale=x.proof&&!x.proof.length&&(x.seq||[]).length>0&&(x.proofAttempts||0)<3;
+  if(_proofStale)x.proof=null;
   if(!x.proof){
     document.querySelectorAll('#ordp-bestcombo .fcard-choice').forEach(el=>el.classList.toggle('fcard-selected',el.dataset.choice===lbl));
     if(x.proofError){
@@ -5103,10 +5150,13 @@ function selectBestChoice(label){
       delete x.proofError;
       return;
     }
-    detail.innerHTML=`<div class="refreshing" role="status" aria-live="polite" style="padding:18px 0"><b>Calculating transaction evidence for ${_esc(lbl)}…</b><div class="muted" style="font-size:12px;margin-top:4px">Replaying the selected configuration's chronological funding decisions. This does not fetch data, change settings, or place orders.</div></div>`;
+    // House wording first (user 2026-08-23: "Transaction evidence must have Data loading message if that
+    // is what is happening"), with the reassurance that item 12 asked for kept underneath it.
+    detail.innerHTML=`<div class="refreshing" role="status" aria-live="polite" style="padding:18px 0"><b class="sqh-loading">⏳ Data loading…</b><div class="muted" style="font-size:12px;margin-top:4px">Transaction evidence for <b>${_esc(lbl)}</b> — replaying that configuration's chronological funding decisions. This does not fetch data, change settings, or place orders.</div></div>`;
     if(!x.proofLoading){
       x.proofLoading=true;
       // Let the browser paint the loading state before the potentially large chronological replay starts.
+      x.proofAttempts=(x.proofAttempts||0)+1;
       requestAnimationFrame(()=>setTimeout(()=>{
         try{x.proof=_combReplay(x.seq,x.st/100,x.mo,true).proof;}
         catch(error){console.error('Best Settings transaction-evidence replay failed',error);x.proofError=true;}
@@ -5149,6 +5199,21 @@ function selectBestChoice(label){
 // The four visible states of an "Apply this configuration" button. Amber = working, green = applied,
 // red = failed and clickable again (user 2026-08-23). Colours come from the theme tokens so this reads
 // correctly in both light and dark; "idle" clears them rather than leaving the last result's tint behind.
+// A persistent, screen-reader-announced record of the last apply. Lives above the card grid rather than
+// on the card, because applying re-renders the grid and a message attached to a card does not survive it.
+function _applyBanner(text,colour){
+  let el=$("best-apply-banner");
+  if(!el){
+    const host=$("ordp-bestcombo"); if(!host)return;
+    el=document.createElement("div"); el.id="best-apply-banner";
+    el.setAttribute("role","status"); el.setAttribute("aria-live","polite");
+    el.style.cssText="margin:8px 0;padding:9px 12px;border:1px solid var(--line);border-left-width:4px;"+
+                     "border-radius:7px;font-size:12.5px;background:var(--chip)";
+    host.parentNode.insertBefore(el,host);
+  }
+  el.style.borderLeftColor=colour||"var(--line)";
+  el.innerHTML=`<b style="color:${colour||"var(--fg)"}">${text}</b>`;
+}
 const _APPLY_BTN={
   idle:  {text:"Apply this configuration",      bg:"",              fg:"",              disabled:false},
   saving:{text:"⏳ Saving…",                     bg:"var(--warn)",   fg:"#1a1a1a",       disabled:true},
@@ -5185,6 +5250,8 @@ async function applyConfigFromReport(cfg, btn){
   // in progress, green says it landed, red says it did not. _applyBtnState also restores the button's own
   // colours afterwards, so a retry does not stay tinted from the previous attempt.
   if(btn)_applyBtnState(btn,"saving");
+  _applyBanner("Saving your configuration… the page may pause briefly while the Back Test is rebuilt.",
+               "var(--warn)");
   const nextFilters={...USER_FILTERS,...filters};
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits,filters:nextFilters})})
     .then(r=>{if(!r.ok)throw 0;
@@ -5201,11 +5268,20 @@ async function applyConfigFromReport(cfg, btn){
       if(typeof msyncAll==='function')msyncAll();
       Object.entries(limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v;}});
       if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();
+      // The save is confirmed in a place that does NOT disappear. The button reverted to idle after four
+      // seconds, and applying triggers several heavy re-renders which can stall the tab for longer than
+      // that -- so by the time the page responded again the only evidence it had worked was already gone
+      // (user 2026-08-23: "after that it is not clear if settings Saved. or not"). The banner persists
+      // until the next apply, and carries the time it saved.
       if(btn){_applyBtnState(btn,"done");setTimeout(()=>_applyBtnState(btn,"idle"),4000);}
+      _applyBanner(`Saved at ${new Date().toLocaleTimeString()}. Your User Configuration now uses these
+        values; the Back Test and Scanner below have been updated to match.`,"var(--bull)");
       if(typeof renderPreorders==='function')renderPreorders();
       if(typeof render==='function')render();   // Scanner table hard-filters on MY_LIMITS too (P-01 2026-08-11) — same gap as saveLimits(), same fix
       if(typeof _renderPerformance==='function')_renderPerformance();})
-    .catch(()=>{if(btn)_applyBtnState(btn,"failed");});
+    .catch(()=>{if(btn)_applyBtnState(btn,"failed");
+      _applyBanner("NOT saved. Your configuration is unchanged and no orders were placed. "+
+                   "Check you are still signed in, then press Apply again.","var(--bear)");});
 }
 // One compounding pass over a set of winners trades (user 2026-07-27, P-10 L122/L123 refactor): chronological
 // by trigger date, applies the Max-open-positions cap (a squeeze that triggers while the book is full is a
