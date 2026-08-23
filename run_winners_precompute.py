@@ -30,6 +30,7 @@
 
 import argparse
 import logging
+import os
 import sys
 import time
 
@@ -38,16 +39,51 @@ log = logging.getLogger("winners_precompute")
 WINDOWS = (1, 3)     # the two the web app actually asks for: the annual cards and the three-year evidence
 
 
+def _dataset_key() -> str:
+    """The snapshot generation time the SERVER will compare against.
+
+    The server keys a stored payload to hvf_web/snapshot.json's generated_utc. A GitHub runner usually has
+    no built snapshot, so reading it locally yielded an empty key and every stored payload was silently
+    rejected -- which is how the first run stored 3,782 and 11,672 rows that the site then ignored
+    entirely (2026-08-23). Two sources, in order:
+
+      1. The local snapshot, when this runs straight after a snapshot build in the same job. That is the
+         exact file about to be published, so the key cannot race.
+      2. The live site's /api/status, for the standalone scheduled run. There is a small race if a new
+         snapshot publishes immediately afterwards; the consequence is a rejected payload and a slow
+         page, never a wrong one.
+    """
+    try:
+        from hvf_web import server
+        local = (server._load_snapshot() or {}).get("generated_utc") or ""
+        if local:
+            log.info("dataset key from the local snapshot: %s", local)
+            return local
+    except Exception as ex:
+        log.info("no usable local snapshot (%s); asking the live site instead", ex)
+    try:
+        import json as _json
+        import urllib.request
+        url = os.environ.get("SITE_URL", "https://www.squeezescanner.cloud").rstrip("/") + "/api/status"
+        with urllib.request.urlopen(url, timeout=60) as r:
+            live = (_json.loads(r.read().decode("utf-8")) or {}).get("generated_utc") or ""
+        if live:
+            log.info("dataset key from %s: %s", url, live)
+        return live
+    except Exception as ex:
+        log.error("could not read the live snapshot generation time: %s", ex)
+        return ""
+
+
 def build(years_list=WINDOWS, dry_run=False) -> int:
     from hvf_web import server
     import web_store
 
-    dataset = ""
-    try:
-        dataset = server._load_snapshot().get("generated_utc") or ""
-    except Exception as ex:
-        log.warning("could not read the snapshot generation time (%s); storing without a dataset key "
-                    "means the server will reject these payloads", ex)
+    dataset = _dataset_key()
+    if not dataset:
+        log.error("no dataset key could be determined; the server would reject these payloads, so "
+                  "nothing will be stored. Run this after a snapshot build, or set SITE_URL.")
+        return len(list(years_list))
 
     failures = 0
     for years in years_list:

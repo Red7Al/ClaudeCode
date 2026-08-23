@@ -161,3 +161,16 @@ jobs:
             echo "Neither Supabase publication nor the IONOS fallback succeeded" >&2
             exit 1
           fi
+
+      # Rebuild the precomputed /api/winners payloads for the snapshot this run just published
+      # (user 2026-08-23). The server keys a stored payload to the live snapshot's generated_utc, so ANY
+      # new snapshot invalidates the previous copies -- a once-daily precompute would only help until the
+      # next refresh. Here the runner still has the exact snapshot.json it published, so the key is taken
+      # from that file and cannot race a later publication.
+      #
+      # Non-fatal: this is a cache warm-up. If it fails the site falls back to building the payloads live,
+      # which is slow but correct, and the standalone Winners Precompute job retries in the morning.
+      - name: Warm the precomputed winners payloads
+        if: ${{ steps.publish.outcome == 'success' || steps.ionos_fallback.outcome == 'success' }}
+        continue-on-error: true
+        run: python run_winners_precompute.py

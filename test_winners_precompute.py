@@ -170,3 +170,65 @@ def test_the_endpoint_prefers_the_store_and_skips_the_build(monkeypatch, fake_da
     assert response.status_code == 200
     assert response.get_json()["rows"][0]["ticker"] == "T1"
     assert built == [], "the endpoint rebuilt the payload despite a valid stored copy"
+
+
+# ------------------------------------------------------------------------------------------------------
+# The dataset key must be the one the SERVER compares against.
+#
+# THE REGRESSION (2026-08-23). The first live run stored 3,782 and 11,672 rows with dataset="" because a
+# GitHub runner has no built snapshot, and the server -- correctly -- rejected both. The precompute
+# reported success while achieving nothing, which is the worst kind of failure: silent.
+# ------------------------------------------------------------------------------------------------------
+
+def test_the_local_snapshot_is_preferred_for_the_key(monkeypatch):
+    """Straight after a snapshot build the runner HAS the file, and it cannot race a later publish."""
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": "2026-08-23T09:00:00Z"})
+
+    assert run_winners_precompute._dataset_key() == "2026-08-23T09:00:00Z"
+
+
+def test_the_live_site_is_the_fallback_key(monkeypatch):
+    """The standalone scheduled run has no snapshot, so it asks the site what it is serving."""
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {})
+
+    import io, json, urllib.request
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda *a, **k: _ctx(io.BytesIO(json.dumps(
+                            {"generated_utc": "2026-08-23T10:00:00Z"}).encode())))
+
+    assert run_winners_precompute._dataset_key() == "2026-08-23T10:00:00Z"
+
+
+class _ctx:
+    def __init__(self, fh): self.fh = fh
+    def __enter__(self): return self.fh
+    def __exit__(self, *a): return False
+
+
+def test_nothing_is_stored_without_a_dataset_key(monkeypatch, built):
+    """Storing a payload the server will always reject is worse than not storing one: it reports success."""
+    monkeypatch.setattr(run_winners_precompute, "_dataset_key", lambda: "")
+    docs = {}
+    _store(monkeypatch, docs)
+
+    assert run_winners_precompute.build([1, 3]) == 2, "a missing key must be reported as failure"
+    assert docs == {}, "a payload with no dataset key must never be stored"
+
+
+def test_a_stored_key_of_empty_string_is_rejected_by_the_server(monkeypatch, fake_dataset, built):
+    """Belt and braces: even if such a document existed, the server must not serve it."""
+    _store(monkeypatch, {server._winners_store_key(1): {
+        "payload": {"rows": [{"ticker": "T1"}]}, "dataset": "", "built_at": time.time()}})
+
+    assert server._winners_stored(1) is None
+
+
+def test_the_snapshot_workflow_warms_the_payloads():
+    """The daily job alone is not enough: ANY new snapshot invalidates the stored copies."""
+    from pathlib import Path
+    wf = Path(__file__).parent / ".github" / "workflows" / "trading-scanner-snapshot.yml"
+    text = wf.read_text(encoding="utf-8")
+
+    assert "run_winners_precompute.py" in text, (
+        "the snapshot publish must refresh the payloads it invalidates")
+    assert "continue-on-error: true" in text, "a cache warm-up must not fail the snapshot publication"
