@@ -573,9 +573,16 @@ def _send_via_resend(subject, text, html, charts, rcpts) -> bool:
     key = os.environ.get("RESEND_API_KEY", "")
     if not key:
         return False
-    # Resend test mode (no verified domain) sends FROM onboarding@resend.dev and only
-    # delivers to the account-owner address. Set RESEND_FROM / EMAIL_FROM once a domain is verified.
-    sender = os.environ.get("RESEND_FROM") or _from_addr("onboarding@resend.dev")
+    # Resend will only send FROM a domain verified on the account. The intended default here was its test
+    # sender, onboarding@resend.dev, but _from_addr() prefers config.EMAIL_FROM -- a yahoo.co.uk address,
+    # which is the SMTP identity, not a Resend-verified domain -- so the safe default was never reached and
+    # every Resend send returned "403 the yahoo.co.uk domain is not verified" (user 2026-08-23).
+    #
+    # RESEND_FROM is now the ONLY way to set a custom sender, and it is what to set once a domain is
+    # verified at https://resend.com/domains. Until then this uses the test sender, which Resend delivers
+    # ONLY to the account-owner address -- fine for the owner's own mail, but a verified domain is required
+    # before this can reach other account holders.
+    sender = os.environ.get("RESEND_FROM") or "onboarding@resend.dev"
     payload = {
         "from": sender, "to": rcpts, "subject": subject,
         "text": text, "html": _html_with_inline(html, charts),

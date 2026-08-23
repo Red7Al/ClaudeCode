@@ -266,3 +266,47 @@ def test_the_trade_email_sender_falls_back_too(monkeypatch):
                                  recipients=["x@example.com"])
 
     assert calls == ["resend", "yahoo"], f"no fallback in send_trade_email: {calls}"
+
+
+def test_resend_uses_its_test_sender_unless_a_verified_domain_is_configured(monkeypatch):
+    """THE 403. _from_addr() preferred config.EMAIL_FROM (a yahoo.co.uk SMTP identity), so Resend's own
+    safe default was never reached and every send was rejected as an unverified domain.
+
+    GitHub runners block outbound SMTP, which is why Resend exists here at all -- so a Resend rejection is
+    not recoverable by falling back, and the sender has to be right.
+    """
+    import trade_email
+    captured = {}
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.delenv("RESEND_FROM", raising=False)
+    monkeypatch.setenv("EMAIL_FROM", "eahind@yahoo.co.uk")
+
+    class _Resp:
+        status_code = 200
+        text = "{}"
+
+    import requests
+    monkeypatch.setattr(requests, "post",
+                        lambda url, **kw: captured.update(kw.get("json") or {}) or _Resp())
+    trade_email._send_via_resend("s", "t", "<p>h</p>", [], ["x@example.com"])
+
+    assert captured["from"] == "onboarding@resend.dev", (
+        "an unverifiable EMAIL_FROM must not reach Resend; it returns 403 and nothing is delivered")
+
+
+def test_resend_from_overrides_once_a_domain_is_verified(monkeypatch):
+    import trade_email
+    captured = {}
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.setenv("RESEND_FROM", "alerts@squeezescanner.cloud")
+
+    class _Resp:
+        status_code = 200
+        text = "{}"
+
+    import requests
+    monkeypatch.setattr(requests, "post",
+                        lambda url, **kw: captured.update(kw.get("json") or {}) or _Resp())
+    trade_email._send_via_resend("s", "t", "<p>h</p>", [], ["x@example.com"])
+
+    assert captured["from"] == "alerts@squeezescanner.cloud"
