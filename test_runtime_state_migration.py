@@ -129,6 +129,10 @@ def test_version_history_uses_supabase_when_git_is_unavailable(monkeypatch):
     monkeypatch.setattr(web_store, "load_json_store", lambda key: {
         "entries": [{"date": "2026-08-12", "version": "abc1234", "summary": "fix hosted fallback"}]
     })
+    # The file fallback is now compared for freshness rather than consulted only when Supabase is empty
+    # (2026-08-23), so this test must supply it too. It previously read the REAL repo
+    # data/version_history.json as an ambient input and passed only because that file was never reached.
+    monkeypatch.setattr(server, "_read_json_entries", lambda _path: [])
 
     assert server._version_entries() == [{
         "date": "2026-08-12", "version": "abc1234", "summary": "fix hosted fallback", "category": "Bug fix"

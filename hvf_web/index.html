@@ -3277,15 +3277,27 @@ function renderTabVis(hidden){
   const chip=(t,checked,dis)=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:13px;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:${dis?'default':'pointer'};${dis?'opacity:.6':''}"><input type="checkbox" ${dis?'class="" disabled':'class="tv"'} data-t="${t}" ${checked?'checked':''}> ${TAB_LABELS[t]||t}</label>`;
   // Default-hidden tabs tick only when opted in (SHOWN_TABS); others tick unless hidden.
   const chipFor=t=>chip(t,DEFAULT_HIDDEN.has(t)?SHOWN_TABS.includes(t):!hidden.has(t),false);
-  // One flat list in NAVIGATION order (user 2026-08-22: "sort the tabs in visibility section in the order
-  // they are on the screen - I was confused by the order"). The previous Settings / Instrument Operations /
-  // Application Operations / Other grouping bore no relation to the tab bar, so finding a tab meant knowing
-  // which category someone had filed it under.
-  const chipUsers=t=>t==="config"?chip(t,true,true)                          // Configuration is never hideable
-                    :(t==="users"&&IS_ADMIN)?chip(t,true,true)               // admins can't disable User Management
-                    :chipFor(t);
+  // Grouped, and ordered by the tab bar WITHIN each group (user 2026-08-22: "sort the tabs in visibility
+  // section in the order they are on the screen", then "the groupings have been removed - please put them
+  // back and order within the groupings"). The first pass dropped the headings entirely, which lost the
+  // grouping; the point was only ever that the ORDER inside them was arbitrary, so a tab was hard to find.
+  const head=x=>`<div class="muted" style="width:100%;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin:12px 0 2px">${x}</div>`;
+  const INSTR=["performance","scanner","instruments","preorders","orderops","igaccount"];   // Instrument Operations group (user 2026-07-11; "instruments" joined 2026-08-07, ChangeRequest P-08)
+  const grouped=new Set([].concat(...Object.values(TAB_GROUPS),INSTR,["activity"]));   // My Activity shown under Application Operations (user 2026-07-11)
+  const nav=screenTabOrder();
+  const byScreen=list=>[...list].sort((a,b)=>nav.indexOf(a)-nav.indexOf(b));   // tab-bar order inside the group
+  const setg=byScreen(TAB_GROUPS.settings.filter(t=>t!=="config"&&allow(t)));
+  // X Posts is an admin Operations tab and is not user-configurable.
+  const ops=byScreen([...TAB_GROUPS.operations,"activity"].filter(allow));
+  const instr=byScreen(INSTR.filter(allow));
+  const rest=byScreen(TABS.filter(t=>t!=="config"&&!grouped.has(t)&&allow(t)));
+  const chipUsers=t=>(t==="users"&&IS_ADMIN)?chip(t,true,true):chipFor(t);   // admins can't disable User Management
+  let html=head("Settings")+chip("config",true,true)+setg.map(chipFor).join("");
+  if(instr.length)html+=head("Instrument Operations")+instr.map(chipFor).join("");
+  if(ops.length)html+=head("Application Operations")+ops.map(chipUsers).join("");
+  if(rest.length)html+=head("Other")+rest.map(chipFor).join("");
   $("tabvis-list").classList.remove("sqh-loading");
-  $("tabvis-list").innerHTML=screenTabOrder().filter(allow).map(chipUsers).join("");
+  $("tabvis-list").innerHTML=html;
 }
 function saveTabVis(){
   const boxes=[...document.querySelectorAll(".tv")];

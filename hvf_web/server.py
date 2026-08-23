@@ -261,9 +261,19 @@ def _version_entries():
             remote = web_store.load_json_store("version_history")
         except Exception as store_ex:
             log.warning(f"version history Supabase fallback failed: {store_ex}")
-        source = (remote or {}).get("entries", []) if isinstance(remote, dict) else []
+        stored = (remote or {}).get("entries", []) if isinstance(remote, dict) else []
+        packaged = _read_json_entries(_VERSION_FILE)
+        # Take whichever fallback is FRESHER, not simply the Supabase one (user 2026-08-23: "version
+        # history - latest entry 18/8"). The Supabase copy is a one-off seed: migrate_runtime_state_to_
+        # supabase.py wrote it once and nothing has updated it since, so it sat at 958 entries ending
+        # 2026-08-18. It was consulted first and the file was only read "if not source", so once that seed
+        # existed the file could never be reached — and the file is the one generated from git at package
+        # time, i.e. the actual commits in the build being deployed. Comparing newest entry keeps this
+        # correct whichever way round they happen to be.
+        newest = lambda rows: max((r.get("date") or "" for r in rows), default="")
+        source = packaged if newest(packaged) > newest(stored) else stored
         if not source:
-            source = _read_json_entries(_VERSION_FILE)
+            source = packaged or stored
         entries = [e2 for e2 in source if (e2.get("date") or "") > _VERSION_FLOOR]
         for e2 in entries:
             e2.setdefault("category", _version_category(e2.get("summary", "")))

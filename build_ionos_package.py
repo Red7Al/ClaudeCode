@@ -63,13 +63,15 @@ def package_files():
 def version_history_entries() -> list:
     """Version history, read from git HERE because the IONOS host has none.
 
-    server._version_entries() builds this live from `git log`, and falls back to a Supabase store and then
-    to hvf_web/data/version_history.json. On IONOS the git call always fails (the package deliberately
-    excludes .git), and nothing in the deploy has ever refreshed either fallback -- the Supabase copy was
-    seeded once by migrate_runtime_state_to_supabase.py and the file was never shipped at all, because
-    hvf_web/data is excluded. So the tab froze at whatever that one-off migration captured
-    (user 2026-08-22: "version history is not being maintained"). Generating it at package time keeps the
-    file fallback current with the very commits being deployed.
+    server._version_entries() builds this live from `git log`, falling back to a Supabase store and to
+    data/version_history.json -- the REPO-ROOT data/ directory (server._VERSION_FILE), not hvf_web/data/.
+    On IONOS the git call always fails, because the package deliberately excludes .git, and nothing in the
+    deploy ever refreshed either fallback: the Supabase copy was seeded once by
+    migrate_runtime_state_to_supabase.py and sat at 958 entries ending 2026-08-18, and the file was never
+    shipped at all because package_files() excludes data/. So the tab froze on 18/8 (user 2026-08-22:
+    "version history is not being maintained", and again 2026-08-23: "latest entry 18/8").
+
+    Generating it at package time keeps the file fallback current with the very commits being deployed.
     """
     import subprocess
     out = subprocess.check_output(
@@ -104,13 +106,15 @@ def build(output: Path = DEFAULT_OUTPUT) -> tuple:
                 root_info.create_system = 3
                 root_info.external_attr = (stat.S_IFREG | 0o644) << 16
                 archive.writestr(root_info, contents, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
-        # hvf_web/data is excluded from package_files(), so this generated fallback is added explicitly.
+        # server._VERSION_FILE is <root>/data/version_history.json — the REPO-ROOT data/ directory, not
+        # hvf_web/data/. package_files() excludes data/ entirely, so this generated fallback is added
+        # explicitly, at the exact path _version_entries reads.
         try:
             history = json.dumps({"entries": version_history_entries()}, ensure_ascii=False)
         except Exception as exc:                     # a shallow/exportless checkout must not fail the build
             print(f"  version history could not be generated ({exc}); the host keeps its previous copy.")
         else:
-            info = zipfile.ZipInfo("hvf_web/data/version_history.json")
+            info = zipfile.ZipInfo("data/version_history.json")
             info.create_system = 3
             info.external_attr = (stat.S_IFREG | 0o644) << 16
             archive.writestr(info, history.encode("utf-8"),
