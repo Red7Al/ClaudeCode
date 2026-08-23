@@ -9,10 +9,14 @@
 :root{
   --bg:#0d1117; --panel:#161b22; --fg:#c9d1d9; --muted:#8b949e; --line:#30363d;
   --accent:#58a6ff; --bull:#3fb950; --bear:#f85149; --chip:#21262d;
+  /* The amber this file already uses in ~97 places for "in progress / unresolved" (OPEN outcomes, the
+     working-order states), promoted to a token so it can be themed (user 2026-08-23). */
+  --warn:#d29922;
 }
 :root.light{
   --bg:#f6f8fa; --panel:#ffffff; --fg:#24292f; --muted:#57606a; --line:#d0d7de;
   --accent:#0969da; --bull:#1a7f37; --bear:#cf222e; --chip:#eaeef2;
+  --warn:#9a6700;   /* darker amber: #d29922 fails contrast against a white panel */
 }
 *{box-sizing:border-box} body{margin:0;font:14px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
 header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
@@ -684,7 +688,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
          Report search name should be on RHS like all other pages with a name search").
          #count keeps its own span because render() writes innerHTML to it, which would otherwise
          destroy the input on every repaint. -->
-    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="count" class="sqh-loading">⏳ Data loading… Scanner Report</span><span class="grow"></span><input id="scanner-name-search" placeholder="Search name / ticker…" oninput="syncScannerNameSearch(this.value)" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px" aria-label="Search Scanner by name or ticker"></div>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="count" class="sqh-loading">⏳ Data loading…</span><span class="grow"></span><input id="scanner-name-search" placeholder="Search name / ticker…" oninput="syncScannerNameSearch(this.value)" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px" aria-label="Search Scanner by name or ticker"></div>
     <section class="gsec" style="border-left-color:var(--accent);margin:0 16px 16px">
     <div class="tablewrap">
       <table>
@@ -705,7 +709,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <th data-k="location">Location</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th>
           <th data-k="sector">Sector</th><th data-k="ticker">Ticker</th><th style="cursor:default" title="Whether this instrument is already in your My Pre-orders">In Pre-orders?</th>
         </tr></thead>
-        <tbody id="rows"><tr><td colspan="27" class="empty sqh-loading">⏳ Data loading… Scanner Report</td></tr></tbody>
+        <tbody id="rows"><tr><td colspan="27" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
       </table>
     </div>
     </section>
@@ -2351,7 +2355,7 @@ function showDetail(t){
       ${r.pe!=null?`<div class="kv"><span>P/E</span><b>${r.pe}</b></div>`:''}
       ${r.insider_pct!=null?`<div class="kv"><span>Insider %</span><b>${r.insider_pct.toFixed(2)}%</b></div>`:''}</div>
     <div class="card"><h4>Fundamentals — key metrics</h4><div id="fundbox" class="sqh-loading">⏳ Data loading…</div></div>
-    <div class="card" id="brokercard" style="${r.broker?'':'display:none'}"><h4>Broker analysis</h4><span id="brokerbase">${broker}</span><div id="brokerchg" class="muted sqh-loading" style="margin-top:6px">⏳ Data loading… 6–12mo change</div></div>
+    <div class="card" id="brokercard" style="${r.broker?'':'display:none'}"><h4>Broker analysis</h4><span id="brokerbase">${broker}</span><div id="brokerchg" class="muted sqh-loading" style="margin-top:6px">⏳ Data loading…</div></div>
     <div class="card"><h4>Relevant X visuals</h4><div id="xvisuals" class="xvisual-grid sqh-loading">⏳ Data loading…</div></div>
     <div class="card"><h4>On X</h4><div id="xlinks" class="sqh-loading">⏳ Data loading…</div></div>
     <div class="card"><h4>X thread (all pages)</h4><div class="tweet sqh-loading" id="tweetbox">⏳ Data loading…</div></div>`;
@@ -2938,7 +2942,7 @@ function paintJobs(){
     <td class="muted" style="font-size:12px">${e.workflow||""}</td></tr>`).join("")||`<tr><td colspan="9" class="empty">No scheduled jobs found.</td></tr>`;
 }
 function renderJobs(force){
-  $("jobs-rows").innerHTML=`<tr><td colspan="10" class="empty"><span class="sqh-loading">⏳ Data loading… run stats.</span></td></tr>`;
+  $("jobs-rows").innerHTML=`<tr><td colspan="10" class="empty"><span class="sqh-loading">⏳ Data loading…</span></td></tr>`;
   fetch("/api/scheduled-jobs"+(force?"?refresh=1":""),{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{JOB_ROWS=j.jobs||[];
       const totF=JOB_ROWS.reduce((s,e)=>s+(e.failures||0),0);
@@ -2950,6 +2954,7 @@ function renderJobs(force){
 document.querySelectorAll("th[data-jk]").forEach(th=>th.onclick=()=>{const k=th.dataset.jk;jSortDir=(jSortK===k)?-jSortDir:1;jSortK=k;paintJobs();_sortArrows("data-jk",jSortK,jSortDir);});
 function renderSyslogs(){
   if(!($("slf_level")||{}).value)$("slf_level").value="ERROR"+SEP+"WARNING";   // default to problems only (user 2026-07-06)
+  _rowsLoading("sl-rows");
   fetch("/api/system-logs",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{
       const h=j.health||{},c=h.db_counts||{};
@@ -3238,7 +3243,19 @@ function paintVersion(){
   $("vertab-count")&&($("vertab-count").textContent=`(${VER_ROWS.length})`);
   $("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> changes${filt?` <span class="muted">of ${VER_ROWS.length}</span>`:''}`;
   $("ver-rows").innerHTML=rows.map(e=>`<tr><td style="white-space:nowrap">${e.date||''}</td><td style="white-space:nowrap"><code>${e.version}</code></td><td style="white-space:nowrap"><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||'Feature'}</span></td><td>${(e.summary||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
-function renderVersion(){fetch("/api/version-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{VER_ROWS=j.entries||[];paintVersion();}).catch(()=>{$("ver-rows").innerHTML=`<tr><td colspan="3" class="empty">Could not load (admin only).</td></tr>`;});}
+// Shared "Data loading…" row for the admin tables (user 2026-08-23: "when data sets loading are slow we
+// need to see 'Data loading' e.g. batch activity, system logs ... perhaps all in this section").
+// Scheduled Jobs and Change Requests already did this by hand; Batch Activity, System Logs, Version
+// History and My Activity showed an empty table until their fetch returned, which on a slow admin query
+// is indistinguishable from "there is nothing here".
+// The column span is read from the table's own header, so it stays right when a column is added.
+function _rowsLoading(id){
+  const body=$(id); if(!body)return;
+  const table=body.closest("table");
+  const cols=table?Math.max(1,table.querySelectorAll("thead th").length):1;
+  body.innerHTML=`<tr><td colspan="${cols}" class="empty"><span class="sqh-loading">⏳ Data loading…" "+label:""}</span></td></tr>`;
+}
+function renderVersion(){_rowsLoading("ver-rows");fetch("/api/version-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{VER_ROWS=j.entries||[];paintVersion();}).catch(()=>{$("ver-rows").innerHTML=`<tr><td colspan="3" class="empty">Could not load (admin only).</td></tr>`;});}
 let BATCH_ROWS=[], batchSortK="ts", batchSortDir=-1;
 const _bmonth=e=>(e.ts||'').slice(0,7);   // YYYY-MM (date range chart)
 function paintBatch(){
@@ -3267,7 +3284,7 @@ function paintBatch(){
   $("batab-count")&&($("batab-count").textContent=`(${BATCH_ROWS.length})`);
   $("batch-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> batch runs${rows.length!==BATCH_ROWS.length?` <span class="muted">of ${BATCH_ROWS.length}</span>`:''}`;
   $("batch-rows").innerHTML=genSort(rows,batchSortK,batchSortDir).map(e=>`<tr><td>${e.ts||''}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.source||''}</span></td><td>${(e.event||'').replace(/</g,"&lt;")}</td><td>${e.by||''}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
-function renderBatch(){fetch("/api/batch-activity",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{BATCH_ROWS=j.entries||[];paintBatch();}).catch(()=>{$("batch-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});}
+function renderBatch(){_rowsLoading("batch-rows");fetch("/api/batch-activity",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{BATCH_ROWS=j.entries||[];paintBatch();}).catch(()=>{$("batch-rows").innerHTML=`<tr><td colspan="4" class="empty">Could not load (admin only).</td></tr>`;});}
 // P-65 (user 2026-08-03): the Operator dropdown writes the single-select choice into the shared bcf_by
 // filter key (empty = All), so picking here and clicking the Operator chart stay in one source of truth.
 function batchOpPick(){const el=$("batch-op"),bc=$("bcf_by");if(!el||!bc)return;bc.value=el.value||"";paintBatch();}
@@ -3733,6 +3750,7 @@ function paintActivity(){
     || `<tr><td colspan="3" class="empty">No activity recorded yet.</td></tr>`;
 }
 function renderActivity(){
+  _rowsLoading("act-rows");
   fetch("/api/userlog",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{AC_ROWS=j.log||[];paintActivity();})
     .catch(()=>{$("act-rows").innerHTML=`<tr><td colspan="2" class="empty">Could not load your activity — try logging in again.</td></tr>`;});
@@ -3904,15 +3922,15 @@ function paintIgAccount(){
   const renderedRows=tableRows.map(r=>r._rowKind==='open'
     ? (()=>{const ids=_agg?(r._deal_ids||[]):[r.deal_id],encoded=encodeURIComponent(ids.filter(Boolean).join(','));return `<tr><td><input type="checkbox" ${ids.length?'':'disabled'} ${ids.length&&ids.every(id=>IG_CLOSE_SELECTION.has(id))?'checked':''} onchange="igCloseToggle('${encoded}',this.checked)" title="Select this open position for a confirmed market close"></td><td><span class="tag bull">Open</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??'<span class="muted">—</span>'}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(r.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(r.limit??'')}</td><td>${r.currency||''}</td><td>${r.opened||''}</td><td></td><td></td><td><b>${r.ticker||r.epic||''}</b></td></tr>`})()
     : `<tr><td></td><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??''}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td></td><td></td><td>${r.currency||''}</td><td></td><td>${_igDateTime(r.closed)}</td><td>${_igReason(r.reason)}</td><td><b>${r.ticker||''}</b></td></tr>`);
-  if(showClosed&&IGCLOSED===null)renderedRows.push(`<tr><td colspan="17" class="empty refreshing">⏳ Data loading… closed trades from IG history; open positions are shown above.</td></tr>`);
+  if(showClosed&&IGCLOSED===null)renderedRows.push(`<tr><td colspan="17" class="empty refreshing">⏳ Data loading…</td></tr>`);
   else if(showClosed&&_igClosedNote)renderedRows.push(`<tr><td colspan="17" class="empty">${_esc(_igClosedNote)}</td></tr>`);
   const profitTotals={};
   pos.concat(closed).forEach(r=>{if(r.profit==null)return;const c=_igCurrency(r.currency);profitTotals[c]=(profitTotals[c]||0)+(+r.profit||0);});
   const totalProfit=Object.entries(profitTotals).map(([c,v])=>`${_igPf(+v.toFixed(2))} <span class="muted">${c}</span>`).join(' · ');
   const actualRows=pos.length+closed.length;
   const totalRow=actualRows?`<tr style="border-top:2px solid var(--line)"><td></td><td></td><td colspan="6"><b>Total visible profit (${actualRows} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
-  $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${actualRows}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed</span>${showClosed&&IGCLOSED===null?' <span class="refreshing">· ⏳ Data loading… closed trades from IG</span>':_igClosedNote?' <span class="muted">· '+_esc(_igClosedNote)+'</span>':''}`;
-  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="17" class="empty ${showClosed&&IGCLOSED===null?'refreshing':''}">${q?'No transactions match that search.':_igNoCreds?'No IG account data — add credentials in Configuration → IG.':'⏳ Data loading… open transactions and closed trades from IG history.'}</td></tr>`;
+  $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${actualRows}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed</span>${showClosed&&IGCLOSED===null?' <span class="refreshing">· ⏳ Data loading…</span>':_igClosedNote?' <span class="muted">· '+_esc(_igClosedNote)+'</span>':''}`;
+  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="17" class="empty ${showClosed&&IGCLOSED===null?'refreshing':''}">${q?'No transactions match that search.':_igNoCreds?'No IG account data — add credentials in Configuration → IG.':'⏳ Data loading…'}</td></tr>`;
 
   // ── WORKING ORDERS (own strip + sortable table) ──
   const ordBase=IG_ORD.filter(hit).map(o=>Object.assign({},o,_enrCommon(o),{gtd:(o.good_till||"").slice(0,10)||"—"}));
@@ -3949,9 +3967,9 @@ function renderIgAccount(ev){
   if(btn){btn.disabled=true;btn.className="sqh-loading";btn.textContent="⏳ Data loading…";}
   IGCLOSED=null;_igClosedNote="";_igNoCreds=false;
   $("ig-note").textContent="";$("ig-acct").innerHTML="";
-  $("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading… open positions, working orders and closed trades.</span>`;
-  $("ig-pos-rows").innerHTML=`<tr><td colspan="17" class="empty refreshing">⏳ Data loading… open positions and working orders.</td></tr>`;
-  $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty refreshing">⏳ Data loading… working orders.</td></tr>`;
+  $("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading…</span>`;
+  $("ig-pos-rows").innerHTML=`<tr><td colspan="17" class="empty refreshing">⏳ Data loading…</td></tr>`;
+  $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty refreshing">⏳ Data loading…</td></tr>`;
   const loadAccount=(attempt=0)=>fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
     .then(j=>{
       IG_POS=j.positions||[]; IG_ORD=j.orders||[]; IG_CLOSE_SELECTION.clear(); updateIgCloseButton(); igOpenMonthInitialised=false;
@@ -4085,13 +4103,13 @@ function renderPerformance(){
   const _pfl=$("pf-loading");
   if(PERF_DATA===null){                       // fetch the recorded-trigger report once, then render
     PERF_DATA=[];                             // in-flight guard
-    if(_pfl)_pfl.innerHTML=`<span class="sqh-loading" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ Data loading… 12-month replay.</span>`;
+    if(_pfl)_pfl.innerHTML=`<span class="sqh-loading" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ Data loading…</span>`;
     fetch("/api/performance").then(r=>r.ok?r.json():{rows:[]})
       .then(j=>{
         // Server is still building the 12-month replay (cold cache, first load after a restart, user
         // 2026-08-03 P-01): it returns {warming:true} instantly instead of blocking ~40s. Keep the badge
         // and poll until the rows are ready, so the tab never hangs.
-        if(j.warming){PERF_DATA=null;if($("pf-loading"))$("pf-loading").innerHTML=`<span class="sqh-loading" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ Data loading… 12-month replay (after restart).</span>`;setTimeout(renderPerformance,3000);return;}
+        if(j.warming){PERF_DATA=null;if($("pf-loading"))$("pf-loading").innerHTML=`<span class="sqh-loading" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ Data loading…</span>`;setTimeout(renderPerformance,3000);return;}
         PERF_DATA=_dedupeSameDayRows(j.rows||[]);PERF_GEN=j.generated||"";if($("pf-loading"))$("pf-loading").innerHTML="";_renderPerformance();})
       .catch(()=>{PERF_DATA=null;if($("pf-loading"))$("pf-loading").innerHTML=`<span style="color:var(--bear);font-size:12.5px">Performance data did not load. <button class="subpill" onclick="renderPerformance()">Retry</button></span>`;});
     // The analysis loads lazily when its sub-tab is opened (pfPanel), not here.
@@ -4252,7 +4270,7 @@ function renderSqueezeAnalysis(){
   renderBestSettings();     // best settings by quarter (user 2026-07-25, P-04 L59) — loads once, server-cached
   if(WIN!==null)return winnersParamsChange();   // route through winnersParamsChange so the derived Min/Max Trade populate (P-05)
   if(WIN_LOADING)return;
-  WIN_LOADING=true; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading… 12 months of trades.</div>';
+  WIN_LOADING=true; const s=$("ordp-summary"); if(s)s.innerHTML='<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading…</div>';
   // Load the annual decision surface first.  Starting the large three-year evidence request in parallel
   // made the browser wait on two expensive server builds and could leave the tab unresponsive; it is
   // now deferred and only refreshes the cards when it is ready.
@@ -4311,7 +4329,7 @@ function winnersLedgerFilter(){
 function winnersSLChange(){
   const v=+(($("ordp-sl-in")||{}).value||0), box=$("ordp-sl"), busy=$("ordp-sl-busy");
   if(!(v>0)){if(box)box.innerHTML="";return;}
-  if(busy){busy.className="sqh-loading";busy.textContent="⏳ Data loading… re-backtesting.";}
+  if(busy){busy.className="sqh-loading";busy.textContent="⏳ Data loading…";}
   fetch("/api/winners-sl?sl="+v).then(r=>r.ok?r.json():null).then(j=>{
     if(busy){busy.className="muted";busy.textContent="";}
     const rows=((j&&j.rows)||[]).filter(r=>r.perf!=null);
@@ -4385,7 +4403,7 @@ function winnersRunChange(surface='pf'){
   if(inT&&!inT.dataset.seed){inT.value=(MY_LIMITS.let_winners_run_trail??4);inT.dataset.seed="1";}
   if(inS&&!inS.dataset.seed){inS.value=(MY_LIMITS.let_winners_run_stop??0);inS.dataset.seed="1";}
   const v=+((inT||{}).value||(MY_LIMITS.let_winners_run_trail??4)), sv=+((inS||{}).value||(MY_LIMITS.let_winners_run_stop??0));
-  if(busy){busy.className="sqh-loading";busy.textContent="⏳ Data loading… re-backtesting.";}
+  if(busy){busy.className="sqh-loading";busy.textContent="⏳ Data loading…";}
   const evidenceQuery=`&wallet=${encodeURIComponent(WINNERS_WALLET)}&position_pct=${encodeURIComponent(WINNERS_STAKE*100)}&max_open=${encodeURIComponent(WINNERS_MAXOPEN)}&min_trade=${encodeURIComponent(MIN_TRADE)}`;
   fetch("/api/winners-run?thr="+v+"&stop="+sv+evidenceQuery).then(r=>r.ok?r.json():null).then(j=>{
     if(busy){busy.className="muted";busy.textContent="";}
@@ -4719,7 +4737,15 @@ function _bestSettingsByFundedTrades(pool,min,max){
 let _bestDecisionRows=null, _bestCardCapacity=null, _bestSettingsResizeTimer=null;
 // A compact iPad-mini decision surface can show nine cards; phones stop at six.  A laptop may show up
 // to eight, but only if the actual grid can keep them within two rows (trimmed after layout below).
-const bestCardCapacity=()=>innerWidth<=600?6:(innerWidth<=850?9:8);
+//
+// The tablet band runs to 1024px, not 850 (user 2026-08-23: "ipad mini is meant to show 9 cards, not 8").
+// An iPad mini is 768 wide in PORTRAIT but 1024 in LANDSCAPE, so at 850 the landscape orientation fell
+// into the laptop band and showed eight. One constant, used by BOTH the count and the row cap below:
+// they were separate literals, which is how the two halves of this rule could disagree in the first place.
+const BEST_TABLET_MAX=1024;
+const bestCardCapacity=()=>innerWidth<=600?6:(innerWidth<=BEST_TABLET_MAX?9:8);
+// Rows the grid may occupy: three in the phone/tablet band (up to nine cards), two on a laptop.
+const bestCardMaxRows=()=>innerWidth>BEST_TABLET_MAX?2:3;
 function renderBestCombo(all,{recordSnapshot=true}={}){
   _bestDecisionRows=all;
   _bestCardCapacity=bestCardCapacity();
@@ -4991,7 +5017,7 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   requestAnimationFrame(()=>{const grid=box.querySelector('.fgrid'),def=grid&&grid.querySelector('[data-choice="Defensive"]');if(!grid)return;if(def){const rowPeers=[...grid.children].filter(c=>c!==def&&c.offsetTop===def.offsetTop);if(!rowPeers.length){def.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!=="Defensive");if(BEST_SELECTED==="Defensive")selectBestChoice("Balanced");}}
     // Laptop: up to eight only when they physically fit in two rows.  Remove the weakest-return card
     // repeatedly until they do; a one-off trim could still leave a third or fourth row at narrower widths.
-    const maxRows=innerWidth>850?2:3;while(new Set([...grid.children].map(c=>c.offsetTop)).size>maxRows){const weakest=[...grid.querySelectorAll('[data-choice-return]')].sort((a,b)=>Number(a.dataset.choiceReturn)-Number(b.dataset.choiceReturn))[0];if(!weakest)break;const label=weakest.dataset.choice;weakest.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!==label);if(BEST_SELECTED===label)selectBestChoice("Balanced");}});
+    const maxRows=bestCardMaxRows();while(new Set([...grid.children].map(c=>c.offsetTop)).size>maxRows){const weakest=[...grid.querySelectorAll('[data-choice-return]')].sort((a,b)=>Number(a.dataset.choiceReturn)-Number(b.dataset.choiceReturn))[0];if(!weakest)break;const label=weakest.dataset.choice;weakest.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!==label);if(BEST_SELECTED===label)selectBestChoice("Balanced");}});
   BEST_CHOICES=choices; BEST_MODEL_W=w;
   // Detail card follows whichever choice is clicked (user 2026-08-07, ChangeRequest P-06); defaults to
   // Balanced on first render, and stays on the same choice across data refreshes where still present.
@@ -5079,6 +5105,20 @@ function selectBestChoice(label){
 // trading limits (user 2026-08-02, ToDo P-08) — "replicate those results in our trading". Confirms first,
 // POSTs only the provided keys to /api/config, refreshes MY_LIMITS + the config inputs, and re-renders the
 // dependent views. Values map: min_risk_reward, min_quality, min_volume_score, max_position_pct, max_open.
+// The four visible states of an "Apply this configuration" button. Amber = working, green = applied,
+// red = failed and clickable again (user 2026-08-23). Colours come from the theme tokens so this reads
+// correctly in both light and dark; "idle" clears them rather than leaving the last result's tint behind.
+const _APPLY_BTN={
+  idle:  {text:"Apply this configuration",      bg:"",              fg:"",              disabled:false},
+  saving:{text:"⏳ Saving…",                     bg:"var(--warn)",   fg:"#1a1a1a",       disabled:true},
+  done:  {text:"✓ Applied — Back Test updated", bg:"var(--bull)",   fg:"#0b1f14",       disabled:true},
+  failed:{text:"⚠ Save failed — retry",         bg:"var(--bear)",   fg:"#fff",          disabled:false}};
+function _applyBtnState(btn,state){
+  const s=_APPLY_BTN[state]||_APPLY_BTN.idle;
+  btn.textContent=s.text; btn.disabled=s.disabled;
+  btn.style.background=s.bg; btn.style.color=s.fg; btn.style.borderColor=s.bg||"";
+  btn.setAttribute("aria-busy",state==="saving"?"true":"false");
+}
 async function applyConfigFromReport(cfg, btn){
   // Fail closed rather than at the POST: without a session there is no User Configuration to write to,
   // and /api/config rejects it. The card renderer already withholds the button when logged out; this
@@ -5098,7 +5138,12 @@ async function applyConfigFromReport(cfg, btn){
   if("f_sec" in filters)rows.push(["Sector scope",filters.f_sec||"All sectors"]);
   if(!await appConfirm("This updates your User Configuration only. It does not place or change any orders.",
       {title:"Apply this configuration",ok:"Apply",rows})) return;
-  if(btn){btn.disabled=true;btn.textContent="Saving…";}
+  // In-flight, applied and failed are three different states and must not all look the same (user
+  // 2026-08-23: "there is a message of 'Saving' - this should be clear to user e.g. with AMBER colour").
+  // The save is a round trip to /api/config, so "Saving…" can sit there for a moment; amber says work is
+  // in progress, green says it landed, red says it did not. _applyBtnState also restores the button's own
+  // colours afterwards, so a retry does not stay tinted from the previous attempt.
+  if(btn)_applyBtnState(btn,"saving");
   const nextFilters={...USER_FILTERS,...filters};
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits,filters:nextFilters})})
     .then(r=>{if(!r.ok)throw 0;
@@ -5115,11 +5160,11 @@ async function applyConfigFromReport(cfg, btn){
       if(typeof msyncAll==='function')msyncAll();
       Object.entries(limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v;}});
       if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();
-      if(btn){btn.textContent="✓ Applied — Back Test updated";setTimeout(()=>{btn.disabled=false;btn.textContent="Apply this configuration";},4000);}
+      if(btn){_applyBtnState(btn,"done");setTimeout(()=>_applyBtnState(btn,"idle"),4000);}
       if(typeof renderPreorders==='function')renderPreorders();
       if(typeof render==='function')render();   // Scanner table hard-filters on MY_LIMITS too (P-01 2026-08-11) — same gap as saveLimits(), same fix
       if(typeof _renderPerformance==='function')_renderPerformance();})
-    .catch(()=>{if(btn){btn.disabled=false;btn.textContent="⚠ Save failed — retry";}});
+    .catch(()=>{if(btn)_applyBtnState(btn,"failed");});
 }
 // One compounding pass over a set of winners trades (user 2026-07-27, P-10 L122/L123 refactor): chronological
 // by trigger date, applies the Max-open-positions cap (a squeeze that triggers while the book is full is a
@@ -5313,9 +5358,9 @@ function paintInstruments(){
   // This tab can be selected before the shared /api/records request completes.  Do not replace the
   // initial loading row with a misleading "No instruments match" result while DATA is still empty.
   if(!DATA_LOADED){
-    if($("instr-count"))$("instr-count").innerHTML='<span class="muted">⏳ Loading instruments…</span>';
+    if($("instr-count"))$("instr-count").innerHTML='<span class="muted">⏳ Data loading…</span>';
     if($("instr-viz"))$("instr-viz").innerHTML='';
-    if($("instr-rows"))$("instr-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Loading instruments…</td></tr>';
+    if($("instr-rows"))$("instr-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr>';
     return;
   }
   const rows=DATA||[], q=(($("instr-search")||{}).value||"").trim().toLowerCase();
@@ -5545,9 +5590,9 @@ function renderFees(ev){
   if(btn){btn.disabled=true;btn.textContent="⏳ Data loading…";}
   FEES=null;
   const ex=$("fees-example"), tx=$("fees-txns"), title=$("fees-txn-title");
-  if(ex)ex.innerHTML='<p class="refreshing" style="font-size:12px;padding:8px 0">⏳ Data loading… fee basis from IG account and transaction history.</p>';
-  if(tx)tx.innerHTML='<p class="refreshing" style="font-size:12px;padding:8px 0">⏳ Data loading… closed trades from IG history.</p>';
-  if(title)title.innerHTML='<span class="refreshing">⏳ Data loading… Transactions</span>';
+  if(ex)ex.innerHTML='<p class="refreshing" style="font-size:12px;padding:8px 0">⏳ Data loading…</p>';
+  if(tx)tx.innerHTML='<p class="refreshing" style="font-size:12px;padding:8px 0">⏳ Data loading…</p>';
+  if(title)title.innerHTML='<span class="refreshing">⏳ Data loading…</span>';
   fetch("/api/fees",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
     FEES=j||{};
     // Seed the AUM box from the REAL account equity when available (user 2026-08-02, P-12), so the
@@ -6068,7 +6113,7 @@ function renderCR(ev){
   const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="⏳ Data loading…";}
   $("cr-count").innerHTML='<span class="sqh-loading">⏳ Data loading…</span>';
-  $("cr-rows").innerHTML=`<tr><td colspan="9" class="empty"><span class="sqh-loading">⏳ Data loading… change-request files</span></td></tr>`;
+  $("cr-rows").innerHTML=`<tr><td colspan="9" class="empty"><span class="sqh-loading">⏳ Data loading…</span></td></tr>`;
   fetch("/api/change-requests?refresh="+Date.now(),{headers:{"X-Auth":AUTH},cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{CR_FILES=j.files||[];paintCR();})
     .catch(()=>{$("cr-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not load (admin only).</td></tr>`;})

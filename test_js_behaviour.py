@@ -335,3 +335,117 @@ def test_the_headline_figures_are_read_from_the_ledger_not_the_table():
     assert "querySelectorAll" not in html[html.index("function paintOrdersPerf"):
                                           html.index("function paintOrdersPerf") + 6000], \
         "paintOrdersPerf must not derive figures by reading rendered rows"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Best Settings card capacity across the device bands (user 2026-08-23: "ipad mini is meant to show 9
+# cards, not 8").
+#
+# An iPad mini is 768 wide in PORTRAIT but 1024 in LANDSCAPE. The band ended at 850, so landscape fell
+# into the laptop band and showed eight. The count and the row cap were also separate literals, which is
+# how the two halves of one rule could disagree; they now share BEST_TABLET_MAX.
+# ------------------------------------------------------------------------------------------------------
+
+def _capacity_source() -> str:
+    html = INDEX.read_text(encoding="utf-8")
+    out = []
+    for name in ("BEST_TABLET_MAX", "bestCardCapacity", "bestCardMaxRows"):
+        m = re.search(rf"\nconst {name}=[^\n]*", html)
+        assert m, f"const {name}= not found"
+        out.append(m.group(0))
+    return "\n".join(out)
+
+
+@pytest.mark.parametrize("width,cards", [
+    (390, 6),     # phone
+    (600, 6),     # phone, upper edge
+    (601, 9),     # tablet band opens
+    (768, 9),     # iPad mini PORTRAIT
+    (1024, 9),    # iPad mini LANDSCAPE — the reported case
+    (1025, 8),    # laptop
+    (1440, 8),    # desktop
+])
+def test_card_capacity_by_viewport_width(width, cards):
+    got = run_js(f"var innerWidth={width};", _capacity_source(), "bestCardCapacity()")
+
+    assert got == cards, f"{width}px should offer {cards} cards, got {got}"
+
+
+@pytest.mark.parametrize("width,rows", [(390, 3), (768, 3), (1024, 3), (1025, 2), (1440, 2)])
+def test_row_cap_matches_the_same_band(width, rows):
+    """A 9-card capacity with a 2-row cap would trim straight back to 8 — the halves must agree."""
+    got = run_js(f"var innerWidth={width};", _capacity_source(), "bestCardMaxRows()")
+
+    assert got == rows
+
+
+def test_the_tablet_band_reaches_ipad_mini_landscape():
+    """THE REGRESSION. At the old 850 boundary a landscape iPad mini got the laptop count."""
+    src = _capacity_source()
+    old = "const bestCardCapacity=()=>innerWidth<=600?6:(innerWidth<=850?9:8);"
+
+    assert run_js("var innerWidth=1024;", old, "bestCardCapacity()") == 8, \
+        "the reconstruction must show 8, or this test proves nothing"
+    assert run_js("var innerWidth=1024;", src, "bestCardCapacity()") == 9
+
+
+def test_nine_cards_fit_the_row_cap_they_are_given():
+    """Capacity must be achievable: 9 cards over 3 rows needs at most 3 per row."""
+    src = _capacity_source()
+    for width in (768, 1024):
+        cap = run_js(f"var innerWidth={width};", src, "bestCardCapacity()")
+        rows = run_js(f"var innerWidth={width};", src, "bestCardMaxRows()")
+        assert cap <= rows * 3, f"{width}px offers {cap} cards but only {rows} rows"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Apply-button states and the admin loading rows (user 2026-08-23).
+# ------------------------------------------------------------------------------------------------------
+
+def test_the_apply_button_states_are_distinct_and_coloured():
+    html = INDEX.read_text(encoding="utf-8")
+    m = re.search(r"\nconst _APPLY_BTN=\{.*?\n?.*?failed:[^\n]*\n?", html, re.S)
+    assert m, "_APPLY_BTN state table not found"
+    states = m.group(0)
+
+    assert "var(--warn)" in states, "the in-flight state must be amber"
+    assert "var(--bull)" in states and "var(--bear)" in states
+    assert re.search(r"--warn:#", html), "the --warn token must be defined"
+    assert html.count("--warn:#") >= 2, "--warn needs a value in BOTH the dark and light themes"
+    assert 'saving:{text:"⏳ Saving…"' in states
+
+
+@pytest.mark.parametrize("tbody", ["ver-rows", "batch-rows", "act-rows", "sl-rows"])
+def test_admin_tables_show_a_loading_row(tbody):
+    """An empty admin table is indistinguishable from 'there is nothing here' while a slow query runs."""
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert f'_rowsLoading("{tbody}"' in html, f"{tbody} has no loading state"
+
+
+def test_the_loading_row_spans_the_real_column_count():
+    """A hardcoded colspan silently under-spans as soon as a column is added."""
+    html = INDEX.read_text(encoding="utf-8")
+    m = re.search(r"function _rowsLoading\(id\)\{.*?\n\}", html, re.S)
+    assert m, "_rowsLoading not found"
+
+    assert 'querySelectorAll("thead th").length' in m.group(0)
+
+
+def test_every_loading_message_is_the_same_wording():
+    """One wording everywhere (user 2026-08-23: "'Data loading... Scanner Report' is too much info ...
+    Also want consistency"). The page heading already says WHICH data set is loading, so naming it again
+    in the spinner was duplication — and it differed subtly across 20 places.
+
+    The only permitted suffixes are live STATUS: the numeric progress the user asked to keep ("retain
+    numeric progress such as 230/1431") and the retry counter, which distinguishes "still working" from
+    "stuck". Neither describes the data set.
+    """
+    html = INDEX.read_text(encoding="utf-8")
+    allowed = {"${done}/${total}${eta}", "retry ${attempt+1} of 3."}
+
+    tails = {tail.strip() for tail in re.findall(r"Data loading\u2026([^<\"'`]*)", html) if tail.strip()}
+    offenders = tails - allowed
+
+    assert not offenders, f"loading messages still name their data set: {sorted(offenders)}"
+    assert "Loading instruments" not in html, "a second phrasing for the same state"

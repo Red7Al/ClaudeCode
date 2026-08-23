@@ -4189,42 +4189,94 @@ def api_fees():
     return jsonify(payload)
 
 
+# Precomputed winners payloads (user 2026-08-23). Building one costs about 33 seconds -- the DB replay in
+# _sqa_all_rows plus the per-trigger feature pass -- and Best Settings asks for two windows on every visit.
+# Caching fixed the REPEAT cost; only precomputing fixes the first one. run_winners_precompute.py builds
+# these after the daily data refresh and stores them here, exactly as the Best Settings full-grid audit
+# already does with best_settings_full_grid_audit.
+#
+# Stored copies are used ONLY when they were built from the dataset now in play: the snapshot's
+# generated_utc is stored alongside and must match, and the copy must be under a day old. Anything else
+# falls through to the live build, so a missed or failed precompute is slow, never wrong.
+_WINNERS_STORE_MAX_AGE = 26 * 3600
+
+
+def _winners_store_key(years: int) -> str:
+    return f"winners_rows_{int(years)}y"
+
+
+def _winners_payload(years: int) -> dict:
+    """Build the winners payload for one window.
+
+    THE SINGLE DEFINITION, shared by /api/winners and the scheduled precompute, so a stored copy cannot
+    drift from what the endpoint would have produced. See memory results-winners-same-dataset: the
+    Performance tabs and this surface must be the same population, not two lookalike builds.
+    """
+    import datetime as _dt
+    payload = {"rows": [], "months": years * 12, "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
+    cutoff = (_dt.date.today() - _dt.timedelta(days=365 * years)).isoformat()
+    rows = [r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cutoff]
+    rows.sort(key=lambda r: (r.get("trig_date") or ""))
+    # Use the same requested review window for the population and its trigger-time features.  Do
+    # not silently borrow the annual cache for the three-year card.
+    # Keep the established no-argument annual call shape for existing integrations; the longer
+    # window is the exceptional path that must request its own feature population explicitly.
+    vsmap = _volscore_trigger_map() if years == 1 else _volscore_trigger_map(years)
+    vfmap = _volscore_trigger_feature_map() if years == 1 else _volscore_trigger_feature_map(years)
+    payload["rows"] = [
+        {"ticker": r["ticker"], "name": r["name"], "market": r["market"], "mcap": _json_safe(r.get("mcap")), "sector": r["sector"],
+         "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
+         "trig_date": r["trig_date"], "exit_date": r.get("exit_date"), "entry": _json_safe(r["entry"]), "stop": _json_safe(r["stop"]),
+         "outcome": r["outcome"], "perf": _json_safe(r["return_pct"]),
+         "quality": _json_safe(r["quality"]), "rr": _json_safe(r["rr"]), "rvol": _json_safe(r["rvol"]),
+         "volume_score": _json_safe(vsmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]))),
+         "above_vwap": vfmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]), {}).get("above_vwap"),
+         "atr_expanding": vfmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]), {}).get("atr_expanding")}
+        for r in rows]
+    return payload
+
+
 @app.route("/api/winners")
 def api_winners():
     """Raw per-trade rows for the "What separates the winners" tab (user 2026-07-18): the FULL last-12-months
     tradeable population (squeeze_history replay, R:R>=3, FX/Crypto excluded), each with its direction-aware
     return% — the SAME definition the Performance report uses. The frontend applies a 2%-of-the-running-wallet
     stake to compound the £. Chronological so the wallet can be built oldest-first."""
-    import datetime as _dt
     try:
         years = max(1, min(4, int(request.args.get("years", "1"))))
     except (TypeError, ValueError):
         years = 1
-    payload = {"rows": [], "months": years * 12, "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
+    stored = _winners_stored(years)
+    if stored is not None:
+        return jsonify(stored)
     try:
-        cutoff = (_dt.date.today() - _dt.timedelta(days=365 * years)).isoformat()
-        rows = [r for r in _sqa_all_rows() if (r.get("trig_date") or "") >= cutoff]
-        rows.sort(key=lambda r: (r.get("trig_date") or ""))
-        # Use the same requested review window for the population and its trigger-time features.  Do
-        # not silently borrow the annual cache for the three-year card.
-        # Keep the established no-argument annual call shape for existing integrations; the longer
-        # window is the exceptional path that must request its own feature population explicitly.
-        vsmap = _volscore_trigger_map() if years == 1 else _volscore_trigger_map(years)
-        vfmap = _volscore_trigger_feature_map() if years == 1 else _volscore_trigger_feature_map(years)
-        payload["rows"] = [
-            {"ticker": r["ticker"], "name": r["name"], "market": r["market"], "mcap": _json_safe(r.get("mcap")), "sector": r["sector"],
-             "location": r["location"], "direction": ("BULL" if r["direction"] == "BULLISH" else "BEAR"),
-             "trig_date": r["trig_date"], "exit_date": r.get("exit_date"), "entry": _json_safe(r["entry"]), "stop": _json_safe(r["stop"]),
-             "outcome": r["outcome"], "perf": _json_safe(r["return_pct"]),
-             "quality": _json_safe(r["quality"]), "rr": _json_safe(r["rr"]), "rvol": _json_safe(r["rvol"]),
-             "volume_score": _json_safe(vsmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]))),
-             "above_vwap": vfmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]), {}).get("above_vwap"),
-             "atr_expanding": vfmap.get((r["ticker"], str(r.get("trig_date") or "")[:10]), {}).get("atr_expanding")}
-            for r in rows]
+        payload = _winners_payload(years)
     except Exception as ex:
         log.warning(f"winners rows failed: {ex}")
-        payload["error"] = "The annual trade dataset could not be built."
+        payload = {"rows": [], "months": years * 12,
+                   "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+                   "error": "The annual trade dataset could not be built."}
     return jsonify(_json_safe(payload))
+
+
+def _winners_stored(years: int):
+    """A precomputed payload, but only if it was built from the dataset now in play. Else None."""
+    try:
+        import web_store
+        doc = web_store.load_json_store(_winners_store_key(years))
+    except Exception as ex:
+        log.warning(f"winners precompute unavailable ({ex}); building live")
+        return None
+    if not isinstance(doc, dict) or not isinstance(doc.get("payload"), dict):
+        return None
+    try:
+        if _time.time() - float(doc.get("built_at") or 0) > _WINNERS_STORE_MAX_AGE:
+            return None
+        if (doc.get("dataset") or "") != (_load_snapshot().get("generated_utc") or ""):
+            return None       # built from a different scan; the live build is the correct answer
+    except Exception:
+        return None
+    return doc["payload"]
 
 
 _CR_DIR = os.path.join(_REPO_ROOT, "ChangeRequests")

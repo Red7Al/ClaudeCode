@@ -183,3 +183,28 @@ HVF Web Application — Change Requests
     Request: P-06 Restore the Tab Visibility groupings and order the tabs within each grouping.
     Result: Completed and deployed. The first pass at item 29 removed the headings altogether, which was an over-correction: only the ORDER inside the groups was ever arbitrary. Settings, Instrument Operations, Application Operations and Other are restored, with the chips inside each sorted into tab-bar order.
     Status: complete
+
+38. Time: 09:40:00
+    Request: P-10 Remove the cold-build wait on the winners endpoints by precomputing them.
+    Result: Completed and deployed. Building one window costs about 33 seconds and Best Settings requests two on every visit, so keying the caches by window fixed repeat loads but a cold worker still paid in full. run_winners_precompute.py now builds both windows after the daily refresh and stores them in web_json_store, the same mechanism run_best_settings_audit.py already uses. The payload comes from server._winners_payload, the single definition the endpoint itself calls, so a stored copy cannot drift into a lookalike build of a different population. A stored payload is served ONLY when the snapshot generation time recorded alongside it matches the one now live and the copy is under a day old, and the script refuses to store an empty population, so a missed, failed or stale precompute makes the page slow rather than wrong. Registered as Winners Precompute at 05:50 UTC Mon-Sat, after the 04:30 price refresh and 05:30 report. Ten new tests, including one asserting the stored payload equals a live build of the same window.
+    Status: complete
+
+39. Time: 09:50:00
+    Request: P-06 The "Saving" message on Apply this configuration should be clear to the user, for example in amber.
+    Result: Completed and deployed. The button now has four distinct states: amber while the save is in flight, green when applied, red and clickable again on failure, then back to its normal appearance. The amber is a new --warn theme token carrying the #d29922 this file already used in about 97 places, with a darker value in the light theme where #d29922 fails contrast on a white panel. The button also carries aria-busy while saving.
+    Status: complete
+
+40. Time: 09:55:00
+    Request: P-06 Show "Data loading" wherever a slow data set is loading, for example Batch Activity and System Logs.
+    Result: Completed and deployed. Scheduled Jobs and Change Requests already did this by hand; Batch Activity, System Logs, Version History and My Activity showed an empty table until their fetch returned, which during a slow admin query is indistinguishable from "there is nothing here". All four now use one shared _rowsLoading helper that reads the column span from the table's own header rather than hardcoding it.
+    Status: complete
+
+41. Time: 10:00:00
+    Request: P-01 BUG iPad mini should show nine Best Settings cards, not eight.
+    Result: Completed and deployed. An iPad mini is 768 wide in portrait but 1024 in landscape, and the tablet band ended at 850, so the landscape orientation fell into the laptop band and showed eight. The band now runs to 1024. The card count and the post-layout row cap were also separate literals, which is how the two halves of one rule could disagree; they now share a single BEST_TABLET_MAX constant, and a test asserts nine cards can actually fit the rows they are given. Verified by execution across seven viewport widths, including a reconstruction of the old boundary showing eight at 1024.
+    Status: complete
+
+42. Time: 10:20:00
+    Request: P-06 "Data loading... Scanner Report" is too much information; the page title above already says what is loading. Check every Data loading message and make them consistent.
+    Result: Completed and deployed. Twenty messages named their own data set -- Scanner Report, run stats, closed trades from IG history, 12-month replay, change-request files and so on -- duplicating the heading directly above them and differing in wording each time; a second phrasing, "Loading instruments", existed too. All now read exactly "Data loading". The two dynamic suffixes are deliberately retained because they are live status rather than a description: the numeric progress the requester previously asked to keep (for example 230/1431) and the "retry n of 3" counter, which is what distinguishes still-working from stuck. 52 identical messages remain, with those two exceptions, and a test fails on any new message that names its data set.
+    Status: complete

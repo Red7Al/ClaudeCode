@@ -140,6 +140,12 @@ JOBS = [
     ("Price Data Refresh",  "30 4 * * 1-6",   "trading-price-refresh.yml"),  # 04:30 UTC Mon-Sat — refresh price_history BEFORE the 05:30 HVF Daily Report, which needs current bars (user 2026-08-04, ToDo P-02). Own workflow file since 2026-08-07 (ChangeRequest P-08 "job names look peculiar") — was sharing trading-price-audit.yml with the 23:00 "Price History Audit" job, which made the two show byte-identical run stats in the Scheduled Jobs tab (hvf_web/scheduled_jobs.py caches GitHub Actions stats per WORKFLOW FILE); splitting the file gives each job its own genuine history. Same script (re-fetch trailing window + upsert; idempotent).
     ("HVF Daily Report",    "30 5 * * 1-6",   "trading-hvf-report.yml"),  # 05:30 UTC Mon-Sat -> all publications (report + X drafts + live-X) done before 07:00 UTC (8am BST) (user 2026-06-19)
     ("Best Settings Full-grid Audit", "45 5 * * 1-6", "trading-best-settings-audit.yml"),
+    # Precompute the /api/winners payloads (user 2026-08-23). One window costs about 33 seconds to build
+    # and Best Settings requests two on every visit, so a cold worker made the first visitor wait for both.
+    # 05:50, after the 04:30 price refresh and the 05:30 report, so it builds from the day's refreshed
+    # history. The server ignores a stored payload built from a different scan or older than a day, so a
+    # missed run degrades to the live build rather than serving stale figures.
+    ("Winners Precompute",  "50 5 * * 1-6",   "trading-winners-precompute.yml"),
     ("HVF Orders",          "0 6 * * 1-6",    "trading-hvf-orders.yml"),  # 06:00 UTC Mon-Sat -> actionable HVF setups to #arw-claude-orders, before 07:00 UTC (8am BST) (user 2026-06-19)
     # Snapshot pre-orders -> IG working orders. Restored to a scheduler 2026-08-15 (user: "order bridge
     # must run"): it used to be a 2-hourly background thread in hvf_web/server.py started from __main__,

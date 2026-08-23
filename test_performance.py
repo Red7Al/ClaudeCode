@@ -209,7 +209,12 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert "Calculating transaction evidence for ${_esc(lbl)}" in html
     assert "requestAnimationFrame(()=>setTimeout" in html
     assert 'data-choice-return="${x.ret}"' in html
-    assert 'const maxRows=innerWidth>850?2:3' in html
+    # The row cap moved from a bare literal into bestCardMaxRows() on 2026-08-23, so it shares
+    # BEST_TABLET_MAX with bestCardCapacity(): as separate literals the count and the row cap could
+    # disagree, which is how a landscape iPad mini ended up capped at 8 cards. The band boundaries
+    # themselves are asserted by execution in test_js_behaviour.py.
+    assert 'const maxRows=bestCardMaxRows()' in html
+    assert 'const BEST_TABLET_MAX=' in html
     assert "let BEST_CHOICES=[], BEST_SELECTED=" in html
     assert "renderDecisionProof('best-proof',x.proof)" in html
     assert "renderDecisionProof(prefix+'-run-proof',runReplay.proof,{run:true,evidenceTitle:" in html

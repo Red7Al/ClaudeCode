@@ -1,0 +1,53 @@
+name: Winners Precompute (daily — 2026-08-23)
+
+# Builds the /api/winners payloads ahead of time so Best Settings does not pay for them on a user's first
+# visit. Triggered by cron-job.org via workflow_dispatch at 05:50 UTC Mon-Sat — NEVER add a schedule:
+# block (GitHub-native cron is banned, user directive 2026-06-07).
+#
+# Placed after the 04:30 Price Data Refresh and the 05:30 HVF Daily Report, so it builds from the day's
+# refreshed price history rather than racing it.
+#
+# The server accepts a stored payload only when the snapshot generation time recorded alongside it matches
+# the one now live and the copy is under a day old, so a missed or failed run makes Best Settings slow,
+# never wrong. run_winners_precompute.py also refuses to store an empty population for the same reason.
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: 'Comma-separated windows to build (default 1,3 — the two the web app requests).'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Build and report timings without storing anything.'
+        type: boolean
+        required: false
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  precompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      IG_API_KEY:           ${{ secrets.IG_API_KEY }}
+      IG_USERNAME:          ${{ secrets.IG_USERNAME }}
+      IG_PASSWORD:          ${{ secrets.IG_PASSWORD }}
+      IG_ACCOUNT_ID:        ${{ secrets.IG_ACCOUNT_ID }}
+      PYTHONIOENCODING:     utf-8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Build and store the winners payloads
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.years }}" ]; then ARGS="$ARGS --years ${{ inputs.years }}"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          python run_winners_precompute.py $ARGS
