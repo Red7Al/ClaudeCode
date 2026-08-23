@@ -59,7 +59,11 @@ die() { printf '\033[31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
 # --- 1. build ----------------------------------------------------------------------------------------
 say "Building the production package"
-"$PY" build_ionos_package.py
+BUILD_OUT="$("$PY" build_ionos_package.py)" || die "package build failed"
+printf '%s
+' "$BUILD_OUT"
+BUILD_ID="$(printf '%s
+' "$BUILD_OUT" | sed -n 's/^BUILD_ID=//p' | tail -1)"
 [ -f "$ZIP" ] || die "expected $ZIP to exist after the build"
 
 # --- 2. safety check ----------------------------------------------------------------------------------
@@ -260,4 +264,30 @@ if [ -n "${VERIFY_STRING:-}" ]; then
 fi
 
 [ "$fail" = "0" ] || die "deployed, but verification failed - check the output above before trusting the release"
+# --- 5b. is the API worker actually running this build? --------------------------------------------------
+# The static files always update; the Flask module behind the CGI wrapper often does NOT. IONOS shared
+# hosting keeps it resident and offers no restart: no control panel button, and the SSH session is a
+# sandbox that cannot see the web worker. Twice on 2026-08-22/23 a deploy reported success while /api/*
+# kept answering from an older module -- once discovered only because a new route 404'd, which is not a
+# signal a change without new routes would ever give. /api/build reports what the RUNNING process loaded.
+say "Checking the API worker is running this build"
+if [ -n "$BUILD_ID" ]; then
+  LIVE_BUILD="$(curl --silent --max-time 60 "$SITE/api/build"     | "$PY" -c "import json,sys; print((json.load(sys.stdin) or {}).get('fingerprint',''))" 2>/dev/null || echo "")"
+  if [ "$LIVE_BUILD" = "$BUILD_ID" ]; then
+    echo "  API worker is current ($BUILD_ID)"
+  elif [ -z "$LIVE_BUILD" ]; then
+    echo "  WARNING: /api/build did not answer. Either the worker predates this endpoint (expected on the"
+    echo "           first deploy that introduces it) or the API is down. Static content IS deployed."
+    echo "           Re-check: curl -s $SITE/api/build"
+  else
+    echo "  WARNING: the API worker is serving build '$LIVE_BUILD', not '$BUILD_ID'."
+    echo "           Every file on the host is current; the resident Flask module is not, so any"
+    echo "           server.py change in this release is NOT live yet. There is no restart available on"
+    echo "           shared hosting -- it clears when the worker recycles."
+    echo "           Re-check: curl -s $SITE/api/build"
+  fi
+else
+  echo "  (no build id produced; skipping the API freshness check)"
+fi
+
 say "Done - $SITE is serving the new build"

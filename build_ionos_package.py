@@ -86,6 +86,30 @@ def version_history_entries() -> list:
     return entries
 
 
+def build_identity() -> dict:
+    """A stamp identifying THIS package, so the live API can be asked which build it is running.
+
+    IONOS shared hosting keeps the imported Flask module resident behind the CGI wrapper and offers no
+    way to restart it: there is no control panel button, and the SSH session is a sandbox that cannot see
+    the web worker at all. So a deploy can update every file on disk while /api/* keeps answering from a
+    previously-loaded module -- twice on 2026-08-22/23 that went unnoticed until a new route 404'd, and
+    silently affected changes that added no route.
+
+    Deliberately NOT the commit sha: a short fingerprint is enough to compare "is the worker running what
+    I just shipped" without publishing the repository's history on an unauthenticated endpoint.
+    """
+    import hashlib
+    import subprocess
+    from datetime import datetime, timezone
+    try:
+        sha = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+                                      text=True, timeout=30).strip()
+    except Exception:
+        sha = ""
+    return {"fingerprint": hashlib.sha256(sha.encode()).hexdigest()[:12] if sha else "",
+            "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+
+
 def build(output: Path = DEFAULT_OUTPUT) -> tuple:
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -119,6 +143,12 @@ def build(output: Path = DEFAULT_OUTPUT) -> tuple:
             info.external_attr = (stat.S_IFREG | 0o644) << 16
             archive.writestr(info, history.encode("utf-8"),
                              compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+        identity = build_identity()
+        info = zipfile.ZipInfo("data/build_id.json")
+        info.create_system = 3
+        info.external_attr = (stat.S_IFREG | 0o644) << 16
+        archive.writestr(info, json.dumps(identity).encode("utf-8"),
+                         compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     return output, files
 
 
@@ -130,6 +160,9 @@ def main() -> int:
     output, files = build(args.output)
     archive_entries = len(files) + int(any(path.relative_to(ROOT).as_posix() == "hvf_web/index.html" for path in files))
     print(f"Built {output} with {archive_entries} production files ({output.stat().st_size} bytes).")
+    import zipfile as _z
+    with _z.ZipFile(output) as _a:
+        print(f"BUILD_ID={json.loads(_a.read('data/build_id.json'))['fingerprint']}")
     if args.list:
         for path in files:
             print(path.relative_to(ROOT).as_posix())

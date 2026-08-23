@@ -177,6 +177,20 @@ _DATA_DIR = os.path.join(os.path.dirname(_HERE), "data")
 _VERSION_FILE = os.path.join(_DATA_DIR, "version_history.json")
 _BATCH_FILE = os.path.join(_DATA_DIR, "batch_activity.json")
 _IG_CLOSE_AUDIT_FILE = os.path.join(_DATA_DIR, "ig_close_audit.jsonl")
+
+# Identity of the build this PROCESS loaded, captured at import time (see /api/build). Read once on
+# purpose: re-reading on request would report the file on disk, and the disk is not what is stale.
+def _read_build_id() -> dict:
+    try:
+        with open(os.path.join(_DATA_DIR, "build_id.json"), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return {"fingerprint": str(data.get("fingerprint") or ""), "built_at": str(data.get("built_at") or "")}
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return {"fingerprint": "", "built_at": ""}
+
+
+_BUILD_ID = _read_build_id()
+_MODULE_LOADED_AT = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
 _IG_CLOSE_AUDIT_LOCK = _threading.Lock()
 
 
@@ -1848,6 +1862,25 @@ def api_refresh():
                     "queued_for": _REFRESHING.get("queued_for"), "markets": markets,
                     "base_generated": _REFRESHING.get("base_generated"),
                     "refresh_id": _REFRESHING.get("refresh_id")})
+
+
+@app.route("/api/build")
+def api_build():
+    """Which build THIS worker process is running — the deploy's only way to prove the API took effect.
+
+    IONOS shared hosting keeps the imported Flask module resident behind the CGI wrapper and gives no way
+    to restart it: no control panel button, and the SSH session is a sandbox that cannot see the web
+    worker. A deploy therefore updates every file while /api/* keeps answering from a previously-loaded
+    module. That went unnoticed twice on 2026-08-22/23 and is exactly what blocked the IG close audit.
+
+    Read ONCE at import and cached in the module, deliberately: re-reading the file would report what is
+    on disk, which is the very thing that lies. This reports what the RUNNING process loaded, so a
+    mismatch against the packaged id is positive proof the worker is stale.
+
+    Unauthenticated, because the deploy must check it before anyone logs in, and it carries no secret:
+    a short fingerprint of the commit rather than the commit itself.
+    """
+    return jsonify(dict(_BUILD_ID, module_loaded_at=_MODULE_LOADED_AT))
 
 
 @app.route("/api/status")
