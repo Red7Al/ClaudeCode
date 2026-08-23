@@ -42,6 +42,7 @@ driven by scheduled jobs.
 `verify-before-declaring-blocked` · `verify-the-actual-claim` · `web-formatting-skill`.
 
 ### 1.3 Documents (`docs/`)
+- `OPS_RUNBOOK.md` — how to operate the system + the traps that have actually bitten (2026-08-23).
 - `SQUEEZE_METHOD.md` — the five rules + thresholds.
 - `DECISIONS_AND_WEIGHTING.md` — scoring/weighting decisions.
 - `price_action_framework.md` · `commodity_fundamentals.md` — analytical frameworks.
@@ -76,8 +77,9 @@ These would materially help onboarding, ops and change safety. None exist yet.
 3. **Database ERD** — the Supabase schema (`supabase_schema.sql`): `price_history`, `squeeze_history`,
    `hvf_triggers`, `web_users`, `app_config`, `working_orders`, `epic_lookup`, `x_publications`,
    `price_audit_log`, plus keys/relationships.
-4. **Ops runbook** — deploy (see `ah-deploy`), restart the web server, run/scope a backfill, rotate
-   secrets, and incident response (Yahoo 404s, IG session failures, snapshot staleness).
+4. ~~**Ops runbook**~~ — **written 2026-08-23: `OPS_RUNBOOK.md`.** Health checks, deploying and the
+   resident-worker trap, failed scheduled jobs, the scanner scan, Best Settings latency, the price and
+   sector backfills, database size and prune semantics, and the Resend verified-domain constraint.
 5. **Scheduled-jobs timeline** — a one-page daily UTC timeline of every cron job and why it runs when
    (e.g. price refresh 05:00 before the 05:30 Squeeze report), derived from `setup_cronjobs.JOBS`.
 6. **Security model** — auth/roles (admin/gold/silver/guest), secret storage (GitHub Secrets, not local
