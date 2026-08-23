@@ -69,8 +69,14 @@ say "Building the production package"
 say "Checking the archive cannot clobber .env / data/ / .venv_linux/"
 "$PY" - "$ZIP" <<'PYEOF'
 import sys, zipfile
+# data/version_history.json is the ONE deliberate exception (2026-08-23). It is not host runtime state:
+# it is a release manifest generated from git by this very build, and it is what the Version history tab
+# falls back to because the deployed package has no .git. Overwriting it with the manifest for the build
+# being installed is the entire point. Everything else under data/ stays protected.
+ALLOWED = {"data/version_history.json"}
 names = zipfile.ZipFile(sys.argv[1]).namelist()
-bad = [n for n in names if n == ".env" or n.startswith(("data/", ".venv_linux/"))]
+bad = [n for n in names
+       if n not in ALLOWED and (n == ".env" or n.startswith(("data/", ".venv_linux/")))]
 if bad:
     sys.exit(f"ERROR: archive would overwrite protected paths: {bad}")
 print(f"  OK - {len(names)} entries, none targeting protected paths")
