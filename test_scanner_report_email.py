@@ -215,3 +215,54 @@ def test_the_workflow_defaults_to_the_restricted_address():
     steps = wf["jobs"]["email"]["steps"]
     assert any("snapshot" in (s.get("name") or "").lower() for s in steps), (
         "a runner has no snapshot and Storage is 402; without seeding it the run silently sends nothing")
+
+
+def test_resend_failure_falls_back_to_yahoo(monkeypatch):
+    """THE BUG. Both senders RETURNED Resend's result, so a Resend error skipped a working Yahoo path.
+
+    config.EMAIL_FROM is a yahoo.co.uk address and Resend rejects unverified sending domains with a 403,
+    so with RESEND_API_KEY set EVERY email through here failed -- trade confirmations and bounce alerts
+    included -- while both docstrings promised a fallback. Found when the Scanner Report's first ever send
+    failed on 2026-08-23.
+    """
+    import trade_email
+    calls = []
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.setenv("YAHOO_USER", "u")
+    monkeypatch.setenv("YAHOO_APP_PASSWORD", "p")
+    monkeypatch.setattr(trade_email, "_send_via_resend",
+                        lambda *a, **k: calls.append("resend") or False)   # 403, unverified domain
+    monkeypatch.setattr(trade_email, "_send_via_yahoo", lambda *a, **k: calls.append("yahoo") or True)
+
+    assert trade_email.send_simple_email("s", "t", recipients=["x@example.com"]) is True
+    assert calls == ["resend", "yahoo"], f"no fallback occurred: {calls}"
+
+
+def test_a_working_resend_still_short_circuits(monkeypatch):
+    """The fallback must not double-send when Resend succeeds."""
+    import trade_email
+    calls = []
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.setenv("YAHOO_USER", "u")
+    monkeypatch.setenv("YAHOO_APP_PASSWORD", "p")
+    monkeypatch.setattr(trade_email, "_send_via_resend", lambda *a, **k: calls.append("resend") or True)
+    monkeypatch.setattr(trade_email, "_send_via_yahoo", lambda *a, **k: calls.append("yahoo") or True)
+
+    assert trade_email.send_simple_email("s", "t", recipients=["x@example.com"]) is True
+    assert calls == ["resend"], "Yahoo was called even though Resend succeeded"
+
+
+def test_the_trade_email_sender_falls_back_too(monkeypatch):
+    """send_trade_email carried the identical defect and must be fixed identically."""
+    import trade_email
+    calls = []
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.setenv("YAHOO_USER", "u")
+    monkeypatch.setenv("YAHOO_APP_PASSWORD", "p")
+    monkeypatch.setattr(trade_email, "_send_via_resend", lambda *a, **k: calls.append("resend") or False)
+    monkeypatch.setattr(trade_email, "_send_via_yahoo", lambda *a, **k: calls.append("yahoo") or True)
+
+    trade_email.send_trade_email("IWG.L", "BULLISH", {}, {"entry": 1, "stop": 0.9, "target": 1.2},
+                                 recipients=["x@example.com"])
+
+    assert calls == ["resend", "yahoo"], f"no fallback in send_trade_email: {calls}"

@@ -635,7 +635,14 @@ def send_simple_email(subject: str, text: str, html: str = None,
         if not rcpts:
             return False
         if os.environ.get("RESEND_API_KEY"):
-            return _send_via_resend(subject, text, html or f"<pre>{text}</pre>", [], rcpts)
+            # Try Resend, but do NOT return its failure: falling back only when the key is ABSENT meant a
+            # Resend error silently skipped a working Yahoo SMTP path (user 2026-08-23). Discovered when
+            # the Scanner Report's first ever send returned "Resend API 403: the yahoo.co.uk domain is not
+            # verified" -- config.EMAIL_FROM is a yahoo.co.uk address, so EVERY email through here was
+            # failing the same way while both docstrings promised a fallback.
+            if _send_via_resend(subject, text, html or f"<pre>{text}</pre>", [], rcpts):
+                return True
+            log.warning("Resend failed; falling back to Yahoo SMTP")
         if os.environ.get("YAHOO_USER") and os.environ.get("YAHOO_APP_PASSWORD"):
             return _send_via_yahoo(subject, text, html or f"<pre>{text}</pre>", [], rcpts)
         log.warning("No email sender configured (RESEND_API_KEY or YAHOO_*) — simple email skipped")
@@ -671,7 +678,14 @@ def send_trade_email(ticker: str, direction: str, sig: dict, trade: dict,
         charts = build_charts(ticker, sig, trade)
 
         if os.environ.get("RESEND_API_KEY"):
-            return _send_via_resend(subject, text, html, charts, rcpts)
+            # Try Resend, but do NOT return its failure: falling back only when the key is ABSENT meant a
+            # Resend error silently skipped a working Yahoo SMTP path (user 2026-08-23). Discovered when
+            # the Scanner Report's first ever send returned "Resend API 403: the yahoo.co.uk domain is not
+            # verified" -- config.EMAIL_FROM is a yahoo.co.uk address, so EVERY email through here was
+            # failing the same way while both docstrings promised a fallback.
+            if _send_via_resend(subject, text, html, charts, rcpts):
+                return True
+            log.warning("Resend failed; falling back to Yahoo SMTP")
         if os.environ.get("YAHOO_USER") and os.environ.get("YAHOO_APP_PASSWORD"):
             return _send_via_yahoo(subject, text, html, charts, rcpts)
         log.warning("No email sender configured (RESEND_API_KEY or YAHOO_*) — trade email skipped")

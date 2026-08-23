@@ -38,6 +38,7 @@
 
 import logging
 import os
+import sys
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("run_scanner_report_email")
@@ -248,7 +249,12 @@ def main():
                      f"Scanner report email — {sent} sent, {skipped} skipped, {failed} failed{scope}", by="cron")
     except Exception as e:
         log.warning(f"batch log skipped: {e}")
+    # A failed send must fail the JOB. The first live run reported success while delivering nothing
+    # (0 sent, 1 failed) because main() returned None regardless (user 2026-08-23). Skips are fine --
+    # a disabled account or one outside a restricted run is not an error -- but a send that was attempted
+    # and did not arrive is exactly what this job exists to do.
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
