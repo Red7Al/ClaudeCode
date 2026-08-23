@@ -2912,7 +2912,13 @@ def _sqa_compound(rows, start=10000.0, max_concurrent=_SQA_MAX_CONCURRENT,
     import heapq, itertools
     leverage = {**{"fx": 30.0, "equities": 5.0, "commodities": 10.0, "indices": 20.0}, **(leverage or {})}
     position_fraction = max(0.0, float(position_pct)) / 100.0
-    funded_cap = max(1, int(1.0 // position_fraction)) if position_fraction > 0 else 1
+    # floor(1 / fraction), computed so floating point cannot shave a position off it (2026-08-23).
+    # `1.0 // 0.05` is 19.0, not 20, because 1/0.05 floats to 19.999999999999996 -- so this capped a 5%
+    # model at 19 concurrent positions while the browser's Math.floor(1/0.05) allowed 20. Off by one for
+    # 2%, 4%, 5%, 10% and 20%, including the shipped 5% default, and contradicting this function's own
+    # docstring ("a 4% model cannot hold more than 25 positions" -- it computed 24). Found by
+    # test_replay_equivalence.py, which compares this replay against the browser's on the same input.
+    funded_cap = max(1, int(1.0 / position_fraction + 1e-9)) if position_fraction > 0 else 1
     requested_cap = int(max_concurrent or 0)
     max_concurrent = min(max(1, requested_cap), funded_cap) if requested_cap > 0 else funded_cap
 
