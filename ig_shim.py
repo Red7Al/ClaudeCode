@@ -398,6 +398,19 @@ _SESSION_POOL: dict = {}       # login -> IGSession (lazy, kept for the process 
 # confirmed target-protection handover.  Never remove a take-profit merely because a report setting is on.
 LIVE_LET_WINNERS_RUN_ENABLED = False
 
+# Observe-only mode (2026-08-23). Runs the COMPLETE let-winners-run decision path against the real
+# account -- same owner-scoped sessions, same live quotes, same target and handover arithmetic -- and
+# records what it WOULD have done, without calling a single mutating IG endpoint.
+#
+# It exists because the live path has never executed: it has been safety-disabled since it was written,
+# so every assurance about it is from tests and historical replay rather than from the broker. Observing
+# converts that into evidence from the real account at no risk, which is the only way to judge the live
+# path without first taking it.
+#
+# Independent of LIVE_LET_WINNERS_RUN_ENABLED on purpose: turning observation on can never place, amend
+# or close anything, so the two switches cannot be confused for one another.
+LWR_OBSERVE_ONLY = False
+
 
 def _lwr_account_fingerprint(account_id: str | None) -> str | None:
     """Stable non-display identifier used only to prevent cross-account LWR routing."""
@@ -3542,11 +3555,15 @@ def run_let_winners_run() -> dict:
     Each position is judged against ITS OWNER's `let_winners_run` switch, so one login enabling the
     feature never changes how another login's positions are managed.
     """
-    if not LIVE_LET_WINNERS_RUN_ENABLED:
+    observe = bool(LWR_OBSERVE_ONLY) and not LIVE_LET_WINNERS_RUN_ENABLED
+    if not LIVE_LET_WINNERS_RUN_ENABLED and not observe:
         log.warning("let-winners-run live management is safety-disabled; no IG stops will be changed.")
         return {"checked": 0, "locked": [], "trailing": [], "skipped": 0, "users_on": [],
                 "disabled": True}
-    out = {"checked": 0, "locked": [], "trailing": [], "skipped": 0, "users_on": set()}
+    if observe:
+        log.warning("let-winners-run OBSERVE ONLY: every decision below is recorded, none is sent to IG.")
+    out = {"checked": 0, "locked": [], "trailing": [], "skipped": 0, "users_on": set(),
+           "observe_only": observe, "would": []}
     targets = _lwr_targets()
     if not targets:
         return out
@@ -3613,6 +3630,13 @@ def run_let_winners_run() -> dict:
                 # The quote was read through this owner's session above. Re-enter the same owner-bound
                 # session for the mutation: acting_session restores the module-global session after a
                 # context exits, so calling this bare would otherwise risk amending the default account.
+                if observe:
+                    out["would"].append({"action": "attach_trailing_stop", "owner": owner, "epic": epic,
+                                         "deal_id": deal_id, "price": price, "target": target,
+                                         "distance": round(price * trail, 2)})
+                    log.info("let-winners-run WOULD hand %s/%s to an IG trailing stop %.2f behind %.2f",
+                             owner, deal_id, price * trail, price)
+                    continue
                 try:
                     with acting_session(owner):
                         changed = attach_trailing_stop(deal_id, price * trail)
@@ -3630,6 +3654,12 @@ def run_let_winners_run() -> dict:
             reached = (price >= target) if buy else (price <= target)
             better = (target > stop) if buy else (target < stop or stop == 0)
             if reached and better:
+                if observe:
+                    out["would"].append({"action": "update_stop", "owner": owner, "epic": epic,
+                                         "deal_id": deal_id, "old_stop": stop, "new_stop": target})
+                    log.info("let-winners-run WOULD move %s/%s stop %.2f -> %.2f (target locked)",
+                             owner, deal_id, stop, target)
+                    continue
                 try:
                     with acting_session(owner):
                         changed = update_stop(deal_id, target)

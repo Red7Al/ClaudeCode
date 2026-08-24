@@ -383,3 +383,104 @@ def test_lwr_gates_the_working_order_path_not_the_market_order_path():
     assert 'let_run=_lwr_cfg(profile.get("name"))[0]' in sig_src, (
         "the gate decision belongs where the profile is known, not inside place_working_order"
     )
+
+
+# ======================================================================================================
+# Observe-only mode (2026-08-23).
+#
+# The live let-winners-run path has NEVER executed: it has been safety-disabled since it was written, so
+# every assurance about it comes from tests and historical replay rather than from the broker. Observe
+# mode runs the complete decision path against the real account -- same owner-scoped sessions, same live
+# quotes, same arithmetic -- and records what it WOULD do, so the live path can be judged on real evidence
+# without first taking it.
+#
+# The whole value of that rests on one property: in observe mode it must be INCAPABLE of mutating. These
+# tests assert exactly that, including the case where the position qualifies for action.
+# ======================================================================================================
+
+def _observe(monkeypatch, positions, targets, enabled=True, uplift=0.05, trail=0.04):
+    """Wire observe mode with the mutators replaced by tripwires that fail the test if called."""
+    tripped = []
+    monkeypatch.setattr(ig_shim, "LIVE_LET_WINNERS_RUN_ENABLED", False)
+    monkeypatch.setattr(ig_shim, "LWR_OBSERVE_ONLY", True)
+    monkeypatch.setattr(ig_shim, "_lwr_cfg", lambda user: (enabled, uplift, trail))
+    monkeypatch.setattr(ig_shim, "_lwr_targets", lambda: targets)
+    monkeypatch.setattr(ig_shim, "get_open_positions", lambda: positions)
+    monkeypatch.setattr(ig_shim, "update_stop",
+                        lambda *a, **k: tripped.append(("update_stop", a)) or True)
+    monkeypatch.setattr(ig_shim, "attach_trailing_stop",
+                        lambda *a, **k: tripped.append(("attach_trailing_stop", a)) or True)
+    return tripped
+
+
+def test_observe_records_the_target_lock_without_sending_it(monkeypatch):
+    """Price has touched the target: live mode would move the stop. Observe must only record it."""
+    tripped = _observe(monkeypatch, [_pos(bid=112.0)], {"D1": (110.0, "Alex")})
+
+    out = ig_shim.run_let_winners_run()
+
+    assert tripped == [], f"observe mode called a mutating IG endpoint: {tripped}"
+    assert out["observe_only"] is True
+    assert out["locked"] == [], "nothing was actually locked"
+    assert [w["action"] for w in out["would"]] == ["update_stop"]
+    assert out["would"][0]["new_stop"] == 110.0
+
+
+def test_observe_records_the_trailing_handover_without_sending_it(monkeypatch):
+    """Price is beyond target x (1 + uplift): live mode would attach an IG trailing stop."""
+    tripped = _observe(monkeypatch, [_pos(bid=200.0)], {"D1": (110.0, "Alex")})
+
+    out = ig_shim.run_let_winners_run()
+
+    assert tripped == [], f"observe mode called a mutating IG endpoint: {tripped}"
+    assert [w["action"] for w in out["would"]] == ["attach_trailing_stop"]
+    assert out["trailing"] == []
+
+
+def test_observe_is_silent_when_nothing_qualifies(monkeypatch):
+    tripped = _observe(monkeypatch, [_pos(bid=95.0)], {"D1": (110.0, "Alex")})
+
+    out = ig_shim.run_let_winners_run()
+
+    assert tripped == []
+    assert out["would"] == []
+
+
+def test_observe_never_runs_while_the_live_switch_is_on(monkeypatch):
+    """The two switches must not be confusable: with live enabled, observe is not the mode in play."""
+    monkeypatch.setattr(ig_shim, "LIVE_LET_WINNERS_RUN_ENABLED", True)
+    monkeypatch.setattr(ig_shim, "LWR_OBSERVE_ONLY", True)
+    monkeypatch.setattr(ig_shim, "_lwr_cfg", lambda user: (True, 0.05, 0.04))
+    monkeypatch.setattr(ig_shim, "_lwr_targets", lambda: {"D1": (110.0, "Alex")})
+    monkeypatch.setattr(ig_shim, "get_open_positions", lambda: [_pos(bid=112.0)])
+    calls = []
+    monkeypatch.setattr(ig_shim, "update_stop", lambda *a, **k: calls.append(a) or True)
+    monkeypatch.setattr(ig_shim, "attach_trailing_stop", lambda *a, **k: calls.append(a) or True)
+
+    out = ig_shim.run_let_winners_run()
+
+    assert out.get("observe_only") is False
+    assert calls, "with the live switch on, the real path must run"
+
+
+def test_both_switches_off_does_nothing_at_all(monkeypatch):
+    """The shipped state. Neither observes nor acts."""
+    monkeypatch.setattr(ig_shim, "LIVE_LET_WINNERS_RUN_ENABLED", False)
+    monkeypatch.setattr(ig_shim, "LWR_OBSERVE_ONLY", False)
+    monkeypatch.setattr(ig_shim, "_lwr_targets",
+                        lambda: (_ for _ in ()).throw(AssertionError("must not even read targets")))
+
+    out = ig_shim.run_let_winners_run()
+
+    assert out["disabled"] is True
+    assert out["checked"] == 0
+
+
+def test_the_shipped_state_is_both_switches_off():
+    """Neither may be committed as on. Live places real stops; observe would surprise on a live account."""
+    import re
+    from pathlib import Path
+    src = Path(ig_shim.__file__).read_text(encoding="utf-8")
+
+    assert re.search(r"^LIVE_LET_WINNERS_RUN_ENABLED = False$", src, re.M)
+    assert re.search(r"^LWR_OBSERVE_ONLY = False$", src, re.M)
