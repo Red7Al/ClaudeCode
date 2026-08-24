@@ -199,6 +199,11 @@ JOBS = [
     # Weekly index-health review (2026-08-17, user: "also review this weekly to see what is required").
     # Read-only: duplicate indexes, unused indexes, uncovered foreign keys. Silent on a clean week.
     # 08:00 Sunday, an hour behind the PAT check so the two never contend for the same runner minute.
+    # Let Winners Run removes the IG take-profit, so an open winner is protected only while the stop
+    # manager keeps running. Its own job, NOT part of the Order Bridge: a watchdog inside the thing it
+    # watches is useless when that thing is what failed. Hourly on weekdays, covering the two-hourly
+    # bridge; silent unless positions were actually relying on a pass that did not happen.
+    ("Let Winners Run Watchdog", "20 7-21 * * 1-5", "trading-lwr-watchdog.yml"),
     ("DB Index Audit",                 "0 8 * * 0",   "trading-db-index-audit.yml"),
     # Resolve ticker -> GICS sector for anything new in the universe (user 2026-08-22). sector_cache
     # shipped its backfill on 2026-07-17 but nothing ever scheduled it, so the cache only grew when

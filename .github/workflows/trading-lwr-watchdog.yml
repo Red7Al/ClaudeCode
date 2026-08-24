@@ -1,0 +1,53 @@
+name: Let Winners Run Watchdog (2026-08-23)
+
+# Alerts when positions are relying on the Let Winners Run stop manager and it has stopped running.
+# Triggered by cron-job.org via workflow_dispatch — NEVER add a schedule: block (GitHub-native cron is
+# banned, user directive 2026-06-07).
+#
+# WHY IT IS ITS OWN JOB. Let Winners Run places orders with NO take-profit, so the gain is protected only
+# while run_let_winners_run() keeps executing. A watchdog living inside the Order Bridge would be useless
+# in the one case that matters — the bridge failing — so this runs separately, reads only the heartbeat
+# the manager writes, and holds no IG credentials at all.
+#
+# Quiet by design: it stays silent when the manager has never run (the feature is off and positions keep
+# their take-profit), and when the last pass had no positions bound to it. A watchdog that cries wolf
+# gets muted, and a muted watchdog is worse than none.
+on:
+  workflow_dispatch:
+    inputs:
+      max_age:
+        description: 'Hours before a missed pass counts as a fault. Default 5 (the bridge runs every 2).'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Assess and report in the log without posting to Slack.'
+        type: boolean
+        required: false
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
+      PYTHONIOENCODING:     utf-8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Check the stop manager is still running
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.max_age }}" ]; then ARGS="$ARGS --max-age ${{ inputs.max_age }}"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          # Exit 1 means "alerted", which is information, not a broken job.
+          python run_lwr_watchdog.py $ARGS || true

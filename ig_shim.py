@@ -3549,6 +3549,32 @@ def _lwr_targets() -> dict:
     return out
 
 
+def _lwr_heartbeat(out: dict, observe: bool) -> None:
+    """Record that a management pass completed, for run_lwr_watchdog.py.
+
+    Let Winners Run places orders with NO take-profit, so the gain is protected only while this manager
+    keeps running. With a take-profit the broker holds it even if every system of ours is down; without
+    one, a bridge that stops leaves an open winner able to round-trip to its original stop. The Order
+    Bridge runs every two hours on weekdays, so positions are unmanaged overnight and at weekends.
+
+    `managed` is what makes the watchdog useful rather than noisy: it distinguishes "stale and positions
+    were relying on it" from "stale and there was nothing to manage".
+
+    NEVER raises. A failed heartbeat must not disturb a trading pass -- the watchdog going quiet is a
+    smaller problem than the manager falling over.
+    """
+    try:
+        import web_store
+        web_store.save_json_store("lwr_last_pass", {
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "mode": "observe" if observe else "live",
+            "checked": out.get("checked", 0), "managed": out.get("managed", 0),
+            "locked": len(out.get("locked") or []), "trailing": len(out.get("trailing") or []),
+            "users_on": sorted(out.get("users_on") or [])})
+    except Exception as exc:
+        log.warning("let-winners-run: heartbeat not recorded (%s); the watchdog may report a stale pass", exc)
+
+
 def run_let_winners_run() -> dict:
     """One pass of phases 2 and 3 over every open position. Never widens a stop; never closes anything.
 
@@ -3606,6 +3632,7 @@ def run_let_winners_run() -> dict:
                 log.error("let-winners-run: account binding mismatch for %s/%s; skipping", owner, deal_id)
                 out["skipped"] += 1
                 continue
+            out["managed"] = out.get("managed", 0) + 1   # bound to this owner and currently open at IG
             target = rec["target"]
             buy = str(pos.get("direction") or "").upper() == "BUY"
             try:
@@ -3674,6 +3701,8 @@ def run_let_winners_run() -> dict:
             else:
                 out["skipped"] += 1
     out["users_on"] = sorted(out["users_on"])
+    out.setdefault("managed", 0)
+    _lwr_heartbeat(out, observe)
     if out["locked"] or out["trailing"]:
         log.info(f"let-winners-run: {len(out['locked'])} stop(s) moved to target, "
                  f"{len(out['trailing'])} handed to IG trailing (users: {', '.join(out['users_on'])})")
