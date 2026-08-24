@@ -625,3 +625,122 @@ def test_the_showTab_dispatch_map_still_matches_this_audit():
 
     missing = mapped - set(TAB_RENDERERS) - {"marketsadmin", "markets", "preorders", "configadmin"}
     assert not missing, f"tabs in the dispatch map but absent from this audit: {sorted(missing)}"
+
+
+# ------------------------------------------------------------------------------------------------------
+# A tab can depend on data it does not fetch itself (user 2026-08-24: "We are still missing Data loading
+# messages e.g. Markets (Admin)").
+#
+# The first audit only asked "does this renderer call fetch()". Markets, Markets (Admin) and My Pre-orders
+# all derive from the shared DATA snapshot, which /api/records loads asynchronously -- measured at 14.4 s
+# -- so they passed that check while still rendering an empty table for fourteen seconds. Depending on
+# async data needs a loading state just as much as fetching it does.
+# ------------------------------------------------------------------------------------------------------
+
+DATA_DEPENDENT = ["renderMarkets", "renderMarketsAdmin", "renderPreorders"]
+
+
+@pytest.mark.parametrize("renderer", DATA_DEPENDENT)
+def test_renderers_that_depend_on_the_shared_snapshot_show_a_loading_state(renderer):
+    html = INDEX.read_text(encoding="utf-8")
+    body = _fn_body(html, renderer)
+    assert body, f"{renderer} not found"
+
+    assert "_awaitingData(" in body, (
+        f"{renderer} reads DATA but shows nothing while it loads; an empty table during a 14-second "
+        f"fetch is indistinguishable from 'there is nothing here'")
+
+
+def test_the_data_guard_actually_paints_a_loading_row():
+    html = INDEX.read_text(encoding="utf-8")
+    guard = _fn_body(html, "_awaitingData")
+
+    assert "_rowsLoading(" in guard, "the guard must show the message, not just return early"
+    assert "DATA" in guard and "length" in guard
+
+
+def test_no_renderer_reads_DATA_without_either_fetching_or_guarding():
+    """THE CORRECTED AUDIT. Catches the next tab added with this shape."""
+    html = INDEX.read_text(encoding="utf-8")
+    gaps = []
+    for renderer in set(list(TAB_RENDERERS.values()) + DATA_DEPENDENT):
+        body = _fn_body(html, renderer)
+        if not body:
+            continue
+        reads_data = re.search(r"\bDATA\b", body)
+        if reads_data and "fetch(" not in body and not re.search(
+                r"Data loading|_rowsLoading|_awaitingData|sqh-loading", body):
+            gaps.append(renderer)
+
+    assert not gaps, f"these renderers depend on the async snapshot with no loading state: {sorted(gaps)}"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Instruments render cap (user 2026-08-24: "why is the initial click of each tab so slow e.g.
+# instruments", and a click on another tab "is not recognised - it is like the site is frozen").
+#
+# Measured on the live site: all 1,773 rows is about 25,000 DOM elements -- 65% of the entire page --
+# torn down and rebuilt on every paint. Successive paints took 2,201 / 2,940 / 18,568 ms. An 18-second
+# synchronous block is precisely why a click elsewhere appears ignored.
+# ------------------------------------------------------------------------------------------------------
+
+def _instr_cap_source(show_all: bool) -> str:
+    """The real cap declaration and expressions, with INSTR_SHOW_ALL set between them.
+
+    The declaration itself defines INSTR_SHOW_ALL, so a caller must not also declare it in the preamble;
+    the flag is assigned after the `let` instead.
+    """
+    html = INDEX.read_text(encoding="utf-8")
+    m = re.search(r"\nlet INSTR_ROW_LIMIT=[^\n]*\n", html)
+    assert m, "the Instruments render cap was not found"
+    cap = re.search(r"\n\s*const _instrAll=[^\n]*\n\s*const _instrRows=[^\n]*\n", html)
+    assert cap, "the Instruments cap expressions were not found"
+    flag = "true" if show_all else "false"
+    return textwrap.dedent(m.group(0)) + f"\nINSTR_SHOW_ALL={flag};\n" + textwrap.dedent(cap.group(0))
+
+
+def test_instruments_caps_the_rows_it_materialises():
+    src = _instr_cap_source(False) + "\nconst out={all:_instrAll,n:_instrRows.length};"
+
+    assert run_js("const shown=new Array(1773).fill(0);", src, "out.n") == 250
+    assert run_js("const shown=new Array(1773).fill(0);", src, "out.all") is False
+
+
+def test_a_short_list_is_not_capped():
+    src = _instr_cap_source(False) + "\nconst out={all:_instrAll,n:_instrRows.length};"
+
+    assert run_js("const shown=new Array(40).fill(0);", src, "out.n") == 40
+    assert run_js("const shown=new Array(40).fill(0);", src, "out.all") is True
+
+
+def test_show_all_renders_everything():
+    src = _instr_cap_source(True) + "\nconst out={n:_instrRows.length};"
+
+    assert run_js("const shown=new Array(1773).fill(0);", src, "out.n") == 1773
+
+
+def test_the_uncapped_render_is_what_froze_the_tab():
+    """A guard that has never failed proves nothing: run the shape that shipped."""
+    was = run_js("const shown=new Array(1773).fill(0);", "const rendered=shown;", "rendered.length")
+    now = run_js("const shown=new Array(1773).fill(0);",
+                 _instr_cap_source(False) + "\nconst out={n:_instrRows.length};", "out.n")
+
+    assert was == 1773
+    assert now < was, "THE HARNESS CANNOT TELL THE UNCAPPED RENDER FROM THE CAPPED ONE"
+
+
+def test_the_counts_still_report_the_true_totals():
+    """Capping the rows must not cap the numbers: the count and the tab badge report what MATCHED."""
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "${shown.length.toLocaleString()}</b> instruments" in html
+    assert '$("instrtab-count").textContent=`(${shown.length.toLocaleString()})`' in html
+
+
+def test_the_instruments_tab_button_has_a_count_like_the_others():
+    """user 2026-08-24: "instruments tab does not have table row count in it - unlike most other tabs"."""
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert 'id="instrtab-count"' in html
+    for sibling in ("sctab-count", "potab-count", "ootab-count"):
+        assert f'id="{sibling}"' in html, "the sibling tab counts this was matched to have moved"

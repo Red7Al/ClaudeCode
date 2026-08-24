@@ -1879,7 +1879,19 @@ const _mkUserSwitch=m=>{const admDis=MARKETS_DISABLED.has(m),on=!MARKETS_OFF.has
   return `<input type="checkbox" ${on?'checked':''} ${admDis?'disabled title="Disabled by admin"':''} onchange="mkToggle('${(m||'').replace(/'/g,'')}','user',this.checked)" style="cursor:pointer;transform:scale(1.3)">`;};
 const _mkAdminSwitch=m=>`<input type="checkbox" ${MARKETS_DISABLED.has(m)?'':'checked'} onchange="mkToggle('${(m||'').replace(/'/g,'')}','app',this.checked)" style="cursor:pointer;transform:scale(1.3)">`;
 let mkSortK="market", mkSortDir=1;   // default: Market A→Z (user 2026-07-11)
+// A tab can depend on data it does not fetch itself. Markets, Markets (Admin) and My Pre-orders all
+// derive from the shared DATA snapshot, which /api/records loads asynchronously and which took 14.4 s on
+// 2026-08-24. Until it arrives they rendered an empty table with no indication, which during a slow load
+// is indistinguishable from "there is nothing here" (user: "We are still missing Data loading messages
+// e.g. Markets (Admin)"). The first audit missed these because it only looked for fetch() in the
+// renderer -- depending on async data needs a loading state just as much as fetching it does.
+function _awaitingData(tbodyId){
+  if(typeof DATA!=="undefined"&&DATA&&DATA.length)return false;
+  _rowsLoading(tbodyId);
+  return true;
+}
 function renderMarkets(){
+  if(_awaitingData("mk-rows"))return;
   const rows=_mkSort(_mkAgg(),mkSortK,mkSortDir);
   $("mk-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments scanned</span>`;
   $("mktab-count")&&($("mktab-count").textContent=`(${rows.length})`);
@@ -1904,6 +1916,7 @@ document.querySelectorAll("th[data-mk]").forEach(th=>th.onclick=()=>{const k=th.
 // ── Markets (Admin) tab (admin, user 2026-07-10): per-market coverage + full data-import rebuild ──
 let maSortK="total", maSortDir=-1;
 function renderMarketsAdmin(){
+  if(_awaitingData("ma-rows"))return;
   const rows=_mkSort(_mkAgg(),maSortK,maSortDir);
   $("ma-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments</span>`;
   $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkAdminSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")||`<tr><td colspan="9" class="empty">No market data.</td></tr>`;
@@ -3539,6 +3552,10 @@ function instrRvolCell(row){
 }
 // Cross-filter cards: Location/Market/Sector/Status are public; Direction is a 4th "worthwhile" card but
 // only once logged in — it's one of the columns hidden pre-login (same rule as the table below).
+// See the render cap inside paintInstruments. 250 keeps the tab responsive while still showing a useful
+// page of results; the search and filter cards operate on the FULL set, so nothing is hidden from a
+// query -- only from the initial wall of rows.
+let INSTR_ROW_LIMIT=250, INSTR_SHOW_ALL=false;
 function paintInstruments(){
   // This tab can be selected before the shared /api/records request completes.  Do not replace the
   // initial loading row with a misleading "No instruments match" result while DATA is still empty.
@@ -3567,7 +3584,17 @@ function paintInstruments(){
     else cmp=(typeof x==="number"&&typeof y==="number")?x-y:String(x).localeCompare(String(y));
     if(cmp)return cmp*s.d;}return 0;});
   if($("instr-count"))$("instr-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> instruments${rows.length!==shown.length?` <span class="muted">of ${rows.length.toLocaleString()}</span>`:""}`;
-  if($("instr-rows"))$("instr-rows").innerHTML=shown.map(r=>{
+  if($("instrtab-count"))$("instrtab-count").textContent=`(${shown.length.toLocaleString()})`;
+  // Render cap (user 2026-08-24: "why is the initial click of each tab so slow e.g. instruments" and
+  // "I clicked on IG account tab but this is not recognised - it is like the site is frozen").
+  // Measured: all 1,773 rows is about 25,000 DOM elements -- 65% of the entire page -- torn down and
+  // rebuilt on every paint. Successive paints took 2,201 / 2,940 / 18,568 ms; that variance is garbage
+  // collection and layout, and an 18-second block is exactly why a click elsewhere looks ignored.
+  // The counts above still report the true totals, and the search and filter cards still narrow the FULL
+  // set -- only the number of rows materialised is limited.
+  const _instrAll=INSTR_SHOW_ALL||shown.length<=INSTR_ROW_LIMIT;
+  const _instrRows=_instrAll?shown:shown.slice(0,INSTR_ROW_LIMIT);
+  if($("instr-rows"))$("instr-rows").innerHTML=_instrRows.map(r=>{
     const tk=(r.ticker||"").replace(/'/g,"");
     return `<tr>
     <td class="clk" style="cursor:pointer;color:var(--accent)" title="${AUTH?"Open the detail report":"Log in to open the detail report"}" onclick="${AUTH?`openDetailFrom('instruments','${tk}')`:"showLogin()"}">${nm40(r.name)}</td>
@@ -3580,7 +3607,13 @@ function paintInstruments(){
     <td>${ob(r.current_above_vwap==null?"—":r.current_above_vwap?"✓":"✗")}</td>
     <td>${ob(r.current_atr_expanding==null?"—":r.current_atr_expanding?"✓":"✗")}</td>
     <td>${ob(volScoreCell(r.volume_score))}</td>
-    <td><b>${disp(r.ticker)}</b></td></tr>`;}).join("")||`<tr><td colspan="14" class="empty">No instruments match.</td></tr>`;
+    <td><b>${disp(r.ticker)}</b></td></tr>`;}).join("")
+    +(_instrAll?"":`<tr><td colspan="14" class="empty" style="padding:10px">`
+      +`<b>Showing ${_instrRows.length.toLocaleString()} of ${shown.length.toLocaleString()} matching instruments.</b> `
+      +`<span class="muted">Search, or use the cards above, to narrow the list.</span>`
+      +`<button class="btn" style="margin-left:8px" onclick="INSTR_SHOW_ALL=true;paintInstruments()" `
+      +`title="Renders every matching row. On the full universe that builds about 25,000 elements and the tab will be unresponsive while it does.">Show all</button></td></tr>`)
+    ||`<tr><td colspan="14" class="empty">No instruments match.</td></tr>`;
   paintInstrFunnel();
 }
 document.querySelectorAll("th[data-instrk]").forEach(th=>th.onclick=e=>instrSort(th.dataset.instrk,e.shiftKey));
@@ -4411,6 +4444,7 @@ function ooClearFilters(){["oo-from","oo-to"].forEach(id=>{const el=$(id);if(el)
   const sc=$("oo-showclosed"); if(sc)sc.checked=false; paintOrderOps();}
 function poClearFilters(){["po_qmin","po_qmax","po_rrmin","po_rrmax","po_demin","po_demax"].forEach(id=>{const el=$(id);if(el)el.value="";});renderPreorders();}
 function renderPreorders(){
+  if(_awaitingData("po-rows"))return;
   renderIgCredWarn("po-igwarn");   // no-IG-credentials warning + Open IG settings button (P-10 L218 / P-25 L219)
   // Say "loading" rather than showing an empty table. DATA is [] until /api/records returns, and an
   // empty Pre-orders table is indistinguishable from one where nothing qualified (user 2026-08-18).

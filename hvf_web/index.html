@@ -600,7 +600,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- Instruments (user 2026-08-07, ChangeRequest P-08): public — full instrument universe, available even
        logged out — placed immediately LEFT of Squeeze History as requested. Default-visible (not in
        DEFAULT_HIDDEN); hideable via Tab Visibility like any other tab. -->
-  <button class="tab" id="tab-instruments" onclick="showTab('instruments')">Instruments</button>
+  <button class="tab" id="tab-instruments" onclick="showTab('instruments')">Instruments <span id="instrtab-count"></span></button>
   <!-- Squeeze History sits at the right, next to Operations (user 2026-07-20). -->
   <button class="tab" id="tab-squeezehist" onclick="showTab('squeezehist')" style="display:none">Squeeze History <span id="sqhtab-count"></span></button>
   <button class="tab" id="tab-settings" onclick="showTab('settings')" style="display:none">⚙️ Settings</button>
