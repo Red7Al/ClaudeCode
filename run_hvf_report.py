@@ -1150,6 +1150,18 @@ def _publish_scanner_snapshot(all_results: dict) -> None:
                 os.unlink(snapshot_tmp)
         except OSError:
             pass
+    # The lifecycle history depends on the COMPLETED SCAN, not on where the snapshot ends up. It used to
+    # run only after a successful Supabase publication, so when Storage began returning 402 on 2026-08-16
+    # every run took the fallback path and skipped it: the site kept updating via IONOS and looked
+    # healthy, while squeeze_history silently stopped advancing for eight days (user 2026-08-24: "data in
+    # squeeze history is still NOT being maintained - it has not added data added in ten days").
+    # Publication and history are now independent in BOTH directions -- a failed publish still records
+    # history, and a failed history refresh never costs a good publication.
+    try:
+        from squeeze_history import refresh_daily
+        refresh_daily(snapshot)
+    except Exception as exc:
+        log.error("squeeze history refresh failed (%s); publication continues", exc)
     try:
         meta = publish_snapshot(snapshot, source="hvf-daily-report")
         verified = verify_current()
@@ -1165,8 +1177,6 @@ def _publish_scanner_snapshot(all_results: dict) -> None:
         return
     if verified.get("sha256") != meta.get("sha256"):
         raise RuntimeError("Scanner snapshot publication did not read-verify the new version")
-    from squeeze_history import refresh_daily
-    refresh_daily(snapshot)
     log.info(f"Scanner snapshot published: {meta['record_count']} records, version {meta['version_id']}")
 
 

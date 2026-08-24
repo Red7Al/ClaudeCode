@@ -55,16 +55,21 @@ def main() -> int:
             snapshot = build(markets=markets, progress_cb=progress.update)
             if not isinstance(snapshot, dict):
                 raise store.SnapshotStoreError("snapshot build produced no candidate")
+            # History first, for the same reason as run_hvf_report: it depends on the completed scan,
+            # not on the publication succeeding. Running it after publish_snapshot meant the Supabase
+            # Storage 402 skipped it on every run from 2026-08-16 while the IONOS fallback kept the site
+            # current, so nothing looked wrong.
+            progress.stage("history")
+            try:
+                from squeeze_history import refresh_daily
+                refresh_daily(snapshot)
+            except Exception as exc:
+                print(f"  squeeze history refresh failed ({exc}); publication continues")
             progress.stage("publishing")
             meta = store.publish_snapshot(snapshot, source=args.source)
             verified = store.verify_current()
             if verified["sha256"] != meta["sha256"]:
                 raise store.SnapshotStoreError("published snapshot verification selected a different version")
-            # Reuse the completed scan to keep the Supabase-backed lifecycle history current without another
-            # full 15-month universe replay. This advances OPEN/NEVER_TRIGGERED rows from price_history too.
-            progress.stage("history")
-            from squeeze_history import refresh_daily
-            refresh_daily(snapshot)
             result = meta
         elif args.publish:
             progress.stage("publishing")

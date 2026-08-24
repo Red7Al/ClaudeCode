@@ -88,3 +88,67 @@ def test_daily_store_updates_mutable_fields_without_deleting_history():
     assert "least(squeeze_history.first_seen,excluded.first_seen)" in sql
     assert "greatest(squeeze_history.last_seen,excluded.last_seen)" in sql
     assert "refreshed_at=now()" in sql
+
+
+# ======================================================================================================
+# The lifecycle history must survive a failed publication (user 2026-08-24: "data in squeeze history is
+# still NOT being maintained - it has not added data added in ten days").
+#
+# refresh_daily() used to run only AFTER a successful Supabase publication. When Storage began returning
+# 402 on 2026-08-16, every run took the fallback path -- which returns early in run_hvf_report and raises
+# in publish_scanner_snapshot -- and skipped the history refresh entirely. The IONOS fallback kept
+# publishing the snapshot, so the site stayed current and nothing looked wrong, while squeeze_history
+# silently stopped advancing for eight days. Verified in the database: every timestamp column stopped at
+# 2026-08-16 against a current date of 2026-08-24.
+#
+# The history depends on the COMPLETED SCAN, not on where the snapshot ends up.
+# ======================================================================================================
+
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).parent
+
+
+def _source(name: str) -> str:
+    return (ROOT / name).read_text(encoding="utf-8")
+
+
+def test_history_runs_before_publication_in_the_daily_report():
+    src = _source("run_hvf_report.py")
+    history = src.index("refresh_daily(snapshot)")
+    publish = src.index("meta = publish_snapshot(snapshot")
+
+    assert history < publish, (
+        "refresh_daily runs after publish_snapshot; a Storage failure returns early and skips the history")
+
+
+def test_history_runs_before_publication_in_the_snapshot_publisher():
+    src = _source("publish_scanner_snapshot.py")
+    history = src.index("refresh_daily(snapshot)")
+    publish = src.index("store.publish_snapshot(snapshot")
+
+    assert history < publish, (
+        "refresh_daily runs after publish_snapshot; a raised Storage error skips the history")
+
+
+def test_a_failed_history_refresh_does_not_cost_a_good_publication():
+    """Independent in BOTH directions: history must not be able to abort publishing either."""
+    for name, call in (("run_hvf_report.py", "refresh_daily(snapshot)"),
+                       ("publish_scanner_snapshot.py", "refresh_daily(snapshot)")):
+        src = _source(name)
+        i = src.index(call)
+        window = src[max(0, i - 260):i + 260]
+        assert "try:" in window and "except" in window, (
+            f"{name}: the history refresh is not guarded, so a failure there would abort the publication")
+
+
+def test_the_storage_402_path_still_reaches_the_history():
+    """THE REGRESSION. The 402 branch returns early -- the history must already have run by then."""
+    src = _source("run_hvf_report.py")
+    history = src.index("refresh_daily(snapshot)")
+    fallback = src.index('marker = os.path.join(os.path.dirname(__file__), "hvf_web", ".ionos-fallback-required")')
+
+    assert history < fallback, (
+        "the IONOS fallback return happens before the history refresh, which is the bug that stopped "
+        "squeeze_history for eight days while the site continued to look healthy")
