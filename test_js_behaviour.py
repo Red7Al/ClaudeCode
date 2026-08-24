@@ -28,7 +28,10 @@ from pathlib import Path
 
 import pytest
 
-INDEX = Path(__file__).parent / "hvf_web" / "index.html"
+# The JS moved to hvf_web/app.js on 2026-08-23; client_source() returns markup+script together so
+# these assertions keep meaning what they meant when it was one file.
+from client_source import client_js, client_source
+INDEX = type("_Src", (), {"read_text": staticmethod(lambda **kw: client_source())})()
 NODE = shutil.which("node")
 
 pytestmark = pytest.mark.skipif(NODE is None, reason="node is not installed")

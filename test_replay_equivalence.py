@@ -37,7 +37,8 @@ import pytest
 
 from hvf_web import server
 
-INDEX = Path(__file__).parent / "hvf_web" / "index.html"
+from client_source import client_source
+INDEX = type("_Src", (), {"read_text": staticmethod(lambda **kw: client_source())})()
 NODE = shutil.which("node")
 
 pytestmark = pytest.mark.skipif(NODE is None, reason="node is not installed")

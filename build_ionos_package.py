@@ -50,6 +50,10 @@ def include_path(relative: Path) -> bool:
         return False
     if suffix == ".txt":
         return name == "requirements.txt"
+    # The page's JavaScript, extracted from index.html on 2026-08-23. Only this one .js file ships:
+    # docs/ build scripts and node_modules are excluded above and must stay excluded.
+    if relative.as_posix() == "hvf_web/app.js":
+        return True
     return suffix in {".py", ".html", ".sql"}
 
 
@@ -124,9 +128,11 @@ def build(output: Path = DEFAULT_OUTPUT) -> tuple:
             with path.open("rb") as source:
                 contents = source.read()
             archive.writestr(info, contents, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
-            if relative == "hvf_web/index.html":
-                # Apache serves the domain root directly; retain the package copy used by Flask as well.
-                root_info = zipfile.ZipInfo.from_file(path, "index.html")
+            # Apache serves the domain root directly; retain the package copy used by Flask as well.
+            # app.js is mirrored the same way, because index.html loads it relatively — if only the
+            # hvf_web/ copy shipped, the root page would load and then fail to find its script.
+            if relative in ("hvf_web/index.html", "hvf_web/app.js"):
+                root_info = zipfile.ZipInfo.from_file(path, relative.rsplit("/", 1)[1])
                 root_info.create_system = 3
                 root_info.external_attr = (stat.S_IFREG | 0o644) << 16
                 archive.writestr(root_info, contents, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
@@ -158,7 +164,8 @@ def main() -> int:
     parser.add_argument("--list", action="store_true", help="list included files after building")
     args = parser.parse_args()
     output, files = build(args.output)
-    archive_entries = len(files) + int(any(path.relative_to(ROOT).as_posix() == "hvf_web/index.html" for path in files))
+    mirrored = {"hvf_web/index.html", "hvf_web/app.js"}
+    archive_entries = len(files) + sum(1 for p in files if p.relative_to(ROOT).as_posix() in mirrored)
     print(f"Built {output} with {archive_entries} production files ({output.stat().st_size} bytes).")
     import zipfile as _z
     with _z.ZipFile(output) as _a:

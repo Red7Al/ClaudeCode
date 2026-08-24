@@ -85,3 +85,61 @@ def test_the_deploy_checks_the_live_build():
     assert "/api/build" in script, "the deploy must verify the API worker, not just the static upload"
     assert "BUILD_ID=" in script
     assert "is NOT live yet" in script, "a stale worker must be reported in plain words"
+
+
+# ------------------------------------------------------------------------------------------------------
+# The extracted client script must ship, to BOTH serving paths (2026-08-23).
+#
+# index.html loads app.js RELATIVELY. Apache serves the domain root copy and never reaches Flask, while
+# Flask serves hvf_web/. If only one copy shipped, one of those paths would deliver a page whose script
+# 404s — the markup renders and then nothing works, with no error a user could act on. That is the single
+# way this extraction could break the live site, so it is pinned here.
+# ------------------------------------------------------------------------------------------------------
+
+def test_the_extracted_script_ships_to_both_serving_paths(tmp_path):
+    import hashlib
+    import zipfile
+
+    out = build_ionos_package.build(tmp_path / "pkg.zip")[0]
+    with zipfile.ZipFile(out) as z:
+        names = set(z.namelist())
+        for required in ("index.html", "app.js", "hvf_web/index.html", "hvf_web/app.js"):
+            assert required in names, f"{required} is missing from the package"
+        for root, nested in (("index.html", "hvf_web/index.html"), ("app.js", "hvf_web/app.js")):
+            assert hashlib.sha256(z.read(root)).hexdigest() == hashlib.sha256(z.read(nested)).hexdigest(), (
+                f"{root} and {nested} differ; the two serving paths would run different code")
+        html = z.read("index.html").decode("utf-8")
+        assert '<script src="app.js"></script>' in html
+        assert "<script>" not in html, "an inline script block came back"
+
+
+def test_only_the_client_script_ships_as_javascript(tmp_path):
+    """docs/ build scripts and node_modules must stay out; exactly one .js file is production code."""
+    import zipfile
+
+    out = build_ionos_package.build(tmp_path / "pkg.zip")[0]
+    with zipfile.ZipFile(out) as z:
+        js = sorted(n for n in z.namelist() if n.endswith(".js"))
+
+    assert js == ["app.js", "hvf_web/app.js"], f"unexpected JavaScript in the package: {js}"
+
+
+def test_flask_can_serve_the_script_itself():
+    """Apache serves it in production, but the Flask route is what local runs and any other host use."""
+    from hvf_web import server
+
+    response = server.app.test_client().get("/app.js")
+
+    assert response.status_code == 200
+    assert "javascript" in response.headers["Content-Type"]
+    assert b"function _combReplay" in response.data
+    assert "no-store" in response.headers.get("Cache-Control", ""), (
+        "a browser holding yesterday's app.js against today's index.html fails silently")
+
+
+def test_the_page_and_script_are_revalidated_by_apache():
+    from pathlib import Path
+    htaccess = (Path(__file__).parent / ".htaccess").read_text(encoding="utf-8")
+
+    assert 'Files "app.js"' in htaccess
+    assert "must-revalidate" in htaccess

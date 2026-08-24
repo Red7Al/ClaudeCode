@@ -108,8 +108,7 @@ def test_the_limit_is_bounded(audit, monkeypatch):
 def test_every_phase_the_close_path_writes_has_a_label():
     """An unlabelled phase would render as a raw token where the user needs a plain answer."""
     from pathlib import Path
-    index = Path(__file__).parent / "hvf_web" / "index.html"
-    html = index.read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     src = Path(__file__).parent / "hvf_web" / "server.py"
     written = set(__import__("re").findall(r'_append_ig_close_audit\([^,]+,[^,]+,\s*"([a-z_]+)"',
                                            src.read_text(encoding="utf-8")))
@@ -122,7 +121,7 @@ def test_every_phase_the_close_path_writes_has_a_label():
 def test_the_history_is_revealed_after_a_close():
     """The outcome must outlive the dialog that reported it."""
     from pathlib import Path
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
 
     assert "loadIgCloseHistory" in html
     assert 'fetch("/api/ig-close-audit"' in html

@@ -197,7 +197,7 @@ def test_ionos_shared_hosting_routes_only_api_to_protected_cgi_adapter():
 
 
 def test_scanner_actionable_not_history_note_is_prominent_and_documented():
-    html = (build_ionos_package.ROOT / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     note = "This is a live list of what's actionable <b>right now</b>, not a history"
     assert note in html
     note_tag = html[html.rfind("<p", 0, html.index(note)):html.index("</p>", html.index(note))]
@@ -212,7 +212,7 @@ def test_scanner_actionable_not_history_note_is_prominent_and_documented():
 
 
 def test_scanner_defaults_to_absolute_distance_from_entry_ascending_and_refresh_errors_are_visible():
-    html = (build_ionos_package.ROOT / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
 
     assert 'sortK="dist_entry", sortDir=1' in html
     assert "ABS(Dist→Entry) ascending (closest first)" in html
@@ -223,7 +223,7 @@ def test_scanner_defaults_to_absolute_distance_from_entry_ascending_and_refresh_
 
 
 def test_adaptive_filters_ui_is_removed_but_compatibility_field_is_preserved():
-    html = (build_ionos_package.ROOT / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     server = (build_ionos_package.ROOT / "hvf_web" / "server.py").read_text(encoding="utf-8")
 
     assert "🎯 Adaptive Filters" not in html

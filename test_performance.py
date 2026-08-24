@@ -12,7 +12,7 @@ from hvf_web import server
 
 
 def test_performance_inline_javascript_parses():
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     scripts = re.findall(r"<script(?:\s[^>]*)?>(.*?)</script>", html, re.I | re.S)
     for script in scripts:
         with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
@@ -118,7 +118,7 @@ def test_performance_has_dedicated_let_winners_run_tab():
     # note explaining an intentional removal, while the feature itself had just been built and marked
     # [Completed] the day before (20260805-ToDo-Claude.txt L154). The user re-filed the identical request
     # on 2026-08-07, confirming this was an accidental regression, not a deliberate removal. Restored.
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
 
     assert 'data-pfpanel="run" onclick="pfPanel(\'run\')"' in html
     assert 'id="pf-panel-run" class="hidden"' in html
@@ -175,7 +175,7 @@ def test_performance_has_dedicated_let_winners_run_tab():
 
 
 def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
 
     assert 'data-pfpanel="settings" onclick="pfPanel(\'settings\')"' in html
     assert 'id="pf-panel-settings" class="hidden"' in html
@@ -316,7 +316,7 @@ def test_best_settings_trade_count_cards_use_banded_funded_thresholds():
     tested configuration simply traded the most, which answers a different question from "the best setting
     at this sample size".
     """
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     match = re.search(
         r"function _bestSettingsByFundedTrades\(pool,min,max\)\{.*?\n\}",
         html,
@@ -368,7 +368,7 @@ def test_page_replays_share_one_slot_release_rule():
     TRIGGER day - releasing its capital and booking its mark-to-market gain immediately - while Back Test's
     own ledger held the same trade to the window end.
     """
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     match = re.search(r"function _pfExitDate\(r,runner\)\{.*?\n\}", html, re.S)
     add_days = re.search(r"function _pfAddDays\(d,n\)\{.*?\}\n", html, re.S)
     assert match and add_days, "Canonical replay exit-date helper is missing"
@@ -406,7 +406,7 @@ def test_best_settings_replay_keeps_an_open_trades_capital_committed():
     optimiser scored configurations that Back Test - which holds the same trade to the window end - could
     never reproduce (user 2026-08-14, P-03).
     """
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     exit_rule = re.search(r"function _pfExitDate\(r,runner\)\{.*?\n\}", html, re.S)
     replay = re.search(
         r'function _combReplay\(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compound=true\)\{.*?\n\}',
@@ -487,7 +487,7 @@ _LEGACY_EXIT_RULE = """function _pfExitDate(r,runner){
 
 def _replay_harness(extra_js: str, exit_rule: str = None) -> dict:
     """Run the page's own _pfExitDate/_combReplay over the frozen population, in Node."""
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
 
     def grab(pattern):
         match = re.search(pattern, html, re.S)
@@ -575,7 +575,7 @@ def test_max_open_is_never_reported_above_what_the_stake_can_fund():
     setup that never existed and was never tested - and Apply wrote that untested value into the user's
     configuration. Both grids now normalise to the effective cap before recording an option.
     """
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     assert "const eff=Math.min(mo,_fundedMaxOpen(st/100));" in html
     assert "const option={...c,st,mo:eff,...z}" in html
     assert "options.push({...c,st,mo:eff,...z})" in html
@@ -596,7 +596,7 @@ def test_scanner_still_hard_filters_on_my_trading_filters():
     added 2026-08-12, which hides setups failing My Trading Filters from the Scanner table AND excludes
     them from the daily email. Removing the sidebar must not take those with it.
     """
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     body = _extract_function(html, "pass")
 
     assert "tradeVisible(r)" in body, "per-user market/direction/location trade gate lost from pass()"
@@ -610,7 +610,7 @@ def test_scanner_filters_moved_and_left_nothing_dangling():
     """Every loop over F / MSEL_IDS / FILTER_IDS dereferences $(id) unguarded, so an id that no longer
     has an element throws on load. Assert the removed ids are gone from BOTH the markup and the wiring.
     """
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
 
     for gone in ("f_dir", "f_stat", "f_loc", "f_tf", "f_qmin", "f_qmax", "f_rrmin", "f_rrmax",
                  "f_demin", "f_demax", "f_dsmin", "f_dsmax", "f_rvmin", "f_rvmax",
@@ -641,14 +641,14 @@ def test_back_test_saved_scope_survives_the_filter_move():
     silently cost Back Test its market/sector scope and break Apply-this-configuration, which is why the
     two selects are retained (hidden) rather than deleted.
     """
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     assert 'const keys=kind==="market"?["pof_market","f_mkt"]:["pof_sector","f_sec"];' in html
     assert 'fillSel("f_mkt","market");fillSel("f_sec","sector");' in html, (
         "the hidden scope selects still need their options, or Apply-config cannot select one")
 
 
 def test_squeeze_history_owns_the_filters_now():
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
 
     assert 'id="sqh-filters"' in html and 'class="sidefilt"' in html
     for control in ("sqf_dir", "sqf_loc", "sqf_mkt", "sqf_sec", "sqf_tf", "sqf_out",
@@ -758,7 +758,7 @@ def test_back_test_and_best_settings_produce_the_same_numbers():
     checks cannot catch that; only running both and comparing can. Back Test reads its wallet model from
     DOM inputs, so those are stubbed and the SAME population and configuration go through each.
     """
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
 
     def grab(pattern):
         match = re.search(pattern, html, re.S)
@@ -834,7 +834,7 @@ def test_every_wallet_replay_shares_one_exit_rule():
     They did not, which is why an applied recommendation never reproduced its own headline figure -- the
     complaint recorded as P-03. Structural rather than numeric: three ledgers, one rule.
     """
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     assert 'const exit=_pfExitDate(r,perfKey==="run_perf");' in html      # _combReplay
     assert html.count("const exitOf=r=>_pfExitDate(r,false);") == 2       # _winLedger + _pfWalletLedger
     # No ledger may reconstruct its own convention from days_open again.
@@ -843,7 +843,7 @@ def test_every_wallet_replay_shares_one_exit_rule():
 
 def test_let_winners_run_verdict_requires_a_strict_return_improvement():
     """Exercise the browser verdict helper: an equal result must never be labelled an improvement."""
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     match = re.search(
         r"function _winnerRunComparison\(plainReplay,runReplay,wallet\)\{.*?\n\}",
         html,
@@ -888,7 +888,7 @@ def test_let_winners_run_verdict_requires_a_strict_return_improvement():
 
 def test_let_winners_run_attribution_separates_exit_and_capacity_effects():
     """The displayed decomposition keeps exit effects separate from funding-capacity effects."""
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     match = re.search(
         r"function _winnerRunAttribution\(plainReplay,runReplay,wallet\)\{.*?\n\}",
         html,
@@ -1110,7 +1110,7 @@ def test_scanner_rerenders_after_every_my_limits_mutation():
     bodies, not a full behavioural test) -- not a substitute for one, but real coverage where none
     existed before.
     """
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
 
     save_limits = _extract_function(html, "saveLimits")
     assert "if(typeof render==='function')render();" in save_limits, (
@@ -1146,7 +1146,7 @@ def test_pass_still_hard_filters_on_my_limits_atr_and_vwap():
     chokepoint -- still contains the ATR/VWAP floor checks this whole bug class depends on, so the
     re-render fixes above are guarding something real and can't quietly become a no-op if pass()
     itself is ever refactored."""
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     pass_fn = _extract_function(html, "pass")
     assert "if(+MY_LIMITS.require_above_vwap&&r.above_vwap===false)return false;" in pass_fn
     assert "if(+MY_LIMITS.require_atr_expanding&&r.atr_expanding===false)return false;" in pass_fn
@@ -1154,7 +1154,7 @@ def test_pass_still_hard_filters_on_my_limits_atr_and_vwap():
 
 def test_approved_ui_report_backlog_is_wired_to_live_render_paths():
     """Structural regression coverage for the 2026-08-13 approved UI/report stage."""
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
 
     assert 'id="scanner-name-search"' in html and 'syncScannerNameSearch(this.value)' in html
     assert 'let INSTR_FUNNEL=null, instrSorts=[];' in html
@@ -1213,7 +1213,7 @@ def test_order_ops_keeps_the_servers_point_in_time_metrics():
     The snapshot must stay a FALLBACK. Name and dist_pct legitimately come from it -- neither is
     returned by /api/order-ops -- so those are excluded from the check.
     """
-    html = (Path(__file__).parent / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    html = __import__("client_source").client_source()
     paint = _extract_function(html, "paintOrderOps")
 
     for field in ("rvol", "volume_score", "rr", "quality"):

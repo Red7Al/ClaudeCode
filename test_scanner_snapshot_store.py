@@ -265,7 +265,8 @@ def test_status_api_returns_supabase_progress_for_external_worker(monkeypatch):
 
 
 def test_refresh_button_polls_request_specific_supabase_progress():
-    text = (store.ROOT / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    # The JS moved to hvf_web/app.js on 2026-08-23; client_source() returns markup+script together.
+    text = __import__("client_source").client_source()
     assert "_refId=j.refresh_id||null" in text
     assert "?refresh_id=${encodeURIComponent(_refId)}" in text
     assert "${done}/${total}${eta}" in text

@@ -1082,6 +1082,23 @@ def index():
         return Response(f.read(), mimetype="text/html")
 
 
+@app.route("/app.js")
+def app_js():
+    """The page's JavaScript, extracted from index.html on 2026-08-23.
+
+    On IONOS, Apache serves this straight from the web root and never reaches Flask — only /api/* is
+    rewritten to the CGI adapter. This route is what local runs and any non-Apache host use, and it
+    mirrors index() deliberately: same directory, same read-and-return, no static folder involved
+    (Flask's default static path is /static, which this file is not under).
+
+    no-store because a browser holding yesterday's app.js against today's index.html is a silent,
+    confusing failure: the markup and the code would disagree with nothing to indicate why.
+    """
+    with open(os.path.join(_HERE, "app.js"), "r", encoding="utf-8") as f:
+        return Response(f.read(), mimetype="application/javascript",
+                        headers={"Cache-Control": "no-store"})
+
+
 # Fields a LOGGED-OUT visitor may see (user 2026-07-03: first 5 Scanner columns; the rest obfuscated).
 _PUBLIC_FIELDS = ("ticker", "name", "direction", "h3_date", "l3_date", "sector", "market", "location",
                   "has_signal", "status")
