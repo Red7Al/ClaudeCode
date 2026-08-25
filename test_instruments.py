@@ -144,3 +144,91 @@ def test_squeeze_history_requires_a_login(monkeypatch):
 
     assert response.status_code == 401
     assert response.get_json()["error"] == "login required"
+
+
+# ======================================================================================================
+# Squeeze History transfer cost (user 2026-08-25: "squeeze history is still very slow to load").
+#
+# The endpoint returned 14,927,347 bytes of UNCOMPRESSED JSON, measured against the live site, and
+# roughly 21.7 s of a 25.9 s load was pure download on an already-warm server. Nothing can render until
+# the last byte arrives, so a client-side "first hundred rows" strategy could not have helped.
+# These tests pin the two fixes: gzip on the wire, and a shared short-lived payload cache.
+# ======================================================================================================
+
+def _sqh_rows(n):
+    return [{"ticker": f"T{i}", "name": f"Instrument number {i}", "market": "LSE", "sector": "Industrials",
+             "direction": "BULL", "timeframe": "daily-90", "outcome": "TARGET", "quality": 72,
+             "rr": 3.4, "rvol": 1.8, "return_pct": 4.21} for i in range(n)]
+
+
+def _serve_sqh(monkeypatch, rows, accept_encoding="gzip, deflate"):
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "alex")
+    payload = {"rows": rows, "generated": "now", "refreshed_at": None, "data_through": "2026-08-25"}
+    monkeypatch.setitem(server._SQH_CACHE, "ts", server._time.time())
+    monkeypatch.setitem(server._SQH_CACHE, "data", payload)
+    monkeypatch.setitem(server._SQH_CACHE, "gzip", None)
+    headers = {"X-Auth": "t"}
+    if accept_encoding:
+        headers["Accept-Encoding"] = accept_encoding
+    return server.app.test_client().get("/api/squeeze-history", headers=headers)
+
+
+def test_squeeze_history_is_gzipped_and_round_trips_intact(monkeypatch):
+    import gzip as _gz
+    import json as _json
+    rows = _sqh_rows(500)
+
+    response = _serve_sqh(monkeypatch, rows)
+
+    assert response.status_code == 200
+    assert response.headers["Content-Encoding"] == "gzip"
+    assert response.headers["Vary"] == "Accept-Encoding"
+    # Lossless: every row must survive, or the table silently loses history.
+    assert _json.loads(_gz.decompress(response.data))["rows"] == rows
+
+
+def test_squeeze_history_compression_actually_shrinks_the_payload(monkeypatch):
+    """The POINT is the transfer saving, so assert the saving — not merely that a header is present."""
+    import json as _json
+    rows = _sqh_rows(500)
+    plain = len(_json.dumps({"rows": rows, "generated": "now", "refreshed_at": None,
+                             "data_through": "2026-08-25"}).encode("utf-8"))
+
+    compressed = len(_serve_sqh(monkeypatch, rows).data)
+
+    assert compressed * 5 < plain, f"expected >5x saving, got {plain} -> {compressed}"
+
+
+def test_squeeze_history_still_serves_plain_json_when_gzip_is_not_accepted(monkeypatch):
+    response = _serve_sqh(monkeypatch, _sqh_rows(3), accept_encoding=None)
+
+    assert response.status_code == 200
+    assert "Content-Encoding" not in response.headers
+    assert len(response.get_json()["rows"]) == 3
+
+
+def test_squeeze_history_serves_the_cache_without_rebuilding(monkeypatch):
+    """A warm cache must not touch the database — that 4.2 s rebuild is what the cache exists to avoid."""
+    def _explode():
+        raise AssertionError("the warm cache must not rebuild the payload")
+    monkeypatch.setattr(server, "_load_snapshot", _explode)
+
+    response = _serve_sqh(monkeypatch, _sqh_rows(2))
+
+    assert response.status_code == 200
+
+
+def test_squeeze_history_failure_is_never_cached(monkeypatch):
+    """Reconstructs the bug the guard exists for: caching a failed build would pin an EMPTY history
+    for fifteen minutes, turning one bad query into a quarter-hour outage of the tab."""
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "alex")
+    monkeypatch.setitem(server._SQH_CACHE, "ts", 0.0)
+    monkeypatch.setitem(server._SQH_CACHE, "data", None)
+    monkeypatch.setitem(server._SQH_CACHE, "gzip", None)
+    monkeypatch.setattr(server, "_load_snapshot", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+
+    response = server.app.test_client().get("/api/squeeze-history", headers={"X-Auth": "t"})
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == []
+    assert server._SQH_CACHE["data"] is None, "a failed build must not be cached"

@@ -2769,11 +2769,16 @@ def _build_perf_payload():
     return payload
 
 
-def _perf_response(payload):
-    """Return the large Performance payload compressed when the client supports gzip.
+def _gzip_json(payload, cache=None):
+    """Return `payload` as JSON, gzipped when the client advertises support for it.
 
-    The 5k-row response is ~2 MB as plain JSON. Browsers advertise gzip, and caching the compressed
-    representation avoids repeating both that transfer cost and compression work on every tab load.
+    Large payloads cost far more in transfer than in anything else, and JSON with one repeated set of
+    keys per row compresses heavily. /api/performance is ~2 MB uncompressed; /api/squeeze-history was
+    measured at 14,927,347 bytes on 2026-08-25, of which roughly 21.7 s was pure download time on a
+    warm server -- the browser cannot paint a single row until the last byte lands.
+
+    When `cache` is the dict that produced `payload` (identity, not equality), the compressed bytes are
+    stored beside it so neither the transfer nor the compression work repeats on the next request.
     """
     import math
     def _safe(value):
@@ -2788,14 +2793,20 @@ def _perf_response(payload):
     if "gzip" not in (request.headers.get("Accept-Encoding") or "").lower():
         return jsonify(safe_payload)
     import gzip
-    if payload is _PERF_CACHE.get("data") and _PERF_CACHE.get("gzip") is not None:
-        body = _PERF_CACHE["gzip"]
+    cacheable = cache is not None and payload is cache.get("data")
+    if cacheable and cache.get("gzip") is not None:
+        body = cache["gzip"]
     else:
         body = gzip.compress(json.dumps(safe_payload, separators=(",", ":"), default=str,
                                         allow_nan=False).encode("utf-8"), compresslevel=5)
-        if payload is _PERF_CACHE.get("data"):
-            _PERF_CACHE["gzip"] = body
+        if cacheable:
+            cache["gzip"] = body
     return Response(body, content_type="application/json", headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+
+
+def _perf_response(payload):
+    """Return the large Performance payload compressed when the client supports gzip."""
+    return _gzip_json(payload, _PERF_CACHE)
 
 
 def _kick_perf_warm():
@@ -4000,14 +4011,30 @@ def api_winners_run():
         return jsonify({"rows": [], "threshold_pct": 0, "stop_pct": 0, "months": 12})
 
 
+# Squeeze History payload cache (user 2026-08-25: "squeeze history is still very slow to load").
+# The response is identical for every logged-in caller -- the endpoint uses the token only to authorise,
+# never to filter -- so one shared copy is correct. Measured cold on 2026-08-25: 31,558 ms to first byte,
+# because building it warms _volscore_scored, queries the whole squeeze_history table and then constructs
+# a dict per row. Warm it was 4,203 ms. The underlying table is rewritten once a day by refresh_daily,
+# so a 15-minute TTL (matching _SQA_TTL and _PERF_TTL) cannot serve meaningfully stale history.
+_SQH_TTL = 900
+_SQH_CACHE = {"ts": 0.0, "data": None, "gzip": None}
+
+
 @app.route("/api/squeeze-history")
 def api_squeeze_history():
     """Lifecycle history of squeeze funnels (user 2026-07-18, Squeeze History (Admin) tab): each funnel's
-    developing → ready → triggered → outcome journey, replayed over price history. Newest first."""
+    developing → ready → triggered → outcome journey, replayed over price history. Newest first.
+
+    Served gzipped and from a short-lived shared cache -- see _SQH_CACHE above and _gzip_json.
+    """
     payload = {"rows": [], "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
                "refreshed_at": None, "data_through": None}
     if not _wu.name_for_token(request.headers.get("X-Auth") or ""):
         return jsonify({"error": "login required"}), 401
+    cached = _SQH_CACHE.get("data")
+    if cached is not None and _time.time() - _SQH_CACHE.get("ts", 0) < _SQH_TTL:
+        return _gzip_json(cached, _SQH_CACHE)
     try:
         snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
         from db_pool import get_db
@@ -4049,7 +4076,11 @@ def api_squeeze_history():
                 "atr_expanding": features.get("atr_expanding")})
     except Exception as ex:
         log.warning(f"squeeze history failed: {ex}")
-    return jsonify(payload)
+        # Deliberately NOT cached: a failure here yields an empty table, and pinning that for fifteen
+        # minutes would turn one bad query into a quarter-hour of "no history" for every admin.
+        return jsonify(payload)
+    _SQH_CACHE.update(ts=_time.time(), data=payload, gzip=None)
+    return _gzip_json(payload, _SQH_CACHE)
 
 
 @app.route("/api/fees")
