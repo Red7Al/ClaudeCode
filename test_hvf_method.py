@@ -348,3 +348,45 @@ def test_hvf_regression_suite():
 
 if __name__ == "__main__":
     main()
+
+
+# ======================================================================================================
+# Documentation drift guard (found 2026-08-25).
+#
+# docs/SQUEEZE_METHOD.md stated MIN_PUBLISH_QUALITY = 70 for two months and three days after the user
+# lowered it to 25 on 2026-06-22 -- while the same document asserted that its thresholds "are read from
+# price_action.py and config.py at runtime". True of the code; the prose does not follow automatically.
+# That value decides what is published PUBLICLY to X, so a reader trusting the doc would have believed
+# the gate roughly three times tighter than it is.
+#
+# Correcting the number alone would drift again. This asserts the two agree.
+# ======================================================================================================
+
+def test_squeeze_method_doc_states_the_live_publication_floor():
+    import re
+    from pathlib import Path
+
+    import config
+
+    doc = Path(__file__).with_name("docs").joinpath("SQUEEZE_METHOD.md").read_text(encoding="utf-8")
+    stated = re.search(r"`MIN_PUBLISH_QUALITY`,\s*currently\s*\*\*(\d+)\*\*", doc)
+
+    assert stated, "SQUEEZE_METHOD.md must state the publication floor in a checkable form"
+    assert int(stated.group(1)) == config.MIN_PUBLISH_QUALITY, (
+        f"docs/SQUEEZE_METHOD.md says the publication floor is {stated.group(1)}, "
+        f"config.py says {config.MIN_PUBLISH_QUALITY} — the doc drifted")
+
+
+def test_squeeze_method_doc_states_the_live_risk_reward_floor():
+    import re
+    from pathlib import Path
+
+    import config
+
+    doc = Path(__file__).with_name("docs").joinpath("SQUEEZE_METHOD.md").read_text(encoding="utf-8")
+    stated = re.search(r"currently\s*\*\*([\d.]+)\*\*\)", doc)
+
+    assert stated, "SQUEEZE_METHOD.md must state MIN_RISK_REWARD in a checkable form"
+    assert float(stated.group(1)) == float(config.MIN_RISK_REWARD), (
+        f"docs/SQUEEZE_METHOD.md says the R:R floor is {stated.group(1)}, "
+        f"config.py says {config.MIN_RISK_REWARD} — the doc drifted")

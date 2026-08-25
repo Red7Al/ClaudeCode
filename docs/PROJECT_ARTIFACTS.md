@@ -56,7 +56,7 @@ driven by scheduled jobs.
 - **Routines** — `routines/routine_*.md` (aus/uk/us open, monitor, session close, daily report, weekend review).
 - **Scheduled jobs** — authoritative registry in `setup_cronjobs.py::JOBS` (cron-job.org → GitHub Actions),
   surfaced read-only in the app's Scheduled Jobs tab.
-- **Tests** — 30 `test_*.py` modules run as one offline suite (`pytest`), plus the pre-commit Squeeze
+- **Tests** — 39 `test_*.py` modules run as one offline suite (`pytest`), plus the pre-commit Squeeze
   gate. Two are harnesses rather than ordinary tests: `test_js_behaviour.py` EXECUTES extracted client
   JavaScript in Node and asserts on the returned value, and `test_backtest_integrity.py` asserts the
   replay's structural invariants (truncation invariance, exit-within-range, perfect-foresight bound).

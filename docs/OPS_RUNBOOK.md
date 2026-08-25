@@ -174,4 +174,7 @@ The Scanner Report is restricted to one address by default and is **not yet sche
 - After a `server.py` change, check `/api/build` — see memory `ionos-resident-api-worker`.
 - Never "optimise" `_winLedger`'s sort: `localeCompare` → `<` is 11% faster and moved the reported
   wallet by £1,037, because the replay compounds and the order IS the answer.
-- Run the suite (`python -m pytest -q`, 378 tests) before quoting any number.
+- Run the suite (`python -m pytest -q -m "not live_state"`, **466 tests** at 2026-08-25) before quoting
+  any number. Use the project venv — on this machine the bare `python` is a system 3.14 with no pytest,
+  and `python -m pytest ... | tail` will report **exit 0 while actually failing**, because the exit code
+  comes from `tail`. Check `$?` on the pytest process itself.
