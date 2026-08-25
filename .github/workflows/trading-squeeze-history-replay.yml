@@ -1,0 +1,57 @@
+name: Squeeze History Replay (on demand — 2026-08-25)
+
+# Rebuilds squeeze_history by replaying the HVF engine over stored price history. Triggered by hand via
+# workflow_dispatch — NEVER add a schedule: block (GitHub-native cron is banned, user directive
+# 2026-06-07). The ONGOING maintenance is refresh_daily(), which runs on every scan; this is the recovery
+# tool for when that has not happened.
+#
+# WHY IT EXISTS. refresh_daily() ran only after a successful Supabase publication, so when Storage began
+# returning 402 on 2026-08-16 the history silently stopped advancing for over a week while the IONOS
+# fallback kept the site current. That ordering is fixed, but the gap it left needs reconstructing, and a
+# setup that both appeared AND resolved inside the gap is not in any current snapshot -- only a replay
+# over price_history can recover it.
+#
+# NON-DESTRUCTIVE. The backfill path uses store() WITHOUT update_existing, which is
+# `on conflict ... do nothing`: it can only insert funnels not already recorded. It cannot overwrite or
+# delete an existing row, so re-running it is safe and re-running it twice changes nothing the second
+# time.
+on:
+  workflow_dispatch:
+    inputs:
+      months:
+        description: 'Months of price history to replay (default 15).'
+        required: false
+        default: ''
+      tickers:
+        description: 'Comma-separated subset. Empty = the whole universe (slow).'
+        required: false
+        default: ''
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      IG_API_KEY:           ${{ secrets.IG_API_KEY }}
+      IG_USERNAME:          ${{ secrets.IG_USERNAME }}
+      IG_PASSWORD:          ${{ secrets.IG_PASSWORD }}
+      IG_ACCOUNT_ID:        ${{ secrets.IG_ACCOUNT_ID }}
+      PYTHONIOENCODING:     utf-8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Replay the HVF engine into squeeze_history
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.months }}" ]; then ARGS="$ARGS --months ${{ inputs.months }}"; fi
+          if [ -n "${{ inputs.tickers }}" ]; then ARGS="$ARGS --tickers ${{ inputs.tickers }}"; fi
+          python squeeze_history.py $ARGS
