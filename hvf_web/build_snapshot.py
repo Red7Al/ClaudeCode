@@ -192,17 +192,24 @@ def build(markets=None, scan_results=None, progress_cb=None):
     log.info("scanning universe ..." if sel is None else f"scanning markets: {sorted(sel)} ...")
     # Total tickers to scan: the whole universe, or (for a partial refresh) only the tickers OWNED by the
     # selected markets (their tickers minus any listed in an earlier market — matches scan de-dup).
-    if sel is None:
-        _total = sum(len(t) for t in UNIVERSE.values())
-    else:
-        _total, _prior = 0, set()
-        for _mkt, _tks in UNIVERSE.items():
-            for _t in _tks:
-                if _t in _prior:
-                    continue
-                _prior.add(_t)
-                if _mkt in sel:
-                    _total += 1
+    # ONE de-duplicating count for both paths (user 2026-08-25: "the refresh of instruments has 1771 of
+    # 1856 .. where is this 1800 number come from?").
+    #
+    # The full-universe branch used to be sum(len(t) for t in UNIVERSE.values()), which is 1,856 -- but 83
+    # tickers are listed under BOTH NASDAQ 100 and S&P 500, and the scan below de-duplicates them
+    # (`_seen`, first wins). So only 1,773 are ever scanned and the progress bar could never reach its own
+    # total: it stopped at 1,773 of 1,856, which is 95.5%, and looked like a refresh that never finished.
+    #
+    # The partial-refresh branch already de-duplicated and its comment already said "matches scan de-dup".
+    # Two places computing one number, and only one of them right -- so they are now the same loop.
+    _total, _prior = 0, set()
+    for _mkt, _tks in UNIVERSE.items():
+        for _t in _tks:
+            if _t in _prior:
+                continue
+            _prior.add(_t)
+            if sel is None or _mkt in sel:
+                _total += 1
     PROGRESS.update(done=0, total=_total)
     if scan_results is None:
         from run_hvf_report import scan_universe
