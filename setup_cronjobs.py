@@ -374,11 +374,17 @@ def create_missing_jobs():
             continue
         try:
             job_id = create_job(title, cron, workflow)
-            print(f"  CREATED: {title}  [{cron}]  → {workflow}  (id={job_id})")
-            created += 1
         except Exception as e:
-            print(f"  FAIL: {title} — {e}")
+            print(f"  FAIL: {title} - {e}")
             failed += 1
+            continue
+        # Count the creation BEFORE reporting it. On 2026-08-25 the arrow below was U+2192 and the
+        # console was Windows cp1252, so this print raised UnicodeEncodeError AFTER the job had been
+        # created -- the except above caught it and reported a successful creation as a FAILURE.
+        # Two jobs were reported "0 created, 5 failed" while the account had gone from 33 to 35.
+        # A retry on that false report risks duplicates, so nothing after the POST may flip the verdict.
+        created += 1
+        print(f"  CREATED: {title}  [{cron}]  -> {workflow}  (id={job_id})")
 
     print()
     print(f"Done: {created} created, {skipped} skipped, {failed} failed")
@@ -708,11 +714,17 @@ def main():
             continue
         try:
             job_id = create_job(title, cron, workflow)
-            print(f"  CREATED: {title}  [{cron}]  → {workflow}  (id={job_id})")
-            created += 1
         except Exception as e:
-            print(f"  FAIL: {title} — {e}")
+            print(f"  FAIL: {title} - {e}")
             failed += 1
+            continue
+        # Count the creation BEFORE reporting it. On 2026-08-25 the arrow below was U+2192 and the
+        # console was Windows cp1252, so this print raised UnicodeEncodeError AFTER the job had been
+        # created -- the except above caught it and reported a successful creation as a FAILURE.
+        # Two jobs were reported "0 created, 5 failed" while the account had gone from 33 to 35.
+        # A retry on that false report risks duplicates, so nothing after the POST may flip the verdict.
+        created += 1
+        print(f"  CREATED: {title}  [{cron}]  -> {workflow}  (id={job_id})")
 
     print()
     print(f"Done: {created} created, {skipped} skipped, {failed} failed")
