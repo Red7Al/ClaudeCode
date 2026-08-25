@@ -4018,25 +4018,53 @@ def api_winners_run():
 # a dict per row. Warm it was 4,203 ms. The underlying table is rewritten once a day by refresh_daily,
 # so a 15-minute TTL (matching _SQA_TTL and _PERF_TTL) cannot serve meaningfully stale history.
 _SQH_TTL = 900
-_SQH_CACHE = {"ts": 0.0, "data": None, "gzip": None}
+_SQH_CACHE = {"ts": 0.0, "data": None, "gzip": None, "key": None}
+_SQH_WARMING = {"on": False}
+_SQH_WARM_LOCK = _threading.Lock()
 
 
-@app.route("/api/squeeze-history")
-def api_squeeze_history():
-    """Lifecycle history of squeeze funnels (user 2026-07-18, Squeeze History (Admin) tab): each funnel's
-    developing → ready → triggered → outcome journey, replayed over price history. Newest first.
+def _claim_sqh_warm() -> bool:
+    """Atomically reserve the one allowed Squeeze History build."""
+    with _SQH_WARM_LOCK:
+        if _SQH_WARMING["on"]:
+            return False
+        _SQH_WARMING["on"] = True
+        return True
 
-    Served gzipped and from a short-lived shared cache -- see _SQH_CACHE above and _gzip_json.
-    """
+
+def _finish_sqh_warm():
+    with _SQH_WARM_LOCK:
+        _SQH_WARMING["on"] = False
+
+
+def _kick_sqh_warm():
+    """Start a one-off background build if one isn't already running, so a cold /api/squeeze-history
+    never blocks the request thread. Mirrors _kick_perf_warm, for the same reason and after the same
+    symptom: on 2026-08-25 a cold request was left outstanding for over ten minutes without returning a
+    single byte, while a scan competed for the same database. On IONOS's single resident worker one such
+    request can hold up others, so this build must never happen on the request thread."""
+    if not _claim_sqh_warm():
+        return
+    def _run():
+        try:
+            _build_sqh_payload()
+        finally:
+            _finish_sqh_warm()
+    _threading.Thread(target=_run, daemon=True).start()
+
+
+def _build_sqh_payload():
+    """Build the Squeeze History payload and store it in _SQH_CACHE. Safe to call from a background thread.
+
+    Keyed on the data's own freshness, not merely on elapsed time. squeeze_history is rewritten ONCE A DAY
+    by refresh_daily, so a bare 15-minute TTL would trigger roughly 96 full rebuilds a day to produce a
+    byte-identical answer -- wasted work that competes with the scanner for the same database. The cheap
+    max(refreshed_at) probe runs first; when it matches what the cache was built from, the existing
+    payload is kept and only its timestamp is bumped."""
     payload = {"rows": [], "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
                "refreshed_at": None, "data_through": None}
-    if not _wu.name_for_token(request.headers.get("X-Auth") or ""):
-        return jsonify({"error": "login required"}), 401
-    cached = _SQH_CACHE.get("data")
-    if cached is not None and _time.time() - _SQH_CACHE.get("ts", 0) < _SQH_TTL:
-        return _gzip_json(cached, _SQH_CACHE)
+    key = None
     try:
-        snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
         from db_pool import get_db
         db = get_db()
         try:
@@ -4046,6 +4074,12 @@ def api_squeeze_history():
             if freshness:
                 payload["refreshed_at"] = str(freshness[0][0]) if freshness[0][0] else None
                 payload["data_through"] = str(freshness[0][1]) if freshness[0][1] else None
+            key = (payload["refreshed_at"], payload["data_through"])
+            if _SQH_CACHE.get("data") is not None and _SQH_CACHE.get("key") == key:
+                # Same data as the cached copy — keep the payload AND its compressed bytes, and just mark
+                # it fresh. This is the whole point of keying on the data rather than on the clock.
+                _SQH_CACHE["ts"] = _time.time()
+                return _SQH_CACHE["data"]
             raw = db.run(
                 "select ticker, market, timeframe, hvf_type, first_seen, first_signal, ready_date, "
                 "triggered_date, outcome, outcome_date, return_pct, quality, risk_reward, rvol "
@@ -4053,6 +4087,7 @@ def api_squeeze_history():
                 "order by coalesce(triggered_date, ready_date, first_seen) desc nulls last") or []   # no row cap (user 2026-07-18, P-01)
         finally:
             db.close()
+        snap = {r["ticker"]: r for r in _load_snapshot().get("records", []) if r.get("ticker")}
         vsmap = _volscore_trigger_map()
         vfmap = _volscore_trigger_feature_map()
         for (tk, mk, tf, ht, fseen, fsig, rd, td, oc, od, ret, q, rr, rv) in raw:
@@ -4076,11 +4111,34 @@ def api_squeeze_history():
                 "atr_expanding": features.get("atr_expanding")})
     except Exception as ex:
         log.warning(f"squeeze history failed: {ex}")
-        # Deliberately NOT cached: a failure here yields an empty table, and pinning that for fifteen
-        # minutes would turn one bad query into a quarter-hour of "no history" for every admin.
-        return jsonify(payload)
-    _SQH_CACHE.update(ts=_time.time(), data=payload, gzip=None)
-    return _gzip_json(payload, _SQH_CACHE)
+        # Deliberately NOT cached: a failure here yields an empty table, and pinning that would turn one
+        # bad query into a prolonged "no history" for every admin. Returning None leaves any previously
+        # good payload in place rather than replacing it with an empty one.
+        return None
+    _SQH_CACHE.update(ts=_time.time(), data=payload, gzip=None, key=key)
+    return payload
+
+
+@app.route("/api/squeeze-history")
+def api_squeeze_history():
+    """Lifecycle history of squeeze funnels (user 2026-07-18, Squeeze History (Admin) tab): each funnel's
+    developing → ready → triggered → outcome journey, replayed over price history. Newest first.
+
+    Served gzipped, cached, and background-warmed (user 2026-08-25: "squeeze history is still very slow
+    to load"). NON-BLOCKING for the same reason as /api/performance: the cold build NEVER runs on the
+    request thread. Measured before this change -- 14,927,347 bytes of uncompressed JSON, 33.0 s and
+    25.9 s for two loads, and one cold request that never returned at all while a scan held the database.
+    A cold caller now gets {warming:true} immediately and polls, exactly as the Performance tab does.
+    """
+    if not _wu.name_for_token(request.headers.get("X-Auth") or ""):
+        return jsonify({"error": "login required"}), 401
+    now = _time.time()
+    if _SQH_CACHE["data"] is not None and now - _SQH_CACHE["ts"] < _SQH_TTL:
+        return _gzip_json(_SQH_CACHE["data"], _SQH_CACHE)
+    _kick_sqh_warm()
+    if _SQH_CACHE["data"] is not None:
+        return _gzip_json(_SQH_CACHE["data"], _SQH_CACHE)   # stale — refreshed in the background
+    return jsonify({"rows": [], "warming": True, "generated": ""})
 
 
 @app.route("/api/fees")

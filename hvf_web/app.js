@@ -3719,7 +3719,13 @@ function paintInstrFunnel(){
 let SQH=null, sqhSortK="triggered_date", sqhSortDir=-1;   // default: Triggered date descending (user 2026-08-01); header click changes it
 function renderSqueezeHist(){
   if(SQH===null){SQH=[];$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr>';}
-  fetch("/api/squeeze-history",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]}).then(j=>{SQH=j.rows||[];const f=$("sqh-freshness");if(f)f.textContent=j.data_through?`data through ${j.data_through}${j.refreshed_at?` · refreshed ${String(j.refreshed_at).replace('T',' ').slice(0,16)} UTC`:''}`:'';fillSqhFilterOptions();paintSqueezeHist();})
+  fetch("/api/squeeze-history",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]}).then(j=>{
+    // The endpoint is background-warmed from 2026-08-25 (user: "squeeze history is still very slow to
+    // load"). A cold cache answers {warming:true} INSTANTLY instead of blocking — one such request was
+    // measured outstanding for over ten minutes. Keep the loading state and poll, exactly as the
+    // Performance tab does; without this branch a warming reply would paint an empty history.
+    if(j.warming){SQH=null;$("sqh-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr>';setTimeout(renderSqueezeHist,3000);return;}
+    SQH=j.rows||[];const f=$("sqh-freshness");if(f)f.textContent=j.data_through?`data through ${j.data_through}${j.refreshed_at?` · refreshed ${String(j.refreshed_at).replace('T',' ').slice(0,16)} UTC`:''}`:'';fillSqhFilterOptions();paintSqueezeHist();})
     .catch(()=>{SQH=[];paintSqueezeHist();});
 }
 // Header sort (user 2026-07-18, P-01): click toggles asc/desc on that column; "" restores server order.

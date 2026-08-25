@@ -219,16 +219,70 @@ def test_squeeze_history_serves_the_cache_without_rebuilding(monkeypatch):
 
 
 def test_squeeze_history_failure_is_never_cached(monkeypatch):
-    """Reconstructs the bug the guard exists for: caching a failed build would pin an EMPTY history
-    for fifteen minutes, turning one bad query into a quarter-hour outage of the tab."""
+    """Reconstructs the bug the guard exists for: caching a failed build would replace good history with
+    an empty table for every admin until the next rebuild."""
+    import db_pool
+    monkeypatch.setitem(server._SQH_CACHE, "ts", 0.0)
+    monkeypatch.setitem(server._SQH_CACHE, "data", None)
+    monkeypatch.setitem(server._SQH_CACHE, "gzip", None)
+    monkeypatch.setitem(server._SQH_CACHE, "key", None)
+    monkeypatch.setattr(db_pool, "get_db", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+
+    assert server._build_sqh_payload() is None
+    assert server._SQH_CACHE["data"] is None, "a failed build must not be cached"
+
+
+def test_squeeze_history_cold_request_never_builds_on_the_request_thread(monkeypatch):
+    """The symptom that forced this: on 2026-08-25 a cold request was left outstanding for over ten
+    minutes without returning a byte. A cold caller must be answered immediately instead."""
     monkeypatch.setattr(server._wu, "name_for_token", lambda token: "alex")
     monkeypatch.setitem(server._SQH_CACHE, "ts", 0.0)
     monkeypatch.setitem(server._SQH_CACHE, "data", None)
     monkeypatch.setitem(server._SQH_CACHE, "gzip", None)
-    monkeypatch.setattr(server, "_load_snapshot", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+    kicked = []
+    monkeypatch.setattr(server, "_kick_sqh_warm", lambda: kicked.append(True))
+    monkeypatch.setattr(server, "_build_sqh_payload",
+                        lambda: pytest.fail("the cold build must not run on the request thread"))
 
     response = server.app.test_client().get("/api/squeeze-history", headers={"X-Auth": "t"})
 
     assert response.status_code == 200
-    assert response.get_json()["rows"] == []
-    assert server._SQH_CACHE["data"] is None, "a failed build must not be cached"
+    assert response.get_json() == {"rows": [], "warming": True, "generated": ""}
+    assert kicked == [True]
+
+
+def test_squeeze_history_unchanged_data_is_not_rebuilt(monkeypatch):
+    """squeeze_history is rewritten ONCE A DAY, so an unchanged freshness key must reuse the cached
+    payload rather than spend the full build producing a byte-identical answer."""
+    import db_pool
+    kept = {"rows": [{"ticker": "KEEP"}], "refreshed_at": "2026-08-25 09:00",
+            "data_through": "2026-08-25"}
+    monkeypatch.setitem(server._SQH_CACHE, "data", kept)
+    monkeypatch.setitem(server._SQH_CACHE, "key", ("2026-08-25 09:00", "2026-08-25"))
+    monkeypatch.setitem(server._SQH_CACHE, "ts", 0.0)
+
+    class _DB:
+        def run(self, sql):
+            if "max(refreshed_at)" in sql:
+                return [("2026-08-25 09:00", "2026-08-25")]
+            raise AssertionError("unchanged data must not run the expensive whole-table query")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(db_pool, "get_db", lambda: _DB())
+    monkeypatch.setattr(server, "_load_snapshot",
+                        lambda: pytest.fail("unchanged data must not rebuild the payload"))
+
+    assert server._build_sqh_payload() is kept, "the cached payload object itself must be reused"
+
+
+def test_squeeze_history_client_handles_the_warming_reply():
+    """Source check, deliberately: the branch lives inside a fetch callback. Without it a {warming:true}
+    reply would paint an EMPTY history and never poll again — a silent wrong answer, not a slow one."""
+    from client_source import client_js
+
+    handler = client_js().split("function renderSqueezeHist(")[1].split("\nfunction ")[0]
+
+    assert "j.warming" in handler, "renderSqueezeHist must recognise the warming reply"
+    assert "renderSqueezeHist,3000" in handler.replace(" ", ""), "it must poll again while warming"
