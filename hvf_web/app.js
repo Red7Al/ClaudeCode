@@ -2314,7 +2314,21 @@ let WINNERS_HIDE_MISSED=false;   // "hide trades missed" toggle on the winners l
 // This is a RENDER cap only. The ledger itself is unchanged and still computed over every row, so the
 // trade count, wallet, net £ and every dimension chart are identical to before -- they read the ledger,
 // never the DOM.
-let WINNERS_EVIDENCE_LIMIT=1500, WINNERS_EVIDENCE_SHOW_ALL=false;
+// 250, not 1500 (user 2026-08-25: "clicking on best settings when the data is not loaded seems to freeze
+// the whole site"). 1,500 rows of this 18-column table is about 27,000 elements -- the same order as the
+// Instruments table that measurably froze the tab -- so the original cap was far too high to fix
+// anything. 250 matches the limit Instruments settled on.
+//
+// A NOTE ON THE NUMBERS: timings gathered through the automation harness came from a BACKGROUND tab, and
+// Chrome throttles rendering and layout there while leaving raw JS alone. A pure CPU loop measured a
+// steady 17-21 ms in the same page where 250 DOM rows appeared to take 6,682 ms and 1,500 rows 3,392 ms
+// -- smaller work "slower" than larger. Those figures are scheduling noise and must not be quoted. The
+// freeze itself is real and user-reported twice; the remedy chosen here is the structural one, fewer DOM
+// nodes, which is sound independently of any stopwatch.
+//
+// The ledger behind the table is still computed over EVERY row, so the trade count, wallet and net gain
+// are unchanged; only the rows drawn are limited.
+let WINNERS_EVIDENCE_LIMIT=250, WINNERS_EVIDENCE_SHOW_ALL=false;
 function winnersEvidenceShowAll(){WINNERS_EVIDENCE_SHOW_ALL=true;paintOrdersPerf();}
 function winnersToggleMissed(){WINNERS_HIDE_MISSED=!!($("ordp-hide-missed")||{}).checked;const t=$("ordp-table");if(t)t.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);}
 let WIN=null, WIN_GENERATED="", WIN_3Y=null;

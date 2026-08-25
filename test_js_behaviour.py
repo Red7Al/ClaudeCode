@@ -286,10 +286,10 @@ def _evidence_cap_source() -> str:
 
 def test_evidence_table_caps_the_rows_it_materialises():
     src = _evidence_cap_source()
-    preamble = ("let WINNERS_EVIDENCE_LIMIT=1500, WINNERS_EVIDENCE_SHOW_ALL=false;\n"
+    preamble = ("let WINNERS_EVIDENCE_LIMIT=250, WINNERS_EVIDENCE_SHOW_ALL=false;\n"
                 "const ledger=Array.from({length:11669},(_,i)=>({i}));\n")
 
-    assert run_js(preamble, src, "_evRows.length") == 1500
+    assert run_js(preamble, src, "_evRows.length") == 250
     assert run_js(preamble, src, "_evAll") is False
 
 
@@ -304,18 +304,19 @@ def test_evidence_cap_preserves_chronological_order_and_the_first_rows():
 
 def test_show_all_renders_every_row():
     src = _evidence_cap_source()
-    preamble = ("let WINNERS_EVIDENCE_LIMIT=1500, WINNERS_EVIDENCE_SHOW_ALL=true;\n"
+    preamble = ("let WINNERS_EVIDENCE_LIMIT=250, WINNERS_EVIDENCE_SHOW_ALL=true;\n"
                 "const ledger=Array.from({length:11669},(_,i)=>({i}));\n")
 
     assert run_js(preamble, src, "_evRows.length") == 11669
 
 
 def test_a_small_ledger_is_never_capped_or_annotated():
+    """Below the cap, every row is drawn and no notice appears. 200 < the 250 limit."""
     src = _evidence_cap_source()
-    preamble = ("let WINNERS_EVIDENCE_LIMIT=1500, WINNERS_EVIDENCE_SHOW_ALL=false;\n"
-                "const ledger=Array.from({length:263},(_,i)=>({i}));\n")
+    preamble = ("let WINNERS_EVIDENCE_LIMIT=250, WINNERS_EVIDENCE_SHOW_ALL=false;\n"
+                "const ledger=Array.from({length:200},(_,i)=>({i}));\n")
 
-    assert run_js(preamble, src, "_evRows.length") == 263
+    assert run_js(preamble, src, "_evRows.length") == 200
     assert run_js(preamble, src, "_evAll") is True
 
 
@@ -326,7 +327,7 @@ def test_the_uncapped_render_is_what_produced_the_freeze():
     was = run_js(preamble, "const rendered=ledger;", "rendered.length")
     assert was == 11669, "the reconstruction must reproduce the unbounded render"
 
-    now = run_js("let WINNERS_EVIDENCE_LIMIT=1500, WINNERS_EVIDENCE_SHOW_ALL=false;\n" + preamble,
+    now = run_js("let WINNERS_EVIDENCE_LIMIT=250, WINNERS_EVIDENCE_SHOW_ALL=false;\n" + preamble,
                  _evidence_cap_source(), "_evRows.length")
     assert now < was, "THE HARNESS CANNOT DISTINGUISH THE UNBOUNDED RENDER FROM THE CAPPED ONE"
 
