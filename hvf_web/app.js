@@ -3566,10 +3566,72 @@ function instrRvolCell(row){
 }
 // Cross-filter cards: Location/Market/Sector/Status are public; Direction is a 4th "worthwhile" card but
 // only once logged in — it's one of the columns hidden pre-login (same rule as the table below).
-// See the render cap inside paintInstruments. 250 keeps the tab responsive while still showing a useful
-// page of results; the search and filter cards operate on the FULL set, so nothing is hidden from a
-// query -- only from the initial wall of rows.
-let INSTR_ROW_LIMIT=250, INSTR_SHOW_ALL=false;
+// ======================================================================================================
+// Virtual table rows (user 2026-08-25: "not all rows are visible at once - why not deal with what is
+// visible first?").
+//
+// Only the rows actually on screen exist in the DOM. Everything above and below is represented by two
+// spacer rows of the right height, so the scrollbar stays honest and the page scrolls exactly as it did.
+// A 1,773-row table costs about 40 rows of DOM instead of 25,000, and stays that way however far you
+// scroll -- which a render cap or an infinite-scroll batch cannot do.
+//
+// WHAT THIS DOES NOT CHANGE. Sorting, filtering and search all operate on the DATA array before it gets
+// here, so the rows you see are the correct ones in the correct order, and the counts above the table
+// still report the true totals.
+//
+// KNOWN TRADE-OFF, accepted deliberately: the browser's own Ctrl+F cannot find text in rows that are not
+// currently rendered. The in-page search box searches the full data set and is the right tool for that.
+//
+// Works whether the .tablewrap scrolls or the whole page does: the visible window is computed from the
+// tbody's position relative to the viewport, which is true in both cases.
+// ======================================================================================================
+const VTABLE={};                       // tbody id -> {rows, renderRow, cols, rowH, raf}
+const VTABLE_OVERSCAN=12;              // rows drawn beyond each edge, so a fast scroll shows content
+
+function _vtableWindow(st, body){
+  const rect=body.getBoundingClientRect();
+  const viewTop=0, viewBottom=window.innerHeight||document.documentElement.clientHeight;
+  const first=Math.max(0, Math.floor((viewTop-rect.top)/st.rowH)-VTABLE_OVERSCAN);
+  const visible=Math.ceil((viewBottom-viewTop)/st.rowH)+VTABLE_OVERSCAN*2;
+  return [first, Math.min(st.rows.length, first+visible)];
+}
+
+function _vtablePaint(id){
+  const st=VTABLE[id], body=$(id); if(!st||!body)return;
+  if(!st.rows.length){
+    body.innerHTML=`<tr><td colspan="${st.cols}" class="empty">${st.empty||"No rows."}</td></tr>`;
+    return;
+  }
+  // Measure a real row once: heights differ by theme and zoom, and a wrong guess mis-sizes the scrollbar.
+  if(!st.rowH){
+    body.innerHTML=st.renderRow(st.rows[0],0);
+    const r=body.firstElementChild;
+    st.rowH=(r&&r.getBoundingClientRect().height)||28;
+  }
+  const [from,to]=_vtableWindow(st,body);
+  if(st.from===from&&st.to===to)return;             // nothing moved; do not touch the DOM
+  st.from=from; st.to=to;
+  const above=from*st.rowH, below=(st.rows.length-to)*st.rowH;
+  const pad=h=>h>0?`<tr aria-hidden="true"><td colspan="${st.cols}" style="padding:0;border:0;height:${h}px"></td></tr>`:"";
+  body.innerHTML=pad(above)+st.rows.slice(from,to).map((r,i)=>st.renderRow(r,from+i)).join("")+pad(below);
+}
+
+function vtable(id, rows, renderRow, cols, empty){
+  const body=$(id); if(!body)return;
+  const first=!VTABLE[id];
+  VTABLE[id]={rows:rows||[], renderRow, cols, empty,
+              rowH:(VTABLE[id]||{}).rowH||0, from:-1, to:-1};
+  if(first){
+    // One listener per table, coalesced to a frame: scroll fires far faster than the screen refreshes.
+    const onScroll=()=>{const st=VTABLE[id]; if(!st||st.raf)return;
+      st.raf=requestAnimationFrame(()=>{st.raf=0;_vtablePaint(id);});};
+    window.addEventListener("scroll",onScroll,{passive:true});
+    window.addEventListener("resize",onScroll,{passive:true});
+    const wrap=body.closest(".tablewrap");
+    if(wrap)wrap.addEventListener("scroll",onScroll,{passive:true});
+  }
+  _vtablePaint(id);
+}
 function paintInstruments(){
   // This tab can be selected before the shared /api/records request completes.  Do not replace the
   // initial loading row with a misleading "No instruments match" result while DATA is still empty.
@@ -3599,16 +3661,12 @@ function paintInstruments(){
     if(cmp)return cmp*s.d;}return 0;});
   if($("instr-count"))$("instr-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> instruments${rows.length!==shown.length?` <span class="muted">of ${rows.length.toLocaleString()}</span>`:""}`;
   if($("instrtab-count"))$("instrtab-count").textContent=`(${shown.length.toLocaleString()})`;
-  // Render cap (user 2026-08-24: "why is the initial click of each tab so slow e.g. instruments" and
-  // "I clicked on IG account tab but this is not recognised - it is like the site is frozen").
-  // Measured: all 1,773 rows is about 25,000 DOM elements -- 65% of the entire page -- torn down and
-  // rebuilt on every paint. Successive paints took 2,201 / 2,940 / 18,568 ms; that variance is garbage
-  // collection and layout, and an 18-second block is exactly why a click elsewhere looks ignored.
-  // The counts above still report the true totals, and the search and filter cards still narrow the FULL
-  // set -- only the number of rows materialised is limited.
-  const _instrAll=INSTR_SHOW_ALL||shown.length<=INSTR_ROW_LIMIT;
-  const _instrRows=_instrAll?shown:shown.slice(0,INSTR_ROW_LIMIT);
-  if($("instr-rows"))$("instr-rows").innerHTML=_instrRows.map(r=>{
+  // Virtualised (user 2026-08-25: "not all rows are visible at once - why not deal with what is visible
+  // first?"). Only the rows on screen exist in the DOM -- about 40 instead of 25,000 for the full
+  // universe -- and that stays true however far you scroll. `shown` is already sorted, filtered and
+  // searched, so the window drawn is the correct slice of the correct list, and the counts above report
+  // the true totals.
+  vtable("instr-rows", shown, r=>{
     const tk=(r.ticker||"").replace(/'/g,"");
     return `<tr>
     <td class="clk" style="cursor:pointer;color:var(--accent)" title="${AUTH?"Open the detail report":"Log in to open the detail report"}" onclick="${AUTH?`openDetailFrom('instruments','${tk}')`:"showLogin()"}">${nm40(r.name)}</td>
@@ -3621,13 +3679,7 @@ function paintInstruments(){
     <td>${ob(r.current_above_vwap==null?"—":r.current_above_vwap?"✓":"✗")}</td>
     <td>${ob(r.current_atr_expanding==null?"—":r.current_atr_expanding?"✓":"✗")}</td>
     <td>${ob(volScoreCell(r.volume_score))}</td>
-    <td><b>${disp(r.ticker)}</b></td></tr>`;}).join("")
-    +(_instrAll?"":`<tr><td colspan="14" class="empty" style="padding:10px">`
-      +`<b>Showing ${_instrRows.length.toLocaleString()} of ${shown.length.toLocaleString()} matching instruments.</b> `
-      +`<span class="muted">Search, or use the cards above, to narrow the list.</span>`
-      +`<button class="btn" style="margin-left:8px" onclick="INSTR_SHOW_ALL=true;paintInstruments()" `
-      +`title="Renders every matching row. On the full universe that builds about 25,000 elements and the tab will be unresponsive while it does.">Show all</button></td></tr>`)
-    ||`<tr><td colspan="14" class="empty">No instruments match.</td></tr>`;
+    <td><b>${disp(r.ticker)}</b></td></tr>`;}, 14, "No instruments match.");
   paintInstrFunnel();
 }
 document.querySelectorAll("th[data-instrk]").forEach(th=>th.onclick=e=>instrSort(th.dataset.instrk,e.shiftKey));

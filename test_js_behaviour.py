@@ -677,58 +677,15 @@ def test_no_renderer_reads_DATA_without_either_fetching_or_guarding():
 
 
 # ------------------------------------------------------------------------------------------------------
-# Instruments render cap (user 2026-08-24: "why is the initial click of each tab so slow e.g.
-# instruments", and a click on another tab "is not recognised - it is like the site is frozen").
+# Instruments (user 2026-08-24: "why is the initial click of each tab so slow e.g. instruments").
+# The render cap this section originally tested was replaced by virtualisation on 2026-08-25; the
+# windowing itself is covered by the virtual-table tests above. What remains here is the promise that
+# capping or windowing the ROWS never caps the NUMBERS.
 #
 # Measured on the live site: all 1,773 rows is about 25,000 DOM elements -- 65% of the entire page --
 # torn down and rebuilt on every paint. Successive paints took 2,201 / 2,940 / 18,568 ms. An 18-second
 # synchronous block is precisely why a click elsewhere appears ignored.
 # ------------------------------------------------------------------------------------------------------
-
-def _instr_cap_source(show_all: bool) -> str:
-    """The real cap declaration and expressions, with INSTR_SHOW_ALL set between them.
-
-    The declaration itself defines INSTR_SHOW_ALL, so a caller must not also declare it in the preamble;
-    the flag is assigned after the `let` instead.
-    """
-    html = INDEX.read_text(encoding="utf-8")
-    m = re.search(r"\nlet INSTR_ROW_LIMIT=[^\n]*\n", html)
-    assert m, "the Instruments render cap was not found"
-    cap = re.search(r"\n\s*const _instrAll=[^\n]*\n\s*const _instrRows=[^\n]*\n", html)
-    assert cap, "the Instruments cap expressions were not found"
-    flag = "true" if show_all else "false"
-    return textwrap.dedent(m.group(0)) + f"\nINSTR_SHOW_ALL={flag};\n" + textwrap.dedent(cap.group(0))
-
-
-def test_instruments_caps_the_rows_it_materialises():
-    src = _instr_cap_source(False) + "\nconst out={all:_instrAll,n:_instrRows.length};"
-
-    assert run_js("const shown=new Array(1773).fill(0);", src, "out.n") == 250
-    assert run_js("const shown=new Array(1773).fill(0);", src, "out.all") is False
-
-
-def test_a_short_list_is_not_capped():
-    src = _instr_cap_source(False) + "\nconst out={all:_instrAll,n:_instrRows.length};"
-
-    assert run_js("const shown=new Array(40).fill(0);", src, "out.n") == 40
-    assert run_js("const shown=new Array(40).fill(0);", src, "out.all") is True
-
-
-def test_show_all_renders_everything():
-    src = _instr_cap_source(True) + "\nconst out={n:_instrRows.length};"
-
-    assert run_js("const shown=new Array(1773).fill(0);", src, "out.n") == 1773
-
-
-def test_the_uncapped_render_is_what_froze_the_tab():
-    """A guard that has never failed proves nothing: run the shape that shipped."""
-    was = run_js("const shown=new Array(1773).fill(0);", "const rendered=shown;", "rendered.length")
-    now = run_js("const shown=new Array(1773).fill(0);",
-                 _instr_cap_source(False) + "\nconst out={n:_instrRows.length};", "out.n")
-
-    assert was == 1773
-    assert now < was, "THE HARNESS CANNOT TELL THE UNCAPPED RENDER FROM THE CAPPED ONE"
-
 
 def test_the_counts_still_report_the_true_totals():
     """Capping the rows must not cap the numbers: the count and the tab badge report what MATCHED."""
@@ -745,3 +702,125 @@ def test_the_instruments_tab_button_has_a_count_like_the_others():
     assert 'id="instrtab-count"' in html
     for sibling in ("sctab-count", "potab-count", "ootab-count"):
         assert f'id="{sibling}"' in html, "the sibling tab counts this was matched to have moved"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Virtual table rows (user 2026-08-25: "not all rows are visible at once - why not deal with what is
+# visible first?").
+#
+# Only the rows on screen exist in the DOM; everything above and below is two spacer rows of the right
+# height, so the scrollbar stays honest. Unlike a render cap, the DOM stays small however far you scroll.
+#
+# Executed against a fake DOM rather than asserted on source text: the windowing arithmetic is the part
+# that can be wrong, and a wrong window shows the user the wrong rows.
+# ------------------------------------------------------------------------------------------------------
+
+def _vtable_env(top_px: int, rows: int, viewport: int = 800) -> str:
+    """Stubs enough DOM for the helper to run: a tbody whose top edge sits at `top_px`."""
+    return textwrap.dedent(f"""
+        let HTML="";
+        const body={{
+          set innerHTML(v){{HTML=v;}}, get innerHTML(){{return HTML;}},
+          firstElementChild:{{getBoundingClientRect:()=>({{height:28}})}},
+          getBoundingClientRect:()=>({{top:{top_px}}}),
+          closest:()=>null
+        }};
+        const $=()=>body;
+        const window={{innerHeight:{viewport},addEventListener(){{}}}};
+        const document={{documentElement:{{clientHeight:{viewport}}}}};
+        const requestAnimationFrame=f=>f();
+        const ROWS=Array.from({{length:{rows}}},(_,i)=>({{i}}));
+        const RENDER=r=>`<tr data-i="${{r.i}}"></tr>`;
+    """)
+
+
+def _vtable_src() -> str:
+    js = client_js()
+    consts = re.search(r"\nconst VTABLE=\{\};[^\n]*\nconst VTABLE_OVERSCAN=\d+;", js)
+    assert consts, "the virtual-table state declarations were not found"
+
+    def grab(decl):
+        s = js.index(decl)
+        i, d = js.index("{", s), 0
+        while i < len(js):
+            if js[i] == "{":
+                d += 1
+            elif js[i] == "}":
+                d -= 1
+                if d == 0:
+                    return js[s:i + 1]
+            i += 1
+        raise AssertionError(decl)
+
+    return "\n".join([consts.group(0), grab("function _vtableWindow("),
+                      grab("function _vtablePaint("), grab("function vtable(")])
+
+
+def _drawn(html: str) -> int:
+    return len(re.findall(r'data-i="', html))
+
+
+def test_only_a_screenful_of_rows_is_drawn():
+    """THE POINT. 1,773 matching rows must not become 1,773 rows of DOM."""
+    out = run_js(_vtable_env(0, 1773), _vtable_src(),
+                 '(vtable("t",ROWS,RENDER,14), body.innerHTML)')
+
+    drawn = _drawn(out)
+    assert 20 < drawn < 120, f"expected roughly a screenful, drew {drawn}"
+    assert drawn < 1773 / 10, "virtualisation is not reducing the DOM materially"
+
+
+def test_the_window_stays_small_wherever_you_scroll():
+    """A render cap shrinks the first page; virtualisation must hold at any scroll position."""
+    counts = []
+    for top in (0, -28 * 400, -28 * 900, -28 * 1500):
+        out = run_js(_vtable_env(top, 1773), _vtable_src(),
+                     '(vtable("t",ROWS,RENDER,14), body.innerHTML)')
+        counts.append(_drawn(out))
+
+    assert all(c < 120 for c in counts), f"the window grew while scrolling: {counts}"
+
+
+def test_spacers_preserve_the_scroll_height():
+    """Without spacers the scrollbar would shrink to the visible rows and scrolling would break."""
+    mid = run_js(_vtable_env(-28 * 900, 1773), _vtable_src(),
+                 '(vtable("t",ROWS,RENDER,14), body.innerHTML)')
+
+    assert mid.count("aria-hidden") == 2, "midway through, there must be a spacer above AND below"
+    heights = [int(h) for h in re.findall(r"height:(\d+)px", mid)]
+    drawn = _drawn(mid)
+    assert sum(heights) + drawn * 28 == 1773 * 28, (
+        "spacers plus drawn rows must account for every row, or the scrollbar lies")
+
+
+def test_the_top_of_the_list_has_no_spacer_above_it():
+    out = run_js(_vtable_env(0, 1773), _vtable_src(),
+                 '(vtable("t",ROWS,RENDER,14), body.innerHTML)')
+
+    assert out.count("aria-hidden") == 1, "at the top only the below-spacer is needed"
+    assert out.index('data-i="0"') < out.index("aria-hidden"), "row 0 must come before the spacer"
+
+
+def test_a_short_list_is_drawn_whole_with_no_spacers():
+    out = run_js(_vtable_env(0, 12), _vtable_src(),
+                 '(vtable("t",ROWS.slice(0,12),RENDER,14), body.innerHTML)')
+
+    assert _drawn(out) == 12
+    assert "aria-hidden" not in out
+
+
+def test_an_empty_list_shows_the_caller_s_message():
+    out = run_js(_vtable_env(0, 0), _vtable_src(),
+                 '(vtable("t",[],RENDER,14,"No instruments match."), body.innerHTML)')
+
+    assert "No instruments match." in out
+    assert _drawn(out) == 0
+
+
+def test_instruments_uses_the_virtual_table():
+    html = INDEX.read_text(encoding="utf-8")
+    body = _fn_body(html, "paintInstruments")
+
+    assert 'vtable("instr-rows"' in body, "Instruments is not virtualised"
+    assert "INSTR_ROW_LIMIT" not in html, "the old render cap is still present alongside virtualisation"
+    assert "shown" in body, "the window must be taken from the sorted/filtered list"
