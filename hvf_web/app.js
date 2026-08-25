@@ -4666,7 +4666,11 @@ if(AUTH){$("logout").style.display="";$("loginbtn").style.display="none";}   // 
 let LIMITED=false;
 const ob=h=>LIMITED?'<span class="muted">•••</span>':h;   // obfuscated cell for logged-out visitors
 Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.status===401)throw "auth";return r.json();}),
-             fetch("/api/positions").then(r=>r.json()).catch(()=>({positions:{}})),
+             // X-Auth required from 2026-08-25: /api/positions returned the account's REAL open book to
+             // anyone, with no auth check at all. It now answers 401 with an empty map, so a logged-out
+             // visitor still renders the page — just without position indicators, which they should
+             // never have had. Logged-in users need the token here or they lose the indicators too.
+             fetch("/api/positions",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).catch(()=>({positions:{}})),
              fetch("/api/pubcounts").then(r=>r.json()).catch(()=>({pubcounts:{}})),
              fetch("/api/working-orders").then(r=>r.json()).catch(()=>({tickers:[]})),
              fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({}))])

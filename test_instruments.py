@@ -286,3 +286,27 @@ def test_squeeze_history_client_handles_the_warming_reply():
 
     assert "j.warming" in handler, "renderSqueezeHist must recognise the warming reply"
     assert "renderSqueezeHist,3000" in handler.replace(" ", ""), "it must poll again while warming"
+
+
+# ======================================================================================================
+# /api/positions must not disclose the live book to an unauthenticated caller (user 2026-08-25:
+# "Performance tab showing 4,145 in tab name - if not loggedin - how can that tab have 4,145 rows?").
+#
+# Sweeping every /api route for a missing auth check found this one had none at all: an unauthenticated
+# request returned the account's REAL open IG positions -- 17 instruments including 2202.HK, 4503.T,
+# ASL.L, BP and BRWM.L. No sizes or P&L, but it discloses which instruments the account is in, live.
+# ======================================================================================================
+
+def test_positions_are_not_served_without_a_token(monkeypatch):
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "")
+
+    def _explode():
+        raise AssertionError("IG must not be contacted for an unauthenticated caller")
+    monkeypatch.setattr(server, "_ig_shim_guard", _explode, raising=False)
+
+    response = server.app.test_client().get("/api/positions")
+
+    assert response.status_code == 401
+    assert response.get_json() == {"positions": {}}, (
+        "an unauthenticated caller must get an EMPTY map, so the page still renders but discloses "
+        "nothing about the live book")

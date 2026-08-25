@@ -841,13 +841,28 @@ def test_instruments_uses_the_virtual_table():
 # ------------------------------------------------------------------------------------------------------
 
 def _auth_gated_endpoints() -> set:
-    """Endpoints whose handler rejects a request without a valid token."""
+    """Endpoints whose handler rejects a request without a valid token.
+
+    Detected by BEHAVIOUR — the handler reads the token and can answer 401/403 — not by the wording of
+    its refusal. The original version required the literal text "login required", "is_admin" or
+    "admin only", so on 2026-08-25 it silently failed to recognise a newly gated /api/positions that
+    returns `jsonify({"positions": {}}), 401`: the guard passed while the client still called it bare.
+    A guard for "the next gated endpoint" must not depend on how the refusal happens to be phrased.
+
+    The body is read to the NEXT route decorator rather than a fixed number of characters. The fixed
+    900-char window this replaced was defeated by nothing more exotic than a long docstring: the
+    explanatory comment added above the /api/positions auth check pushed `name_for_token` past the end
+    of the window, so the endpoint again went undetected. A detector must read the whole handler.
+    """
     server = (Path(__file__).parent / "hvf_web" / "server.py").read_text(encoding="utf-8")
+    starts = [(m.start(), m.end(), m.group(1)) for m in re.finditer(r'@app\.route\("(/api/[^"]+)"', server)]
     gated = set()
-    for m in re.finditer(r'@app\.route\("(/api/[^"]+)"', server):
-        body = server[m.end():m.end() + 700]
-        if "name_for_token" in body and any(k in body for k in ("is_admin", "login required", "admin only")):
-            gated.add(m.group(1).split("<")[0].rstrip("/"))
+    for i, (_, end, path) in enumerate(starts):
+        stop = starts[i + 1][0] if i + 1 < len(starts) else len(server)
+        body = server[end:stop]
+        refuses = ("is_admin" in body) or re.search(r",\s*(401|403)\b", body)
+        if "name_for_token" in body and refuses:
+            gated.add(path.split("<")[0].rstrip("/"))
     return gated
 
 

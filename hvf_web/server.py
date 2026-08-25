@@ -1630,7 +1630,21 @@ def api_rules(ticker):
 @app.route("/api/positions")
 def api_positions():
     """Live count of OPEN IG positions per instrument (user 2026-06-27). Best-effort: needs IG env +
-    epic_lookup; returns {} on any failure so the page still loads."""
+    epic_lookup; returns {} on any failure so the page still loads.
+
+    LOGIN REQUIRED from 2026-08-25. This endpoint had no auth check at all, so an unauthenticated
+    request returned the account's REAL open book -- 17 instruments including 2202.HK, 4503.T, ASL.L,
+    BP and BRWM.L -- to anyone who asked. It carries no sizes or P&L, but it discloses which instruments
+    the account is in, live, which for a trading account is material. Found by sweeping every /api route
+    for a missing auth check after the requester asked how a logged-out Performance tab could hold 4,145
+    rows (register item 72).
+
+    An unauthenticated caller gets an EMPTY positions map rather than an error shape, so the Scanner's
+    Promise.all still resolves and the page renders exactly as before -- it simply shows no position
+    indicators, which a logged-out visitor should never have had.
+    """
+    if not _wu.name_for_token(request.headers.get("X-Auth") or ""):
+        return jsonify({"positions": {}}), 401
     counts = {}
     try:
         import ig_shim
