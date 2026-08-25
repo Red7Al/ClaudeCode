@@ -484,12 +484,23 @@ function showDetail(t){
   }).catch(()=>{const el=document.getElementById("brokerchg");if(el)el.style.display="none";});
   // Squeeze Rules 1–5 justification is admin-only (user 2026-07-24, P-02): don't expose the per-rule
   // PASS/FAIL diagnostics to non-admin subscribers. Card is omitted above too, so guard the fetch.
-  if(IS_ADMIN) fetch(`/api/rules/${r.ticker}`).then(x=>x.json()).then(j=>{
-    const el=document.getElementById("rulesbox"); if(!el||SEL!==r.ticker)return;
-    el.classList.remove("sqh-loading");
-    el.innerHTML=(j.rules||[]).map(u=>`<div class="rule"><div class="top"><span class="v ${u.verdict}">${u.verdict}</span><b>Rule ${u.n} — ${u.name}</b></div><div class="why">${(u.detail||u.note||'').replace(/</g,'&lt;')}</div></div>`).join("")
-      || "<span class='muted'>no rule detail</span>";
-  }).catch(()=>{document.getElementById("rulesbox")&&(document.getElementById("rulesbox").textContent="rules unavailable");});
+  // The X-Auth header was missing here while /api/rules is admin-gated, so this ALWAYS came back
+  // 403 {"error":"admin only"} and the card read "no rule detail" for every instrument, triggered or not
+  // (user 2026-08-25: "we have items listed as Triggered but ... it says no rule detail - this must exist
+  // if triggered"). It never worked. The sibling /api/volscore fetch three lines below always sent it.
+  //
+  // The 403 was invisible because it is valid JSON: .catch() never fired, j.rules was undefined, and
+  // `(j.rules||[])` rendered the empty state. A refusal now says so instead of impersonating "no data".
+  if(IS_ADMIN) fetch(`/api/rules/${r.ticker}`,{headers:{"X-Auth":AUTH}})
+    .then(x=>x.ok?x.json():Promise.reject(new Error(x.status===403?"admin only":`HTTP ${x.status}`)))
+    .then(j=>{
+      const el=document.getElementById("rulesbox"); if(!el||SEL!==r.ticker)return;
+      el.classList.remove("sqh-loading");
+      el.innerHTML=(j.rules||[]).map(u=>`<div class="rule"><div class="top"><span class="v ${u.verdict}">${u.verdict}</span><b>Rule ${u.n} — ${u.name}</b></div><div class="why">${(u.detail||u.note||'').replace(/</g,'&lt;')}</div></div>`).join("")
+        || "<span class='muted'>No rule detail was produced for this setup.</span>";
+    }).catch(err=>{const el=document.getElementById("rulesbox");
+      if(!el)return; el.classList.remove("sqh-loading");
+      el.innerHTML=`<span class="muted">Squeeze rules could not be loaded (${String(err.message||err).replace(/</g,'&lt;')}).</span>`;});
   // VolumeScore breakdown (user 2026-07-24, P-02) — logged-in only; blank until the setup has triggered.
   if(AUTH) fetch(`/api/volscore/${r.ticker}`,{headers:{"X-Auth":AUTH}}).then(x=>x.json()).then(j=>{
     const el=document.getElementById("volscorebox"); if(!el||SEL!==r.ticker)return;

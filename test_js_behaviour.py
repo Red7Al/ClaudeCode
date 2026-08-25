@@ -824,3 +824,68 @@ def test_instruments_uses_the_virtual_table():
     assert 'vtable("instr-rows"' in body, "Instruments is not virtualised"
     assert "INSTR_ROW_LIMIT" not in html, "the old render cap is still present alongside virtualisation"
     assert "shown" in body, "the window must be taken from the sorted/filtered list"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Every auth-gated endpoint must be called WITH the token (user 2026-08-25: "we have items listed as
+# Triggered but when I look at details to see squeeze rules it says no rule detail - this must exist if
+# triggered").
+#
+# /api/rules is admin-gated and reads X-Auth. The client fetched it without the header, so it always came
+# back 403 {"error":"admin only"}; j.rules was undefined, `(j.rules||[])` rendered the empty state, and
+# the card read "no rule detail" for every instrument. It had never worked. The sibling /api/volscore
+# fetch three lines below always sent the header.
+#
+# The 403 was invisible precisely because it is valid JSON, so .catch() never ran. A refusal must never
+# be able to impersonate "there is no data".
+# ------------------------------------------------------------------------------------------------------
+
+def _auth_gated_endpoints() -> set:
+    """Endpoints whose handler rejects a request without a valid token."""
+    server = (Path(__file__).parent / "hvf_web" / "server.py").read_text(encoding="utf-8")
+    gated = set()
+    for m in re.finditer(r'@app\.route\("(/api/[^"]+)"', server):
+        body = server[m.end():m.end() + 700]
+        if "name_for_token" in body and any(k in body for k in ("is_admin", "login required", "admin only")):
+            gated.add(m.group(1).split("<")[0].rstrip("/"))
+    return gated
+
+
+def test_no_gated_endpoint_is_fetched_without_the_token():
+    """THE BUG, as a rule rather than a single case."""
+    js = client_js()
+    gated = _auth_gated_endpoints()
+    assert gated, "no auth-gated endpoints found — has the server been restructured?"
+
+    missing = []
+    for m in re.finditer(r'fetch\(\s*[`"\']([^`"\']*?/api/[^`"\'?]*)', js):
+        url = m.group(1)
+        base = re.sub(r"\$\{[^}]*\}", "", url).split("?")[0].rstrip("/")
+        window = js[m.start():m.start() + 260]
+        for g in gated:
+            if base == g or base.startswith(g):
+                if "X-Auth" not in window:
+                    missing.append(url)
+                break
+
+    assert not missing, f"these gated endpoints are fetched without X-Auth: {sorted(set(missing))}"
+
+
+def test_the_rules_card_sends_the_token():
+    js = client_js()
+    m = re.search(r"fetch\(`/api/rules/\$\{r\.ticker\}`[^)]*\)", js)
+    assert m, "the rules fetch was not found"
+
+    assert "X-Auth" in m.group(0), "/api/rules is admin-gated and must send the token"
+
+
+def test_a_refused_rules_request_does_not_look_like_missing_data():
+    """A 403 is valid JSON, so it reaches .then() and used to render the empty state silently."""
+    js = client_js()
+    i = js.index("fetch(`/api/rules/${r.ticker}`")
+    block = js[i:i + 1400]
+
+    assert "x.ok?" in block, "a non-OK response must be rejected rather than parsed as data"
+    assert "could not be loaded" in block, "a refusal must say so, not show an empty-state message"
+    assert "no rule detail</span>" not in block, (
+        "the old wording implied the setup HAS no rules; the empty state must not be reachable by a 403")
