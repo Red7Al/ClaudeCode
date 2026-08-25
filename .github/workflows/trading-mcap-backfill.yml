@@ -1,0 +1,70 @@
+name: Market Cap Backfill (weekly — 2026-08-25)
+
+# Refreshes market capitalisation for the whole universe into instrument_mcap (user 2026-08-25:
+# "mcap_backfill should probably be scheduled to run each week \ month"). Triggered by cron-job.org via
+# workflow_dispatch at 05:00 UTC on Sundays — NEVER add a schedule: block (GitHub-native cron is banned,
+# user directive 2026-06-07). The authoritative registry is setup_cronjobs.py::JOBS.
+#
+# WHY THIS EXISTS. mcap_backfill.py shipped on 2026-08-01 with a CLI and nothing ever invoked it again.
+# Measured on 2026-08-25: instrument_mcap held 1,286 rows, every one written that same day between
+# 12:59 and 13:12 — one manual run, never repeated — while 463 of the 1,728 distinct tickers in
+# squeeze_history (26.8%) had no market-cap row at all.
+#
+# This is not cosmetic. The Best Settings MCap scopes test `r.mcap != null`, so an instrument with no
+# market cap fails ALL FOUR bands (<2bn, 2–10bn, 10–100bn, 100bn+) silently rather than landing in the
+# wrong one. The "MCap < 2bn" recommendation measured on 2026-08-25 was therefore computed over a
+# population missing a quarter of its instruments, on values 24 days stale.
+#
+# WEEKLY, not monthly, and deliberately a FULL refresh rather than only-what-is-missing: market cap moves
+# with price every day, so unlike the sector cache (where the value is static and the backfill skips
+# what it already has) the point here is to re-read values that already exist. A monthly cadence would
+# leave instruments sitting in the wrong MCap band for weeks.
+#
+# 05:00 Sunday is chosen so it completes before the 06:00 Sector Cache Backfill: both hit yfinance, and
+# overlapping them would double the rate-limit pressure. 07:00 (PAT expiry) and 08:00 (DB index audit)
+# are likewise already occupied.
+#
+# The upsert is idempotent and persists as it goes, so a timeout loses only the unprocessed tail and the
+# next run simply re-reads everything.
+on:
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: 'Comma-separated subset to refresh (leave blank for the whole universe).'
+        type: string
+        required: false
+        default: ''
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PYTHONIOENCODING:     utf-8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Refresh market capitalisation
+        run: |
+          if [ -n "${{ inputs.tickers }}" ]; then
+            python mcap_backfill.py --tickers "${{ inputs.tickers }}"
+          else
+            python mcap_backfill.py
+          fi
+      - name: Alert on failure
+        if: failure()
+        env:
+          SLACK_ALERTS: ${{ secrets.SLACK_ALERTS }}
+        run: |
+          curl -s -X POST -H 'Content-type: application/json' --data \
+            '{"text":"⚠️ Market Cap Backfill FAILED — Best Settings MCap bands will drift and instruments without a market cap are silently excluded from all four bands. https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
+            "$SLACK_ALERTS"

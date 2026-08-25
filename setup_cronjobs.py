@@ -23,6 +23,10 @@
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
+# 1.18.0  2026-08-25  Claude      Add the weekly "Market Cap Backfill" job (0 5 * * 0 -> trading-mcap-backfill.yml).
+#                                 Another built-but-never-invoked case: mcap_backfill.py shipped 2026-08-01 and ran
+#                                 exactly once, leaving 463 of 1,728 tickers (26.8%) with no market cap. Those fail
+#                                 every Best Settings MCap band silently, because the scopes test `r.mcap != null`.
 # 1.17.0  2026-08-17  Claude      Add the weekly "GH PAT Expiry Check" job (0 7 * * 0 -> trading-pat-check.yml) and a
 #                                 --alert flag on --check-token that posts to #alerts through notify (so the global
 #                                 per-channel Slack switch still applies). Detection, not just prevention: 1.16.0 stops
@@ -211,6 +215,14 @@ JOBS = [
     # against 98% coverage for the instruments already there. 06:00 Sunday, clear of the 08:00 index
     # audit. Additive, resumable and skips already-resolved tickers, so a normal week is cheap.
     ("Sector Cache Backfill",          "0 6 * * 0",   "trading-sector-backfill.yml"),
+    # Refresh market capitalisation for the whole universe (user 2026-08-25). mcap_backfill.py shipped
+    # 2026-08-01 with a CLI and nothing ever invoked it again: instrument_mcap held 1,286 rows, all
+    # written that day between 12:59 and 13:12, while 463 of 1,728 squeeze_history tickers (26.8%) had
+    # no market cap at all. The Best Settings MCap scopes test `r.mcap != null`, so those instruments
+    # fail all four bands SILENTLY. Weekly rather than monthly because market cap moves with price, and
+    # a FULL refresh rather than only-what-is-missing for the same reason. 05:00 Sunday so it finishes
+    # before the 06:00 sector backfill — both hit yfinance and overlapping doubles the rate-limit load.
+    ("Market Cap Backfill",            "0 5 * * 0",   "trading-mcap-backfill.yml"),
 ]
 
 
