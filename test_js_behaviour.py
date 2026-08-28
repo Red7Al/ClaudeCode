@@ -53,7 +53,13 @@ def run_js(preamble: str, source: str, call: str):
     directly rather than pattern-matched in its text.
     """
     script = f"{preamble}\n{source}\nconsole.log(JSON.stringify({call}));"
-    proc = subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=30)
+    # encoding is explicit: without it `text=True` decodes with the locale codec, which on Windows is
+    # cp1252, and ANY non-ASCII the client returns kills the harness with UnicodeDecodeError rather than
+    # failing the assertion. The client is full of such characters -- the loading spinner, the lock icon,
+    # currency symbols -- so this silently limited what could be executed here at all (found 2026-08-28
+    # testing the logged-out Best settings history panel, whose placeholder is an hourglass emoji).
+    proc = subprocess.run([NODE, "-e", script], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=30)
     if proc.returncode != 0:
         raise AssertionError(f"node failed:\n{proc.stderr.strip()}")
     return json.loads(proc.stdout.strip() or "null")
@@ -904,3 +910,56 @@ def test_a_refused_rules_request_does_not_look_like_missing_data():
     assert "could not be loaded" in block, "a refusal must say so, not show an empty-state message"
     assert "no rule detail</span>" not in block, (
         "the old wording implied the setup HAS no rules; the empty state must not be reachable by a 403")
+
+
+# ======================================================================================================
+# A suppressed fetch must still resolve its loading state (user 2026-08-28: "Best settings history -
+# Filter changes... - Data loading... - NEVER COMPLETES - when user not logged in").
+#
+# loadBestSettingsHistory began `if(BEST_HISTORY_REQUESTED||!AUTH)return;`. index.html ships the panel
+# with a STATIC `class="sqh-loading">Data loading...` placeholder, so logged out the function returned
+# before doing anything and nothing was ever going to replace it. The spinner was permanent by
+# construction — not slow, unresolvable.
+#
+# Same family as the /api/rules defect: a refusal impersonating work in progress.
+# ======================================================================================================
+
+_BSH_PREAMBLE = """
+let fetched = 0;
+const boxes = {"best-settings-history": {cls: ["sqh-loading"], html: "\u23f3 Data loading\u2026", text: ""},
+               "best-history-count":    {cls: [], html: "", text: "seeded"}};
+const $ = id => {
+  const b = boxes[id]; if (!b) return null;
+  return {classList: {remove: c => { b.cls = b.cls.filter(x => x !== c); }},
+          set innerHTML(v) { b.html = v; }, get innerHTML() { return b.html; },
+          set textContent(v) { b.text = v; }, get textContent() { return b.text; }};
+};
+const fetch = () => { fetched++; return {then: () => ({then: () => ({catch: () => {}})})}; };
+function paintBestSettingsHistory() {}
+let AUTH = "", BEST_HISTORY_REQUESTED = false;
+"""
+
+
+def _run_bsh(auth: str):
+    return run_js(_BSH_PREAMBLE + f'\nAUTH = {auth!r};',
+                  _extract("loadBestSettingsHistory"),
+                  "(loadBestSettingsHistory(), {loading: boxes['best-settings-history'].cls,"
+                  " html: boxes['best-settings-history'].html,"
+                  " count: boxes['best-history-count'].text, fetched, requested: BEST_HISTORY_REQUESTED})")
+
+
+def test_logged_out_best_settings_history_resolves_instead_of_spinning_for_ever():
+    out = _run_bsh("")
+
+    assert out["loading"] == [], "the sqh-loading class must be removed, or the spinner never resolves"
+    assert "Data loading" not in out["html"], "THE BUG: the loading placeholder was left in place"
+    assert "Log in" in out["html"], "a logged-out visitor must be told why there is nothing to show"
+    assert out["fetched"] == 0, "no request should be made without a token"
+    assert out["requested"] is False, "logging in later must still be able to load the history"
+
+
+def test_logged_in_best_settings_history_still_fetches():
+    out = _run_bsh("tok")
+
+    assert out["fetched"] == 1, "a logged-in user must still get their history"
+    assert out["requested"] is True, "the once-only guard must still latch"

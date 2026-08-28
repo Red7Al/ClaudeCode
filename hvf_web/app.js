@@ -2881,7 +2881,21 @@ function paintBestSettingsHistory(history){
   box.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Snapshot</th><th>Dataset</th><th>Model</th><th>Balanced result</th><th>Changes from previous snapshot</th><th>Configuration</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 function loadBestSettingsHistory(){
-  if(BEST_HISTORY_REQUESTED||!AUTH)return;BEST_HISTORY_REQUESTED=true;
+  if(BEST_HISTORY_REQUESTED)return;
+  // Logged out this used to `return` silently, which left index.html's STATIC "⏳ Data loading…"
+  // placeholder on screen for ever — the spinner could never resolve, because nothing was ever going to
+  // replace it (user 2026-08-28: "Best settings history … NEVER COMPLETES - when user not logged in").
+  // Same shape as the /api/rules defect: a refusal that impersonates work still in progress. A guard
+  // that suppresses a fetch MUST also resolve the loading state it leaves behind. The sibling pf-combos
+  // panel already does exactly this, so match it rather than inventing a second treatment.
+  if(!AUTH){
+    const box=$("best-settings-history");
+    if(box){box.classList.remove("sqh-loading");
+      box.innerHTML='<p class="muted" style="margin:0">🔒 <a href="#" onclick="showLogin();return false">Log in</a> to see the Best settings history.</p>';}
+    const count=$("best-history-count"); if(count)count.textContent="";
+    return;
+  }
+  BEST_HISTORY_REQUESTED=true;
   fetch("/api/best-settings-history",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>paintBestSettingsHistory(j.history||[])).catch(()=>{const box=$("best-settings-history");if(box){box.classList.remove("sqh-loading");box.textContent="Best settings history could not be loaded.";}});
 }
