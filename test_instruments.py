@@ -310,3 +310,18 @@ def test_positions_are_not_served_without_a_token(monkeypatch):
     assert response.get_json() == {"positions": {}}, (
         "an unauthenticated caller must get an EMPTY map, so the page still renders but discloses "
         "nothing about the live book")
+
+
+def test_performance_is_not_served_without_a_token(monkeypatch):
+    """/api/performance returned all 4,932 recorded triggers -- entry, stop, target, R:R, quality, RVOL
+    and outcome -- to anyone (user 2026-08-28). Its rows are only ever narrowed by the VIEWER'S OWN saved
+    limits, which load with the token, so a logged-out visitor got the UNFILTERED superset: about ten
+    times what the account owner sees on the same screen."""
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "")
+    monkeypatch.setattr(server, "_kick_perf_warm",
+                        lambda: pytest.fail("no build may be kicked for an anonymous caller"))
+
+    response = server.app.test_client().get("/api/performance")
+
+    assert response.status_code == 401
+    assert response.get_json()["rows"] == [], "no trade rows may reach an unauthenticated caller"

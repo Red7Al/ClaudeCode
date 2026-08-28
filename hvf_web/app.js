@@ -773,7 +773,13 @@ let MY_LIMITS={};   // the user's personal floors from Configuration → My trad
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
 const TABS=["welcome","whatwedo","intro","risk","appendix","terms","scanner","instruments","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","docs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
-const PUBLIC_TABS=["welcome","whatwedo","intro","risk","appendix","terms","scanner","instruments","performance"];   // visible when logged out
+// Visible when logged out. "performance" was REMOVED on 2026-08-28 at the requester's instruction
+// ("remove the evidence tab and row count if user not logged in"). It had been public, and because the
+// table's only row filter is the viewer's OWN saved configuration (_pfMatchesCurrentConfig -> MY_LIMITS,
+// which is loaded with the token and therefore empty when logged out), an anonymous visitor received the
+// UNFILTERED superset -- 4,932 recorded triggers with entry, stop, target, R:R, quality, RVOL and
+// realised outcome -- roughly ten times what the account owner sees on the same screen.
+const PUBLIC_TABS=["welcome","whatwedo","intro","risk","appendix","terms","scanner","instruments"];
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin","squeezehist","fees"];  // admin only
 const SUPPORT_TABS=["batch","syslogs","jobs","sysdocs"];   // Support role: read-only ops visibility plus the system runbook.
 const FEATURE_TABS=[];                                         // X Posts is always available to admin users
@@ -2255,7 +2261,10 @@ function renderPerformance(){
   if(PERF_DATA===null){                       // fetch the recorded-trigger report once, then render
     PERF_DATA=[];                             // in-flight guard
     if(_pfl)_pfl.innerHTML=`<span class="sqh-loading" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border:1px solid #d29922;background:color-mix(in srgb,#d29922 12%,transparent);border-radius:999px;padding:4px 12px">⏳ Data loading…</span>`;
-    fetch("/api/performance").then(r=>r.ok?r.json():{rows:[]})
+    // X-Auth required from 2026-08-28: /api/performance now refuses anonymous callers, because its rows
+    // are only ever narrowed by the VIEWER'S OWN saved limits, so a logged-out visitor was receiving the
+    // unfiltered superset. Logged-in users need the token here or they lose the tab along with them.
+    fetch("/api/performance",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]})
       .then(j=>{
         // Server is still building the 12-month replay (cold cache, first load after a restart, user
         // 2026-08-03 P-01): it returns {warming:true} instantly instead of blocking ~40s. Keep the badge
@@ -4237,7 +4246,10 @@ function _renderPerformance(){
   const nT=selT.filter(r=>r.state==="TARGET").length, nS=selT.filter(r=>r.state==="STOPPED").length, nO=selT.filter(r=>r.state==="OPEN").length;
   $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} · ${PF_COMBO.vb} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb},${PF_COMBO.vlo==null?'null':PF_COMBO.vlo},${PF_COMBO.vhi==null?'null':PF_COMBO.vhi},'${PF_COMBO.vb}');return false" style="color:var(--accent)">✕ clear</a>`:''}${PF_VS_FLOOR?` · <b style="color:var(--fg)">Volume Score ≥ ${PF_VS_FLOOR}</b> (your floor)`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   _pfBacktestSettingsCard(selT,all,led,pfLedgerReconciliation(selT,led));
-  $("pftab-count").textContent=`(${selT.length})`;
+  // Belt and braces alongside removing "performance" from PUBLIC_TABS (user 2026-08-28: "remove the
+  // evidence tab and row count if user not logged in"). Hiding the tab already hides the badge inside it,
+  // but the count must not be published by any route that reaches this line without a session.
+  $("pftab-count").textContent=AUTH?`(${selT.length})`:"";
   const visibleRows=rows.slice(0,PF_RENDER_LIMIT);   // summaries/wallet/counts above still use ALL selected rows
   $("pf-rows").innerHTML=visibleRows.map((r,__i)=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
     <td class="muted">${__i+1}</td>

@@ -240,8 +240,10 @@ def test_cold_performance_request_returns_warming_without_building(monkeypatch):
     monkeypatch.setitem(server._PERF_CACHE, "ts", 0.0)
     monkeypatch.setitem(server._PERF_CACHE, "data", None)
     monkeypatch.setattr(server, "_kick_perf_warm", lambda: kicked.append(True))
+    # A token is required from 2026-08-28 -- see test_performance_is_not_served_without_a_token.
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "alex" if token else "")
 
-    response = server.app.test_client().get("/api/performance")
+    response = server.app.test_client().get("/api/performance", headers={"X-Auth": "t"})
 
     assert response.status_code == 200
     assert response.get_json() == {"rows": [], "warming": True, "generated": ""}
@@ -254,7 +256,9 @@ def test_warm_performance_payload_is_gzipped_for_browsers(monkeypatch):
     monkeypatch.setitem(server._PERF_CACHE, "data", payload)
     monkeypatch.setitem(server._PERF_CACHE, "gzip", None)
 
-    response = server.app.test_client().get("/api/performance", headers={"Accept-Encoding": "gzip, deflate"})
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "alex" if token else "")
+    response = server.app.test_client().get(
+        "/api/performance", headers={"Accept-Encoding": "gzip, deflate", "X-Auth": "t"})
 
     assert response.status_code == 200
     assert response.headers["Content-Encoding"] == "gzip"

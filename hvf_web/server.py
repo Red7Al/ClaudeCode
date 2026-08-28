@@ -2845,7 +2845,17 @@ def api_performance():
 
     NON-BLOCKING (user 2026-08-03, P-01): a cold cache NEVER builds on the request thread (that ~40s build
     is what made the tab feel hung). We kick a background build and answer immediately — the current cache
-    if we have one (stale-while-revalidate), else a {warming:true} marker the frontend polls on."""
+    if we have one (stale-while-revalidate), else a {warming:true} marker the frontend polls on.
+
+    LOGIN REQUIRED from 2026-08-28. This route previously answered anyone, returning all 4,932 recorded
+    triggers with entry, stop, target, R:R, quality, RVOL and realised outcome. The table's only row
+    filter is the VIEWER'S OWN saved configuration (_pfMatchesCurrentConfig -> MY_LIMITS, loaded with the
+    token), so an anonymous visitor received the UNFILTERED superset — about ten times what the account
+    owner sees on the same screen. Identity was never the obstacle: 29 routes here already make exactly
+    this check, including /api/ig-account and /api/credentials. This one simply never made it.
+    """
+    if not _wu.name_for_token(request.headers.get("X-Auth") or ""):
+        return jsonify({"rows": [], "generated": ""}), 401
     now = _time.time()
     if _PERF_CACHE["data"] is not None and now - _PERF_CACHE["ts"] < _PERF_TTL:
         return _perf_response(_PERF_CACHE["data"])
