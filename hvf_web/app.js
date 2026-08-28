@@ -2734,6 +2734,7 @@ function _combReplay(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compou
   // stake/leverage while each trade is open, and separately enforce the user's numeric max-open cap.
   // Blank/0 auto-derives the count cap from stake exposure: floor(100 / Max position size %).
   let w=1,peak=1,maxdd=0,peakOpen=0;const taken=[],open=[],proof=[];
+  let wins=0,losses=0;   // funded-only split, reported alongside the eligible one
   const minStake=(typeof MIN_TRADE==='number'?MIN_TRADE:0)/Math.max(1,WINNERS_WALLET||1);
   const effectiveMax=maxopen>0?Math.min(maxopen,_fundedMaxOpen(stakeFrac)):_fundedMaxOpen(stakeFrac);
   const settle=until=>{open.sort((a,b)=>a.exit.localeCompare(b.exit));
@@ -2745,10 +2746,15 @@ function _combReplay(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compou
     if(used+margin>w+1e-9){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:"Wallet / margin full"});continue;}
     const exit=_pfExitDate(r,perfKey==="run_perf");
     const result=+r[perfKey];
+    // Win/loss among the trades actually FUNDED (user 2026-08-28: "Win:Loss is for Eligible - show this
+    // ratio for Actual also"). Counted here rather than derived afterwards because `taken` is not
+    // retained per candidate — the search runs ~1M replays, so holding each funded row would be costly.
+    // Two integers, and the same +/- 0 split _cardWL uses, so eligible and funded are directly comparable.
+    if(result>0)wins++; else if(result<0)losses++;
     open.push({exit,margin,net:stake*result/100});taken.push(r);peakOpen=Math.max(peakOpen,open.length);
     if(withProof)proof.push({r,placed:true,open:open.length,w,stake,margin,available:Math.max(0,w-used-margin),reason:"Placed"});}
   settle("9999-99-99");
-  return {ret:w-1,dd:maxdd,n:taken.length,cap:peakOpen,proof};
+  return {ret:w-1,dd:maxdd,n:taken.length,wins,losses,cap:peakOpen,proof};
 }
 const DECISION_PROOFS={};
 function decisionProofFilter(id,dim,value){
@@ -3177,13 +3183,22 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   // NOT the same as _wl() above, which RANKS candidates for the "Best win : loss" card and applies a
   // +/-0.5% break-even dead-band so marginal trades do not decide the winner. That is a selection
   // heuristic; this is a displayed count. Keeping them separate is intentional.
+  // Two populations, deliberately both shown (user 2026-08-28: "Win:Loss is for Eligible - show this
+  // ratio for Actual also"). ELIGIBLE is every trade matching the configuration's filters; ACTUAL is only
+  // those the wallet could fund, which is the smaller number already reported as "N funded of M eligible"
+  // on the same card. They can differ materially: capacity decides WHICH eligible trades get taken, so a
+  // configuration can look strong on eligible trades and weaker on the ones actually placed.
   const _cardWL=x=>{const s=x.seq||[],w=s.filter(r=>r.perf>0).length,l=s.filter(r=>r.perf<0).length;
     return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};
+  const _cardWLActual=x=>{const w=+x.wins||0,l=+x.losses||0;
+    return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};
+  const _wlLine=(label,d,title)=>`<div style="font-size:11px;margin-top:4px" title="${title}">${label} <b style="color:var(--fg)">${d.w} : ${d.l}</b>${d.pct!=null?` <span class="muted">(${d.pct}%)</span>`:''}</div>`;
   const choiceCards=choices.map(([label,x,why,colour])=>`<div class="fcard fcard-choice${label===BEST_SELECTED?' fcard-selected':''}" data-choice="${label}" data-choice-return="${x.ret}" style="min-width:240px;flex:1;border-top:3px solid ${colour}" onclick="selectBestChoice('${label.replace(/'/g,"\\'")}')" title="Show this option's detail and Transaction evidence below">
     <h3 style="color:${colour}">${label}</h3><div class="muted" style="font-size:11px;min-height:30px">${why}</div>
     <div class="body"><div><b style="font-size:17px;color:${x.ret>=0?'var(--bull)':'var(--bear)'}">${pct(x.ret)}</b> return · <b>${(x.dd*100).toFixed(1)}%</b> max drawdown</div>
       <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} funded of ${x.seq.length.toLocaleString()} eligible · ${x.posPeriods}/${x.periods} positive quarters</div>
-      <div style="font-size:11px;margin-top:4px" title="Wins vs losses among this combination's eligible trades — the same split the detail panel below reports">Win : Loss <b style="color:var(--fg)">${_cardWL(x).w} : ${_cardWL(x).l}</b>${_cardWL(x).pct!=null?` <span class="muted">(${_cardWL(x).pct}%)</span>`:''}</div>
+      ${_wlLine("Win : Loss <span class='muted'>(eligible)</span>",_cardWL(x),"Wins vs losses among every trade matching this configuration, whether or not the wallet could fund it — the same split the detail panel below reports")}
+      ${_wlLine("Win : Loss <span class='muted'>(actual)</span>",_cardWLActual(x),"Wins vs losses among only the trades this configuration actually FUNDED — the same population as the funded count above")}
       <div style="font-size:11px;margin-top:6px">${x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo} max open</div>
       <div class="muted" style="font-size:10px;margin-top:7px;line-height:1.4"><b style="color:var(--fg)">Changes:</b> ${changedFor(x)}</div>
       ${AUTH?`<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">Apply this configuration</button></div>`
@@ -3291,6 +3306,9 @@ function selectBestChoice(label){
   const gbp=v=>'£'+Math.round(v).toLocaleString();
   const seq=x.seq, w=BEST_MODEL_W;
   const wn=seq.filter(r=>r.perf>0).length, ln=seq.filter(r=>r.perf<0).length, wl=(wn+ln)?Math.round(wn/(wn+ln)*100):null;
+  // The FUNDED split alongside the eligible one (user 2026-08-28). x.wins/x.losses are counted inside
+  // _combReplay over the trades it actually placed, so this matches the funded count in the heading.
+  const awn=+x.wins||0, aln=+x.losses||0, awl=(awn+aln)?Math.round(awn/(awn+aln)*100):null;
   detail.innerHTML=`<h4 style="margin:0 0 4px">${_esc(lbl)} recommendation detail <span class="muted" style="font-weight:400;font-size:11px">— ranked by return per unit of drawdown, over ${x.n.toLocaleString()} funded trades</span></h4>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:6px 0 8px">
       <div><div class="muted" style="font-size:11px">Max position size</div><b style="font-size:16px;color:var(--fg)">${x.st}%</b></div>
@@ -3304,7 +3322,8 @@ function selectBestChoice(label){
       <div style="border-left:1px solid var(--line);padding-left:18px"><div class="muted" style="font-size:11px">Total return</div><b style="font-size:16px;color:${x.ret>=0?'var(--bull)':'var(--bear)'}">${pct(x.ret)}</b></div>
       <div><div class="muted" style="font-size:11px">Max drawdown</div><b style="font-size:16px;color:var(--bear)">−${(x.dd*100).toFixed(1)}%</b></div>
       <div><div class="muted" style="font-size:11px">Return ÷ drawdown</div><b style="font-size:16px;color:var(--fg)">${x.dd>0?(x.ret/x.dd).toFixed(2):'∞'}</b></div>
-      <div><div class="muted" style="font-size:11px">Win : Loss</div><b style="font-size:16px;color:var(--fg)" title="Wins vs losses among this combination's eligible trades">${wn} : ${ln}${wl!=null?` <span class="muted" style="font-weight:400;font-size:12px">(${wl}%)</span>`:''}</b></div>
+      <div><div class="muted" style="font-size:11px">Win : Loss (eligible)</div><b style="font-size:16px;color:var(--fg)" title="Wins vs losses among EVERY trade matching this configuration, whether or not the wallet could fund it">${wn} : ${ln}${wl!=null?` <span class="muted" style="font-weight:400;font-size:12px">(${wl}%)</span>`:''}</b></div>
+      <div><div class="muted" style="font-size:11px">Win : Loss (actual)</div><b style="font-size:16px;color:var(--fg)" title="Wins vs losses among only the trades this configuration actually FUNDED — the same population as the funded count in the heading">${awn} : ${aln}${awl!=null?` <span class="muted" style="font-weight:400;font-size:12px">(${awl}%)</span>`:''}</b></div>
       <div><div class="muted" style="font-size:11px">Positive quarters</div><b style="font-size:16px;color:${x.consistency>=.75?'var(--bull)':'#d29922'}">${x.posPeriods} / ${x.periods}</b></div>
     </div>
     <div class="muted" style="font-size:11px;margin-top:6px">On your <b>${gbp(w)}</b> Model wallet. Ranking rewards annual return per unit of drawdown, requires at least 20 funded trades, and discounts settings that were inconsistent across quarters. All recommendation cards use an explicit numeric Max open value. This is historical evidence, not a guaranteed return.</div>

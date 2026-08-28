@@ -963,3 +963,63 @@ def test_logged_in_best_settings_history_still_fetches():
 
     assert out["fetched"] == 1, "a logged-in user must still get their history"
     assert out["requested"] is True, "the once-only guard must still latch"
+
+
+# ======================================================================================================
+# Funded ("actual") win:loss alongside eligible (user 2026-08-28: "Win:Loss is for Eligible - show this
+# ratio for Actual also").
+#
+# The distinction is not cosmetic. ELIGIBLE counts every trade matching the configuration; ACTUAL counts
+# only those the wallet could fund. Capacity decides WHICH eligible trades get taken, so the two splits
+# can disagree — which is the whole reason the requester wanted both on screen.
+#
+# _combReplay is the core wallet replay, so these also pin that the change was ADDITIVE: ret, dd and n
+# must be untouched by the two counters added beside them.
+# ======================================================================================================
+
+_REPLAY_PREAMBLE = """
+let MIN_TRADE = 0, WINNERS_WALLET = 10000;
+const _fundedMaxOpen = f => Math.max(1, Math.floor(1 / Math.max(0.000001, +f || 0.000001)));
+const levOf = () => 1;
+const _pfExitDate = r => r.exit_date;
+"""
+
+# r2 is blocked by a max-open cap of 1 while r1 is still open, so it is ELIGIBLE but never FUNDED.
+_SEQ = ("[{trig_date:'2026-01-01',exit_date:'2026-06-01',perf:10},"
+        " {trig_date:'2026-01-02',exit_date:'2026-02-01',perf:-5},"
+        " {trig_date:'2026-07-01',exit_date:'2026-08-01',perf:-3}]")
+
+
+def _replay(maxopen):
+    return run_js(_REPLAY_PREAMBLE, _extract("_combReplay"),
+                  "(()=>{const x=_combReplay(" + _SEQ + f",0.05,{maxopen});"
+                  " return {ret:x.ret,dd:x.dd,n:x.n,wins:x.wins,losses:x.losses};})()")
+
+
+def test_funded_win_loss_differs_from_eligible_when_capacity_binds():
+    out = _replay(1)
+
+    # Eligible over the same three rows is 1 win : 2 losses. Funded excludes the row capacity blocked.
+    assert out["n"] == 2, "a max-open cap of 1 must fund only two of the three trades"
+    assert (out["wins"], out["losses"]) == (1, 1), (
+        "the funded split must exclude the capacity-blocked loss; got "
+        f"{out['wins']}:{out['losses']}")
+
+
+def test_funded_win_loss_accounts_for_every_funded_trade():
+    out = _replay(50)
+
+    assert out["n"] == 3, "with ample capacity every eligible trade is funded"
+    assert out["wins"] + out["losses"] == out["n"], (
+        "every funded trade must land in exactly one bucket unless it is break-even")
+    assert (out["wins"], out["losses"]) == (1, 2)
+
+
+def test_adding_the_counters_did_not_move_the_replay_numbers():
+    """The counters sit beside ret/dd/n in the core replay. Adding them must change none of those."""
+    capped, ample = _replay(1), _replay(50)
+
+    # Independently derived: 5% of the wallet on +10% then -3%, compounding, with r2 blocked.
+    assert round(capped["ret"], 10) == round((1 + 0.05 * 0.10) * (1 - 0.05 * 0.03) - 1, 10)
+    assert capped["dd"] >= 0 and ample["dd"] >= 0
+    assert ample["n"] == 3 and capped["n"] == 2
