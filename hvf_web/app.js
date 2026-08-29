@@ -2376,6 +2376,8 @@ let WIN_LOADING=false, WIN_3Y_LOADING=false;
 // and no error -- a refusal impersonating work in progress (user 2026-08-28, and the same shape as
 // the Best settings history spinner fixed the same day).
 let WIN_3Y_ERROR="";
+// Memo for the three-year grid search — see renderBestCombo. Cleared implicitly when WIN_3Y is replaced.
+let _3Y_MEMO={rows:null,wallet:null,minTrade:null,best:null};
 // Wallet £ (L211), Max position size % (L200), Max open positions (L199) are variables on the winners tab.
 let MIN_TRADE=25;   // User-configured minimum trade (£), default 25 (user 2026-07-18, P-05 L253)
 const _fundedMaxOpen=stakeFrac=>Math.max(1,Math.floor(1/Math.max(0.000001,+stakeFrac||0.000001)));
@@ -3141,29 +3143,46 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   // the strongest one when it funds strictly more than 125 trades and remains within 20% of the best
   // card's return. “20% relative” is therefore a ratio (>= 80% of the current best card), not a
   // twenty-percentage-point subtraction.
-  const threeYearRaw=Array.isArray(WIN_3Y)?WIN_3Y:[], threeYearByKey={};
-  threeYearRaw.filter(r=>r.perf!=null&&r.trig_date).forEach(r=>{const k=_dedupeKey(r),cur=threeYearByKey[k];if(!cur||(+r.perf||-Infinity)>(+cur.perf||-Infinity))threeYearByKey[k]=r;});
-  const threeYearRows=Object.values(threeYearByKey), threeYearCandidates=[];
-  // This is a genuine three-year optimisation: it searches the complete retained three-year population
-  // AND replays every generated, enforceable configuration.  Do not reuse an annual finalist shortlist
-  // or a quick-score prune here: either can exclude the true three-year optimum (user 2026-08-20).
-  const threeMarkets=Object.entries(threeYearRows.reduce((m,r)=>{const v=r.market;if(v)m[v]=(m[v]||0)+1;return m;},{}))
-    .filter(([,n])=>n>=30).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([v])=>({kind:"market",label:`Market: ${v}`,test:r=>r.market===v,value:v}));
-  const threeScopes=[{kind:"all",label:"All markets",test:()=>true},...threeMarkets,...scopes.filter(s=>s.kind==="mcap")];
-  for(const scope of threeScopes)for(const rr of RRS)for(const q of QUALS)for(const vs of VSCORES)for(const rv of RVOLS)for(const vw of BOOLS)for(const atr of BOOLS){
-    const seq=threeYearRows.filter(r=>scope.test(r)&&r.rr!=null&&r.rr>=rr&&(!q||(r.quality!=null&&r.quality>=q))&&
-      (!vs||(r.volume_score!=null&&r.volume_score>=vs))&&(!rv||(r.rvol!=null&&r.rvol>=rv))&&(!vw||r.above_vwap===true)&&(!atr||r.atr_expanding===true));
-    if(seq.length<20)continue;
-    const mean=seq.reduce((sum,r)=>sum+(+r.perf||0),0)/seq.length;
-    threeYearCandidates.push({scope,rr,q,vs,rv,vw,atr,seq,quick:mean*Math.min(1,seq.length/40)});
+  // MEMOISED 2026-08-29 (user: "'Apply this configuration' is timing out"). The three-year search is
+  // the freeze: MEASURED at 962,010 replays over 44.8 million row-visits, 52-61 s of blocked main
+  // thread, about 90% of renderBestCombo's total. It was recomputed on EVERY re-render -- and Apply
+  // triggers one, via applyWinnersDefaults -> winnersParamsChange -> paintOrdersPerf -> renderBestCombo.
+  // So saving the configuration froze the page for a minute and looked like a timeout.
+  //
+  // The key is the complete set of inputs the expensive part actually reads, established by reading
+  // _combReplay rather than assumed: the three-year rows themselves, plus WINNERS_WALLET and MIN_TRADE,
+  // which _combReplay uses for its minimum-stake floor. Max position size and Max open are NOT in the
+  // key because the grid searches those itself, which is exactly why changing them can reuse this.
+  // best.ret is not in the key either: it only feeds the cheap gate below, which is recomputed always.
+  let bestThreeYear=null;
+  if(_3Y_MEMO.rows===WIN_3Y&&_3Y_MEMO.wallet===WINNERS_WALLET&&_3Y_MEMO.minTrade===MIN_TRADE){
+    bestThreeYear=_3Y_MEMO.best;
+  }else{
+    const threeYearRaw=Array.isArray(WIN_3Y)?WIN_3Y:[], threeYearByKey={};
+    threeYearRaw.filter(r=>r.perf!=null&&r.trig_date).forEach(r=>{const k=_dedupeKey(r),cur=threeYearByKey[k];if(!cur||(+r.perf||-Infinity)>(+cur.perf||-Infinity))threeYearByKey[k]=r;});
+    const threeYearRows=Object.values(threeYearByKey), threeYearCandidates=[];
+    // This is a genuine three-year optimisation: it searches the complete retained three-year population
+    // AND replays every generated, enforceable configuration.  Do not reuse an annual finalist shortlist
+    // or a quick-score prune here: either can exclude the true three-year optimum (user 2026-08-20).
+    const threeMarkets=Object.entries(threeYearRows.reduce((m,r)=>{const v=r.market;if(v)m[v]=(m[v]||0)+1;return m;},{}))
+      .filter(([,n])=>n>=30).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([v])=>({kind:"market",label:`Market: ${v}`,test:r=>r.market===v,value:v}));
+    const threeScopes=[{kind:"all",label:"All markets",test:()=>true},...threeMarkets,...scopes.filter(s=>s.kind==="mcap")];
+    for(const scope of threeScopes)for(const rr of RRS)for(const q of QUALS)for(const vs of VSCORES)for(const rv of RVOLS)for(const vw of BOOLS)for(const atr of BOOLS){
+      const seq=threeYearRows.filter(r=>scope.test(r)&&r.rr!=null&&r.rr>=rr&&(!q||(r.quality!=null&&r.quality>=q))&&
+        (!vs||(r.volume_score!=null&&r.volume_score>=vs))&&(!rv||(r.rvol!=null&&r.rvol>=rv))&&(!vw||r.above_vwap===true)&&(!atr||r.atr_expanding===true));
+      if(seq.length<20)continue;
+      const mean=seq.reduce((sum,r)=>sum+(+r.perf||0),0)/seq.length;
+      threeYearCandidates.push({scope,rr,q,vs,rv,vw,atr,seq,quick:mean*Math.min(1,seq.length/40)});
+    }
+    const threeSeen=new Set(), threeEvaluated=[];
+    for(const c of threeYearCandidates)for(const mo of OPENS)for(const st of STAKES){
+      const eff=Math.min(mo,_fundedMaxOpen(st/100)), key=c.scope.label+"|"+c.rr+"|"+c.q+"|"+c.vs+"|"+c.rv+"|"+c.vw+"|"+c.atr+"|"+st+"|"+eff;
+      if(threeSeen.has(key))continue; threeSeen.add(key);
+      const z=robust(c.seq,st/100,eff);if(z.n>=20)threeEvaluated.push({...c,st,mo:eff,...z});
+    }
+    bestThreeYear=threeEvaluated.sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
+    _3Y_MEMO={rows:WIN_3Y,wallet:WINNERS_WALLET,minTrade:MIN_TRADE,best:bestThreeYear};
   }
-  const threeSeen=new Set(), threeEvaluated=[];
-  for(const c of threeYearCandidates)for(const mo of OPENS)for(const st of STAKES){
-    const eff=Math.min(mo,_fundedMaxOpen(st/100)), key=c.scope.label+"|"+c.rr+"|"+c.q+"|"+c.vs+"|"+c.rv+"|"+c.vw+"|"+c.atr+"|"+st+"|"+eff;
-    if(threeSeen.has(key))continue; threeSeen.add(key);
-    const z=robust(c.seq,st/100,eff);if(z.n>=20)threeEvaluated.push({...c,st,mo:eff,...z});
-  }
-  const bestThreeYear=threeEvaluated.sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
   let threeYear=bestThreeYear&&bestThreeYear.n>125&&bestThreeYear.ret>=best.ret*.8?bestThreeYear:null;
   if(threeYear)threeYear.proof=_combReplay(threeYear.seq,threeYear.st/100,threeYear.mo,true).proof;
   const choices=[

@@ -1108,3 +1108,68 @@ def test_still_loading_message_is_kept_for_the_genuine_loading_case():
     js = client_js()
 
     assert "This card remains visible while the complete three-year evidence loads." in js
+
+
+# ======================================================================================================
+# The three-year memo key (user 2026-08-29: "'Apply this configuration' is timing out").
+#
+# The three-year grid is the freeze: 962,010 replays over 44.8M row-visits, 52-61 s of blocked main
+# thread, ~90% of renderBestCombo. It was recomputed on every re-render, and Apply causes one --
+# applyWinnersDefaults -> winnersParamsChange -> paintOrdersPerf -> renderBestCombo -- so saving froze
+# the page for a minute and read as a timeout.
+#
+# A memo on a screen that drives trading decisions is a STALE-NUMBER risk: a wrong key shows a
+# confident, wrong card. So the key is pinned by execution, both ways -- what must invalidate it, and
+# what must NOT (which is the entire point, since Apply changes stake and max-open).
+# ======================================================================================================
+
+def _memo_guard() -> str:
+    js = client_js()
+    m = re.search(r"if\((_3Y_MEMO\.rows===WIN_3Y[^)]*)\)\{", js)
+    assert m, "the three-year memo guard was not found - has renderBestCombo been restructured?"
+    return m.group(1)               # the CONDITION only — `if(...)` is a statement, not an expression
+
+
+def _memo_hit(**changed):
+    """Seed the memo from a baseline, apply one change, and report whether the guard still hits."""
+    base = {"rows": "ROWS", "wallet": 10000, "minTrade": 25,
+            "stake": 0.05, "maxopen": 20}
+    now = {**base, **changed}
+    pre = f"""
+const ROWS=['a'], OTHER=['b'];
+let _3Y_MEMO={{rows:ROWS,wallet:{base['wallet']},minTrade:{base['minTrade']},best:'CACHED'}};
+let WIN_3Y={now['rows']}, WINNERS_WALLET={now['wallet']}, MIN_TRADE={now['minTrade']};
+let WINNERS_STAKE={now['stake']}, WINNERS_MAXOPEN={now['maxopen']};
+"""
+    return run_js(pre, "", f"({_memo_guard()})")
+
+
+def test_memo_is_reused_when_nothing_it_depends_on_changed():
+    assert _memo_hit() is True, "an unchanged screen must not repeat a 52-61 second search"
+
+
+def test_apply_changing_stake_or_max_open_still_reuses_the_memo():
+    """THE POINT. The grid searches stake and max-open itself, so the user's values are not inputs to
+    the expensive part -- which is why Apply can be fast."""
+    assert _memo_hit(stake=0.10) is True
+    assert _memo_hit(maxopen=3) is True
+
+
+def test_a_changed_wallet_or_minimum_trade_invalidates_the_memo():
+    """_combReplay derives its minimum-stake floor from MIN_TRADE / WINNERS_WALLET, so both change the
+    funded population and therefore the answer. Missing these would show a stale card."""
+    assert _memo_hit(wallet=50000) is False
+    assert _memo_hit(minTrade=0) is False
+
+
+def test_new_three_year_data_invalidates_the_memo():
+    assert _memo_hit(rows="OTHER") is False
+
+
+def test_the_memo_key_does_not_include_stake_or_max_open():
+    """Source-level, deliberately: including them would silently reintroduce the freeze on every Apply."""
+    guard = _memo_guard()
+
+    assert "WINNERS_STAKE" not in guard and "WINNERS_MAXOPEN" not in guard, (
+        f"stake/max-open must not be in the memo key or Apply freezes again: {guard}")
+    assert "WINNERS_WALLET" in guard and "MIN_TRADE" in guard and "WIN_3Y" in guard
