@@ -45,6 +45,35 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
 
 ## Data quality
 
+- [ ] **`quality` is stored in four tables — review whether all four are needed** (raised 2026-08-29).
+  Measured the same day, so the counts are real rather than estimated:
+
+  | table | rows | with quality | newest | written by |
+  |---|---|---|---|---|
+  | `squeeze_history` | 35,680 | 35,680 | **today** | `squeeze_history.refresh_daily` |
+  | `hvf_scan_log` | 12,882 | 12,882 | **today** | `run_hvf_report.py:1090` |
+  | `hvf_triggers` | 1,121 | 1,121 | yesterday | `hvf_recorder.py:92` |
+  | `signal_log` | 54,136 | 13,896 | **2026-08-06 (23 days stale)** | `signals.py:2062`, `run_diagnostics.py:254` |
+
+  They are not four copies of one number — they are the same measurement over four different
+  populations: a 15-month replay, a per-scan log, live detections since 2026-06-30, and session-monitor
+  output. That is defensible. Two things are worth deciding anyway:
+
+  - **`signal_log` is dead.** Last written 2026-08-06, because the session monitors are disabled
+    (`WEB_BRIDGE` is the only enabled execution source). It still holds 54,136 rows and a `hvf_quality`
+    column nobody maintains, plus `vwap_pct` / `vwap_position` / `week52_dir` / `week52_signal` — the
+    only stored copies of those metrics anywhere, all frozen in early August. Anyone querying it gets
+    stale answers with nothing saying so. Retire it, or label it explicitly as historical.
+  - **Whether the four AGREE where they overlap is UNVERIFIED**, and deliberately not claimed. A first
+    attempt joined `hvf_triggers.h3_date` to `squeeze_history.triggered_date` and reported 15 of 16
+    overlaps differing by more than 5 — that result is void: those are different dates by definition
+    (h3 is the pivot forming the ceiling, the trigger is the later break of it). `hvf_triggers` has no
+    trigger-date column at all, only `recorded_at` and the pivot dates, so there is no sound join key.
+    Establishing one is the first task if agreement matters.
+
+  Related: the same review found the 52-week range and VolumeScore were persisted **nowhere**, now fixed
+  by `instrument_metrics.py` (2026-08-29).
+
 - [ ] **Universe tickers that no longer resolve on Yahoo: ANSS, MMC, FI** (user 2026-07-17; found during
   the 15-month backfill for P-24). These three are in `run_hvf_report.py::UNIVERSE` but Yahoo returns
   **HTTP 404 "Quote not found"** for all of them — not a throttle or a transient miss: `yf.download`
