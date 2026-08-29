@@ -1162,6 +1162,17 @@ def _publish_scanner_snapshot(all_results: dict) -> None:
         refresh_daily(snapshot)
     except Exception as exc:
         log.error("squeeze history refresh failed (%s); publication continues", exc)
+    # Daily RVOL / VWAP / ATR capture (user 2026-08-29: "above_vwap rvol should be recorded every day").
+    # These were computed on demand and thrown away, so nothing outlived the request: on 2026-08-29 the
+    # owner's require_above_vwap filter was ON while above_vwap was None on all 55 pending working orders,
+    # leaving no way to check an order placed on an earlier day against its own filter.
+    # Attached HERE, beside the history refresh, because this is the daily path that is known to run --
+    # and guarded the same way, so a metrics failure can never cost a good scan its publication.
+    try:
+        import instrument_metrics
+        log.info("instrument metrics: %s", instrument_metrics.record_daily(snapshot))
+    except Exception as exc:
+        log.error("instrument metrics failed (%s); publication continues", exc)
     try:
         meta = publish_snapshot(snapshot, source="hvf-daily-report")
         verified = verify_current()
