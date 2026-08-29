@@ -1491,11 +1491,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <!-- width:auto defeats the global select{width:100%} that made this dropdown span the whole row
            and wrap above the calendar (user 2026-07-20). Order: dropdown left, From/To calendar far right.
            The "Custom / all" option clears the window, so the separate "All 12mo" button was removed (redundant). -->
-      <div class="pf-date-group"><select id="pf-date-preset" onchange="pfDatePreset(this.value)" style="padding:4px 6px;font-size:12px;width:auto;flex:none" title="Quick date window">
+      <!-- HIDDEN 2026-08-28 (user: "Date filter should be hidden - it is of little value currently").
+           The logic is switched off at source too, via PF_DATE_FILTER_ENABLED in app.js, because
+           pfDateOk runs FIRST in the Performance pipeline and any lingering value here silently
+           shrinks every figure on the tab. Un-hide this AND flip that flag to restore it. -->
+      <div class="pf-date-group" style="display:none"><select id="pf-date-preset" onchange="pfDatePreset(this.value)" style="padding:4px 6px;font-size:12px;width:auto;flex:none" title="Quick date window">
         <option value="12">Last 12 months</option><option value="9">Last 9 months</option>
         <option value="6">Last 6 months</option><option value="3">Last 3 months</option>
         <option value="4w">Last 4 weeks</option><option value="tm">This month</option>
-        <option value="">Custom / all</option></select>
+        <option value="" selected>Custom / all</option></select>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">From <input id="pf-date-from" type="date" onchange="pfDateChange(true)" style="padding:4px 6px"></label>
       <label class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px">To <input id="pf-date-to" type="date" onchange="pfDateChange(true)" style="padding:4px 6px"></label></div>
       </div>

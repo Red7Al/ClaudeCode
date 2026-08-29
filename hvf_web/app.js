@@ -779,7 +779,12 @@ const TABS=["welcome","whatwedo","intro","risk","appendix","terms","scanner","in
 // which is loaded with the token and therefore empty when logged out), an anonymous visitor received the
 // UNFILTERED superset -- 4,932 recorded triggers with entry, stop, target, R:R, quality, RVOL and
 // realised outcome -- roughly ten times what the account owner sees on the same screen.
-const PUBLIC_TABS=["welcome","whatwedo","intro","risk","appendix","terms","scanner","instruments"];
+// "performance" is public again from 2026-08-29. It was removed on 2026-08-28 on a MISREADING of
+// "remove the evidence tab and row count if user not logged in" -- that meant the evidence TABLE and
+// the count, not the whole tab, and taking the tab away was reported straight back as a bug. What is
+// withheld from a logged-out visitor is now done properly at the SERVER (_public_perf_response):
+// only dated returns leave, so the monthly compounding chart still draws and no trade detail ships.
+const PUBLIC_TABS=["welcome","whatwedo","intro","risk","appendix","terms","scanner","instruments","performance"];
 const ADMIN_TABS=["batch","users","version","xposts","syslogs","jobs","sysdocs","changereq","configadmin","marketsadmin","squeezehist","fees"];  // admin only
 const SUPPORT_TABS=["batch","syslogs","jobs","sysdocs"];   // Support role: read-only ops visibility plus the system runbook.
 const FEATURE_TABS=[];                                         // X Posts is always available to admin users
@@ -2221,7 +2226,20 @@ const PF_RENDER_STEP=500;                 // reduce paging while keeping the 23-
 let PF_RENDER_LIMIT=PF_RENDER_STEP, PF_SEARCH_TIMER=null;
 function pfSearchChange(){clearTimeout(PF_SEARCH_TIMER);PF_SEARCH_TIMER=setTimeout(()=>{PF_RENDER_LIMIT=PF_RENDER_STEP;_renderPerformance();},150);}
 function pfShowMore(){PF_RENDER_LIMIT+=PF_RENDER_STEP;_renderPerformance();}
-function pfDateOk(d){if(!d)return true;if(PF_DATE_FROM&&d<PF_DATE_FROM)return false;if(PF_DATE_TO&&d>PF_DATE_TO)return false;return true;}
+// Date window, DISABLED 2026-08-28 (user: "Date filter should be hidden - it is of little value
+// currently - Also, must not have any values in it that affects results").
+//
+// Hiding the control alone would not satisfy the second half. pfDateOk runs FIRST in the Performance
+// pipeline — `all = PERF_DATA.filter(r=>pfDateOk(r.trig_date))` — so any lingering From/To value silently
+// shrinks every number on the tab: row count, win:loss, wallet, the lot. The control also shipped
+// contradicting itself: the select displayed "Last 12 months" while PF_DATE_FROM was "", because
+// pfDatePreset only ever ran on change, so the screen claimed a window it was not applying.
+//
+// So the filter is switched off explicitly rather than merely made unreachable. Flip this to true and
+// un-hide .pf-date-group in index.html to restore it; the logic below is intact and still tested.
+const PF_DATE_FILTER_ENABLED=false;
+function pfDateOk(d){if(!PF_DATE_FILTER_ENABLED)return true;
+  if(!d)return true;if(PF_DATE_FROM&&d<PF_DATE_FROM)return false;if(PF_DATE_TO&&d>PF_DATE_TO)return false;return true;}
 function _pfMonthsAgo(n){const d=new Date();d.setMonth(d.getMonth()-n);return d.toISOString().slice(0,10);}
 const _ymdLocal=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;  // local Y-M-D (avoids the UTC off-by-one from toISOString at a BST midnight)
 function pfDatePreset(v){
@@ -4265,10 +4283,22 @@ function _renderPerformance(){
   const nT=selT.filter(r=>r.state==="TARGET").length, nS=selT.filter(r=>r.state==="STOPPED").length, nO=selT.filter(r=>r.state==="OPEN").length;
   $("pf-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${selT.length}</b> recorded triggers <span class="muted">(${nT} hit target · ${nS} stopped · ${nO} open)${selT.length!==all.length?` of ${all.length}`:''}${PF_COMBO?` · Quality ${PF_COMBO.qb}–${PF_COMBO.qb+10} · R:R ${PF_COMBO.rb.toFixed(1)}–${(PF_COMBO.rb+1).toFixed(1)} · ${PF_COMBO.vb} <a href="#" onclick="pfComboFilter(${PF_COMBO.qb},${PF_COMBO.rb},${PF_COMBO.vlo==null?'null':PF_COMBO.vlo},${PF_COMBO.vhi==null?'null':PF_COMBO.vhi},'${PF_COMBO.vb}');return false" style="color:var(--accent)">✕ clear</a>`:''}${PF_VS_FLOOR?` · <b style="color:var(--fg)">Volume Score ≥ ${PF_VS_FLOOR}</b> (your floor)`:''}${PERF_GEN?` · as at ${PERF_GEN}`:''}</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   _pfBacktestSettingsCard(selT,all,led,pfLedgerReconciliation(selT,led));
-  // Belt and braces alongside removing "performance" from PUBLIC_TABS (user 2026-08-28: "remove the
-  // evidence tab and row count if user not logged in"). Hiding the tab already hides the badge inside it,
-  // but the count must not be published by any route that reaches this line without a session.
+  // Row count withheld when logged out (user 2026-08-28: "remove the evidence tab and row count if user
+  // not logged in"). The TAB itself stays public -- removing it was a misreading and was reported back as
+  // a bug the same day.
   $("pftab-count").textContent=AUTH?`(${selT.length})`:"";
+  // ...and the evidence table itself goes with it. The server already withholds every per-trade field
+  // from a logged-out visitor (_public_perf_response sends dated returns only), so there is nothing to
+  // put in these columns; drawing an obfuscated skeleton of 4,000 empty rows would be worse than saying
+  // plainly that it needs a login. The monthly compounding chart above is unaffected and still public.
+  const _pfWrap=$("pf-table")&&$("pf-table").closest(".tablewrap");
+  if(!AUTH){
+    if(_pfWrap)_pfWrap.style.display="none";
+    $("pf-rows").innerHTML="";
+    const _more=$("pf-showmore"); if(_more)_more.style.display="none";
+    return;
+  }
+  if(_pfWrap)_pfWrap.style.display="";
   const visibleRows=rows.slice(0,PF_RENDER_LIMIT);   // summaries/wallet/counts above still use ALL selected rows
   $("pf-rows").innerHTML=visibleRows.map((r,__i)=>`<tr class="clk" onclick="${LIMITED?'showLogin()':`openDetailFrom('performance','${r.ticker}')`}">
     <td class="muted">${__i+1}</td>

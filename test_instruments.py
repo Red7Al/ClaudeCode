@@ -312,16 +312,43 @@ def test_positions_are_not_served_without_a_token(monkeypatch):
         "nothing about the live book")
 
 
-def test_performance_is_not_served_without_a_token(monkeypatch):
-    """/api/performance returned all 4,932 recorded triggers -- entry, stop, target, R:R, quality, RVOL
-    and outcome -- to anyone (user 2026-08-28). Its rows are only ever narrowed by the VIEWER'S OWN saved
-    limits, which load with the token, so a logged-out visitor got the UNFILTERED superset: about ten
-    times what the account owner sees on the same screen."""
+def test_performance_gives_a_logged_out_visitor_dated_returns_and_nothing_else(monkeypatch):
+    """The public Performance tab draws exactly one thing from this data -- the monthly compounding
+    chart, public since 2026-07-20 -- and _pfMonthly reads only trig_date and perf.
+
+    So those two fields leave the server and nothing else does. Previously the whole row went: entry,
+    stop, target, R:R, quality, RVOL, market cap, ticker and name, for all 4,932 triggers. The table's
+    only filter is the VIEWER'S OWN saved limits, which load with their token, so logged out nothing was
+    filtered and an anonymous visitor received about ten times what the account owner sees.
+    """
+    payload = {"rows": [{"ticker": "SECRET", "name": "Secret PLC", "trig_date": "2026-06-01",
+                         "perf": 4.2, "entry": 100, "stop": 90, "target": 130, "rr": 3.0,
+                         "quality": 71, "rvol": 1.9, "mcap": 1.2e9, "sector": "Tech"}],
+               "generated": "now"}
     monkeypatch.setattr(server._wu, "name_for_token", lambda token: "")
-    monkeypatch.setattr(server, "_kick_perf_warm",
-                        lambda: pytest.fail("no build may be kicked for an anonymous caller"))
+    monkeypatch.setitem(server._PERF_CACHE, "ts", server._time.time())
+    monkeypatch.setitem(server._PERF_CACHE, "data", payload)
+    monkeypatch.setitem(server._PERF_PUBLIC_CACHE, "src", None)
+    monkeypatch.setitem(server._PERF_PUBLIC_CACHE, "data", None)
 
-    response = server.app.test_client().get("/api/performance")
+    body = server.app.test_client().get("/api/performance").get_json()
 
-    assert response.status_code == 401
-    assert response.get_json()["rows"] == [], "no trade rows may reach an unauthenticated caller"
+    assert body["limited"] is True
+    assert body["rows"] == [{"trig_date": "2026-06-01", "perf": 4.2}], (
+        "only dated returns may reach an unauthenticated caller")
+    leaked = [k for k in ("ticker", "name", "entry", "stop", "target", "rr", "quality", "rvol",
+                          "mcap", "sector") if k in body["rows"][0]]
+    assert not leaked, f"these fields must never be served without a token: {leaked}"
+
+
+def test_performance_still_serves_everything_to_a_logged_in_user(monkeypatch):
+    payload = {"rows": [{"ticker": "ABC", "trig_date": "2026-06-01", "perf": 4.2, "entry": 100}],
+               "generated": "now"}
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "alex" if token else "")
+    monkeypatch.setitem(server._PERF_CACHE, "ts", server._time.time())
+    monkeypatch.setitem(server._PERF_CACHE, "data", payload)
+    monkeypatch.setitem(server._PERF_CACHE, "gzip", None)
+
+    body = server.app.test_client().get("/api/performance", headers={"X-Auth": "t"}).get_json()
+
+    assert body["rows"][0]["ticker"] == "ABC" and body["rows"][0]["entry"] == 100

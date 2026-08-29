@@ -2823,6 +2823,28 @@ def _perf_response(payload):
     return _gzip_json(payload, _PERF_CACHE)
 
 
+# The logged-out Performance payload (user 2026-08-28/29). The public tab draws exactly ONE thing from
+# this data — the monthly compounding chart, made public on 2026-07-20 "because it sells the product" —
+# and _pfMonthly reads only r.trig_date and r.perf. So that is all that leaves the server: dated returns,
+# with no ticker, entry, stop, target, R:R, quality, RVOL, market cap, sector or name.
+#
+# Stripped HERE rather than hidden in the browser, matching the /api/records teaser rule the requester
+# set on 2026-07-03: what a logged-out visitor must not have, they must not be able to fetch.
+_PERF_PUBLIC_CACHE = {"src": None, "data": None, "gzip": None}
+
+
+def _public_perf_response():
+    src = _PERF_CACHE.get("data") or {}
+    if _PERF_PUBLIC_CACHE.get("src") is not src or _PERF_PUBLIC_CACHE.get("data") is None:
+        _PERF_PUBLIC_CACHE.update(
+            src=src,
+            data={"rows": [{"trig_date": r.get("trig_date"), "perf": r.get("perf")}
+                           for r in (src.get("rows") or [])],
+                  "generated": src.get("generated", ""), "limited": True},
+            gzip=None)
+    return _gzip_json(_PERF_PUBLIC_CACHE["data"], _PERF_PUBLIC_CACHE)
+
+
 def _kick_perf_warm():
     """Start a one-off background build if one isn't already running (user 2026-08-03, P-01: "performance
     still slow") — so a cold /api/performance NEVER blocks the request thread for ~40s."""
@@ -2854,14 +2876,13 @@ def api_performance():
     owner sees on the same screen. Identity was never the obstacle: 29 routes here already make exactly
     this check, including /api/ig-account and /api/credentials. This one simply never made it.
     """
-    if not _wu.name_for_token(request.headers.get("X-Auth") or ""):
-        return jsonify({"rows": [], "generated": ""}), 401
+    authed = bool(_wu.name_for_token(request.headers.get("X-Auth") or ""))
     now = _time.time()
     if _PERF_CACHE["data"] is not None and now - _PERF_CACHE["ts"] < _PERF_TTL:
-        return _perf_response(_PERF_CACHE["data"])
+        return _perf_response(_PERF_CACHE["data"]) if authed else _public_perf_response()
     _kick_perf_warm()
     if _PERF_CACHE["data"] is not None:
-        return _perf_response(_PERF_CACHE["data"])   # stale — refreshed in the background
+        return _perf_response(_PERF_CACHE["data"]) if authed else _public_perf_response()
     return jsonify({"rows": [], "warming": True, "generated": ""})
 
 

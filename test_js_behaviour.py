@@ -1023,3 +1023,47 @@ def test_adding_the_counters_did_not_move_the_replay_numbers():
     assert round(capped["ret"], 10) == round((1 + 0.05 * 0.10) * (1 - 0.05 * 0.03) - 1, 10)
     assert capped["dd"] >= 0 and ample["dd"] >= 0
     assert ample["n"] == 3 and capped["n"] == 2
+
+
+# ======================================================================================================
+# The date window must not be able to affect results (user 2026-08-28: "Date filter should be hidden -
+# it is of little value currently - Also, must not have any values in it that affects results").
+#
+# pfDateOk runs FIRST in the Performance pipeline -- all = PERF_DATA.filter(r=>pfDateOk(r.trig_date)) --
+# so a lingering From/To value silently shrinks EVERY figure on the tab: row count, win:loss, wallet.
+# Hiding the control is not enough on its own; a value already set would keep filtering. The second
+# assertion is the one that matters: even WITH both bounds set, nothing is excluded while it is off.
+# ======================================================================================================
+
+def _date_ok(from_, to, dates):
+    """The REAL flag is lifted from source, never stubbed -- stubbing it would test the stub."""
+    js = client_js()
+    flag = re.search(r"const PF_DATE_FILTER_ENABLED=(?:true|false);", js)
+    assert flag, "PF_DATE_FILTER_ENABLED was not found - has the date window been restructured?"
+    pre = f"let PF_DATE_FROM={from_!r}, PF_DATE_TO={to!r};" + "\n" + flag.group(0)
+    return run_js(pre, _extract("pfDateOk"), "[" + ",".join(f"pfDateOk({d!r})" for d in dates) + "]")
+
+
+def test_date_window_cannot_exclude_anything_while_disabled():
+    """Reconstructs the reported risk: bounds are present, and must still filter nothing."""
+    out = _date_ok("2026-06-01", "2026-06-30", ["2026-01-15", "2026-06-15", "2026-12-31", ""])
+
+    assert out == [True, True, True, True], (
+        "a date value is still excluding rows -- every Performance figure would be silently reduced")
+
+
+def test_the_date_filter_is_switched_off_at_source_not_merely_hidden():
+    js = client_js()
+
+    assert "const PF_DATE_FILTER_ENABLED=false" in js, "the window must be disabled explicitly"
+    assert 'class="pf-date-group" style="display:none"' in client_source(), (
+        "the control must also be hidden, per the request")
+
+
+def test_the_date_preset_does_not_claim_a_window_it_is_not_applying():
+    """It shipped defaulting to 'Last 12 months' while PF_DATE_FROM was "" -- the control displayed a
+    window the pipeline was not using, because pfDatePreset only ever ran on change."""
+    markup = client_source()
+
+    assert '<option value="" selected>Custom / all</option>' in markup, (
+        "the selected option must match the unfiltered state the code actually applies")
