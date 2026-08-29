@@ -266,9 +266,11 @@ def test_apply_this_configuration_is_withheld_when_logged_out():
     html = INDEX.read_text(encoding="utf-8")
 
     # Wrapped in .fcard-apply on 2026-08-23 to pin it to the bottom of the card; the AUTH gate is what
-    # this test actually protects.
-    assert re.search(r"\$\{AUTH\?`<div class=\"fcard-apply\"><button[^`]*Apply this configuration</button></div>`",
-                     html), "the Apply button must be rendered only when AUTH is set"
+    # this test actually protects. The button LABEL became conditional on 2026-08-28 ("Already applied"
+    # when the card already matches the saved configuration), so the assertion no longer pins the literal
+    # text -- only that the whole control sits inside the AUTH branch, which is the security property.
+    assert re.search(r"\$\{AUTH\?`<div class=\"fcard-apply\"><button[^`]*</button></div>`", html),         "the Apply button must be rendered only when AUTH is set"
+    assert re.search(r"\$\{AUTH\?`<div class=\"fcard-apply\">[^`]*applyConfigFromReport", html),         "and it must still be the control that calls applyConfigFromReport"
     assert re.search(r"async function applyConfigFromReport\([^)]*\)\{\s*(?://[^\n]*\n\s*)*if\(!AUTH\)", html), \
         "applyConfigFromReport must fail closed for every other caller"
 
@@ -1284,3 +1286,65 @@ def test_a_phone_keeps_its_smaller_card_count():
 
     assert cap == 6, "phones stop at six"
     assert rows == "unlimited", "a phone scrolls; the count is the constraint"
+
+
+# ======================================================================================================
+# "This is your current configuration" (user 2026-08-28: "If one of the card configurations matches user
+# configuration e.g. Capital Efficient - make it very clear").
+#
+# The information already existed -- changedFor() returned "No change from your current configuration" --
+# but only as small muted text in the Changes line at the foot of the card. The risk in adding a louder
+# claim is that it disagrees with that line, so both are derived from the SAME comparison.
+# ======================================================================================================
+
+def _match_fns():
+    """From displayValue through changedFor. displayValue must be included: changedFor calls it when it
+    finds a difference, so a slice starting at matchesCurrent passed the matching case and blew up on
+    every differing one."""
+    src = client_js()
+    i = src.index("const displayValue=")
+    return src[i:src.index("const choiceCards=", i)]
+
+
+def _matches(current, card):
+    return run_js(f"const current={current};", _match_fns(),
+                  f"[matchesCurrent({card}), changedFor({card})]")
+
+
+_CARD = ("{rr:3,q:50,vs:4,rv:1.8,vw:true,atr:false,st:5,mo:20,"
+         "scope:{label:'All markets'}}")
+_SAME = ("{rr:3,q:50,vs:4,rv:1.8,vw:true,atr:false,st:5,mo:20,scope:'All markets'}")
+
+
+def test_a_card_matching_the_saved_configuration_is_flagged():
+    matched, changes = _matches(_SAME, _CARD)
+
+    assert matched is True
+    assert changes == "No change from your current configuration"
+
+
+def test_a_card_differing_in_one_setting_is_not_flagged():
+    """One differing value must clear the badge -- a near-match is not a match."""
+    matched, changes = _matches(_SAME.replace("rr:3", "rr:5"), _CARD)
+
+    assert matched is False
+    assert "R:R" in changes
+
+
+def test_the_badge_and_the_changes_line_can_never_disagree():
+    """Both must come from the same comparison: a card claiming to match while listing differences
+    would be worse than the small muted text it replaces."""
+    for tweak in ("q:50", "vs:4", "rv:1.8", "st:5", "mo:20"):
+        key, value = tweak.split(":")
+        changed = _SAME.replace(tweak, f"{key}:999")
+        matched, changes = _matches(changed, _CARD)
+        assert matched is False, f"{key} differs but the card claims to match"
+        assert changes != "No change from your current configuration"
+
+
+def test_the_apply_button_says_so_rather_than_inviting_a_no_op():
+    js = client_js()
+
+    assert "Already applied" in js, "a matching card must not invite an apply that changes nothing"
+    assert "fcard-current" in js and "This is your current configuration" in js
+    assert ".fcard-current{" in client_source(), "the badge needs a style or it is invisible"

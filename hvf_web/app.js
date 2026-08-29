@@ -3221,6 +3221,16 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
     vw:!!+MY_LIMITS.require_above_vwap,atr:!!+MY_LIMITS.require_atr_expanding,st:+MY_LIMITS.max_position_pct||WINNERS_STAKE*100,mo:+MY_LIMITS.max_open||WINNERS_MAXOPEN,
     scope:_pfSavedScope("market")[0]?`Market: ${_pfSavedScope("market").join(", ")}`:_pfSavedScope("sector")[0]?`Sector: ${_pfSavedScope("sector").join(", ")}`:"All markets"};
   const displayValue=(key,v)=>key==="vw"||key==="atr"?(v?"Yes":"No"):key==="st"?v+"%":key==="mo"?String(v):key==="scope"?v:String(v||"Any");
+  // Does this card already describe what the user is running? (user 2026-08-28: "If one of the card
+  // configurations matches user configuration e.g. Capital Efficient - make it very clear".) The
+  // information existed -- changedFor returned "No change from your current configuration" -- but only as
+  // small muted text in the Changes line at the foot of the card, which is not the same as clear.
+  // Derived from the SAME comparison changedFor uses, so a card can never claim to match while its own
+  // Changes line lists differences.
+  const matchesCurrent=x=>{
+    const target={rr:x.rr,q:x.q,vs:x.vs,rv:x.rv,vw:x.vw,atr:x.atr,st:x.st,mo:x.mo,scope:x.scope.label};
+    return Object.keys(target).every(k=>String(current[k])===String(target[k]));
+  };
   const changedFor=x=>{
     const target={rr:x.rr,q:x.q,vs:x.vs,rv:x.rv,vw:x.vw,atr:x.atr,st:x.st,mo:x.mo,scope:x.scope.label};
     const labels={rr:"R:R",q:"Quality",vs:"VolumeScore",rv:"RVOL",vw:"VWAP required",atr:"ATR expanding",st:"Position size",mo:"Max open",scope:"Scope"};
@@ -3244,14 +3254,14 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
     return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};
   const _wlLine=(label,d,title)=>`<div style="font-size:11px;margin-top:4px" title="${title}">${label} <b style="color:var(--fg)">${d.w} : ${d.l}</b>${d.pct!=null?` <span class="muted">(${d.pct}%)</span>`:''}</div>`;
   const choiceCards=choices.map(([label,x,why,colour])=>`<div class="fcard fcard-choice${label===BEST_SELECTED?' fcard-selected':''}" data-choice="${label}" data-choice-return="${x.ret}" style="min-width:240px;flex:1;border-top:3px solid ${colour}" onclick="selectBestChoice('${label.replace(/'/g,"\\'")}')" title="Show this option's detail and Transaction evidence below">
-    <h3 style="color:${colour}">${label}</h3><div class="muted" style="font-size:11px;min-height:30px">${why}</div>
+    <h3 style="color:${colour}">${label}</h3>${matchesCurrent(x)?`<div class="fcard-current" title="Every setting on this card already matches your saved User Configuration, so applying it would change nothing">✓ This is your current configuration</div>`:''}<div class="muted" style="font-size:11px;min-height:30px">${why}</div>
     <div class="body"><div><b style="font-size:17px;color:${x.ret>=0?'var(--bull)':'var(--bear)'}">${pct(x.ret)}</b> return · <b>${(x.dd*100).toFixed(1)}%</b> max drawdown</div>
       <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} funded of ${x.seq.length.toLocaleString()} eligible · ${x.posPeriods}/${x.periods} positive quarters</div>
       ${_wlLine("Win : Loss <span class='muted'>(eligible)</span>",_cardWL(x),"Wins vs losses among every trade matching this configuration, whether or not the wallet could fund it — the same split the detail panel below reports")}
       ${_wlLine("Win : Loss <span class='muted'>(actual)</span>",_cardWLActual(x),"Wins vs losses among only the trades this configuration actually FUNDED — the same population as the funded count above")}
       <div style="font-size:11px;margin-top:6px">${x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo} max open</div>
       <div class="muted" style="font-size:10px;margin-top:7px;line-height:1.4"><b style="color:var(--fg)">Changes:</b> ${changedFor(x)}</div>
-      ${AUTH?`<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="Review and apply these values to User Configuration">Apply this configuration</button></div>`
+      ${AUTH?`<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="${matchesCurrent(x)?'These values already match your User Configuration - applying would change nothing':'Review and apply these values to User Configuration'}">${matchesCurrent(x)?'Already applied':'Apply this configuration'}</button></div>`
              /* There is no User Configuration to write to when nobody is signed in, and /api/config rejects
                 the POST, so the control could only ever end at "Save failed" (user 2026-08-22). Offer the
                 sign-in that makes it work instead of an action that cannot. */
