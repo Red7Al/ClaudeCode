@@ -383,9 +383,16 @@ def test_card_capacity_by_viewport_width(width, cards):
     assert got == cards, f"{width}px should offer {cards} cards, got {got}"
 
 
-@pytest.mark.parametrize("width,rows", [(390, 3), (768, 3), (1024, 3), (1025, 2), (1440, 2)])
+# None == Infinity here: JSON has no Infinity, so an unlimited row cap comes back as null.
+@pytest.mark.parametrize("width,rows", [(390, None), (768, None), (1024, None), (1025, 2), (1440, 2)])
 def test_row_cap_matches_the_same_band(width, rows):
-    """A 9-card capacity with a 2-row cap would trim straight back to 8 — the halves must agree."""
+    """A capacity the row cap cannot fit is trimmed straight back down — the halves must agree.
+
+    Updated 2026-08-28: the tablet/phone band previously capped at THREE rows while offering nine cards,
+    and nine cards at min-width 240px need four rows at an iPad mini's 768px, so the post-layout loop
+    deleted cards until they fitted. On those devices the count is the constraint and rows follow it;
+    the two-row cap remains on laptops, where it is the real limit.
+    """
     got = run_js(f"var innerWidth={width};", _capacity_source(), "bestCardMaxRows()")
 
     assert got == rows
@@ -401,13 +408,22 @@ def test_the_tablet_band_reaches_ipad_mini_landscape():
     assert run_js("var innerWidth=1024;", src, "bestCardCapacity()") == 9
 
 
-def test_nine_cards_fit_the_row_cap_they_are_given():
-    """Capacity must be achievable: 9 cards over 3 rows needs at most 3 per row."""
+def test_the_offered_card_count_is_always_achievable():
+    """The rule this file exists for: a capacity the row cap cannot hold is not a capacity, because the
+    post-layout loop deletes cards until the grid fits.
+
+    Cards are min-width 240px with roughly a 10px gap, so the number per row scales with the viewport --
+    a fixed "three per row" was wrong, since a 1440px laptop fits five.
+    """
     src = _capacity_source()
-    for width in (768, 1024):
+    for width in (390, 768, 1024, 1025, 1440):
         cap = run_js(f"var innerWidth={width};", src, "bestCardCapacity()")
         rows = run_js(f"var innerWidth={width};", src, "bestCardMaxRows()")
-        assert cap <= rows * 3, f"{width}px offers {cap} cards but only {rows} rows"
+        if rows is None:
+            continue                      # unlimited rows: any count is achievable
+        per_row = max(1, width // 250)
+        assert cap <= rows * per_row, (
+            f"{width}px offers {cap} cards but {rows} rows of ~{per_row} can only hold {rows * per_row}")
 
 
 # ------------------------------------------------------------------------------------------------------
