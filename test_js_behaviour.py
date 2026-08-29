@@ -1348,3 +1348,57 @@ def test_the_apply_button_says_so_rather_than_inviting_a_no_op():
     assert "Already applied" in js, "a matching card must not invite an apply that changes nothing"
     assert "fcard-current" in js and "This is your current configuration" in js
     assert ".fcard-current{" in client_source(), "the badge needs a style or it is invisible"
+
+
+# ======================================================================================================
+# Scanner RVOL fallback (user 2026-08-28: "Rows still has empty data e.g. RVOL!!!").
+#
+# Two RVOLs reach the client: `rvol`, measured on the setup's own break bar and present only for
+# TRIGGERED rows, and `current_rvol`, today's value for every instrument. The Scanner rendered `rvol`
+# alone, so 124 of 261 signal rows showed a dash -- and 114 of those had a live value sitting unused in
+# the same payload.
+#
+# The fallback must be MARKED. Presenting today's RVOL as the trigger's is the clobber bug of 2026-08-17
+# that this file already guards against: a value from the wrong moment is worse than a dash.
+# ======================================================================================================
+
+def _rvol_cells():
+    """rvolCell through rvolScannerCell -- one slice; they are adjacent and the second calls the first."""
+    js = client_js()
+    i = js.index("const rvolCell=")
+    return js[i:js.index("// VolumeScore cell", i)]
+
+
+def _scanner_rvol(row):
+    return run_js("", _rvol_cells(), f"rvolScannerCell({row})")
+
+
+def test_a_triggered_row_shows_its_own_trigger_bar_rvol():
+    out = _scanner_rvol("{rvol:2.4,current_rvol:0.9}")
+
+    assert "2.4" in out and "0.9" not in out, "the trigger's own value must win"
+    assert "now" not in out, "a trigger-time value must not be marked as current"
+
+
+def test_a_row_without_a_trigger_rvol_falls_back_and_says_so():
+    out = _scanner_rvol("{rvol:null,current_rvol:1.6,current_rvol_date:'2026-08-28'}")
+
+    assert "1.6" in out, "the value exists in the payload and must be shown"
+    assert "now" in out, "the fallback must be marked, not passed off as the trigger's"
+    assert "2026-08-28" in out, "and dated, so the reader knows which bar it came from"
+
+
+def test_a_row_with_neither_still_shows_a_dash():
+    """FX has no reported volume, so a dash is the honest answer -- not a fabricated number."""
+    out = _scanner_rvol("{rvol:null,current_rvol:null}")
+
+    assert "—" in out and "now" not in out
+
+
+def test_the_fallback_is_never_silent():
+    """The whole risk: a value from the wrong moment presented as if it were the right one."""
+    marked = _scanner_rvol("{rvol:null,current_rvol:1.6}")
+    genuine = _scanner_rvol("{rvol:1.6,current_rvol:9.9}")
+
+    assert "now" in marked and "now" not in genuine
+    assert marked != genuine, "the two must be visually distinguishable"

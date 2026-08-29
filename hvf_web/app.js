@@ -76,6 +76,23 @@ const qcol=q=>q>=70?"var(--bull)":q>=50?"#d29922":"var(--bear)";   // quality co
 // 0 or 1.0, where there is no real volume to measure: FX and indices would otherwise read as "normal".
 const rvolCell=v=>v==null?'<span class="muted">—</span>'
   :`<b style="color:${v>=2?'var(--bull)':v>=1?'#d29922':'var(--muted)'}">${(+v).toFixed(1)}×</b>`;
+// Scanner RVOL with a LABELLED fallback (user 2026-08-28: "Rows still has empty data e.g. RVOL!!!").
+//
+// Two different RVOLs reach the client. `rvol` is measured on the setup's own break bar and exists only
+// for TRIGGERED rows; `current_rvol` is today's, for every instrument. The Scanner rendered `rvol` alone,
+// so every READY and DEVELOPING row showed a dash while the value sat unused in the same payload.
+// Measured 2026-08-29: 124 of 261 signal rows blank, and 114 of those had a live value available.
+//
+// The fallback is MARKED, never silently substituted. Presenting today's RVOL as the trigger's is
+// precisely the clobber bug of 2026-08-17 that test_order_ops_enrichment_keeps_the_servers_values
+// exists to prevent -- a value from the wrong moment is worse than a dash, because a dash is honest.
+const rvolScannerCell=r=>{
+  if(r.rvol!=null)return rvolCell(r.rvol);
+  if(r.current_rvol==null)return rvolCell(null);
+  const d=r.current_rvol_date?` on ${r.current_rvol_date}`:'';
+  return `<span title="Today's RVOL${d}, not the trigger bar's — this setup has not triggered yet" style="opacity:.75">`
+       + `${rvolCell(r.current_rvol)}<span class="muted" style="font-size:9px;vertical-align:super">now</span></span>`;
+};
 // VolumeScore cell (0–12, user 2026-07-24, P-02): 8+ green (trade-worthy), 5–7 amber, below grey.
 const volScoreCell=v=>v==null?'<span class="muted">—</span>'
   :`<b style="color:${v>=8?'var(--bull)':v>=5?'#d29922':'var(--muted)'}" title="${v} of 12">${v}</b>`;
@@ -358,7 +375,7 @@ function render(){
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
     ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
-    <td>${ob(rvolCell(r.rvol))}</td><td>${r.above_vwap==null?'—':r.above_vwap?'✓':'✗'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'✓':'✗'}</td><td>${ob(volScoreCell(r.volume_score))}</td>
+    <td>${ob(rvolScannerCell(r))}</td><td>${r.above_vwap==null?'—':r.above_vwap?'✓':'✗'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'✓':'✗'}</td><td>${ob(volScoreCell(r.volume_score))}</td>
     <td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td><td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td>
     <td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td><td>${ob(r.days_since??'')}</td>
