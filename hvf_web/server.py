@@ -1343,6 +1343,34 @@ def _live_vwap_atr(snap: dict) -> dict:
 # scoped to TRIGGERED rows only. Cached against the snapshot's generated_utc, same reasoning as the caches
 # above — the trailing range only changes when the snapshot (and its underlying price_history) is rebuilt.
 _WK52_CACHE = {"gen": None, "data": {}}
+
+
+# Market cap per ticker. One definition, cached: the weekly backfill is the only writer, so re-querying
+# it per request was work repeated against data that changes at most once a week. Extracted 2026-08-29
+# when the Scanner needed it too (user: "Needs to see MCAP (to left of rvol)") -- a second inline copy of
+# the same query is how two surfaces end up disagreeing about the same number.
+_MCAP_CACHE = {"ts": 0.0, "data": {}}
+_MCAP_TTL = 3600
+
+
+def _mcap_map() -> dict:
+    now = _time.time()
+    if _MCAP_CACHE["data"] and now - _MCAP_CACHE["ts"] < _MCAP_TTL:
+        return _MCAP_CACHE["data"]
+    out = {}
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            for _t, _m in (db.run("select ticker, mcap from instrument_mcap") or []):
+                out[_t] = _m
+        finally:
+            db.close()
+        _MCAP_CACHE.update(ts=now, data=out)
+    except Exception as ex:
+        log.warning("market-cap map unavailable: %s", ex)
+        return _MCAP_CACHE["data"] or {}
+    return out
 _WK52_LOOKBACK_DAYS = 365
 
 
@@ -1405,11 +1433,14 @@ def api_records():
         vwap_atr = _live_vwap_atr(snap)
         live_metrics = _live_instrument_metrics(snap)
         recs = []
+        mcaps = _mcap_map()
         for r in snap.get("records", []):
             result = vscore.get(r.get("ticker")) or {}
             w = wk52.get(r.get("ticker")) or (None, None)
             av, ae = vwap_atr.get(r.get("ticker"), (None, None))
             current = live_metrics.get(r.get("ticker"), {})
+            # mcap is deliberately absent from the logged-out branch: that path builds rows from
+            # _PUBLIC_FIELDS alone, so it cannot leak by omission here.
             recs.append(dict({k: v for k, v in r.items() if k != "_card"},
                              rvol=rvol.get(r.get("ticker")),
                              volume_score=result.get("score"),
@@ -1420,6 +1451,7 @@ def api_records():
                              current_above_vwap=current.get("above_vwap"),
                              current_atr_expanding=current.get("atr_expanding"),
                              current_metric_date=current.get("date"),
+                             mcap=mcaps.get(r.get("ticker")),
                              current_metric_status=current.get("status", "not_calculated"),
                              current_metric_reason=current.get("reason"),
                              wk52_low=w[0], wk52_high=w[1]))
@@ -3115,16 +3147,7 @@ def _sqa_all_rows():
     # Market-cap map (user 2026-08-01, P-07/P-08) — one query; attached to every row so the Back Test /
     # winners MCap column + the Min/Max instrument value (MCAP) filters have data. Empty until the
     # mcap_backfill has populated instrument_mcap (graceful: missing tickers -> mcap None -> "—").
-    mcap_map = {}
-    try:
-        dbm = get_db()
-        try:
-            for _t, _m in (dbm.run("select ticker, mcap from instrument_mcap") or []):
-                mcap_map[_t] = _m
-        finally:
-            dbm.close()
-    except Exception as _e:
-        log.warning(f"mcap map load failed: {_e}")
+    mcap_map = _mcap_map()
     rows = []
     for tk, mk, tf, ht, q, rr, rv, oc, ret, td, od, e, s_, t_ in raw:
         s = snap.get(tk, {})

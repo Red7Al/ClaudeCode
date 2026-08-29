@@ -352,3 +352,42 @@ def test_performance_still_serves_everything_to_a_logged_in_user(monkeypatch):
     body = server.app.test_client().get("/api/performance", headers={"X-Auth": "t"}).get_json()
 
     assert body["rows"][0]["ticker"] == "ABC" and body["rows"][0]["entry"] == 100
+
+
+def test_records_carry_market_cap_for_a_logged_in_user(monkeypatch):
+    """The Scanner's MCap column needs it on the row (user 2026-08-28)."""
+    monkeypatch.setattr(server, "_load_snapshot", _fake_snapshot)
+    monkeypatch.setattr(server, "_snapshot_52wk", lambda snap: {})
+    monkeypatch.setattr(server, "_snapshot_rvol", lambda snap: {})
+    monkeypatch.setattr(server, "_snapshot_volscore", lambda snap: {})
+    monkeypatch.setattr(server, "_live_vwap_atr", lambda snap: {})
+    monkeypatch.setattr(server, "_live_instrument_metrics", lambda snap: {})
+    monkeypatch.setattr(server, "_mcap_map", lambda: {"ABC": 4.2e9})
+    _identity(monkeypatch, "Silver")
+
+    row = server.app.test_client().get("/api/records", headers={"X-Auth": "token"}).get_json()["records"][0]
+
+    assert row["mcap"] == 4.2e9
+
+
+def test_the_market_cap_map_is_cached(monkeypatch):
+    """The weekly backfill is its only writer, so re-querying per request repeats work against data that
+    changes at most once a week."""
+    calls = []
+
+    class _Db:
+        def run(self, sql, **k):
+            calls.append(sql)
+            return [("ABC", 1.0)]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("db_pool.get_db", lambda: _Db(), raising=False)
+    monkeypatch.setitem(server._MCAP_CACHE, "ts", 0.0)
+    monkeypatch.setitem(server._MCAP_CACHE, "data", {})
+
+    server._mcap_map()
+    server._mcap_map()
+
+    assert len(calls) == 1, "the second call must be served from the cache"

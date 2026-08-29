@@ -1402,3 +1402,46 @@ def test_the_fallback_is_never_silent():
 
     assert "now" in marked and "now" not in genuine
     assert marked != genuine, "the two must be visually distinguishable"
+
+
+# ======================================================================================================
+# Scanner MCap column (user 2026-08-28: "Needs to see MCAP (to left of rvol)").
+#
+# A column added to one side only silently shifts every cell after it, so the header order and the row
+# order are both pinned here.
+# ======================================================================================================
+
+def test_the_scanner_shows_mcap_immediately_left_of_rvol():
+    html = client_source()
+    i = html.index('data-pk="name"')
+    header = html[html.rindex("<thead", 0, i):html.index("</thead>", i)]
+    order = re.findall(r'data-pk="([a-z0-9_]+)"', header)
+
+    assert "mcap" in order, "the MCap column is missing from the Scanner header"
+    assert order.index("mcap") == order.index("rvol") - 1, (
+        f"MCap must sit immediately left of RVOL; order is {order[:6]}")
+
+
+def test_the_scanner_row_renders_mcap_in_the_same_position():
+    js = client_js()
+    j = js.index("rvolScannerCell(r)")
+    row = js[js.rindex("`<tr", 0, j):js.index("</tr>", j)]
+    cells = re.findall(r"<td[^>]*>\$\{[^}]*", row)
+
+    mcap_at = next(i for i, c in enumerate(cells) if "_mcapFmt(r.mcap)" in c)
+    rvol_at = next(i for i, c in enumerate(cells) if "rvolScannerCell(r)" in c)
+
+    assert mcap_at == rvol_at - 1, "the row must place MCap where the header says it is"
+
+
+def test_the_header_and_row_stay_in_step():
+    """Header and row cell counts must move together. They differ by a constant offset (the row carries
+    cells the header spans), so the INVARIANT is that the difference is unchanged, not that they match."""
+    html, js = client_source(), client_js()
+    i = html.index('data-pk="name"')
+    header = html[html.rindex("<thead", 0, i):html.index("</thead>", i)]
+    j = js.index("rvolScannerCell(r)")
+    row = js[js.rindex("`<tr", 0, j):js.index("</tr>", j)]
+
+    assert len(re.findall(r"<td", row)) - header.count("<th") == 2, (
+        "a column was added to one side only, which shifts every cell after it")
