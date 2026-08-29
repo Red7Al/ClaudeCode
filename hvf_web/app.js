@@ -1822,12 +1822,18 @@ function paintOrderOps(){
   rows.forEach(r=>{const d=_ooRec(r.ticker),p=d&&d.current_price;
     r.name=d?.name||r.name||'';
     r.rvol=r.rvol??d?.rvol??null;r.volume_score=r.volume_score??d?.volume_score??null;
+    // working_orders has no column for any of these, so the snapshot is the ONLY source; without them
+    // Market rendered blank on every row (user 2026-08-28: "New orders still has empty data e.g.
+    // MARKET"). Same ?? precedence as the fields above, so a server value always wins where one exists.
+    r.market=r.market??d?.market??null;r.sector=r.sector??d?.sector??null;
+    r.mcap=r.mcap??d?.mcap??null;
+    r.above_vwap=r.above_vwap??d?.above_vwap??null;r.atr_expanding=r.atr_expanding??d?.atr_expanding??null;
     r.rr=r.rr??d?.rr??null;r.quality=r.quality??d?.quality??null;
     r.dist_pct=(r.entry!=null&&p)?+(((r.entry-p)/p)*100).toFixed(2):null;});
   rows.forEach(r=>r._fav=FAVS.has(disp(r.ticker))?1:0);   // favourite column sortable (user 2026-07-11)
   $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>
     ${_favCell(r.ticker)}<td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td>${nm40(r.name)}</td>
-    <td>${rvolCell(r.rvol)}</td><td>${r.above_vwap==null?'—':r.above_vwap?'✓':'✗'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'✓':'✗'}</td><td>${volScoreCell(r.volume_score)}</td><td>${r.rr!=null?(+r.rr).toFixed(1):'<span class="muted">—</span>'}</td>
+    <td>${_mcapFmt(r.mcap)}</td><td>${rvolCell(r.rvol)}</td><td>${r.above_vwap==null?'—':r.above_vwap?'✓':'✗'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'✓':'✗'}</td><td>${volScoreCell(r.volume_score)}</td><td>${r.rr!=null?(+r.rr).toFixed(1):'<span class="muted">—</span>'}</td>
     <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'<span class="muted">—</span>'}</td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
     <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td>

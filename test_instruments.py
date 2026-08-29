@@ -391,3 +391,55 @@ def test_the_market_cap_map_is_cached(monkeypatch):
     server._mcap_map()
 
     assert len(calls) == 1, "the second call must be served from the cache"
+
+
+# ======================================================================================================
+# IG "New orders" Market column (user 2026-08-28: "New orders still has empty data e.g. MARKET").
+#
+# Market came from the current snapshot alone, so an order on an instrument the scan has since dropped
+# showed blank -- EXR and DHI are live orders on S&P 500 names no longer scanned. A blank there reads as
+# missing data rather than "no longer in the universe".
+# ======================================================================================================
+
+def test_market_falls_back_to_the_recorded_history(monkeypatch):
+    """The snapshot wins where it has a value; history fills the gap where it does not."""
+    calls = {}
+
+    class _Db:
+        def run(self, sql, **k):
+            if "squeeze_history" in sql:
+                calls["hist"] = True
+                return [("EXR", "S&P 500"), ("ABC", "SHOULD NOT WIN")]
+            return []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("db_pool.get_db", lambda: _Db(), raising=False)
+    snap_recs = [{"ticker": "ABC", "market": "FTSE 100"}, {"ticker": "NOMKT", "market": ""}]
+
+    tk2market = {r["ticker"]: (r.get("market") or "") for r in snap_recs if r.get("ticker")}
+    from db_pool import get_db
+    db = get_db()
+    try:
+        for _t, _m in (db.run("select ticker, market from squeeze_history") or []):
+            if not tk2market.get(_t):
+                tk2market[_t] = _m
+    finally:
+        db.close()
+
+    assert calls.get("hist"), "the fallback must consult the recorded history"
+    assert tk2market["ABC"] == "FTSE 100", "a snapshot value must never be overwritten by history"
+    assert tk2market["EXR"] == "S&P 500", "an instrument no longer scanned still has a known market"
+
+
+def test_the_server_uses_that_fallback():
+    """Guards the wiring, not just the logic -- this repo's recurring defect is code nothing calls."""
+    from pathlib import Path
+
+    src = Path(__file__).with_name("hvf_web").joinpath("server.py").read_text(encoding="utf-8")
+    i = src.index("tk2market = {")
+    block = src[i:i + 1200]
+
+    assert "squeeze_history" in block, "the Market column has no fallback wired in"
+    assert "if not tk2market.get(_t):" in block, "the snapshot must win where it has a value"

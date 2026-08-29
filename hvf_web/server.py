@@ -4816,6 +4816,22 @@ def api_ig_account():
     tk2name = {r["ticker"]: (r.get("name") or "") for r in _snap_recs if r.get("ticker")}
     # Ticker -> Market map (user 2026-08-03, P-10): show Market next to Name on both IG Account tables.
     tk2market = {r["ticker"]: (r.get("market") or "") for r in _snap_recs if r.get("ticker")}
+    # Fall back to the market squeeze_history recorded for instruments no longer in the snapshot (user
+    # 2026-08-28: "New orders still has empty data e.g. MARKET"). An order can outlive its instrument's
+    # membership of the scan universe -- EXR and DHI are live orders on S&P 500 names the scan has since
+    # dropped -- and a blank there reads as missing data rather than "no longer scanned".
+    try:
+        from db_pool import get_db as _gdb
+        _dbh = _gdb()
+        try:
+            for _t, _m in (_dbh.run("select distinct on (ticker) ticker, market from squeeze_history "
+                                    "where market is not null order by ticker, recorded_at desc") or []):
+                if not tk2market.get(_t):        # the snapshot always wins where it has a value
+                    tk2market[_t] = _m
+        finally:
+            _dbh.close()
+    except Exception as _ex:
+        log.debug("historical market fallback unavailable: %s", _ex)
 
     # Fetch positions and orders INDEPENDENTLY (user 2026-07-13 bug: a failure in get_working_orders
     # used to abort the whole block, so open positions silently vanished even though that call had
