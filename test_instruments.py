@@ -443,3 +443,95 @@ def test_the_server_uses_that_fallback():
 
     assert "squeeze_history" in block, "the Market column has no fallback wired in"
     assert "if not tk2market.get(_t):" in block, "the snapshot must win where it has a value"
+
+
+# ======================================================================================================
+# Serving the daily metrics instead of recomputing them (user 2026-08-28: "Instruments should be quick
+# to load as it can be cached after the data set is updated").
+#
+# /api/records measured 36 s cold and 0.9 s warm on 2026-08-29. The cold cost is recomputing the 52-week
+# range and RVOL/VWAP/ATR over ~400 bars for each of 1,421 instruments, landing on whichever user
+# arrives first after the worker recycles.
+#
+# The risk in reading stored values is staleness: yesterday's metrics presented as today's is the
+# wrong-moment failure this codebase keeps producing. Hence only TODAY'S row is used.
+# ======================================================================================================
+
+def _stored(monkeypatch, as_of, **fields):
+    import instrument_metrics
+    row = {"as_of": as_of, "bar_date": "2026-08-29", "rvol": 1.4, "rvol_date": "2026-08-29",
+           "above_vwap": True, "atr_expanding": False, "wk52_low": 8.0, "wk52_high": 20.0,
+           "status": "complete", "source": None}
+    row.update(fields)
+    monkeypatch.setattr(instrument_metrics, "latest", lambda t: {"ABC": row})
+    monkeypatch.setitem(server._STORED_METRICS_CACHE, "gen", None)
+    monkeypatch.setitem(server._STORED_METRICS_CACHE, "data", {})
+    monkeypatch.setitem(server._WK52_CACHE, "gen", None)
+    monkeypatch.setitem(server._WK52_CACHE, "data", {})
+    monkeypatch.setitem(server._LIVE_INSTRUMENT_METRICS_CACHE, "gen", None)
+    monkeypatch.setitem(server._LIVE_INSTRUMENT_METRICS_CACHE, "data", {})
+
+
+def test_todays_stored_metrics_are_served_without_recomputing(monkeypatch):
+    import datetime as dt
+    _stored(monkeypatch, dt.date.today().isoformat())
+    monkeypatch.setattr(server, "_perf_bars",
+                        lambda *a, **k: pytest.fail("bars must not be re-read when a stored row exists"))
+
+    snap = {"generated_utc": "g1", "records": [{"ticker": "ABC"}]}
+
+    assert server._snapshot_52wk(snap)["ABC"] == (8.0, 20.0)
+    assert server._live_instrument_metrics(snap)["ABC"]["rvol"] == 1.4
+
+
+def test_a_stale_row_is_ignored_and_recomputed(monkeypatch):
+    """Yesterday's metrics shown as today's would be a value from the wrong moment."""
+    _stored(monkeypatch, "2020-01-01")
+    called = []
+
+    class _Db:
+        def run(self, *a, **k):
+            return []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("db_pool.get_db", lambda: _Db(), raising=False)
+
+    def _bars(*a, **k):
+        called.append(True)
+        return {}
+
+    monkeypatch.setattr(server, "_perf_bars", _bars)
+    snap = {"generated_utc": "g2", "records": [{"ticker": "ABC"}]}
+
+    server._snapshot_52wk(snap)
+
+    assert called, "a row from another day must be ignored, not served as current"
+
+
+def test_instruments_missing_from_the_store_are_still_computed(monkeypatch):
+    """Partial coverage must not blank the rest -- only the remainder is recomputed."""
+    import datetime as dt
+    _stored(monkeypatch, dt.date.today().isoformat())
+    asked = []
+
+    class _Db:
+        def run(self, *a, **k):
+            return []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("db_pool.get_db", lambda: _Db(), raising=False)
+
+    def _bars(db, cutoff, lookback_days=0):
+        asked.append(sorted(cutoff))
+        return {}
+
+    monkeypatch.setattr(server, "_perf_bars", _bars)
+    snap = {"generated_utc": "g3", "records": [{"ticker": "ABC"}, {"ticker": "OTHER"}]}
+
+    server._snapshot_52wk(snap)
+
+    assert asked and asked[0] == ["OTHER"], f"only the uncovered ticker should be computed, got {asked}"

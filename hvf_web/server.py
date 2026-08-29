@@ -1220,6 +1220,18 @@ def _live_instrument_metrics(snap: dict) -> dict:
     try:
         import volume_score as _vscore
         want = [r.get("ticker") for r in snap.get("records", []) if r.get("ticker")]
+        # Persisted rows first (see _stored_metrics): the same values, written once a day by the same
+        # volume_score functions, instead of re-reading ~400 bars per instrument on the request thread.
+        for _tk, _row in (_stored_metrics(snap) or {}).items():
+            if _row.get("status"):
+                out[_tk] = {"rvol": _row.get("rvol"),
+                            "rvol_date": (str(_row["rvol_date"])[:10] if _row.get("rvol_date") else None),
+                            "above_vwap": _row.get("above_vwap"),
+                            "atr_expanding": _row.get("atr_expanding"),
+                            "date": (str(_row["bar_date"])[:10] if _row.get("bar_date") else None),
+                            "source": _row.get("source"),
+                            "status": _row.get("status")}
+        want = [_tk for _tk in want if _tk not in out]
         if want:
             from db_pool import get_db
             today = _dt.date.today()
@@ -1345,6 +1357,43 @@ def _live_vwap_atr(snap: dict) -> dict:
 _WK52_CACHE = {"gen": None, "data": {}}
 
 
+# Today's PERSISTED per-instrument metrics, keyed by the snapshot they are being used with.
+#
+# WHY: /api/records was measured at 36 s cold and 0.9 s warm on 2026-08-29. The cold cost is recomputing
+# the 52-week range and the RVOL/VWAP/ATR metrics over roughly 400 bars for each of 1,421 instruments,
+# and it lands on whichever user arrives first after the worker recycles. The requester's point exactly:
+# "Instruments should be quick to load as it can be cached after the data set is updated."
+#
+# instrument_metrics writes those same values once a day, from the same volume_score functions, with a
+# test asserting the stored figures match this live path. So the request thread can READ them.
+#
+# Only TODAY'S row is used. A stale row would quietly show yesterday's metrics as though current, which
+# is the wrong-moment failure this codebase keeps producing; if the daily job has not run, we recompute.
+_STORED_METRICS_CACHE = {"gen": None, "data": {}}
+
+
+def _stored_metrics(snap: dict) -> dict:
+    import datetime as _d
+    gen = snap.get("generated_utc")
+    if _STORED_METRICS_CACHE["gen"] == gen:
+        return _STORED_METRICS_CACHE["data"]
+    out = {}
+    try:
+        import instrument_metrics
+        tickers = [r.get("ticker") for r in snap.get("records", []) if r.get("ticker")]
+        today = _d.date.today()
+        for tk, row in (instrument_metrics.latest(tickers) or {}).items():
+            as_of = row.get("as_of")
+            if as_of and str(as_of)[:10] == today.isoformat():
+                out[tk] = row
+    except Exception as ex:
+        log.warning("stored instrument metrics unavailable, recomputing: %s", ex)
+        out = {}
+    _STORED_METRICS_CACHE.update(gen=gen, data=out)
+    log.info("stored metrics available for %d instruments", len(out))
+    return out
+
+
 # Market cap per ticker. One definition, cached: the weekly backfill is the only writer, so re-querying
 # it per request was work repeated against data that changes at most once a week. Extracted 2026-08-29
 # when the Scanner needed it too (user: "Needs to see MCAP (to left of rvol)") -- a second inline copy of
@@ -1383,6 +1432,14 @@ def _snapshot_52wk(snap: dict) -> dict:
     out = {}
     try:
         tickers = sorted({r.get("ticker") for r in snap.get("records", []) if r.get("ticker")})
+        # Serve from today's persisted row where we have one; only the remainder is recomputed. This is
+        # the bulk of the 36 s cold cost measured on 2026-08-29.
+        stored = _stored_metrics(snap)
+        for _tk in list(tickers):
+            _row = stored.get(_tk) or {}
+            if _row.get("wk52_low") is not None and _row.get("wk52_high") is not None:
+                out[_tk] = (_row["wk52_low"], _row["wk52_high"])
+        tickers = [_tk for _tk in tickers if _tk not in out]
         if tickers:
             from db_pool import get_db
             today = _dt.date.today()
