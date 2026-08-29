@@ -3436,6 +3436,16 @@ async function applyConfigFromReport(cfg, btn){
   const nextFilters={...USER_FILTERS,...filters};
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits,filters:nextFilters})})
     .then(r=>{if(!r.ok)throw 0;
+      // Confirm the SAVE the moment the server confirms it, BEFORE any re-render (user 2026-08-28:
+      // "not showing Saving (AMBER) whilst running or Saved (GREEN) once complete"). These two lines
+      // used to sit AFTER applyWinnersDefaults(), which re-runs the Best Settings render -- measured at
+      // 52-61 s before the three-year search was memoised. So the amber state was correct and then the
+      // page froze, and green only appeared once rendering finished, long after the save had landed.
+      // The POST has succeeded here, so "Saved" is already true; making the user wait for a repaint to
+      // be told so is what made a working save look broken.
+      if(btn){_applyBtnState(btn,"done");setTimeout(()=>_applyBtnState(btn,"idle"),4000);}
+      _applyBanner(`Saved at ${new Date().toLocaleTimeString()}. Your User Configuration now uses these
+        values; the Back Test and Scanner below have been updated to match.`,"var(--bull)");
       MY_LIMITS={...MY_LIMITS,...limits}; USER_FILTERS=nextFilters; applyUserDefaults();
       // applyUserDefaults() seeds defaults and deliberately skips empty values, so on its own it can never
       // CLEAR a filter and never repaints the P-08 multi-select buttons. That is why an applied card looked
@@ -3454,9 +3464,6 @@ async function applyConfigFromReport(cfg, btn){
       // that -- so by the time the page responded again the only evidence it had worked was already gone
       // (user 2026-08-23: "after that it is not clear if settings Saved. or not"). The banner persists
       // until the next apply, and carries the time it saved.
-      if(btn){_applyBtnState(btn,"done");setTimeout(()=>_applyBtnState(btn,"idle"),4000);}
-      _applyBanner(`Saved at ${new Date().toLocaleTimeString()}. Your User Configuration now uses these
-        values; the Back Test and Scanner below have been updated to match.`,"var(--bull)");
       if(typeof renderPreorders==='function')renderPreorders();
       if(typeof render==='function')render();   // Scanner table hard-filters on MY_LIMITS too (P-01 2026-08-11) — same gap as saveLimits(), same fix
       if(typeof _renderPerformance==='function')_renderPerformance();})

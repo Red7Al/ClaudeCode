@@ -1173,3 +1173,61 @@ def test_the_memo_key_does_not_include_stake_or_max_open():
     assert "WINNERS_STAKE" not in guard and "WINNERS_MAXOPEN" not in guard, (
         f"stake/max-open must not be in the memo key or Apply freezes again: {guard}")
     assert "WINNERS_WALLET" in guard and "MIN_TRADE" in guard and "WIN_3Y" in guard
+
+
+# ======================================================================================================
+# Apply must confirm the save before it re-renders (user 2026-08-28: "'Apply this configuration' is not
+# showing 'Saving' (AMBER) whilst running or 'Saved' (GREEN) once complete").
+#
+# The amber state was always set correctly. The GREEN one sat AFTER applyWinnersDefaults(), which
+# re-runs the Best Settings render -- measured at 52-61 s before the three-year search was memoised. So
+# a working save showed amber, froze the page for a minute, and only then said "Saved". The POST has
+# already succeeded at that point, so the user was being made to wait for a repaint to be told something
+# that was already true.
+#
+# Structural rather than executed: this is about ORDER within a promise callback, which is exactly what
+# an execution test with stubbed renderers would hide.
+# ======================================================================================================
+
+def _apply_success_block() -> str:
+    """The success callback with COMMENTS STRIPPED.
+
+    Comments must go before any ordering check: the explanatory note added with this fix mentions
+    applyWinnersDefaults by name, and a naive index() matched the comment rather than the call — which
+    made the test fail against correct code.
+    """
+    src = _extract("applyConfigFromReport")
+    i = src.index(".then(r=>{if(!r.ok)throw 0;")
+    block = src[i:src.index(".catch(", i)]
+    return "\n".join(l for l in block.split("\n") if not l.lstrip().startswith("//"))
+
+
+def test_apply_confirms_the_save_before_any_re_render():
+    block = _apply_success_block()
+
+    done = block.index('_applyBtnState(btn,"done")')
+    saved = block.index("_applyBanner(`Saved at")
+    heavy = block.index("applyWinnersDefaults")
+
+    assert done < heavy, "the button must turn green before the Best Settings re-render, not after it"
+    assert saved < heavy, "the Saved banner must appear before the re-render, not after it"
+
+
+def test_apply_still_shows_the_in_progress_state_before_the_request():
+    src = _extract("applyConfigFromReport")
+
+    saving = src.index('_applyBtnState(btn,"saving")')
+    posting = src.index('fetch("/api/config"')
+
+    assert saving < posting, "amber must be set before the request, or there is no in-progress state"
+    assert 'var(--warn)' in src, "the in-progress banner must be amber"
+    assert 'var(--bull)' in src and 'var(--bear)' in src, "saved is green and failed is red"
+
+
+def test_a_failed_apply_still_reports_failure():
+    """The reordering must not let a failure inherit the success state."""
+    src = _extract("applyConfigFromReport")
+    catch = src[src.index(".catch("):]
+
+    assert '_applyBtnState(btn,"failed")' in catch
+    assert "NOT saved" in catch
