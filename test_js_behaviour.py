@@ -1067,3 +1067,44 @@ def test_the_date_preset_does_not_claim_a_window_it_is_not_applying():
 
     assert '<option value="" selected>Custom / all</option>' in markup, (
         "the selected option must match the unfiltered state the code actually applies")
+
+
+# ======================================================================================================
+# A failed three-year load must SAY so (user 2026-08-28: "Apply this configuration not always available
+# for 3 years"; card observed reading "Evidence loading separately...").
+#
+# loadThreeYear gave up after two retries with nothing but a console.warn, leaving WIN_3Y at null. The
+# status card keys its text on WIN_3Y===null, so a permanent failure and "still loading" were the same
+# state -- the card sat on the loading message for ever, and the Apply button never arrived because the
+# card only joins the applicable cards when threeYear is non-null.
+#
+# Third instance of this shape in one engagement (/api/rules, Best settings history, this).
+# ======================================================================================================
+
+def test_a_failed_three_year_load_is_distinguishable_from_still_loading():
+    js = client_js()
+
+    assert 'WIN_3Y_ERROR=""' in js or "let WIN_3Y_ERROR" in js, (
+        "a failure must be held in its own state, not collapsed into WIN_3Y===null")
+    loader = js[js.index("const loadThreeYear="):]
+    loader = loader[:loader.index("const loadWinners=")]
+
+    assert "WIN_3Y_ERROR=String(" in loader, "the final failure must record why"
+    assert loader.count("winnersParamsChange()") >= 2, (
+        "the failure path must re-render, or the card keeps showing the stale loading message")
+
+
+def test_the_three_year_card_offers_a_retry_when_it_failed():
+    markup_js = client_js()
+
+    assert "retryThreeYear" in markup_js, "a failed card must offer a way to try again"
+    assert "Evidence could not be loaded" in markup_js, (
+        "the card must state the failure rather than continue to claim it is loading")
+    assert "Three-year evidence could not be loaded" in markup_js
+
+
+def test_still_loading_message_is_kept_for_the_genuine_loading_case():
+    """The honest loading message must survive -- this fix must not turn a slow load into a false error."""
+    js = client_js()
+
+    assert "This card remains visible while the complete three-year evidence loads." in js

@@ -2371,6 +2371,11 @@ function winnersEvidenceShowAll(){WINNERS_EVIDENCE_SHOW_ALL=true;paintOrdersPerf
 function winnersToggleMissed(){WINNERS_HIDE_MISSED=!!($("ordp-hide-missed")||{}).checked;const t=$("ordp-table");if(t)t.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);}
 let WIN=null, WIN_GENERATED="", WIN_3Y=null;
 let WIN_LOADING=false, WIN_3Y_LOADING=false;
+// Three-year evidence failure, kept distinct from "not loaded yet". Without it a failed fetch left
+// WIN_3Y at null for ever and the card sat on "Evidence loading separately..." with no Apply button
+// and no error -- a refusal impersonating work in progress (user 2026-08-28, and the same shape as
+// the Best settings history spinner fixed the same day).
+let WIN_3Y_ERROR="";
 // Wallet £ (L211), Max position size % (L200), Max open positions (L199) are variables on the winners tab.
 let MIN_TRADE=25;   // User-configured minimum trade (£), default 25 (user 2026-07-18, P-05 L253)
 const _fundedMaxOpen=stakeFrac=>Math.max(1,Math.floor(1/Math.max(0.000001,+stakeFrac||0.000001)));
@@ -2466,7 +2471,8 @@ function renderSqueezeAnalysis(){
   // Load the annual decision surface first.  Starting the large three-year evidence request in parallel
   // made the browser wait on two expensive server builds and could leave the tab unresponsive; it is
   // now deferred and only refreshes the cards when it is ready.
-  const loadThreeYear=(attempt=0)=>{if(WIN_3Y_LOADING||WIN_3Y!==null)return;WIN_3Y_LOADING=true;fetch("/api/winners?years=3").then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();}).then(j3=>{if(j3.error)throw new Error(j3.error);WIN_3Y=_dedupeSameDayRows(j3.rows||[]);WIN_3Y_LOADING=false;winnersParamsChange();}).catch(err=>{if(attempt<2){WIN_3Y_LOADING=false;setTimeout(()=>loadThreeYear(attempt+1),2000*(attempt+1));return;}WIN_3Y_LOADING=false;console.warn("Three-year evidence unavailable",err);});};
+  const loadThreeYear=(attempt=0)=>{if(WIN_3Y_LOADING||WIN_3Y!==null)return;WIN_3Y_LOADING=true;fetch("/api/winners?years=3").then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();}).then(j3=>{if(j3.error)throw new Error(j3.error);WIN_3Y=_dedupeSameDayRows(j3.rows||[]);WIN_3Y_LOADING=false;winnersParamsChange();}).catch(err=>{if(attempt<2){WIN_3Y_LOADING=false;setTimeout(()=>loadThreeYear(attempt+1),2000*(attempt+1));return;}WIN_3Y_LOADING=false;WIN_3Y_ERROR=String((err&&err.message)||err||"unavailable");console.warn("Three-year evidence unavailable",err);if(typeof winnersParamsChange==="function")winnersParamsChange();});};
+  window.retryThreeYear=()=>{WIN_3Y_ERROR="";if(typeof winnersParamsChange==="function")winnersParamsChange();loadThreeYear();};
   const loadWinners=(attempt=0)=>fetch("/api/winners").then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
     .then(j=>{if(j.error)throw new Error(j.error);WIN_LOADING=false;WIN_GENERATED=j.generated||"";WIN=_dedupeSameDayRows(j.rows||[]);winnersParamsChange();setTimeout(()=>loadThreeYear(),250);})
     .catch(err=>{if(attempt<3){if(s)s.innerHTML=`<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading… retry ${attempt+1} of 3.</div>`;setTimeout(()=>loadWinners(attempt+1),1500*(attempt+1));return;}
@@ -3238,8 +3244,8 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
     :!threeYear?`<div class="muted" style="margin:0 0 10px;padding:8px 10px;border-left:3px solid #d29922;background:color-mix(in srgb,#d29922 9%,transparent);font-size:12px"><b>Three-year evidence:</b> no supported recommendation. The strongest reviewed configuration funded <b>${bestThreeYear?bestThreeYear.n.toLocaleString():"0"}</b> trades; the evidence rule requires <b>more than 125</b> and at least 80% of the best annual card’s return.${bestThreeYear?` Its replayed return was <b>${pct(bestThreeYear.ret)}</b>.`:""}</div>`
     :"";
   const threeYearStatusCard=!threeYear?`<div class="fcard" data-choice-unavailable="Best over 3 years" style="min-width:240px;flex:1;border-top:3px solid #00a8a8;opacity:.9" title="Three-year evidence; shown for comparison, not as an applicable recommendation below the evidence threshold">
-    <h3 style="color:#00a8a8">Best over 3 years</h3><div class="muted" style="font-size:11px;min-height:30px">${WIN_3Y===null?"Evidence loading separately…":"Strong return; smaller trade sample."}</div>
-    <div class="body">${WIN_3Y===null?"This card remains visible while the complete three-year evidence loads.":bestThreeYear?`<div><b style="font-size:17px;color:var(--bull)">${pct(bestThreeYear.ret)}</b> return · <b>${(bestThreeYear.dd*100).toFixed(1)}%</b> max drawdown</div><div class="muted" style="font-size:11px;margin-top:5px"><b>${bestThreeYear.n.toLocaleString()}</b> funded trades. The high-confidence evidence rule is more than <b>125</b> funded trades; this is information, not a recommendation.</div>`:"No usable three-year evidence is currently available."}</div>
+    <h3 style="color:#00a8a8">Best over 3 years</h3><div class="muted" style="font-size:11px;min-height:30px">${WIN_3Y===null?(WIN_3Y_ERROR?"Evidence could not be loaded":"Evidence loading separately…"):"Strong return; smaller trade sample."}</div>
+    <div class="body">${WIN_3Y===null?(WIN_3Y_ERROR?`<span style="color:var(--bear)">Three-year evidence could not be loaded (${_esc(WIN_3Y_ERROR)}).</span> <button class="subpill" onclick="event.stopPropagation();retryThreeYear()">Retry</button>`:"This card remains visible while the complete three-year evidence loads."):bestThreeYear?`<div><b style="font-size:17px;color:var(--bull)">${pct(bestThreeYear.ret)}</b> return · <b>${(bestThreeYear.dd*100).toFixed(1)}%</b> max drawdown</div><div class="muted" style="font-size:11px;margin-top:5px"><b>${bestThreeYear.n.toLocaleString()}</b> funded trades. The high-confidence evidence rule is more than <b>125</b> funded trades; this is information, not a recommendation.</div>`:"No usable three-year evidence is currently available."}</div>
   </div>`:"";
   box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearStatusCard}</div>
   <div class="card" style="margin:0" id="best-detail"></div>`;
