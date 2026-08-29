@@ -2964,8 +2964,15 @@ let _bestDecisionRows=null, _bestCardCapacity=null, _bestSettingsResizeTimer=nul
 // they were separate literals, which is how the two halves of this rule could disagree in the first place.
 const BEST_TABLET_MAX=1024;
 const bestCardCapacity=()=>innerWidth<=600?6:(innerWidth<=BEST_TABLET_MAX?9:8);
-// Rows the grid may occupy: three in the phone/tablet band (up to nine cards), two on a laptop.
-const bestCardMaxRows=()=>innerWidth>BEST_TABLET_MAX?2:3;
+// Rows the grid may occupy. On a LAPTOP the row cap is the real constraint: eight cards are only worth
+// showing if they fit two rows, so the post-layout loop trims to that.
+//
+// On a phone or tablet the CARD COUNT is the constraint and rows must follow it (user 2026-08-28: "iPad
+// mini not seeing 9 cards (typically 6,7, or 8)"). The two rules previously disagreed: bestCardCapacity
+// allowed nine while this capped the grid at three rows, and nine cards at min-width 240px need FOUR rows
+// at an iPad mini's 768px, so the trimming loop deleted cards until they fitted -- silently overruling
+// the count and landing on the six-to-eight actually seen. A tablet scrolls; a fourth row costs nothing.
+const bestCardMaxRows=()=>innerWidth>BEST_TABLET_MAX?2:Infinity;
 function renderBestCombo(all,{recordSnapshot=true}={}){
   _bestDecisionRows=all;
   _bestCardCapacity=bestCardCapacity();

@@ -1231,3 +1231,40 @@ def test_a_failed_apply_still_reports_failure():
 
     assert '_applyBtnState(btn,"failed")' in catch
     assert "NOT saved" in catch
+
+
+# ======================================================================================================
+# Card count vs row cap (user 2026-08-28: "iPad mini not seeing 9 cards (typically 6,7, or 8)").
+#
+# bestCardCapacity allowed nine on a tablet while bestCardMaxRows capped the grid at three rows, and the
+# post-layout loop DELETES cards until they fit. Nine cards at min-width 240px need four rows at an iPad
+# mini's 768px, so the row cap silently overruled the count -- which is the six-to-eight actually seen.
+# ======================================================================================================
+
+def _capacity_and_rows(width):
+    src = "\n".join(re.search(rf"const {n}=[^\n]+", client_js()).group(0)
+                    for n in ("BEST_TABLET_MAX", "bestCardCapacity", "bestCardMaxRows"))
+    return run_js(f"const innerWidth={width};", src,
+                  "[bestCardCapacity(), bestCardMaxRows()===Infinity?'unlimited':bestCardMaxRows()]")
+
+
+def test_a_tablet_may_use_as_many_rows_as_its_card_count_needs():
+    for width in (768, 1024):          # iPad mini portrait and landscape
+        cap, rows = _capacity_and_rows(width)
+        assert cap == 9, f"{width}px should allow nine cards, got {cap}"
+        assert rows == "unlimited", (
+            f"{width}px caps rows at {rows}, so the trimming loop deletes cards the count allows")
+
+
+def test_a_laptop_still_trims_to_two_rows():
+    """The row cap exists for laptops and must survive: eight cards are only worth showing if they fit."""
+    cap, rows = _capacity_and_rows(1440)
+
+    assert cap == 8 and rows == 2
+
+
+def test_a_phone_keeps_its_smaller_card_count():
+    cap, rows = _capacity_and_rows(390)
+
+    assert cap == 6, "phones stop at six"
+    assert rows == "unlimited", "a phone scrolls; the count is the constraint"

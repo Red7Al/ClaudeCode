@@ -137,16 +137,30 @@ def trigger_state(tickers, db=None):
     if own:
         db = get_db()
     try:
-        rows = db.run("""select distinct on (ticker) ticker, triggered_date, quality, risk_reward,
-                                rvol, timeframe, hvf_type, outcome
-                         from squeeze_history
-                         where ticker = any(:t) and triggered_date is not null
-                         order by ticker, triggered_date desc""", t=list(tickers)) or []
+        # The trigger must be the one the ORDER CAME FROM: the latest at or before it was placed.
+        # Taking simply the most recent trigger per ticker judged 22 of 55 live orders against a trigger
+        # that had not happened yet when they were placed -- including several dated the day AFTER -- and
+        # produced a confident, wrong count of breaches. A LATERAL join per order is the fix.
+        rows = db.run("""select w.ticker, s.triggered_date, s.quality, s.risk_reward, s.rvol,
+                                s.timeframe, s.hvf_type, s.outcome
+                         from (select distinct on (ticker) ticker, placed_at
+                                 from working_orders
+                                where status = 'PENDING' and ticker = any(:t)
+                                order by ticker, placed_at desc) w
+                         left join lateral (
+                                select triggered_date, quality, risk_reward, rvol, timeframe,
+                                       hvf_type, outcome
+                                  from squeeze_history h
+                                 where h.ticker = w.ticker and h.triggered_date is not null
+                                   and h.triggered_date <= w.placed_at::date
+                                 order by h.triggered_date desc limit 1) s on true""",
+                      t=list(tickers)) or []
     finally:
         if own:
             db.close()
     cols = ("ticker", "triggered_date", "quality", "rr", "rvol", "timeframe", "hvf_type", "outcome")
-    return {r[0]: dict(zip(cols, r)) for r in rows}
+    # A row with no triggered_date means no trigger preceded the order -- unknowable, not a pass.
+    return {r[0]: dict(zip(cols, r)) for r in rows if r[1] is not None}
 
 
 def audit(user, tickers=None, record_for=None, allows=None, limits=None, at_trigger=False):
