@@ -39,6 +39,23 @@ def ensure_schema(db):
                  mcap        double precision,
                  currency    text,
                  updated_at  timestamptz default now())""")
+    # HISTORY (user 2026-08-29: "have a table for mcap is fine with periodic new rows containing latest
+    # data"). instrument_mcap above is CURRENT only -- one row per ticker that each run overwrites -- so
+    # no past value has ever survived. That made "did this setup meet the MCap band ON ITS TRIGGER DATE"
+    # unanswerable, which is what the requester actually wanted to check.
+    #
+    # A separate table rather than re-keying the one above, deliberately: order_metrics.py and
+    # hvf_web/server.py both read instrument_mcap expecting exactly one row per ticker, and changing its
+    # key under them would silently give either an arbitrary historical value.
+    #
+    # Keyed (ticker, as_of) so a same-day re-run overwrites that day instead of duplicating it.
+    db.run("""create table if not exists instrument_mcap_history (
+                 ticker      text not null,
+                 as_of       date not null,
+                 mcap        double precision,
+                 currency    text,
+                 recorded_at timestamptz default now(),
+                 primary key (ticker, as_of))""")
 
 
 def _fetch_one(tk: str):
@@ -85,6 +102,12 @@ def main():
                 db.run("""insert into instrument_mcap (ticker, mcap, currency, updated_at)
                           values (:t, :m, :c, now())
                           on conflict (ticker) do update set mcap = :m, currency = :c, updated_at = now()""",
+                       t=tk, m=mc, c=cur)
+                # ...and append it to the history, so this run's value outlives the next one.
+                db.run("""insert into instrument_mcap_history (ticker, as_of, mcap, currency, recorded_at)
+                          values (:t, current_date, :m, :c, now())
+                          on conflict (ticker, as_of) do update set mcap = :m, currency = :c,
+                                                                    recorded_at = now()""",
                        t=tk, m=mc, c=cur)
             finally:
                 db.close()

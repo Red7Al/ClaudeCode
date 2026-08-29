@@ -60,7 +60,7 @@ def _num(v):
         return None
 
 
-def check_one(rec, metrics, limits, gate_ok):
+def check_one(rec, metrics, limits, gate_ok, at_trigger=False):
     """Verdict for one order. `rec` is its snapshot record, `metrics` its latest stored daily metrics."""
     breaches, unknown = [], []
     rec = rec or {}
@@ -104,8 +104,11 @@ def check_one(rec, metrics, limits, gate_ok):
     elif (lo and lo > 0) or (hi and hi > 0):
         unknown.append("instrument value not recorded")
 
-    persistent = [b for b in breaches if _kind(b) == "persistent"]
-    transient = [b for b in breaches if _kind(b) != "persistent"]
+    # AT THE TRIGGER DATE nothing is decayed: RVOL and VWAP describe the moment the decision was made, so
+    # a miss there is a genuine finding, not market drift. Classifying them as point-in-time in this mode
+    # would bury exactly what the requester asked for -- "at the trigger date if they met all criteria".
+    persistent = breaches if at_trigger else [b for b in breaches if _kind(b) == "persistent"]
+    transient = [] if at_trigger else [b for b in breaches if _kind(b) != "persistent"]
     return {"breaches": breaches, "persistent": persistent, "point_in_time": transient,
             "unknown": unknown,
             # The headline verdict follows the PERSISTENT breaches only. A point-in-time miss is reported
@@ -114,7 +117,39 @@ def check_one(rec, metrics, limits, gate_ok):
                         ("STALE" if transient else ("UNKNOWN" if unknown else "OK")))}
 
 
-def audit(user, tickers=None, record_for=None, allows=None, limits=None):
+def trigger_state(tickers, db=None):
+    """Each order's setup AS IT WAS ON ITS TRIGGER DATE, from squeeze_history.
+
+    This is the question that actually matters (user 2026-08-29: "as volumes change after the trigger it
+    is fine - I'm more interested at the trigger date if they met all criteria e.g. mcap"). RVOL and VWAP
+    decay after the trigger, so judging a live order on today's values answers the wrong question.
+
+    squeeze_history is the authoritative trigger-time record: quality, risk_reward and rvol are stored as
+    they were when the funnel fired. The most recent triggered row per ticker is used.
+
+    MARKET CAP IS THE ONE GAP, and it is not recoverable retrospectively: instrument_mcap holds a single
+    row per ticker which the weekly backfill overwrites, so only today's value has ever existed. From
+    2026-08-29 instrument_metrics copies it daily, so trigger-date market cap becomes answerable for
+    setups triggering from now on -- but not for anything already on the book.
+    """
+    from db_pool import get_db
+    own = db is None
+    if own:
+        db = get_db()
+    try:
+        rows = db.run("""select distinct on (ticker) ticker, triggered_date, quality, risk_reward,
+                                rvol, timeframe, hvf_type, outcome
+                         from squeeze_history
+                         where ticker = any(:t) and triggered_date is not null
+                         order by ticker, triggered_date desc""", t=list(tickers)) or []
+    finally:
+        if own:
+            db.close()
+    cols = ("ticker", "triggered_date", "quality", "rr", "rvol", "timeframe", "hvf_type", "outcome")
+    return {r[0]: dict(zip(cols, r)) for r in rows}
+
+
+def audit(user, tickers=None, record_for=None, allows=None, limits=None, at_trigger=False):
     """Audit every live PENDING order against `user`'s current filters.
 
     The server's own helpers are injected rather than imported, so this module stays testable without a
@@ -139,14 +174,25 @@ def audit(user, tickers=None, record_for=None, allows=None, limits=None):
         tickers = [r[0] for r in rows]
 
     stored = instrument_metrics.latest(tickers) if tickers else {}
+    fired = trigger_state(tickers) if (at_trigger and tickers) else {}
     out = []
     for tk in tickers:
         rec = record_for(tk) or {}
-        res = check_one(rec, stored.get(tk), limits, allows(rec) if rec else True)
+        if at_trigger:
+            # Judge the setup on what it was when it fired, not on today. Anything squeeze_history does
+            # not hold for that date stays absent, and therefore UNKNOWN rather than a breach.
+            trig = fired.get(tk) or {}
+            rec = {k: v for k, v in trig.items() if v is not None and k in ("quality", "rr", "rvol")}
+            res = check_one(rec, {}, limits, allows(trig) if trig else True, at_trigger=True)
+            res.update(triggered_date=str(trig.get("triggered_date") or "") or None,
+                       outcome=trig.get("outcome"))
+        else:
+            res = check_one(rec, stored.get(tk), limits, allows(rec) if rec else True)
         res.update(ticker=tk, in_snapshot=bool(rec),
                    metrics_as_of=(stored.get(tk) or {}).get("as_of"))
         if not rec:
-            res["unknown"] = list(res["unknown"]) + ["not in the current snapshot"]
+            res["unknown"] = list(res["unknown"]) + [
+                "no triggered row in squeeze_history" if at_trigger else "not in the current snapshot"]
             res["verdict"] = "BREACH" if res["breaches"] else "UNKNOWN"
         out.append(res)
 
@@ -161,7 +207,8 @@ if __name__ == "__main__":
     load_dotenv(".env")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     from hvf_web import server
-    result = audit(server._OWNER)
+    import sys
+    result = audit(server._OWNER, at_trigger="--at-trigger" in sys.argv)
     print(f"\n{result['orders']} live orders for {result['user']}: {result['counts']}\n")
     for row in sorted(result["rows"], key=lambda r: (r["verdict"] != "BREACH", r["ticker"])):
         detail = "; ".join(row["breaches"] or row["unknown"]) or "-"

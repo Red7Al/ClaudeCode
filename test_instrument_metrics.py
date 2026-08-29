@@ -292,3 +292,32 @@ def test_every_column_the_reader_names_exists_in_the_schema():
 
     for name in im.COLUMNS:
         assert name in ddl, f"latest() selects {name!r}, which the table does not define"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Market cap history (user 2026-08-29: "we do not need mcap every day" / "have a table for mcap is fine
+# with periodic new rows containing latest data").
+# ------------------------------------------------------------------------------------------------------
+
+def test_daily_metrics_do_not_capture_market_cap():
+    """Deliberately absent: mcap moves slowly and is only used for wide bands, so a daily copy would be
+    storage for no gain on a 500 MB tier."""
+    m = im.compute("AAA", _bars(), "BULL")
+
+    assert m.get("mcap") is None
+    src = __import__("pathlib").Path(__file__).with_name("instrument_metrics.py").read_text(encoding="utf-8")
+    assert "select ticker, mcap from instrument_mcap" not in src, "the daily job must not read mcap"
+
+
+def test_the_weekly_backfill_appends_history_without_re_keying_the_current_table():
+    """order_metrics.py and hvf_web/server.py both read instrument_mcap expecting ONE row per ticker.
+    History therefore goes in its own table -- re-keying that one would silently hand them an arbitrary
+    historical value instead of the current one."""
+    from pathlib import Path
+
+    src = Path(__file__).with_name("mcap_backfill.py").read_text(encoding="utf-8")
+
+    assert "create table if not exists instrument_mcap_history" in src
+    assert "primary key (ticker, as_of)" in src, "a same-day re-run must overwrite, not duplicate"
+    assert "insert into instrument_mcap_history" in src, "the weekly job must actually write it"
+    assert "ticker      text primary key" in src, "the current table must keep its one-row-per-ticker key"

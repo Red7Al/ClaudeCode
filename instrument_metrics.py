@@ -42,7 +42,7 @@ LOOKBACK_DAYS = 400
 # and the names it is zipped against can never disagree.
 COLUMNS = ("ticker", "as_of", "bar_date", "rvol", "rvol_date", "above_vwap", "above_vwap_setup",
            "atr_expanding", "volume_score", "volume_score_max", "wk52_low", "wk52_high",
-           "direction", "status")
+           "mcap", "direction", "status")
 
 # The 52-week range must use the SAME window as hvf_web/server.py::_snapshot_52wk
 # (_WK52_LOOKBACK_DAYS = 365). A stored figure that disagreed with the displayed one would be
@@ -64,11 +64,25 @@ def ensure_schema(db):
                   volume_score_max  integer,
                   wk52_low          double precision,
                   wk52_high         double precision,
+                  mcap              double precision,
                   direction         text,
                   status            text,
                   source            text,
                   recorded_at       timestamptz default now(),
                   primary key (ticker, as_of))""")
+    # `create table if not exists` does NOTHING when the table already exists, so a column added later
+    # never appears and every read of it fails with "column does not exist" -- which is exactly what
+    # happened when mcap was added on 2026-08-29. Adding them explicitly keeps this idempotent for both
+    # a fresh database and an existing one.
+    for column, ddl in (("above_vwap_setup", "boolean"), ("volume_score", "integer"),
+                        ("volume_score_max", "integer"), ("wk52_low", "double precision"),
+                        ("wk52_high", "double precision"), ("mcap", "double precision"),
+                        ("rvol_date", "date"), ("direction", "text"), ("status", "text"),
+                        ("source", "text")):
+        try:
+            db.run(f"alter table {TABLE} add column if not exists {column} {ddl}")
+        except Exception as e:                      # a locked-down role must not break the whole read
+            log.debug("could not ensure column %s: %s", column, e)
 
 
 def _bars(ticker, end, db):
@@ -133,6 +147,16 @@ def compute(ticker, bars, direction=None):
             "status": status}
 
 
+# Market cap is deliberately NOT captured here (user 2026-08-29: "we do not need mcap every day"). It
+# moves slowly and is only used for wide bands (<2bn / 2-10bn / 10-100bn / 100bn+), so daily resolution
+# would be storage for no gain on a 500 MB tier. The column remains for a future weekly writer.
+#
+# CONSEQUENCE, recorded rather than left implicit: trigger-date market cap stays UNANSWERABLE. Market cap
+# lives only in instrument_mcap, which is one row per ticker that the weekly backfill OVERWRITES, so no
+# history has ever existed. Giving it an as_of key on that weekly job -- not here -- is what would make
+# "did this setup meet the MCap band when it fired" answerable. Backlogged.
+
+
 def record_daily(snapshot, as_of=None, db=None, tickers=None):
     """Compute and UPSERT today's metrics for every instrument in the snapshot.
 
@@ -163,12 +187,12 @@ def record_daily(snapshot, as_of=None, db=None, tickers=None):
                 db.run(f"""insert into {TABLE}
                              (ticker, as_of, bar_date, rvol, rvol_date, above_vwap, above_vwap_setup,
                               atr_expanding, volume_score, volume_score_max, wk52_low, wk52_high,
-                              direction, status, recorded_at)
-                           values (:t,:d,:bd,:rv,:rd,:av,:avs,:atr,:vs,:vsm,:lo,:hi,:dir,:st, now())
+                              mcap, direction, status, recorded_at)
+                           values (:t,:d,:bd,:rv,:rd,:av,:avs,:atr,:vs,:vsm,:lo,:hi,:mc,:dir,:st, now())
                            on conflict (ticker, as_of) do update set
                              bar_date=:bd, rvol=:rv, rvol_date=:rd, above_vwap=:av,
                              above_vwap_setup=:avs, atr_expanding=:atr, volume_score=:vs,
-                             volume_score_max=:vsm, wk52_low=:lo, wk52_high=:hi,
+                             volume_score_max=:vsm, wk52_low=:lo, wk52_high=:hi, mcap=:mc,
                              direction=:dir, status=:st, recorded_at=now()""",
                        t=ticker, d=str(as_of), bd=m.get("bar_date"), rv=m.get("rvol"),
                        rd=m.get("rvol_date"), av=m.get("above_vwap"), avs=m.get("above_vwap_setup"),
