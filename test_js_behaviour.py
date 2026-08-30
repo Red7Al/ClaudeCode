@@ -1665,3 +1665,80 @@ def test_the_pre_rendered_image_exists_and_is_a_real_png():
     head = png.read_bytes()[:8]
     assert head == b"\x89PNG\r\n\x1a\n", "not a PNG"
     assert png.stat().st_size > 20_000, "suspiciously small for a rendered chart"
+
+
+# ======================================================================================================
+# The Transaction evidence header must describe the rows ON SCREEN (user 2026-08-30: "i could see 50 rows
+# in evidence and at the top i was told 50 had occured and then in card it said 17 missed").
+#
+# `missed` was computed from the unfiltered `proof` while the table renders `filtered`, so any chart
+# filter left the header quoting a population the table no longer showed. Same class as the "All markets"
+# card label. The header now also states the placed/missed split, which nothing on the page did once the
+# old winners ledger table was removed in d686084.
+# ======================================================================================================
+
+def _proof_counts(filters_js, n_placed=33, n_missed=17):
+    """Run the real renderDecisionProof and read back the header it wrote."""
+    rows = ("[" + ",".join(
+        [f'{{placed:true,stake:0.05,r:{{trig_date:"2025-0{i%9+1}-01",ticker:"T{i}",name:"N{i}",'
+         f'perf:1,quality:80,rvol:1,market:"FTSE 100",direction:"BULL",outcome:"TARGET"}}}}'
+         for i in range(n_placed)] +
+        [f'{{placed:false,reason:"Book full",r:{{trig_date:"2025-0{i%9+1}-01",ticker:"M{i}",name:"M{i}",'
+         f'perf:1,quality:20,rvol:1,market:"DAX",direction:"BULL",outcome:"TARGET"}}}}'
+         for i in range(n_missed)]) + "]")
+
+    stubs = f"""
+      const DECISION_PROOFS={{}}, LIMITED=false, PF_BE=0, WINNERS_WALLET=10000;
+      const _esc=s=>String(s), locName=v=>v, _doBand=()=>"", $=()=>null;
+      let CAPTURED="";
+      // querySelector must exist: the renderer reorders columns in a queueMicrotask afterwards, and an
+      // undefined method there throws AFTER the assertion has read the markup.
+      const target={{style:{{}}, querySelector:()=>null, querySelectorAll:()=>[],
+                    set innerHTML(v){{CAPTURED=v;}}, get innerHTML(){{return CAPTURED;}}}};
+      const document={{getElementById:()=>target, querySelectorAll:()=>[]}};
+      const PROOF={rows};
+    """
+    src = _extract("renderDecisionProof").replace("const target=$(id);if(!target)return;",
+                                                  "const target=document.getElementById(id);")
+    html = run_js(stubs, src,
+                  f'(()=>{{renderDecisionProof("x",PROOF,{{filters:{filters_js}}});return CAPTURED;}})()')
+    # Assert on the TEXT a reader sees, not the markup. The header renders "<b>50</b> triggers", so a
+    # literal "50 triggers" match fails across the tags even though the screen reads exactly that --
+    # which is how a correct renderer can fail a test and send you looking for a bug that is not there.
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html))
+
+
+def test_the_evidence_header_states_the_placed_and_missed_split():
+    html = _proof_counts("{}")
+
+    assert "50 triggers" in html, "the header must say how many triggers the table covers"
+    assert "33 placed" in html
+    assert "17 missed" in html
+
+
+def test_the_header_counts_follow_the_chart_filter():
+    """The reported symptom: filter the charts and the header kept quoting the unfiltered total.
+
+    The filter deliberately selects the PLACED market. Filtering to DAX instead proved nothing: all 17
+    missed rows are DAX, so filtered and unfiltered `missed` are both 17 and the assertion passes either
+    way -- a mutation restoring the bug survived that version of this test.
+    """
+    all_rows = _proof_counts("{}")
+    just_ftse = _proof_counts('{market:"FTSE 100"}')   # the 33 PLACED rows; none of the missed ones
+    just_dax = _proof_counts('{market:"DAX"}')         # the 17 missed rows
+
+    assert "50 triggers" in all_rows and "33 placed" in all_rows and "17 missed" in all_rows
+
+    # This is the discriminating case: unfiltered missed is 17, filtered missed is 0.
+    assert "33 triggers" in just_ftse, "the header still counts rows the table is not showing"
+    assert "33 placed" in just_ftse
+    assert "0 missed" in just_ftse, "missed must be counted over the filtered rows, not the whole proof"
+
+    assert "17 triggers" in just_dax and "0 placed" in just_dax and "17 missed" in just_dax
+
+
+def test_a_narrowed_header_says_it_is_narrowed():
+    just_dax = _proof_counts('{market:"DAX"}')
+
+    assert "narrowed from 50" in just_dax, "a reduced count must say what reduced it"
+    assert "narrowed" not in _proof_counts("{}"), "unfiltered must not claim to be narrowed"

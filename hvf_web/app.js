@@ -2832,7 +2832,8 @@ function renderDecisionProof(id,proof,opts={}){
   const target=$(id);if(!target)return;
   if(LIMITED){target.style.display="none";target.innerHTML="";return;}
   target.style.display="";DECISION_PROOFS[id]={proof,opts};
-  const show=!!opts.showMissed, missed=proof.filter(x=>!x.placed).length, run=opts.run, filters=opts.filters||{};
+  // `missed` is deliberately NOT computed here any more; see below, next to `filtered`.
+  const show=!!opts.showMissed, run=opts.run, filters=opts.filters||{};
   const evidenceTitle=opts.evidenceTitle||"Transaction evidence",
         evidenceNote=opts.evidenceNote||"Chronological decisions prove which opportunities the settings selected and whether the wallet could fund them. Positive missed rows expose profit the proposed setup could not actually capture.";
   const pct=v=>v==null?'—':`${+v>=0?'+':''}${(+v).toFixed(2)}%`, num=v=>v==null?'—':(+v).toFixed(1);
@@ -2853,6 +2854,13 @@ function renderDecisionProof(id,proof,opts={}){
     :d==='month'?((r.trig_date||'').slice(0,7)||'Unknown')
     :String(r[d]||'Unknown');
   const filtered=proof.filter(x=>Object.entries(filters).every(([d,v])=>bucket(x.r,d)===v));
+  // Counts describe the rows ON SCREEN, so they are taken from `filtered`, not from `proof`.
+  // `missed` used to come from the unfiltered proof while the table rendered `filtered`, so clicking any
+  // chart left the header quoting a population the table was no longer showing (user 2026-08-30: "50
+  // rows in evidence, told 50 at the top, and the card said 17 missed"). Same defect as the "All
+  // markets" card label: a number that is right about a set nobody can see.
+  const missed=filtered.filter(x=>!x.placed).length, placed=filtered.length-missed,
+        narrowed=filtered.length!==proof.length;
   // Reconcile the card's compounded return to the evidence: each row's stake is the wallet at its
   // actual decision, so summing funded row P&L equals the final wallet change.  When cross-filtered,
   // never label the visible subset as the complete card return.
@@ -2877,7 +2885,10 @@ function renderDecisionProof(id,proof,opts={}){
   target.innerHTML=`<div class="viz" style="margin-top:14px;padding:0;border-bottom:none">${chart('location','Location')}${chart('market','Market')}${chart('sector','Sector')}${chart('direction','Direction')}${chart('outcome','Outcome')}${chart('wl','Win / Loss')}${chart('days_open','Days Open')}${chart('month','Month')}${chart('quality','Quality')}${chart('rvol','RVOL')}${chart('above_vwap','VWAP')}${chart('atr_expanding','ATR')}</div>
     ${Object.keys(filters).length?`<div class="muted" style="font-size:11px;margin-top:6px">Cross-filter: ${Object.entries(filters).map(([d,v])=>`${d} = ${_esc(v)}`).join(' · ')} <button class="btn" style="padding:2px 7px" onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,filters:{}})">Clear</button></div>`:''}
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;margin:14px 0 6px;flex-wrap:wrap">
-    <div><h4 style="margin:0">${_esc(evidenceTitle)}</h4><div class="muted" style="font-size:11px">${_esc(evidenceNote)}</div></div>
+    <div><h4 style="margin:0">${_esc(evidenceTitle)}</h4>
+    <div style="font-size:12px;margin:3px 0 2px"><b>${filtered.length.toLocaleString()}</b> trigger${filtered.length===1?'':'s'} —
+      <b style="color:var(--bull)">${placed.toLocaleString()} placed</b>, <b class="muted">${missed.toLocaleString()} missed</b>${narrowed?` <span class="muted">(narrowed from ${proof.length.toLocaleString()} by the chart filters)</span>`:''}</div>
+    <div class="muted" style="font-size:11px">${_esc(evidenceNote)}</div></div>
     <div style="white-space:nowrap;text-align:right">
       <div style="font-size:11px;font-weight:600;margin-bottom:4px">Missed transactions (${missed})</div>
       <div style="display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden">
