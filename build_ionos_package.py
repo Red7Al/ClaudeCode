@@ -54,6 +54,12 @@ def include_path(relative: Path) -> bool:
     # docs/ build scripts and node_modules are excluded above and must stay excluded.
     if relative.as_posix() == "hvf_web/app.js":
         return True
+    # The Introduction's worked example, pre-rendered (user 2026-08-30). It is the ONLY image that ships:
+    # /api/card/<ticker> built it live and answered HTTP 500 after ~120 s on the host, because it runs a
+    # yfinance download and a matplotlib render on the request thread. A blanket .png rule would sweep in
+    # every stray chart in the tree, so this is named explicitly.
+    if relative.as_posix() == "hvf_web/intro_card.png":
+        return True
     return suffix in {".py", ".html", ".sql"}
 
 
@@ -131,7 +137,7 @@ def build(output: Path = DEFAULT_OUTPUT) -> tuple:
             # Apache serves the domain root directly; retain the package copy used by Flask as well.
             # app.js is mirrored the same way, because index.html loads it relatively — if only the
             # hvf_web/ copy shipped, the root page would load and then fail to find its script.
-            if relative in ("hvf_web/index.html", "hvf_web/app.js"):
+            if relative in ("hvf_web/index.html", "hvf_web/app.js", "hvf_web/intro_card.png"):
                 root_info = zipfile.ZipInfo.from_file(path, relative.rsplit("/", 1)[1])
                 root_info.create_system = 3
                 root_info.external_attr = (stat.S_IFREG | 0o644) << 16
@@ -164,7 +170,7 @@ def main() -> int:
     parser.add_argument("--list", action="store_true", help="list included files after building")
     args = parser.parse_args()
     output, files = build(args.output)
-    mirrored = {"hvf_web/index.html", "hvf_web/app.js"}
+    mirrored = {"hvf_web/index.html", "hvf_web/app.js", "hvf_web/intro_card.png"}
     archive_entries = len(files) + sum(1 for p in files if p.relative_to(ROOT).as_posix() in mirrored)
     print(f"Built {output} with {archive_entries} production files ({output.stat().st_size} bytes).")
     import zipfile as _z

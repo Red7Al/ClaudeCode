@@ -1313,7 +1313,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <p style="font-size:13px">The squeeze's mouth (H1−L1) is <b>FNM1</b>; the target is projected one FNM1 beyond the midpoint and the stop just past the opposite jaw — that's the R:R.</p>
     </div>
     <div>
-      <img id="intro-card" loading="lazy" alt="real squeeze example" onerror="this.style.display='none'" style="width:100%">
+      <!-- A STATIC pre-rendered PNG, not /api/card/<ticker> (user 2026-08-30: "the sample squeeze image in
+           how it works never renders"). MEASURED: that endpoint returned HTTP 500 after 120.9 s and 120.3 s
+           for two different tickers on the host, because it runs a live yfinance download and a matplotlib
+           render on the request thread under a global lock. The same renders take 3-22 s here, so the
+           picture is built ahead of time and served by Apache as a file. onerror must SAY something: the
+           old handler hid the image, so a broken picture and a page with no picture looked identical. -->
+      <img id="intro-card" loading="lazy" src="/intro_card.png"
+           alt="A real squeeze: swing highs H1, H2 and H3 stepping down while swing lows L1, L2 and L3 step up, coiling price into a tighter range, with the entry, stop and target levels marked"
+           onerror="introCardFailed(this)" style="width:100%">
       <p class="muted" id="intro-card-cap" style="font-size:12px;margin:8px 0 0">A real setup, swing highs <span style="color:var(--bear)">H1·H2·H3</span> and lows <span style="color:var(--bull)">L1·L2·L3</span> converging into the squeeze, with Entry / Stop / Target labelled.</p>
     </div>
   </div>

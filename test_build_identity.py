@@ -143,3 +143,43 @@ def test_the_page_and_script_are_revalidated_by_apache():
 
     assert 'Files "app.js"' in htaccess
     assert "must-revalidate" in htaccess
+
+
+# ======================================================================================================
+# The Introduction's example image must actually reach the host (user 2026-08-30).
+#
+# The markup was repointed at a static /intro_card.png while include_path() still ended with
+# `return suffix in {".py", ".html", ".sql"}` -- so the PNG would have been silently left out of the
+# package and the page would have shown the "could not be loaded" fallback instead of the picture.
+# Caught before shipping by listing the archive; pinned here so a later packager change cannot undo it.
+# ======================================================================================================
+
+def test_the_intro_card_image_is_packaged():
+    from pathlib import Path
+    import build_ionos_package as pkg
+
+    assert pkg.include_path(Path("hvf_web/intro_card.png")), \
+        "the Introduction example image is excluded from the production package"
+
+
+def test_the_intro_card_image_is_mirrored_to_the_domain_root():
+    """index.html asks for /intro_card.png. Apache serves the domain root, and only files mirrored
+    there answer that path -- the hvf_web/ copy alone would 404."""
+    import zipfile
+    from pathlib import Path
+    import build_ionos_package as pkg
+
+    out = pkg.build(Path(pkg.DEFAULT_OUTPUT))[0]
+    names = set(zipfile.ZipFile(out).namelist())
+
+    assert "intro_card.png" in names, "not mirrored to the root, so /intro_card.png would 404"
+    assert "hvf_web/intro_card.png" in names
+
+
+def test_other_images_are_still_excluded():
+    """The rule names one file rather than allowing .png, so a stray chart cannot ride along."""
+    from pathlib import Path
+    import build_ionos_package as pkg
+
+    assert not pkg.include_path(Path("hvf_web/some_other_chart.png"))
+    assert not pkg.include_path(Path("aa_images/whatever.png"))

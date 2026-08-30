@@ -110,6 +110,16 @@ const num=v=>v===""||v==null?null:parseFloat(v);
 // with the other shared cell formatters so it is found before a fifth copy gets written.
 // null/undefined is UNKNOWN and must never render as a cross -- a missing metric is not a failed one.
 const _tickCross=v=>v==null?'<span class="muted">—</span>':v?'<span style="color:var(--bull);font-weight:700">✓</span>':'<span style="color:var(--bear);font-weight:700">✗</span>';
+// The Introduction example image failed to load. SAY SO. The previous handler was
+// onerror="this.style.display='none'", which made a broken picture and a page that never had one look
+// identical -- the fourth silent-failure of this shape on this site (user 2026-08-30). Nothing else on
+// the page depends on the picture, so the message is reassuring rather than alarming.
+function introCardFailed(img){
+  if(img)img.style.display="none";
+  const cap=document.getElementById("intro-card-cap");
+  if(cap)cap.innerHTML='<b style="color:var(--bear)">⚠ The example chart could not be loaded.</b> '+
+    '<span class="muted">The method is described in full beside it; nothing else on this page depends on the picture.</span>';
+}
 function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return null;return Math.round((Date.now()-t)/864e5);}
 
 function augment(r){
@@ -4879,11 +4889,12 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     document.body.classList.remove("app-loading");
     if($("view-instruments"))paintInstruments();   // Instruments reuses this same DATA load (user 2026-08-07, ChangeRequest P-08) — repaint if it's already the active/cached tab
     $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)
-    // Introduction example: a real squeeze card — Howden if it's a current setup, else the best triggered name.
-    // Use an EQUITY as the worked example, never an index/FX/commodity (user 2026-07-03).
-    const _isEq=r=>["FTSE 100","FTSE 250","NASDAQ 100","S&P 500"].includes(r.market);
-    const _ex=(DATA.some(r=>r.ticker==="HWDN.L"&&r.has_signal))?"HWDN.L":((DATA.filter(r=>r.has_signal&&r.status==="TRIGGERED"&&_isEq(r)).sort((a,b)=>(b.quality||0)-(a.quality||0))[0]||{}).ticker);
-    if(_ex&&$("intro-card")){$("intro-card").src="/api/card/"+_ex;}   // caption stays "A real setup, …"; the old ticker-injection regex was non-idempotent and doubled the text on re-render (user 2026-07-17)
+    // The Introduction example is now a STATIC file (src set in index.html), so nothing is assigned here.
+    // It used to be "/api/card/"+ticker, chosen from DATA with the Howden-else-best-triggered-equity rule
+    // (user 2026-07-03). MEASURED on the host 2026-08-30: that endpoint answers HTTP 500 after ~120 s for
+    // every ticker tried, because it downloads from yfinance and renders matplotlib on the request thread.
+    // The same rule now picks the ticker when the PNG is pre-rendered, so the picture is unchanged; only
+    // the delivery moved off the request path. See hvf_web/intro_card.png.
     // If a refresh is already running (started elsewhere), disable the button and show its progress.
     fetch("/api/status").then(x=>x.json()).then(s=>{if(s.refreshing){$("refresh").disabled=true;_refStart=Date.now();pollRefresh();}}).catch(()=>{});
   })

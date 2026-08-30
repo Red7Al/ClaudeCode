@@ -20,6 +20,7 @@
 # ======================================================================================================
 import json
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -1609,3 +1610,58 @@ def test_no_table_cell_hand_rolls_its_own_tick_cross():
 
     assert not offenders, ("these table cells render a tick without the shared helper:\n" +
                            "\n".join(f"  line {i}: {s[:120]}" for i, s in offenders))
+
+
+# ======================================================================================================
+# The Introduction example image (user 2026-08-30: "the sample squeeze image in how it works never
+# renders").
+#
+# /api/card/<ticker> was MEASURED on the host at HTTP 500 after 120.9 s and 120.3 s for two different
+# tickers: it downloads from yfinance and renders matplotlib on the request thread. The picture is now a
+# pre-rendered static file, and its failure must be visible rather than hidden.
+# ======================================================================================================
+
+def test_the_intro_image_is_a_static_file_not_a_live_render():
+    html = client_source()
+    tag = re.search(r"<img[^>]*id=\"intro-card\"[^>]*>", html, re.S)
+
+    assert tag, "the Introduction example image is gone"
+    assert 'src="/intro_card.png"' in tag.group(0), "it must load a pre-rendered file"
+    assert "/api/card/" not in tag.group(0)
+
+
+def test_nothing_points_the_intro_image_at_the_render_endpoint_any_more():
+    """The old assignment lived in the data-load callback, not the markup."""
+    js = client_js()
+
+    assert not re.search(r'intro-card"\)\.src\s*=', js), (
+        "the client still assigns a src to the intro image; that was the 120-second endpoint")
+
+
+def test_the_intro_image_failure_is_visible():
+    """A hidden failure and a page that never had a picture look identical. Four such defects have now
+    been found on this site, so a silent onerror is not acceptable."""
+    html = client_source()
+    tag = re.search(r"<img[^>]*id=\"intro-card\"[^>]*>", html, re.S).group(0)
+
+    assert "onerror" in tag
+    assert "display='none'" not in tag.replace('"', "'"), "hiding it silently is the defect"
+    assert "introCardFailed" in tag
+
+
+def test_the_failure_handler_writes_a_message_the_reader_can_see():
+    src = _extract("introCardFailed")
+
+    assert "intro-card-cap" in src, "the message must land in the visible caption"
+    assert "could not be loaded" in src
+    assert "var(--bear)" in src, "a failure is flagged in the failure colour"
+
+
+def test_the_pre_rendered_image_exists_and_is_a_real_png():
+    """A test that would have caught shipping the markup without the file."""
+    png = pathlib.Path(__file__).parent / "hvf_web" / "intro_card.png"
+
+    assert png.exists(), "index.html points at /intro_card.png but the file is not in the build"
+    head = png.read_bytes()[:8]
+    assert head == b"\x89PNG\r\n\x1a\n", "not a PNG"
+    assert png.stat().st_size > 20_000, "suspiciously small for a rendered chart"
