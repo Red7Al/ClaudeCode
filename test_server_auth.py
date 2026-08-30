@@ -531,3 +531,87 @@ def test_guide_file_denied_for_plain_user(monkeypatch):
     monkeypatch.setattr(server, "_load_guides_manifest", lambda: list(_GUIDES_SAMPLE))
     resp = server.app.test_client().get("/api/guides/support-y", headers={"X-Auth": "token"})
     assert resp.status_code == 404
+
+
+# ======================================================================================================
+# A guest account may not enter or save IG credentials (user 2026-08-30).
+#
+# Guests are read-only and cannot place orders, so storing broker credentials for one can only mislead.
+# The gate is SERVER-side: /api/credentials takes a plain POST, so hiding the inputs would stop the page
+# and nothing else.
+# ======================================================================================================
+
+def _guest(monkeypatch, name="Guest", *, sub="guest", admin=False):
+    _identity(monkeypatch, name, admin=admin)
+    monkeypatch.setattr(server._wu, "get_subscription", lambda candidate: sub)
+    monkeypatch.setattr(server._wu, "log_event", lambda *a, **k: None)
+
+
+def test_a_guest_cannot_save_ig_credentials(monkeypatch):
+    writes = []
+    _guest(monkeypatch)
+    monkeypatch.setattr(server._wu, "set_secret", lambda *a, **k: writes.append(a))
+
+    response = server.app.test_client().post(
+        "/api/credentials", headers={"X-Auth": "token"},
+        json={"section": "IG", "values": {"ig_api_key": "SECRET-KEY"}})
+
+    assert response.status_code == 403
+    assert writes == [], "a rejected save must not store the credential"
+    assert "guest account" in response.get_json()["error"].lower(), "the reason must name the cause"
+
+
+def test_the_refusal_never_echoes_the_submitted_secret(monkeypatch):
+    _guest(monkeypatch)
+    monkeypatch.setattr(server._wu, "set_secret", lambda *a, **k: None)
+
+    response = server.app.test_client().post(
+        "/api/credentials", headers={"X-Auth": "token"},
+        json={"section": "IG", "values": {"ig_password": "hunter2-do-not-echo"}})
+
+    assert "hunter2-do-not-echo" not in response.get_data(as_text=True)
+
+
+def test_a_paying_subscriber_can_still_save_ig_credentials(monkeypatch):
+    """The gate must not catch the people it is not aimed at."""
+    writes = []
+    _guest(monkeypatch, "Silver", sub="silver")
+    monkeypatch.setattr(server._wu, "set_secret", lambda *a, **k: writes.append(a))
+    monkeypatch.setattr(server, "_record_ig_account_identity", lambda *a, **k: None, raising=False)
+
+    response = server.app.test_client().post(
+        "/api/credentials", headers={"X-Auth": "token"},
+        json={"section": "IG", "values": {"ig_api_key": "KEY"}})
+
+    assert response.status_code == 200
+    assert writes, "a silver subscriber's own IG credentials must still save"
+
+
+def test_an_admin_on_a_guest_subscription_is_not_locked_out(monkeypatch):
+    """Gated on the same axis as pre-orders (guest AND not admin), so administering the system never
+    depends on the subscription field."""
+    writes = []
+    _guest(monkeypatch, "Admin", sub="guest", admin=True)
+    monkeypatch.setattr(server._wu, "set_secret", lambda *a, **k: writes.append(a))
+    monkeypatch.setattr(server, "_record_ig_account_identity", lambda *a, **k: None, raising=False)
+
+    response = server.app.test_client().post(
+        "/api/credentials", headers={"X-Auth": "token"},
+        json={"section": "IG", "values": {"ig_api_key": "KEY"}})
+
+    assert response.status_code == 200
+    assert writes
+
+
+def test_the_guest_ig_section_is_returned_locked_with_a_reason(monkeypatch):
+    """So the page can say why, instead of showing inputs that fail on submit."""
+    _guest(monkeypatch)
+    monkeypatch.setattr(server._wu, "get_secret", lambda *a, **k: "")
+    monkeypatch.setattr(server._wu, "get_app_secret", lambda *a, **k: "")
+
+    body = server.app.test_client().get(
+        "/api/credentials", headers={"X-Auth": "token"}).get_json()
+    ig = next(s for s in body["sections"] if s["scope"] == "ig")
+
+    assert ig["editable"] is False
+    assert "guest account" in ig["locked_reason"].lower()

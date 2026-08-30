@@ -935,19 +935,33 @@ def api_credentials():
     if not name:
         return jsonify({"error": "login required"}), 401
     is_admin = _wu.is_admin(name)
+    # A guest account may not enter or save IG credentials (user 2026-08-30). Guests are read-only and
+    # cannot place orders, so storing broker credentials for one can only mislead.
+    #
+    # Gated on the SAME axis the pre-order check uses (guest AND not admin, see api_preorder_place), so
+    # an administrator is never locked out of their own account by a subscription value.
+    #
+    # Enforced on the SERVER, not only in the browser: /api/credentials accepts a plain POST, so hiding
+    # the inputs would stop the page and nothing else. The UI hint below is a courtesy; this is the gate.
+    ig_locked = _wu.get_subscription(name) == "guest" and not is_admin
+    guest_ig_msg = ("This is a guest account. IG credentials cannot be entered or saved, because guest "
+                    "accounts are read-only and cannot place orders.")
 
     if request.method == "GET":
         sections = []
         for sec in CRED_SECTIONS:
             if sec.get("admin_only") and not is_admin:
                 continue                                # hidden entirely from non-admins
-            editable = True if sec["scope"] == "ig" else is_admin   # IG: own; shared: admin only
+            editable = (not ig_locked) if sec["scope"] == "ig" else is_admin   # IG: own; shared: admin only
             fields = []
             for key, label, env in sec["fields"]:
                 val = _wu.get_secret(name, key) if sec["scope"] == "ig" else _wu.get_app_secret(key)
                 fields.append({"key": key, "label": label, "set": bool(val), "masked": _mask(val)})
             sections.append({"id": sec["id"], "scope": sec["scope"], "note": sec["note"],
-                             "admin_only": bool(sec.get("admin_only")), "editable": editable, "fields": fields})
+                             "admin_only": bool(sec.get("admin_only")), "editable": editable,
+                             # Why it is not editable, so the page can say so instead of just going quiet.
+                             "locked_reason": guest_ig_msg if (sec["scope"] == "ig" and ig_locked) else "",
+                             "fields": fields})
         return jsonify({"name": name, "is_admin": is_admin, "sections": sections})
 
     body = request.get_json(silent=True) or {}
@@ -958,6 +972,9 @@ def api_credentials():
         return jsonify({"ok": False, "error": "unknown section"}), 400
     if sec["scope"] == "app" and not is_admin:
         return jsonify({"ok": False, "error": "only an administrator can edit shared credentials"}), 403
+    if sec["scope"] == "ig" and ig_locked:
+        _wu.log_event(name, "Blocked: guest account attempted to save IG credentials")
+        return jsonify({"ok": False, "error": guest_ig_msg}), 403
     valid_keys = {k for k, _, _ in sec["fields"]}
     saved = []
     for key, val in values.items():

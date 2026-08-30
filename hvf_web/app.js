@@ -1563,7 +1563,10 @@ function renderCredentials(){
           const slackTog=(sec.id==="Slack")?`<label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;margin-left:12px;flex:none" title="Send alerts to this channel"><input type="checkbox" class="slack-ch" data-ch="${f.key.replace('slack_','')}" onchange="saveSlackChannel(this.dataset.ch,this.checked)" style="width:16px;height:16px;accent-color:var(--accent)"><b style="color:var(--fg);font-size:12px">send</b></label>`:"";
           return `<div class="credrow"><span class="clabel">${f.label} ${state}</span>${right}${slackTog}</div>`;})
           .join("");
-        const btn=ro?`<span class="muted" style="font-size:12px">🔒 Read-only — the administrator manages these shared credentials.</span>`
+        // A locked section must say WHY it is locked. The default wording blames the administrator and
+        // shared credentials, which is right for Supabase/Slack and plainly wrong for a guest looking at
+        // their OWN IG section, so the server sends the reason with the section (user 2026-08-30).
+        const btn=ro?`<span class="muted" style="font-size:12px">🔒 ${_esc(sec.locked_reason||"Read-only — the administrator manages these shared credentials.")}</span>`
           :`<button class="btn" style="margin-top:6px" onclick="saveCreds('${sec.id}')">Save ${sec.id} credentials</button>`;
         const amber=sec.admin_only?' style="border:1px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)"':'';
         const head=`<h4>${sec.id}${sec.admin_only?' <span style="color:#d29922;font-size:11px;font-weight:600">🔶 ADMIN</span>':sec.scope==='app'?' <span class="muted" style="font-size:11px;font-weight:400">(shared)</span>':' <span class="muted" style="font-size:11px;font-weight:400">(your account)</span>'}</h4>
