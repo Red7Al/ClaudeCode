@@ -1536,9 +1536,18 @@ def test_the_card_still_says_it_is_not_a_recommendation():
 # ======================================================================================================
 
 def _scope_label(markets_off):
+    """The card's market-scope label, built the way the card builds it.
+
+    _mktOff now derives from the ROWS actually replayed, via tradeExcludedValues -> tradeVisible, rather
+    than re-reading MARKETS_OFF. So the stub supplies a WIN population containing every market, and the
+    switches decide which of them come back as excluded.
+    """
     js = client_js()
-    src = "\n".join(re.search(rf"const {n}=[^\n]+", js).group(0) for n in ("_mktOff", "_allLabel"))
-    return run_js(f"const MARKETS_OFF=new Set({markets_off}); const MARKETS_DISABLED=new Set([]);",
+    src = (_extract("tradeVisible") + "\n" + _extract("tradeExcludedValues") + "\n"
+           + "\n".join(re.search(rf"const {n}=[^\n]+", js).group(0) for n in ("_mktOff", "_allLabel")))
+    rows = '[{market:"FTSE 100"},{market:"Shanghai"},{market:"Crypto"}]'
+    return run_js(f"let MARKETS_OFF=new Set({markets_off}); let MARKETS_DISABLED=new Set([]);"
+                  f"let TRADE_HIDE={{}}; const WIN={rows}, WIN_3Y=[];",
                   src, "_allLabel")
 
 
@@ -1799,3 +1808,97 @@ def test_the_scanner_count_line_renders_the_reasons():
 
     assert "_activeScannerFilters()" in js, "the count line must ask what is narrowing the table"
     assert "Narrowed by" in js
+
+
+# ======================================================================================================
+# One derivation of "which values the user's filters exclude" (user 2026-08-30).
+#
+# A card said "All markets" while Shanghai was switched off. The label and the filter were separate
+# implementations of one fact. The first fix re-read MARKETS_OFF/MARKETS_DISABLED, which was correct but
+# still a SECOND copy -- the very shape that caused the bug. tradeExcludedValues asks tradeVisible, the
+# one function that actually decides, so a rule added there is picked up everywhere automatically.
+# ======================================================================================================
+
+def _excluded(dim, values, *, markets_off=(), markets_disabled=(), trade_hide="{}"):
+    src = _extract("tradeVisible") + "\n" + _extract("tradeExcludedValues")
+    stubs = (f"let MARKETS_OFF=new Set({list(markets_off)!r});"
+             f"let MARKETS_DISABLED=new Set({list(markets_disabled)!r});"
+             f"let TRADE_HIDE={trade_hide};").replace("'", '"')
+    return run_js(stubs, src, f"tradeExcludedValues({dim!r},{list(values)!r})".replace("'", '"'))
+
+
+def test_nothing_is_excluded_when_no_filter_is_set():
+    assert _excluded("market", ["FTSE 100", "Shanghai"]) == []
+
+
+def test_a_market_the_user_switched_off_is_reported():
+    assert _excluded("market", ["FTSE 100", "Shanghai"], markets_off=["Shanghai"]) == ["Shanghai"]
+
+
+def test_a_market_the_admin_disabled_is_reported_too():
+    """Two different switches, one rule. The label must not care which one fired."""
+    assert _excluded("market", ["FTSE 100", "Crypto"], markets_disabled=["Crypto"]) == ["Crypto"]
+
+
+def test_locations_are_governed_by_their_own_allow_list():
+    """tradeVisible gates location through TRADE_HIDE.locations, which the Back Test summary never asked
+    about -- it said "All locations" regardless."""
+    out = _excluded("location", ["UK", "US", "Asia"], trade_hide='{"locations":["UK"]}')
+
+    assert out == ["Asia", "US"], "everything outside the allow-list is excluded"
+
+
+def test_one_dimension_never_contaminates_another():
+    """A probe row carries only the field under test, so a switched-off market must not make a location
+    look excluded. Without that isolation the counts would be nonsense.
+
+    The value under test is deliberately one that IS switched off as a market. Using unrelated values
+    proved nothing: a mutation probing every field at once survived, because "UK" and "US" are not in
+    MARKETS_OFF either way and the answer was empty in both worlds.
+    """
+    out = _excluded("location", ["UK", "Shanghai"], markets_off=["Shanghai"])
+
+    assert out == [], ("Shanghai is switched off as a MARKET; asked about locations the answer must be "
+                       "empty, or every label built on this would over-report")
+
+
+def test_an_empty_allow_list_means_no_restriction():
+    assert _excluded("location", ["UK", "US"], trade_hide='{"locations":[]}') == []
+
+
+def test_the_location_label_admits_when_locations_are_off():
+    src = (_extract("tradeVisible") + "\n" + _extract("tradeExcludedValues") + "\n"
+           + _extract("_locScopeLabel"))
+    stubs = ('let MARKETS_OFF=new Set([]), MARKETS_DISABLED=new Set([]);'
+             'let TRADE_HIDE={"locations":["UK"]};'
+             'const uniq=()=>["UK","US","Asia"];')
+
+    assert run_js(stubs, src, "_locScopeLabel()") == "All enabled locations (2 off)"
+
+
+def test_the_location_label_says_all_only_when_all_are_on():
+    src = (_extract("tradeVisible") + "\n" + _extract("tradeExcludedValues") + "\n"
+           + _extract("_locScopeLabel"))
+    stubs = ('let MARKETS_OFF=new Set([]), MARKETS_DISABLED=new Set([]); let TRADE_HIDE={};'
+             'const uniq=()=>["UK","US","Asia"];')
+
+    assert run_js(stubs, src, "_locScopeLabel()") == "All locations"
+
+
+def test_no_label_re_implements_the_exclusion_rule():
+    """The guard against a fourth copy. Only tradeVisible, the settings toggles and the config load may
+    read the raw switches; every label must go through tradeExcludedValues."""
+    js = client_js()
+    offenders = []
+    for i, ln in enumerate(js.split("\n"), 1):
+        if "MARKETS_OFF" not in ln or ln.lstrip().startswith("//"):
+            continue
+        if any(tok in ln for tok in ("function tradeVisible", "MARKETS_OFF=new Set",
+                                     "scope==='app'?MARKETS_DISABLED:MARKETS_OFF", "_mkUserSwitch")):
+            continue
+        if "r.market &&" in ln:          # the rule itself, inside tradeVisible
+            continue
+        offenders.append((i, ln.strip()[:120]))
+
+    assert not offenders, ("these read the market switches directly instead of asking tradeVisible:\n" +
+                           "\n".join(f"  line {i}: {s}" for i, s in offenders))

@@ -166,6 +166,29 @@ function tradeVisible(r){
 // each chart is counted over rows that pass every OTHER filter but not its own, so all option-bars stay
 // visible with the selected one(s) highlighted, rather than the strip collapsing to only the picked value
 // (P-03 L31 standard). Undefined (the table's call) applies every filter, exactly as before.
+// Which values of ONE dimension the user's own Trading filters exclude -- asked of tradeVisible itself
+// rather than re-derived from MARKETS_OFF / TRADE_HIDE.
+//
+// WHY THIS EXISTS. A Best Settings card said "All markets" while Shanghai was switched off (user
+// 2026-08-30). The label and the filter were two separate implementations of one fact, so nothing could
+// notice them drifting apart. The first fix re-read MARKETS_OFF and MARKETS_DISABLED -- correct, but
+// still a SECOND implementation, and the same shape that caused the bug. This asks the one function that
+// actually decides.
+//
+// A probe row carries ONLY the dimension under test. tradeVisible treats a null field as "no opinion",
+// so its other rules pass the probe and the answer isolates that dimension. Any rule later added to
+// tradeVisible is therefore picked up here automatically, which is the whole point.
+function tradeExcludedValues(dim,values){
+  return [...new Set(values||[])].filter(v=>v!=null&&v!=="")
+    .filter(v=>!tradeVisible({[dim]:v})).sort();
+}
+// "All locations" carried the SAME defect the market scope did: tradeVisible gates location through
+// TRADE_HIDE.locations and the Back Test summary never asked. Its sibling marketScope() handled the
+// market case correctly all along, which is exactly how one dimension drifts from another.
+function _locScopeLabel(){
+  const off=tradeExcludedValues("location",typeof uniq==='function'?uniq("location"):[]);
+  return off.length?`All enabled locations (${off.length} off)`:"All locations";
+}
 // Everything currently narrowing the Scanner table, in plain words.
 //
 // WHY (user 2026-08-30: "i can see only 4 items in the table but items in sector card suggest there
@@ -3081,7 +3104,10 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   // has ALREADY filtered by the user's Markets (User) switches and the admin deny-list -- so this scope
   // means "no FURTHER market restriction", never "every market in the universe". `label` stays as the
   // comparison key used by changedFor/matchesCurrent; `display` is what the card shows.
-  const _mktOff=[...new Set([...(MARKETS_OFF||[]),...(MARKETS_DISABLED||[])])].filter(Boolean);
+  // Derived from the ROWS actually replayed and from tradeVisible itself, not from a second reading
+  // of MARKETS_OFF/MARKETS_DISABLED. A market excluded for any reason tradeVisible knows about is
+  // reported, including rules added later.
+  const _mktOff=tradeExcludedValues("market",(WIN||[]).concat(WIN_3Y||[]).map(r=>r&&r.market));
   const _allLabel=_mktOff.length?`All enabled markets (${_mktOff.length} off)`:"All markets";
   const scopes=[{kind:"all",label:"All markets",display:_allLabel,offList:_mktOff,test:()=>true},...topScopes("market","Market"),
     {kind:"mcap",label:"MCap < 2bn",min:0,max:2e9,test:r=>r.mcap!=null&&r.mcap<2e9},
@@ -4482,8 +4508,11 @@ function _pfBacktestSettingsCard(sel,all,led,reconciliation){
   const marketScope=chartSelection=>{
     const uni=(typeof uniq==='function')?uniq("market"):[];
     if(!uni.length)return chartSelection||"All configured markets";
-    const kept=uni.filter(m=>!(MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m)));
-    const removed=uni.filter(m=>MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m));
+    // Asked of tradeVisible, not re-derived from MARKETS_OFF/MARKETS_DISABLED. This helper had the rule
+    // right all along; it was simply a THIRD copy of it, and the copies are what let the card scope and
+    // the location line drift (user 2026-08-30).
+    const removed=tradeExcludedValues("market",uni), _off=new Set(removed);
+    const kept=uni.filter(m=>!_off.has(m));
     const configured=removed.length===0
       ?`all ${uni.length} configured markets`
       :(kept.length<=8?`${kept.join(", ")} (${kept.length} of ${uni.length} available)`:`${kept.length} configured markets (${kept.length} of ${uni.length} available)`);
@@ -4503,7 +4532,7 @@ function _pfBacktestSettingsCard(sel,all,led,reconciliation){
     ["Require ATR expanding",+MY_LIMITS.require_atr_expanding?"Yes":"No"],
     ["Instrument value",minValue>0||maxValue>0?`${minValue>0?"≥ "+Math.round(minValue).toLocaleString():"no minimum"} · ${maxValue>0?"≤ "+Math.round(maxValue).toLocaleString():"no maximum"}`:"Any"],
     ["Date window",PF_WINDOW_LABEL||"all 12 months"],
-    ["Location",PF_LOC_FILTER||nice(list("pff_location"))||"All locations"],
+    ["Location",PF_LOC_FILTER||nice(list("pff_location"))||_locScopeLabel()],
     ["Saved market scope",savedMarkets||"All"],
     ["Saved sector scope",savedSectors||"All"],
     ["Chart market filter",marketScope(chartMarket)],
@@ -4544,8 +4573,11 @@ function _pfSettingsCard(sel,all){
   const marketScope=chartSelection=>{
     const uni=(typeof uniq==='function')?uniq("market"):[];
     if(!uni.length)return chartSelection||"All configured markets";
-    const kept=uni.filter(m=>!(MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m)));
-    const removed=uni.filter(m=>MARKETS_OFF.has(m)||MARKETS_DISABLED.has(m));
+    // Asked of tradeVisible, not re-derived from MARKETS_OFF/MARKETS_DISABLED. This helper had the rule
+    // right all along; it was simply a THIRD copy of it, and the copies are what let the card scope and
+    // the location line drift (user 2026-08-30).
+    const removed=tradeExcludedValues("market",uni), _off=new Set(removed);
+    const kept=uni.filter(m=>!_off.has(m));
     const configured=removed.length===0
       ?`all ${uni.length} configured markets`
       :(kept.length<=8?`${kept.join(", ")} (${kept.length} of ${uni.length} available)`:`${kept.length} configured markets (${kept.length} of ${uni.length} available)`);
@@ -4554,7 +4586,7 @@ function _pfSettingsCard(sel,all){
   const esc=v=>String(v).replace(/</g,"&lt;");
   const chartMarket=nice(list("pff_market"));
   const items=[["Date window",PF_WINDOW_LABEL||"all 12 months"],
-    ["Location",PF_LOC_FILTER||nice(list("pff_location"))||"All locations"],
+    ["Location",PF_LOC_FILTER||nice(list("pff_location"))||_locScopeLabel()],
     ["Market scope",marketScope(chartMarket)]];
   const opt=(lab,id)=>{const v=nice(list(id));if(v)items.push([lab,v]);};
   opt("Sector","pff_sector"); opt("Direction","pff_direction"); opt("Outcome","pff_status"); opt("Win/Loss","pff_wl");
