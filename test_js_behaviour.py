@@ -1550,3 +1550,62 @@ def test_the_scope_admits_when_markets_are_switched_off():
 
     assert label != "All markets", "claiming All markets while two are excluded is the reported bug"
     assert "2 off" in label
+
+
+# ======================================================================================================
+# Tick/cross cells: one definition, green tick and red cross, everywhere (user 2026-08-30).
+#
+# The Scanner, New orders and Squeeze History tables each carried their own UNCOLOURED copy of the same
+# ternary while _tickCross sat top-level, already correct and already coloured. Same shape as the "All
+# markets" label defect: the right code existed and was not reused, so the copies drifted.
+# ======================================================================================================
+
+def _tick(value_js):
+    src = re.search(r"const _tickCross=[^\n]+", client_js()).group(0)
+    return run_js("", src, f"_tickCross({value_js})")
+
+
+def test_a_true_metric_renders_a_green_tick():
+    html = _tick("true")
+
+    assert "\u2713" in html
+    assert "var(--bull)" in html, "a tick must be GREEN"
+
+
+def test_a_false_metric_renders_a_red_cross():
+    html = _tick("false")
+
+    assert "\u2717" in html
+    assert "var(--bear)" in html, "a cross must be RED"
+
+
+def test_a_missing_metric_is_neither():
+    """A metric we never recorded is UNKNOWN. Rendering it as a cross would assert a failure we
+    never measured -- the same rule the order/filter audit follows."""
+    for v in ("null", "undefined"):
+        html = _tick(v)
+        assert "\u2717" not in html and "\u2713" not in html, f"{v} must not claim a result"
+        assert "muted" in html
+
+
+def test_no_table_cell_hand_rolls_its_own_tick_cross():
+    """The guard that stops a fifth copy appearing.
+
+    Any <td> containing a tick must go through _tickCross. Two exemptions, both checked by hand and
+    neither a boolean column: the Scanner's pre-order presence marker (a tick or nothing, no cross)
+    and the 'Approve' button label on Access Requests.
+    """
+    # PER CELL, not per line. A line-level version of this check was written first and a mutation
+    # restoring the raw ternary SURVIVED it: the same row's OTHER cell still said _tickCross, so the
+    # whole line was skipped. One table row renders several cells, so the line is the wrong unit.
+    offenders = []
+    for i, ln in enumerate(client_js().split("\n"), 1):
+        for cell in re.findall(r"<td[^>]*>.*?</td>", ln):
+            if "\u2713" not in cell or "_tickCross" in cell:
+                continue
+            if "isPreorder" in cell or "Approve" in cell:   # presence marker / button label, not a column
+                continue
+            offenders.append((i, cell))
+
+    assert not offenders, ("these table cells render a tick without the shared helper:\n" +
+                           "\n".join(f"  line {i}: {s[:120]}" for i, s in offenders))

@@ -103,6 +103,13 @@ function uniq(k){return [...new Set(DATA.map(r=>r[k]).filter(x=>x!=null))].sort(
 function fillSel(id,k,label){const s=$(id);uniq(k).forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=label?label(v):v;s.appendChild(o);});
   if(DATA.some(r=>!r[k])){const o=document.createElement("option");o.value="—";o.textContent="— (none)";s.appendChild(o);}}
 const num=v=>v===""||v==null?null:parseFloat(v);
+// THE tick/cross cell. Green tick, red cross, muted dash for unknown -- one definition, used by every
+// table (user 2026-08-30: "across all tables make a tick GREEN and a cross RED").
+// It already existed and was already correct; the Scanner, New orders and Squeeze History tables each
+// carried their own UNCOLOURED copy instead of calling it, which is how they drifted apart. Kept here
+// with the other shared cell formatters so it is found before a fifth copy gets written.
+// null/undefined is UNKNOWN and must never render as a cross -- a missing metric is not a failed one.
+const _tickCross=v=>v==null?'<span class="muted">—</span>':v?'<span style="color:var(--bull);font-weight:700">✓</span>':'<span style="color:var(--bear);font-weight:700">✗</span>';
 function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return null;return Math.round((Date.now()-t)/864e5);}
 
 function augment(r){
@@ -376,7 +383,7 @@ function render(){
     ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
     <td>${ob(_mcapFmt(r.mcap))}</td>
-    <td>${ob(rvolScannerCell(r))}</td><td>${r.above_vwap==null?'—':r.above_vwap?'✓':'✗'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'✓':'✗'}</td><td>${ob(volScoreCell(r.volume_score))}</td>
+    <td>${ob(rvolScannerCell(r))}</td><td>${_tickCross(r.above_vwap)}</td><td>${_tickCross(r.atr_expanding)}</td><td>${ob(volScoreCell(r.volume_score))}</td>
     <td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td><td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td>
     <td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td><td>${ob(r.days_since??'')}</td>
@@ -1833,7 +1840,7 @@ function paintOrderOps(){
   rows.forEach(r=>r._fav=FAVS.has(disp(r.ticker))?1:0);   // favourite column sortable (user 2026-07-11)
   $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>
     ${_favCell(r.ticker)}<td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td>${nm40(r.name)}</td>
-    <td>${_mcapFmt(r.mcap)}</td><td>${rvolCell(r.rvol)}</td><td>${r.above_vwap==null?'—':r.above_vwap?'✓':'✗'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'✓':'✗'}</td><td>${volScoreCell(r.volume_score)}</td><td>${r.rr!=null?(+r.rr).toFixed(1):'<span class="muted">—</span>'}</td>
+    <td>${_mcapFmt(r.mcap)}</td><td>${rvolCell(r.rvol)}</td><td>${_tickCross(r.above_vwap)}</td><td>${_tickCross(r.atr_expanding)}</td><td>${volScoreCell(r.volume_score)}</td><td>${r.rr!=null?(+r.rr).toFixed(1):'<span class="muted">—</span>'}</td>
     <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'<span class="muted">—</span>'}</td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
     <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td>
@@ -2733,7 +2740,6 @@ function _mcapFmt(v){if(v==null||!isFinite(+v))return'—';v=+v;const a=Math.abs
   if(a>=1e6)return(v/1e6).toFixed(0)+'M';return Math.round(v).toLocaleString();}
 // Colour-coded tick/cross for boolean columns (2026-08-07, ChangeRequest P-09 — Back Test's VWAP/ATR ticks
 // were plain uncoloured text; every other BULL/BEAR-style indicator on the site is green/red).
-const _tickCross=v=>v==null?'<span class="muted">—</span>':v?'<span style="color:var(--bull);font-weight:700">✓</span>':'<span style="color:var(--bear);font-weight:700">✗</span>';
 // Cherry-pick presets (user 2026-07-18): set the RVOL / Quality / R:R thresholds the 15-month analysis
 // says separate the best setups. Moved from the Scanner to Squeeze History on 2026-08-16 with the filters
 // they drive — the presets ARE range filters, so they belong wherever the ranges live, and they are more
@@ -3839,8 +3845,8 @@ function paintInstruments(){
     <td>${r.wk52_low!=null?f2(r.wk52_low):"—"}</td><td>${r.wk52_high!=null?f2(r.wk52_high):"—"}</td>
     <td>${ob(r.rr!=null?(+r.rr).toFixed(1):"")}</td>
     <td>${ob(instrRvolCell(r))}</td>
-    <td>${ob(r.current_above_vwap==null?"—":r.current_above_vwap?"✓":"✗")}</td>
-    <td>${ob(r.current_atr_expanding==null?"—":r.current_atr_expanding?"✓":"✗")}</td>
+    <td>${ob(_tickCross(r.current_above_vwap))}</td>
+    <td>${ob(_tickCross(r.current_atr_expanding))}</td>
     <td>${ob(volScoreCell(r.volume_score))}</td>
     <td><b>${disp(r.ticker)}</b></td></tr>`;}, 14, "No instruments match.");
   paintInstrFunnel();
