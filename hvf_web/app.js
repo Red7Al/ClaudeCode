@@ -2428,7 +2428,6 @@ const _cherryEq=(a,b)=>JSON.stringify(a||{})===JSON.stringify(b||{});
 // stake (£200 on £10k) × each trade's actual return%. So it reconciles with Results by construction — no
 // separate population, no R-multiple, no compounding-to-millions.
 let WINNERS_WALLET=10000, WINNERS_STAKE=0.05, WINNERS_MAXOPEN=20;   // £ wallet, stake fraction and explicit concurrency cap
-let WINNERS_HIDE_MISSED=false;   // "hide trades missed" toggle on the winners ledger (P-07 #30)
 // Transaction-evidence render cap (user 2026-08-22: "This page isn't responding").
 //
 // paintOrdersPerf built EVERY ledger entry into one innerHTML assignment. On the three-year window that
@@ -2454,9 +2453,6 @@ let WINNERS_HIDE_MISSED=false;   // "hide trades missed" toggle on the winners l
 //
 // The ledger behind the table is still computed over EVERY row, so the trade count, wallet and net gain
 // are unchanged; only the rows drawn are limited.
-let WINNERS_EVIDENCE_LIMIT=250, WINNERS_EVIDENCE_SHOW_ALL=false;
-function winnersEvidenceShowAll(){WINNERS_EVIDENCE_SHOW_ALL=true;paintOrdersPerf();}
-function winnersToggleMissed(){WINNERS_HIDE_MISSED=!!($("ordp-hide-missed")||{}).checked;const t=$("ordp-table");if(t)t.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);}
 let WIN=null, WIN_GENERATED="", WIN_3Y=null;
 let WIN_LOADING=false, WIN_3Y_LOADING=false;
 // Three-year evidence failure, kept distinct from "not loaded yet". Without it a failed fetch left
@@ -2604,12 +2600,6 @@ function renderVolScoreReport(){
       ((j.advice||[]).length?`<ul class="muted" style="font-size:12px;margin:8px 0 0;padding-left:18px">${j.advice.map(a=>`<li>${a.replace(/</g,'&lt;')}</li>`).join('')}</ul>`:'')+
       `<div class="muted" style="font-size:11px;margin-top:6px">Same 12-month replay population as the tabs above · generated ${j.generated||''}</div>`;
   }).catch(()=>{box.classList.remove("sqh-loading");box.innerHTML='<span class="muted" style="font-size:12px">VolumeScore report unavailable.</span>';VSR_LOADED=false;});
-}
-// Name search on the winners ledger (user 2026-07-18, P-05) — filters the visible rows by name/ticker;
-// the compounding stays over all trades. (General rule: any table with a Name column is searchable.)
-function winnersLedgerFilter(){
-  const q=(($("ordp-ledger-q")||{}).value||"").trim().toLowerCase();
-  document.querySelectorAll("#ordp-table tbody tr").forEach(tr=>{tr.style.display=(!q||tr.innerText.toLowerCase().includes(q))?"":"none";});
 }
 // Trailing-stop illustration (user 2026-07-18): re-backtest every trade with a stop that trails by
 // entry×gain×threshold on the close, and show the impact vs the plain result. ILLUSTRATION ONLY — the
@@ -3627,7 +3617,7 @@ function _winLedger(rows){
   // Hoisting the sort out of settle() IS answer-preserving (verified by fingerprint) and worth only 1.06x,
   // which does not justify touching a replay that produces trader-facing numbers. Seven passes over the
   // three-year window cost about 850 ms total and are not the bottleneck; the render was (see
-  // WINNERS_EVIDENCE_LIMIT) and the server build was (see run_winners_precompute.py).
+  // the removed winners ledger table) and the server build was (see run_winners_precompute.py).
   const stopPct=r=>Math.abs(r.entry-r.stop)/r.entry;
   const seq=rows.filter(r=>r.perf!=null).slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
   // Same affordability model as _combReplay: settle P&L when exits occur, reserve broker margin
@@ -3661,7 +3651,7 @@ const _rrBand=r=>r.rr!=null?`R:R ${Math.floor(+r.rr)}–${Math.floor(+r.rr)+1}`:
 const _owDims=[["ordpf_market",r=>r.market],["ordpf_location",r=>locName(r.location)],["ordpf_sector",r=>r.sector],["ordpf_direction",r=>r.direction],["ordpf_outcome",r=>r.outcome],["ordpf_quality",_qBand],["ordpf_rr",_rrBand]];
 const _owPass=(r,except)=>_owDims.every(([id,fn])=>id===except||inSet(id,fn(r)||"—"));
 function paintOrdersPerf(){
-  const box=$("ordp-summary"), dims=$("ordp-dims"), tb=$("ordp-table"), tc=$("ordp-count");
+  const box=$("ordp-summary"), dims=$("ordp-dims");
   if(!box)return;
   box.classList.remove("sqh-loading");   // the outer wrapper carries the class in static markup (2026-08-07 fix)
   // Best settings is an annual decision model. Do not silently train it on the descriptive Results tab's
@@ -3712,43 +3702,13 @@ function paintOrdersPerf(){
   // (Monthly %-growth chart now lives on the Report tab — _pfMonthly, driven by _renderPerformance.)
   // The net-£ attribution charts (which attributes separated the winners) are painted by paintWinnersDims()
   // ABOVE (they're click-to-filter now, L122/L123, so they drive this very render and must be built first).
-  if(tc)tc.textContent=`(${takenRows.length} trades${skipped?` · ${skipped} missed`:''}${_filtered?` · filtered`:''}, ${span} · ${money(WINNERS_WALLET)} → ${money(w)})`;
-  const oc=st=>st==='TARGET'?'var(--bull)':st==='STOPPED'?'var(--bear)':'#d29922';
-  let _ti=0;
-  // Render cap (see WINNERS_EVIDENCE_LIMIT). Chronological order is preserved, so the rows shown are the
-  // same rows, in the same order, that occupied the top of this table before.
-  const _evAll=WINNERS_EVIDENCE_SHOW_ALL||ledger.length<=WINNERS_EVIDENCE_LIMIT;
-  const _evRows=_evAll?ledger:ledger.slice(0,WINNERS_EVIDENCE_LIMIT);
-  const _evNote=_evAll?"":`<tr><td colspan="18" style="text-align:center;padding:10px">`+
-    `<b>Showing the first ${_evRows.length.toLocaleString()} of ${ledger.length.toLocaleString()} rows.</b> `+
-    `<span class="muted">The ${takenRows.length.toLocaleString()}-trade count, wallet and net £ above are calculated from all ${ledger.length.toLocaleString()} rows, not from this table.</span> `+
-    `<button class="btn" style="margin-left:8px" onclick="winnersEvidenceShowAll()" title="Renders every row. On the three-year window this builds around 233,000 elements and the tab will be unresponsive while it does.">Show all rows</button>`+
-    `</td></tr>`;
-  if(tb)tb.innerHTML=`<table><thead><tr><th>#</th><th title="Trigger date — the table is in strict chronological order by this">Triggered ▲</th><th>Name</th><th>Dir</th><th>Market</th><th title="Market cap (instrument currency); blank until the mcap backfill lands.">MCap</th><th title="How many trades were open at the same time as this one (concurrent positions, including this trade)">Open</th><th>Outcome</th><th title="Actual % price move to the outcome (open = marked to market)">Return</th><th>RVOL</th><th title="VolumeScore (0–12) on the trigger bar — breakout confirmation (Strong squeeze, RVOL, breakout volume, VWAP, OBV, low-volume node, ATR). 8+ = well-confirmed. Blank where it can't be scored.">Vol</th><th title="2% of the wallet at this point in time">Stake</th><th title="Margin required to open = position size ÷ leverage (IG UK retail rates by instrument type: equities 5×, indices 20×, commodities 10×)">Margin</th><th title="Stake × return% — the £ this trade added or lost">Net £</th><th title="Most it could lose = stake × stop distance %">Max loss</th><th title="Account equity after this trade = the running compounded wallet incl. realised P&amp;L; last row = the compounded figure">Equity</th><th title="Available to open further positions = Equity − Margin (user 2026-07-24, P-04)">Available</th><th title="Why a triggered squeeze was NOT placed — 'Book full' means all Max-open-position slots were already taken (no capital free). Blank = it was placed.">Reason</th></tr></thead><tbody>`+
-    _evRows.map(x=>{const r=x.r;
-      if(x.missed)return `<tr class="missed-row" style="opacity:.6"><td class="muted">—</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td><td class="muted">${_mcapFmt(r.mcap)}</td>
-      <td class="muted" title="positions already open when this squeeze triggered">${x.open}</td>
-      <td><b style="color:var(--muted)">MISSED</b></td>
-      <td class="muted" title="would-be return had it been placed — NOT realised">${r.perf==null?'—':(r.perf>0?'+':'')+r.perf+'%'}</td>
-      <td class="muted">${rvolCell(r.rvol)}</td><td class="muted">${volScoreCell(r.volume_score)}</td>
-      <td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>
-      <td class="muted">${x.reason}</td></tr>`;
-      _ti++;return `<tr><td class="muted">${_ti}</td><td>${r.trig_date||''}</td><td>${nm40(r.name||disp(r.ticker))}</td><td>${r.direction}</td><td>${r.market||''}</td><td class="muted">${_mcapFmt(r.mcap)}</td>
-      <td class="muted" title="concurrent open positions">${x.open}</td>
-      <td><b style="color:${oc(r.outcome)}">${r.outcome}</b></td>
-      <td style="color:${_pnlc(r.perf)}">${r.perf==null?'—':(r.perf>0?'+':'')+r.perf+'%'}</td>
-      <td>${rvolCell(r.rvol)}</td><td>${volScoreCell(r.volume_score)}</td>
-      <td class="muted">${money(x.stake)}</td>
-      <td class="muted" title="position size ÷ leverage">${x.margin!=null?money(x.margin):(levOf(r)?money(x.stake/levOf(r)):'—')}</td>
-      <td style="color:${_pnlc(x.net)}">${_gbp2(x.net)}</td>
-      <td class="muted">£${x.maxloss.toFixed(2)}</td>
-      <td><b>${money(x.cum)}</b></td>
-      <td class="muted">${x.available!=null?money(x.available):(levOf(r)?money(x.cum-x.stake/levOf(r)):money(x.cum))}</td>
-      <td class="muted">—</td></tr>`;}).join("")+_evNote+
-    `</tbody></table>`;
-  if(tb)tb.classList.toggle("hide-missed",WINNERS_HIDE_MISSED);
-  const _mc=$("ordp-missed-ctrl"); if(_mc){_mc.style.display=skipped>0?"inline-flex":"none";
-    const _lbl=$("ordp-missed-count"); if(_lbl)_lbl.textContent=skipped?` (${skipped})`:"";}
+  // The winners ledger TABLE used to be rendered here. Its markup (#ordp-table, #ordp-count and the
+  // hide-missed control) was removed deliberately on 2026-08-04 in d686084 "Simplify winners analysis
+  // presentation", a commit that added tests asserting it stays gone -- but the builder was left
+  // behind, guarded by if(tb)/if(tc), silently doing nothing on every render. Reading it on
+  // 2026-08-30 cost half an hour and produced a bug report for a defect that did not exist, so it is
+  // removed rather than left as a trap. The counts it used to show now live on the Transaction
+  // evidence header (renderDecisionProof).
 }
 // Brushed, click-to-filter net-£ attribution charts for the winners tab (user 2026-07-27, P-10 L122/L123).
 // Each chart is built over the trades passing every OTHER winners filter (so picking one narrows the others

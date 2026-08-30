@@ -301,81 +301,19 @@ def test_apply_this_configuration_is_withheld_when_logged_out():
 # whole cost. The ledger itself is only ~198 ms per pass and is NOT the bottleneck.
 # ------------------------------------------------------------------------------------------------------
 
-def _evidence_cap_source() -> str:
-    """The three lines that decide which ledger rows are materialised."""
-    html = INDEX.read_text(encoding="utf-8")
-    m = re.search(r"\n\s*const _evAll=.*?\n\s*const _evRows=[^\n]*\n", html, re.S)
-    assert m, "the evidence render cap was not found in paintOrdersPerf"
-    return "const takenRows=[];\n" + textwrap.dedent(m.group(0))
+def test_the_performance_figures_are_never_read_from_rendered_rows():
+    """Figures come from the ledger, never from the DOM.
 
+    This test used to also assert the trade-count line `tc.textContent=...takenRows.length`. That line
+    wrote into #ordp-count, an element deleted from the page on 2026-08-04, so that half was guarding
+    code that could not run -- one of SIX such tests that were green while covering a dead renderer.
+    The surviving half is the rule that mattered and still applies.
+    """
+    src = _extract("paintOrdersPerf")
 
-def test_evidence_table_caps_the_rows_it_materialises():
-    src = _evidence_cap_source()
-    preamble = ("let WINNERS_EVIDENCE_LIMIT=250, WINNERS_EVIDENCE_SHOW_ALL=false;\n"
-                "const ledger=Array.from({length:11669},(_,i)=>({i}));\n")
+    assert "querySelectorAll" not in src,         "paintOrdersPerf must not derive figures by reading rendered rows"
+    assert "_winLedger(" in src, "the figures come from the ledger"
 
-    assert run_js(preamble, src, "_evRows.length") == 250
-    assert run_js(preamble, src, "_evAll") is False
-
-
-def test_evidence_cap_preserves_chronological_order_and_the_first_rows():
-    """A cap that reordered or sampled rows would change what the evidence says."""
-    src = _evidence_cap_source()
-    preamble = ("let WINNERS_EVIDENCE_LIMIT=3, WINNERS_EVIDENCE_SHOW_ALL=false;\n"
-                "const ledger=[{i:0},{i:1},{i:2},{i:3},{i:4}];\n")
-
-    assert run_js(preamble, src, "_evRows.map(x=>x.i)") == [0, 1, 2]
-
-
-def test_show_all_renders_every_row():
-    src = _evidence_cap_source()
-    preamble = ("let WINNERS_EVIDENCE_LIMIT=250, WINNERS_EVIDENCE_SHOW_ALL=true;\n"
-                "const ledger=Array.from({length:11669},(_,i)=>({i}));\n")
-
-    assert run_js(preamble, src, "_evRows.length") == 11669
-
-
-def test_a_small_ledger_is_never_capped_or_annotated():
-    """Below the cap, every row is drawn and no notice appears. 200 < the 250 limit."""
-    src = _evidence_cap_source()
-    preamble = ("let WINNERS_EVIDENCE_LIMIT=250, WINNERS_EVIDENCE_SHOW_ALL=false;\n"
-                "const ledger=Array.from({length:200},(_,i)=>({i}));\n")
-
-    assert run_js(preamble, src, "_evRows.length") == 200
-    assert run_js(preamble, src, "_evAll") is True
-
-
-def test_the_uncapped_render_is_what_produced_the_freeze():
-    """A guard that has never failed proves nothing: run the line that actually shipped."""
-    preamble = "const ledger=Array.from({length:11669},(_,i)=>({i}));\n"
-
-    was = run_js(preamble, "const rendered=ledger;", "rendered.length")
-    assert was == 11669, "the reconstruction must reproduce the unbounded render"
-
-    now = run_js("let WINNERS_EVIDENCE_LIMIT=250, WINNERS_EVIDENCE_SHOW_ALL=false;\n" + preamble,
-                 _evidence_cap_source(), "_evRows.length")
-    assert now < was, "THE HARNESS CANNOT DISTINGUISH THE UNBOUNDED RENDER FROM THE CAPPED ONE"
-
-
-def test_the_headline_figures_are_read_from_the_ledger_not_the_table():
-    """The cap is only safe because nothing above the table counts DOM rows."""
-    html = INDEX.read_text(encoding="utf-8")
-
-    assert re.search(r"tc\.textContent=`\(\$\{takenRows\.length\} trades", html), \
-        "the trade count must come from takenRows, not from the rendered table"
-    assert "querySelectorAll" not in html[html.index("function paintOrdersPerf"):
-                                          html.index("function paintOrdersPerf") + 6000], \
-        "paintOrdersPerf must not derive figures by reading rendered rows"
-
-
-# ------------------------------------------------------------------------------------------------------
-# Best Settings card capacity across the device bands (user 2026-08-23: "ipad mini is meant to show 9
-# cards, not 8").
-#
-# An iPad mini is 768 wide in PORTRAIT but 1024 in LANDSCAPE. The band ended at 850, so landscape fell
-# into the laptop band and showed eight. The count and the row cap were also separate literals, which is
-# how the two halves of one rule could disagree; they now share BEST_TABLET_MAX.
-# ------------------------------------------------------------------------------------------------------
 
 def _capacity_source() -> str:
     html = INDEX.read_text(encoding="utf-8")
@@ -1984,3 +1922,48 @@ def test_order_ops_reads_the_radio_not_the_old_checkbox():
     assert hidden("{value:'hide'}") is True, "'Hide' must hide closed orders"
     assert hidden("{value:'show'}") is False, "'Show' must show them"
     assert hidden("null") is False, "with no radio present, do not hide (fail open, as before)"
+
+
+# ======================================================================================================
+# The winners ledger table stays gone, and so does its builder (2026-08-30).
+#
+# The markup was removed deliberately on 2026-08-04 (d686084, which added tests asserting it stays gone)
+# but the ~40-line builder was left behind guarded by if(tb)/if(tc), silently doing nothing on every
+# render. Reading it cost half an hour and produced a bug report for a defect that did not exist.
+# ======================================================================================================
+
+def _code_only(js):
+    """Client JavaScript with whole-line // comments dropped.
+
+    The guard below names the removed identifiers, and the comment left in app.js EXPLAINING why they
+    were removed names them too. Without this, documenting the removal would fail the test that pins it.
+    """
+    return "\n".join(l for l in js.splitlines() if not l.lstrip().startswith("//"))
+
+
+def test_the_removed_ledger_table_has_no_builder_left_behind():
+    code = _code_only(client_js())
+    ghosts = [name for name in ("ordp-table", "ordp-count", "ordp-hide-missed", "ordp-missed-ctrl",
+                                "ordp-missed-count", "ordp-ledger-q", "WINNERS_EVIDENCE_LIMIT",
+                                "WINNERS_EVIDENCE_SHOW_ALL", "WINNERS_HIDE_MISSED",
+                                "winnersToggleMissed", "winnersEvidenceShowAll", "winnersLedgerFilter")
+              if name in code]
+
+    assert not ghosts, ("code still references the deliberately-removed winners ledger table, which is "
+                        f"how it became a trap the first time: {ghosts}")
+
+
+def test_no_stylesheet_rule_targets_the_removed_table():
+    html = pathlib.Path(__file__).parent / "hvf_web" / "index.html"
+
+    assert "#ordp-table" not in html.read_text(encoding="utf-8"), "styling an element that cannot exist"
+
+
+def test_the_performance_summary_cards_still_render():
+    """The deletion must have taken the table only. paintOrdersPerf's real output is the summary card
+    strip, and it is still assigned."""
+    src = _extract("paintOrdersPerf")
+
+    assert "box.innerHTML=" in src, "the summary cards are no longer painted"
+    assert 'const box=$("ordp-summary")' in src
+    assert "_winLedger(" in src, "the ledger is still computed - the cards read their figures from it"
