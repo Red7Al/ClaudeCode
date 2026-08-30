@@ -166,6 +166,26 @@ function tradeVisible(r){
 // each chart is counted over rows that pass every OTHER filter but not its own, so all option-bars stay
 // visible with the selected one(s) highlighted, rather than the strip collapsing to only the picked value
 // (P-03 L31 standard). Undefined (the table's call) applies every filter, exactly as before.
+// Everything currently narrowing the Scanner table, in plain words.
+//
+// WHY (user 2026-08-30: "i can see only 4 items in the table but items in sector card suggest there
+// should be more"): the chart bars are deliberately BRUSHED -- each bar is counted over rows passing
+// every filter EXCEPT its own dimension -- so selecting one sector leaves every other sector's bar at
+// full height while the table narrows to the one clicked. That is the house standard (P-03 L31) and the
+// counts are not wrong: MEASURED with no filters against the live 1,773-record snapshot, the table and
+// the sector bars agree exactly at 346 each. What was missing is the page saying a filter is ON, so a
+// short table looked like it had lost rows. "Squeeze only" is listed too, because it is on by default
+// and is what takes 1,773 scanned down to a few hundred.
+function _activeScannerFilters(){
+  const nice={mf_sector:"Sector",mf_market:"Market",mf_direction:"Direction",
+              mf_location:"Location",mf_status:"Status",mf_timeframe:"Timeframe"};
+  const out=[];
+  Object.keys(nice).forEach(id=>{const s=setOf(id);if(s&&s.size)out.push(`${nice[id]}: ${[...s].join(", ")}`);});
+  const q=(($("f_search")||{}).value||"").trim();
+  if(q)out.push(`Search: "${q}"`);
+  if(signalOnly)out.push("Squeeze only");
+  return out;
+}
 function pass(r,except){
   const _q=($("f_search").value||"").trim().toLowerCase();
   if(_q && !((r.ticker||"").toLowerCase().includes(_q) || (r.name||"").toLowerCase().includes(_q)))return false;
@@ -386,7 +406,8 @@ function render(){
     const x=_sv(a),y=_sv(b);const av=x==null?-1e9:x,bv=y==null?-1e9:y;
     return (av<bv?-1:av>bv?1:0)*sortDir;});
   const _nT=rows.filter(r=>r.status==="TRIGGERED").length,_nR=rows.filter(r=>r.status==="READY").length,_nD=rows.filter(r=>r.status==="DEVELOPING").length;
-  $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} scanned (${_nT} TRIGGERED · ${_nR} READY · ${_nD} DEVELOPING). Click a row to open its detail; use Filters or the charts to narrow.</span>`+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
+  const _af=_activeScannerFilters();
+  $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} scanned (${_nT} TRIGGERED · ${_nR} READY · ${_nD} DEVELOPING). Click a row to open its detail; use Filters or the charts to narrow.</span>`+(_af.length?`<div style="font-size:12px;margin-top:3px">Narrowed by <b>${_af.map(_esc).join("</b> · <b>")}</b></div>`:"")+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("sctab-count").textContent=`(${rows.length})`;
   renderViz(rows);
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">

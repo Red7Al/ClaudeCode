@@ -1742,3 +1742,60 @@ def test_a_narrowed_header_says_it_is_narrowed():
 
     assert "narrowed from 50" in just_dax, "a reduced count must say what reduced it"
     assert "narrowed" not in _proof_counts("{}"), "unfiltered must not claim to be narrowed"
+
+
+# ======================================================================================================
+# The Scanner must say WHY its table is short (user 2026-08-30: "i can see only 4 items in the table but
+# items in sector card suggest there should be more").
+#
+# The counts were never wrong. MEASURED against the live 1,773-record snapshot with no filters: the table
+# and the sector bars agree exactly at 346 each. The bars are BRUSHED -- counted over rows passing every
+# filter except their own -- so selecting a sector leaves the other bars at full height while the table
+# narrows. That is intended; not saying a filter was on is what made it look like lost rows.
+# ======================================================================================================
+
+def _scanner_filters(preamble_js):
+    src = _extract("_activeScannerFilters")
+    stubs = """
+      const SEP="~|~";
+      const FIELDS={};
+      const $=id=>FIELDS[id]||(FIELDS[id]={value:""});
+      function setOf(id){const el=$(id);if(!el)return null;const v=el.value||"";return v?new Set(v.split(SEP)):null;}
+      let signalOnly=false;
+    """ + preamble_js
+    return run_js(stubs, src, "_activeScannerFilters()")
+
+
+def test_nothing_is_listed_when_nothing_is_narrowing():
+    assert _scanner_filters("") == []
+
+
+def test_a_selected_sector_is_named():
+    out = _scanner_filters('$("mf_sector").value="Technology";')
+
+    assert out == ["Sector: Technology"]
+
+
+def test_several_selections_in_one_dimension_are_all_named():
+    out = _scanner_filters('$("mf_market").value="FTSE 100~|~DAX";')
+
+    assert out == ["Market: FTSE 100, DAX"]
+
+
+def test_the_squeeze_only_default_is_declared():
+    """It is on by default and is what takes 1,773 scanned down to a few hundred, so it must be visible
+    as a reason rather than left as an unexplained gap."""
+    assert _scanner_filters("signalOnly=true;") == ["Squeeze only"]
+
+
+def test_the_search_box_counts_as_narrowing():
+    out = _scanner_filters('$("f_search").value=" howden ";')
+
+    assert out == ['Search: "howden"']
+
+
+def test_the_scanner_count_line_renders_the_reasons():
+    js = client_js()
+
+    assert "_activeScannerFilters()" in js, "the count line must ask what is narrowing the table"
+    assert "Narrowed by" in js
