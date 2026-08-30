@@ -52,7 +52,23 @@ def run_js(preamble: str, source: str, call: str):
     The result comes back as JSON on stdout, so anything the function produces can be asserted on
     directly rather than pattern-matched in its text.
     """
-    script = f"{preamble}\n{source}\nconsole.log(JSON.stringify({call}));"
+    return _run_node(f"{preamble}\n{source}\nconsole.log(JSON.stringify({call}));")
+
+
+def run_js_async(preamble: str, source: str, call: str):
+    """As run_js, but for a `call` that evaluates to a promise.
+
+    run_js prints synchronously, so an async client function's result is still a bare Promise when it is
+    stringified -- every assertion then runs against `{}` and passes for the wrong reason. Anything
+    reached only after an `await` (a confirmation dialog, a save banner) needs this runner instead.
+    """
+    return _run_node(
+        f"{preamble}\n{source}\n"
+        f"Promise.resolve({call}).then(v=>console.log(JSON.stringify(v===undefined?null:v)),"
+        f"e=>{{console.error((e&&e.stack)||e);process.exit(1);}});")
+
+
+def _run_node(script: str):
     # encoding is explicit: without it `text=True` decodes with the locale codec, which on Windows is
     # cp1252, and ANY non-ASCII the client returns kills the harness with UnicodeDecodeError rather than
     # failing the assertion. The client is full of such characters -- the loading spinner, the lock icon,
@@ -1445,3 +1461,92 @@ def test_the_header_and_row_stay_in_step():
 
     assert len(re.findall(r"<td", row)) - header.count("<th") == 2, (
         "a column was added to one side only, which shifts every cell after it")
+
+
+# ======================================================================================================
+# The three-year card may be APPLIED below the evidence rule (user 2026-08-28, raised twice: a card
+# showing +183.6% on 122 funded trades still had no Apply button).
+#
+# The rule -- more than 125 funded trades, and within 20% of the best card's return -- decides whether
+# this is a RECOMMENDATION. Withholding the control silently is not the same as advising against it.
+# ======================================================================================================
+
+def test_the_three_year_card_offers_apply_below_the_evidence_rule():
+    js = client_js()
+    i = js.index("const threeYearStatusCard=")
+    card = js[i:js.index("box.innerHTML=", i)]
+
+    assert "applyConfigFromReport" in card, "a sub-threshold card must still be applicable"
+    assert "belowEvidence" in card, "and must tell applyConfigFromReport that it is below the rule"
+    assert "AUTH?" in card, "the control still only renders for a signed-in user"
+
+
+def _apply_dialog(opts_js):
+    """Run applyConfigFromReport for real and return the dialog it actually built.
+
+    Source-text assertions cannot tell "the warning is in the file" from "the warning is reached":
+    flipping the guard to if(false) left every text assertion green (mutation test, 2026-08-28). So the
+    function is EXECUTED with appConfirm stubbed to capture its arguments and decline, which stops the
+    run before the fetch.
+    """
+    stubs = """
+      const AUTH="tok", USER_FILTERS={};
+      let SEEN=null;
+      const appConfirm=async(msg,o)=>{SEEN={msg,...o};return false;};
+      const _applyBtnState=()=>{}, _applyBanner=()=>{}, fetch=()=>{throw new Error("must not POST");};
+    """
+    call = (f'(async()=>{{await applyConfigFromReport({{min_quality:60,min_rvol:1.5}},null,{opts_js});'
+            f'return SEEN;}})()')
+    return run_js_async(stubs, _extract("applyConfigFromReport"), call)
+
+
+def test_the_evidence_shortfall_reaches_the_dialog():
+    """Applying it is allowed; applying it unknowingly is not."""
+    dlg = _apply_dialog("{belowEvidence:122}")
+    text = json.dumps(dlg)
+
+    assert "122" in text, "the dialog must name the actual trade count, not a generic warning"
+    assert "125" in text, "and the rule it falls short of"
+    assert any("Evidence" in str(r[0]) for r in dlg["rows"]), "the shortfall belongs in the dialog rows"
+
+
+def test_a_supported_configuration_is_not_labelled_below_the_rule():
+    """The warning must be conditional, or every Apply cries wolf."""
+    dlg = _apply_dialog("undefined")
+    text = json.dumps(dlg)
+
+    assert "125" not in text and "Evidence" not in text, (
+        "a configuration that meets the evidence rule must not carry the shortfall warning")
+
+
+def test_the_card_still_says_it_is_not_a_recommendation():
+    """The advice must survive the button appearing next to it."""
+    js = client_js()
+
+    assert "this is information, not a recommendation" in js
+
+
+# ======================================================================================================
+# "All markets" must not claim markets the replay never saw (user 2026-08-28: the Balanced card said
+# All markets while Shanghai was switched off in settings).
+#
+# Every card is computed from decisionRows, which tradeVisible has ALREADY filtered by the user's
+# Markets (User) switches. So the scope means "no FURTHER market restriction", never "every market".
+# ======================================================================================================
+
+def _scope_label(markets_off):
+    js = client_js()
+    src = "\n".join(re.search(rf"const {n}=[^\n]+", js).group(0) for n in ("_mktOff", "_allLabel"))
+    return run_js(f"const MARKETS_OFF=new Set({markets_off}); const MARKETS_DISABLED=new Set([]);",
+                  src, "_allLabel")
+
+
+def test_the_scope_says_all_markets_only_when_none_are_off():
+    assert _scope_label("[]") == "All markets"
+
+
+def test_the_scope_admits_when_markets_are_switched_off():
+    label = _scope_label("['Shanghai','Crypto']")
+
+    assert label != "All markets", "claiming All markets while two are excluded is the reported bug"
+    assert "2 off" in label

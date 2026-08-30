@@ -3025,7 +3025,14 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   // Markets on/off switches only, so a sector-scoped recommendation can never be applied to real trading -
   // it would look right in the replay and change nothing in the book. Market and MCap bands ARE enforceable
   // (saved market scope + the Minimum/Maximum instrument value limits), so those stay.
-  const scopes=[{kind:"all",label:"All markets",test:()=>true},...topScopes("market","Market"),
+  // "All markets" overstated what was replayed (user 2026-08-28: the Balanced card said All markets while
+  // Shanghai was switched off in settings). Every card is computed from decisionRows, which tradeVisible
+  // has ALREADY filtered by the user's Markets (User) switches and the admin deny-list -- so this scope
+  // means "no FURTHER market restriction", never "every market in the universe". `label` stays as the
+  // comparison key used by changedFor/matchesCurrent; `display` is what the card shows.
+  const _mktOff=[...new Set([...(MARKETS_OFF||[]),...(MARKETS_DISABLED||[])])].filter(Boolean);
+  const _allLabel=_mktOff.length?`All enabled markets (${_mktOff.length} off)`:"All markets";
+  const scopes=[{kind:"all",label:"All markets",display:_allLabel,offList:_mktOff,test:()=>true},...topScopes("market","Market"),
     {kind:"mcap",label:"MCap < 2bn",min:0,max:2e9,test:r=>r.mcap!=null&&r.mcap<2e9},
     {kind:"mcap",label:"MCap 2–10bn",min:2e9,max:1e10,test:r=>r.mcap>=2e9&&r.mcap<1e10},
     {kind:"mcap",label:"MCap 10–100bn",min:1e10,max:1e11,test:r=>r.mcap>=1e10&&r.mcap<1e11},
@@ -3214,7 +3221,13 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
     bestThreeYear=threeEvaluated.sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
     _3Y_MEMO={rows:WIN_3Y,wallet:WINNERS_WALLET,minTrade:MIN_TRADE,best:bestThreeYear};
   }
-  let threeYear=bestThreeYear&&bestThreeYear.n>125&&bestThreeYear.ret>=best.ret*.8?bestThreeYear:null;
+  // The evidence rule -- more than 125 funded trades AND within 20% of the best card's return -- decides
+  // whether this is a RECOMMENDATION. It no longer decides whether the configuration can be APPLIED
+  // (user 2026-08-28, raised twice: a card showing +183.6% on 122 funded trades still had no button).
+  // Withholding the control silently is not the same as advising against it: the card already states the
+  // rule in its own words, and applyConfigFromReport now names the shortfall in its confirmation.
+  const threeYearSupported=!!(bestThreeYear&&bestThreeYear.n>125&&bestThreeYear.ret>=best.ret*.8);
+  let threeYear=threeYearSupported?bestThreeYear:null;
   if(threeYear)threeYear.proof=_combReplay(threeYear.seq,threeYear.st/100,threeYear.mo,true).proof;
   const choices=[
     ["Balanced",best,"Best return relative to drawdown, with quarterly consistency included.","var(--bull)"],
@@ -3283,7 +3296,7 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
       <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} funded of ${x.seq.length.toLocaleString()} eligible · ${x.posPeriods}/${x.periods} positive quarters</div>
       ${_wlLine("Win : Loss <span class='muted'>(eligible)</span>",_cardWL(x),"Wins vs losses among every trade matching this configuration, whether or not the wallet could fund it — the same split the detail panel below reports")}
       ${_wlLine("Win : Loss <span class='muted'>(actual)</span>",_cardWLActual(x),"Wins vs losses among only the trades this configuration actually FUNDED — the same population as the funded count above")}
-      <div style="font-size:11px;margin-top:6px">${x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo} max open</div>
+      <div style="font-size:11px;margin-top:6px"${x.scope.offList&&x.scope.offList.length?` title="These markets are switched off in your settings and were never in this replay: ${x.scope.offList.join(', ')}"`:''}>${x.scope.display||x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo} max open</div>
       <div class="muted" style="font-size:10px;margin-top:7px;line-height:1.4"><b style="color:var(--fg)">Changes:</b> ${changedFor(x)}</div>
       ${AUTH?`<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="${matchesCurrent(x)?'These values already match your User Configuration - applying would change nothing':'Review and apply these values to User Configuration'}">${matchesCurrent(x)?'Already applied':'Apply this configuration'}</button></div>`
              /* There is no User Configuration to write to when nobody is signed in, and /api/config rejects
@@ -3305,7 +3318,8 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
     :"";
   const threeYearStatusCard=!threeYear?`<div class="fcard" data-choice-unavailable="Best over 3 years" style="min-width:240px;flex:1;border-top:3px solid #00a8a8;opacity:.9" title="Three-year evidence; shown for comparison, not as an applicable recommendation below the evidence threshold">
     <h3 style="color:#00a8a8">Best over 3 years</h3><div class="muted" style="font-size:11px;min-height:30px">${WIN_3Y===null?(WIN_3Y_ERROR?"Evidence could not be loaded":"Evidence loading separately…"):"Strong return; smaller trade sample."}</div>
-    <div class="body">${WIN_3Y===null?(WIN_3Y_ERROR?`<span style="color:var(--bear)">Three-year evidence could not be loaded (${_esc(WIN_3Y_ERROR)}).</span> <button class="subpill" onclick="event.stopPropagation();retryThreeYear()">Retry</button>`:"This card remains visible while the complete three-year evidence loads."):bestThreeYear?`<div><b style="font-size:17px;color:var(--bull)">${pct(bestThreeYear.ret)}</b> return · <b>${(bestThreeYear.dd*100).toFixed(1)}%</b> max drawdown</div><div class="muted" style="font-size:11px;margin-top:5px"><b>${bestThreeYear.n.toLocaleString()}</b> funded trades. The high-confidence evidence rule is more than <b>125</b> funded trades; this is information, not a recommendation.</div>`:"No usable three-year evidence is currently available."}</div>
+    <div class="body">${WIN_3Y===null?(WIN_3Y_ERROR?`<span style="color:var(--bear)">Three-year evidence could not be loaded (${_esc(WIN_3Y_ERROR)}).</span> <button class="subpill" onclick="event.stopPropagation();retryThreeYear()">Retry</button>`:"This card remains visible while the complete three-year evidence loads."):bestThreeYear?`<div><b style="font-size:17px;color:var(--bull)">${pct(bestThreeYear.ret)}</b> return · <b>${(bestThreeYear.dd*100).toFixed(1)}%</b> max drawdown</div><div class="muted" style="font-size:11px;margin-top:5px"><b>${bestThreeYear.n.toLocaleString()}</b> funded trades. The high-confidence evidence rule is more than <b>125</b> funded trades; this is information, not a recommendation.</div>
+    ${AUTH?`<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(bestThreeYear))},this,{belowEvidence:${bestThreeYear.n}})' title="Apply this three-year configuration even though it is below the evidence rule">Apply this configuration</button></div>`:''}`:"No usable three-year evidence is currently available."}</div>
   </div>`:"";
   box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearStatusCard}</div>
   <div class="card" style="margin:0" id="best-detail"></div>`;
@@ -3447,7 +3461,7 @@ function _applyBtnState(btn,state){
   btn.style.background=s.bg; btn.style.color=s.fg; btn.style.borderColor=s.bg||"";
   btn.setAttribute("aria-busy",state==="saving"?"true":"false");
 }
-async function applyConfigFromReport(cfg, btn){
+async function applyConfigFromReport(cfg, btn, opts){
   // Fail closed rather than at the POST: without a session there is no User Configuration to write to,
   // and /api/config rejects it. The card renderer already withholds the button when logged out; this
   // guard covers every other caller (user 2026-08-22).
@@ -3464,7 +3478,12 @@ async function applyConfigFromReport(cfg, btn){
     :(k==="max_position_pct")?limits[k]+"%":shown(limits[k])]);
   if("f_mkt" in filters)rows.push(["Market scope",filters.f_mkt||"All markets"]);
   if("f_sec" in filters)rows.push(["Sector scope",filters.f_sec||"All sectors"]);
-  if(!await appConfirm("This updates your User Configuration only. It does not place or change any orders.",
+  // A configuration below the evidence rule may still be applied, but the confirmation must SAY so --
+  // the whole reason the button was previously withheld (user 2026-08-28).
+  const below=opts&&opts.belowEvidence;
+  if(below)rows.unshift(["⚠ Evidence",`${below} funded trades - below the >125 rule, so this is information rather than a recommendation`]);
+  if(!await appConfirm("This updates your User Configuration only. It does not place or change any orders."
+      +(below?" This configuration is BELOW the high-confidence evidence rule.":""),
       {title:"Apply this configuration",ok:"Apply",rows})) return;
   // In-flight, applied and failed are three different states and must not all look the same (user
   // 2026-08-23: "there is a message of 'Saving' - this should be clear to user e.g. with AMBER colour").
