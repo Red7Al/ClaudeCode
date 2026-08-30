@@ -787,16 +787,17 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        Pre-orders), search + toggle in the count bar, date filter alone in the header row. -->
   <div class="viz" id="oo-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="oo-count"></span><span class="grow"></span><!-- Filters on the header "Show Filters" button, same as the Scanner (user 2026-07-18, P-03). --><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="width:200px;padding:4px 8px;font-size:12px"></div>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="oo-count"></span><span class="grow"></span><!-- Closed-orders Show/Hide sits on the RIGHT of the count row, the same radio pair and the same
+         wording IG Account uses (user 2026-08-30: "on some pages the HIDE/SHOW radio button is on the
+         right and others on the left - make it consistent and have it on the right for all pages").
+         This REVERSES part of P-19 (a61ab75, 2026-07-16), which moved this toggle off the top into the
+         left sidebar. Only this toggle moves; the date range and Clear filters stay in the sidebar. --><span class="muted" style="font-size:12.5px;display:inline-flex;align-items:center;gap:6px"><b style="color:var(--fg)">Closed:</b><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="oo-closed-view" value="show" onchange="paintOrderOps()" style="width:16px;height:16px;accent-color:var(--accent)"> Show</label><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="oo-closed-view" value="hide" checked onchange="paintOrderOps()" style="width:16px;height:16px;accent-color:var(--accent)"> Hide</label></span><!-- Filters on the header "Show Filters" button, same as the Scanner (user 2026-07-18, P-03). --><input id="oo-search" placeholder="Search name / ticker…" oninput="paintOrderOps()" style="width:200px;padding:4px 8px;font-size:12px"></div>
     <!-- Filters on the LEFT, hidden/shown — the Scanner's method (user 2026-07-17, P-19). The date range
          and the closed-orders toggle move off the top; the name search stays in the count bar, since
          P-17 asks for it "on top of table". -->
     <div class="sidefilt">
     <aside id="oo-filters" class="sidebar hidden">
       <div class="f"><label>Date range</label><div id="oo-datebar" style="display:flex;flex-direction:column;gap:6px"></div></div>
-      <div class="f"><label>Closed orders</label>
-        <label class="muted" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer">
-          <input type="checkbox" id="oo-showclosed" onchange="paintOrderOps()"> Show closed (deleted / expired / cancelled)</label></div>
       <button class="btn" onclick="ooClearFilters()">Clear filters</button>
     </aside>
     <div class="sidemain">

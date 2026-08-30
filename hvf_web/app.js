@@ -1853,7 +1853,7 @@ function paintOrderOps(){
   // Default view (user 2026-07-11): hide only the DEAD states (deleted/expired/cancelled) — everything
   // live (PENDING/WATCHING/FILLED/…) stays visible. UNLESS a Status is clicked on the chart, or
   // "Show closed" is ticked (the chart filter can then reach the closed states too).
-  if(!_statusPicked && !(($("oo-showclosed")||{}).checked)){const _closed=new Set(["DELETED","EXPIRED","CANCELLED","CANCELED"]);
+  if(!_statusPicked && ((document.querySelector('input[name="oo-closed-view"]:checked')||{}).value==='hide')){const _closed=new Set(["DELETED","EXPIRED","CANCELLED","CANCELED"]);
     rows=rows.filter(r=>!_closed.has(String(r.status||"").toUpperCase()));}
   rows=applyDateFilter("oo",rows,r=>r.updated_at||r.placed_at);   // date filter on Updated
   // Free-text search by name / ticker (user 2026-07-10).
@@ -4778,7 +4778,9 @@ function _toggleSideFilters(panelId,btnId){const p=$(panelId);if(!p)return;
 function togglePoFilters(){_toggleSideFilters("po-filters","togglefilters");}   // reflect state on the header button (P-03)
 function toggleOoFilters(){_toggleSideFilters("oo-filters","togglefilters");}
 function ooClearFilters(){["oo-from","oo-to"].forEach(id=>{const el=$(id);if(el)el.value="";});
-  const sc=$("oo-showclosed"); if(sc)sc.checked=false; paintOrderOps();}
+  // Clearing filters restores the default, which is HIDE closed orders (user 2026-08-30: the toggle
+  // is now the same Show/Hide radio pair IG Account uses, on the right of the count row).
+  const sc=document.querySelector('input[name="oo-closed-view"][value="hide"]'); if(sc)sc.checked=true; paintOrderOps();}
 function poClearFilters(){["po_qmin","po_qmax","po_rrmin","po_rrmax","po_demin","po_demax"].forEach(id=>{const el=$(id);if(el)el.value="";});renderPreorders();}
 function renderPreorders(){
   if(_awaitingData("po-rows"))return;

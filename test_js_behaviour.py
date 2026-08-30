@@ -1902,3 +1902,85 @@ def test_no_label_re_implements_the_exclusion_rule():
 
     assert not offenders, ("these read the market switches directly instead of asking tradeVisible:\n" +
                            "\n".join(f"  line {i}: {s}" for i, s in offenders))
+
+
+# ======================================================================================================
+# Every Show/Hide toggle sits on the RIGHT of its count row (user 2026-08-30: "on some pages the
+# HIDE/SHOW radio button is on the right and others on the left - make it consistent and have it on the
+# right for all pages").
+#
+# House standard, index.html:692: count left, .grow spacer, control right.
+#
+# This check is ELEMENT-based and that is not incidental. A line-based version of it FALSE-POSITIVED on
+# the IG Account row, which holds a "Close selected" button before the spacer and its radios after, and
+# sent me looking for a defect that was not there. One row of markup spans several lines.
+# ======================================================================================================
+
+def _count_row_controls():
+    """(line, row id, control id, side) for every input/button/select inside a <div class="count">."""
+    html = client_source()
+    div = re.compile(r"<div\b|</div>", re.I)
+
+    def block_at(start):
+        depth = 0
+        for m in div.finditer(html, start):
+            depth += 1 if m.group(0).lower().startswith("<div") else -1
+            if depth == 0:
+                return html[start:m.end()]
+        return html[start:]
+
+    out = []
+    for m in re.finditer(r'<div class="count"', html):
+        block = block_at(m.start())
+        line = html[:m.start()].count("\n") + 1
+        row = (re.search(r'id="([^"]+)"', block) or [None, "?"])[1]
+        grow = block.find('class="grow"')
+        for c in re.finditer(r"<(input|button|select)\b[^>]*>", block, re.I):
+            ident = (re.search(r'(?:id|name)="([^"]+)"', c.group(0)) or [None, "?"])[1]
+            out.append((line, row, ident, "right" if (grow != -1 and c.start() > grow) else "LEFT"))
+    return out
+
+
+def test_every_show_hide_toggle_sits_on_the_right():
+    toggles = [c for c in _count_row_controls() if re.search(r"show|hide|closed-view", c[2], re.I)]
+
+    assert toggles, "no Show/Hide toggles found at all — the check has lost its target"
+    left = [t for t in toggles if t[3] == "LEFT"]
+    assert not left, ("these Show/Hide toggles render on the left:\n" +
+                      "\n".join(f"  index.html:{l} {row} / {ident}" for l, row, ident, _ in left))
+
+
+def test_the_two_closed_order_toggles_use_the_same_control():
+    """Order Ops used a checkbox in the left sidebar while IG Account used a Show/Hide radio pair on the
+    right. Consistency is the control AND the position, not just the position."""
+    html = client_source()
+
+    for name in ("oo-closed-view", "ig-closed-view"):
+        radios = re.findall(rf'<input type="radio" name="{name}" value="(\w+)"', html)
+        assert sorted(radios) == ["hide", "show"], f"{name} is not a Show/Hide radio pair: {radios}"
+    assert 'id="oo-showclosed"' not in html, "the old sidebar checkbox is still present"
+
+
+def test_hiding_closed_orders_is_the_default():
+    """Changing the control must not quietly change what the page shows on arrival."""
+    html = client_source()
+    hide_tag = re.search(r'<input type="radio" name="oo-closed-view" value="hide"[^>]*>', html).group(0)
+
+    assert "checked" in hide_tag
+
+
+def test_order_ops_reads_the_radio_not_the_old_checkbox():
+    """Executed, not pattern-matched: the predicate must hide closed orders when 'hide' is selected and
+    show them when 'show' is."""
+    js = client_js()
+    expr = re.search(r"\(document\.querySelector\('input\[name=\"oo-closed-view\"\]:checked'\)\|\|\{\}\)"
+                     r"\.value==='hide'", js)
+    assert expr, "paintOrderOps no longer reads the oo-closed-view radio"
+
+    def hidden(selected):
+        stub = (f'const document={{querySelector:()=>({selected})}};')
+        return run_js(stub, "", expr.group(0))
+
+    assert hidden("{value:'hide'}") is True, "'Hide' must hide closed orders"
+    assert hidden("{value:'show'}") is False, "'Show' must show them"
+    assert hidden("null") is False, "with no radio present, do not hide (fail open, as before)"
