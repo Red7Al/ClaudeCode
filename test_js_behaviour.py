@@ -1624,7 +1624,7 @@ def test_the_pre_rendered_image_exists_and_is_a_real_png():
 # old winners ledger table was removed in d686084.
 # ======================================================================================================
 
-def _proof_counts(filters_js, n_placed=33, n_missed=17):
+def _proof_counts(filters_js, n_placed=33, n_missed=17, strip=True):
     """Run the real renderDecisionProof and read back the header it wrote."""
     rows = ("[" + ",".join(
         [f'{{placed:true,stake:0.05,r:{{trig_date:"2025-0{i%9+1}-01",ticker:"T{i}",name:"N{i}",'
@@ -1636,6 +1636,10 @@ def _proof_counts(filters_js, n_placed=33, n_missed=17):
 
     stubs = f"""
       const DECISION_PROOFS={{}}, LIMITED=false, PF_BE=0, WINNERS_WALLET=10000;
+      let DECISION_SLICERS_OPEN=false;   // the evidence slicers start collapsed (2026-08-30)
+      // The slicers now go through the shared barChart; stubbed here so this harness keeps testing the
+      // HEADER counts rather than the chart component, which has its own tests.
+      const barChart=(title)=>`<div class="vizbox"><h5>${{title}}</h5></div>`;
       const _esc=s=>String(s), locName=v=>v, _doBand=()=>"", $=()=>null;
       let CAPTURED="";
       // querySelector must exist: the renderer reorders columns in a queueMicrotask afterwards, and an
@@ -1649,6 +1653,8 @@ def _proof_counts(filters_js, n_placed=33, n_missed=17):
                                                   "const target=document.getElementById(id);")
     html = run_js(stubs, src,
                   f'(()=>{{renderDecisionProof("x",PROOF,{{filters:{filters_js}}});return CAPTURED;}})()')
+    if not strip:
+        return html          # markup, for assertions about attributes (hidden, class names)
     # Assert on the TEXT a reader sees, not the markup. The header renders "<b>50</b> triggers", so a
     # literal "50 triggers" match fails across the tags even though the screen reads exactly that --
     # which is how a correct renderer can fail a test and send you looking for a bug that is not there.

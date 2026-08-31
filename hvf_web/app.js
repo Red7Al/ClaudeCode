@@ -274,7 +274,15 @@ function dateFilterBar(pfx,painter){
          `<label class="muted" style="font-size:12px">To <input type="date" id="${pfx}-to" onchange="${painter}" style="width:auto"></label>`;
 }
 function barChart(title,counts,fk,colorFn,labelDesc,opts){
-  const sel=setOf(fk), nsel=sel?sel.size:0;
+  const sel=setOf(fk);
+  // A caller that owns its OWN filter state (the Transaction evidence panel keeps its selection in
+  // opts.filters, not in a hidden input) passes selectedValue + onclickFor instead of relying on the
+  // shared data-fk dispatcher. Added 2026-08-30 so that panel could stop hand-rolling its own bars:
+  // it had twelve cards of bespoke markup sitting above its table, which is how they came to look
+  // nothing like the rest of the site. One bar implementation, two ways of hooking a click.
+  const selValue=(opts&&opts.selectedValue!==undefined)?String(opts.selectedValue||""):null;
+  const onclickFor=opts&&opts.onclickFor;
+  const nsel=selValue!==null?(selValue?1:0):(sel?sel.size:0);
   // opts.metric (user 2026-07-26, P-05 L281): a {key: avgReturn%} map. When present the bars are ORDERED
   // by avg return desc and TINTED green (positive) / red (negative), intensity scaled to the biggest |avg|
   // shown. Bar LENGTH still encodes trade count, so length = how many, colour = how good. Used by the
@@ -291,14 +299,15 @@ function barChart(title,counts,fk,colorFn,labelDesc,opts){
   // meant a wide card (Market/Location run ~246px since the cards started claiming spare width) drew a
   // stubby 72px bar and left the rest of the row empty — wasted space INSIDE the card. A .track flexes
   // into whatever width is going and the fill takes its share as a %.
-  const rows=entries.map(([k,n])=>{const on=sel&&sel.has(String(k));
+  const rows=entries.map(([k,n])=>{const on=selValue!==null?String(k)===selValue:!!(sel&&sel.has(String(k)));
     const mv=metric?metric[k]:null;
     const bg=profitMode?(n>=0?'var(--bull)':'var(--bear)'):metric?(mv==null?'var(--muted)':mBg(mv)):(colorFn?colorFn(k):'var(--accent)');
     const pLabel=profitMode?`${n>=0?'+':'−'}${Math.abs(n).toLocaleString(undefined,{maximumFractionDigits:2})}${opts.currency?' '+opts.currency:''}`:'';
     const tip=profitMode?`${k}: ${pLabel} profit — click to filter`:metric?`${k}: avg return ${mv==null?'—':(mv>0?'+':'')+mv.toFixed(1)+'%'} · ${n} trade${n===1?'':'s'} — click to filter`:`click to filter ${k}`;
-    return `<div class="bar clk${on?' active':''}" data-fk="${fk}" data-fv="${k}" title="${tip}"><span class="tk"><span class="selmk">${on?'●':''}</span>${k}</span>
+    const hook=onclickFor?` onclick="${onclickFor(k)}"`:` data-fk="${fk}" data-fv="${k}"`;
+    return `<div class="bar clk${on?' active':''}"${hook} title="${tip}"><span class="tk"><span class="selmk">${on?'●':''}</span>${k}</span>
     <span class="track"><span class="fill" style="width:${Math.max(2,Math.round((profitMode?Math.abs(n):n)/max*100))}%;background:${bg};opacity:${nsel&&!on?0.4:1}"></span></span><span class="n">${profitMode?pLabel:n}</span></div>`;}).join("");
-  return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk" data-fk="${fk}" data-fv="" title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
+  return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk"${onclickFor?` onclick="${opts.clearOnclick||''}"`:` data-fk="${fk}" data-fv=""`} title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
 }
 function pieChart(title,counts,fk){
   const sel=setOf(fk), nsel=sel?sel.size:0, has=k=>sel&&sel.has(String(k));
@@ -2865,6 +2874,10 @@ function decisionProofFilter(id,dim,value){
   if(filters[dim]===value)delete filters[dim];else filters[dim]=value;
   renderDecisionProof(id,s.proof,{...s.opts,filters});
 }
+// The evidence slicers start CLOSED so the transactions are what you see first (user 2026-08-30).
+let DECISION_SLICERS_OPEN=false;
+function decisionSlicersToggle(id){DECISION_SLICERS_OPEN=!DECISION_SLICERS_OPEN;
+  const d=DECISION_PROOFS[id]; if(d)renderDecisionProof(id,d.proof,d.opts);}
 function renderDecisionProof(id,proof,opts={}){
   const target=$(id);if(!target)return;
   if(LIMITED){target.style.display="none";target.innerHTML="";return;}
@@ -2904,9 +2917,24 @@ function renderDecisionProof(id,proof,opts={}){
   const netGain=xs=>xs.filter(x=>x.placed).reduce((sum,x)=>sum+x.stake*WINNERS_WALLET*(+x.r[run?'run_perf':'perf']||0)/100,0),
         visibleNetGain=netGain(filtered), totalNetGain=netGain(proof),
         netGainLabel=Object.keys(filters).length?"Visible Net gain subtotal":"Net gain total";
-  const chart=(dim,title)=>{const grouped={};proof.filter(x=>x.placed).forEach(x=>{const k=bucket(x.r,dim),ret=+(x.r[run?'run_perf':'perf']||0);grouped[k]=(grouped[k]||0)+x.stake*ret/100*WINNERS_WALLET;});
-    const vals=Object.entries(grouped).sort((a,b)=>b[1]-a[1]).slice(0,7),mx=Math.max(1,...vals.map(x=>Math.abs(x[1])));
-    return `<div class="card" style="flex:1 1 auto;min-width:0;padding:9px"><b style="font-size:11px">${title} · achievable P&amp;L</b>${vals.map(([k,v])=>`<button onclick="decisionProofFilter('${id}','${dim}',decodeURIComponent('${encodeURIComponent(k).replace(/'/g,'%27')}'))" title="Cross-filter transactions to ${_esc(k)}" style="display:grid;grid-template-columns:75px 1fr 54px;gap:5px;align-items:center;width:100%;border:0;background:${filters[dim]===k?'color-mix(in srgb,var(--accent) 18%,transparent)':'transparent'};color:var(--fg);cursor:pointer;padding:3px"><span style="overflow:hidden;text-overflow:ellipsis;text-align:left">${_esc(k)}</span><span style="height:7px;background:${v>=0?'var(--bull)':'var(--bear)'};width:${Math.max(3,Math.abs(v)/mx*100)}%"></span><span style="text-align:right">${v>=0?'+':''}£${Math.round(v)}</span></button>`).join('')}</div>`;};
+  // The slicers use the SAME barChart the Scanner and Back Test strips use (user 2026-08-30: "the
+  // slicers above the table are so ugly - either make them look good or remove them"). They were twelve
+  // hand-rolled cards of bespoke markup -- a 75px/bar/54px grid with ellipsised labels, no hover state
+  // and flex:1 1 auto, so twelve of them fought over one row and got crushed. barChart already had
+  // profit mode, the 8-bar cap and the clear badge; it only lacked a way to hook a click to something
+  // other than the shared data-fk dispatcher, which this panel does not use. That is now an option on
+  // barChart rather than a second bar renderer living here.
+  const chart=(dim,title)=>{
+    const grouped={};
+    proof.filter(x=>x.placed).forEach(x=>{const key=bucket(x.r,dim),ret=+(x.r[run?'run_perf':'perf']||0);
+      grouped[key]=(grouped[key]||0)+x.stake*ret/100*WINNERS_WALLET;});
+    const q=v=>String(v).replace(/&/g,'&amp;').replace(/'/g,"\'").replace(/"/g,'&quot;');
+    return `<div class="vizsector">`+barChart(title,grouped,`dp_${dim}`,null,false,{
+      profit:true, currency:'£',
+      selectedValue:filters[dim]||"",
+      onclickFor:key=>`decisionProofFilter('${q(id)}','${q(dim)}','${q(key)}')`,
+      clearOnclick:`decisionProofFilter('${q(id)}','${q(dim)}','')`
+    })+`</div>`;};
   const rows=filtered.filter(x=>show||x.placed).map(x=>{const r=x.r, good=+(r[run?'run_perf':'perf'])>0;
     return `<tr style="${x.placed?'':good?'background:color-mix(in srgb,#d29922 12%,transparent)':'opacity:.7'}">
       <td>${_esc(String(r.trig_date||'').replace('T',' ').slice(0,16))}</td><td>${_esc(r.name||disp(r.ticker))}</td>
@@ -2919,7 +2947,7 @@ function renderDecisionProof(id,proof,opts={}){
   // Decision and capacity explain why a row was taken or missed; keep that repeat evidence at the far
   // right so the trading outcome and signal fields remain readable without horizontal scrolling first.
   queueMicrotask(()=>{const t=target.querySelector('table');if(!t)return;[...t.querySelectorAll('thead tr,tbody tr')].forEach(row=>{const cells=[...row.children];if(cells.length>=4){row.append(cells[2],cells[3]);}});});
-  target.innerHTML=`<div class="viz" style="margin-top:14px;padding:0;border-bottom:none">${chart('location','Location')}${chart('market','Market')}${chart('sector','Sector')}${chart('direction','Direction')}${chart('outcome','Outcome')}${chart('wl','Win / Loss')}${chart('days_open','Days Open')}${chart('month','Month')}${chart('quality','Quality')}${chart('rvol','RVOL')}${chart('above_vwap','VWAP')}${chart('atr_expanding','ATR')}</div>
+  target.innerHTML=`<div style="margin-top:14px"><button class="subpill" onclick="decisionSlicersToggle('${id}')" title="Cross-filter the transactions below by location, market, sector and the rest">${DECISION_SLICERS_OPEN?'▾':'▸'} Filter transactions</button><div class="viz" style="margin-top:8px;padding:0;border-bottom:none"${DECISION_SLICERS_OPEN?'':' hidden'}><div class="muted" style="font-size:11px;margin:0 0 6px;width:100%">Bars show <b style="color:var(--fg)">achievable P&amp;L</b> for the transactions actually placed. Click a bar to cross-filter the table below.</div>${chart('location','Location')}${chart('market','Market')}${chart('sector','Sector')}${chart('direction','Direction')}${chart('outcome','Outcome')}${chart('wl','Win / Loss')}${chart('days_open','Days Open')}${chart('month','Month')}${chart('quality','Quality')}${chart('rvol','RVOL')}${chart('above_vwap','VWAP')}${chart('atr_expanding','ATR')}</div></div>
     ${Object.keys(filters).length?`<div class="muted" style="font-size:11px;margin-top:6px">Cross-filter: ${Object.entries(filters).map(([d,v])=>`${d} = ${_esc(v)}`).join(' · ')} <button class="btn" style="padding:2px 7px" onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,filters:{}})">Clear</button></div>`:''}
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;margin:14px 0 6px;flex-wrap:wrap">
     <div><h4 style="margin:0">${_esc(evidenceTitle)}</h4>
