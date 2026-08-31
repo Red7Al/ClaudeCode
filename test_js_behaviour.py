@@ -1973,3 +1973,71 @@ def test_the_performance_summary_cards_still_render():
     assert "box.innerHTML=" in src, "the summary cards are no longer painted"
     assert 'const box=$("ordp-summary")' in src
     assert "_winLedger(" in src, "the ledger is still computed - the cards read their figures from it"
+
+
+# ======================================================================================================
+# The Transaction evidence slicers (user 2026-08-30: "the slicers above the table are so ugly - either
+# make them look good or remove them"; house style, collapsed by default was chosen).
+#
+# They were twelve hand-rolled cards: a 75px/bar/54px grid with ellipsised labels, no hover state, and
+# flex:1 1 auto so twelve fought over one row. barChart -- the component behind ~50 chart strips here --
+# already had profit mode, the eight-bar cap, the selection highlight and the clear badge. It lacked only
+# a way to hook a click to something other than the shared data-fk dispatcher, which this panel does not
+# use because it keeps its selection in opts.filters.
+# ======================================================================================================
+
+def test_the_slicers_use_the_shared_chart_component():
+    src = _extract("renderDecisionProof")
+
+    assert "barChart(" in src, "the slicers must use the house chart, not a private one"
+    assert "grid-template-columns:75px" not in src, "the hand-rolled slicer markup is back"
+
+
+def test_the_slicers_are_collapsed_on_arrival():
+    """The transactions are what you came to see; the filters are one click away."""
+    html = _proof_counts("{}", strip=False)
+    strip_div = re.search(r'<div class="viz"[^>]*>', html).group(0)
+
+    assert "hidden" in strip_div, "the slicer strip must start closed"
+    assert "Filter transactions" in html, "and there must be a control that opens it"
+
+
+def test_opening_the_slicers_reveals_them():
+    """Pinning the other half: a toggle that never removes `hidden` is a button that does nothing."""
+    src = _extract("renderDecisionProof")
+
+    assert "DECISION_SLICERS_OPEN?'':' hidden'" in src, \
+        "the hidden attribute must be driven by the toggle state"
+
+
+def test_the_toggle_flips_the_state_and_repaints():
+    src = _extract("decisionSlicersToggle")
+
+    assert "DECISION_SLICERS_OPEN=!DECISION_SLICERS_OPEN" in src
+    assert "renderDecisionProof(" in src, "flipping the flag must repaint, or nothing changes on screen"
+
+
+def test_the_panel_selection_is_carried_into_the_chart():
+    """barChart owns the selection highlight, but this panel keeps its selection in opts.filters. Without
+    passing it across, a filtered chart would render as though nothing were selected."""
+    src = _extract("renderDecisionProof")
+
+    assert "selectedValue:filters[dim]" in src
+    assert "onclickFor:" in src and "decisionProofFilter(" in src
+    assert "clearOnclick:" in src, "the clear badge must clear THIS panel's filter, not a global set"
+
+
+def test_barchart_still_uses_the_shared_dispatcher_for_everyone_else():
+    """The extension must be opt-in. Around fifty callers rely on data-fk/data-fv and none were touched."""
+    src = _extract("barChart")
+
+    assert 'data-fk="${fk}" data-fv="${k}"' in src, "the default click path is gone"
+    assert "onclickFor?" in src, "and the opt-in path is missing"
+
+
+def test_the_bars_say_what_they_measure_exactly_once():
+    """The old markup repeated 'achievable P&L' in all twelve titles. It states what the bars ARE -- pounds,
+    not counts -- so it had to survive the rebuild, but once is enough."""
+    html = _proof_counts("{}", strip=False)
+
+    assert html.count("achievable P&amp;L") == 1
