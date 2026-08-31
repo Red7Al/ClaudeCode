@@ -117,4 +117,11 @@ The engagement before this one ended over unverified claims, so this is not deco
 - **Never "optimise" `_winLedger`'s sort.** `localeCompare` → `<` is 11% faster and moved the reported
   wallet by £1,037: the replay compounds, so the order *is* the answer.
 - **Supabase is on the 500 MB free tier** (399 MB at 2026-08-23). A `DELETE` frees nothing measurable.
+- **A green Scanner Snapshot Publish run does not mean Supabase was published.** The publish step is
+  `continue-on-error`, so its *conclusion* reads success while `outcome` holds the failure; the run
+  passes if the IONOS fallback alone worked. From 2026-08-16 that hid a two-week publication outage,
+  and on 2026-08-31 a worker restart pulled the stale remote over the host's only newer copy and the
+  live site lost 352 instruments. `load_snapshot` now refuses a remote snapshot older than the local
+  one. Ask `scanner_snapshot_store.current_metadata()` for the real state, never the run status.
+  Full detail and the restore procedure: `docs/OPS_RUNBOOK.md` §4.
 - **Secrets** live in Supabase and `.env`. Keep `.env` complete as a cold backup; do not prune it.

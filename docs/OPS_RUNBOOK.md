@@ -79,6 +79,48 @@ gh workflow run trading-scanner-snapshot.yml --ref main
 Supabase **Storage** has been returning 402 (a separate quota from the database). During the outage the
 workflow seeds and publishes via IONOS instead. Publishing also re-warms the winners payloads (§5).
 
+### What the outage actually costs you, learned the hard way on 2026-08-31
+
+The outage itself was recorded here from the start. Three consequences were not, and they are the ones
+that bit — the live site silently lost two weeks of data and 352 instruments.
+
+1. **A green run does NOT mean Supabase was published.** The publish step carries
+   `continue-on-error: true`, which rewrites its *conclusion* to `success`; only `outcome` holds the
+   truth, and the gate fails only when *both* routes fail. Fourteen consecutive runs from 2026-08-16
+   showed every step green while no row was written to `scanner_snapshot_versions`. The workflow now
+   states which route carried each run, as a warning on the run summary. **To check the real state, ask
+   the database, not the run:**
+
+   ```bash
+   ./.venv/Scripts/python.exe -c "from dotenv import load_dotenv; load_dotenv('.env');      import scanner_snapshot_store as s; print(s.current_metadata())"
+   ```
+
+   If `generated_utc` is older than today's scan, Supabase is behind and the IONOS copy is the only one.
+
+2. **During the outage the newest snapshot exists in ONE place — the web host.** Supabase is not a
+   restore point. The GitHub Actions artifact `scanner-snapshot` on the publish run is the other copy,
+   retained 7 days; that is what the 30 August snapshot was recovered from.
+
+3. **The web tier is remote-FIRST.** `scanner_snapshot_store.load_snapshot` used to overwrite the local
+   file with whatever Supabase called current, with no recency check — so a worker restart replaced the
+   good local snapshot with the two-week-old remote and served it. It now refuses a remote snapshot
+   provably older than the local one, restores the local file (the pull has already overwritten it by
+   then), drops the sidecar digest and logs at ERROR. Confirmed working in production on 2026-08-31.
+
+**Symptom to recognise:** `/api/status` count drops (1,773 → 1,421) and the logged-out Performance tab
+goes from ~2s to ~36s. The slowness is a *consequence*: precomputed winners payloads are keyed to the
+live snapshot's `generated_utc`, so a snapshot that moves backwards invalidates every stored copy. The
+cache is not broken — its key moved. Restore the snapshot and the speed returns on its own.
+
+**To restore a snapshot to the host** (validate on the host before the move, and mind the permissions —
+`umask 077` leaves it `-rw-------` where it must be `-rw-r--r--`):
+
+```bash
+gh run download <run-id> -n scanner-snapshot -D /tmp/restore
+ssh "$IONOS_USER@$IONOS_HOST" "umask 077; cat > '$IONOS_DIR/hvf_web/.snapshot.tmp'" < /tmp/restore/snapshot.json
+ssh "$IONOS_USER@$IONOS_HOST" "set -eu; cd '$IONOS_DIR/hvf_web';   python3 -c \"import json;d=json.load(open('.snapshot.tmp'));print(d['generated_utc'],d['count'])\";   mv -f .snapshot.tmp snapshot.json; rm -f snapshot.json.supabase.json; chmod 644 snapshot.json"
+```
+
 ---
 
 ## 5. Best Settings is slow

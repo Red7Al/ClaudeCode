@@ -399,3 +399,55 @@ def test_zulu_timestamps_compare_correctly():
 
     assert store._is_older({"generated_utc": "2026-08-16T19:04:00Z"},
                            {"generated_utc": "2026-08-30T19:13:22+00:00"}) is True
+
+
+# ======================================================================================================
+# A run where Supabase publication failed must not look like one where it succeeded (2026-08-31).
+#
+# It did, for fourteen consecutive runs from 2026-08-16. `continue-on-error: true` rewrites the publish
+# step's CONCLUSION to success -- only `outcome` carries the truth -- and the gate passes as long as
+# EITHER half worked. Green run, green steps, and nobody knew Supabase had stopped accepting
+# publications until the web host's only copy of the newer snapshot was overwritten by the old remote.
+# ======================================================================================================
+
+def _snapshot_workflow():
+    import pathlib
+    return pathlib.Path(__file__).parent / ".github" / "workflows" / "trading-scanner-snapshot.yml"
+
+
+def test_the_run_says_which_publication_route_carried_it():
+    import yaml
+
+    steps = yaml.safe_load(_snapshot_workflow().read_text(encoding="utf-8"))["jobs"]["publish"]["steps"]
+    report = next((s for s in steps if "Report which publication route" in (s.get("name") or "")), None)
+
+    assert report, "nothing tells the reader which route published this snapshot"
+    assert report.get("if") == "always()", "it must report on the failure path too - that is the point"
+    body = report["run"]
+    assert "::warning" in body, "a fallback-only run must be visibly flagged"
+    assert "GITHUB_STEP_SUMMARY" in body, "and stated on the run page, not just in a log line"
+
+
+def test_a_fallback_only_run_warns_rather_than_failing():
+    """Deliberate: during a known quota outage the fallback keeping the site current IS the system
+    working. A red run every day becomes noise that gets muted, and muted is how this went unseen."""
+    import yaml
+
+    steps = yaml.safe_load(_snapshot_workflow().read_text(encoding="utf-8"))["jobs"]["publish"]["steps"]
+    body = next(s for s in steps if "Report which publication route" in (s.get("name") or ""))["run"]
+
+    warn = body.index("::warning")
+    err = body.index("::error")
+    assert warn < err, "the fallback-only branch must come before the nothing-worked branch"
+    assert "exit 1" not in body, "reporting must not change whether the run passes"
+
+
+def test_the_gate_that_actually_fails_the_run_is_untouched():
+    """The reporting step is additive. The run must still FAIL when neither route worked."""
+    import yaml
+
+    steps = yaml.safe_load(_snapshot_workflow().read_text(encoding="utf-8"))["jobs"]["publish"]["steps"]
+    gate = next(s for s in steps if "Fail if no snapshot publication succeeded" in (s.get("name") or ""))
+
+    assert 'if [ "$PUBLISH_OUTCOME" = "failure" ] && [ "$IONOS_OUTCOME" != "success" ]' in gate["run"]
+    assert "exit 1" in gate["run"]

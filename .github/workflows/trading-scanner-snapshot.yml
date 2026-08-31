@@ -162,6 +162,44 @@ jobs:
             exit 1
           fi
 
+      # A run where Supabase publication FAILED must not look identical to one where it succeeded.
+      #
+      # It did, for fourteen consecutive runs from 2026-08-16. `continue-on-error: true` on the publish
+      # step rewrites its CONCLUSION to success -- only `outcome` carries the truth -- and the gate above
+      # passes as long as either half worked. So the run was green, every step showed green, and nobody
+      # knew Supabase had stopped accepting publications. On 2026-08-31 that surfaced the hard way: the
+      # newer snapshots existed ONLY on the web host, a worker restarted, pulled the two-week-old remote
+      # over the top, and the live site lost 352 instruments.
+      #
+      # Deliberately a WARNING and not a failure: during a known quota outage the IONOS fallback keeping
+      # the site current is the system working as designed, and a red run every day would be noise that
+      # gets muted. What was missing was not severity, it was VISIBILITY -- so this writes the state onto
+      # the run summary where it cannot be missed.
+      - name: Report which publication route actually carried this run
+        if: always()
+        env:
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          IONOS_OUTCOME: ${{ steps.ionos_fallback.outcome }}
+        run: |
+          if [ "$PUBLISH_OUTCOME" = "success" ]; then
+            echo "Supabase publication succeeded." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$IONOS_OUTCOME" = "success" ]; then
+            echo "::warning title=Supabase publication failed::The snapshot reached the web host by the IONOS fallback ONLY. Supabase holds an older snapshot, so it is not a usable restore point."
+            {
+              echo "### :warning: Supabase publication FAILED - IONOS fallback carried this run"
+              echo ""
+              echo "The new snapshot is on the web host and **nowhere else**. Supabase still holds an"
+              echo "older one, so it is NOT a restore point until publication works again."
+              echo ""
+              echo "The web tier refuses a remote snapshot older than its local copy"
+              echo "(\`scanner_snapshot_store.load_snapshot\`), so the site will not regress - but there"
+              echo "is no second copy of today's data."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error title=No publication route succeeded::Neither Supabase nor the IONOS fallback took the snapshot."
+            echo "### :x: No publication route succeeded" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       # Rebuild the precomputed /api/winners payloads for the snapshot this run just published
       # (user 2026-08-23). The server keys a stored payload to the live snapshot's generated_utc, so ANY
       # new snapshot invalidates the previous copies -- a once-daily precompute would only help until the
