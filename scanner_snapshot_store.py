@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import datetime as _dt
 import json
 import logging
 import os
@@ -618,12 +619,54 @@ def pull_current(path: str | os.PathLike = DEFAULT_SNAPSHOT, force: bool = False
     return snapshot, meta, True
 
 
+def _is_older(remote: dict | None, local: dict | None) -> bool:
+    """True when `remote` is strictly older than `local`. Unknown or unparseable dates are NOT older:
+    the guard must never withhold a publication it cannot date, only one it can prove is behind."""
+    def stamp(d):
+        v = (d or {}).get("generated_utc")
+        if not v:
+            return None
+        try:
+            return _dt.datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    r, l = stamp(remote), stamp(local)
+    return bool(r and l and r < l)
+
+
+def _restore_local(local_path: Path, local: dict) -> None:
+    """pull_current has already overwritten the file by the time we can compare, so put ours back."""
+    try:
+        _write_atomic(local_path, json.dumps(local, separators=(",", ":")).encode("utf-8"))
+        _sidecar_path(local_path).unlink(missing_ok=True)   # its digest describes the rejected copy
+    except Exception as exc:
+        log.error("could not restore the newer local Scanner snapshot: %s", exc)
+
+
 def load_snapshot(path: str | os.PathLike = DEFAULT_SNAPSHOT) -> dict:
     """Remote-first when configured, always falling back to the last verified local file."""
     local_path = Path(path)
+    local_first = _read_json(local_path) if local_path.is_file() else None
     if storage_configured("read"):
         try:
             snapshot, _meta, changed = pull_current(local_path)
+            # NEVER go backwards. The remote copy is authoritative about WHICH snapshot is published, not
+            # about which is NEWER, and those came apart on 2026-08-31: Supabase publication had been
+            # failing since 2026-08-16 while the IONOS fallback wrote fresher snapshots straight to the
+            # host, so the remote "current" was version 17 (1,421 records, 16 Aug) and the local file held
+            # 1,773 records from 30 Aug. A worker restart pulled version 17, OVERWROTE the newer local
+            # file, and the live site lost two weeks of data and 352 instruments.
+            #
+            # The local file is described as the last-known-good fallback; before this it was a cache the
+            # remote could clobber with something older. If the remote is behind, keep ours and say so
+            # loudly -- a silent regression is what let this run for a day unnoticed.
+            if _is_older(snapshot, local_first):
+                log.error(
+                    "REMOTE SNAPSHOT IS OLDER THAN THE LOCAL COPY (remote %s, local %s); keeping local. "
+                    "Supabase publication is behind -- check the Scanner Snapshot Publish workflow.",
+                    (snapshot or {}).get("generated_utc"), (local_first or {}).get("generated_utc"))
+                _restore_local(local_path, local_first)
+                return local_first
             if changed:
                 log.info("Scanner snapshot cache advanced from Supabase")
             return snapshot

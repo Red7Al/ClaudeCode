@@ -344,3 +344,58 @@ def test_daily_report_reuses_scan_for_snapshot_publication():
     text = (store.ROOT / "run_hvf_report.py").read_text(encoding="utf-8")
     assert "build(scan_results=all_results)" in text
     assert "_publish_scanner_snapshot(all_results)" in text
+
+
+# ======================================================================================================
+# A remote snapshot must never take the site BACKWARDS (2026-08-31).
+#
+# What happened: Supabase publication had been failing since 2026-08-16 while the IONOS fallback wrote
+# fresher snapshots straight to the host. The remote "current" was version 17 (1,421 records, 16 Aug);
+# the host held 1,773 records from 30 Aug. A worker restart pulled version 17, OVERWROTE the newer local
+# file, and the live site lost two weeks of data and 352 instruments.
+#
+# load_snapshot's docstring called the local file "the last verified local file" -- but it was a cache
+# the remote could clobber with something older.
+# ======================================================================================================
+
+def test_a_remote_snapshot_older_than_the_local_one_is_rejected():
+    import scanner_snapshot_store as store
+
+    older = {"generated_utc": "2026-08-16T19:04:00+00:00", "count": 1421, "records": []}
+    newer = {"generated_utc": "2026-08-30T19:13:22+00:00", "count": 1773, "records": []}
+
+    assert store._is_older(older, newer) is True
+    assert store._is_older(newer, older) is False
+
+
+def test_an_equal_or_newer_remote_is_accepted():
+    """The guard must only ever block a provable regression, never a legitimate publication."""
+    import scanner_snapshot_store as store
+
+    same = {"generated_utc": "2026-08-30T19:13:22+00:00"}
+    assert store._is_older(same, dict(same)) is False
+    assert store._is_older({"generated_utc": "2026-08-31T06:00:00+00:00"}, same) is False
+
+
+def test_an_undateable_snapshot_is_never_treated_as_older():
+    """Unknown is not old. Withholding a publication we simply cannot date would be a worse failure than
+    the one this guard exists to prevent."""
+    import scanner_snapshot_store as store
+
+    dated = {"generated_utc": "2026-08-30T19:13:22+00:00"}
+    for bad in ({}, {"generated_utc": None}, {"generated_utc": "not-a-date"}, None):
+        assert store._is_older(bad, dated) is False, f"{bad!r} must not be judged older"
+        assert store._is_older(dated, bad) is False, f"a missing LOCAL date must not block {bad!r}"
+
+
+def test_zulu_timestamps_compare_correctly():
+    """The store writes +00:00; other producers write Z. Both must compare correctly.
+
+    HONEST LIMIT: this cannot kill a mutant that removes the explicit Z handling, because Python 3.11+
+    parses 'Z' natively and both implementations pass. The replace() is belt-and-braces for older
+    interpreters. Verified by mutation on 2026-08-31 -- recorded rather than left looking like a guard
+    it is not."""
+    import scanner_snapshot_store as store
+
+    assert store._is_older({"generated_utc": "2026-08-16T19:04:00Z"},
+                           {"generated_utc": "2026-08-30T19:13:22+00:00"}) is True
