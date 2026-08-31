@@ -2950,11 +2950,17 @@ function renderDecisionProof(id,proof,opts={}){
   target.innerHTML=`<div style="margin-top:14px"><button class="subpill" onclick="decisionSlicersToggle('${id}')" title="Cross-filter the transactions below by location, market, sector and the rest">${DECISION_SLICERS_OPEN?'▾':'▸'} Filter transactions</button><div class="viz" style="margin-top:8px;padding:0;border-bottom:none"${DECISION_SLICERS_OPEN?'':' hidden'}><div class="muted" style="font-size:11px;margin:0 0 6px;width:100%">Bars show <b style="color:var(--fg)">achievable P&amp;L</b> for the transactions actually placed. Click a bar to cross-filter the table below.</div>${chart('location','Location')}${chart('market','Market')}${chart('sector','Sector')}${chart('direction','Direction')}${chart('outcome','Outcome')}${chart('wl','Win / Loss')}${chart('days_open','Days Open')}${chart('month','Month')}${chart('quality','Quality')}${chart('rvol','RVOL')}${chart('above_vwap','VWAP')}${chart('atr_expanding','ATR')}</div></div>
     ${Object.keys(filters).length?`<div class="muted" style="font-size:11px;margin-top:6px">Cross-filter: ${Object.entries(filters).map(([d,v])=>`${d} = ${_esc(v)}`).join(' · ')} <button class="btn" style="padding:2px 7px" onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,filters:{}})">Clear</button></div>`:''}
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;margin:14px 0 6px;flex-wrap:wrap">
-    <div><h4 style="margin:0">${_esc(evidenceTitle)}</h4>
+    <!-- flex:1 1 320px + min-width:0 so the long evidenceNote wraps its own text rather than making
+         this block max-content wide and pushing the controls onto a line of their own. -->
+    <div style="flex:1 1 320px;min-width:0"><h4 style="margin:0">${_esc(evidenceTitle)}</h4>
     <div style="font-size:12px;margin:3px 0 2px"><b>${filtered.length.toLocaleString()}</b> trigger${filtered.length===1?'':'s'} —
       <b style="color:var(--bull)">${placed.toLocaleString()} placed</b>, <b class="muted">${missed.toLocaleString()} missed</b>${narrowed?` <span class="muted">(narrowed from ${proof.length.toLocaleString()} by the chart filters)</span>`:''}</div>
     <div class="muted" style="font-size:11px">${_esc(evidenceNote)}</div></div>
-    <div style="white-space:nowrap;text-align:right">
+    <!-- margin-left:auto, NOT justify-content on the parent. Under space-between a line holding a
+         SINGLE flex item places it at flex-start, so when this block wrapped it rendered on the LEFT
+         (user 2026-08-31: "hide / show is still on the LHS"). An auto left margin absorbs the free
+         space on whatever line it lands on, so it is right-aligned either way. -->
+    <div style="white-space:nowrap;text-align:right;margin-left:auto">
       <div style="font-size:11px;font-weight:600;margin-bottom:4px">Missed transactions (${missed})</div>
       <div style="display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden">
         <button type="button" onclick="renderDecisionProof('${id}',DECISION_PROOFS['${id}'].proof,{...DECISION_PROOFS['${id}'].opts,showMissed:false})"
@@ -3393,12 +3399,18 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
       ${_wlLine("Win : Loss <span class='muted'>(actual)</span>",_cardWLActual(x),"Wins vs losses among only the trades this configuration actually FUNDED — the same population as the funded count above")}
       <div style="font-size:11px;margin-top:6px"${x.scope.offList&&x.scope.offList.length?` title="These markets are switched off in your settings and were never in this replay: ${x.scope.offList.join(', ')}"`:''}>${x.scope.display||x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo} max open</div>
       <div class="muted" style="font-size:10px;margin-top:7px;line-height:1.4"><b style="color:var(--fg)">Changes:</b> ${changedFor(x)}</div>
+    </div>
+      <!-- The apply row is a DIRECT child of .fcard, NOT of .body. .fcard-apply carries margin-top:auto,
+           which only pushes to the bottom for a flex item of a column flex container; .fcard is one,
+           .body is a plain block (index.html:311). Nested inside .body it was inert, and the four
+           choice cards only LOOKED aligned because their bodies hold identical rows. The three-year
+           card, with different content, sat at a different height (user 2026-08-30). -->
       ${AUTH?`<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="${matchesCurrent(x)?'These values already match your User Configuration - applying would change nothing':'Review and apply these values to User Configuration'}">${matchesCurrent(x)?'Already applied':'Apply this configuration'}</button></div>`
              /* There is no User Configuration to write to when nobody is signed in, and /api/config rejects
                 the POST, so the control could only ever end at "Save failed" (user 2026-08-22). Offer the
                 sign-in that makes it work instead of an action that cannot. */
              :`<div class="fcard-apply"><span class="muted" style="font-size:11px">Log in to apply this configuration.</span></div>`}
-    </div></div>`).join('');
+    </div>`).join('');
   const unsupportedCards=[
     showUnsupported250&&[">250 trades",250,300,"#a371f7"],showUnsupported125&&[">125 trades",125,150,"#1f6feb"]
   ].filter(Boolean).map(([label,min,max,colour])=>`<div class="fcard" data-choice-unavailable="${label}" style="min-width:240px;flex:1;border-top:3px solid ${colour};opacity:.8" title="No tested annual configuration funded more than ${min} and no more than ${max} trades">
@@ -3411,14 +3423,20 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
     ?`<div class="muted" style="margin:0 0 10px;font-size:12px">Three-year evidence is loading separately; it is not included in the card list until verified.</div>`
     :!threeYear?`<div class="muted" style="margin:0 0 10px;padding:8px 10px;border-left:3px solid #d29922;background:color-mix(in srgb,#d29922 9%,transparent);font-size:12px"><b>Three-year evidence:</b> no supported recommendation. The strongest reviewed configuration funded <b>${bestThreeYear?bestThreeYear.n.toLocaleString():"0"}</b> trades; the evidence rule requires <b>more than 125</b> and at least 80% of the best annual card’s return.${bestThreeYear?` Its replayed return was <b>${pct(bestThreeYear.ret)}</b>.`:""}</div>`
     :"";
+  // The apply row is computed here so it can be emitted as a DIRECT child of .fcard rather than nested
+  // inside .body. .fcard-apply carries margin-top:auto, which only pushes to the bottom for a flex item
+  // of a column flex container: .fcard is one, .body is a plain block (index.html:311). Nested inside
+  // .body it was inert, and this card - whose body differs from the choice cards - sat at a different
+  // height (user 2026-08-30, reported twice).
+  const threeYearApply=(WIN_3Y!==null&&bestThreeYear)
+    ?(AUTH?`<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(bestThreeYear))},this,{belowEvidence:${bestThreeYear.n}})' title="${matchesCurrent(bestThreeYear)?'These values already match your User Configuration - applying would change nothing':'Apply this three-year configuration even though it is below the evidence rule'}">${matchesCurrent(bestThreeYear)?'Already applied':'Apply this configuration'}</button></div>`
+      :`<div class="fcard-apply"><span class="muted" style="font-size:11px">Log in to apply this configuration.</span></div>`)
+    :"";
   const threeYearStatusCard=!threeYear?`<div class="fcard" data-choice-unavailable="Best over 3 years" style="min-width:240px;flex:1;border-top:3px solid #00a8a8;opacity:.9" title="Three-year evidence; shown for comparison, not as an applicable recommendation below the evidence threshold">
     <h3 style="color:#00a8a8">Best over 3 years</h3>${bestThreeYear&&matchesCurrent(bestThreeYear)?`<div class="fcard-current" title="Every setting on this card already matches your saved User Configuration, so applying it would change nothing">✓ This is your current configuration</div>`:''}<div class="muted" style="font-size:11px;min-height:30px">${WIN_3Y===null?(WIN_3Y_ERROR?"Evidence could not be loaded":"Evidence loading separately…"):"Strong return; smaller trade sample."}</div>
     <div class="body">${WIN_3Y===null?(WIN_3Y_ERROR?`<span style="color:var(--bear)">Three-year evidence could not be loaded (${_esc(WIN_3Y_ERROR)}).</span> <button class="subpill" onclick="event.stopPropagation();retryThreeYear()">Retry</button>`:"This card remains visible while the complete three-year evidence loads."):bestThreeYear?`<div><b style="font-size:17px;color:var(--bull)">${pct(bestThreeYear.ret)}</b> return · <b>${(bestThreeYear.dd*100).toFixed(1)}%</b> max drawdown</div><div class="muted" style="font-size:11px;margin-top:5px"><b>${bestThreeYear.n.toLocaleString()}</b> funded trades. The high-confidence evidence rule is more than <b>125</b> funded trades; this is information, not a recommendation.</div>
-    ${AUTH?`<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(bestThreeYear))},this,{belowEvidence:${bestThreeYear.n}})' title="${matchesCurrent(bestThreeYear)?'These values already match your User Configuration - applying would change nothing':'Apply this three-year configuration even though it is below the evidence rule'}">${matchesCurrent(bestThreeYear)?'Already applied':'Apply this configuration'}</button></div>`
-       // The same logged-out placeholder the choice cards use. Rendering nothing here left this card's
-       // bottom edge out of line with its neighbours, because .fcard-apply is what margin-top:auto
-       // pushes down (user 2026-08-30, "don't forget formatting of the Apply buttons").
-       :`<div class="fcard-apply"><span class="muted" style="font-size:11px">Log in to apply this configuration.</span></div>`}`:"No usable three-year evidence is currently available."}</div>
+    `:"No usable three-year evidence is currently available."}</div>
+    ${threeYearApply}
   </div>`:"";
   box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearStatusCard}</div>
   <div class="card" style="margin:0" id="best-detail"></div>`;

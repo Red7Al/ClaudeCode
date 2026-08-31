@@ -1412,7 +1412,10 @@ def test_the_header_and_row_stay_in_step():
 
 def test_the_three_year_card_offers_apply_below_the_evidence_rule():
     js = client_js()
-    i = js.index("const threeYearStatusCard=")
+    # The window starts at threeYearApply, not at the card template: the apply row is now built
+    # just above and emitted as a DIRECT child of .fcard, because .fcard-apply's margin-top:auto
+    # is inert inside .body (a plain block). The assertions below are unchanged.
+    i = js.index("const threeYearApply=")
     card = js[i:js.index("box.innerHTML=", i)]
 
     assert "applyConfigFromReport" in card, "a sub-threshold card must still be applicable"
@@ -2041,3 +2044,70 @@ def test_the_bars_say_what_they_measure_exactly_once():
     html = _proof_counts("{}", strip=False)
 
     assert html.count("achievable P&amp;L") == 1
+
+
+# ======================================================================================================
+# Card Apply rows and the Transaction evidence controls (user 2026-08-30/31, both reported twice).
+#
+# .fcard-apply carries margin-top:auto (index.html:506), which only pushes to the bottom for a flex item
+# of a COLUMN FLEX container. .fcard is one (index.html:304-305); .body is a plain block (index.html:311).
+# Nested inside .body the rule was inert, and the four choice cards only LOOKED aligned because their
+# bodies hold identical rows -- so the three-year card, whose body differs, sat at a different height.
+# Matching its markup to the others (my first attempt) could never have fixed that.
+# ======================================================================================================
+
+def _body_of(card_start, card_end):
+    """Markup of the card's <div class="body"> element, found by walking div DEPTH.
+
+    Not by line, and not by counting tags on one line: a card template spans many lines and a line-based
+    check has already produced a false positive on this very page.
+    """
+    js = client_js()
+    i = js.index(card_start)
+    blk = js[i:js.index(card_end, i)]
+    b = blk.index('<div class="body"')
+    depth = 0
+    for m in re.finditer(r"<div\b|</div>", blk[b:]):
+        depth += 1 if m.group(0) == "<div" else -1
+        if depth == 0:
+            return blk[b:b + m.end()]
+    raise AssertionError("the card body never closes")
+
+
+def test_the_choice_card_apply_row_is_not_buried_in_the_body():
+    body = _body_of("const choiceCards=choices.map", ".join('');")
+
+    assert "fcard-apply" not in body, \
+        "margin-top:auto cannot bottom-align an element inside .body, which is a plain block"
+
+
+def test_the_three_year_card_apply_row_is_not_buried_in_the_body():
+    body = _body_of("const threeYearStatusCard=", "box.innerHTML=")
+
+    assert "fcard-apply" not in body
+
+
+def test_every_apply_row_is_still_rendered_somewhere():
+    """Moving it out must not lose it. Both states, both cards."""
+    js = client_js()
+
+    assert js.count("fcard-apply") >= 4, "logged-in and logged-out rows for both cards"
+    assert "Log in to apply this configuration." in js
+    assert "const threeYearApply=" in js, "the three-year row must be built outside the card body"
+
+
+def test_the_evidence_controls_are_pinned_right_not_merely_placed_right():
+    """justify-content:space-between puts a LONE item on a wrapped line at flex-start -- the left. An auto
+    left margin absorbs the free space on whatever line the block lands on, so it is right-aligned
+    whether or not the row wraps."""
+    html = _proof_counts("{}", strip=False)
+
+    assert "text-align:right;margin-left:auto" in html, \
+        "the Hide/Show block relies on the parent's justify-content, which fails once the row wraps"
+
+
+def test_the_evidence_note_wraps_instead_of_forcing_the_row_to_wrap():
+    html = _proof_counts("{}", strip=False)
+
+    assert "flex:1 1 320px;min-width:0" in html, \
+        "an unconstrained text block is max-content wide and pushes the controls onto their own line"
