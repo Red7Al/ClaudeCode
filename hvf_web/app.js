@@ -4933,7 +4933,22 @@ fetch("/api/me",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(m=>{
     let _t=null; try{_t=sessionStorage.getItem("sq_tab");}catch(e){}
     showTab(_t&&tabAllowed(_t)?_t:"welcome");});
 if(AUTH){$("logout").style.display="";$("loginbtn").style.display="none";}   // logged in: swap Log in → Log out (user 2026-08-08)
-let LIMITED=false;
+// FAIL CLOSED. This used to default to false, i.e. "treat an unknown visitor as entitled until the
+// server says otherwise" -- and the server only says so inside the .then() of a Promise.all that
+// includes /api/records, MEASURED at 25-35s logged out. So a logged-out visitor was unrestricted for
+// that whole window, and PERMANENTLY unrestricted if that promise rejected (the 401 path throws
+// "auth", so the .then never runs and LIMITED never gets set at all -- observed live 2026-09-01,
+// LIMITED still false after a complete load with AUTH false).
+//
+// Everything gated on LIMITED was therefore open during that window, including the Transaction
+// evidence panel (user 2026-09-01: "transaction evidence is visible in performance - best settings -
+// when no one is logged in - this is taboo ... there long enough to capture the data").
+//
+// Deriving it from AUTH means an anonymous visitor is restricted from the FIRST paint, before any
+// fetch resolves and whether or not one ever does. The server response still refines it below.
+// NOTE: this is the browser being honest, not a security boundary -- the endpoints must stop
+// serving the rows too. See the register entry for the /api/winners exposure.
+let LIMITED=!AUTH;
 const ob=h=>LIMITED?'<span class="muted">•••</span>':h;   // obfuscated cell for logged-out visitors
 Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.status===401)throw "auth";return r.json();}),
              // X-Auth required from 2026-08-25: /api/positions returned the account's REAL open book to

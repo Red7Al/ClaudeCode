@@ -2151,3 +2151,34 @@ def test_return_beats_score_when_they_disagree():
         src, "bestThreeYear.ret")
 
     assert picked == 1.610, "the higher return must win even though it scores lower"
+
+
+# ======================================================================================================
+# LIMITED must FAIL CLOSED (user 2026-09-01: transaction evidence visible logged out -- "this is taboo").
+#
+# It defaulted to false and was only set inside the .then() of a Promise.all containing /api/records,
+# measured at 25-35s logged out -- so an anonymous visitor was unrestricted for that window, and
+# permanently unrestricted if the promise rejected. Observed live: LIMITED still false after a complete
+# load with AUTH false.
+# ======================================================================================================
+
+def test_limited_defaults_to_restricted_for_an_anonymous_visitor():
+    js = client_js()
+    m = re.search(r"^let LIMITED=([^;]+);", js, re.M)
+
+    assert m, "the LIMITED declaration is gone"
+    assert m.group(1).strip() == "!AUTH", (
+        f"LIMITED must be derived from AUTH so it is restrictive before any fetch resolves, not {m.group(1)!r}")
+
+
+def test_the_server_answer_still_refines_it():
+    """Failing closed must not mean ignoring the server: a logged-in user has to become unrestricted."""
+    assert "LIMITED=!!j.limited;" in client_js()
+
+
+def test_an_anonymous_visitor_is_limited_from_the_first_paint():
+    """Executed, not read: with no token, LIMITED must be true immediately."""
+    decl = re.search(r"^let LIMITED=[^;]+;", client_js(), re.M).group(0)
+
+    assert run_js('const AUTH="";', decl, "LIMITED") is True
+    assert run_js('const AUTH="a-token";', decl, "LIMITED") is False
