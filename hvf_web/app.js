@@ -3399,6 +3399,43 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   const _cardWLActual=x=>{const w=+x.wins||0,l=+x.losses||0;
     return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};
   const _wlLine=(label,d,title)=>`<div style="font-size:11px;margin-top:4px" title="${title}">${label} <b style="color:var(--fg)">${d.w} : ${d.l}</b>${d.pct!=null?` <span class="muted">(${d.pct}%)</span>`:''}</div>`;
+  // Three ROLLING 365-day windows for a card's configuration (user 2026-09-01: "I want to see if these
+  // settings are only good for this year or all years. A year in this card is not a calendar year - it is
+  // the previous 365 days").
+  //
+  // The annual cards are SELECTED on the last 365 days, so those earlier windows have to come from the
+  // three-year population. The configuration is held FIXED and only the period changes -- otherwise this
+  // would be three separate optimisations and would prove nothing about overfitting.
+  //
+  // Read it as: window 1 is IN-SAMPLE (the cards were chosen on it) and windows 2 and 3 are the honest
+  // out-of-sample test. Measured 2026-09-01: every card positive in all three, but returns roughly halve
+  // out of sample -- real, and tuned to the recent year.
+  const _yrEdges=(()=>{const rows=Array.isArray(WIN_3Y)?WIN_3Y:[];
+    if(!rows.length)return null;
+    const latest=rows.reduce((m,r)=>{const d=String(r&&r.trig_date||"").slice(0,10);return d>m?d:m;},"");
+    if(!latest)return null;
+    const back=n=>{const d=new Date(latest+"T00:00:00Z");d.setUTCDate(d.getUTCDate()-n);return d.toISOString().slice(0,10);};
+    return [latest,back(365),back(730),back(1095)];})();
+  const _cardYears=x=>{
+    if(!_yrEdges||!Array.isArray(WIN_3Y)||!WIN_3Y.length)return null;
+    return [0,1,2].map(i=>{const to=_yrEdges[i],from=_yrEdges[i+1];
+      const seq=WIN_3Y.filter(r=>{const d=String(r&&r.trig_date||"").slice(0,10);
+        return d>from&&d<=to&&r.perf!=null&&x.scope.test(r)&&r.rr!=null&&r.rr>=x.rr&&
+          (!x.q||(r.quality!=null&&r.quality>=x.q))&&(!x.vs||(r.volume_score!=null&&r.volume_score>=x.vs))&&
+          (!x.rv||(r.rvol!=null&&r.rvol>=x.rv))&&(!x.vw||r.above_vwap===true)&&(!x.atr||r.atr_expanding===true);});
+      if(!seq.length)return {from,to,ret:null,n:0};
+      const z=_combReplay(seq,x.st/100,x.mo);
+      return {from,to,ret:z.ret,n:z.n};});};
+  const _yearsLine=(label,x)=>{
+    if(label==="Best over 3 years")return "";   // it IS the three-year replay; excluded by request
+    const ys=_cardYears(x);
+    if(!ys)return `<div class="muted" style="font-size:10px;margin-top:6px">Yearly breakdown loads with the three-year evidence.</div>`;
+    const cell=y=>y.ret==null?`<span class="muted">n/a</span>`
+      :`<b style="color:${y.ret>=0?'var(--bull)':'var(--bear)'}">${pct(y.ret)}</b>`;
+    return `<div style="font-size:10px;margin-top:6px;line-height:1.5" title="The SAME configuration replayed over three rolling 365-day periods, newest first. The first is the window the card was chosen on (in-sample); the other two are out-of-sample.">
+      <b style="color:var(--fg)">Each of the last 3 years:</b> ` +
+      ys.map((y,i)=>`<span title="${y.from} to ${y.to} — ${y.n} funded trade${y.n===1?"":"s"}">${cell(y)}${i===0?' <span class="muted">(in-sample)</span>':''}</span>`).join(' <span class="muted">·</span> ')
+      +`</div>`;};
   const choiceCards=choices.map(([label,x,why,colour])=>`<div class="fcard fcard-choice${label===BEST_SELECTED?' fcard-selected':''}" data-choice="${label}" data-choice-return="${x.ret}" style="min-width:240px;flex:1;border-top:3px solid ${colour}" onclick="selectBestChoice('${label.replace(/'/g,"\\'")}')" title="Show this option's detail and Transaction evidence below">
     <h3 style="color:${colour}">${label}</h3>${matchesCurrent(x)?`<div class="fcard-current" title="Every setting on this card already matches your saved User Configuration, so applying it would change nothing">✓ This is your current configuration</div>`:''}<div class="muted" style="font-size:11px;min-height:30px">${why}</div>
     <div class="body"><div><b style="font-size:17px;color:${x.ret>=0?'var(--bull)':'var(--bear)'}">${pct(x.ret)}</b> return · <b>${(x.dd*100).toFixed(1)}%</b> max drawdown</div>
@@ -3406,6 +3443,7 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
       ${_wlLine("Win : Loss <span class='muted'>(eligible)</span>",_cardWL(x),"Wins vs losses among every trade matching this configuration, whether or not the wallet could fund it — the same split the detail panel below reports")}
       ${_wlLine("Win : Loss <span class='muted'>(actual)</span>",_cardWLActual(x),"Wins vs losses among only the trades this configuration actually FUNDED — the same population as the funded count above")}
       <div style="font-size:11px;margin-top:6px"${x.scope.offList&&x.scope.offList.length?` title="These markets are switched off in your settings and were never in this replay: ${x.scope.offList.join(', ')}"`:''}>${x.scope.display||x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo} max open</div>
+      ${_yearsLine(label,x)}
       <div class="muted" style="font-size:10px;margin-top:7px;line-height:1.4"><b style="color:var(--fg)">Changes:</b> ${changedFor(x)}</div>
     </div>
       <!-- The apply row is a DIRECT child of .fcard, NOT of .body. .fcard-apply carries margin-top:auto,

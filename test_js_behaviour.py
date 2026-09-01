@@ -1262,7 +1262,11 @@ def _match_fns():
 
 
 def _matches(current, card):
-    return run_js(f"const current={current};", _match_fns(),
+    # WIN_3Y is stubbed because the slice now also carries _yrEdges/_cardYears (the rolling-year
+    # breakdown added 2026-09-01), which read it. Empty is the right stub: this test is about the badge
+    # and the Changes line, not the yearly figures.
+    return run_js(f"const current={current}; const WIN_3Y=[]; const _combReplay=()=>({{ret:0,n:0}});",
+                  _match_fns(),
                   f"[matchesCurrent({card}), changedFor({card})]")
 
 
@@ -2231,3 +2235,67 @@ def test_no_deleted_ledger_variable_survives_in_code():
     code = "\n".join(l for l in src.split("\n") if not l.lstrip().startswith("//"))
 
     assert not re.search(r"\b(tb|tc)\b", code), "a deleted ledger variable is still referenced in code"
+
+
+# ======================================================================================================
+# Each card shows its return over three ROLLING 365-day windows (user 2026-09-01: "I want to see if these
+# settings are only good for this year or all years").
+#
+# The cards are SELECTED on the last 365 days, so window 1 is IN-SAMPLE and windows 2 and 3 are the
+# out-of-sample test. The configuration is held fixed and only the period changes -- otherwise it would be
+# three separate optimisations and would prove nothing.
+# ======================================================================================================
+
+def _years_for(rows_js, card_js):
+    src = (_extract("_yrEdges") if "function _yrEdges" in client_js() else
+           "\n".join(re.search(rf"  const {n}=[\s\S]*?;\n(?=  const )", client_js()).group(0)
+                     for n in ("_yrEdges", "_cardYears")))
+    stubs = f"""
+      let MIN_TRADE=25, WINNERS_WALLET=10000;
+      const LEVERAGE={{fx:30,equities:5,commodities:10,indices:20}};
+      function levType(r){{return "equities";}}
+      const levOf=r=>LEVERAGE[levType(r)];
+      const _pfExitDate=(r)=>String(r.exit_date||r.trig_date||"");
+      const _combReplay=(seq)=>({{ret:seq.length/10,n:seq.length}});
+      const WIN_3Y={rows_js};
+    """
+    return run_js(stubs, src, f"JSON.stringify(_cardYears({card_js}))")
+
+
+def _rows(*dates):
+    return "[" + ",".join(
+        f'{{trig_date:"{d}",perf:1,rr:9,quality:99,volume_score:9,rvol:9,'
+        f'above_vwap:true,atr_expanding:true,entry:100,stop:95,market:"M"}}' for d in dates) + "]"
+
+
+CARD = ("{scope:{test:()=>true},rr:0,q:0,vs:0,rv:0,vw:false,atr:false,st:5,mo:20}")
+
+
+def test_the_windows_are_365_days_not_calendar_years():
+    out = json.loads(_years_for(_rows("2026-08-27"), CARD))
+
+    assert [w["to"] for w in out] == ["2026-08-27", "2025-08-27", "2024-08-27"]
+    assert [w["from"] for w in out] == ["2025-08-27", "2024-08-27", "2023-08-28"]
+
+
+def test_each_window_counts_only_its_own_trades():
+    """A trade must land in exactly one window, chosen by its trigger date."""
+    out = json.loads(_years_for(_rows("2026-08-27", "2025-06-01", "2024-06-01"), CARD))
+
+    assert [w["n"] for w in out] == [1, 1, 1]
+
+
+def test_an_empty_window_reports_n_a_rather_than_zero_percent():
+    """No trades is not a 0% year. Showing 0% would read as a flat year that was actually never traded."""
+    out = json.loads(_years_for(_rows("2026-08-27"), CARD))
+
+    assert out[0]["ret"] is not None
+    assert out[1]["ret"] is None and out[1]["n"] == 0
+
+
+def test_the_three_year_card_is_excluded():
+    """It IS the three-year replay; a yearly breakdown of it would be circular."""
+    js = client_js()
+
+    assert 'label==="Best over 3 years")return ""' in js
+    assert "${_yearsLine(label,x)}" in js, "the breakdown must actually be rendered on the cards"
