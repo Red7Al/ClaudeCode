@@ -52,6 +52,39 @@ badly misleading.
 roll out — 11,298 rows on 2026-08-25 became 13,340 by 2026-08-31. The rule about flagging a moved number
 before the requester sees it therefore applies to data movement, not only to code changes.
 
+## Never trade a thorough search for page speed
+
+The requester, 2026-09-01: *"the best figures are more important than page performance so DO NOT prune
+options for performance. Especially as performance should be a cached result AFTER the underlying
+figures change - not on PAGE RENDERING. Never chose web site performance over a thorough check on
+this page."*
+
+A pruned search does not produce a slightly worse answer. It produces an answer to a **different
+question**, while the card still claims to be the best available. That is a false statement on a
+trader-facing screen, and no rendering budget justifies it.
+
+MEASURED, 2026-09-01, annual window: the shipped search evaluates `shortlist.slice(0,12)` — **318**
+configurations. The full grid over the same population is **44,172**. The pruned best return was 63.1%;
+the true best was **71.0%**. The prune was hiding 7.9 points, a **13% relative** understatement of the
+best available return. It cost the risk-ranked card nothing (45.0% either way), because the quick-score
+prune correlates with the score ranking and not with raw return — so the damage falls precisely on the
+card the requester cares about.
+
+**The rule.**
+
+- Never prune, shortlist or quick-score a configuration search whose result is presented as "best".
+  If a bound is unavoidable, the card must say what was searched and what was not.
+- Slowness is answered by **precomputing after the underlying data changes**, never by searching less.
+  The pattern already exists here: `run_winners_precompute.py` and `run_best_settings_audit.py` both
+  run after the daily refresh and store to `web_json_store`, and the server serves the stored copy only
+  when the snapshot's `generated_utc` still matches.
+- A search on the render path is the defect, not the search's size. Move it off the render path.
+- When two implementations of one search exist (here `run_best_settings_audit.py::_full_grid` in Python
+  and `renderBestCombo` in JavaScript), they WILL disagree — on 2026-09-01 the audit reported
+  "Market: S&P 500, 89.8%" while the screen showed "MCap 100bn+, 109.2%", same formula and same scopes.
+  Prefer one implementation serving both; if two must exist, pin them with an equivalence test the way
+  `test_replay_equivalence.py` pins the Python and JavaScript wallet replays.
+
 ## Repeated analysis
 
 - Any analysis that informs a live recommendation must have a scheduled server-side revalidation after its upstream data refresh. Browser rendering is not a daily validation mechanism.

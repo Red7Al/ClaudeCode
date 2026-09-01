@@ -3319,7 +3319,15 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
       if(threeSeen.has(key))continue; threeSeen.add(key);
       const z=robust(c.seq,st/100,eff);if(z.n>=20)threeEvaluated.push({...c,st,mo:eff,...z});
     }
-    bestThreeYear=threeEvaluated.sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
+    // RANKED BY RETURN, not by risk-adjusted score (user 2026-09-01: "the cards are for return").
+    // The score rule -- ret/(dd+.02) x consistency x min(1,n/40) -- was picking a materially lower
+    // return whenever a safer configuration edged it on risk. MEASURED on the 2026-08-31 payload
+    // before this change shipped: score-ranked gave 109.2% (dd 2.9%, 532 trades, 3% stake, 33 open);
+    // return-ranked gives 161.0% (dd 5.1%, 139 trades, 10% stake, 10 open). The two were within 3.7%
+    // of each other on SCORE while 52 percentage points apart on RETURN -- a near-tie on the ranking
+    // metric deciding a very different headline, which is why the card kept moving unpredictably.
+    // Ties on return fall back to score, so the safer of two equal-return configurations still wins.
+    bestThreeYear=threeEvaluated.sort((a,b)=>b.ret-a.ret||b.score-a.score)[0]||null;
     _3Y_MEMO={rows:WIN_3Y,wallet:WINNERS_WALLET,minTrade:MIN_TRADE,best:bestThreeYear};
   }
   // The evidence rule -- more than 125 funded trades AND within 20% of the best card's return -- decides

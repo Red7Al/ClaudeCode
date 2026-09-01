@@ -2111,3 +2111,43 @@ def test_the_evidence_note_wraps_instead_of_forcing_the_row_to_wrap():
 
     assert "flex:1 1 320px;min-width:0" in html, \
         "an unconstrained text block is max-content wide and pushes the controls onto their own line"
+
+
+# ======================================================================================================
+# The three-year card ranks by RETURN (user 2026-09-01: "the cards are for return").
+#
+# It ranked by the risk-adjusted score, which on 2026-08-31 picked 109.2% over an available 161.0%: the
+# two were within 3.7% of each other on SCORE while 52 percentage points apart on RETURN. A near-tie on
+# the ranking metric was deciding a very different headline.
+# ======================================================================================================
+
+def test_the_three_year_card_ranks_by_return():
+    src = _extract("renderBestCombo") if "function renderBestCombo" in client_js() else client_js()
+    m = re.search(r"bestThreeYear=threeEvaluated\.sort\(\(a,b\)=>([^)]+)\)", src)
+
+    assert m, "the three-year ranking line is gone"
+    assert m.group(1).startswith("b.ret-a.ret"), \
+        f"the three-year card must rank by return first, not {m.group(1)!r}"
+
+
+def test_a_tie_on_return_still_prefers_the_safer_configuration():
+    """Return decides; score breaks ties. Without the fallback two equal-return configurations would be
+    ordered arbitrarily, and the riskier one could win."""
+    src = re.search(r"bestThreeYear=threeEvaluated\.sort\([^;]+;", client_js()).group(0)
+    picked = run_js(
+        "const threeEvaluated=[{ret:1.0,score:5},{ret:1.0,score:9},{ret:0.9,score:99}];"
+        "let bestThreeYear=null;",
+        src, "bestThreeYear.score")
+
+    assert picked == 9, "on equal returns the higher-scoring (safer) configuration must win"
+
+
+def test_return_beats_score_when_they_disagree():
+    """The exact situation that produced the complaint: a lower-return configuration scoring higher."""
+    src = re.search(r"bestThreeYear=threeEvaluated\.sort\([^;]+;", client_js()).group(0)
+    picked = run_js(
+        "const threeEvaluated=[{ret:1.092,score:22.49},{ret:1.610,score:21.69}];"
+        "let bestThreeYear=null;",
+        src, "bestThreeYear.ret")
+
+    assert picked == 1.610, "the higher return must win even though it scores lower"
