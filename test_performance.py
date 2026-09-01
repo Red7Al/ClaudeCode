@@ -46,6 +46,10 @@ def test_flask_json_provider_never_emits_non_finite_tokens():
 
 
 def test_winners_endpoint_never_emits_nan(monkeypatch):
+    # /api/winners now serves per-trade rows only to a signed-in caller (user 2026-09-01: the
+    # transaction evidence must not reach anyone logged out). This test is about the PAYLOAD, so it
+    # authenticates rather than asserting the anonymous shape.
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "tester")
     row = {
         "ticker": "TEST", "name": "Test", "market": "Test", "mcap": float("nan"),
         "sector": "Test", "location": "Test", "direction": "BULLISH",
@@ -88,6 +92,10 @@ def test_current_rvol_uses_latest_usable_volume_bar(monkeypatch):
 
 def test_three_year_winners_request_uses_three_year_trigger_features(monkeypatch):
     """Older evidence must be enriched from its own review window, not a 12-month cache."""
+    # /api/winners now serves per-trade rows only to a signed-in caller (user 2026-09-01: the
+    # transaction evidence must not reach anyone logged out). This test is about the PAYLOAD, so it
+    # authenticates rather than asserting the anonymous shape.
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "tester")
     row = {
         "ticker": "OLDER", "name": "Older", "market": "Test", "mcap": None,
         "sector": "Test", "location": "Test", "direction": "BULLISH",

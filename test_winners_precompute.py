@@ -160,6 +160,10 @@ def test_dry_run_writes_nothing(monkeypatch, fake_dataset, built):
 
 def test_the_endpoint_prefers_the_store_and_skips_the_build(monkeypatch, fake_dataset, built):
     """The whole point: a warm store must not call the expensive builder at all."""
+    # /api/winners now serves per-trade rows only to a signed-in caller (user 2026-09-01: the
+    # transaction evidence must not reach anyone logged out). This test is about the PAYLOAD, so it
+    # authenticates rather than asserting the anonymous shape.
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "tester")
     docs = {}
     _store(monkeypatch, docs)
     run_winners_precompute.build([1])

@@ -3878,10 +3878,31 @@ def _winners_sl_rows(threshold_pct):
     return out
 
 
+def _winners_rows_allowed() -> bool:
+    """Per-trade winners rows are for signed-in users only (user 2026-09-01: "transaction evidence must
+    NOT be shared if a user is NOT LOGGED IN ... this is taboo").
+
+    /api/winners, -sl and -run each returned about 4,948 rows to anyone, carrying name, entry, exit_date,
+    direction, outcome, return, market and market cap. The page LOOKED protected because
+    renderDecisionProof returns early when LIMITED, but that is a browser-side gate: LIMITED itself
+    defaulted to false, and the endpoints could always be called directly. /api/performance already
+    reduces its anonymous payload and /api/squeeze-history already answers 401, so this was an
+    inconsistency rather than a decision.
+
+    Returning an EMPTY row set rather than 401 is deliberate: the Performance tab is public by design
+    (PUBLIC_TABS), so the page must still load. Server-computed card summaries for anonymous visitors are
+    the agreed next step; until they land, a logged-out visitor sees the tab without the replay.
+    """
+    return bool(_wu.name_for_token(request.headers.get("X-Auth") or ""))
+
+
 @app.route("/api/winners-sl")
 def api_winners_sl():
     """Winners rows re-backtested with the trailing stop at the requested threshold % (query `sl`, else the
     configured stop_amend_threshold). Illustration-only — never touches live stops (user 2026-07-18)."""
+    if not _winners_rows_allowed():
+        return jsonify({"rows": [], "limited": True, "months": 0,
+                        "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())})
     try:
         sl = request.args.get("sl")
         if sl in (None, ""):
@@ -4123,6 +4144,9 @@ def api_winners_run():
     """Winners rows re-backtested LETTING WINNERS RUN — no sell at target, trail past it. Query params:
     `thr` % = trail above target (default 25); `stop` % = stop-loss trail before target (default 0 = hard stop
     holds until target). Illustration-only (user 2026-08-01/02, ToDo P-08 'let them run')."""
+    if not _winners_rows_allowed():
+        return jsonify({"rows": [], "limited": True, "months": 0,
+                        "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())})
     try:
         thr = request.args.get("thr")
         if thr in (None, ""):
@@ -4529,6 +4553,9 @@ def api_winners():
     tradeable population (squeeze_history replay, R:R>=3, FX/Crypto excluded), each with its direction-aware
     return% — the SAME definition the Performance report uses. The frontend applies a 2%-of-the-running-wallet
     stake to compound the £. Chronological so the wallet can be built oldest-first."""
+    if not _winners_rows_allowed():
+        return jsonify({"rows": [], "limited": True, "months": 0,
+                        "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())})
     try:
         years = max(1, min(4, int(request.args.get("years", "1"))))
     except (TypeError, ValueError):

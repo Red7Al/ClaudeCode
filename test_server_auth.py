@@ -615,3 +615,39 @@ def test_the_guest_ig_section_is_returned_locked_with_a_reason(monkeypatch):
 
     assert ig["editable"] is False
     assert "guest account" in ig["locked_reason"].lower()
+
+
+# ======================================================================================================
+# Per-trade winners rows are for signed-in users only (user 2026-09-01: "transaction evidence must NOT be
+# shared if a user is NOT LOGGED IN ... this is taboo").
+#
+# /api/winners, -sl and -run each served ~4,948 rows to anyone, with no auth check. The browser gate was
+# not a boundary: LIMITED defaulted to false, and the endpoints could be called directly regardless.
+# ======================================================================================================
+
+@pytest.mark.parametrize("route", ["/api/winners", "/api/winners-sl", "/api/winners-run"])
+def test_anonymous_callers_get_no_per_trade_rows(monkeypatch, route):
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "")
+
+    body = server.app.test_client().get(route).get_json()
+
+    assert body["rows"] == [], f"{route} still serves per-trade rows to an anonymous caller"
+    assert body.get("limited") is True, "the client needs to know why the rows are absent"
+
+
+@pytest.mark.parametrize("route", ["/api/winners", "/api/winners-sl", "/api/winners-run"])
+def test_the_page_still_loads_for_an_anonymous_caller(monkeypatch, route):
+    """200 with an empty set, not 401: Performance is a public tab by design, so the page must render."""
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "")
+
+    assert server.app.test_client().get(route).status_code == 200
+
+
+def test_a_signed_in_caller_still_gets_rows(monkeypatch):
+    """The gate must not catch the people it is not aimed at."""
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "Someone" if token == "tok" else "")
+    monkeypatch.setattr(server, "_winners_stored", lambda years: {"rows": [{"ticker": "X"}], "months": 12})
+
+    body = server.app.test_client().get("/api/winners", headers={"X-Auth": "tok"}).get_json()
+
+    assert body["rows"], "a signed-in user must still receive the replay rows"
