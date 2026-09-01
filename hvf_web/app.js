@@ -3723,13 +3723,13 @@ function paintOrdersPerf(){
   const all=(WIN||[]).filter(r=>r&&r.entry&&r.stop&&pfDateOk(r.trig_date)&&(!_vsFloor||r.volume_score==null||r.volume_score>=_vsFloor)&&tradeVisible(r));   // shared date-window + Volume Score floor (P-01 / 2026-07-28) + user direction/market filter (2026-08-01)
   if(!all.length){
     box.innerHTML=`<div class="muted" style="font-size:13px">No trades in this date window — widen the date filter above (or clear it for the full 12 months).</div>`;
-    if(dims)dims.innerHTML="";if(tb)tb.innerHTML="";return;}
+    if(dims)dims.innerHTML="";return;}
   // Apply the winners-chart click-to-filter selection (L122/L123) — the cards + ledger below reflect it.
   const fsel=all.filter(r=>_owPass(r,null)), _filtered=fsel.length!==all.length;
   paintWinnersDims(dims,all);   // brushed, clickable net-£ attribution charts (built from `all`, own filter excluded)
   if(!fsel.length){
     box.innerHTML=`<div class="muted" style="font-size:13px">No trades match the selected chart filters. Clear a filter (the ▶ ✕ on a chart header) to widen.</div>`;
-    if(tb)tb.innerHTML="";if(tc)tc.textContent="(0 of "+all.length+")";return;}
+    return;}
   const money=v=>v==null?'—':`£${Math.round(v).toLocaleString()}`;
   const wp=fsel.filter(r=>r.perf!=null);                       // returns available (incl. open, marked-to-market)
   const wins=wp.filter(r=>r.perf>PF_BE),losses=wp.filter(r=>r.perf<-PF_BE),be=wp.filter(r=>Math.abs(r.perf)<=PF_BE);

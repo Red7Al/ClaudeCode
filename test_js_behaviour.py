@@ -2182,3 +2182,52 @@ def test_an_anonymous_visitor_is_limited_from_the_first_paint():
 
     assert run_js('const AUTH="";', decl, "LIMITED") is True
     assert run_js('const AUTH="a-token";', decl, "LIMITED") is False
+
+
+# ======================================================================================================
+# The logged-out Performance path must not throw (user 2026-09-01: "Annual settings could not be loaded:
+# tb is not defined").
+#
+# MY REGRESSION, and two of my own changes compounding. Deleting the dead ledger renderer removed the
+# tb/tc declarations, but two EARLY RETURNS still referenced them. Those paths only run when there are no
+# rows -- which logged-out visitors now hit on every load, because /api/winners correctly returns none to
+# them. The empty path was never executed by a test, so nothing caught it.
+# ======================================================================================================
+
+def _run_paint(win_js):
+    """Execute paintOrdersPerf's no-data path with everything it touches stubbed. Returns any throw."""
+    stubs = """
+      const el = () => ({innerHTML:"", textContent:"", style:{}, classList:{toggle(){},add(){},remove(){}},
+                         querySelectorAll:()=>[], querySelector:()=>null, appendChild(){}});
+      const NODES = {};
+      const $ = id => (NODES[id] = NODES[id] || el());
+      const document = {getElementById:()=>el(), querySelectorAll:()=>[], querySelector:()=>null};
+      let WINNERS_WALLET=10000, WINNERS_STAKE=0.05, WINNERS_MAXOPEN=20, MIN_TRADE=25;
+      let MY_LIMITS={}, TRADE_HIDE={}, MARKETS_OFF=new Set(), MARKETS_DISABLED=new Set();
+      let PF_DATE_FILTER_ENABLED=false, LIMITED=true, AUTH="";
+      const pfDateOk=()=>true, _owPass=()=>true, paintWinnersDims=()=>{}, tradeVisible=()=>true;
+      const _num=()=>null;
+      const renderBestCombo=()=>{}, _winLedger=()=>({ledger:[],endWallet:10000});
+    """ + win_js
+    src = _extract("paintOrdersPerf")
+    return run_js(stubs, src, '(()=>{try{paintOrdersPerf();return "ok";}'
+                              'catch(e){return e.constructor.name+": "+e.message;}})()')
+
+
+def test_the_no_rows_path_does_not_throw():
+    """This is the exact state of a logged-out visitor now that /api/winners withholds the rows."""
+    assert _run_paint("const WIN=[];") == "ok"
+
+
+def test_the_null_winners_path_does_not_throw():
+    """WIN is null before the fetch resolves, which every visitor passes through."""
+    assert _run_paint("const WIN=null;") == "ok"
+
+
+def test_no_deleted_ledger_variable_survives_in_code():
+    """tb and tc were the removed table and its counter. They may appear in the comment explaining the
+    removal, but never in executable code again."""
+    src = _extract("paintOrdersPerf")
+    code = "\n".join(l for l in src.split("\n") if not l.lstrip().startswith("//"))
+
+    assert not re.search(r"\b(tb|tc)\b", code), "a deleted ledger variable is still referenced in code"
