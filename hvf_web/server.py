@@ -4628,8 +4628,18 @@ _BEST_CARD_FIELDS = ("label", "why", "colour", "ret", "dd", "n", "eligible", "po
                      "years")
 
 
+# Keyed on the snapshot generation, like every other cache here: a new snapshot invalidates the stored
+# cards anyway, so the two go stale together and can never disagree. Without this, every anonymous visit
+# to the Performance tab costs a Supabase round-trip, and this is the one Best Settings surface an
+# anonymous visitor reaches.
+_BEST_CARDS_CACHE = {"gen": None, "data": None}
+
+
 def _best_cards_stored():
     """The stored public card set, but only if it was built from the dataset now in play. Else None."""
+    gen = _load_snapshot().get("generated_utc") or ""
+    if _BEST_CARDS_CACHE["gen"] == gen and _BEST_CARDS_CACHE["data"] is not None:
+        return _BEST_CARDS_CACHE["data"]
     try:
         import web_store
         doc = web_store.load_json_store(_BEST_CARDS_KEY)
@@ -4638,8 +4648,9 @@ def _best_cards_stored():
         return None
     if not isinstance(doc, dict) or not isinstance(doc.get("payload"), dict):
         return None
-    if (doc.get("dataset") or "") != (_load_snapshot().get("generated_utc") or ""):
+    if (doc.get("dataset") or "") != gen:
         return None       # built from a different scan; saying "recalculating" beats quoting stale cards
+    _BEST_CARDS_CACHE.update(gen=gen, data=doc["payload"])
     return doc["payload"]
 
 
@@ -5280,6 +5291,12 @@ def _warm_records_caches():
     _snapshot_volscore(snap)
     _live_vwap_atr(snap)
     _live_instrument_metrics(snap)
+    # The logged-out Best Settings cards. One Supabase read, so it costs almost nothing to warm and it
+    # takes the round-trip off the first anonymous visitor's request.
+    try:
+        _best_cards_stored()
+    except Exception as ex:
+        log.warning(f"best-settings cards could not be warmed: {ex}")
 
 
 def _perf_warm_loop():

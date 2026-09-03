@@ -1361,11 +1361,15 @@ def test_the_warmer_covers_the_scanner_caches(monkeypatch):
                "_live_vwap_atr", "_live_instrument_metrics"):
         monkeypatch.setattr(server, fn, (lambda name: lambda snap: called.append(name) or {})(fn))
     monkeypatch.setattr(server, "_mcap_map", lambda: called.append("_mcap_map") or {})
+    # The logged-out Best Settings cards are one Supabase read, and the first anonymous visitor should
+    # not be the one paying for it (added 2026-09-03 with the public cards).
+    monkeypatch.setattr(server, "_best_cards_stored", lambda: called.append("_best_cards_stored"))
 
     server._warm_records_caches()
 
     assert set(called) == {"_snapshot_52wk", "_mcap_map", "_stored_metrics", "_snapshot_rvol",
-                           "_snapshot_volscore", "_live_vwap_atr", "_live_instrument_metrics"}
+                           "_snapshot_volscore", "_live_vwap_atr", "_live_instrument_metrics",
+                           "_best_cards_stored"}
 
 
 def test_a_test_run_never_spawns_the_warmer(monkeypatch):

@@ -53,6 +53,23 @@ ROW_FIELDS = ("ticker", "trig_date", "exit_date", "perf", "market", "mcap", "rr"
               "volume_score", "rvol", "above_vwap", "atr_expanding", "state", "outcome", "days_open")
 
 
+def _live_dataset_key() -> str:
+    """The LIVE site's snapshot generation, ignoring any local copy.
+
+    Needed when this is run by hand from a workstation whose hvf_web/snapshot.json is old: the server
+    compares the stored payload against the LIVE generation, so a stale local key stores a payload the
+    site will never serve. Safe for this job because the card search reads nothing that comes from the
+    snapshot -- _sqa_all_rows takes market, quality, R:R, RVOL, return and dates from the database and
+    uses the snapshot only to decorate name, sector and location, none of which the search looks at.
+    """
+    import urllib.request
+    url = os.environ.get("SITE_URL", "https://www.squeezescanner.cloud").rstrip("/") + "/api/status"
+    with urllib.request.urlopen(url, timeout=60) as r:
+        key = (json.loads(r.read().decode("utf-8")) or {}).get("generated_utc") or ""
+    log.info("dataset key from %s: %s", url, key)
+    return key
+
+
 def _dataset_key() -> str:
     """The snapshot generation the SERVER will compare a stored payload against.
 
@@ -85,7 +102,7 @@ def _slim(rows):
     return [{k: r.get(k) for k in ROW_FIELDS if r.get(k) is not None} for r in rows or []]
 
 
-def build(dry_run: bool = False, node: str = "") -> int:
+def build(dry_run: bool = False, node: str = "", live_key: bool = False) -> int:
     from hvf_web import server
     import web_store
 
@@ -94,7 +111,7 @@ def build(dry_run: bool = False, node: str = "") -> int:
         log.error("node is not on PATH; the page's own search cannot be run and nothing will be stored")
         return 1
 
-    dataset = _dataset_key()
+    dataset = _live_dataset_key() if live_key else _dataset_key()
     if not dataset:
         log.error("no dataset key could be determined; the server would reject this payload, so nothing "
                   "will be stored. Run this after a snapshot build, or set SITE_URL.")
@@ -189,8 +206,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Precompute the public Best Settings cards into the JSON store.")
     ap.add_argument("--dry-run", action="store_true", help="build and report, write nothing")
     ap.add_argument("--node", default="", help="path to node (default: whatever is on PATH)")
+    ap.add_argument("--live-key", action="store_true",
+                    help="take the dataset key from the live site, ignoring a stale local snapshot")
     a = ap.parse_args()
-    return build(dry_run=a.dry_run, node=a.node)
+    return build(dry_run=a.dry_run, node=a.node, live_key=a.live_key)
 
 
 if __name__ == "__main__":
