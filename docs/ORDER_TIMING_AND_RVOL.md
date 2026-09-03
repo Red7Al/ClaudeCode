@@ -119,16 +119,40 @@ setup becomes READY
 
 ---
 
-## 4. A rule that must not be applied twice
+## 4. There is no "stale" state — only "not yet applicable"
 
-RVOL **decays** after the break. Re-checking a *pending* order against today's RVOL is meaningless — the
-volume spike that produced the setup is days old and normal decay reads as a breach.
+An earlier draft of this note described RVOL as *decaying* after the break, and treated a pending order
+reading below the floor as a stale-but-real failure. That framing was wrong, and the account owner
+corrected it:
 
-Measured on the live book: of 61 pending orders, 40 failed *only* on RVOL or VWAP. None of those is a
-placement error.
+> RVOL, ATR and VWAP are only relevant at the break.
 
-So the rule is: **judge break-bar metrics once, at the break. Never re-judge them afterwards.** The
-account owner's words, 2026-09-03: *"rvol decay is acceptable — R:R below the floor is not ok."*
+Which is sharper and simpler. These are measurements **of one bar**. For an order that has not broken
+yet, they are not stale, not breaching, and not decayed — they are **not applicable**. There is nothing
+to judge, because the event they describe has not happened.
+
+That removes a whole verdict from the audit. A pending order can only be judged on:
+
+- **R:R, Quality, instrument value** — properties of the setup's levels, fixed when it became ready;
+- **direction / location / market** — the account's own switches.
+
+And it means the metrics are evaluated exactly once, at the break, and never revisited.
+
+### What this changed on the live book
+
+Applying break-bar floors to pending orders produced 40 "failures" that were not failures at all. Judged
+correctly — durable criteria only, against the setup each order was actually placed from:
+
+| | orders |
+|---|---|
+| meet every durable floor — **keep** | **36** |
+| below the R:R floor — cancel | 21 |
+| blocked by direction / location / market — cancel | 5 (2 also below R:R) |
+| **cannot be judged** | **0** |
+
+Note the last row. Under the old basis, five orders were unjudgeable — four of them no longer appear in
+the current snapshot at all. Joining to the setup they were placed from resolves **every one of them**.
+The decision to cancel unconfirmable orders is no longer needed, because there are none.
 
 ---
 
@@ -204,6 +228,10 @@ Everything above was measured on the live database on 2026-09-03, not inferred:
 | setups clearing R:R ≥ 5.0 | 4,494 of 7,078 (63.5%) |
 | ...that also clear RVOL ≥ 1.8 | 755 (16.8%) |
 | orders showing the wrong setup's metrics | 34 of 61 (55.7%) |
+| pending orders meeting every durable floor | 36 of 61 |
+| pending orders below the R:R floor | 21 |
+| pending orders blocked by direction/location/market | 5 |
+| pending orders that cannot be judged, once joined on ready_date | 0 |
 
 Scripts used are one-off measurements, not committed. The queries are simple enough to reproduce from
 the numbers above; `order_filter_audit.py` is the committed, tested version of the order-versus-filter
