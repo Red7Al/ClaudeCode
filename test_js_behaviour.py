@@ -31,7 +31,7 @@ import pytest
 
 # The JS moved to hvf_web/app.js on 2026-08-23; client_source() returns markup+script together so
 # these assertions keep meaning what they meant when it was one file.
-from client_source import client_js, client_source
+from client_source import client_html, client_js, client_source
 INDEX = type("_Src", (), {"read_text": staticmethod(lambda **kw: client_source())})()
 NODE = shutil.which("node")
 
@@ -2513,3 +2513,41 @@ def test_the_public_payload_is_fetched_without_a_token_and_only_summaries_are_re
     body = body[:body.index("\n}")]
     for forbidden in (".seq", ".proof", ".rows", "trig_date", "ticker"):
         assert forbidden not in body, f"the logged-out renderer reads {forbidden}, which is evidence"
+
+
+# ======================================================================================================
+# The IG Account working-orders table gained MCAP / RVOL / VWAP / ATR / VolumeScore / R:R / Quality
+# (user 2026-09-03). A column added to one side of a table silently shifts every cell after it, so the
+# header and the row are counted against each other -- the same guard the Scanner table carries.
+# ======================================================================================================
+
+def _ig_orders_row() -> str:
+    js = client_js()
+    i = js.index('$("ig-ord-rows").innerHTML=ord.map')
+    return js[i:js.index('.join("")', i)]
+
+
+def test_the_ig_orders_header_and_row_still_line_up():
+    header = re.findall(r'data-igo="([^"]+)"', client_html())
+    cells = len(re.findall(r"<td", _ig_orders_row()))
+
+    assert cells == len(header), (
+        f"{cells} cells against {len(header)} headers; a column was added to one side only")
+    assert re.search(r'colspan="%d"' % len(header), client_js()), (
+        "the empty/loading/fault rows must span the real column count")
+
+
+def test_the_metric_columns_are_actually_there():
+    header = re.findall(r'data-igo="([^"]+)"', client_html())
+
+    for column in ("mcap", "rvol", "above_vwap", "atr_expanding", "volume_score", "rr", "quality"):
+        assert column in header, f"{column} is missing from the IG working-orders table"
+
+
+def test_the_ig_orders_cells_use_the_shared_formatters():
+    """Three tables had their own uncoloured copies of the tick/cross once; that is not repeated here."""
+    row = _ig_orders_row()
+
+    assert "_mcapFmt(o.mcap)" in row and "rvolCell(o.rvol)" in row
+    assert row.count("_tickCross(") == 2, "VWAP and ATR both go through the one green/red helper"
+    assert "volScoreCell(o.volume_score)" in row

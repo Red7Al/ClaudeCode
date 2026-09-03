@@ -725,3 +725,119 @@ def test_the_winners_rows_are_still_withheld_from_the_same_visitor(monkeypatch):
     monkeypatch.setattr(server._wu, "name_for_token", lambda token: "")
 
     assert server.app.test_client().get("/api/winners").get_json()["rows"] == []
+
+
+# ======================================================================================================
+# MCAP / RVOL / VWAP / ATR on the IG Account working-orders table (user 2026-09-03, asked four times in
+# one message: "i still can't see the columns I requested on the IG orders table to help me check it
+# meets the criteria of the settings").
+#
+# There are three order tables. Two of them got these columns in August; this one -- the only one showing
+# the orders IG itself is holding, and therefore the one you reach for to check LIVE orders against the
+# saved filters -- never had a single one of them. The metrics come from _attach_setup_metrics, the same
+# resolver /api/order-ops uses, so the two order screens cannot disagree about one instrument's setup.
+# ======================================================================================================
+
+class _FakeIG:
+    """Just enough of ig_shim for /api/ig-account to run without an IG session."""
+    class _Lock:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    _IG_LOCK = _Lock()
+
+    @staticmethod
+    def session_for(name): return object()
+
+    @staticmethod
+    def acting_session(name): return _FakeIG._Lock()
+
+    @staticmethod
+    def get_open_positions(): return []
+
+    @staticmethod
+    def get_working_orders():
+        return [{"workingOrderData": {"epic": "EPIC1", "direction": "BUY", "orderSize": 3,
+                                      "orderLevel": 101.5, "orderType": "LIMIT",
+                                      "createdDateUTC": "2026-08-20T09:00:00",
+                                      "goodTillDate": "2026-09-30T00:00:00"},
+                 "marketData": {"epic": "EPIC1", "instrumentName": "Vodafone"}}]
+
+    @staticmethod
+    def get_account_info(): return {}
+
+
+def _ig_account(monkeypatch, *, attach=None, placed="2026-08-18"):
+    import sys
+    _identity(monkeypatch, "Alex", admin=True)
+    monkeypatch.setitem(sys.modules, "ig_shim", _FakeIG)
+
+    class _DB:
+        def run(self, sql, **kw):
+            if "epic_lookup" in sql:
+                return [("VOD.L", "EPIC1")]
+            if "working_orders" in sql:
+                return [("EPIC1", "WEB_BRIDGE", placed)]
+            return []
+
+        def close(self): pass
+
+    import db_pool
+    monkeypatch.setattr(db_pool, "get_db", lambda: _DB())
+    monkeypatch.setattr(server, "_load_snapshot",
+                        lambda: {"generated_utc": "g", "records": [{"ticker": "VOD.L", "name": "Vodafone",
+                                                                    "market": "FTSE 100"}]})
+    monkeypatch.setattr(server, "_mcap_map", lambda: {"VOD.L": 2.4e10})
+    monkeypatch.setattr(server._wu, "record_ig_account_audit", lambda *a, **k: None)
+    monkeypatch.setattr(server, "_attach_setup_metrics", attach or (lambda rows: None))
+    return server.app.test_client().get("/api/ig-account", headers={"X-Auth": "token"}).get_json()
+
+
+def test_the_ig_working_orders_carry_the_setup_metrics(monkeypatch):
+    """THE REQUEST. Every metric the saved filters are expressed in has to be on the row."""
+    def attach(rows):
+        for r in rows:
+            r.update({"quality": 71, "rr": 4.2, "rvol": 1.9,
+                      "volume_score": 8, "above_vwap": True, "atr_expanding": False})
+
+    body = _ig_account(monkeypatch, attach=attach)
+    order = body["orders"][0]
+
+    for field in ("mcap", "rvol", "above_vwap", "atr_expanding", "volume_score", "rr", "quality"):
+        assert field in order, f"{field} is missing from the IG working-order row"
+    assert order["mcap"] == 2.4e10
+    assert (order["rvol"], order["above_vwap"], order["atr_expanding"]) == (1.9, True, False)
+
+
+def test_the_metrics_come_from_the_shared_resolver(monkeypatch):
+    """Not a second copy: two order screens quoting different numbers for one setup is the failure mode."""
+    seen = []
+    _ig_account(monkeypatch, attach=lambda rows: seen.append([r.get("ticker") for r in rows]))
+
+    assert seen == [["VOD.L"]], (
+        "/api/ig-account must hand its orders to the same _attach_setup_metrics /api/order-ops uses")
+
+
+def test_the_trigger_is_matched_against_our_own_placement_date(monkeypatch):
+    """_attach_setup_metrics picks the latest trigger at or before placed_at.
+
+    IG's createdDate moves when an order is amended, which would judge it against a later trigger than the
+    one that caused it. working_orders.placed_at is written at placement and does not move.
+    """
+    seen = {}
+    _ig_account(monkeypatch, attach=lambda rows: seen.update(rows[0]), placed="2026-08-18")
+
+    assert seen["placed_at"] == "2026-08-18", (
+        f"expected our own placement date, got {seen.get('placed_at')!r} "
+        "(IG's createdDateUTC is 2026-08-20 and would match the wrong trigger)")
+
+
+def test_a_missing_metric_leaves_the_row_rather_than_failing_the_table(monkeypatch):
+    """The orders themselves are correct without the metrics; blank cells are honest, an error is not."""
+    def boom(rows):
+        raise RuntimeError("squeeze_history unavailable")
+
+    body = _ig_account(monkeypatch, attach=boom)
+
+    assert len(body["orders"]) == 1 and body["orders"][0]["ticker"] == "VOD.L"
+    assert not body.get("error")

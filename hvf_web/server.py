@@ -4982,7 +4982,7 @@ def api_ig_account():
     except Exception as e:
         out["note"] = f"IG session unavailable: {e}"
         return jsonify(out)
-    epic2tk, epic2src = {}, {}
+    epic2tk, epic2src, epic2placed = {}, {}, {}
     try:
         from db_pool import get_db
         db = get_db()
@@ -4990,9 +4990,11 @@ def api_ig_account():
             for row in (db.run("select ticker, epic from epic_lookup") or []):
                 if row[1]:
                     epic2tk[str(row[1])] = row[0]
-            for row in (db.run("select epic, session from working_orders where status = 'PENDING'") or []):
+            for row in (db.run("select epic, session, placed_at from working_orders "
+                                "where status = 'PENDING'") or []):
                 if row[0]:
                     epic2src[str(row[0])] = row[1]
+                    epic2placed[str(row[0])] = str(row[2] or "")[:10]
         finally:
             db.close()
     except Exception as e:
@@ -5103,7 +5105,32 @@ def api_ig_account():
             "epic": epic,
             "direction": od.get("direction"), "size": od.get("orderSize") or od.get("size"),
             "level": od.get("orderLevel") or od.get("level"), "type": od.get("orderType"),
-            "good_till": str(od.get("goodTillDate") or "")[:19], "source": epic2src.get(str(epic)) or "—"})
+            "good_till": str(od.get("goodTillDate") or "")[:19], "source": epic2src.get(str(epic)) or "—",
+            # placed_at is what _attach_setup_metrics matches a trigger against. Prefer OUR record of when
+            # the order was placed (working_orders) over IG's created date: the bridge writes that row at
+            # placement, and an order IG has amended since carries a later date that would be judged
+            # against the wrong trigger.
+            "placed_at": epic2placed.get(str(epic)) or str(od.get("createdDateUTC")
+                                                           or od.get("createdDate") or "")[:10]})
+    # MCAP / RVOL / VWAP / ATR / VolumeScore / R:R / Quality on the working orders (user 2026-09-03,
+    # asked four times in one message: "i still can't see the columns I requested on the IG orders table to
+    # help me check it meets the criteria of the settings"). This table shows the orders IG itself is
+    # holding, so it is the one to check live orders against the saved filters -- and it was the only one
+    # of the three order tables that had never carried any of them.
+    #
+    # _attach_setup_metrics is the SAME resolver /api/order-ops calls: it takes the latest squeeze_history
+    # trigger at or before each order's placement and reads VolumeScore and the VWAP/ATR flags from the
+    # per-trigger maps /api/winners and the Back Test use. Reusing it is the point -- a second copy is how
+    # two screens end up disagreeing about one number.
+    try:
+        _attach_setup_metrics(out["orders"])
+        _mc = _mcap_map()
+        for _o in out["orders"]:
+            _o["mcap"] = _json_safe(_mc.get(_o.get("ticker")))
+    except Exception as _ex:
+        # Best-effort: the order rows themselves are already correct, and blank metric cells are honest.
+        log.warning(f"ig-account order metrics unavailable: {_ex}")
+
     # Account name + OBFUSCATED number for the header (user 2026-07-20). The raw account id is masked here
     # so the full number never reaches the browser — only the last 3 chars survive.
     aid = acct_info.get("account_id") or ""

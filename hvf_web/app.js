@@ -2206,7 +2206,11 @@ function paintIgAccount(){
   packViz("ig-ord-viz");
   const ord=genSort(ordBase.filter(o=>IGF.every(([id,k])=>inSet(id,o[k]))),igoSortK,igoSortDir);
   $("ig-ord-count").innerHTML=cnt(ord.length,IG_ORD.length,"working order");
-  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${o.market||'<span class="muted">—</span>'}</td><td>${_igDtag(o.direction)}</td><td>${_igSz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="9" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
+  // MCap / RVOL / VWAP / ATR / VolumeScore / R:R / Quality (user 2026-09-03) come from the server's
+  // _attach_setup_metrics, the same resolver behind Pre-orders to my IG, and render through the same
+  // shared cell formatters -- so an order shows identical figures on both screens. A missing value is a
+  // muted dash and never a cross: we did not measure a failure, we measured nothing.
+  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${o.market||'<span class="muted">—</span>'}</td><td>${_mcapFmt(o.mcap)}</td><td>${rvolCell(o.rvol)}</td><td>${_tickCross(o.above_vwap)}</td><td>${_tickCross(o.atr_expanding)}</td><td>${volScoreCell(o.volume_score)}</td><td>${o.rr!=null?(+o.rr).toFixed(1):'<span class="muted">—</span>'}</td><td>${o.quality!=null?`<b style="color:${qcol(o.quality)}">${o.quality}</b>`:'<span class="muted">—</span>'}</td><td>${_igDtag(o.direction)}</td><td>${_igSz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="16" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
 // Closed trades are loaded into the main transactions table (user 2026-08-04); no duplicate table below.
 let IGCLOSED=null, _igClosedNote="", _igNoCreds=false;
@@ -2228,7 +2232,7 @@ function renderIgAccount(ev){
   $("ig-note").textContent="";$("ig-acct").innerHTML="";
   $("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading…</span>`;
   $("ig-pos-rows").innerHTML=`<tr><td colspan="17" class="empty refreshing">⏳ Data loading…</td></tr>`;
-  $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty refreshing">⏳ Data loading…</td></tr>`;
+  $("ig-ord-rows").innerHTML=`<tr><td colspan="16" class="empty refreshing">⏳ Data loading…</td></tr>`;
   const loadAccount=(attempt=0)=>fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
     .then(j=>{
       IG_POS=j.positions||[]; IG_ORD=j.orders||[]; IG_CLOSE_SELECTION.clear(); updateIgCloseButton(); igOpenMonthInitialised=false;
@@ -2251,7 +2255,7 @@ function renderIgAccount(ev){
       $("ig-note").innerHTML=`<span style="color:var(--bear)">IG account read failed: ${_esc(err.message||"unknown error")}.</span>`;
       $("ig-pos-count").innerHTML=`<span style="color:var(--bear)">Open positions could not be loaded.</span>`;
       $("ig-pos-rows").innerHTML=`<tr><td colspan="16" class="empty" style="color:var(--bear)">IG did not return open positions. Use Refresh to retry.</td></tr>`;
-      $("ig-ord-rows").innerHTML=`<tr><td colspan="9" class="empty" style="color:var(--bear)">IG did not return working orders.</td></tr>`;})
+      $("ig-ord-rows").innerHTML=`<tr><td colspan="16" class="empty" style="color:var(--bear)">IG did not return working orders.</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.className="btn";btn.textContent=was;}});
   loadAccount();
 }
