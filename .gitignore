@@ -70,6 +70,12 @@ dist/
 
 # The IONOS site serves these in-app HTML guides; keep their source/builder and deployable HTML reproducible.
 # DOCX guide exports remain ignored by the global *.docx rule.
+# The page's own JavaScript. *.js above is aimed at build scripts and node_modules; these two ARE
+# production code and must be tracked. hvf_web/app.js predates the rule and is tracked by history alone,
+# which is not a mechanism -- named here so the next file added does not silently miss the repo.
+!hvf_web/app.js
+!hvf_web/best_settings.js
+!tools/best_settings_cards.js
 !docs/_build_guides.js
 !docs/_guides_content.js
 !docs/guides/

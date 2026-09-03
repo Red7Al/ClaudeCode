@@ -651,3 +651,77 @@ def test_a_signed_in_caller_still_gets_rows(monkeypatch):
     body = server.app.test_client().get("/api/winners", headers={"X-Auth": "tok"}).get_json()
 
     assert body["rows"], "a signed-in user must still receive the replay rows"
+
+
+# ======================================================================================================
+# The PUBLIC Best Settings cards (user 2026-09-03: "logged out users should see cards BUT NOT THE
+# UNDERLYING EVIDENCE TABLE").
+#
+# The cards are aggregates of the very rows _winners_rows_allowed withholds, so the danger is not that
+# the endpoint is open -- it is meant to be -- but that a summary quietly carries a row with it. The
+# endpoint rebuilds its response from an allow-list rather than forwarding what it read, and these tests
+# feed it a deliberately contaminated store to prove the allow-list is what decides.
+# ======================================================================================================
+
+_CARD = {
+    "label": "Balanced", "why": "why", "colour": "var(--bull)", "ret": 1.23, "dd": 0.05,
+    "n": 140, "eligible": 260, "posPeriods": 4, "periods": 4,
+    "wlEligible": {"w": 90, "l": 50, "pct": 64}, "wlActual": {"w": 88, "l": 52, "pct": 63},
+    "scope": {"kind": "all", "label": "All markets", "display": "All markets", "offList": []},
+    "rr": 3, "q": 50, "vs": 4, "rv": 0, "vw": True, "atr": False, "st": 5, "mo": 20,
+    "years": [{"from": "2025-08-27", "to": "2026-08-27", "ret": 1.23, "n": 140}],
+}
+
+
+def _store_cards(monkeypatch, payload, *, dataset="GEN-1", snapshot_gen="GEN-1"):
+    import web_store
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": snapshot_gen})
+    monkeypatch.setattr(web_store, "load_json_store",
+                        lambda key: {"payload": payload, "dataset": dataset} if key == "best_settings_cards" else None)
+
+
+def test_the_public_cards_need_no_token(monkeypatch):
+    """They are the whole point of the endpoint: a logged-out visitor must see the cards."""
+    _store_cards(monkeypatch, {"cards": [dict(_CARD)], "model": {"wallet": 10000, "position_pct": 5},
+                               "data_through": "2026-08-27", "recommended3y": False})
+
+    response = server.app.test_client().get("/api/best-settings-cards")
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert [c["label"] for c in body["cards"]] == ["Balanced"]
+    assert body["cards"][0]["ret"] == 1.23 and body["cards"][0]["n"] == 140
+    assert body["data_through"] == "2026-08-27"
+
+
+def test_the_public_cards_never_carry_a_per_trade_row(monkeypatch):
+    """The store is contaminated on purpose: an allow-list, not a hope, is what keeps rows out."""
+    contaminated = dict(_CARD, seq=[{"ticker": "VOD.L", "trig_date": "2026-05-01", "perf": 4.2}],
+                        proof=[{"r": {"ticker": "VOD.L"}, "placed": True}])
+    _store_cards(monkeypatch, {"cards": [contaminated],
+                               "rows": [{"ticker": "BP.L", "trig_date": "2026-04-01", "perf": -2.0}],
+                               "model": {}, "recommended3y": False})
+
+    body = server.app.test_client().get("/api/best-settings-cards").get_json()
+    text = json.dumps(body)
+
+    assert "VOD.L" not in text and "BP.L" not in text, f"a per-trade row reached an anonymous visitor: {text}"
+    assert "seq" not in body["cards"][0] and "proof" not in body["cards"][0]
+    assert "rows" not in body and "trig_date" not in text
+    assert body["cards"][0]["ret"] == 1.23, "...while the aggregate itself still arrives"
+
+
+def test_cards_built_from_a_different_scan_are_not_served(monkeypatch):
+    """Stale cards on a public page are worse than none: the page says it is recalculating instead."""
+    _store_cards(monkeypatch, {"cards": [dict(_CARD)]}, dataset="GEN-OLD", snapshot_gen="GEN-NEW")
+
+    body = server.app.test_client().get("/api/best-settings-cards").get_json()
+
+    assert body["cards"] == [] and body["pending"] is True
+
+
+def test_the_winners_rows_are_still_withheld_from_the_same_visitor(monkeypatch):
+    """The cards being public must not have loosened the gate they exist to work around."""
+    monkeypatch.setattr(server._wu, "name_for_token", lambda token: "")
+
+    assert server.app.test_client().get("/api/winners").get_json()["rows"] == []

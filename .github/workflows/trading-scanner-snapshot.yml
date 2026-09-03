@@ -213,6 +213,22 @@ jobs:
         continue-on-error: true
         run: python run_winners_precompute.py
 
+      # The Best Settings cards a LOGGED-OUT visitor sees (user 2026-09-03: "logged out users should see
+      # cards BUT NOT THE UNDERLYING EVIDENCE TABLE"). The cards are aggregates of the per-trade winners
+      # rows, and those rows are the Transaction evidence an anonymous visitor must never receive -- so
+      # the summary is computed HERE, where the rows are already allowed to be, and only the summary is
+      # published. It runs the page's own search (hvf_web/best_settings.js) under the runner's Node, so
+      # the public card and the signed-in card are the same calculation, not two implementations.
+      #
+      # Keyed to the snapshot just published, exactly like the winners payloads above. Non-fatal: a
+      # failure leaves the logged-out page saying the cards are being recalculated -- never a wrong card.
+      - name: Precompute the public Best Settings cards
+        if: ${{ steps.publish.outcome == 'success' || steps.ionos_fallback.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          node --version
+          python run_best_settings_cards.py
+
       # Publishing a snapshot changes generated_utc, which is the key EVERY /api/records cache is held
       # under -- so the moment this job succeeds, the site's Scanner caches are empty again and the next
       # visitor pays the cold build. MEASURED on the live host 2026-09-03: 29.84s cold vs 0.88s warm

@@ -12,11 +12,14 @@ Options -Indexes
   Header always set Content-Security-Policy-Report-Only "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 </IfModule>
 
-# app.js was extracted from index.html on 2026-08-23. The two must never disagree, so the script is
-# revalidated on every request: a browser holding yesterday's JavaScript against today's markup is a
-# silent failure with nothing on screen to explain it.
+# app.js was extracted from index.html on 2026-08-23, and best_settings.js from app.js on 2026-09-03.
+# The three must never disagree, so both scripts are revalidated on every request: a browser holding
+# yesterday's JavaScript against today's markup is a silent failure with nothing on screen to explain it.
 <IfModule mod_headers.c>
   <Files "app.js">
+    Header always set Cache-Control "no-cache, must-revalidate"
+  </Files>
+  <Files "best_settings.js">
     Header always set Cache-Control "no-cache, must-revalidate"
   </Files>
 </IfModule>

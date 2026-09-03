@@ -219,7 +219,7 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert "Transaction evidence for <b>${_esc(lbl)}</b>" in html
     assert "Data loading" in html
     assert "requestAnimationFrame(()=>setTimeout" in html
-    assert 'data-choice-return="${x.ret}"' in html
+    assert 'data-choice-return="${c.ret}"' in html
     # The row cap moved from a bare literal into bestCardMaxRows() on 2026-08-23, so it shares
     # BEST_TABLET_MAX with bestCardCapacity(): as separate literals the count and the row cap could
     # disagree, which is how a landscape iPad mini ended up capped at 8 cards. The band boundaries
@@ -241,11 +241,11 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert 'large125=largeSampleOptions(125,150),large250=largeSampleOptions(250,300)' in html
     assert 'b.seq.length-a.seq.length' in html
     assert 'largeOpens=[10,20,35,50,100,250,400]' in html
-    assert 'MIN_TRADE/Math.max(1,WINNERS_WALLET)*100' in html
+    assert 'minLargeStakePct=Math.max(.1,minTrade/wallet*100)' in html
     assert '[">125 trades",trades125' in html
     assert '[">250 trades",trades250' in html
     assert '">500 trades"' not in html
-    assert 'data-choice-unavailable="${label}"' in html
+    assert 'data-choice-unavailable="${_bsEsc(u.label)}"' in html
     assert 'const netGain=xs=>xs.filter(x=>x.placed).reduce' in html
     assert 'Net gain total' in html
     assert 'Visible Net gain subtotal' in html
@@ -258,7 +258,7 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert "No supported recommendation" in html
     assert '<b style="color:var(--fg)">Changes:</b>' in html
     assert "Apply this configuration" in html
-    assert 'onclick="selectBestChoice(' in html
+    assert 'onSelect:"selectBestChoice(\'LABEL\')"' in html
     assert "fcard-selected" in html
     assert "function _pfMatchesCurrentConfig(r)" in html
     assert '!floor("min_risk_reward",r.rr)' in html
@@ -292,7 +292,8 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert 'function recordBestSettingsSnapshot(snapshot)' in html
     assert 'function paintBestSettingsHistory(history)' in html
     assert 'Changes from previous snapshot' in html
-    assert 'data_through:String((byDate[byDate.length-1]||{}).trig_date||"").slice(0,10)' in html
+    assert 'dataThrough:String((byDate[byDate.length-1]||{}).trig_date||"").slice(0,10)' in html
+    assert "data_through:res.dataThrough" in html   # ...and it still reaches the stored snapshot
     assert 'id="best-settings-personalisation"' in html
     assert '<b>Personalised using:</b>' in html
     assert 'function paintBestSettingsPersonalisation()' in html
@@ -302,7 +303,8 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     # ledger and Back Test's ledger each had their own convention for an unresolved trade, so an applied
     # recommendation could not reproduce its own headline numbers.
     assert 'function _pfExitDate(r,runner){' in html
-    assert 'const exit=_pfExitDate(r,perfKey==="run_perf");' in html
+    assert 'const exit=exitOf(r,perfKey==="run_perf");' in html
+    assert "exitDate:(r,runner)=>_pfExitDate(r,runner)" in html   # the factory's env, wired to that rule
     assert html.count('const exitOf=r=>_pfExitDate(r,false);') == 2
     assert '_pfAddDays(r.trig_date,r.days_open||0)' not in html
     # Best Settings trains on the population Back Test actually replays (same per-user trade gate).
@@ -416,16 +418,17 @@ def test_best_settings_replay_keeps_an_open_trades_capital_committed():
     """
     html = __import__("client_source").client_source()
     exit_rule = re.search(r"function _pfExitDate\(r,runner\)\{.*?\n\}", html, re.S)
-    replay = re.search(
-        r'function _combReplay\(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compound=true\)\{.*?\n\}',
-        html, re.S)
-    assert exit_rule and replay, "replay helpers are missing"
+    # The replay is built by a factory since 2026-09-03 (hvf_web/best_settings.js), so the factory
+    # and app.js's own wiring line are together what make _combReplay exist here.
+    factory = re.search(r"function makeCombReplay\(env\)\{.*?\n\}", html, re.S)
+    wiring = re.search(r"const _combReplay=makeCombReplay\(\{.*?\}\);", html, re.S)
+    assert exit_rule and factory and wiring, "replay helpers are missing"
 
     script = (
         "const MIN_TRADE=0, WINNERS_WALLET=10000;"
         "const levOf=()=>1;"
         "const _fundedMaxOpen=f=>Math.max(1,Math.floor(1/Math.max(0.000001,+f||0.000001)));"
-        + exit_rule.group(0) + replay.group(0)
+        + exit_rule.group(0) + factory.group(0) + wiring.group(0)
         + 'const seq=[{trig_date:"2026-01-01",exit_date:null,perf:33.52},'
         + '{trig_date:"2026-02-01",exit_date:"2026-02-10",perf:10}];'
         + "const z=_combReplay(seq,1,1);"
@@ -505,7 +508,12 @@ def _replay_harness(extra_js: str, exit_rule: str = None) -> dict:
     source = "\n".join([
         grab(r"const _fundedMaxOpen=[^\n]*\n"),
         exit_rule or grab(r"function _pfExitDate\(r,runner\)\{.*?\n\}"),
-        grab(r'function _combReplay\(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compound=true\)\{.*?\n\}'),
+        # The replay moved into hvf_web/best_settings.js on 2026-09-03 so the server could run the
+        # page's own code under Node. It is built by a factory now, so extracting the inner
+        # function alone yields a closure with no environment -- take the factory AND app.js's own
+        # wiring line, which is what keeps this harness running the REAL replay.
+        grab(r"function makeCombReplay\(env\)\{.*?\n\}"),
+        grab(r"const _combReplay=makeCombReplay\(\{.*?\}\);"),
     ])
     rows = json.loads(_REPLAY_FIXTURE.read_text(encoding="utf-8"))["rows"]
     script = (
@@ -777,7 +785,12 @@ def test_back_test_and_best_settings_produce_the_same_numbers():
         grab(r"const _fundedMaxOpen=[^\n]*\n"),
         grab(r"function _pfAddDays\([^\n]*\n"),
         grab(r"function _pfExitDate\(r,runner\)\{.*?\n\}"),
-        grab(r'function _combReplay\(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compound=true\)\{.*?\n\}'),
+        # The replay moved into hvf_web/best_settings.js on 2026-09-03 so the server could run the
+        # page's own code under Node. It is built by a factory now, so extracting the inner
+        # function alone yields a closure with no environment -- take the factory AND app.js's own
+        # wiring line, which is what keeps this harness running the REAL replay.
+        grab(r"function makeCombReplay\(env\)\{.*?\n\}"),
+        grab(r"const _combReplay=makeCombReplay\(\{.*?\}\);"),
         grab(r"function _pfWalletLedger\(sel\)\{.*?\n\}"),
     ])
     rows = json.loads(_REPLAY_FIXTURE.read_text(encoding="utf-8"))["rows"]
@@ -843,7 +856,10 @@ def test_every_wallet_replay_shares_one_exit_rule():
     complaint recorded as P-03. Structural rather than numeric: three ledgers, one rule.
     """
     html = __import__("client_source").client_source()
-    assert 'const exit=_pfExitDate(r,perfKey==="run_perf");' in html      # _combReplay
+    # _combReplay reaches the rule through the env its factory was built with, so both halves are
+    # asserted: a factory wired to a different exit rule would pass the first line on its own.
+    assert 'const exit=exitOf(r,perfKey==="run_perf");' in html             # _combReplay
+    assert "exitDate:(r,runner)=>_pfExitDate(r,runner)" in html             # ...wired to the one rule
     assert html.count("const exitOf=r=>_pfExitDate(r,false);") == 2       # _winLedger + _pfWalletLedger
     # No ledger may reconstruct its own convention from days_open again.
     assert "_pfAddDays(r.trig_date,r.days_open||0)" not in html

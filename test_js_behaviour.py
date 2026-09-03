@@ -279,15 +279,35 @@ def test_pf_subnav_layout_is_not_inline_so_the_hidden_class_can_win():
         "pfPanel() must still be the thing that toggles it"
 
 
+def _apply_row(auth):
+    """The apply row both card renderers emit, EXECUTED at the given auth state.
+
+    The control moved into _bestApplyRow on 2026-09-03 when the logged-out cards were added, so both
+    cards and both auth states now come from one function. Executed rather than pattern-matched: this is
+    the gate that decides whether a signed-out visitor is offered an action that cannot work.
+    """
+    return run_js(f"const AUTH={auth};", _extract("_bestApplyRow"),
+                  "_bestApplyRow({limits:{},filters:{}},false)")
+
+
 def test_apply_this_configuration_is_withheld_when_logged_out():
     html = INDEX.read_text(encoding="utf-8")
 
-    # Wrapped in .fcard-apply on 2026-08-23 to pin it to the bottom of the card; the AUTH gate is what
-    # this test actually protects. The button LABEL became conditional on 2026-08-28 ("Already applied"
-    # when the card already matches the saved configuration), so the assertion no longer pins the literal
-    # text -- only that the whole control sits inside the AUTH branch, which is the security property.
-    assert re.search(r"\$\{AUTH\?`<div class=\"fcard-apply\"><button[^`]*</button></div>`", html),         "the Apply button must be rendered only when AUTH is set"
-    assert re.search(r"\$\{AUTH\?`<div class=\"fcard-apply\">[^`]*applyConfigFromReport", html),         "and it must still be the control that calls applyConfigFromReport"
+    out = _apply_row('""')
+    assert "applyConfigFromReport" not in out and "<button" not in out, (
+        f"a signed-out visitor must not be offered the Apply control: {out}")
+    assert "Log in to apply this configuration." in out, (
+        "and must be offered the sign-in that would make it work")
+
+    signed_in = _apply_row('"tok"')
+    assert "applyConfigFromReport" in signed_in and "fcard-apply" in signed_in, (
+        f"a signed-in user must still get the working control: {signed_in}")
+
+    # Every card must reach the control through that one function, or a second copy could drift past it.
+    js = client_js()
+    assert "apply:_bestApplyRow(" in js, "the choice cards must build their apply row through _bestApplyRow"
+    assert "_bestApplyRow(b.cfg,matches,{belowEvidence:b.n})" in js, "and so must the three-year card"
+
     assert re.search(r"async function applyConfigFromReport\([^)]*\)\{\s*(?://[^\n]*\n\s*)*if\(!AUTH\)", html), \
         "applyConfigFromReport must fail closed for every other caller"
 
@@ -857,7 +877,7 @@ def test_no_gated_endpoint_is_fetched_without_the_token():
         base = re.sub(r"\$\{[^}]*\}", "", url).split("?")[0].rstrip("/")
         window = js[m.start():m.start() + 260]
         for g in gated:
-            if base == g or base.startswith(g):
+            if base == g or base.startswith(g + "/"):
                 if "X-Auth" not in window:
                     missing.append(url)
                 break
@@ -952,10 +972,25 @@ def test_logged_in_best_settings_history_still_fetches():
 
 _REPLAY_PREAMBLE = """
 let MIN_TRADE = 0, WINNERS_WALLET = 10000;
-const _fundedMaxOpen = f => Math.max(1, Math.floor(1 / Math.max(0.000001, +f || 0.000001)));
 const levOf = () => 1;
 const _pfExitDate = r => r.exit_date;
 """
+
+
+def _replay_source() -> str:
+    """The REAL wallet replay, wired exactly the way app.js wires it.
+
+    It moved into hvf_web/best_settings.js on 2026-09-03 so the server could run the page's own search
+    under Node for the logged-out cards. It is produced by a factory there, so extracting the inner
+    function alone would yield a closure with no environment -- the factory AND app.js's own wiring line
+    are together what make `_combReplay` exist. Taking the wiring from the page keeps this harness
+    running the shipped replay rather than a lookalike assembled by the test.
+    """
+    js = client_js()
+    funded = re.search(r"^const _fundedMaxOpen=[^\n]*", js, re.M)
+    wiring = re.search(r"^const _combReplay=makeCombReplay\(\{[\s\S]*?\}\);", js, re.M)
+    assert funded and wiring, "app.js no longer builds its replay from makeCombReplay"
+    return "\n".join([funded.group(0), _extract("makeCombReplay"), wiring.group(0)])
 
 # r2 is blocked by a max-open cap of 1 while r1 is still open, so it is ELIGIBLE but never FUNDED.
 _SEQ = ("[{trig_date:'2026-01-01',exit_date:'2026-06-01',perf:10},"
@@ -964,7 +999,7 @@ _SEQ = ("[{trig_date:'2026-01-01',exit_date:'2026-06-01',perf:10},"
 
 
 def _replay(maxopen):
-    return run_js(_REPLAY_PREAMBLE, _extract("_combReplay"),
+    return run_js(_REPLAY_PREAMBLE, _replay_source(),
                   "(()=>{const x=_combReplay(" + _SEQ + f",0.05,{maxopen});"
                   " return {ret:x.ret,dd:x.dd,n:x.n,wins:x.wins,losses:x.losses};})()")
 
@@ -1097,9 +1132,12 @@ def test_still_loading_message_is_kept_for_the_genuine_loading_case():
 # ======================================================================================================
 
 def _memo_guard() -> str:
+    # The search moved to hvf_web/best_settings.js on 2026-09-03 and takes its model as parameters, so
+    # the guard compares those rather than the page globals. The page still supplies them; the wiring is
+    # asserted separately below, because a guard on the right names fed the wrong values would pass here.
     js = client_js()
-    m = re.search(r"if\((_3Y_MEMO\.rows===WIN_3Y[^)]*)\)\{", js)
-    assert m, "the three-year memo guard was not found - has renderBestCombo been restructured?"
+    m = re.search(r"if\((memoIn\.rows===env\.rows3y[^)]*)\)\{", js)
+    assert m, "the three-year memo guard was not found - has the search been restructured?"
     return m.group(1)               # the CONDITION only — `if(...)` is a statement, not an expression
 
 
@@ -1110,11 +1148,22 @@ def _memo_hit(**changed):
     now = {**base, **changed}
     pre = f"""
 const ROWS=['a'], OTHER=['b'];
-let _3Y_MEMO={{rows:ROWS,wallet:{base['wallet']},minTrade:{base['minTrade']},best:'CACHED'}};
-let WIN_3Y={now['rows']}, WINNERS_WALLET={now['wallet']}, MIN_TRADE={now['minTrade']};
-let WINNERS_STAKE={now['stake']}, WINNERS_MAXOPEN={now['maxopen']};
+const memoIn={{rows:ROWS,wallet:{base['wallet']},minTrade:{base['minTrade']},best:'CACHED'}};
+const env={{rows3y:{now['rows']}}};
+const wallet={now['wallet']}, minTrade={now['minTrade']};
+const stake={now['stake']}, maxOpen={now['maxopen']};
 """
     return run_js(pre, "", f"({_memo_guard()})")
+
+
+def test_the_page_still_feeds_the_memo_from_its_own_model():
+    """The guard names parameters now, so the wiring is the other half of the same rule."""
+    js = client_js()
+
+    assert "rows3y:WIN_3Y,wallet:WINNERS_WALLET,minTrade:MIN_TRADE" in js, (
+        "the search must be given the page's three-year rows, wallet and minimum trade")
+    assert "memo:_3Y_MEMO" in js and "_3Y_MEMO=res.memo" in js, (
+        "the memo must be handed in and handed back, or every render repeats the 52-61 second search")
 
 
 def test_memo_is_reused_when_nothing_it_depends_on_changed():
@@ -1143,9 +1192,9 @@ def test_the_memo_key_does_not_include_stake_or_max_open():
     """Source-level, deliberately: including them would silently reintroduce the freeze on every Apply."""
     guard = _memo_guard()
 
-    assert "WINNERS_STAKE" not in guard and "WINNERS_MAXOPEN" not in guard, (
+    assert "stake" not in guard and "maxOpen" not in guard, (
         f"stake/max-open must not be in the memo key or Apply freezes again: {guard}")
-    assert "WINNERS_WALLET" in guard and "MIN_TRADE" in guard and "WIN_3Y" in guard
+    assert "wallet" in guard and "minTrade" in guard and "rows3y" in guard
 
 
 # ======================================================================================================
@@ -1257,8 +1306,13 @@ def _match_fns():
     finds a difference, so a slice starting at matchesCurrent passed the matching case and blew up on
     every differing one."""
     src = client_js()
-    i = src.index("const displayValue=")
-    return src[i:src.index("const choiceCards=", i)]
+    i = src.index("const _bsDisplayValue=")
+    # They take the saved configuration as an argument since the card template was shared with the
+    # logged-out page (2026-09-03); the old two-argument-free names are kept here so the cases below
+    # still read as the question they are asking.
+    return (src[i:src.index("const _bsWlLine=", i)]
+            + "\nconst matchesCurrent=c=>bestSettingsMatchesCurrent(c,current);"
+            + "\nconst changedFor=c=>bestSettingsChangedFor(c,current);")
 
 
 def _matches(current, card):
@@ -1414,17 +1468,34 @@ def test_the_header_and_row_stay_in_step():
 # this is a RECOMMENDATION. Withholding the control silently is not the same as advising against it.
 # ======================================================================================================
 
+def _three_year_status_card(auth, funded=122):
+    """The three-year card BELOW its evidence rule, rendered for real at the given auth state."""
+    stubs = f"""
+      const AUTH={auth};
+      const _esc=s=>String(s??"");
+      const _bsPct=v=>(v>=0?"+":"")+(v*100).toFixed(1)+"%";
+      const bestSettingsMatchesCurrent=()=>false;
+    """
+    src = _extract("_bestApplyRow") + "\n" + _extract("_bestThreeYearStatusCard")
+    card = ("{loaded:true,error:'',current:null,best:{ret:1.836,dd:0.05,n:%d,"
+            "settings:{rr:3,q:0,vs:0,rv:0,vw:false,atr:false,st:5,mo:20,scope:'All markets'},"
+            "cfg:{limits:{},filters:{}}}}" % funded)
+    return run_js(stubs, src, f"_bestThreeYearStatusCard({card})")
+
+
 def test_the_three_year_card_offers_apply_below_the_evidence_rule():
-    js = client_js()
-    # The window starts at threeYearApply, not at the card template: the apply row is now built
-    # just above and emitted as a DIRECT child of .fcard, because .fcard-apply's margin-top:auto
-    # is inert inside .body (a plain block). The assertions below are unchanged.
-    i = js.index("const threeYearApply=")
-    card = js[i:js.index("box.innerHTML=", i)]
+    card = _three_year_status_card('"tok"')
 
     assert "applyConfigFromReport" in card, "a sub-threshold card must still be applicable"
     assert "belowEvidence" in card, "and must tell applyConfigFromReport that it is below the rule"
-    assert "AUTH?" in card, "the control still only renders for a signed-in user"
+    assert '"belowEvidence":122' in card, "with the actual shortfall, so the dialog can name it"
+
+
+def test_the_three_year_card_withholds_apply_when_logged_out():
+    card = _three_year_status_card('""')
+
+    assert "applyConfigFromReport" not in card and "<button" not in card
+    assert "Log in to apply this configuration." in card
 
 
 def _apply_dialog(opts_js):
@@ -1489,7 +1560,7 @@ def _scope_label(markets_off):
     """
     js = client_js()
     src = (_extract("tradeVisible") + "\n" + _extract("tradeExcludedValues") + "\n"
-           + "\n".join(re.search(rf"const {n}=[^\n]+", js).group(0) for n in ("_mktOff", "_allLabel")))
+           + "\n".join(re.search(rf"const {n}=[^\n]+", js).group(0) for n in ("marketsOff", "_allLabel")))
     rows = '[{market:"FTSE 100"},{market:"Shanghai"},{market:"Crypto"}]'
     return run_js(f"let MARKETS_OFF=new Set({markets_off}); let MARKETS_DISABLED=new Set([]);"
                   f"let TRADE_HIDE={{}}; const WIN={rows}, WIN_3Y=[];",
@@ -2079,14 +2150,14 @@ def _body_of(card_start, card_end):
 
 
 def test_the_choice_card_apply_row_is_not_buried_in_the_body():
-    body = _body_of("const choiceCards=choices.map", ".join('');")
+    body = _body_of("function bestSettingsCardHTML(", "function bestSettingsUnsupportedCardHTML")
 
     assert "fcard-apply" not in body, \
         "margin-top:auto cannot bottom-align an element inside .body, which is a plain block"
 
 
 def test_the_three_year_card_apply_row_is_not_buried_in_the_body():
-    body = _body_of("const threeYearStatusCard=", "box.innerHTML=")
+    body = _body_of("function _bestThreeYearStatusCard(", "// Post-layout trimming")
 
     assert "fcard-apply" not in body
 
@@ -2097,7 +2168,11 @@ def test_every_apply_row_is_still_rendered_somewhere():
 
     assert js.count("fcard-apply") >= 4, "logged-in and logged-out rows for both cards"
     assert "Log in to apply this configuration." in js
-    assert "const threeYearApply=" in js, "the three-year row must be built outside the card body"
+    # One builder, called from outside both card bodies (2026-09-03). Two copies could drift apart, and
+    # one of them is the row the logged-out page shows.
+    assert "function _bestApplyRow(" in js
+    assert "${opts.apply||\"\"}" in js, "the choice card must emit its apply row outside .body"
+    assert "${apply}" in js, "and so must the three-year card"
 
 
 def test_the_evidence_controls_are_pinned_right_not_merely_placed_right():
@@ -2126,7 +2201,7 @@ def test_the_evidence_note_wraps_instead_of_forcing_the_row_to_wrap():
 # ======================================================================================================
 
 def test_the_three_year_card_ranks_by_return():
-    src = _extract("renderBestCombo") if "function renderBestCombo" in client_js() else client_js()
+    src = _extract("computeBestSettings")
     m = re.search(r"bestThreeYear=threeEvaluated\.sort\(\(a,b\)=>([^)]+)\)", src)
 
     assert m, "the three-year ranking line is gone"
@@ -2247,17 +2322,20 @@ def test_no_deleted_ledger_variable_survives_in_code():
 # ======================================================================================================
 
 def _years_for(rows_js, card_js):
-    src = (_extract("_yrEdges") if "function _yrEdges" in client_js() else
-           "\n".join(re.search(rf"  const {n}=[\s\S]*?;\n(?=  const )", client_js()).group(0)
-                     for n in ("_yrEdges", "_cardYears")))
+    # Both are consts inside computeBestSettings (hvf_web/best_settings.js). Bounded by the marker that
+    # follows them rather than by "the next const": _cardYears is followed by a comment block, and a
+    # lookahead for the next declaration swallowed the whole of the enclosing function's return.
+    js = client_js()
+    i = js.index("  const _yrEdges=")
+    src = js[i:js.index("  // The serialisable summary.", i)]
     stubs = f"""
       let MIN_TRADE=25, WINNERS_WALLET=10000;
       const LEVERAGE={{fx:30,equities:5,commodities:10,indices:20}};
       function levType(r){{return "equities";}}
       const levOf=r=>LEVERAGE[levType(r)];
       const _pfExitDate=(r)=>String(r.exit_date||r.trig_date||"");
-      const _combReplay=(seq)=>({{ret:seq.length/10,n:seq.length}});
-      const WIN_3Y={rows_js};
+      const replay=(seq)=>({{ret:seq.length/10,n:seq.length}});
+      const rows3y={rows_js};
     """
     return run_js(stubs, src, f"JSON.stringify(_cardYears({card_js}))")
 
@@ -2297,8 +2375,10 @@ def test_the_three_year_card_is_excluded():
     """It IS the three-year replay; a yearly breakdown of it would be circular."""
     js = client_js()
 
-    assert 'label==="Best over 3 years")return ""' in js
-    assert "${_yearsLine(label,x)}" in js, "the breakdown must actually be rendered on the cards"
+    assert 'c.label==="Best over 3 years")return ""' in js
+    assert 'years:label==="Best over 3 years"?null:_cardYears(x)' in js, (
+        "the summary must not carry a yearly breakdown for the three-year card either")
+    assert "${_bsYearsLine(c)}" in js, "the breakdown must actually be rendered on the cards"
 
 
 # ------------------------------------------------------------------------------------------------------
@@ -2338,3 +2418,98 @@ def test_every_winners_fetch_sends_the_auth_token():
     for req in sent:
         assert req["headers"].get("X-Auth") == "tok", (
             f"{req['url']} is issued without the token the server gate reads, so it receives no rows")
+
+
+# ======================================================================================================
+# The logged-out Best Settings cards (user 2026-09-03: "logged out users should see cards BUT NOT THE
+# UNDERLYING EVIDENCE TABLE", and, when the first attempt did not reach the page, "i still cannot see
+# cards on best settings when not logged in").
+#
+# The cards were computed in the browser FROM the per-trade rows, and /api/winners correctly serves none
+# of those rows to an anonymous visitor -- so the page had nothing to compute from and drew nothing. The
+# summaries now arrive precomputed and are rendered by the SAME card template. Two properties matter and
+# both are executed here: the cards appear, and nothing that could rebuild the evidence comes with them.
+# ======================================================================================================
+
+_PUBLIC_CARD = ("{label:'Balanced',why:'why',colour:'var(--bull)',ret:1.23,dd:0.05,n:140,eligible:260,"
+                "posPeriods:4,periods:4,wlEligible:{w:90,l:50,pct:64},wlActual:{w:88,l:52,pct:63},"
+                "scope:{kind:'all',label:'All markets',display:'All markets',offList:[]},"
+                "rr:3,q:50,vs:4,rv:0,vw:true,atr:false,st:5,mo:20,"
+                "years:[{from:'2025-08-27',to:'2026-08-27',ret:1.23,n:140}]}")
+
+
+def _public_grid(payload_js):
+    """Run paintPublicBestCombo for real and return the markup it put on the page.
+
+    The renderer is taken as two CONTIGUOUS slices rather than a dozen _extract() calls: the card
+    template's helpers are interleaved consts and functions, and picking them out one at a time
+    silently duplicated declarations until Node refused to parse (2026-09-03).
+    """
+    js = client_js()
+    template = js[js.index("const _bsDisplayValue="):js.index("if(typeof module===")]
+    a = js.index("function _bestApplyRow(")
+    page = js[a:js.index('window.addEventListener("resize"', a)]
+    stubs = """
+      let PAINTED="";
+      const $=id=>id==="ordp-bestcombo"?{set innerHTML(v){PAINTED=v;},get innerHTML(){return PAINTED;},
+        querySelector:()=>null}:null;
+      const requestAnimationFrame=()=>{};
+      const bestCardCapacity=()=>8, bestCardMaxRows=()=>2;
+      const _esc=s=>String(s??"");
+      const AUTH="";
+      let BEST_CHOICES=[], BEST_SELECTED="Balanced";
+      const showLogin=()=>{}, selectBestChoice=()=>{}, fetch=()=>({then:()=>({then:()=>({catch:()=>{}})})});
+    """
+    src = "\n".join([
+        re.search(r"^const _bsEsc=[^\n]*", js, re.M).group(0),
+        re.search(r"^const _bsPct=[\s\S]*?';\n", js, re.M).group(0),
+        template, page,
+    ])
+    return run_js(stubs, src, f"(()=>{{paintPublicBestCombo({payload_js});return PAINTED;}})()")
+
+
+def test_a_logged_out_visitor_gets_the_cards():
+    grid = _public_grid("{cards:[" + _PUBLIC_CARD + "],unsupported:[],recommended3y:true,"
+                        "model:{wallet:10000,position_pct:5},data_through:'2026-08-27'}")
+
+    assert 'data-choice="Balanced"' in grid, "the card must render for a visitor who is not signed in"
+    assert "+123.0%" in grid and "140 funded of 260 eligible" in grid
+    assert "Log in to apply this configuration." in grid
+    assert "applyConfigFromReport" not in grid, "there is no configuration to apply to"
+
+
+def test_the_logged_out_cards_bring_no_transaction_evidence():
+    """THE REQUIREMENT. The grid is aggregates; the detail panel that holds the evidence is not built."""
+    grid = _public_grid("{cards:[" + _PUBLIC_CARD + "],unsupported:[],recommended3y:true,model:{}}")
+
+    assert 'id="best-detail"' not in grid, "the panel that holds the Transaction evidence must not exist"
+    assert "renderDecisionProof" not in grid and "Transaction evidence" not in grid
+    assert "selectBestChoice" not in grid, "a card must not offer to open evidence that is not there"
+    assert grid.count("onclick") == 1, "the only control is the log-in link in the explanatory line"
+
+
+def test_a_pending_recalculation_says_so_rather_than_showing_an_empty_grid():
+    grid = _public_grid("{cards:[],unsupported:[],pending:true}")
+
+    assert "recalculated" in grid, "an empty grid reads as a broken feature"
+    assert "fcard" not in grid
+
+
+def test_the_logged_out_page_never_runs_the_row_based_search():
+    """It cannot: the rows are withheld. Delegating first is what stops it drawing an empty grid."""
+    src = _extract("renderBestCombo")
+    head = src[:src.index("computeBestSettings")]
+
+    assert "if(LIMITED){renderPublicBestCombo();return;}" in head, (
+        "renderBestCombo must hand over before it reaches the per-trade search")
+
+
+def test_the_public_payload_is_fetched_without_a_token_and_only_summaries_are_read():
+    js = client_js()
+    m = re.search(r'fetch\("/api/best-settings-cards"\)', js)
+
+    assert m, "the logged-out page must ask for the precomputed cards"
+    body = js[js.index("function paintPublicBestCombo"):]
+    body = body[:body.index("\n}")]
+    for forbidden in (".seq", ".proof", ".rows", "trig_date", "ticker"):
+        assert forbidden not in body, f"the logged-out renderer reads {forbidden}, which is evidence"

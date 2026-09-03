@@ -1116,6 +1116,19 @@ def app_js():
                         headers={"Cache-Control": "no-store"})
 
 
+@app.route("/best_settings.js")
+def best_settings_js():
+    """The Best Settings search and card template (2026-09-03).
+
+    index.html loads it BEFORE app.js, which builds its wallet replay from this file at load time, so a
+    404 here is a page that does not start. Same treatment as app.js for the same reason: the three files
+    are one program and a browser holding a stale copy of any of them fails silently.
+    """
+    with open(os.path.join(_HERE, "best_settings.js"), "r", encoding="utf-8") as f:
+        return Response(f.read(), mimetype="application/javascript",
+                        headers={"Cache-Control": "no-store"})
+
+
 # Fields a LOGGED-OUT visitor may see (user 2026-07-03: first 5 Scanner columns; the rest obfuscated).
 _PUBLIC_FIELDS = ("ticker", "name", "direction", "h3_date", "l3_date", "sector", "market", "location",
                   "has_signal", "status")
@@ -4591,6 +4604,68 @@ def _winners_stored(years: int):
     except Exception:
         return None
     return doc["payload"]
+
+
+# ----------------------------------------------------------------------------------------------------
+# The PUBLIC Best Settings cards (user 2026-09-03: "logged out users should see cards BUT NOT THE
+# UNDERLYING EVIDENCE TABLE").
+#
+# The cards are aggregates of the per-trade winners rows, and those rows are the Transaction evidence
+# _winners_rows_allowed withholds. So the summary is computed where the rows are already allowed to be --
+# run_best_settings_cards.py, running the page's own search (hvf_web/best_settings.js) under Node -- and
+# only the summary is published here. This endpoint NEVER builds anything and never touches a row: it
+# hands back a stored aggregate or says the recalculation is pending.
+#
+# It is deliberately open to everyone. A signed-in visitor does not use it; their browser computes the
+# same cards from their own Model wallet, which this payload cannot know.
+# ----------------------------------------------------------------------------------------------------
+_BEST_CARDS_KEY = "best_settings_cards"
+# Aggregates, and the shapes they may take. Anything not listed cannot reach an anonymous visitor even if
+# a future change to the search puts it in the stored document -- the endpoint rebuilds the response from
+# this list rather than forwarding what it read.
+_BEST_CARD_FIELDS = ("label", "why", "colour", "ret", "dd", "n", "eligible", "posPeriods", "periods",
+                     "wlEligible", "wlActual", "scope", "rr", "q", "vs", "rv", "vw", "atr", "st", "mo",
+                     "years")
+
+
+def _best_cards_stored():
+    """The stored public card set, but only if it was built from the dataset now in play. Else None."""
+    try:
+        import web_store
+        doc = web_store.load_json_store(_BEST_CARDS_KEY)
+    except Exception as ex:
+        log.warning(f"best-settings cards unavailable ({ex})")
+        return None
+    if not isinstance(doc, dict) or not isinstance(doc.get("payload"), dict):
+        return None
+    if (doc.get("dataset") or "") != (_load_snapshot().get("generated_utc") or ""):
+        return None       # built from a different scan; saying "recalculating" beats quoting stale cards
+    return doc["payload"]
+
+
+@app.route("/api/best-settings-cards")
+def api_best_settings_cards():
+    """Aggregate Best Settings cards for a logged-out visitor. Summaries only, never a per-trade row."""
+    try:
+        payload = _best_cards_stored()
+    except Exception as ex:
+        log.warning(f"best-settings cards failed: {ex}")
+        return jsonify({"error": "cards unavailable"}), 500
+    if not payload:
+        # Not an error: the scan has moved on and the recalculation has not caught up yet. The page says
+        # so, rather than showing an empty grid that reads as a broken feature.
+        return jsonify({"cards": [], "unsupported": [], "pending": True})
+    cards = [{k: c.get(k) for k in _BEST_CARD_FIELDS if k in c}
+             for c in (payload.get("cards") or []) if isinstance(c, dict)]
+    three = payload.get("threeYear") if isinstance(payload.get("threeYear"), dict) else None
+    return jsonify(_json_safe({
+        "cards": cards,
+        "unsupported": payload.get("unsupported") or [],
+        "recommended3y": bool(payload.get("recommended3y")),
+        "threeYear": ({k: three.get(k) for k in ("ret", "dd", "n", "settings")} if three else None),
+        "model": payload.get("model") or {},
+        "data_through": payload.get("data_through") or "",
+    }))
 
 
 _CR_DIR = os.path.join(_REPO_ROOT, "ChangeRequests")

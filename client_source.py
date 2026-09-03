@@ -15,6 +15,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 INDEX = ROOT / "hvf_web" / "index.html"
 APP_JS = ROOT / "hvf_web" / "app.js"
+# The Best Settings search moved out of app.js on 2026-09-03 so the server could run it under Node.
+# It is still page JavaScript and every source-text and behavioural assertion must keep seeing it.
+BEST_SETTINGS_JS = ROOT / "hvf_web" / "best_settings.js"
 
 
 def client_html() -> str:
@@ -24,7 +27,7 @@ def client_html() -> str:
 
 def client_js() -> str:
     """The page's JavaScript alone — what Node parses and what the behavioural harness executes."""
-    return APP_JS.read_text(encoding="utf-8")
+    return BEST_SETTINGS_JS.read_text(encoding="utf-8") + chr(10) + APP_JS.read_text(encoding="utf-8")
 
 
 def client_source() -> str:

@@ -3,7 +3,8 @@
 WHY THIS EXISTS. The same trading maths is implemented twice, in two languages:
 
   * ``hvf_web/server.py::_sqa_compound``      — Python, drives the server-side Back Test figures.
-  * ``hvf_web/index.html::_combReplay``       — JavaScript, drives Best Settings in the browser.
+  * ``hvf_web/best_settings.js::makeCombReplay`` — JavaScript, drives Best Settings in the browser
+    and, since 2026-09-03, the precomputed cards a logged-out visitor sees.
 
 The server docstring says so outright: "Replay a funded portfolio using the same contract as the browser
 wallet." Both implement position sizing as a percentage of running equity, the max-open cap, margin
@@ -108,7 +109,11 @@ def _run_js(position_pct: float, max_open: int) -> dict:
         re.search(r"\nconst _fundedMaxOpen=[^\n]*", html).group(0),
         _grab(html, "function _pfAddDays("),
         _grab(html, "function _pfExitDate("),
-        _grab(html, "function _combReplay(seq,stakeFrac,maxopen"),
+        # The replay moved into hvf_web/best_settings.js on 2026-09-03 and is built by a factory
+        # there, so the factory AND app.js's own wiring line are together what make _combReplay
+        # exist. Taking the inner function alone would give a closure with no environment.
+        _grab(html, "function makeCombReplay(env)"),
+        re.search(r"const _combReplay=makeCombReplay\(\{[\s\S]*?\}\);", html).group(0),
     ])
     # Python filters the population itself; mirror that filter here so both see the same trades.
     preamble = (f"let MIN_TRADE={MIN_TRADE};\n"

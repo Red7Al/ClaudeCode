@@ -50,9 +50,11 @@ def include_path(relative: Path) -> bool:
         return False
     if suffix == ".txt":
         return name == "requirements.txt"
-    # The page's JavaScript, extracted from index.html on 2026-08-23. Only this one .js file ships:
-    # docs/ build scripts and node_modules are excluded above and must stay excluded.
-    if relative.as_posix() == "hvf_web/app.js":
+    # The page's JavaScript, extracted from index.html on 2026-08-23. best_settings.js joined it on
+    # 2026-09-03 (the Best Settings search, shared with the Node precompute) and index.html loads it
+    # FIRST, so a package without it is a page that cannot start. Only these two .js files ship: docs/
+    # build scripts and node_modules are excluded above and must stay excluded.
+    if relative.as_posix() in ("hvf_web/app.js", "hvf_web/best_settings.js"):
         return True
     # The Introduction's worked example, pre-rendered (user 2026-08-30). It is the ONLY image that ships:
     # /api/card/<ticker> built it live and answered HTTP 500 after ~120 s on the host, because it runs a
@@ -137,7 +139,8 @@ def build(output: Path = DEFAULT_OUTPUT) -> tuple:
             # Apache serves the domain root directly; retain the package copy used by Flask as well.
             # app.js is mirrored the same way, because index.html loads it relatively — if only the
             # hvf_web/ copy shipped, the root page would load and then fail to find its script.
-            if relative in ("hvf_web/index.html", "hvf_web/app.js", "hvf_web/intro_card.png"):
+            if relative in ("hvf_web/index.html", "hvf_web/app.js", "hvf_web/best_settings.js",
+                            "hvf_web/intro_card.png"):
                 root_info = zipfile.ZipInfo.from_file(path, relative.rsplit("/", 1)[1])
                 root_info.create_system = 3
                 root_info.external_attr = (stat.S_IFREG | 0o644) << 16
@@ -170,7 +173,8 @@ def main() -> int:
     parser.add_argument("--list", action="store_true", help="list included files after building")
     args = parser.parse_args()
     output, files = build(args.output)
-    mirrored = {"hvf_web/index.html", "hvf_web/app.js", "hvf_web/intro_card.png"}
+    mirrored = {"hvf_web/index.html", "hvf_web/app.js", "hvf_web/best_settings.js",
+                "hvf_web/intro_card.png"}
     archive_entries = len(files) + sum(1 for p in files if p.relative_to(ROOT).as_posix() in mirrored)
     print(f"Built {output} with {archive_entries} production files ({output.stat().st_size} bytes).")
     import zipfile as _z

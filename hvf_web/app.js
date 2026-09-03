@@ -2473,7 +2473,7 @@ let WIN_3Y_ERROR="";
 let _3Y_MEMO={rows:null,wallet:null,minTrade:null,best:null};
 // Wallet £ (L211), Max position size % (L200), Max open positions (L199) are variables on the winners tab.
 let MIN_TRADE=25;   // User-configured minimum trade (£), default 25 (user 2026-07-18, P-05 L253)
-const _fundedMaxOpen=stakeFrac=>Math.max(1,Math.floor(1/Math.max(0.000001,+stakeFrac||0.000001)));
+// _fundedMaxOpen MOVED to hvf_web/best_settings.js (2026-09-03); it is a global there, as it was here.
 function paintBestSettingsPersonalisation(){
   const el=$("best-settings-personalisation-values");if(!el)return;
   const money=value=>`£${Number(value||0).toLocaleString(undefined,{maximumFractionDigits:2})}`;
@@ -2841,33 +2841,12 @@ function _pfExitDate(r,runner){
   if(r.trig_date&&r.days_open!=null&&(state==="TARGET"||state==="STOPPED"))return _pfAddDays(r.trig_date,r.days_open);
   return "9999-99-99";
 }
-function _combReplay(seq,stakeFrac,maxopen,withProof=false,perfKey="perf",compound=true){
-  // Event-based wallet replay: settle P&L on EXIT (not prematurely at trigger), reserve the broker margin
-  // stake/leverage while each trade is open, and separately enforce the user's numeric max-open cap.
-  // Blank/0 auto-derives the count cap from stake exposure: floor(100 / Max position size %).
-  let w=1,peak=1,maxdd=0,peakOpen=0;const taken=[],open=[],proof=[];
-  let wins=0,losses=0;   // funded-only split, reported alongside the eligible one
-  const minStake=(typeof MIN_TRADE==='number'?MIN_TRADE:0)/Math.max(1,WINNERS_WALLET||1);
-  const effectiveMax=maxopen>0?Math.min(maxopen,_fundedMaxOpen(stakeFrac)):_fundedMaxOpen(stakeFrac);
-  const settle=until=>{open.sort((a,b)=>a.exit.localeCompare(b.exit));
-    while(open.length&&open[0].exit<=until){const x=open.shift();w+=x.net;if(w>peak)peak=w;const dd=peak>0?(peak-w)/peak:0;if(dd>maxdd)maxdd=dd;}};
-  for(const r of seq){const td=r.trig_date||"";settle(td);
-    const stake=(compound?w:1)*stakeFrac,lev=Math.max(1,+(levOf(r)||1)),margin=stake/lev,used=open.reduce((a,x)=>a+x.margin,0);
-    if(stake+1e-12<minStake){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:`Below minimum trade — £${Math.round(stake*Math.max(1,WINNERS_WALLET||1))} < £${MIN_TRADE}`});continue;}
-    if(open.length>=effectiveMax){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,reason:`Max open cap — ${effectiveMax}`});continue;}
-    if(used+margin>w+1e-9){if(withProof)proof.push({r,placed:false,open:open.length,w,stake,margin,available:Math.max(0,w-used),reason:"Wallet / margin full"});continue;}
-    const exit=_pfExitDate(r,perfKey==="run_perf");
-    const result=+r[perfKey];
-    // Win/loss among the trades actually FUNDED (user 2026-08-28: "Win:Loss is for Eligible - show this
-    // ratio for Actual also"). Counted here rather than derived afterwards because `taken` is not
-    // retained per candidate — the search runs ~1M replays, so holding each funded row would be costly.
-    // Two integers, and the same +/- 0 split _cardWL uses, so eligible and funded are directly comparable.
-    if(result>0)wins++; else if(result<0)losses++;
-    open.push({exit,margin,net:stake*result/100});taken.push(r);peakOpen=Math.max(peakOpen,open.length);
-    if(withProof)proof.push({r,placed:true,open:open.length,w,stake,margin,available:Math.max(0,w-used-margin),reason:"Placed"});}
-  settle("9999-99-99");
-  return {ret:w-1,dd:maxdd,n:taken.length,wins,losses,cap:peakOpen,proof};
-}
+// The replay itself MOVED to hvf_web/best_settings.js (2026-09-03) so the server can execute the same
+// code under Node. It used to read MIN_TRADE / WINNERS_WALLET / levOf / _pfExitDate as globals; those
+// four are passed in here as live getters, so changing the Wallet box still changes the replay exactly
+// as before. Everything that called _combReplay still calls _combReplay.
+const _combReplay=makeCombReplay({wallet:()=>WINNERS_WALLET,minTrade:()=>MIN_TRADE,
+  leverage:r=>levOf(r),exitDate:(r,runner)=>_pfExitDate(r,runner)});
 const DECISION_PROOFS={};
 function decisionProofFilter(id,dim,value){
   const s=DECISION_PROOFS[id];if(!s)return;const filters={...(s.opts.filters||{})};
@@ -3072,10 +3051,8 @@ function recordBestSettingsSnapshot(snapshot){
 // of trades, and no more than `max` (omit / 0 = no ceiling). Kept as a small pure helper so the
 // >125-150 / >250-300 card boundaries and ranking are executable in the regression suite rather than
 // only asserted as source text (user 2026-08-12, P-10; banded 2026-08-14, P-04).
-function _bestSettingsByFundedTrades(pool,min,max){
-  return [...(pool||[])].filter(x=>Number(x.n)>min&&(!max||Number(x.n)<=max))
-    .sort((a,b)=>b.score-a.score||b.ret-a.ret)[0]||null;
-}
+// _bestSettingsByFundedTrades MOVED to hvf_web/best_settings.js (2026-09-03) with the rest of the
+// search, so the browser and the Node precompute rank the funded-trade bands identically.
 let _bestDecisionRows=null, _bestCardCapacity=null, _bestSettingsResizeTimer=null;
 // A compact iPad-mini decision surface can show nine cards; phones stop at six.  A laptop may show up
 // to eight, but only if the actual grid can keep them within two rows (trimmed after layout below).
@@ -3095,410 +3072,72 @@ const bestCardCapacity=()=>innerWidth<=600?6:(innerWidth<=BEST_TABLET_MAX?9:8);
 // at an iPad mini's 768px, so the trimming loop deleted cards until they fitted -- silently overruling
 // the count and landing on the six-to-eight actually seen. A tablet scrolls; a fourth row costs nothing.
 const bestCardMaxRows=()=>innerWidth>BEST_TABLET_MAX?2:Infinity;
+// The SEARCH now lives in hvf_web/best_settings.js so the server can run the identical code under Node
+// and precompute the summaries a logged-out visitor is allowed to see. What stays here is everything
+// that needs the page: the user's own configuration, the Apply control, the three-year status card and
+// the post-layout trimming. See best_settings.js for why the split exists.
 function renderBestCombo(all,{recordSnapshot=true}={}){
   _bestDecisionRows=all;
   _bestCardCapacity=bestCardCapacity();
   const box=$("ordp-bestcombo"); if(!box)return;
-  const wpRaw=(all||[]).filter(r=>r.perf!=null&&r.trig_date);
-  // Dedupe same-instrument/same-day rows (user 2026-08-07, ChangeRequest P-04, e.g. "Domino's Pizza
-  // Enterprises Limited"): the scanner runs multiple independent lookback windows (daily-30/60/90/180/240
-  // + weekly), and more than one can trigger the same ticker on the same day, double-counting it in the
-  // annual replay. Collapse to one row per ticker/day, keeping whichever had the best recorded return.
-  const _dedupeKey=r=>(r.ticker||'')+'|'+String(r.trig_date||'').slice(0,10);
-  const _bestByKey={};
-  wpRaw.forEach(r=>{const k=_dedupeKey(r), cur=_bestByKey[k];
-    if(!cur||(+r.perf||-Infinity)>(+cur.perf||-Infinity))_bestByKey[k]=r;});
-  const wp=Object.values(_bestByKey);
-  if(wp.length<10){box.innerHTML='<div class="muted" style="font-size:13px">Not enough usable trades to recommend settings (minimum 10).</div>';return;}
-  // Two-stage annual search (P-01, user 2026-08-05): first rank metric/filter candidates using the
-  // current Model, then replay only the strongest candidates across stake/open grids. This covers the
-  // collected decision metrics without freezing the browser under a combinatorial full cross-product.
-  const STAKES=[1,2,3,5,7.5,10], OPENS=[3,5,8,12,20,25,50], RRS=[3,5,8], QUALS=[0,50,75],
-        VSCORES=[0,4,8], RVOLS=[0,1.5,1.8], BOOLS=[false,true];
-  const byDate=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
-  const topScopes=(key,label)=>Object.entries(byDate.reduce((m,r)=>{const v=r[key];if(v)m[v]=(m[v]||0)+1;return m;},{}))
-    .filter(([,n])=>n>=30).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([v])=>({kind:key,label:`${label}: ${v}`,test:r=>r[key]===v,value:v}));
-  // Sector is deliberately NOT a scope (user 2026-08-14, P-05 "We cannot filter by SECTOR so little point
-  // in these settings"): the live trade gate (_user_trade_allows) enforces direction, location and the
-  // Markets on/off switches only, so a sector-scoped recommendation can never be applied to real trading -
-  // it would look right in the replay and change nothing in the book. Market and MCap bands ARE enforceable
-  // (saved market scope + the Minimum/Maximum instrument value limits), so those stay.
-  // "All markets" overstated what was replayed (user 2026-08-28: the Balanced card said All markets while
-  // Shanghai was switched off in settings). Every card is computed from decisionRows, which tradeVisible
-  // has ALREADY filtered by the user's Markets (User) switches and the admin deny-list -- so this scope
-  // means "no FURTHER market restriction", never "every market in the universe". `label` stays as the
-  // comparison key used by changedFor/matchesCurrent; `display` is what the card shows.
-  // Derived from the ROWS actually replayed and from tradeVisible itself, not from a second reading
-  // of MARKETS_OFF/MARKETS_DISABLED. A market excluded for any reason tradeVisible knows about is
-  // reported, including rules added later.
-  const _mktOff=tradeExcludedValues("market",(WIN||[]).concat(WIN_3Y||[]).map(r=>r&&r.market));
-  const _allLabel=_mktOff.length?`All enabled markets (${_mktOff.length} off)`:"All markets";
-  const scopes=[{kind:"all",label:"All markets",display:_allLabel,offList:_mktOff,test:()=>true},...topScopes("market","Market"),
-    {kind:"mcap",label:"MCap < 2bn",min:0,max:2e9,test:r=>r.mcap!=null&&r.mcap<2e9},
-    {kind:"mcap",label:"MCap 2–10bn",min:2e9,max:1e10,test:r=>r.mcap>=2e9&&r.mcap<1e10},
-    {kind:"mcap",label:"MCap 10–100bn",min:1e10,max:1e11,test:r=>r.mcap>=1e10&&r.mcap<1e11},
-    {kind:"mcap",label:"MCap 100bn+",min:1e11,max:0,test:r=>r.mcap>=1e11}];
-  const robust=(seq,st,mo)=>{const x=_combReplay(seq,st,mo), periods={};
-    seq.forEach(r=>{const d=String(r.trig_date||"");if(d.length>=7){const p=d.slice(0,4)+" Q"+(Math.floor((+d.slice(5,7)-1)/3)+1);(periods[p]||(periods[p]=[])).push(r);}});
-    const prs=Object.values(periods).map(s=>_combReplay(s,st,mo).ret),pos=prs.filter(v=>v>0).length,cons=prs.length?pos/prs.length:0;
-    return {...x,periods:prs.length,posPeriods:pos,consistency:cons,score:(x.ret/(x.dd+.02))*(.5+.5*cons)*Math.min(1,x.n/40)};};
-  const candidates=[];
-  for(const scope of scopes)for(const rr of RRS)for(const q of QUALS)for(const vs of VSCORES)for(const rv of RVOLS)for(const vw of BOOLS)for(const atr of BOOLS){
-    const seq=byDate.filter(r=>scope.test(r)&&r.rr!=null&&r.rr>=rr&&(!q||(r.quality!=null&&r.quality>=q))&&
-      (!vs||(r.volume_score!=null&&r.volume_score>=vs))&&(!rv||(r.rvol!=null&&r.rvol>=rv))&&(!vw||r.above_vwap===true)&&(!atr||r.atr_expanding===true));
-    if(seq.length<20)continue;
-    // Cheap pre-ranking across the complete configuration grid. The funded replay is much more
-    // expensive; only the strongest candidates reach it below. This keeps the 5k-row page responsive
-    // without dropping any of the tested signal variables from consideration.
-    const mean=seq.reduce((sum,r)=>sum+(+r.perf||0),0)/seq.length;
-    const quick=mean*Math.min(1,seq.length/40);
-    candidates.push({scope,rr,q,vs,rv,vw,atr,seq,quick});
+  // Logged out, the cards arrive from the server as SUMMARIES and are rendered by the same template.
+  // They cannot be computed here: computing them needs the per-trade rows, and those are exactly what a
+  // logged-out visitor must not receive (user 2026-09-01, restated 2026-09-03 — "logged out users should
+  // see cards BUT NOT THE UNDERLYING EVIDENCE TABLE").
+  if(LIMITED){renderPublicBestCombo();return;}
+  // Derived from the ROWS actually replayed and from tradeVisible itself, not from a second reading of
+  // MARKETS_OFF/MARKETS_DISABLED. A market excluded for any reason tradeVisible knows about is reported,
+  // including rules added later.
+  const marketsOff=tradeExcludedValues("market",(WIN||[]).concat(WIN_3Y||[]).map(r=>r&&r.market));
+  const res=computeBestSettings({rows:all||[],rows3y:WIN_3Y,wallet:WINNERS_WALLET,minTrade:MIN_TRADE,
+    stake:WINNERS_STAKE,maxOpen:WINNERS_MAXOPEN,replay:_combReplay,marketsOff,memo:_3Y_MEMO});
+  _3Y_MEMO=res.memo;
+  if(res.insufficient){
+    box.innerHTML=res.eligibleRows<10
+      ?'<div class="muted" style="font-size:13px">Not enough usable trades to recommend settings (minimum 10).</div>':"";
+    return;
   }
-  candidates.sort((a,b)=>b.quick-a.quick);
-  const shortlist=candidates.slice(0,40);
-  shortlist.forEach(c=>{c.pre=robust(c.seq,Math.max(.01,WINNERS_STAKE),WINNERS_MAXOPEN);});
-  shortlist.sort((a,b)=>b.pre.score-a.pre.score);
-  let best=null, evaluated=[];
-  // _combReplay clamps Max open to what the stake can actually fund (its effectiveMax), so a requested
-  // 12 at a 10% position runs as 10. Recording the REQUEST produced two faults: the card advertised
-  // "10% position - 12 max open", a 120%-of-wallet setup that never existed and was never tested (user
-  // 2026-08-15 "how is that possible?"), and Apply wrote that untested 12 into the user's config. It also
-  // made the grid degenerate - at 10% stake, 12/20/25/50 all collapse to 10 and scored identically, so
-  // the winner among them was arbitrary. Normalise to the effective cap here, once, and skip the
-  // duplicates: everything downstream then reports the number the calculation used.
-  const _seenMo=new Set();
-  for(const c of shortlist.slice(0,12))for(const mo of OPENS)for(const st of STAKES){
-    const eff=Math.min(mo,_fundedMaxOpen(st/100));
-    const dedupe=c.scope.label+"|"+c.rr+"|"+c.q+"|"+c.vs+"|"+c.rv+"|"+c.vw+"|"+c.atr+"|"+st+"|"+eff;
-    if(_seenMo.has(dedupe))continue; _seenMo.add(dedupe);
-    const z=robust(c.seq,st/100,eff);if(z.n<20)continue;
-    const option={...c,st,mo:eff,...z}; evaluated.push(option);
-    if(!best||z.score>best.score)best=option;
-  }
-  if(!best){box.innerHTML="";return;}
-  best.proof=_combReplay(best.seq,best.st/100,best.mo,true).proof;
-  // Very large compounded returns read better as a growth MULTIPLE than a 5-digit percentage (user
-  // 2026-07-27, P-03 D — "+46747.6% looks ridiculous"): ≥ +900% → "×468"; below that, the usual "+12.3%".
-  const pct=v=>v>=9?'×'+(1+v).toLocaleString(undefined,{maximumFractionDigits:(1+v)>=100?0:1})
-    :(v>=0?'+':'')+(v*100).toFixed(1)+'%';
-  const gbp=v=>'£'+Math.round(v).toLocaleString();
-  // Only the wallet actually IN USE (the Model wallet above) — the £1k…£10k example rows were dropped
-  // (user 2026-08-01): the best mix and its % return are wallet-independent, so one worked row is enough.
+  const {threeYear,bestThreeYear}=res;
+  // Balanced is the card shown first, and the three-year card is the other one a user opens immediately.
+  // Computing their funded-decision proof here keeps first paint of the detail panel exactly as it was
+  // before the search moved out; every other card still builds its proof lazily in selectBestChoice.
+  [["Balanced"],["Best over 3 years"]].forEach(([label])=>{
+    const x=(res.choices.find(c=>c[0]===label)||[])[1];
+    if(x&&!x.proof)x.proof=_combReplay(x.seq,x.st/100,x.mo,true).proof;});
   const w=Math.max(1,WINNERS_WALLET||1000);
-  const cfgFor=x=>{const limits={min_risk_reward:x.rr,min_quality:x.q,min_volume_score:x.vs,min_rvol:x.rv,max_position_pct:x.st,max_open:x.mo,
-      require_above_vwap:x.vw?1:0,require_atr_expanding:x.atr?1:0,min_instrument_value:0,max_instrument_value:0};
-    if(x.scope.kind==="mcap"){limits.min_instrument_value=x.scope.min||0;limits.max_instrument_value=x.scope.max||0;}
-    const market=x.scope.kind==="market"?x.scope.value:"", sector="";   // never a recommended scope (P-05); applying a card also CLEARS any saved sector restriction
-    const filters={f_mkt:market,f_sec:sector,pof_market:market,pof_sector:sector};
-    return {limits,filters};};
-  const eligible=evaluated.filter(x=>x.n>=20), positive=eligible.filter(x=>x.ret>0);
-  // The ordinary recommendation search intentionally concentrates on the strongest risk-adjusted
-  // finalists, which can be narrow populations. That is the wrong search for the explicit >250/>500
-  // evidence cards: 5,000+ annual rows existed, but broad candidates were pruned before the capacity grid
-  // and the grid stopped at 1% / 50 open positions. Run a bounded, dedicated large-sample search across
-  // both high-quality and widest-population candidates, allowing the smallest position that still meets
-  // this wallet's configured minimum trade and enough open slots to test the requested evidence bands.
-  const minLargeStakePct=Math.max(.1,MIN_TRADE/Math.max(1,WINNERS_WALLET)*100),
-        largeStakes=[...new Set([minLargeStakePct,.25,.5,1,2].filter(v=>v>=minLargeStakePct&&v<=100).map(v=>+v.toFixed(4)))],
-        // Smaller concurrency caps matter now the cards are BANDS: landing inside 126-150 funded trades
-        // usually means holding fewer positions at once, not more.
-        largeOpens=[10,20,35,50,100,250,400],
-        // robust() replays the whole sequence plus every quarter and the two bands share most of their
-        // finalists, so cache per candidate/stake/max-open - the wider grid then costs no more than the
-        // old one did.
-        robustFor=(c,st,mo)=>{const cache=c._lz||(c._lz={}),k=st+"|"+mo;return cache[k]||(cache[k]=robust(c.seq,st/100,mo));},
-        // Funded-sample BAND search (user 2026-08-14, P-04): "> 125 Trades (but do not exceed 150)" and
-        // "> 250 Trades (but do not exceed 300)". An open-ended floor kept returning whichever setting
-        // simply traded the most, which is a different question from "the best setting at this sample
-        // size"; capping the band answers the question that was actually asked.
-        largeSampleOptions=(min,max)=>{
-          const pool=candidates.filter(c=>c.seq.length>min),
-                finalists=[...pool.slice().sort((a,b)=>b.quick-a.quick).slice(0,10),
-                           ...pool.slice().sort((a,b)=>b.seq.length-a.seq.length||b.quick-a.quick).slice(0,10)],
-                unique=[...new Set(finalists)], options=[];
-          const seenMo=new Set();
-          for(const c of unique)for(const st of largeStakes)for(const mo of largeOpens){
-            const eff=Math.min(mo,_fundedMaxOpen(st/100));          // same clamp as the main grid above
-            const key=unique.indexOf(c)+"|"+st+"|"+eff;
-            if(seenMo.has(key))continue; seenMo.add(key);
-            const z=robustFor(c,st,eff);if(z.n>min&&(!max||z.n<=max))options.push({...c,st,mo:eff,...z});
-          }
-          return options;
-        },
-        large125=largeSampleOptions(125,150),large250=largeSampleOptions(250,300);
-  // Options must represent different decisions, not cosmetic variations. Prefer at least two changed
-  // dimensions; if the tested population cannot support that, allow one difference but never duplicate.
-  const configDistance=(a,b)=>['rr','q','vs','rv','vw','atr','st','mo'].reduce((n,k)=>n+(a[k]!==b[k]?1:0),0)+
-    (a.scope.label===b.scope.label?0:1);
-  const basePool=positive.length?positive:eligible;
-  const choose=(pool,chosen,compare)=>{
-    const ranked=[...pool].sort((a,b)=>compare(a,b)||b.score-a.score);
-    // Prefer a candidate whose SCOPE (market/sector/mcap band) differs from every already-chosen card, on
-    // top of the existing "materially different overall configuration" bar — otherwise the 4 cards tend to
-    // converge on whichever single sector dominates every objective's ranking, since scope is just 1 of 9
-    // dimensions configDistance counts and the other 8 alone can satisfy "differs by >=2" (user 2026-08-11,
-    // P-03: "3 of the 4 cards are using the same sector - is there anything else that gives more choice?").
-    // This is a PREFERENCE, not a requirement: it only ever picks a scope-diverse candidate that already
-    // clears the same evidence bar (>=2 dimensions different, ranked by this card's own objective) as the
-    // original logic — never trades away return/drawdown/consistency quality just to force sector variety,
-    // and falls straight through to the original two tiers if no such candidate exists.
-    return ranked.find(x=>chosen.every(y=>configDistance(x,y)>=2 && x.scope.label!==y.scope.label))
-        ||ranked.find(x=>chosen.every(y=>configDistance(x,y)>=2))
-        ||ranked.find(x=>chosen.every(y=>configDistance(x,y)>=1))||null;
-  };
-  // Win:loss and capital efficiency, measured over each candidate's own eligible population.
-  // Ratio, not win rate: the user asked for "best win:loss ratio". Break-even trades (|perf| <= PF_BE)
-  // count as neither, matching how the Results tab segments outcomes, and a candidate with no losses at all
-  // sorts above one with any -- Infinity is the honest ranking there, not a divide-by-zero guard.
-  const _wl=x=>{const w=x.seq.filter(r=>+r.perf>0.5).length,l=x.seq.filter(r=>+r.perf<-0.5).length;
-    return l?w/l:(w?Infinity:0);};
-  // Return per DAY of capital committed. A configuration earning 20% while holding positions for three
-  // weeks is doing more with the book than one earning 25% over six months -- and today's work showed
-  // exactly why that matters: unresolved positions hold their slot, the book saturates, and every later
-  // setup is refused on the max-open cap. This card surfaces the settings that keep capital turning.
-  const _days=x=>{const d=x.seq.map(r=>{if(!r.exit_date||!r.trig_date)return null;
-      const a=new Date(r.trig_date+"T00:00:00Z"),b=new Date(String(r.exit_date).slice(0,10)+"T00:00:00Z");
-      return isNaN(a)||isNaN(b)?null:Math.max(1,(b-a)/86400000);}).filter(v=>v!=null);
-    return d.length?d.reduce((s,v)=>s+v,0)/d.length:null;};
-  const _perDay=x=>{const d=_days(x);return d?x.ret/d:-Infinity;};
-  const chosen=[best];
-  const growth=choose(basePool,chosen,(a,b)=>b.ret-a.ret);if(growth)chosen.push(growth);
-  const defensive=choose(basePool,chosen,(a,b)=>a.dd-b.dd);if(defensive)chosen.push(defensive);
-  const broad=choose(basePool,chosen,(a,b)=>b.consistency-a.consistency||b.n-a.n||b.ret-a.ret);if(broad)chosen.push(broad);
-  const winloss=choose(basePool,chosen,(a,b)=>_wl(b)-_wl(a)||b.ret-a.ret);if(winloss)chosen.push(winloss);
-  const efficient=choose(basePool,chosen,(a,b)=>_perDay(b)-_perDay(a));if(efficient)chosen.push(efficient);
-  const shortDuration=choose(basePool,chosen,(a,b)=>(_days(a)??Infinity)-(_days(b)??Infinity)||b.ret-a.ret);if(shortDuration)chosen.push(shortDuration);
-  // Best settings at a given funded-trade sample BAND (user 2026-08-12, P-10; banded 2026-08-14, P-04
-  // "Switch 500 trades to > 125 Trades (but do not exceed 150)" / "> 250 Trades (but do not exceed 300)"):
-  // the strongest-scoring configuration whose annual replay funded inside that band. Uses x.n (funded
-  // trades) — the same "trade sample" measure Broad evidence ranks on. Deliberately NOT run through
-  // choose()'s difference bar: the DEFINING property here is the sample size, not being unlike the other
-  // cards, so it shows the genuine best in that band even if it coincides with another card. Guarded (&&)
-  // so each card only appears when the data supports a config inside the band; unsupported bands remain
-  // visible as evidence-status cards below rather than disappearing and looking like a render fault.
-  const trades125=_bestSettingsByFundedTrades(large125,125,150), trades250=_bestSettingsByFundedTrades(large250,250,300);
-  // Three-year evidence card (ChangeRequests/20260818, clarified 2026-08-20): reuse the tested,
-  // enforceable configurations, replay them against the complete three-year population, and only show
-  // the strongest one when it funds strictly more than 125 trades and remains within 20% of the best
-  // card's return. “20% relative” is therefore a ratio (>= 80% of the current best card), not a
-  // twenty-percentage-point subtraction.
-  // MEMOISED 2026-08-29 (user: "'Apply this configuration' is timing out"). The three-year search is
-  // the freeze: MEASURED at 962,010 replays over 44.8 million row-visits, 52-61 s of blocked main
-  // thread, about 90% of renderBestCombo's total. It was recomputed on EVERY re-render -- and Apply
-  // triggers one, via applyWinnersDefaults -> winnersParamsChange -> paintOrdersPerf -> renderBestCombo.
-  // So saving the configuration froze the page for a minute and looked like a timeout.
-  //
-  // The key is the complete set of inputs the expensive part actually reads, established by reading
-  // _combReplay rather than assumed: the three-year rows themselves, plus WINNERS_WALLET and MIN_TRADE,
-  // which _combReplay uses for its minimum-stake floor. Max position size and Max open are NOT in the
-  // key because the grid searches those itself, which is exactly why changing them can reuse this.
-  // best.ret is not in the key either: it only feeds the cheap gate below, which is recomputed always.
-  let bestThreeYear=null;
-  if(_3Y_MEMO.rows===WIN_3Y&&_3Y_MEMO.wallet===WINNERS_WALLET&&_3Y_MEMO.minTrade===MIN_TRADE){
-    bestThreeYear=_3Y_MEMO.best;
-  }else{
-    const threeYearRaw=Array.isArray(WIN_3Y)?WIN_3Y:[], threeYearByKey={};
-    threeYearRaw.filter(r=>r.perf!=null&&r.trig_date).forEach(r=>{const k=_dedupeKey(r),cur=threeYearByKey[k];if(!cur||(+r.perf||-Infinity)>(+cur.perf||-Infinity))threeYearByKey[k]=r;});
-    const threeYearRows=Object.values(threeYearByKey), threeYearCandidates=[];
-    // This is a genuine three-year optimisation: it searches the complete retained three-year population
-    // AND replays every generated, enforceable configuration.  Do not reuse an annual finalist shortlist
-    // or a quick-score prune here: either can exclude the true three-year optimum (user 2026-08-20).
-    const threeMarkets=Object.entries(threeYearRows.reduce((m,r)=>{const v=r.market;if(v)m[v]=(m[v]||0)+1;return m;},{}))
-      .filter(([,n])=>n>=30).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([v])=>({kind:"market",label:`Market: ${v}`,test:r=>r.market===v,value:v}));
-    const threeScopes=[{kind:"all",label:"All markets",test:()=>true},...threeMarkets,...scopes.filter(s=>s.kind==="mcap")];
-    for(const scope of threeScopes)for(const rr of RRS)for(const q of QUALS)for(const vs of VSCORES)for(const rv of RVOLS)for(const vw of BOOLS)for(const atr of BOOLS){
-      const seq=threeYearRows.filter(r=>scope.test(r)&&r.rr!=null&&r.rr>=rr&&(!q||(r.quality!=null&&r.quality>=q))&&
-        (!vs||(r.volume_score!=null&&r.volume_score>=vs))&&(!rv||(r.rvol!=null&&r.rvol>=rv))&&(!vw||r.above_vwap===true)&&(!atr||r.atr_expanding===true));
-      if(seq.length<20)continue;
-      const mean=seq.reduce((sum,r)=>sum+(+r.perf||0),0)/seq.length;
-      threeYearCandidates.push({scope,rr,q,vs,rv,vw,atr,seq,quick:mean*Math.min(1,seq.length/40)});
-    }
-    const threeSeen=new Set(), threeEvaluated=[];
-    for(const c of threeYearCandidates)for(const mo of OPENS)for(const st of STAKES){
-      const eff=Math.min(mo,_fundedMaxOpen(st/100)), key=c.scope.label+"|"+c.rr+"|"+c.q+"|"+c.vs+"|"+c.rv+"|"+c.vw+"|"+c.atr+"|"+st+"|"+eff;
-      if(threeSeen.has(key))continue; threeSeen.add(key);
-      const z=robust(c.seq,st/100,eff);if(z.n>=20)threeEvaluated.push({...c,st,mo:eff,...z});
-    }
-    // RANKED BY RETURN, not by risk-adjusted score (user 2026-09-01: "the cards are for return").
-    // The score rule -- ret/(dd+.02) x consistency x min(1,n/40) -- was picking a materially lower
-    // return whenever a safer configuration edged it on risk. MEASURED on the 2026-08-31 payload
-    // before this change shipped: score-ranked gave 109.2% (dd 2.9%, 532 trades, 3% stake, 33 open);
-    // return-ranked gives 161.0% (dd 5.1%, 139 trades, 10% stake, 10 open). The two were within 3.7%
-    // of each other on SCORE while 52 percentage points apart on RETURN -- a near-tie on the ranking
-    // metric deciding a very different headline, which is why the card kept moving unpredictably.
-    // Ties on return fall back to score, so the safer of two equal-return configurations still wins.
-    bestThreeYear=threeEvaluated.sort((a,b)=>b.ret-a.ret||b.score-a.score)[0]||null;
-    _3Y_MEMO={rows:WIN_3Y,wallet:WINNERS_WALLET,minTrade:MIN_TRADE,best:bestThreeYear};
-  }
-  // The evidence rule -- more than 125 funded trades AND within 20% of the best card's return -- decides
-  // whether this is a RECOMMENDATION. It no longer decides whether the configuration can be APPLIED
-  // (user 2026-08-28, raised twice: a card showing +183.6% on 122 funded trades still had no button).
-  // Withholding the control silently is not the same as advising against it: the card already states the
-  // rule in its own words, and applyConfigFromReport now names the shortfall in its confirmation.
-  const threeYearSupported=!!(bestThreeYear&&bestThreeYear.n>125&&bestThreeYear.ret>=best.ret*.8);
-  let threeYear=threeYearSupported?bestThreeYear:null;
-  if(threeYear)threeYear.proof=_combReplay(threeYear.seq,threeYear.st/100,threeYear.mo,true).proof;
-  const choices=[
-    ["Balanced",best,"Best return relative to drawdown, with quarterly consistency included.","var(--bull)"],
-    growth&&["Growth",growth,"Highest-return alternative with a materially different configuration.","var(--accent)"],
-    defensive&&["Defensive",defensive,"Lowest historical peak-to-trough drawdown while retaining a positive return.","#d29922"],
-    broad&&["Broad evidence",broad,"Favours positive quarters and a larger funded trade sample over a narrow winner.","var(--muted)"],
-    trades125&&[">125 trades",trades125,"Best-scoring configuration funding more than 125 and no more than 150 trades — a focused, higher-confidence sample.","#1f6feb"],
-    trades250&&[">250 trades",trades250,"Best-scoring configuration funding more than 250 and no more than 300 trades — the larger evidence band.","#a371f7"],
-    winloss&&["Best win : loss",winloss,`Most winners per loser — ${_wl(winloss)===Infinity?"no losing trades":_wl(winloss).toFixed(2)+" wins per loss"}. Break-even trades count as neither.`,"#3fb950"],
-    efficient&&["Capital efficient",efficient,`Most return per day of capital committed — ${_days(efficient)?Math.round(_days(efficient))+" days average hold":"hold unknown"}. Keeps the book turning instead of tying slots up.`,"#f778ba"]
-  ].filter(Boolean);
-  if(threeYear)choices.push(["Best over 3 years",threeYear,"Three-year replay with more than 125 funded trades and at least 80% of the best card’s return (20% relative tolerance).","#00a8a8"]);
-  // Requested display order: win/loss, capital efficient, Short Duration fifth, population cards seventh/eighth,
-  // and Defensive last. Sorting presentation does not change any candidate's calculation or replay evidence.
-  const cardOrder=["Best win : loss","Capital efficient","Balanced","Growth","Short Duration","Broad evidence",">250 trades",">125 trades","Best over 3 years","Defensive"];
-  if(shortDuration)choices.push(["Short Duration",shortDuration,`Shortest average completed holding period — ${_days(shortDuration)?Math.round(_days(shortDuration))+" days average hold":"hold unknown"}.`,"#58a6ff"]);
-  choices.sort((a,b)=>cardOrder.indexOf(a[0])-cardOrder.indexOf(b[0]));
-  // Keep the decision surface compact. The permanent three-year evidence card counts towards the screen
-  // limit even below its recommendation threshold, so it is never silently pushed off the page.
-  const MAX_BEST_CARDS=_bestCardCapacity;
-  let showUnsupported125=!trades125, showUnsupported250=!trades250;
-  const trimCard=label=>{const i=choices.findIndex(x=>x[0]===label);if(i>=0){choices.splice(i,1);return true;}if(label===">125 trades"&&showUnsupported125){showUnsupported125=false;return true;}return false;};
-  while(choices.length+Number(showUnsupported125)+Number(showUnsupported250)+Number(!threeYear)>MAX_BEST_CARDS){
-    if(trimCard("Defensive")||trimCard(">125 trades")||trimCard("Broad evidence"))continue;
-    break;
-  }
+  // Does this card already describe what the user is running? (user 2026-08-28: "If one of the card
+  // configurations matches user configuration e.g. Capital Efficient - make it very clear".)
   const current={rr:Number(MY_LIMITS.min_risk_reward??3),q:Number(MY_LIMITS.min_quality??25),vs:Number(MY_LIMITS.min_volume_score??1),rv:+MY_LIMITS.min_rvol||0,
     vw:!!+MY_LIMITS.require_above_vwap,atr:!!+MY_LIMITS.require_atr_expanding,st:+MY_LIMITS.max_position_pct||WINNERS_STAKE*100,mo:+MY_LIMITS.max_open||WINNERS_MAXOPEN,
     scope:_pfSavedScope("market")[0]?`Market: ${_pfSavedScope("market").join(", ")}`:_pfSavedScope("sector")[0]?`Sector: ${_pfSavedScope("sector").join(", ")}`:"All markets"};
-  const displayValue=(key,v)=>key==="vw"||key==="atr"?(v?"Yes":"No"):key==="st"?v+"%":key==="mo"?String(v):key==="scope"?v:String(v||"Any");
-  // Does this card already describe what the user is running? (user 2026-08-28: "If one of the card
-  // configurations matches user configuration e.g. Capital Efficient - make it very clear".) The
-  // information existed -- changedFor returned "No change from your current configuration" -- but only as
-  // small muted text in the Changes line at the foot of the card, which is not the same as clear.
-  // Derived from the SAME comparison changedFor uses, so a card can never claim to match while its own
-  // Changes line lists differences.
-  const matchesCurrent=x=>{
-    const target={rr:x.rr,q:x.q,vs:x.vs,rv:x.rv,vw:x.vw,atr:x.atr,st:x.st,mo:x.mo,scope:x.scope.label};
-    return Object.keys(target).every(k=>String(current[k])===String(target[k]));
-  };
-  const changedFor=x=>{
-    const target={rr:x.rr,q:x.q,vs:x.vs,rv:x.rv,vw:x.vw,atr:x.atr,st:x.st,mo:x.mo,scope:x.scope.label};
-    const labels={rr:"R:R",q:"Quality",vs:"VolumeScore",rv:"RVOL",vw:"VWAP required",atr:"ATR expanding",st:"Position size",mo:"Max open",scope:"Scope"};
-    return Object.keys(target).filter(k=>String(current[k])!==String(target[k])).map(k=>`${labels[k]}: ${displayValue(k,current[k])} → ${displayValue(k,target[k])}`).join(" · ")||"No change from your current configuration";
-  };
-  // Win:loss shown ON a card (user 2026-08-23). Deliberately the SAME split the detail panel uses --
-  // perf > 0 and perf < 0 over the eligible trades -- because clicking the card opens that panel directly
-  // beneath it, and two different counts for one configuration would read as a bug.
-  //
-  // NOT the same as _wl() above, which RANKS candidates for the "Best win : loss" card and applies a
-  // +/-0.5% break-even dead-band so marginal trades do not decide the winner. That is a selection
-  // heuristic; this is a displayed count. Keeping them separate is intentional.
-  // Two populations, deliberately both shown (user 2026-08-28: "Win:Loss is for Eligible - show this
-  // ratio for Actual also"). ELIGIBLE is every trade matching the configuration's filters; ACTUAL is only
-  // those the wallet could fund, which is the smaller number already reported as "N funded of M eligible"
-  // on the same card. They can differ materially: capacity decides WHICH eligible trades get taken, so a
-  // configuration can look strong on eligible trades and weaker on the ones actually placed.
-  const _cardWL=x=>{const s=x.seq||[],w=s.filter(r=>r.perf>0).length,l=s.filter(r=>r.perf<0).length;
-    return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};
-  const _cardWLActual=x=>{const w=+x.wins||0,l=+x.losses||0;
-    return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};
-  const _wlLine=(label,d,title)=>`<div style="font-size:11px;margin-top:4px" title="${title}">${label} <b style="color:var(--fg)">${d.w} : ${d.l}</b>${d.pct!=null?` <span class="muted">(${d.pct}%)</span>`:''}</div>`;
-  // Three ROLLING 365-day windows for a card's configuration (user 2026-09-01: "I want to see if these
-  // settings are only good for this year or all years. A year in this card is not a calendar year - it is
-  // the previous 365 days").
-  //
-  // The annual cards are SELECTED on the last 365 days, so those earlier windows have to come from the
-  // three-year population. The configuration is held FIXED and only the period changes -- otherwise this
-  // would be three separate optimisations and would prove nothing about overfitting.
-  //
-  // Read it as: window 1 is IN-SAMPLE (the cards were chosen on it) and windows 2 and 3 are the honest
-  // out-of-sample test. Measured 2026-09-01: every card positive in all three, but returns roughly halve
-  // out of sample -- real, and tuned to the recent year.
-  const _yrEdges=(()=>{const rows=Array.isArray(WIN_3Y)?WIN_3Y:[];
-    if(!rows.length)return null;
-    const latest=rows.reduce((m,r)=>{const d=String(r&&r.trig_date||"").slice(0,10);return d>m?d:m;},"");
-    if(!latest)return null;
-    const back=n=>{const d=new Date(latest+"T00:00:00Z");d.setUTCDate(d.getUTCDate()-n);return d.toISOString().slice(0,10);};
-    return [latest,back(365),back(730),back(1095)];})();
-  const _cardYears=x=>{
-    if(!_yrEdges||!Array.isArray(WIN_3Y)||!WIN_3Y.length)return null;
-    return [0,1,2].map(i=>{const to=_yrEdges[i],from=_yrEdges[i+1];
-      const seq=WIN_3Y.filter(r=>{const d=String(r&&r.trig_date||"").slice(0,10);
-        return d>from&&d<=to&&r.perf!=null&&x.scope.test(r)&&r.rr!=null&&r.rr>=x.rr&&
-          (!x.q||(r.quality!=null&&r.quality>=x.q))&&(!x.vs||(r.volume_score!=null&&r.volume_score>=x.vs))&&
-          (!x.rv||(r.rvol!=null&&r.rvol>=x.rv))&&(!x.vw||r.above_vwap===true)&&(!x.atr||r.atr_expanding===true);});
-      if(!seq.length)return {from,to,ret:null,n:0};
-      const z=_combReplay(seq,x.st/100,x.mo);
-      return {from,to,ret:z.ret,n:z.n};});};
-  const _yearsLine=(label,x)=>{
-    if(label==="Best over 3 years")return "";   // it IS the three-year replay; excluded by request
-    const ys=_cardYears(x);
-    if(!ys)return `<div class="muted" style="font-size:10px;margin-top:6px">Yearly breakdown loads with the three-year evidence.</div>`;
-    const cell=y=>y.ret==null?`<span class="muted">n/a</span>`
-      :`<b style="color:${y.ret>=0?'var(--bull)':'var(--bear)'}">${pct(y.ret)}</b>`;
-    return `<div style="font-size:10px;margin-top:6px;line-height:1.5" title="The SAME configuration replayed over three rolling 365-day periods, newest first. The first is the window the card was chosen on (in-sample); the other two are out-of-sample.">
-      <b style="color:var(--fg)">Each of the last 3 years:</b> ` +
-      ys.map((y,i)=>`<span title="${y.from} to ${y.to} — ${y.n} funded trade${y.n===1?"":"s"}">${cell(y)}${i===0?' <span class="muted">(in-sample)</span>':''}</span>`).join(' <span class="muted">·</span> ')
-      +`</div>`;};
-  const choiceCards=choices.map(([label,x,why,colour])=>`<div class="fcard fcard-choice${label===BEST_SELECTED?' fcard-selected':''}" data-choice="${label}" data-choice-return="${x.ret}" style="min-width:240px;flex:1;border-top:3px solid ${colour}" onclick="selectBestChoice('${label.replace(/'/g,"\\'")}')" title="Show this option's detail and Transaction evidence below">
-    <h3 style="color:${colour}">${label}</h3>${matchesCurrent(x)?`<div class="fcard-current" title="Every setting on this card already matches your saved User Configuration, so applying it would change nothing">✓ This is your current configuration</div>`:''}<div class="muted" style="font-size:11px;min-height:30px">${why}</div>
-    <div class="body"><div><b style="font-size:17px;color:${x.ret>=0?'var(--bull)':'var(--bear)'}">${pct(x.ret)}</b> return · <b>${(x.dd*100).toFixed(1)}%</b> max drawdown</div>
-      <div class="muted" style="font-size:11px;margin-top:4px">${x.n.toLocaleString()} funded of ${x.seq.length.toLocaleString()} eligible · ${x.posPeriods}/${x.periods} positive quarters</div>
-      ${_wlLine("Win : Loss <span class='muted'>(eligible)</span>",_cardWL(x),"Wins vs losses among every trade matching this configuration, whether or not the wallet could fund it — the same split the detail panel below reports")}
-      ${_wlLine("Win : Loss <span class='muted'>(actual)</span>",_cardWLActual(x),"Wins vs losses among only the trades this configuration actually FUNDED — the same population as the funded count above")}
-      <div style="font-size:11px;margin-top:6px"${x.scope.offList&&x.scope.offList.length?` title="These markets are switched off in your settings and were never in this replay: ${x.scope.offList.join(', ')}"`:''}>${x.scope.display||x.scope.label} · R:R ≥ ${x.rr} · Q ≥ ${x.q||'any'} · Vol ≥ ${x.vs||'any'} · RVOL ≥ ${x.rv||'any'} · ${x.vw?'VWAP required':'any VWAP'} · ${x.atr?'ATR expanding':'any ATR'} · ${x.st}% position · ${x.mo} max open</div>
-      ${_yearsLine(label,x)}
-      <div class="muted" style="font-size:10px;margin-top:7px;line-height:1.4"><b style="color:var(--fg)">Changes:</b> ${changedFor(x)}</div>
-    </div>
-      <!-- The apply row is a DIRECT child of .fcard, NOT of .body. .fcard-apply carries margin-top:auto,
-           which only pushes to the bottom for a flex item of a column flex container; .fcard is one,
-           .body is a plain block (index.html:311). Nested inside .body it was inert, and the four
-           choice cards only LOOKED aligned because their bodies hold identical rows. The three-year
-           card, with different content, sat at a different height (user 2026-08-30). -->
-      ${AUTH?`<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(x))},this)' title="${matchesCurrent(x)?'These values already match your User Configuration - applying would change nothing':'Review and apply these values to User Configuration'}">${matchesCurrent(x)?'Already applied':'Apply this configuration'}</button></div>`
-             /* There is no User Configuration to write to when nobody is signed in, and /api/config rejects
-                the POST, so the control could only ever end at "Save failed" (user 2026-08-22). Offer the
-                sign-in that makes it work instead of an action that cannot. */
-             :`<div class="fcard-apply"><span class="muted" style="font-size:11px">Log in to apply this configuration.</span></div>`}
-    </div>`).join('');
-  const unsupportedCards=[
-    showUnsupported250&&[">250 trades",250,300,"#a371f7"],showUnsupported125&&[">125 trades",125,150,"#1f6feb"]
-  ].filter(Boolean).map(([label,min,max,colour])=>`<div class="fcard" data-choice-unavailable="${label}" style="min-width:240px;flex:1;border-top:3px solid ${colour};opacity:.8" title="No tested annual configuration funded more than ${min} and no more than ${max} trades">
-    <h3 style="color:${colour}">${label}</h3><div class="muted" style="font-size:11px;min-height:30px">Evidence threshold not met by the current annual dataset.</div>
-    <div class="body"><b style="font-size:15px;color:#d29922">No supported recommendation</b><div class="muted" style="font-size:11px;margin-top:5px">None of the tested configurations funded more than ${min} and no more than ${max} trades. The card remains visible so an evidence shortfall is not mistaken for a missing feature.</div></div>
-  </div>`).join('');
+  const trimmed=trimBestSettingsCards(res.cards,res.unsupported,!threeYear,_bestCardCapacity);
+  const shown=new Set(trimmed.cards.map(c=>c.label));
+  const choices=res.choices.filter(c=>shown.has(c[0]));
+  const choiceCards=trimmed.cards.map(c=>bestSettingsCardHTML(c,{current,selected:BEST_SELECTED,
+    onSelect:"selectBestChoice('LABEL')",apply:_bestApplyRow(c.cfg,bestSettingsMatchesCurrent(c,current))})).join('');
+  const unsupportedCards=trimmed.unsupported.map(bestSettingsUnsupportedCardHTML).join('');
   // A three-year option is a recommendation only when it meets its stated evidence threshold. If it does
   // not, omit it rather than occupying a trader-facing card with a non-actionable rejection message.
   const threeYearInfo=WIN_3Y===null
     ?`<div class="muted" style="margin:0 0 10px;font-size:12px">Three-year evidence is loading separately; it is not included in the card list until verified.</div>`
-    :!threeYear?`<div class="muted" style="margin:0 0 10px;padding:8px 10px;border-left:3px solid #d29922;background:color-mix(in srgb,#d29922 9%,transparent);font-size:12px"><b>Three-year evidence:</b> no supported recommendation. The strongest reviewed configuration funded <b>${bestThreeYear?bestThreeYear.n.toLocaleString():"0"}</b> trades; the evidence rule requires <b>more than 125</b> and at least 80% of the best annual card’s return.${bestThreeYear?` Its replayed return was <b>${pct(bestThreeYear.ret)}</b>.`:""}</div>`
+    :!threeYear?`<div class="muted" style="margin:0 0 10px;padding:8px 10px;border-left:3px solid #d29922;background:color-mix(in srgb,#d29922 9%,transparent);font-size:12px"><b>Three-year evidence:</b> no supported recommendation. The strongest reviewed configuration funded <b>${bestThreeYear?bestThreeYear.n.toLocaleString():"0"}</b> trades; the evidence rule requires <b>more than 125</b> and at least 80% of the best annual card’s return.${bestThreeYear?` Its replayed return was <b>${_bsPct(bestThreeYear.ret)}</b>.`:""}</div>`
     :"";
-  // The apply row is computed here so it can be emitted as a DIRECT child of .fcard rather than nested
-  // inside .body. .fcard-apply carries margin-top:auto, which only pushes to the bottom for a flex item
-  // of a column flex container: .fcard is one, .body is a plain block (index.html:311). Nested inside
-  // .body it was inert, and this card - whose body differs from the choice cards - sat at a different
-  // height (user 2026-08-30, reported twice).
-  const threeYearApply=(WIN_3Y!==null&&bestThreeYear)
-    ?(AUTH?`<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfgFor(bestThreeYear))},this,{belowEvidence:${bestThreeYear.n}})' title="${matchesCurrent(bestThreeYear)?'These values already match your User Configuration - applying would change nothing':'Apply this three-year configuration even though it is below the evidence rule'}">${matchesCurrent(bestThreeYear)?'Already applied':'Apply this configuration'}</button></div>`
-      :`<div class="fcard-apply"><span class="muted" style="font-size:11px">Log in to apply this configuration.</span></div>`)
-    :"";
-  const threeYearStatusCard=!threeYear?`<div class="fcard" data-choice-unavailable="Best over 3 years" style="min-width:240px;flex:1;border-top:3px solid #00a8a8;opacity:.9" title="Three-year evidence; shown for comparison, not as an applicable recommendation below the evidence threshold">
-    <h3 style="color:#00a8a8">Best over 3 years</h3>${bestThreeYear&&matchesCurrent(bestThreeYear)?`<div class="fcard-current" title="Every setting on this card already matches your saved User Configuration, so applying it would change nothing">✓ This is your current configuration</div>`:''}<div class="muted" style="font-size:11px;min-height:30px">${WIN_3Y===null?(WIN_3Y_ERROR?"Evidence could not be loaded":"Evidence loading separately…"):"Strong return; smaller trade sample."}</div>
-    <div class="body">${WIN_3Y===null?(WIN_3Y_ERROR?`<span style="color:var(--bear)">Three-year evidence could not be loaded (${_esc(WIN_3Y_ERROR)}).</span> <button class="subpill" onclick="event.stopPropagation();retryThreeYear()">Retry</button>`:"This card remains visible while the complete three-year evidence loads."):bestThreeYear?`<div><b style="font-size:17px;color:var(--bull)">${pct(bestThreeYear.ret)}</b> return · <b>${(bestThreeYear.dd*100).toFixed(1)}%</b> max drawdown</div><div class="muted" style="font-size:11px;margin-top:5px"><b>${bestThreeYear.n.toLocaleString()}</b> funded trades. The high-confidence evidence rule is more than <b>125</b> funded trades; this is information, not a recommendation.</div>
-    `:"No usable three-year evidence is currently available."}</div>
-    ${threeYearApply}
-  </div>`:"";
+  const threeYearStatusCard=!threeYear?_bestThreeYearStatusCard({
+    loaded:WIN_3Y!==null,error:WIN_3Y_ERROR,
+    best:bestThreeYear?{ret:bestThreeYear.ret,dd:bestThreeYear.dd,n:bestThreeYear.n,
+      settings:{rr:bestThreeYear.rr,q:bestThreeYear.q,vs:bestThreeYear.vs,rv:bestThreeYear.rv,vw:!!bestThreeYear.vw,
+        atr:!!bestThreeYear.atr,st:bestThreeYear.st,mo:bestThreeYear.mo,scope:bestThreeYear.scope.label},
+      cfg:res.threeYearCard?res.threeYearCard.cfg:null}:null,current}):"";
   box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearStatusCard}</div>
   <div class="card" style="margin:0" id="best-detail"></div>`;
-  // Defensive is intentionally last. If responsive wrapping leaves it alone on a final row, remove it
-  // rather than spending an entire row on the least-useful alternative (user 2026-08-18).
-  requestAnimationFrame(()=>{const grid=box.querySelector('.fgrid'),def=grid&&grid.querySelector('[data-choice="Defensive"]');if(!grid)return;if(def){const rowPeers=[...grid.children].filter(c=>c!==def&&c.offsetTop===def.offsetTop);if(!rowPeers.length){def.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!=="Defensive");if(BEST_SELECTED==="Defensive")selectBestChoice("Balanced");}}
-    // Laptop: up to eight only when they physically fit in two rows.  Remove the weakest-return card
-    // repeatedly until they do; a one-off trim could still leave a third or fourth row at narrower widths.
-    const maxRows=bestCardMaxRows();while(new Set([...grid.children].map(c=>c.offsetTop)).size>maxRows){const weakest=[...grid.querySelectorAll('[data-choice-return]')].sort((a,b)=>Number(a.dataset.choiceReturn)-Number(b.dataset.choiceReturn))[0];if(!weakest)break;const label=weakest.dataset.choice;weakest.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!==label);if(BEST_SELECTED===label)selectBestChoice("Balanced");}});
+  _bestGridPostLayout(box);
   BEST_CHOICES=choices; BEST_MODEL_W=w;
   // Detail card follows whichever choice is clicked (user 2026-08-07, ChangeRequest P-06); defaults to
   // Balanced on first render, and stays on the same choice across data refreshes where still present.
   selectBestChoice(choices.some(([l])=>l===BEST_SELECTED)?BEST_SELECTED:"Balanced");
   if(recordSnapshot)recordBestSettingsSnapshot({
     dataset_generated:WIN_GENERATED,
-    data_through:String((byDate[byDate.length-1]||{}).trig_date||"").slice(0,10),
+    data_through:res.dataThrough,
     model:{wallet:w,minimum_trade:MIN_TRADE,position_pct:WINNERS_STAKE*100,max_open:WINNERS_MAXOPEN,
            calc_model:BEST_CALC_MODEL},
     options:choices.map(([label,x])=>({label,
@@ -3507,6 +3146,92 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
       results:{annual_return:x.ret,max_drawdown:x.dd,funded_trades:x.n,eligible_trades:x.seq.length,
         positive_quarters:x.posPeriods,quarters:x.periods}})),
   });
+}
+// There is no User Configuration to write to when nobody is signed in, and /api/config rejects the POST,
+// so the control could only ever end at "Save failed" (user 2026-08-22). Offer the sign-in that makes it
+// work instead of an action that cannot.
+function _bestApplyRow(cfg,matches,extra){
+  if(!AUTH)return `<div class="fcard-apply"><span class="muted" style="font-size:11px">Log in to apply this configuration.</span></div>`;
+  const args=extra?`,${JSON.stringify(extra)}`:"";
+  return `<div class="fcard-apply"><button class="btn" onclick='event.stopPropagation();applyConfigFromReport(${JSON.stringify(cfg)},this${args})' title="${matches?'These values already match your User Configuration - applying would change nothing':'Review and apply these values to User Configuration'}">${matches?'Already applied':'Apply this configuration'}</button></div>`;
+}
+// The three-year card when its evidence rule is NOT met: information, not a recommendation. Kept in the
+// page rather than in best_settings.js because it reports the LOAD state of WIN_3Y, which only exists in
+// a browser. `state.best` is a plain summary, so the logged-out path renders the identical card.
+function _bestThreeYearStatusCard(state){
+  const b=state.best, matches=b?bestSettingsMatchesCurrent({...b.settings,scope:{label:b.settings.scope}},state.current):false;
+  // The apply row is computed here so it can be emitted as a DIRECT child of .fcard rather than nested
+  // inside .body. .fcard-apply carries margin-top:auto, which only pushes to the bottom for a flex item
+  // of a column flex container: .fcard is one, .body is a plain block (index.html:311). Nested inside
+  // .body it was inert, and this card - whose body differs from the choice cards - sat at a different
+  // height (user 2026-08-30, reported twice).
+  const apply=(state.loaded&&b&&b.cfg)?_bestApplyRow(b.cfg,matches,{belowEvidence:b.n}):"";
+  return `<div class="fcard" data-choice-unavailable="Best over 3 years" style="min-width:240px;flex:1;border-top:3px solid #00a8a8;opacity:.9" title="Three-year evidence; shown for comparison, not as an applicable recommendation below the evidence threshold">
+    <h3 style="color:#00a8a8">Best over 3 years</h3>${matches?`<div class="fcard-current" title="Every setting on this card already matches your saved User Configuration, so applying it would change nothing">✓ This is your current configuration</div>`:''}<div class="muted" style="font-size:11px;min-height:30px">${!state.loaded?(state.error?"Evidence could not be loaded":"Evidence loading separately…"):"Strong return; smaller trade sample."}</div>
+    <div class="body">${!state.loaded?(state.error?`<span style="color:var(--bear)">Three-year evidence could not be loaded (${_esc(state.error)}).</span> <button class="subpill" onclick="event.stopPropagation();retryThreeYear()">Retry</button>`:"This card remains visible while the complete three-year evidence loads."):b?`<div><b style="font-size:17px;color:var(--bull)">${_bsPct(b.ret)}</b> return · <b>${(b.dd*100).toFixed(1)}%</b> max drawdown</div><div class="muted" style="font-size:11px;margin-top:5px"><b>${b.n.toLocaleString()}</b> funded trades. The high-confidence evidence rule is more than <b>125</b> funded trades; this is information, not a recommendation.</div>
+    `:"No usable three-year evidence is currently available."}</div>
+    ${apply}
+  </div>`;
+}
+// Post-layout trimming. Shared by both render paths so the logged-out grid behaves identically.
+function _bestGridPostLayout(box){
+  // Defensive is intentionally last. If responsive wrapping leaves it alone on a final row, remove it
+  // rather than spending an entire row on the least-useful alternative (user 2026-08-18).
+  requestAnimationFrame(()=>{const grid=box.querySelector('.fgrid'),def=grid&&grid.querySelector('[data-choice="Defensive"]');if(!grid)return;if(def){const rowPeers=[...grid.children].filter(c=>c!==def&&c.offsetTop===def.offsetTop);if(!rowPeers.length){def.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!=="Defensive");if(BEST_SELECTED==="Defensive")selectBestChoice("Balanced");}}
+    // Laptop: up to eight only when they physically fit in two rows.  Remove the weakest-return card
+    // repeatedly until they do; a one-off trim could still leave a third or fourth row at narrower widths.
+    const maxRows=bestCardMaxRows();while(new Set([...grid.children].map(c=>c.offsetTop)).size>maxRows){const weakest=[...grid.querySelectorAll('[data-choice-return]')].sort((a,b)=>Number(a.dataset.choiceReturn)-Number(b.dataset.choiceReturn))[0];if(!weakest)break;const label=weakest.dataset.choice;weakest.remove();BEST_CHOICES=BEST_CHOICES.filter(c=>c[0]!==label);if(BEST_SELECTED===label)selectBestChoice("Balanced");}});
+}
+// ------------------------------------------------------------------------------------------------------
+// The logged-out cards.
+//
+// /api/best-settings-cards serves AGGREGATES ONLY — return, drawdown, funded/eligible counts, positive
+// quarters, win:loss and the three rolling-year returns — precomputed by run_best_settings_cards.py from
+// this page's own search (hvf_web/best_settings.js) running under Node. No per-trade row is in that
+// payload, so there is nothing here that could reconstruct the Transaction evidence, which stays hidden
+// exactly as before. The detail panel is not rendered at all: it exists only to hold that evidence.
+// ------------------------------------------------------------------------------------------------------
+let PUBLIC_BEST=null, PUBLIC_BEST_LOADING=false, PUBLIC_BEST_ERROR="";
+function renderPublicBestCombo(){
+  const box=$("ordp-bestcombo"); if(!box)return;
+  if(PUBLIC_BEST){paintPublicBestCombo(PUBLIC_BEST);return;}
+  if(PUBLIC_BEST_ERROR){
+    box.innerHTML=`<div class="muted" style="font-size:13px">Best Settings cards could not be loaded (${_esc(PUBLIC_BEST_ERROR)}). <button class="subpill" onclick="retryPublicBestCombo()">Retry</button></div>`;
+    return;
+  }
+  box.innerHTML=`<div class="refreshing" role="status" aria-live="polite" style="padding:18px 0"><b class="sqh-loading">⏳ Data loading…</b></div>`;
+  if(PUBLIC_BEST_LOADING)return;
+  PUBLIC_BEST_LOADING=true;
+  fetch("/api/best-settings-cards").then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
+    .then(j=>{PUBLIC_BEST_LOADING=false;
+      if(j.error)throw new Error(j.error);
+      PUBLIC_BEST=j; renderPublicBestCombo();})
+    .catch(err=>{PUBLIC_BEST_LOADING=false;PUBLIC_BEST_ERROR=String((err&&err.message)||err||"unavailable");renderPublicBestCombo();});
+}
+function retryPublicBestCombo(){PUBLIC_BEST_ERROR="";PUBLIC_BEST=null;renderPublicBestCombo();}
+function paintPublicBestCombo(payload){
+  const box=$("ordp-bestcombo"); if(!box)return;
+  const cards=payload.cards||[];
+  if(!cards.length){
+    box.innerHTML=`<div class="muted" style="font-size:13px">${payload.pending
+      ?"The Best Settings cards are being recalculated against the latest data and will appear shortly."
+      :"No supported recommendation is available from the current dataset."}</div>`;
+    return;
+  }
+  const trimmed=trimBestSettingsCards(cards,payload.unsupported||[],!payload.recommended3y,bestCardCapacity());
+  // current:null — nobody is signed in, so there is no saved configuration to compare against and the
+  // "matches yours" tick and Changes line are correctly absent rather than guessed at.
+  const choiceCards=trimmed.cards.map(c=>bestSettingsCardHTML(c,{current:null,
+    apply:`<div class="fcard-apply"><span class="muted" style="font-size:11px">Log in to apply this configuration.</span></div>`})).join('');
+  const unsupportedCards=trimmed.unsupported.map(bestSettingsUnsupportedCardHTML).join('');
+  const t=payload.threeYear||null;
+  const threeYearStatusCard=payload.recommended3y?"":_bestThreeYearStatusCard({loaded:true,error:"",
+    best:t?{ret:t.ret,dd:t.dd,n:t.n,settings:t.settings,cfg:null}:null,current:null});
+  const model=payload.model||{};
+  box.innerHTML=`<div class="muted" style="margin:0 0 8px;font-size:12px">These recommendations are calculated from the full replayed population on a <b>${model.wallet?'£'+Number(model.wallet).toLocaleString():'£10,000'}</b> model wallet at <b>${model.position_pct??5}%</b> position size${payload.data_through?`, using data through <b>${_esc(payload.data_through)}</b>`:""}. <a href="#" onclick="showLogin();return false">Log in</a> to model your own wallet, see the transaction evidence behind each card, and apply a configuration.</div>
+  <div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearStatusCard}</div>`;
+  _bestGridPostLayout(box);
+  BEST_CHOICES=[];
 }
 window.addEventListener("resize",()=>{
   clearTimeout(_bestSettingsResizeTimer);

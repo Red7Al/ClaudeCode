@@ -103,13 +103,17 @@ def test_the_extracted_script_ships_to_both_serving_paths(tmp_path):
     out = build_ionos_package.build(tmp_path / "pkg.zip")[0]
     with zipfile.ZipFile(out) as z:
         names = set(z.namelist())
-        for required in ("index.html", "app.js", "hvf_web/index.html", "hvf_web/app.js"):
+        for required in ("index.html", "app.js", "best_settings.js",
+                         "hvf_web/index.html", "hvf_web/app.js", "hvf_web/best_settings.js"):
             assert required in names, f"{required} is missing from the package"
-        for root, nested in (("index.html", "hvf_web/index.html"), ("app.js", "hvf_web/app.js")):
+        for root, nested in (("index.html", "hvf_web/index.html"), ("app.js", "hvf_web/app.js"),
+                             ("best_settings.js", "hvf_web/best_settings.js")):
             assert hashlib.sha256(z.read(root)).hexdigest() == hashlib.sha256(z.read(nested)).hexdigest(), (
                 f"{root} and {nested} differ; the two serving paths would run different code")
         html = z.read("index.html").decode("utf-8")
         assert '<script src="app.js"></script>' in html
+        # Loaded FIRST: app.js builds its wallet replay from makeCombReplay at load time.
+        assert html.index('src="best_settings.js"') < html.index('src="app.js"')
         assert "<script>" not in html, "an inline script block came back"
 
 
@@ -121,7 +125,8 @@ def test_only_the_client_script_ships_as_javascript(tmp_path):
     with zipfile.ZipFile(out) as z:
         js = sorted(n for n in z.namelist() if n.endswith(".js"))
 
-    assert js == ["app.js", "hvf_web/app.js"], f"unexpected JavaScript in the package: {js}"
+    assert js == ["app.js", "best_settings.js", "hvf_web/app.js", "hvf_web/best_settings.js"], \
+        f"unexpected JavaScript in the package: {js}"
 
 
 def test_flask_can_serve_the_script_itself():
@@ -132,9 +137,22 @@ def test_flask_can_serve_the_script_itself():
 
     assert response.status_code == 200
     assert "javascript" in response.headers["Content-Type"]
-    assert b"function _combReplay" in response.data
+    assert b"const _combReplay=makeCombReplay(" in response.data
     assert "no-store" in response.headers.get("Cache-Control", ""), (
         "a browser holding yesterday's app.js against today's index.html fails silently")
+
+
+def test_flask_can_serve_the_best_settings_module():
+    """app.js builds its replay from this file at load time, so a 404 here is a page that never starts."""
+    from hvf_web import server
+
+    response = server.app.test_client().get("/best_settings.js")
+
+    assert response.status_code == 200
+    assert "javascript" in response.headers["Content-Type"]
+    assert b"function makeCombReplay(env)" in response.data
+    assert b"function computeBestSettings(env)" in response.data
+    assert "no-store" in response.headers.get("Cache-Control", "")
 
 
 def test_the_page_and_script_are_revalidated_by_apache():
@@ -142,6 +160,7 @@ def test_the_page_and_script_are_revalidated_by_apache():
     htaccess = (Path(__file__).parent / ".htaccess").read_text(encoding="utf-8")
 
     assert 'Files "app.js"' in htaccess
+    assert 'Files "best_settings.js"' in htaccess
     assert "must-revalidate" in htaccess
 
 
