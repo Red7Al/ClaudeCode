@@ -1296,3 +1296,69 @@ def test_snapshot_storage_round_trips_through_gzip():
     assert store._digest(raw) != store._digest(packed)
     assert store._object_path("2026-08-17T10:00:00+00:00", "abc123", compressed=True).endswith(".json.gz")
     assert store._object_path("2026-08-17T10:00:00+00:00", "abc123", compressed=False).endswith(".json")
+
+
+# ======================================================================================================
+# The cache warmer has to RUN, not merely exist.
+#
+# /api/records was measured on the live host 2026-09-03 at 29.84s cold / 0.88s warm anonymous, and 66.04s
+# cold / 0.71s warm signed in, on one resident worker. The caches worked; nothing kept them warm.
+# _perf_warm_loop was started only from `if __name__ == "__main__":`, and cgi-bin/app.py imports the app,
+# so on IONOS it had never executed once -- the same __main__/CGI trap already recorded for the Order
+# Bridge in setup_cronjobs.py. These tests assert the WIRING, which is what was missing, not the caching.
+# ======================================================================================================
+
+def test_the_warmer_is_started_by_a_request(monkeypatch):
+    """The invocation, not the function. A green test on _perf_warm_loop proved nothing for two weeks."""
+    started = []
+    monkeypatch.setattr(server._threading, "Thread",
+                        lambda target=None, daemon=None: type("T", (), {"start": lambda s: started.append(target)})())
+    monkeypatch.setitem(server._WARMERS_STARTED, "on", False)
+    monkeypatch.delenv("HVF_DISABLE_WARMERS", raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    server.app.test_client().get("/api/build")
+
+    assert started == [server._perf_warm_loop], "no request path starts the cache warmer"
+
+
+def test_the_warmer_starts_only_once(monkeypatch):
+    """One thread per worker. Every request re-entering this hook would fork a warmer per request."""
+    started = []
+    monkeypatch.setattr(server._threading, "Thread",
+                        lambda target=None, daemon=None: type("T", (), {"start": lambda s: started.append(target)})())
+    monkeypatch.setitem(server._WARMERS_STARTED, "on", False)
+    monkeypatch.delenv("HVF_DISABLE_WARMERS", raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    for _ in range(5):
+        server.app.test_client().get("/api/build")
+
+    assert len(started) == 1
+
+
+def test_the_warmer_covers_the_scanner_caches(monkeypatch):
+    """The Scanner Report is the surface that was slow, and it is not built by _build_perf_payload."""
+    called = []
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": "x", "records": []})
+    for fn in ("_snapshot_52wk", "_stored_metrics", "_snapshot_rvol", "_snapshot_volscore",
+               "_live_vwap_atr", "_live_instrument_metrics"):
+        monkeypatch.setattr(server, fn, (lambda name: lambda snap: called.append(name) or {})(fn))
+    monkeypatch.setattr(server, "_mcap_map", lambda: called.append("_mcap_map") or {})
+
+    server._warm_records_caches()
+
+    assert set(called) == {"_snapshot_52wk", "_mcap_map", "_stored_metrics", "_snapshot_rvol",
+                           "_snapshot_volscore", "_live_vwap_atr", "_live_instrument_metrics"}
+
+
+def test_a_test_run_never_spawns_the_warmer(monkeypatch):
+    """Dozens of tests call test_client(); none of them should start a thread walking 100k price bars."""
+    started = []
+    monkeypatch.setattr(server._threading, "Thread",
+                        lambda target=None, daemon=None: type("T", (), {"start": lambda s: started.append(target)})())
+    monkeypatch.setitem(server._WARMERS_STARTED, "on", False)
+
+    server.app.test_client().get("/api/build")          # PYTEST_CURRENT_TEST is set by pytest itself
+
+    assert started == []

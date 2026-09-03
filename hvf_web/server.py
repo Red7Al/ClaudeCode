@@ -5181,8 +5181,35 @@ def api_ig_closed():
         return jsonify({"trades": [], "note": "Could not read your closed trades right now — try again."})
 
 
+def _warm_records_caches():
+    """Fill the /api/records caches OFF the request path -- the Scanner Report's cold cost.
+
+    MEASURED on the live host 2026-09-03, on ONE resident worker (12 consecutive /api/build reads all
+    returned the same module_loaded_at, so this is the cache and not the network):
+
+        anonymous   29.84s cold -> 1.17s -> 0.88s
+        signed in   66.04s cold -> 4.57s -> 0.71s
+
+    Every cache below is keyed on the snapshot's generated_utc, so a new snapshot OR a worker recycle
+    empties it and the next VISITOR pays the whole cost. Nothing warmed them: _kick_perf_warm covers the
+    Performance payload only, and the loop that would have run was started from __main__, which CGI never
+    executes (the same trap that killed the Order Bridge -- see setup_cronjobs.py).
+
+    Ordered cheapest-first so a failure part-way still leaves the public Scanner path warm.
+    """
+    snap = _load_snapshot()
+    _snapshot_52wk(snap)             # the logged-out branch needs only this one
+    _mcap_map()
+    _stored_metrics(snap)            # read of today's persisted metrics; avoids recomputing where present
+    _snapshot_rvol(snap)
+    _snapshot_volscore(snap)
+    _live_vwap_atr(snap)
+    _live_instrument_metrics(snap)
+
+
 def _perf_warm_loop():
-    """Pre-compute the Performance caches OFF the request path (user 2026-08-03). The 12-month replay +
+    """Pre-compute the Performance AND Scanner caches OFF the request path (user 2026-08-03; the Scanner
+    added 2026-09-03 after the requester reported the Scanner Report "still too slow"). The 12-month replay +
     per-trigger VolumeScore take ~35s cold — after the 5-year backfill that used to hang /api/performance
     on the first click ("processing the 12-month replay…" forever). This warms them at startup and every
     _PERF_WARM_INTERVAL (< the payload TTL), so a click always hits a warm cache (~0.3s) and the heavy build
@@ -5199,7 +5226,49 @@ def _perf_warm_loop():
                 log.warning(f"performance warm failed: {e}")
             finally:
                 _finish_perf_warm()
+        try:
+            t0 = _t.time()
+            _warm_records_caches()
+            log.info(f"scanner caches warmed in {_t.time() - t0:.1f}s")
+        except Exception as e:
+            log.warning(f"scanner warm failed: {e}")
         _t.sleep(_PERF_WARM_INTERVAL)
+
+
+# Start the warmer where CGI will actually reach it.
+#
+# It was started ONLY from `if __name__ == "__main__":`, so on IONOS it has never run: cgi-bin/app.py does
+# `from hvf_web.server import app`, and __main__ never executes under CGI/WSGI. setup_cronjobs.py already
+# records that trap for the Order Bridge -- this is the same defect on the cache warmer, and it is why the
+# first visitor after every worker recycle waited 30-66s for the Scanner Report.
+#
+# Started on the FIRST REQUEST rather than at import, deliberately: import happens in tests, in CLI tools
+# and in every script that reads a helper from this module, and none of those should spawn a thread that
+# walks 100k price bars. A serving process is the only one that ever reaches a request.
+#
+# Read-only work only. IONOS_DEPLOYMENT.md warns against background loops in WSGI workers, but that warning
+# is about DUPLICATE ORDER PLACEMENT (the bridge); warming a cache twice costs CPU and changes nothing.
+_WARMERS_STARTED = {"on": False}
+_WARMERS_LOCK = _threading.Lock()
+
+
+@app.before_request
+def _start_background_warmers():
+    # PYTEST_CURRENT_TEST: the suite calls app.test_client() in dozens of places, and none of those
+    # requests should spawn a thread that walks 100k price bars. Checked HERE rather than at import so it
+    # cannot silently disable the warmer in production.
+    if (_WARMERS_STARTED["on"] or os.environ.get("HVF_DISABLE_WARMERS", "").strip()
+            or "PYTEST_CURRENT_TEST" in os.environ):
+        return
+    with _WARMERS_LOCK:
+        if _WARMERS_STARTED["on"]:
+            return
+        _WARMERS_STARTED["on"] = True
+    try:
+        _threading.Thread(target=_perf_warm_loop, daemon=True).start()
+        log.info("background cache warmer started")
+    except Exception as ex:                    # a host that forbids threads must still serve pages
+        log.warning(f"background cache warmer could not start: {ex}")
 
 
 if __name__ == "__main__":
@@ -5228,7 +5297,7 @@ if __name__ == "__main__":
     if os.environ.get("HVF_ENABLE_LOCAL_SNAPSHOT_REBUILD", "").strip().lower() in ("1", "true", "yes"):
         threading.Thread(target=_refresh_loop, daemon=True).start()
     threading.Thread(target=_bridge_loop, daemon=True).start()
-    threading.Thread(target=_perf_warm_loop, daemon=True).start()   # keep Performance caches warm (user 2026-08-03)
+    _start_background_warmers()   # Performance + Scanner caches (user 2026-08-03; Scanner 2026-09-03)
     web_port = int(os.environ.get("HVF_WEB_PORT", "5057"))
     log.info(f"HVF site on http://127.0.0.1:{web_port}  (local development instance)")
     app.run(host="0.0.0.0", port=web_port, debug=False, threaded=True)
