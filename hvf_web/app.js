@@ -2566,9 +2566,9 @@ function renderSqueezeAnalysis(){
   // Load the annual decision surface first.  Starting the large three-year evidence request in parallel
   // made the browser wait on two expensive server builds and could leave the tab unresponsive; it is
   // now deferred and only refreshes the cards when it is ready.
-  const loadThreeYear=(attempt=0)=>{if(WIN_3Y_LOADING||WIN_3Y!==null)return;WIN_3Y_LOADING=true;fetch("/api/winners?years=3").then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();}).then(j3=>{if(j3.error)throw new Error(j3.error);WIN_3Y=_dedupeSameDayRows(j3.rows||[]);WIN_3Y_LOADING=false;winnersParamsChange();}).catch(err=>{if(attempt<2){WIN_3Y_LOADING=false;setTimeout(()=>loadThreeYear(attempt+1),2000*(attempt+1));return;}WIN_3Y_LOADING=false;WIN_3Y_ERROR=String((err&&err.message)||err||"unavailable");console.warn("Three-year evidence unavailable",err);if(typeof winnersParamsChange==="function")winnersParamsChange();});};
+  const loadThreeYear=(attempt=0)=>{if(WIN_3Y_LOADING||WIN_3Y!==null)return;WIN_3Y_LOADING=true;fetch("/api/winners?years=3",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();}).then(j3=>{if(j3.error)throw new Error(j3.error);WIN_3Y=_dedupeSameDayRows(j3.rows||[]);WIN_3Y_LOADING=false;winnersParamsChange();}).catch(err=>{if(attempt<2){WIN_3Y_LOADING=false;setTimeout(()=>loadThreeYear(attempt+1),2000*(attempt+1));return;}WIN_3Y_LOADING=false;WIN_3Y_ERROR=String((err&&err.message)||err||"unavailable");console.warn("Three-year evidence unavailable",err);if(typeof winnersParamsChange==="function")winnersParamsChange();});};
   window.retryThreeYear=()=>{WIN_3Y_ERROR="";if(typeof winnersParamsChange==="function")winnersParamsChange();loadThreeYear();};
-  const loadWinners=(attempt=0)=>fetch("/api/winners").then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
+  const loadWinners=(attempt=0)=>fetch("/api/winners",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
     .then(j=>{if(j.error)throw new Error(j.error);WIN_LOADING=false;WIN_GENERATED=j.generated||"";WIN=_dedupeSameDayRows(j.rows||[]);winnersParamsChange();setTimeout(()=>loadThreeYear(),250);})
     .catch(err=>{if(attempt<3){if(s)s.innerHTML=`<div class="sqh-loading" style="font-size:13px;padding:10px">⏳ Data loading… retry ${attempt+1} of 3.</div>`;setTimeout(()=>loadWinners(attempt+1),1500*(attempt+1));return;}
       WIN_LOADING=false;WIN=null;const b=$("ordp-bestcombo");if(b)b.innerHTML=`<div class="empty">Annual settings could not be loaded: ${_esc(err.message||'unknown error')}. <button class="btn" onclick="renderSqueezeAnalysis()">↻ Retry</button></div>`;});
@@ -2617,7 +2617,7 @@ function winnersSLChange(){
   const v=+(($("ordp-sl-in")||{}).value||0), box=$("ordp-sl"), busy=$("ordp-sl-busy");
   if(!(v>0)){if(box)box.innerHTML="";return;}
   if(busy){busy.className="sqh-loading";busy.textContent="⏳ Data loading…";}
-  fetch("/api/winners-sl?sl="+v).then(r=>r.ok?r.json():null).then(j=>{
+  fetch("/api/winners-sl?sl="+v,{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
     if(busy){busy.className="muted";busy.textContent="";}
     const rows=((j&&j.rows)||[]).filter(r=>r.perf!=null);
     if(!rows.length){if(box)box.innerHTML='<div class="muted" style="font-size:13px">No data to re-backtest.</div>';return;}
@@ -2692,7 +2692,7 @@ function winnersRunChange(surface='pf'){
   const v=+((inT||{}).value||(MY_LIMITS.let_winners_run_trail??4)), sv=+((inS||{}).value||(MY_LIMITS.let_winners_run_stop??0));
   if(busy){busy.className="sqh-loading";busy.textContent="⏳ Data loading…";}
   const evidenceQuery=`&wallet=${encodeURIComponent(WINNERS_WALLET)}&position_pct=${encodeURIComponent(WINNERS_STAKE*100)}&max_open=${encodeURIComponent(WINNERS_MAXOPEN)}&min_trade=${encodeURIComponent(MIN_TRADE)}`;
-  fetch("/api/winners-run?thr="+v+"&stop="+sv+evidenceQuery).then(r=>r.ok?r.json():null).then(j=>{
+  fetch("/api/winners-run?thr="+v+"&stop="+sv+evidenceQuery,{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
     if(busy){busy.className="muted";busy.textContent="";}
     const rows=_dedupeSameDayRows(((j&&j.rows)||[]).filter(r=>r.perf!=null));
     if(!rows.length){paint('<div class="muted" style="font-size:13px">No data to re-backtest.</div>');return;}

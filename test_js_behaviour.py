@@ -2299,3 +2299,42 @@ def test_the_three_year_card_is_excluded():
 
     assert 'label==="Best over 3 years")return ""' in js
     assert "${_yearsLine(label,x)}" in js, "the breakdown must actually be rendered on the cards"
+
+
+# ------------------------------------------------------------------------------------------------------
+# The token has to be SENT, not just checked.
+#
+# /api/winners, -sl and -run were gated on X-Auth on 2026-09-01 and the server side was tested three ways.
+# Nothing tested the caller. All four client fetches were plain `fetch("/api/winners")` with no headers,
+# so the gate answered `{"rows": [], "limited": true}` to EVERYONE -- signed in or not -- and Best
+# Settings rendered zero cards (measured live 2026-09-03: /api/winners?years=3 returned 0 rows without
+# the header and 13,413 with it, for the same signed-in session).
+#
+# The call expressions are lifted verbatim and EXECUTED against a stubbed fetch, so what is asserted is
+# the request the browser actually issues. A source-text check would pass on a headers object built
+# wrongly; this one reads the header off the request.
+# ------------------------------------------------------------------------------------------------------
+_WINNERS_FETCH = re.compile(r'fetch\("/api/winners[^)]*\)')
+
+
+def _winners_fetch_calls():
+    calls = _WINNERS_FETCH.findall(client_js())
+    assert len(calls) >= 4, f"expected the four winners fetches, found {len(calls)}: {calls}"
+    return calls
+
+
+def test_every_winners_fetch_sends_the_auth_token():
+    stubs = textwrap.dedent("""
+        const seen=[];
+        const AUTH="tok", v=1, sv=0, evidenceQuery="";
+        const fetch=(url,opt)=>{seen.push({url,headers:(opt&&opt.headers)||{}});
+          return {then:()=>({then:()=>({catch:()=>{}}),catch:()=>{}}),catch:()=>{}};};
+    """)
+    body = "\n".join(f"({call});" for call in _winners_fetch_calls())
+
+    sent = _run_node(f"{stubs}\n{body}\nconsole.log(JSON.stringify(seen));")
+
+    assert len(sent) == len(_winners_fetch_calls())
+    for req in sent:
+        assert req["headers"].get("X-Auth") == "tok", (
+            f"{req['url']} is issued without the token the server gate reads, so it receives no rows")
