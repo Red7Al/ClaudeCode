@@ -10,6 +10,10 @@ serves a Flask web app at <https://www.squeezescanner.cloud>, and can place orde
 
 - **The method** — `docs/SQUEEZE_METHOD.md` (detection rules and thresholds), `docs/DECISIONS_AND_WEIGHTING.md`
   (how a detected setup is ordered, gated and published).
+- **Order timing** — `docs/ORDER_TIMING_AND_RVOL.md`. Read this before touching the numeric filters or
+  quoting a Best Settings number. Orders reach IG a median 8 days BEFORE the break, so RVOL, VolumeScore,
+  VWAP and ATR — all break-bar measures — cannot gate placement at all, and a recommendation carrying an
+  RVOL floor is not reproducible as a pre-placed working order.
 - **Operating it** — `docs/OPS_RUNBOOK.md`. Read §2 before your first deploy.
 - **Deployment detail** — `IONOS_DEPLOYMENT.md`.
 - **Working rules** — `AGENTS.md`. Short, and the destructive-change rule is not optional.
