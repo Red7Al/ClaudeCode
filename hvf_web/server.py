@@ -5235,6 +5235,83 @@ def api_order_filter_audit():
         return jsonify({"error": "the order audit could not be run"}), 500
 
 
+@app.route("/api/auto-closed")
+def api_auto_closed():
+    """Positions the system closed on their opening day for failing the break-bar volume tests.
+
+    READ ONLY. auto_close_failed_opens.py is the only writer, it acts only on the day a position opened,
+    and it is off unless the acting user's auto_close_failed_opens limit is set. This exists because the
+    account owner needs to judge whether the criteria are right (2026-09-04: "if it turns out that we do
+    not keep tx open then we may need to readdress the success criteria") -- which needs the reason each
+    was closed and what it realised, not a count.
+    """
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            rows = db.run(
+                "select deal_id, ticker, opened_on, closed_at, direction, size, volume_breaches, "
+                "durable_breaches, profit, currency, outcome from auto_closed_positions "
+                "where user_name = :u order by closed_at desc limit 500", u=name) or []
+        finally:
+            db.close()
+    except Exception as ex:
+        # The table only exists once the closer has run. An empty list is the honest answer to "what has
+        # been auto-closed" before it ever has been, and is not an error worth showing the user.
+        log.info("auto-closed list unavailable (%s); reporting none", ex)
+        return jsonify({"rows": []})
+    cols = ("deal_id", "ticker", "opened_on", "closed_at", "direction", "size", "volume_breaches",
+            "durable_breaches", "profit", "currency", "outcome")
+    return jsonify({"rows": [_json_safe(dict(zip(cols, r))) for r in rows]})
+
+
+@app.route("/api/position-filter-audit")
+def api_position_filter_audit():
+    """Which OPEN POSITIONS no longer meet the acting user's filters, judged at the bar they opened on.
+
+    The rule is deliberately the OPPOSITE of the working-order audit's (user 2026-09-04). A pending order
+    has not broken, so RVOL, VWAP, ATR and VolumeScore are not applicable to it. A position HAS broken --
+    that is what filled it -- so those measures are precisely what should be judged, taken from the day it
+    opened: "you can look at the rvol on the date it was opened".
+
+    The break-bar figures are READ from instrument_metrics_daily, never recomputed ("it should not need to
+    be recomputed - it should be stored"). Durable criteria come from the setup the order was placed from,
+    so one position is measured against every filter that applies to it.
+    """
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    try:
+        import ig_shim, order_filter_audit
+        if ig_shim.session_for(name) is None:
+            return jsonify({"positions": 0, "rows": [], "note": "No IG credentials for this user."})
+        from db_pool import get_db
+        db = get_db()
+        try:
+            epic2tk = {str(r[1]): r[0] for r in (db.run("select ticker, epic from epic_lookup") or []) if r[1]}
+        finally:
+            db.close()
+        with ig_shim._IG_LOCK, ig_shim.acting_session(name):
+            raw = ig_shim.get_open_positions() or []
+        positions = []
+        for p in raw:
+            mk, pd = (p.get("market") or {}), (p.get("position") or {})
+            tk = epic2tk.get(str(mk.get("epic") or ""))
+            if not tk:
+                continue
+            positions.append({"ticker": tk, "deal_id": pd.get("dealId"),
+                              "opened": str(pd.get("createdDateUTC") or pd.get("createdDate") or "")[:10],
+                              "direction": pd.get("direction"), "size": pd.get("size"),
+                              "name": mk.get("instrumentName")})
+        return jsonify(_json_safe(order_filter_audit.audit_positions(name, positions)))
+    except Exception as ex:
+        log.warning(f"position filter audit failed: {ex}")
+        return jsonify({"error": "the position audit could not be run"}), 500
+
+
 @app.route("/api/ig-cancel-orders", methods=["POST"])
 def api_ig_cancel_orders():
     """Cancel only explicitly confirmed, currently-pending WORKING ORDERS belonging to the acting user.

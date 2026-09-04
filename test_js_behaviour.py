@@ -1520,6 +1520,45 @@ def test_the_scanner_row_renders_mcap_in_the_same_position():
     assert mcap_at == rvol_at - 1, "the row must place MCap where the header says it is"
 
 
+# ======================================================================================================
+# IG Account sub-tabs (user 2026-09-04): open tx, auto-closed tx, open orders, TX not meeting criteria,
+# orders not meeting criteria. A pill with no panel is a dead button; a panel no pill reaches is dead
+# markup; and a panel showIgPanel does not list stays visible behind whichever tab you pick. All three
+# are the same defect this file was written for -- two sides of one thing drifting apart.
+# ======================================================================================================
+
+def test_every_ig_sub_tab_has_a_panel_and_every_panel_has_a_tab():
+    html, js = client_source(), client_js()
+    pills = set(re.findall(r'data-igpanel="([a-z]+)"', html))
+    panels = set(re.findall(r'id="igpanel-([a-z]+)"', html))
+
+    assert pills == panels, f"pills {sorted(pills)} do not match panels {sorted(panels)}"
+    assert len(pills) == 5, f"expected five sub-tabs, found {sorted(pills)}"
+
+    switch = js[js.index("function showIgPanel"):js.index("function loadAutoClosed")]
+    for name in pills:
+        assert f'"{name}"' in switch, f"showIgPanel never hides or shows the {name} panel"
+
+
+def test_the_auto_closed_table_header_and_row_stay_in_step():
+    html, js = client_source(), client_js()
+    headings = _th_count(_header_for(html, "ig-auto-rows", 'data-iga="volume_breaches"'))
+    j = js.index("function paintAutoClosed")
+    row = js[js.index("<tr", j):js.index("</tr>", j)]
+
+    assert len(re.findall(r"<td", row)) == headings, (
+        f"the auto-closed table renders {len(re.findall(r'<td', row))} cells under {headings} headings")
+
+
+def test_an_unjudgeable_position_is_never_pre_ticked_for_closing():
+    """Closing realises profit or loss. A position we cannot judge must be visible but never selected by
+    default -- an absence of evidence must not cost a real position."""
+    js = _extract("paintPositionBreach")
+
+    assert 'r.verdict==="BREACH"?"checked":""' in js.replace(" ", ""), (
+        "only a measured BREACH may be pre-ticked")
+
+
 def test_every_metric_column_on_the_ig_orders_table_says_what_it_measures():
     """user 2026-09-04: "it is not clear if they are the current metrics or the order requirements".
 

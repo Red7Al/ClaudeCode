@@ -57,8 +57,12 @@ def _durable_only(items):
     return [x for x in items if not any(m in x for m in BREAK_BAR_LABELS)]
 
 
-def placement_setups(tickers, db=None):
-    """{ticker: {rr, quality, ready_date}} for the setup each PENDING order was placed from.
+def placement_setups(tickers, db=None, statuses=("PENDING",)):
+    """{ticker: {rr, quality, ready_date}} for the setup each order was placed from.
+
+    `statuses` selects which working_orders rows to read: PENDING for live orders, FILLED for the orders
+    behind open positions. One definition for both, because the question -- which setup did this order
+    come from -- is identical and a second copy is how two screens end up disagreeing.
 
     THE JOIN IS ready_date, NOT triggered_date. An order is placed when a setup becomes orderable; the
     break comes later, so a trigger-based join cannot select the setup the order came from -- that row's
@@ -72,7 +76,8 @@ def placement_setups(tickers, db=None):
     try:
         placed = {}
         for tk, p in (db.run("select ticker, max(placed_at)::date from working_orders "
-                             "where status = 'PENDING' and placed_at is not null group by ticker") or []):
+                             "where status = any(:st) and placed_at is not null group by ticker",
+                             st=list(statuses)) or []):
             placed[tk] = p
         if not placed:
             return {}
@@ -212,6 +217,95 @@ def trigger_state(tickers, db=None):
     cols = ("ticker", "triggered_date", "quality", "rr", "rvol", "timeframe", "hvf_type", "outcome")
     # A row with no triggered_date means no trigger preceded the order -- unknowable, not a pass.
     return {r[0]: dict(zip(cols, r)) for r in rows if r[1] is not None}
+
+
+def break_state(pairs, db=None):
+    """{ticker: stored metrics ON THE DAY THE POSITION OPENED}, from instrument_metrics_daily.
+
+    `pairs` is [(ticker, open_date)]. READ, never recomputed (user 2026-09-04: "it should not need to be
+    recomputed - it should be stored"). instrument_metrics writes these daily from the same volume_score
+    functions the live path uses, so a stored figure and a screen figure cannot disagree.
+
+    A missing row means the capture did not run that day and the position is UNJUDGEABLE on break-bar
+    criteria -- never a pass. That table stored nothing at all between 2026-08-29 and 2026-09-04 because
+    its INSERT carried a placeholder with no argument, so absence here is a real possibility and must not
+    be read as approval.
+    """
+    from db_pool import get_db
+    own = db is None
+    db = db or get_db()
+    try:
+        out = {}
+        for ticker, opened in pairs:
+            if not ticker or not opened:
+                continue
+            rows = db.run("select rvol, above_vwap_setup, atr_expanding, volume_score, as_of, status "
+                          "from instrument_metrics_daily where ticker = :t and as_of = :d",
+                          t=ticker, d=str(opened)[:10]) or []
+            if rows:
+                rv, avs, atr, vs, as_of, status = rows[0]
+                out[ticker] = {"rvol": rv, "above_vwap_setup": avs, "atr_expanding": atr,
+                               "volume_score": vs, "as_of": str(as_of), "status": status}
+    finally:
+        if own:
+            db.close()
+    return out
+
+
+def audit_positions(user, positions, record_for=None, allows=None, limits=None, db=None):
+    """Audit OPEN POSITIONS against the user's current filters, judged at the bar each one opened on.
+
+    THE RULE IS THE OPPOSITE OF THE ORDER AUDIT'S, and deliberately (user 2026-09-04: "rvol vwap and atr
+    are not used for open positions UNLESS they have just opened and we are checking these for the first
+    time", and "you can look at the rvol on the date it was opened"). A pending order has not broken, so
+    its break-bar measures are not applicable. A position HAS broken -- that is what filled it -- so RVOL,
+    VWAP, ATR and VolumeScore are exactly what should be judged, as they were on its opening day.
+
+    `positions` is [{"ticker", "deal_id", "opened", "direction"}]. Durable criteria (R:R, Quality,
+    instrument value, the direction/location/market gate) are judged too, from the setup the order was
+    placed from, so one position is measured against every filter that applies to it.
+    """
+    if record_for is None or allows is None or limits is None:
+        from hvf_web import server, web_users as _wu
+        record_for = record_for or server._record
+        allows = allows or (lambda rec: server._user_trade_allows(user, rec))
+        limits = limits if limits is not None else ((_wu.get_settings(user) or {}).get("limits") or {})
+    positions = [p for p in (positions or []) if p.get("ticker")]
+    if not positions:
+        return {"user": user, "positions": 0, "counts": {}, "rows": []}
+    tickers = [p["ticker"] for p in positions]
+    breaks = break_state([(p["ticker"], p.get("opened")) for p in positions], db=db)
+    try:
+        setups = placement_setups(tickers, db=db, statuses=("FILLED",))
+    except Exception as exc:
+        log.warning("placement setups unavailable for positions (%s)", exc)
+        setups = {}
+    try:
+        from hvf_web import server as _srv
+        mcaps = _srv._mcap_map()
+    except Exception:
+        mcaps = {}
+    out = []
+    for p in positions:
+        tk = p["ticker"]
+        rec = record_for(tk) or {}
+        setup = setups.get(tk) or {}
+        judged = {"rr": setup.get("rr", rec.get("rr")),
+                  "quality": setup.get("quality", rec.get("quality")),
+                  "mcap": rec.get("mcap") if rec.get("mcap") is not None else mcaps.get(tk)}
+        # at_trigger=True: nothing here is "decayed". These are the measurements from the day the
+        # position opened, so a miss is a genuine finding rather than market drift.
+        res = check_one(judged, breaks.get(tk), limits, allows(rec) if rec else True, at_trigger=True)
+        res.update(ticker=tk, deal_id=p.get("deal_id"), opened=str(p.get("opened") or "")[:10],
+                   direction=p.get("direction"), size=p.get("size"),
+                   break_as_of=(breaks.get(tk) or {}).get("as_of"),
+                   in_snapshot=bool(rec))
+        if tk not in breaks:
+            res["unknown"] = list(res["unknown"]) + ["no stored metrics for the day it opened"]
+            res["verdict"] = "BREACH" if res["breaches"] else "UNKNOWN"
+        out.append(res)
+    counts = {v: sum(1 for r in out if r["verdict"] == v) for v in ("OK", "BREACH", "STALE", "UNKNOWN")}
+    return {"user": user, "positions": len(out), "counts": counts, "rows": out}
 
 
 def audit(user, tickers=None, record_for=None, allows=None, limits=None, at_trigger=False):

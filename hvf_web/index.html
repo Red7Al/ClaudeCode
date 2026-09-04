@@ -362,9 +362,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 .confnav .pill.active{background:var(--grad);color:#fff;border-color:transparent;box-shadow:var(--sh-sm)}
 /* Performance sub-tab pills (moved out of .confnav in P-03 L250): grey when inactive, accent when active
    (user 2026-07-25, P-02 L79/L251/L252). Also restores styling the move had dropped. */
-#pf-pills .pill{background:var(--chip);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s ease}
-#pf-pills .pill:hover{border-color:var(--accent);color:var(--fg)}
-#pf-pills .pill.active{background:var(--accent);color:#fff;border-color:transparent}
+#pf-pills .pill,#ig-pills .pill{background:var(--chip);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s ease}
+#pf-pills .pill:hover,#ig-pills .pill:hover{border-color:var(--accent);color:var(--fg)}
+#pf-pills .pill.active,#ig-pills .pill.active{background:var(--accent);color:#fff;border-color:transparent}
 #pf-pills .pf-pill-group{display:flex;flex-direction:column;align-items:stretch;gap:3px;min-width:0}
 #pf-pills .pf-pill-desc,#pf-advanced-nav .pf-pill-desc{text-align:center;font-size:10px;line-height:1.2;min-height:38px;max-width:220px}
 /* Credential rows — readable current value (user 2026-07-03: grey/small was hard to read) */
@@ -1928,6 +1928,17 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- Account name + obfuscated number, above the open positions (user 2026-07-20, P-05). -->
   <div id="ig-acct" style="font-size:14px;margin-bottom:8px"></div>
   <div id="ig-note" style="font-size:12px;margin-bottom:10px"></div>
+  <!-- Three sub-tabs (user 2026-09-04: "consider within IG accounts use of 3 tab buttons - open tx,
+       auto closed tx, open orders"). Same pill component as the Performance sub-tabs, styled from the
+       same rules, so the two behave identically rather than looking alike by coincidence. -->
+  <div id="ig-pills" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
+    <button class="pill active" data-igpanel="open" onclick="showIgPanel('open')" title="Positions IG is holding right now, and recently closed trades.">Open transactions</button>
+    <button class="pill" data-igpanel="autoclosed" onclick="showIgPanel('autoclosed')" title="Positions the system closed on their opening day because the volume tests measured on that bar failed.">Auto-closed transactions</button>
+    <button class="pill" data-igpanel="orders" onclick="showIgPanel('orders')" title="Working orders IG is holding.">Open orders</button>
+    <button class="pill" data-igpanel="txbreach" onclick="showIgPanel('txbreach')" title="Open positions that no longer meet your criteria, judged at the bar each one opened on.">TX not meeting criteria</button>
+    <button class="pill" data-igpanel="ordbreach" onclick="showIgPanel('ordbreach')" title="Working orders that no longer meet your criteria, judged on the setup each was placed from.">Orders not meeting criteria</button>
+  </div>
+  <div id="igpanel-open">
   <!-- OPEN POSITIONS get their OWN chart strip directly above their table (user 2026-08-01): Location /
        Market / Sector / Direction, computed from the positions (enriched from the snapshot). -->
   <input type="hidden" id="igp_location"><input type="hidden" id="igp_market"><input type="hidden" id="igp_sector"><input type="hidden" id="igp_direction"><input type="hidden" id="igp_open_month">
@@ -1958,9 +1969,36 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <tbody id="ig-pos-rows"></tbody>
     </table></div>
   </section>
-  <!-- WORKING ORDERS get their OWN chart strip directly above their table (user 2026-08-01): Location /
-       Market / Sector / Direction / Good-till-date, computed from the orders. -->
-  <input type="hidden" id="igo_location"><input type="hidden" id="igo_market"><input type="hidden" id="igo_sector"><input type="hidden" id="igo_direction"><input type="hidden" id="igo_gtd">
+  </div><!-- /igpanel-open -->
+
+  <!-- AUTO-CLOSED. The evidence base for whether the criteria are right (user 2026-09-04: "if it turns
+       out that we do not keep tx open then we may need to readdress the success criteria"), which is why
+       it records WHY each was closed and what it realised, not merely that it happened. Written by
+       auto_close_failed_opens.py; read-only here. -->
+  <div id="igpanel-autoclosed" class="hidden">
+    <section class="gsec" style="border-left-color:#d29922">
+      <div class="count" style="padding-left:0"><span id="ig-auto-count"></span></div>
+      <p class="muted" style="font-size:12px;margin:0 0 10px">A position is closed here only on the day it opened, and only for the break-bar measures that could not be tested when the order was placed — RVOL, VolumeScore, above-VWAP and ATR. R:R, Quality and instrument value are recorded when they are also breached, but never act as the reason: those were knowable at placement, so a breach is a gate defect rather than a reason to sell.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th class="clk" data-iga="closed_at">Closed (UTC)</th><th class="clk" data-iga="ticker">Ticker</th><th class="clk" data-iga="opened_on">Opened</th><th class="clk" data-iga="direction">Dir</th><th class="clk" data-iga="size">Size</th><th class="clk" data-iga="profit">Profit</th><th class="clk" data-iga="currency">Ccy</th><th class="clk" data-iga="volume_breaches" style="white-space:normal">Why closed (volume tests)</th><th class="clk" data-iga="durable_breaches" style="white-space:normal">Also breached</th><th class="clk" data-iga="outcome">Outcome</th></tr></thead>
+        <tbody id="ig-auto-rows"><tr><td colspan="10" class="empty">Nothing has been auto-closed.</td></tr></tbody>
+      </table></div>
+    </section>
+  </div>
+
+  <!-- OPEN POSITIONS that no longer meet the criteria (user 2026-09-04). Judged at the bar each one
+       OPENED on, which is the opposite basis to the orders tab below: a position has broken, so its
+       break-bar measures are exactly what to test; a pending order has not, so they are not applicable
+       to it. Nothing here closes anything on its own -- /api/ig-close-positions needs each deal id named
+       and an explicit confirmation, and closing realises profit or loss. -->
+  <div id="igpanel-txbreach" class="hidden">
+    <section class="gsec" style="border-left-color:var(--bear)">
+      <div class="count" style="padding-left:0"><span id="ig-txbreach-count"></span></div>
+      <div id="ig-txbreach-body"></div>
+    </section>
+  </div>
+
+  <div id="igpanel-ordbreach" class="hidden">
   <!-- Orders that no longer meet the saved filters (user 2026-09-03: "once the settings for trading are
        amended - check each open order and cancel any that do not meet the criteria"). Sits directly above
        the table it is about. Nothing here cancels anything on its own: the list is built by
@@ -1970,6 +2008,12 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="count" style="padding-left:0"><span id="ig-breach-count"></span></div>
     <div id="ig-breach-body"></div>
   </section>
+  </div>
+
+  <div id="igpanel-orders" class="hidden">
+  <!-- WORKING ORDERS get their OWN chart strip directly above their table (user 2026-08-01): Location /
+       Market / Sector / Direction / Good-till-date, computed from the orders. -->
+  <input type="hidden" id="igo_location"><input type="hidden" id="igo_market"><input type="hidden" id="igo_sector"><input type="hidden" id="igo_direction"><input type="hidden" id="igo_gtd">
   <div class="viz" id="ig-ord-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="ig-ord-count"></span></div>
@@ -1978,6 +2022,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <tbody id="ig-ord-rows"></tbody>
     </table></div>
   </section>
+  </div><!-- /igpanel-orders -->
 </div>
 
 <!-- The Best Settings search and card template. Loaded FIRST: app.js builds its wallet replay from

@@ -4881,3 +4881,123 @@ async function cancelBreachingOrders(btn){
     paintIgAccount&&renderIgAccount();     // re-read the account so the table shows what is actually left
   }catch(e){btn.textContent="Cancel failed";btn.disabled=false;}
 }
+
+// ------------------------------------------------------------------------------------------------------
+// IG Account sub-tabs (user 2026-09-04: "consider within IG accounts use of 3 tab buttons - open tx,
+// auto closed tx, open orders").
+//
+// The panels are plain show/hide over markup that was already there, so the positions and orders tables
+// keep their own paint paths, sort state and chart strips untouched. Only the auto-closed table is new,
+// and it is READ-ONLY: nothing on this screen closes anything. auto_close_failed_opens.py is the only
+// writer, it acts only on the day a position opened, and it is off unless the account owner switches it
+// on. See docs and the module header for why same-day is the whole safety property.
+// ------------------------------------------------------------------------------------------------------
+let IG_PANEL = "open", IG_AUTO = null, igaSortK = "closed_at", igaSortDir = -1;
+
+function showIgPanel(which){
+  IG_PANEL = which;
+  document.querySelectorAll("#ig-pills .pill").forEach(b=>b.classList.toggle("active", b.dataset.igpanel===which));
+  [["open","igpanel-open"],["autoclosed","igpanel-autoclosed"],["orders","igpanel-orders"],
+   ["txbreach","igpanel-txbreach"],["ordbreach","igpanel-ordbreach"]].forEach(([k,id])=>{
+    const el=$(id); if(el)el.classList.toggle("hidden", k!==which);
+  });
+  if(which==="autoclosed"&&IG_AUTO===null)loadAutoClosed();
+  if(which==="txbreach"&&IG_TXAUDIT===null)loadPositionFilterAudit();
+}
+
+// ------------------------------------------------------------------------------------------------------
+// OPEN POSITIONS that no longer meet the criteria.
+//
+// Judged at the bar each position OPENED on -- the opposite basis to the orders panel. A pending order
+// has not broken, so RVOL/VWAP/ATR/VolumeScore are not applicable to it; a position HAS broken, because
+// that is what filled it, so those are precisely what to test. The break-bar figures are read from
+// instrument_metrics_daily, never recomputed.
+//
+// CLOSING REALISES PROFIT OR LOSS, which cancelling a working order does not. So nothing here is closed
+// without the confirmation dialog naming every position, and the server re-reads the account for itself.
+// ------------------------------------------------------------------------------------------------------
+let IG_TXAUDIT = null;
+
+function loadPositionFilterAudit(){
+  const body=$("ig-txbreach-body"); if(!body)return;
+  body.innerHTML='<span class="muted">⏳ Checking your open positions…</span>';
+  fetch("/api/position-filter-audit",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
+    IG_TXAUDIT=(j&&!j.error)?j:{rows:[]};
+    paintPositionBreach();
+  }).catch(()=>{IG_TXAUDIT={rows:[]};paintPositionBreach();});
+}
+
+function paintPositionBreach(){
+  const body=$("ig-txbreach-body"), count=$("ig-txbreach-count");
+  if(!body||!IG_TXAUDIT)return;
+  const rows=(IG_TXAUDIT.rows||[]).filter(r=>r.verdict!=="OK"&&r.deal_id);
+  const ok=(IG_TXAUDIT.rows||[]).length-rows.length;
+  count.innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> open position${rows.length===1?"":"s"} no longer meet your criteria`
+    +(ok?` <span class="muted">· ${ok} still do</span>`:"");
+  if(!rows.length){body.innerHTML='<span class="muted">Every open position meets your criteria.</span>';return;}
+  const line=r=>`<label style="display:flex;gap:9px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+      <input type="checkbox" data-close="${_esc(r.deal_id)}" ${r.verdict==="BREACH"?"checked":""}>
+      <b style="min-width:78px">${_esc(disp(r.ticker))}</b>
+      <span style="min-width:62px" class="muted">${_esc(r.direction||"")} ${_esc(String(r.size??""))}</span>
+      <span style="min-width:82px" class="muted">opened ${_esc(r.opened||"")}</span>
+      <span style="color:${r.verdict==="BREACH"?"var(--bear)":"#d29922"};min-width:70px">${_esc(r.verdict)}</span>
+      <span class="muted" style="white-space:normal">${_esc((r.breaches&&r.breaches.length?r.breaches:r.unknown||[]).join("; "))}</span></label>`;
+  body.innerHTML=
+    `<div class="muted" style="font-size:12px;margin:0 0 8px">Each position is judged against the bar it OPENED on, read from the stored daily metrics — not against today. That is the opposite of the orders tab, and deliberately: a position has broken, so RVOL, VolumeScore, above-VWAP and ATR are exactly what should be tested; a pending order has not broken, so they cannot be. <b>Closing realises profit or loss</b>, so nothing is closed until you confirm it, and only BREACH rows are ticked — an unjudgeable position is listed but never pre-selected, because an absence of evidence must not cost you a position.</div>`
+    +rows.map(line).join("")
+    +`<button class="btn" id="ig-txclose-btn" onclick="closeBreachingPositions(this)" style="margin-top:10px;border-color:var(--bear);background:color-mix(in srgb,var(--bear) 14%,transparent)">Close the ticked positions at IG</button>`;
+}
+
+async function closeBreachingPositions(btn){
+  const picked=[...document.querySelectorAll('#ig-txbreach-body input[data-close]:checked')].map(el=>el.dataset.close);
+  if(!picked.length){await appConfirm("Nothing is ticked.",{title:"No positions selected",ok:"OK"});return;}
+  const by={}; (IG_TXAUDIT.rows||[]).forEach(r=>{if(r.deal_id)by[r.deal_id]=r;});
+  const rows=picked.map(id=>{const r=by[id]||{};return [disp(r.ticker||id), `${r.direction||""} ${r.size??""} — ${(r.breaches||[]).join("; ")}`];});
+  const ok=await appConfirm(`This closes ${picked.length} open position${picked.length===1?"":"s"} at IG and REALISES their profit or loss. It cannot be undone.`,
+    {title:"Close positions at IG",ok:`Close ${picked.length} position${picked.length===1?"":"s"}`,rows});
+  if(!ok)return;
+  btn.disabled=true; btn.textContent="⏳ Closing…";
+  try{
+    const r=await fetch("/api/ig-close-positions",{method:"POST",
+      headers:{"Content-Type":"application/json","X-Auth":AUTH},
+      body:JSON.stringify({confirmed:true,deal_ids:picked})});
+    const j=await r.json();
+    if(j.error){btn.textContent="Close failed";await appConfirm(j.error,{title:"Close failed",ok:"OK"});btn.disabled=false;return;}
+    const done=(j.results||[]).filter(x=>x.closed).length;
+    btn.textContent=`${done} of ${picked.length} closed`;
+    IG_TXAUDIT=null; renderIgAccount();
+  }catch(e){btn.textContent="Close failed";btn.disabled=false;}
+}
+
+function loadAutoClosed(){
+  const body=$("ig-auto-rows"); if(!body)return;
+  fetch("/api/auto-closed",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
+    IG_AUTO=(j&&j.rows)||[];
+    paintAutoClosed();
+  }).catch(()=>{IG_AUTO=[];paintAutoClosed();});
+}
+
+function paintAutoClosed(){
+  const body=$("ig-auto-rows"), count=$("ig-auto-count");
+  if(!body)return;
+  const rows=genSort((IG_AUTO||[]).slice(), igaSortK, igaSortDir);
+  if(count)count.innerHTML=rows.length
+    ? `<b style="font-size:15px;color:var(--fg)">${rows.length}</b> auto-closed position${rows.length===1?"":"s"} <span class="muted">— closed on their opening day for failing the break-bar volume tests</span>`
+    : `<b style="font-size:15px;color:var(--fg)">0</b> auto-closed positions <span class="muted">— nothing has been closed this way</span>`;
+  body.innerHTML=rows.map(r=>`<tr>
+    <td>${_esc(String(r.closed_at||"").slice(0,19).replace("T"," "))}</td>
+    <td><b>${_esc(disp(r.ticker||""))}</b></td>
+    <td>${_esc(String(r.opened_on||"").slice(0,10))}</td>
+    <td>${_igDtag(r.direction)}</td>
+    <td>${_igSz(r.size)}</td>
+    <td>${_igPf(r.profit)}</td>
+    <td>${_esc(r.currency||"")}</td>
+    <td style="white-space:normal">${_esc(r.volume_breaches||"")}</td>
+    <td style="white-space:normal" class="muted">${_esc(r.durable_breaches||"")||'<span class="muted">—</span>'}</td>
+    <td>${_esc(r.outcome||"")}</td></tr>`).join("")
+    || `<tr><td colspan="10" class="empty">Nothing has been auto-closed.</td></tr>`;
+  _sortArrows("data-iga", igaSortK, igaSortDir);
+}
+
+document.querySelectorAll("th[data-iga]").forEach(th=>th.onclick=()=>{
+  const k=th.dataset.iga; igaSortDir=(igaSortK===k)?-igaSortDir:-1; igaSortK=k; paintAutoClosed();});
