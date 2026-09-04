@@ -1520,6 +1520,26 @@ def test_the_scanner_row_renders_mcap_in_the_same_position():
     assert mcap_at == rvol_at - 1, "the row must place MCap where the header says it is"
 
 
+def test_every_metric_column_on_the_ig_orders_table_says_what_it_measures():
+    """user 2026-09-04: "it is not clear if they are the current metrics or the order requirements".
+
+    They are neither, quite: MCap is TODAY's value while RVOL, VWAP, ATR, VolumeScore, R:R and Quality
+    all describe the setup that caused the order. Two time bases in adjacent columns, and four of the
+    seven carried no tooltip at all. A reader cannot be expected to infer that from the numbers.
+    """
+    header = _header_for(client_source(), "ig-ord-rows", 'data-igo="volume_score"')
+    cells = {m.group(1): m.group(0) for m in re.finditer(r'<th[^>]*data-igo="([a-z0-9_]+)"[^>]*>', header)}
+
+    for key in ("mcap", "rvol", "above_vwap", "atr_expanding", "volume_score", "rr", "quality"):
+        assert 'title="' in cells[key], f"the {key} column explains nothing to the reader"
+
+    assert "GBP" in cells["mcap"] and "TODAY" in cells["mcap"], (
+        "MCap is the one column here that is not setup-time, and it must say so")
+    for key in ("rvol", "volume_score", "rr", "quality"):
+        assert "SETUP THAT CAUSED THIS ORDER" in cells[key], (
+            f"{key} is a setup-time figure and must not read as a current one")
+
+
 def test_the_ig_positions_table_shows_mcap_next_to_market():
     """user 2026-09-04: "open transactions in IG still does not show MCAP (next to market)"."""
     order = re.findall(r'data-igp="([a-z0-9_]+)"', _header_for(client_source(), "ig-pos-rows", 'data-igp="profit_pct"'))
