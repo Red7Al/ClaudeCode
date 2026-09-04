@@ -1435,6 +1435,52 @@ def test_the_fallback_is_never_silent():
 # test: it occupies the place where a real guard would have gone.
 # ======================================================================================================
 
+# Functions that are knowingly unreferenced, each with the reason and who has to decide. An allow-list
+# with no reasons is how a detector rots into a formality, so a new entry needs one.
+_KNOWN_ORPHANS = {
+    "placeOnIG": "the only client caller of /api/place-order; whether manual IG placement should exist "
+                 "is the account owner's decision, not one to settle by deleting a trading path",
+    "saveFeatures": "unreachable AND its checkbox is absent from the markup; guarded so it cannot throw, "
+                    "left in place because the feature may be mid-build",
+}
+
+
+def test_no_client_function_is_defined_and_never_used():
+    """This repository's named recurring defect, applied to the browser: correct code nothing calls.
+
+    Found on 2026-09-04: mkFilter, pfDateClear, pfWalletToggle and sqhFiltersActive were dead -- and
+    placeOnIG, which is the ONLY client caller of /api/place-order, meaning manual "place this pre-order
+    on IG" is unreachable from the UI. Nothing had ever checked.
+
+    A reference is any mention outside the declaration and outside comments, so a function used as a
+    callback or sitting in a dispatch table counts as used -- renderInstruments and _sqYearOf are reached
+    that way and must not be reported. Counting CALLS instead flagged both, which is a detector nobody
+    would keep.
+    """
+    js, hay = client_js(), client_html() + client_js() + _server_source()
+    orphans = []
+    for name in sorted(set(re.findall(r"^(?:async )?function ([A-Za-z_]\w*)\s*\(", js, re.M))):
+        refs = 0
+        for m in re.finditer(r"\b" + re.escape(name) + r"\b", hay):
+            start = hay.rfind("\n", 0, m.start()) + 1
+            end = hay.find("\n", m.start())
+            line = hay[start:end if end > 0 else None].strip()
+            if re.match(r"^(async )?function " + re.escape(name) + r"\s*\(", line):
+                continue
+            if line.startswith("//") or line.startswith("#"):
+                continue
+            refs += 1
+        if not refs and name not in _KNOWN_ORPHANS:
+            orphans.append(name)
+
+    assert not orphans, f"defined and never used: {orphans}"
+
+
+def _server_source():
+    import pathlib
+    return pathlib.Path("hvf_web/server.py").read_text(encoding="utf-8", errors="replace")
+
+
 def test_no_element_lookup_dereferences_an_id_that_does_not_exist():
     """THE BUG THIS PREVENTS, found live on 2026-09-04 and a month old by then.
 

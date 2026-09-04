@@ -1714,7 +1714,7 @@ function saveFeatures(){
   // Guarded: feat-xposts does not exist in the markup, and saveFeatures has no caller either (found
   // 2026-09-04). Left in place rather than deleted because the feature may be mid-build, but it must not
   // be able to throw if something wires it up before the checkbox exists.
-  const _fx=$("feat-xposts"); if(!_fx){console.warn("saveFeatures: feat-xposts is not in the page");return;}
+  const _fx=$("feat-xposts"); if(!_fx){console.warn("feature save skipped: its checkbox is not in the page");return;}
   const feat={xposts:_fx.checked};
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({features:feat})})
     .then(r=>{if(!r.ok)throw 0;FEATURES=feat;applyTabVisibility();$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="Feature saved.";})
@@ -2034,7 +2034,6 @@ function refreshMarkets(ev){
     .catch(()=>{$("mk-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not refresh — try again.</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
-function mkFilter(m){const el=$("mf_market");if(el)el.value=m;showTab("scanner");render();}
 document.querySelectorAll("th[data-mk]").forEach(th=>th.onclick=()=>{const k=th.dataset.mk;mkSortDir=(mkSortK===k)?-mkSortDir:-1;mkSortK=k;renderMarkets();_sortArrows("data-mk",mkSortK,mkSortDir);});
 // ── Markets (Admin) tab (admin, user 2026-07-10): per-market coverage + full data-import rebuild ──
 let maSortK="total", maSortDir=-1;
@@ -2368,7 +2367,6 @@ function pfDateChange(manual){
     PF_WINDOW_LABEL=(PF_DATE_FROM||PF_DATE_TO)?((PF_DATE_FROM||'…')+' → '+(PF_DATE_TO||'now')):"all 12 months";}
   PF_RENDER_LIMIT=PF_RENDER_STEP;_renderPerformance();if(typeof WIN!=='undefined'&&WIN!==null)paintOrdersPerf();
 }
-function pfDateClear(){const ps=$("pf-date-preset");if(ps)ps.value="";if($("pf-date-from"))$("pf-date-from").value="";if($("pf-date-to"))$("pf-date-to").value="";PF_WINDOW_LABEL="all 12 months";pfDateChange();}
 function renderPerformance(){
   // "What separates the winners" is ADMIN ONLY (user 2026-07-18). For non-admins there is only the
   // Results panel, so a lone "Results" pill reads oddly (P-01a) — hide the whole sub-nav bar for them,
@@ -3791,9 +3789,6 @@ function fillSqhFilterOptions(){
   });
   if(typeof msyncAll==="function")msyncAll();
 }
-function sqhFiltersActive(){
-  return SQH_FILTER_IDS().some(id=>{const el=$(id);return el&&(el.multiple?[...el.selectedOptions].some(o=>o.value!==""):el.value!=="");});
-}
 function sqhReset(){
   SQH_FILTER_IDS().forEach(id=>{const el=$(id);if(!el)return;
     if(el.multiple)[...el.options].forEach(o=>{o.selected=false;}); else el.value="";});
@@ -4090,7 +4085,6 @@ function _pfMonthly(rows){
 // (paintOrdersPerf): chronological by trigger date, stake = Max-position-size % of the RUNNING wallet
 // (compounding), net = stake × return%, with an optional Max-open-positions cap. Applied to the recorded
 // triggers shown on Results. Attaches _stake / _net / _cum to each row (null for rows without a return).
-function pfWalletToggle(){const on=!!($("pfw-on")||{}).checked;$("pfw-inputs")&&$("pfw-inputs").classList.toggle("hidden",!on);_renderPerformance();}
 function _pfAddDays(d,n){if(!d)return'9999-99-99';const t=new Date(d+'T00:00:00Z');if(isNaN(t))return'9999-99-99';t.setUTCDate(t.getUTCDate()+(+n||0));return t.toISOString().slice(0,10);}
 function _pfWalletLedger(sel){
   const wallet=Math.max(1,+(($("pfw-wallet")||{}).value)||1000);
