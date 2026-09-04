@@ -136,7 +136,46 @@ def test_audit_summarises_every_order(monkeypatch):
                     allows=lambda rec: True, limits=LIMITS)
 
     assert out["orders"] == 3
-    assert out["counts"] == {"OK": 1, "BREACH": 1, "STALE": 0, "UNKNOWN": 1}
+    # CCC has no above_vwap. Since 2026-09-03 that is NOT a finding for a pending order: above-VWAP is a
+    # break-bar measure and an order reaches IG a median 8 days before its break, so there is nothing to
+    # judge. It passes on the criteria that ARE applicable. See docs/ORDER_TIMING_AND_RVOL.md.
+    assert out["counts"] == {"OK": 2, "BREACH": 1, "STALE": 0, "UNKNOWN": 0}
+
+
+def test_break_bar_metrics_are_not_applied_to_a_pending_order(monkeypatch):
+    """RVOL, VolumeScore, VWAP and ATR describe the breakout bar, which has not happened yet.
+
+    Judging a pending order on them produced 40 "failures" on the live book that were not failures.
+    """
+    import instrument_metrics
+    monkeypatch.setattr(instrument_metrics, "latest", lambda t: {})
+    weak = {"WEAK": {"rr": 9.0, "quality": 90, "rvol": 0.2, "above_vwap_setup": False,
+                     "atr_expanding": False}}
+
+    out = ofa.audit("Alex", tickers=["WEAK"], record_for=weak.get,
+                    allows=lambda rec: True, limits=LIMITS)
+    row = out["rows"][0]
+
+    assert row["verdict"] == "OK", f"break-bar metrics must not condemn a pending order: {row}"
+    assert not any("RVOL" in b or "VWAP" in b or "ATR" in b for b in row["breaches"])
+    assert out["counts"]["STALE"] == 0, "the STALE verdict is gone; there is nothing to be stale"
+
+
+def test_a_pending_audit_returns_only_three_verdicts(monkeypatch):
+    """The IG Account breach panel pre-ticks EVERY order this returns, which is only safe while every
+    verdict it can return is one the requester has ruled on. A fourth verdict appearing here would be
+    silently cancelled by that screen, so it is pinned on this side too."""
+    import instrument_metrics
+    monkeypatch.setattr(instrument_metrics, "latest", lambda t: {})
+    recs = {"GOOD": {"rr": 9.0, "quality": 90},                  # passes every durable floor
+            "LOWRR": {"rr": 1.0, "quality": 90},                 # durable breach
+            "THIN": {"rr": 9.0, "rvol": 0.1, "above_vwap_setup": False},   # break-bar only -> not judged
+            "NOQ": {"rr": 9.0}}                                  # quality absent -> unjudgeable
+
+    out = ofa.audit("Alex", tickers=list(recs), record_for=recs.get,
+                    allows=lambda rec: True, limits=LIMITS)
+
+    assert {r["verdict"] for r in out["rows"]} <= {"OK", "BREACH", "UNKNOWN"}
 
 
 def test_an_order_whose_instrument_left_the_snapshot_is_unknown_not_ok(monkeypatch):

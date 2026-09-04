@@ -2210,6 +2210,7 @@ function paintIgAccount(){
   // _attach_setup_metrics, the same resolver behind Pre-orders to my IG, and render through the same
   // shared cell formatters -- so an order shows identical figures on both screens. A missing value is a
   // muted dash and never a cross: we did not measure a failure, we measured nothing.
+  IGORD=ord;
   $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${o.market||'<span class="muted">—</span>'}</td><td>${_mcapFmt(o.mcap)}</td><td>${rvolCell(o.rvol)}</td><td>${_tickCross(o.above_vwap)}</td><td>${_tickCross(o.atr_expanding)}</td><td>${volScoreCell(o.volume_score)}</td><td>${o.rr!=null?(+o.rr).toFixed(1):'<span class="muted">—</span>'}</td><td>${o.quality!=null?`<b style="color:${qcol(o.quality)}">${o.quality}</b>`:'<span class="muted">—</span>'}</td><td>${_igDtag(o.direction)}</td><td>${_igSz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="16" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
 // Closed trades are loaded into the main transactions table (user 2026-08-04); no duplicate table below.
@@ -2248,6 +2249,10 @@ function renderIgAccount(ev){
         ? `<div class="card" style="border-color:#d29922;background:color-mix(in srgb,#d29922 12%,transparent);display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 6px"><span style="font-size:13px">⚠️ <b style="color:var(--fg)">No IG credentials set.</b> <span class="muted">Add your IG login to see your account and place orders.</span></span><span class="grow" style="flex:1"></span><button class="btn" style="border-color:#d29922" onclick="openIgSettings()">🔑 Open IG settings</button></div>`
         : (j.note?`<span class="muted">🔒 ${j.note}</span>`:"");
       paintIgAccount();
+      // Re-check the live working orders against the CURRENT settings (user 2026-09-03). Must follow
+      // paintIgAccount, which is what populates IGORD -- the panel joins the audit to a real deal id and
+      // can only offer an order IG is still holding.
+      if(!noCreds)loadOrderFilterAudit();
       // Load closed trades directly into the main transaction table (user 2026-08-04).
       if(!noCreds)loadIgClosed(true);
     })
@@ -2795,9 +2800,13 @@ function winnersRunChange(surface='pf'){
 // Compact market-cap format (user 2026-08-01): 1.23T / 340B / 12M. No currency symbol (values are in each
 // instrument's own currency). Blank when absent — mcap is not captured in the pipeline yet, so this reads
 // "—" until the market-cap backfill lands (normalised for pence-quoted markets).
+// Market cap. The £ is new on 2026-09-04 and is only honest BECAUSE of that day's change: the server used
+// to hand these over in the instrument's own currency, so any symbol here would have been wrong for four
+// rows in five. _mcap_map now converts every value to GBP (user: "MCAP is expected to be in GBP in our
+// system"), so the column can finally say which currency it is quoting.
 function _mcapFmt(v){if(v==null||!isFinite(+v))return'—';v=+v;const a=Math.abs(v);
-  if(a>=1e12)return(v/1e12).toFixed(2)+'T';if(a>=1e9)return(v/1e9).toFixed(1)+'B';
-  if(a>=1e6)return(v/1e6).toFixed(0)+'M';return Math.round(v).toLocaleString();}
+  if(a>=1e12)return'£'+(v/1e12).toFixed(2)+'T';if(a>=1e9)return'£'+(v/1e9).toFixed(1)+'B';
+  if(a>=1e6)return'£'+(v/1e6).toFixed(0)+'M';return'£'+Math.round(v).toLocaleString();}
 // Colour-coded tick/cross for boolean columns (2026-08-07, ChangeRequest P-09 — Back Test's VWAP/ATR ticks
 // were plain uncoloured text; every other BULL/BEAR-style indicator on the site is green/red).
 // Cherry-pick presets (user 2026-07-18): set the RVOL / Quality / R:R thresholds the 15-month analysis
@@ -4785,3 +4794,79 @@ function _stampSortDefaults(){
   pairs.forEach(([a,get])=>{try{const [k,d]=get();_sortArrows(a,k,d);}catch(e){}});   // per-pair guard: a missing var just skips that table
 }
 _stampSortDefaults();
+
+// ------------------------------------------------------------------------------------------------------
+// Orders that no longer meet the saved trading filters (user 2026-09-03).
+//
+// THE RULE, as the requester finally settled it. Their first wording -- "rvol decay is acceptable - R:R
+// below the floor is not ok" -- produced a three-way split, and this panel was written to it. They then
+// sharpened it to "RVOL, ATR and VWAP are only relevant at the break (so stale should not be an issue)",
+// which is stronger and removes a whole verdict: a pending order has not broken, so its break-bar
+// measures are not stale, not decayed and not breaching -- they are NOT APPLICABLE, and since then
+// /api/order-filter-audit does not judge them at all. There is no STALE row left for this panel to show.
+// See docs/ORDER_TIMING_AND_RVOL.md and order_filter_audit.BREAK_BAR_LABELS.
+//
+// What survives is durable: R:R, Quality, instrument value, and the direction/location/market gate. So
+// every flagged order either fails on something that cannot improve, or cannot be judged at all -- "if 5
+// can't be judged - they cannot be confirmed - they need to go" -- and every flagged order is pre-ticked.
+// Nothing is ever cancelled without the confirmation dialog and the server re-reading the account itself.
+let IG_AUDIT=null, IGORD=[];
+function loadOrderFilterAudit(){
+  const panel=$("ig-breach-panel"); if(!panel)return;
+  fetch("/api/order-filter-audit",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
+    if(!j||j.error){IG_AUDIT=null;panel.style.display="none";return;}
+    IG_AUDIT=j; paintOrderFilterAudit();
+  }).catch(()=>{IG_AUDIT=null;panel.style.display="none";});
+}
+function paintOrderFilterAudit(){
+  const panel=$("ig-breach-panel"), body=$("ig-breach-body"), count=$("ig-breach-count");
+  if(!panel||!body||!IG_AUDIT)return;
+  // Only orders IG is actually holding: the audit walks working_orders, which can lag a cancellation.
+  const live=new Map((IGORD||[]).filter(o=>o.deal_id).map(o=>[o.ticker,o]));
+  const rows=(IG_AUDIT.rows||[]).filter(r=>r.verdict!=="OK"&&live.has(r.ticker));
+  if(!rows.length){panel.style.display="none";return;}
+  panel.style.display="";
+  // BREACH and UNKNOWN are the only verdicts this endpoint can now return, and the requester has ruled on
+  // both. Anything else would be a verdict added server-side after this was written: show it, so a new
+  // kind of failure is never silently dropped, but do not pre-tick a judgement nobody has ruled on.
+  const must=rows.filter(r=>r.verdict==="BREACH"||r.verdict==="UNKNOWN");
+  const other=rows.filter(r=>r.verdict!=="BREACH"&&r.verdict!=="UNKNOWN");
+  count.innerHTML=`<b style="font-size:15px;color:var(--fg)">${must.length}</b> working order${must.length===1?"":"s"} no longer meet your settings`
+    +(other.length?` <span class="muted">· ${other.length} flagged under a rule this screen has no ruling for</span>`:"");
+  const line=r=>{const o=live.get(r.ticker), why=(r.breaches&&r.breaches.length?r.breaches:r.unknown||[]).join("; ");
+    const tick=r.verdict==="BREACH"||r.verdict==="UNKNOWN";
+    return `<label style="display:flex;gap:9px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+      <input type="checkbox" data-cancel="${_esc(o.deal_id)}" ${tick?"checked":""}>
+      <b style="min-width:78px">${_esc(disp(r.ticker))}</b>
+      <span style="min-width:62px" class="muted">${_esc(o.direction||"")} ${_esc(String(o.size??""))}</span>
+      <span style="color:${r.verdict==="BREACH"?"var(--bear)":r.verdict==="UNKNOWN"?"#d29922":"var(--muted)"};min-width:70px">${_esc(r.verdict)}</span>
+      <span class="muted" style="white-space:normal">${_esc(why)}</span></label>`;};
+  body.innerHTML=
+    `<div class="muted" style="font-size:12px;margin:0 0 8px">A filter is checked when an order is PLACED and never again. These are your live working orders re-checked against your settings as they are now, judged against the setup each one was placed from. <b>Judged:</b> R:R, Quality, instrument value, and the direction/location/market gate — all properties of the setup, which cannot improve while the order sits there. <b>Not judged:</b> RVOL, VolumeScore, VWAP and ATR, which measure the breakout bar; these orders have not broken, so there is nothing to measure. Everything listed below is ticked: it either fails a durable filter or cannot be judged at all.</div>`
+    +(must.length?`<div style="margin-bottom:10px"><b style="font-size:12.5px">Does not belong on the book</b>${must.map(line).join("")}</div>`:"")
+    +(other.length?`<div style="margin-bottom:10px"><b style="font-size:12.5px">Flagged, but under a rule this screen has no ruling for — tick to include</b>${other.map(line).join("")}</div>`:"")
+    +`<button class="btn" id="ig-cancel-btn" onclick="cancelBreachingOrders(this)" style="border-color:var(--bear);background:color-mix(in srgb,var(--bear) 14%,transparent)">Cancel the ticked orders at IG</button>`;
+}
+async function cancelBreachingOrders(btn){
+  const picked=[...document.querySelectorAll('#ig-breach-body input[data-cancel]:checked')].map(el=>el.dataset.cancel);
+  if(!picked.length){alert("Nothing is ticked.");return;}
+  const live=new Map((IGORD||[]).map(o=>[o.deal_id,o]));
+  const rows=picked.map(id=>{const o=live.get(id)||{};return [disp(o.ticker||id), `${o.direction||""} ${o.size??""} @ ${o.level??""}`];});
+  // The names are listed in the dialog, not just the count: "cancel 21 orders" is not informed consent.
+  const ok=await appConfirm(`This cancels ${picked.length} working order${picked.length===1?"":"s"} at IG. It cannot be undone from here, though the same setups can be re-ordered later.`,
+    {title:"Cancel working orders at IG",ok:`Cancel ${picked.length} order${picked.length===1?"":"s"}`,rows});
+  if(!ok)return;
+  btn.disabled=true; btn.textContent="⏳ Cancelling…";
+  try{
+    const r=await fetch("/api/ig-cancel-orders",{method:"POST",
+      headers:{"Content-Type":"application/json","X-Auth":AUTH},
+      body:JSON.stringify({confirmed:true,deal_ids:picked,reason:"WEB_USER_SETTINGS_BREACH"})});
+    const j=await r.json();
+    if(j.error){btn.textContent="Cancel failed";alert(j.error);btn.disabled=false;return;}
+    const done=(j.results||[]).filter(x=>x.cancelled).length;
+    btn.textContent=`${done} of ${picked.length} cancelled`;
+    const failed=(j.results||[]).filter(x=>!x.cancelled);
+    if(failed.length)alert("IG did not confirm these:\n"+failed.map(f=>`${f.deal_id}: ${f.error}`).join("\n"));
+    paintIgAccount&&renderIgAccount();     // re-read the account so the table shows what is actually left
+  }catch(e){btn.textContent="Cancel failed";btn.disabled=false;}
+}

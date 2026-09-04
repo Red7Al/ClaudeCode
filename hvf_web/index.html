@@ -1953,6 +1953,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- WORKING ORDERS get their OWN chart strip directly above their table (user 2026-08-01): Location /
        Market / Sector / Direction / Good-till-date, computed from the orders. -->
   <input type="hidden" id="igo_location"><input type="hidden" id="igo_market"><input type="hidden" id="igo_sector"><input type="hidden" id="igo_direction"><input type="hidden" id="igo_gtd">
+  <!-- Orders that no longer meet the saved filters (user 2026-09-03: "once the settings for trading are
+       amended - check each open order and cancel any that do not meet the criteria"). Sits directly above
+       the table it is about. Nothing here cancels anything on its own: the list is built by
+       /api/order-filter-audit, the choice is the user's, and /api/ig-cancel-orders needs each deal id
+       named plus an explicit confirmation. -->
+  <section class="gsec" id="ig-breach-panel" style="border-left-color:var(--bear);display:none">
+    <div class="count" style="padding-left:0"><span id="ig-breach-count"></span></div>
+    <div id="ig-breach-body"></div>
+  </section>
   <div class="viz" id="ig-ord-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:#d29922">
     <div class="count" style="padding-left:0"><span id="ig-ord-count"></span></div>

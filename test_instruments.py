@@ -370,27 +370,65 @@ def test_records_carry_market_cap_for_a_logged_in_user(monkeypatch):
     assert row["mcap"] == 4.2e9
 
 
-def test_the_market_cap_map_is_cached(monkeypatch):
-    """The weekly backfill is its only writer, so re-querying per request repeats work against data that
-    changes at most once a week."""
+def _stub_mcap_db(monkeypatch, rows, rates=None):
+    """Point _mcap_map at `rows` of (ticker, mcap, currency), with a fixed FX table. Returns the SQL log."""
+    import fx_rates
     calls = []
 
     class _Db:
         def run(self, sql, **k):
             calls.append(sql)
-            return [("ABC", 1.0)]
+            return rows
 
         def close(self):
             pass
 
     monkeypatch.setattr("db_pool.get_db", lambda: _Db(), raising=False)
+    monkeypatch.setattr(fx_rates, "rates", lambda: dict(rates if rates is not None else {"GBP": 1.0}))
     monkeypatch.setitem(server._MCAP_CACHE, "ts", 0.0)
     monkeypatch.setitem(server._MCAP_CACHE, "data", {})
+    return calls
+
+
+def test_the_market_cap_map_is_cached(monkeypatch):
+    """The weekly backfill is its only writer, so re-querying per request repeats work against data that
+    changes at most once a week."""
+    calls = _stub_mcap_db(monkeypatch, [("ABC", 1.0, "GBP")])
 
     server._mcap_map()
     server._mcap_map()
 
     assert len(calls) == 1, "the second call must be served from the cache"
+
+
+# ======================================================================================================
+# Market cap is normalised to GBP (user 2026-09-04: "MCAP is expected to be in GBP in our system").
+#
+# THE BUG THIS REMOVES. _mcap_map read `ticker, mcap` and dropped the currency column, so one absolute
+# Min/Max instrument value floor was compared against nine currencies. Measured on the live book that day
+# against a 100,000,000,000 floor: BP.L breached on GBP 79.5bn while 4519.T PASSED on JPY 11,573bn, which
+# is about GBP 55bn -- the filter was sorting by denomination as much as by size.
+# ======================================================================================================
+
+def test_market_caps_are_converted_to_gbp(monkeypatch):
+    _stub_mcap_db(monkeypatch, [("BP.L", 79.5e9, "GBP"), ("4519.T", 11573e9, "JPY")],
+                  rates={"GBP": 1.0, "JPY": 0.004722})
+
+    out = server._mcap_map()
+
+    assert out["BP.L"] == 79.5e9, "a GBP instrument is unchanged"
+    assert 54e9 < out["4519.T"] < 56e9, (
+        f"JPY 11,573bn is about GBP 55bn, not 11,573bn: got {out['4519.T']:,.0f}")
+
+
+def test_a_currency_with_no_rate_is_dropped_not_passed_through_raw(monkeypatch):
+    """Passing the raw figure through would compare it against a GBP floor as though it were pounds --
+    exactly the defect being removed. Callers already read a missing ticker as 'not recorded'."""
+    _stub_mcap_db(monkeypatch, [("GOOD.L", 5e9, "GBP"), ("ODD", 5e9, "XYZ")], rates={"GBP": 1.0})
+
+    out = server._mcap_map()
+
+    assert out == {"GOOD.L": 5e9}, f"the unconvertible ticker must be absent, got {out}"
 
 
 # ======================================================================================================

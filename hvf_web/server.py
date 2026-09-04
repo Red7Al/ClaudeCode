@@ -1433,18 +1433,44 @@ _MCAP_TTL = 3600
 
 
 def _mcap_map() -> dict:
+    """{ticker: market cap IN GBP}. Every consumer of this map compares against one absolute number.
+
+    NORMALISED TO GBP 2026-09-04 (user: "MCAP is expected to be in GBP in our system"). instrument_mcap
+    stores each cap in the instrument's OWN currency and mcap_backfill says so -- "cross-currency
+    comparison is the caller's concern" -- but this function discarded the currency column, so the
+    Min/Max instrument value filters, the Best Settings MCap bands, the Scanner MCAP column and the IG
+    order audit were all comparing nine currencies against a single figure. Measured that day against the
+    saved floor of 100,000,000,000: BP.L breached on GBP 79.5bn while 4519.T passed on JPY 11,573bn
+    (~GBP 55bn), and all four JPY orders sat in the six that passed.
+
+    A ticker whose currency has no rate is OMITTED rather than passed through raw. Callers already treat a
+    missing ticker as "market cap not recorded" -- an honest unknown -- whereas a raw value would be
+    compared against a GBP floor as though it were pounds, which is the defect this removes.
+    """
     now = _time.time()
     if _MCAP_CACHE["data"] and now - _MCAP_CACHE["ts"] < _MCAP_TTL:
         return _MCAP_CACHE["data"]
     out = {}
     try:
+        import fx_rates
+        table = fx_rates.rates()
         from db_pool import get_db
         db = get_db()
         try:
-            for _t, _m in (db.run("select ticker, mcap from instrument_mcap") or []):
-                out[_t] = _m
+            rows = db.run("select ticker, mcap, currency from instrument_mcap") or []
         finally:
             db.close()
+        dropped = {}
+        for _t, _m, _c in rows:
+            gbp = fx_rates.to_gbp(_m, _c, table=table)
+            if gbp is None:
+                if _m is not None:
+                    dropped[str(_c)] = dropped.get(str(_c), 0) + 1
+                continue
+            out[_t] = gbp
+        if dropped:
+            log.warning("market cap dropped for %d ticker(s), no GBP rate: %s",
+                        sum(dropped.values()), dropped)
         _MCAP_CACHE.update(ts=now, data=out)
     except Exception as ex:
         log.warning("market-cap map unavailable: %s", ex)
@@ -3836,6 +3862,62 @@ def api_best_settings_history():
 _SLBARS = {}
 
 
+def _window_bars(rows, slot_key):
+    """{ticker: [(bar_date, high, low, close), ...]} for the trades in `rows`, cached per window.
+
+    Fetches from each ticker's OWN earliest trigger date instead of the whole window for every ticker
+    in price_history. Both consumers already discard bars before the trade's trigger date -- the
+    stop-loss walk filters b[0] >= td and _run_bars filters > td -- so every row this no longer fetches
+    is one that never reached a calculation. Measured 2026-09-03 on the 12-month window: 441,305 rows
+    -> 252,900, 42.7% fewer, with identical output.
+
+    WHY IT WAS WORTH DOING: pg_stat_statements over the 96 days since the project was created shows the
+    app role returning 1,037,139,884 rows, 94.4% of everything this database has ever returned, almost
+    all of it bulk price_history reads -- against a free-tier egress allowance the account is already
+    over. Same VALUES-join shape as _perf_bars, which fixed the per-ticker round-trip cost the same way.
+
+    THE SLOT IS SHARED: _winners_sl_rows and _winners_run_rows(years=1) both key "y1", and the cache is
+    per WINDOW LENGTH because serving a 3-year replay from 1-year bars manufactures stop-outs that never
+    happened (2026-08-18). Narrowing the fetch adds a second way to be short, so a cached slot is reused
+    only when it reaches back far enough for EVERY ticker being asked for now; otherwise it is rebuilt.
+    Without that check a later caller could be served a trade whose forward path starts before anything
+    cached, and silently truncated.
+    """
+    cuts = {}
+    for r in rows:
+        tk, td = r.get("ticker"), (r.get("trig_date") or "")[:10]
+        if tk and td and (tk not in cuts or td < cuts[tk]):
+            cuts[tk] = td
+    now = _time.time()
+    slot = _SLBARS.setdefault(slot_key, {"ts": 0.0, "by_tk": None, "cuts": {}})
+    cached = slot.get("cuts") or {}
+    covered = all(tk in cached and cached[tk] <= td for tk, td in cuts.items())
+    if slot["by_tk"] is not None and covered and now - slot["ts"] < _SQA_TTL:
+        return slot["by_tk"]
+    by_tk = {}
+    if cuts:
+        items = sorted(cuts.items())
+        vals = ",".join(f"(:t{i}, :d{i}::date)" for i in range(len(items)))
+        params = {}
+        for i, (tk, td) in enumerate(items):
+            params[f"t{i}"], params[f"d{i}"] = tk, td
+        from db_pool import get_db
+        db = get_db()
+        try:
+            raw = db.run(
+                f"select p.ticker, p.bar_date, p.high, p.low, p.close from price_history p "
+                f"join (values {vals}) as f(ticker, d0) on p.ticker = f.ticker and p.bar_date >= f.d0 "
+                f"order by p.ticker, p.bar_date", **params) or []
+        finally:
+            db.close()
+        for tk, bd, hi, lo, cl in raw:
+            if hi is None or lo is None or cl is None:
+                continue
+            by_tk.setdefault(tk, []).append((str(bd), float(hi), float(lo), float(cl)))
+    slot.update(ts=now, by_tk=by_tk, cuts=cuts)
+    return by_tk
+
+
 def _winners_sl_rows(threshold_pct):
     """Every 12-month tradeable trade with BOTH its plain return% and the return%/outcome it WOULD have had
     with the trailing stop applied (re-backtest). threshold_pct=0 => the two are identical (reconciliation)."""
@@ -3846,29 +3928,10 @@ def _winners_sl_rows(threshold_pct):
                   key=lambda r: (r.get("trig_date") or ""))
     by_tk = None
     if thr > 0:
-        # Load the bars we need once, keyed by ticker (cached 10 min). Only when the feature is on.
-        now = _time.time()
+        # Load the bars we need once, keyed by ticker (cached 15 min). Only when the feature is on.
         # Own slot in the per-window cache. This report is always twelve months, so it takes "y1" -- the
         # same slot the default winners replay uses, which is correct because the window is identical.
-        _slot = _SLBARS.setdefault("y1", {"ts": 0.0, "by_tk": None})
-        if _slot["by_tk"] is not None and now - _slot["ts"] < _SQA_TTL:
-            by_tk = _slot["by_tk"]
-        else:
-            # One bulk query for every bar in the window (all trades trigger within the last 12 months, so
-            # their forward paths live in [cut12, now]) — 1000+ per-ticker round-trips were ~80s.
-            by_tk = {}
-            from db_pool import get_db
-            db = get_db()
-            try:
-                raw = db.run("select ticker, bar_date, high, low, close from price_history "
-                             "where bar_date >= :d order by ticker, bar_date", d=cut12) or []
-            finally:
-                db.close()
-            for tk, bd, hi, lo, cl in raw:
-                if hi is None or lo is None or cl is None:
-                    continue
-                by_tk.setdefault(tk, []).append((str(bd), float(hi), float(lo), float(cl)))
-            _slot.update(ts=now, by_tk=by_tk)
+        by_tk = _window_bars(rows, "y1")
     out = []
     for r in rows:
         plain = r["return_pct"]
@@ -3984,24 +4047,7 @@ def _winners_run_rows(threshold_pct, stop_pct=0, years=1):
     # Bar cache is keyed by WINDOW. It used to be shared outright with the stop-loss report, which was
     # safe only while both were fixed at twelve months; serving a 3-year request from a 1-year cache would
     # silently truncate every older trade's forward path and report stop-outs that never happened.
-    now = _time.time()
-    slot = _SLBARS.setdefault(f"y{years:g}", {"ts": 0.0, "by_tk": None})
-    if slot["by_tk"] is not None and now - slot["ts"] < _SQA_TTL:
-        by_tk = slot["by_tk"]
-    else:
-        by_tk = {}
-        from db_pool import get_db
-        db = get_db()
-        try:
-            raw = db.run("select ticker, bar_date, high, low, close from price_history "
-                         "where bar_date >= :d order by ticker, bar_date", d=cutoff) or []
-        finally:
-            db.close()
-        for tk, bd, hi, lo, cl in raw:
-            if hi is None or lo is None or cl is None:
-                continue
-            by_tk.setdefault(tk, []).append((str(bd), float(hi), float(lo), float(cl)))
-        slot.update(ts=now, by_tk=by_tk)
+    by_tk = _window_bars(rows, f"y{years:g}")
     vsmap = _volscore_trigger_map()
     vfmap = _volscore_trigger_feature_map()
     out = []
@@ -5103,6 +5149,7 @@ def api_ig_account():
             "ticker": tk, "name": tk2name.get(tk) or mk.get("instrumentName") or tk,
             "market": tk2market.get(tk) or "",   # Market column (user 2026-08-03, P-10)
             "epic": epic,
+            "deal_id": od.get("dealId") or "",
             "direction": od.get("direction"), "size": od.get("orderSize") or od.get("size"),
             "level": od.get("orderLevel") or od.get("level"), "type": od.get("orderType"),
             "good_till": str(od.get("goodTillDate") or "")[:19], "source": epic2src.get(str(epic)) or "—",
@@ -5137,6 +5184,98 @@ def api_ig_account():
     out["account_name"] = acct_info.get("account_name") or ""
     out["account_masked"] = ("••••" + aid[-3:]) if aid else ""
     return jsonify(out)
+
+
+@app.route("/api/order-filter-audit")
+def api_order_filter_audit():
+    """Which live orders no longer meet the acting user's own trading filters.
+
+    The analysis is order_filter_audit.audit -- written 2026-08-29, already tested, and the only place
+    this judgement is made. It splits a failure into two kinds, and that split is the whole value of it:
+
+      PERSISTENT   R:R, Quality, instrument value, direction/location/market. Properties of the SETUP.
+                   They cannot improve, so the order does not belong on the book.
+      POINT-IN-TIME RVOL, VolumeScore, VWAP, ATR. Market state on a given day. RVOL decays after the
+                   volume spike that produced the setup, so a pending order below the floor days later is
+                   normal (user 2026-09-03: "rvol decay is acceptable - R:R below the floor is not ok").
+
+    UNKNOWN is reported where a metric is genuinely absent, never as a breach: an absence of evidence is
+    not evidence of a breach. The requester has separately decided those orders should go anyway ("if 5
+    can't be judged - they cannot be confirmed - they need to go"), which is a decision about risk, not a
+    reinterpretation of the data -- so the verdict stays UNKNOWN here and the CHOICE is made on screen.
+    """
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    try:
+        import order_filter_audit
+        return jsonify(_json_safe(order_filter_audit.audit(name)))
+    except Exception as ex:
+        log.warning(f"order filter audit failed: {ex}")
+        return jsonify({"error": "the order audit could not be run"}), 500
+
+
+@app.route("/api/ig-cancel-orders", methods=["POST"])
+def api_ig_cancel_orders():
+    """Cancel only explicitly confirmed, currently-pending WORKING ORDERS belonging to the acting user.
+
+    Deliberately the same shape as /api/ig-close-positions, because it carries the same risk: the caller
+    must name each deal id and set confirmed, the account is RE-READ under this user's own session so a
+    stale browser row can never cancel something else, and every attempt is written to the host-side
+    audit file whether or not it succeeds.
+
+    There is NO "cancel everything that breaches" server-side sweep, on purpose. The judgement of what
+    breaches lives in /api/order-filter-audit and the CHOICE lives with the person looking at it; a
+    server that could sweep the book on its own reading of the rules is one settings change away from
+    cancelling an entire account.
+    """
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
+        return jsonify({"error": "login required"}), 401
+    body = request.get_json(silent=True) or {}
+    deal_ids = list(dict.fromkeys(str(v).strip() for v in (body.get("deal_ids") or []) if str(v).strip()))
+    if not body.get("confirmed"):
+        return jsonify({"error": "explicit confirmation is required; no order was cancelled"}), 400
+    if not deal_ids:
+        return jsonify({"error": "select at least one working order"}), 400
+    if len(deal_ids) > 100:
+        return jsonify({"error": "too many orders requested"}), 400
+    reason = str(body.get("reason") or "")[:120] or "WEB_USER_CONFIRMED"
+    try:
+        import ig_shim
+        if ig_shim.session_for(name) is None:
+            return jsonify({"error": "no IG credentials for this user"}), 403
+        results = []
+        with ig_shim._IG_LOCK, ig_shim.acting_session(name):
+            live = {}
+            for w in (ig_shim.get_working_orders() or []):
+                od = w.get("workingOrderData") or {}
+                if od.get("dealId"):
+                    live[str(od["dealId"])] = od
+            for deal_id in deal_ids:
+                order = live.get(deal_id)
+                if not order:
+                    _append_ig_close_audit(name, deal_id, "rejected_preflight", "not a pending working order")
+                    results.append({"deal_id": deal_id, "cancelled": False,
+                                    "error": "not a pending working order"})
+                    continue
+                _append_ig_close_audit(name, deal_id, "submitted", f"working-order cancel: {reason}")
+                ok = bool(ig_shim.delete_working_order(deal_id, reason=reason))
+                _append_ig_close_audit(name, deal_id, "confirmed" if ok else "not_cancelled",
+                                       "IG accepted the cancellation" if ok else "IG did not confirm")
+                results.append({"deal_id": deal_id, "cancelled": ok,
+                                "error": "" if ok else "IG did not confirm the cancellation"})
+        done = [r["deal_id"] for r in results if r["cancelled"]]
+        for result in results:
+            outcome = "IG confirmed cancelled" if result["cancelled"] else f"still live: {result['error']}"
+            _wu.log_event(name, f"User-confirmed IG working-order cancel for {result['deal_id']}: {outcome}")
+        _append_batch("IG Account",
+                      f"User-confirmed working-order cancel: {len(done)}/{len(results)} order(s) cancelled",
+                      by=name)
+        return jsonify({"ok": bool(done), "results": results})
+    except Exception as exc:
+        log.warning(f"ig-cancel-orders failed: {exc}")
+        return jsonify({"error": "the cancellation could not be completed"}), 500
 
 
 @app.route("/api/ig-close-positions", methods=["POST"])

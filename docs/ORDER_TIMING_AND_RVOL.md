@@ -138,6 +138,27 @@ That removes a whole verdict from the audit. A pending order can only be judged 
 
 And it means the metrics are evaluated exactly once, at the break, and never revisited.
 
+### A widening that was considered and rejected
+
+Measuring volume over a **±2 day window** around the trigger was proposed, on the reasoning that what we
+want to see is a positive change in volume rather than one specific bar. Measured over 6,704 resolved
+triggers, the same 1.8 floor applied three ways:
+
+| measure | passes | share | win rate | mean return |
+|---|---|---|---|---|
+| **single break bar** | 1,234 | 18.4% | **28.0%** | **3.05%** |
+| trigger−2 → trigger | 1,850 | 27.6% | 26.5% | 2.46% |
+| ±2 days | 2,498 | 37.3% | 26.9% | 2.44% |
+| no volume filter | 6,704 | 100% | 25.4% | 1.90% |
+
+RVOL carries real signal — every variant beats no filter. But **widening dilutes it**: more setups pass,
+at a lower win rate *and* a lower mean return. A wider window admits spikes that happened on a *different*
+day, and the signal is "volume confirmed **this** break". The ±2 form also cannot be a live gate at all,
+since two of its bars follow the trigger.
+
+**Decided 2026-09-03: keep the single break bar.** If the goal is more order flow, the lever to measure is
+the 1.8 threshold itself, not the window.
+
 ### What this changed on the live book
 
 Applying break-bar floors to pending orders produced 40 "failures" that were not failures at all. Judged

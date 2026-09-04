@@ -841,3 +841,127 @@ def test_a_missing_metric_leaves_the_row_rather_than_failing_the_table(monkeypat
 
     assert len(body["orders"]) == 1 and body["orders"][0]["ticker"] == "VOD.L"
     assert not body.get("error")
+
+
+# ======================================================================================================
+# Cancelling working orders that no longer meet the saved filters (user 2026-09-03: "once the settings
+# for trading are amended - check each open order and cancel any that do not meet the criteria", refined
+# after being shown the measured split to "rvol decay is acceptable - R:R below the floor is not ok" and
+# "if 5 can't be judged - they cannot be confirmed - they need to go").
+#
+# This sends real cancellations to a real broker, so the guards matter more than the feature: confirmation
+# is required, each deal id must be named, the account is re-read server-side, and there is deliberately
+# NO "cancel everything that breaches" sweep -- a server that could act on its own reading of the rules is
+# one settings change away from clearing an account.
+# ======================================================================================================
+
+class _CancelIG(_FakeIG):
+    cancelled = []
+    fail = set()
+
+    @staticmethod
+    def get_working_orders():
+        return [{"workingOrderData": {"dealId": "D1", "epic": "E1"}, "marketData": {}},
+                {"workingOrderData": {"dealId": "D2", "epic": "E2"}, "marketData": {}}]
+
+    @staticmethod
+    def delete_working_order(deal_id, reason=""):
+        _CancelIG.cancelled.append((deal_id, reason))
+        return deal_id not in _CancelIG.fail
+
+
+def _cancel(monkeypatch, body, *, fail=()):
+    import sys
+    _CancelIG.cancelled, _CancelIG.fail = [], set(fail)
+    _identity(monkeypatch, "Alex", admin=True)
+    monkeypatch.setitem(sys.modules, "ig_shim", _CancelIG)
+    monkeypatch.setattr(server, "_append_ig_close_audit", lambda *a, **k: None)
+    monkeypatch.setattr(server, "_append_batch", lambda *a, **k: None)
+    monkeypatch.setattr(server._wu, "log_event", lambda *a, **k: None)
+    return server.app.test_client().post("/api/ig-cancel-orders", headers={"X-Auth": "token"}, json=body)
+
+
+def test_cancelling_requires_explicit_confirmation(monkeypatch):
+    r = _cancel(monkeypatch, {"deal_ids": ["D1"]})
+
+    assert r.status_code == 400
+    assert _CancelIG.cancelled == [], "an unconfirmed request must reach IG not at all"
+
+
+def test_cancelling_requires_named_orders(monkeypatch):
+    """There is no 'cancel everything in breach' server-side. The caller names each one."""
+    r = _cancel(monkeypatch, {"confirmed": True, "deal_ids": []})
+
+    assert r.status_code == 400 and _CancelIG.cancelled == []
+
+
+def test_a_confirmed_cancel_reaches_ig(monkeypatch):
+    r = _cancel(monkeypatch, {"confirmed": True, "deal_ids": ["D1", "D2"], "reason": "WEB_USER_SETTINGS_BREACH"})
+
+    assert r.status_code == 200
+    assert [d for d, _ in _CancelIG.cancelled] == ["D1", "D2"]
+    assert all(reason == "WEB_USER_SETTINGS_BREACH" for _, reason in _CancelIG.cancelled)
+    assert all(x["cancelled"] for x in r.get_json()["results"])
+
+
+def test_an_order_ig_is_not_holding_is_never_sent(monkeypatch):
+    """The browser row can be stale. The account is re-read before anything is cancelled."""
+    r = _cancel(monkeypatch, {"confirmed": True, "deal_ids": ["D1", "GONE"]})
+
+    assert [d for d, _ in _CancelIG.cancelled] == ["D1"], "a deal id IG is not holding must not be sent"
+    results = {x["deal_id"]: x for x in r.get_json()["results"]}
+    assert results["GONE"]["cancelled"] is False
+    assert "not a pending working order" in results["GONE"]["error"]
+
+
+def test_a_refused_cancellation_is_reported_not_swallowed(monkeypatch):
+    r = _cancel(monkeypatch, {"confirmed": True, "deal_ids": ["D1", "D2"]}, fail=["D2"])
+
+    results = {x["deal_id"]: x for x in r.get_json()["results"]}
+    assert results["D1"]["cancelled"] is True
+    assert results["D2"]["cancelled"] is False and results["D2"]["error"]
+
+
+def test_the_batch_is_bounded(monkeypatch):
+    r = _cancel(monkeypatch, {"confirmed": True, "deal_ids": [f"D{i}" for i in range(101)]})
+
+    assert r.status_code == 400 and _CancelIG.cancelled == []
+
+
+def test_cancelling_needs_a_login(monkeypatch):
+    import sys
+    monkeypatch.setattr(server._wu, "name_for_token", lambda t: "")
+    monkeypatch.setitem(sys.modules, "ig_shim", _CancelIG)
+    _CancelIG.cancelled = []
+
+    r = server.app.test_client().post("/api/ig-cancel-orders", json={"confirmed": True, "deal_ids": ["D1"]})
+
+    assert r.status_code == 401 and _CancelIG.cancelled == []
+
+
+def test_the_audit_endpoint_needs_a_login(monkeypatch):
+    monkeypatch.setattr(server._wu, "name_for_token", lambda t: "")
+
+    assert server.app.test_client().get("/api/order-filter-audit").status_code == 401
+
+
+def test_the_audit_endpoint_uses_the_one_audit_module(monkeypatch):
+    """Not a second copy of the judgement: order_filter_audit is where the rule lives."""
+    import order_filter_audit
+    _identity(monkeypatch, "Alex", admin=True)
+    seen = []
+    monkeypatch.setattr(order_filter_audit, "audit",
+                        lambda user, **k: seen.append(user) or {"user": user, "orders": 0,
+                                                                "counts": {}, "rows": []})
+
+    body = server.app.test_client().get("/api/order-filter-audit", headers={"X-Auth": "token"}).get_json()
+
+    assert seen == ["Alex"] and body["orders"] == 0
+
+
+def test_the_working_order_rows_carry_the_deal_id(monkeypatch):
+    """Without it the panel can show an order it has no way to cancel."""
+    body = _ig_account(monkeypatch)
+
+    assert body["orders"][0]["deal_id"] == "", "the fixture order has no dealId, so the field must be blank"
+    assert "deal_id" in body["orders"][0]

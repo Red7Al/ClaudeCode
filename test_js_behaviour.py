@@ -2551,3 +2551,93 @@ def test_the_ig_orders_cells_use_the_shared_formatters():
     assert "_mcapFmt(o.mcap)" in row and "rvolCell(o.rvol)" in row
     assert row.count("_tickCross(") == 2, "VWAP and ATR both go through the one green/red helper"
     assert "volScoreCell(o.volume_score)" in row
+
+
+# ======================================================================================================
+# The breach panel pre-ticks by the rule the requester settled on (2026-09-03): every order the audit
+# flags is ticked, because after break-bar measures stopped being judged the only failures left are
+# durable ones and unjudgeable ones, and the requester has ruled on both. A verdict this screen has no
+# ruling for must still be SHOWN -- silently dropping a new kind of failure is the worse error -- but
+# never pre-ticked.
+# ======================================================================================================
+
+def _breach_panel(rows_js, orders_js):
+    stubs = """
+      let PANEL={style:{}}, BODY={innerHTML:""}, COUNT={innerHTML:""};
+      const $=id=>id==="ig-breach-panel"?PANEL:id==="ig-breach-body"?BODY:id==="ig-breach-count"?COUNT:null;
+      const _esc=s=>String(s??"");
+      const disp=t=>String(t||"");
+    """
+    src = (f"let IG_AUDIT={{rows:{rows_js}}}, IGORD={orders_js};\n"
+           + _extract("paintOrderFilterAudit"))
+    return run_js(stubs, src,
+                  '(()=>{paintOrderFilterAudit();return {html:BODY.innerHTML,count:COUNT.innerHTML,'
+                  'shown:PANEL.style.display};})()')
+
+
+_ORDERS = ('[{ticker:"AAF.L",deal_id:"D1",direction:"BUY",size:2},'
+           ' {ticker:"VOD.L",deal_id:"D2",direction:"BUY",size:3},'
+           ' {ticker:"DHI",deal_id:"D3",direction:"BUY",size:1}]')
+# VOD.L carries a verdict the audit cannot currently produce, standing in for one added server-side after
+# this screen was written. BREACH and UNKNOWN are the two the endpoint really returns.
+_ROWS = ('[{ticker:"AAF.L",verdict:"BREACH",breaches:["R:R 2.88 < 5.0"],unknown:[]},'
+         ' {ticker:"VOD.L",verdict:"SOMETHING_NEW",breaches:["a rule invented later"],unknown:[]},'
+         ' {ticker:"DHI",verdict:"UNKNOWN",breaches:[],unknown:["R:R not recorded"]}]')
+
+
+def test_durable_breaches_and_unjudgeable_orders_are_ticked():
+    out = _breach_panel(_ROWS, _ORDERS)
+    ticked = re.findall(r'data-cancel="(\w+)" checked', out["html"])
+
+    assert set(ticked) == {"D1", "D3"}, (
+        f"expected the BREACH and UNKNOWN orders ticked, got {ticked}")
+
+
+def test_a_verdict_this_screen_has_no_ruling_for_is_shown_but_not_ticked():
+    """A verdict added server-side later must not be cancelled on an old screen's assumption -- nor
+    silently dropped, which would hide a live order failing a filter nobody has looked at."""
+    out = _breach_panel(_ROWS, _ORDERS)
+
+    assert 'data-cancel="D2" checked' not in out["html"], "never pre-tick an unruled verdict"
+    assert 'data-cancel="D2"' in out["html"], "...but it must still be visible"
+
+
+def test_the_panel_never_describes_break_bar_metrics_as_decayed():
+    """user 2026-09-03: 'RVOL, ATR and VWAP are only relevant at the break'. For a PENDING order they are
+    not applicable, not decayed -- and the audit stopped judging them, so a 'these decayed but you have
+    accepted that' line would describe a category the screen can no longer be shown."""
+    js = _extract("paintOrderFilterAudit")
+
+    assert "STALE" not in js, "the STALE verdict is gone from the audit; the panel must not branch on it"
+    assert "decay" not in js.lower(), "break-bar metrics are not applicable to a pending order, not decayed"
+
+
+def test_the_count_reports_only_what_must_go():
+    out = _breach_panel(_ROWS, _ORDERS)
+
+    assert ">2</b> working orders no longer meet your settings" in out["count"]
+    assert "1 flagged under a rule this screen has no ruling for" in out["count"]
+
+
+def test_an_order_ig_is_no_longer_holding_is_not_offered():
+    """The audit walks working_orders, which can lag a cancellation; only live orders may be ticked."""
+    out = _breach_panel(_ROWS, '[{ticker:"AAF.L",deal_id:"D1",direction:"BUY",size:2}]')
+
+    assert 'data-cancel="D1"' in out["html"]
+    assert "D2" not in out["html"] and "D3" not in out["html"]
+
+
+def test_the_audit_is_actually_invoked():
+    """This repository's recurring defect is correct code nothing calls -- and this very panel was
+    written, tested and nearly shipped with loadOrderFilterAudit defined and never called."""
+    js = client_js()
+
+    assert "loadOrderFilterAudit()" in js.replace("function loadOrderFilterAudit()", ""),         "loadOrderFilterAudit is defined but never called; the panel would never appear"
+    account = _extract("renderIgAccount")
+    assert account.index("paintIgAccount()") < account.index("loadOrderFilterAudit()"),         "the audit paints from IGORD, which paintIgAccount is what fills"
+
+
+def test_a_clean_book_hides_the_panel():
+    out = _breach_panel('[{ticker:"AAF.L",verdict:"OK",breaches:[],unknown:[]}]', _ORDERS)
+
+    assert out["shown"] == "none"

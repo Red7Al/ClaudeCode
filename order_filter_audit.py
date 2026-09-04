@@ -41,6 +41,57 @@ BOOLEAN_REQUIREMENTS = (("require_above_vwap", "above_vwap_setup", "above VWAP")
                         ("require_atr_expanding", "atr_expanding", "ATR expanding"))
 
 
+# Break-bar measures. RVOL, VolumeScore, above-VWAP and ATR-expanding all describe the BREAKOUT BAR, and
+# an order reaches IG a median of 8 days BEFORE that bar exists (measured 2026-09-03: 55.5% of the last
+# 400 orders preceded their own break, and 23 of 59 pending orders had no break at all). So for a PENDING
+# order these are not stale, not breaching and not decayed -- they are NOT APPLICABLE, because the event
+# they measure has not happened. The account owner's wording: "RVOL, ATR and VWAP are only relevant at the
+# break (so stale should not be an issue)".
+#
+# Judging a pending order on them produced 40 "failures" that were not failures. They are excluded here,
+# and the STALE verdict disappears with them. See docs/ORDER_TIMING_AND_RVOL.md.
+BREAK_BAR_LABELS = ("RVOL", "VolumeScore", "above VWAP", "ATR expanding")
+
+
+def _durable_only(items):
+    return [x for x in items if not any(m in x for m in BREAK_BAR_LABELS)]
+
+
+def placement_setups(tickers, db=None):
+    """{ticker: {rr, quality, ready_date}} for the setup each PENDING order was placed from.
+
+    THE JOIN IS ready_date, NOT triggered_date. An order is placed when a setup becomes orderable; the
+    break comes later, so a trigger-based join cannot select the setup the order came from -- that row's
+    triggered_date is still null or later than placement, and an older, unrelated break gets used instead.
+    Measured 2026-09-03: a trigger join attributed the wrong setup to 34 of 61 pending orders (55.7%), and
+    left 5 unjudgeable that this join resolves cleanly.
+    """
+    from db_pool import get_db
+    own = db is None
+    db = db or get_db()
+    try:
+        placed = {}
+        for tk, p in (db.run("select ticker, max(placed_at)::date from working_orders "
+                             "where status = 'PENDING' and placed_at is not null group by ticker") or []):
+            placed[tk] = p
+        if not placed:
+            return {}
+        rows = db.run("select ticker, ready_date::date, risk_reward, quality from squeeze_history "
+                      "where ready_date is not null and ticker = any(:tks)",
+                      tks=list(placed)) or []
+    finally:
+        if own:
+            db.close()
+    best = {}
+    for tk, rd, rr, q in rows:
+        cutoff = placed.get(tk)
+        if not rd or not cutoff or rd > cutoff:
+            continue
+        if tk not in best or rd > best[tk]["ready_date"]:
+            best[tk] = {"ready_date": rd, "rr": rr, "quality": q}
+    return best
+
+
 # PERSISTENT criteria are properties of the setup itself: they do not change after the order is placed, so a breach
 # means the order does not belong on the book at all. POINT-IN-TIME criteria are market state on a given day -- RVOL
 # especially decays after the volume spike that produced the setup, so a pending order showing sub-floor RVOL days
@@ -188,6 +239,21 @@ def audit(user, tickers=None, record_for=None, allows=None, limits=None, at_trig
         tickers = [r[0] for r in rows]
 
     stored = instrument_metrics.latest(tickers) if tickers else {}
+    # The setup each order was PLACED FROM -- the basis a pending order must be judged on. Reading R:R
+    # from today's snapshot instead reports "not recorded" for every instrument without a live setup
+    # today, which on 2026-09-03 was 45 of 61 orders: an artefact, not a finding.
+    try:
+        placements = {} if at_trigger else placement_setups(tickers)
+    except Exception as exc:
+        # Degrade to the snapshot record rather than failing the whole audit; the verdict is then based
+        # on today's setup, which is weaker but not wrong, and the log says so.
+        log.warning("placement setups unavailable (%s); judging on the snapshot record instead", exc)
+        placements = {}
+    try:
+        from hvf_web import server as _srv
+        mcaps = _srv._mcap_map()
+    except Exception:
+        mcaps = {}
     fired = trigger_state(tickers) if (at_trigger and tickers) else {}
     out = []
     for tk in tickers:
@@ -201,7 +267,28 @@ def audit(user, tickers=None, record_for=None, allows=None, limits=None, at_trig
             res.update(triggered_date=str(trig.get("triggered_date") or "") or None,
                        outcome=trig.get("outcome"))
         else:
-            res = check_one(rec, stored.get(tk), limits, allows(rec) if rec else True)
+            # The gate is asked about the REAL record: direction, location and market are properties of
+            # the instrument, and a reduced record would silently answer "allowed" for everything.
+            gate_ok = allows(rec) if rec else True
+            setup = placements.get(tk)
+            judged = rec
+            if setup:
+                # R:R and Quality come from the setup the order was placed from. Market cap comes from
+                # the instrument_mcap map, not the snapshot record, which does not carry it for every
+                # ticker -- reading it from there reported "instrument value not recorded" for 40 of 61
+                # orders, an artefact of the wrong source rather than absent data.
+                judged = {"rr": setup["rr"], "quality": setup["quality"],
+                          "mcap": rec.get("mcap") if rec.get("mcap") is not None else mcaps.get(tk)}
+            res = check_one(judged, stored.get(tk), limits, gate_ok)
+            # Break-bar metrics are not applicable to an order that has not broken.
+            res["breaches"] = _durable_only(res["breaches"])
+            res["persistent"] = _durable_only(res["persistent"])
+            res["point_in_time"] = []
+            res["unknown"] = _durable_only(res["unknown"])
+            res["verdict"] = ("BREACH" if res["persistent"] else
+                              ("UNKNOWN" if res["unknown"] else "OK"))
+            if setup:
+                res["setup_ready_date"] = str(setup["ready_date"])
         res.update(ticker=tk, in_snapshot=bool(rec),
                    metrics_as_of=(stored.get(tk) or {}).get("as_of"))
         if not rec:

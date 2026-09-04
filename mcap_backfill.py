@@ -89,6 +89,17 @@ def main():
     finally:
         db.close()
 
+    # Currency -> GBP rates, refreshed alongside the caps they convert (user 2026-09-04: "MCAP is expected
+    # to be in GBP in our system"). This runs FIRST, not last: the ticker loop below can take the best part
+    # of an hour and has timed out before, and a run that dies in the tail must still leave the rates
+    # current. Nine fetches, so it costs seconds. A failure here is logged and does not stop the backfill --
+    # yesterday's rates convert last week's caps perfectly well.
+    try:
+        import fx_rates
+        fx_rates.refresh()
+    except Exception as e:
+        log.warning(f"FX rate refresh failed ({e}); market caps will convert on the previously stored rates")
+
     t0 = dt.datetime.now()
     ok = miss = 0
     for i, tk in enumerate(tickers, 1):
