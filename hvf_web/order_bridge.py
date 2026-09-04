@@ -80,18 +80,52 @@ def _candidates() -> list:
 
 
 def _already_working() -> set:
-    """Tickers that already have a live/watched working order (no duplicates)."""
+    """Tickers we must not place another order on: a live working order, OR an open position.
+
+    THE POSITION HALF WAS MISSING UNTIL 2026-09-04, and was being covered by accident. This read only
+    working_orders in PENDING/WATCHING. Nothing had reconciled that table since the session monitors were
+    switched off, so filled orders sat there as PENDING for ever -- and those stale rows were what kept
+    the bridge off instruments the account already held. Clearing 89 phantom rows (run_working_order_sweep)
+    removed 12 rows covering live holdings and exposed the gap: measured that day, none of the 14 open
+    positions appeared on this list.
+
+    An open position is a stronger reason not to re-order than a pending order is. Reading IG directly
+    rather than trusting our own table, because it was precisely our table being wrong that hid this.
+    """
+    skip = set()
     try:
         from db_pool import get_db
         db = get_db()
         try:
             rows = db.run("select distinct ticker from working_orders where status in ('PENDING','WATCHING')")
-            return {r[0] for r in (rows or [])}
+            skip |= {r[0] for r in (rows or [])}
         finally:
             db.close()
     except Exception as e:
         log.warning(f"bridge: working_orders lookup failed: {e}")
-        return set()
+    # Open positions, resolved to tickers through the same epic_lookup the account screens use.
+    try:
+        import ig_shim
+        from db_pool import get_db
+        db = get_db()
+        try:
+            epic2tk = {str(r[1]): r[0] for r in (db.run("select ticker, epic from epic_lookup") or []) if r[1]}
+        finally:
+            db.close()
+        held = set()
+        for p in (ig_shim.get_open_positions() or []):
+            epic = str((p.get("market") or {}).get("epic") or "")
+            tk = epic2tk.get(epic)
+            if tk:
+                held.add(tk)
+        if held:
+            log.info(f"bridge: skipping {len(held)} instrument(s) already held as open positions")
+        skip |= held
+    except Exception as e:
+        # Fail open, as the working_orders half always has: an IG hiccup must not halt every placement.
+        # It is logged at WARNING because for this pass the duplicate guard is weaker than intended.
+        log.warning(f"bridge: open-position lookup failed, duplicate guard is weaker this pass: {e}")
+    return skip
 
 
 def run_bridge() -> dict:
