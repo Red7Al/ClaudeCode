@@ -3126,9 +3126,26 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
             volume_score=sig.get("volume_score"), rvol=sig.get("rvol"),
             above_vwap=_above_vwap, atr_expanding=_atr_expanding, mcap=sig.get("mcap"),
             require_data=True)
+        # RECORD THE DECISION EITHER WAY (2026-09-04). This branch used to log only when it BLOCKED, so an
+        # order that passed left no trace of what it passed on. On 2026-09-04 five orders were placed at
+        # 18:00 and the account owner asked why; the answer was unrecoverable -- not hidden, never written
+        # down. The gate demonstrably ran (it blocked G24.DE on VolumeScore at 20:04) but kept nothing.
+        #
+        # A gate that is silent on success cannot be audited, and "it must have passed the filters" is not
+        # evidence. Both outcomes are now logged with the VALUES and the FLOORS they were tested against,
+        # so the question "why was this ordered" is always answerable from the run log.
+        _lim = trading_limits.user_limits(profile.get("name")) or {}
+        _evidence = (f"rvol={sig.get('rvol')}/{_lim.get('min_rvol')} "
+                     f"vs={sig.get('volume_score')}/{_lim.get('min_volume_score')} "
+                     f"rr={sig.get('hvf_risk_reward')}/{_lim.get('min_risk_reward')} "
+                     f"q={_q}/{_lim.get('min_quality')} "
+                     f"mcap={sig.get('mcap')}/{_lim.get('min_instrument_value')} "
+                     f"above_vwap={_above_vwap}/req={bool(_lim.get('require_above_vwap'))} "
+                     f"atr={_atr_expanding}/req={bool(_lim.get('require_atr_expanding'))}")
         if _reason:
-            log.info(f"{ticker}: blocked by personal trading limits — {_reason}.")
+            log.info(f"{ticker}: blocked by personal trading limits — {_reason}. [{_evidence}]")
             return None
+        log.info(f"{ticker}: PASSED personal trading limits [{_evidence}]")
     except Exception as e:
         # This is the last checkpoint before the IG-facing path. An unavailable metric source cannot be
         # treated as evidence that every configured personal floor passed.

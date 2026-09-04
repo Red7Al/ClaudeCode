@@ -229,6 +229,48 @@ def test_place_order_blocks_when_live_metric_evidence_cannot_be_loaded(monkeypat
     assert epic_calls == []
 
 
+# ── The gate must record what it decided, either way (2026-09-04) ──────────────────────────────────────
+#
+# THE DEFECT THIS PREVENTS. place_hvf_order_from_sig logged only when it BLOCKED. Five orders were placed
+# at 18:00 on 2026-09-04 and the account owner asked what criteria they met; the answer was unrecoverable,
+# because nothing was written down. The gate had run -- it blocked G24.DE on VolumeScore two hours later --
+# but kept no record of the values it allowed on. "It must have passed the filters" is not evidence.
+#
+# These drive the REAL entry point rather than calling check_limits directly, because a hand-assembled
+# call is how I convinced myself the gate was broken earlier that evening: I omitted rvol and read the
+# resulting "cannot be verified" as a finding.
+
+def test_an_allowed_order_records_the_values_it_was_allowed_on(monkeypatch, caplog):
+    import logging
+    _pass_the_earlier_gates(monkeypatch)
+    monkeypatch.setattr(trading_limits, "check_limits", lambda *a, **kw: "")          # allowed
+    monkeypatch.setattr(trading_limits, "user_limits",
+                        lambda name: {**trading_limits.limit_defaults(), "min_rvol": 1.8,
+                                      "min_instrument_value": 10_000_000_000})
+    monkeypatch.setattr(ig_shim, "get_epic", lambda tk: None)                        # stop before IG
+
+    with caplog.at_level(logging.INFO):
+        ig_shim.place_hvf_order_from_sig(_base_sig(), {"name": "Alex", "user_id": "u1"}, "WEB_BRIDGE", 1.0)
+
+    passed = [r.getMessage() for r in caplog.records if "PASSED personal trading limits" in r.getMessage()]
+    assert passed, "an order that passes the gate must say what it passed on"
+    assert "rvol=2.0/1.8" in passed[0], f"the value AND the floor must both be recorded: {passed[0]}"
+    assert "mcap=2000000000/10000000000" in passed[0]
+
+
+def test_a_blocked_order_records_the_values_too(monkeypatch, caplog):
+    import logging
+    _pass_the_earlier_gates(monkeypatch)
+    monkeypatch.setattr(trading_limits, "check_limits", lambda *a, **kw: "AAPL: RVOL 2.0 is below 9.0")
+    monkeypatch.setattr(ig_shim, "get_epic", lambda tk: None)
+
+    with caplog.at_level(logging.INFO):
+        ig_shim.place_hvf_order_from_sig(_base_sig(), {"name": "Alex", "user_id": "u1"}, "WEB_BRIDGE", 1.0)
+
+    blocked = [r.getMessage() for r in caplog.records if "blocked by personal trading limits" in r.getMessage()]
+    assert blocked and "rvol=" in blocked[0], "a block must carry its evidence as well as its reason"
+
+
 # ── _limit_block's instrument-value band (measured dead, 2026-09-04) ────────────────────────────────────
 #
 # THE BUG THIS PREVENTS. The band read rec.get("mcap") from the snapshot record and was written as a
