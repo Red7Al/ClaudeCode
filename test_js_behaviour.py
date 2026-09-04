@@ -1520,6 +1520,39 @@ def test_the_scanner_row_renders_mcap_in_the_same_position():
     assert mcap_at == rvol_at - 1, "the row must place MCap where the header says it is"
 
 
+def test_the_ig_positions_table_shows_mcap_next_to_market():
+    """user 2026-09-04: "open transactions in IG still does not show MCAP (next to market)"."""
+    order = re.findall(r'data-igp="([a-z0-9_]+)"', _header_for(client_source(), "ig-pos-rows", 'data-igp="profit_pct"'))
+
+    assert "mcap" in order, "the MCap column is missing from the IG positions header"
+    assert order.index("mcap") == order.index("market") + 1, (
+        f"MCap must sit immediately right of Market; order is {order[:6]}")
+
+
+def test_both_ig_position_rows_and_the_header_stay_in_step():
+    """This table paints TWO row shapes into one header -- an open position and a closed trade -- so a
+    column added to one alone shifts only half the table, which is harder to spot than shifting all of it.
+    Both are counted, and the totals row is counted through its colspans for the same reason."""
+    html, js = client_source(), client_js()
+    headings = _th_count(_header_for(html, "ig-pos-rows", 'data-igp="profit_pct"'))
+    j = js.index('$("ig-pos-rows").innerHTML=renderedRows')
+    block = js[js.rindex("const renderedRows", 0, j):j]
+    rows = [m.group(1) for m in re.finditer(r"<tr[^>]*>(.*?)</tr>", block, re.S) if "colspan" not in m.group(1)]
+
+    assert len(rows) == 2, f"expected the open and closed row templates, found {len(rows)}"
+    for n, row in enumerate(rows):
+        assert len(re.findall(r"<td", row)) == headings, (
+            f"row template {n} renders {len(re.findall(r'<td', row))} cells under {headings} headings")
+
+    total = re.search(r"const totalRow=.*?</tr>", js, re.S).group(0)
+    spanned = sum(int(m) for m in re.findall(r'colspan="(\d+)"', total))
+    plain = len(re.findall(r"<td(?![^>]*colspan)", total))
+
+    assert spanned + plain == headings, (
+        f"the totals row covers {spanned + plain} columns against {headings} headings, "
+        "so the total lands under the wrong heading")
+
+
 def test_the_preorders_header_and_row_stay_in_step():
     """The My Pre-orders table, which is what data-pk marks.
 

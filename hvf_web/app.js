@@ -2179,17 +2179,17 @@ function paintIgAccount(){
       .concat(closed.map(c=>Object.assign({},c,{_rowKind:'closed',activity_date:c.closed||''}))),
     igpSortK,igpSortDir);
   const renderedRows=tableRows.map(r=>r._rowKind==='open'
-    ? (()=>{const ids=_agg?(r._deal_ids||[]):[r.deal_id],encoded=encodeURIComponent(ids.filter(Boolean).join(','));return `<tr><td><input type="checkbox" ${ids.length?'':'disabled'} ${ids.length&&ids.every(id=>IG_CLOSE_SELECTION.has(id))?'checked':''} onchange="igCloseToggle('${encoded}',this.checked)" title="Select this open position for a confirmed market close"></td><td><span class="tag bull">Open</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??'<span class="muted">—</span>'}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(r.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(r.limit??'')}</td><td>${r.currency||''}</td><td>${r.opened||''}</td><td></td><td></td><td><b>${r.ticker||r.epic||''}</b></td></tr>`})()
-    : `<tr><td></td><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??''}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td></td><td></td><td>${r.currency||''}</td><td></td><td>${_igDateTime(r.closed)}</td><td>${_igReason(r.reason)}</td><td><b>${r.ticker||''}</b></td></tr>`);
+    ? (()=>{const ids=_agg?(r._deal_ids||[]):[r.deal_id],encoded=encodeURIComponent(ids.filter(Boolean).join(','));return `<tr><td><input type="checkbox" ${ids.length?'':'disabled'} ${ids.length&&ids.every(id=>IG_CLOSE_SELECTION.has(id))?'checked':''} onchange="igCloseToggle('${encoded}',this.checked)" title="Select this open position for a confirmed market close"></td><td><span class="tag bull">Open</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_mcapFmt(r.mcap)}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??'<span class="muted">—</span>'}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td>${_agg?'<span class="muted">—</span>':(r.stop??'')}</td><td>${_agg?'<span class="muted">—</span>':(r.limit??'')}</td><td>${r.currency||''}</td><td>${r.opened||''}</td><td></td><td></td><td><b>${r.ticker||r.epic||''}</b></td></tr>`})()
+    : `<tr><td></td><td><span class="tag" style="color:var(--muted)">Closed</span></td><td>${nm40(r.name)}${_agg&&r._n>1?` <span class="muted" style="font-size:11px">×${r._n}</span>`:''}</td><td>${r.market||'<span class="muted">—</span>'}</td><td>${_mcapFmt(r.mcap)}</td><td>${_igDtag(r.direction)}</td><td>${_igSz(r.size)}</td><td>${r.level??''}</td><td>${r.current??''}</td><td>${_igPf(r.profit)}</td><td>${_igPfp(r.profit_pct)}</td><td></td><td></td><td>${r.currency||''}</td><td></td><td>${_igDateTime(r.closed)}</td><td>${_igReason(r.reason)}</td><td><b>${r.ticker||''}</b></td></tr>`);
   if(showClosed&&IGCLOSED===null)renderedRows.push(`<tr><td colspan="17" class="empty refreshing">⏳ Data loading…</td></tr>`);
   else if(showClosed&&_igClosedNote)renderedRows.push(`<tr><td colspan="17" class="empty">${_esc(_igClosedNote)}</td></tr>`);
   const profitTotals={};
   pos.concat(closed).forEach(r=>{if(r.profit==null)return;const c=_igCurrency(r.currency);profitTotals[c]=(profitTotals[c]||0)+(+r.profit||0);});
   const totalProfit=Object.entries(profitTotals).map(([c,v])=>`${_igPf(+v.toFixed(2))} <span class="muted">${c}</span>`).join(' · ');
   const actualRows=pos.length+closed.length;
-  const totalRow=actualRows?`<tr style="border-top:2px solid var(--line)"><td></td><td></td><td colspan="6"><b>Total visible profit (${actualRows} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
+  const totalRow=actualRows?`<tr style="border-top:2px solid var(--line)"><td></td><td></td><td colspan="7"><b>Total visible profit (${actualRows} rows)</b></td><td><b>${totalProfit||'<span class="muted">—</span>'}</b></td><td colspan="8"></td></tr>`:'';
   $("ig-pos-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${actualRows}</b> transactions <span class="muted">· ${pos.length} open · ${closed.length} closed</span>${showClosed&&IGCLOSED===null?' <span class="refreshing">· ⏳ Data loading…</span>':_igClosedNote?' <span class="muted">· '+_esc(_igClosedNote)+'</span>':''}`;
-  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="17" class="empty ${showClosed&&IGCLOSED===null?'refreshing':''}">${q?'No transactions match that search.':_igNoCreds?'No IG account data — add credentials in Configuration → IG.':'⏳ Data loading…'}</td></tr>`;
+  $("ig-pos-rows").innerHTML=renderedRows.join("")+totalRow||`<tr><td colspan="18" class="empty ${showClosed&&IGCLOSED===null?'refreshing':''}">${q?'No transactions match that search.':_igNoCreds?'No IG account data — add credentials in Configuration → IG.':'⏳ Data loading…'}</td></tr>`;
 
   // ── WORKING ORDERS (own strip + sortable table) ──
   const ordBase=IG_ORD.filter(hit).map(o=>Object.assign({},o,_enrCommon(o),{gtd:(o.good_till||"").slice(0,10)||"—"}));
@@ -2232,7 +2232,7 @@ function renderIgAccount(ev){
   IGCLOSED=null;_igClosedNote="";_igNoCreds=false;
   $("ig-note").textContent="";$("ig-acct").innerHTML="";
   $("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading…</span>`;
-  $("ig-pos-rows").innerHTML=`<tr><td colspan="17" class="empty refreshing">⏳ Data loading…</td></tr>`;
+  $("ig-pos-rows").innerHTML=`<tr><td colspan="18" class="empty refreshing">⏳ Data loading…</td></tr>`;
   $("ig-ord-rows").innerHTML=`<tr><td colspan="16" class="empty refreshing">⏳ Data loading…</td></tr>`;
   const loadAccount=(attempt=0)=>fetch("/api/ig-account",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
     .then(j=>{
@@ -2259,7 +2259,7 @@ function renderIgAccount(ev){
     .catch(err=>{if(attempt<3){$("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading… retry ${attempt+1} of 3.</span>`;setTimeout(()=>loadAccount(attempt+1),1500*(attempt+1));return;}
       $("ig-note").innerHTML=`<span style="color:var(--bear)">IG account read failed: ${_esc(err.message||"unknown error")}.</span>`;
       $("ig-pos-count").innerHTML=`<span style="color:var(--bear)">Open positions could not be loaded.</span>`;
-      $("ig-pos-rows").innerHTML=`<tr><td colspan="17" class="empty" style="color:var(--bear)">IG did not return open positions. Use Refresh to retry.</td></tr>`;
+      $("ig-pos-rows").innerHTML=`<tr><td colspan="18" class="empty" style="color:var(--bear)">IG did not return open positions. Use Refresh to retry.</td></tr>`;
       $("ig-ord-rows").innerHTML=`<tr><td colspan="16" class="empty" style="color:var(--bear)">IG did not return working orders.</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.className="btn";btn.textContent=was;}});
   loadAccount();

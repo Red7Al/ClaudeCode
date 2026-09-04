@@ -5186,6 +5186,14 @@ def api_ig_account():
         _mc = _mcap_map()
         for _o in out["orders"]:
             _o["mcap"] = _json_safe(_mc.get(_o.get("ticker")))
+        # MCap on the OPEN POSITIONS too, beside Market (user 2026-09-04: "open transactions in IG still
+        # does not show MCAP (next to market)"). Same _mcap_map every other surface reads, so a position
+        # and a working order on one instrument cannot disagree. Server-side rather than resolved in the
+        # browser from DATA: the snapshot only carries instruments in today's scan, and a position is
+        # frequently on one that has since dropped out of it -- EXR, SYY and DHI were all absent from a
+        # snapshot on the day this was asked for, while instrument_mcap holds all 1,638.
+        for _p in out["positions"]:
+            _p["mcap"] = _json_safe(_mc.get(_p.get("ticker")))
     except Exception as _ex:
         # Best-effort: the order rows themselves are already correct, and blank metric cells are honest.
         log.warning(f"ig-account order metrics unavailable: {_ex}")
@@ -5408,6 +5416,12 @@ def api_ig_closed():
         with ig_shim._IG_LOCK, ig_shim.acting_session(name):
             trades = ig_shim.get_closed_trades(frm) or []
         if trades:
+            # Closed trades render into the SAME table as open positions (user 2026-08-04, no duplicate
+            # table below), so they need the MCap column filled from the same map or every closed row
+            # shows a dash in a column its neighbours populate.
+            _mc = _mcap_map()
+            for _t in trades:
+                _t["mcap"] = _json_safe(_mc.get(_t.get("ticker")))
             return jsonify({"trades": trades, "days": days})
         # IG can return an empty history during a transient/rate-limited read. Keep the account view
         # useful and explicit by showing the application's closed-trade ledger rather than claiming
