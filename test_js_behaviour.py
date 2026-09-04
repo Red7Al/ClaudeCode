@@ -1422,17 +1422,72 @@ def test_the_fallback_is_never_silent():
 #
 # A column added to one side only silently shifts every cell after it, so the header order and the row
 # order are both pinned here.
+#
+# THESE THREE TESTS WERE GREEN WHILE THE BUG WAS LIVE, and how is the point. Every one of them located
+# "the Scanner header" with html.index('data-pk="name"') -- but the Scanner's headings are data-k, and
+# data-pk is MY PRE-ORDERS. So they read a different table's header, one that does carry a data-pk="mcap"
+# heading, and asserted happily about it. The Scanner shipped 27 cells under 26 headings from 2026-08-29
+# until the requester reported it on 2026-09-04: RVOL titled the market cap, VWAP titled RVOL, and so on
+# to the far right of the table.
+#
+# So the Scanner header is now found through the Scanner's OWN tbody, and _scanner_header asserts it
+# really is that table before returning it. A test that silently reads the wrong element is worse than no
+# test: it occupies the place where a real guard would have gone.
 # ======================================================================================================
 
+def _th_count(header):
+    """Headings in a <thead> slice. NOT header.count("<th"), which also counts the <thead> tag itself."""
+    return len(re.findall(r"<th[ >]", header))
+
+
+def _header_for(html, tbody_id, marker):
+    """The <thead> belonging to `tbody_id`, verified by a heading only that table has."""
+    i = html.index(f'<tbody id="{tbody_id}"')
+    start = html.rindex("<thead", 0, i)
+    header = html[start:html.index("</thead>", start)]
+    assert marker in header, f"this is not the {tbody_id} header"
+    return header
+
+
+def _scanner_header():
+    """The Scanner's <thead>, located from its own <tbody id="rows"> so it cannot be another table's."""
+    return _header_for(client_source(), "rows", 'data-k="dist_entry"')
+
+
 def test_the_scanner_shows_mcap_immediately_left_of_rvol():
-    html = client_source()
-    i = html.index('data-pk="name"')
-    header = html[html.rindex("<thead", 0, i):html.index("</thead>", i)]
-    order = re.findall(r'data-pk="([a-z0-9_]+)"', header)
+    order = re.findall(r'data-k="([a-z0-9_]+)"', _scanner_header())
 
     assert "mcap" in order, "the MCap column is missing from the Scanner header"
     assert order.index("mcap") == order.index("rvol") - 1, (
         f"MCap must sit immediately left of RVOL; order is {order[:6]}")
+
+
+def test_every_scanner_heading_has_a_cell_under_it():
+    """THE BUG THIS PREVENTS. Counting the two sides against each other is the only check that catches a
+    column added to one side alone; every per-column assertion still passes while the table is shifted."""
+    header = _scanner_header()
+    js = client_js()
+    j = js.index("rvolScannerCell(r)")
+    row = js[js.rindex("`<tr", 0, j):js.index("</tr>", j)]
+
+    # The row opens with _favCell(r.ticker), a helper that emits the ★ cell, so it is one <td> short of
+    # the rendered column count.
+    cells = len(re.findall(r"<td", row)) + 1
+
+    assert cells == _th_count(header), (
+        f"the Scanner renders {cells} cells under {_th_count(header)} headings; "
+        "every column after the extra one displays under its neighbour's title")
+
+
+def test_the_scanner_empty_row_spans_the_whole_table():
+    """A short colspan is the cheap tell that a column was added to the row and nowhere else."""
+    html = client_source()
+    i = html.index('<tbody id="rows"')
+    span = int(re.search(r'colspan="(\d+)"', html[i:i + 400]).group(1))
+    headings = _th_count(_scanner_header())
+
+    assert span == headings, (
+        f'the "no setups" row spans {span} columns against {headings} headings')
 
 
 def test_the_scanner_row_renders_mcap_in_the_same_position():
@@ -1447,17 +1502,21 @@ def test_the_scanner_row_renders_mcap_in_the_same_position():
     assert mcap_at == rvol_at - 1, "the row must place MCap where the header says it is"
 
 
-def test_the_header_and_row_stay_in_step():
-    """Header and row cell counts must move together. They differ by a constant offset (the row carries
-    cells the header spans), so the INVARIANT is that the difference is unchanged, not that they match."""
-    html, js = client_source(), client_js()
-    i = html.index('data-pk="name"')
-    header = html[html.rindex("<thead", 0, i):html.index("</thead>", i)]
-    j = js.index("rvolScannerCell(r)")
-    row = js[js.rindex("`<tr", 0, j):js.index("</tr>", j)]
+def test_the_preorders_header_and_row_stay_in_step():
+    """The My Pre-orders table, which is what data-pk marks.
 
-    assert len(re.findall(r"<td", row)) - header.count("<th") == 2, (
-        "a column was added to one side only, which shifts every cell after it")
+    This test used to take THIS header and the SCANNER's row and pin their difference at a constant 2 --
+    two unrelated tables, so the "constant" was arbitrary and absorbed the Scanner's missing heading
+    exactly. Each table is now measured against its own row.
+    """
+    html, js = client_source(), client_js()
+    header = _header_for(html, "po-rows", 'data-pk="mcap"')
+    j = js.index('$("po-rows").innerHTML')
+    row = js[js.index("<tr", j):js.index("</tr>", j)]
+    cells = len(re.findall(r"<td", row)) + (1 if "_favCell" in row else 0)   # the ★ cell comes from a helper
+
+    assert cells == _th_count(header), (
+        f"My Pre-orders renders {cells} cells under {_th_count(header)} headings")
 
 
 # ======================================================================================================

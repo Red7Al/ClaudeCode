@@ -2027,7 +2027,7 @@ function refreshMarkets(ev){
   $("mk-count").innerHTML='<span class="sqh-loading">⏳ Data loading…</span>';
   fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{DATA=j.records||[];DATA_LOADED=true;if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;DATA.forEach(augment);renderMarkets();})
-    .catch(()=>{$("mk-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not refresh — try again.</td></tr>`;})
+    .catch(()=>{$("mk-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not refresh — try again.</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
 function mkFilter(m){const el=$("mf_market");if(el)el.value=m;showTab("scanner");render();}
@@ -2038,7 +2038,7 @@ function renderMarketsAdmin(){
   if(_awaitingData("ma-rows"))return;
   const rows=_mkSort(_mkAgg(),maSortK,maSortDir);
   $("ma-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments</span>`;
-  $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkAdminSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")||`<tr><td colspan="9" class="empty">No market data.</td></tr>`;
+  $("ma-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkAdminSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")||`<tr><td colspan="8" class="empty">No market data.</td></tr>`;
 }
 document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();_sortArrows("data-ma",maSortK,maSortDir);});
 // ── IG Account tab (user 2026-07-10): the acting user's own IG open positions + working orders ──
@@ -2259,7 +2259,7 @@ function renderIgAccount(ev){
     .catch(err=>{if(attempt<3){$("ig-pos-count").innerHTML=`<span class="refreshing">⏳ Data loading… retry ${attempt+1} of 3.</span>`;setTimeout(()=>loadAccount(attempt+1),1500*(attempt+1));return;}
       $("ig-note").innerHTML=`<span style="color:var(--bear)">IG account read failed: ${_esc(err.message||"unknown error")}.</span>`;
       $("ig-pos-count").innerHTML=`<span style="color:var(--bear)">Open positions could not be loaded.</span>`;
-      $("ig-pos-rows").innerHTML=`<tr><td colspan="16" class="empty" style="color:var(--bear)">IG did not return open positions. Use Refresh to retry.</td></tr>`;
+      $("ig-pos-rows").innerHTML=`<tr><td colspan="17" class="empty" style="color:var(--bear)">IG did not return open positions. Use Refresh to retry.</td></tr>`;
       $("ig-ord-rows").innerHTML=`<tr><td colspan="16" class="empty" style="color:var(--bear)">IG did not return working orders.</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.className="btn";btn.textContent=was;}});
   loadAccount();
@@ -4647,7 +4647,15 @@ function renderPreorders(){
     return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
       ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
       <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
-      <td>${rvolCell(r.rvol)}</td><td>${volScoreCell(r.volume_score)}</td>
+      <!-- MCap / VWAP / ATR. The HEADINGS for these three were added and these three CELLS were not, so
+           this table rendered 20 cells under 23 headings: MCap titled RVOL, RVOL titled Vol, and every
+           column to the right of it shifted, with Source, Sector and Ticker left with no data beneath
+           them at all. Found 2026-09-04 by sweeping every table after the requester reported the same
+           class of fault on the Scanner. Same shared formatters as the Scanner and the IG tables, so one
+           instrument reads identically wherever it appears; `po` is filtered from DATA, which is where
+           the Scanner reads these very fields. -->
+      <td>${_mcapFmt(r.mcap)}</td>
+      <td>${rvolCell(r.rvol)}</td><td>${_tickCross(r.above_vwap)}</td><td>${_tickCross(r.atr_expanding)}</td><td>${volScoreCell(r.volume_score)}</td>
       <td>${r.status}</td><td>${r.market||''}</td>
       <td>${f2(r.current_price)}</td><td><b>${f2((OVERRIDES[r.ticker]||{}).entry??r.entry)}${(OVERRIDES[r.ticker]||{}).entry!=null&&OVERRIDES[r.ticker].entry!==r.entry?' ✎':''}</b></td><td style="color:var(--bear)">${f2((OVERRIDES[r.ticker]||{}).stop??r.stop)}</td><td style="color:var(--bull)">${f2((OVERRIDES[r.ticker]||{}).target??r.target)}</td>
       <td>${d!=null?(d>0?'+':'')+d+'%':''}</td>
@@ -4655,7 +4663,7 @@ function renderPreorders(){
       <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:''}</td>
       <td>${(r.timeframe||'').replace('daily-','D')}</td>
       <td>${r.added||''}</td><td>${r.source||''}</td><td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td></tr>`;}).join("")
-    || `<tr><td colspan="21" class="empty">No pre-orders right now.</td></tr>`;
+    || `<tr><td colspan="23" class="empty">No pre-orders right now.</td></tr>`;
   document.querySelectorAll("#po-rows tr[data-t]").forEach(tr=>tr.onclick=e=>{if(e.target.type==="checkbox")return;openDetailFrom('preorders',tr.dataset.t);});   // return here on close (P-29)
   $("potab-count").textContent="("+DATA.filter(r=>isPreorder(r)&&tradeVisible(r)).length+")";   // match the per-user hidden view (user 2026-07-06)   // keep tab count in sync after delete (user 2026-07-06)
   poUpdateBtn();

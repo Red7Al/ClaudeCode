@@ -701,6 +701,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <thead><tr>
           <!-- Ticker sits FAR RIGHT (user 2026-07-17, P-11b); ★ stays leftmost. -->
           <th data-k="_fav" title="Favourite (click to sort)">★</th><th data-k="name">Name</th><th data-k="direction">Dir</th>
+          <!-- MCap (user 2026-08-28: "Needs to see MCAP (to left of rvol)"). The CELL was added to the row
+               on 2026-08-29 and this heading was NOT, so the row carried 27 cells against 26 headings and
+               every column from here rightward displayed under its left-hand neighbour's title: RVOL sat
+               over the market cap, VWAP over RVOL, and so on to the end of the table. Reported by the
+               requester 2026-09-04. The three guards meant to prevent exactly this all anchored on
+               html.index('data-pk="name"'), which is the My Pre-orders table, not this one -- see
+               test_js_behaviour.py. -->
+          <th data-k="mcap" title="Market capitalisation in GBP. Converted from the instrument's own currency by fx_rates (user 2026-09-04: 'MCAP is expected to be in GBP in our system'). Blank where the weekly market-cap backfill has no value for it — FX, indices, commodities and bond ETFs have none by nature.">MCap</th>
           <!-- RVOL + Vol kept together as early breakout-confirmation columns (user 2026-08-05, P-07). -->
           <th data-k="rvol" title="Relative volume on the trigger bar: that day's volume / the mean of the previous 20 bars. >1 = heavier participation than normal on the break. Blank for setups that have not triggered, and for instruments with no real volume (FX, indices).">RVOL</th><th data-k="above_vwap" title="Price above VWAP on the trigger bar">VWAP</th><th data-k="atr_expanding" title="ATR expanding on the trigger bar">ATR</th>
           <th data-k="volume_score" title="VolumeScore (0–12) on the break bar: Strong squeeze +3, RVOL&gt;1.8 +2, breakout volume highest in 20 bars +2, above VWAP +1, OBV confirms +1, break into a low-volume node +2, ATR expanding +1. 8+ (green) = a well-confirmed breakout. Blank until triggered.">Vol</th>
@@ -757,7 +765,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <th style="cursor:default"><input type="checkbox" id="po-all" onclick="poToggleAll(this)"></th>
         <th data-pk="_fav" title="Favourite (click to sort)">★</th>
         <!-- Ticker sits FAR RIGHT (user 2026-07-17, P-11b). -->
-        <th data-pk="name">Name</th><th data-pk="direction">Dir</th><th data-pk="mcap" title="Market capitalisation in the instrument's own currency. Blank where the weekly market-cap backfill has no value for it — FX, indices, commodities and bond ETFs have none by nature.">MCap</th><th data-pk="rvol">RVOL</th><th data-pk="above_vwap">VWAP</th><th data-pk="atr_expanding">ATR</th><th data-pk="volume_score" title="VolumeScore (0–12) on the break bar — breakout confirmation. 8+ (green) = well-confirmed. Blank until the setup has triggered. Early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
+        <th data-pk="name">Name</th><th data-pk="direction">Dir</th><th data-pk="mcap" title="Market capitalisation in GBP. Converted from the instrument's own currency by fx_rates (user 2026-09-04: 'MCAP is expected to be in GBP in our system'). Blank where the weekly market-cap backfill has no value for it — FX, indices, commodities and bond ETFs have none by nature.">MCap</th><th data-pk="rvol">RVOL</th><th data-pk="above_vwap">VWAP</th><th data-pk="atr_expanding">ATR</th><th data-pk="volume_score" title="VolumeScore (0–12) on the break bar — breakout confirmation. 8+ (green) = well-confirmed. Blank until the setup has triggered. Early column so it's visible without scrolling (user 2026-07-27, P-03 C).">Vol</th><th data-pk="status">Status</th><th data-pk="market">Market</th>
         <th data-pk="current_price">Now</th><th data-pk="entry">Entry</th><th data-pk="stop">Stop</th><th data-pk="target">Target</th><th data-pk="dist_entry">Dist→Entry</th><th data-pk="rr">R:R</th><th data-pk="quality">Quality</th><th data-pk="timeframe">TF</th>
         <th data-pk="added" title="When the setup completed and joined the dataset">Added</th><th data-pk="source">Source</th><th data-pk="sector">Sector</th><th data-pk="ticker">Ticker</th>
       </tr></thead>
