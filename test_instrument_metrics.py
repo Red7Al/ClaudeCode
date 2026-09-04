@@ -9,6 +9,7 @@ The most important test here is the AGREEMENT one. Storing a second, subtly diff
 "above VWAP" or "RVOL" would be worse than storing nothing, because a stored number is trusted.
 """
 import datetime as dt
+import re
 
 import pytest
 
@@ -86,13 +87,32 @@ def test_the_setup_metric_is_direction_aware():
 # Storage behaviour
 # ------------------------------------------------------------------------------------------------------
 
+# Every :placeholder, ignoring ::type casts. pg8000 raises when one has no matching keyword argument;
+# this fake used to accept anything, which is how a broken INSERT passed a green suite for six days.
+_PLACEHOLDERS = re.compile(r"(?<!:):([a-zA-Z_]\w*)")
+
+
 class _FakeDb:
+    """A stand-in that fails where the real driver fails.
+
+    THE BUG THIS NOW CATCHES. record_daily's INSERT named `mcap` and `:mc` but never passed `mc`, so
+    pg8000 raised on every single instrument: 1,772 failures a day, nothing stored, and the scheduled
+    job still green. This fake accepted `**p` without ever comparing it to the SQL, so the test asserting
+    `stored == 2` was asserting against a database that could not fail. A fake that cannot reject what
+    the real one rejects is not a test double; it is a way of agreeing with yourself.
+    """
+
     def __init__(self):
         self.rows = {}
         self.statements = 0
 
     def run(self, sql, **p):
         self.statements += 1
+        missing = _PLACEHOLDERS.findall(re.sub(r"::\w+", "", sql))
+        absent = sorted({m for m in missing} - set(p))
+        if absent:
+            raise RuntimeError(
+                f"There's a placeholder '{absent[0]}' in the query, but no matching keyword argument.")
         if sql.strip().lower().startswith("create table"):
             return []
         if "insert into" in sql:

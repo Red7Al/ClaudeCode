@@ -184,15 +184,20 @@ def record_daily(snapshot, as_of=None, db=None, tickers=None):
                 if m.get("status") == "no_price_history":
                     summary["no_history"] += 1
                     continue
+                # mcap is NOT written here -- see the note above: it moves slowly and daily resolution
+                # would be storage for no gain. It was in this statement as `:mc` with no matching
+                # argument, so EVERY insert raised "no matching keyword argument" and the table took
+                # 1,772 failures a day while the job reported success. Removed rather than supplied,
+                # because not capturing it is the decision on record.
                 db.run(f"""insert into {TABLE}
                              (ticker, as_of, bar_date, rvol, rvol_date, above_vwap, above_vwap_setup,
                               atr_expanding, volume_score, volume_score_max, wk52_low, wk52_high,
-                              mcap, direction, status, recorded_at)
-                           values (:t,:d,:bd,:rv,:rd,:av,:avs,:atr,:vs,:vsm,:lo,:hi,:mc,:dir,:st, now())
+                              direction, status, recorded_at)
+                           values (:t,:d,:bd,:rv,:rd,:av,:avs,:atr,:vs,:vsm,:lo,:hi,:dir,:st, now())
                            on conflict (ticker, as_of) do update set
                              bar_date=:bd, rvol=:rv, rvol_date=:rd, above_vwap=:av,
                              above_vwap_setup=:avs, atr_expanding=:atr, volume_score=:vs,
-                             volume_score_max=:vsm, wk52_low=:lo, wk52_high=:hi, mcap=:mc,
+                             volume_score_max=:vsm, wk52_low=:lo, wk52_high=:hi,
                              direction=:dir, status=:st, recorded_at=now()""",
                        t=ticker, d=str(as_of), bd=m.get("bar_date"), rv=m.get("rvol"),
                        rd=m.get("rvol_date"), av=m.get("above_vwap"), avs=m.get("above_vwap_setup"),
@@ -202,7 +207,16 @@ def record_daily(snapshot, as_of=None, db=None, tickers=None):
                 summary["stored"] += 1
             except Exception as e:                       # one bad instrument must not lose the rest
                 summary["failed"] += 1
-                log.debug("metrics failed for %s: %s", ticker, e)
+                # The FIRST failure is surfaced at WARNING with its reason. It used to be debug-only, so
+                # a defect that failed every instrument looked identical to no defect at all: this job
+                # wrote nothing for six days while its scheduled run reported success, because a
+                # placeholder in the insert had no matching argument. One instrument failing is noise;
+                # the first one failing is the only cheap signal that all of them are about to.
+                if summary["failed"] == 1:
+                    summary["first_error"] = f"{ticker}: {e}"
+                    log.warning("metrics failed for %s: %s (further failures at debug)", ticker, e)
+                else:
+                    log.debug("metrics failed for %s: %s", ticker, e)
     except Exception as e:
         log.warning("daily instrument metrics failed: %s", e)
     finally:
@@ -211,7 +225,16 @@ def record_daily(snapshot, as_of=None, db=None, tickers=None):
                 db.close()
             except Exception:
                 pass
-    log.info("instrument metrics %s: %s", as_of, summary)
+    # A TOTAL failure is not a per-instrument hiccup and must not read like one. Storing nothing while
+    # attempting thousands is a defect in the writer every time, and the old code reported it at INFO in
+    # the same shape as a healthy run -- which is how six days of empty capture went unnoticed behind a
+    # green workflow. Callers key their own alerting off this level, not off the return value.
+    if summary["attempted"] and not summary["stored"]:
+        log.error("instrument metrics STORED NOTHING for %s: %s of %s failed, first error: %s",
+                  as_of, summary["failed"], summary["attempted"],
+                  summary.get("first_error") or "none recorded")
+    else:
+        log.info("instrument metrics %s: %s", as_of, summary)
     return summary
 
 
