@@ -1445,6 +1445,58 @@ _KNOWN_ORPHANS = {
 }
 
 
+def test_every_empty_row_spans_its_whole_table():
+    """An empty/loading row narrower than its header leaves a ragged gap; wider, it stretches the table.
+
+    Eight were wrong on 2026-09-04, across the Scanner, Order Ops, Performance, Scheduled Jobs, Markets
+    and Change Requests. Each was a column added to the header with the placeholder left behind -- the
+    same drift that put 27 cells under 26 headings on the Scanner.
+
+    ATTRIBUTION IS BOUNDED to the window between one $("x").innerHTML assignment and the next. A fixed
+    character window instead reported ten findings, three of which were a neighbouring table's colspan
+    read against this table's header -- sl-rows, ig-pos-rows and ig-ord-rows were all correct and all
+    flagged. A detector that is wrong 30% of the time is one nobody trusts.
+    """
+    html, js = client_html(), client_js()
+    headings = {}
+    for m in re.finditer(r'<tbody id="([A-Za-z0-9_-]+)"', html):
+        try:
+            start = html.rindex("<thead", 0, m.start())
+        except ValueError:
+            continue
+        headings[m.group(1)] = _th_count(html[start:html.index("</thead>", start)])
+
+    # A window ends at the NEXT .innerHTML of any kind. Bounding only on $("id").innerHTML let a block
+    # that paints through a local variable (body.innerHTML=…) fall inside the previous table's window,
+    # and its colspans were reported against the wrong header.
+    boundaries = sorted(m.start() for m in re.finditer(r"\.innerHTML\s*=", js))
+    assigns = [(m.end(), m.group(1)) for m in re.finditer(r'\$\("([A-Za-z0-9_-]+)"\)\.innerHTML\s*=', js)]
+    wrong = []
+    checked = 0
+    for pos, tid in assigns:
+        if tid not in headings:
+            continue
+        # STRICTLY after this statement's own .innerHTML. Taking boundaries after the assignment's START
+        # ended every window at its own assignment, so the scan covered nothing and the test passed
+        # against a deliberately broken colspan. Caught only by mutating it.
+        later = [b for b in boundaries if b > pos]
+        end = later[0] if later else len(js)
+        # ONLY the empty/loading placeholders, which the codebase marks class="empty". A colspan inside a
+        # DATA row is legitimate layout -- Squeeze History groups cells that way and the IG positions
+        # totals row spans six -- and flagging those produced five more false findings.
+        for c in re.finditer(r'colspan="(\d+)"[^>]*class="empty', js[pos:end]):
+            checked += 1
+            if int(c.group(1)) != headings[tid]:
+                wrong.append(f"{tid}: colspan {c.group(1)} against {headings[tid]} headings "
+                             f"(line {js[:pos + c.start()].count(chr(10)) + 1})")
+
+    assert not wrong, "empty rows that do not span their table:\n  " + "\n  ".join(wrong)
+    # A scan that examined nothing must not report success. An earlier version of this test bounded its
+    # window at the assignment's own .innerHTML, so it covered zero placeholders and passed against a
+    # colspan I had deliberately broken.
+    assert checked >= 15, f"only {checked} placeholders examined; the scan is not finding them"
+
+
 def test_no_client_function_is_defined_and_never_used():
     """This repository's named recurring defect, applied to the browser: correct code nothing calls.
 

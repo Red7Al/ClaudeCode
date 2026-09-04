@@ -456,7 +456,7 @@ function render(){
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td>
     <td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td><td>${AUTH&&isPreorder(r)?'<span style="color:var(--bull)" title="In your My Pre-orders">✓</span>':''}</td></tr>`).join("")
-    || `<tr><td colspan="24" class="empty">No setups match the filters.</td></tr>`;
+    || `<tr><td colspan="27" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
     tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
@@ -1112,7 +1112,7 @@ function paintJobs(){
     <td>${e.last_duration_s!=null?(e.last_duration_s<60?e.last_duration_s+"s":Math.floor(e.last_duration_s/60)+"m "+(e.last_duration_s%60)+"s"):"—"}</td>
     <td>${e.executions!=null?e.executions:""}</td>
     <td>${e.failures!=null?`<b style="color:${e.failures?"var(--bear)":"var(--muted)"}">${e.failures}</b>${e.failures_window?` <span class="muted" style="font-size:11px">/${e.failures_window}</span>`:""}`:""}</td>
-    <td class="muted" style="font-size:12px">${e.workflow||""}</td></tr>`).join("")||`<tr><td colspan="9" class="empty">No scheduled jobs found.</td></tr>`;
+    <td class="muted" style="font-size:12px">${e.workflow||""}</td></tr>`).join("")||`<tr><td colspan="10" class="empty">No scheduled jobs found.</td></tr>`;
 }
 function renderJobs(force){
   $("jobs-rows").innerHTML=`<tr><td colspan="10" class="empty"><span class="sqh-loading">⏳ Data loading…</span></td></tr>`;
@@ -1919,7 +1919,7 @@ function paintOrderOps(){
     <td><b style="color:${st(r.status)}">${r.status||''}</b></td><td>${r.session||''}</td>
     <td class="muted" style="white-space:normal;max-width:460px">${(r.notes||'').replace(/</g,'&lt;')}</td>
     <td><b>${disp(r.ticker||'')}</b></td></tr>`).join("")
-  || `<tr><td colspan="18" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
+  || `<tr><td colspan="21" class="empty">No order operations recorded yet — the bridge runs every 2 hours.</td></tr>`;
 }
 // Bridge on/off state (user 2026-08-02, P-06) — whether the DB→IG bridge may place orders. Loaded from
 // /api/config (j.bridge). The badge next to the Pre-orders title makes it unmistakable.
@@ -2020,7 +2020,7 @@ function renderMarkets(){
   $("mktab-count")&&($("mktab-count").textContent=`(${rows.length})`);
   // No click-through to the Scanner (user 2026-07-11) — this is a coverage view.
   $("mk-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkUserSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")
-    ||`<tr><td colspan="9" class="empty">No market data yet — open the Scanner first.</td></tr>`;
+    ||`<tr><td colspan="8" class="empty">No market data yet — open the Scanner first.</td></tr>`;
 }
 // Markets (User) Refresh button (user 2026-07-17, P-07). It used to call renderMarkets() directly, which
 // only repaints the in-memory snapshot — no data was re-read and nothing said the click had registered.
@@ -4284,7 +4284,7 @@ function _renderPerformance(){
     <td>${ob(f2(r.current_price))}</td>
     <td>${ob(_mcapFmt(r.mcap))}</td>
     <td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td></tr>`).join("")+
-    (rows.length>visibleRows.length?`<tr><td colspan="24" class="empty"><button class="subpill" onclick="pfShowMore()">Show ${Math.min(PF_RENDER_STEP,rows.length-visibleRows.length)} more</button> <span class="muted">Showing ${visibleRows.length.toLocaleString()} of ${rows.length.toLocaleString()} filtered triggers</span></td></tr>`:"")
+    (rows.length>visibleRows.length?`<tr><td colspan="26" class="empty"><button class="subpill" onclick="pfShowMore()">Show ${Math.min(PF_RENDER_STEP,rows.length-visibleRows.length)} more</button> <span class="muted">Showing ${visibleRows.length.toLocaleString()} of ${rows.length.toLocaleString()} filtered triggers</span></td></tr>`:"")
     ||`<tr><td colspan="${pfwOn?24:20}" class="empty">No recorded triggers yet.</td></tr>`;
 }
 function _pfBacktestSettingsCard(sel,all,led,reconciliation){
@@ -4456,10 +4456,10 @@ function renderCR(ev){
   const btn=ev&&ev.target?ev.target:null, was=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="⏳ Data loading…";}
   $("cr-count").innerHTML='<span class="sqh-loading">⏳ Data loading…</span>';
-  $("cr-rows").innerHTML=`<tr><td colspan="9" class="empty"><span class="sqh-loading">⏳ Data loading…</span></td></tr>`;
+  $("cr-rows").innerHTML=`<tr><td colspan="14" class="empty"><span class="sqh-loading">⏳ Data loading…</span></td></tr>`;
   fetch("/api/change-requests?refresh="+Date.now(),{headers:{"X-Auth":AUTH},cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{CR_FILES=j.files||[];paintCR();})
-    .catch(()=>{$("cr-rows").innerHTML=`<tr><td colspan="9" class="empty">Could not load (admin only).</td></tr>`;})
+    .catch(()=>{$("cr-rows").innerHTML=`<tr><td colspan="14" class="empty">Could not load (admin only).</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.className="btn";btn.textContent=was;}});
 }
 function paintCR(){
@@ -4476,7 +4476,7 @@ function paintCR(){
     <td>${o.prioritised?`<b style="color:#d29922">${o.prioritised}</b>`:'0'}</td>
     <td>${c(o,'Completed','var(--bull)')}</td><td>${c(o,'In Progress','var(--accent)')}</td><td>${c(o,'Not Started','#d29922')}</td><td>${c(o,'Cancelled','var(--bear)')}</td><td>${c(o,'Deferred','var(--muted)')}</td>
     <td>${pc(o,'P01-05')}</td><td>${pc(o,'P06-10')}</td><td>${pc(o,'P11-25')}</td><td>${pc(o,'P26+')}</td></tr>`).join("")
-    ||`<tr><td colspan="13" class="empty">No change-request files found.</td></tr>`;
+    ||`<tr><td colspan="14" class="empty">No change-request files found.</td></tr>`;
 }
 function crOpen(file){
   CR_SEL=file;paintCR();
