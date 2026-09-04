@@ -17,3 +17,21 @@ repos:
         language: system
         files: ^(price_action|config|test_hvf_method)\.py$
         pass_filenames: false
+      # Client JavaScript must PARSE before it can be committed (2026-09-04).
+      #
+      # WHY. A comment containing backticks was written inside a template literal in hvf_web/app.js. The
+      # backticks closed the literal, the file stopped parsing, and the whole client died -- no tab on the
+      # site responded. It was committed and deployed with 692 tests green, because nothing in the suite
+      # parses app.js: test_performance_inline_javascript_parses only checks <script> blocks inside
+      # index.html, and every other check reads the file as text or extracts one function from it.
+      #
+      # node --check is the whole fix and it takes milliseconds. This hook is the gate that makes the
+      # mistake impossible to commit rather than merely unlikely; test_every_client_javascript_file_parses
+      # covers the same ground for anyone running the suite, and deploy_ionos.sh re-checks the built
+      # package so a bypassed hook still cannot reach the host.
+      - id: client-js-parses
+        name: Client JavaScript parses (node --check)
+        description: A syntax error in app.js takes the entire site down; it must not be committable
+        entry: node --check
+        language: system
+        files: ^hvf_web/.*\.js$

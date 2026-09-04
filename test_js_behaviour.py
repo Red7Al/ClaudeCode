@@ -31,7 +31,7 @@ import pytest
 
 # The JS moved to hvf_web/app.js on 2026-08-23; client_source() returns markup+script together so
 # these assertions keep meaning what they meant when it was one file.
-from client_source import client_html, client_js, client_source
+from client_source import APP_JS, BEST_SETTINGS_JS, client_html, client_js, client_source
 INDEX = type("_Src", (), {"read_text": staticmethod(lambda **kw: client_source())})()
 NODE = shutil.which("node")
 
@@ -1434,6 +1434,24 @@ def test_the_fallback_is_never_silent():
 # really is that table before returning it. A test that silently reads the wrong element is worse than no
 # test: it occupies the place where a real guard would have gone.
 # ======================================================================================================
+
+def test_every_client_javascript_file_parses():
+    """THE BUG THIS PREVENTS, and it reached production on 2026-09-04.
+
+    A comment was written INSIDE the My Pre-orders template literal, and the pair of backticks in it
+    closed the literal early. app.js stopped parsing, so the entire client died: no tab responded and two
+    tabs' content rendered on top of each other. Reported from both Chrome and Edge.
+
+    The whole suite stayed green through it. test_performance_inline_javascript_parses checks the
+    <script> blocks inside index.html, and every other check reads app.js as TEXT or extracts one
+    function from it -- so nothing ever asked Node whether the 4,800-line file it all comes from is
+    valid JavaScript. That is what this does, for each client file, whole.
+    """
+    for path in (APP_JS, BEST_SETTINGS_JS):
+        result = subprocess.run(["node", "--check", str(path)], capture_output=True, text=True, timeout=30)
+
+        assert result.returncode == 0, f"{path.name} is not valid JavaScript:\n{result.stderr}"
+
 
 def _th_count(header):
     """Headings in a <thead> slice. NOT header.count("<th"), which also counts the <thead> tag itself."""

@@ -66,6 +66,31 @@ BUILD_ID="$(printf '%s
 ' "$BUILD_OUT" | sed -n 's/^BUILD_ID=//p' | tail -1)"
 [ -f "$ZIP" ] || die "expected $ZIP to exist after the build"
 
+# --- 1b. the client JavaScript in the PACKAGE must parse -----------------------------------------------
+# A syntax error in hvf_web/app.js takes the whole site down: no tab responds and tab bodies render on top
+# of one another. That shipped on 2026-09-04 -- a comment containing backticks inside a template literal --
+# with 692 tests green, because nothing in the suite parses app.js as a whole.
+#
+# Checked against the BUILT ARCHIVE, not the working tree, so what is verified is exactly what would be
+# uploaded. This runs before the first byte reaches the host, and it is fatal: a static release that
+# cannot parse is worse than no release, because the previous working copy gets overwritten by it.
+say "Checking the packaged client JavaScript parses"
+if command -v node >/dev/null 2>&1; then
+  JSTMP="$(mktemp -d)"
+  trap 'rm -rf "$JSTMP"' EXIT
+  unzip -q -o "$ZIP" 'hvf_web/*.js' -d "$JSTMP" 2>/dev/null || true
+  jsn=0
+  for f in "$JSTMP"/hvf_web/*.js; do
+    [ -e "$f" ] || continue
+    node --check "$f" || die "$(basename "$f") in the package is not valid JavaScript - NOT deploying"
+    jsn=$((jsn + 1))
+  done
+  [ "$jsn" -gt 0 ] || die "no client JavaScript found in the package - the build is wrong"
+  echo "  OK - $jsn client script(s) parse"
+else
+  die "node is required to verify the client JavaScript before deploying"
+fi
+
 # --- 2. safety check ----------------------------------------------------------------------------------
 # Extracting over a live release must never touch the host's credentials, runtime state or virtualenv.
 # The packager already excludes them; this asserts it rather than trusting it, because `unzip -o`
@@ -256,6 +281,26 @@ else
   echo "  /            SUSPICIOUS - only ${size} bytes"
   fail=1
 fi
+
+# Parse what the SITE IS ACTUALLY SERVING, not what we built (2026-09-04). A byte count cannot tell a
+# working client from a dead one, and neither can grepping the file for expected strings -- a
+# syntax-broken app.js still contains every string you would search it for. That is precisely how a
+# broken release was declared verified this morning. Cache-busted, because a CDN or proxy copy is not
+# what the next visitor gets.
+for jsf in app.js best_settings.js; do
+  if curl -s --max-time 30 "$SITE/${jsf}?deploycheck=$(date +%s)" -o "/tmp/ionos_${jsf}"; then
+    if node --check "/tmp/ionos_${jsf}" 2>/tmp/ionos_js_err.txt; then
+      echo "  ${jsf}       parses as served"
+    else
+      echo "  ${jsf}       SERVED FILE DOES NOT PARSE - the site is effectively offline:"
+      sed 's/^/               /' /tmp/ionos_js_err.txt
+      fail=1
+    fi
+  else
+    echo "  ${jsf}       could not be fetched to verify"
+    fail=1
+  fi
+done
 
 if [ -n "${VERIFY_STRING:-}" ]; then
   if grep -qF "$VERIFY_STRING" /tmp/ionos_index.html; then

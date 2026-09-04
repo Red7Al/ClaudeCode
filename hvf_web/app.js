@@ -4643,17 +4643,20 @@ function renderPreorders(){
       barChart("Timeframe",pby("timeframe","pof_timeframe"),"pof_timeframe")+
     `</div>`;
   packViz("po-viz");   // P-15
+  // MCap / VWAP / ATR (2026-09-04). The HEADINGS for these three were added and the CELLS never were, so
+  // this table rendered 20 cells under 23 headings: MCap titled RVOL, RVOL titled Vol, and every column
+  // right of it shifted, leaving Source, Sector and Ticker with no data beneath them. Found by sweeping
+  // every table after the same class of fault was reported on the Scanner. Same shared formatters the
+  // Scanner and IG tables use, and poRows is filtered from DATA, which is where the Scanner reads these
+  // very fields -- so one instrument reads identically wherever it appears.
+  //
+  // This comment lives OUT here on purpose. It was first written inside the template literal below, and
+  // the pair of backticks in it closed the literal and broke the whole file: every tab on the site
+  // stopped responding. test_the_client_javascript_parses now runs node --check over app.js.
   $("po-rows").innerHTML=poRows.map(r=>{const d=r.dist_entry;
     return `<tr data-t="${r.ticker}"><td><input type="checkbox" class="po-sel" data-t="${r.ticker}" onclick="event.stopPropagation();poUpdateBtn()"></td>
       ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
       <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
-      <!-- MCap / VWAP / ATR. The HEADINGS for these three were added and these three CELLS were not, so
-           this table rendered 20 cells under 23 headings: MCap titled RVOL, RVOL titled Vol, and every
-           column to the right of it shifted, with Source, Sector and Ticker left with no data beneath
-           them at all. Found 2026-09-04 by sweeping every table after the requester reported the same
-           class of fault on the Scanner. Same shared formatters as the Scanner and the IG tables, so one
-           instrument reads identically wherever it appears; `po` is filtered from DATA, which is where
-           the Scanner reads these very fields. -->
       <td>${_mcapFmt(r.mcap)}</td>
       <td>${rvolCell(r.rvol)}</td><td>${_tickCross(r.above_vwap)}</td><td>${_tickCross(r.atr_expanding)}</td><td>${volScoreCell(r.volume_score)}</td>
       <td>${r.status}</td><td>${r.market||''}</td>
