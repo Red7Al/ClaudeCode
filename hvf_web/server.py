@@ -628,9 +628,21 @@ def _limit_block(name: str, tk: str, on: bool = True) -> str:
         return "Price is below VWAP (Configuration → My trading limits)"
     if lim.get("require_atr_expanding") and rec.get("atr_expanding") is False:
         return "ATR is not expanding (Configuration → My trading limits)"
-    # Instrument-value band (user 2026-07-27, P-07) — MCAP for equities; only gates when the record carries
-    # a value AND the user set a bound (0 = off). No-op until the `mcap` data lands, so it's safe now.
-    val, vmin, vmax = rec.get("mcap"), lim.get("min_instrument_value", 0), lim.get("max_instrument_value", 0)
+    # Instrument-value band (user 2026-07-27, P-07) — MCAP for equities; only gates when a value is known
+    # AND the user set a bound (0 = off).
+    #
+    # THE FALLBACK IS NOT DECORATION. This was written as "no-op until the `mcap` data lands", reading
+    # rec.get("mcap") from the snapshot record. The data landed on 2026-08-01, but into instrument_mcap
+    # and never onto the snapshot record: measured 2026-09-04, 0 of 1,421 records carry an mcap key at
+    # all, so this band has never once fired since it was written. It gates the user's OWN manual actions
+    # (/api/preorder-pin, /api/place-order) while the automated path enforces the same band through
+    # trading_limits, so the two disagreed about the same instrument -- placing by hand what the engine
+    # would refuse. _mcap_map() is the same GBP-normalised map every screen reads, so the figure quoted in
+    # the refusal is the figure shown in the MCap column.
+    val = rec.get("mcap")
+    if val is None:
+        val = _mcap_map().get(tk)
+    vmin, vmax = lim.get("min_instrument_value", 0), lim.get("max_instrument_value", 0)
     if isinstance(val, (int, float)):
         if vmin and val < vmin:
             return f"Instrument value {val:,.0f} is below your minimum of {vmin:,.0f} (Configuration → My trading limits)"

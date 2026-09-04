@@ -227,3 +227,48 @@ def test_place_order_blocks_when_live_metric_evidence_cannot_be_loaded(monkeypat
 
     assert result is None
     assert epic_calls == []
+
+
+# ── _limit_block's instrument-value band (measured dead, 2026-09-04) ────────────────────────────────────
+#
+# THE BUG THIS PREVENTS. The band read rec.get("mcap") from the snapshot record and was written as a
+# deliberate "no-op until the `mcap` data lands". The data landed on 2026-08-01 -- into instrument_mcap,
+# and never onto the snapshot record. Measured 2026-09-04: 0 of 1,421 snapshot records carry an mcap key,
+# so the band had never fired once. It gates the user's OWN manual placements while the automated engine
+# enforces the same band through trading_limits, so the two disagreed about the same instrument.
+
+def _limits(monkeypatch, **over):
+    monkeypatch.setattr(trading_limits, "user_limits",
+                        lambda name: {**trading_limits.limit_defaults(), **over})
+
+
+def test_the_manual_gate_blocks_below_the_instrument_value_floor(monkeypatch):
+    from hvf_web import server
+    _limits(monkeypatch, min_instrument_value=10_000_000_000)
+    monkeypatch.setattr(server, "_record", lambda tk: {"rr": 9.0, "quality": 90})   # no mcap, as in life
+    monkeypatch.setattr(server, "_mcap_map", lambda: {"TINY.L": 2_000_000_000})
+
+    reason = server._limit_block("Alex", "TINY.L")
+
+    assert "Instrument value" in reason, (
+        f"the band must fire from the market-cap map when the record carries none: {reason!r}")
+
+
+def test_the_manual_gate_allows_an_instrument_above_the_floor(monkeypatch):
+    from hvf_web import server
+    _limits(monkeypatch, min_instrument_value=10_000_000_000)
+    monkeypatch.setattr(server, "_record", lambda tk: {"rr": 9.0, "quality": 90})
+    monkeypatch.setattr(server, "_mcap_map", lambda: {"BIG.L": 80_000_000_000})
+
+    assert server._limit_block("Alex", "BIG.L") == ""
+
+
+def test_an_unknown_market_cap_does_not_block_a_manual_placement(monkeypatch):
+    """Fail OPEN here, unlike the automated path: this is the user acting deliberately on one instrument,
+    and refusing it on an absence of data would be unexplainable on screen."""
+    from hvf_web import server
+    _limits(monkeypatch, min_instrument_value=10_000_000_000)
+    monkeypatch.setattr(server, "_record", lambda tk: {"rr": 9.0, "quality": 90})
+    monkeypatch.setattr(server, "_mcap_map", lambda: {})
+
+    assert server._limit_block("Alex", "NOCAP") == ""
