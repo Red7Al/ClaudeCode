@@ -1711,7 +1711,11 @@ function clearFilterDefaults(){
     .then(()=>{USER_FILTERS={};renderConfig();});
 }
 function saveFeatures(){
-  const feat={xposts:$("feat-xposts").checked};
+  // Guarded: feat-xposts does not exist in the markup, and saveFeatures has no caller either (found
+  // 2026-09-04). Left in place rather than deleted because the feature may be mid-build, but it must not
+  // be able to throw if something wires it up before the checkbox exists.
+  const _fx=$("feat-xposts"); if(!_fx){console.warn("saveFeatures: feat-xposts is not in the page");return;}
+  const feat={xposts:_fx.checked};
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({features:feat})})
     .then(r=>{if(!r.ok)throw 0;FEATURES=feat;applyTabVisibility();$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="Feature saved.";})
     .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});

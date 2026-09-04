@@ -12,16 +12,35 @@ from hvf_web import server
 
 
 def test_performance_inline_javascript_parses():
-    html = __import__("client_source").client_source()
-    scripts = re.findall(r"<script(?:\s[^>]*)?>(.*?)</script>", html, re.I | re.S)
+    """Any JavaScript written INLINE in index.html must parse.
+
+    THIS TEST COVERED ZERO BYTES FOR TWELVE DAYS. The page's JavaScript moved into hvf_web/app.js on
+    2026-08-23, leaving index.html with two src-only <script> tags whose bodies are empty. This regexed
+    those two bodies out, wrote two empty temp files, and node --checked them -- so it could not fail,
+    while app.js itself went unparsed by anything. On 2026-09-04 a syntax error in app.js took the whole
+    site down with the suite green.
+
+    Two changes. The external files are covered by test_every_client_javascript_file_parses, and this one
+    now ASSERTS IT HAD SOMETHING TO CHECK: a test that silently measures nothing is worse than no test,
+    because it occupies the place a real guard would have gone.
+    """
+    html = __import__("client_source").client_html()
+    scripts = [s for s in re.findall(r"<script(?:\s[^>]*)?>(.*?)</script>", html, re.I | re.S) if s.strip()]
+    checked = 0
     for script in scripts:
         with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
             handle.write(script)
             path = handle.name
         try:
             subprocess.run(["node", "--check", path], check=True, capture_output=True, timeout=20)
+            checked += 1
         finally:
             Path(path).unlink(missing_ok=True)
+
+    # Zero is the correct answer today -- all client JS is external. If someone inlines a script again,
+    # this starts checking it. If the EXTERNAL files ever stopped being covered, that is the other test's
+    # job, and it fails loudly rather than passing on an empty set.
+    assert checked == len(scripts), "every non-empty inline script must have been parsed"
 
 
 def test_json_safe_converts_non_finite_numbers_for_browser_payloads():

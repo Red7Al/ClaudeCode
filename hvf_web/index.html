@@ -1878,6 +1878,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="credrow"><span class="clabel">Spread retry wait (secs)</span><input type="number" min="0" step="1" id="eng-spread_retry_wait_secs" style="max-width:120px"></div>
     <button class="btn" style="margin-top:8px" onclick="saveEngine()">Save spread retries</button>
   </div>
+  <!-- saveEngine() writes its result here. The element was deleted on 2026-08-04 in a commit about the IG
+       transaction view, and the two Save buttons above kept dereferencing it: every click threw on both
+       the success AND the failure branch, so the setting saved and the user was told nothing either way.
+       Found 2026-09-04 by cross-referencing every $("id") in the client against the markup. -->
+  <div id="eng-msg" role="status" aria-live="polite" style="font-size:12.5px;margin-top:8px"></div>
   </div>
 
   <div class="confapanel" data-panel="xpub">

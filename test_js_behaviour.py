@@ -1435,6 +1435,41 @@ def test_the_fallback_is_never_silent():
 # test: it occupies the place where a real guard would have gone.
 # ======================================================================================================
 
+def test_no_element_lookup_dereferences_an_id_that_does_not_exist():
+    """THE BUG THIS PREVENTS, found live on 2026-09-04 and a month old by then.
+
+    saveEngine() is wired to two admin buttons -- "Save quality floor" and "Save spread retries" -- and
+    both threw on EVERY click. It writes its result to $("eng-msg"), an element deleted on 2026-08-04 in
+    a commit about the IG transaction view. The setting saved, then the success handler died on a null,
+    then the .catch died the same way, so the user was told nothing either way. Nothing noticed, because
+    no test has ever asked whether the ids the JavaScript reaches for are in the page.
+
+    Only UNGUARDED dereferences fail here. `$("x")&&(...)`, `if($("x"))` and `$("x")?…:…` are how the
+    codebase legitimately handles elements that exist on some views only -- ig-search and the tab counts
+    are all deliberate. Flagging those too would produce twelve findings for two defects, which is how a
+    detector gets ignored.
+    """
+    html, js = client_html(), client_js()
+    ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', html))
+    ids |= set(re.findall(r"""id=[\\]?["']([A-Za-z0-9_-]+)[\\]?["']""", js))    # ids the JS injects
+    unguarded = []
+    for m in re.finditer(r'\$\("([A-Za-z0-9_-]+)"\)\.', js):
+        key = m.group(1)
+        if key in ids:
+            continue
+        start = js.rfind("\n", 0, m.start()) + 1
+        end = js.find("\n", m.start())
+        line = js[start:end if end > 0 else None]
+        token = f'$("{key}")'
+        if f"{token}&&" in line or f"if({token})" in line or f"{token}?" in line:
+            continue
+        unguarded.append((js[:m.start()].count("\n") + 1, key))
+
+    assert not unguarded, (
+        "these dereference an element that is not in the page, so the handler throws: "
+        + "; ".join(f"line {n}: {k}" for n, k in unguarded))
+
+
 def test_every_client_javascript_file_parses():
     """THE BUG THIS PREVENTS, and it reached production on 2026-09-04.
 
