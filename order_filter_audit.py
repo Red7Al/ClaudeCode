@@ -296,7 +296,8 @@ def audit_positions(user, positions, record_for=None, allows=None, limits=None, 
         # at_trigger=True: nothing here is "decayed". These are the measurements from the day the
         # position opened, so a miss is a genuine finding rather than market drift.
         res = check_one(judged, breaks.get(tk), limits, allows(rec) if rec else True, at_trigger=True)
-        res.update(ticker=tk, deal_id=p.get("deal_id"), opened=str(p.get("opened") or "")[:10],
+        res.update(ticker=tk, deal_id=p.get("deal_id"), name=p.get("name"),
+                   opened=str(p.get("opened") or "")[:10],
                    direction=p.get("direction"), size=p.get("size"),
                    break_as_of=(breaks.get(tk) or {}).get("as_of"),
                    in_snapshot=bool(rec))

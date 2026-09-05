@@ -107,6 +107,13 @@ def ensure_schema(db):
                  profit        double precision,
                  currency      text,
                  outcome       text)""")
+    # `create table if not exists` does NOTHING when the table already exists, so a column added later
+    # never appears and every read of it fails. Add it explicitly, as instrument_metrics learned to.
+    for column, ddl in (("name", "text"),):
+        try:
+            db.run(f"alter table auto_closed_positions add column if not exists {column} {ddl}")
+        except Exception as exc:
+            log.debug("could not ensure column %s: %s", column, exc)
 
 
 def record(db, user, row, profit, currency, outcome):
@@ -115,11 +122,11 @@ def record(db, user, row, profit, currency, outcome):
     readdress the success criteria") -- so it stores WHY each was closed and what it realised, not just
     the fact of it."""
     db.run("""insert into auto_closed_positions
-                (deal_id, ticker, user_name, opened_on, closed_at, direction, size,
+                (deal_id, ticker, name, user_name, opened_on, closed_at, direction, size,
                  volume_breaches, durable_breaches, profit, currency, outcome)
-              values (:d,:t,:u,:o, now(), :dir,:sz,:vb,:db,:p,:c,:oc)
+              values (:d,:t,:nm,:u,:o, now(), :dir,:sz,:vb,:db,:p,:c,:oc)
               on conflict (deal_id) do update set closed_at = now(), outcome = :oc, profit = :p""",
-           d=str(row.get("deal_id")), t=row.get("ticker"), u=str(user), o=row.get("opened") or None,
+           d=str(row.get("deal_id")), t=row.get("ticker"), nm=row.get("name"), u=str(user), o=row.get("opened") or None,
            dir=row.get("direction"), sz=row.get("size"),
            vb="; ".join(row.get("volume_breaches") or []),
            db="; ".join(row.get("durable_breaches") or []),
@@ -159,7 +166,7 @@ def run(user=None, on_date=None, apply=False):
             if not tk:
                 continue
             deal = pd.get("dealId")
-            positions.append({"ticker": tk, "deal_id": deal,
+            positions.append({"ticker": tk, "deal_id": deal, "name": mk.get("instrumentName"),
                               "opened": str(pd.get("createdDateUTC") or pd.get("createdDate") or "")[:10],
                               "direction": pd.get("direction"), "size": pd.get("size")})
             priced[deal] = (_profit(pd, mk), pd.get("currency"))

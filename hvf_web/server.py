@@ -5253,7 +5253,7 @@ def api_auto_closed():
         db = get_db()
         try:
             rows = db.run(
-                "select deal_id, ticker, opened_on, closed_at, direction, size, volume_breaches, "
+                "select deal_id, ticker, name, opened_on, closed_at, direction, size, volume_breaches, "
                 "durable_breaches, profit, currency, outcome from auto_closed_positions "
                 "where user_name = :u order by closed_at desc limit 500", u=name) or []
         finally:
@@ -5263,7 +5263,7 @@ def api_auto_closed():
         # been auto-closed" before it ever has been, and is not an error worth showing the user.
         log.info("auto-closed list unavailable (%s); reporting none", ex)
         return jsonify({"rows": []})
-    cols = ("deal_id", "ticker", "opened_on", "closed_at", "direction", "size", "volume_breaches",
+    cols = ("deal_id", "ticker", "name", "opened_on", "closed_at", "direction", "size", "volume_breaches",
             "durable_breaches", "profit", "currency", "outcome")
     return jsonify({"rows": [_json_safe(dict(zip(cols, r))) for r in rows]})
 

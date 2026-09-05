@@ -299,13 +299,23 @@ function barChart(title,counts,fk,colorFn,labelDesc,opts){
   // meant a wide card (Market/Location run ~246px since the cards started claiming spare width) drew a
   // stubby 72px bar and left the rest of the row empty — wasted space INSIDE the card. A .track flexes
   // into whatever width is going and the fill takes its share as a %.
+  // EVERY BAR IN A CHART STARTS AT THE SAME X (user 2026-09-05: "make sure the left side of the bar are
+  // all aligned"). .bar .tk is width:auto, so each label sized to its own text and pushed its track to a
+  // different offset -- "United States" started its bar further right than "FX". The label column is now
+  // sized once per chart, to that chart's longest label, so the tracks line up without forcing a global
+  // width that would either truncate long sector names or waste half a narrow card on short ones.
+  //
+  // Done in JS rather than CSS because flex rows cannot share a column width between siblings, and the
+  // grid alternative needs display:contents on .bar -- which has no box, breaking both the click target
+  // and the packViz height measurement this page relies on.
+  const _lab=Math.min(22,Math.max(6,...entries.map(e=>String(e[0]).length)));
   const rows=entries.map(([k,n])=>{const on=selValue!==null?String(k)===selValue:!!(sel&&sel.has(String(k)));
     const mv=metric?metric[k]:null;
     const bg=profitMode?(n>=0?'var(--bull)':'var(--bear)'):metric?(mv==null?'var(--muted)':mBg(mv)):(colorFn?colorFn(k):'var(--accent)');
     const pLabel=profitMode?`${n>=0?'+':'−'}${Math.abs(n).toLocaleString(undefined,{maximumFractionDigits:2})}${opts.currency?' '+opts.currency:''}`:'';
     const tip=profitMode?`${k}: ${pLabel} profit — click to filter`:metric?`${k}: avg return ${mv==null?'—':(mv>0?'+':'')+mv.toFixed(1)+'%'} · ${n} trade${n===1?'':'s'} — click to filter`:`click to filter ${k}`;
     const hook=onclickFor?` onclick="${onclickFor(k)}"`:` data-fk="${fk}" data-fv="${k}"`;
-    return `<div class="bar clk${on?' active':''}"${hook} title="${tip}"><span class="tk"><span class="selmk">${on?'●':''}</span>${k}</span>
+    return `<div class="bar clk${on?' active':''}"${hook} title="${tip}"><span class="tk" style="flex:0 0 ${_lab}ch"><span class="selmk">${on?'●':''}</span>${k}</span>
     <span class="track"><span class="fill" style="width:${Math.max(2,Math.round((profitMode?Math.abs(n):n)/max*100))}%;background:${bg};opacity:${nsel&&!on?0.4:1}"></span></span><span class="n">${profitMode?pLabel:n}</span></div>`;}).join("");
   return `<div class="vizbox${nsel?' filtered':''}"><h5>${title}${nsel?` <span class="afilt clk"${onclickFor?` onclick="${opts.clearOnclick||''}"`:` data-fk="${fk}" data-fv=""`} title="clear filter">▶ ${nsel} ✕</span>`:''}</h5><div class="bars">${rows}</div></div>`;
 }
@@ -4266,7 +4276,7 @@ function _renderPerformance(){
     <td>${nm40(r.name)}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:'')}</td>
     <td>${ob(rvolCell(r.rvol))}</td><td>${_tickCross(r.above_vwap)}</td><td>${_tickCross(r.atr_expanding)}</td><td>${ob(volScoreCell(r.volume_score))}</td>
-    <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td><td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td>
+    <td>${ob(r.rr!=null?(+r.rr).toFixed(1):'')}</td><td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td>
     <td>${ob(`<b style="color:${_stcol(r.state)}">${r.state||''}</b>`)}</td>
     <!-- Market and Triggered stay visible logged-out (user 2026-07-17, P-26 and P-17b); the rest of the
          row is still obfuscated by ob(). /api/performance is public and already returns both. -->
@@ -4935,11 +4945,12 @@ function paintPositionBreach(){
   if(!rows.length){body.innerHTML='<span class="muted">Every open position meets your criteria.</span>';return;}
   const line=r=>`<label style="display:flex;gap:9px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px">
       <input type="checkbox" data-close="${_esc(r.deal_id)}" ${r.verdict==="BREACH"?"checked":""}>
-      <b style="min-width:78px">${_esc(disp(r.ticker))}</b>
+      <b style="min-width:180px">${nm40(r.name||disp(r.ticker))}</b>
       <span style="min-width:62px" class="muted">${_esc(r.direction||"")} ${_esc(String(r.size??""))}</span>
       <span style="min-width:82px" class="muted">opened ${_esc(r.opened||"")}</span>
       <span style="color:${r.verdict==="BREACH"?"var(--bear)":"#d29922"};min-width:70px">${_esc(r.verdict)}</span>
-      <span class="muted" style="white-space:normal">${_esc((r.breaches&&r.breaches.length?r.breaches:r.unknown||[]).join("; "))}</span></label>`;
+      <span class="muted grow" style="white-space:normal;flex:1">${_esc((r.breaches&&r.breaches.length?r.breaches:r.unknown||[]).join("; "))}</span>
+      <b style="min-width:70px;text-align:right">${_esc(disp(r.ticker))}</b></label>`;
   body.innerHTML=
     `<div class="muted" style="font-size:12px;margin:0 0 8px">Each position is judged against the bar it OPENED on, read from the stored daily metrics — not against today. That is the opposite of the orders tab, and deliberately: a position has broken, so RVOL, VolumeScore, above-VWAP and ATR are exactly what should be tested; a pending order has not broken, so they cannot be. <b>Closing realises profit or loss</b>, so nothing is closed until you confirm it, and only BREACH rows are ticked — an unjudgeable position is listed but never pre-selected, because an absence of evidence must not cost you a position.</div>`
     +rows.map(line).join("")
@@ -4983,8 +4994,8 @@ function paintAutoClosed(){
     ? `<b style="font-size:15px;color:var(--fg)">${rows.length}</b> auto-closed position${rows.length===1?"":"s"} <span class="muted">— closed on their opening day for failing the break-bar volume tests</span>`
     : `<b style="font-size:15px;color:var(--fg)">0</b> auto-closed positions <span class="muted">— nothing has been closed this way</span>`;
   body.innerHTML=rows.map(r=>`<tr>
+    <td>${nm40(r.name||disp(r.ticker||""))}</td>
     <td>${_esc(String(r.closed_at||"").slice(0,19).replace("T"," "))}</td>
-    <td><b>${_esc(disp(r.ticker||""))}</b></td>
     <td>${_esc(String(r.opened_on||"").slice(0,10))}</td>
     <td>${_igDtag(r.direction)}</td>
     <td>${_igSz(r.size)}</td>
@@ -4992,8 +5003,9 @@ function paintAutoClosed(){
     <td>${_esc(r.currency||"")}</td>
     <td style="white-space:normal">${_esc(r.volume_breaches||"")}</td>
     <td style="white-space:normal" class="muted">${_esc(r.durable_breaches||"")||'<span class="muted">—</span>'}</td>
-    <td>${_esc(r.outcome||"")}</td></tr>`).join("")
-    || `<tr><td colspan="10" class="empty">Nothing has been auto-closed.</td></tr>`;
+    <td>${_esc(r.outcome||"")}</td>
+    <td><b>${_esc(disp(r.ticker||""))}</b></td></tr>`).join("")
+    || `<tr><td colspan="11" class="empty">Nothing has been auto-closed.</td></tr>`;
   _sortArrows("data-iga", igaSortK, igaSortDir);
 }
 
