@@ -9,7 +9,17 @@ env:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30        # scan 200+ tickers + single Slack post (no live-X here)
+    # 60, raised from 30 on 2026-09-05. The scan sits right ON the old boundary and usually loses:
+    # of the last six runs, FIVE were killed at exactly 30 minutes and the one success took 29. GitHub
+    # reports a timed-out job as "cancelled", which is why this looked like an unexplained cancellation
+    # rather than a timeout. A killed run is still mid-scan -- the 2026-09-05 run was processing Belgian
+    # tickers at 06:31 -- so it never reaches the Slack post and the job delivers NOTHING. Actionable
+    # setups have therefore not been posted since 2026-09-02.
+    #
+    # The cap is the symptom, not the disease: this runs at 06:00 against a database the HVF Daily Report
+    # is still hammering until ~07:20, and every db_pool.get_db() call opens a fresh connection costing
+    # 228ms. Raising the ceiling makes the job deliver again; making it fast is separate work.
+    timeout-minutes: 60        # scan 200+ tickers + single Slack post (no live-X here)
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
