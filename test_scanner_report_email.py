@@ -178,14 +178,20 @@ def test_a_restricted_run_delivers_only_to_the_named_address(monkeypatch):
              {"name": "Sam", "email": "sam@example.com", "enabled": True},
              {"name": "Casey", "email": "CASEY@example.com", "enabled": True}]
 
-    class _WU:
-        list_users = staticmethod(lambda: users)
-        get_settings = staticmethod(lambda name: {"filters": {}})
-        log_event = staticmethod(lambda *a, **k: None)
-
-    import sys, types
-    pkg = types.ModuleType("hvf_web"); pkg.__path__ = []
-    monkeypatch.setitem(sys.modules, "hvf_web.web_users", _WU)
+    # PATCH THE REAL MODULE'S FUNCTIONS, not sys.modules. main() does `from hvf_web import web_users`,
+    # which reads the ATTRIBUTE on the already-imported package -- setting sys.modules["hvf_web.web_users"]
+    # does not change that, so this test used to run against the LIVE user store. It still passed, because
+    # the restriction logic gives the same answer either way, while writing to the production activity log
+    # on every run: 13 rows between 2026-09-04 and 2026-09-05, one per suite run, each recorded as the
+    # account owner having been emailed. A test that reaches production is not isolated no matter how
+    # green it is.
+    from hvf_web import web_users as _real_wu
+    monkeypatch.setattr(_real_wu, "list_users", lambda: users)
+    monkeypatch.setattr(_real_wu, "get_settings", lambda name: {"filters": {}})
+    monkeypatch.setattr(_real_wu, "log_event", lambda *a, **k: None)
+    # main() also appends to the shared batch log. Block it, or the suite keeps writing there too.
+    import web_store
+    monkeypatch.setattr(web_store, "append_batch", lambda *a, **k: None)
     monkeypatch.setattr(_sre, "build_rows", lambda snap: [])
     monkeypatch.setattr(_sre, "user_rows", lambda rows, filters, name: [])
     monkeypatch.setattr(_sre, "email_body", lambda name, rows, gen: ("s", "t", "<p>h</p>"))

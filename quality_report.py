@@ -429,6 +429,14 @@ _P_NETDEBT = [
     "There is some borrowing — {debt} of debt, {cash} of cash.",
     "Debt stands at {debt}, with {cash} of cash on hand.",
 ]
+# A return only goes in the POSITIVES list when it is genuinely a positive. Every phrasing below asserts
+# strength ("high", "strong", "uses capital well"), so emitting one for a weak return states the opposite
+# of the truth. On 2026-09-05 a published tweet read "Returns are high: 0% on shareholders' money" for
+# VOD, whose ROE is 0.00109 -- 0.1%. It passed the sanity filter (0 < roe <= 0.60), rounded to "0" at
+# :.0f, and was described as high. The filter proved the number was not absurd; nothing checked it was
+# good. 10% is the floor for calling a return strong, and it also guarantees the figure never prints 0%.
+_ROE_STRONG = 0.10
+
 _P_ROE = [
     "Returns are high: {roe}% on shareholders' money.",
     "It uses capital well, earning {roe}% on shareholders' money.",
@@ -751,7 +759,7 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
         s.append(_pick(_P_FIN_CAVEAT, tk, "cav").format(name=name, industry=(f.get("industry") or "financial services")))
         if f.get("div_streak"):
             s.append(_pick(_P_DIV, tk, "div").format(streak=f["div_streak"]))
-        if f.get("roe"):
+        if (f.get("roe") or 0) >= _ROE_STRONG:
             s.append(_pick(_P_ROE, tk, "roe").format(roe=f"{f['roe']*100:.0f}"))
     else:
         # Only claim growth when sales genuinely rose for >=2 consecutive years. rev_run is
@@ -773,7 +781,7 @@ def build_report(r: dict, change_note: str = None, cite_sources: bool = False) -
             s.append(_pick(_P_NETCASH, tk, "bs").format(cash=_money(f["cash"], gbp), debt=_money(f["debt"], gbp)))
         elif f.get("debt") is not None:
             s.append(_pick(_P_NETDEBT, tk, "bs").format(cash=_money(f["cash"], gbp), debt=_money(f["debt"], gbp)))
-        if f.get("roe"):
+        if (f.get("roe") or 0) >= _ROE_STRONG:
             s.append(_pick(_P_ROE, tk, "roe").format(roe=f"{f['roe']*100:.0f}"))
         if f.get("div_streak"):
             s.append(_pick(_P_DIV, tk, "div").format(streak=f["div_streak"]))
@@ -891,7 +899,7 @@ def build_tweet(r: dict) -> str:
     if f.get("financial"):
         if f.get("div_streak"):
             bits.append(f"dividend raised {f['div_streak']} years")
-        if f.get("roe"):
+        if (f.get("roe") or 0) >= _ROE_STRONG:
             bits.append(f"{f['roe']*100:.0f}% return on equity")
     else:
         if f.get("rev_run") and f["rev_run"] >= 2:
