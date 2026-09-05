@@ -26,7 +26,14 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 90, raised from 30 on 2026-09-05. price_audit_log shows successful runs taking 21-29 minutes, so
+    # the old cap was always marginal and has now tipped: every run since 2026-09-03 was killed at
+    # exactly 30 minutes. GitHub reports a timed-out job as "cancelled", which is why it read as an
+    # unexplained cancellation. MEASURED CONSEQUENCE: price_history held only 153 bars for Friday
+    # 2026-09-04 against 1,494-1,735 on each preceding day -- a 91% shortfall on the most recent trading
+    # day, because the job dies partway through the ticker list. Everything downstream (RVOL, ATR, VWAP,
+    # the HVF detection) was therefore computing on a stale final bar for most instruments.
+    timeout-minutes: 90
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
