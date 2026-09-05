@@ -98,6 +98,29 @@ def version_history_entries() -> list:
     return entries
 
 
+def cache_bust(relative: str, contents: bytes, stamp: str) -> bytes:
+    """Version the client script URLs so a deploy actually reaches the browser.
+
+    THE BUG THIS FIXES, observed live on 2026-09-05. index.html loads best_settings.js and app.js by bare
+    filename, so the browser keeps serving whatever it cached. A stale best_settings.js was found on the
+    live site defining NEITHER of its functions, which made app.js die on "ReferenceError:
+    makeCombReplay is not defined" and left the Scanner stuck on "Data loading..." for ever. A hard
+    reload fixed it instantly -- the signature of a caching problem, not a code one -- and it explains a
+    run of reports that a feature had "stopped working AGAIN" while the host was serving the right file.
+
+    Appending the build fingerprint makes a new deploy a new URL, so the browser must refetch. Nobody has
+    to know to press Ctrl+Shift+R.
+
+    Module level, and taking the stamp as an argument, so it can be tested without building a package.
+    """
+    if relative != "hvf_web/index.html" or not stamp:
+        return contents
+    text = contents.decode("utf-8")
+    for name in ("best_settings.js", "app.js"):
+        text = text.replace(f'src="{name}"', f'src="{name}?v={stamp}"')
+    return text.encode("utf-8")
+
+
 def build_identity() -> dict:
     """A stamp identifying THIS package, so the live API can be asked which build it is running.
 
@@ -126,6 +149,9 @@ def build(output: Path = DEFAULT_OUTPUT) -> tuple:
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     files = package_files()
+    identity = build_identity()
+    stamp = str(identity.get("fingerprint") or "")[:12]
+
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in files:
             relative = path.relative_to(ROOT).as_posix()
@@ -134,7 +160,7 @@ def build(output: Path = DEFAULT_OUTPUT) -> tuple:
             mode = 0o755 if relative == "cgi-bin/app.py" else 0o644
             info.external_attr = (stat.S_IFREG | mode) << 16
             with path.open("rb") as source:
-                contents = source.read()
+                contents = cache_bust(relative, source.read(), stamp)
             archive.writestr(info, contents, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
             # Apache serves the domain root directly; retain the package copy used by Flask as well.
             # app.js is mirrored the same way, because index.html loads it relatively — if only the
@@ -158,7 +184,6 @@ def build(output: Path = DEFAULT_OUTPUT) -> tuple:
             info.external_attr = (stat.S_IFREG | 0o644) << 16
             archive.writestr(info, history.encode("utf-8"),
                              compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
-        identity = build_identity()
         info = zipfile.ZipInfo("data/build_id.json")
         info.create_system = 3
         info.external_attr = (stat.S_IFREG | 0o644) << 16

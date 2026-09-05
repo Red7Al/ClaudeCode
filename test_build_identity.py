@@ -111,9 +111,19 @@ def test_the_extracted_script_ships_to_both_serving_paths(tmp_path):
             assert hashlib.sha256(z.read(root)).hexdigest() == hashlib.sha256(z.read(nested)).hexdigest(), (
                 f"{root} and {nested} differ; the two serving paths would run different code")
         html = z.read("index.html").decode("utf-8")
-        assert '<script src="app.js"></script>' in html
+        # VERSIONED, not bare (2026-09-05). A bare src let the browser keep a stale copy: a cached
+        # best_settings.js that defined none of its functions was found live, which killed app.js with
+        # "ReferenceError: makeCombReplay is not defined" and hung the Scanner on "Data loading...".
+        # The build fingerprint in the URL makes a deploy a new URL, so the browser must refetch --
+        # which matters more here than usual, because shared hosting gives us no cache-header control.
+        import re as _re
+        m = _re.search(r'<script src="app\.js\?v=([0-9a-f]{6,})"></script>', html)
+        assert m, f"app.js must ship with a build-stamped URL: {html[html.find('<script'):][:120]}"
+        assert f'<script src="best_settings.js?v={m.group(1)}"></script>' in html, (
+            "both scripts must carry the SAME stamp, or one can go stale against the other")
         # Loaded FIRST: app.js builds its wallet replay from makeCombReplay at load time.
-        assert html.index('src="best_settings.js"') < html.index('src="app.js"')
+        # No closing quote in these needles: the URLs now carry ?v=<stamp> after the filename.
+        assert html.index('src="best_settings.js') < html.index('src="app.js')
         assert "<script>" not in html, "an inline script block came back"
 
 
