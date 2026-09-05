@@ -141,16 +141,11 @@ JOBS = [
     ("AUS HVF Watch",        "30 0,2,4 * * 1-5", "trading-aus-hvf-watch.yml"),
     ("Commodity Monitor AM", "*/10 4-8 * * 1-5", "trading-commodity-monitor.yml"),
     # ── Pre-UK ────────────────────────────────────────────────────────────────────────────────────────────────────────
-    ("Price Data Refresh",  "30 4 * * 1-6",   "trading-price-refresh.yml"),  # 04:30 UTC Mon-Sat — refresh price_history BEFORE the 05:30 HVF Daily Report, which needs current bars (user 2026-08-04, ToDo P-02). Own workflow file since 2026-08-07 (ChangeRequest P-08 "job names look peculiar") — was sharing trading-price-audit.yml with the 23:00 "Price History Audit" job, which made the two show byte-identical run stats in the Scheduled Jobs tab (hvf_web/scheduled_jobs.py caches GitHub Actions stats per WORKFLOW FILE); splitting the file gives each job its own genuine history. Same script (re-fetch trailing window + upsert; idempotent).
-    ("HVF Daily Report",    "30 5 * * 1-6",   "trading-hvf-report.yml"),  # 05:30 UTC Mon-Sat -> all publications (report + X drafts + live-X) done before 07:00 UTC (8am BST) (user 2026-06-19)
-    ("Best Settings Full-grid Audit", "45 5 * * 1-6", "trading-best-settings-audit.yml"),
     # Precompute the /api/winners payloads (user 2026-08-23). One window costs about 33 seconds to build
     # and Best Settings requests two on every visit, so a cold worker made the first visitor wait for both.
     # 05:50, after the 04:30 price refresh and the 05:30 report, so it builds from the day's refreshed
     # history. The server ignores a stored payload built from a different scan or older than a day, so a
     # missed run degrades to the live build rather than serving stale figures.
-    ("Winners Precompute",  "50 5 * * 1-6",   "trading-winners-precompute.yml"),
-    ("HVF Orders",          "0 6 * * 1-6",    "trading-hvf-orders.yml"),  # 06:00 UTC Mon-Sat -> actionable HVF setups to #arw-claude-orders, before 07:00 UTC (8am BST) (user 2026-06-19)
     # Snapshot pre-orders -> IG working orders. Restored to a scheduler 2026-08-15 (user: "order bridge
     # must run"): it used to be a 2-hourly background thread in hvf_web/server.py started from __main__,
     # so it died silently when the site moved to IONOS (CGI/WSGI never runs __main__). One scheduled job
@@ -162,6 +157,23 @@ JOBS = [
     # publication (intraday_signals._generate_x_drafts -> quality_report.publish_long_report_for),
     # so a separate quality-only job would double-post AND is an incomplete publication on its own
     # (no card/short tweet). Removed here and deleted from cron-job.org via --prune.
+    # ONE CHAIN, replacing five separately-scheduled morning jobs (user 2026-09-05: "it may make more
+    # sense to have one batch that calls each process in sequence - rather than lose time with
+    # contingency between each job").
+    #
+    # The five were scheduled with GUESSED gaps and the guesses were wrong. Measured over the preceding
+    # week: the HVF Daily Report takes 98-110 minutes from 05:30 and publishes the day's snapshot at the
+    # END, at 07:07-07:20 -- while the Best Settings audit ran 05:45, Winners Precompute 05:50 and HVF
+    # Orders 06:00, ALL of them before the scan they depend on existed. So the audit built the public
+    # cards from the previous day's scan every single day.
+    #
+    # 03:30 Mon-Sat. Worst observed timings: refresh 29 + report 110 + email 1 = 140 minutes, so the
+    # Scanner Report email -- the only step with an external deadline, read by a colleague at 7am -- is
+    # out by 05:50 at the latest, inside 7am whether that is BST or UTC. The remaining steps finish by
+    # about 07:00. Each step starts when the previous one actually finished, not when someone estimated.
+    #
+    # The five workflows keep their own workflow_dispatch triggers and can still be run individually.
+    ("Morning Chain",       "30 3 * * 1-6",   "trading-morning-chain.yml"),
     # ── UK session ────────────────────────────────────────────────────────────────────────────────────────────────────
     ("UK Open",             "0 8 * * 1-5",    "trading-uk-open.yml"),
     ("UK Morning Brief",    "0 9 * * 1,5",    "trading-uk-morning-brief.yml"),

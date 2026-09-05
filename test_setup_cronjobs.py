@@ -12,27 +12,60 @@ def _load_schedule_module(monkeypatch):
     return importlib.import_module("setup_cronjobs")
 
 
-def test_price_data_refresh_runs_at_0430_utc_monday_to_saturday(monkeypatch):
+def test_the_morning_runs_as_one_chain(monkeypatch):
+    """REPLACES a test that pinned Price Data Refresh to 04:30.
+
+    That assertion existed to guarantee prices were refreshed BEFORE the daily report. It could not
+    actually guarantee it: the report takes 98-110 minutes and three downstream jobs were scheduled 15-30
+    minutes after it STARTED, so they all ran against the previous day's scan. Times cannot express
+    "after this finishes"; a dependency can.
+
+    So the invariant is now asserted where it lives -- in the chain's job graph -- and the clock only has
+    to be early enough for the one step with an external deadline.
+    """
     schedules = _load_schedule_module(monkeypatch)
     jobs = {title: (cron, workflow) for title, cron, workflow in schedules.JOBS}
 
-    cron, workflow = jobs["Price Data Refresh"]
+    cron, workflow = jobs["Morning Chain"]
 
-    assert cron == "30 4 * * 1-6"
-    # Own workflow file since 2026-08-07 (ChangeRequest P-08, "the job names look peculiar") — it used to
-    # share trading-price-audit.yml with "Price History Audit" (see test below), which made the two jobs
-    # show byte-identical GitHub Actions run stats in the Scheduled Jobs tab despite running 18.5 hours
-    # apart for different reasons.
-    assert workflow == "trading-price-refresh.yml"
+    assert workflow == "trading-morning-chain.yml"
+    assert cron == "30 3 * * 1-6", "early enough that the Scanner Report email lands before 7am"
     assert schedules._cron_to_schedule(cron) == {
         "timezone": "UTC",
         "expiresAt": 0,
-        "hours": [4],
+        "hours": [3],
         "mdays": [-1],
         "minutes": [30],
         "months": [-1],
         "wdays": [1, 2, 3, 4, 5, 6],
     }
+    for gone in ("Price Data Refresh", "HVF Daily Report", "Best Settings Full-grid Audit",
+                 "Winners Precompute", "HVF Orders"):
+        assert gone not in jobs, f"{gone} is a chain step now; a second schedule would double-run it"
+
+
+def test_the_chain_orders_its_steps_by_dependency_not_by_clock():
+    """THE BUG THIS PREVENTS. Every one of these ran before the scan it needed, because the gaps between
+    them were guessed. A `needs:` edge cannot be wrong about what has finished."""
+    import yaml
+    import pathlib as _p
+
+    wf = yaml.safe_load(_p.Path(".github/workflows/trading-morning-chain.yml").read_text(encoding="utf-8"))
+    jobs = wf["jobs"]
+
+    def needs(name):
+        n = jobs[name].get("needs") or []
+        return [n] if isinstance(n, str) else n
+
+    assert "price_refresh" in needs("daily_report"), "the report must not start on stale bars"
+    assert "daily_report" in needs("scanner_email"), "the email must not send yesterday's setups"
+    for after in ("winners_precompute", "best_settings", "hvf_orders"):
+        assert "daily_report" in needs(after), f"{after} must not run against the previous day's scan"
+
+    # The email is the only step with an external deadline, so nothing internal may precede it.
+    order = list(jobs)
+    assert order.index("scanner_email") < order.index("winners_precompute")
+    assert order.index("scanner_email") < order.index("hvf_orders")
 
 
 def test_scheduled_jobs_use_squeeze_display_names_without_changing_workflows():
@@ -42,7 +75,7 @@ def test_scheduled_jobs_use_squeeze_display_names_without_changing_workflows():
     assert scheduled_jobs._display_name("HVF Orders") == "Squeeze Orders"
     assert scheduled_jobs._display_name("UK HVF Watch") == "UK Squeeze Watch"
     assert scheduled_jobs._display_name("AUS HVF Watch") == "AUS Squeeze Watch"
-    assert scheduled_jobs._display_name("Price Data Refresh") == "Price Data Refresh"
+    assert scheduled_jobs._display_name("Morning Chain") == "Morning Chain"
 
 
 def test_aus_squeeze_watch_is_scheduled_during_the_aus_session(monkeypatch):
