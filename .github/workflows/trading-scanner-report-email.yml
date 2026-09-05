@@ -12,6 +12,17 @@ name: Scanner Report Email (daily — 2026-08-23)
 # report's output. Clear the input to deliver to every enabled account holder, once the content has been
 # reviewed. Users outside the restriction are skipped, not failed.
 on:
+  # Callable so trading-morning-chain.yml can run it in sequence (2026-09-05). The chain
+  # exists because these jobs were separately scheduled with GUESSED gaps between them, and
+  # the guesses were wrong: the Best Settings audit ran 15 minutes into a 98-110 minute report
+  # and built its cards from the PREVIOUS day's scan every single day. Sequencing removes the
+  # guess. The inputs mirror workflow_dispatch so ${{ inputs.* }} resolves under either trigger.
+  workflow_call:
+    inputs:
+      only:
+        required: false
+        type: string
+        default: 'eahind@yahoo.co.uk'
   workflow_dispatch:
     inputs:
       only:

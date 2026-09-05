@@ -12,6 +12,21 @@ name: Price Data Refresh (pre-report — 2026-08-07)
 # cron-job.org via workflow_dispatch — NEVER add a schedule: block (GitHub-native cron is banned, user
 # directive 2026-06-07).
 on:
+  # Callable so trading-morning-chain.yml can run it in sequence (2026-09-05). The chain
+  # exists because these jobs were separately scheduled with GUESSED gaps between them, and
+  # the guesses were wrong: the Best Settings audit ran 15 minutes into a 98-110 minute report
+  # and built its cards from the PREVIOUS day's scan every single day. Sequencing removes the
+  # guess. The inputs mirror workflow_dispatch so ${{ inputs.* }} resolves under either trigger.
+  workflow_call:
+    inputs:
+      backfill_days:
+        required: false
+        type: string
+        default: ''
+      tickers:
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       backfill_days:

@@ -1,6 +1,17 @@
 name: HVF Daily Report (2026-06-17)
 
 on:
+  # Callable so trading-morning-chain.yml can run it in sequence (2026-09-05). The chain
+  # exists because these jobs were separately scheduled with GUESSED gaps between them, and
+  # the guesses were wrong: the Best Settings audit ran 15 minutes into a 98-110 minute report
+  # and built its cards from the PREVIOUS day's scan every single day. Sequencing removes the
+  # guess. The inputs mirror workflow_dispatch so ${{ inputs.* }} resolves under either trigger.
+  workflow_call:
+    inputs:
+      report_mode:
+        required: false
+        type: string
+        default: 'normal'
   workflow_dispatch:           # also triggerable manually
     inputs:
       report_mode:

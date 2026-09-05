@@ -1,8 +1,17 @@
 name: Best Settings Full-grid Audit
 
-# cron-job.org dispatches this at 05:45 UTC Mon-Sat. It is analytical only:
+# cron-job.org dispatches this at 07:50 UTC Mon-Sat -- AFTER the HVF Daily Report has published
+# the day's snapshot (it starts 05:30 and takes 82-109 minutes). It used to run at 05:45, 15
+# minutes into that report, so it built the public cards from the previous day's scan and the
+# report then invalidated them. It is analytical only:
 # it never changes a user's configuration, places orders, or calls the broker.
 on:
+  # Callable so trading-morning-chain.yml can run it in sequence (2026-09-05). The chain
+  # exists because these jobs were separately scheduled with GUESSED gaps between them, and
+  # the guesses were wrong: the Best Settings audit ran 15 minutes into a 98-110 minute report
+  # and built its cards from the PREVIOUS day's scan every single day. Sequencing removes the
+  # guess. The inputs mirror workflow_dispatch so ${{ inputs.* }} resolves under either trigger.
+  workflow_call:
   workflow_dispatch:
 
 env:

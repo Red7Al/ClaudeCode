@@ -1,0 +1,103 @@
+name: Morning Chain (price → report → email → precompute → audit → orders)
+
+# ONE dispatch that runs the whole morning in order, replacing six separately-scheduled jobs.
+#
+# WHY THIS EXISTS (user 2026-09-05: "it may make more sense to have one batch that calls each process in
+# sequence - rather than lose time with contingency between each job").
+#
+# The six jobs were scheduled independently with GUESSED gaps, and the guesses were wrong. Measured on
+# 2026-09-05 over the preceding week:
+#
+#   05:30  HVF Daily Report starts .......... takes 98-110 min, finishes 07:07-07:20
+#   05:45  Best Settings audit ............... 15 minutes IN, so it built the public cards from the
+#                                              PREVIOUS day's scan -- every day. The endpoint then
+#                                              correctly discarded them as stale, so the logged-out
+#                                              Best Settings page showed "recalculating" from about
+#                                              06:40 until the next morning.
+#   05:50  Winners Precompute ................ also before the report finished
+#   06:00  HVF Orders ........................ also before, and its own comment claimed it beat a
+#                                              07:00 deadline the report could not meet
+#
+# Sequencing removes the guess entirely: each step starts when the previous one actually finished, not
+# when someone estimated it would. It also recovers the padding that was sitting between them.
+#
+# ORDER IS DELIBERATE. The Scanner Report email is THIRD, not last: a colleague checks it at 7am (user
+# 2026-09-05), and it is the only step with an external deadline. Everything after it is internal, so a
+# slow precompute or a long order scan cannot delay the one thing somebody is waiting for.
+#
+# START TIME. Worst observed: refresh 29 + report 110 + email 1 = 140 minutes to the email. Starting at
+# 03:30 UTC puts the email out by 05:50 worst case, comfortably inside 7am whether that is read as BST
+# or UTC. The remaining steps finish by roughly 07:00.
+#
+# FAILURE POLICY, per step and on purpose:
+#   * The report NEEDS the price refresh -- stale bars are the input to every metric it computes.
+#   * The email NEEDS the report, or it would send yesterday's setups to a person who trusts the date.
+#   * Everything after the email is independent of it and runs with `if: always()`, so a failed email
+#     cannot also cost you the precompute, the cards and the order scan.
+#
+# The individual workflows keep their own workflow_dispatch triggers, so any single step can still be
+# re-run by hand without the chain.
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_orders:
+        description: 'Skip the HVF Orders step (the long one) — useful when re-running for the email only'
+        type: boolean
+        required: false
+        default: false
+      report_mode:
+        description: 'normal = Slack + live X | slack_only = no X. Use slack_only when TESTING the chain.'
+        type: choice
+        options: [normal, slack_only, slack_png]
+        required: false
+        default: normal
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  price_refresh:
+    name: 1. Price data refresh
+    uses: ./.github/workflows/trading-price-refresh.yml
+    secrets: inherit
+
+  daily_report:
+    name: 2. HVF daily report
+    needs: price_refresh
+    uses: ./.github/workflows/trading-hvf-report.yml
+    with:
+      # Passed through so a TEST run of the chain cannot post to X. Defaults to normal, so a scheduled
+      # run behaves exactly as the standalone job did.
+      report_mode: ${{ inputs.report_mode }}
+    secrets: inherit
+
+  # THE DEADLINE STEP. Third, so nothing internal can push it later.
+  scanner_email:
+    name: 3. Scanner report email
+    needs: daily_report
+    uses: ./.github/workflows/trading-scanner-report-email.yml
+    secrets: inherit
+
+  # From here the steps are internal. `always()` so one failure does not cascade -- but they still run
+  # AFTER the report, which is the whole point of the chain.
+  winners_precompute:
+    name: 4. Winners precompute
+    needs: [daily_report, scanner_email]
+    if: always() && needs.daily_report.result == 'success'
+    uses: ./.github/workflows/trading-winners-precompute.yml
+    secrets: inherit
+
+  best_settings:
+    name: 5. Best settings full-grid audit
+    needs: [daily_report, winners_precompute]
+    if: always() && needs.daily_report.result == 'success'
+    uses: ./.github/workflows/trading-best-settings-audit.yml
+    secrets: inherit
+
+  hvf_orders:
+    name: 6. HVF orders
+    needs: [daily_report, best_settings]
+    if: always() && needs.daily_report.result == 'success' && !inputs.skip_orders
+    uses: ./.github/workflows/trading-hvf-orders.yml
+    secrets: inherit

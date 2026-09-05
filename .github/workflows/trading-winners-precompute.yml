@@ -11,6 +11,21 @@ name: Winners Precompute (daily — 2026-08-23)
 # the one now live and the copy is under a day old, so a missed or failed run makes Best Settings slow,
 # never wrong. run_winners_precompute.py also refuses to store an empty population for the same reason.
 on:
+  # Callable so trading-morning-chain.yml can run it in sequence (2026-09-05). The chain
+  # exists because these jobs were separately scheduled with GUESSED gaps between them, and
+  # the guesses were wrong: the Best Settings audit ran 15 minutes into a 98-110 minute report
+  # and built its cards from the PREVIOUS day's scan every single day. Sequencing removes the
+  # guess. The inputs mirror workflow_dispatch so ${{ inputs.* }} resolves under either trigger.
+  workflow_call:
+    inputs:
+      years:
+        required: false
+        type: string
+        default: ''
+      dry_run:
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       years:
