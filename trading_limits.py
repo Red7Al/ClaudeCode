@@ -81,6 +81,41 @@ def user_limits(name: str) -> dict:
     return d
 
 
+def login_for_profile(profile) -> str:
+    """The WEB LOGIN whose saved limits govern this engine profile.
+
+    THE DEFECT THIS FIXES, measured from the bridge's own log on 2026-09-04. There are two identity
+    namespaces. run_session.get_user_profile() returns user_profiles.name, which is "Owner". Personal
+    limits are stored against WEB LOGINS, and the account owner's login is "Alex" -- there is no web
+    login called "Owner" at all. ig_shim passed the engine name into user_limits(), which correctly
+    refuses to inherit another login's values, so it returned the code baseline. Every automated order
+    was therefore gated on R:R 3.0 / Quality 25 / RVOL 0 / market cap 0 with VWAP and ATR not required,
+    and never on the owner's saved criteria:
+
+        600157.SS: PASSED personal trading limits [rvol=0.86/0.0 ... mcap=3840275564/0.0 ...]
+
+    The mapping is by USER ID, not by guessing from the name. An unrecognised profile keeps its own name
+    and gets the code baseline -- it must never inherit the owner's floors -- but the caller is expected
+    to say so loudly rather than place on defaults in silence.
+    """
+    name = (profile or {}).get("name") if isinstance(profile, dict) else profile
+    try:
+        from hvf_web import web_users as _wu
+        if name and (_wu.get_settings(name) or {}).get("limits"):
+            return name                                   # a real login with its own saved limits
+    except Exception as exc:
+        log.warning("login_for_profile: could not read saved settings for %r: %s", name, exc)
+        return name
+    try:
+        from run_session import OWNER_USER_ID
+        from hvf_web import server as _srv
+        if isinstance(profile, dict) and profile.get("user_id") == OWNER_USER_ID:
+            return _srv._OWNER
+    except Exception as exc:
+        log.warning("login_for_profile: could not resolve the owner login: %s", exc)
+    return name
+
+
 def check_limits(name: str, ticker: str, *, quality=None, rr=None, volume_score=None,
                   rvol=None, above_vwap=None, atr_expanding=None, mcap=None,
                   require_data=False) -> str:

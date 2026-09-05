@@ -36,6 +36,7 @@
 # ======================================================================================================================
 
 import argparse
+import datetime as _dt
 import logging
 
 log = logging.getLogger("auto_close")
@@ -47,6 +48,18 @@ VOLUME_TESTS = ("RVOL", "VolumeScore", "above VWAP", "ATR expanding")
 MAX_PER_RUN = 10
 
 SETTING = "auto_close_failed_opens"       # per-user; 1 = on, anything else = off
+
+
+def today_utc():
+    """The date the same-day rule is measured against.
+
+    UTC, because IG stamps createdDateUTC in UTC and this is compared against it. The local-date call is
+    LOCAL: in BST the two differ between 00:00 and 01:00, and a position opened at 23:30 UTC would be
+    invisible to a run in that hour. It fails safe -- nothing is closed rather than the wrong thing -- and
+    the scheduled runner is UTC anyway, but a same-day rule that only holds in one timezone is not a rule.
+    Extracted so it can be asserted rather than trusted.
+    """
+    return _dt.datetime.now(_dt.timezone.utc).date()
 
 
 def _volume_breaches(row):
@@ -123,7 +136,7 @@ def run(user=None, on_date=None, apply=False):
         import ig_shim
         from db_pool import get_db
         user = user or server._OWNER
-        on_date = str(on_date or dt.date.today())
+        on_date = str(on_date or today_utc())
         summary["date"] = on_date
         limits = (_wu.get_settings(user) or {}).get("limits") or {}
         summary["enabled"] = str(limits.get(SETTING) or "") in ("1", "True", "true")
@@ -188,6 +201,16 @@ def run(user=None, on_date=None, apply=False):
                         record(db, user, r, None, None, "gone_before_close")
                         continue
                     profit, currency = priced.get(deal, (None, None))
+                    # Written BEFORE the close, updated after. If the broker call succeeds and the audit
+                    # write then fails, the old order left a position closed with no record of why --
+                    # the worst possible audit outcome. Same shape as the ig-cancel-orders path, which
+                    # records "submitted" before it asks IG for anything.
+                    try:
+                        record(db, user, r, profit, currency, "submitted")
+                    except Exception as exc:
+                        log.error("could not record the intent to close %s (%s); NOT closing it",
+                                  r.get("ticker"), exc)
+                        continue
                     try:
                         # The same call the confirmed web close uses, with its own reason so this
                         # mechanism is distinguishable from a manual close in IG's own history.
@@ -197,8 +220,12 @@ def run(user=None, on_date=None, apply=False):
                         log.error("close failed for %s: %s", r.get("ticker"), exc)
                         record(db, user, r, profit, currency, f"failed: {exc}"[:200])
                         continue
-                    record(db, user, r, profit, currency,
-                           ("closed" if ok else "not_confirmed") + (f" ({detail})" if detail else ""))
+                    try:
+                        record(db, user, r, profit, currency,
+                               ("closed" if ok else "not_confirmed") + (f" ({detail})" if detail else ""))
+                    except Exception as exc:
+                        # The position IS closed at this point. Losing the outcome must be loud.
+                        log.error("CLOSED %s but could not record the outcome: %s", r.get("ticker"), exc)
                     if ok:
                         summary["closed"] += 1
                         log.info("closed %s (%s): %s", r.get("ticker"), deal,

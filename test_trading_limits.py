@@ -314,3 +314,55 @@ def test_an_unknown_market_cap_does_not_block_a_manual_placement(monkeypatch):
     monkeypatch.setattr(server, "_mcap_map", lambda: {})
 
     assert server._limit_block("Alex", "NOCAP") == ""
+
+
+# ── The engine must gate on the ACCOUNT OWNER'S limits, not the code baseline (2026-09-04) ─────────────
+#
+# THE DEFECT THIS PREVENTS, and it is the most serious found on this project. There are two identity
+# namespaces: run_session.get_user_profile() returns user_profiles.name, which is "Owner"; personal
+# limits are stored against WEB LOGINS, and the owner's is "Alex". There is no web login called "Owner",
+# so user_limits() correctly declined to inherit anyone's values and returned the code baseline. Every
+# automated order was gated on R:R 3.0 / Quality 25 / RVOL 0 / market cap 0, VWAP and ATR not required.
+#
+# Measured against the live candidate list the day it was found: 25 of 29 candidates passed the baseline;
+# 0 of 29 passed the owner's own criteria.
+
+def test_the_engine_profile_resolves_to_the_owners_web_login(monkeypatch):
+    from hvf_web import server
+    from run_session import OWNER_USER_ID
+
+    login = trading_limits.login_for_profile({"name": "Owner", "user_id": OWNER_USER_ID})
+
+    assert login == server._OWNER, "the owner's engine profile must resolve to the owner's web login"
+
+
+def test_a_login_with_its_own_limits_is_used_as_is(monkeypatch):
+    from hvf_web import web_users as _wu
+    monkeypatch.setattr(_wu, "get_settings", lambda n: {"limits": {"min_rvol": 2.0}} if n == "Carl" else {})
+
+    assert trading_limits.login_for_profile({"name": "Carl", "user_id": "someone-else"}) == "Carl"
+
+
+def test_an_unknown_profile_never_inherits_the_owners_floors(monkeypatch):
+    """A login with nothing saved gets the code baseline, never another user's values. Resolving the
+    owner by USER ID rather than by guessing from the name is what keeps that true."""
+    from hvf_web import web_users as _wu
+    monkeypatch.setattr(_wu, "get_settings", lambda n: {})
+
+    assert trading_limits.login_for_profile({"name": "Stranger", "user_id": "not-the-owner"}) == "Stranger"
+
+
+def test_landing_on_the_code_baseline_is_reported_at_error(monkeypatch, caplog):
+    """Gating a money path on defaults must never be silent again."""
+    import logging
+    _pass_the_earlier_gates(monkeypatch)
+    monkeypatch.setattr(trading_limits, "check_limits", lambda *a, **kw: "")
+    monkeypatch.setattr(trading_limits, "login_for_profile", lambda p: "NobodyConfigured")
+    monkeypatch.setattr(trading_limits, "user_limits", lambda n: trading_limits.limit_defaults())
+    monkeypatch.setattr(ig_shim, "get_epic", lambda tk: None)
+
+    with caplog.at_level(logging.ERROR):
+        ig_shim.place_hvf_order_from_sig(_base_sig(), {"name": "Owner", "user_id": "u1"}, "WEB_BRIDGE", 1.0)
+
+    assert any("CODE DEFAULTS" in r.getMessage() for r in caplog.records), \
+        "an order gated on the baseline must be reported loudly"

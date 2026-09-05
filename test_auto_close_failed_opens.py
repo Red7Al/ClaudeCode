@@ -101,3 +101,18 @@ def test_the_volume_test_set_is_exactly_the_break_bar_measures():
 def test_it_refuses_a_run_that_matches_more_than_the_limit():
     """A criteria change that suddenly matches everything should trip a limit and be looked at."""
     assert ac.MAX_PER_RUN <= 10, "a cap that lets a whole book through is not a cap"
+
+
+def test_the_same_day_rule_is_measured_in_utc():
+    """IG stamps createdDateUTC in UTC. date.today() is LOCAL, and in BST the two differ between 00:00
+    and 01:00 -- a position opened 23:30 UTC would be invisible to a run in that hour."""
+    import datetime as dt
+
+    assert ac.today_utc() == dt.datetime.now(dt.timezone.utc).date()
+
+
+def test_the_module_never_uses_a_local_date_for_the_same_day_decision():
+    import pathlib
+    src = pathlib.Path("auto_close_failed_opens.py").read_text(encoding="utf-8")
+
+    assert "date.today()" not in src, "the same-day comparison must not be made against a local date"

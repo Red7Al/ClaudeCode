@@ -3121,8 +3121,12 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         for _field in ("rvol", "volume_score", "mcap", "sector", "metric_date"):
             if sig.get(_field) is None:
                 sig[_field] = _metrics.get(_field)
+        # The WEB LOGIN, not the engine profile name. get_user_profile() returns "Owner"; the saved
+        # limits live against web logins and the owner's is "Alex". Passing the former meant every
+        # automated order was gated on the code baseline instead of the account's own criteria.
+        _login = trading_limits.login_for_profile(profile)
         _reason = trading_limits.check_limits(
-            profile.get("name"), ticker, quality=_q, rr=sig.get("hvf_risk_reward"),
+            _login, ticker, quality=_q, rr=sig.get("hvf_risk_reward"),
             volume_score=sig.get("volume_score"), rvol=sig.get("rvol"),
             above_vwap=_above_vwap, atr_expanding=_atr_expanding, mcap=sig.get("mcap"),
             require_data=True)
@@ -3134,7 +3138,13 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         # A gate that is silent on success cannot be audited, and "it must have passed the filters" is not
         # evidence. Both outcomes are now logged with the VALUES and the FLOORS they were tested against,
         # so the question "why was this ordered" is always answerable from the run log.
-        _lim = trading_limits.user_limits(profile.get("name")) or {}
+        _lim = trading_limits.user_limits(_login) or {}
+        # If a money path ends up on the bare code baseline, say so at ERROR. That is what happened
+        # silently until 2026-09-04, and "it must have passed the filters" is not evidence.
+        if _lim == trading_limits.limit_defaults():
+            log.error("%s: no personal trading limits found for login %r (engine profile %r) -- "
+                      "gating on CODE DEFAULTS, not the account's saved criteria",
+                      ticker, _login, (profile or {}).get("name"))
         _evidence = (f"rvol={sig.get('rvol')}/{_lim.get('min_rvol')} "
                      f"vs={sig.get('volume_score')}/{_lim.get('min_volume_score')} "
                      f"rr={sig.get('hvf_risk_reward')}/{_lim.get('min_risk_reward')} "
