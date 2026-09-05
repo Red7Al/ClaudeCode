@@ -711,13 +711,35 @@ def test_the_public_cards_never_carry_a_per_trade_row(monkeypatch):
     assert body["cards"][0]["ret"] == 1.23, "...while the aggregate itself still arrives"
 
 
-def test_cards_built_from_a_different_scan_are_not_served(monkeypatch):
-    """Stale cards on a public page are worse than none: the page says it is recalculating instead."""
+def test_cards_built_from_a_different_scan_are_served_but_dated(monkeypatch):
+    """REVERSED 2026-09-05, deliberately, after the account owner reported the page going blank for a
+    third time ("has AGAIN stopped showing cards when user not logged in. AGAIN AGAIN AGAIN").
+
+    This used to assert the cards were withheld entirely, on the reasoning that stale cards are worse
+    than none. That is right about presenting them AS CURRENT and wrong about showing nothing: they are
+    12-month figures, an hour-old scan does not move them, and a blank panel tells the reader less than
+    dated numbers do. The protection that matters -- never implying they describe the live scan -- is now
+    carried by stale_dataset, which the page renders as an explicit "calculated from the scan of X" note.
+
+    The window this closes was most of every day: the audit ran at 05:45 while the report published the
+    day's snapshot at 07:07-07:20.
+    """
     _store_cards(monkeypatch, {"cards": [dict(_CARD)]}, dataset="GEN-OLD", snapshot_gen="GEN-NEW")
 
     body = server.app.test_client().get("/api/best-settings-cards").get_json()
 
-    assert body["cards"] == [] and body["pending"] is True
+    assert body["cards"], "a visitor should see the last computed cards, not an empty panel"
+    assert body["stale_dataset"] == "GEN-OLD", "and must be told which scan they came from"
+    assert not body.get("pending"), "pending means nothing has ever been built, which is not the case here"
+
+
+def test_cards_that_match_the_live_scan_carry_no_stale_marker(monkeypatch):
+    """The dated note must appear ONLY when it is true, or it becomes noise people learn to ignore."""
+    _store_cards(monkeypatch, {"cards": [dict(_CARD)]}, dataset="GEN-SAME", snapshot_gen="GEN-SAME")
+
+    body = server.app.test_client().get("/api/best-settings-cards").get_json()
+
+    assert body["cards"] and not body.get("stale_dataset")
 
 
 def test_the_winners_rows_are_still_withheld_from_the_same_visitor(monkeypatch):

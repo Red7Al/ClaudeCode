@@ -3239,7 +3239,7 @@ function paintPublicBestCombo(payload){
   const cards=payload.cards||[];
   if(!cards.length){
     box.innerHTML=`<div class="muted" style="font-size:13px">${payload.pending
-      ?"The Best Settings cards are being recalculated against the latest data and will appear shortly."
+      ?"The Best Settings cards have not been built yet — the first full-grid audit has not run against any scan."
       :"No supported recommendation is available from the current dataset."}</div>`;
     return;
   }
@@ -3253,7 +3253,14 @@ function paintPublicBestCombo(payload){
   const threeYearStatusCard=payload.recommended3y?"":_bestThreeYearStatusCard({loaded:true,error:"",
     best:t?{ret:t.ret,dd:t.dd,n:t.n,settings:t.settings,cfg:null}:null,current:null});
   const model=payload.model||{};
-  box.innerHTML=`<div class="muted" style="margin:0 0 8px;font-size:12px">These recommendations are calculated from the full replayed population on a <b>${model.wallet?'£'+Number(model.wallet).toLocaleString():'£10,000'}</b> model wallet at <b>${model.position_pct??5}%</b> position size${payload.data_through?`, using data through <b>${_esc(payload.data_through)}</b>`:""}. <a href="#" onclick="showLogin();return false">Log in</a> to model your own wallet, see the transaction evidence behind each card, and apply a configuration.</div>
+  // Dated rather than hidden. The cards used to disappear entirely whenever a new scan published before
+  // the audit had rebuilt them (user 2026-09-05: "has AGAIN stopped showing cards when user not logged
+  // in"). These are 12-month figures; an hour-old scan does not move them, and a blank panel tells the
+  // reader less than dated numbers do. Saying WHICH scan they came from is what keeps that honest.
+  const staleNote=payload.stale_dataset
+    ? `<div class="muted" style="margin:0 0 8px;font-size:12px;padding:6px 9px;border-left:3px solid #d29922;background:color-mix(in srgb,#d29922 8%,transparent)">Calculated from the scan of <b>${_esc(String(payload.stale_dataset).replace("T"," "))}</b>; a newer scan has since published and these are being recalculated against it.</div>`
+    : "";
+  box.innerHTML=staleNote+`<div class="muted" style="margin:0 0 8px;font-size:12px">These recommendations are calculated from the full replayed population on a <b>${model.wallet?'£'+Number(model.wallet).toLocaleString():'£10,000'}</b> model wallet at <b>${model.position_pct??5}%</b> position size${payload.data_through?`, using data through <b>${_esc(payload.data_through)}</b>`:""}. <a href="#" onclick="showLogin();return false">Log in</a> to model your own wallet, see the transaction evidence behind each card, and apply a configuration.</div>
   <div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearStatusCard}</div>`;
   _bestGridPostLayout(box);
   BEST_CHOICES=[];
@@ -4829,7 +4836,7 @@ _stampSortDefaults();
 // every flagged order either fails on something that cannot improve, or cannot be judged at all -- "if 5
 // can't be judged - they cannot be confirmed - they need to go" -- and every flagged order is pre-ticked.
 // Nothing is ever cancelled without the confirmation dialog and the server re-reading the account itself.
-let IG_AUDIT=null, IGORD=[];
+let IG_AUDIT=null, IGORD=[], igbSortK="verdict", igbSortDir=-1;
 function loadOrderFilterAudit(){
   const panel=$("ig-breach-panel"); if(!panel)return;
   fetch("/api/order-filter-audit",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
@@ -4838,12 +4845,16 @@ function loadOrderFilterAudit(){
   }).catch(()=>{IG_AUDIT=null;panel.style.display="none";});
 }
 function paintOrderFilterAudit(){
-  const panel=$("ig-breach-panel"), body=$("ig-breach-body"), count=$("ig-breach-count");
+  const panel=$("ig-breach-panel"), body=$("ig-breach-rows"), count=$("ig-breach-count");
+  const note=$("ig-breach-note"), act=$("ig-breach-actions");
   if(!panel||!body||!IG_AUDIT)return;
   // Only orders IG is actually holding: the audit walks working_orders, which can lag a cancellation.
   const live=new Map((IGORD||[]).filter(o=>o.deal_id).map(o=>[o.ticker,o]));
-  const rows=(IG_AUDIT.rows||[]).filter(r=>r.verdict!=="OK"&&live.has(r.ticker));
-  if(!rows.length){panel.style.display="none";return;}
+  const rows=(IG_AUDIT.rows||[]).filter(r=>r.verdict!=="OK"&&live.has(r.ticker)).map(r=>{
+    const o=live.get(r.ticker)||{};
+    return {...r, name:o.name, direction:o.direction, size:o.size, deal_id:o.deal_id,
+            _why:((r.breaches&&r.breaches.length?r.breaches:r.unknown||[])).join("; "), _why1:_whyHead(r)};});
+  if(!rows.length){panel.style.display="none";_breachViz("ig-breach-viz",[],"igb");return;}
   panel.style.display="";
   // BREACH and UNKNOWN are the only verdicts this endpoint can now return, and the requester has ruled on
   // both. Anything else would be a verdict added server-side after this was written: show it, so a new
@@ -4852,19 +4863,20 @@ function paintOrderFilterAudit(){
   const other=rows.filter(r=>r.verdict!=="BREACH"&&r.verdict!=="UNKNOWN");
   count.innerHTML=`<b style="font-size:15px;color:var(--fg)">${must.length}</b> working order${must.length===1?"":"s"} no longer meet your settings`
     +(other.length?` <span class="muted">· ${other.length} flagged under a rule this screen has no ruling for</span>`:"");
-  const line=r=>{const o=live.get(r.ticker), why=(r.breaches&&r.breaches.length?r.breaches:r.unknown||[]).join("; ");
-    const tick=r.verdict==="BREACH"||r.verdict==="UNKNOWN";
-    return `<label style="display:flex;gap:9px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px">
-      <input type="checkbox" data-cancel="${_esc(o.deal_id)}" ${tick?"checked":""}>
-      <b style="min-width:78px">${_esc(disp(r.ticker))}</b>
-      <span style="min-width:62px" class="muted">${_esc(o.direction||"")} ${_esc(String(o.size??""))}</span>
-      <span style="color:${r.verdict==="BREACH"?"var(--bear)":r.verdict==="UNKNOWN"?"#d29922":"var(--muted)"};min-width:70px">${_esc(r.verdict)}</span>
-      <span class="muted" style="white-space:normal">${_esc(why)}</span></label>`;};
-  body.innerHTML=
-    `<div class="muted" style="font-size:12px;margin:0 0 8px">A filter is checked when an order is PLACED and never again. These are your live working orders re-checked against your settings as they are now, judged against the setup each one was placed from. <b>Judged:</b> R:R, Quality, instrument value, and the direction/location/market gate — all properties of the setup, which cannot improve while the order sits there. <b>Not judged:</b> RVOL, VolumeScore, VWAP and ATR, which measure the breakout bar; these orders have not broken, so there is nothing to measure. Everything listed below is ticked: it either fails a durable filter or cannot be judged at all.</div>`
-    +(must.length?`<div style="margin-bottom:10px"><b style="font-size:12.5px">Does not belong on the book</b>${must.map(line).join("")}</div>`:"")
-    +(other.length?`<div style="margin-bottom:10px"><b style="font-size:12.5px">Flagged, but under a rule this screen has no ruling for — tick to include</b>${other.map(line).join("")}</div>`:"")
-    +`<button class="btn" id="ig-cancel-btn" onclick="cancelBreachingOrders(this)" style="border-color:var(--bear);background:color-mix(in srgb,var(--bear) 14%,transparent)">Cancel the ticked orders at IG</button>`;
+  _breachViz("ig-breach-viz", rows, "igb");
+  note.innerHTML=`<div class="muted" style="font-size:12px;margin:0 0 8px">A filter is checked when an order is PLACED and never again. <b>Judged:</b> R:R, Quality, instrument value and the direction/location/market gate — properties of the setup, which cannot improve while the order sits there. <b>Not judged:</b> RVOL, VolumeScore, VWAP and ATR, which measure the breakout bar; these orders have not broken, so there is nothing to measure.</div>`;
+  const sorted=genSort(rows, igbSortK, igbSortDir);
+  body.innerHTML=sorted.map(r=>`<tr>
+    <td><input type="checkbox" data-cancel="${_esc(r.deal_id)}" ${(r.verdict==="BREACH"||r.verdict==="UNKNOWN")?"checked":""}></td>
+    <td>${nm40(r.name||disp(r.ticker))}</td>
+    <td>${_igDtag(r.direction)}</td>
+    <td>${_igSz(r.size)}</td>
+    <td><b style="color:${r.verdict==="BREACH"?"var(--bear)":r.verdict==="UNKNOWN"?"#d29922":"var(--muted)"}">${_esc(r.verdict)}</b></td>
+    <td class="muted" style="white-space:normal">${_esc(r._why)}</td>
+    <td><b>${_esc(disp(r.ticker))}</b></td></tr>`).join("")
+    || `<tr><td colspan="7" class="empty">Every working order meets your settings.</td></tr>`;
+  act.innerHTML=`<button class="btn" id="ig-cancel-btn" onclick="cancelBreachingOrders(this)" style="margin-top:10px;border-color:var(--bear);background:color-mix(in srgb,var(--bear) 14%,transparent)">Cancel the ticked orders at IG</button>`;
+  _sortArrows("data-igb", igbSortK, igbSortDir);
 }
 async function cancelBreachingOrders(btn){
   const picked=[...document.querySelectorAll('#ig-breach-body input[data-cancel]:checked')].map(el=>el.dataset.cancel);
@@ -4924,7 +4936,7 @@ function showIgPanel(which){
 // CLOSING REALISES PROFIT OR LOSS, which cancelling a working order does not. So nothing here is closed
 // without the confirmation dialog naming every position, and the server re-reads the account for itself.
 // ------------------------------------------------------------------------------------------------------
-let IG_TXAUDIT = null;
+let IG_TXAUDIT = null, igtSortK = "verdict", igtSortDir = -1;
 
 function loadPositionFilterAudit(){
   const body=$("ig-txbreach-body"); if(!body)return;
@@ -4935,28 +4947,48 @@ function loadPositionFilterAudit(){
   }).catch(()=>{IG_TXAUDIT={rows:[]};paintPositionBreach();});
 }
 
+function _breachViz(boxId, rows, prefix){
+  // The SAME chart strip the Open transactions and Open orders tabs carry, built from the same
+  // barChart/pieChart helpers (user 2026-09-05: "get a standard approach to similar pages so UI and UX
+  // is as good as it can be"). Charts here are presentational only -- they summarise what is in the
+  // table below rather than filtering it, so they take no data-fk hook.
+  const box=$(boxId); if(!box)return;
+  if(!rows.length){box.innerHTML="";return;}
+  const by=f=>{const m={};rows.forEach(r=>{const v=r[f]||"—";m[v]=(m[v]||0)+1;});return m;};
+  box.innerHTML=
+    `<div class="vizsector">`+barChart("Verdict",by("verdict"),prefix+"_verdict",k=>k==="BREACH"?"var(--bear)":"#d29922")+`</div>`+
+    `<div class="vizsector">`+barChart("Direction",by("direction"),prefix+"_direction",k=>k==="BUY"?"var(--bull)":"var(--bear)")+`</div>`+
+    `<div class="vizsector">`+barChart("Reason",by("_why1"),prefix+"_why")+`</div>`;
+  packViz(boxId);
+}
+function _whyHead(r){
+  const list=(r.breaches&&r.breaches.length?r.breaches:r.unknown||[]);
+  return (list[0]||"—").split(" ").slice(0,2).join(" ");     // "RVOL 1.02 < 1.5" -> "RVOL 1.02" -> group label
+}
 function paintPositionBreach(){
-  const body=$("ig-txbreach-body"), count=$("ig-txbreach-count");
+  const count=$("ig-txbreach-count"), body=$("ig-txbreach-rows"), note=$("ig-txbreach-note"), act=$("ig-txbreach-actions");
   if(!body||!IG_TXAUDIT)return;
-  const rows=(IG_TXAUDIT.rows||[]).filter(r=>r.verdict!=="OK"&&r.deal_id);
+  const rows=(IG_TXAUDIT.rows||[]).filter(r=>r.verdict!=="OK"&&r.deal_id)
+    .map(r=>({...r,_why:( (r.breaches&&r.breaches.length?r.breaches:r.unknown||[]) ).join("; "),_why1:_whyHead(r)}));
   const ok=(IG_TXAUDIT.rows||[]).length-rows.length;
   count.innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> open position${rows.length===1?"":"s"} no longer meet your criteria`
     +(ok?` <span class="muted">· ${ok} still do</span>`:"");
-  if(!rows.length){body.innerHTML='<span class="muted">Every open position meets your criteria.</span>';return;}
-  const line=r=>`<label style="display:flex;gap:9px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px">
-      <input type="checkbox" data-close="${_esc(r.deal_id)}" ${r.verdict==="BREACH"?"checked":""}>
-      <b style="min-width:180px">${nm40(r.name||disp(r.ticker))}</b>
-      <span style="min-width:62px" class="muted">${_esc(r.direction||"")} ${_esc(String(r.size??""))}</span>
-      <span style="min-width:82px" class="muted">opened ${_esc(r.opened||"")}</span>
-      <span style="color:${r.verdict==="BREACH"?"var(--bear)":"#d29922"};min-width:70px">${_esc(r.verdict)}</span>
-      <span class="muted grow" style="white-space:normal;flex:1">${_esc((r.breaches&&r.breaches.length?r.breaches:r.unknown||[]).join("; "))}</span>
-      <b style="min-width:70px;text-align:right">${_esc(disp(r.ticker))}</b></label>`;
-  body.innerHTML=
-    `<div class="muted" style="font-size:12px;margin:0 0 8px">Each position is judged against the bar it OPENED on, read from the stored daily metrics — not against today. That is the opposite of the orders tab, and deliberately: a position has broken, so RVOL, VolumeScore, above-VWAP and ATR are exactly what should be tested; a pending order has not broken, so they cannot be. <b>Closing realises profit or loss</b>, so nothing is closed until you confirm it, and only BREACH rows are ticked — an unjudgeable position is listed but never pre-selected, because an absence of evidence must not cost you a position.</div>`
-    +rows.map(line).join("")
-    +`<button class="btn" id="ig-txclose-btn" onclick="closeBreachingPositions(this)" style="margin-top:10px;border-color:var(--bear);background:color-mix(in srgb,var(--bear) 14%,transparent)">Close the ticked positions at IG</button>`;
+  _breachViz("ig-txbreach-viz", rows, "igt");
+  note.innerHTML=rows.length?`<div class="muted" style="font-size:12px;margin:0 0 8px">Each position is judged against the bar it OPENED on, read from the stored daily metrics — not against today. <b>Closing realises profit or loss</b>, so nothing is closed until you confirm it, and only BREACH rows are ticked: a position that cannot be judged is listed but never pre-selected.</div>`:"";
+  const sorted=genSort(rows, igtSortK, igtSortDir);
+  body.innerHTML=sorted.map(r=>`<tr>
+    <td><input type="checkbox" data-close="${_esc(r.deal_id)}" ${r.verdict==="BREACH"?"checked":""}></td>
+    <td>${nm40(r.name||disp(r.ticker))}</td>
+    <td>${_igDtag(r.direction)}</td>
+    <td>${_igSz(r.size)}</td>
+    <td>${_esc(r.opened||"")}</td>
+    <td><b style="color:${r.verdict==="BREACH"?"var(--bear)":"#d29922"}">${_esc(r.verdict)}</b></td>
+    <td class="muted" style="white-space:normal">${_esc(r._why)}</td>
+    <td><b>${_esc(disp(r.ticker))}</b></td></tr>`).join("")
+    || `<tr><td colspan="8" class="empty">Every open position meets your criteria.</td></tr>`;
+  act.innerHTML=rows.length?`<button class="btn" id="ig-txclose-btn" onclick="closeBreachingPositions(this)" style="margin-top:10px;border-color:var(--bear);background:color-mix(in srgb,var(--bear) 14%,transparent)">Close the ticked positions at IG</button>`:"";
+  _sortArrows("data-igt", igtSortK, igtSortDir);
 }
-
 async function closeBreachingPositions(btn){
   const picked=[...document.querySelectorAll('#ig-txbreach-body input[data-close]:checked')].map(el=>el.dataset.close);
   if(!picked.length){await appConfirm("Nothing is ticked.",{title:"No positions selected",ok:"OK"});return;}
@@ -5011,3 +5043,8 @@ function paintAutoClosed(){
 
 document.querySelectorAll("th[data-iga]").forEach(th=>th.onclick=()=>{
   const k=th.dataset.iga; igaSortDir=(igaSortK===k)?-igaSortDir:-1; igaSortK=k; paintAutoClosed();});
+
+document.querySelectorAll("th[data-igt]").forEach(th=>th.onclick=()=>{
+  const k=th.dataset.igt; igtSortDir=(igtSortK===k)?-igtSortDir:-1; igtSortK=k; paintPositionBreach();});
+document.querySelectorAll("th[data-igb]").forEach(th=>th.onclick=()=>{
+  const k=th.dataset.igb; igbSortDir=(igbSortK===k)?-igbSortDir:-1; igbSortK=k; paintOrderFilterAudit();});

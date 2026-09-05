@@ -2793,7 +2793,7 @@ def test_the_logged_out_cards_bring_no_transaction_evidence():
 def test_a_pending_recalculation_says_so_rather_than_showing_an_empty_grid():
     grid = _public_grid("{cards:[],unsupported:[],pending:true}")
 
-    assert "recalculated" in grid, "an empty grid reads as a broken feature"
+    assert "have not been built yet" in grid, "an empty grid reads as a broken feature"
     assert "fcard" not in grid
 
 
@@ -2865,15 +2865,25 @@ def test_the_ig_orders_cells_use_the_shared_formatters():
 
 def _breach_panel(rows_js, orders_js):
     stubs = """
-      let PANEL={style:{}}, BODY={innerHTML:""}, COUNT={innerHTML:""};
-      const $=id=>id==="ig-breach-panel"?PANEL:id==="ig-breach-body"?BODY:id==="ig-breach-count"?COUNT:null;
+      let PANEL={style:{}}, BODY={innerHTML:""}, COUNT={innerHTML:""},
+          NOTE={innerHTML:""}, ACT={innerHTML:""}, VIZ={innerHTML:""};
+      const $=id=>id==="ig-breach-panel"?PANEL:id==="ig-breach-rows"?BODY:id==="ig-breach-count"?COUNT
+                 :id==="ig-breach-note"?NOTE:id==="ig-breach-actions"?ACT:id==="ig-breach-viz"?VIZ:null;
       const _esc=s=>String(s??"");
       const disp=t=>String(t||"");
+      const nm40=n=>String(n||"");
+      const _igDtag=d=>String(d||"");
+      const _igSz=v=>String(v??"");
+      const genSort=(rows)=>rows;
+      const _sortArrows=()=>{};
+      const _breachViz=()=>{};
+      const _whyHead=r=>((r.breaches&&r.breaches.length?r.breaches:r.unknown||[])[0]||"—");
+      let igbSortK="verdict", igbSortDir=-1;
     """
     src = (f"let IG_AUDIT={{rows:{rows_js}}}, IGORD={orders_js};\n"
            + _extract("paintOrderFilterAudit"))
     return run_js(stubs, src,
-                  '(()=>{paintOrderFilterAudit();return {html:BODY.innerHTML,count:COUNT.innerHTML,'
+                  '(()=>{paintOrderFilterAudit();return {html:BODY.innerHTML+ACT.innerHTML,count:COUNT.innerHTML,'
                   'shown:PANEL.style.display};})()')
 
 

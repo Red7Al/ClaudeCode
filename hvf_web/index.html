@@ -1997,9 +1997,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        to it. Nothing here closes anything on its own -- /api/ig-close-positions needs each deal id named
        and an explicit confirmation, and closing realises profit or loss. -->
   <div id="igpanel-txbreach" class="hidden">
+    <div class="viz" id="ig-txbreach-viz" style="border-bottom:none;padding:0 0 10px"></div>
     <section class="gsec" style="border-left-color:var(--bear)">
       <div class="count" style="padding-left:0"><span id="ig-txbreach-count"></span></div>
-      <div id="ig-txbreach-body"></div>
+      <div id="ig-txbreach-note"></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th data-nosort>Select</th><th class="clk" data-igt="name">Name</th><th class="clk" data-igt="direction">Direct</th><th class="clk" data-igt="size">Size</th><th class="clk" data-igt="opened">Opened</th><th class="clk" data-igt="verdict">Verdict</th><th class="clk" data-igt="why" style="white-space:normal">Why it no longer meets your criteria</th><th class="clk" data-igt="ticker">Ticker</th></tr></thead>
+        <tbody id="ig-txbreach-rows"></tbody>
+      </table></div>
+      <div id="ig-txbreach-actions"></div>
     </section>
   </div>
 
@@ -2009,9 +2015,15 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        the table it is about. Nothing here cancels anything on its own: the list is built by
        /api/order-filter-audit, the choice is the user's, and /api/ig-cancel-orders needs each deal id
        named plus an explicit confirmation. -->
+  <div class="viz" id="ig-breach-viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" id="ig-breach-panel" style="border-left-color:var(--bear);display:none">
     <div class="count" style="padding-left:0"><span id="ig-breach-count"></span></div>
-    <div id="ig-breach-body"></div>
+    <div id="ig-breach-note"></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th data-nosort>Select</th><th class="clk" data-igb="name">Name</th><th class="clk" data-igb="direction">Direct</th><th class="clk" data-igb="size">Size</th><th class="clk" data-igb="verdict">Verdict</th><th class="clk" data-igb="why" style="white-space:normal">Why it no longer meets your criteria</th><th class="clk" data-igb="ticker">Ticker</th></tr></thead>
+      <tbody id="ig-breach-rows"></tbody>
+    </table></div>
+    <div id="ig-breach-actions"></div>
   </section>
   </div>
 

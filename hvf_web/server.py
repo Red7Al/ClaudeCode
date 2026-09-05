@@ -4707,7 +4707,18 @@ def _best_cards_stored():
     if not isinstance(doc, dict) or not isinstance(doc.get("payload"), dict):
         return None
     if (doc.get("dataset") or "") != gen:
-        return None       # built from a different scan; saying "recalculating" beats quoting stale cards
+        # BUILT FROM AN EARLIER SCAN. This used to return None, so the page went blank every time a new
+        # snapshot published before the audit had rebuilt the cards -- reported repeatedly by the account
+        # owner (2026-09-05: "has AGAIN stopped showing cards when user not logged in").
+        #
+        # The original reasoning was that "recalculating" beats quoting stale cards, and that is right
+        # about quoting them AS CURRENT. It is not right about showing nothing: these are 12-month
+        # figures, an hour-old scan does not move them, and a blank page tells the reader less than
+        # dated numbers do. So they are served with the scan they were built from, and the page says so.
+        payload = dict(doc["payload"])
+        payload["stale_dataset"] = str(doc.get("dataset") or "")[:19]
+        _BEST_CARDS_CACHE.update(gen=gen, data=payload)
+        return payload
     _BEST_CARDS_CACHE.update(gen=gen, data=doc["payload"])
     return doc["payload"]
 
@@ -4734,6 +4745,8 @@ def api_best_settings_cards():
         "threeYear": ({k: three.get(k) for k in ("ret", "dd", "n", "settings")} if three else None),
         "model": payload.get("model") or {},
         "data_through": payload.get("data_through") or "",
+        # Present only when the cards predate the scan now live, so the page can date them honestly.
+        "stale_dataset": payload.get("stale_dataset") or "",
     }))
 
 
