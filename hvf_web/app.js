@@ -878,7 +878,7 @@ let PINNED=new Set(), OVERRIDES={};   // pinned tickers + per-ticker entry/stop/
 let MY_LIMITS={};   // the user's personal floors from Configuration → My trading limits (min_risk_reward, min_quality) — applied to My Pre-orders (user 2026-07-24, P-02)
 const isPreorder=r=>(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker))) ||
   (r.has_signal && (r.status==="READY"||r.status==="DEVELOPING") && !(r.quality!=null && r.quality<25) && !IGWO.has(r.ticker) && !IGWO.has(disp(r.ticker)));
-const TABS=["welcome","whatwedo","intro","risk","appendix","terms","scanner","instruments","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","docs","markets","marketsadmin","performance","squeezehist","mfm","changereq"];
+const TABS=["welcome","whatwedo","intro","risk","appendix","terms","scanner","instruments","preorders","orderops","igaccount","fees","activity","batch","users","xposts","config","configadmin","version","syslogs","jobs","sysdocs","docs","markets","marketsadmin","performance","insights","squeezehist","mfm","changereq"];
 // Visible when logged out. "performance" was REMOVED on 2026-08-28 at the requester's instruction
 // ("remove the evidence tab and row count if user not logged in"). It had been public, and because the
 // table's only row filter is the viewer's OWN saved configuration (_pfMatchesCurrentConfig -> MY_LIMITS,
@@ -1041,7 +1041,8 @@ function showTab(name){
     config:renderConfig,configadmin:renderConfig,users:renderUsers,syslogs:renderSyslogs,jobs:renderJobs,
     version:renderVersion,batch:renderBatch,markets:renderMarkets,marketsadmin:renderMarketsAdmin,
     performance:renderPerformance,changereq:renderCR,igaccount:renderIgAccount,
-    squeezehist:renderSqueezeHist,fees:renderFees,instruments:renderInstruments,docs:renderDocs};
+    squeezehist:renderSqueezeHist,fees:renderFees,instruments:renderInstruments,docs:renderDocs,
+    insights:renderInsights};
   if(R[name])R[name]();
 }
 // ── X Posts tab (user 2026-07-03): all published tweets + charts, click-to-filter, sortable. ──
@@ -1072,7 +1073,7 @@ const TAB_LABELS={welcome:"Introduction",whatwedo:"What we do",intro:"How it wor
   users:"User Management",version:"Version History",syslogs:"System Logs",jobs:"Scheduled Jobs",sysdocs:"How it works (System)",
   config:"Configuration (User)",markets:"Markets (User)",marketsadmin:"Markets (Admin)",configadmin:"Configuration (Admin)",
   performance:"Performance",mfm:"Trading (Multi-Factor Momentum)",changereq:"Change Requests",igaccount:"IG Account",
-  squeezehist:"Squeeze History",fees:"Fees",instruments:"Instruments"};
+  squeezehist:"Squeeze History",fees:"Fees",instruments:"Instruments",insights:"Insights"};
 // ── System Logs (admin, user 2026-07-04): health cards + log table + clickable charts ──────────────
 let SL_ROWS=[], slSortK="ts", slSortDir=-1;
 function paintSyslogs(){
@@ -3165,6 +3166,81 @@ const bestCardMaxRows=()=>innerWidth>BEST_TABLET_MAX?2:Infinity;
 //
 // It states the known weaknesses as plainly as the method. A methodology page that lists only strengths
 // is not reviewable, and review is the entire purpose of this one.
+// ------------------------------------------------------------------------------------------------------
+// INSIGHTS (user 2026-09-06, P-37: "give insights e.g. data and chart ... Continue to check this insights
+// as they are published. Keep this to just one page of insights at max to not overface us.")
+//
+// Each card is headline, a chart, the numbers behind it, and a caveat. The caveat is not decoration: an
+// insight is a claim about the past, and a claim published without its limits is how a reader ends up
+// trusting a pattern that was never there.
+//
+// "Continue to check these" is why every card carries its own significance verdict, recomputed on each
+// build rather than written once. When a pattern stops clearing the bar the card SAYS so and keeps its
+// place, instead of vanishing or -- worse -- keeping confident wording it no longer earns.
+// ------------------------------------------------------------------------------------------------------
+let INSIGHTS = null;
+
+function renderInsights(){
+  const box = $("insights-body"); if(!box) return;
+  if(INSIGHTS){ paintInsights(); return; }
+  box.innerHTML = '<span class="sqh-loading">⏳ Data loading…</span>';
+  fetch("/api/insights", {headers:{"X-Auth":AUTH}})
+    .then(r => r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)))
+    .then(j => { INSIGHTS = j; paintInsights(); })
+    .catch(e => { box.innerHTML = `<div class="muted" style="font-size:13px">Insights are unavailable (${_esc(String(e.message||e))}).</div>`; });
+}
+
+function _insightChart(ins){
+  const pts = ins.chart || [];
+  if(!pts.length) return "";
+  const max = Math.max(...pts.map(p => Math.abs(+p.value||0)), 1);
+  // Label width is sized from the longest label, in ch, so the bars line up on one edge. Sizing per
+  // chart rather than globally is what keeps a month label and a market-cap band from fighting.
+  const lab = Math.max(...pts.map(p => String(p.label).length));
+  return `<div class="viz" style="border:none;padding:0;margin:10px 0 4px">${pts.map(p => {
+    const v = +p.value||0, w = Math.max(1, Math.round(100*Math.abs(v)/max));
+    return `<div class="bar" style="display:flex;align-items:center;gap:8px;margin:3px 0">
+      <span class="tk muted" style="flex:0 0 ${lab}ch;font-size:11px;text-align:right">${_esc(p.label)}</span>
+      <span style="flex:1;background:var(--line);border-radius:3px;height:14px;position:relative">
+        <span style="display:block;height:100%;width:${w}%;background:var(--accent);border-radius:3px"></span></span>
+      <b style="flex:0 0 5ch;font-size:11px">${v}%</b></div>`;}).join("")}</div>`;
+}
+
+function _insightTable(ins){
+  const rows = ins.table || [];
+  if(!rows.length) return "";
+  return `<div class="tablewrap" style="margin-top:8px"><table style="font-size:12px"><thead><tr>
+      <th>Band</th><th>Trades</th><th>Positive</th><th>Average return</th></tr></thead><tbody>${
+    rows.map(r => `<tr><td>${_esc(r.label)}</td><td>${r.n}</td><td>${r.win_pct}%</td>
+      <td><b style="color:${(+r.avg_return)>=0?'var(--bull)':'var(--bear)'}">${(+r.avg_return).toFixed(2)}%</b></td></tr>`).join("")
+  }</tbody></table></div>`;
+}
+
+function paintInsights(){
+  const box = $("insights-body"); if(!box) return;
+  const list = (INSIGHTS && INSIGHTS.insights) || [];
+  if(!list.length){
+    box.innerHTML = '<div class="muted" style="font-size:13px">No insight currently clears its evidence bar. That is a result, not an error — nothing is being withheld.</div>';
+    return;
+  }
+  box.innerHTML = list.map(ins => {
+    // The verdict leads, because it changes how the rest of the card should be read.
+    const ok = !!ins.significant;
+    const badge = `<span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap;color:#fff;background:${ok?'var(--bull)':'#d29922'}">${ok?'Supported':'Not established'}</span>`;
+    return `<div class="card" style="margin:0 0 14px;border-left:3px solid ${ok?'var(--bull)':'#d29922'}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <h3 style="margin:0;font-size:15px">${_esc(ins.title)}</h3>${badge}
+        <span class="muted" style="font-size:11px">${_esc(ins.stat||"")} · ${(+ins.n||0).toLocaleString()} trades</span></div>
+      <p style="font-size:13.5px;margin:8px 0 2px"><b>${_esc(ins.headline)}</b></p>
+      ${ins.chart_title?`<div class="muted" style="font-size:11px;margin-top:8px">${_esc(ins.chart_title)}</div>`:""}
+      ${_insightChart(ins)}
+      ${_insightTable(ins)}
+      <p class="muted" style="font-size:12px;margin:8px 0 0">${_esc(ins.detail||"")}</p>
+      <p class="muted" style="font-size:12px;margin:6px 0 0"><b style="color:var(--fg)">Read with care:</b> ${_esc(ins.caveat||"")}</p>
+    </div>`;}).join("")
+    + `<div class="muted" style="font-size:11px">Recomputed ${_esc((INSIGHTS&&INSIGHTS.generated)||"")}. Each verdict is re-tested on every build.</div>`;
+}
+
 // ------------------------------------------------------------------------------------------------------
 function methodologyHTML(){
   const g=(typeof BEST_GRID==="object"&&BEST_GRID)||{};

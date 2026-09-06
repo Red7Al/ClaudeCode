@@ -4783,6 +4783,169 @@ def api_best_settings_cards():
     }))
 
 
+# ======================================================================================================
+# INSIGHTS (user 2026-09-06, P-37: "Add an insights tab ... to give insights e.g. data and chart to
+# illustrate the increase in bear direction squeezes at the moment. Also the analysis done on performance
+# for mcap below 100bn and circa 10bn. Continue to check this insights as they are published. Keep this
+# to just one page of insights at max to not overface us.")
+#
+# ONE PAGE, so the limit is enforced in code rather than left to editorial restraint: _INSIGHT_LIMIT caps
+# what the endpoint returns, and a test asserts it.
+#
+# Every insight carries its OWN significance test and reports it. "Continue to check these insights as
+# they are published" is the requirement that matters here: an insight recomputed nightly will eventually
+# stop being true, and one that cannot say whether it is still supported is worse than none -- it keeps
+# its confident wording long after the evidence has gone. So each returns a `significant` flag with the
+# statistic behind it, and the page states in words which side of the line it currently sits on.
+# ======================================================================================================
+
+_INSIGHT_LIMIT = 4                 # one page; refuse to grow into a report nobody reads
+_INSIGHT_CACHE = {"day": None, "data": None}
+
+
+def _insight_direction_mix() -> dict:
+    """Is the current month's bull/bear mix unusual against the previous twelve full months?"""
+    from db_pool import get_db
+    db = get_db()
+    try:
+        months = db.run(
+            "select to_char(triggered_date,'YYYY-MM') as m, "
+            "sum(case when hvf_type ilike :bear then 1 else 0 end)::int as bear, "
+            "count(*)::int as n from squeeze_history "
+            "where triggered_date >= current_date - interval '13 months' "
+            "group by 1 order by 1", bear="%bear%") or []
+    finally:
+        db.close()
+    if len(months) < 3:
+        return {}
+    prior, current = months[:-1], months[-1]
+    base_bear = sum(r[1] for r in prior)
+    base_n = sum(r[2] for r in prior)
+    if not base_n or not current[2]:
+        return {}
+    pb = base_bear / base_n
+    pc = current[1] / current[2]
+    se = math.sqrt(pb * (1 - pb) / current[2]) if 0 < pb < 1 else 0
+    z = (pc - pb) / se if se else 0.0
+    return {
+        "id": "direction_mix",
+        "title": "Bear-direction squeezes this month",
+        "headline": (f"{pc*100:.0f}% of this month's triggers are BEAR, against {pb*100:.0f}% "
+                     f"over the previous twelve months"),
+        "stat": f"z = {abs(z):.1f}",
+        "significant": abs(z) >= 2,
+        "n": current[2],
+        "detail": (f"{current[1]} of {current[2]} triggers so far this month are bearish. The twelve full "
+                   f"months before it ran at {pb*100:.0f}% bear across {base_n:,} triggers."),
+        "caveat": ("A part-month on a small count moves easily. This compares the SHARE, not the count, "
+                   "and z is how far the current share sits from the twelve-month rate."),
+        "chart": [{"label": r[0], "value": round(100.0 * r[1] / r[2], 1)} for r in months if r[2]],
+        "chart_title": "% of triggers that were BEAR, by month",
+    }
+
+
+def _insight_mcap_bands() -> dict:
+    """Which market-cap band actually performed, over the last 12 months of resolved triggers."""
+    from db_pool import get_db
+    bands = [("under 2bn", 0.0, 2e9), ("2-10bn", 2e9, 1e10), ("10-25bn", 1e10, 2.5e10),
+             ("25-100bn", 2.5e10, 1e11), ("100bn+", 1e11, None)]
+    db = get_db()
+    try:
+        rows = db.run(
+            "select coalesce(m.mcap, -1)::float, s.return_pct::float "
+            "from squeeze_history s left join instrument_mcap m on m.ticker = s.ticker "
+            "where s.triggered_date >= current_date - interval '12 months' "
+            "and s.return_pct is not null") or []
+    finally:
+        db.close()
+
+    def in_band(mc, lo, hi):
+        return mc >= lo and (hi is None or mc < hi)
+
+    out = []
+    for label, lo, hi in bands:
+        vals = [r for mc, r in rows if in_band(mc, lo, hi)]
+        w = sum(1 for v in vals if v > 0)
+        l = sum(1 for v in vals if v < 0)
+        if not (w + l):
+            continue
+        out.append({"label": label, "n": len(vals), "win_pct": round(100.0 * w / (w + l), 1),
+                    "avg_return": round(sum(vals) / len(vals), 2)})
+    if not out:
+        return {}
+    best = max(out, key=lambda b: b["win_pct"])
+    lo, hi = next((lo, hi) for lbl, lo, hi in bands if lbl == best["label"])
+
+    # Significance against every OTHER PRICED instrument, not against the neighbouring band: the question
+    # a reader has is whether this band beats the rest, not whether two neighbours differ. Unpriced rows
+    # are excluded from both sides -- they belong to no band, and pooling them would invent one.
+    inb = [r for mc, r in rows if in_band(mc, lo, hi)]
+    rest = [r for mc, r in rows if mc >= 0 and not in_band(mc, lo, hi)]
+    z = t = 0.0
+    if inb and rest:
+        w1 = sum(1 for v in inb if v > 0)
+        l1 = sum(1 for v in inb if v < 0)
+        w2 = sum(1 for v in rest if v > 0)
+        l2 = sum(1 for v in rest if v < 0)
+        n1, n2 = w1 + l1, w2 + l2
+        if n1 and n2:
+            p1, p2 = w1 / n1, w2 / n2
+            p = (w1 + w2) / (n1 + n2)
+            den = math.sqrt(p * (1 - p) * (1 / n1 + 1 / n2)) if 0 < p < 1 else 0
+            z = (p1 - p2) / den if den else 0.0
+        if len(inb) > 1 and len(rest) > 1:
+            m1 = sum(inb) / len(inb)
+            m2 = sum(rest) / len(rest)
+            v1 = sum((x - m1) ** 2 for x in inb) / (len(inb) - 1)
+            v2 = sum((x - m2) ** 2 for x in rest) / (len(rest) - 1)
+            den = math.sqrt(v1 / len(inb) + v2 / len(rest))
+            t = (m1 - m2) / den if den else 0.0
+    return {
+        "id": "mcap_bands",
+        "title": "Which company size actually performed",
+        "headline": (f"{best['label']} leads on both measures: {best['win_pct']}% of trades positive "
+                     f"and {best['avg_return']:+.2f}% average return"),
+        "stat": f"win rate z = {abs(z):.1f}, return t = {abs(t):.1f}",
+        "significant": abs(z) >= 2 and abs(t) >= 2,
+        "n": best["n"],
+        "detail": ("Every resolved trigger of the last 12 months, grouped by the instrument's market cap "
+                   "in GBP. Win rate counts positive against negative returns; break-even is neither."),
+        "caveat": ("These are the setups the scanner found, not a controlled comparison of company size: "
+                   "the bands differ in how many instruments they hold and in which markets they sit. "
+                   "Instruments with no market cap are excluded from every band rather than pooled."),
+        "chart": [{"label": b["label"], "value": b["win_pct"]} for b in out],
+        "chart_title": "% of trades positive, by market cap",
+        "table": out,
+    }
+
+
+_INSIGHT_BUILDERS = (_insight_direction_mix, _insight_mcap_bands)
+
+
+@app.route("/api/insights")
+def api_insights():
+    """The Insights page. Cached per DAY: each reads 12 months of squeeze_history and none can move
+    meaningfully within a day, so recomputing per visitor would be a full scan for nothing."""
+    if not _wu.name_for_token(request.headers.get("X-Auth") or ""):
+        return jsonify({"error": "login required"}), 401
+    day = _dt.date.today().isoformat()
+    if _INSIGHT_CACHE["day"] == day and _INSIGHT_CACHE["data"] is not None:
+        return jsonify(_INSIGHT_CACHE["data"])
+    out = []
+    for build in _INSIGHT_BUILDERS[:_INSIGHT_LIMIT]:
+        try:
+            got = build()
+            if got:
+                out.append(got)
+        except Exception as ex:
+            # One failing insight must not empty the page. Reported, never silently swallowed.
+            log.warning(f"insight {getattr(build, '__name__', '?')} failed: {ex}")
+    payload = {"insights": out,
+               "generated": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
+    _INSIGHT_CACHE.update(day=day, data=payload)
+    return jsonify(_json_safe(payload))
+
+
 _CR_DIR = os.path.join(_REPO_ROOT, "ChangeRequests")
 # Status a requirement line can carry (user 2026-07-10, Change Requests tab). A line is Completed/In
 # Progress/Cancelled/Requested when it ends with a bracketed marker (e.g. "[Completed]") or carries a

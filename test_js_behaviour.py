@@ -565,7 +565,8 @@ def test_the_save_outcome_survives_the_re_render():
 TAB_RENDERERS = {
     "activity": "renderActivity", "batch": "renderBatch", "changereq": "renderCR",
     "config": "renderConfig", "docs": "renderDocs", "fees": "renderFees",
-    "igaccount": "renderIgAccount", "instruments": "renderInstruments", "jobs": "renderJobs",
+    "igaccount": "renderIgAccount", "insights": "renderInsights",
+    "instruments": "renderInstruments", "jobs": "renderJobs",
     "orderops": "renderOrderOps", "performance": "renderPerformance", "squeezehist": "renderSqueezeHist",
     "syslogs": "renderSyslogs", "users": "renderUsers", "version": "renderVersion",
     "xposts": "renderXposts",

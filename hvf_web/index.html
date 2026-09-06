@@ -1727,6 +1727,20 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <!-- Squeeze History (Admin) (user 2026-07-18) — squeeze lifecycle: developing → ready → triggered → outcome. -->
+<!-- INSIGHTS (user 2026-09-06, P-37). Deliberately ONE page: "keep this to just one page of insights
+     at max to not overface us". The cap is enforced server-side by _INSIGHT_LIMIT rather than trusted to
+     editorial restraint here, and every card states its own significance so a stale insight announces
+     itself instead of keeping confident wording after the evidence has gone. -->
+<div id="view-insights" class="hidden">
+  <section class="gsec">
+    <div class="eyebrow">Insights</div>
+    <h2 style="margin:4px 0 6px">What the data is saying right now</h2>
+    <p class="muted" style="font-size:13px;margin:0 0 12px">A short, deliberately limited page. Each
+    insight is recomputed daily from the full trigger history and re-tested every time it is published,
+    so one that stops being supported says so rather than quietly staying on the page.</p>
+    <div id="insights-body"><span class="sqh-loading">⏳ Data loading…</span></div>
+  </section>
+</div>
 <div id="view-squeezehist" class="hidden doc" style="width:100%;max-width:none;margin-inline:0">
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><button class="btn" onclick="renderSqueezeHist()">↻ Refresh</button></div>
   <!-- Title row shares the year filter (multi-select, middle/right) + a compact Direction chart next to the
