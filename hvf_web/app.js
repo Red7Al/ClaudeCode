@@ -1061,7 +1061,6 @@ function paintXposts(){
   if(_xq)rows=rows.filter(e=>(e.name||"").toLowerCase().includes(_xq)||disp(e.ticker).toLowerCase().includes(_xq));
   rows=applyDateFilter("x",rows,e=>e.published_at);
   rows=genSort(rows,xSortK,xSortDir);
-  $("xtab-count")&&($("xtab-count").textContent=`(${X_ROWS.length})`);
   $("x-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> tweets${rows.length!==X_ROWS.length?` <span class="muted">of ${X_ROWS.length}</span>`:''}`;
   $("x-rows").innerHTML=rows.map(e=>`<tr><td>${e.published_at||''}</td><td>${nm40(e.name)}</td><td>${e.market||''}</td><td>${e.thread>1?e.thread+' pts':'1'}</td><td><b>${disp(e.ticker)}</b></td><td><a href="${e.url}" target="_blank" rel="noopener">open ↗</a></td></tr>`).join("")||`<tr><td colspan="6" class="empty">No tweets yet.</td></tr>`;
 }
@@ -1451,7 +1450,6 @@ function paintVersion(){
   rows=applyDateFilter("ver",rows,e=>e.date);
   rows=genSort(rows,verSortK,verSortDir);
   const filt=(setOf("vcf_category")||setOf("vmf_month")||dateActive("ver"));
-  $("vertab-count")&&($("vertab-count").textContent=`(${VER_ROWS.length})`);
   $("ver-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> changes${filt?` <span class="muted">of ${VER_ROWS.length}</span>`:''}`;
   $("ver-rows").innerHTML=rows.map(e=>`<tr><td style="white-space:nowrap">${e.date||''}</td><td style="white-space:nowrap"><code>${e.version}</code></td><td style="white-space:nowrap"><span class="tag" style="background:var(--chip);color:var(--fg)">${e.category||'Feature'}</span></td><td>${(e.summary||'').replace(/</g,"&lt;")}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 // Shared "Data loading…" row for the admin tables (user 2026-08-23: "when data sets loading are slow we
@@ -1514,7 +1512,6 @@ function paintBatch(){
   rows=applyDateFilter("batch",rows,e=>e.ts);
   const _bq=(($("batch-search")||{}).value||"").toLowerCase().trim();   // free-text search by event (user 2026-07-17)
   if(_bq)rows=rows.filter(e=>(e.event||"").toLowerCase().includes(_bq));
-  $("batab-count")&&($("batab-count").textContent=`(${BATCH_ROWS.length})`);
   $("batch-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> batch runs${rows.length!==BATCH_ROWS.length?` <span class="muted">of ${BATCH_ROWS.length}</span>`:''}`;
   $("batch-rows").innerHTML=genSort(rows,batchSortK,batchSortDir).map(e=>`<tr><td>${e.ts||''}</td><td><span class="tag" style="background:var(--chip);color:var(--fg)">${e.source||''}</span></td><td>${(e.event||'').replace(/</g,"&lt;")}</td><td>${e.by||''}</td></tr>`).join("")||`<tr><td colspan="4" class="empty">No entries.</td></tr>`;}
 function renderBatch(){_rowsLoading("batch-rows","renderBatch()");fetch("/api/batch-activity",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{_rowsLoaded("batch-rows");BATCH_ROWS=j.entries||[];paintBatch();}).catch(()=>_rowsFault("batch-rows","Batch activity is admin-only; check you are still signed in.","renderBatch()"));}
@@ -1592,7 +1589,6 @@ const goldOnly=()=>ROLE==="gold";
 const advancedPfAllowed=()=>IS_ADMIN&&(ROLE==="silver"||ROLE==="gold");
 function toggleAdvancedPf(){
   if(!advancedPfAllowed())return;
-  const nav=$("pf-advanced-nav"); if(nav)nav.classList.remove("hidden");
   pfPanel("analysis");
 }
 // Configuration card navigation (user 2026-07-03): show one config panel at a time.
@@ -1702,8 +1698,7 @@ function renderConfig(){
           return `<label style="display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--fg);background:${on?'color-mix(in srgb,var(--accent) 16%,transparent)':'var(--chip)'};border:1px solid ${on?'var(--accent)':'var(--line)'};border-radius:999px;padding:8px 14px;cursor:pointer;line-height:1"><input type="checkbox" class="xhvf-mk" data-v="${m}" ${on?"checked":""} style="width:17px;height:17px;accent-color:var(--accent);margin:0" onchange="this.parentElement.style.background=this.checked?'color-mix(in srgb,var(--accent) 16%,transparent)':'var(--chip)';this.parentElement.style.borderColor=this.checked?'var(--accent)':'var(--line)'"> ${m}</label>`;}).join("");}
       if($("cfg-bridge")){$("cfg-bridge").checked=!!j.bridge;$("cfg-bridge").title=j.has_ig_creds?"Toggle the shared bridge execution setting.":"IG credentials are required before turning this on; the control remains available so the missing prerequisite is clear.";}
       BRIDGE_ON=!!j.bridge; if(typeof paintBridgeBadge==='function')paintBridgeBadge();   // Pre-orders bridge badge (P-06)
-      if($("featrow-xposts"))$("featrow-xposts").style.display=j.is_admin?"":"none";
-      if(j.features){FEATURES=j.features;if($("feat-xposts"))$("feat-xposts").checked=!!j.features.xposts;}
+      if(j.features)FEATURES=j.features;
       SLACK_CHANNELS=j.slack_channels||{}; _applySlackToggles();   // per-channel Slack send/off (user 2026-08-01)
       const n=Object.keys(USER_FILTERS).length;
       $("cfg-defaults").classList.remove("sqh-loading");
@@ -1737,16 +1732,6 @@ function saveFilterDefaults(){
 function clearFilterDefaults(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({filters:{}})})
     .then(()=>{USER_FILTERS={};renderConfig();});
-}
-function saveFeatures(){
-  // Guarded: feat-xposts does not exist in the markup, and saveFeatures has no caller either (found
-  // 2026-09-04). Left in place rather than deleted because the feature may be mid-build, but it must not
-  // be able to throw if something wires it up before the checkbox exists.
-  const _fx=$("feat-xposts"); if(!_fx){console.warn("feature save skipped: its checkbox is not in the page");return;}
-  const feat={xposts:_fx.checked};
-  fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({features:feat})})
-    .then(r=>{if(!r.ok)throw 0;FEATURES=feat;applyTabVisibility();$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="Feature saved.";})
-    .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});
 }
 function saveBridge(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({bridge:$("cfg-bridge").checked})})
@@ -2046,7 +2031,6 @@ function renderMarkets(){
   if(_awaitingData("mk-rows"))return;
   const rows=_mkSort(_mkAgg(),mkSortK,mkSortDir);
   $("mk-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> markets · <span class="muted">${DATA.length} instruments scanned</span>`;
-  $("mktab-count")&&($("mktab-count").textContent=`(${rows.length})`);
   // No click-through to the Scanner (user 2026-07-11) — this is a coverage view.
   $("mk-rows").innerHTML=rows.map(o=>`<tr><td><b>${o.market}</b></td><td>${_mkUserSwitch(o.market)}</td>${_mkCells(o)}</tr>`).join("")
     ||`<tr><td colspan="8" class="empty">No market data yet — open the Scanner first.</td></tr>`;
@@ -2466,10 +2450,7 @@ function renderPerformance(){
 function pfPanel(which){
   if(which==="summary")which="settings";
   if((which==="analysis"||which==="run")&&!advancedPfAllowed())which="results";
-  document.querySelectorAll("#pf-pills .pill,#pf-advanced-nav .pill").forEach(b=>b.classList.toggle("active",b.dataset.pfpanel===which));
-  const advNav=$("pf-advanced-nav");
-  if(advNav&&advancedPfAllowed()&&(which==="analysis"||which==="run"))advNav.classList.remove("hidden");
-  if(advNav&&which!=="analysis"&&which!=="run")advNav.classList.add("hidden");
+  document.querySelectorAll("#pf-pills .pill").forEach(b=>b.classList.toggle("active",b.dataset.pfpanel===which));
   const sm=$("pf-panel-summary"), res=$("pf-panel-results"), an=$("pf-panel-analysis"), run=$("pf-panel-run"), settings=$("pf-panel-settings");
   if(sm)sm.classList.toggle("hidden",which!=="summary");   // Summary sub-tab (user 2026-07-20)
   if(res)res.classList.toggle("hidden",which!=="results");
@@ -4581,7 +4562,10 @@ function _renderPerformance(){
   // the DISPLAYED rows by whichever column header the user clicked (2026-08-07, ChangeRequest P-09 — header
   // clicks used to update pfSortK/pfSortDir but the old hardcoded chronological branch below ignored them,
   // so "allow sort by column header" silently did nothing). Default stays Triggered ascending (pfSortK).
-  const pfwOn=$("pfw-on")?$("pfw-on").checked:true;   // wallet model is always on now — the toggle was removed (user 2026-08-01)
+  // The wallet model is always on: its "Show wallet model" toggle was removed on 2026-08-01, and this
+  // read of the vanished checkbox always fell through to true. Stated as a constant instead of a
+  // lookup that can only ever have one answer (P-39).
+  const pfwOn=true;
   const led=_pfWalletLedger(selT);
   const rows=genSort(selT,pfSortK,pfSortDir);
   $("pf-table")&&$("pf-table").classList.toggle("wallet-on",pfwOn);
@@ -4601,7 +4585,6 @@ function _renderPerformance(){
   if(!AUTH){
     if(_pfWrap)_pfWrap.style.display="none";
     $("pf-rows").innerHTML="";
-    const _more=$("pf-showmore"); if(_more)_more.style.display="none";
     return;
   }
   if(_pfWrap)_pfWrap.style.display="";
@@ -4813,7 +4796,6 @@ function paintCR(){
   const flat=CR_FILES.map(o=>{const c=o.counts||{},p=o.pranges||{};return {...o,"Completed":c["Completed"]||0,"In Progress":c["In Progress"]||0,"Not Started":c["Not Started"]||0,"Cancelled":c["Cancelled"]||0,"Deferred":c["Deferred"]||0,"P01-05":p["P01-05"]||0,"P06-10":p["P06-10"]||0,"P11-25":p["P11-25"]||0,"P26+":p["P26+"]||0};});
   const rows=genSort(flat,crSortK,crSortDir);
   $("cr-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${CR_FILES.length}</b> change-request files`;
-  $("crtab-count")&&($("crtab-count").textContent=`(${CR_FILES.length})`);
   const c=(o,k,col)=>{const n=(o.counts||{})[k]||0;return n?`<b style="color:${col}">${n}</b>`:'0';};
   const pc=(o,k)=>{const n=(o.pranges||{})[k]||0;return n?`<b style="color:#d29922">${n}</b>`:'<span class="muted">0</span>';};   // priority-range count (P-05 L311)
   $("cr-rows").innerHTML=rows.map(o=>`<tr class="clk ${CR_SEL===o.file?'sel':''}" onclick="crOpen('${o.file}')">

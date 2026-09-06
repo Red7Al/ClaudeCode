@@ -3053,23 +3053,28 @@ def _client_ids():
             set(re.findall(r'''id=['"]([A-Za-z][\w-]*)['"]''', js)))
 
 
-# Ids app.js looks up that no longer exist in the markup. EVERY one of these is reached through a guard
-# (`if(el)`, `&&`, a ternary), so the effect is a no-op rather than a crash -- which is exactly why they
-# survived unnoticed. They are recorded rather than fixed so that a NEW dead id fails the build the day it
-# lands; clearing them is P-39.
+# Ids app.js looks up that no longer exist in the markup. EMPTY, and it must stay that way.
 #
-#   ig-search .................. removed on purpose; index.html carries the comment saying paintIgAccount
-#                                treats the missing input as blank.
-#   *tab-count (ba/cr/mk/ver/x)  counter badges the tab redesign dropped; the counts are simply not shown.
-#   feat-xposts, featrow-xposts  admin X-posting toggle; app.js already console.warns when it is absent.
-#   pf-advanced-nav, pf-showmore, pfw-on
-#                                Performance-filter controls the layout rework replaced.
-_ABSENT_BY_DESIGN = {
-    "ig-search",
-    "batab-count", "crtab-count", "mktab-count", "vertab-count", "xtab-count",
-    "feat-xposts", "featrow-xposts",
-    "pf-advanced-nav", "pf-showmore", "pfw-on",
-}
+# It held eleven when the join guard was written on 2026-09-06, each reached through a guard so the effect
+# was a silent no-op rather than a crash -- which is exactly why they survived unnoticed. P-39 cleared all
+# eleven the same day:
+#
+#   *tab-count (ba/cr/mk/ver/x)  counter badges dropped by the Operations/Settings tab grouping (907e517,
+#                                2026-07-10). The five setters were removed.
+#   feat-xposts, featrow-xposts  the admin X-posting toggle, gone from the markup since 5231ece.
+#                                FEATURE_TABS is [], so FEATURES gates nothing and saveFeatures had no
+#                                caller and nothing to save. Removed.
+#   pf-advanced-nav              removed from the markup in c795c88; its show/hide calls went with it.
+#   pf-showmore                  never existed in the markup at all.
+#   pfw-on                       the "Show wallet model" toggle removed on 2026-08-01. The read always
+#                                fell through to true, so it is now stated as a constant.
+#   ig-search                    the one that was a MISSING FEATURE rather than dead code: the filter was
+#                                still there and still correct, with no input to read. Restored.
+#
+# A new entry here is a decision to leave a feature silently doing nothing. It needs the reason written
+# down beside it, and test_the_known_absent_list_has_not_quietly_grown_stale will fail the day it stops
+# being true.
+_ABSENT_BY_DESIGN = set()
 
 
 def test_every_id_the_client_queries_actually_exists():
@@ -3537,3 +3542,44 @@ def test_rvol_and_volumescore_still_describe_themselves_as_trigger_bar():
         assert "trigger bar" in th or "break bar" in th, \
             f"{key} is a break-bar measure and its tooltip must still say so"
         assert ">now</span>" not in th, f"{key} is not always current; only untriggered rows are marked"
+
+
+# ── The eleven dead ids are gone (P-39, cleared 2026-09-06) ───────────────────────────────────────────
+#
+# Ten were dead CODE and were removed. One, ig-search, was the opposite: a missing FEATURE. The filter
+# was still present and still correct, reading an input that had been taken out of the markup on
+# 2026-07-17, so it filtered nothing and no one could tell. That one was restored rather than deleted.
+
+def test_the_absent_by_design_list_is_empty():
+    """The allowlist is a record of features silently doing nothing. Empty is the only healthy state, and
+    a new entry should require writing down why."""
+    assert _ABSENT_BY_DESIGN == set(), (
+        f"{sorted(_ABSENT_BY_DESIGN)} are looked up but do not exist -- either restore the element, or "
+        "record beside the entry why the absence is deliberate")
+
+
+def test_the_ig_account_search_exists_and_drives_both_tables():
+    """One input, both tables: positions and orders share the `hit` predicate, so a name typed once
+    filters what is on screen rather than one table of the two."""
+    html, js = client_html(), APP_JS.read_text(encoding="utf-8")
+
+    assert 'id="ig-search"' in html, "the input the filter reads is missing again"
+    assert 'oninput="paintIgAccount()"' in html, "typing must repaint, or the filter never runs"
+    assert 'const q=(($("ig-search")||{}).value||"").trim().toLowerCase();' in js
+    assert "IG_POS.filter(hit)" in js and "IG_ORD.filter(hit)" in js, \
+        "both tables must honour the search"
+
+
+def test_the_search_still_tolerates_a_missing_input():
+    """The guard stays. It is what kept the page working through the two months the input was absent, and
+    removing it would turn a future markup change into a crash instead of a degraded filter."""
+    js = APP_JS.read_text(encoding="utf-8")
+    assert '(($("ig-search")||{}).value||"")' in js
+
+
+def test_the_wallet_model_is_a_constant_not_a_vanished_checkbox():
+    """pfw-on was removed on 2026-08-01 when the wallet model became always-on. The lookup that replaced
+    it could only ever return true, which reads as a live setting and is not one."""
+    js = APP_JS.read_text(encoding="utf-8")
+    assert "const pfwOn=true;" in js
+    assert 'pfw-on' not in js, "the vanished checkbox is being read again"

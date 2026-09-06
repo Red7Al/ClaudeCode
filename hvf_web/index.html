@@ -1989,10 +1989,16 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        Market / Sector / Direction, computed from the positions (enriched from the snapshot). -->
   <input type="hidden" id="igp_location"><input type="hidden" id="igp_market"><input type="hidden" id="igp_sector"><input type="hidden" id="igp_direction"><input type="hidden" id="igp_open_month">
   <div class="viz" id="ig-pos-viz" style="border-bottom:none;padding:0 0 10px"></div>
-  <!-- No search here (user 2026-07-17): the IG account holds only a handful of live positions/orders, so
-       a search is clutter. paintIgAccount tolerates the missing #ig-search input (treats it as blank). -->
+  <!-- RESTORED 2026-09-06 (P-39). It was removed on 2026-07-17 on the reasoning that the IG account holds
+       "only a handful" of live positions and orders, so a search would be clutter. Two things have changed
+       since: the account now carries enough working orders that the requester asked for Select all /
+       Unselect all controls to manage them, and the standing rule is that any table with a Name column
+       gets a name search at the far right.
+       The filter code never went away -- paintIgAccount kept reading #ig-search and treating the missing
+       input as blank, so it filtered nothing. One input revives it for BOTH tables (positions and orders
+       share the same `hit` predicate) and removes the last of the eleven dead ids. -->
   <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="ig-pos-count"></span><span class="muted" style="font-size:11.5px">Default sort: latest opened/closed ↓</span><span id="ig-pos-bulk"></span><button class="btn" id="ig-close-selected" disabled onclick="requestCloseSelected()" title="Select one or more open positions, then confirm their market close">Close selected (0)</button><span class="grow" style="flex:1"></span>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="ig-pos-count"></span><span class="muted" style="font-size:11.5px">Default sort: latest opened/closed ↓</span><span id="ig-pos-bulk"></span><button class="btn" id="ig-close-selected" disabled onclick="requestCloseSelected()" title="Select one or more open positions, then confirm their market close">Close selected (0)</button><span class="grow" style="flex:1"></span><input id="ig-search" placeholder="Search name / ticker…" oninput="paintIgAccount()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px" aria-label="Search IG positions and orders by name or ticker">
       <span class="muted" style="font-size:12.5px;display:inline-flex;align-items:center;gap:14px" title="Aggregate rows = one combined row per instrument (sum sizes, size-weighted level, summed profit)."><b style="color:var(--fg)">View:</b>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="all" onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> Every position</label>
         <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="ig-pos-view" value="agg" checked onchange="paintIgAccount()" style="width:16px;height:16px;accent-color:var(--accent)"> <b style="color:var(--fg)">Aggregate rows</b></label>
