@@ -189,3 +189,52 @@ def test_an_order_whose_instrument_left_the_snapshot_is_unknown_not_ok(monkeypat
     assert out["counts"]["OK"] == 0
     assert out["rows"][0]["verdict"] == "UNKNOWN"
     assert any("not in the current snapshot" in u for u in out["rows"][0]["unknown"])
+
+
+# ── Break-bar metrics must come from the break bar (2026-09-06) ───────────────────────────────────────
+#
+# break_state selected on as_of alone, and as_of is NOT the bar the row describes.
+# instrument_metrics.record_daily runs inside the daily scan, which fires in the Morning Chain at ~03:30
+# UTC -- before any market opens -- so the row written under as_of = today is computed from YESTERDAY'S
+# completed bar. Measured on the live table: of the rows for as_of 2026-09-05, 1,761 carry bar_date
+# 2026-09-04, with a tail older still (one 33 days behind).
+#
+# These four measures describe the BREAK bar, and for a position opened today the break IS today. Judging
+# it on yesterday's reading would close a real position on the wrong day's evidence -- worse than closing
+# on none, because it looks like evidence.
+
+class _BarDb:
+    def __init__(self, bar_date):
+        self._bar = bar_date
+    def run(self, sql, **kw):
+        assert "bar_date" in sql, "the query must read bar_date, or the staleness cannot be detected"
+        return [[2.5, True, True, 9, kw["d"], "complete", self._bar]]
+    def close(self):
+        pass
+
+
+def test_metrics_from_the_wrong_bar_are_treated_as_unjudgeable():
+    state = ofa.break_state([("BP.L", "2026-09-05")], db=_BarDb("2026-09-04"))["BP.L"]
+
+    assert state["rvol"] is None and state["volume_score"] is None, \
+        "yesterday's reading must not be presented as the break bar's"
+    assert state["above_vwap_setup"] is None and state["atr_expanding"] is None
+    assert state["status"].startswith("stale_bar:"), \
+        "the reason must be visible, not silently blank"
+    assert "2026-09-04" in state["status"], "say WHICH bar was found, so the gap can be diagnosed"
+
+
+def test_metrics_from_the_right_bar_are_used():
+    state = ofa.break_state([("BP.L", "2026-09-05")], db=_BarDb("2026-09-05"))["BP.L"]
+
+    assert state["rvol"] == 2.5 and state["volume_score"] == 9
+    assert state["above_vwap_setup"] is True and state["atr_expanding"] is True
+    assert state["status"] == "complete"
+
+
+def test_an_unjudgeable_position_is_never_closed():
+    """The caller must read a stale bar as 'leave it alone', not as a failed test. This is the property
+    that stops a data-pipeline gap from selling a position."""
+    import auto_close_failed_opens as ac
+    row = {"ticker": "BP.L", "breaches": [], "unknown": ["RVOL is unavailable"], "verdict": "UNKNOWN"}
+    assert ac._volume_breaches(row) == [], "an unknown is not a breach and must not justify a close"

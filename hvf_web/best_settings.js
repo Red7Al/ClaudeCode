@@ -275,29 +275,42 @@ function computeBestSettings(env){
   const broad=choose(basePool,chosen,(a,b)=>b.consistency-a.consistency||b.n-a.n||b.ret-a.ret);if(broad)chosen.push(broad);
   // BEST WIN:LOSS -- ranked on the number the card DISPLAYS, and not put through choose().
   //
-  // The defect this fixes (user 2026-09-06: "also seeing growth card with better win:loss ratio than the
-  // card illustrating best win:loss ... it appears you are not checking your work before publishing").
-  // Two independent causes, both real:
+  // BEST WIN:LOSS is chosen LAST, and only if it is genuinely the best on the page.
   //
-  //  1. It ranked on _wl(), which applies a +/-0.5% break-even dead band, while every card DISPLAYS
-  //     _cardWL(), which does not. Selected on one statistic, judged by the reader on another, so the
-  //     card could honestly lose to a sibling on the figure printed beneath its own title.
-  //  2. choose() enforces a configuration-difference bar, so the genuine best could be rejected for
-  //     resembling an already-chosen card -- and then appear on that card instead.
+  // First reported 2026-09-06 ("growth card with better win:loss ratio than the card illustrating best
+  // win:loss"), and reported AGAIN after the first attempt: "still nonsense as it is not the best on the
+  // page". That verdict was right, and the first fix deserved it. It ranked on the eligible ratio and
+  // explained the discrepancy in the subtitle -- but every card prints TWO win:loss rows, and on the
+  // ACTUAL (funded) row three siblings still beat it: measured on the live 4,168-row annual set, this
+  // card showed 1.067 while Balanced showed 1.412, Short Duration 1.200 and Defensive 1.154. A caption
+  // cannot rescue a card whose own printed number contradicts its title.
   //
-  // So: rank on _cardWLRatio, the displayed statistic, and skip the difference bar. Its defining property
-  // is the metric, not being unlike its siblings -- the same reasoning _bestSettingsByFundedTrades
-  // already applies to the >125/>250 cards. Ranking over those pools too keeps the claim true against
-  // every annual card, not just the ones drawn from basePool.
+  // So the claim is now enforced rather than described. The card is selected after every other card is
+  // known, and the candidate must beat all of them on BOTH printed ratios. Eligible is a property of the
+  // configuration; actual depends on what the wallet could fund. A card titled "best" must lead on the
+  // number the reader is looking at, whichever of the two that is.
+  //
+  // If nothing clears both, the card is NOT SHOWN. That is the honest outcome: some populations have no
+  // configuration that is best on both, and publishing a false superlative is worse than publishing one
+  // card fewer. The other cards already cover the ground.
   const _cardWLRatio=x=>{const c=_cardWL(x);return c.l?c.w/c.l:(c.w?Infinity:0);};
-  const winloss=[...basePool,...large125,...large250]
-    .sort((a,b)=>_cardWLRatio(b)-_cardWLRatio(a)||b.ret-a.ret||b.score-a.score)[0]||null;
-  if(winloss)chosen.push(winloss);
+  const _cardWLActualRatio=x=>{const c=_cardWLActual(x);return c.l?c.w/c.l:(c.w?Infinity:0);};
   const efficient=choose(basePool,chosen,(a,b)=>_perDay(b)-_perDay(a));if(efficient)chosen.push(efficient);
   const shortDuration=choose(basePool,chosen,(a,b)=>(_days(a)??Infinity)-(_days(b)??Infinity)||b.ret-a.ret);if(shortDuration)chosen.push(shortDuration);
   // Best settings at a given funded-trade sample BAND. Deliberately NOT run through choose()'s difference
   // bar: the DEFINING property here is the sample size, not being unlike the other cards.
   const trades125=_bestSettingsByFundedTrades(large125,125,150), trades250=_bestSettingsByFundedTrades(large250,250,300);
+
+  // Every annual card that will appear, so the win:loss claim can be tested against all of them.
+  const _annual=[best,growth,defensive,broad,efficient,shortDuration,trades125,trades250].filter(Boolean);
+  const _beatsAll=x=>_annual.every(o=>o===x||
+    (_cardWLRatio(x)>=_cardWLRatio(o)-1e-9 && _cardWLActualRatio(x)>=_cardWLActualRatio(o)-1e-9));
+  const winloss=[...basePool,...large125,...large250]
+    .filter(x=>!_annual.includes(x))
+    .sort((a,b)=>(_cardWLRatio(b)+_cardWLActualRatio(b))-(_cardWLRatio(a)+_cardWLActualRatio(a))
+                 ||b.ret-a.ret||b.score-a.score)
+    .find(_beatsAll)||null;
+  if(winloss)chosen.push(winloss);
 
   // Three-year evidence card (ChangeRequests/20260818, clarified 2026-08-20).
   //

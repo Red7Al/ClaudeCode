@@ -239,11 +239,30 @@ def break_state(pairs, db=None):
         for ticker, opened in pairs:
             if not ticker or not opened:
                 continue
-            rows = db.run("select rvol, above_vwap_setup, atr_expanding, volume_score, as_of, status "
-                          "from instrument_metrics_daily where ticker = :t and as_of = :d",
+            rows = db.run("select rvol, above_vwap_setup, atr_expanding, volume_score, as_of, status, "
+                          "bar_date from instrument_metrics_daily where ticker = :t and as_of = :d",
                           t=ticker, d=str(opened)[:10]) or []
             if rows:
-                rv, avs, atr, vs, as_of, status = rows[0]
+                rv, avs, atr, vs, as_of, status, bar_date = rows[0]
+                # THE ROW'S as_of IS NOT THE BAR IT DESCRIBES (measured 2026-09-06).
+                #
+                # instrument_metrics.record_daily runs inside the daily scan, which fires in the Morning
+                # Chain at ~03:30 UTC -- before any market opens. The row it writes under as_of = today is
+                # therefore computed from YESTERDAY'S completed bar. Measured on the live table: of the
+                # rows written for as_of 2026-09-05, 1,761 carry bar_date 2026-09-04, and a tail of them
+                # are older still (one is 33 days behind).
+                #
+                # These four measures describe the BREAK bar, and for a position opened today the break
+                # IS today. Judging it on yesterday's reading would close a real position on the wrong
+                # day's evidence -- worse than closing on no evidence, because it looks like evidence.
+                #
+                # So the bar must match the day being judged. Anything else is UNJUDGEABLE, which the
+                # caller already treats as "leave the position alone" rather than as a pass or a fail.
+                if str(bar_date)[:10] != str(opened)[:10]:
+                    out[ticker] = {"rvol": None, "above_vwap_setup": None, "atr_expanding": None,
+                                   "volume_score": None, "as_of": str(as_of),
+                                   "status": f"stale_bar:{str(bar_date)[:10]}"}
+                    continue
                 out[ticker] = {"rvol": rv, "above_vwap_setup": avs, "atr_expanding": atr,
                                "volume_score": vs, "as_of": str(as_of), "status": status}
     finally:

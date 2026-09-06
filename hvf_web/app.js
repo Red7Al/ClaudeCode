@@ -904,7 +904,7 @@ const parentOf=t=>{for(const p in TAB_GROUPS)if(TAB_GROUPS[p].includes(t))return
 // The tab bar's own left-to-right order, with each grouped parent ("Settings", "Operations") expanded in
 // place — the order a user actually sees. Used by the Tab Visibility panel so its chips read like the bar.
 // Derived from the #tab-* buttons in markup order; TABS is the membership list, not the display order.
-const SCREEN_TAB_ORDER=["welcome","whatwedo","intro","risk","appendix","performance","scanner","preorders",
+const SCREEN_TAB_ORDER=["welcome","whatwedo","intro","risk","appendix","performance","insights","scanner","preorders",
                         "orderops","igaccount","fees","activity","mfm","sysdocs","docs","terms","instruments",
                         "squeezehist","config","markets","configadmin","marketsadmin","users","batch","xposts",
                         "changereq","syslogs","jobs","version"];
@@ -2460,14 +2460,23 @@ function pfPanel(which){
   const meth=$("pf-panel-method");
   if(meth){meth.classList.toggle("hidden",which!=="method");
     if(which==="method"&&!meth.innerHTML)meth.innerHTML=methodologyHTML();}
-  const model=$("pf-shared-model");if(model)model.style.display=which==="results"?"none":"flex";   // shared by Summary / analysis / run; Results has its own recorded-trigger wallet control (P-07)
+  // METHODOLOGY IS A READING PAGE (user 2026-09-06: the replay-model card, the Results lede and the date
+  // row "do not need to show - hide them"). It documents how the analysis works; it has no controls of
+  // its own, and a wallet editor above a description of the method invites the reader to think they are
+  // configuring something. The whole shared Performance chrome is hidden for it.
+  const _reading = which === "method";
+  const model=$("pf-shared-model");
+  if(model)model.style.display=(which==="results"||_reading)?"none":"flex";
+  const lede=$("pf-lede"); if(lede)lede.style.display=_reading?"none":"";
+  const controls=document.querySelector(".pf-filter-controls");
+  if(controls)controls.style.display=_reading?"none":"";   // shared by Summary / analysis / run; Results has its own recorded-trigger wallet control (P-07)
   const filters=$("pf-subnav");if(filters)filters.classList.toggle("hidden",which==="run"||which==="settings");   // these filters feed neither annual settings nor /api/winners-run
   const locGroup=document.querySelector(".pf-loc-group");
   if(locGroup)locGroup.style.display=which==="summary"?"":"none";
   // Date windows filter the Results/Summary evidence but do not recalculate Best Settings.  Hide them
   // on that resource-heavy analysis surface rather than implying a change to its recommendation cards.
   const dateGroup=document.querySelector(".pf-date-group");
-  if(dateGroup)dateGroup.style.display=which==="analysis"?"none":"";
+  if(dateGroup)dateGroup.style.display=(which==="analysis"||_reading)?"none":"";
   if(which==="results"&&PF_LOC_FILTER){PF_LOC_FILTER="";if(typeof _renderPerformance==="function")_renderPerformance();}
   const wh=$("pf-winners-head");if(wh)wh.classList.toggle("hidden",which!=="analysis");   // winners title/lede above the filters (P-07 L289)
   if(which==="analysis"||which==="settings")renderSqueezeAnalysis();

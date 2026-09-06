@@ -593,6 +593,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <button class="tab" id="tab-risk" onclick="showTab('risk')">Risk awareness</button>
   <button class="tab" id="tab-appendix" onclick="showTab('appendix')">Appendix</button>
   <button class="tab" id="tab-performance" onclick="showTab('performance')" style="display:none">Performance <span id="pftab-count"></span></button>
+  <!-- Insights sits beside Performance: both read the same replayed history, and a reader looking for
+       "what is the data saying" expects them together (P-37, 2026-09-06). -->
+  <button class="tab" id="tab-insights" onclick="showTab('insights')" style="display:none">Insights</button>
   <button class="tab" id="tab-scanner" onclick="showTab('scanner')">Scanner Report <span id="sctab-count"></span></button>
   <button class="tab" id="tab-preorders" onclick="showTab('preorders')" style="display:none">My Pre-orders <span id="potab-count"></span></button>
   <button class="tab" id="tab-orderops" onclick="showTab('orderops')" style="display:none">Pre-orders to my IG <span id="ootab-count"></span></button>
@@ -1490,7 +1493,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <!-- Processing badge (user 2026-08-02, P-06) — shown next to the title while /api/performance is still
        computing, so it's clear why the tab is briefly empty. -->
   <h1 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:4px">Performance <span id="pf-loading"></span></h1>
-  <p class="lede">Performance separates <b>observed trade outcomes</b> from <b>constrained what-if models</b>. A return is direction-aware, so positive is always in your favour; open trades are marked to the latest price. The settings shown in each panel are the settings used for that panel, not a promise of future results.</p>
+  <p class="lede" id="pf-lede">Performance separates <b>observed trade outcomes</b> from <b>constrained what-if models</b>. A return is direction-aware, so positive is always in your favour; open trades are marked to the latest price. The settings shown in each panel are the settings used for that panel, not a promise of future results.</p>
   <!-- Winners title + lede lifted ABOVE the shared date/location filter row (user 2026-07-27, P-07 L289) —
        shown only when the "What separates the winners" sub-tab is active (toggled in pfPanel). -->
   <div id="pf-winners-head" class="hidden">

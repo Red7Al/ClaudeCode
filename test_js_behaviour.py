@@ -3245,72 +3245,39 @@ def test_the_squeeze_history_columns_still_sum_to_one_hundred():
 # and asserts the invariant the label promises. A source-level check could not catch cause 2 at all.
 
 def _winloss_selection() -> str:
-    """Just the statement that picks the Best win:loss card -- bounded at its own terminator, so a fixed
-    character window cannot drag in the sibling selections that legitimately DO use choose()."""
+    """Just the statement that picks the Best win:loss card, bounded at its own terminator."""
     src = client_js()
-    # Starts at _cardWLRatio, not at `const winloss=`: the ratio helper is declared on the line above and
-    # the extracted text has to be runnable on its own.
-    start = src.index("const _cardWLRatio=")
-    end = src.index("chosen.push(winloss);", start)
-    return src[start:end]
+    start = src.index("const _annual=[best,")
+    return src[start:src.index("chosen.push(winloss);", start)]
 
 
-def test_the_win_loss_card_is_ranked_on_the_statistic_it_displays():
-    """Cause 1, pinned at source: ranking on _wl() (dead-banded) while printing _cardWL() (not) is what
-    let a sibling card out-display it. If someone re-points this at _wl, the invariant test above may
-    still pass on a lucky population -- this one will not."""
+def test_the_win_loss_card_must_beat_every_sibling_on_BOTH_printed_ratios():
+    """Reported twice. The first fix ranked on the eligible ratio and explained the gap in the subtitle;
+    the verdict on that was "still nonsense as it is not the best on the page", and it was right. Every
+    card prints TWO win:loss rows, and on the ACTUAL row three siblings still beat it -- measured on the
+    live 4,168-row set, this card showed 1.067 against Balanced 1.412, Short Duration 1.200 and
+    Defensive 1.154. A caption cannot rescue a card whose own printed number contradicts its title."""
     block = _winloss_selection()
-    assert "_cardWLRatio" in block, "the win:loss card must rank on the displayed statistic"
-    assert "_wl(" not in block, "_wl applies a break-even dead band the card does not display"
+
+    assert "_cardWLRatio" in block and "_cardWLActualRatio" in block,         "the claim must be tested against BOTH printed ratios, not just the eligible one"
+    assert "_beatsAll" in block, "the winner must be required to beat every other card, not merely rank first"
+    assert "choose(" not in block, "the difference bar can hand the true best to a sibling card"
 
 
-def test_the_win_loss_card_is_not_filtered_by_the_difference_bar():
-    """Cause 2. choose() can reject the genuine best for resembling an already-chosen card, which is how
-    the better ratio ended up on the Growth card."""
-    block = _winloss_selection()
-    assert "choose(" not in block, (
-        "the difference bar can reject the true best win:loss and leave it showing on another card")
-
-
-def test_the_win_loss_card_is_picked_by_the_displayed_ratio_not_the_dead_banded_one():
-    """Cause 1, executed rather than read.
-
-    The pool below is built so the two statistics DISAGREE. B's wins are all inside the +/-0.5% break-even
-    band, so _wl() (dead-banded) sees B as having no wins and prefers A; _cardWL() (what the card prints)
-    counts them and prefers B. The old selection ranked on _wl and would return A, whose printed ratio is
-    the worse of the two -- which is how a sibling card came to out-display the one labelled 'best'.
-    """
-    mk = lambda label, perfs: {"label": label, "seq": [{"perf": p} for p in perfs],
-                               "ret": 0.10, "score": 1, "wins": 0, "losses": 0}
-    pool = [mk("A", [3.0, 3.0, -4.0, -4.0, -4.0]),          # _cardWL 2/3 = 0.667, _wl 2/3 = 0.667
-            mk("B", [0.3, 0.3, 0.3, 0.3, -4.0])]            # _cardWL 4/1 = 4.000, _wl 0/1 = 0.000
-    src = _winloss_selection() + "chosen.push(winloss);"
-    out = run_js(
-        "const _cardWL=x=>{const s=x.seq||[],w=s.filter(r=>r.perf>0).length,l=s.filter(r=>r.perf<0).length;"
-        "  return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};"
-        "const _wl=x=>{const w=x.seq.filter(r=>+r.perf>0.5).length,l=x.seq.filter(r=>+r.perf<-0.5).length;"
-        "  return l?w/l:(w?Infinity:0);};"
-        f"const basePool={json.dumps(pool)},large125=[],large250=[],chosen=[];"
-        "const choose=(pool,chosen,compare)=>[...pool].sort(compare)[0]||null;",
-        src, "winloss.label")
-    assert out.strip().strip('"') == "B", (
-        f"picked {out!r}: the card must be chosen on the ratio it PRINTS, not the dead-banded one")
-
-
-def test_the_win_loss_card_says_which_population_it_won_on():
-    """The card prints TWO win:loss rows and they legitimately disagree. Measured on the live 4,168-row
-    annual set on 2026-09-06: this card led on ELIGIBLE at 1.600 while Balanced (1.412), Short Duration
-    (1.200) and Defensive (1.154) all beat its ACTUAL 1.067.
-
-    Neither number is wrong. ELIGIBLE is a property of the configuration; ACTUAL counts only what the
-    wallet could fund, so it moves with position size and the open cap and differs between two people
-    reading the same card. A superlative is only claimable over the reader-independent population, so
-    the title has to say which one it means."""
+def test_it_is_chosen_after_every_other_card_exists():
+    """The claim is 'best on this page', so the page has to be known before it can be made. Choosing it
+    earlier is what allowed a later card to be picked that beat it."""
     src = client_js()
-    line = src[src.index('winloss&&["Best win : loss"'):][:900]
-    assert "ELIGIBLE" in line, "the claim must name the population it is measured over"
-    assert "funded row below can differ" in line, (
-        "the card has to warn that the funded row is a different, wallet-dependent population")
+    assert src.index("const trades125=") < src.index("const _annual=[best,"),         "the win:loss card must be selected after the other annual cards are settled"
+    assert src.index("const _annual=[best,") < src.index("chosen.push(winloss);")
+
+
+def test_no_card_is_shown_rather_than_a_false_superlative():
+    """Some populations have no configuration that leads on both. Publishing one card fewer is better
+    than publishing a title the numbers beneath it contradict."""
+    block = _winloss_selection()
+    assert ".find(_beatsAll)||null;" in block,         "when nothing clears both rows the card must be omitted, not filled with the least-bad option"
+
 
 
 # ── An untriggered order shows today's reading, marked, not a bare dash (P-31/P-34, user 2026-09-06) ──
