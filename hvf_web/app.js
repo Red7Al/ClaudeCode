@@ -1766,6 +1766,7 @@ function saveLimits(){
   [["min_quality",1],["min_volume_score",1],["min_rvol",0],["max_position_pct",0],["max_open",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["wo_lifespan_days",1],["let_winners_run_trail",1],["let_winners_run_stop",1]].forEach(([k,int])=>{const v=num(k,int);if(v!==undefined)lim[k]=v;});
   lim.require_above_vwap=$("lim-require_above_vwap").checked?1:0;
   lim.require_atr_expanding=$("lim-require_atr_expanding").checked?1:0;
+  lim.auto_close_failed_opens=$("lim-auto_close_failed_opens").checked?1:0;
   lim.adaptive_filters=0;   // compatibility only; the unused Adaptive Filters UI has been removed
   lim.let_winners_run=($("lim-let_winners_run")||{}).checked?1:0;   // "Let winners run" report opt-in, default OFF (user 2026-08-02)
   const _er=$("lim-email_recipients"); if(_er)lim.email_recipients=(_er.value||"").split(",").map(x=>x.trim()).filter(Boolean);

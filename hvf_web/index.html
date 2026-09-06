@@ -222,7 +222,12 @@ a{color:var(--accent)}
 aside.collapsed{display:none}
 .vizbox.filtered{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .afilt{color:var(--accent);font-size:10px;font-weight:700;cursor:pointer}
-.bar.active .tk{color:var(--fg);font-weight:700}
+/* NO font-weight change here. The label column is sized in `ch`, and a ch is the width of the "0"
+   glyph IN THAT ELEMENT'S FONT -- so bolding the selected row widened its basis and pushed its bar
+   4px right of every other bar in the chart. Measured live 2026-09-06: four charts aligned to 0px,
+   the one with an active filter off by 4. The active state is already carried by the colour change
+   below and by the bullet in .selmk, so the weight was redundant as well as harmful. */
+.bar.active .tk{color:var(--fg)}
 
 /* ============================================================================================
    Modern SaaS design layer (user 2026-07-03: redesign Introduction + Appendix + Config nav).
@@ -889,6 +894,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div class="credrow"><span class="clabel" title="Minimum relative volume on the trigger bar.">Minimum RVOL</span><input type="number" min="0" step="0.1" id="lim-min_rvol" style="max-width:120px"></div>
       <div class="credrow"><span class="clabel">Require price above VWAP</span><label class="cfg-option"><input type="checkbox" id="lim-require_above_vwap"> Yes</label></div>
       <div class="credrow"><span class="clabel">Require ATR expanding</span><label class="cfg-option"><input type="checkbox" id="lim-require_atr_expanding" onchange="saveLimits()"> Yes</label></div>
+      <!-- Per-user, decided here rather than in the database (user 2026-09-06: "auto close is a setting
+           for each user to decide in trading filters"). OFF unless switched on. It only ever acts on a
+           position opened THAT DAY, only on the break-bar volume tests, and never on a position it
+           cannot judge -- see auto_close_failed_opens.py for why each of those limits exists. -->
+      <div class="credrow"><span class="clabel">Auto-close a failed open<br><span class="muted" style="font-size:11px;font-weight:400">Closes a position on its opening day if the volume tests measured on that bar fail</span></span><label class="cfg-option"><input type="checkbox" id="lim-auto_close_failed_opens" onchange="saveLimits()" title="Only acts on positions opened the same day, only on RVOL / VolumeScore / above-VWAP / ATR, and never on a position whose metrics were not recorded. Measured warning: with no RVOL floor set, back-testing showed this REDUCING returns, because VWAP and ATR alone do not separate weak trades well."> Yes</label></div>
       <div class="credrow"><span class="clabel">Min instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-min_instrument_value" style="max-width:160px"></div>
       <div class="credrow"><span class="clabel">Max instrument value (MCAP, 0 = off)</span><input type="number" min="0" step="1000000" id="lim-max_instrument_value" style="max-width:160px"></div>
       <div class="credrow" style="display:none"><span class="clabel">Bounce alert</span><input type="number" min="0" step="0.005" id="lim-bounce_alert_pct"></div>

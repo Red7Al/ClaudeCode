@@ -2953,3 +2953,36 @@ def test_a_clean_book_hides_the_panel():
     out = _breach_panel('[{ticker:"AAF.L",verdict:"OK",breaches:[],unknown:[]}]', _ORDERS)
 
     assert out["shown"] == "none"
+
+
+# ── Auto-close is a PER-USER trading filter (user 2026-09-06) ──────────────────────────────────────────
+#
+# "auto close is a setting for each user to decide in trading filters". It closes real positions with no
+# human in the loop, so the control has to be where every other floor is -- visible, per-login, and off
+# unless someone turns it on -- not a value set in the database by whoever happens to be looking.
+
+def test_auto_close_is_offered_as_a_trading_filter():
+    html = client_html()
+
+    assert 'id="lim-auto_close_failed_opens"' in html, "the setting must exist in My trading limits"
+    row = html[html.index('id="lim-auto_close_failed_opens"') - 700:
+               html.index('id="lim-auto_close_failed_opens"') + 200]
+    assert 'type="checkbox"' in row, "it is on/off, like the other requirement filters"
+
+
+def test_the_auto_close_setting_is_saved_with_the_other_limits():
+    """A control that renders but never persists is worse than no control: the user believes it is set."""
+    js = _extract("saveLimits")
+
+    assert 'lim.auto_close_failed_opens=$("lim-auto_close_failed_opens").checked?1:0' in js.replace(" ", "")
+
+
+def test_it_defaults_to_off_by_being_absent_rather_than_false():
+    """No default is written anywhere in the client. An unchecked box saves 0, and a user who has never
+    touched it has no key at all -- which auto_close_failed_opens.py reads as off. Both paths are off,
+    which is the only safe default for something that sells."""
+    import pathlib
+    src = pathlib.Path("auto_close_failed_opens.py").read_text(encoding="utf-8")
+
+    assert 'str(limits.get(SETTING) or "") in ("1", "True", "true")' in src, (
+        "anything other than an explicit 1/True must read as OFF")
