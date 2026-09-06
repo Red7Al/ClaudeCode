@@ -2986,3 +2986,94 @@ def test_it_defaults_to_off_by_being_absent_rather_than_false():
 
     assert 'str(limits.get(SETTING) or "") in ("1", "True", "true")' in src, (
         "anything other than an explicit 1/True must read as OFF")
+
+
+# ── Every element the client reaches for must exist (P-29 / P-30, user 2026-09-06) ────────────────────
+#
+# TWO reports, one cause. "on my ig open transactions I know I have multiple failure to comply with
+# trading filter BUT none shown in failure to comply tab" and "when I try to cancel orders if I deselect
+# any instrument and try to cancel the rest, it says none selected".
+#
+# aa68f64 rebuilt both breach panels as real tables. `<div id="ig-txbreach-body">` became
+# `<tbody id="ig-txbreach-rows">`. The paint functions moved to the new id; the LOADER and the two ACTION
+# functions did not. So:
+#
+#   * loadPositionFilterAudit() opened with `const body=$("ig-txbreach-body"); if(!body)return;` and
+#     returned on the first line -- the fetch never fired, and the tab was empty no matter how many
+#     positions breached.
+#   * both cancel/close buttons queried '#ig-…-body input:checked', matched nothing, and reported
+#     "Nothing is ticked" on EVERY press, not only after deselecting one.
+#
+# A renamed id is silent in JavaScript, which is why this needs a mechanical check rather than a test per
+# button: `$()` returns null and an optional-chained guard turns the whole feature into a no-op that logs
+# nothing. This asserts the join between the two files for every id the client names.
+
+def _client_ids():
+    """(ids index.html defines, ids app.js injects into markup it builds itself)."""
+    import re
+    html, js = client_html(), APP_JS.read_text(encoding="utf-8")
+    return (set(re.findall(r'id="([^"]+)"', html)),
+            set(re.findall(r'''id=['"]([A-Za-z][\w-]*)['"]''', js)))
+
+
+# Ids app.js looks up that no longer exist in the markup. EVERY one of these is reached through a guard
+# (`if(el)`, `&&`, a ternary), so the effect is a no-op rather than a crash -- which is exactly why they
+# survived unnoticed. They are recorded rather than fixed so that a NEW dead id fails the build the day it
+# lands; clearing them is P-39.
+#
+#   ig-search .................. removed on purpose; index.html carries the comment saying paintIgAccount
+#                                treats the missing input as blank.
+#   *tab-count (ba/cr/mk/ver/x)  counter badges the tab redesign dropped; the counts are simply not shown.
+#   feat-xposts, featrow-xposts  admin X-posting toggle; app.js already console.warns when it is absent.
+#   pf-advanced-nav, pf-showmore, pfw-on
+#                                Performance-filter controls the layout rework replaced.
+_ABSENT_BY_DESIGN = {
+    "ig-search",
+    "batab-count", "crtab-count", "mktab-count", "vertab-count", "xtab-count",
+    "feat-xposts", "featrow-xposts",
+    "pf-advanced-nav", "pf-showmore", "pfw-on",
+}
+
+
+def test_every_id_the_client_queries_actually_exists():
+    import re
+    html_ids, js_ids = _client_ids()
+    js = APP_JS.read_text(encoding="utf-8")
+
+    used = re.findall(r'querySelectorAll?\(\s*[\'"`]#([\w-]+)', js)
+    assert len(set(used)) >= 10, "the extractor found almost no selectors -- it is measuring nothing"
+
+    missing = sorted({s for s in set(used) if s not in html_ids | js_ids})
+    assert not missing, (
+        "querySelector targets that exist nowhere, so the code silently does nothing: " + ", ".join(missing))
+
+
+def test_every_id_the_client_looks_up_by_helper_actually_exists():
+    """$("...") is the same hazard as querySelector, and it is how the breach LOADER died: the guard
+    `if(!body)return;` turned a missing id into a feature that never ran and never complained."""
+    import re
+    html_ids, js_ids = _client_ids()
+    js = APP_JS.read_text(encoding="utf-8")
+
+    used = set(re.findall(r'''\$\(\s*['"]([\w-]+)['"]\s*\)''', js))
+    assert len(used) >= 50, "the extractor found almost no $() lookups -- it is measuring nothing"
+
+    missing = set(s for s in used if s not in html_ids | js_ids) - _ABSENT_BY_DESIGN
+    assert not missing, (
+        "NEW $() targets that exist nowhere, so the code silently does nothing: "
+        + ", ".join(sorted(missing))
+        + " -- either add the element or, if the absence is deliberate, say so in _ABSENT_BY_DESIGN")
+
+
+def test_the_known_absent_list_has_not_quietly_grown_stale():
+    """An allowlist nobody prunes stops being a record and becomes a blanket. If an id on it now EXISTS,
+    the entry is obsolete and must come off, or it will keep excusing a future id of the same name."""
+    import re
+    html_ids, js_ids = _client_ids()
+    js = APP_JS.read_text(encoding="utf-8")
+    used = set(re.findall(r'''\$\(\s*['"]([\w-]+)['"]\s*\)''', js))
+
+    resolved = sorted(_ABSENT_BY_DESIGN & (html_ids | js_ids))
+    assert not resolved, f"these now exist and must be removed from _ABSENT_BY_DESIGN: {resolved}"
+    unused = sorted(_ABSENT_BY_DESIGN - used)
+    assert not unused, f"these are no longer looked up at all; drop them from _ABSENT_BY_DESIGN: {unused}"

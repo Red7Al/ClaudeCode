@@ -4880,7 +4880,7 @@ function paintOrderFilterAudit(){
   _sortArrows("data-igb", igbSortK, igbSortDir);
 }
 async function cancelBreachingOrders(btn){
-  const picked=[...document.querySelectorAll('#ig-breach-body input[data-cancel]:checked')].map(el=>el.dataset.cancel);
+  const picked=[...document.querySelectorAll('#ig-breach-rows input[data-cancel]:checked')].map(el=>el.dataset.cancel);
   if(!picked.length){alert("Nothing is ticked.");return;}
   const live=new Map((IGORD||[]).map(o=>[o.deal_id,o]));
   const rows=picked.map(id=>{const o=live.get(id)||{};return [disp(o.ticker||id), `${o.direction||""} ${o.size??""} @ ${o.level??""}`];});
@@ -4940,7 +4940,10 @@ function showIgPanel(which){
 let IG_TXAUDIT = null, igtSortK = "verdict", igtSortDir = -1;
 
 function loadPositionFilterAudit(){
-  const body=$("ig-txbreach-body"); if(!body)return;
+  // -rows, not -body: aa68f64 rebuilt this panel as a real table and renamed the container. This line kept
+  // the old id, so the guard fired on every load and the fetch below never ran -- the tab was empty no
+  // matter how many positions breached (user 2026-09-06).
+  const body=$("ig-txbreach-rows"); if(!body)return;
   body.innerHTML='<span class="muted">⏳ Checking your open positions…</span>';
   fetch("/api/position-filter-audit",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(j=>{
     IG_TXAUDIT=(j&&!j.error)?j:{rows:[]};
@@ -4991,7 +4994,7 @@ function paintPositionBreach(){
   _sortArrows("data-igt", igtSortK, igtSortDir);
 }
 async function closeBreachingPositions(btn){
-  const picked=[...document.querySelectorAll('#ig-txbreach-body input[data-close]:checked')].map(el=>el.dataset.close);
+  const picked=[...document.querySelectorAll('#ig-txbreach-rows input[data-close]:checked')].map(el=>el.dataset.close);
   if(!picked.length){await appConfirm("Nothing is ticked.",{title:"No positions selected",ok:"OK"});return;}
   const by={}; (IG_TXAUDIT.rows||[]).forEach(r=>{if(r.deal_id)by[r.deal_id]=r;});
   const rows=picked.map(id=>{const r=by[id]||{};return [disp(r.ticker||id), `${r.direction||""} ${r.size??""} — ${(r.breaches||[]).join("; ")}`];});
