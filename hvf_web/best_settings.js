@@ -98,6 +98,15 @@ function _bestSettingsByFundedTrades(pool,min,max){
 // (this is what the public endpoint stores), while `choices` keeps the live option objects the signed-in
 // page needs for the detail panel and its funded-decision proof.
 // ------------------------------------------------------------------------------------------------------
+// THE SEARCHED GRID, declared once and exported.
+//
+// The Methodology page (user 2026-09-06: "explains how this analysis is done - I can then double check it
+// with my quant resource") states these values to an external reviewer. A page that RE-TYPES them is a
+// page that will eventually describe a search the code no longer performs, and a reviewer cannot tell the
+// difference. So the page reads BEST_GRID and the search uses BEST_GRID -- there is one copy.
+const BEST_GRID={STAKES:[1,2,3,5,7.5,10], OPENS:[3,5,8,12,20,25,50],
+                 RRS:[3,5,8], QUALS:[0,50,75], VSCORES:[0,4,8], RVOLS:[0,1.5,1.8]};
+
 function computeBestSettings(env){
   const rows=env.rows||[], rows3y=Array.isArray(env.rows3y)?env.rows3y:null;
   const wallet=Math.max(1,+env.wallet||1000), minTrade=Math.max(0,+env.minTrade||0);
@@ -121,8 +130,8 @@ function computeBestSettings(env){
   // Two-stage annual search (P-01, user 2026-08-05): first rank metric/filter candidates using the
   // current Model, then replay only the strongest candidates across stake/open grids. This covers the
   // collected decision metrics without freezing the browser under a combinatorial full cross-product.
-  const STAKES=[1,2,3,5,7.5,10], OPENS=[3,5,8,12,20,25,50], RRS=[3,5,8], QUALS=[0,50,75],
-        VSCORES=[0,4,8], RVOLS=[0,1.5,1.8], BOOLS=[false,true];
+  const STAKES=BEST_GRID.STAKES, OPENS=BEST_GRID.OPENS, RRS=BEST_GRID.RRS, QUALS=BEST_GRID.QUALS,
+        VSCORES=BEST_GRID.VSCORES, RVOLS=BEST_GRID.RVOLS, BOOLS=[false,true];
   const byDate=wp.slice().sort((a,b)=>(a.trig_date||'').localeCompare(b.trig_date||'')||(a.ticker||'').localeCompare(b.ticker||''));
   const topScopes=(key,label)=>Object.entries(byDate.reduce((m,r)=>{const v=r[key];if(v)m[v]=(m[v]||0)+1;return m;},{}))
     .filter(([,n])=>n>=30).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([v])=>({kind:key,label:`${label}: ${v}`,test:r=>r[key]===v,value:v}));
@@ -511,5 +520,5 @@ function trimBestSettingsCards(cards,unsupported,hasThreeYearCard,capacity){
 if(typeof module==="object"&&module.exports){
   module.exports={_fundedMaxOpen,makeCombReplay,computeBestSettings,bestSettingsCardHTML,
                   bestSettingsUnsupportedCardHTML,bestSettingsMatchesCurrent,bestSettingsChangedFor,
-                  trimBestSettingsCards,_bestSettingsByFundedTrades,_bsPct};
+                  trimBestSettingsCards,_bestSettingsByFundedTrades,_bsPct,BEST_GRID};
 }

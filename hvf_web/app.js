@@ -2475,6 +2475,9 @@ function pfPanel(which){
   if(an)an.classList.toggle("hidden",which!=="analysis");
   if(run)run.classList.toggle("hidden",which!=="run");
   if(settings)settings.classList.toggle("hidden",which!=="settings");
+  const meth=$("pf-panel-method");
+  if(meth){meth.classList.toggle("hidden",which!=="method");
+    if(which==="method"&&!meth.innerHTML)meth.innerHTML=methodologyHTML();}
   const model=$("pf-shared-model");if(model)model.style.display=which==="results"?"none":"flex";   // shared by Summary / analysis / run; Results has its own recorded-trigger wallet control (P-07)
   const filters=$("pf-subnav");if(filters)filters.classList.toggle("hidden",which==="run"||which==="settings");   // these filters feed neither annual settings nor /api/winners-run
   const locGroup=document.querySelector(".pf-loc-group");
@@ -3152,6 +3155,167 @@ const bestCardMaxRows=()=>innerWidth>BEST_TABLET_MAX?2:Infinity;
 // and precompute the summaries a logged-out visitor is allowed to see. What stays here is everything
 // that needs the page: the user's own configuration, the Apply control, the three-year status card and
 // the post-layout trimming. See best_settings.js for why the split exists.
+// ------------------------------------------------------------------------------------------------------
+// METHODOLOGY (user 2026-09-06: "please write a new page within performance that explains how this
+// analysis is done - I can then double check it with my quant resource").
+//
+// Written for a reader who has never seen this system. Every constant quoted is read from the SAME
+// declarations the search uses -- STAKES, OPENS, RRS, QUALS, VSCORES, RVOLS, exported as BEST_GRID --
+// rather than typed in, so the page cannot quietly drift away from the code it describes.
+//
+// It states the known weaknesses as plainly as the method. A methodology page that lists only strengths
+// is not reviewable, and review is the entire purpose of this one.
+// ------------------------------------------------------------------------------------------------------
+function methodologyHTML(){
+  const g=(typeof BEST_GRID==="object"&&BEST_GRID)||{};
+  const list=a=>(a||[]).join(", ");
+  const SCOPES=10;   // all markets + the 5 most-traded markets + 4 market-cap bands
+  const filters=(g.RRS||[]).length*(g.QUALS||[]).length*(g.VSCORES||[]).length*(g.RVOLS||[]).length*4;
+  const models=(g.STAKES||[]).length*(g.OPENS||[]).length;
+  const configs=SCOPES*filters;
+  const h=(t,b)=>`<h3 style="margin:22px 0 8px;font-size:15px;color:var(--fg)">${t}</h3>${b}`;
+  const warn=t=>`<div style="margin:10px 0;padding:9px 11px;border-left:3px solid #d29922;background:color-mix(in srgb,#d29922 9%,transparent);font-size:12.5px">${t}</div>`;
+  return `<div class="gsec" style="max-width:1000px">
+  <div class="eyebrow">For external review</div>
+  <h2 style="margin:4px 0 6px">How the Best Settings recommendations are produced</h2>
+  <p class="muted" style="font-size:13px;margin:0 0 4px">This page describes the calculation exactly as the
+  code performs it. It is written so that someone who has never used this system can check it, and it states
+  the method's weaknesses alongside its results.</p>
+
+  ${h("1. The population", `<p style="font-size:13px">Every row is one completed or still-open trade taken
+  from <code>squeeze_history</code>: an instrument that reached a squeeze trigger, with its entry, stop,
+  target, trigger date, exit date and realised return. Annual cards use the last <b>365 days</b>; the
+  three-year card uses the last <b>1,095 days</b>. A row is eligible only if it has an entry, a stop, a
+  trigger date and a non-null return.</p>
+  <p style="font-size:13px"><b>De-duplication.</b> The scanner runs several independent lookback windows
+  (30/60/90/180/240-day), so one instrument can trigger in more than one window on the same day. Rows are
+  de-duplicated on <code>ticker + trigger date</code> before anything is measured; without that, a single
+  setup would be counted several times and would inflate both the trade count and the return.</p>`)}
+
+  ${h("2. What is searched", `<p style="font-size:13px">This is an exhaustive search over a fixed grid, not
+  an optimiser. Each configuration is one <b>scope</b> plus six <b>filters</b>, replayed at each money model:</p>
+  <div class="tablewrap"><table style="font-size:12.5px"><tbody>
+    <tr><td><b>Scope</b></td><td>All markets &middot; the 5 most-traded markets &middot; 4 market-cap bands (under 2bn, 2&ndash;10bn, 10&ndash;100bn, 100bn+)</td></tr>
+    <tr><td><b>Minimum R:R</b></td><td>${list(g.RRS)}</td></tr>
+    <tr><td><b>Minimum Quality</b></td><td>${list(g.QUALS)} <span class="muted">(0 = no floor)</span></td></tr>
+    <tr><td><b>Minimum VolumeScore</b></td><td>${list(g.VSCORES)}</td></tr>
+    <tr><td><b>Minimum RVOL</b></td><td>${list(g.RVOLS)}</td></tr>
+    <tr><td><b>Require above VWAP</b></td><td>no / yes</td></tr>
+    <tr><td><b>Require ATR expanding</b></td><td>no / yes</td></tr>
+    <tr><td><b>Position size (% of wallet)</b></td><td>${list(g.STAKES)}</td></tr>
+    <tr><td><b>Max open positions</b></td><td>${list(g.OPENS)}</td></tr>
+  </tbody></table></div>
+  <p style="font-size:13px">That is <b>${SCOPES} scopes &times; ${filters} filter combinations =
+  ${configs.toLocaleString()} configurations</b>, each replayed against <b>${models} money models</b> &mdash;
+  about <b>${(configs*models).toLocaleString()} wallet replays</b> per refresh.</p>
+  <p style="font-size:13px"><b>Sector is deliberately not a scope.</b> The live order gate enforces
+  direction, location and the market on/off switches only, so a sector-scoped recommendation could never be
+  applied to real trading. Recommending something unenforceable would be worse than not recommending it.</p>`)}
+
+  ${h("3. The wallet replay", `<p style="font-size:13px">Configurations are not scored on average trade
+  return. Each is replayed as a wallet, in trigger-date order, under the constraints a real account has:</p>
+  <ul style="font-size:13px;line-height:1.7">
+    <li><b>Profit settles on EXIT, not at trigger.</b> A trade's result reaches the wallet on the day it
+    closed. Settling early would let the same capital fund two positions at once.</li>
+    <li><b>Capital is committed while a trade is open.</b> Each position reserves <code>stake / leverage</code>
+    as margin, and a new trade is refused when that margin is not free.</li>
+    <li><b>Two independent caps.</b> The explicit max-open cap, and the implicit one from position size &mdash;
+    a 10% position can fund at most 10 concurrent trades.</li>
+    <li><b>Compounding.</b> Position size is a percentage of the wallet <i>at that moment</i>, so ordering
+    matters and the sequence is genuinely path-dependent.</li>
+    <li><b>Minimum trade size.</b> A trade whose stake falls below the configured minimum is refused rather
+    than taken at an unrealistic size.</li>
+  </ul>
+  <p style="font-size:13px">Every refused trade is recorded with its reason, and those rows appear in the
+  Transaction evidence table beneath each card. A recommendation that cannot be audited is not evidence.</p>`)}
+
+  ${h("4. Which configurations qualify", `<p style="font-size:13px">A configuration must fund at least
+  <b>20 trades</b> to be considered. Where any positive-return configuration exists only positive ones are
+  ranked; otherwise the full eligible set is used, so the page never silently reports nothing.</p>
+  <p style="font-size:13px">The ranking score is:</p>
+  <pre style="font-size:12.5px;padding:9px;overflow-x:auto">score = ( return / (maxDrawdown + 0.02) ) &times; ( 0.5 + 0.5 &times; consistency ) &times; min(1, fundedTrades / 40)</pre>
+  <ul style="font-size:13px;line-height:1.7">
+    <li><code>return / (drawdown + 0.02)</code> &mdash; return per unit of pain. The 0.02 stops a near-zero
+    drawdown producing an unbounded score.</li>
+    <li><code>consistency</code> &mdash; the fraction of calendar quarters in which the configuration made
+    money. Positive in every quarter keeps the full score; positive in half scales it to 0.75.</li>
+    <li><code>min(1, n/40)</code> &mdash; a sample penalty. Below 40 funded trades the score is reduced in
+    proportion, so a lucky 21-trade run cannot outrank a well-evidenced one.</li>
+  </ul>`)}
+
+  ${h("5. How each card is chosen", `<div class="tablewrap"><table style="font-size:12.5px"><tbody>
+    <tr><td><b>Balanced</b></td><td>Highest score.</td></tr>
+    <tr><td><b>Growth</b></td><td>Highest return.</td></tr>
+    <tr><td><b>Defensive</b></td><td>Lowest maximum drawdown.</td></tr>
+    <tr><td><b>Broad evidence</b></td><td>Most positive quarters, then most funded trades.</td></tr>
+    <tr><td><b>Best win : loss</b></td><td>Most winners per loser among <b>eligible</b> trades.</td></tr>
+    <tr><td><b>Capital efficient</b></td><td>Most return per day of capital committed.</td></tr>
+    <tr><td><b>Short Duration</b></td><td>Shortest average hold.</td></tr>
+    <tr><td><b>&gt;125 trades</b> and <b>Most consistent returns</b></td><td>Best score among configurations
+    funding 125&ndash;150, and 250&ndash;300, trades. Both are replayed over the same full period: the band
+    selects by how many trades a configuration <i>funds</i>, never by sampling the data.</td></tr>
+    <tr><td><b>Best over 3 years</b></td><td>Highest return over 1,095 days, shown as a recommendation only
+    if it funded more than 125 trades and reached at least 80% of the best annual card's return.</td></tr>
+  </tbody></table></div>
+  <p style="font-size:13px">Apart from the two trade-band cards and Best win : loss, each card must differ
+  from those already chosen by at least two settings, so the set represents genuinely different decisions
+  rather than cosmetic variations of one.</p>`)}
+
+  ${h("6. What the printed figures mean", `<ul style="font-size:13px;line-height:1.7">
+    <li><b>Return</b> &mdash; the wallet's total growth over the period, compounded, after the constraints above.</li>
+    <li><b>Max drawdown</b> &mdash; the largest peak-to-trough fall of the wallet during the replay.</li>
+    <li><b>Funded / eligible</b> &mdash; <i>eligible</i> is every trade matching the configuration's filters;
+    <i>funded</i> is the subset the wallet could actually pay for.</li>
+    <li><b>Win : loss (eligible)</b> &mdash; a property of the configuration alone, independent of the reader.</li>
+    <li><b>Win : loss (actual)</b> &mdash; over funded trades only, so it moves with wallet, position size and
+    the open-position cap. <b>The two can legitimately disagree</b>, and the "Best win : loss" title refers to
+    the eligible figure for exactly that reason.</li>
+    <li><b>Each of the last 3 years</b> &mdash; the same configuration replayed over three rolling 365-day
+    windows. For the annual cards the newest window is in-sample and the other two are not.</li>
+  </ul>`)}
+
+  ${h("7. Known weaknesses", warn(`<b>The annual cards are selected in-sample.</b> A configuration is chosen
+  because it performed well over the last 365 days, and its headline return is then reported over that same
+  period. The two out-of-sample years shown on each card are the honest check, and they are frequently worse.
+  Treat the headline as a best case, not an expectation.`)
+  + warn(`<b>Multiple comparisons.</b> ${configs.toLocaleString()} configurations are searched and the best is
+  reported, so some of the winning margin is selection rather than skill. The sample penalty and the
+  consistency term reduce this; they do not remove it, and no explicit multiple-comparison correction is
+  applied.`)
+  + warn(`<b>Survivorship and coverage.</b> The universe is today's constituents, so instruments that left an
+  index are not represented. Roughly 10% of published rows carry no market cap, which leaves them out of the
+  market-cap scopes rather than placing them in one.`)
+  + warn(`<b>Costs are not modelled.</b> Returns are gross: no spread, commission, financing or slippage.
+  Configurations that trade more often are therefore flattered relative to those that trade less.`)
+  + warn(`<b>Open trades count at their current mark.</b> A still-open position contributes its unrealised
+  return and holds its slot. That is the honest treatment for capacity, but it means the figure is not final.`))}
+
+  <p class="muted" style="font-size:12px;margin-top:18px">The search itself is
+  <code>hvf_web/best_settings.js</code>. The same file produces both the signed-in and the logged-out cards
+  &mdash; the public page runs it under Node &mdash; so the two cannot be different calculations.</p>
+</div>`;
+}
+
+// The model a logged-out visitor's cards are built on. MUST stay identical to PUBLIC_MODEL in
+// run_best_settings_cards.py, or the signed-in page and the public page would quote different numbers
+// for the same card -- the divergence P-35 was raised about. test_js_behaviour asserts the two agree.
+const BEST_STD_MODEL={wallet:10000,minTrade:25,stake:0.05,maxOpen:20};
+// Default OFF: the cards show the best available, not the best within one reader's constraints.
+let BEST_USE_MY_MODEL=false;
+// The full replayable population, ignoring this user's market switches. tradeVisible() applies several
+// rules (admin-disabled markets, per-user switches, hides); only the MARKET exclusions are dropped here,
+// because an admin-disabled market is disabled for everyone and is not a personal preference.
+function _bestUnfilteredRows(fallback){
+  if(!Array.isArray(WIN))return fallback||[];
+  const rows=WIN.filter(r=>r&&r.entry&&r.stop&&r.perf!=null&&r.trig_date
+    &&!(r.market&&MARKETS_DISABLED.has(r.market)));
+  return rows.length?rows:(fallback||[]);
+}
+function bestToggleMyModel(on){
+  BEST_USE_MY_MODEL=!!on;
+  if(_bestDecisionRows)renderBestCombo(_bestDecisionRows,{recordSnapshot:false});
+}
+
 function renderBestCombo(all,{recordSnapshot=true}={}){
   _bestDecisionRows=all;
   _bestCardCapacity=bestCardCapacity();
@@ -3164,9 +3328,29 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   // Derived from the ROWS actually replayed and from tradeVisible itself, not from a second reading of
   // MARKETS_OFF/MARKETS_DISABLED. A market excluded for any reason tradeVisible knows about is reported,
   // including rules added later.
-  const marketsOff=tradeExcludedValues("market",(WIN||[]).concat(WIN_3Y||[]).map(r=>r&&r.market));
-  const res=computeBestSettings({rows:all||[],rows3y:WIN_3Y,wallet:WINNERS_WALLET,minTrade:MIN_TRADE,
-    stake:WINNERS_STAKE,maxOpen:WINNERS_MAXOPEN,replay:_combReplay,marketsOff,memo:_3Y_MEMO});
+  // WHOSE MODEL, AND WHOSE MARKETS (user 2026-09-06, P-35: "the performance cards when logged in are
+  // different to logged out. This should not happen as this should illustrate the best returns
+  // irrespective of users settings").
+  //
+  // Two settings were silently changing the answer. Measured for the account owner that day: the money
+  // model is 10% stake / 10 open against the public 5% / 20, and six markets are switched off, which
+  // removes their rows from the search ENTIRELY rather than merely reordering the cards.
+  //
+  // This REVERSES the default set on 2026-08-14 ("does not seem to do all the config e.g. markets"),
+  // which trained the search on the user's own tradeable population so a card could not recommend a
+  // market they had turned off. That reasoning is still sound and is still available -- it is now a
+  // toggle rather than a silent default. The default is the STANDARD model over ALL markets, so a card
+  // means the same thing to every reader and matches what a logged-out visitor sees, which is what the
+  // word "best" has to mean if it is to mean anything.
+  const own=BEST_USE_MY_MODEL;
+  const marketsOff=own?tradeExcludedValues("market",(WIN||[]).concat(WIN_3Y||[]).map(r=>r&&r.market)):[];
+  const rows=own?(all||[]):(_bestUnfilteredRows(all));
+  const res=computeBestSettings({rows,rows3y:WIN_3Y,
+    wallet:own?WINNERS_WALLET:BEST_STD_MODEL.wallet,
+    minTrade:own?MIN_TRADE:BEST_STD_MODEL.minTrade,
+    stake:own?WINNERS_STAKE:BEST_STD_MODEL.stake,
+    maxOpen:own?WINNERS_MAXOPEN:BEST_STD_MODEL.maxOpen,
+    replay:_combReplay,marketsOff,memo:_3Y_MEMO});
   _3Y_MEMO=res.memo;
   if(res.insufficient){
     box.innerHTML=res.eligibleRows<10
@@ -3204,7 +3388,19 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
       settings:{rr:bestThreeYear.rr,q:bestThreeYear.q,vs:bestThreeYear.vs,rv:bestThreeYear.rv,vw:!!bestThreeYear.vw,
         atr:!!bestThreeYear.atr,st:bestThreeYear.st,mo:bestThreeYear.mo,scope:bestThreeYear.scope.label},
       cfg:res.threeYearCard?res.threeYearCard.cfg:null}:null,current}):"";
-  box.innerHTML=`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearStatusCard}</div>
+  // Which basis produced these cards, stated in plain text above them rather than in a tooltip. The
+  // previous disclosure WAS present -- excluded markets in a title attribute, the model on a separate
+  // card -- and was still missed, which is a fair verdict on tooltips for something this load-bearing.
+  const excludedNow=own?tradeExcludedValues("market",(WIN||[]).concat(WIN_3Y||[]).map(r=>r&&r.market)):[];
+  const basisNote=`<div class="muted" style="font-size:12px;margin:0 0 10px;padding:8px 10px;border-left:3px solid ${own?'#d29922':'var(--accent)'};background:color-mix(in srgb,${own?'#d29922':'var(--accent)'} 8%,transparent)">`
+    +(own
+      ? `<b style="color:var(--fg)">Your model, your markets.</b> ${money(WINNERS_WALLET)} wallet · ${(WINNERS_STAKE*100).toFixed(1)}% position · ${WINNERS_MAXOPEN} open`
+        +(excludedNow.length?` · excluding ${_esc(excludedNow.join(", "))}`:` · all markets`)
+        +` <span class="muted">These are the best settings <b>for you</b>, so they will not match the figures a logged-out visitor sees.</span>`
+      : `<b style="color:var(--fg)">Standard model, all markets.</b> ${money(BEST_STD_MODEL.wallet)} wallet · ${(BEST_STD_MODEL.stake*100).toFixed(1)}% position · ${BEST_STD_MODEL.maxOpen} open`
+        +` <span class="muted">The best returns available, on the same basis every reader sees — identical to the logged-out cards.</span>`)
+    +` <label class="cfg-option" style="margin-left:10px"><input type="checkbox" id="best-my-model" ${own?"checked":""} onchange="bestToggleMyModel(this.checked)" title="Recompute these cards on your own wallet, position size, open-position cap and market switches. The result is personal to you and will not match the public cards."> Use my model and markets</label></div>`;
+  box.innerHTML=basisNote+`<div class="fgrid" style="margin:0 0 10px">${choiceCards}${unsupportedCards}${threeYearStatusCard}</div>
   <div class="card" style="margin:0" id="best-detail"></div>`;
   _bestGridPostLayout(box);
   BEST_CHOICES=choices; BEST_MODEL_W=w;

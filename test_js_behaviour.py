@@ -1157,11 +1157,19 @@ const stake={now['stake']}, maxOpen={now['maxopen']};
 
 
 def test_the_page_still_feeds_the_memo_from_its_own_model():
-    """The guard names parameters now, so the wiring is the other half of the same rule."""
+    """The guard names parameters now, so the wiring is the other half of the same rule.
+
+    The wallet and minimum trade became CONDITIONAL in P-35 (2026-09-06): the cards default to the
+    standard public model and use the reader's own only when they ask for it, so the call can no longer
+    be matched as one literal. Both branches are asserted instead, which is the stronger check anyway --
+    it would catch a change that dropped one of them."""
     js = client_js()
 
-    assert "rows3y:WIN_3Y,wallet:WINNERS_WALLET,minTrade:MIN_TRADE" in js, (
-        "the search must be given the page's three-year rows, wallet and minimum trade")
+    assert "rows3y:WIN_3Y," in js, "the search must be given the page's three-year rows"
+    assert "wallet:own?WINNERS_WALLET:BEST_STD_MODEL.wallet" in js, (
+        "the wallet must come from the reader's model on their basis and the standard one otherwise")
+    assert "minTrade:own?MIN_TRADE:BEST_STD_MODEL.minTrade" in js, (
+        "the minimum trade must follow the same basis as the wallet, or the two disagree")
     assert "memo:_3Y_MEMO" in js and "_3Y_MEMO=res.memo" in js, (
         "the memo must be handed in and handed back, or every render repeats the 52-61 second search")
 
@@ -1864,8 +1872,11 @@ def _scope_label(markets_off):
     src = (_extract("tradeVisible") + "\n" + _extract("tradeExcludedValues") + "\n"
            + "\n".join(re.search(rf"const {n}=[^\n]+", js).group(0) for n in ("marketsOff", "_allLabel")))
     rows = '[{market:"FTSE 100"},{market:"Shanghai"},{market:"Crypto"}]'
+    # own=true is the ONLY basis on which markets can be excluded at all since P-35 (2026-09-06): the
+    # default basis is the standard model over every market, so marketsOff is empty there by definition.
+    # This label exists to describe the user's-model basis, so that is what the harness supplies.
     return run_js(f"let MARKETS_OFF=new Set({markets_off}); let MARKETS_DISABLED=new Set([]);"
-                  f"let TRADE_HIDE={{}}; const WIN={rows}, WIN_3Y=[];",
+                  f"let TRADE_HIDE={{}}; const WIN={rows}, WIN_3Y=[]; const own=true;",
                   src, "_allLabel")
 
 
@@ -3423,3 +3434,62 @@ def test_it_fires_a_change_event_so_the_selection_state_actually_updates():
     assert checked == [True, True], "every row must end up ticked"
     assert changed == 1, "only the box that actually changed should count as changed"
     assert fired == [1, 0], "an already-ticked box must not fire a redundant change"
+
+
+# ── Signed-in cards match the logged-out ones by default (P-35, user 2026-09-06) ──────────────────────
+#
+# "the performance cards when logged in are different to logged out. This should not happen as this
+# should illustrate the best returns irrespective of users settings".
+#
+# Two settings were silently changing the answer. Measured for the account owner that day: the money
+# model is 10% stake / 10 open against the public 5% / 20, and six markets were switched off, which
+# removed their rows from the search ENTIRELY rather than merely reordering the cards.
+#
+# This REVERSES the default set on 2026-08-14 ("does not seem to do all the config e.g. markets"). That
+# reasoning is still sound and is still reachable -- it is a toggle now, not a silent default.
+
+def test_the_signed_in_cards_use_the_same_model_as_the_public_ones():
+    """If these two ever drift, the signed-in page and the logged-out page quote different numbers for
+    the same card -- which is the entire complaint."""
+    import re
+    js = client_js()
+    m = re.search(r"const BEST_STD_MODEL=\{wallet:(\d+),minTrade:(\d+),stake:([\d.]+),maxOpen:(\d+)\}", js)
+    assert m, "BEST_STD_MODEL is gone or reshaped"
+
+    py = (Path("run_best_settings_cards.py")).read_text(encoding="utf-8")
+    p = re.search(r'PUBLIC_MODEL = \{"wallet": (\d+), "minTrade": (\d+), '
+                  r'"stake": ([\d.]+), "maxOpen": (\d+)\}', py)
+    assert p, "PUBLIC_MODEL is gone or reshaped"
+    assert m.groups() == p.groups(), (
+        f"the signed-in model {m.groups()} and the public model {p.groups()} disagree")
+
+
+def test_the_default_is_the_standard_model_not_the_users():
+    js = client_js()
+    assert "let BEST_USE_MY_MODEL=false;" in js, \
+        "defaulting to the user's own model is what made the cards disagree"
+
+
+def test_the_users_market_switches_are_only_applied_when_they_ask_for_them():
+    src = _extract("renderBestCombo")
+    assert "const own=BEST_USE_MY_MODEL;" in src
+    assert 'const marketsOff=own?tradeExcludedValues(' in src, \
+        "with the toggle off, no market may be excluded -- a removed market removes evidence"
+    assert "wallet:own?WINNERS_WALLET:BEST_STD_MODEL.wallet" in src
+
+
+def test_an_admin_disabled_market_stays_excluded_even_on_the_standard_basis():
+    """A per-user market switch is a preference; an admin-disabled market is disabled for everyone, and
+    recommending one would be recommending something nobody can trade."""
+    src = _extract("_bestUnfilteredRows")
+    assert "MARKETS_DISABLED.has(r.market)" in src
+    assert "MARKETS_OFF" not in src, "the personal switch must NOT be applied on the standard basis"
+
+
+def test_the_basis_is_stated_on_screen_and_not_only_in_a_tooltip():
+    """The previous disclosure was real -- excluded markets in a title attribute, the model on a separate
+    card -- and was still missed. That is a fair verdict on tooltips for something this load-bearing."""
+    src = _extract("renderBestCombo")
+    assert "basisNote" in src and "box.innerHTML=basisNote+" in src
+    assert 'id="best-my-model"' in src, "the choice must be visible and reversible on the page"
+    assert "Standard model, all markets" in src and "Your model, your markets" in src

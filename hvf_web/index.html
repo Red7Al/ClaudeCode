@@ -1465,6 +1465,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <div class="pf-pill-group"><span class="muted pf-pill-desc">What your current filters would have produced over the selected period.</span><button class="pill" data-pfpanel="results" onclick="pfPanel('results')" title="Back test over the last 12 months for YOUR current configuration (your Trading (Squeeze) direction filter, Markets (User) and personal floors): every setup as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Back Test</button></div>
     <div class="pf-pill-group" id="pf-run-group" style="display:none"><span class="muted pf-pill-desc">What changes when exits are simulated differently; live orders are unaffected.</span><button class="pill" data-pfpanel="run" onclick="pfPanel('run')" title="Illustrates trailing the stop above target instead of selling at target — live IG orders are never affected.">🏃 Let winners run</button></div>
     <div class="pf-pill-group" style="display:none"><span class="muted pf-pill-desc">How many observed triggers gained, lost, or remain open.</span><button class="pill" data-pfpanel="summary" onclick="pfPanel('summary')" title="Headline view: every recorded trigger split Overall / Bull / Bear, plus the monthly compounded-wallet growth chart. The quick 'how are we doing' read.">📈 Summary</button></div>
+    <!-- Methodology (user 2026-09-06: "please write a new page within performance that explains how this
+         analysis is done - I can then double check it with my quant resource"). Deliberately a plain
+         reading page with no controls: it must be checkable by someone who has never seen the site. -->
+    <div class="pf-pill-group"><span class="muted pf-pill-desc">Exactly how the recommendations are computed, for external review.</span><button class="pill" data-pfpanel="method" onclick="pfPanel('method')" title="The population, the de-duplication, the grid searched, the wallet replay, how each card is selected and what every printed figure means.">📐 Methodology</button></div>
     <div class="pf-pill-group" id="pf-advanced-group" style="display:none"><span class="muted pf-pill-desc">Explore the evidence behind the recommended settings (Silver/Gold admin).</span><button class="pill" id="pf-pill-advanced" data-pfpanel="analysis" type="button" onclick="toggleAdvancedPf()" title="Open specialist winner-analysis.">⚙ Advanced analysis</button></div>
   </div>
   <!-- Shared compounded-wallet assumptions for the analytical reports. Signal rules such as Quality,
@@ -1553,6 +1557,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <div id="pf-summary" class="tablewrap" style="margin-bottom:8px"></div>
     </div>
   </div>
+  <!-- METHODOLOGY. Written for a reader who has never seen this system, because the point of it is
+       external review. Every number in it is taken from hvf_web/best_settings.js and asserted by
+       test_methodology_page.py, so the page cannot drift away from the code it describes. -->
+  <div id="pf-panel-method" class="hidden"></div>
   <div id="pf-panel-results">
   <h2 class="sec" style="margin-top:0">Back Test</h2>
   <p class="muted" style="font-size:13px;margin-top:-8px">These are <b>back-test results over the last 12 months</b>, replayed against your <b>complete current configuration</b>: direction, enabled markets, saved market/sector scope, R:R, Quality, Volume Score, RVOL, VWAP, ATR, instrument value and wallet limits. Applying a Best Settings option updates this replay immediately. Each setup is measured from its trigger to <b style="color:var(--bull)">TARGET</b>, <b style="color:var(--bear)">STOPPED</b> or <b style="color:#d29922">OPEN</b> (marked to the latest price).</p>

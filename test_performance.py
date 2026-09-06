@@ -212,7 +212,10 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert 'used+margin>w+1e-9' in html
     assert 'effectiveMax=maxopen>0?Math.min(maxopen,_fundedMaxOpen(stakeFrac))' in html
     assert 'All recommendation cards use an explicit numeric Max open value.' in html
-    assert 'OPENS=[3,5,8,12,20,25,50]' in html
+    # The grid moved into a single exported BEST_GRID declaration (P-42, 2026-09-06) so the
+    # Methodology page can state it without keeping a second copy that would drift.
+    assert 'OPENS:[3,5,8,12,20,25,50]' in html
+    assert 'OPENS=BEST_GRID.OPENS' in html, 'the search must consume the exported grid'
     assert 'WINNERS_MAXOPEN=20' in html
     assert 'id="ordp-exposure"' in html
     assert 'How this replay uses your £:' in html
