@@ -492,6 +492,19 @@ def get_log(name: str) -> list:
 
 
 def name_for_token(token: str) -> str:
+    # An EMPTY token cannot match any user, so resolve it without touching the store at all.
+    #
+    # WHY THIS MATTERS (CI has been red since before 2026-09-01, found 2026-09-06). _ensure_seeded() can
+    # WRITE -- it seeds missing logins and saves -- and _save() deliberately fails closed when the
+    # Supabase user state is unreachable, raising OSError rather than risk a stale overwrite. In CI the
+    # env vars are placeholders, so every UNAUTHENTICATED request raised that OSError and returned 500
+    # where the test, and a real anonymous visitor, expect 401.
+    #
+    # The authorisation boundary is exactly what those tests exist to prove, so excluding them from CI
+    # would have removed the check instead of fixing it. An anonymous request has no business writing to
+    # the user store in the first place.
+    if not token:
+        return ""
     users = _ensure_seeded()
     for n in _login_names(users):
         if not users[n].get("enabled", True):

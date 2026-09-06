@@ -33,7 +33,12 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 25, not 10 (2026-09-06). The suite took 588s on the runner and was killed at 600s, so the last
+    # EIGHT runs reported "cancelled" rather than a result -- and combined with the alert condition
+    # below, that meant no CI signal at all and no notification that there was none. Locally the same
+    # suite is ~150s; the runner is slower and test_js_behaviour spawns a Node subprocess per test.
+    # Headroom, so a suite that keeps growing does not silently return to timing out.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -52,11 +57,14 @@ jobs:
           SUPABASE_USER: ci-placeholder
           SUPABASE_DB_PASSWORD: ci-placeholder
           FRED_API_KEY: ci-placeholder
+      # cancelled() as well as failure(). A job killed by timeout-minutes is CANCELLED, not failed, so
+      # this alert stayed silent through all eight timeouts -- the one mechanism that should have
+      # reported the outage was blind to the way it actually happened.
       - name: Alert on failure
-        if: failure()
+        if: failure() || cancelled()
         env:
           SLACK_ALERTS: ${{ secrets.SLACK_ALERTS }}
         run: |
           curl -s -X POST -H 'Content-type: application/json' --data \
-            '{"text":"🚨 HVF regression suite FAILED on push to main — detection behaviour changed. Do not trust scan output until investigated. https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
+            '{"text":"🚨 HVF regression suite did not pass on push to main (failed, or cancelled by the job timeout) — detection behaviour may have changed. Do not trust scan output until investigated. https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
             "$SLACK_ALERTS"

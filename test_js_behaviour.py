@@ -3493,3 +3493,46 @@ def test_the_basis_is_stated_on_screen_and_not_only_in_a_tooltip():
     assert "basisNote" in src and "box.innerHTML=basisNote+" in src
     assert 'id="best-my-model"' in src, "the choice must be visible and reversible on the page"
     assert "Standard model, all markets" in src and "Your model, your markets" in src
+
+
+# ── The Scanner says which columns are TODAY'S reading (P-34, user 2026-09-06) ────────────────────────
+#
+# "why do not all ATR values say Now on this page?" -- and the answer was worse than a missing marker.
+#
+# On the Scanner, RVOL and Vol are BREAK-BAR values computed for TRIGGERED rows only, so an untriggered
+# row falls back to today's RVOL and marks it "now". VWAP and ATR are not like that: server's
+# _live_vwap_atr computes them "using the most recent available bar (today) as the reference point" for
+# EVERY row, triggered or not. So a TRIGGERED row showed a trigger-bar RVOL beside a today VWAP/ATR tick
+# -- two different moments in one row, with nothing saying so.
+#
+# Both tooltips also claimed "on the trigger bar", which was simply untrue of the value being rendered.
+#
+# The marker goes on the HEADER rather than every row: it is true of all 1,773 rows, and repeating it in
+# each cell would be noise rather than information.
+
+def test_the_scanner_marks_vwap_and_atr_as_current():
+    html = client_html()
+    header = html[html.index('<th data-k="above_vwap"'):html.index('<th data-k="volume_score"')]
+    assert header.count('>now</span>') == 2, \
+        "both VWAP and ATR are today's reading and both headers must say so"
+
+
+def test_those_headers_no_longer_claim_to_be_trigger_bar_readings():
+    """The tooltips said "on the trigger bar" for a value taken from today's bar. A wrong explanation is
+    worse than none: it tells the reader the row is internally consistent when it is not."""
+    html = client_html()
+    header = html[html.index('<th data-k="above_vwap"'):html.index('<th data-k="volume_score"')]
+    assert "on the trigger bar" not in header, "the VWAP/ATR tooltips still misdescribe the value"
+    assert header.count("TODAY'S bar") == 2, "each must say which bar it is measured on"
+
+
+def test_rvol_and_volumescore_still_describe_themselves_as_trigger_bar():
+    """The other half of the same rule. These two ARE break-bar measures, and blurring that would lose
+    the distinction the fix exists to make."""
+    html = client_html()
+    for key in ("rvol", "volume_score"):
+        th = html[html.index(f'<th data-k="{key}"'):]
+        th = th[:th.index(">")]
+        assert "trigger bar" in th or "break bar" in th, \
+            f"{key} is a break-bar measure and its tooltip must still say so"
+        assert ">now</span>" not in th, f"{key} is not always current; only untriggered rows are marked"
