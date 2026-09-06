@@ -987,3 +987,50 @@ def test_the_working_order_rows_carry_the_deal_id(monkeypatch):
 
     assert body["orders"][0]["deal_id"] == "", "the fixture order has no dealId, so the field must be blank"
     assert "deal_id" in body["orders"][0]
+
+
+# ── User Management orders by creation, never by name (P-43, user 2026-09-06) ─────────────────────────
+#
+# "in user management sort the users by creation data or user id (not name) if you have it". Measured
+# that day: NEITHER existed. The store is keyed by LOGIN, so there is no user id, and not one of the five
+# accounts carried a created date -- two had no log at all, and the earliest log entry on the others was
+# a login, not a creation, so no honest date could be derived for them.
+#
+# So: add_user stamps `created` from now on, and `seq` (position in the store, which is insertion order
+# and survives the JSON round-trip) orders everything older.
+
+def test_list_users_exposes_a_creation_ordering():
+    from hvf_web import web_users as _wu
+    users = _wu.list_users()
+    assert users, "no users to check"
+    for u in users:
+        assert "seq" in u and isinstance(u["seq"], int), "every user needs a stable ordering key"
+        assert "created" in u, "the created stamp must be present, even when empty"
+    assert [u["seq"] for u in users] == sorted(u["seq"] for u in users), \
+        "seq must follow store order, or it is not an insertion ordering"
+
+
+def test_a_new_account_is_stamped_with_its_creation_time(monkeypatch, tmp_path):
+    """Without this the ordering can never improve on `seq`, and `seq` breaks if the store is ever
+    rebuilt in a different order."""
+    from hvf_web import web_users as _wu
+    store = {}
+    monkeypatch.setattr(_wu, "_load", lambda: store)
+    monkeypatch.setattr(_wu, "_save", lambda u: store.update(u))
+
+    _wu.add_user("Newcomer", "correct horse battery", "n@example.com")
+
+    created = store["Newcomer"].get("created")
+    assert created, "a new account must record when it was created"
+    import re as _re
+    assert _re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC", created), created
+
+
+def test_the_users_table_sorts_by_creation_and_not_by_name():
+    from client_source import APP_JS
+    js = APP_JS.read_text(encoding="utf-8")
+    block = js[js.index('$("users-rows").innerHTML='):][:600]
+
+    assert ".sort(" in block, "the order must be guaranteed, not left to whatever the API returns"
+    assert "a.created" in block and "a.seq" in block, "sort on creation, falling back to store order"
+    assert "a.name" not in block, "name must not decide the order"

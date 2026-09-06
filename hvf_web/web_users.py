@@ -36,6 +36,7 @@
 
 import base64
 import copy
+import datetime as _dt
 import hashlib
 import json
 import logging
@@ -187,6 +188,7 @@ def _ensure_seeded() -> dict:
                 users[name] = {"salt": salt, "pwd_hash": _hash_pwd(_secrets.token_hex(24), salt),
                                "email": email, "secrets": {}, "admin": _default_admin(name),
                                "subscription": _default_subscription(name), "enabled": True,
+                               "created": _now_stamp(),
                                "locked": True}   # no real password yet -> shows "Locked" until reset
                 changed = True
                 log.info(f"web_users: '{name}' seeded LOCKED - set a password via the reset (email) flow")
@@ -237,15 +239,38 @@ def is_enabled(name: str) -> bool:
     return bool((_ensure_seeded().get(name) or {}).get("enabled", True))
 
 
+def _now_stamp() -> str:
+    """When an account was created, stamped by EVERY path that makes one (user 2026-09-06, P-43: "sort
+    the users by creation data or user id (not name) if you have it").
+
+    Neither existed when that was asked. The store is keyed by LOGIN, so there is no user id, and not one
+    of the five accounts carried a created date -- two had no log at all, and the earliest log entry on
+    the others was a login rather than a creation, so no honest date could be derived for them. They
+    order by `seq` instead (position in the store, which is insertion order and survives the JSON
+    round-trip) and show no date rather than a guessed one.
+
+    There are FOUR creation paths -- seeding, request approval, direct admin create, and add_user -- and
+    stamping only one would leave accounts silently undated depending on how they were made.
+    """
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
 def list_users() -> list:
-    """[{name, email, admin, support, subscription, enabled}] for the user-maintenance area (admin only)."""
-    return [{"name": n, "email": u.get("email", ""), "admin": bool(u.get("admin", _default_admin(n))),
+    """[{name, seq, created, email, admin, support, subscription, enabled}] for the user-maintenance area
+    (admin only). `seq` is store insertion order; `created` is empty for accounts made before it was
+    stamped (2026-09-06)."""
+    # `seq` is the account's position in the store. Python dicts preserve insertion order and the JSON
+    # round-trip keeps it, so this IS the order accounts were added -- the only creation ordering that
+    # exists for accounts predating the "created" stamp. It is a sort key, not an identifier.
+    return [{"name": n, "seq": i, "created": u.get("created", ""),
+             "email": u.get("email", ""), "admin": bool(u.get("admin", _default_admin(n))),
              "support": bool(u.get("support", False)),
              "subscription": u.get("subscription", _default_subscription(n)),
              "enabled": bool(u.get("enabled", True)),
              "pwd_strength": (u.get("pwd_strength") or ("Locked" if u.get("locked") else "unknown")),
              "fee_discount": get_fee_discount(n)}   # current + history (P-20/P-40, user 2026-08-02)
-            for n, u in _ensure_seeded().items() if isinstance(u, dict) and "pwd_hash" in u]
+            for i, (n, u) in enumerate(_ensure_seeded().items())
+            if isinstance(u, dict) and "pwd_hash" in u]
 
 
 def email_for(name: str) -> str:
@@ -692,7 +717,7 @@ def approve_request(name: str) -> bool:
         salt = _secrets.token_hex(16)
         users[name] = {"salt": salt, "pwd_hash": _hash_pwd(_secrets.token_hex(24), salt),
                        "email": req.get("email", ""), "secrets": {}, "admin": False,
-                       "subscription": "guest", "enabled": True}
+                       "subscription": "guest", "enabled": True, "created": _now_stamp()}
         _remove_request(name, users)
         _save(users)
     log.info(f"account request approved: {name}")
@@ -726,6 +751,7 @@ def admin_create_user(name: str, email: str, subscription: str = "guest", admin:
         users[name] = {"salt": salt, "pwd_hash": _hash_pwd(_secrets.token_hex(24), salt),
                        "email": email, "secrets": {}, "admin": bool(admin), "support": bool(support),
                        "subscription": subscription if subscription in SUBSCRIPTIONS else "guest",
+                       "created": _now_stamp(),
                        "enabled": True}
         _remove_request(name, users)
         _save(users)
@@ -741,7 +767,7 @@ def add_user(name: str, pwd: str, email: str, admin: bool = False, subscription:
         users[name] = {"salt": salt, "pwd_hash": _hash_pwd(pwd, salt), "pwd_strength": _pwd_strength(pwd), "email": email, "secrets": {},
                        "admin": bool(admin),
                        "subscription": subscription if subscription in SUBSCRIPTIONS else "guest",
-                       "enabled": True}
+                       "enabled": True, "created": _now_stamp()}
         _save(users)
 
 

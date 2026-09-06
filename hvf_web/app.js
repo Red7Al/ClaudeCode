@@ -1163,7 +1163,16 @@ function renderUsers(){
   fetch("/api/users",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
     .then(j=>{_rowsLoaded("users-rows");const subs=j.subscriptions||["gold","silver","guest"];
       $("users-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${(j.users||[]).length}</b> accounts`;
-      $("users-rows").innerHTML=(j.users||[]).map(u=>`<tr>
+      // Oldest account first, and EXPLICITLY (user 2026-09-06, P-43: "sort the users by creation data or
+  // user id (not name) if you have it"). Neither existed when this was asked: the store is keyed by
+  // LOGIN so there is no user id, and no account carried a created date. add_user stamps `created` from
+  // 2026-09-06; accounts older than that have none and fall back to `seq`, their position in the store,
+  // which is insertion order and survives the JSON round-trip. The table already happened to render in
+  // that order because nothing sorted it -- this makes it a guarantee rather than a coincidence, so it
+  // cannot silently become name order the day someone adds a sort.
+  $("users-rows").innerHTML=(j.users||[]).slice()
+    .sort((a,b)=>String(a.created||"").localeCompare(String(b.created||""))||(a.seq||0)-(b.seq||0))
+    .map(u=>`<tr>
         <td><b>${u.name}</b></td><td>${u.email||''}</td>
         <td style="text-align:center"><label style="cursor:pointer" title="Admin — full access"><input type="checkbox" ${u.admin?'checked':''} onchange="saveUser('${u.name}',{admin:this.checked})"></label></td>
         <td style="text-align:center"><label style="cursor:pointer" title="Support — read-only: System Logs, Batch Activity, Scheduled Jobs — nothing else admin-only"><input type="checkbox" ${u.support?'checked':''} onchange="saveUser('${u.name}',{support:this.checked})"></label></td>
