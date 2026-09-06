@@ -431,6 +431,122 @@ def _post_absurd_slack(fresh: list, backlog: int, window_days: int) -> None:
         log.warning(f"absurd-outcome Slack post failed: {exc}")
 
 
+# ======================================================================================================
+# FIELD COVERAGE, and why it reports itself.
+#
+# user 2026-09-06: "it's very dull for me to keep reporting missing data - you need to manage this".
+#
+# Over one session the account owner reported blank sector, blank market cap, and blank VWAP / ATR /
+# VolumeScore. Every one was found by a person looking at a screen. Nothing measured the fields the site
+# actually renders, so a coverage regression was invisible until somebody noticed a dash.
+#
+# This measures the columns a reader sees, on the whole published universe, and compares each against the
+# LAST RUN rather than a fixed threshold. Absolute thresholds are the wrong tool here: sector is ~88% and
+# will never be 100% (Yahoo does not classify closed-end investment trusts, and bonds, FX, commodities
+# and indices have no sector at all), so a fixed bar either sits below the noise and never fires, or sits
+# above it and cries wolf every morning. A DROP is the signal -- it means something that used to resolve
+# has stopped.
+# ======================================================================================================
+
+# Field -> (how to read it off a record, whether a blank is ever legitimate for this market)
+_NEVER_HAS_SECTOR = {"Government Bonds", "FX", "Commodities", "Indices", "Crypto"}
+_COVERAGE_DROP_ALERT = 0.02      # 2 percentage points; below this is ordinary day-to-day movement
+
+
+def _audit_field_coverage(alert: bool = True) -> dict:
+    """Coverage of the fields the site renders, compared with the previous run."""
+    from hvf_web import server
+    import web_store
+
+    snap = server._load_snapshot()
+    records = snap.get("records") or []
+    if not records:
+        raise RuntimeError("field coverage audit requires the daily scanner snapshot")
+
+    try:
+        mcaps = server._mcap_map() or {}
+    except Exception as exc:
+        log.warning("market caps unavailable for the coverage audit: %s", exc)
+        mcaps = {}
+
+    def applicable(field, rec):
+        # A blank that is CORRECT must not count against coverage, or the number drifts down for a
+        # reason nobody can act on and the alert becomes noise.
+        if field == "sector":
+            return (rec.get("market") or "") not in _NEVER_HAS_SECTOR
+        return True
+
+    fields = {"name": lambda r: r.get("name"),
+              "market": lambda r: r.get("market"),
+              "sector": lambda r: r.get("sector"),
+              "location": lambda r: r.get("location"),
+              "mcap": lambda r: mcaps.get(r.get("ticker"))}
+
+    coverage, examples = {}, {}
+    for field, read in fields.items():
+        rows = [r for r in records if applicable(field, r)]
+        blank = [r for r in rows if read(r) in (None, "", 0)]
+        coverage[field] = {"applicable": len(rows), "present": len(rows) - len(blank),
+                           "pct": round(100.0 * (len(rows) - len(blank)) / len(rows), 2) if rows else None}
+        examples[field] = [{"ticker": r.get("ticker"), "name": r.get("name"), "market": r.get("market")}
+                           for r in blank[:20]]
+
+    prev = web_store.load_json_store("field_coverage_audit") or {}
+    prev_cov = (prev.get("coverage") or {}) if isinstance(prev, dict) else {}
+    prev_rows = (prev.get("rows") or 0) if isinstance(prev, dict) else 0
+
+    # Coverage is a percentage of APPLICABLE rows, so it survives the universe growing by a few
+    # instruments. It does not survive the universe changing SHAPE: a run against a partial or stale
+    # snapshot has a different market mix, and comparing across that measures the mix, not a regression.
+    # Drops are still recorded either way -- they are just not alerted on, because an alert nobody can
+    # act on is how a channel stops being read.
+    comparable = bool(prev_rows) and abs(len(records) - prev_rows) <= 0.10 * prev_rows
+    if prev_rows and not comparable:
+        log.warning("previous coverage was measured over %d rows and this run has %d; "
+                    "recording the numbers but not alerting on the difference", prev_rows, len(records))
+
+    drops = []
+    for field, now in coverage.items():
+        was = (prev_cov.get(field) or {}).get("pct")
+        if was is None or now["pct"] is None:
+            continue
+        if was - now["pct"] >= _COVERAGE_DROP_ALERT * 100:
+            drops.append({"field": field, "was": was, "now": now["pct"],
+                          "lost": round(was - now["pct"], 2)})
+
+    report = {"audit_date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "rows": len(records), "coverage": coverage, "blank_examples": examples,
+              "drops": drops, "previous_rows": prev_rows,
+              "previous_date": prev.get("audit_date") if isinstance(prev, dict) else None}
+    if not web_store.save_json_store("field_coverage_audit", report):
+        raise RuntimeError("field coverage audit could not be persisted")
+    log.info("Field coverage: %s", {k: v["pct"] for k, v in coverage.items()})
+    report["comparable"] = comparable
+    if drops:
+        log.error("COVERAGE DROPPED: %s", drops)
+        if alert and comparable:
+            _post_coverage_slack(drops, coverage)
+    return report
+
+
+def _post_coverage_slack(drops: list, coverage: dict) -> None:
+    from notify import slack_enabled                      # every direct poster must ask (memory rule)
+    if not slack_enabled("alerts"):
+        return
+    import os
+    import requests
+    url = os.environ.get("SLACK_ALERTS", "")
+    if not url:
+        return
+    lines = ["*Published field coverage has DROPPED* — something that used to resolve has stopped."]
+    lines += [f"• `{d['field']}` {d['was']}% → {d['now']}% (lost {d['lost']} points)" for d in drops]
+    lines.append("_Full coverage: " + ", ".join(f"{k} {v['pct']}%" for k, v in coverage.items()) + "_")
+    try:
+        requests.post(url, json={"text": "\n".join(lines)}, timeout=10)
+    except Exception as exc:
+        log.warning(f"coverage Slack post failed: {exc}")
+
+
 def _audit_current_instrument_metrics() -> dict:
     """Audit RVOL/VWAP/ATR coverage for EVERY current snapshot row.
 
@@ -511,8 +627,17 @@ def _audit_current_instrument_metrics() -> dict:
 
 def main():
     args = sys.argv[1:]
+    if args == ["--coverage-only"]:
+        _audit_field_coverage()
+        return
     if args == ["--current-metrics-only"]:
         _audit_current_instrument_metrics()
+        # Runs in the SAME step, so the fields a reader sees are measured every day the metrics are --
+        # a second workflow entry is one more thing that can quietly stop being called.
+        try:
+            _audit_field_coverage()
+        except Exception as exc:
+            log.error("field coverage audit failed: %s", exc)
         return
     # Epic-lookup diagnostic — run BEFORE the audit-batch parsing so it never triggers a price audit.
     if args and args[0] == "--lookup-epic":

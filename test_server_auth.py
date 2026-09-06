@@ -1034,3 +1034,60 @@ def test_the_users_table_sorts_by_creation_and_not_by_name():
     assert ".sort(" in block, "the order must be guaranteed, not left to whatever the API returns"
     assert "a.created" in block and "a.seq" in block, "sort on creation, falling back to store order"
     assert "a.name" not in block, "name must not decide the order"
+
+
+# ── An order whose setup never triggered gets today's metrics, flagged (P-31, user 2026-09-06) ────────
+
+def test_an_untriggered_order_gets_current_metrics_marked_as_current(monkeypatch):
+    """AIG is READY and has never triggered, so squeeze_history holds nothing for it and the resolver
+    left six dashes -- which the requester read, reasonably, as missing data. The values exist; they are
+    just today's rather than the trigger bar's, so they are attached and FLAGGED."""
+    from hvf_web import server
+
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"records": [{"ticker": "AIG"}]})
+    monkeypatch.setattr(server, "_live_instrument_metrics",
+                        lambda snap: {"AIG": {"rvol": 1.4, "above_vwap": True, "atr_expanding": False}})
+    monkeypatch.setattr(server, "_snapshot_volscore", lambda snap: {"AIG": 7})
+    monkeypatch.setattr(server, "_volscore_trigger_map", lambda: {})
+    monkeypatch.setattr(server, "_volscore_trigger_feature_map", lambda: {})
+
+    class _Db:
+        def run(self, *a, **k): return []
+        def close(self): pass
+    monkeypatch.setattr("db_pool.get_db", lambda: _Db())
+
+    rows = [{"ticker": "AIG", "placed_at": "2026-09-01"}]
+    server._attach_setup_metrics(rows)
+
+    assert rows[0]["metrics_are_current"] is True, "an unflagged live value reads as the trigger's"
+    assert rows[0]["rvol"] == 1.4 and rows[0]["above_vwap"] is True
+    assert rows[0]["atr_expanding"] is False and rows[0]["volume_score"] == 7
+    # Quality and R:R describe a DETECTED SETUP, not today. There is no current value to substitute, so
+    # filling them would be fabrication rather than a labelled fallback.
+    assert rows[0].get("quality") is None and rows[0].get("rr") is None
+
+
+def test_a_triggered_order_is_never_marked_as_current(monkeypatch):
+    """The 2026-08-17 clobber bug in reverse: today's reading must never displace, or be confused with,
+    the trigger bar's."""
+    from hvf_web import server
+
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"records": []})
+    monkeypatch.setattr(server, "_live_instrument_metrics", lambda snap: {"BP.L": {"rvol": 9.9}})
+    monkeypatch.setattr(server, "_snapshot_volscore", lambda snap: {})
+    monkeypatch.setattr(server, "_volscore_trigger_map", lambda: {("BP.L", "2026-08-20"): 6})
+    monkeypatch.setattr(server, "_volscore_trigger_feature_map",
+                        lambda: {("BP.L", "2026-08-20"): {"above_vwap": True, "atr_expanding": True}})
+    monkeypatch.setattr(server, "_fill_missing_rvol", lambda matched: None)
+
+    class _Db:
+        def run(self, *a, **k): return [("BP.L", "2026-08-20", 71, 4.2, 1.8)]
+        def close(self): pass
+    monkeypatch.setattr("db_pool.get_db", lambda: _Db())
+
+    rows = [{"ticker": "BP.L", "placed_at": "2026-08-25"}]
+    server._attach_setup_metrics(rows)
+
+    assert "metrics_are_current" not in rows[0], "a triggered setup has a real break-bar value"
+    assert rows[0]["rvol"] == 1.8, "the trigger's RVOL must win over today's 9.9"
+    assert rows[0]["quality"] == 71 and rows[0]["setup_date"] == "2026-08-20"

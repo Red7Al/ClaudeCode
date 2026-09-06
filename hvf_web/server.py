@@ -2641,10 +2641,43 @@ def _attach_setup_metrics(rows: list) -> None:
         vsmap, vfmap = _volscore_trigger_map(), _volscore_trigger_feature_map()
     except Exception:
         vsmap, vfmap = {}, {}
+    # THE "NOT YET" CASE (user 2026-09-06: "IG ACCOUNT shows illustration of missing data e.g. AIG with
+    # no VWAP, ATR or VOLUMESCORE", and "it's very dull for me to keep reporting missing data").
+    #
+    # AIG is not missing anything. It is READY and has NEVER TRIGGERED, so squeeze_history holds no
+    # trigger for it and the loop below `continue`s -- leaving six dashes that read as broken data. The
+    # current-metric audit of 2026-09-05 puts AIG in the 1,740 of 1,773 rows whose metrics are complete,
+    # so the values exist; they simply are not the ones this resolver looks for.
+    #
+    # These four measure the BREAK BAR. An order placed on a setup that has not broken genuinely has no
+    # trigger-bar value, and inventing one would be the 2026-08-17 clobber bug again. But today's value
+    # DOES exist and is worth showing, so it is attached and FLAGGED -- `metrics_are_current` -- exactly
+    # as the Scanner's own RVOL column already does with its "now" marker (user 2026-09-06: "I like the
+    # use of Now on some columns - consider where else this can be used"). A labelled live figure is
+    # honest; a bare dash is not, because it cannot be told apart from data we failed to collect.
+    current = {}
+    try:
+        _snap = _load_snapshot()
+        current = _live_instrument_metrics(_snap) or {}
+        _vs_now = _snapshot_volscore(_snap) or {}
+    except Exception as exc:
+        log.warning(f"current metrics unavailable for untriggered orders: {exc}")
+        _vs_now = {}
+
     matched = []
     for row in rows:
         hist = setups.get(row.get("ticker")) or []
         if not hist:
+            cur = current.get(row.get("ticker")) or {}
+            if cur or _vs_now.get(row.get("ticker")) is not None:
+                row.update({"rvol": cur.get("rvol"),
+                            "above_vwap": cur.get("above_vwap"),
+                            "atr_expanding": cur.get("atr_expanding"),
+                            "volume_score": _vs_now.get(row.get("ticker")),
+                            # The whole point: the reader must never mistake today's reading for the
+                            # trigger's. Quality and R:R are NOT filled -- they are properties of a
+                            # detected setup, not of today, so there is nothing current to show.
+                            "metrics_are_current": True})
             continue
         placed = str(row.get("placed_at") or "")[:10]
         # Latest trigger at or before placement; fall back to the earliest if the order predates them all.

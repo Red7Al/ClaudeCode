@@ -93,6 +93,14 @@ const rvolScannerCell=r=>{
   return `<span title="Today's RVOL${d}, not the trigger bar's — this setup has not triggered yet" style="opacity:.75">`
        + `${rvolCell(r.current_rvol)}<span class="muted" style="font-size:9px;vertical-align:super">now</span></span>`;
 };
+// A break-bar cell for an order whose setup has NOT triggered yet (user 2026-09-06). The server marks
+// those rows `metrics_are_current`, because the trigger-bar value does not exist and today's does. This
+// wraps whatever the normal cell renders with the same superscript "now" the Scanner's RVOL column uses,
+// so a live reading can never be mistaken for the trigger's -- and, just as importantly, so an honest
+// "not until it breaks" stops looking like data we failed to collect.
+const _nowCell=(r,html)=>r&&r.metrics_are_current
+  ? `<span title="Today's reading, not the trigger bar's — this setup has not broken yet, so it has no break-bar value" style="opacity:.75">${html}<span class="muted" style="font-size:9px;vertical-align:super">now</span></span>`
+  : html;
 // VolumeScore cell (0–12, user 2026-07-24, P-02): 8+ green (trade-worthy), 5–7 amber, below grey.
 const volScoreCell=v=>v==null?'<span class="muted">—</span>'
   :`<b style="color:${v>=8?'var(--bull)':v>=5?'#d29922':'var(--muted)'}" title="${v} of 12">${v}</b>`;
@@ -1930,7 +1938,7 @@ function paintOrderOps(){
   rows.forEach(r=>r._fav=FAVS.has(disp(r.ticker))?1:0);   // favourite column sortable (user 2026-07-11)
   $("oo-rows").innerHTML=genSort(rows,ooSortK,ooSortDir).map(r=>`<tr>
     ${_favCell(r.ticker)}<td>${r.placed_at||''}</td><td>${r.updated_at||''}</td><td>${nm40(r.name)}</td>
-    <td>${_mcapFmt(r.mcap)}</td><td>${rvolCell(r.rvol)}</td><td>${_tickCross(r.above_vwap)}</td><td>${_tickCross(r.atr_expanding)}</td><td>${volScoreCell(r.volume_score)}</td><td>${r.rr!=null?(+r.rr).toFixed(1):'<span class="muted">—</span>'}</td>
+    <td>${_mcapFmt(r.mcap)}</td><td>${_nowCell(r,rvolCell(r.rvol))}</td><td>${_nowCell(r,_tickCross(r.above_vwap))}</td><td>${_nowCell(r,_tickCross(r.atr_expanding))}</td><td>${_nowCell(r,volScoreCell(r.volume_score))}</td><td>${r.rr!=null?(+r.rr).toFixed(1):'<span class="muted">—</span>'}</td>
     <td>${r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'<span class="muted">—</span>'}</td>
     <td><span class="tag ${r.direction==='BUY'?'bull':'bear'}">${r.direction||''}</span></td>
     <td>${r.entry??''}</td><td>${r.stop??''}</td><td>${r.target??''}</td>
@@ -2066,7 +2074,33 @@ function renderMarketsAdmin(){
 document.querySelectorAll("th[data-ma]").forEach(th=>th.onclick=()=>{const k=th.dataset.ma;maSortDir=(maSortK===k)?-maSortDir:-1;maSortK=k;renderMarketsAdmin();_sortArrows("data-ma",maSortK,maSortDir);});
 // ── IG Account tab (user 2026-07-10): the acting user's own IG open positions + working orders ──
 let IG_POS=[], IG_ORD=[], IG_CLOSE_SELECTION=new Set(), igOpenMonthInitialised=false;
-function updateIgCloseButton(){const b=$("ig-close-selected");if(!b)return;const n=IG_CLOSE_SELECTION.size;b.disabled=!n;b.textContent=`Close selected (${n})`;}
+// ------------------------------------------------------------------------------------------------------
+// Select all / Unselect all, for every table with tick boxes (user 2026-09-06: "on the pages with tick
+// boxes to select add two options at top of table for Select all and Unselect all").
+//
+// Acts on the rows the table is CURRENTLY SHOWING, not on every row it could show. If a search or a
+// chart filter is applied, "Select all" that quietly ticked hidden rows would be a trap -- and these
+// buttons sit above tables whose confirmed action closes positions or cancels live orders at IG.
+//
+// It dispatches a real change event rather than only setting .checked, because each of these tables
+// keeps its own selection state in an onchange handler; setting the property alone would tick the box on
+// screen and leave the underlying set untouched.
+function _bulkSelect(tbodyId,on){
+  const body=$(tbodyId); if(!body)return 0;
+  const boxes=[...body.querySelectorAll('input[type="checkbox"]:not([disabled])')];
+  let changed=0;
+  boxes.forEach(b=>{if(b.checked!==on){b.checked=on;b.dispatchEvent(new Event("change",{bubbles:true}));changed++;}});
+  return changed;
+}
+// The pair of controls, rendered above a table. `tbodyId` is the tbody they act on.
+const _bulkSelectControls=(tbodyId)=>`<span class="muted" style="font-size:12px;display:inline-flex;gap:8px;align-items:center">`
+  +`<button class="btn" style="padding:2px 8px;font-size:11.5px" onclick="_bulkSelect('${tbodyId}',true)" title="Tick every row currently shown in this table">Select all</button>`
+  +`<button class="btn" style="padding:2px 8px;font-size:11.5px" onclick="_bulkSelect('${tbodyId}',false)" title="Clear every tick in this table">Unselect all</button></span>`;
+
+function updateIgCloseButton(){const b=$("ig-close-selected");if(!b)return;const n=IG_CLOSE_SELECTION.size;b.disabled=!n;b.textContent=`Close selected (${n})`;
+  // The open-positions table has tick boxes too, so it gets the same pair. Rendered next to the button
+  // they feed rather than in the markup, so the three tables share one implementation.
+  const host=$("ig-pos-bulk"); if(host&&!host.innerHTML)host.innerHTML=_bulkSelectControls("ig-pos-rows");}
 function igCloseToggle(encoded,checked){decodeURIComponent(encoded).split(',').filter(Boolean).forEach(id=>checked?IG_CLOSE_SELECTION.add(id):IG_CLOSE_SELECTION.delete(id));updateIgCloseButton();}
 function showIgCloseOutcome(results,namesByDeal){const target=$("ig-close-result");if(!target)return;target.replaceChildren();target.style.display="block";const closed=results.filter(x=>x.closed).length;target.style.borderColor=closed===results.length?"var(--bull)":"var(--bear)";const headline=document.createElement("b");headline.textContent=`IG close outcome: ${closed}/${results.length} position${results.length===1?'':'s'} confirmed closed`;target.appendChild(headline);const list=document.createElement("ul");list.style.cssText="margin:6px 0 0;padding-left:20px";results.forEach(x=>{const li=document.createElement("li"),name=namesByDeal[x.deal_id]||x.deal_id;li.textContent=x.closed?`${name}: IG confirmed closed.`:`${name}: NOT closed — ${x.error||'IG gave no confirmation.'}`;li.style.color=x.closed?"var(--bull)":"var(--bear)";list.appendChild(li);});target.appendChild(list);}
 // Close history (user 2026-08-22, deferred to 2026-08-23). _append_ig_close_audit has written a durable
@@ -2234,7 +2268,7 @@ function paintIgAccount(){
   // shared cell formatters -- so an order shows identical figures on both screens. A missing value is a
   // muted dash and never a cross: we did not measure a failure, we measured nothing.
   IGORD=ord;
-  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${o.market||'<span class="muted">—</span>'}</td><td>${_mcapFmt(o.mcap)}</td><td>${rvolCell(o.rvol)}</td><td>${_tickCross(o.above_vwap)}</td><td>${_tickCross(o.atr_expanding)}</td><td>${volScoreCell(o.volume_score)}</td><td>${o.rr!=null?(+o.rr).toFixed(1):'<span class="muted">—</span>'}</td><td>${o.quality!=null?`<b style="color:${qcol(o.quality)}">${o.quality}</b>`:'<span class="muted">—</span>'}</td><td>${_igDtag(o.direction)}</td><td>${_igSz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="16" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
+  $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${o.market||'<span class="muted">—</span>'}</td><td>${_mcapFmt(o.mcap)}</td><td>${_nowCell(o,rvolCell(o.rvol))}</td><td>${_nowCell(o,_tickCross(o.above_vwap))}</td><td>${_nowCell(o,_tickCross(o.atr_expanding))}</td><td>${_nowCell(o,volScoreCell(o.volume_score))}</td><td>${o.rr!=null?(+o.rr).toFixed(1):'<span class="muted">—</span>'}</td><td>${o.quality!=null?`<b style="color:${qcol(o.quality)}">${o.quality}</b>`:'<span class="muted">—</span>'}</td><td>${_igDtag(o.direction)}</td><td>${_igSz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="16" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
 // Closed trades are loaded into the main transactions table (user 2026-08-04); no duplicate table below.
 let IGCLOSED=null, _igClosedNote="", _igNoCreds=false;
@@ -4695,7 +4729,7 @@ function renderPreorders(){
       ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
       <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
       <td>${_mcapFmt(r.mcap)}</td>
-      <td>${rvolCell(r.rvol)}</td><td>${_tickCross(r.above_vwap)}</td><td>${_tickCross(r.atr_expanding)}</td><td>${volScoreCell(r.volume_score)}</td>
+      <td>${_nowCell(r,rvolCell(r.rvol))}</td><td>${_nowCell(r,_tickCross(r.above_vwap))}</td><td>${_nowCell(r,_tickCross(r.atr_expanding))}</td><td>${_nowCell(r,volScoreCell(r.volume_score))}</td>
       <td>${r.status}</td><td>${r.market||''}</td>
       <td>${f2(r.current_price)}</td><td><b>${f2((OVERRIDES[r.ticker]||{}).entry??r.entry)}${(OVERRIDES[r.ticker]||{}).entry!=null&&OVERRIDES[r.ticker].entry!==r.entry?' ✎':''}</b></td><td style="color:var(--bear)">${f2((OVERRIDES[r.ticker]||{}).stop??r.stop)}</td><td style="color:var(--bull)">${f2((OVERRIDES[r.ticker]||{}).target??r.target)}</td>
       <td>${d!=null?(d>0?'+':'')+d+'%':''}</td>
@@ -4897,7 +4931,8 @@ function paintOrderFilterAudit(){
     <td class="muted" style="white-space:normal">${_esc(r._why)}</td>
     <td><b>${_esc(disp(r.ticker))}</b></td></tr>`).join("")
     || `<tr><td colspan="7" class="empty">Every working order meets your settings.</td></tr>`;
-  act.innerHTML=`<button class="btn" id="ig-cancel-btn" onclick="cancelBreachingOrders(this)" style="margin-top:10px;border-color:var(--bear);background:color-mix(in srgb,var(--bear) 14%,transparent)">Cancel the ticked orders at IG</button>`;
+  act.innerHTML=_bulkSelectControls("ig-breach-rows")
+    +`<br><button class="btn" id="ig-cancel-btn" onclick="cancelBreachingOrders(this)" style="margin-top:10px;border-color:var(--bear);background:color-mix(in srgb,var(--bear) 14%,transparent)">Cancel the ticked orders at IG</button>`;
   _sortArrows("data-igb", igbSortK, igbSortDir);
 }
 async function cancelBreachingOrders(btn){
@@ -5011,7 +5046,7 @@ function paintPositionBreach(){
     <td class="muted" style="white-space:normal">${_esc(r._why)}</td>
     <td><b>${_esc(disp(r.ticker))}</b></td></tr>`).join("")
     || `<tr><td colspan="8" class="empty">Every open position meets your criteria.</td></tr>`;
-  act.innerHTML=rows.length?`<button class="btn" id="ig-txclose-btn" onclick="closeBreachingPositions(this)" style="margin-top:10px;border-color:var(--bear);background:color-mix(in srgb,var(--bear) 14%,transparent)">Close the ticked positions at IG</button>`:"";
+  act.innerHTML=rows.length?_bulkSelectControls("ig-txbreach-rows")+`<br><button class="btn" id="ig-txclose-btn" onclick="closeBreachingPositions(this)" style="margin-top:10px;border-color:var(--bear);background:color-mix(in srgb,var(--bear) 14%,transparent)">Close the ticked positions at IG</button>`:"";
   _sortArrows("data-igt", igtSortK, igtSortDir);
 }
 async function closeBreachingPositions(btn){

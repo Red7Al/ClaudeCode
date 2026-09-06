@@ -399,7 +399,12 @@ function computeBestSettings(env){
     scope:{kind:x.scope.kind,label:x.scope.label,display:x.scope.display||x.scope.label,
            offList:x.scope.offList||[],value:x.scope.value||"",min:x.scope.min||0,max:x.scope.max||0},
     rr:x.rr,q:x.q,vs:x.vs,rv:x.rv,vw:!!x.vw,atr:!!x.atr,st:x.st,mo:x.mo,
-    years:label==="Best over 3 years"?null:_cardYears(x),   // it IS the three-year replay; excluded by request
+    // EVERY card gets the split, including this one (user 2026-09-06: "on the best 3 years card - show
+    // the split of the 3 years within the card - just like all the other cards"). It was excluded on the
+    // reasoning that the card IS the three-year replay, so a three-year line adds nothing -- but the
+    // TOTAL is not the split, and the split is the whole question: a +158% that is one good year and two
+    // flat ones is a different proposition from three even ones, and only the breakdown shows which.
+    years:_cardYears(x),
     cfg:cfgFor(x)});
 
   const unsupported=[];
@@ -449,14 +454,13 @@ function bestSettingsChangedFor(c,current){
 const _bsWlLine=(label,d,title)=>`<div style="font-size:11px;margin-top:4px" title="${title}">${label} <b style="color:var(--fg)">${d.w} : ${d.l}</b>${d.pct!=null?` <span class="muted">(${d.pct}%)</span>`:''}</div>`;
 
 function _bsYearsLine(c){
-  if(c.label==="Best over 3 years")return "";
   const ys=c.years;
   if(!ys)return `<div class="muted" style="font-size:10px;margin-top:6px">Yearly breakdown loads with the three-year evidence.</div>`;
   const cell=y=>y.ret==null?`<span class="muted">n/a</span>`
     :`<b style="color:${y.ret>=0?'var(--bull)':'var(--bear)'}">${_bsPct(y.ret)}</b>`;
-  return `<div style="font-size:10px;margin-top:6px;line-height:1.5" title="The SAME configuration replayed over three rolling 365-day periods, newest first. The first is the window the card was chosen on (in-sample); the other two are out-of-sample.">
+  return `<div style="font-size:10px;margin-top:6px;line-height:1.5" title="${c.label==='Best over 3 years'?'The SAME configuration replayed over each of the three rolling 365-day periods, newest first. This card was selected on all three together, so none of them is out-of-sample.':'The SAME configuration replayed over three rolling 365-day periods, newest first. The first is the window the card was chosen on (in-sample); the other two are out-of-sample.'}">
       <b style="color:var(--fg)">Each of the last 3 years:</b> ` +
-    ys.map((y,i)=>`<span title="${y.from} to ${y.to} — ${y.n} funded trade${y.n===1?"":"s"}">${cell(y)}${i===0?' <span class="muted">(in-sample)</span>':''}</span>`).join(' <span class="muted">·</span> ')
+    ys.map((y,i)=>`<span title="${y.from} to ${y.to} — ${y.n} funded trade${y.n===1?"":"s"}">${cell(y)}${i===0&&c.label!=="Best over 3 years"?' <span class="muted">(in-sample)</span>':''}</span>`).join(' <span class="muted">·</span> ')
     +`</div>`;
 }
 

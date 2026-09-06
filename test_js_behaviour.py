@@ -2004,6 +2004,15 @@ def test_the_pre_rendered_image_exists_and_is_a_real_png():
 # old winners ledger table was removed in d686084.
 # ======================================================================================================
 
+def _bulk_controls_src() -> str:
+    """The real `const _bulkSelectControls=...` from app.js, for harnesses that paint a selection table.
+    Taken from source rather than stubbed, so the Select all / Unselect all markup is exercised by the
+    same tests that assert on the rest of the panel."""
+    js = APP_JS.read_text(encoding="utf-8")
+    i = js.index("const _bulkSelectControls=")
+    return js[i:js.index("</span>`;", i) + len("</span>`;")]
+
+
 def _tick_cross_src() -> str:
     """The real `const _tickCross=...` line from app.js, for harnesses that render cells using it. Taken
     from source rather than stubbed, so a change to the tick/cross markup shows up here too."""
@@ -2683,13 +2692,19 @@ def test_an_empty_window_reports_n_a_rather_than_zero_percent():
     assert out[1]["ret"] is None and out[1]["n"] == 0
 
 
-def test_the_three_year_card_is_excluded():
-    """It IS the three-year replay; a yearly breakdown of it would be circular."""
+def test_the_three_year_card_is_no_longer_excluded():
+    """REVERSED 2026-09-06 by the requester: "on the best 3 years card - show the split of the 3 years
+    within the card - just like all the other cards".
+
+    The original reasoning was that this card IS the three-year replay, so a yearly breakdown of it would
+    be circular. That confuses the TOTAL with the SPLIT. A +158% made of one strong year and two flat
+    ones is a different proposition from three even ones, and only the breakdown distinguishes them --
+    which is precisely what a reader is trying to judge on a three-year card."""
     js = client_js()
 
-    assert 'c.label==="Best over 3 years")return ""' in js
-    assert 'years:label==="Best over 3 years"?null:_cardYears(x)' in js, (
-        "the summary must not carry a yearly breakdown for the three-year card either")
+    assert 'c.label==="Best over 3 years")return ""' not in js, "the renderer must not drop the line"
+    assert 'years:label==="Best over 3 years"?null' not in js, "the summary must carry the split"
+    assert "years:_cardYears(x)," in js, "every card computes its split from the same replay"
     assert "${_bsYearsLine(c)}" in js, "the breakdown must actually be rendered on the cards"
 
 
@@ -2889,7 +2904,7 @@ def _breach_panel(rows_js, orders_js):
       const _breachViz=()=>{};
       const _whyHead=r=>((r.breaches&&r.breaches.length?r.breaches:r.unknown||[])[0]||"—");
       let igbSortK="verdict", igbSortDir=-1;
-    """
+    """ + _bulk_controls_src()   # the real Select all / Unselect all controls (P-38, 2026-09-06)
     src = (f"let IG_AUDIT={{rows:{rows_js}}}, IGORD={orders_js};\n"
            + _extract("paintOrderFilterAudit"))
     return run_js(stubs, src,
@@ -3279,3 +3294,132 @@ def test_the_win_loss_card_says_which_population_it_won_on():
     assert "ELIGIBLE" in line, "the claim must name the population it is measured over"
     assert "funded row below can differ" in line, (
         "the card has to warn that the funded row is a different, wallet-dependent population")
+
+
+# ── An untriggered order shows today's reading, marked, not a bare dash (P-31/P-34, user 2026-09-06) ──
+#
+# "IG ACCOUNT shows illustration of missing data e.g. AIG with no VWAP, ATR or VOLUMESCORE" and, on
+# having to report it at all, "it's very dull for me to keep reporting missing data - you need to manage
+# this".
+#
+# AIG was not missing anything. It is READY and has NEVER TRIGGERED, so _attach_setup_metrics -- which
+# resolves from the squeeze_history trigger that caused the order -- found nothing and left six dashes.
+# The stored current-metric audit of 2026-09-05 puts AIG among the 1,740 of 1,773 rows whose metrics are
+# complete, so the values existed; they were simply not the ones that resolver looks for.
+#
+# The fix is the requester's own suggestion applied more widely: show the live value and MARK it "now".
+
+def test_a_current_reading_is_marked_and_a_trigger_reading_is_not():
+    js = APP_JS.read_text(encoding="utf-8")
+    i = js.index("const _nowCell=")
+    src = js[i:js.index(chr(10), js.index(": html;", i))]
+    out = run_js("", src, 'JSON.stringify(['
+                 '_nowCell({metrics_are_current:true},"1.4x"),'
+                 '_nowCell({metrics_are_current:false},"1.4x"),'
+                 '_nowCell({},"1.4x"),'
+                 '_nowCell(null,"1.4x")])')
+    marked, unmarked, empty, missing = json.loads(out)
+    assert ">now<" in marked, "a live reading must be labelled, or it reads as the trigger's"
+    for plain in (unmarked, empty, missing):
+        assert plain == "1.4x", f"only a flagged row may be marked, got {plain!r}"
+
+
+def test_every_break_bar_column_carries_the_marker_not_just_rvol():
+    """RVOL, VWAP, ATR and VolumeScore all measure the break bar, so all four are equally 'not yet' on an
+    untriggered order. Marking one and leaving three bare would be worse than marking none."""
+    js = APP_JS.read_text(encoding="utf-8")
+    for row in ("o", "r"):
+        line = next((l for l in js.splitlines() if f"_nowCell({row},rvolCell({row}.rvol))" in l), None)
+        assert line, f"the {row} row template no longer renders RVOL through _nowCell"
+        for cell in (f"_nowCell({row},_tickCross({row}.above_vwap))",
+                     f"_nowCell({row},_tickCross({row}.atr_expanding))",
+                     f"_nowCell({row},volScoreCell({row}.volume_score))"):
+            assert cell in line, f"{cell} is not marked on the {row} row"
+
+
+# ── The three-year card shows its yearly split too (P-32, user 2026-09-06) ────────────────────────────
+#
+# "on the best 3 years card - show the split of the 3 years within the card - just like all the other
+# cards". It was excluded on the reasoning that the card IS the three-year replay, so a three-year line
+# adds nothing. But the TOTAL is not the SPLIT, and the split is the whole question: a +158% that is one
+# good year and two flat ones is a different proposition from three even ones.
+
+def test_the_three_year_card_is_given_a_yearly_breakdown():
+    src = client_js()
+    assert 'years:label==="Best over 3 years"?null' not in src, \
+        "the three-year card must be given its split like every other card"
+    assert "years:_cardYears(x)," in src, "every card computes the split from the same replay"
+
+
+def test_no_card_is_excluded_from_the_yearly_line():
+    src = _extract("_bsYearsLine")
+    assert 'if(c.label==="Best over 3 years")return ""' not in src.replace(" ", ""), \
+        "the renderer must not drop the line for one card"
+
+
+def test_the_three_year_card_does_not_claim_an_in_sample_year():
+    """Every other card is SELECTED on the newest 365 days, so its first year is in-sample and the label
+    is a real warning. This card is selected on all three together, so none of its years is out-of-sample
+    and marking one would misdescribe the evidence."""
+    src = _extract("_bsYearsLine")
+    out = run_js(
+        "const _bsPct=v=>String(v);",
+        src,
+        '(()=>{const ys=[{from:"2025-09-06",to:"2026-09-06",ret:0.5,n:10},'
+        '{from:"2024-09-06",to:"2025-09-06",ret:0.2,n:8},'
+        '{from:"2023-09-06",to:"2024-09-06",ret:-0.1,n:6}];'
+        ' return JSON.stringify([_bsYearsLine({label:"Best over 3 years",years:ys}),'
+        '                        _bsYearsLine({label:"Balanced",years:ys})]);})()')
+    three_year, annual = json.loads(out)
+    assert "in-sample" not in three_year, "this card is chosen on all three years, so none is in-sample"
+    assert "in-sample" in annual, "an annual card's first year IS in-sample and must say so"
+    assert "Each of the last 3 years" in three_year, "the split must actually render"
+
+
+# ── Select all / Unselect all on every tick-box table (P-38, user 2026-09-06) ─────────────────────────
+#
+# "on the pages with tick boxes to select add two options at top of table for Select all and Unselect
+# all". There are exactly three such tables: open positions, the working-order breach panel and the
+# position breach panel. Each one's confirmed action closes positions or cancels live orders at IG.
+
+_SELECTION_TABLES = ("ig-pos-rows", "ig-breach-rows", "ig-txbreach-rows")
+
+
+def test_every_tick_box_table_offers_both_controls():
+    js = APP_JS.read_text(encoding="utf-8")
+    for tbody in _SELECTION_TABLES:
+        assert f'_bulkSelectControls("{tbody}")' in js, f"{tbody} has tick boxes but no bulk controls"
+    controls = js[js.index("const _bulkSelectControls="):][:600]
+    assert "Select all" in controls and "Unselect all" in controls
+
+
+def test_it_only_touches_the_rows_the_table_is_showing():
+    """These buttons sit above tables whose confirmed action closes positions and cancels live orders. A
+    "Select all" that quietly ticked rows hidden by a search or a chart filter would be a trap."""
+    src = _extract("_bulkSelect")
+    assert '$(tbodyId)' in src and "body.querySelectorAll" in src, \
+        "the scope must be the table's own tbody, which holds only the rendered rows"
+    assert ":not([disabled])" in src, "a disabled box is disabled for a reason; never force it on"
+
+
+def test_it_fires_a_change_event_so_the_selection_state_actually_updates():
+    """Each of these tables keeps its selection in an onchange handler -- IG_CLOSE_SELECTION for the
+    positions table, and a :checked query for the two breach panels. Setting .checked alone would tick
+    the box on screen and leave the underlying set empty, which is exactly the shape of the P-30 defect:
+    a control that looks like it worked and did nothing."""
+    src = _extract("_bulkSelect")
+    assert 'dispatchEvent(new Event("change"' in src, "setting .checked alone does not notify anyone"
+
+    ticked, events = [], []
+    out = run_js(
+        "const boxes=[{checked:false,disabled:false},{checked:true,disabled:false}];"
+        "boxes.forEach(b=>{b.dispatchEvent=()=>{b._fired=(b._fired||0)+1;};});"
+        "const $=()=>({querySelectorAll:()=>boxes.filter(b=>!b.disabled)});"
+        "const Event=function(){};",
+        src,
+        "(()=>{const n=_bulkSelect('x',true);"
+        " return JSON.stringify([n,boxes.map(b=>b.checked),boxes.map(b=>b._fired||0)]);})()")
+    changed, checked, fired = json.loads(out)
+    assert checked == [True, True], "every row must end up ticked"
+    assert changed == 1, "only the box that actually changed should count as changed"
+    assert fired == [1, 0], "an already-ticked box must not fire a redundant change"
