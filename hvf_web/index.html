@@ -412,20 +412,29 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 #view-squeezehist .tablewrap table{width:100%;table-layout:fixed}
 #view-squeezehist .tablewrap th,#view-squeezehist .tablewrap td{padding-left:6px;padding-right:6px;overflow:hidden;text-overflow:ellipsis}
 /* Column widths for the 14-column Squeeze History grid (2026-08-15). Order: Name, Dir, Market,
-   Developing, Ready, Triggered, Outcome, Closed, Return, Quality, R:R, TF, Sector, Ticker. */
-#view-squeezehist .tablewrap th:nth-child(1),#view-squeezehist .tablewrap td:nth-child(1){width:20%}
+   Developing, Ready, Triggered, Outcome, Closed, Return, Quality, R:R, TF, Sector, Ticker.
+   REBALANCED 2026-09-06: "the date columns on some tables are too narrow to read e.g. 3 dates next to
+   each other on squeeze history - none can be read". Developing/Ready/Triggered sit side by side and
+   Closed follows two columns later; all four were 7%, and the table is table-layout:fixed with
+   overflow:hidden;text-overflow:ellipsis, so a 10-character YYYY-MM-DD was clipped rather than wrapped.
+   At 7% of a 1366px window each cell had ~81px of content box for a date that needs ~72px at 13px --
+   inside the rounding, which is why it read as unreadable rather than obviously broken.
+   The four date columns go to 8.5%; the 6% comes off Name (20 -> 15) and Sector (8 -> 7), the two
+   widest columns and the two that already ellipsis cleanly because they are prose. Still sums to 100,
+   so the table keeps fitting without the horizontal scroll this block exists to avoid. */
+#view-squeezehist .tablewrap th:nth-child(1),#view-squeezehist .tablewrap td:nth-child(1){width:15%}
 #view-squeezehist .tablewrap th:nth-child(2),#view-squeezehist .tablewrap td:nth-child(2){width:5%}
 #view-squeezehist .tablewrap th:nth-child(3),#view-squeezehist .tablewrap td:nth-child(3){width:8%}
-#view-squeezehist .tablewrap th:nth-child(4),#view-squeezehist .tablewrap td:nth-child(4){width:7%}
-#view-squeezehist .tablewrap th:nth-child(5),#view-squeezehist .tablewrap td:nth-child(5){width:7%}
-#view-squeezehist .tablewrap th:nth-child(6),#view-squeezehist .tablewrap td:nth-child(6){width:7%}
+#view-squeezehist .tablewrap th:nth-child(4),#view-squeezehist .tablewrap td:nth-child(4){width:8.5%}
+#view-squeezehist .tablewrap th:nth-child(5),#view-squeezehist .tablewrap td:nth-child(5){width:8.5%}
+#view-squeezehist .tablewrap th:nth-child(6),#view-squeezehist .tablewrap td:nth-child(6){width:8.5%}
 #view-squeezehist .tablewrap th:nth-child(7),#view-squeezehist .tablewrap td:nth-child(7){width:6.5%}
-#view-squeezehist .tablewrap th:nth-child(8),#view-squeezehist .tablewrap td:nth-child(8){width:7%}
+#view-squeezehist .tablewrap th:nth-child(8),#view-squeezehist .tablewrap td:nth-child(8){width:8.5%}
 #view-squeezehist .tablewrap th:nth-child(9),#view-squeezehist .tablewrap td:nth-child(9){width:5.5%}
 #view-squeezehist .tablewrap th:nth-child(10),#view-squeezehist .tablewrap td:nth-child(10){width:5.5%}
 #view-squeezehist .tablewrap th:nth-child(11),#view-squeezehist .tablewrap td:nth-child(11){width:4.5%}
 #view-squeezehist .tablewrap th:nth-child(12),#view-squeezehist .tablewrap td:nth-child(12){width:4.5%}
-#view-squeezehist .tablewrap th:nth-child(13),#view-squeezehist .tablewrap td:nth-child(13){width:8%}
+#view-squeezehist .tablewrap th:nth-child(13),#view-squeezehist .tablewrap td:nth-child(13){width:7%}
 #view-squeezehist .tablewrap th:nth-child(14),#view-squeezehist .tablewrap td:nth-child(14){width:4.5%}
 @media(max-width:760px){#view-squeezehist .tablewrap table{width:max-content;min-width:100%;table-layout:auto}}
 .datecard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 12px;box-shadow:var(--sh-sm);display:inline-flex;align-items:center;gap:8px;font-size:13px}

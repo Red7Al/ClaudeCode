@@ -81,9 +81,33 @@ def get_sector(ticker: str):
     return v or None
 
 
-def backfill(tickers=None, force=False) -> int:
+def resolved(info) -> bool:
+    """Did Yahoo actually ANSWER for this instrument, whether or not it gave a sector?
+
+    THE DEFECT THIS EXISTS TO FIX (user 2026-09-06: "we are still seeing instruments without sector e.g.
+    many FTSE100 companies - this should not be possible"). backfill() wrote `cache[tk] = sec or ""` and
+    skipped anything already cached, so ONE bad response pinned a ticker to "no sector" forever. It could
+    not tell these two apart, both measured live on 2026-09-06:
+
+        CTY.L  88 fields, quoteType='EQUITY', marketCap present, sector absent
+               -> a complete answer. Yahoo carries no sector for closed-end investment trusts. Cache "".
+        MMC    13 fields, quoteType='NONE',   marketCap absent
+               -> not an answer at all. Marsh & McLennan is an S&P 500 operating company. Retry it.
+
+    quoteType is the discriminator: every healthy response measured carried a real one ('EQUITY', 86-172
+    fields); every failed one carried None or the literal 'NONE' (1-13 fields). An unresolved ticker is
+    left UNCACHED so the next run tries again, which is what the rate-limit branch below already did.
+    """
+    if not isinstance(info, dict):
+        return False
+    qt = str(info.get("quoteType") or "").strip().upper()
+    return bool(qt) and qt != "NONE"
+
+
+def backfill(tickers=None, force=False, recheck_empty=False) -> int:
     """Resolve sectors for `tickers` (default: the whole universe) that are not already cached, via
-    yfinance. Returns the number newly resolved. `force` re-resolves even cached ones."""
+    yfinance. Returns the number newly resolved. `force` re-resolves even cached ones; `recheck_empty`
+    re-resolves only the ones cached as "" — the cheap repair for entries a failed response poisoned."""
     import yfinance as yf
     try:
         from config import YAHOO_MAP
@@ -96,10 +120,10 @@ def backfill(tickers=None, force=False) -> int:
     cache = _load()
     new = 0
     for i, tk in enumerate(tickers, 1):
-        if not force and tk in cache:
+        if not force and tk in cache and not (recheck_empty and not cache[tk]):
             continue
         try:
-            sec = (yf.Ticker(YAHOO_MAP.get(tk, tk)).info or {}).get("sector")
+            info = yf.Ticker(YAHOO_MAP.get(tk, tk)).info or {}
         except Exception as e:
             # yfinance rate-limits a long burst of .info calls ("Too Many Requests"). Leave the ticker
             # UNCACHED so the next run retries it, and pause so we stop hammering a limit that is already
@@ -108,7 +132,14 @@ def backfill(tickers=None, force=False) -> int:
             if "Too Many Requests" in str(e) or "Rate limited" in str(e):
                 time.sleep(2.0)
             continue
-        cache[tk] = sec or ""              # "" = resolved, no sector (FX/futures/index)
+        if not resolved(info):
+            # An empty or refused response. Recording it as "no sector" is what pinned MMC, ANSS and
+            # FISV blank; leaving it uncached costs one retry next run and cannot go permanently wrong.
+            log.debug(f"{tk}: no usable response ({len(info)} fields); leaving uncached to retry")
+            time.sleep(0.2)
+            continue
+        sec = info.get("sector")
+        cache[tk] = sec or ""              # "" = answered, genuinely no sector (FX/futures/index/trust)
         new += 1
         time.sleep(0.2)                    # be a good citizen — a steady drip does not trip the limiter
         if new % 50 == 0:
@@ -123,8 +154,11 @@ def main():
     import argparse
     ap = argparse.ArgumentParser(description="Backfill the ticker->sector cache from yfinance.")
     ap.add_argument("--force", action="store_true", help="re-resolve even already-cached tickers")
+    ap.add_argument("--recheck-empty", action="store_true",
+                    help="re-resolve only the tickers cached with no sector — repairs entries a failed "
+                         "response poisoned, without the cost of a full --force run")
     a = ap.parse_args()
-    n = backfill(force=a.force)
+    n = backfill(force=a.force, recheck_empty=a.recheck_empty)
     have = sum(1 for v in _load().values() if v)
     log.info(f"Sector cache: {n} newly resolved; {have} tickers now carry a sector "
              f"({len(_load())} cached total).")

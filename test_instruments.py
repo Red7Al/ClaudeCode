@@ -573,3 +573,72 @@ def test_instruments_missing_from_the_store_are_still_computed(monkeypatch):
     server._snapshot_52wk(snap)
 
     assert asked and asked[0] == ["OTHER"], f"only the uncovered ticker should be computed, got {asked}"
+
+
+# ── A failed Yahoo response must never be cached as "no sector" (P-26, user 2026-09-06) ───────────────
+#
+# "we are still seeing instruments without sector e.g. many FTSE100 companies - this should not be
+# possible". backfill() wrote `cache[tk] = sec or ""` and then skipped anything already cached, so a
+# single bad response pinned a ticker blank permanently. Measured live on 2026-09-06:
+#
+#   CTY.L  88 fields, quoteType='EQUITY', marketCap present, no sector -> a real answer, cache ""
+#   MMC    13 fields, quoteType='NONE',   no marketCap                -> not an answer, must retry
+#
+# Marsh & McLennan is an S&P 500 operating company and was blank on the live site because of this.
+
+import sector_cache
+
+
+def test_a_complete_answer_with_no_sector_is_accepted_as_resolved():
+    """Yahoo carries no sector for closed-end investment trusts. That is an ANSWER, not a failure, and
+    re-asking every night would be a pointless 1,700-call burst against a rate limiter."""
+    assert sector_cache.resolved({"quoteType": "EQUITY", "marketCap": 3_027_993_344})
+
+
+def test_an_empty_or_refused_response_is_not_resolved():
+    for info in ({"quoteType": "NONE"},                     # measured shape for MMC
+                 {"quoteType": None},
+                 {"trailingPegRatio": 1.2},                 # measured shape for ANSS: one field
+                 {}, None, "not a dict"):
+        assert not sector_cache.resolved(info), f"{info!r} must be treated as unresolved"
+
+
+def test_an_unresolved_ticker_is_left_uncached_so_the_next_run_retries(monkeypatch):
+    """The whole point. If this regresses, the ticker goes blank for good and nothing reports it."""
+    cache = {}
+    monkeypatch.setattr(sector_cache, "_load", lambda: cache)
+    monkeypatch.setattr(sector_cache, "_save", lambda c: None)
+    monkeypatch.setattr(sector_cache.time, "sleep", lambda *_: None)
+
+    class _Fake:
+        def __init__(self, sym): self.symbol = sym
+        @property
+        def info(self):
+            return ({"quoteType": "EQUITY", "sector": "Industrials"} if self.symbol == "GOOD"
+                    else {"quoteType": "NONE"})
+    import sys, types
+    monkeypatch.setitem(sys.modules, "yfinance", types.SimpleNamespace(Ticker=_Fake))
+
+    assert sector_cache.backfill(["GOOD", "BAD"]) == 1
+    assert cache == {"GOOD": "Industrials"}, "the failed lookup must not be recorded at all"
+
+
+def test_recheck_empty_reresolves_only_the_blanks(monkeypatch):
+    """The repair path for entries already poisoned. It must NOT re-ask for tickers that have a sector --
+    that is a --force run, and 1,700 needless calls is how the rate limiter gets tripped."""
+    cache = {"HAS": "Energy", "BLANK": ""}
+    asked = []
+    monkeypatch.setattr(sector_cache, "_load", lambda: cache)
+    monkeypatch.setattr(sector_cache, "_save", lambda c: None)
+    monkeypatch.setattr(sector_cache.time, "sleep", lambda *_: None)
+
+    class _Fake:
+        def __init__(self, sym): asked.append(sym)
+        @property
+        def info(self): return {"quoteType": "EQUITY", "sector": "Financial Services"}
+    import sys, types
+    monkeypatch.setitem(sys.modules, "yfinance", types.SimpleNamespace(Ticker=_Fake))
+
+    sector_cache.backfill(["HAS", "BLANK"], recheck_empty=True)
+    assert asked == ["BLANK"], f"only the blank should be re-asked, asked {asked}"
+    assert cache["BLANK"] == "Financial Services" and cache["HAS"] == "Energy"

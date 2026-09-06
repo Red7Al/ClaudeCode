@@ -262,7 +262,7 @@ def test_performance_best_settings_is_a_dedicated_wallet_constrained_tab():
     assert 'largeOpens=[10,20,35,50,100,250,400]' in html
     assert 'minLargeStakePct=Math.max(.1,minTrade/wallet*100)' in html
     assert '[">125 trades",trades125' in html
-    assert '[">250 trades",trades250' in html
+    assert '["Most consistent returns",trades250' in html   # renamed from ">250 trades" (user 2026-09-06)
     assert '">500 trades"' not in html
     assert 'data-choice-unavailable="${_bsEsc(u.label)}"' in html
     assert 'const netGain=xs=>xs.filter(x=>x.placed).reduce' in html

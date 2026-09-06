@@ -2338,7 +2338,11 @@ function _pfInCombo(r){
   return vs!=null&&vs>=PF_COMBO.vlo&&vs<=PF_COMBO.vhi;
 }
 const _stcol=s=>s==="TARGET"?"var(--bull)":s==="STOPPED"?"var(--bear)":"#d29922";   // OPEN = amber
-function pfLocFilter(loc){PF_LOC_FILTER=(PF_LOC_FILTER===loc)?"":loc;PF_RENDER_LIMIT=PF_RENDER_STEP;_renderPerformance();}   // toggle the Summary-title location filter
+// SET, not toggle. The location filter was a row of buttons and pfLocFilter TOGGLED: clicking the active
+// one cleared it. A <select> reports the value the user chose, so re-choosing the current one has to KEEP
+// it -- a toggle there would silently reset the filter to All. pfLocFilter was removed with the buttons
+// rather than left behind; nothing else called it (user 2026-09-06, P-33).
+function pfLocSelect(loc){PF_LOC_FILTER=loc||"";PF_RENDER_LIMIT=PF_RENDER_STEP;_renderPerformance();}
 // Date filter (user 2026-07-18, P-01) — one trigger-date window drives BOTH Performance sub-tabs. A preset
 // dropdown (Last 3/6/9/12 months) sets it quickly; the window label feeds the "Trades" card title (P-01).
 let PF_DATE_FROM="", PF_DATE_TO="", PF_WINDOW_LABEL="last 12 months";
@@ -2940,6 +2944,9 @@ function renderDecisionProof(id,proof,opts={}){
       onclickFor:key=>`decisionProofFilter('${q(id)}','${q(dim)}','${q(key)}')`,
       clearOnclick:`decisionProofFilter('${q(id)}','${q(dim)}','')`
     })+`</div>`;};
+  // VWAP and ATR use _tickCross here, as they already did on the other three tables carrying these two
+  // columns (user 2026-09-06). This one spelled them out as Above/Below and Expanding/Not expanding, so
+  // the same fact looked like a different measurement depending on which table you were reading.
   const rows=filtered.filter(x=>show||x.placed).map(x=>{const r=x.r, good=+(r[run?'run_perf':'perf'])>0;
     return `<tr style="${x.placed?'':good?'background:color-mix(in srgb,#d29922 12%,transparent)':'opacity:.7'}">
       <td>${_esc(String(r.trig_date||'').replace('T',' ').slice(0,16))}</td><td>${_esc(r.name||disp(r.ticker))}</td>
@@ -2947,7 +2954,7 @@ function renderDecisionProof(id,proof,opts={}){
       <td>${x.open}</td><td>${gbp(x.w*WINNERS_WALLET)}</td><td>${pct(r.perf)}</td>${run?`<td><b>${pct(r.run_perf)}</b></td><td>${(r.perf!=null&&r.run_perf!=null)?`<b style="color:${(r.run_perf-r.perf)>=0?'var(--bull)':'var(--bear)'}">${pct(r.run_perf-r.perf)}</b>`:'—'}</td>`:''}
       <td>${x.placed?(()=>{const g=x.stake*WINNERS_WALLET*(+r[run?'run_perf':'perf']||0)/100;return `<b style="color:${g>=0?'var(--bull)':'var(--bear)'}">${g>=0?'+':'−'}${gbp(Math.abs(g))}</b>`;})():'—'}</td>
       <td>${num(r.rr)}</td><td>${num(r.quality)}</td><td>${num(r.volume_score)}</td><td>${num(r.rvol)}</td>
-      <td>${r.above_vwap==null?'—':r.above_vwap?'Above':'Below'}</td><td>${r.atr_expanding==null?'—':r.atr_expanding?'Expanding':'Not expanding'}</td>
+      <td>${_tickCross(r.above_vwap)}</td><td>${_tickCross(r.atr_expanding)}</td>
       <td>${_esc(r.market||'—')}</td><td>${_esc(r.sector||'—')}</td><td>${_esc(r.ticker||'—')}</td></tr>`;}).join('');
   // Decision and capacity explain why a row was taken or missed; keep that repeat evidence at the far
   // right so the trading outcome and signal fields remain readable without horizontal scrolling first.
@@ -3273,7 +3280,7 @@ window.addEventListener("resize",()=>{
     if(_bestDecisionRows&&capacity!==_bestCardCapacity)renderBestCombo(_bestDecisionRows,{recordSnapshot:false});
   },150);
 });
-// Best Settings choice cards (Balanced/Growth/Defensive/Broad evidence/>125 trades/>250 trades): clicking one swaps the detail
+// Best Settings choice cards (Balanced/Growth/Defensive/Broad evidence/>125 trades/Most consistent returns): clicking one swaps the detail
 // card + Transaction evidence below to that option (user 2026-08-07, ChangeRequest P-06 — previously only
 // Balanced ever got a detail card, which is why it "looked lost" next to the other three).
 let BEST_CHOICES=[], BEST_SELECTED="Balanced", BEST_MODEL_W=1000;
@@ -4213,8 +4220,13 @@ function _renderPerformance(){
   // green. They drive the summary table AND the monthly-growth chart (both via `sel`, below).
   const _locs=[...new Set(all.map(r=>locName(r.location)).filter(v=>v&&v!=="—"))].sort();
   const _lb=$("pf-loc-btns");
-  const _locBtn=(label,val,on)=>`<button class="subpill${on?' active':''}" style="${on?'background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600':''}" onclick="pfLocFilter('${val.replace(/'/g,"\\'")}')">${label}</button>`;   /* grey inactive, accent when active (user 2026-07-25, P-02 L79/L252) */
-  if(_lb)_lb.innerHTML=LIMITED?"":([_locBtn('All','',!PF_LOC_FILTER)].concat(_locs.map(l=>_locBtn(l,l,PF_LOC_FILTER===l)))).join("");
+  // A DROPDOWN, not a row of pills (user 2026-09-06: "I asked to either remove them or have them as
+  // dropdowns as they are so ugly"). One button per location meant the row grew with the universe and
+  // wrapped over several lines. A select is one control however many locations exist.
+  // width:auto defeats the global select{width:100%} — the same rule that once broke the date preset here.
+  const _opt=(label,val)=>`<option value="${_esc(val)}"${PF_LOC_FILTER===val?" selected":""}>${_esc(label)}</option>`;
+  if(_lb)_lb.innerHTML=LIMITED?"":`<select id="pf-loc-sel" onchange="pfLocSelect(this.value)" style="padding:4px 6px;font-size:12px;width:auto;flex:none" title="Filter the summary table and the monthly-growth chart by location">`
+    +[_opt("All locations","")].concat(_locs.map(l=>_opt(l,l))).join("")+`</select>`;
   {const _ll=$("pf-loc-lbl"); if(_ll)_ll.style.display=(LIMITED||!_locs.length)?"none":"";}   // hide the "Location:" label when there are no buttons (user 2026-07-24, P-04 L82)
   // Name/ticker search (user 2026-07-17, P-17): _pfq is computed above (moved up for the charts). The
   // summary, Quality/R:R buckets and row count all reflect it — same contract as the other tabs.

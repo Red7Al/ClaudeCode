@@ -2004,6 +2004,15 @@ def test_the_pre_rendered_image_exists_and_is_a_real_png():
 # old winners ledger table was removed in d686084.
 # ======================================================================================================
 
+def _tick_cross_src() -> str:
+    """The real `const _tickCross=...` line from app.js, for harnesses that render cells using it. Taken
+    from source rather than stubbed, so a change to the tick/cross markup shows up here too."""
+    line = next((l for l in APP_JS.read_text(encoding="utf-8").splitlines()
+                 if l.startswith("const _tickCross=")), None)
+    assert line, "const _tickCross=... not found in hvf_web/app.js"
+    return line
+
+
 def _proof_counts(filters_js, n_placed=33, n_missed=17, strip=True):
     """Run the real renderDecisionProof and read back the header it wrote."""
     rows = ("[" + ",".join(
@@ -2021,6 +2030,7 @@ def _proof_counts(filters_js, n_placed=33, n_missed=17, strip=True):
       // HEADER counts rather than the chart component, which has its own tests.
       const barChart=(title)=>`<div class="vizbox"><h5>${{title}}</h5></div>`;
       const _esc=s=>String(s), locName=v=>v, _doBand=()=>"", $=()=>null;
+      {_tick_cross_src()}   // the REAL one from app.js: the VWAP/ATR cells use it since 2026-09-06 (P-28)
       let CAPTURED="";
       // querySelector must exist: the renderer reorders columns in a queueMicrotask afterwards, and an
       // undefined method there throws AFTER the assertion has read the markup.
@@ -3077,3 +3087,195 @@ def test_the_known_absent_list_has_not_quietly_grown_stale():
     assert not resolved, f"these now exist and must be removed from _ABSENT_BY_DESIGN: {resolved}"
     unused = sorted(_ABSENT_BY_DESIGN - used)
     assert not unused, f"these are no longer looked up at all; drop them from _ABSENT_BY_DESIGN: {unused}"
+
+
+# ── The Performance location filter is a dropdown, not a row of pills (P-33, user 2026-09-06) ─────────
+#
+# "on performance tab the filters are not showing as dropdown - I asked to either remove them or have
+# them as dropdowns as they are so ugly". One button per location meant the row grew with the universe
+# and wrapped over several lines; a select is one control however many locations exist.
+
+def test_the_location_filter_renders_as_a_select():
+    js = APP_JS.read_text(encoding="utf-8")
+    block = js[js.index('const _lb=$("pf-loc-btns");'):][:1200]
+
+    assert "<select" in block and 'onchange="pfLocSelect(' in block
+    assert "<button" not in block, "the pills were meant to go, not to sit alongside a dropdown"
+    assert "width:auto" in block, (
+        "the global select{width:100%} rule makes an unstyled select span the whole row -- the same "
+        "defect that once pushed the date preset onto its own line")
+
+
+def test_choosing_the_same_location_twice_keeps_it_rather_than_clearing_it():
+    """The filter used to TOGGLE, which is right for a button and wrong for a dropdown: a select reports
+    the value the user chose, so re-choosing the current one has to keep it. A toggle here would silently
+    reset the filter to All the second time you picked the same location."""
+    src = _extract("pfLocSelect")
+    out = run_js(
+        # Only PF_LOC_FILTER is declared here. _extract runs to the next top-level declaration, so the
+        # extracted text already carries PF_RENDER_LIMIT/PF_RENDER_STEP -- and a duplicate `const` is a
+        # SyntaxError, not a shadow.
+        "let PF_LOC_FILTER='';function _renderPerformance(){}",
+        src,
+        "(()=>{pfLocSelect('United States');const first=PF_LOC_FILTER;"
+        " pfLocSelect('United States');const second=PF_LOC_FILTER;"
+        " pfLocSelect('');"                        # and 'All locations' still clears it
+        " return JSON.stringify([first,second,PF_LOC_FILTER]);})()")
+    assert json.loads(out) == ["United States", "United States", ""], out
+
+
+def test_the_options_are_escaped():
+    """A location name reaches this straight from the data. It builds an option VALUE attribute, so an
+    unescaped quote would break out of it."""
+    js = APP_JS.read_text(encoding="utf-8")
+    block = js[js.index('const _opt=(label,val)'):][:400]
+    assert block.count("_esc(") >= 2, "both the value and the label must be escaped"
+
+
+# ── VWAP / ATR read the same way on every table (P-28, user 2026-09-06) ───────────────────────────────
+#
+# "on tables we have VWAP 'above' and this should be a green tick and ATR 'expanding' should also be a
+# green tick". Three of the four tables carrying these columns already used _tickCross; the Best Settings
+# decision-proof table spelled them out, so the same fact looked like a different measurement depending
+# on which table you were reading.
+
+def test_no_table_spells_out_the_vwap_or_atr_state():
+    js = client_js()
+    for word in ("'Above':'Below'", "'Expanding':'Not expanding'"):
+        assert word not in js.replace(" ", ""), f"{word} is a worded VWAP/ATR cell; use _tickCross"
+
+
+def test_tick_cross_is_a_green_tick_and_a_red_cross_with_a_dash_for_unknown():
+    """Unknown must NOT render as a cross. These four measures do not exist until the break bar, so a
+    working order legitimately has no value -- showing a red cross would report a failed test that was
+    never run."""
+    line = next((l for l in APP_JS.read_text(encoding="utf-8").splitlines()
+                 if l.startswith("const _tickCross=")), None)
+    assert line, "const _tickCross=... not found"
+    out = run_js("", line,
+                 "JSON.stringify([_tickCross(true),_tickCross(false),_tickCross(null),_tickCross(undefined)])")
+    tick, cross, unknown, missing = json.loads(out)
+    assert "✓" in tick and "var(--bull)" in tick
+    assert "✗" in cross and "var(--bear)" in cross
+    assert "—" in unknown and "✗" not in unknown, "unknown must not read as a failed test"
+    assert unknown == missing
+
+
+# ── Squeeze History date columns are wide enough for a date (P-27, user 2026-09-06) ───────────────────
+#
+# "the date columns on some tables are too narrow to read e.g. 3 dates next to each other on squeeze
+# history - none can be read". Developing/Ready/Triggered are columns 4/5/6 and Closed is column 8. The
+# table is table-layout:fixed with overflow:hidden;text-overflow:ellipsis, so a too-narrow column CLIPS
+# the date instead of wrapping it -- and clipping "2026-08-15" leaves something that still looks like a
+# date, which is why this read as unreadable rather than obviously broken.
+
+_SQH_DATE_COLUMNS = (4, 5, 6, 8)
+
+
+def _sqh_widths():
+    import re
+    css = client_html()
+    return {int(n): float(w) for n, w in re.findall(
+        r"#view-squeezehist \.tablewrap th:nth-child\((\d+)\),"
+        r"#view-squeezehist \.tablewrap td:nth-child\(\d+\)\{width:([\d.]+)%\}", css)}
+
+
+def test_the_squeeze_history_date_columns_can_hold_a_whole_date():
+    """8% of the narrowest desktop this layout targets (the media query hands over to table-layout:auto
+    below 760px, so 1000px is the tightest case this rule has to survive) is 80px, less the 12px of
+    left+right padding the same block sets = 68px. YYYY-MM-DD at the table's 13px font measures ~72px.
+    So 8% is not enough and 8.5% is; anything below 8.5 puts the clipping back."""
+    widths = _sqh_widths()
+    assert len(widths) == 14, f"expected 14 column rules, found {len(widths)}"
+    for col in _SQH_DATE_COLUMNS:
+        assert widths[col] >= 8.5, f"column {col} is {widths[col]}% -- a date will be clipped again"
+
+
+def test_the_squeeze_history_columns_still_sum_to_one_hundred():
+    """The whole point of the fixed layout here is that the table fits without horizontal scrolling.
+    Widening the dates has to TAKE the space from somewhere, not add it."""
+    total = sum(_sqh_widths().values())
+    assert abs(total - 100.0) < 0.01, f"columns sum to {total}%, so the table will scroll or leave a gap"
+
+
+# ── The "Best win : loss" card must actually hold the best win:loss (P-36, user 2026-09-06) ───────────
+#
+# "also seeing growth card with better win:loss ratio than the card illustrating best win:loss - this
+# will undermine the data in the cards as it appears you are not checking your work before publishing".
+#
+# Two independent causes, both real:
+#   1. The card was RANKED on _wl(), which applies a +/-0.5% break-even dead band, while every card
+#      DISPLAYS _cardWL(), which does not. Chosen on one statistic, read on another.
+#   2. choose() enforces a configuration-difference bar, so the genuine best could be rejected for
+#      resembling an already-picked card -- and then turn up ON that card.
+#
+# This runs the page's OWN search under Node over synthetic trades, exactly as the public card job does,
+# and asserts the invariant the label promises. A source-level check could not catch cause 2 at all.
+
+def _winloss_selection() -> str:
+    """Just the statement that picks the Best win:loss card -- bounded at its own terminator, so a fixed
+    character window cannot drag in the sibling selections that legitimately DO use choose()."""
+    src = client_js()
+    # Starts at _cardWLRatio, not at `const winloss=`: the ratio helper is declared on the line above and
+    # the extracted text has to be runnable on its own.
+    start = src.index("const _cardWLRatio=")
+    end = src.index("chosen.push(winloss);", start)
+    return src[start:end]
+
+
+def test_the_win_loss_card_is_ranked_on_the_statistic_it_displays():
+    """Cause 1, pinned at source: ranking on _wl() (dead-banded) while printing _cardWL() (not) is what
+    let a sibling card out-display it. If someone re-points this at _wl, the invariant test above may
+    still pass on a lucky population -- this one will not."""
+    block = _winloss_selection()
+    assert "_cardWLRatio" in block, "the win:loss card must rank on the displayed statistic"
+    assert "_wl(" not in block, "_wl applies a break-even dead band the card does not display"
+
+
+def test_the_win_loss_card_is_not_filtered_by_the_difference_bar():
+    """Cause 2. choose() can reject the genuine best for resembling an already-chosen card, which is how
+    the better ratio ended up on the Growth card."""
+    block = _winloss_selection()
+    assert "choose(" not in block, (
+        "the difference bar can reject the true best win:loss and leave it showing on another card")
+
+
+def test_the_win_loss_card_is_picked_by_the_displayed_ratio_not_the_dead_banded_one():
+    """Cause 1, executed rather than read.
+
+    The pool below is built so the two statistics DISAGREE. B's wins are all inside the +/-0.5% break-even
+    band, so _wl() (dead-banded) sees B as having no wins and prefers A; _cardWL() (what the card prints)
+    counts them and prefers B. The old selection ranked on _wl and would return A, whose printed ratio is
+    the worse of the two -- which is how a sibling card came to out-display the one labelled 'best'.
+    """
+    mk = lambda label, perfs: {"label": label, "seq": [{"perf": p} for p in perfs],
+                               "ret": 0.10, "score": 1, "wins": 0, "losses": 0}
+    pool = [mk("A", [3.0, 3.0, -4.0, -4.0, -4.0]),          # _cardWL 2/3 = 0.667, _wl 2/3 = 0.667
+            mk("B", [0.3, 0.3, 0.3, 0.3, -4.0])]            # _cardWL 4/1 = 4.000, _wl 0/1 = 0.000
+    src = _winloss_selection() + "chosen.push(winloss);"
+    out = run_js(
+        "const _cardWL=x=>{const s=x.seq||[],w=s.filter(r=>r.perf>0).length,l=s.filter(r=>r.perf<0).length;"
+        "  return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};"
+        "const _wl=x=>{const w=x.seq.filter(r=>+r.perf>0.5).length,l=x.seq.filter(r=>+r.perf<-0.5).length;"
+        "  return l?w/l:(w?Infinity:0);};"
+        f"const basePool={json.dumps(pool)},large125=[],large250=[],chosen=[];"
+        "const choose=(pool,chosen,compare)=>[...pool].sort(compare)[0]||null;",
+        src, "winloss.label")
+    assert out.strip().strip('"') == "B", (
+        f"picked {out!r}: the card must be chosen on the ratio it PRINTS, not the dead-banded one")
+
+
+def test_the_win_loss_card_says_which_population_it_won_on():
+    """The card prints TWO win:loss rows and they legitimately disagree. Measured on the live 4,168-row
+    annual set on 2026-09-06: this card led on ELIGIBLE at 1.600 while Balanced (1.412), Short Duration
+    (1.200) and Defensive (1.154) all beat its ACTUAL 1.067.
+
+    Neither number is wrong. ELIGIBLE is a property of the configuration; ACTUAL counts only what the
+    wallet could fund, so it moves with position size and the open cap and differs between two people
+    reading the same card. A superlative is only claimable over the reader-independent population, so
+    the title has to say which one it means."""
+    src = client_js()
+    line = src[src.index('winloss&&["Best win : loss"'):][:900]
+    assert "ELIGIBLE" in line, "the claim must name the population it is measured over"
+    assert "funded row below can differ" in line, (
+        "the card has to warn that the funded row is a different, wallet-dependent population")

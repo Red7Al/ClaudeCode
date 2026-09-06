@@ -242,11 +242,48 @@ function computeBestSettings(env){
       return isNaN(a)||isNaN(b)?null:Math.max(1,(b-a)/86400000);}).filter(v=>v!=null);
     return d.length?d.reduce((s,v)=>s+v,0)/d.length:null;};
   const _perDay=x=>{const d=_days(x);return d?x.ret/d:-Infinity;};
+  // Win:loss shown ON a card (user 2026-08-23). DECLARED HERE, above the card selection, because the
+  // Best win:loss card is now RANKED on it -- and `const` has a temporal dead zone, so leaving it
+  // further down threw a ReferenceError that node --check cannot see.
+  //
+  // Deliberately the SAME split the detail panel uses (user 2026-08-23). Deliberately the SAME split the detail panel uses —
+  // perf > 0 and perf < 0 over the eligible trades — because clicking the card opens that panel directly
+  // beneath it, and two different counts for one configuration would read as a bug.
+  //
+  // NOT the same as _wl() above, which RANKS candidates and applies a +/-0.5% break-even dead-band. That
+  // is a selection heuristic; this is a displayed count.
+  //
+  // Two populations, deliberately both shown (user 2026-08-28: "Win:Loss is for Eligible - show this
+  // ratio for Actual also"). ELIGIBLE is every trade matching the configuration's filters; ACTUAL is only
+  // those the wallet could fund.
+  const _cardWL=x=>{const s=x.seq||[],w=s.filter(r=>r.perf>0).length,l=s.filter(r=>r.perf<0).length;
+    return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};
+  const _cardWLActual=x=>{const w=+x.wins||0,l=+x.losses||0;
+    return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};
   const chosen=[best];
   const growth=choose(basePool,chosen,(a,b)=>b.ret-a.ret);if(growth)chosen.push(growth);
   const defensive=choose(basePool,chosen,(a,b)=>a.dd-b.dd);if(defensive)chosen.push(defensive);
   const broad=choose(basePool,chosen,(a,b)=>b.consistency-a.consistency||b.n-a.n||b.ret-a.ret);if(broad)chosen.push(broad);
-  const winloss=choose(basePool,chosen,(a,b)=>_wl(b)-_wl(a)||b.ret-a.ret);if(winloss)chosen.push(winloss);
+  // BEST WIN:LOSS -- ranked on the number the card DISPLAYS, and not put through choose().
+  //
+  // The defect this fixes (user 2026-09-06: "also seeing growth card with better win:loss ratio than the
+  // card illustrating best win:loss ... it appears you are not checking your work before publishing").
+  // Two independent causes, both real:
+  //
+  //  1. It ranked on _wl(), which applies a +/-0.5% break-even dead band, while every card DISPLAYS
+  //     _cardWL(), which does not. Selected on one statistic, judged by the reader on another, so the
+  //     card could honestly lose to a sibling on the figure printed beneath its own title.
+  //  2. choose() enforces a configuration-difference bar, so the genuine best could be rejected for
+  //     resembling an already-chosen card -- and then appear on that card instead.
+  //
+  // So: rank on _cardWLRatio, the displayed statistic, and skip the difference bar. Its defining property
+  // is the metric, not being unlike its siblings -- the same reasoning _bestSettingsByFundedTrades
+  // already applies to the >125/>250 cards. Ranking over those pools too keeps the claim true against
+  // every annual card, not just the ones drawn from basePool.
+  const _cardWLRatio=x=>{const c=_cardWL(x);return c.l?c.w/c.l:(c.w?Infinity:0);};
+  const winloss=[...basePool,...large125,...large250]
+    .sort((a,b)=>_cardWLRatio(b)-_cardWLRatio(a)||b.ret-a.ret||b.score-a.score)[0]||null;
+  if(winloss)chosen.push(winloss);
   const efficient=choose(basePool,chosen,(a,b)=>_perDay(b)-_perDay(a));if(efficient)chosen.push(efficient);
   const shortDuration=choose(basePool,chosen,(a,b)=>(_days(a)??Infinity)-(_days(b)??Infinity)||b.ret-a.ret);if(shortDuration)chosen.push(shortDuration);
   // Best settings at a given funded-trade sample BAND. Deliberately NOT run through choose()'s difference
@@ -307,31 +344,28 @@ function computeBestSettings(env){
     growth&&["Growth",growth,"Highest-return alternative with a materially different configuration.","var(--accent)"],
     defensive&&["Defensive",defensive,"Lowest historical peak-to-trough drawdown while retaining a positive return.","#d29922"],
     broad&&["Broad evidence",broad,"Favours positive quarters and a larger funded trade sample over a narrow winner.","var(--muted)"],
-    trades125&&[">125 trades",trades125,"Best-scoring configuration funding more than 125 and no more than 150 trades — a focused, higher-confidence sample.","#1f6feb"],
-    trades250&&[">250 trades",trades250,"Best-scoring configuration funding more than 250 and no more than 300 trades — the larger evidence band.","#a371f7"],
-    winloss&&["Best win : loss",winloss,`Most winners per loser — ${_wl(winloss)===Infinity?"no losing trades":_wl(winloss).toFixed(2)+" wins per loss"}. Break-even trades count as neither.`,"#3fb950"],
+    trades125&&[">125 trades",trades125,"The strongest risk-adjusted configuration among those that funded 125-150 trades — more selective than the band below it, over the same full 12 months.","#1f6feb"],
+    trades250&&["Most consistent returns",trades250,"The strongest risk-adjusted configuration among those that funded 250-300 trades. Every card is replayed over the SAME full 12 months — this one is picked from the configurations that put money to work most often, so its return rests on more trades than any other card here.","#a371f7"],
+    // The subtitle names the POPULATION the superlative is measured over, because the card prints two
+    // win:loss rows and they can disagree (user 2026-09-06: "seeing growth card with better win:loss
+    // ratio than the card illustrating best win:loss"). Measured on the live 4,168-row annual set that
+    // day: this card led on ELIGIBLE at 1.600, while Balanced (1.412), Short Duration (1.200) and
+    // Defensive (1.154) all beat its ACTUAL 1.067.
+    //
+    // That is not an error in either number. ELIGIBLE is every trade matching the configuration and is
+    // a property of the configuration alone; ACTUAL is only the subset the wallet could fund, so it
+    // moves with wallet, position size and the max-open cap, and differs between two people reading the
+    // same card. A superlative can only be claimed over the population that does not depend on the
+    // reader, so the title means ELIGIBLE and now says so.
+    winloss&&["Best win : loss",winloss,`Most winners per loser among ELIGIBLE trades — ${_cardWLRatio(winloss)===Infinity?"no losing trades":_cardWLRatio(winloss).toFixed(2)+" wins per loss"}. The funded row below can differ: it counts only the trades this wallet could pay for, so it moves with your position size and open-position cap.`,"#3fb950"],
     efficient&&["Capital efficient",efficient,`Most return per day of capital committed — ${_days(efficient)?Math.round(_days(efficient))+" days average hold":"hold unknown"}. Keeps the book turning instead of tying slots up.`,"#f778ba"]
   ].filter(Boolean);
   if(threeYear)choices.push(["Best over 3 years",threeYear,"Three-year replay with more than 125 funded trades and at least 80% of the best card’s return (20% relative tolerance).","#00a8a8"]);
   if(shortDuration)choices.push(["Short Duration",shortDuration,`Shortest average completed holding period — ${_days(shortDuration)?Math.round(_days(shortDuration))+" days average hold":"hold unknown"}.`,"#58a6ff"]);
   // Requested display order. Sorting presentation does not change any candidate's calculation.
-  const cardOrder=["Best win : loss","Capital efficient","Balanced","Growth","Short Duration","Broad evidence",">250 trades",">125 trades","Best over 3 years","Defensive"];
+  const cardOrder=["Best win : loss","Capital efficient","Balanced","Growth","Short Duration","Broad evidence","Most consistent returns",">125 trades","Best over 3 years","Defensive"];
   choices.sort((a,b)=>cardOrder.indexOf(a[0])-cardOrder.indexOf(b[0]));
 
-  // Win:loss shown ON a card (user 2026-08-23). Deliberately the SAME split the detail panel uses —
-  // perf > 0 and perf < 0 over the eligible trades — because clicking the card opens that panel directly
-  // beneath it, and two different counts for one configuration would read as a bug.
-  //
-  // NOT the same as _wl() above, which RANKS candidates and applies a +/-0.5% break-even dead-band. That
-  // is a selection heuristic; this is a displayed count.
-  //
-  // Two populations, deliberately both shown (user 2026-08-28: "Win:Loss is for Eligible - show this
-  // ratio for Actual also"). ELIGIBLE is every trade matching the configuration's filters; ACTUAL is only
-  // those the wallet could fund.
-  const _cardWL=x=>{const s=x.seq||[],w=s.filter(r=>r.perf>0).length,l=s.filter(r=>r.perf<0).length;
-    return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};
-  const _cardWLActual=x=>{const w=+x.wins||0,l=+x.losses||0;
-    return {w,l,pct:(w+l)?Math.round(w/(w+l)*100):null};};
   // Three ROLLING 365-day windows for a card's configuration (user 2026-09-01: "I want to see if these
   // settings are only good for this year or all years. A year in this card is not a calendar year - it is
   // the previous 365 days").
@@ -369,7 +403,7 @@ function computeBestSettings(env){
     cfg:cfgFor(x)});
 
   const unsupported=[];
-  if(!trades250)unsupported.push({label:">250 trades",min:250,max:300,colour:"#a371f7"});
+  if(!trades250)unsupported.push({label:"Most consistent returns",min:250,max:300,colour:"#a371f7"});
   if(!trades125)unsupported.push({label:">125 trades",min:125,max:150,colour:"#1f6feb"});
 
   return {
