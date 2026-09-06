@@ -40,7 +40,12 @@ def test_each_package_matches_its_source_exactly(skill_dir):
 
     with zipfile.ZipFile(archive) as zf:
         packaged = {i.filename: zf.read(i.filename) for i in zf.infolist()}
-    source = {f"{skill_dir.name}/{p.relative_to(skill_dir).as_posix()}": p.read_bytes()
+    # member_bytes, not read_bytes: the packager stores text members LF-normalised so the archive is
+    # reproducible from either platform. Comparing against the raw on-disk bytes would fail on Windows
+    # (CRLF working tree) or on Linux (LF) depending on which one built it -- which is exactly how this
+    # test failed on every CI run for weeks while passing locally, printing an instruction ("Run:
+    # python build_skills.py") that could not possibly fix it.
+    source = {f"{skill_dir.name}/{p.relative_to(skill_dir).as_posix()}": build_skills.member_bytes(p)
               for p in build_skills.members(skill_dir)}
 
     assert set(packaged) == set(source), (

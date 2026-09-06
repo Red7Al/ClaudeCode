@@ -999,6 +999,8 @@ def test_the_working_order_rows_carry_the_deal_id(monkeypatch):
 # So: add_user stamps `created` from now on, and `seq` (position in the store, which is insertion order
 # and survives the JSON round-trip) orders everything older.
 
+@pytest.mark.live_state   # reads the real Supabase-backed user store; the two tests below cover the
+                          # logic offline, so CI still checks the stamping and the sort.
 def test_list_users_exposes_a_creation_ordering():
     from hvf_web import web_users as _wu
     users = _wu.list_users()

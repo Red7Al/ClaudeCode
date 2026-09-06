@@ -328,8 +328,17 @@ def test_an_unknown_market_cap_does_not_block_a_manual_placement(monkeypatch):
 # 0 of 29 passed the owner's own criteria.
 
 def test_the_engine_profile_resolves_to_the_owners_web_login(monkeypatch):
+    """The two tests below monkeypatch get_settings; this one did not, and so read the real user store.
+
+    That made it fail in CI for a reason unrelated to what it checks: under placeholder credentials the
+    store is unreachable, login_for_profile catches that and falls back to returning the profile NAME,
+    so it produced "Owner" instead of the owner's login. Stubbing an empty settings result is what makes
+    the assertion actually about the user-id branch -- which is the whole point of the function."""
     from hvf_web import server
+    from hvf_web import web_users as _wu
     from run_session import OWNER_USER_ID
+
+    monkeypatch.setattr(_wu, "get_settings", lambda n: {})
 
     login = trading_limits.login_for_profile({"name": "Owner", "user_id": OWNER_USER_ID})
 

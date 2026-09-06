@@ -40,6 +40,30 @@ def members(skill_dir: Path) -> list:
     return head + [p for p in files if p not in head]
 
 
+# Text members are stored with LF, whatever the building platform used on disk.
+#
+# WHY (CI red, diagnosed 2026-09-06). .gitattributes carries `* text=auto`, so skills_src/**/*.md is
+# CRLF in a Windows working tree and LF in a Linux one. The .skill archive is a ZIP -- binary to git --
+# so it preserves whatever bytes the machine that BUILT it happened to have. An archive built on Windows
+# therefore holds CRLF, and test_skill_packages, which compares packaged bytes against the source file's
+# bytes, can never pass on Linux. It had failed on every CI run for weeks while passing locally, and the
+# instruction it prints ("Run: python build_skills.py") could not fix it: rebuilding on Windows
+# reproduces the same CRLF.
+#
+# Normalising here makes the archive reproducible from either platform, which is what a build artifact
+# committed to the repository has to be. Only text extensions are touched -- normalising an image would
+# corrupt it.
+_TEXT_SUFFIXES = {".md", ".txt", ".json", ".yml", ".yaml", ".py", ".csv", ".cfg", ".ini"}
+
+
+def member_bytes(path) -> bytes:
+    """The bytes a member is stored as: LF-normalised for text, untouched for anything else."""
+    raw = path.read_bytes()
+    if path.suffix.lower() not in _TEXT_SUFFIXES:
+        return raw
+    return raw.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def build_one(skill_dir: Path, output_dir: Path) -> tuple:
     out = output_dir / archive_name(skill_dir)
     paths = members(skill_dir)
@@ -51,7 +75,7 @@ def build_one(skill_dir: Path, output_dir: Path) -> tuple:
             info = zipfile.ZipInfo(rel, date_time=_mtime(path))
             info.external_attr = 0o644 << 16
             info.create_system = 3
-            archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+            archive.writestr(info, member_bytes(path), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     return out, paths
 
 
@@ -91,7 +115,9 @@ def _is_stale(skill_dir: Path, output_dir: Path) -> bool:
             have = {i.filename: archive.read(i.filename) for i in archive.infolist()}
     except (OSError, zipfile.BadZipFile):
         return True
-    want = {f"{skill_dir.name}/{p.relative_to(skill_dir).as_posix()}": p.read_bytes()
+    # member_bytes, matching build_one. Comparing against the raw on-disk bytes made a freshly built
+    # archive read as STALE on any platform whose working tree differs from the stored form.
+    want = {f"{skill_dir.name}/{p.relative_to(skill_dir).as_posix()}": member_bytes(p)
             for p in members(skill_dir)}
     return have != want
 
