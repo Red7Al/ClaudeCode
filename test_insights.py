@@ -43,8 +43,16 @@ def test_the_endpoint_never_returns_more_than_the_cap(monkeypatch):
     assert len(body["insights"]) == 2
 
 
+@pytest.mark.live_state
 def test_every_insight_publishes_its_own_verdict_and_the_statistic_behind_it():
-    """A card that cannot say whether it is still supported is worse than no card."""
+    """A card that cannot say whether it is still supported is worse than no card.
+
+    live_state because it calls the REAL builders, and every one of them queries the database. It passes on
+    any configured machine and could only ever fail on CI, where the credentials are placeholders -- which
+    is exactly what it did: this single test took CI red from 2026-09-06, one day after P-45 restored it,
+    and the handover recorded main as "CI green" on the strength of a run that had already failed. Its two
+    siblings below, which call the same builders, were marked from the start; this one was missed.
+    """
     for build in server._INSIGHT_BUILDERS:
         got = build()
         if not got:
