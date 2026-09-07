@@ -45,6 +45,22 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
 
 ## Data quality
 
+- [ ] **Eight instruments in the universe scan nothing — Yahoo returns no data for any of them**
+  (measured 2026-09-07): `ANSS`, `BSIF.L`, `EA`, `FI`, `IPF.L`, `JTC.L`, `MMC`, `QUB.AX`. The
+  2026-08-25 handover recorded two of these (ANSS, FI); this is the full list, taken by comparing the
+  distinct universe against every ticker with a `price_history` bar in the trailing 7 days, then
+  re-querying each one directly — all eight return zero rows for `period=5d`.
+
+  They cost a wasted fetch per scan each and, more importantly, they make the coverage numbers read
+  worse than they are: any "N of the universe have X" figure counts eight instruments that can never
+  have anything. Decide per ticker whether it is renamed (re-map in `config.YAHOO_MAP`) or gone
+  (remove from `run_hvf_report.UNIVERSE`), rather than removing them as a batch.
+
+  **While counting, note the denominator.** `UNIVERSE` is a list of index memberships, not instruments:
+  it holds **1,856 entries but only 1,773 distinct tickers**, because 83 are in two indices at once
+  (NVDA is in both NASDAQ 100 and S&P 500). 1,773 is what `/api/status` reports and is the honest
+  instrument count; 1,765 of them price daily. Quoting 1,856 overstates the universe by 83.
+
 - [ ] **`quality` is stored in four tables — review whether all four are needed** (raised 2026-08-29).
   Measured the same day, so the counts are real rather than estimated:
 
@@ -97,6 +113,28 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
   + the 3 unresolved above = 1309).
 
 ## New feature requests — added 2026-06-26 (user batch)
+
+- [ ] **Ask-the-AI question box at the top of the Insights page** (user 2026-09-07: "is it possible to add
+  a section at top of insights which allows the user to ask questions to AI engine?"). Deferred rather than
+  built, because the answer is yes but the decisions that make it safe are not mine to take:
+
+  - **What may it read?** `/api/insights` is already login-only, and `/api/performance` was found serving
+    4,932 rows of trade evidence to anonymous visitors on 2026-08-28. A question box is a new route to the
+    same data, so its scope has to be settled first: the published aggregates only, or the underlying
+    per-trade rows?
+  - **Per-user or shared?** Answers derived from the asker's own limits, positions and orders are the
+    useful ones and are also the ones that must never leak between logins.
+  - **Cost and rate limiting.** Each question is a paid API call from the web tier. IONOS is shared
+    hosting behind a CGI wrapper with no background worker, so a slow call blocks a request; the calls
+    would want the same precompute/queue treatment `/api/winners` needed.
+  - **The honesty problem, which is the real one.** Every number on this site is derived and checkable —
+    the Methodology page exists so a quant can audit it. A free-text answer that *sounds* like those
+    numbers but is generated rather than computed would be indistinguishable to the reader and would
+    undermine the rest. Any build should route questions to the existing computed endpoints and refuse
+    what it cannot answer from them, rather than describing the data in prose.
+
+  Suggested first cut if it is picked up: a fixed set of parameterised questions answered from
+  `_sqa_all_rows` and the insight builders, with free text only as a way of *selecting* among them.
 
 - [ ] **Add NASDAQ-100 instruments to the universe** (user 2026-06-28, "on Monday afternoon" → target
   **2026-06-29 PM**; scope confirmed **NASDAQ-100**). Extend the monitored universe in
