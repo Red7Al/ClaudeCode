@@ -588,7 +588,26 @@ def _audit_generated_tables() -> dict:
     stale = [n for n, r in out.items() if not r["ok"]]
     if stale:
         _post_generated_tables_slack(stale, out)
-    return {"checks": out, "stale": stale}
+    # Which instruments can never be volume-judged in a closing window, and so can never be auto-closed
+    # (user 2026-09-07: "if there is no volume information returned for a subset of data then these cannot
+    # be judged. A warning should be available in the system logs to highlight this"). Reported every day
+    # rather than discovered: the closer leaving a position alone looks exactly like the closer approving
+    # it, and only this says which it was.
+    blind = {}
+    try:
+        import market_hours
+        import run_hvf_report
+        universe = [t for ts in run_hvf_report.UNIVERSE.values() for t in ts]
+        blind = {"exchanges": market_hours.unjudgeable_exchanges(),
+                 "instruments": len(market_hours.unjudgeable_instruments(universe))}
+        if blind["exchanges"]:
+            log.warning("closing-window volume is unavailable for %d exchange(s) covering %d "
+                        "instrument(s); these can never be auto-closed: %s",
+                        len(blind["exchanges"]), blind["instruments"],
+                        ", ".join(sorted(blind["exchanges"])))
+    except Exception as exc:
+        log.warning("could not determine unjudgeable exchanges: %s", exc)
+    return {"checks": out, "stale": stale, "unjudgeable": blind}
 
 
 def _post_generated_tables_slack(stale: list, detail: dict) -> None:

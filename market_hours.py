@@ -187,6 +187,44 @@ def session_fraction_elapsed(ticker: str, now=None):
     return max(0.0, min(1.0, (local_now - opens).total_seconds() / span))
 
 
+def volume_projection_factor(ticker: str):
+    """Divide a closing-window volume by this to project the full session. None where unknown.
+
+    The 5th-percentile share, so the projection reads HIGH in ~95% of sessions and an unfinished bar can
+    never be the reason a position is closed. Measured 2026-09-07 over 910 verdict comparisons: applying
+    this took false closes from 1.98% of cases to 1.21%, turning them into false KEEPS -- which cost
+    nothing, because leaving a position open is the status quo.
+
+    Returns None when the exchange has no measured share, and the caller must treat that as "cannot judge"
+    rather than as a factor of 1.0: assuming completeness is exactly the error this exists to prevent.
+    """
+    s = session(ticker)
+    if not s or is_continuous(ticker):
+        return None
+    return s.get("vol_share_p05")
+
+
+def unjudgeable_exchanges() -> dict:
+    """{exchange_key: reason} for venues with a close but no measurable volume — mostly indices.
+
+    An index has no traded volume of its own, so RVOL and VolumeScore cannot be computed for it and the
+    closing-window correction has nothing to scale. Instruments there are left alone, which is safe; the
+    danger is that "left alone" is indistinguishable from "passed" unless it is stated somewhere, so this
+    is what the daily generated-table audit reports.
+    """
+    from market_hours_data import EXCHANGES
+    return {k: e.get("vol_share_reason") or "no volume-completion share recorded"
+            for k, e in EXCHANGES.items()
+            if (e["open"], e["close"]) != (_CONTINUOUS_OPEN, _CONTINUOUS_CLOSE)
+            and not e.get("vol_share_p05")}
+
+
+def unjudgeable_instruments(tickers) -> list:
+    """Which of `tickers` cannot be volume-judged in a closing window, and therefore never auto-closed."""
+    bad = set(unjudgeable_exchanges())
+    return sorted({t for t in (tickers or []) if exchange_key(t) in bad})
+
+
 def unmapped(tickers) -> list:
     """Which of `tickers` resolve to no exchange at all — the check that stops a silent gap reappearing.
 
@@ -247,7 +285,44 @@ def probe(ticker: str):
     return (tz, ls.strftime("%H:%M"), le.strftime("%H:%M"))
 
 
-def derive(samples_per_exchange: int = 3, tickers=None, pause: float = 0.15):
+def volume_share(ticker: str, minutes: int = CLOSING_WINDOW_MINUTES, period: str = "1mo"):
+    """What fraction of a session's volume has traded `minutes` before the close? (median, p05, n).
+
+    A bar read inside the closing window is unfinished, so its volume -- and therefore RVOL and
+    VolumeScore -- is understated, and understating volume makes a test FAIL, which makes the closer
+    CLOSE. The bias runs toward selling a sound position, so it has to be corrected rather than tolerated.
+
+    p05 is what the correction divides by, not the median. Dividing by the 5th percentile OVER-states the
+    projected full-day volume in ~95% of sessions, so the reading errs high, the test errs toward passing,
+    and an unfinished bar can never be the reason a position is closed. Measured 2026-09-07 over 472
+    sessions: median 0.864 overall, but ASX 0.593 -- its closing auction is a large share of the day, and
+    a single global constant would be badly wrong for it. Hence per exchange.
+    """
+    import datetime as _d
+    import yfinance as yf
+    s = session(ticker)
+    if not s or is_continuous(ticker) or ZoneInfo is None:
+        return None
+    tz = ZoneInfo(s["tz"])
+    hh, mm = (int(x) for x in s["close"].split(":"))
+    df = yf.Ticker(yahoo_symbol(ticker)).history(period=period, interval="5m")
+    if df is None or df.empty:
+        return None
+    df = df.tz_convert(tz)
+    shares = []
+    for day, chunk in df.groupby(df.index.date):
+        total = float(chunk["Volume"].sum())
+        if total <= 0 or len(chunk) < 10:
+            continue
+        cutoff = _d.datetime.combine(day, _dt.time(hh, mm), tzinfo=tz) - _dt.timedelta(minutes=minutes)
+        shares.append(float(chunk[chunk.index < cutoff]["Volume"].sum()) / total)
+    if len(shares) < 5:
+        return None
+    shares.sort()
+    return (shares[len(shares) // 2], shares[int(0.05 * len(shares))], len(shares))
+
+
+def derive(samples_per_exchange: int = 3, tickers=None, pause: float = 0.15, share_keys=None):
     """Derive the whole table from the exchanges. {exchange_key: entry} plus a list of failures.
 
     Several tickers are sampled per exchange and required to AGREE. A split is reported rather than resolved by
@@ -279,7 +354,48 @@ def derive(samples_per_exchange: int = 3, tickers=None, pause: float = 0.15):
             problems.append(f"{key}: samples DISAGREE {dict(seen)}")
             continue
         (tz, op, cl), n = seen.most_common(1)[0]
-        table[key] = {"tz": tz, "open": op, "close": cl, "samples": used, "agreement": f"{n}/{len(used)}"}
+        entry = {"tz": tz, "open": op, "close": cl, "samples": used, "agreement": f"{n}/{len(used)}"}
+        # The closing-window volume share, for the exchanges that HAVE a closing window. Derived from the
+        # same instruments the hours came from, so the two cannot describe different venues.
+        if (op, cl) != (_CONTINUOUS_OPEN, _CONTINUOUS_CLOSE) and (share_keys is None or key in share_keys):
+            got = []
+            for t in used:
+                try:
+                    v = volume_share(t)
+                except Exception as exc:
+                    # WARNING, not debug. This was debug, and it hid the reason every exchange came back
+                    # without a share on one run -- the failure looked identical to "this venue reports no
+                    # volume", which is a legitimate state, so a real error was indistinguishable from an
+                    # expected absence.
+                    log.warning("volume share failed for %s: %s: %s", t, type(exc).__name__, exc)
+                    v = None
+                if v:
+                    got.append(v)
+                time.sleep(pause)
+            if got:
+                entry["vol_share_median"] = round(sum(g[0] for g in got) / len(got), 3)
+                # The LOWEST p05 across the sampled instruments -- the most conservative of them, because
+                # the correction must not under-project for any member of the exchange.
+                entry["vol_share_p05"] = round(min(g[1] for g in got), 3)
+                entry["vol_share_sessions"] = sum(g[2] for g in got)
+            else:
+                # NOT FATAL (user 2026-09-07: "progress with all the auto-close actions that you could
+                # rather than stall on missing data for some", and "if there is no volume information
+                # returned for a subset of data then these cannot be judged. A warning should be
+                # available in the system logs to highlight this").
+                #
+                # Refusing to write the whole table because some exchanges lack volume was the same
+                # stalling error: it blocked the closing-window correction for the 1,700+ instruments
+                # that CAN be judged in order to protect the handful that cannot. The absence is recorded
+                # against the exchange instead, unjudgeable_exchanges() reports it, and the daily
+                # generated-table audit raises it. Indices are the normal case -- an index has no traded
+                # volume of its own -- so this is expected, not a fault, but it must be VISIBLE rather
+                # than inferred from a blank.
+                entry["vol_share_p05"] = None
+                entry["vol_share_reason"] = "no traded volume reported for this exchange"
+                log.warning("%s: no volume-share sample answered; instruments there cannot be "
+                            "volume-judged in the closing window", key)
+        table[key] = entry
     return table, problems
 
 
@@ -303,11 +419,19 @@ EXCHANGES = {{
 
 
 def write_module(table, path="market_hours_data.py"):
+    # Driven by one field list rather than a hand-written f-string. The f-string named five fields, so when
+    # the volume-completion shares were added the generator derived them and the WRITER SILENTLY DROPPED
+    # them -- the table looked complete and every exchange read as having no volume, which would have
+    # disabled the closing correction for 1,711 instruments without anything reporting a fault.
+    order = ("tz", "open", "close", "vol_share_median", "vol_share_p05", "vol_share_sessions",
+             "vol_share_reason", "samples", "agreement")
     lines = []
     for key in sorted(table):
         e = table[key]
-        lines.append(f'    {key!r}: {{"tz": {e["tz"]!r}, "open": {e["open"]!r}, "close": {e["close"]!r},\n'
-                     f'        "samples": {e["samples"]!r}, "agreement": {e["agreement"]!r}}},\n')
+        unknown = set(e) - set(order)
+        assert not unknown, f"{key} carries fields the writer would drop: {sorted(unknown)}"
+        body = ", ".join(f'"{k}": {e[k]!r}' for k in order if k in e)
+        lines.append(f"    {key!r}: {{{body}}},\n")
     text = _HEADER.format(when=_dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                           n_tickers=len(_universe_tickers()), n_keys=len(table), body="".join(lines))
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
@@ -324,10 +448,28 @@ if __name__ == "__main__":
     ap.add_argument("--check", action="store_true", help="fail if the table misses any of the live universe")
     ap.add_argument("--show", action="store_true", help="print the table with provenance")
     ap.add_argument("--samples", type=int, default=3, help="instruments sampled per exchange (default 3)")
+    ap.add_argument("--shares", choices=("epics", "all", "none"), default="epics",
+                    help="which exchanges get a volume-completion share measured (default: those with IG epics)")
     a = ap.parse_args()
 
     if a.refresh:
-        table, problems = derive(samples_per_exchange=a.samples)
+        keys = None
+        if a.shares == "none":
+            keys = set()
+        elif a.shares == "epics":
+            try:
+                from db_pool import get_db
+                _db = get_db()
+                try:
+                    rows = _db.run("select ticker from epic_lookup where epic is not null") or []
+                finally:
+                    _db.close()
+                keys = {exchange_key(r[0]) for r in rows}
+                log.info("measuring volume shares for %d exchange(s) that carry IG epics", len(keys))
+            except Exception as exc:
+                log.warning("could not read epic_lookup (%s); measuring every exchange", exc)
+                keys = None
+        table, problems = derive(samples_per_exchange=a.samples, share_keys=keys)
         for p in problems:
             log.error("%s", p)
         if problems:
