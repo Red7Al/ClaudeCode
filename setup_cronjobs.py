@@ -153,6 +153,13 @@ JOBS = [
     # risk duplicate placement. 06:00-22:00 UTC Mon-Fri at the original 2h cadence (user choice: no
     # overnight AUS cover; those setups wait for the 06:00 pass).
     ("Order Bridge",        "0 6-22/2 * * 1-5", "trading-order-bridge.yml"),
+    # Every ten minutes through the trading day: store the break bar for whichever instruments are in
+    # their OWN exchange's closing window, then report which same-day opens fail the volume tests.
+    # 05:30-20:30 UTC covers Sydney's 06:12 close through New York's 20:00 (measured 2026-09-07 -- there
+    # are thirteen distinct closing instants, so the job asks market_hours who is closing rather than
+    # being scheduled per region, and daylight saving needs no re-cut). Mon-Fri: no exchange in the
+    # universe closes at a weekend. REPORTS ONLY -- it closes nothing until --apply is added.
+    ("Closing Window",      "*/10 5-20 * * 1-5", "trading-closing-window.yml"),
     # "HVF Quality Reports" removed 2026-06-16: the long quality report now rides with EVERY
     # publication (intraday_signals._generate_x_drafts -> quality_report.publish_long_report_for),
     # so a separate quality-only job would double-post AND is an incomplete publication on its own

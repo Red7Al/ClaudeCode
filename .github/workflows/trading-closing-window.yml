@@ -1,0 +1,84 @@
+name: Closing Window (capture the break bar, judge same-day opens, 2026-09-07)
+
+# Runs every ten minutes through the trading day and does two things for whichever instruments are
+# inside their OWN exchange's closing window at that moment:
+#
+#   1. closing_bar_capture — stores today's break-bar metrics while the market is still open. The daily
+#      capture inside the Morning Chain only learns about day D on the morning of D+1, so a position
+#      opened today was unjudgeable at the only moment it could still be traded. This fills that gap by
+#      STORING a row, so nothing is recomputed at decision time.
+#   2. auto_close_failed_opens — judges positions opened TODAY against the volume tests and reports what
+#      it would close.
+#
+# WHY EVERY TEN MINUTES rather than a handful of end-of-day runs. There are THIRTEEN distinct closing
+# instants across the live universe (measured 2026-09-07), not the four or five a region-based schedule
+# implies: Oslo closes 14:20, Brussels 15:40 and Dublin 16:30 UTC, alongside the obvious ones. A fixed
+# schedule would also need re-cutting twice a year for daylight saving, separately for the northern and
+# southern hemispheres. market_hours answers "who is closing right now" instead, so one job covers all
+# thirteen and stays correct on its own. Runs are cheap on the days there is nothing to do.
+#
+# THIS DOES NOT CLOSE ANYTHING. auto_close_failed_opens is invoked WITHOUT --apply, so it reports its
+# decisions and calls no broker method. Arming it is a one-word change to the run step below, and it is
+# deliberately not made here: measured on the 12-month replay the rule fires on 72.6% of trades, and its
+# apparent gain is capital recycling rather than judgement (it closes trades averaging +2.44% while
+# keeping ones averaging +3.57%). That is a decision for the account owner, not a default.
+#
+# No schedule: block — GitHub-native cron is banned; timing lives on cron-job.org via setup_cronjobs.JOBS.
+
+on:
+  workflow_dispatch:
+    inputs:
+      window:
+        description: 'Closing-window minutes (blank = market_hours default, 30)'
+        required: false
+        default: ''
+      all:
+        description: 'Capture the whole universe, not just instruments held from today'
+        required: false
+        default: 'false'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Two passes must never overlap: both read the open positions and the second writes metric rows the
+# first depends on. Queue rather than cancel — cancelling mid-pass could abandon a run between the IG
+# read and the metric write.
+concurrency:
+  group: closing-window
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  closing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      IG_API_KEY:           ${{ secrets.IG_API_KEY }}
+      IG_USERNAME:          ${{ secrets.IG_USERNAME }}
+      IG_PASSWORD:          ${{ secrets.IG_PASSWORD }}
+      IG_ACCOUNT_ID:        ${{ secrets.IG_ACCOUNT_ID }}
+      SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+
+      # Store the break bar for anything closing now. Failure here must not stop the judging step from
+      # reporting on rows that were captured on an earlier pass.
+      - name: Capture the closing bar
+        continue-on-error: true
+        run: |
+          python closing_bar_capture.py \
+            ${{ inputs.window && format('--window {0}', inputs.window) || '' }} \
+            ${{ inputs.all == 'true' && '--all' || '' }}
+
+      # REPORT ONLY. Adding --apply here is what arms it against the live account.
+      - name: Judge same-day opens (report only)
+        run: python auto_close_failed_opens.py

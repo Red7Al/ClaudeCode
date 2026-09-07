@@ -213,3 +213,73 @@ def test_the_epic_is_carried_so_the_close_can_ask_ig_if_the_market_is_dealable(m
     to_close, _ = ac.candidates("Alex", "2026-07-15", [pos], now=_at_london_close(10))
 
     assert to_close[0]["epic"] == "KA.D.BP.DAILY.IP"
+
+
+# ------------------------------------------------------------------------------------------------------
+# The closing-bar capture (user 2026-09-07: "retrieve more data towards the end of the working day")
+# ------------------------------------------------------------------------------------------------------
+
+def test_a_bar_from_an_earlier_session_is_never_captured_as_todays(monkeypatch):
+    """THE HOLIDAY BUG, found live on 2026-09-07 — US Labor Day.
+
+    market_hours derives a session's CLOCK, not which days it runs, so on a holiday it reports a closing
+    window for a market that never opened. New York was shut, Yahoo's newest bar was Friday 2026-09-04,
+    and the capture stored it as today's break-bar metrics: a row that says today and means Friday.
+    """
+    import closing_bar_capture as cbc
+    import market_hours
+    import pandas as pd
+
+    monkeypatch.setattr(market_hours, "volume_projection_factor", lambda t: 0.8)
+    monkeypatch.setattr(market_hours, "session", lambda t: {"tz": "America/New_York",
+                                                            "open": "09:30", "close": "16:00"})
+    stale = _dt.datetime.now(_dt.timezone.utc).date() - _dt.timedelta(days=3)
+    frame = pd.DataFrame({"High": [1.0], "Low": [0.5], "Close": [0.8], "Volume": [1000.0]},
+                         index=pd.DatetimeIndex([pd.Timestamp(stale, tz="America/New_York")]))
+
+    class _T:
+        def __init__(self, *a, **k): pass
+        def history(self, **k): return frame
+
+    monkeypatch.setattr(cbc, "todays_bar", cbc.todays_bar)          # keep the real function under test
+    import yfinance
+    monkeypatch.setattr(yfinance, "Ticker", _T)
+
+    assert cbc.todays_bar("AAPL") is None, \
+        "a bar from an earlier session must never be captured as today's"
+
+
+def test_a_todays_bar_is_captured_with_its_volume_projected(monkeypatch):
+    """The correction divides by the exchange's p05 completion share, so the projection reads HIGH."""
+    import closing_bar_capture as cbc
+    import market_hours
+    import pandas as pd
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr(market_hours, "volume_projection_factor", lambda t: 0.5)
+    monkeypatch.setattr(market_hours, "session", lambda t: {"tz": "America/New_York",
+                                                            "open": "09:30", "close": "16:00"})
+    today = _dt.datetime.now(_dt.timezone.utc).astimezone(ZoneInfo("America/New_York")).date()
+    frame = pd.DataFrame({"High": [2.0], "Low": [1.0], "Close": [1.5], "Volume": [1000.0]},
+                         index=pd.DatetimeIndex([pd.Timestamp(today, tz="America/New_York")]))
+
+    class _T:
+        def __init__(self, *a, **k): pass
+        def history(self, **k): return frame
+
+    import yfinance
+    monkeypatch.setattr(yfinance, "Ticker", _T)
+
+    got = cbc.todays_bar("AAPL")
+    assert got is not None and got[0] == today.isoformat()
+    assert got[4] == 2000.0, "volume must be divided by the completion share, not passed through raw"
+
+
+def test_an_exchange_with_no_measured_volume_share_is_not_captured(monkeypatch):
+    """No share means no basis for the correction, and an uncorrected volume is what closes a position
+    it should not. Refused rather than passed through at face value."""
+    import closing_bar_capture as cbc
+    import market_hours
+    monkeypatch.setattr(market_hours, "volume_projection_factor", lambda t: None)
+
+    assert cbc.todays_bar("^GSPC") is None

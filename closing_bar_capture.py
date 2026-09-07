@@ -103,7 +103,25 @@ def todays_bar(ticker):
         return None
     idx = df.index[-1]
     session_date = idx.date()
-    # The exchange's own date, not UTC's: Sydney closes at 06:12 UTC and Yahoo stamps the bar in local time.
+    # THE BAR MUST BE TODAY'S, IN THE EXCHANGE'S OWN CALENDAR.
+    #
+    # market_hours models no public holidays -- it derives a session's clock, not which days it runs --
+    # so on a holiday it reports a closing window for a market that never opened. Found 2026-09-07, which
+    # is US Labor Day: New York was shut, Yahoo's newest bar was Friday 2026-09-04, and without this check
+    # Friday's finished bar would have been captured and stored as today's break-bar metrics. It would not
+    # have closed anything (break_state matches on bar_date, and Friday's does not match a position opened
+    # today) but it would have written a row that says today and means Friday.
+    #
+    # This is also the half-day and trading-suspension case, and it costs one comparison.
+    import datetime as _d
+    from zoneinfo import ZoneInfo
+    s = market_hours.session(ticker)
+    local_today = _d.datetime.now(_d.timezone.utc).astimezone(ZoneInfo(s["tz"])).date()
+    if session_date != local_today:
+        log.warning("%s: newest bar is %s but the exchange's date is %s — it is not trading today "
+                    "(holiday, half-day or suspension); not capturing",
+                    ticker, session_date.isoformat(), local_today.isoformat())
+        return None
     row = df.iloc[-1]
     vol = float(row.get("Volume") or 0)
     if vol <= 0:
