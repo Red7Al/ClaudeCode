@@ -241,6 +241,34 @@ def render(schema: dict) -> str:
     return "\n".join(out) + "\n"
 
 
+def _schema_shape(text: str) -> list:
+    """The parts of the document a MIGRATION changes, with the parts that move on their own removed.
+
+    --check used to compare the whole document except its date line, which meant it failed every single
+    day: the page prints each table's size and row count, and those move constantly. It also orders tables
+    by size, so a table merely growing past its neighbour rewrote the ordering too -- on 2026-09-07 the
+    committed copy differed from live by 202 lines, every one of them a row count, a size, or
+    web_json_store having overtaken macro_snapshot.
+
+    A check that cannot pass is not a check. Nothing could ever have scheduled this, and nothing had: its
+    only caller was a live_state test, which CI deselects. Comparing the SCHEMA -- the tables, their
+    columns, types and nullability, order-independent -- makes it fail when a migration lands and stay
+    quiet otherwise, which is the question it was built to answer.
+    """
+    import re as _re
+    body = "\n".join(l for l in text.splitlines() if not l.startswith("Generated from the live"))
+    body = _re.sub(r"\s*<span>\([^)]*\)</span>", "", body)      # (343 MB, ~1,852,828 rows)
+    sections = []
+    for chunk in body.split("\n### "):
+        name = chunk.splitlines()[0].strip() if chunk.strip() else ""
+        # Keep the column rows only: `col` | type | null. Prose notes are curated and move with the
+        # schema, so they belong in the comparison; sizes do not, and are already gone.
+        rows = tuple(sorted(l.strip() for l in chunk.splitlines() if l.strip().startswith("| `")))
+        if name.startswith("`"):
+            sections.append((name, rows))
+    return sorted(sections)
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     ap = argparse.ArgumentParser(description="Generate the data-dictionary skill from the live schema.")
@@ -251,9 +279,7 @@ def main() -> int:
     target = SKILL_DIR / "SKILL.md"
     if a.check:
         current = target.read_text(encoding="utf-8") if target.is_file() else ""
-        # The generated date line changes every run, so compare everything else.
-        strip = lambda t: "\n".join(l for l in t.splitlines() if not l.startswith("Generated from the live"))
-        if strip(current) != strip(body):
+        if _schema_shape(current) != _schema_shape(body):
             log.error("the data dictionary is out of date. Run: python build_data_dictionary.py")
             return 1
         log.info("the data dictionary matches the live schema.")

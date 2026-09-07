@@ -547,6 +547,69 @@ def _post_coverage_slack(drops: list, coverage: dict) -> None:
         log.warning(f"coverage Slack post failed: {exc}")
 
 
+def _audit_generated_tables() -> dict:
+    """Do the GENERATED lookup tables still describe reality?
+
+    Two of them are produced by a generator and then committed, and each ships with a `--check` mode that
+    fails when it has drifted. Neither check was invoked by anything: the data dictionary's only caller was
+    a live_state test, which CI deselects, so it had never run outside a developer's terminal. That is this
+    repository's signature defect -- correct, tested code that nothing calls -- applied to the very guards
+    meant to catch drift, and adding market_hours without wiring its check would have made a third.
+
+    What each one catches:
+      * market_hours   -- a market added to the universe whose exchange has no session, which would make
+                          the auto-closer silently treat it as never closing. The 205 instruments missing
+                          from the first version went unnoticed for exactly this reason.
+      * data dictionary -- a migration that changed the schema without regenerating the skill.
+
+    Reported, never fatal: this runs inside the daily chain and a documentation drift must not cost the
+    chain its remaining steps.
+    """
+    out = {}
+    for name, module, args in (("market hours", "market_hours", ["--check"]),
+                               ("data dictionary", "build_data_dictionary", ["--check"])):
+        try:
+            import runpy
+            import sys as _sys
+            argv = _sys.argv
+            _sys.argv = [module + ".py"] + args
+            try:
+                runpy.run_module(module, run_name="__main__")
+                out[name] = {"ok": True, "detail": "up to date"}
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+                out[name] = {"ok": code == 0, "detail": f"exit {code}"}
+            finally:
+                _sys.argv = argv
+        except Exception as exc:
+            # An unavailable check is not a passing check, and must not read like one.
+            out[name] = {"ok": False, "detail": f"could not run: {exc}"}
+        log.info("generated table %s: %s", name, out[name])
+    stale = [n for n, r in out.items() if not r["ok"]]
+    if stale:
+        _post_generated_tables_slack(stale, out)
+    return {"checks": out, "stale": stale}
+
+
+def _post_generated_tables_slack(stale: list, detail: dict) -> None:
+    from notify import slack_enabled                      # every direct poster must ask (memory rule)
+    if not slack_enabled("alerts"):
+        return
+    import os
+    import requests
+    url = os.environ.get("SLACK_ALERTS", "")
+    if not url:
+        return
+    lines = ["*A generated lookup table has drifted from its source.*"]
+    for name in stale:
+        lines.append(f"• {name}: {detail[name]['detail']}")
+    lines.append("_Regenerate: `python market_hours.py --refresh` / `python build_data_dictionary.py`_")
+    try:
+        requests.post(url, json={"text": "\n".join(lines)}, timeout=10)
+    except Exception as exc:
+        log.warning(f"generated-table Slack post failed: {exc}")
+
+
 def _audit_current_instrument_metrics() -> dict:
     """Audit RVOL/VWAP/ATR coverage for EVERY current snapshot row.
 
@@ -638,6 +701,12 @@ def main():
             _audit_field_coverage()
         except Exception as exc:
             log.error("field coverage audit failed: %s", exc)
+        # Same step again, same reasoning: a separate workflow entry is one more thing that can quietly
+        # stop being called, which is the exact failure these two checks exist to catch.
+        try:
+            _audit_generated_tables()
+        except Exception as exc:
+            log.error("generated-table audit failed: %s", exc)
         return
     # Epic-lookup diagnostic — run BEFORE the audit-batch parsing so it never triggers a price audit.
     if args and args[0] == "--lookup-epic":

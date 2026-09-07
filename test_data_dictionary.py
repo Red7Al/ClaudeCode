@@ -88,3 +88,56 @@ def test_the_committed_skill_matches_the_live_schema():
         assert dd.main() == 0, "the data dictionary is stale; run python build_data_dictionary.py"
     finally:
         sys.argv = argv
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# --check must be able to PASS, or nothing can schedule it (2026-09-07)
+# ----------------------------------------------------------------------------------------------------------------------
+SAMPLE = """Generated from the live schema on 2026-01-01
+
+### `alpha`  <span>(343 MB, ~1,852,828 rows)</span>
+
+**Holds** - things.
+
+| column | type | null |
+|---|---|---|
+| `id` | bigint | no |
+| `rvol` | double precision | yes |
+
+### `beta`  <span>(12 kB, ~3 rows)</span>
+
+| column | type | null |
+|---|---|---|
+| `k` | text | no |
+"""
+
+
+def test_row_counts_and_sizes_do_not_count_as_drift():
+    """--check compared the whole document, so it failed every day: the page prints each table's size and
+    row count and those move constantly. Measured 2026-09-07, the committed copy differed from live by 202
+    lines, every one a row count, a size, or one table having grown past another in the size ordering. A
+    check that cannot pass is not a check, and nothing had ever scheduled it."""
+    churned = (SAMPLE.replace("~1,852,828 rows", "~9,999,999 rows")
+                     .replace("343 MB", "999 MB")
+                     .replace("2026-01-01", "2026-12-31"))
+
+    assert dd._schema_shape(SAMPLE) == dd._schema_shape(churned)
+
+
+def test_reordering_tables_by_size_does_not_count_as_drift():
+    """Tables are listed largest first, so one growing past its neighbour rewrote the whole ordering."""
+    a, b = SAMPLE.split("\n### ")[1], SAMPLE.split("\n### ")[2]
+    swapped = SAMPLE.split("\n### ")[0] + "\n### " + b + "\n### " + a
+
+    assert dd._schema_shape(SAMPLE) == dd._schema_shape(swapped)
+
+
+def test_a_real_schema_change_still_counts_as_drift():
+    """The mutation that proves the check above did not simply stop checking."""
+    dropped = SAMPLE.replace("| `rvol` | double precision | yes |\n", "")
+    renamed = SAMPLE.replace("### `beta`", "### `beta_v2`")
+    retyped = SAMPLE.replace("| `k` | text | no |", "| `k` | integer | no |")
+
+    assert dd._schema_shape(SAMPLE) != dd._schema_shape(dropped), "a removed column must be drift"
+    assert dd._schema_shape(SAMPLE) != dd._schema_shape(renamed), "a renamed table must be drift"
+    assert dd._schema_shape(SAMPLE) != dd._schema_shape(retyped), "a changed type must be drift"

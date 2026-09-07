@@ -259,3 +259,28 @@ def test_is_tradeable_now_says_no_when_it_cannot_ask():
         def get(self, path, version=None):
             raise RuntimeError("IG unreachable")
     assert mh.is_tradeable_now("X.EPIC", session_obj=_Boom()) is False
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# The drift check must be INVOKED, not merely exist
+# ----------------------------------------------------------------------------------------------------------------------
+def test_the_drift_check_is_wired_into_a_scheduled_job():
+    """This repository's signature defect is correct, tested code that nothing calls.
+
+    `market_hours.py --check` is exactly that shape: a guard with a __main__ block. build_data_dictionary
+    shipped the same contract and was invoked by NOTHING -- its only caller was a live_state test, which CI
+    deselects -- so it had never run outside a developer's terminal. This asserts the daily audit calls
+    both, and that the audit step itself is still scheduled.
+    """
+    import pathlib
+    audit = pathlib.Path("run_data_quality_audit.py").read_text(encoding="utf-8")
+    assert "_audit_generated_tables" in audit, "the generated-table check is not defined"
+    # Defined AND called from the branch the daily chain actually runs.
+    branch = audit.split('if args == ["--current-metrics-only"]:')[1].split("return")[0]
+    assert "_audit_generated_tables()" in branch, \
+        "the check exists but the daily --current-metrics-only step does not call it"
+    assert "market_hours" in audit and "build_data_dictionary" in audit
+
+    workflow = pathlib.Path(".github/workflows/trading-hvf-report.yml").read_text(encoding="utf-8")
+    assert "--current-metrics-only" in workflow, \
+        "the step that runs the check is no longer in the workflow, so nothing invokes it"
