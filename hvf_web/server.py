@@ -4856,8 +4856,12 @@ def _insight_direction_mix() -> dict:
 def _insight_mcap_bands() -> dict:
     """Which market-cap band actually performed, over the last 12 months of resolved triggers."""
     from db_pool import get_db
-    bands = [("under 2bn", 0.0, 2e9), ("2-10bn", 2e9, 1e10), ("10-25bn", 1e10, 2.5e10),
-             ("25-100bn", 2.5e10, 1e11), ("100bn+", 1e11, None)]
+    # ONE definition, shared with the Best Settings card search (config.MCAP_BANDS). These were two
+    # separate hardcoded lists and had drifted: Insights used five bands and the card search four, so
+    # 10-25bn -- the band that actually performs -- existed here and NOT as a card scope, which is why the
+    # cards kept recommending 100bn+ while this page named a different winner.
+    from config import MCAP_BANDS
+    bands = [(label, lo, hi) for lo, hi, label in MCAP_BANDS]
     db = get_db()
     try:
         rows = db.run(

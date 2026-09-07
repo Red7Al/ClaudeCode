@@ -1404,3 +1404,52 @@ def test_a_test_run_never_spawns_the_warmer(monkeypatch):
     server.app.test_client().get("/api/build")          # PYTEST_CURRENT_TEST is set by pytest itself
 
     assert started == []
+
+
+# ------------------------------------------------------------------------------------------------------
+# Market-cap bands: ONE definition (2026-09-07)
+#
+# They were hardcoded twice -- five bands in server._insight_mcap_bands, four in best_settings.js -- and
+# drifted. 10-25bn is the band that actually performs (+4.60% return, 42.5% win, 926 trades) and it
+# existed only on the Insights page; the card search merged it into 10-100bn alongside the much weaker
+# 25-100bn, diluting it to +3.45% / 37.7%, which loses to 100bn+ on win rate. So the cards recommended
+# 100bn+ while Insights named a different winner, and both were correct about their own band list.
+# ------------------------------------------------------------------------------------------------------
+
+def test_the_client_mcap_bands_match_the_one_definition_in_config():
+    """best_settings.js is a MIRROR of config.MCAP_BANDS. If they disagree the two screens disagree."""
+    import re
+    import config
+    from client_source import BEST_SETTINGS_JS
+
+    js = re.findall(r'\{kind:"mcap",label:"MCap ([^"]+)",min:([0-9.e+]+),max:([0-9.e+]+)',
+                    BEST_SETTINGS_JS.read_text(encoding="utf-8"))
+    assert js, "no mcap scopes found in best_settings.js"
+    assert len(js) == len(config.MCAP_BANDS), (
+        f"client has {len(js)} mcap bands, config has {len(config.MCAP_BANDS)} — they have drifted")
+    for (label, lo, hi), (clo, chi, clabel) in zip(js, config.MCAP_BANDS):
+        assert label == clabel, f"label mismatch: client {label!r} vs config {clabel!r}"
+        assert float(lo) == float(clo), f"{label}: client min {lo} vs config {clo}"
+        # The client encodes "open-ended" as max:0; config uses None.
+        assert float(hi) == (0.0 if chi is None else float(chi)), \
+            f"{label}: client max {hi} vs config {chi}"
+
+
+def test_the_mcap_bands_are_contiguous_and_ordered():
+    """A gap would silently drop instruments from every band; an overlap would double-count them."""
+    import config
+    bands = config.MCAP_BANDS
+    assert bands[0][0] == 0.0, "the first band must start at zero or small caps vanish"
+    assert bands[-1][1] is None, "the last band must be open-ended or the largest instruments vanish"
+    for (lo, hi, label), (nlo, _nhi, nlabel) in zip(bands, bands[1:]):
+        assert hi is not None, f"{label} is open-ended but is not the last band"
+        assert hi == nlo, f"gap or overlap between {label} and {nlabel}: {hi} vs {nlo}"
+
+
+def test_the_band_that_performs_is_selectable_as_a_card_scope():
+    """The actual defect: 10-25bn existed on Insights and NOT as a card scope, so the search could not
+    pick it however well it performed."""
+    import config
+    labels = [b[2] for b in config.MCAP_BANDS]
+    assert "10–25bn" in labels, "the measured best-performing band must be its own scope"
+    assert "10–100bn" not in labels, "the band that buried it must not come back"

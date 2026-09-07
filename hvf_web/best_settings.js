@@ -145,10 +145,22 @@ function computeBestSettings(env){
   // matchesCurrent; `display` is what the card shows.
   const _allLabel=marketsOff.length?`All enabled markets (${marketsOff.length} off)`:"All markets";
   const scopes=[{kind:"all",label:"All markets",display:_allLabel,offList:marketsOff,test:()=>true},...topScopes("market","Market"),
-    {kind:"mcap",label:"MCap < 2bn",min:0,max:2e9,test:r=>r.mcap!=null&&r.mcap<2e9},
+    // MCAP BANDS — mirror of config.MCAP_BANDS, asserted equal by test_performance.py. They were defined
+    // separately here and in server._insight_mcap_bands and had DRIFTED: Insights used 10-25bn / 25-100bn
+    // where this used one 10-100bn, so the band that actually performs (10-25bn: +4.60% return, 42.5% win
+    // over 926 trades) could not be selected as a card scope at all. Merged with the weaker 25-100bn it
+    // diluted to +3.45% / 37.7%, which loses to 100bn+ on win rate -- so the search kept picking 100bn+
+    // and the two screens named different winners (user 2026-09-07).
+    //
+    // Boundaries are measured, not chosen: the old <2bn, 10-100bn and 100bn+ each hid materially
+    // different behaviour, and adjacent slices that behave alike are kept merged. See config.py.
+    {kind:"mcap",label:"MCap < 1bn",min:0,max:1e9,test:r=>r.mcap!=null&&r.mcap<1e9},
+    {kind:"mcap",label:"MCap 1–2bn",min:1e9,max:2e9,test:r=>r.mcap>=1e9&&r.mcap<2e9},
     {kind:"mcap",label:"MCap 2–10bn",min:2e9,max:1e10,test:r=>r.mcap>=2e9&&r.mcap<1e10},
-    {kind:"mcap",label:"MCap 10–100bn",min:1e10,max:1e11,test:r=>r.mcap>=1e10&&r.mcap<1e11},
-    {kind:"mcap",label:"MCap 100bn+",min:1e11,max:0,test:r=>r.mcap>=1e11}];
+    {kind:"mcap",label:"MCap 10–25bn",min:1e10,max:2.5e10,test:r=>r.mcap>=1e10&&r.mcap<2.5e10},
+    {kind:"mcap",label:"MCap 25–50bn",min:2.5e10,max:5e10,test:r=>r.mcap>=2.5e10&&r.mcap<5e10},
+    {kind:"mcap",label:"MCap 50–250bn",min:5e10,max:2.5e11,test:r=>r.mcap>=5e10&&r.mcap<2.5e11},
+    {kind:"mcap",label:"MCap 250bn+",min:2.5e11,max:0,test:r=>r.mcap>=2.5e11}];
   const robust=(seq,st,mo)=>{const x=replay(seq,st,mo), periods={};
     seq.forEach(r=>{const d=String(r.trig_date||"");if(d.length>=7){const p=d.slice(0,4)+" Q"+(Math.floor((+d.slice(5,7)-1)/3)+1);(periods[p]||(periods[p]=[])).push(r);}});
     const prs=Object.values(periods).map(s=>replay(s,st,mo).ret),pos=prs.filter(v=>v>0).length,cons=prs.length?pos/prs.length:0;

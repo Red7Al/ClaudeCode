@@ -866,3 +866,44 @@ MIN_DIRECTOR_CLUSTER = 2        # 2+ Form 4 filings = cluster signal
 
 # Social mention lookback (hours)
 SOCIAL_MENTION_LOOKBACK_HOURS = 24
+
+
+# ======================================================================================================================
+# Market-cap bands — ONE definition, used by the Insights page and the Best Settings card search
+# ======================================================================================================================
+# These were defined TWICE and had drifted (found 2026-09-07). Insights used five bands and the card search
+# four, so the band that actually performed -- 10-25bn, +4.60% average return on a 42.5% win rate over 926
+# trades -- did not exist as a card scope at all. It was merged into a 10-100bn band alongside the much
+# weaker 25-100bn (+2.82%, 35.1%), which diluted it to +3.45% and 37.7%: a rounding error against 100bn+
+# (+3.29%, 38.7%), and worse on win rate. The user's question was exactly right -- "if the insights about
+# band show 10-25bn is the highest average return, why are we mainly seeing 100bn in the cards" -- and the
+# answer was that the winning band was not on the menu.
+#
+# THE BOUNDARIES ARE MEASURED, NOT CHOSEN (user 2026-09-07: "I never set the boundaries for mcap but it
+# sounds like a more fragmented approach will be beneficial"). Over the last 12 months of resolved
+# triggers, in 10 fine slices, three of the four old bands were hiding materially different behaviour:
+#
+#     <1bn   +4.13% / 32.3%      10-25bn  +4.60% / 42.5%      100-250bn  +3.97% / 40.5%
+#     1-2bn  +2.06% / 25.8%      25-50bn  +2.29% / 30.7%      250-500bn  +4.28% / 45.0%
+#     2-5bn  +1.54% / 28.5%      50-100bn +3.42% / 40.0%      500bn+     +2.77% / 36.9%
+#     5-10bn +1.87% / 32.2%
+#
+# So <2bn hid a 2pp return gap, 10-100bn hid a 12pp win-rate gap, and 100bn+ hid 500bn+ (1,424 trades at
+# +2.77%) dragging down 250-500bn (+4.28%). Adjacent slices that behave alike are merged -- 2-5 with 5-10,
+# and 50-100 with 100-250 -- because a band split on noise is overfitting, not resolution. Every band
+# below carries at least 500 trades.
+#
+# COST, stated because it is user-visible: this takes the card search from 4 mcap scopes to 7, so 10
+# scopes become 13. The Best Settings pause is CPU in the combination search (memory:
+# best-settings-freeze-is-cpu, measured at 3.1-4.1s), so expect roughly a third more -- about 4-5.5s.
+#
+# (low, high, label). `high` of None means open-ended. Values are GBP, matching instrument_mcap.
+MCAP_BANDS = [
+    (0.0,     1e9,  "< 1bn"),
+    (1e9,     2e9,  "1–2bn"),
+    (2e9,     1e10, "2–10bn"),
+    (1e10,    2.5e10, "10–25bn"),
+    (2.5e10,  5e10, "25–50bn"),
+    (5e10,    2.5e11, "50–250bn"),
+    (2.5e11,  None, "250bn+"),
+]
