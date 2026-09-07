@@ -4839,8 +4839,17 @@ def _insight_direction_mix() -> dict:
                    f"months before it ran at {pb*100:.0f}% bear across {base_n:,} triggers."),
         "caveat": ("A part-month on a small count moves easily. This compares the SHARE, not the count, "
                    "and z is how far the current share sits from the twelve-month rate."),
-        "chart": [{"label": r[0], "value": round(100.0 * r[1] / r[2], 1)} for r in months if r[2]],
+        "chart": [{"label": r[0], "value": round(100.0 * r[1] / r[2], 1), "n": r[2]} for r in months if r[2]],
         "chart_title": "% of triggers that were BEAR, by month",
+        # The SERVER declares the form, because the server knows what the numbers are. This is a series
+        # over time and reads as one -- fourteen months rendered as a horizontal bar list is a list, and
+        # the reader has to reconstruct the shape from it (user 2026-09-07: "would be better in a graph").
+        "chart_kind": "time",
+        # Drawn on the chart as a reference line, so "this month against the twelve before it" -- the
+        # entire claim -- is visible rather than something to work out from the bar lengths.
+        "baseline": round(pb * 100, 1),
+        "baseline_label": "12-month rate",
+        "chart_unit": "%",
     }
 
 

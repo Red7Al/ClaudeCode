@@ -3550,3 +3550,98 @@ def test_the_wallet_model_is_a_constant_not_a_vanished_checkbox():
     js = APP_JS.read_text(encoding="utf-8")
     assert "const pfwOn=true;" in js
     assert 'pfw-on' not in js, "the vanished checkbox is being read again"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Insight charts (user 2026-09-07: "not a good read ... maybe this is meant to be a bar chart that has
+# failed").
+#
+# It had failed, and no source-text assertion could have seen it: the markup was correct in isolation and
+# WRONG in context. _insightChart rendered its bars into `class="viz"`, and `.viz` is the chart STRIP --
+# display:flex, flex-wrap:nowrap. Fourteen `.bar` children therefore laid out SIDE BY SIDE in one
+# non-wrapping row instead of stacking, collapsing every flex:1 track to a sliver and leaving a row of
+# month labels and percentages. These execute the real functions and assert on what they return.
+# ------------------------------------------------------------------------------------------------------
+_INSIGHT_PRE = "const _esc=s=>String(s).replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));"
+
+def _js_num(v):
+    """Format a number the way JavaScript's own Number->string does, which is what the chart interpolates.
+
+    Checked against the real output rather than assumed: JS renders 39.0 as "39" and 39.5 as "39.5", so an
+    assertion written as f"{value}" expects "39.0" and fails against correct markup. Deriving the expected
+    text keeps these tests honest whatever the fixture holds -- the live data carries both shapes (73.0
+    and 45.4 on 2026-09-07).
+    """
+    return f"{v:g}"
+
+
+# Half the values keep a decimal and half do not, so both stringify shapes are exercised.
+_MONTHS = [{"label": f"2025-{m:02d}", "value": 30.0 + m + (0.5 if m % 2 else 0), "n": 100}
+           for m in range(8, 13)] + \
+          [{"label": f"2026-{m:02d}", "value": 30.0 + m + (0.5 if m % 2 else 0), "n": 100}
+           for m in range(1, 10)]
+
+
+def _insight_src():
+    return _extract("_insightChart") + "\n" + _extract("_insightTimeChart")
+
+
+def test_insight_charts_do_not_render_into_the_chart_strip_class():
+    """`.viz` is display:flex/nowrap. Rendering a stacked bar list into it produced the failure reported."""
+    html = client_source()
+    assert ".insight-bars{display:flex;flex-direction:column" in html, \
+        "the insight bar list must declare its own column layout, not inherit the strip's row"
+    for kind in ({"chart": [{"label": "a", "value": 1}]},
+                 {"chart_kind": "time", "chart": _MONTHS, "baseline": 37.0}):
+        out = run_js(_INSIGHT_PRE, _insight_src(), f"_insightChart({json.dumps(kind)})")
+        assert 'class="viz"' not in out, f"still rendering into the chart strip: {out[:120]}"
+
+
+def test_the_monthly_insight_renders_a_time_chart_with_one_column_per_month():
+    out = run_js(_INSIGHT_PRE, _insight_src(),
+                 f'_insightChart({json.dumps({"chart_kind":"time","chart":_MONTHS,"baseline":37.0,"chart_unit":"%","baseline_label":"12-month rate"})})')
+
+    assert "<svg" in out, "a series over time must be drawn, not listed"
+    assert out.count("<rect") == len(_MONTHS), \
+        f"expected one column per month, got {out.count('<rect')} for {len(_MONTHS)} months"
+    assert "12-month rate 37%" in out, "the baseline being compared against must be ON the chart"
+    assert "stroke-dasharray" in out, "the baseline must be drawn as a reference line"
+
+
+def test_only_the_current_month_is_directly_labelled():
+    """Selective direct labels: a number on every column is noise, and the claim is about THIS month."""
+    out = run_js(_INSIGHT_PRE, _insight_src(),
+                 f'_insightChart({json.dumps({"chart_kind":"time","chart":_MONTHS,"chart_unit":"%"})})')
+
+    assert out.count('font-weight="700"') == 1, "exactly one column carries a direct value label"
+    assert f'>{_js_num(_MONTHS[-1]["value"])}%<' in out, "the labelled column must be the most recent month"
+
+
+def test_every_column_carries_its_own_value_for_hover():
+    """Identity and value are never colour-alone: each column states itself on hover."""
+    out = run_js(_INSIGHT_PRE, _insight_src(),
+                 f'_insightChart({json.dumps({"chart_kind":"time","chart":_MONTHS,"chart_unit":"%"})})')
+
+    assert out.count("<title>") == len(_MONTHS)
+    # Every month states its own label, value and sample size -- not a fallback that passes on the label
+    # alone, which would survive the value being dropped.
+    for p in _MONTHS:
+        assert f'{p["label"]} — {_js_num(p["value"])}% of {p["n"]} triggers' in out, \
+            f'{p["label"]} lost its hover value'
+
+
+
+def test_a_time_chart_with_too_few_points_draws_nothing_rather_than_a_misleading_one():
+    for pts in ([], [{"label": "2026-09", "value": 70.0}]):
+        out = run_js(_INSIGHT_PRE, _insight_src(),
+                     f'_insightChart({json.dumps({"chart_kind":"time","chart":pts})})')
+        assert out == "", "one point is not a series over time"
+
+
+def test_the_categorical_insight_chart_still_lists_its_bands():
+    bands = [{"label": "under 2bn", "value": 3.2}, {"label": "10-25bn", "value": 4.6}]
+    out = run_js(_INSIGHT_PRE, _insight_src(), f"_insightChart({json.dumps({'chart': bands})})")
+
+    assert out.count('class="insight-bar"') == 2
+    assert "under 2bn" in out and "10-25bn" in out
+    assert "<svg" not in out, "a band comparison is not a series over time"

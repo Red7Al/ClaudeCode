@@ -3180,20 +3180,81 @@ function renderInsights(){
     .catch(e => { box.innerHTML = `<div class="muted" style="font-size:13px">Insights are unavailable (${_esc(String(e.message||e))}).</div>`; });
 }
 
+// INSIGHT CHARTS DO NOT REUSE `.viz` (user 2026-09-07: "not a good read ... maybe this is meant to be a
+// bar chart that has failed" — it had). `.viz` is the chart STRIP: display:flex, flex-wrap:nowrap,
+// overflow-x:auto. Emitting fourteen `.bar` children into it laid them out SIDE BY SIDE in one
+// non-wrapping row, so every bar's flex:1 track collapsed to a sliver and all that survived was a row of
+// month labels and percentages. It reads as a failed chart because it is one. The mcap chart had the same
+// bug and merely looked cramped, because five fit where fourteen do not.
+//
+// So these carry their own class (`.insight-*`) that the strip's rules cannot reach.
 function _insightChart(ins){
+  if((ins.chart_kind||"") === "time") return _insightTimeChart(ins);
   const pts = ins.chart || [];
   if(!pts.length) return "";
   const max = Math.max(...pts.map(p => Math.abs(+p.value||0)), 1);
   // Label width is sized from the longest label, in ch, so the bars line up on one edge. Sizing per
   // chart rather than globally is what keeps a month label and a market-cap band from fighting.
   const lab = Math.max(...pts.map(p => String(p.label).length));
-  return `<div class="viz" style="border:none;padding:0;margin:10px 0 4px">${pts.map(p => {
+  return `<div class="insight-bars">${pts.map(p => {
     const v = +p.value||0, w = Math.max(1, Math.round(100*Math.abs(v)/max));
-    return `<div class="bar" style="display:flex;align-items:center;gap:8px;margin:3px 0">
-      <span class="tk muted" style="flex:0 0 ${lab}ch;font-size:11px;text-align:right">${_esc(p.label)}</span>
-      <span style="flex:1;background:var(--line);border-radius:3px;height:14px;position:relative">
+    return `<div class="insight-bar">
+      <span class="muted" style="flex:0 0 ${lab}ch;font-size:11px;text-align:right">${_esc(p.label)}</span>
+      <span style="flex:1;background:var(--line);border-radius:3px;height:14px">
         <span style="display:block;height:100%;width:${w}%;background:var(--accent);border-radius:3px"></span></span>
       <b style="flex:0 0 5ch;font-size:11px">${v}%</b></div>`;}).join("")}</div>`;
+}
+
+// A series over time, drawn as one. Columns in date order with the comparison the insight is ACTUALLY
+// making — the twelve-month baseline — drawn on the chart as a reference line, so "this month against the
+// rate before it" is visible rather than something to reconstruct from bar lengths.
+//
+// Single series, so no legend (the title names it) and no categorical palette. The current month is the
+// subject of the claim, so it is the one column at full strength and the only one directly labelled;
+// history sits back at reduced opacity. Identity is never colour alone — the emphasised column is also
+// labelled and every column carries its own <title> on hover.
+function _insightTimeChart(ins){
+  const pts = (ins.chart||[]).filter(p => p && p.label!=null);
+  if(pts.length < 2) return "";
+  const unit = ins.chart_unit || "";
+  const base = (ins.baseline==null ? null : +ins.baseline);
+  const vals = pts.map(p => +p.value||0);
+  const top = Math.max(...vals, base==null?0:base);
+  const yMax = Math.max(10, Math.ceil(top/10)*10);           // a round ceiling so the axis reads cleanly
+  const W=720, H=190, L=34, R=8, T=12, B=40;                 // B leaves room for the month labels
+  const pw = W-L-R, ph = H-T-B;
+  const y = v => T + ph - (ph * Math.max(0,Math.min(v,yMax)) / yMax);
+  const slot = pw/pts.length, bw = Math.max(3, slot-2);      // 2px surface gap between adjacent columns
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const short = s => {const m=/^(\d{4})-(\d{2})$/.exec(String(s)); return m? MON[+m[2]-1] : String(s);};
+  const yr = s => {const m=/^(\d{4})-(\d{2})$/.exec(String(s)); return m? m[1] : "";};
+  const last = pts.length-1;
+  const cols = pts.map((p,i)=>{
+    const v=+p.value||0, x=L+i*slot+(slot-bw)/2, yy=y(v), h=Math.max(1,(T+ph)-yy), cur=(i===last);
+    const tip=`${_esc(String(p.label))} — ${v}${unit}${p.n?` of ${p.n} triggers`:""}`;
+    return `<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}"
+      rx="2" fill="var(--accent)" opacity="${cur?1:0.45}"><title>${tip}</title></rect>`
+      + (cur ? `<text x="${(x+bw/2).toFixed(1)}" y="${(yy-4).toFixed(1)}" text-anchor="middle"
+           font-size="11" font-weight="700" fill="var(--fg)">${v}${unit}</text>` : "");
+  }).join("");
+  const ticks = pts.map((p,i)=>{
+    const x=L+i*slot+slot/2, showYr = i===0 || yr(p.label)!==yr(pts[i-1].label);
+    return `<text x="${x.toFixed(1)}" y="${(T+ph+14)}" text-anchor="middle" font-size="10"
+        fill="var(--muted)">${_esc(short(p.label))}</text>`
+      + (showYr?`<text x="${x.toFixed(1)}" y="${(T+ph+26)}" text-anchor="middle" font-size="9"
+        fill="var(--muted)" opacity=".75">${_esc(yr(p.label))}</text>`:"");
+  }).join("");
+  const baseline = base==null ? "" : `
+    <line x1="${L}" x2="${W-R}" y1="${y(base).toFixed(1)}" y2="${y(base).toFixed(1)}"
+      stroke="var(--fg)" stroke-width="1" stroke-dasharray="4 3" opacity=".55"/>
+    <text x="${W-R}" y="${(y(base)-4).toFixed(1)}" text-anchor="end" font-size="10"
+      fill="var(--muted)">${_esc(ins.baseline_label||"baseline")} ${base}${unit}</text>`;
+  return `<div class="insight-chart"><svg viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="${_esc(ins.chart_title||"chart")}" preserveAspectRatio="none">
+    <line x1="${L}" x2="${W-R}" y1="${T+ph}" y2="${T+ph}" stroke="var(--line)" stroke-width="1"/>
+    <text x="${L-6}" y="${T+4}" text-anchor="end" font-size="10" fill="var(--muted)">${yMax}${unit}</text>
+    <text x="${L-6}" y="${T+ph}" text-anchor="end" font-size="10" fill="var(--muted)">0</text>
+    ${cols}${baseline}${ticks}</svg></div>`;
 }
 
 function _insightTable(ins){

@@ -161,6 +161,15 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 /* Fixed-width slot for the ● selected-marker so selecting a bar doesn't widen its label and shift cards
    (user 2026-07-26, P-04 #66). Reserved on every bar, so width is identical selected or not. */
 .bar .selmk{display:inline-block;width:.85em;text-align:center;color:var(--fg)}
+/* Insights charts own their layout (user 2026-09-07). They used to render into `.viz`, which is the chart
+   STRIP -- display:flex, flex-wrap:nowrap, overflow-x:auto -- so a stacked bar list became a single
+   non-wrapping ROW: fourteen monthly bars side by side, every flex:1 track collapsed to a sliver, and all
+   that survived was a row of labels and percentages. "Maybe this is meant to be a bar chart that has
+   failed" was exactly right. These classes are separate so the strip's rules cannot reach them. */
+.insight-bars{display:flex;flex-direction:column;gap:3px;margin:10px 0 4px}
+.insight-bar{display:flex;align-items:center;gap:8px}
+.insight-chart{margin:8px 0 4px}
+.insight-chart svg{width:100%;height:190px;display:block;overflow:visible}
 /* "Hide trades missed" toggle on the winners ledger (user 2026-07-26, P-07 #30). */
 table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{text-align:left;padding:6px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
