@@ -239,8 +239,21 @@ def break_state(pairs, db=None):
         for ticker, opened in pairs:
             if not ticker or not opened:
                 continue
+            # SELECT ON bar_date, NOT as_of. as_of is when the row was WRITTEN; bar_date is the bar it
+            # describes, and the bar is what these four measures are about. The daily capture runs in the
+            # Morning Chain at 03:30 UTC, before any market opens, so the row written under as_of = D
+            # describes D-1 (measured 2026-09-07: of 4,980 rows, only 12 carry as_of = bar_date, and those
+            # twelve were hand-backfilled for the then-open positions).
+            #
+            # Selecting on as_of therefore asks for the row written on the opening day and gets one
+            # describing the day before, which the staleness check below then has to throw away -- so the
+            # audit reported "unjudgeable" for bars that HAD been captured, just under a later as_of.
+            # Measured on the live table: bar 2026-08-27 for THG.L exists under as_of 2026-08-29.
+            #
+            # Ordered by as_of so that where a bar was captured more than once the latest capture wins.
             rows = db.run("select rvol, above_vwap_setup, atr_expanding, volume_score, as_of, status, "
-                          "bar_date from instrument_metrics_daily where ticker = :t and as_of = :d",
+                          "bar_date from instrument_metrics_daily where ticker = :t and bar_date = :d "
+                          "order by as_of desc limit 1",
                           t=ticker, d=str(opened)[:10]) or []
             if rows:
                 rv, avs, atr, vs, as_of, status, bar_date = rows[0]

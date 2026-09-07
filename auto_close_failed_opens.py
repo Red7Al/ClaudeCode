@@ -62,6 +62,19 @@ def today_utc():
     return _dt.datetime.now(_dt.timezone.utc).date()
 
 
+def closing_window_state(positions, now=None, minutes=None):
+    """{ticker: in_window} for each position's own exchange (user 2026-09-06).
+
+    THE WINDOW IS PER INSTRUMENT, NOT PER RUN. The book spans Sydney to New York, so there is no single
+    moment at which "the market" is closing; a run at 15:00 UTC is in Frankfurt's last half hour and nine
+    hours past Tokyo's. market_hours derives each exchange's close from the exchange itself.
+    """
+    import market_hours
+    mins = minutes if minutes is not None else market_hours.CLOSING_WINDOW_MINUTES
+    return {p["ticker"]: market_hours.in_closing_window(p["ticker"], now=now, minutes=mins)
+            for p in positions if p.get("ticker")}
+
+
 def _volume_breaches(row):
     """Only the breaches that are volume tests. Durable ones are carried separately and never acted on."""
     return [b for b in (row.get("breaches") or []) if any(t in b for t in VOLUME_TESTS)]
@@ -71,15 +84,38 @@ def _durable_breaches(row):
     return [b for b in (row.get("breaches") or []) if not any(t in b for t in VOLUME_TESTS)]
 
 
-def candidates(user, on_date, positions):
-    """Positions opened ON on_date whose volume tests failed. Returns (to_close, skipped)."""
+def candidates(user, on_date, positions, now=None, require_window=True, window_minutes=None):
+    """Positions opened ON on_date whose volume tests failed. Returns (to_close, skipped).
+
+    THE CLOSING-WINDOW GATE (user 2026-09-06). A position is only considered while its own exchange is in
+    its final `window_minutes` -- the only span in which the day's volume is substantially known AND the
+    position can still be traded. Outside it the position is skipped with the reason recorded, never
+    closed: before the window the bar is too incomplete to judge, and after it the market has gone.
+
+    `require_window=False` exists for dry runs and tests, so the rest of the pipeline can be exercised at
+    any hour. It must never be used to place a real close -- run() only accepts it without --apply.
+    """
     import order_filter_audit
     todays = [p for p in positions if str(p.get("opened") or "")[:10] == str(on_date)]
     if not todays:
         return [], []
-    audit = order_filter_audit.audit_positions(user, todays)
+    in_window = closing_window_state(todays, now=now, minutes=window_minutes)
     to_close, skipped = [], []
+    if require_window:
+        outside = [p for p in todays if not in_window.get(p["ticker"])]
+        for p in outside:
+            skipped.append({**p, "why_skipped": "not in its exchange's closing window"})
+        todays = [p for p in todays if in_window.get(p["ticker"])]
+        if not todays:
+            return [], skipped
+    audit = order_filter_audit.audit_positions(user, todays)
+    # audit_positions rebuilds its rows from the fields it cares about, so the epic does not survive it.
+    # Carried back by deal id -- the only key that is unique per position -- because the close needs it to
+    # ask IG whether the market is dealable, and a missing epic there fails closed and silently keeps
+    # every position open.
+    epics = {str(p.get("deal_id")): p.get("epic") for p in todays if p.get("deal_id")}
     for row in audit.get("rows", []):
+        row = {**row, "epic": epics.get(str(row.get("deal_id"))) or ""}
         vol = _volume_breaches(row)
         dur = _durable_breaches(row)
         if row.get("unknown"):
@@ -133,9 +169,16 @@ def record(db, user, row, profit, currency, outcome):
            p=profit, c=currency, oc=outcome)
 
 
-def run(user=None, on_date=None, apply=False):
-    """One pass. Returns a summary; never raises, so a scheduled caller cannot be brought down by it."""
+def run(user=None, on_date=None, apply=False, require_window=True, now=None, window_minutes=None):
+    """One pass. Returns a summary; never raises, so a scheduled caller cannot be brought down by it.
+
+    `require_window=False` is a DRY-RUN AID ONLY and is refused alongside apply=True: closing a position
+    outside its closing window is the one thing the window exists to prevent.
+    """
     import datetime as dt
+    if apply and not require_window:
+        raise ValueError("require_window=False cannot be combined with apply=True: the closing-window "
+                         "gate is the safety property, not a convenience")
     summary = {"date": None, "opened_today": 0, "to_close": 0, "closed": 0, "skipped": 0,
                "enabled": False, "applied": bool(apply), "rows": []}
     try:
@@ -167,12 +210,17 @@ def run(user=None, on_date=None, apply=False):
                 continue
             deal = pd.get("dealId")
             positions.append({"ticker": tk, "deal_id": deal, "name": mk.get("instrumentName"),
+                              # Carried so the close can ask IG whether this specific market is dealable
+                              # right now -- the one authority that covers holidays and suspensions,
+                              # which no derived timetable can.
+                              "epic": str(mk.get("epic") or ""),
                               "opened": str(pd.get("createdDateUTC") or pd.get("createdDate") or "")[:10],
                               "direction": pd.get("direction"), "size": pd.get("size")})
             priced[deal] = (_profit(pd, mk), pd.get("currency"))
         summary["opened_today"] = sum(1 for p in positions if p["opened"] == on_date)
 
-        to_close, skipped = candidates(user, on_date, positions)
+        to_close, skipped = candidates(user, on_date, positions, now=now,
+                                       require_window=require_window, window_minutes=window_minutes)
         summary["to_close"], summary["skipped"] = len(to_close), len(skipped)
         summary["rows"] = [{"ticker": r["ticker"], "deal_id": r.get("deal_id"),
                             "why": "; ".join(r.get("volume_breaches") or [])} for r in to_close]
@@ -206,6 +254,15 @@ def run(user=None, on_date=None, apply=False):
                     deal = str(r.get("deal_id") or "")
                     if deal not in live:                     # re-read: never close on a stale view
                         record(db, user, r, None, None, "gone_before_close")
+                        continue
+                    # IG's own verdict on whether this market is dealable, asked immediately before the
+                    # close. The derived timetable models neither public holidays nor half-days nor an IG
+                    # suspension, and on any of them it would report a closing window for a market that is
+                    # not there. This is the check that covers all three, and it fails closed.
+                    import market_hours
+                    if not market_hours.is_tradeable_now(r.get("epic") or ""):
+                        log.warning("IG will not deal %s right now; leaving it open", r.get("ticker"))
+                        record(db, user, r, None, None, "not_tradeable_at_close")
                         continue
                     profit, currency = priced.get(deal, (None, None))
                     # Written BEFORE the close, updated after. If the broker call succeeds and the audit
