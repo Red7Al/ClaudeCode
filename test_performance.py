@@ -1422,8 +1422,11 @@ def test_the_client_mcap_bands_match_the_one_definition_in_config():
     import config
     from client_source import BEST_SETTINGS_JS
 
-    js = re.findall(r'\{kind:"mcap",label:"MCap ([^"]+)",min:([0-9.e+]+),max:([0-9.e+]+)',
-                    BEST_SETTINGS_JS.read_text(encoding="utf-8"))
+    # Parsed from BEST_GRID.MCAP — the one copy the search and the Methodology page both read.
+    src = BEST_SETTINGS_JS.read_text(encoding="utf-8")
+    block = re.search(r"MCAP:\[(.*?)\]\}", src, re.S)
+    assert block, "BEST_GRID.MCAP not found in best_settings.js"
+    js = re.findall(r'\["([^"]+)",\s*([0-9.e+]+),\s*([0-9.e+]+)\]', block.group(1))
     assert js, "no mcap scopes found in best_settings.js"
     assert len(js) == len(config.MCAP_BANDS), (
         f"client has {len(js)} mcap bands, config has {len(config.MCAP_BANDS)} — they have drifted")

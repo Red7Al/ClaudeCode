@@ -84,8 +84,16 @@ def _grid_row(html: str, label: str) -> str:
     return m.group(1)
 
 
+# MCAP is in BEST_GRID but is a SCOPE, not a filter dimension: the search replays the whole grid inside
+# each band, rather than the band being one more filter value. It is stated on the page in the Scope row,
+# checked by test_the_scope_row_lists_every_market_cap_band below, so it is excluded here rather than
+# needing a grid row of its own.
+_SCOPE_KEYS = {"MCAP"}
+
+
 def test_every_searched_dimension_is_stated_on_the_page():
     html, grid = _render(), _grid()
+    grid = {k: v for k, v in grid.items() if k not in _SCOPE_KEYS}
     assert set(_ROW_LABEL) == set(grid), (
         f"the searched grid is {sorted(grid)} but the page checks {sorted(_ROW_LABEL)} -- "
         "a new dimension must be added to the page and to this test")
@@ -102,8 +110,13 @@ def test_every_searched_dimension_is_stated_on_the_page():
 def test_the_search_size_is_derived_and_not_asserted():
     """A reviewer's first question is how large the search is, because that is what multiple-comparison
     risk scales with. Deriving it means it cannot be quoted stale."""
+    import config
     grid = _grid()
-    configs = 10 * len(grid["RRS"]) * len(grid["QUALS"]) * len(grid["VSCORES"]) * len(grid["RVOLS"]) * 4
+    # Scopes: all markets + the 5 most-traded + one per market-cap band. Derived from the band list rather
+    # than hardcoded — it was 10 here and became 13 when the bands were split on 2026-09-07, and a test
+    # asserting a stale count is the same drift the page itself exists to avoid.
+    scopes = 1 + 5 + len(config.MCAP_BANDS)
+    configs = scopes * len(grid["RRS"]) * len(grid["QUALS"]) * len(grid["VSCORES"]) * len(grid["RVOLS"]) * 4
     replays = configs * len(grid["STAKES"]) * len(grid["OPENS"])
     html = _render()
     assert f"{configs:,}" in html, f"the configuration count {configs:,} is not stated"
@@ -142,3 +155,34 @@ def test_the_page_is_reachable_and_is_a_reading_page():
     js = client_js()
     assert 'if(which==="method"&&!meth.innerHTML)meth.innerHTML=methodologyHTML();' in js, \
         "the panel is never filled"
+
+
+def test_the_scope_row_lists_every_market_cap_band():
+    """The band list on the page is READ from BEST_GRID.MCAP, never re-typed.
+
+    It was re-typed, and that is how it went stale: the page named "4 market-cap bands (under 2bn, 2-10bn,
+    10-100bn, 100bn+)" describing a search that had those bands, while the Insights page used five. A
+    reviewer reading this page could not have told which was true.
+    """
+    html, grid = _render(), _grid()
+    bands = grid["MCAP"]
+    row = _grid_row(html, "Scope")
+
+    assert f"{len(bands)} market-cap bands" in row, \
+        f"the page must state how many bands are searched; row was: {row[:160]}"
+    for label, _lo, _hi in bands:
+        assert label in row, f"band {label!r} is searched but not named on the page"
+    assert "10–100bn" not in row, "the band that buried the best performer must not reappear"
+
+
+def test_the_page_explains_the_auto_closer():
+    """It acts on the same break-bar criteria the cards are built from, so a reviewer checking the method
+    needs to know it exists and what it does (user 2026-09-07: "make sure the auto close is explained")."""
+    html = _render()
+
+    assert "auto-closer" in html.lower(), "the auto-closer is not described anywhere on the page"
+    # The three things that make it defensible rather than arbitrary.
+    assert "8 days before" in html, "must say the criteria cannot be tested when the order is placed"
+    assert "30 minutes" in html, "must say when it acts, and why that window"
+    assert "5th-percentile" in html or "5th percentile" in html, \
+        "must say the unfinished bar is corrected, and in which direction"

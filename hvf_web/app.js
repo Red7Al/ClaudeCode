@@ -3296,7 +3296,11 @@ function paintInsights(){
 function methodologyHTML(){
   const g=(typeof BEST_GRID==="object"&&BEST_GRID)||{};
   const list=a=>(a||[]).join(", ");
-  const SCOPES=10;   // all markets + the 5 most-traded markets + 4 market-cap bands
+  // Read from the search's own constant, never restated. A methodology page that names a band list the
+  // code no longer uses is worse than no page: a reviewer cannot tell the difference, and that is exactly
+  // how the mcap bands drifted apart in the first place (2026-09-07).
+  const MB=g.MCAP||[];
+  const SCOPES=1+5+MB.length;   // all markets + the 5 most-traded markets + the market-cap bands
   const filters=(g.RRS||[]).length*(g.QUALS||[]).length*(g.VSCORES||[]).length*(g.RVOLS||[]).length*4;
   const models=(g.STAKES||[]).length*(g.OPENS||[]).length;
   const configs=SCOPES*filters;
@@ -3322,7 +3326,7 @@ function methodologyHTML(){
   ${h("2. What is searched", `<p style="font-size:13px">This is an exhaustive search over a fixed grid, not
   an optimiser. Each configuration is one <b>scope</b> plus six <b>filters</b>, replayed at each money model:</p>
   <div class="tablewrap"><table style="font-size:12.5px"><tbody>
-    <tr><td><b>Scope</b></td><td>All markets &middot; the 5 most-traded markets &middot; 4 market-cap bands (under 2bn, 2&ndash;10bn, 10&ndash;100bn, 100bn+)</td></tr>
+    <tr><td><b>Scope</b></td><td>All markets &middot; the 5 most-traded markets &middot; ${MB.length} market-cap bands (${MB.map(b=>b[0]).join(", ")})</td></tr>
     <tr><td><b>Minimum R:R</b></td><td>${list(g.RRS)}</td></tr>
     <tr><td><b>Minimum Quality</b></td><td>${list(g.QUALS)} <span class="muted">(0 = no floor)</span></td></tr>
     <tr><td><b>Minimum VolumeScore</b></td><td>${list(g.VSCORES)}</td></tr>
@@ -3401,7 +3405,71 @@ function methodologyHTML(){
     windows. For the annual cards the newest window is in-sample and the other two are not.</li>
   </ul>`)}
 
-  ${h("7. Known weaknesses", warn(`<b>The annual cards are selected in-sample.</b> A configuration is chosen
+  ${h("7. Market-cap bands, and why these boundaries", `<p style="font-size:13px">A market-cap band is a
+  <b>scope</b>: the search replays the whole grid inside that band alone, so a card scoped to a band is a
+  claim about instruments of that size and nothing else. The bands are defined <b>once</b>, in
+  <code>config.MCAP_BANDS</code>, and this page, the Insights market-cap card and the card search all read
+  that one list. A test asserts they match, label for label and bound for bound.</p>
+  <p style="font-size:13px">That is not decoration. Until 2026-09-07 the bands were written out twice and
+  had drifted apart: Insights carried <b>10&ndash;25bn</b> and <b>25&ndash;100bn</b> where the search carried
+  a single <b>10&ndash;100bn</b>. So the band that actually performs &mdash; 10&ndash;25bn, <b>+4.60%</b>
+  average return on a <b>42.5%</b> win rate over 926 trades &mdash; <b>could not be selected as a card scope
+  at all</b>. Merged with the far weaker 25&ndash;100bn (+2.82%, 35.1%) it diluted to +3.45% / 37.7%, which
+  loses to 100bn+ on win rate. The search was choosing correctly from a list that did not contain the
+  winner, and the two screens named different winners while each was right about its own list.</p>
+  <p style="font-size:13px"><b>The boundaries are measured, not chosen.</b> Over 12 months of resolved
+  triggers, split into ten fine slices, three of the four old bands were hiding materially different
+  behaviour:</p>
+  <div class="tablewrap"><table style="font-size:12.5px"><thead><tr><th>slice</th><th>avg return</th><th>win rate</th><th>old band it sat in</th></tr></thead><tbody>
+    <tr><td>&lt;1bn</td><td>+4.13%</td><td>32.3%</td><td rowspan="2">under 2bn &mdash; hid a 2pp return gap</td></tr>
+    <tr><td>1&ndash;2bn</td><td>+2.06%</td><td>25.8%</td></tr>
+    <tr><td>10&ndash;25bn</td><td><b>+4.60%</b></td><td><b>42.5%</b></td><td rowspan="3">10&ndash;100bn &mdash; hid a 12pp win-rate gap</td></tr>
+    <tr><td>25&ndash;50bn</td><td>+2.29%</td><td>30.7%</td></tr>
+    <tr><td>50&ndash;100bn</td><td>+3.42%</td><td>40.0%</td></tr>
+    <tr><td>100&ndash;250bn</td><td>+3.97%</td><td>40.5%</td></tr>
+    <tr><td>250&ndash;500bn</td><td>+4.28%</td><td>45.0%</td><td rowspan="2">100bn+ &mdash; 500bn+ (1,424 trades) dragged it down</td></tr>
+    <tr><td>500bn+</td><td>+2.77%</td><td>36.9%</td></tr>
+  </tbody></table></div>
+  <p style="font-size:13px">Adjacent slices that behave alike are deliberately kept together &mdash; 2&ndash;5
+  with 5&ndash;10, and 50&ndash;100 with 100&ndash;250 &mdash; because splitting on noise is overfitting, not
+  resolution. Every band carries at least 500 trades. Instruments with no recorded market cap are excluded
+  from every band rather than pooled into one, which would invent a size for them.</p>`)}
+
+  ${h("8. The auto-closer (closing positions that should not have opened)", `<p style="font-size:13px">This
+  is a separate mechanism from the recommendations above, described here because it acts on the same
+  criteria. <b>RVOL, VolumeScore, above-VWAP and ATR-expanding all describe the BREAK bar</b> &mdash; the day
+  a setup actually breaks out. An order reaches the broker a median of <b>8 days before</b> that bar exists,
+  so none of those four can be tested when the order is placed. The fill IS the break, so the opening day is
+  the first moment they become knowable. The auto-closer is what checks them then: a position that fails
+  them on its break never met the criteria to be open, and closing it enforces the stated rule rather than
+  making a judgement about returns.</p>
+  <p style="font-size:13px"><b>It runs in the last 30 minutes of the instrument's own session.</b> That is
+  the only window in which the day's volume is substantially known AND the position can still be traded &mdash;
+  once the market closes the bar is complete but nothing can be done until the next session, or Monday.
+  Each exchange's close is derived from the exchange's own record, not assumed; there are thirteen distinct
+  closing instants across the universe, so a job every ten minutes asks which instruments are closing now.</p>
+  <p style="font-size:13px"><b>The bar is unfinished when it is read, and that bias is corrected.</b> An
+  incomplete bar has less volume, so a volume test fails, so a sound position would be sold. Measured over
+  472 sessions: 30 minutes before the close a median 86.4% of the day's volume has traded, but only 57.8% at
+  the 5th percentile. So the volume is divided by the exchange's own 5th-percentile completion share, which
+  over-states the session in ~95% of cases &mdash; an unfinished bar can therefore only ever make a test
+  <i>pass</i>. Measured over 910 comparisons against the same day finished, that takes false closes from
+  1.98% of cases to <b>1.21%</b>, turning them into harmless false keeps. The day's high-low range needs no
+  correction (already complete in 79% of sessions) and neither does VWAP.</p>
+  <p style="font-size:13px"><b>Scope is deliberately narrow.</b> Same day only &mdash; it is a check on the
+  open, never a rolling re-test of the book. Volume tests only &mdash; R:R, Quality and instrument value were
+  all knowable at placement, so a breach there is a defect in the placement gate and closing the position
+  would hide it; those are reported and never acted on. A missing metric means UNJUDGEABLE and the position
+  is left open, because closing on an absence of evidence is the one mistake here that cannot be undone.
+  Instruments whose exchange reports no traded volume &mdash; indices &mdash; can never be judged, and the
+  daily audit reports how many.</p>
+  ${warn(`<b>What it would do on the last 12 months.</b> Across 4,174 de-duplicated trades the rule fires on
+  <b>3,032 (72.6%)</b>. That is driven by two of the four tests: VolumeScore below 4 on 53.9% of trades (the
+  sole reason on 863 of them) and ATR not expanding on 47.3% (sole reason on 726); above-VWAP accounts for
+  only 8.6%. Read that as information about the criteria as much as about the closer &mdash; over half of
+  filled trades do not reach VolumeScore 4 on their own break bar.`)}`)}
+
+  ${h("9. Known weaknesses", warn(`<b>The annual cards are selected in-sample.</b> A configuration is chosen
   because it performed well over the last 365 days, and its headline return is then reported over that same
   period. The two out-of-sample years shown on each card are the honest check, and they are frequently worse.
   Treat the headline as a best case, not an expectation.`)
