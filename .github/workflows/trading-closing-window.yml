@@ -79,6 +79,28 @@ jobs:
             ${{ inputs.window && format('--window {0}', inputs.window) || '' }} \
             ${{ inputs.all == 'true' && '--all' || '' }}
 
-      # REPORT ONLY. Adding --apply here is what arms it against the live account.
-      - name: Judge same-day opens (report only)
-        run: python auto_close_failed_opens.py
+      # ARMED (account owner, 2026-09-07: "--apply"). This CLOSES REAL POSITIONS on the live IG account.
+      #
+      # It was run in report-only mode first and the decision was taken on measured evidence: over the last
+      # 12 months the rule fires on 3,032 of 4,174 trades (72.6%), driven by VolumeScore below 4 (53.9% of
+      # trades) and ATR not expanding (47.3%), with above-VWAP accounting for 8.6%. The owner's framing is
+      # the operative one -- these four criteria describe the break bar and cannot be tested when the order
+      # is placed a median 8 days earlier, so a position failing them on its break never met the criteria
+      # to be open. Closing it enforces the stated rule.
+      #
+      # WHAT STILL BOUNDS IT, none of which this flag changes:
+      #   * same day only -- a position opened earlier is never touched;
+      #   * volume tests only -- an R:R, Quality or instrument-value breach is a placement-gate defect and
+      #     is reported, never acted on;
+      #   * unjudgeable is LEFT OPEN -- a missing metric never closes anything;
+      #   * MAX_PER_RUN caps a single pass at 10 positions;
+      #   * the per-user auto_close_failed_opens setting must be 1;
+      #   * the position must be inside its own exchange's closing window AND IG must say the market is
+      #     dealable at that moment;
+      #   * the unfinished bar's volume is projected using the exchange's 5th-percentile completion share,
+      #     which over-states the session in ~95% of cases, so an incomplete bar can only make a test PASS.
+      #     Measured over 910 comparisons that takes false closes from 1.98% to 1.21%.
+      #
+      # To disarm: drop --apply. The step then reports exactly what it would have done and closes nothing.
+      - name: Judge same-day opens and CLOSE those that failed their volume tests
+        run: python auto_close_failed_opens.py --apply

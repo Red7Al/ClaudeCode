@@ -283,3 +283,37 @@ def test_an_exchange_with_no_measured_volume_share_is_not_captured(monkeypatch):
     monkeypatch.setattr(market_hours, "volume_projection_factor", lambda t: None)
 
     assert cbc.todays_bar("^GSPC") is None
+
+
+def test_the_scheduled_job_is_armed_and_still_carries_its_guards():
+    """The closer is LIVE against the real account (owner, 2026-09-07: "--apply").
+
+    Pinned as a test because arming it is the single most consequential switch in this repository and it
+    must never change by accident in either direction. If it is deliberately disarmed, this test is the
+    place that records the decision.
+    """
+    import pathlib
+    wf = pathlib.Path(".github/workflows/trading-closing-window.yml").read_text(encoding="utf-8")
+
+    assert "auto_close_failed_opens.py --apply" in wf, \
+        "the closer is no longer armed -- if that is deliberate, update this test to say so"
+    # The capture must run FIRST, or there is no metrics row for today and every position reads
+    # unjudgeable: armed but permanently inert, which is this repository's signature defect.
+    assert wf.index("closing_bar_capture.py") < wf.index("auto_close_failed_opens.py"), \
+        "the break bar must be captured before it is judged"
+    # A capture failure must not stop the judging step from acting on rows captured on an earlier pass.
+    assert "continue-on-error: true" in wf
+
+
+def test_arming_does_not_bypass_any_of_the_guards():
+    """--apply changes ONE thing: whether close_trade is called. Everything that decides WHETHER to close
+    is upstream of it and is unaffected."""
+    import inspect
+    src = inspect.getsource(ac.run)
+
+    assert "if not summary[\"enabled\"]" in src, "the per-user switch must still gate the close"
+    assert "MAX_PER_RUN" in src, "the per-pass cap must still apply"
+    assert "is_tradeable_now" in src, "IG's own dealability check must still gate the close"
+    # The apply check must come AFTER the guards, or the flag would skip them.
+    assert src.index("MAX_PER_RUN") < src.index("if not apply"), \
+        "the run cap must be evaluated before the dry-run short-circuit"
