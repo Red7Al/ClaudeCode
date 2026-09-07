@@ -45,6 +45,27 @@ Deferred items (not blocking). Add new items at the top of the relevant section.
 
 ## Data quality
 
+- [ ] **No test renders the assembled page, and that is where the last three production bugs lived**
+  (2026-09-07). The suite is at 873 tests and every one of them stops at the unit boundary:
+  `test_js_behaviour` EXTRACTS a single function and runs it against hand-written stubs, so a function
+  nobody extracted is never executed at all. Three bugs reached the live site through that gap on one day:
+
+  | bug | why it was invisible |
+  |---|---|
+  | `Annual settings could not be loaded: money is not defined` | `renderBestCombo` was never extracted, and `money` appears six times in `app.js`, so no source-text assertion could see that THIS use had no definition in scope |
+  | the monthly insight chart rendered into `.viz` | the markup was correct in isolation and wrong only against the real stylesheet; nothing renders markup against the actual CSS |
+  | the market-cap bands drifted apart | two hardcoded lists in two languages, with nothing comparing them |
+
+  What would catch all three: load `index.html` + `app.js` + `best_settings.js` into jsdom, render each
+  tab, and fail on any thrown error or console error. A ReferenceError on a real code path would then be
+  caught in seconds rather than reported from production.
+
+  A regex approximation was tried and abandoned the same day: matching `name(` cannot tell a local helper
+  from `set.has()`, `Math.floor()` or `console.warn()`, and it reported ~20 false positives against
+  correct code. A check that cannot pass gets ignored -- see `build_data_dictionary --check`, which failed
+  every single day for exactly that reason and so was never scheduled. This needs a real parser or a real
+  DOM, not a cleverer regex. The narrow `money` guard that DID ship is verified and mutation-tested.
+
 - [ ] **Eight instruments in the universe scan nothing — Yahoo returns no data for any of them**
   (measured 2026-09-07): `ANSS`, `BSIF.L`, `EA`, `FI`, `IPF.L`, `JTC.L`, `MMC`, `QUB.AX`. The
   2026-08-25 handover recorded two of these (ANSS, FI); this is the full list, taken by comparing the

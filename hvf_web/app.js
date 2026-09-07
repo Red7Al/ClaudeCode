@@ -3192,6 +3192,11 @@ function _insightChart(ins){
   if((ins.chart_kind||"") === "time") return _insightTimeChart(ins);
   const pts = ins.chart || [];
   if(!pts.length) return "";
+  // A BAR LIST BENEATH ITS OWN TABLE IS NOISE (user 2026-09-07: "so ugly - I suggest you remove it").
+  // The market-cap insight plots ONE number per band while the table under it carries three — trades,
+  // positive %, and average return — so the chart shows strictly less than the thing it sits on top of,
+  // and the reader has to look twice to learn less. Where a table is present it IS the presentation.
+  if((ins.table||[]).length) return "";
   const max = Math.max(...pts.map(p => Math.abs(+p.value||0)), 1);
   // Label width is sized from the longest label, in ch, so the bars line up on one edge. Sizing per
   // chart rather than globally is what keeps a month label and a market-cap band from fighting.
@@ -3250,7 +3255,7 @@ function _insightTimeChart(ins){
     <text x="${W-R}" y="${(y(base)-4).toFixed(1)}" text-anchor="end" font-size="10"
       fill="var(--muted)">${_esc(ins.baseline_label||"baseline")} ${base}${unit}</text>`;
   return `<div class="insight-chart"><svg viewBox="0 0 ${W} ${H}" role="img"
-      aria-label="${_esc(ins.chart_title||"chart")}" preserveAspectRatio="none">
+      aria-label="${_esc(ins.chart_title||"chart")}">
     <line x1="${L}" x2="${W-R}" y1="${T+ph}" y2="${T+ph}" stroke="var(--line)" stroke-width="1"/>
     <text x="${L-6}" y="${T+4}" text-anchor="end" font-size="10" fill="var(--muted)">${yMax}${unit}</text>
     <text x="${L-6}" y="${T+ph}" text-anchor="end" font-size="10" fill="var(--muted)">0</text>
@@ -3587,6 +3592,12 @@ function renderBestCombo(all,{recordSnapshot=true}={}){
   // previous disclosure WAS present -- excluded markets in a title attribute, the model on a separate
   // card -- and was still missed, which is a fair verdict on tooltips for something this load-bearing.
   const excludedNow=own?tradeExcludedValues("market",(WIN||[]).concat(WIN_3Y||[]).map(r=>r&&r.market)):[];
+  // money() is defined in FOUR other functions in this file and in none of them is it global. It was used
+  // here without one, so the basis note below threw "money is not defined" and the whole panel fell into
+  // its catch: "Annual settings could not be loaded: money is not defined" (reported 2026-09-07, present
+  // since at least 410fdc4). The throw happens while BUILDING the string, so it took out the cards too --
+  // a formatting helper failed and the reader lost the entire Best Settings panel.
+  const money=v=>`£${Number(v||0).toLocaleString(undefined,{maximumFractionDigits:0})}`;
   const basisNote=`<div class="muted" style="font-size:12px;margin:0 0 10px;padding:8px 10px;border-left:3px solid ${own?'#d29922':'var(--accent)'};background:color-mix(in srgb,${own?'#d29922':'var(--accent)'} 8%,transparent)">`
     +(own
       ? `<b style="color:var(--fg)">Your model, your markets.</b> ${money(WINNERS_WALLET)} wallet · ${(WINNERS_STAKE*100).toFixed(1)}% position · ${WINNERS_MAXOPEN} open`

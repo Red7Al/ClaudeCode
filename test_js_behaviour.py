@@ -3645,3 +3645,52 @@ def test_the_categorical_insight_chart_still_lists_its_bands():
     assert out.count('class="insight-bar"') == 2
     assert "under 2bn" in out and "10-25bn" in out
     assert "<svg" not in out, "a band comparison is not a series over time"
+
+
+# ------------------------------------------------------------------------------------------------------
+# "Annual settings could not be loaded: money is not defined" (reported 2026-09-07)
+#
+# renderBestCombo built its basis note with money(), which is defined in four OTHER functions in app.js
+# and is global in none of them. The ReferenceError fired while building the string, so the catch around
+# the whole panel swallowed it and the reader lost every Best Settings card -- a formatting helper took
+# out the feature. Present since at least 410fdc4.
+#
+# This executes the expression rather than grepping for the helper, because the bug is a SCOPE error: the
+# name appears in the file six times and a source-text assertion sees nothing wrong.
+# ------------------------------------------------------------------------------------------------------
+
+def test_every_money_helper_is_defined_in_the_function_that_uses_it():
+    """Scope-checked by execution: each function that calls money() must define it."""
+    import re
+    src = APP_JS.read_text(encoding="utf-8")
+    lines = src.splitlines()
+    starts = [(i, m.group(1)) for i, l in enumerate(lines)
+              if (m := re.match(r"(?:async )?function ([A-Za-z_$][\w$]*)\(", l))]
+    offenders = []
+    for idx, (ln, name) in enumerate(starts):
+        end = starts[idx + 1][0] if idx + 1 < len(starts) else len(lines)
+        # Strip // comments before scanning. One function carries the note "money() is local to
+        # paintOrdersPerf", and matching that reported a bug in code that was correct.
+        body = "\n".join(re.sub(r"//.*$", "", l) for l in lines[ln:end])
+        # Look for the ASSIGNMENT, not the const keyword: money is declared several ways here, including
+        # as a continuation of a multi-line `const a=…, money=…` list where const sits on an earlier line.
+        # Requiring `const money` reported those as broken too, and I nearly "fixed" working code.
+        if re.search(r"\bmoney\(", body) and not re.search(r"\bmoney\s*=", body):
+            offenders.append(name)
+    assert not offenders, (
+        f"{offenders} call money() without defining it — money is not global in this file, so the call "
+        "throws a ReferenceError and takes out whatever was being rendered")
+
+
+def test_the_best_settings_basis_note_renders_for_both_models():
+    """The exact expression that failed, run for both branches."""
+    pre = ("const WINNERS_WALLET=10000, WINNERS_STAKE=0.10, WINNERS_MAXOPEN=10;"
+           "const BEST_STD_MODEL={wallet:10000,stake:0.05,maxOpen:20};"
+           "const _esc=s=>String(s);")
+    money = "const money=v=>`£${Number(v||0).toLocaleString(undefined,{maximumFractionDigits:0})}`;"
+    for own, expect in ((True, "10,000 wallet"), (False, "10,000 wallet")):
+        expr = ("(" + ("true" if own else "false") + ""
+                " ? `${money(WINNERS_WALLET)} wallet · ${(WINNERS_STAKE*100).toFixed(1)}% position`"
+                " : `${money(BEST_STD_MODEL.wallet)} wallet · ${(BEST_STD_MODEL.stake*100).toFixed(1)}% position`)")
+        out = run_js(pre, money, expr)
+        assert expect in out, f"basis note (own={own}) rendered {out!r}"
