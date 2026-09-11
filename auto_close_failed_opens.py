@@ -41,8 +41,14 @@ import logging
 
 log = logging.getLogger("auto_close")
 
-# The break-bar measures. Anything outside this set is reported and never acted on.
-VOLUME_TESTS = ("RVOL", "VolumeScore", "above VWAP", "ATR expanding")
+# The break-bar measures. Anything outside this set is reported and never acted on. Imported rather than
+# restated: order_filter_audit owns this list and a second copy is how two screens end up disagreeing.
+from order_filter_audit import BREAK_BAR_LABELS as VOLUME_TESTS
+
+# audit_positions adds this when the break bar has no stored row at all. It names no individual measure,
+# so a label test alone would read it as durable -- but it means EVERY volume test is missing, which is
+# exactly the case that must keep a position open.
+NO_BREAK_BAR = "no stored metrics for the day it opened"
 
 # A criteria change that matches everything must trip a limit rather than empty the account.
 MAX_PER_RUN = 10
@@ -84,6 +90,26 @@ def _durable_breaches(row):
     return [b for b in (row.get("breaches") or []) if not any(t in b for t in VOLUME_TESTS)]
 
 
+def _blocking_unknowns(row):
+    """The unknowns that genuinely make a position unjudgeable: the BREAK-BAR ones, and only those.
+
+    A durable unknown -- R:R, Quality, instrument value -- cannot make a volume verdict unjudgeable,
+    because this mechanism never acts on a durable breach in the first place (an R:R miss is a
+    placement-gate defect, reported and left open). Its absence therefore has no bearing on whether the
+    volume tests failed.
+
+    FOUND 2026-09-11, and it had disabled the closer completely. The test was `if row["unknown"]`, so ANY
+    unknown blocked the close. Both of the two positions the closer has ever been able to judge -- 0700.HK
+    on 2026-09-07 and SYY on 2026-09-09 -- were kept open with "unjudgeable: R:R not recorded" while
+    sitting on a stored break bar that failed its volume tests (SYY: volume_score 4, above_vwap_setup
+    False, atr_expanding False). The R:R was missing only because working_orders had not been reconciled,
+    so nothing about the actual decision was unknown. The pending-order path already draws this exact
+    distinction, at order_filter_audit._durable_only; this is the same rule from the other side.
+    """
+    return [u for u in (row.get("unknown") or [])
+            if NO_BREAK_BAR in u or any(t in u for t in VOLUME_TESTS)]
+
+
 def candidates(user, on_date, positions, now=None, require_window=True, window_minutes=None):
     """Positions opened ON on_date whose volume tests failed. Returns (to_close, skipped).
 
@@ -118,12 +144,16 @@ def candidates(user, on_date, positions, now=None, require_window=True, window_m
         row = {**row, "epic": epics.get(str(row.get("deal_id"))) or ""}
         vol = _volume_breaches(row)
         dur = _durable_breaches(row)
-        if row.get("unknown"):
+        blocking = _blocking_unknowns(row)
+        if blocking:
             # Unjudgeable is NOT a reason to close a real position. It is a reason to look at why the
             # daily capture did not run: that table silently stored nothing for six days in Sept 2026.
-            skipped.append({**row, "why_skipped": "unjudgeable: " + "; ".join(row["unknown"])})
+            skipped.append({**row, "why_skipped": "unjudgeable: " + "; ".join(blocking)})
         elif vol:
-            to_close.append({**row, "volume_breaches": vol, "durable_breaches": dur})
+            # A durable unknown does not stop the close, but it IS recorded against it: the evidence table
+            # has to say what was and was not known at the moment a real position was closed.
+            unknown_dur = [u for u in (row.get("unknown") or []) if u not in blocking]
+            to_close.append({**row, "volume_breaches": vol, "durable_breaches": dur + unknown_dur})
         else:
             skipped.append({**row, "why_skipped": "passed the volume tests"})
     return to_close, skipped

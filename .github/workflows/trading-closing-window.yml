@@ -70,6 +70,23 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
 
+      # Mark PENDING working orders FILLED once IG shows the position they became. This runs FIRST because
+      # the judging step reads the setup an order was placed from out of working_orders rows whose status
+      # is FILLED, and nothing else reconciles them: ig_shim.reconcile_working_orders is called only from
+      # the two disabled session monitors, so the last reconcile before this was added was 2026-09-04.
+      #
+      # That stale status silently disabled the closer. R:R came back empty, so every newly filled position
+      # read "unjudgeable: R:R not recorded" and was left open -- 2 of the 2 positions the closer had been
+      # able to judge since it was armed (0700.HK 2026-09-07, SYY 2026-09-09), both failing their volume
+      # tests on a stored break bar.
+      #
+      # reconcile_fills is NOT reconcile_working_orders. It makes two IG reads and writes one status column.
+      # It never places an order, never deletes one, never promotes a WATCHING row and sends no notification
+      # (account owner, 2026-09-11: fill-status only).
+      - name: Reconcile fills so the judging step can read each position's setup
+        continue-on-error: true
+        run: python reconcile_fills.py --apply
+
       # Store the break bar for anything closing now. Failure here must not stop the judging step from
       # reporting on rows that were captured on an earlier pass.
       - name: Capture the closing bar

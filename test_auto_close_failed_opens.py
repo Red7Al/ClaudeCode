@@ -301,6 +301,12 @@ def test_the_scheduled_job_is_armed_and_still_carries_its_guards():
     # unjudgeable: armed but permanently inert, which is this repository's signature defect.
     assert wf.index("closing_bar_capture.py") < wf.index("auto_close_failed_opens.py"), \
         "the break bar must be captured before it is judged"
+    # And the fill reconcile before BOTH. Without it the judging step cannot read the setup an order was
+    # placed from, so R:R reads absent and the position is skipped as unjudgeable -- which is exactly how
+    # the closer spent its first four armed days closing nothing (measured 2026-09-11).
+    assert "reconcile_fills.py --apply" in wf, "fills must be reconciled or nothing can be judged"
+    assert wf.index("reconcile_fills.py") < wf.index("auto_close_failed_opens.py"), \
+        "fills must be reconciled before the positions they produced are judged"
     # A capture failure must not stop the judging step from acting on rows captured on an earlier pass.
     assert "continue-on-error: true" in wf
 
@@ -317,3 +323,64 @@ def test_arming_does_not_bypass_any_of_the_guards():
     # The apply check must come AFTER the guards, or the flag would skip them.
     assert src.index("MAX_PER_RUN") < src.index("if not apply"), \
         "the run cap must be evaluated before the dry-run short-circuit"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Which unknowns are allowed to block a close (2026-09-11)
+# ------------------------------------------------------------------------------------------------------
+
+def test_a_missing_durable_measure_does_not_block_a_volume_close(monkeypatch):
+    """THE BUG THIS PREVENTS, and it had disabled the closer completely.
+
+    `if row["unknown"]` blocked on ANY unknown, so a missing R:R -- a DURABLE measure this mechanism never
+    acts on -- kept a position open that had failed its volume tests on a stored break bar. Measured
+    2026-09-11: that was 2 of the 2 positions the closer has ever been able to judge. This row is SYY as
+    it actually stood at 19:31 UTC on 2026-09-09, inside its closing window, kept open with
+    "unjudgeable: R:R not recorded".
+    """
+    _audit(monkeypatch, [{"ticker": "SYY", "deal_id": "D-SYY",
+                          "breaches": ["ATR expanding required but not met"],
+                          "unknown": ["R:R not recorded"]}])
+
+    to_close, skipped = ac.candidates("Alex", "2026-09-09", [_pos("SYY", "2026-09-09")],
+                                      require_window=False)
+
+    assert [r["ticker"] for r in to_close] == ["SYY"], \
+        "a durable unknown says nothing about whether the volume tests failed"
+    assert skipped == []
+
+
+def test_a_missing_break_bar_measure_still_blocks_the_close(monkeypatch):
+    """The other half of the same rule. An unknown RVOL is the break bar itself being unavailable, and
+    closing a real position on missing volume data is the mistake that costs money."""
+    _audit(monkeypatch, [{"ticker": "PARTIAL", "deal_id": "D-PARTIAL",
+                          "breaches": ["ATR expanding required but not met"],
+                          "unknown": ["RVOL not recorded", "R:R not recorded"]}])
+
+    to_close, skipped = ac.candidates("Alex", "2026-09-04", [_pos("PARTIAL", "2026-09-04")],
+                                      require_window=False)
+
+    assert to_close == []
+    assert "RVOL not recorded" in skipped[0]["why_skipped"]
+    assert "R:R not recorded" not in skipped[0]["why_skipped"], \
+        "the reason must name what actually blocked it, not everything that happened to be absent"
+
+
+def test_a_durable_unknown_is_recorded_against_a_position_it_did_not_block(monkeypatch):
+    """The evidence table has to say what was NOT known at the moment a real position was closed."""
+    _audit(monkeypatch, [{"ticker": "SYY", "deal_id": "D-SYY",
+                          "breaches": ["ATR expanding required but not met"],
+                          "unknown": ["R:R not recorded"]}])
+
+    to_close, _ = ac.candidates("Alex", "2026-09-09", [_pos("SYY", "2026-09-09")], require_window=False)
+
+    assert "R:R not recorded" in to_close[0]["durable_breaches"]
+
+
+def test_the_break_bar_label_list_has_exactly_one_definition():
+    """Two copies of this list is how the closer and the order audit end up disagreeing about which
+    measures are durable -- which is the disagreement that produced the bug above."""
+    import order_filter_audit
+
+    assert ac.VOLUME_TESTS is order_filter_audit.BREAK_BAR_LABELS, \
+        "VOLUME_TESTS must BE the audit's list, not a copy that matches it today"

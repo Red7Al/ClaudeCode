@@ -158,7 +158,11 @@ JOBS = [
     # 05:30-20:30 UTC covers Sydney's 06:12 close through New York's 20:00 (measured 2026-09-07 -- there
     # are thirteen distinct closing instants, so the job asks market_hours who is closing rather than
     # being scheduled per region, and daylight saving needs no re-cut). Mon-Fri: no exchange in the
-    # universe closes at a weekend. REPORTS ONLY -- it closes nothing until --apply is added.
+    # universe closes at a weekend.
+    #
+    # ARMED since 2026-09-07 (account owner: "--apply"): the judging step CLOSES REAL POSITIONS. From
+    # 2026-09-11 the job also reconciles working-order fill status first, because without it every newly
+    # filled position read "unjudgeable: R:R not recorded" and the closer was armed but inert.
     ("Closing Window",      "*/10 5-20 * * 1-5", "trading-closing-window.yml"),
     # "HVF Quality Reports" removed 2026-06-16: the long quality report now rides with EVERY
     # publication (intraday_signals._generate_x_drafts -> quality_report.publish_long_report_for),
