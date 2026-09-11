@@ -94,7 +94,10 @@ def sweep(apply_changes=False, owner=None):
 
     db = get_db()
     try:
-        rows = db.run("select deal_id, ticker, status, placed_at::date, good_till, epic, direction, size "
+        # id, NOT deal_id, is what identifies a row. deal_id is nullable and four live rows carried NULL
+        # on 2026-09-11 -- the old update built its list with str(None), searched for the literal string
+        # 'None', matched nothing, and still logged "marked 4 row(s) EXPIRED".
+        rows = db.run("select id, deal_id, ticker, status, placed_at::date, good_till, epic, direction, size "
                       "from working_orders where status in ('PENDING','WATCHING') "
                       "order by ticker") or []
     finally:
@@ -107,20 +110,20 @@ def sweep(apply_changes=False, owner=None):
     # absence once, for every caller, and only DEAD is swept.
     import working_order_state as wos
     positions = open_positions(owner)
-    recs = [{"deal_id": r[0], "ticker": r[1], "status": r[2], "placed_at": r[3],
-             "good_till": r[4], "epic": r[5], "direction": r[6], "size": r[7]} for r in rows]
+    recs = [{"id": r[0], "deal_id": r[1], "ticker": r[2], "status": r[3], "placed_at": r[4],
+             "good_till": r[5], "epic": r[6], "direction": r[7], "size": r[8]} for r in rows]
     states = wos.classify(recs, live, positions)
 
-    stale = [r for r in rows if states.get(str(r[0] or ""), (wos.LIVE, None))[0] == wos.DEAD]
-    kept = len(rows) - len(stale)
+    stale = [rec for rec, (state, _f) in zip(recs, states) if state == wos.DEAD]
+    kept = len(recs) - len(stale)
     log.info("%d row(s) marked %s; %d are DEAD, %d left alone (live, filled or still watching)",
-             len(rows), "/".join(STATUSES), len(stale), kept)
-    for deal_id, tk, st, placed, gt, _e, _d, _s in stale:
-        log.info("   %-10s %-9s placed %s  good-till %s", tk, st, placed, str(gt or "")[:10])
-    for r in rows:
-        state, fill = states.get(str(r[0] or ""), (wos.LIVE, None))
+             len(recs), "/".join(STATUSES), len(stale), kept)
+    for rec in stale:
+        log.info("   %-10s %-9s placed %s  good-till %s",
+                 rec["ticker"], rec["status"], rec["placed_at"], str(rec["good_till"] or "")[:10])
+    for rec, (state, fill) in zip(recs, states):
         if state != wos.DEAD:
-            log.info("   keeping %-10s %-9s -> %s%s", r[1], r[2], state,
+            log.info("   keeping %-10s %-9s -> %s%s", rec["ticker"], rec["status"], state,
                      f" (position {fill.get('deal_id')})" if fill else "")
 
     if not stale:
@@ -132,14 +135,23 @@ def sweep(apply_changes=False, owner=None):
 
     db = get_db()
     try:
-        ids = [str(r[0]) for r in stale]
+        ids = [int(rec["id"]) for rec in stale]
         db.run("update working_orders set status = 'EXPIRED', "
-               "notes = coalesce(notes, '') || ' | swept 2026-09-03: IG is not holding this order', "
-               "updated_at = now() where deal_id = any(:ids) and status in ('PENDING','WATCHING')",
-               ids=ids)
+               "notes = coalesce(notes, '') || ' | swept: IG is not holding this order and no position "
+               "matches it', updated_at = now() "
+               "where id = any(:ids) and status in ('PENDING','WATCHING')", ids=ids)
+        # COUNT WHAT CHANGED, don't report what was intended. The previous version logged the size of its
+        # own to-do list, so when the update matched nothing it still reported success -- which is how this
+        # stayed broken through the one run it ever had.
+        done = db.run("select count(*) from working_orders where id = any(:ids) and status = 'EXPIRED'",
+                      ids=ids)[0][0]
     finally:
         db.close()
-    log.info("marked %d row(s) EXPIRED; the bridge skip-list should now match IG", len(stale))
+    if done != len(stale):
+        log.error("expected to expire %d row(s) but %d are EXPIRED; the table did not take the update",
+                  len(stale), done)
+        return 1
+    log.info("marked %d row(s) EXPIRED; the bridge skip-list should now match IG", done)
     return 0
 
 

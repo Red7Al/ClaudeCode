@@ -40,8 +40,8 @@ def test_a_filled_order_is_not_dead():
     The note it left said it plainly -- "the sweep could not tell a fill from an expiry"."""
     st = _state([_row()], ig_ids=(), positions=[_pos()])
 
-    assert st["O-1"][0] == wos.FILLED
-    assert st["O-1"][1]["deal_id"] == "P-1"
+    assert st[0][0] == wos.FILLED
+    assert st[0][1]["deal_id"] == "P-1"
 
 
 def test_a_live_watching_row_is_not_dead():
@@ -49,14 +49,14 @@ def test_a_live_watching_row_is_not_dead():
     carries a synthetic WATCH-... id, so it can NEVER appear in an IG list -- absence proves nothing."""
     st = _state([_row(deal_id="WATCH-SYF-1788796932", status="WATCHING", good_till=FUTURE)])
 
-    assert st["WATCH-SYF-1788796932"][0] == wos.WATCHING
+    assert st[0][0] == wos.WATCHING
 
 
 def test_a_watching_row_past_its_good_till_is_dead():
     """The one way a watching row can legitimately die: it ran out of time without ever being placed."""
     st = _state([_row(deal_id="WATCH-X-1", status="WATCHING", good_till=PAST)])
 
-    assert st["WATCH-X-1"][0] == wos.DEAD
+    assert st[0][0] == wos.DEAD
 
 
 # ------------------------------------------------------------------------------------------------------
@@ -64,17 +64,17 @@ def test_a_watching_row_past_its_good_till_is_dead():
 # ------------------------------------------------------------------------------------------------------
 
 def test_an_order_ig_still_holds_is_live():
-    assert _state([_row()], ig_ids={"O-1"}, positions=[_pos()])["O-1"][0] == wos.LIVE
+    assert _state([_row()], ig_ids={"O-1"}, positions=[_pos()])[0][0] == wos.LIVE
 
 
 def test_an_order_gone_from_ig_with_no_position_is_dead():
-    assert _state([_row()], ig_ids=(), positions=[])["O-1"][0] == wos.DEAD
+    assert _state([_row()], ig_ids=(), positions=[])[0][0] == wos.DEAD
 
 
 def test_a_row_with_no_deal_id_is_never_dead_while_its_time_remains():
     """Nothing can be asked of IG about it, so absence is meaningless. DEAD needs positive evidence."""
-    assert _state([_row(deal_id=None, good_till=FUTURE)])[""][0] == wos.LIVE
-    assert _state([_row(deal_id=None, good_till=PAST)])[""][0] == wos.DEAD
+    assert _state([_row(deal_id=None, good_till=FUTURE)])[0][0] == wos.LIVE
+    assert _state([_row(deal_id=None, good_till=PAST)])[0][0] == wos.DEAD
 
 
 # ------------------------------------------------------------------------------------------------------
@@ -84,35 +84,35 @@ def test_a_row_with_no_deal_id_is_never_dead_while_its_time_remains():
 def test_two_candidate_positions_leave_the_row_alone():
     st = _state([_row()], positions=[_pos(deal_id="P-1"), _pos(deal_id="P-2")])
 
-    assert st["O-1"][0] == wos.LIVE, "ambiguous must never resolve to FILLED or DEAD"
+    assert st[0][0] == wos.LIVE, "ambiguous must never resolve to FILLED or DEAD"
 
 
 def test_two_rows_wanting_the_same_position_are_both_left_alone():
     st = _state([_row(deal_id="O-1"), _row(deal_id="O-2")], positions=[_pos()])
 
-    assert st["O-1"][0] == wos.LIVE and st["O-2"][0] == wos.LIVE
+    assert st[0][0] == wos.LIVE and st[1][0] == wos.LIVE
 
 
 def test_a_position_older_than_the_order_is_not_its_fill():
     st = _state([_row(placed="2026-09-03")], positions=[_pos(created="2026-08-06")])
 
-    assert st["O-1"][0] == wos.DEAD
+    assert st[0][0] == wos.DEAD
 
 
 def test_a_claimed_position_is_not_reused():
     st = _state([_row()], positions=[_pos(deal_id="P-1")], claimed={"P-1"})
 
-    assert st["O-1"][0] == wos.DEAD
+    assert st[0][0] == wos.DEAD
 
 
 def test_epic_direction_and_size_must_all_agree():
-    assert _state([_row()], positions=[_pos(epic="E2")])["O-1"][0] == wos.DEAD
-    assert _state([_row()], positions=[_pos(direction="SELL")])["O-1"][0] == wos.DEAD
-    assert _state([_row()], positions=[_pos(size=0.10)])["O-1"][0] == wos.DEAD
+    assert _state([_row()], positions=[_pos(epic="E2")])[0][0] == wos.DEAD
+    assert _state([_row()], positions=[_pos(direction="SELL")])[0][0] == wos.DEAD
+    assert _state([_row()], positions=[_pos(size=0.10)])[0][0] == wos.DEAD
 
 
 def test_a_fill_slightly_smaller_than_the_order_still_matches():
-    assert _state([_row(size=0.04)], positions=[_pos(size=0.039)])["O-1"][0] == wos.FILLED
+    assert _state([_row(size=0.04)], positions=[_pos(size=0.039)])[0][0] == wos.FILLED
 
 
 # ------------------------------------------------------------------------------------------------------
@@ -124,13 +124,13 @@ def test_a_date_object_and_an_iso_string_compare_correctly():
     so the conversion lives in the module rather than in whichever caller remembers it."""
     st = _state([_row(placed=dt.date(2026, 9, 3))], positions=[_pos(created="2026-09-09")])
 
-    assert st["O-1"][0] == wos.FILLED
+    assert st[0][0] == wos.FILLED
 
 
 def test_a_paper_order_is_never_matched_against_a_real_position():
     st = _state([_row(deal_id="PAPER-1")], positions=[_pos()])
 
-    assert st["PAPER-1"][0] == wos.LIVE
+    assert st[0][0] == wos.LIVE
 
 
 # ------------------------------------------------------------------------------------------------------
@@ -164,3 +164,38 @@ def test_both_consumers_ask_working_order_state_rather_than_deciding():
     for name in ("reconcile_fills.py", "run_working_order_sweep.py"):
         src = pathlib.Path(name).read_text(encoding="utf-8")
         assert "working_order_state" in src, f"{name} must defer to the shared classifier"
+
+
+# ------------------------------------------------------------------------------------------------------
+# deal_id is nullable, so it can never identify a row (2026-09-11)
+# ------------------------------------------------------------------------------------------------------
+
+def test_rows_with_no_deal_id_each_get_their_own_verdict():
+    """THE BUG THIS PREVENTS. Keyed by deal_id, four NULL rows collapsed onto one entry and overwrote each
+    other. Measured that day: ^AXJO, DGE.L, SPX.L and WTB.L all carried NULL. They shared a verdict, so the
+    answer was right by luck -- give them different ones and the collision is visible."""
+    rows = [_row(deal_id=None, good_till=PAST),      # DEAD, out of time
+            _row(deal_id=None, good_till=FUTURE),    # LIVE, cannot be asked about
+            _row(deal_id=None, good_till=PAST),
+            _row(deal_id=None, good_till=FUTURE)]
+
+    st = _state(rows)
+
+    assert len(st) == 4, "one verdict per row, always"
+    assert [s for s, _f in st] == [wos.DEAD, wos.LIVE, wos.DEAD, wos.LIVE]
+
+
+def test_the_result_is_aligned_with_the_input_order():
+    rows = [_row(deal_id="A", good_till=PAST), _row(deal_id="WATCH-B", status="WATCHING"),
+            _row(deal_id="C")]
+
+    st = _state(rows, ig_ids={"C"})
+
+    assert [s for s, _f in st] == [wos.DEAD, wos.WATCHING, wos.LIVE]
+
+
+def test_duplicate_deal_ids_do_not_share_a_verdict():
+    st = _state([_row(deal_id="DUP", good_till=PAST), _row(deal_id="DUP", good_till=PAST)],
+                ig_ids={"DUP"})
+
+    assert len(st) == 2

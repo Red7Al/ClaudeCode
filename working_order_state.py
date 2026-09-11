@@ -56,11 +56,16 @@ def _day(v):
 
 
 def classify(rows, ig_order_ids, positions, now=None, claimed=()):
-    """{deal_id: (state, matched_position_or_None)} for every row given.
+    """[(state, matched_position_or_None)] -- ONE ENTRY PER ROW, in the order given.
 
     `rows`      [{deal_id, status, epic, direction, size, placed_at, good_till}]
     `positions` [{deal_id, epic, direction, size, created}] -- IG's open positions
     `claimed`   position deal ids already recorded as some other row's fill
+
+    A LIST, NOT A DICT KEYED BY deal_id. deal_id is nullable -- measured 2026-09-11, four live rows carried
+    NULL (^AXJO, DGE.L, SPX.L, WTB.L) -- so a dict collapsed all of them onto one key and they overwrote each
+    other. They happened to share a verdict, so the answer was right by luck. Returning a list aligned to the
+    input makes the collision impossible rather than unlikely.
 
     Matching is unambiguous or it does not happen: exactly one candidate position for exactly one candidate row,
     same epic and direction, size within tolerance, and the position opened no earlier than the order was placed.
@@ -76,23 +81,24 @@ def classify(rows, ig_order_ids, positions, now=None, claimed=()):
         gt = row.get("good_till")
         return bool(gt and gt < now)
 
-    # Pass 1 -- the rows whose state does not depend on matching at all.
-    open_rows = []
-    for r in rows:
+    # Rows are identified by POSITION in the input, never by deal_id -- see the docstring.
+    out = [None] * len(rows)
+    open_rows = []                                  # (index, row) still needing a match
+    for i, r in enumerate(rows):
         did = str(r.get("deal_id") or "")
         if str(r.get("status") or "") == WATCHING or did.startswith("WATCH-"):
             # Never expected at IG. It can only die of old age.
-            out[did] = (DEAD if expired(r) else WATCHING, None)
+            out[i] = (DEAD if expired(r) else WATCHING, None)
         elif not did or did.startswith("PAPER-"):
             # Nothing to ask IG about: no id, or a paper order IG never saw.
-            out[did] = (DEAD if expired(r) else LIVE, None)
+            out[i] = (DEAD if expired(r) else LIVE, None)
         elif did in ig_order_ids:
-            out[did] = (LIVE, None)
+            out[i] = (LIVE, None)
         else:
-            open_rows.append(r)
+            open_rows.append((i, r))
 
     # Pass 2 -- gone from IG: filled, or dead. Candidates both ways before anything is decided.
-    for r in open_rows:
+    for i, r in open_rows:
         ok = []
         for p in positions:
             if str(p.get("deal_id") or "") in claimed:
@@ -108,20 +114,19 @@ def classify(rows, ig_order_ids, positions, now=None, claimed=()):
                 continue        # a position older than the order cannot be its fill
 
             ok.append(p)
-        cands[str(r.get("deal_id"))] = ok
+        cands[i] = ok
 
     wanted = {}
-    for did, ok in cands.items():
+    for i, ok in cands.items():
         for p in ok:
-            wanted.setdefault(str(p.get("deal_id")), []).append(did)
+            wanted.setdefault(str(p.get("deal_id")), []).append(i)
 
-    for r in open_rows:
-        did = str(r.get("deal_id"))
-        ok = cands.get(did) or []
+    for i, r in open_rows:
+        ok = cands.get(i) or []
         if len(ok) == 1 and len(wanted.get(str(ok[0].get("deal_id")), [])) == 1:
-            out[did] = (FILLED, ok[0])
+            out[i] = (FILLED, ok[0])
         elif ok:
-            out[did] = (LIVE, None)      # ambiguous: refuse to guess, leave it alone
+            out[i] = (LIVE, None)        # ambiguous: refuse to guess, leave it alone
         else:
-            out[did] = (DEAD, None)
+            out[i] = (DEAD, None)
     return out

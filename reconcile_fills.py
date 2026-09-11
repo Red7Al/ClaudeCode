@@ -60,8 +60,7 @@ def pair_fills(orders, positions, claimed=(), ig_order_ids=None):
     ids = set(ig_order_ids or ())
     states = wos.classify(orders, ids, positions, claimed=claimed)
     matches, unmatched = [], []
-    for o in orders:
-        state, fill = states.get(str(o.get("deal_id")), (wos.LIVE, None))
+    for o, (state, fill) in zip(orders, states):
         if state == wos.FILLED:
             matches.append({**o, "fill_deal_id": fill.get("deal_id"), "filled_at": fill.get("created"),
                             "fill_size": fill.get("size")})
