@@ -89,6 +89,33 @@ jobs:
               sys.exit(f"snapshot is {age:.1f}h old (limit 36h) - refusing to place orders on stale prices")
           PY
 
+      # Clear dead working orders BEFORE the bridge builds its skip-list from them (2026-09-11).
+      #
+      # _already_working() skips any ticker holding a PENDING or WATCHING row, so a row that IG no longer
+      # has silently keeps the bridge off that instrument -- no log line, no record. Measured 2026-09-03:
+      # the skip-list held 95 tickers while IG held SIX working orders, and six of that day's 29 candidates
+      # were skipped because of orders that did not exist. That is lost trading, not a reporting fault.
+      #
+      # It runs HERE rather than on its own schedule so it cannot drift from the thing that needs it: the
+      # skip-list is rebuilt on the next line, from the table this just corrected.
+      #
+      # Only rows working_order_state calls DEAD are touched -- gone from IG, matching no open position,
+      # and unable to come back. A fill and a live WATCHING row are both left alone; reading absence as
+      # death is what expired 12 fills and 19 live watching orders on 2026-09-04.
+      #
+      # continue-on-error: a sweep failure must not stop the bridge. The consequence is the stale skip-list
+      # we already had, which fails safe -- the bridge places fewer orders, never wrong ones.
+      - name: Clear dead working orders so the skip-list is real
+        continue-on-error: true
+        env:
+          IG_API_KEY:           ${{ secrets.IG_API_KEY }}
+          IG_USERNAME:          ${{ secrets.IG_USERNAME }}
+          IG_PASSWORD:          ${{ secrets.IG_PASSWORD }}
+          IG_ACCOUNT_ID:        ${{ secrets.IG_ACCOUNT_ID }}
+          SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: python run_working_order_sweep.py --apply
+
       - run: python -m hvf_web.order_bridge
         env:
           IG_API_KEY:                  ${{ secrets.IG_API_KEY }}

@@ -131,3 +131,36 @@ def test_a_paper_order_is_never_matched_against_a_real_position():
     st = _state([_row(deal_id="PAPER-1")], positions=[_pos()])
 
     assert st["PAPER-1"][0] == wos.LIVE
+
+
+# ------------------------------------------------------------------------------------------------------
+# Both consumers must actually be scheduled (this repository's signature defect is code nothing calls)
+# ------------------------------------------------------------------------------------------------------
+
+def test_the_fill_reconcile_runs_before_the_closer_judges():
+    import pathlib
+    wf = pathlib.Path(".github/workflows/trading-closing-window.yml").read_text(encoding="utf-8")
+
+    assert "reconcile_fills.py --apply" in wf
+    assert wf.index("reconcile_fills.py") < wf.index("auto_close_failed_opens.py"), \
+        "a position must be reconciled before it is judged, or its setup cannot be read"
+
+
+def test_the_sweep_runs_before_the_bridge_builds_its_skip_list():
+    """The sweep exists to keep _already_working() honest. Scheduled anywhere else it would drift from
+    the thing that needs it; unscheduled -- which it was until 2026-09-11 -- it does nothing at all."""
+    import pathlib
+    wf = pathlib.Path(".github/workflows/trading-order-bridge.yml").read_text(encoding="utf-8")
+
+    assert "run_working_order_sweep.py --apply" in wf, "the sweep is not scheduled anywhere"
+    assert wf.index("run_working_order_sweep.py") < wf.index("hvf_web.order_bridge"), \
+        "the skip-list is built from the table the sweep corrects, so the sweep must run first"
+
+
+def test_both_consumers_ask_working_order_state_rather_than_deciding():
+    """The whole point. If either grows its own interpretation of 'absent from IG', the contradiction is
+    back -- that is how one column came to have four meanings."""
+    import pathlib
+    for name in ("reconcile_fills.py", "run_working_order_sweep.py"):
+        src = pathlib.Path(name).read_text(encoding="utf-8")
+        assert "working_order_state" in src, f"{name} must defer to the shared classifier"
