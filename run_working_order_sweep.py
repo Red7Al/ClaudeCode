@@ -59,6 +59,26 @@ def live_deal_ids(owner):
     return out
 
 
+def open_positions(owner):
+    """IG's open positions, in the shape working_order_state.classify expects.
+
+    Needed because a filled order is ALSO absent from the working-order book: without the positions list the
+    sweep cannot tell a fill from an expiry, which is the mistake it made on 2026-09-04.
+    """
+    import ig_shim
+    with ig_shim._IG_LOCK, ig_shim.acting_session(owner):
+        raw = ig_shim.get_open_positions()
+    if raw is None:
+        raise RuntimeError("IG returned no answer for open positions")
+    out = []
+    for p in raw:
+        mk, pd = (p.get("market") or {}), (p.get("position") or {})
+        out.append({"deal_id": pd.get("dealId"), "epic": str(mk.get("epic") or ""),
+                    "direction": pd.get("direction"), "size": pd.get("size"),
+                    "created": str(pd.get("createdDateUTC") or pd.get("createdDate") or "")[:10]})
+    return out
+
+
 def sweep(apply_changes=False, owner=None):
     from db_pool import get_db
     from hvf_web import server
@@ -74,16 +94,34 @@ def sweep(apply_changes=False, owner=None):
 
     db = get_db()
     try:
-        rows = db.run("select deal_id, ticker, status, placed_at::date, good_till "
+        rows = db.run("select deal_id, ticker, status, placed_at::date, good_till, epic, direction, size "
                       "from working_orders where status in ('PENDING','WATCHING') "
                       "order by ticker") or []
     finally:
         db.close()
 
-    stale = [r for r in rows if str(r[0] or "") not in live]
-    log.info("%d row(s) marked %s; %d of them are not at IG", len(rows), "/".join(STATUSES), len(stale))
-    for deal_id, tk, st, placed, gt in stale:
+    # WHICH ROWS ARE DEAD IS NOT DECIDED HERE (2026-09-11). This used to be `deal_id not in live`, which reads
+    # absence from IG as death -- but a FILLED order is also absent, and a WATCHING row carries a synthetic
+    # WATCH-... id that can never appear in an IG list at all. On 2026-09-04 that expired 85 rows: 12 were fills,
+    # put back by hand, and 19 were live WATCHING rows still inside good-till. working_order_state interprets
+    # absence once, for every caller, and only DEAD is swept.
+    import working_order_state as wos
+    positions = open_positions(owner)
+    recs = [{"deal_id": r[0], "ticker": r[1], "status": r[2], "placed_at": r[3],
+             "good_till": r[4], "epic": r[5], "direction": r[6], "size": r[7]} for r in rows]
+    states = wos.classify(recs, live, positions)
+
+    stale = [r for r in rows if states.get(str(r[0] or ""), (wos.LIVE, None))[0] == wos.DEAD]
+    kept = len(rows) - len(stale)
+    log.info("%d row(s) marked %s; %d are DEAD, %d left alone (live, filled or still watching)",
+             len(rows), "/".join(STATUSES), len(stale), kept)
+    for deal_id, tk, st, placed, gt, _e, _d, _s in stale:
         log.info("   %-10s %-9s placed %s  good-till %s", tk, st, placed, str(gt or "")[:10])
+    for r in rows:
+        state, fill = states.get(str(r[0] or ""), (wos.LIVE, None))
+        if state != wos.DEAD:
+            log.info("   keeping %-10s %-9s -> %s%s", r[1], r[2], state,
+                     f" (position {fill.get('deal_id')})" if fill else "")
 
     if not stale:
         log.info("nothing to sweep")

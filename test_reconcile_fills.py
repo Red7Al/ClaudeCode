@@ -58,11 +58,14 @@ def test_a_position_that_predates_the_order_is_never_its_fill():
     assert "no open position matches it" in unmatched[0]["why"]
 
 
+# The ambiguity RULES now live in working_order_state and are pinned by its own tests
+# (test_two_candidate_positions_leave_the_row_alone, test_two_rows_wanting_the_same_position_are_both_left_alone).
+# What these two assert is that this job honours the verdict rather than writing anyway.
+
 def test_two_candidate_positions_leave_the_order_pending():
     matched, unmatched = rf.pair_fills([_order("X")], [_position(deal="P-1"), _position(deal="P-2")])
 
-    assert matched == []
-    assert "2 open positions match it" in unmatched[0]["why"]
+    assert matched == [] and len(unmatched) == 1
 
 
 def test_two_orders_wanting_the_same_position_are_both_left_pending():
@@ -72,7 +75,6 @@ def test_two_orders_wanting_the_same_position_are_both_left_pending():
 
     assert matched == []
     assert len(unmatched) == 2
-    assert all("another pending order" in u["why"] for u in unmatched)
 
 
 def test_a_position_already_claimed_by_another_row_is_not_reused():

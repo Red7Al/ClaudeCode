@@ -48,75 +48,27 @@ import logging
 
 log = logging.getLogger("reconcile_fills")
 
-# The same tolerance ig_shim.reconcile_working_orders matches on, so the two cannot disagree about what counts as the
-# same size. A fill can differ slightly from the requested size; 0.011 covers the smallest dealable increments.
-SIZE_ABS_TOLERANCE = 0.011
-SIZE_PCT_TOLERANCE = 0.05
+def pair_fills(orders, positions, claimed=(), ig_order_ids=None):
+    """(matches, unmatched) for orders that have left IG's working-order book.
 
-
-def _num(v):
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _size_matches(order_size, position_size):
-    a, b = _num(order_size), _num(position_size)
-    if a is None or b is None:
-        return False
-    return abs(b - a) <= max(SIZE_ABS_TOLERANCE, abs(a) * SIZE_PCT_TOLERANCE)
-
-
-def pair_fills(orders, positions, claimed=()):
-    """(matches, unmatched) for PENDING orders that have left IG's working-order book.
-
-    `orders` is [{deal_id, ticker, epic, direction, size, placed_at}], `positions` is
-    [{deal_id, epic, direction, size, created}]. `claimed` holds position deal ids already recorded as some other
-    row's fill.
-
-    Pure, so the matching rule can be tested without IG or a database -- which is the only part of this worth
-    getting wrong, and the part a live test cannot safely explore.
+    A thin shell over working_order_state.classify, which is the ONLY place allowed to interpret absence from IG.
+    This function used to make that judgement itself, which is how three pieces of code came to hold four different
+    opinions about one column (see that module's header).
     """
-    claimed = set(str(c) for c in (claimed or []) if c)
+    import working_order_state as wos
+
+    ids = set(ig_order_ids or ())
+    states = wos.classify(orders, ids, positions, claimed=claimed)
     matches, unmatched = [], []
-    # Candidate positions per order, then the reverse, so a position two orders could claim is given to neither.
-    cands = {}
     for o in orders:
-        ok = []
-        for p in positions:
-            if str(p.get("deal_id") or "") in claimed:
-                continue
-            if str(p.get("epic") or "") != str(o.get("epic") or ""):
-                continue
-            if str(p.get("direction") or "") != str(o.get("direction") or ""):
-                continue
-            if not _size_matches(o.get("size"), p.get("size")):
-                continue
-            # A position that existed before the order was placed cannot be that order's fill.
-            placed, created = o.get("placed_at"), p.get("created")
-            if placed and created and created < placed:
-                continue
-            ok.append(p)
-        cands[str(o.get("deal_id"))] = ok
-    # A position wanted by more than one order is ambiguous for ALL of them.
-    wanted = {}
-    for did, ok in cands.items():
-        for p in ok:
-            wanted.setdefault(str(p.get("deal_id")), []).append(did)
-    for o in orders:
-        did = str(o.get("deal_id"))
-        ok = cands.get(did) or []
-        if len(ok) != 1:
-            unmatched.append({**o, "why": ("no open position matches it" if not ok
-                                           else f"{len(ok)} open positions match it")})
-            continue
-        p = ok[0]
-        if len(wanted.get(str(p.get("deal_id")), [])) != 1:
-            unmatched.append({**o, "why": "another pending order matches the same position"})
-            continue
-        matches.append({**o, "fill_deal_id": p.get("deal_id"), "filled_at": p.get("created"),
-                        "fill_size": p.get("size")})
+        state, fill = states.get(str(o.get("deal_id")), (wos.LIVE, None))
+        if state == wos.FILLED:
+            matches.append({**o, "fill_deal_id": fill.get("deal_id"), "filled_at": fill.get("created"),
+                            "fill_size": fill.get("size")})
+        else:
+            unmatched.append({**o, "why": {wos.DEAD: "no open position matches it",
+                                           wos.LIVE: "still live, or the match is ambiguous",
+                                           wos.WATCHING: "watching: no IG order was ever placed"}[state]})
     return matches, unmatched
 
 
@@ -146,7 +98,7 @@ def run(user=None, apply=False):
 
         db = get_db()
         try:
-            rows = db.run("""select deal_id, ticker, epic, direction, size, placed_at
+            rows = db.run("""select deal_id, ticker, epic, direction, size, placed_at, status, good_till
                              from working_orders
                              where status = 'PENDING' and deal_id is not null""") or []
             claimed = {str(r[0]) for r in (db.run(
@@ -154,10 +106,9 @@ def run(user=None, apply=False):
         finally:
             db.close()
 
-        # PAPER rows have no IG order and can never be reconciled against one.
         orders = [{"deal_id": r[0], "ticker": r[1], "epic": r[2], "direction": r[3],
-                   "size": r[4], "placed_at": r[5]}
-                  for r in rows if not str(r[0]).startswith("PAPER-")]
+                   "size": r[4], "placed_at": r[5], "status": r[6], "good_till": r[7]}
+                  for r in rows]
         summary["pending"] = len(orders)
         if not orders:
             return summary
@@ -166,11 +117,7 @@ def run(user=None, apply=False):
             live_ids = {str((wo.get("workingOrderData") or {}).get("dealId") or "")
                         for wo in (ig_shim.get_working_orders() or [])}
             raw = ig_shim.get_open_positions() or []
-
-        gone = [o for o in orders if str(o["deal_id"]) not in live_ids]
-        summary["still_at_ig"] = len(orders) - len(gone)
-        if not gone:
-            return summary
+        summary["still_at_ig"] = sum(1 for o in orders if str(o["deal_id"]) in live_ids)
 
         positions = []
         for p in raw:
@@ -179,13 +126,9 @@ def run(user=None, apply=False):
                               "direction": pd.get("direction"), "size": pd.get("size"),
                               "created": str(pd.get("createdDateUTC") or pd.get("createdDate") or "")[:19]})
 
-        # placed_at is a datetime and createdDateUTC an ISO string; compare on the date both agree about.
-        for o in gone:
-            o["placed_at"] = str(o["placed_at"] or "")[:10]
-        for p in positions:
-            p["created"] = (p["created"] or "")[:10]
-
-        matched, unmatched = pair_fills(gone, positions, claimed=claimed)
+        # Which rows are LIVE, FILLED or DEAD is not decided here -- see working_order_state. Date shapes are
+        # normalised there too, so nothing in this file needs to know that IG returns strings and pg returns dates.
+        matched, unmatched = pair_fills(orders, positions, claimed=claimed, ig_order_ids=live_ids)
         summary["matched"] = len(matched)
         summary["unmatched"] = [{"ticker": u["ticker"], "why": u["why"]} for u in unmatched]
         summary["rows"] = [{"ticker": m["ticker"], "deal_id": m["deal_id"],
