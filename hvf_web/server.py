@@ -148,6 +148,7 @@ logging.getLogger().addHandler(_RingHandler())
 # per-user secrets in gitignored data/web_users.json — nothing in source (user 2026-06-30: settings are
 # private, IG credentials coming). Tokens rotate automatically when a password changes.
 from hvf_web import web_users as _wu
+import account_scope          # which working_orders rows belong to which trading account (two namespaces)
 
 
 @app.route("/api/login", methods=["POST"])
@@ -1859,13 +1860,19 @@ def api_working_orders():
         from db_pool import get_db
         db = get_db()
         try:
-            # PENDING = live on IG (hidden for everyone — one trading account); DELETED (30 days) is
-            # PER-USER (user 2026-07-03: each login has their own data set) — a delete by Rich only
-            # hides the setup for Rich.
+            # BOTH HALVES ARE PER-USER (corrected 2026-09-12). This read PENDING for EVERY login on the
+            # grounds that there is "one trading account", and that premise is false: ig_shim.session_for
+            # gives each login its own IG session from its own credentials and acting_session refuses to
+            # trade on anyone else's account. Measured consequence -- user 'Rich' held four stale PENDING
+            # rows (DGE.L, SPX.L, ^AXJO, WTB.L, good_till 2026-07-06/07) and those four tickers were
+            # therefore missing from EVERYONE's Pre-orders tab from July until 2026-09-11.
+            # The owner appears under two user_id namespaces, so this is a set test -- see account_scope.
             _name = _wu.name_for_token(request.headers.get("X-Auth") or "")
-            rows = db.run("select distinct ticker from working_orders where status = 'PENDING' "
-                          "or (status = 'DELETED' and user_id = :u and updated_at > now() - interval '30 days')",
-                          u=_name or "-")
+            _ids = account_scope.row_identities(_name) if _name else ["-"]
+            rows = db.run("select distinct ticker from working_orders where user_id = any(:ids) and "
+                          "(status = 'PENDING' "
+                          " or (status = 'DELETED' and updated_at > now() - interval '30 days'))",
+                          ids=_ids)
             tickers = [r[0] for r in (rows or []) if r[0]]
         finally:
             db.close()
@@ -2768,14 +2775,22 @@ def api_order_ops():
         from db_pool import get_db
         db = get_db()
         try:
-            # Per-user visibility (user 2026-07-03): Alex (the account owner) sees everything incl.
-            # the system sessions' rows; any other login sees ONLY rows recorded under their name.
-            _where = "" if name == "Alex" else "where user_id = :u "
+            # Per-user visibility. The owner used to see EVERY row here, including other logins'
+            # (user 2026-07-03), which was the original intent -- but the account owner confirmed on
+            # 2026-09-12 that "anything that Rich has is of no relationship to other users and vice
+            # versa". So every login, owner included, now sees only its own account's rows.
+            #
+            # Measured before the change: of the 200 rows on the owner's screen, 4 were another
+            # login's and sat at the TOP (updated 2026-09-11), which is what made this tab confusing.
+            #
+            # The owner still needs BOTH identity namespaces -- the engine path writes a
+            # user_profiles UUID and the web path writes the login name. See account_scope.
             for r in (db.run(
                     "select placed_at::timestamp(0), updated_at::timestamp(0), ticker, direction, "
                     "entry_level, stop_level, limit_level, size, status, session, notes "
-                    f"from working_orders {_where}order by coalesce(updated_at, placed_at) desc limit 200",
-                    **({} if name == "Alex" else {"u": name})) or []):
+                    "from working_orders where user_id = any(:ids) "
+                    "order by coalesce(updated_at, placed_at) desc limit 200",
+                    ids=account_scope.row_identities(name)) or []):
                 rows.append({"placed_at": str(r[0] or ""), "updated_at": str(r[1] or ""), "ticker": r[2],
                              "direction": r[3], "entry": r[4], "stop": r[5], "target": r[6],
                              "size": r[7], "status": r[8], "session": r[9], "notes": r[10] or ""})
@@ -4471,12 +4486,23 @@ def api_fees():
                 "trades": len(txns), "wins": wins, "losses": losses,
                 "txns": txns, "txn_pnl": trade_pnl, "charges": chg_rows, "reconciled": True}
 
-    def _period(db, start, end, label):
+    def _period(db, start, end, label, viewer=None):
         # Fallback (no IG session): the app's own record — daily_pnl aggregate + trade_log transactions.
+        #
+        # SCOPED TO THE VIEWER'S OWN ACCOUNT (2026-09-12, account owner: "users tx and monies must NOT
+        # be mixed up"). This is the fee basis — 1%/mo of AUM and 10%/mo of profits — so an unscoped
+        # sum bills one account for another's realised profit. The primary path already reads the
+        # viewer's own IG history; only this fallback was pooling every user's ledger.
+        #
+        # daily_pnl.user_id and trade_log.user_id are UUID (unlike working_orders.user_id, which is
+        # text and carries two namespaces), so this uses account_scope.profile_ids. A SET, because a
+        # login may be bound to more than one trading profile; an unbound login yields an empty set
+        # and `= any('{}')` matches nothing — the safe answer for a fee basis.
+        _uids = account_scope.profile_ids(viewer)
         row = db.run("select coalesce(sum(total_pnl),0), coalesce(sum(trade_count),0), "
                      "coalesce(sum(win_count),0), coalesce(sum(loss_count),0) from daily_pnl "
-                     "where trade_date >= :a and trade_date <= :b",
-                     a=start.isoformat(), b=end.isoformat()) or [(0, 0, 0, 0)]
+                     "where trade_date >= :a and trade_date <= :b and user_id = any(:uids)",
+                     a=start.isoformat(), b=end.isoformat(), uids=_uids) or [(0, 0, 0, 0)]
         pnl, tc, wc, lc = row[0]
         # The transactions behind it — closed trades whose close date falls in the window.
         txns = []
@@ -4484,8 +4510,9 @@ def api_fees():
             for (tk, dr, sz, op, cp, pl, plp, oa, ca, cr) in (db.run(
                     "select ticker, direction, size, open_price, close_price, pnl, pnl_pct, "
                     "opened_at, closed_at, close_reason from trade_log "
-                    "where closed_at::date >= :a and closed_at::date <= :b order by closed_at",
-                    a=start.isoformat(), b=end.isoformat()) or []):
+                    "where closed_at::date >= :a and closed_at::date <= :b and user_id = any(:uids) "
+                    "order by closed_at",
+                    a=start.isoformat(), b=end.isoformat(), uids=_uids) or []):
                 txns.append({
                     "ticker": tk, "direction": dr,
                     "size": (float(sz) if sz is not None else None),
@@ -4594,9 +4621,12 @@ def api_fees():
             from db_pool import get_db
             db = get_db()
             try:
-                payload["prev_month"] = _period(db, first_prev, prev_month_end, first_prev.strftime("%B %Y"))
-                payload["last_month"] = _period(db, first_last, last_month_end, first_last.strftime("%B %Y"))
-                payload["this_month"] = _period(db, first_this, today, today.strftime("%B %Y") + " (so far)")
+                payload["prev_month"] = _period(db, first_prev, prev_month_end,
+                                                first_prev.strftime("%B %Y"), viewer=_viewer)
+                payload["last_month"] = _period(db, first_last, last_month_end,
+                                                first_last.strftime("%B %Y"), viewer=_viewer)
+                payload["this_month"] = _period(db, first_this, today,
+                                                today.strftime("%B %Y") + " (so far)", viewer=_viewer)
             finally:
                 db.close()
     except Exception as ex:
@@ -5270,8 +5300,12 @@ def api_ig_account():
             for row in (db.run("select ticker, epic from epic_lookup") or []):
                 if row[1]:
                     epic2tk[str(row[1])] = row[0]
+            # Scoped to the requesting login (2026-09-12). This screen shows THEIR IG account, so
+            # annotating it from another user's rows would attribute someone else's session and
+            # placement date to an order of theirs. working_orders is multi-tenant -- see account_scope.
             for row in (db.run("select epic, session, placed_at from working_orders "
-                                "where status = 'PENDING'") or []):
+                                "where status = 'PENDING' and user_id = any(:ids)",
+                                ids=account_scope.row_identities(name)) or []):
                 if row[0]:
                     epic2src[str(row[0])] = row[1]
                     epic2placed[str(row[0])] = str(row[2] or "")[:10]
@@ -5730,10 +5764,15 @@ def api_ig_closed():
             db = get_db()
             try:
                 rows = db.run(
+                    # Scoped to the requesting login (2026-09-12, account owner: "users tx and
+                    # monies must NOT be mixed up"). This is the closed-trade ledger shown when IG's
+                    # own history is unavailable; unscoped it showed every account's realised P&L.
+                    # trade_log.user_id is UUID -- see account_scope.profile_ids (a set: a login may
+                    # be bound to more than one trading profile, and an unbound one to none).
                     "select ticker, direction, size, open_price, close_price, pnl, pnl_pct, "
                     "opened_at, closed_at, close_reason from trade_log "
-                    "where closed_at >= :frm order by closed_at desc",
-                    frm=frm) or []
+                    "where closed_at >= :frm and user_id = any(:uids) order by closed_at desc",
+                    frm=frm, uids=account_scope.profile_ids(name)) or []
             finally:
                 db.close()
             fallback = []

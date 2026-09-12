@@ -39,6 +39,8 @@ import argparse
 import logging
 import sys
 
+import account_scope          # which working_orders rows belong to which trading account
+
 log = logging.getLogger("wo_sweep")
 
 STATUSES = ("PENDING", "WATCHING")
@@ -79,6 +81,35 @@ def open_positions(owner):
     return out
 
 
+def open_rows(owner=None):
+    """The PENDING/WATCHING rows this sweep is allowed to judge, for ONE account.
+
+    ONLY ROWS BELONGING TO THE ACCOUNT WHOSE BOOK WE READ (2026-09-12). live_deal_ids(owner) reads ONE
+    IG account, and this used to judge EVERY user's rows against it -- so another user's order was
+    "absent from IG" purely because we had looked in the wrong account. That is exactly what happened
+    at 2026-09-11 20:50:54: four rows belonging to 'Rich' were expired, and the note left on them
+    ("IG is not holding this order and no position matches it") was false -- they had never been at IG
+    at all. working_orders is multi-tenant; see account_scope.
+
+    A separate function so a test can call the REAL read. The first version of the tenant tests rewrote
+    this SQL inline, and deleting the predicate from the production query left them green.
+
+    id, NOT deal_id, identifies a row. deal_id is nullable and four live rows carried NULL on
+    2026-09-11 -- the old update built its list with str(None), searched for the literal string 'None',
+    matched nothing, and still logged "marked 4 row(s) EXPIRED".
+    """
+    from db_pool import get_db
+    db = get_db()
+    try:
+        return db.run("select id, deal_id, ticker, status, placed_at::date, good_till, epic, "
+                      "direction, size, user_id "
+                      "from working_orders where status in ('PENDING','WATCHING') "
+                      "and user_id = any(:ids) order by ticker",
+                      ids=account_scope.row_identities(owner)) or []
+    finally:
+        db.close()
+
+
 def sweep(apply_changes=False, owner=None):
     from db_pool import get_db
     from hvf_web import server
@@ -92,16 +123,7 @@ def sweep(apply_changes=False, owner=None):
         return 1
     log.info("IG is holding %d working order(s)", len(live))
 
-    db = get_db()
-    try:
-        # id, NOT deal_id, is what identifies a row. deal_id is nullable and four live rows carried NULL
-        # on 2026-09-11 -- the old update built its list with str(None), searched for the literal string
-        # 'None', matched nothing, and still logged "marked 4 row(s) EXPIRED".
-        rows = db.run("select id, deal_id, ticker, status, placed_at::date, good_till, epic, direction, size "
-                      "from working_orders where status in ('PENDING','WATCHING') "
-                      "order by ticker") or []
-    finally:
-        db.close()
+    rows = open_rows(owner)
 
     # WHICH ROWS ARE DEAD IS NOT DECIDED HERE (2026-09-11). This used to be `deal_id not in live`, which reads
     # absence from IG as death -- but a FILLED order is also absent, and a WATCHING row carries a synthetic
@@ -111,7 +133,8 @@ def sweep(apply_changes=False, owner=None):
     import working_order_state as wos
     positions = open_positions(owner)
     recs = [{"id": r[0], "deal_id": r[1], "ticker": r[2], "status": r[3], "placed_at": r[4],
-             "good_till": r[5], "epic": r[6], "direction": r[7], "size": r[8]} for r in rows]
+             "good_till": r[5], "epic": r[6], "direction": r[7], "size": r[8],
+             "user_id": r[9]} for r in rows]
     states = wos.classify(recs, live, positions)
 
     stale = [rec for rec, (state, _f) in zip(recs, states) if state == wos.DEAD]
@@ -136,10 +159,14 @@ def sweep(apply_changes=False, owner=None):
     db = get_db()
     try:
         ids = [int(rec["id"]) for rec in stale]
+        # The owner predicate is repeated on the WRITE deliberately. The read above is already scoped,
+        # so this can never match anything extra -- it is here so that a future change to the read
+        # cannot turn this into a cross-account write. Cheap, and the failure it guards was real.
         db.run("update working_orders set status = 'EXPIRED', "
                "notes = coalesce(notes, '') || ' | swept: IG is not holding this order and no position "
                "matches it', updated_at = now() "
-               "where id = any(:ids) and status in ('PENDING','WATCHING')", ids=ids)
+               "where id = any(:ids) and status in ('PENDING','WATCHING') and user_id = any(:own)",
+               ids=ids, own=account_scope.row_identities(owner))
         # COUNT WHAT CHANGED, don't report what was intended. The previous version logged the size of its
         # own to-do list, so when the update matched nothing it still reported success -- which is how this
         # stayed broken through the one run it ever had.

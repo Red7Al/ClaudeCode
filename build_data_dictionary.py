@@ -122,9 +122,12 @@ NOTES = {
     "x_publications": ("What has been posted to X.", "publish_one_to_x.", ""),
     "x_draft_state": ("Drafted X posts awaiting review.", "intraday_signals.", ""),
     "login_attempts": ("Throttling state for failed logins.", "login_throttle.", ""),
-    "user_profiles": ("Engine-side trading profiles.", "run_session.",
-                      "profiles.name ('Owner') is NOT a web login. trading_limits.login_for_profile maps "
-                      "one to the other by USER ID -- never by guessing from the name."),
+    "user_profiles": ("Engine-side trading profiles -- the accounts that hold positions and money.",
+                      "run_session; the `login` binding by an administrator.",
+                      "`name` ('Owner') is NOT a web login. `login` IS: it binds this profile to a web "
+                      "login and account_scope is the only thing allowed to read it. NULL login means "
+                      "DELIBERATELY UNBOUND -- nobody may act on that profile (Wife and Son, both on "
+                      "PLACEHOLDER IG account ids). Never guess a binding from the name."),
     "web_best_settings_history": ("Snapshots of the Best Settings recommendation over time.",
                                   "The web app when a recommendation is recorded.", ""),
     "macro_snapshot": ("Macro indicators.", "commodity_macro / FRED pulls.", ""),

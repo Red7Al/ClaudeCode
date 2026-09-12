@@ -112,7 +112,12 @@ logging.basicConfig(
 log = logging.getLogger("run_session")
 
 
-OWNER_USER_ID = "770a76b5-0e84-460b-b575-186c724dabdd"
+import account_scope as _account_scope     # which rows belong to which user; owns the login<->profile binding
+
+# The profile a scheduled session runs as, kept under its historic name because it is this module's
+# public default. account_scope is the single definition; see DEFAULT_JOB_PROFILE_ID there for why a
+# default argument uses a constant rather than reading the binding table.
+OWNER_USER_ID = _account_scope.DEFAULT_JOB_PROFILE_ID
 
 
 def _size_skip_reason(epic, ticker: str) -> str:
@@ -587,13 +592,20 @@ def run_monitor(session_name: str = "AUS_MONITOR"):
         today_count = conn2.run(
             """select
                  (select count(*) from trade_log
-                    where session like :g and date(opened_at) = current_date)
+                    where session like :g and date(opened_at) = current_date
+                      and user_id = any(:uids))
                + (select count(*) from positions
-                    where session like :g and date(opened_at) = current_date)
+                    where session like :g and date(opened_at) = current_date
+                      and user_id = any(:uids))
                + (select count(*) from working_orders
                     where session like :g and status = 'PENDING'
-                      and date(placed_at) = current_date)""",
-            g=_grp + "%"
+                      and date(placed_at) = current_date
+                      and user_id = any(:ids))""",
+            g=_grp + "%",
+            # All three sub-selects owner-scoped 2026-09-12: another user's trade must not consume
+            # this account's session cap. working_orders.user_id is TEXT and carries both identity
+            # namespaces; positions/trade_log.user_id are UUID. See account_scope.
+            ids=_account_scope.row_identities(), uids=_account_scope.row_profile_ids()
         )
         db_tickers = {r[0] for r in conn2.run("select ticker from positions")}
         conn2.close()

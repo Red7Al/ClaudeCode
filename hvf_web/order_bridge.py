@@ -28,6 +28,8 @@ import json
 import logging
 import os
 
+import account_scope          # which working_orders rows belong to which trading account
+
 log = logging.getLogger("order_bridge")
 
 BRIDGE_INTERVAL_H = 2          # user 2026-06-30: "every couple of hours as live prices move"
@@ -79,7 +81,7 @@ def _candidates() -> list:
     return out
 
 
-def _already_working() -> set:
+def _already_working(owner: str = None) -> set:
     """Tickers we must not place another order on: a live working order, OR an open position.
 
     THE POSITION HALF WAS MISSING UNTIL 2026-09-04, and was being covered by accident. This read only
@@ -97,7 +99,14 @@ def _already_working() -> set:
         from db_pool import get_db
         db = get_db()
         try:
-            rows = db.run("select distinct ticker from working_orders where status in ('PENDING','WATCHING')")
+            # SCOPED TO THE ACCOUNT THIS BRIDGE PLACES FOR (2026-09-12). It was unscoped, and
+            # working_orders is multi-tenant: ig_shim.session_for gives every login its own IG session.
+            # Measured -- user 'Rich' held four PENDING rows (DGE.L, SPX.L, ^AXJO, WTB.L) with good_till
+            # 2026-07-06/07 that were never expired, and this guard skipped those four tickers for the
+            # owner from July until 2026-09-11. Another user's order is not a reason not to place ours.
+            rows = db.run("select distinct ticker from working_orders "
+                          "where status in ('PENDING','WATCHING') and user_id = any(:ids)",
+                          ids=account_scope.row_identities(owner))
             skip |= {r[0] for r in (rows or [])}
         finally:
             db.close()

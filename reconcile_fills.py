@@ -46,6 +46,8 @@
 import argparse
 import logging
 
+import account_scope          # which working_orders rows belong to which trading account
+
 log = logging.getLogger("reconcile_fills")
 
 def pair_fills(orders, positions, claimed=(), ig_order_ids=None):
@@ -71,16 +73,38 @@ def pair_fills(orders, positions, claimed=(), ig_order_ids=None):
     return matches, unmatched
 
 
-def _mark_filled(db, deal_id, fill_deal_id, filled_at):
-    """FILLED plus the fill's identity and IG's own timestamp. Touches no other column."""
+def pending_rows(db, owner=None):
+    """The PENDING rows with an IG deal id that this pass may judge, for ONE account.
+
+    Scoped to the account whose IG book is read (2026-09-12). working_orders is multi-tenant --
+    ig_shim.session_for gives each login its own IG session -- so judging another user's order against
+    this account's book asks the wrong broker about it and reads "absent" as meaningful.
+
+    A separate function so a test can call the REAL read rather than a copy of its SQL.
+    """
+    return db.run("""select deal_id, ticker, epic, direction, size, placed_at, status, good_till, user_id
+                     from working_orders
+                     where status = 'PENDING' and deal_id is not null
+                       and user_id = any(:own)""",
+                  own=account_scope.row_identities(owner)) or []
+
+
+def _mark_filled(db, deal_id, fill_deal_id, filled_at, owner=None):
+    """FILLED plus the fill's identity and IG's own timestamp. Touches no other column.
+
+    Owner-scoped (2026-09-12): the positions matched against came from ONE IG account, so a row
+    belonging to anyone else must not be marked filled by them. The read is scoped too -- this
+    predicate exists so a change there cannot turn this into a cross-account write.
+    """
     db.run("""update working_orders
                  set status = 'FILLED', updated_at = now(),
                      filled_at = coalesce(:v_when, now()),
                      fill_deal_id = coalesce(:v_fill, fill_deal_id),
                      notes = coalesce(notes || ' | ', '') ||
                              'fill reconciled by reconcile_fills ' || to_char(now(), 'YYYY-MM-DD')
-               where deal_id = :v_deal and status = 'PENDING'""",
-           v_when=filled_at, v_fill=str(fill_deal_id), v_deal=str(deal_id))
+               where deal_id = :v_deal and status = 'PENDING' and user_id = any(:own)""",
+           v_when=filled_at, v_fill=str(fill_deal_id), v_deal=str(deal_id),
+           own=account_scope.row_identities(owner))
 
 
 def run(user=None, apply=False):
@@ -97,16 +121,16 @@ def run(user=None, apply=False):
 
         db = get_db()
         try:
-            rows = db.run("""select deal_id, ticker, epic, direction, size, placed_at, status, good_till
-                             from working_orders
-                             where status = 'PENDING' and deal_id is not null""") or []
+            rows = pending_rows(db, user)
             claimed = {str(r[0]) for r in (db.run(
-                "select fill_deal_id from working_orders where fill_deal_id is not null") or [])}
+                "select fill_deal_id from working_orders where fill_deal_id is not null "
+                "and user_id = any(:own)", own=account_scope.row_identities(user)) or [])}
         finally:
             db.close()
 
         orders = [{"deal_id": r[0], "ticker": r[1], "epic": r[2], "direction": r[3],
-                   "size": r[4], "placed_at": r[5], "status": r[6], "good_till": r[7]}
+                   "size": r[4], "placed_at": r[5], "status": r[6], "good_till": r[7],
+                   "user_id": r[8]}
                   for r in rows]
         summary["pending"] = len(orders)
         if not orders:
@@ -149,7 +173,7 @@ def run(user=None, apply=False):
         try:
             for m in matched:
                 try:
-                    _mark_filled(db, m["deal_id"], m["fill_deal_id"], m["filled_at"])
+                    _mark_filled(db, m["deal_id"], m["fill_deal_id"], m["filled_at"], owner=user)
                     summary["filled"] += 1
                 except Exception as exc:
                     log.error("could not mark %s FILLED: %s", m.get("ticker"), exc)

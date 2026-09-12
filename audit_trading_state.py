@@ -39,6 +39,8 @@ import argparse
 import datetime as _dt
 import logging
 
+import account_scope          # which working_orders rows belong to which trading account
+
 log = logging.getLogger("trading_audit")
 
 
@@ -71,17 +73,25 @@ def _positions_from_ig(user):
     return out
 
 
-def open_working_rows():
-    """Every PENDING/WATCHING row, in the shape the checks and working_order_state expect."""
+def open_working_rows(owner=None):
+    """Every PENDING/WATCHING row FOR ONE ACCOUNT, in the shape the checks and working_order_state expect.
+
+    Scoped 2026-09-12: the checks compare these rows against one IG account's book (acting_session),
+    so including another user's rows would report a finding about an account we never looked at.
+    """
     from db_pool import get_db
     db = get_db()
     try:
-        rows = db.run("select id, deal_id, ticker, status, placed_at::date, good_till, epic, direction, size "
-                      "from working_orders where status in ('PENDING','WATCHING') order by ticker") or []
+        rows = db.run("select id, deal_id, ticker, status, placed_at::date, good_till, epic, direction, "
+                      "size, user_id "
+                      "from working_orders where status in ('PENDING','WATCHING') "
+                      "and user_id = any(:ids) order by ticker",
+                      ids=account_scope.row_identities(owner)) or []
     finally:
         db.close()
     return [{"id": r[0], "deal_id": r[1], "ticker": r[2], "status": r[3], "placed_at": r[4],
-             "good_till": r[5], "epic": r[6], "direction": r[7], "size": r[8]} for r in rows]
+             "good_till": r[5], "epic": r[6], "direction": r[7], "size": r[8],
+             "user_id": r[9]} for r in rows]
 
 
 def check_status_contradictions(recs, live_order_ids, positions):
@@ -148,7 +158,7 @@ def run(on_date=None, user=None, alert=True, now=None):
         user = user or server._OWNER
         on_date = on_date or _today_utc()
         positions = _positions_from_ig(user)
-        recs = open_working_rows()
+        recs = open_working_rows(owner=user)
         with ig_shim._IG_LOCK, ig_shim.acting_session(user):
             live = {str((wo.get("workingOrderData") or {}).get("dealId") or "")
                     for wo in (ig_shim.get_working_orders() or [])}

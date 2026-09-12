@@ -278,6 +278,38 @@ MIGRATIONS = [
         "ALTER TABLE working_orders ADD COLUMN IF NOT EXISTS proximity_pct numeric"
     ),
     (
+        # ── user_profiles.login: the web login ↔ trading profile binding (2026-09-12) ──────────────
+        #
+        # There are TWO user registries and, until now, NO join between them: `user_profiles` holds the
+        # trading identities (Owner / Wife / Son) and the web app holds the logins (Alex, Carl, Rich,
+        # Red7dp, KathrynH). `user_profiles.name` is "Owner", not "Alex", so nothing in the data said
+        # which login may act on which account -- the single binding existed only as a hard-coded UUID
+        # in ig_shim and run_session.
+        #
+        # That is the same defect one level up from the one this change set fixes: a fact about the
+        # system living in code, where adding a user means editing Python. It is now data.
+        #
+        # NULL means DELIBERATELY UNBOUND -- nobody may act on that profile. Wife and Son are unbound
+        # (both carry PLACEHOLDER IG account ids), which preserves the rule ig_shim already stated:
+        # "unknown profiles are deliberately unmanaged until an explicit binding is added".
+        "user_profiles: add login binding",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS login text"
+    ),
+    (
+        # Backfill the ONE binding that already existed in code, and only that one. Idempotent, and it
+        # never overwrites a binding an administrator has since set.
+        "user_profiles: bind the Owner profile to its web login",
+        "UPDATE user_profiles SET login = 'Alex' "
+        "WHERE id = '770a76b5-0e84-460b-b575-186c724dabdd' AND login IS NULL"
+    ),
+    (
+        # One login must not silently own two trading profiles: account_scope would scope a money read
+        # to both and the totals would merge. A partial unique index leaves NULL (unbound) unconstrained.
+        "user_profiles: one profile per login",
+        "CREATE UNIQUE INDEX IF NOT EXISTS user_profiles_login_uniq "
+        "ON user_profiles (login) WHERE login IS NOT NULL"
+    ),
+    (
         # Owner-scoped Let Winners Run binding (user 2026-08-22). ig_shim created these at RUNTIME, with a
         # DDL statement on the order-placement path, and they were declared in no schema file at all -- so a
         # database rebuilt from the schema of record had no column the working-order INSERT names, and that

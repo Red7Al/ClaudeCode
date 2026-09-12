@@ -170,7 +170,7 @@ def test_ONE_check_raising_does_not_make_the_others_report_all_clear(monkeypatch
     handler -- mutation testing showed that swallowing a check exception went undetected. Here the data
     loads fine and a single check throws: that check must produce a finding, not an empty list."""
     monkeypatch.setattr(ats, "_positions_from_ig", lambda user: [_pos()])
-    monkeypatch.setattr(ats, "open_working_rows", lambda: [])
+    monkeypatch.setattr(ats, "open_working_rows", lambda owner=None: [])
     monkeypatch.setattr(ats, "check_unresolvable_rows",
                         lambda recs: (_ for _ in ()).throw(RuntimeError("column vanished")))
     import ig_shim

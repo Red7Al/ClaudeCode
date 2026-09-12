@@ -36,6 +36,8 @@ import io
 import sys
 import logging
 
+import account_scope          # which working_orders rows belong to which trading account
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("working_orders_report")
 
@@ -79,8 +81,13 @@ def _dir_emoji(direction: str) -> str:
     return "▫️"
 
 
-def fetch_live() -> list:
-    """Working orders currently under management (PENDING or WATCHING)."""
+def fetch_live(owner: str = None) -> list:
+    """Working orders currently under management (PENDING or WATCHING), for ONE account.
+
+    Scoped 2026-09-12: this report goes to the owner's Slack channel, and working_orders is
+    multi-tenant (ig_shim.session_for gives every login its own IG session). Unscoped, another
+    user's orders were reported to the owner as though they were the owner's.
+    """
     from db_pool import get_db
     db = get_db()
     try:
@@ -89,13 +96,15 @@ def fetch_live() -> list:
                       limit_level, session, placed_at, good_till, paper_trade, user_id
                  from working_orders
                 where status in ('PENDING', 'WATCHING')
-                order by status, placed_at desc""")
+                  and user_id = any(:ids)
+                order by status, placed_at desc""",
+            ids=account_scope.row_identities(owner))
     finally:
         db.close()
 
 
-def fetch_today_changes() -> list:
-    """Working orders that moved to a terminal state TODAY."""
+def fetch_today_changes(owner: str = None) -> list:
+    """Working orders that moved to a terminal state TODAY, for ONE account (see fetch_live)."""
     from db_pool import get_db
     db = get_db()
     try:
@@ -105,7 +114,9 @@ def fetch_today_changes() -> list:
                  from working_orders
                 where status in ('FILLED', 'CANCELLED', 'EXPIRED')
                   and updated_at::date = current_date
-                order by updated_at desc""")
+                  and user_id = any(:ids)
+                order by updated_at desc""",
+            ids=account_scope.row_identities(owner))
     finally:
         db.close()
 

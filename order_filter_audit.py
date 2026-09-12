@@ -26,6 +26,8 @@
 
 import logging
 
+import account_scope          # which working_orders rows belong to which trading account
+
 log = logging.getLogger("order_filter_audit")
 
 # (limit key, metric field, human label). The metric name is the one stored by instrument_metrics.
@@ -57,12 +59,15 @@ def _durable_only(items):
     return [x for x in items if not any(m in x for m in BREAK_BAR_LABELS)]
 
 
-def placement_setups(tickers, db=None, statuses=("PENDING",)):
+def placement_setups(tickers, db=None, statuses=("PENDING",), owner=None):
     """{ticker: {rr, quality, ready_date}} for the setup each order was placed from.
 
     `statuses` selects which working_orders rows to read: PENDING for live orders, FILLED for the orders
     behind open positions. One definition for both, because the question -- which setup did this order
     come from -- is identical and a second copy is how two screens end up disagreeing.
+
+    `owner` scopes it to ONE account (default: the account owner). Added 2026-09-12 -- working_orders is
+    multi-tenant, so unscoped this attributed another user's placement date to the owner's audit.
 
     THE JOIN IS ready_date, NOT triggered_date. An order is placed when a setup becomes orderable; the
     break comes later, so a trigger-based join cannot select the setup the order came from -- that row's
@@ -76,8 +81,10 @@ def placement_setups(tickers, db=None, statuses=("PENDING",)):
     try:
         placed = {}
         for tk, p in (db.run("select ticker, max(placed_at)::date from working_orders "
-                             "where status = any(:st) and placed_at is not null group by ticker",
-                             st=list(statuses)) or []):
+                             "where status = any(:st) and placed_at is not null "
+                             "and user_id = any(:ids) group by ticker",
+                             st=list(statuses),
+                             ids=account_scope.row_identities(owner)) or []):
             placed[tk] = p
         if not placed:
             return {}
@@ -173,7 +180,7 @@ def check_one(rec, metrics, limits, gate_ok, at_trigger=False):
                         ("STALE" if transient else ("UNKNOWN" if unknown else "OK")))}
 
 
-def trigger_state(tickers, db=None):
+def trigger_state(tickers, db=None, owner=None):
     """Each order's setup AS IT WAS ON ITS TRIGGER DATE, from squeeze_history.
 
     This is the question that actually matters (user 2026-08-29: "as volumes change after the trigger it
@@ -202,6 +209,7 @@ def trigger_state(tickers, db=None):
                          from (select distinct on (ticker) ticker, placed_at
                                  from working_orders
                                 where status = 'PENDING' and ticker = any(:t)
+                                  and user_id = any(:ids)
                                 order by ticker, placed_at desc) w
                          left join lateral (
                                 select triggered_date, quality, risk_reward, rvol, timeframe,
@@ -210,7 +218,7 @@ def trigger_state(tickers, db=None):
                                  where h.ticker = w.ticker and h.triggered_date is not null
                                    and h.triggered_date <= w.placed_at::date
                                  order by h.triggered_date desc limit 1) s on true""",
-                      t=list(tickers)) or []
+                      t=list(tickers), ids=account_scope.row_identities(owner)) or []
     finally:
         if own:
             db.close()
@@ -308,7 +316,7 @@ def audit_positions(user, positions, record_for=None, allows=None, limits=None, 
     tickers = [p["ticker"] for p in positions]
     breaks = break_state([(p["ticker"], p.get("opened")) for p in positions], db=db)
     try:
-        setups = placement_setups(tickers, db=db, statuses=("FILLED",))
+        setups = placement_setups(tickers, db=db, statuses=("FILLED",), owner=user)
     except Exception as exc:
         log.warning("placement setups unavailable for positions (%s)", exc)
         setups = {}
@@ -360,7 +368,8 @@ def audit(user, tickers=None, record_for=None, allows=None, limits=None, at_trig
         db = get_db()
         try:
             rows = db.run("select distinct ticker from working_orders "
-                          "where status = 'PENDING' order by ticker") or []
+                          "where status = 'PENDING' and user_id = any(:ids) order by ticker",
+                          ids=account_scope.row_identities(user)) or []
         finally:
             db.close()
         tickers = [r[0] for r in rows]
@@ -370,7 +379,7 @@ def audit(user, tickers=None, record_for=None, allows=None, limits=None, at_trig
     # from today's snapshot instead reports "not recorded" for every instrument without a live setup
     # today, which on 2026-09-03 was 45 of 61 orders: an artefact, not a finding.
     try:
-        placements = {} if at_trigger else placement_setups(tickers)
+        placements = {} if at_trigger else placement_setups(tickers, owner=user)
     except Exception as exc:
         # Degrade to the snapshot record rather than failing the whole audit; the verdict is then based
         # on today's setup, which is weaker but not wrong, and the log says so.
@@ -381,7 +390,7 @@ def audit(user, tickers=None, record_for=None, allows=None, limits=None, at_trig
         mcaps = _srv._mcap_map()
     except Exception:
         mcaps = {}
-    fired = trigger_state(tickers) if (at_trigger and tickers) else {}
+    fired = trigger_state(tickers, owner=user) if (at_trigger and tickers) else {}
     out = []
     for tk in tickers:
         rec = record_for(tk) or {}

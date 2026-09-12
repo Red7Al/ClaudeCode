@@ -203,6 +203,8 @@ from typing import Optional
 import requests
 import pg8000.native
 
+import account_scope as _account_scope   # which working_orders rows belong to which trading account
+
 from config import (
     EPIC_MAP,
     ATR_MULTIPLIERS,
@@ -437,10 +439,10 @@ def _web_login_for_trading_profile(profile_id: str | None) -> str | None:
     maps to Alex today; unknown profiles are deliberately unmanaged until an explicit binding is added.
     """
     # Kept as an explicit compatibility mapping rather than renaming the database profile or rewriting
-    # positions/trade history.  The UUID is the stable owner identity already used by run_session.py.
-    if str(profile_id or "") == "770a76b5-0e84-460b-b575-186c724dabdd":
-        return _OWNER_LOGIN
-    return None
+    # positions/trade history. The binding itself lives in account_scope, which is the one definition of
+    # the owner identity -- this file held a third copy of that UUID until 2026-09-12.
+    from account_scope import login_for_profile
+    return login_for_profile(profile_id)
 
 
 def _resolve_ig_creds(login: str):
@@ -1434,22 +1436,34 @@ def check_circuit_breakers(user_id: str, ticker: str, session_name: str = None,
         db = get_db()
         try:
             inst_n, sess_n = db.run(
+                # ALL THREE SUB-SELECTS ARE OWNER-SCOPED (2026-09-12). Another user's trade must not
+                # consume this account's per-instrument or per-session cap -- the accounts are
+                # separate at IG (ig_shim.session_for) and their books have no bearing on each other.
+                # Note the two parameters: working_orders.user_id is TEXT and carries both identity
+                # namespaces, while positions/trade_log.user_id are UUID. See account_scope.
                 """select
                      (select count(*) from trade_log
-                        where ticker = :t and date(opened_at) = current_date)
+                        where ticker = :t and date(opened_at) = current_date
+                          and user_id = any(:uids))
                    + (select count(*) from positions
-                        where ticker = :t and date(opened_at) = current_date)
+                        where ticker = :t and date(opened_at) = current_date
+                          and user_id = any(:uids))
                    + (select count(*) from working_orders
                         where ticker = :t and status = 'PENDING'
-                          and date(placed_at) = current_date),
+                          and date(placed_at) = current_date
+                          and user_id = any(:ids)),
                      (select count(*) from trade_log
-                        where session like :g and date(opened_at) = current_date)
+                        where session like :g and date(opened_at) = current_date
+                          and user_id = any(:uids))
                    + (select count(*) from positions
-                        where session like :g and date(opened_at) = current_date)
+                        where session like :g and date(opened_at) = current_date
+                          and user_id = any(:uids))
                    + (select count(*) from working_orders
                         where session like :g and status = 'PENDING'
-                          and date(placed_at) = current_date)""",
-                t=ticker, g=(grp + "%") if grp else "%"
+                          and date(placed_at) = current_date
+                          and user_id = any(:ids))""",
+                t=ticker, g=(grp + "%") if grp else "%",
+                ids=_account_scope.row_identities(), uids=_account_scope.row_profile_ids()
             )[0]
         finally:
             db.close()
@@ -2853,11 +2867,18 @@ def reconcile_working_orders() -> dict:
         db = get_db()
         try:
             rows = db.run(
+                # SCOPED TO THE OWNER (2026-09-12). This reconciles against the module-global IG
+                # session -- the owner's account -- and can mark a row CANCELLED or EXPIRED. Unscoped
+                # it judged every user's rows against one account's book, so another user's live order
+                # read as "gone from IG" purely because we asked the wrong broker. That exact mistake
+                # was made by run_working_order_sweep on 2026-09-11. See account_scope.
                 """select deal_id, deal_ref, user_id, ticker, epic, direction, size,
                           entry_level, stop_level, limit_level, otype, session,
                           signal_summary, good_till, hvf_type, paper_trade,
                           lwr_owner_login, lwr_account_fingerprint
-                   from   working_orders where status in ('PENDING','WATCHING')""")
+                   from   working_orders where status in ('PENDING','WATCHING')
+                     and  user_id = any(:ids)""",
+                ids=_account_scope.row_identities())
         finally:
             db.close()
         if not rows:

@@ -23,6 +23,8 @@ import logging
 import os
 import sys
 
+import account_scope          # which working_orders rows belong to which trading account
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(message)s",
@@ -132,9 +134,9 @@ def main():
             SELECT MAX(sl2.session_time) FROM signal_log sl2
             WHERE sl2.ticker = wo.ticker AND sl2.session_time <= wo.placed_at
           )
-        WHERE wo.status = 'PENDING'
+        WHERE wo.status = 'PENDING' AND wo.user_id = any(:ids)
         ORDER BY wo.placed_at DESC
-    """)
+    """, ids=account_scope.row_identities())
     conn.close()
 
     cols = ["deal_id","deal_ref","ticker","direction","size",

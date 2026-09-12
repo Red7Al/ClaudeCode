@@ -329,6 +329,7 @@
 # ======================================================================================================================
 
 import os
+import account_scope                        # which working_orders rows belong to which trading account
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 from dotenv import load_dotenv; load_dotenv(override=True)
 import logging
@@ -2546,12 +2547,19 @@ def run_us_monitor(notify_slack: bool = True) -> list:
         today_count = conn.run(
             """select
                  (select count(*) from trade_log
-                    where session like 'US%' and date(opened_at) = current_date)
+                    where session like 'US%' and date(opened_at) = current_date
+                      and user_id = any(:uids))
                + (select count(*) from positions
-                    where session like 'US%' and date(opened_at) = current_date)
+                    where session like 'US%' and date(opened_at) = current_date
+                      and user_id = any(:uids))
                + (select count(*) from working_orders
                     where session like 'US%' and status = 'PENDING'
-                      and date(placed_at) = current_date)"""
+                      and date(placed_at) = current_date
+                      and user_id = any(:ids))""",
+            # All three sub-selects owner-scoped 2026-09-12: another user's trade must not consume
+            # this account's session cap. working_orders.user_id is TEXT and carries both identity
+            # namespaces; positions/trade_log.user_id are UUID. See account_scope.
+            ids=account_scope.row_identities(), uids=account_scope.row_profile_ids()
         )
         conn.close()
     except Exception as e:
