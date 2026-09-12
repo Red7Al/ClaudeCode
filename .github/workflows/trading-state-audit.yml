@@ -1,0 +1,68 @@
+name: Trading State Audit (did the jobs actually do anything? 2026-09-12)
+
+# Asserts EFFECTS, not exit codes. Every defect found in the week to 2026-09-12 looked healthy from outside:
+# the auto-closer ran 300 green passes and closed nothing, the sweep logged "marked 4 row(s) EXPIRED" and wrote
+# none of them, Scanner Snapshot Publish reported success through a two-week outage. Each ran, exited zero, and
+# did not do its job, and nothing compared the outcome against what should have happened.
+#
+# Three checks, all derived from state that already exists -- nothing new is recorded to make this possible:
+#   1. a working_orders row whose stored status contradicts what IG says it is (the reconcile or the sweep
+#      did not run) -- the Order Bridge builds its skip-list from exactly these rows;
+#   2. a row with neither deal_id nor good_till, which can never be resolved and would block the bridge for ever;
+#   3. a position opened today, whose exchange has closed, still open, whose stored break bar FAILS the volume
+#      tests with nothing missing -- the closer's own rule saying close, and the account saying open.
+#
+# 22:30 UTC Mon-Fri: after the last close in the universe (New York, 20:00 UTC -- measured across 1,659
+# instruments, nine distinct closing instants, earliest 06:12) and after the Data Quality Audit at 22:15, so the
+# day being judged is complete. Scoped to ONE day, so a miss is reported once rather than re-reported for ever.
+#
+# It posts through notify.alert_system_error, which routes via notify._send and therefore honours the per-channel
+# slack_enabled switch. It also EXITS NON-ZERO on any finding, so the run goes red rather than passing quietly --
+# a silent green tick is what hid all of the above.
+#
+# No schedule: block — GitHub-native cron is banned; timing lives on cron-job.org via setup_cronjobs.JOBS.
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Day to judge (YYYY-MM-DD, blank = today UTC)'
+        required: false
+        default: ''
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: trading-state-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+
+      # No continue-on-error: a finding MUST turn this run red. This is the one job whose whole purpose is
+      # to stop a failure looking like a success.
+      - name: Audit the trading state
+        env:
+          IG_API_KEY:           ${{ secrets.IG_API_KEY }}
+          IG_USERNAME:          ${{ secrets.IG_USERNAME }}
+          IG_PASSWORD:          ${{ secrets.IG_PASSWORD }}
+          IG_ACCOUNT_ID:        ${{ secrets.IG_ACCOUNT_ID }}
+          SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
+        run: |
+          python audit_trading_state.py \
+            ${{ inputs.date && format('--date {0}', inputs.date) || '' }}

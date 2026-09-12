@@ -202,6 +202,12 @@ JOBS = [
     ("Daily Report",         "30 21 * * 1-5",    "trading-daily-report.yml"),
     ("Pre-Order Report",     "45 21 * * 1-5",    "trading-working-orders-report.yml"),  # engine-managed working_orders -> #arw-claude-orders (user 2026-06-16)
     ("Data Quality Audit",   "15 22 * * 1-5",    "trading-data-quality.yml"),  # Yahoo-vs-IG nightly audit (2026-06-12)
+    # Asserts the trading jobs had an EFFECT rather than exiting zero (2026-09-12). Working-order statuses that
+    # contradict IG, rows that can never be resolved, and positions the closer's own rule says should have closed
+    # and did not. 22:30 UTC: after the last close in the universe (New York 20:00) and after the Data Quality
+    # Audit, so the day it judges is complete. Goes RED and posts on any finding -- the whole point is that a
+    # failure must stop looking like a success.
+    ("Trading State Audit",  "30 22 * * 1-5",    "trading-state-audit.yml"),
     ("Price History Audit",  "0 23 * * 1-6",     "trading-price-audit.yml"),  # golden-dataset audit: YF refetch + IG-as-truth correction of the trailing 7d (user 2026-07-13). Mon-Sat 23:00 UTC, after Data Quality Audit; self-throttles on the shared IG allowance.
     ("Supabase Database Backup", "30 23 * * *", "supabase-backup.yml"),  # daily read-only logical backup; artifact retained 90 days (user 2026-08-06, P-25)
     # ── Safety net + proactive self-checks ────────────────────────────────────────────────────────────────────────────

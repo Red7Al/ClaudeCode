@@ -2735,8 +2735,24 @@ def _promote_watching_order(row) -> bool:
     Updates the row in-place (deal_id, deal_ref, status → PENDING).
     Returns True on success, False on failure (row stays WATCHING for next cycle).
     """
+    # *_extra ABSORBS ANY TRAILING COLUMNS. reconcile_working_orders selects 18 and this unpacked 16, so
+    # every promotion raised ValueError: too many values to unpack (expected 16, got 18) -- proven by
+    # execution against a real row, 2026-09-11. It was invisible because the call sits inside a bare
+    # `except Exception` that logs "WATCHING check failed" and leaves the row watching, so the only thing
+    # standing between this code and a live order placement was a bug. lwr_owner_login and
+    # lwr_account_fingerprint were added to that SELECT and this was not updated; naming them here would
+    # simply break again on the next column, so trailing fields are absorbed instead.
     (deal_id, deal_ref, user_id, ticker, epic, direction, size, entry,
-     stop, limit, otype, sess, sig_sum, good_till, hvf_type, paper) = row
+     stop, limit, otype, sess, sig_sum, good_till, hvf_type, paper, *_extra) = row
+
+    # A row with no deal_id CANNOT be promoted: the update below keys on it, so the order would be placed
+    # at IG and the row would not be updated -- leaving it WATCHING to be promoted again next cycle, i.e.
+    # duplicate live orders. Measured 2026-09-11: ^AXJO was a WATCHING row carrying NULL. Refused here,
+    # BEFORE any broker call.
+    if not deal_id:
+        log.error(f"{ticker}: WATCHING row has no deal_id; refusing to promote (it could not be updated "
+                  f"afterwards, which would risk a duplicate order)")
+        return False
 
     if paper:
         _set_working_order_status(deal_id, "PENDING",
