@@ -85,6 +85,21 @@ is the record the user watches. Full process in `skills_src/ah-change-control/SK
 - These files are **deliberately not tracked in git** (`.gitignore`). They reach the site through the
   deploy, which selects files by walking the working directory. Do not add them to git.
 
+## The other defect this repository keeps producing
+
+**One fact, several pieces of code each deciding what it means.** "Absent from IG's working-order book"
+meant three different things — filled, watching (no order ever placed), or dead — and three modules each
+interpreted it for themselves. The sweep read absence as death and on 2026-09-04 expired 85 rows — 12 of
+them filled orders and 19 live watching orders still inside good-till. Those were put back by hand, with
+the reason written into the note, and the code was left exactly as it was.
+
+`working_order_state.classify` is now the only thing allowed to interpret it, and both callers ask rather
+than decide. **When you find yourself inferring what a shared column means, check whether something else
+already infers it** — see AGENTS.md §"Before you write code", rule 1.
+
+Related: `working_orders.deal_id` is NULL on 45% of rows and `good_till` on 39%. Never key on either.
+`id` is the primary key and is unique and non-null.
+
 ## The defect this repository keeps producing
 
 **Correct, tested code that nothing ever calls.** Eight instances were found in one week: a sector
