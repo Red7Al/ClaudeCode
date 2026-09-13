@@ -604,7 +604,24 @@ MIN_RISK_REWARD = 3.0
 # Ratios above this are treated as bad level geometry rather than an advantage. A very
 # distant target combined with a tight stop can produce a mathematically valid but
 # non-actionable setup (for example KION at 10.6:1).
-MAX_RISK_REWARD = 10.0
+#
+# RAISED 10.0 -> 100.0 on 2026-09-13 at the account owner's instruction, EXPLICITLY "for now" --
+# this is an experiment, not a settled value, and it should be reviewed rather than left to become
+# permanent by inattention.
+#
+# WHY IT WAS RAISED. Measured 2026-09-13 over 33,588 resolved triggers: applying the 3.0-10.0 gate
+# LOWERED average return, 33,588 trades at +2.90% down to 21,758 at +2.36%, because the excluded
+# R:R 10+ band is the best-performing one at +5.03% on 7,841 trades (t = 11.4 against the rest).
+# The cap was cutting off the strongest setups.
+#
+# WHAT THE CAP WAS ALSO DOING, and why this needs watching. It suppressed absurd backtest headlines:
+# test_performance.py records that "filters reward a high ratio, which is where 9844% growth came
+# from". A high ratio can come from real geometry OR from a bad target level, and this constant did
+# not distinguish them -- it just refused both. Raising it re-admits both, so any performance figure
+# quoted from here on must be checked against the geometry that produced it, not taken at face value.
+# The durable fix is to validate the TARGET, so that implausible geometry is rejected on its own
+# merits and a genuine 15:1 setup is not thrown away with it.
+MAX_RISK_REWARD = 100.0
 
 # HVF minimum R:R threshold — patterns below this are DEVELOPING (watchlist only, not traded).
 # Intentionally aliased to MIN_RISK_REWARD so the two values are always in sync.

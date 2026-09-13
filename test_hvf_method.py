@@ -238,9 +238,18 @@ def case_invariant_selftest():
     v = check_hvf_invariants(bad)
     check("7 invariant checker flags negative target (OCDO.L class)",
           any("target" in x for x in v), str(v))
-    too_far = dict(bad, target=1.0, risk_reward=10.6)
+    # DERIVED FROM THE CAP, NOT HARD-CODED (2026-09-13). This was risk_reward=10.6 -- the KION example
+    # from config's own comment -- which tested the magic number rather than the rule, and broke the
+    # moment MAX_RISK_REWARD moved 10.0 -> 100.0. What matters is that the checker rejects anything
+    # ABOVE the configured cap and accepts anything at or below it, whatever the cap happens to be.
+    from config import MAX_RISK_REWARD as _cap
+    too_far = dict(bad, target=1.0, risk_reward=_cap * 1.06)
     v = check_hvf_invariants(too_far)
     check("7b invariant checker rejects extreme R:R", any("risk_reward" in x for x in v), str(v))
+    just_inside = dict(bad, target=1.0, risk_reward=_cap * 0.99)
+    v = check_hvf_invariants(just_inside)
+    check("7c invariant checker ACCEPTS R:R just inside the cap",
+          not any("risk_reward" in x for x in v), str(v))
 
 
 # ----------------------------------------------------------------------------------------------------------------------

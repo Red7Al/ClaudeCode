@@ -762,9 +762,19 @@ def test_the_analysis_population_enforces_the_documented_rr_cap():
     filters reward a high ratio, which is where "9844% growth" came from.
 
     A constant that documents a rule nobody applies is worse than no constant: it reads as a guarantee.
+
+    THE VALUE MOVED 10.0 -> 100.0 on 2026-09-13, at the account owner's instruction and explicitly
+    "for now". The pinned number stays pinned so a silent drift still fails; what is asserted below is
+    unchanged and is the point of this test -- that the cap is ENFORCED in the analysis population
+    rather than merely declared in config.
+
+    Measured before the change, over 33,588 resolved triggers: the 3.0-10.0 gate REDUCED average return
+    (+2.90% over all resolved, +2.36% over the gated subset) because the excluded R:R 10+ band is the
+    best performer at +5.03% on 7,841 trades. Note the tension with the paragraph above: a high ratio
+    can come from real geometry or from a bad target, and this constant never distinguished them.
     """
     import config
-    assert config.MAX_RISK_REWARD == 10.0
+    assert config.MAX_RISK_REWARD == 100.0
 
     server_src = (Path(__file__).parent / "hvf_web" / "server.py").read_text(encoding="utf-8")
     assert "from config import MAX_RISK_REWARD as _MAX_RR" in server_src
