@@ -3121,9 +3121,21 @@ def api_performance():
 _SQA_CACHE = {"ts": 0.0, "data": None}
 _SQA_TTL = 900   # 15 min — matches _PERF_TTL so the background warmer keeps every replay cache fresh (user 2026-08-03)
 _SQA_MIN_N = 10          # below this a bucket is reported but never called good or bad
-# Matches ig_shim's live tight-stop guard so the analysis population and the order path agree on what
-# is tradeable (user 2026-08-16).
-_MIN_STOP_DISTANCE = 0.005
+# Matches the live tight-stop guard so the analysis population and the order path agree on what is
+# tradeable (user 2026-08-16). DERIVED from config.TIGHT_STOP_MIN_PCT, never copied: that constant
+# declares itself the single source of truth (config.py ~751) and price_action.py sets each result's
+# tight_stop_intraday flag from it using the SAME denominator (stop / entry), which is the flag
+# ig_shim then refuses to place on. A hardcoded 0.005 here was a fourth copy of one number, and
+# editing the constant would have moved the trade path while leaving this analysis behind — the
+# defect this repository keeps producing, in its numeric form (2026-09-13).
+#
+# Imported lazily because this module imports config lazily throughout (there is no sys.path setup at
+# module-import time under the CGI wrapper), and with NO numeric fallback. A literal fallback is the
+# very thing being removed: it would answer with a different population instead of failing.
+def _min_stop_distance() -> float:
+    """Fraction of entry below which a stop is untradeable. Derived from config, never copied."""
+    from config import TIGHT_STOP_MIN_PCT
+    return float(TIGHT_STOP_MIN_PCT) / 100.0
 
 
 def _sqa_sector(ticker: str):
@@ -3320,10 +3332,12 @@ def _sqa_all_rows():
     # population they carry a HIGHER mean return (5.36% vs 3.22%) on a LOWER win rate (34.5% vs 38.3%),
     # which is the signature of a near-zero stop making the return look large against a trivial risk. That
     # is where "9844% growth" came from (user 2026-08-16: "the status of 9844% growth is nonsense").
-    try:
-        from config import MAX_RISK_REWARD as _MAX_RR
-    except Exception:
-        _MAX_RR = 10.0
+    # Hard import, no fallback. A `except: _MAX_RR = 10.0` sat here until 2026-09-13 and would have
+    # silently reverted this population to the OLD cap the moment the import hiccupped — answering with
+    # a different set of trades rather than failing. The cap is not a nicety to degrade gracefully from;
+    # it decides which rows the optimiser is allowed to see.
+    from config import MAX_RISK_REWARD as _MAX_RR
+    _min_stop = _min_stop_distance()
     try:
         raw = db.run(
             "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
@@ -3342,13 +3356,17 @@ def _sqa_all_rows():
         market = mk or s.get("market")
         if market and market in denied:             # market disabled app-wide (Markets Admin) — exclude
             continue
-        # Mirror the engine's own tight-stop guard (ig_shim: "skip trade when stop_distance < 0.5% of
-        # price"). Without it the analysis recommends configurations built on setups the order path would
-        # refuse to place -- a stop 0.2% from entry is inside spread and normal noise, and 209 of the
+        # Mirror the engine's own tight-stop guard. The guard that actually governs the trade path is
+        # price_action's `tight_stop_intraday` flag (set at DETECTION from config.TIGHT_STOP_MIN_PCT,
+        # stop / entry, every instrument), which ig_shim then refuses to place on — not ig_shim's own
+        # execution-time 4d check, which this comment used to name and which only applies at mid price
+        # >= 500pt. Same constant, same denominator, so the population and the order path agree.
+        # Without it the analysis recommends configurations built on setups the order path would refuse
+        # to place -- a stop 0.2% from entry is inside spread and normal noise, and 209 of the
         # 12-month rows were tighter than half a percent.
         if e and s_:
             try:
-                if abs(float(e) - float(s_)) / float(e) < _MIN_STOP_DISTANCE:
+                if abs(float(e) - float(s_)) / float(e) < _min_stop:
                     continue
             except (TypeError, ValueError, ZeroDivisionError):
                 pass

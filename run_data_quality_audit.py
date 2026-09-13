@@ -349,15 +349,19 @@ def _verify_epics(tickers: list):
 # compounds. Those are now excluded from the analysis population at read time (server.py _sqa_all_rows),
 # but exclusion is a bandage -- the rows are still being WRITTEN, so they are still worth reporting.
 _ABSURD_RETURN_PCT = 300.0        # a single squeeze returning more than this is a data fault, not a win
-_MIN_STOP_DISTANCE_PCT = 0.5      # matches ig_shim's live tight-stop guard and server._MIN_STOP_DISTANCE
+# The tight-stop bound is config.TIGHT_STOP_MIN_PCT, imported at use, NOT copied here. It was a literal
+# 0.5 until 2026-09-13 — a third copy of one number, in the audit whose whole job is to catch geometry
+# nobody else caught. Raising the constant would have quietly stopped this sweep reporting the rows it
+# newly forbade, which is the failure mode an audit is least able to survive.
 
 
 def _absurd_outcomes(days: int = 400) -> list:
     """Rows in squeeze_history whose numbers cannot be true. Read-only; returns dicts for the digest."""
-    try:
-        from config import MAX_RISK_REWARD as _max_rr
-    except Exception:
-        _max_rr = 10.0
+    # Hard imports, no numeric fallbacks. Both carried `except: <literal>` until 2026-09-13, so a config
+    # import hiccup would have left this sweep auditing against the OLD bounds and reporting a clean
+    # night -- the one outcome an audit must never produce by accident.
+    from config import MAX_RISK_REWARD as _max_rr
+    from config import TIGHT_STOP_MIN_PCT as _min_stop_pct
     out = []
     try:
         from db_pool import get_db
@@ -385,7 +389,7 @@ def _absurd_outcomes(days: int = 400) -> list:
             faults.append(f"return {float(ret):+.0f}%")
         if rr is not None and float(rr) > _max_rr:
             faults.append(f"R:R {float(rr):.1f} > {_max_rr:g}")
-        if stop_pct < _MIN_STOP_DISTANCE_PCT:
+        if stop_pct < _min_stop_pct:
             faults.append(f"stop {stop_pct:.2f}% from entry")
         # Geometry that cannot be right whatever the prices did: a long stopped above its entry, or
         # targeting below it (and the mirror for a short). Cheap, and it catches a whole class the

@@ -1,11 +1,15 @@
 """Offline regressions for Performance report calculations."""
 
 import datetime as dt
+import io
 import json
 import re
 import subprocess
 import tempfile
+import tokenize
 from pathlib import Path
+
+import pytest
 
 import ig_shim
 from hvf_web import server
@@ -752,6 +756,31 @@ def test_order_ops_rows_carry_the_setup_metrics_that_caused_them(monkeypatch):
     assert "quality" not in rows[2], "a ticker with no setup history must be left untouched, not zeroed"
 
 
+def _py_code_only(src: str) -> str:
+    """Python source with comments removed, for assertions about what the code DOES.
+
+    A banned pattern has to be searched for in code, not in the prose explaining why it was banned --
+    the first version of the assertion below failed on its own removal comment, which is the same trap
+    `_code_only` in test_max_rr_user_limit.py exists for on the JavaScript side. `tokenize` is used
+    rather than a regex because a `#` inside a string literal is not a comment.
+    """
+    out, last_row, last_col = [], 1, 0
+    for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+        srow, scol = tok.start
+        # Rebuild the original spacing. Joining bare token strings would collapse
+        # "from config import X" to "fromconfigimportX", and every assertion below would then pass
+        # vacuously -- a silently useless test, which is worse than the one this replaced.
+        if srow > last_row:
+            out.append("\n" * (srow - last_row))
+            last_col = 0
+        if scol > last_col:
+            out.append(" " * (scol - last_col))
+        if tok.type != tokenize.COMMENT:
+            out.append(tok.string)
+        last_row, last_col = tok.end
+    return "".join(out)
+
+
 def test_the_analysis_population_enforces_the_documented_rr_cap():
     """config.MAX_RISK_REWARD must actually be ENFORCED, not merely declared.
 
@@ -781,20 +810,61 @@ def test_the_analysis_population_enforces_the_documented_rr_cap():
     assert "and risk_reward >= 3 and risk_reward <= :maxrr" in server_src
     assert "maxrr=_MAX_RR" in server_src
 
+    # ...and NOT behind a fallback. `except: _MAX_RR = 10.0` sat next to that import until 2026-09-13,
+    # so an import hiccup reverted this population to the old cap while still reporting a result.
+    # Removed 2026-09-13; asserted here because enforcement that silently degrades is not enforcement.
+    assert "_MAX_RR = 10.0" not in _py_code_only(server_src), (
+        "the cap must not fall back to a literal -- that answers with a different population instead "
+        "of failing"
+    )
+    audit_src = (Path(__file__).parent / "run_data_quality_audit.py").read_text(encoding="utf-8")
+    assert "_max_rr = 10.0" not in _py_code_only(audit_src), (
+        "second instance, found by enumeration on 2026-09-13: the nightly audit decides which rows are "
+        "absurd, so a silent revert there hides exactly what it exists to report"
+    )
 
-def test_the_analysis_population_matches_the_engines_tight_stop_guard():
-    """A setup the order path would refuse must not appear in the numbers that recommend settings.
 
-    ig_shim skips a trade when the stop is under 0.5% of price -- inside spread and normal noise. The
-    analysis population had no such rule, so 209 of the 12-month rows carried a stop tighter than that
-    and the reports were recommending configurations built on trades the engine would never place.
+def test_one_definition_of_a_stop_too_tight_to_trade(monkeypatch):
+    """A setup the order path would refuse must not appear in the numbers that recommend settings --
+    and the rule deciding that must exist ONCE.
+
+    config.TIGHT_STOP_MIN_PCT declares itself the single source of truth. price_action sets each
+    result's `tight_stop_intraday` from it at detection (stop / entry, every instrument) and ig_shim
+    refuses to place on that flag, so it is the guard that actually governs the trade path.
+
+    Until 2026-09-13 the analysis population carried its own `_MIN_STOP_DISTANCE = 0.005` and the
+    nightly audit its own `_MIN_STOP_DISTANCE_PCT = 0.5` -- three definitions of one fact, all with the
+    same denominator. Editing the constant would have moved the trade path and left the other two
+    behind, silently. The previous version of this test asserted the literal string
+    `"_MIN_STOP_DISTANCE = 0.005"` was present in the source, which PINNED the duplicate in place and
+    would have failed the build on the correct fix: a test enforcing the defect it was written against.
+
+    So this asserts the DERIVATION, by moving the constant and proving the derived value follows. A
+    re-introduced literal passes the first assertion and fails the second.
     """
-    server_src = (Path(__file__).parent / "hvf_web" / "server.py").read_text(encoding="utf-8")
-    assert "_MIN_STOP_DISTANCE = 0.005" in server_src
-    assert "< _MIN_STOP_DISTANCE" in server_src
+    import config
 
+    assert server._min_stop_distance() == pytest.approx(config.TIGHT_STOP_MIN_PCT / 100.0)
+
+    monkeypatch.setattr(config, "TIGHT_STOP_MIN_PCT", 1.25)
+    assert server._min_stop_distance() == pytest.approx(0.0125), (
+        "the analysis population is not tracking config.TIGHT_STOP_MIN_PCT -- someone has copied the "
+        "number again"
+    )
+
+    server_src = _py_code_only(
+        (Path(__file__).parent / "hvf_web" / "server.py").read_text(encoding="utf-8"))
+    assert "from config import TIGHT_STOP_MIN_PCT" in server_src
+    assert "0.005" not in server_src, "the copied literal is back in the analysis population"
+    audit_src = _py_code_only(
+        (Path(__file__).parent / "run_data_quality_audit.py").read_text(encoding="utf-8"))
+    assert "from config import TIGHT_STOP_MIN_PCT" in audit_src
+
+    # The engine side reads the same constant rather than a comment describing it. The earlier check
+    # here was `assert "0.5%" in ig_src`, which prose alone satisfies.
     ig_src = (Path(__file__).parent / "ig_shim.py").read_text(encoding="utf-8")
-    assert "0.5%" in ig_src, "the engine-side guard this mirrors has moved -- keep the two in step"
+    assert "TIGHT_STOP_MIN_PCT" in ig_src
+    assert "stop_pct < TIGHT_STOP_MIN_PCT" in ig_src
 
 
 def test_back_test_and_best_settings_produce_the_same_numbers():
