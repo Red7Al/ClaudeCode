@@ -26,7 +26,13 @@ def fake_dataset(monkeypatch):
 
 @pytest.fixture
 def built(monkeypatch):
-    """A deterministic stand-in for the expensive build, so the tests exercise selection not replay."""
+    """A deterministic stand-in for the expensive build, so the tests exercise selection not replay.
+
+    Stands in for the PERFORMANCE build too (added 2026-09-13, when build() began precomputing that
+    payload alongside the windows). Without it every test in this file would run the real
+    _build_perf_payload -- 34.5 seconds against the live database -- turning an offline suite into a
+    live_state one by accident.
+    """
     calls = []
 
     def fake(years):
@@ -34,7 +40,12 @@ def built(monkeypatch):
         return {"rows": [{"ticker": f"T{years}", "perf": 1.5 * years}], "months": years * 12,
                 "generated": "2026-08-23 06:00 UTC"}
 
+    def fake_perf():
+        calls.append("perf")
+        return {"rows": [{"ticker": "PERF", "perf": 2.5}], "generated": "2026-08-23 06:00 UTC"}
+
     monkeypatch.setattr(server, "_winners_payload", fake)
+    monkeypatch.setattr(server, "_build_perf_payload", fake_perf)
     return calls
 
 
@@ -85,6 +96,89 @@ def test_each_window_is_stored_under_its_own_key(monkeypatch, fake_dataset, buil
 
 
 # ------------------------------------------------------------------------------------------------------
+# The /api/performance payload (owner 2026-09-13: "performance cards not showing if user not logged on")
+# ------------------------------------------------------------------------------------------------------
+
+def test_the_performance_payload_is_precomputed_alongside_the_windows(monkeypatch, fake_dataset, built):
+    """It must ride the SAME already-scheduled job. A payload built by a script nothing invokes is this
+    repository's signature defect, and the endpoint would stay stuck on its warming marker."""
+    docs = {}
+    _store(monkeypatch, docs)
+
+    assert run_winners_precompute.build([1, 3]) == 0
+    assert "perf" in built, "build() did not precompute the performance payload"
+    assert server._PERF_STORE_KEY in docs, "the performance payload was never stored"
+
+
+def test_the_endpoint_serves_the_stored_performance_payload_without_warming(monkeypatch, fake_dataset, built):
+    """THE ACTUAL BUG. /api/performance returned {"rows":[],"warming":true} forever, because its warm
+    thread needs 34.5s and does not survive the response on the shared host. With a stored payload the
+    endpoint must answer from it and never start a build at all."""
+    docs = {}
+    _store(monkeypatch, docs)
+    run_winners_precompute.build([1])
+
+    monkeypatch.setattr(server, "_PERF_CACHE", {"ts": 0.0, "data": None, "gzip": None})
+    kicked = []
+    monkeypatch.setattr(server, "_kick_perf_warm", lambda: kicked.append(1))
+
+    stored = server._perf_stored()
+    assert stored is not None and stored["rows"], "the stored performance payload was not readable"
+
+    monkeypatch.setattr(server._wu, "name_for_token", lambda t: "Alex")
+    with server.app.test_request_context("/api/performance", headers={"X-Auth": "x"}):
+        body = server.api_performance()
+    assert not kicked, "a build was started even though a precomputed payload was available"
+    assert server._PERF_CACHE["data"] is not None, "the stored payload was not adopted into the cache"
+    assert body is not None
+
+
+def test_a_performance_payload_from_another_dataset_is_rejected(monkeypatch, fake_dataset, built):
+    """Slow is acceptable; wrong is not. The same rule the winners windows follow."""
+    docs = {}
+    _store(monkeypatch, docs)
+    run_winners_precompute.build([1])
+    docs[server._PERF_STORE_KEY]["dataset"] = "2026-08-22T21:37:45Z"      # an earlier scan
+
+    assert server._perf_stored() is None
+
+
+def test_a_stale_performance_payload_is_rejected(monkeypatch, fake_dataset, built):
+    docs = {}
+    _store(monkeypatch, docs)
+    run_winners_precompute.build([1])
+    docs[server._PERF_STORE_KEY]["built_at"] = time.time() - (server._WINNERS_STORE_MAX_AGE + 60)
+
+    assert server._perf_stored() is None
+
+
+def test_an_empty_performance_population_is_never_stored(monkeypatch, fake_dataset):
+    """Storing zero rows would serve "no trades" quickly instead of the truth slowly -- the page would
+    look answered rather than broken, which is worse."""
+    docs = {}
+    _store(monkeypatch, docs)
+    monkeypatch.setattr(server, "_build_perf_payload", lambda: {"rows": [], "generated": ""})
+
+    assert run_winners_precompute.build_performance(fake_dataset) is False
+    assert server._PERF_STORE_KEY not in docs
+
+
+def test_a_failed_performance_build_does_not_stop_the_windows(monkeypatch, fake_dataset, built):
+    """One payload failing must not cost the others. build() reports the failure and stores the rest."""
+    docs = {}
+    _store(monkeypatch, docs)
+
+    def boom():
+        raise RuntimeError("replay exploded")
+    monkeypatch.setattr(server, "_build_perf_payload", boom)
+
+    assert run_winners_precompute.build([1, 3]) == 1        # exactly one failure, the performance one
+    assert server._winners_stored(1) is not None
+    assert server._winners_stored(3) is not None
+    assert server._PERF_STORE_KEY not in docs
+
+
+# ------------------------------------------------------------------------------------------------------
 # Fall back to the live build rather than serve something wrong
 # ------------------------------------------------------------------------------------------------------
 
@@ -130,24 +224,31 @@ def test_garbage_in_the_store_is_ignored(monkeypatch, fake_dataset, built):
 # The precompute must not store a wrong answer
 # ------------------------------------------------------------------------------------------------------
 
-def test_an_empty_population_is_never_stored(monkeypatch, fake_dataset):
+# These two use `built` only for its performance stub: without it build() would run the REAL
+# _build_perf_payload against the live database (measured at 34.5s), quietly turning this offline test
+# into a live_state one. Each then overrides the WINDOW build with the failure it is actually testing,
+# and asserts on the window keys rather than on `docs == {}`, because the performance payload is
+# legitimately stored in both cases -- one payload failing must not suppress another.
+
+def test_an_empty_population_is_never_stored(monkeypatch, fake_dataset, built):
     """Storing zero rows would serve "no trades" quickly instead of the truth slowly."""
     monkeypatch.setattr(server, "_winners_payload", lambda years: {"rows": [], "months": 12})
     docs = {}
     _store(monkeypatch, docs)
 
     assert run_winners_precompute.build([1]) == 1
-    assert docs == {}
+    assert server._winners_store_key(1) not in docs
 
 
-def test_a_failed_build_is_reported_and_not_stored(monkeypatch, fake_dataset):
+def test_a_failed_build_is_reported_and_not_stored(monkeypatch, fake_dataset, built):
     monkeypatch.setattr(server, "_winners_payload",
                         lambda years: (_ for _ in ()).throw(RuntimeError("database down")))
     docs = {}
     _store(monkeypatch, docs)
 
     assert run_winners_precompute.build([1, 3]) == 2
-    assert docs == {}
+    assert server._winners_store_key(1) not in docs
+    assert server._winners_store_key(3) not in docs
 
 
 def test_dry_run_writes_nothing(monkeypatch, fake_dataset, built):

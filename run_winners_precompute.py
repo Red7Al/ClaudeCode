@@ -75,6 +75,51 @@ def _dataset_key() -> str:
         return ""
 
 
+def build_performance(dataset: str, dry_run: bool = False) -> bool:
+    """Precompute the /api/performance payload. True on success.
+
+    ADDED 2026-09-13, owner report "performance cards not showing if user not logged on". That endpoint
+    answered {"rows":[],"warming":true} on every call, permanently: its background build needs 34.5
+    seconds (measured) while the request returns the marker immediately, so the thread has to outlive
+    the response and on the shared host it does not. Precomputing here removes the background thread
+    from the equation instead of trying to make it recoverable.
+
+    Deliberately built in THIS script rather than a new one: it is already invoked from the scanner
+    snapshot workflow immediately after publication, with the exact snapshot.json on disk, so the
+    dataset key cannot race. A new script would have needed its own schedule, and this repository's
+    signature defect is correct code that nothing ever calls.
+
+    Uses server._build_perf_payload -- the same function the endpoint calls -- so the stored copy cannot
+    drift into a lookalike build of a different population.
+    """
+    from hvf_web import server
+    import web_store
+
+    started = time.time()
+    try:
+        payload = server._build_perf_payload()
+    except Exception as ex:
+        log.error("  performance build FAILED: %s", ex)
+        return False
+    rows = len(payload.get("rows") or [])
+    took = time.time() - started
+    if not rows:
+        # Same rule as the windows above: storing an empty population would serve "no trades" quickly
+        # instead of the truth slowly, and the page would look answered rather than broken.
+        log.error("  performance build produced NO rows in %.1fs; refusing to store it", took)
+        return False
+    doc = {"payload": server._json_safe(payload), "dataset": dataset, "built_at": time.time(),
+           "rows": rows, "build_seconds": round(took, 1)}
+    if dry_run:
+        log.info("  performance: %d rows in %.1fs (dry run, not stored)", rows, took)
+        return True
+    if web_store.save_json_store(server._PERF_STORE_KEY, doc):
+        log.info("  performance: %d rows in %.1fs -> %s", rows, took, server._PERF_STORE_KEY)
+        return True
+    log.error("  performance: built %d rows but the store write FAILED", rows)
+    return False
+
+
 def build(years_list=WINDOWS, dry_run=False) -> int:
     from hvf_web import server
     import web_store
@@ -111,6 +156,8 @@ def build(years_list=WINDOWS, dry_run=False) -> int:
         else:
             log.error("  %d-year: built %d rows but the store write FAILED", years, rows)
             failures += 1
+    if not build_performance(dataset, dry_run=dry_run):
+        failures += 1
     return failures
 
 
@@ -125,12 +172,15 @@ def main() -> int:
     if a.years.strip():
         windows = tuple(max(1, min(4, int(y))) for y in a.years.split(",") if y.strip())
 
-    log.info("Precomputing winners payloads for %s", ", ".join(f"{y}y" for y in windows))
+    # +1 for the /api/performance payload, which build() now precomputes alongside the windows.
+    total = len(windows) + 1
+    log.info("Precomputing %s and the performance payload", ", ".join(f"{y}y winners" for y in windows))
     failures = build(windows, dry_run=a.dry_run)
     if failures:
-        log.error("%d of %d window(s) failed; the site falls back to building them live", failures, len(windows))
+        log.error("%d of %d payload(s) failed; the site falls back to building those live",
+                  failures, total)
         return 1
-    log.info("All %d window(s) stored.", len(windows))
+    log.info("All %d payload(s) stored.", total)
     return 0
 
 

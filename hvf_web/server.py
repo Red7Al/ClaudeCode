@@ -3078,6 +3078,46 @@ def _kick_perf_warm():
     _threading.Thread(target=_run, daemon=True).start()
 
 
+_PERF_STORE_KEY = "performance_rows_12m"
+
+
+def _perf_stored():
+    """A precomputed /api/performance payload, but only if it was built from the dataset now in play.
+
+    WHY THIS EXISTS (owner report 2026-09-13: "performance cards not showing if user not logged on").
+    /api/performance was answering {"rows":[],"warming":true} on EVERY call, forever. The background warm
+    it waits on needs 34.5 SECONDS (measured), while the request returns its marker immediately — so the
+    thread has to outlive the response, and on the shared host it does not. The marker therefore never
+    cleared and the page polled an answer that was never coming.
+
+    Making the warm claim expire would only retry a build that cannot finish. So this follows what every
+    SIBLING payload already does — winners_rows_1y, winners_rows_3y and best_settings_cards are all
+    precomputed into web_json_store by a scheduled job, and /api/performance was the odd one out for
+    building on demand. Built by run_winners_precompute.py, in the same workflow step, from the same
+    _build_perf_payload the endpoint itself calls, so a stored copy cannot drift into a lookalike build
+    of a different population (memory: results-winners-same-dataset).
+
+    Deliberately mirrors _winners_stored, including reusing its max age rather than declaring a second
+    definition of "too old". A missed, failed or stale precompute makes the page slow, never wrong.
+    """
+    try:
+        import web_store
+        doc = web_store.load_json_store(_PERF_STORE_KEY)
+    except Exception as ex:
+        log.warning(f"performance precompute unavailable ({ex}); building live")
+        return None
+    if not isinstance(doc, dict) or not isinstance(doc.get("payload"), dict):
+        return None
+    try:
+        if _time.time() - float(doc.get("built_at") or 0) > _WINNERS_STORE_MAX_AGE:
+            return None
+        if (doc.get("dataset") or "") != (_load_snapshot().get("generated_utc") or ""):
+            return None       # built from a different scan; the live build is the correct answer
+    except Exception:
+        return None
+    return doc["payload"]
+
+
 @app.route("/api/performance")
 def api_performance():
     """Every tradeable trigger over the LAST 12 MONTHS with its levels and realised/open outcome. This is
@@ -3100,6 +3140,14 @@ def api_performance():
     now = _time.time()
     if _PERF_CACHE["data"] is not None and now - _PERF_CACHE["ts"] < _PERF_TTL:
         return _perf_response(_PERF_CACHE["data"]) if authed else _public_perf_response()
+    # The precomputed copy, before falling back to warming one ourselves. On the shared host the
+    # background thread does not survive the response, so without this the marker below was permanent
+    # (owner 2026-09-13). Adopting it into _PERF_CACHE means the rest of this module — including the
+    # public projection and the gzip cache — is unchanged and cannot tell the difference.
+    stored = _perf_stored()
+    if stored is not None:
+        _PERF_CACHE.update(ts=now, data=stored, gzip=None)
+        return _perf_response(stored) if authed else _public_perf_response()
     _kick_perf_warm()
     if _PERF_CACHE["data"] is not None:
         return _perf_response(_PERF_CACHE["data"]) if authed else _public_perf_response()
