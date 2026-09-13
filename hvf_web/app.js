@@ -5218,7 +5218,12 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
              // never have had. Logged-in users need the token here or they lose the indicators too.
              fetch("/api/positions",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).catch(()=>({positions:{}})),
              fetch("/api/pubcounts").then(r=>r.json()).catch(()=>({pubcounts:{}})),
-             fetch("/api/working-orders").then(r=>r.json()).catch(()=>({tickers:[]})),
+             // X-Auth required from 2026-09-12. Server-side scoping landed without this header, so the route
+             // scoped to a sentinel and returned ZERO rows: IGWO was always empty and app.js:880 stopped
+             // suppressing tickers that already hold a live working order. Seeing too FEW rows is the
+             // dangerous direction for a duplicate guard — it offers a second order on an instrument the
+             // account already has. Measured 2026-09-12: 2 PENDING rows were exposed this way.
+             fetch("/api/working-orders",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).catch(()=>({tickers:[]})),
              fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({}))])
   .then(([j,p,pc,wo,cfg])=>{
     POS=p.positions||{}; PUB=pc.pubcounts||{}; IGWO=new Set(wo.tickers||[]);

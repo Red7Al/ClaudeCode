@@ -1801,11 +1801,18 @@ def api_positions():
     Promise.all still resolves and the page renders exactly as before -- it simply shows no position
     indicators, which a logged-out visitor should never have had.
     """
-    if not _wu.name_for_token(request.headers.get("X-Auth") or ""):
+    name = _wu.name_for_token(request.headers.get("X-Auth") or "")
+    if not name:
         return jsonify({"positions": {}}), 401
     counts = {}
     try:
         import ig_shim
+        # SCOPED TO THE CALLER from 2026-09-12. The 2026-08-25 fix above added the login check but still read
+        # the module-global session, so every logged-in user received the OWNER's live open book -- four of
+        # five logins saw an account they have no grant on. The auth check was the instance; this is the class.
+        # A user with no IG credentials of their own now correctly sees nothing, as the sibling routes do.
+        if ig_shim.session_for(name) is None:
+            return jsonify({"positions": {}})
         epic2tk = {}
         try:
             from db_pool import get_db
@@ -1818,7 +1825,7 @@ def api_positions():
                 db.close()
         except Exception:
             pass
-        with ig_shim._IG_LOCK:      # serialise vs a per-user place-order session swap (user 2026-07-03)
+        with ig_shim._IG_LOCK, ig_shim.acting_session(name):   # the CALLER's account, not the global session
             _positions = ig_shim.get_open_positions() or []
         for pos in _positions:
             mk = pos.get("market", {}) or {}
