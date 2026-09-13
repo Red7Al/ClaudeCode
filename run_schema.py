@@ -302,13 +302,19 @@ MIGRATIONS = [
         "UPDATE user_profiles SET login = 'Alex' "
         "WHERE id = '770a76b5-0e84-460b-b575-186c724dabdd' AND login IS NULL"
     ),
-    (
-        # One login must not silently own two trading profiles: account_scope would scope a money read
-        # to both and the totals would merge. A partial unique index leaves NULL (unbound) unconstrained.
-        "user_profiles: one profile per login",
-        "CREATE UNIQUE INDEX IF NOT EXISTS user_profiles_login_uniq "
-        "ON user_profiles (login) WHERE login IS NOT NULL"
-    ),
+    # REMOVED 2026-09-13: "user_profiles: one profile per login" declared
+    #     CREATE UNIQUE INDEX user_profiles_login_uniq ON user_profiles (login) WHERE login IS NOT NULL
+    # on the reasoning that one login owning two profiles would merge two accounts' money totals.
+    #
+    # That forbids a case the account owner requires: A PERSON MAY HOLD MORE THAN ONE ACCOUNT, and that
+    # was settled several sessions ago. Measured 2026-09-12 against live Supabase: the index does NOT
+    # exist (user_profiles carries only the id PK and the ig_account_id UNIQUE), so the declaration had
+    # never taken effect -- but run_schema is invoked by seven workflows, and the next run would have
+    # created it and silently re-imposed one-account-per-login.
+    #
+    # The merged-totals worry is real and is answered by REPORTING PER ACCOUNT, never by making the
+    # second account unrepresentable. account_scope.profile_ids() already returns a list for this reason.
+    # Do not re-add this index. See docs/ACCOUNT_ISOLATION_ARCHITECTURE.md finding 2.
     (
         # Owner-scoped Let Winners Run binding (user 2026-08-22). ig_shim created these at RUNTIME, with a
         # DDL statement on the order-placement path, and they were declared in no schema file at all -- so a
