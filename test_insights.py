@@ -43,6 +43,43 @@ def test_the_endpoint_never_returns_more_than_the_cap(monkeypatch):
     assert len(body["insights"]) == 2
 
 
+def test_the_market_cap_headline_only_claims_both_measures_when_both_agree():
+    """The headline used to hardcode "leads on both measures" while the band was chosen on win rate
+    alone, so it asserted an agreement it never checked.
+
+    No database here on purpose: the claim is about the SENTENCE, and a card that queries Supabase can
+    only be tested where Supabase is reachable. That is how the sibling tests below ended up
+    live_state, and how this class of defect stayed unguarded.
+    """
+    agree = {"label": "10–25bn", "win_pct": 42.3, "avg_return": 4.16, "n": 923}
+    out = server._mcap_headline(agree, agree)
+    assert "leads on both measures" in out
+    assert "42.3%" in out and "+4.16%" in out
+
+    # The case the old sentence got wrong: the top band by return is NOT the top band by win rate.
+    by_return = {"label": "250bn+", "win_pct": 28.0, "avg_return": 9.10, "n": 400}
+    by_win = {"label": "< 1bn", "win_pct": 51.0, "avg_return": 1.20, "n": 300}
+    out = server._mcap_headline(by_return, by_win)
+    assert "both measures" not in out, (
+        "the headline claimed both measures agree while the two leaders differ -- the exact false "
+        "statement this card shipped with"
+    )
+    assert "250bn+" in out and "< 1bn" in out and "disagree" in out
+
+
+def test_the_market_cap_card_is_ranked_on_return_not_win_rate():
+    """Win rate is inversely related to return in this population, so selecting the headline band on it
+    selects against returns. Asserted on the source because the builder needs a database; the SENTENCE
+    behaviour is covered without one by the test above."""
+    import re
+    from pathlib import Path
+    src = Path(__file__).parent.joinpath("hvf_web", "server.py").read_text(encoding="utf-8")
+    body = src.split("def _insight_mcap_bands")[1].split("\ndef ")[0]
+    body = "\n".join(re.sub(r"#.*$", "", ln) for ln in body.splitlines())
+    assert 'best = max(out, key=lambda b: b["avg_return"])' in body
+    assert 'best = max(out, key=lambda b: b["win_pct"])' not in body
+
+
 @pytest.mark.live_state
 def test_every_insight_publishes_its_own_verdict_and_the_statistic_behind_it():
     """A card that cannot say whether it is still supported is worse than no card.

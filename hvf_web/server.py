@@ -3121,6 +3121,10 @@ def api_performance():
 _SQA_CACHE = {"ts": 0.0, "data": None}
 _SQA_TTL = 900   # 15 min — matches _PERF_TTL so the background warmer keeps every replay cache fresh (user 2026-08-03)
 _SQA_MIN_N = 10          # below this a bucket is reported but never called good or bad
+# Advice is a RECOMMENDATION, so it carries a higher bar than "reportable". Both measured on the
+# 12-month population 2026-09-13 before being chosen -- see the advice block in api_squeeze_analysis.
+_SQA_ADVICE_MIN_N = 50   # the reporting floor of 10 let 36- and 37-trade buckets carry advice
+_SQA_ADVICE_LIFT = 1.5   # x baseline expectancy; "> baseline" alone admitted 29 buckets
 # Matches the live tight-stop guard so the analysis population and the order path agree on what is
 # tradeable (user 2026-08-16). DERIVED from config.TIGHT_STOP_MIN_PCT, never copied: that constant
 # declares itself the single source of truth (config.py ~751) and price_action.py sets each result's
@@ -3291,7 +3295,14 @@ def _sqa_buckets(rows, keyfn, label):
         never = sum(1 for r in rs if r["outcome"] == "NEVER_TRIGGERED")
         out.append({"dimension": label, "bucket": k, "never_triggered": never,
                     "resolved": seg["avail"], **seg})   # 'resolved' kept as the sample-size the UI shows
-    return sorted(out, key=lambda b: (b["win_pct"] is None, -(b["win_pct"] or 0)))
+    # Ranked on EXPECTANCY (£ per £10k at 2% risk), not win rate (user 2026-09-13). Win rate is
+    # inversely related to return in this population -- measured over 33,588 resolved triggers, R:R <3
+    # gives 39.9% positive at +1.74% while R:R 10+ gives 25.2% positive at +5.03% -- so ordering on win
+    # rate puts the WORST band first. On the 12-month population the R:R dimension headlined 3-5 at
+    # £97/10k while 20+ pays £1,242/10k, a 12.8x gap pointing the reader at the worst band.
+    # pnl_per_10k comes from r_mult (populated on 99.6% of rows) and is risk-adjusted, which average
+    # return is not: a 3:1 and a 20:1 risk the same and pay differently. Nulls sort last either way.
+    return sorted(out, key=lambda b: (b["pnl_per_10k"] is None, -(b["pnl_per_10k"] or 0)))
 
 
 def _sqa_band(v, edges, fmt="{}–{}"):
@@ -3492,13 +3503,22 @@ def api_squeeze_analysis():
         ]
         for label, fn in dims:
             payload["dimensions"].append({"name": label, "buckets": _sqa_buckets(rows12, fn, label)})
-        # Advice = buckets with a real sample that beat the baseline win rate by >= 10 points.
-        base_win = base.get("win_pct")
-        if base_win is not None:
+        # Advice = buckets with a real sample whose EXPECTANCY beats the baseline by >= 50%
+        # (user 2026-09-13; was "win rate >= baseline + 10 points", which selects against returns).
+        #
+        # Both numbers were measured before being chosen, not assumed. On the 12-month population
+        # (baseline £243/10k): "> baseline" alone admits 29 buckets, which is a list, not advice;
+        # >= 1.5x admits 4 -- the same count the win-rate rule produced, so the page keeps its shape --
+        # and 1.5x and 1.75x return the IDENTICAL set, so the threshold sits on a plateau rather than a
+        # cliff. The n >= 50 floor replaces _SQA_MIN_N (10) here and was chosen the same way: it drops
+        # exactly the two buckets that were carrying advice on 36 and 37 trades, and nothing else.
+        base_exp = base.get("pnl_per_10k")
+        if base_exp:
             for d in payload["dimensions"]:
                 for b in d["buckets"]:
-                    if b["enough"] and b["win_pct"] is not None and b["win_pct"] - base_win >= 10:
-                        payload["advice"].append({**b, "lift": round(b["win_pct"] - base_win, 1)})
+                    if (b["resolved"] >= _SQA_ADVICE_MIN_N and b["pnl_per_10k"] is not None
+                            and b["pnl_per_10k"] >= base_exp * _SQA_ADVICE_LIFT):
+                        payload["advice"].append({**b, "lift": round(b["pnl_per_10k"] / base_exp, 2)})
             payload["advice"].sort(key=lambda a: -a["lift"])
     except Exception as ex:
         log.warning(f"squeeze analysis failed: {ex}")
@@ -3798,8 +3818,15 @@ def api_volscore_report():
 _BEST_CACHE = {"ts": 0.0, "data": None}
 
 
-def _best_bucket(rows, keyfn, min_n=3):
-    """The bucket (by keyfn) with the highest average return, among buckets with >= min_n resolved trades."""
+def _best_bucket(rows, keyfn, min_n=10):
+    """The bucket (by keyfn) with the highest average return, among buckets with >= min_n resolved trades.
+
+    min_n was 3 until 2026-09-13, which let three trades name a quarter's best market on a page the
+    account owner reads -- thinner than the 19-trade cell already judged not actionable. Measured
+    before raising it: across 60 quarterly slots only 2 winners rested on under 10 trades, and at
+    min_n=10 NO quarter loses its winner, so the floor costs nothing and removes e.g. 2026 Q1's
+    "best market = Indices" decided on 4 trades.
+    """
     from collections import defaultdict
     g = defaultdict(list)
     for r in rows:
@@ -4916,6 +4943,27 @@ def _insight_direction_mix() -> dict:
     }
 
 
+def _mcap_headline(best: dict, best_win: dict) -> str:
+    """The market-cap card's headline, DERIVED from which band actually leads each measure.
+
+    "leads on both measures" used to be hardcoded into this sentence while the band was selected on win
+    rate alone, so the claim held only for as long as the two measures happened to agree -- and the
+    reason this card was re-ranked on 2026-09-13 is that in this population they routinely do not.
+    Measured that day, they did agree (10-25bn led both at 42.3% and +4.16%), which is exactly why the
+    defect was invisible: the sentence was true, and nothing would have announced the day it stopped
+    being. It now says "both" only when both are the same band, and otherwise names each measure's
+    leader and says plainly that they disagree.
+
+    Pure and string-only so it can be tested without a database, which is what the live card needs.
+    """
+    if best["label"] == best_win["label"]:
+        return (f"{best['label']} leads on both measures: {best['win_pct']}% of trades positive "
+                f"and {best['avg_return']:+.2f}% average return")
+    return (f"{best['label']} leads on average return at {best['avg_return']:+.2f}% "
+            f"({best['win_pct']}% of trades positive), while {best_win['label']} has the highest "
+            f"win rate at {best_win['win_pct']}% — the two measures disagree")
+
+
 def _insight_mcap_bands() -> dict:
     """Which market-cap band actually performed, over the last 12 months of resolved triggers."""
     from db_pool import get_db
@@ -4938,6 +4986,7 @@ def _insight_mcap_bands() -> dict:
     def in_band(mc, lo, hi):
         return mc >= lo and (hi is None or mc < hi)
 
+
     out = []
     for label, lo, hi in bands:
         vals = [r for mc, r in rows if in_band(mc, lo, hi)]
@@ -4949,7 +4998,12 @@ def _insight_mcap_bands() -> dict:
                     "avg_return": round(sum(vals) / len(vals), 2)})
     if not out:
         return {}
-    best = max(out, key=lambda b: b["win_pct"])
+    # Ranked on RETURN, not win rate (user 2026-09-13). Win rate is inversely related to return in this
+    # population, so selecting the "best" band on it selects against returns. Expectancy would be better
+    # still, but r_mult is not in this query's population -- it reads squeeze_history directly rather
+    # than through _sqa_seg -- and inventing a proxy for it here would be a guess.
+    best_win = max(out, key=lambda b: b["win_pct"])
+    best = max(out, key=lambda b: b["avg_return"])
     lo, hi = next((lo, hi) for lbl, lo, hi in bands if lbl == best["label"])
 
     # Significance against every OTHER PRICED instrument, not against the neighbouring band: the question
@@ -4979,8 +5033,7 @@ def _insight_mcap_bands() -> dict:
     return {
         "id": "mcap_bands",
         "title": "Which company size actually performed",
-        "headline": (f"{best['label']} leads on both measures: {best['win_pct']}% of trades positive "
-                     f"and {best['avg_return']:+.2f}% average return"),
+        "headline": _mcap_headline(best, best_win),
         "stat": f"win rate z = {abs(z):.1f}, return t = {abs(t):.1f}",
         "significant": abs(z) >= 2 and abs(t) >= 2,
         "n": best["n"],

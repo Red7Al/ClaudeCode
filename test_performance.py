@@ -756,6 +756,76 @@ def test_order_ops_rows_carry_the_setup_metrics_that_caused_them(monkeypatch):
     assert "quality" not in rows[2], "a ticker with no setup history must be left untouched, not zeroed"
 
 
+def _sqa_row(bucket, return_pct, r_mult, outcome="TARGET"):
+    """One row in the shape _sqa_all_rows actually returns.
+
+    The key set is copied from a REAL row (HICL.L, FTSE 250, 2024-04-16) rather than invented, per the
+    rule that a fixture built on an assumed shape certifies the assumption instead of testing it. Only
+    the three fields under test vary; `market` carries the bucket so a keyfn can group on it.
+    """
+    return {"current_price": 133.6, "direction": "BEARISH", "entry": 123.4, "exit_date": "2024-07-05",
+            "location": "UK", "market": bucket, "mcap": 2485684323.0, "name": "Fixture PLC",
+            "outcome": outcome, "quality": 60.0, "r_mult": r_mult, "return_pct": return_pct,
+            "rr": 4.68, "rvol": 0.88, "sector": None, "stop": 127.4, "target": 104.5,
+            "ticker": "FIX.L", "timeframe": "daily-240", "trig_date": "2024-04-16"}
+
+
+def test_buckets_are_ranked_on_expectancy_not_win_rate():
+    """Win rate and return move in OPPOSITE directions in this population, so ordering buckets on win
+    rate puts the worst-paying band first. Measured on the live 12-month population: the R:R dimension
+    headlined 3-5 at PS97/10k while 20+ pays PS1,242/10k.
+
+    The fixture makes the two objectives disagree on purpose -- 'often_small' wins far more often but
+    pays less per trade than 'rare_big'. A sort on win rate puts 'often_small' first; the shipped sort
+    must put 'rare_big' first.
+    """
+    rows = ([_sqa_row("often_small", 1.0, 0.2) for _ in range(8)]
+            + [_sqa_row("often_small", -1.0, -0.2, "STOPPED") for _ in range(2)]
+            + [_sqa_row("rare_big", 30.0, 6.0) for _ in range(3)]
+            + [_sqa_row("rare_big", -1.0, -1.0, "STOPPED") for _ in range(7)])
+    out = server._sqa_buckets(rows, lambda r: r["market"], "Market")
+    by = {b["bucket"]: b for b in out}
+
+    assert by["often_small"]["win_pct"] > by["rare_big"]["win_pct"], "fixture must make them disagree"
+    assert by["rare_big"]["pnl_per_10k"] > by["often_small"]["pnl_per_10k"]
+    assert out[0]["bucket"] == "rare_big", (
+        "buckets are still ordered on win rate -- the page would headline the worst-paying band"
+    )
+
+
+def test_a_bucket_with_no_expectancy_sorts_last_rather_than_first():
+    """Null expectancy must not win the sort by accident -- the old key guarded this for win_pct and the
+    guard has to survive the change of objective."""
+    rows = ([_sqa_row("has_expectancy", 5.0, 1.0) for _ in range(4)]
+            + [_sqa_row("no_expectancy", 5.0, None) for _ in range(4)])
+    out = server._sqa_buckets(rows, lambda r: r["market"], "Market")
+    assert out[-1]["bucket"] == "no_expectancy"
+    assert out[-1]["pnl_per_10k"] is None
+
+
+def test_a_quarters_best_bucket_cannot_be_decided_by_a_handful_of_trades():
+    """min_n was 3, so three trades could name a quarter's best market on a page the owner reads.
+    Measured before raising it: across 60 quarterly slots only 2 winners rested on under 10 trades and
+    no quarter lost its winner at min_n=10, so the floor costs nothing."""
+    rows = ([_sqa_row("lucky_few", 40.0, 8.0) for _ in range(4)]
+            + [_sqa_row("real_sample", 6.0, 1.2) for _ in range(30)])
+    got = server._best_bucket(rows, lambda r: r["market"])
+    assert got["value"] == "real_sample", (
+        f"a {got['n']}-trade bucket was named best; the floor is not holding"
+    )
+    # The thin bucket is still reachable when a caller deliberately asks for a lower floor.
+    assert server._best_bucket(rows, lambda r: r["market"], min_n=3)["value"] == "lucky_few"
+
+
+def test_advice_requires_a_real_sample_and_a_real_lift():
+    """Advice is a RECOMMENDATION, so it carries a higher bar than 'reportable'. Both numbers were
+    measured on the 12-month population before being chosen: '> baseline' alone admitted 29 buckets,
+    >= 1.5x admits 4, and the n>=50 floor drops exactly the two buckets that were carrying advice on
+    36 and 37 trades."""
+    assert server._SQA_ADVICE_MIN_N >= 50 > server._SQA_MIN_N
+    assert server._SQA_ADVICE_LIFT >= 1.5
+
+
 def _py_code_only(src: str) -> str:
     """Python source with comments removed, for assertions about what the code DOES.
 
