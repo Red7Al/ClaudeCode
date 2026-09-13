@@ -60,12 +60,10 @@ _cache = {"at": 0.0, "map": None}
 
 
 def _load_bindings() -> dict:
-    """{login: (profile_id, ...)} read from user_profiles.login, merged over _FLOOR.
+    """{login: (profile_id, ...)} from user_profiles.login. The database's answer is AUTHORITATIVE.
 
-    Never raises. On any failure it returns _FLOOR, which keeps the pre-existing binding working and logs
-    loudly -- a scoping read that silently returned nothing would unprotect a duplicate guard.
+    Never raises. _FLOOR applies ONLY when the binding table cannot be READ -- see the two cases below.
     """
-    out = {k: tuple(v) for k, v in _FLOOR.items()}
     try:
         from db_pool import get_db
         db = get_db()
@@ -74,12 +72,28 @@ def _load_bindings() -> dict:
                           "where login is not null and btrim(login) <> ''") or []
         finally:
             db.close()
+        # THE FLOOR IS NOT MERGED OVER A SUCCESSFUL READ (2026-09-13). It used to be, and that made
+        # REVOCATION A NO-OP: measured 2026-09-12, rebinding the Owner profile to another login returned
+        # BOTH bound, and deleting every binding row still returned Alex bound. An administrator removing
+        # someone's access to an account's positions and money saw it succeed and have no effect.
+        #
+        # "The database says this login has no binding" and "the database did not answer" are different
+        # facts and must not share a code path. The first is an answer and is obeyed; the second is an
+        # outage and falls back below.
+        #
+        # This is safe to do ONLY because the duplicate guard now refuses to trade on an empty identity set
+        # (hvf_web/order_bridge.IdentityUnresolved). Before that, an empty set here meant "this account
+        # holds no orders" and the bridge placed a SECOND live order. Do not reinstate the merge, and do
+        # not remove that guard -- they are a pair.
+        out = {}
         for login, pid in rows:
             name = str(login).strip()
             ids = set(out.get(name, ()))
             ids.add(str(pid))
             out[name] = tuple(sorted(ids))
+        return out
     except Exception as exc:
+        out = {k: tuple(v) for k, v in _FLOOR.items()}
         log.warning("could not read the login->profile bindings (%s); using the built-in floor only. "
                     "Scoping stays correct for %s and any other user is treated as unbound.",
                     exc, ", ".join(sorted(_FLOOR)))

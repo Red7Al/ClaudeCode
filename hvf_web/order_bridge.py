@@ -81,6 +81,14 @@ def _candidates() -> list:
     return out
 
 
+class IdentityUnresolved(RuntimeError):
+    """The acting account's identity set is empty, so the duplicate guard cannot be trusted.
+
+    Raised rather than returned, because every historical bug in this area came from an empty result being
+    read as "nothing to avoid". A caller that must place orders has to handle this explicitly.
+    """
+
+
 def _already_working(owner: str = None) -> set:
     """Tickers we must not place another order on: a live working order, OR an open position.
 
@@ -95,6 +103,22 @@ def _already_working(owner: str = None) -> set:
     rather than trusting our own table, because it was precisely our table being wrong that hid this.
     """
     skip = set()
+    ids = account_scope.row_identities(owner)
+    # NO TRADING PROFILE, NO TRADING (2026-09-13).
+    #
+    # The test is the PROFILE binding, not the identity set. identities() always includes the login NAME,
+    # so it is never empty for a known login -- checking `if not ids` would never fire. But working_orders
+    # carries TWO namespaces, and the account's broker-placed rows (measured 2026-09-12: 263 of 482) are
+    # keyed on the profile UUID. Lose the binding and those rows become invisible to this guard while the
+    # set still looks populated, and the bridge places a SECOND live order on an instrument already held.
+    #
+    # Seeing too FEW rows is the dangerous direction here -- the opposite of the money reads, where an
+    # empty set safely shows nothing. A bridge that places real orders acts for a trading profile; with no
+    # profile resolved it has no business placing at all, so refusing is right on both counts.
+    if not account_scope.row_profile_ids(owner):
+        raise IdentityUnresolved(
+            f"no trading profile bound for owner={owner!r}; refusing to place. The duplicate guard cannot "
+            f"see this account's broker-keyed rows without it, so it cannot prove the account is clear")
     try:
         from db_pool import get_db
         db = get_db()
@@ -111,7 +135,12 @@ def _already_working(owner: str = None) -> set:
         finally:
             db.close()
     except Exception as e:
-        log.warning(f"bridge: working_orders lookup failed: {e}")
+        # NO LONGER FAILS OPEN (2026-09-13). This used to log and continue with an empty skip set, which is
+        # the same hazard as an empty identity set above: the bridge places on an instrument the account
+        # already has a working order for. Not placing is the safe failure for a duplicate guard; the pass
+        # is skipped and the next one picks the setups up. The open-position half below still fails open by
+        # design, because it is a SECOND, independent line of defence rather than the primary one.
+        raise IdentityUnresolved(f"working_orders lookup failed ({e}); refusing to place this pass")
     # Open positions, resolved to tickers through the same epic_lookup the account screens use.
     try:
         import ig_shim
@@ -152,7 +181,14 @@ def run_bridge() -> dict:
         except Exception as exc:
             log.warning(f"bridge: let-winners-run pass failed safely: {exc}")
         return summary
-    skip = _already_working()
+    try:
+        skip = _already_working()
+    except IdentityUnresolved as exc:
+        # The duplicate guard could not be built, so we cannot prove this account is not already working
+        # these instruments. Placing anyway risks a second live order. Abort the pass and say so loudly.
+        log.error(f"bridge: ABORTED before placing any order - {exc}")
+        summary["aborted"] = str(exc)
+        return summary
 
     from run_session import get_user_profile
     from ig_shim import place_hvf_order_from_sig

@@ -128,25 +128,51 @@ def test_the_floor_degrades_rather_than_empties_when_the_database_fails(monkeypa
     assert all(ids for ids in got.values()), "a floor binding lost its trading profile"
 
 
-def test_data_can_add_users_to_the_floor(monkeypatch):
-    """The floor must not be a ceiling: adding a user is a data change, not a code change."""
+def _stub_db(monkeypatch, rows):
+    """Make _load_bindings' read return exactly `rows`, successfully."""
     class _FakeDB:
         def run(self, *a, **k):
-            return [("newcomer", "55555555-5555-5555-5555-555555555555")]
+            return list(rows)
 
         def close(self):
             pass
 
-    class _Ctx:
-        def __enter__(self):
-            return _FakeDB()
-
-        def __exit__(self, *a):
-            return False
-
     monkeypatch.setattr("db_pool.get_db", lambda *a, **k: _FakeDB())
+
+
+def test_data_can_add_users_without_a_code_change(monkeypatch):
+    """The bindings must not be a ceiling: adding a user is a data change, not a code change."""
+    _stub_db(monkeypatch, [("newcomer", "55555555-5555-5555-5555-555555555555")])
     got = A._load_bindings()
     assert "newcomer" in got, "a login bound in data did not reach the bindings"
     assert got["newcomer"] == ("55555555-5555-5555-5555-555555555555",)
-    for login, ids in A._FLOOR.items():
-        assert set(ids).issubset(set(got[login])), "merging data dropped the floor binding"
+
+
+def test_revoking_a_binding_in_data_actually_revokes_it(monkeypatch):
+    """A SUCCESSFUL read that omits a login means that login is NOT bound. The floor must not resurrect it.
+
+    Until 2026-09-13 the floor was merged over the database's answer, so an administrator could delete
+    every binding row and the floor login stayed bound: revocation silently did nothing, while reporting
+    success. Measured 2026-09-12 by exercising the merge.
+
+    This is safe ONLY because the order bridge now refuses to place when no trading profile resolves
+    (order_bridge.IdentityUnresolved). The two are a pair -- see the companion test in
+    test_order_bridge_identity_guard.py. Breaking either one re-opens a real defect.
+    """
+    _stub_db(monkeypatch, [])                       # the table answers, and says nobody is bound
+    got = A._load_bindings()
+    for login in A._FLOOR:
+        assert login not in got or not got.get(login), (
+            f"{login} stayed bound after the database reported no bindings -- revocation is a no-op")
+
+
+def test_an_outage_is_not_a_revocation(monkeypatch):
+    """A read that FAILS must fall back to the floor, not report everyone revoked.
+
+    The distinction this test pins: 'the database says no binding' is an answer and is obeyed; 'the
+    database did not answer' is an outage and must not shrink anyone's identity set.
+    """
+    monkeypatch.setattr("db_pool.get_db",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("unreachable")))
+    got = A._load_bindings()
+    assert got == {k: tuple(v) for k, v in A._FLOOR.items()}, "an outage did not fall back to the floor"
