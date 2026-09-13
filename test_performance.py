@@ -770,14 +770,12 @@ def _sqa_row(bucket, return_pct, r_mult, outcome="TARGET"):
             "ticker": "FIX.L", "timeframe": "daily-240", "trig_date": "2024-04-16"}
 
 
-def test_buckets_are_ranked_on_expectancy_not_win_rate():
+def test_buckets_are_ranked_on_return_not_win_rate():
     """Win rate and return move in OPPOSITE directions in this population, so ordering buckets on win
-    rate puts the worst-paying band first. Measured on the live 12-month population: the R:R dimension
-    headlined 3-5 at PS97/10k while 20+ pays PS1,242/10k.
+    rate puts the worst-paying band first.
 
-    The fixture makes the two objectives disagree on purpose -- 'often_small' wins far more often but
-    pays less per trade than 'rare_big'. A sort on win rate puts 'often_small' first; the shipped sort
-    must put 'rare_big' first.
+    The fixture makes the two objectives disagree on purpose: 'often_small' wins far more often but
+    returns less per trade than 'rare_big'. A sort on win rate puts 'often_small' first.
     """
     rows = ([_sqa_row("often_small", 1.0, 0.2) for _ in range(8)]
             + [_sqa_row("often_small", -1.0, -0.2, "STOPPED") for _ in range(2)]
@@ -787,20 +785,46 @@ def test_buckets_are_ranked_on_expectancy_not_win_rate():
     by = {b["bucket"]: b for b in out}
 
     assert by["often_small"]["win_pct"] > by["rare_big"]["win_pct"], "fixture must make them disagree"
-    assert by["rare_big"]["pnl_per_10k"] > by["often_small"]["pnl_per_10k"]
+    assert by["rare_big"]["avg_return"] > by["often_small"]["avg_return"]
     assert out[0]["bucket"] == "rare_big", (
         "buckets are still ordered on win rate -- the page would headline the worst-paying band"
     )
 
 
-def test_a_bucket_with_no_expectancy_sorts_last_rather_than_first():
-    """Null expectancy must not win the sort by accident -- the old key guarded this for win_pct and the
-    guard has to survive the change of objective."""
-    rows = ([_sqa_row("has_expectancy", 5.0, 1.0) for _ in range(4)]
-            + [_sqa_row("no_expectancy", 5.0, None) for _ in range(4)])
+def test_buckets_are_not_ranked_on_the_r_multiple_expectancy():
+    """pnl_per_10k must NOT be the ranking key, however risk-adjusted it looks.
+
+    It is 10000 x 2% x mean(r_mult), and r_mult is return / stop-distance -- the formula 17ba1f9
+    removed on 2026-07-19 as the cause of the "PS351M / PS200-max-loss nonsense", because dividing by a
+    tiny stop inflates it. Measured across the R:R bands on 2026-09-13: mean stop distance falls
+    6.11% -> 1.23% while mean r_mult rises 0.48 -> 6.21, turning a 2.4x spread in real return into a
+    12.8x spread in "expectancy". Ranking on it selects for near-zero stops, which is the broken
+    geometry the tight-stop rule exists to exclude.
+
+    The fixture encodes exactly that trap: 'tiny_stop' earns LESS per trade but its r_mult is huge
+    because it risked almost nothing. Ranking on expectancy puts it first; ranking on return does not.
+    """
+    rows = ([_sqa_row("tiny_stop", 3.0, 30.0) for _ in range(10)]        # +3% on a 0.1% stop = 30R
+            + [_sqa_row("honest_stop", 12.0, 2.0) for _ in range(10)])   # +12% on a 6% stop  = 2R
     out = server._sqa_buckets(rows, lambda r: r["market"], "Market")
-    assert out[-1]["bucket"] == "no_expectancy"
-    assert out[-1]["pnl_per_10k"] is None
+    by = {b["bucket"]: b for b in out}
+
+    assert by["tiny_stop"]["pnl_per_10k"] > by["honest_stop"]["pnl_per_10k"], "fixture must set the trap"
+    assert by["honest_stop"]["avg_return"] > by["tiny_stop"]["avg_return"]
+    assert out[0]["bucket"] == "honest_stop", (
+        "buckets are ranked on the r-multiple again -- that rewards a near-zero stop, which is the "
+        "geometry defect rather than a better trade"
+    )
+
+
+def test_a_bucket_with_no_return_sorts_last_rather_than_first():
+    """A null must not win the sort by accident -- the old key guarded this for win_pct and the guard
+    has to survive the change of objective."""
+    rows = ([_sqa_row("has_return", 5.0, 1.0) for _ in range(4)]
+            + [_sqa_row("no_return", None, None) for _ in range(4)])
+    out = server._sqa_buckets(rows, lambda r: r["market"], "Market")
+    assert out[-1]["bucket"] == "no_return"
+    assert out[-1]["avg_return"] is None
 
 
 def test_a_quarters_best_bucket_cannot_be_decided_by_a_handful_of_trades():
@@ -817,13 +841,28 @@ def test_a_quarters_best_bucket_cannot_be_decided_by_a_handful_of_trades():
     assert server._best_bucket(rows, lambda r: r["market"], min_n=3)["value"] == "lucky_few"
 
 
-def test_advice_requires_a_real_sample_and_a_real_lift():
-    """Advice is a RECOMMENDATION, so it carries a higher bar than 'reportable'. Both numbers were
-    measured on the 12-month population before being chosen: '> baseline' alone admitted 29 buckets,
-    >= 1.5x admits 4, and the n>=50 floor drops exactly the two buckets that were carrying advice on
-    36 and 37 trades."""
-    assert server._SQA_ADVICE_MIN_N >= 50 > server._SQA_MIN_N
-    assert server._SQA_ADVICE_LIFT >= 1.5
+def test_the_superseded_squeeze_analysis_surface_stays_removed():
+    """/api/squeeze-analysis was the ORIGINAL "which filters separate the winners" surface (48faa93,
+    P-21b). 17ba1f9 superseded it on 2026-07-19 by rebuilding the winners tab onto /api/winners and
+    "removing the concurrency dial and the old compounding sim" -- but only the CALLER went, so ~85
+    lines stayed reachable-looking for eight weeks and were maintained as though live. Removed
+    2026-09-13 at the owner's explicit instruction.
+
+    Guarded because the helpers it used are still live and shared, so the route is easy to recreate by
+    accident; and because the reason it must not come back -- its advice list recommended Quality 70+,
+    which is R:R leaking through at Spearman +0.655 -- is not visible from the code itself.
+    """
+    src = (Path(__file__).parent / "hvf_web" / "server.py").read_text(encoding="utf-8")
+    code = _py_code_only(src)
+    assert "/api/squeeze-analysis" not in code
+    assert "def api_squeeze_analysis" not in code
+    assert "def _sqa_num" not in code, "the helper only that route used is back"
+    assert "_SQA_CACHE" not in code, "the cache only that route used is back"
+
+    # The shared helpers must NOT have been taken with it -- four live surfaces depend on them.
+    for shared in ("_sqa_all_rows", "_sqa_seg", "_sqa_buckets", "_sqa_compound", "_sqa_band",
+                   "_SQA_TTL", "_SQA_MIN_N"):
+        assert shared in code, f"{shared} is shared with live surfaces and must survive the removal"
 
 
 def _py_code_only(src: str) -> str:

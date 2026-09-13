@@ -3118,13 +3118,8 @@ def api_performance():
 # Win rate counts RESOLVED funnels only (TARGET vs STOPPED). OPEN ones have not finished, and counting
 # them would flatter whichever bucket happens to hold the most unfinished trades. NEVER_TRIGGERED are
 # excluded from the win rate but reported, because "never fired" is a cost of a filter, not a loss.
-_SQA_CACHE = {"ts": 0.0, "data": None}
 _SQA_TTL = 900   # 15 min — matches _PERF_TTL so the background warmer keeps every replay cache fresh (user 2026-08-03)
 _SQA_MIN_N = 10          # below this a bucket is reported but never called good or bad
-# Advice is a RECOMMENDATION, so it carries a higher bar than "reportable". Both measured on the
-# 12-month population 2026-09-13 before being chosen -- see the advice block in api_squeeze_analysis.
-_SQA_ADVICE_MIN_N = 50   # the reporting floor of 10 let 36- and 37-trade buckets carry advice
-_SQA_ADVICE_LIFT = 1.5   # x baseline expectancy; "> baseline" alone admitted 29 buckets
 # Matches the live tight-stop guard so the analysis population and the order path agree on what is
 # tradeable (user 2026-08-16). DERIVED from config.TIGHT_STOP_MIN_PCT, never copied: that constant
 # declares itself the single source of truth (config.py ~751) and price_action.py sets each result's
@@ -3295,14 +3290,21 @@ def _sqa_buckets(rows, keyfn, label):
         never = sum(1 for r in rs if r["outcome"] == "NEVER_TRIGGERED")
         out.append({"dimension": label, "bucket": k, "never_triggered": never,
                     "resolved": seg["avail"], **seg})   # 'resolved' kept as the sample-size the UI shows
-    # Ranked on EXPECTANCY (£ per £10k at 2% risk), not win rate (user 2026-09-13). Win rate is
-    # inversely related to return in this population -- measured over 33,588 resolved triggers, R:R <3
-    # gives 39.9% positive at +1.74% while R:R 10+ gives 25.2% positive at +5.03% -- so ordering on win
-    # rate puts the WORST band first. On the 12-month population the R:R dimension headlined 3-5 at
-    # £97/10k while 20+ pays £1,242/10k, a 12.8x gap pointing the reader at the worst band.
-    # pnl_per_10k comes from r_mult (populated on 99.6% of rows) and is risk-adjusted, which average
-    # return is not: a 3:1 and a 20:1 risk the same and pay differently. Nulls sort last either way.
-    return sorted(out, key=lambda b: (b["pnl_per_10k"] is None, -(b["pnl_per_10k"] or 0)))
+    # Ranked on AVERAGE RETURN, not win rate (user 2026-09-13). Win rate is inversely related to return
+    # in this population -- measured over 33,588 resolved triggers, R:R <3 gives 39.9% positive at
+    # +1.74% while R:R 10+ gives 25.2% positive at +5.03% -- so ordering on win rate puts the WORST
+    # band first.
+    #
+    # NOT ranked on pnl_per_10k, which was the first attempt the same day and was WRONG. That figure is
+    # 10000 x 2% x mean(r_mult), and r_mult is return / stop-distance -- the exact formula 17ba1f9
+    # removed on 2026-07-19 as the cause of the "£351M / £200-max-loss nonsense", because dividing by a
+    # tiny stop inflates it. Measured across the R:R bands: mean stop distance falls 6.11% -> 1.23%
+    # while mean r_mult rises 0.48 -> 6.21, so a 2.4x spread in actual return becomes a 12.8x spread in
+    # "expectancy". The denominator here is partly BROKEN GEOMETRY rather than real risk -- the same
+    # near-zero stops the tight-stop rule exists to exclude -- so ranking on it selects for the defect.
+    # Average return is equivalent to ranking on the owner's stake model (2% of wallet x return%) and
+    # matches _best_bucket and the VolumeScore band, so all the surfaces agree on one definition.
+    return sorted(out, key=lambda b: (b["avg_return"] is None, -(b["avg_return"] or 0)))
 
 
 def _sqa_band(v, edges, fmt="{}–{}"):
@@ -3439,91 +3441,13 @@ def _sqa_all_rows():
     return rows
 
 
-def _sqa_num(name):
-    try:
-        v = request.args.get(name)
-        return float(v) if v not in (None, "") else None
-    except Exception:
-        return None
-
-
-@app.route("/api/squeeze-analysis")
-def api_squeeze_analysis():
-    """Which attributes actually separate the winners, over the 15-month replayed population. Optional
-    cherry-pick filters (query params rvmin, qmin, rrmin) narrow the population, so a preset shows its own
-    win rate / expectancy / compounded £ (user 2026-07-18)."""
-    now = _time.time()
-    rvmin, qmin, rrmin = _sqa_num("rvmin"), _sqa_num("qmin"), _sqa_num("rrmin")
-    conc = _sqa_num("conc")                     # concurrency dial (user 2026-07-18)
-    conc = int(conc) if conc and conc >= 1 else _SQA_MAX_CONCURRENT
-    ckey = (rvmin, qmin, rrmin, conc)
-    if _SQA_CACHE.get("key") == ckey and _SQA_CACHE["data"] is not None and now - _SQA_CACHE["ts"] < _SQA_TTL:
-        return jsonify(_SQA_CACHE["data"])
-    payload = {"rows": 0, "baseline": None, "dimensions": [], "advice": [],
-               "filter": {"rvmin": rvmin, "qmin": qmin, "rrmin": rrmin},
-               "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime())}
-    try:
-        rows = _sqa_all_rows()
-        # Cherry-pick: null attribute is EXCLUDED when a min is set (you can't select on what you can't
-        # measure — e.g. RVOL>1.8 must drop no-RVOL FX/index funnels).
-        if rvmin is not None:
-            rows = [r for r in rows if r["rvol"] is not None and r["rvol"] > rvmin]
-        if qmin is not None:
-            rows = [r for r in rows if r["quality"] is not None and r["quality"] >= qmin]
-        if rrmin is not None:
-            rows = [r for r in rows if r["rr"] is not None and r["rr"] >= rrmin]
-        # Summary figures use the LAST 12 MONTHS (user 2026-07-18: "for summary it should be 12 months");
-        # the per-trade detail table below keeps the full 15-month replay for reference.
-        import datetime as _dt
-        cut12 = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
-        rows12 = [r for r in rows if (r.get("trig_date") or "") >= cut12]
-        base = _sqa_seg(rows12)
-        payload["rows"] = len(rows12)
-        payload["summary_months"] = 12
-        payload["detail_months"] = 15
-        payload["detail_funnels"] = len(rows)          # full 15-month population (for the reference note)
-        payload["baseline"] = {**base,
-                               "resolved": base["avail"],
-                               "trades_per_year": base["avail"],   # 12-month window => resolved count IS the annual rate
-                               "compound_10k": _sqa_compound(rows12, max_concurrent=conc),   # dial (P-18)
-                               "never_triggered": sum(1 for r in rows12 if r["outcome"] == "NEVER_TRIGGERED"),
-                               "open": sum(1 for r in rows12 if r["outcome"] == "OPEN")}
-        # Every trade behind the compound number is carried in baseline.compound_10k.ledger (built by
-        # _sqa_compound, in close order with the running wallet) so the headline £ can be audited line by
-        # line and reconciles exactly to `final` (user 2026-07-18: "show the wallet grow after each trade").
-        dims = [
-            ("Location", lambda r: r["location"]),
-            ("Sector", lambda r: r["sector"]),
-            ("Market", lambda r: r["market"]),
-            ("Direction", lambda r: r["direction"]),
-            ("Timeframe", lambda r: r["timeframe"]),
-            ("R:R", lambda r: _sqa_band(r["rr"], [0, 3, 5, 8, 12, 20])),
-            ("Quality", lambda r: _sqa_band(r["quality"], [0, 30, 40, 50, 60, 70])),
-            ("RVOL at trigger", lambda r: _sqa_band(r["rvol"], [0, 0.8, 1.0, 1.4, 1.8, 2.5])),
-        ]
-        for label, fn in dims:
-            payload["dimensions"].append({"name": label, "buckets": _sqa_buckets(rows12, fn, label)})
-        # Advice = buckets with a real sample whose EXPECTANCY beats the baseline by >= 50%
-        # (user 2026-09-13; was "win rate >= baseline + 10 points", which selects against returns).
-        #
-        # Both numbers were measured before being chosen, not assumed. On the 12-month population
-        # (baseline £243/10k): "> baseline" alone admits 29 buckets, which is a list, not advice;
-        # >= 1.5x admits 4 -- the same count the win-rate rule produced, so the page keeps its shape --
-        # and 1.5x and 1.75x return the IDENTICAL set, so the threshold sits on a plateau rather than a
-        # cliff. The n >= 50 floor replaces _SQA_MIN_N (10) here and was chosen the same way: it drops
-        # exactly the two buckets that were carrying advice on 36 and 37 trades, and nothing else.
-        base_exp = base.get("pnl_per_10k")
-        if base_exp:
-            for d in payload["dimensions"]:
-                for b in d["buckets"]:
-                    if (b["resolved"] >= _SQA_ADVICE_MIN_N and b["pnl_per_10k"] is not None
-                            and b["pnl_per_10k"] >= base_exp * _SQA_ADVICE_LIFT):
-                        payload["advice"].append({**b, "lift": round(b["pnl_per_10k"] / base_exp, 2)})
-            payload["advice"].sort(key=lambda a: -a["lift"])
-    except Exception as ex:
-        log.warning(f"squeeze analysis failed: {ex}")
-    _SQA_CACHE.update(ts=now, data=payload, key=ckey)
-    return jsonify(_json_safe(payload))
+# /api/squeeze-analysis lived here until 2026-09-13, with _sqa_num and _SQA_CACHE which nothing else
+# used. It was the ORIGINAL "which filters separate the winners" surface (added by 48faa93, P-21b) and
+# was superseded on 2026-07-19 by 17ba1f9, which rebuilt the winners tab onto /api/winners and
+# "removed the concurrency dial and the old compounding sim" -- this was that sim. Nothing had called
+# it since: ripgrep found the string "squeeze-analysis" in exactly one place, its own route decorator.
+# Removed at the account owner's explicit instruction; the helpers it SHARED (_sqa_all_rows, _sqa_seg,
+# _sqa_buckets, _sqa_compound, _sqa_band, _SQA_TTL, _SQA_MIN_N) are still live and stay.
 
 
 def _sl_path(direction, entry, stop, target, bars, thr):

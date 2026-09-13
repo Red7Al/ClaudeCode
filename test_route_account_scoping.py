@@ -17,6 +17,7 @@
 # WITH A WRITTEN REASON. "I did not think about it" cannot be the default, because that is precisely what happened.
 # ======================================================================================================================
 
+import ast
 import re
 from pathlib import Path
 
@@ -56,16 +57,45 @@ _COUNT_ONLY = re.compile(r'count\(\s*\*\s*\)\s+from\s+(\w+)', re.I)
 
 
 def _routes():
-    """[(path, handler_name, body)] for every @app.route in server.py, body = up to the next decorator."""
+    """[(path, handler_name, body)] for every @app.route in server.py, body = THE HANDLER ITSELF.
+
+    Parsed with `ast`, so a body ends where the decorated function ends.
+
+    It used to run "up to the next decorator", which swallowed every module-level helper that happened
+    to sit between two routes. That is the dangerous direction for a fail-closed gate: a route could
+    satisfy a scoping check on text belonging to a FUNCTION IT NEVER CALLS, and pass. It also made the
+    parametrize ids enormous -- on 2026-09-13 removing one dead route widened a gap far enough that an
+    id exceeded the 32767-character Windows environment limit and pytest died in teardown, which is how
+    the flaw was noticed at all.
+    """
     src = SERVER.read_text(encoding="utf-8", errors="replace")
-    marks = [(m.start(), m.group(1)) for m in re.finditer(r'@app\.route\(\s*["\']([^"\']+)["\']', src)]
+    lines = src.splitlines()
     out = []
-    for i, (pos, path) in enumerate(marks):
-        end = marks[i + 1][0] if i + 1 < len(marks) else len(src)
-        body = src[pos:end]
-        name = (re.search(r'def\s+(\w+)\s*\(', body) or [None, "?"])[1]
-        out.append((path, name, body))
+    for node in ast.walk(ast.parse(src)):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for dec in node.decorator_list:
+            # @app.route("<path>", ...) -- the path is the first positional argument.
+            if not (isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute)
+                    and dec.func.attr == "route" and dec.args
+                    and isinstance(dec.args[0], ast.Constant)
+                    and isinstance(dec.args[0].value, str)):
+                continue
+            start = min([d.lineno for d in node.decorator_list] + [node.lineno]) - 1
+            body = "\n".join(lines[start:node.end_lineno])
+            out.append((dec.args[0].value, node.name, body))
     return out
+
+
+def _route_id(v):
+    """Identify a case by its ROUTE PATH only.
+
+    The old id function returned every str parameter, so each id carried the handler's entire source.
+    pytest exports the current id as the PYTEST_CURRENT_TEST environment variable, and Windows caps an
+    environment variable at 32767 characters -- so a long enough handler failed the run in teardown
+    with a ValueError that says nothing about routes. Paths are short, unique and readable.
+    """
+    return v if isinstance(v, str) and v.startswith("/") else ""
 
 
 def _reads_token(body: str) -> bool:
@@ -79,7 +109,7 @@ def test_server_source_is_readable():
     assert any(r[0] == "/api/positions" for r in routes)
 
 
-@pytest.mark.parametrize("path,name,body", _routes(), ids=lambda v: v if isinstance(v, str) else "")
+@pytest.mark.parametrize("path,name,body", _routes(), ids=_route_id)
 def test_ig_reads_are_scoped_to_the_caller(path, name, body):
     """A route reading ONE broker account must read it AS THE CALLER.
 
@@ -105,7 +135,7 @@ def test_ig_reads_are_scoped_to_the_caller(path, name, body):
     )
 
 
-@pytest.mark.parametrize("path,name,body", _routes(), ids=lambda v: v if isinstance(v, str) else "")
+@pytest.mark.parametrize("path,name,body", _routes(), ids=_route_id)
 def test_owned_table_reads_are_scoped(path, name, body):
     """A route reading a per-user table must scope it to the caller, not return every account's rows."""
     hit = [t for t in OWNED_TABLES if re.search(r'\b(from|into|update)\s+' + t + r'\b', body)]
@@ -130,7 +160,7 @@ def test_owned_table_reads_are_scoped(path, name, body):
     )
 
 
-@pytest.mark.parametrize("path,name,body", _routes(), ids=lambda v: v if isinstance(v, str) else "")
+@pytest.mark.parametrize("path,name,body", _routes(), ids=_route_id)
 def test_account_routes_identify_the_caller(path, name, body):
     """A route touching account state must know who is asking. It cannot scope otherwise."""
     touches = any(c in body for c in ACCOUNT_IG_CALLS) or any(
