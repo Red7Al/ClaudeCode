@@ -246,8 +246,10 @@ function pass(r,except){
   // as renderPreorders() below so the two views can never silently disagree. Logged-out/no-limits-set
   // users have MY_LIMITS={}, so every num() call below is null and this is a no-op for them.
   {const rrMin=num(MY_LIMITS.min_risk_reward), qMin=num(MY_LIMITS.min_quality), vsMin=num(MY_LIMITS.min_volume_score), rvMin=num(MY_LIMITS.min_rvol);
+   const rrMax=num(MY_LIMITS.max_risk_reward);   // personal R:R CEILING, 0/unset = off (user 2026-09-13)
    const ivMin=num(MY_LIMITS.min_instrument_value), ivMax=num(MY_LIMITS.max_instrument_value);
    if(rrMin!=null&&r.rr!=null&&r.rr<rrMin)return false;
+   if(rrMax!=null&&rrMax>0&&r.rr!=null&&r.rr>rrMax)return false;
    if(qMin!=null&&r.quality!=null&&r.quality<qMin)return false;
    if(vsMin!=null&&r.volume_score!=null&&r.volume_score<vsMin)return false;
    if(rvMin!=null&&rvMin>0&&r.rvol!=null&&r.rvol<rvMin)return false;
@@ -1765,7 +1767,7 @@ function saveLeverage(){
 function saveLimits(){
   const num=(id,int)=>{const el=$("lim-"+id);if(!el)return undefined;const v=(int?parseInt:parseFloat)(el.value);return isFinite(v)&&v>=0?v:undefined;};
   const lim={};
-  [["min_risk_reward",0],["min_trade",0],["bounce_alert_pct",0],["min_instrument_value",0],["max_instrument_value",0],["preorder_threshold_pct",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
+  [["min_risk_reward",0],["max_risk_reward",0],["min_trade",0],["bounce_alert_pct",0],["min_instrument_value",0],["max_instrument_value",0],["preorder_threshold_pct",0]].forEach(([k])=>{const v=num(k);if(v!==undefined)lim[k]=v;});
   [["min_quality",1],["min_volume_score",1],["min_rvol",0],["max_position_pct",0],["max_open",1],["max_trades_per_instrument_per_day",1],["bounce_lookback_hours",1],["wo_lifespan_days",1],["let_winners_run_trail",1],["let_winners_run_stop",1]].forEach(([k,int])=>{const v=num(k,int);if(v!==undefined)lim[k]=v;});
   lim.require_above_vwap=$("lim-require_above_vwap").checked?1:0;
   lim.require_atr_expanding=$("lim-require_atr_expanding").checked?1:0;
@@ -3840,7 +3842,7 @@ async function applyConfigFromReport(cfg, btn, opts){
   // guard covers every other caller (user 2026-08-22).
   if(!AUTH){await appConfirm("Log in to apply a configuration to your account.",{title:"Not logged in",ok:"OK"});return;}
   cfg=cfg||{}; const limits=cfg.limits||cfg, filters=cfg.filters||{};
-  const labels={min_risk_reward:"R:R floor",min_quality:"Quality floor",min_volume_score:"VolumeScore floor",min_rvol:"RVOL floor",require_above_vwap:"Require above VWAP",require_atr_expanding:"Require ATR expanding",max_position_pct:"Max position size %",max_open:"Max open positions",min_instrument_value:"Minimum instrument value",max_instrument_value:"Maximum instrument value"};
+  const labels={min_risk_reward:"R:R floor",max_risk_reward:"R:R ceiling",min_quality:"Quality floor",min_volume_score:"VolumeScore floor",min_rvol:"RVOL floor",require_above_vwap:"Require above VWAP",require_atr_expanding:"Require ATR expanding",max_position_pct:"Max position size %",max_open:"Max open positions",min_instrument_value:"Minimum instrument value",max_instrument_value:"Maximum instrument value"};
   // Booleans and money read as raw 0/1/numbers otherwise, and f_mkt/pof_market (and f_sec/pof_sector)
   // are the same decision stored twice - listing all four padded the dialog for no information.
   const shown=v=>v===1||v===true?"Yes":v===0||v===false?"No":(v===""||v==null?"Any":String(v));
@@ -4606,7 +4608,11 @@ function _pfSavedScope(kind){
 }
 function _pfMatchesCurrentConfig(r){
   const floor=(key,value)=>{const n=Number(MY_LIMITS&&MY_LIMITS[key]);return !isFinite(n)||n<=0||(value!=null&&isFinite(+value)&&+value>=n);};
+  // Ceiling is NOT the mirror of floor: a missing value must PASS (we cannot judge it), exactly as floor
+  // treats an unset limit. 0 means off, matching max_instrument_value (user 2026-09-13).
+  const ceiling=(key,value)=>{const n=Number(MY_LIMITS&&MY_LIMITS[key]);return !isFinite(n)||n<=0||value==null||!isFinite(+value)||+value<=n;};
   if(!floor("min_risk_reward",r.rr)||!floor("min_quality",r.quality)||!floor("min_volume_score",r.volume_score)||!floor("min_rvol",r.rvol))return false;
+  if(!ceiling("max_risk_reward",r.rr))return false;
   if(+MY_LIMITS.require_above_vwap&&r.above_vwap!==true)return false;
   if(+MY_LIMITS.require_atr_expanding&&r.atr_expanding!==true)return false;
   const minValue=+MY_LIMITS.min_instrument_value||0,maxValue=+MY_LIMITS.max_instrument_value||0;
@@ -5059,17 +5065,23 @@ function renderPreorders(){
   let po=DATA.filter(r=>isPreorder(r)&&tradeVisible(r));   // hide the user's excluded markets (user 2026-07-06)
   // Do not publish stale snapshot rows whose geometry is now rejected by the engine.
   // This keeps the browser view consistent before the next full data refresh.
-  po=po.filter(r=>r.rr==null||r.rr<=10);
+  // WAS a hardcoded `r.rr<=10` — a copy of the old config.MAX_RISK_REWARD baked into the client as a magic
+  // number. It survived the 2026-09-13 raise of that constant to 100 and would have silently overridden both
+  // the new value AND the user's own ceiling, so Pre-orders alone would still have hidden everything above
+  // 10:1. The bound is now the PERSONAL ceiling (Configuration → My trading limits, 0 = off), applied with
+  // the floors below. Data-implausible geometry is still rejected globally by check_hvf_invariants.
   {const _seen=new Set();po=po.filter(r=>{const k=disp(r.ticker);if(_seen.has(k))return false;_seen.add(k);return true;});}   // no duplicate rows (user 2026-07-10)
   // Respect the user's personal R:R / Quality floors (user 2026-07-24, P-02 BUG): My Pre-orders must not
   // list setups below the floors in Configuration → My trading limits. isPreorder() auto-qualifies any
   // READY/DEVELOPING setup at the system baseline (Q≥25), so without this a Q<40 or R:R<5 row still showed.
   // null rr/quality passes (nothing to compare against).
   {const rrMin=num(MY_LIMITS.min_risk_reward), qMin=num(MY_LIMITS.min_quality), vsMin=num(MY_LIMITS.min_volume_score), rvMin=num(MY_LIMITS.min_rvol);
+   const rrMax=num(MY_LIMITS.max_risk_reward);   // personal R:R CEILING, 0/unset = off (user 2026-09-13)
    // Instrument-value band (user 2026-07-27, P-07) — MCAP for equities; only bites when the row carries an
    // `mcap` value AND the bound is set (0 = off), so it's a no-op until that data lands (like the server gate).
    const ivMin=num(MY_LIMITS.min_instrument_value), ivMax=num(MY_LIMITS.max_instrument_value);
-   po=po.filter(r=>!(rrMin!=null&&r.rr!=null&&r.rr<rrMin) && !(qMin!=null&&r.quality!=null&&r.quality<qMin)
+   po=po.filter(r=>!(rrMin!=null&&r.rr!=null&&r.rr<rrMin) && !(rrMax!=null&&rrMax>0&&r.rr!=null&&r.rr>rrMax)
+                && !(qMin!=null&&r.quality!=null&&r.quality<qMin)
                 && !(vsMin!=null&&r.volume_score!=null&&r.volume_score<vsMin)
                 && !(rvMin!=null&&rvMin>0&&r.rvol!=null&&r.rvol<rvMin)
                 && !(+MY_LIMITS.require_above_vwap&&r.above_vwap===false)

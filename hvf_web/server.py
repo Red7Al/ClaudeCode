@@ -548,6 +548,11 @@ def _limit_defaults() -> dict:
     they track the shared engine's baseline. Per-user overrides layer on top."""
     import config as _cfg
     base = {"min_risk_reward": float(getattr(_cfg, "MIN_RISK_REWARD", 3.0)),
+            # PERSONAL R:R CEILING, 0 = off (user 2026-09-13). NOT defaulted to config.MAX_RISK_REWARD:
+            # that constant doubles as the data-sanity bound in price_action.check_hvf_invariants, and a
+            # user preference must never be able to mark a broken target level as valid. Mirrors
+            # trading_limits.limit_defaults() -- the two default sets are asserted equal by a test.
+            "max_risk_reward": 0.0,
             "min_quality": int(getattr(_cfg, "MIN_PUBLISH_QUALITY", 25)),
             "min_trade": float(getattr(_cfg, "MIN_TRADE", 25)),
             "min_volume_score": int(getattr(_cfg, "MIN_VOLUME_SCORE", 1)),   # personal VolumeScore floor (user 2026-07-27, P-03) — default 1
@@ -617,6 +622,9 @@ def _limit_block(name: str, tk: str, on: bool = True) -> str:
     rr, q = rec.get("rr"), rec.get("quality")
     if isinstance(rr, (int, float)) and rr < lim["min_risk_reward"]:
         return f"R:R {rr} is below your personal floor of {lim['min_risk_reward']:g} (Configuration → My trading limits)"
+    _maxrr = lim.get("max_risk_reward") or 0
+    if isinstance(rr, (int, float)) and _maxrr and rr > _maxrr:
+        return f"R:R {rr} is above your personal ceiling of {_maxrr:g} (Configuration → My trading limits)"
     if isinstance(q, (int, float)) and q < lim["min_quality"]:
         return f"Quality {q} is below your personal floor of {lim['min_quality']} (Configuration → My trading limits)"
     vs = rec.get("volume_score")
@@ -742,7 +750,7 @@ def api_config():
         s = _wu.get_settings(name)
         cur = s.get("limits") or {}
         b = body["limits"] or {}
-        for k in ("min_risk_reward", "min_trade", "bounce_alert_pct", "min_instrument_value", "max_instrument_value", "min_rvol",
+        for k in ("min_risk_reward", "max_risk_reward", "min_trade", "bounce_alert_pct", "min_instrument_value", "max_instrument_value", "min_rvol",
                   "wallet", "max_position_pct", "preorder_threshold_pct"):
             v = b.get(k)
             if isinstance(v, (int, float)) and v >= 0:

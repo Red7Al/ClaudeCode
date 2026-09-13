@@ -55,6 +55,11 @@ def limit_defaults() -> dict:
     import config as _cfg
     return {
         "min_risk_reward":       float(getattr(_cfg, "MIN_RISK_REWARD", 3.0)),
+        # PERSONAL CEILING, 0 = off (user 2026-09-13). Deliberately defaults to 0 rather than to
+        # config.MAX_RISK_REWARD: that constant is also the DATA-SANITY bound used by
+        # price_action.check_hvf_invariants, and a user preference must never be able to declare a broken
+        # target level valid. The two are separate concerns that happened to share one number.
+        "max_risk_reward":       0.0,
         "min_quality":           int(getattr(_cfg, "MIN_PUBLISH_QUALITY", 25)),
         "min_volume_score":      int(getattr(_cfg, "MIN_VOLUME_SCORE", 1)),
         "min_rvol":              float(getattr(_cfg, "MIN_RVOL", 0)),
@@ -125,6 +130,9 @@ def check_limits(name: str, ticker: str, *, quality=None, rr=None, volume_score=
     lim = user_limits(name)
     if isinstance(rr, (int, float)) and rr < lim["min_risk_reward"]:
         return f"{ticker}: R:R {rr} is below the personal floor of {lim['min_risk_reward']:g}"
+    _maxrr = lim.get("max_risk_reward") or 0
+    if isinstance(rr, (int, float)) and _maxrr and rr > _maxrr:
+        return f"{ticker}: R:R {rr} is above the personal ceiling of {_maxrr:g}"
     if isinstance(quality, (int, float)) and quality < lim["min_quality"]:
         return f"{ticker}: Quality {quality} is below the personal floor of {lim['min_quality']}"
     if require_data and lim.get("min_volume_score", 0) > 0 and not isinstance(volume_score, (int, float)):
