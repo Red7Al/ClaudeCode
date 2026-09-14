@@ -130,6 +130,29 @@ def build(years_list=WINDOWS, dry_run=False) -> int:
                   "nothing will be stored. Run this after a snapshot build, or set SITE_URL.")
         return len(list(years_list))
 
+    # REFUSE TO BUILD WITHOUT A SNAPSHOT. _sqa_all_rows takes name, sector, location and current_price
+    # FROM the snapshot; with none loaded every row gets location None and name falling back to the bare
+    # ticker, and storing that REPLACES a good copy with a worse one under a dataset key the server
+    # accepts. MEASURED 2026-09-14: the 05:24 run stored 6,444 annual and 17,477 three-year rows with
+    # ZERO real company names and ZERO locations, against 6,252 and 6,441 the evening before -- and the
+    # live snapshot matched, so the degraded copy was served all day until the evening snapshot job
+    # rebuilt it. Broken through the whole working day, healthy overnight, which is why nobody caught it.
+    #
+    # The cause is environmental and outside this script: a bare runner has no hvf_web/snapshot.json (it
+    # is not in git) and must fetch it from Supabase Storage, which has returned 402 since 2026-08-16.
+    # This is the same "refuse rather than store something wrong" rule already applied to an empty
+    # population below -- slow or missing is recoverable, a plausible-looking wrong answer is not.
+    snap = {}
+    try:
+        snap = server._load_snapshot() or {}
+    except Exception as ex:
+        log.error("could not load a snapshot (%s)", ex)
+    if not (snap.get("records") or []):
+        log.error("NO SNAPSHOT RECORDS are loaded, so every row would carry no location and the ticker "
+                  "in place of its name. Refusing to store anything rather than overwrite a good copy "
+                  "with a worse one. Run this after a snapshot build, or restore Supabase Storage.")
+        return len(list(years_list)) + 1        # +1: the performance payload is refused too
+
     failures = 0
     for years in years_list:
         started = time.time()

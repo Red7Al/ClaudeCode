@@ -20,7 +20,17 @@ from hvf_web import server
 
 @pytest.fixture
 def fake_dataset(monkeypatch):
-    monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": "2026-08-23T06:00:00Z"})
+    """A snapshot as the runner actually sees one: a generation time AND records.
+
+    It carried only generated_utc until 2026-09-14, which is a shape the real thing never takes -- a
+    published snapshot always has records. That mattered the moment build() started refusing to run
+    without them: every test using this fixture looked like the very outage the new guard exists to
+    stop. A fixture invented rather than derived certifies the assumption instead of testing it
+    (AGENTS.md rule 3); this one now mirrors hvf_web/snapshot.json's real shape.
+    """
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {
+        "generated_utc": "2026-08-23T06:00:00Z", "count": 1,
+        "records": [{"ticker": "RR.L", "name": "Rolls-Royce Holdings plc", "location": "UK"}]})
     return "2026-08-23T06:00:00Z"
 
 
@@ -229,6 +239,29 @@ def test_garbage_in_the_store_is_ignored(monkeypatch, fake_dataset, built):
 # into a live_state one. Each then overrides the WINDOW build with the failure it is actually testing,
 # and asserts on the window keys rather than on `docs == {}`, because the performance payload is
 # legitimately stored in both cases -- one payload failing must not suppress another.
+
+def test_nothing_is_stored_when_no_snapshot_is_loaded(monkeypatch, built):
+    """A runner with no snapshot must not overwrite good payloads with degraded ones.
+
+    MEASURED IN PRODUCTION 2026-09-14: the 05:24 run stored 6,444 annual and 17,477 three-year rows with
+    ZERO real company names and ZERO locations, replacing 6,252 and 6,441 from the evening before. The
+    live snapshot matched its dataset key, so the degraded copy was SERVED -- all working day, until the
+    evening snapshot job rebuilt it correctly. _sqa_all_rows takes name, sector, location and
+    current_price from the snapshot, and a bare runner has none: snapshot.json is not in git and Supabase
+    Storage has returned 402 since 2026-08-16.
+
+    The dataset key is deliberately left VALID here. The point is that a correct key is not sufficient --
+    it was the reassuring signal that let this through.
+    """
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": "2026-09-14T04:28:59Z",
+                                                           "count": 0, "records": []})
+    docs = {}
+    _store(monkeypatch, docs)
+
+    assert run_winners_precompute.build([1, 3]) == 3      # both windows AND the performance payload
+    assert docs == {}, "a payload was stored despite there being no snapshot to name or locate its rows"
+    assert not built, "nothing should even be BUILT once we know it cannot be stored"
+
 
 def test_an_empty_population_is_never_stored(monkeypatch, fake_dataset, built):
     """Storing zero rows would serve "no trades" quickly instead of the truth slowly."""
