@@ -134,6 +134,169 @@ def test_publication_verification_reuses_publish_key_for_readback(monkeypatch):
     assert purposes == ["publish"]
 
 
+# ------------------------------------------------------------------------------------------------------
+# Do not re-fetch what has already been judged or has just failed (user 2026-09-13).
+#
+# Supabase Storage returned HTTP 402 on every request from 2026-08-16, and because neither a failure nor
+# a REJECTION left any trace, every snapshot-touching request repeated the same doomed download -- 186 in
+# one measured 24-hour window. The guard protected the OUTCOME (the newer local file was kept) and never
+# the COST. These cover both memories, and above all that a genuinely NEW publication still gets through.
+# ------------------------------------------------------------------------------------------------------
+
+def _remote(generated="2026-08-16T19:04:00.223146+00:00", ticker="OLD.L"):
+    """A published remote object plus the bytes and metadata that describe it."""
+    snap = {"generated_utc": generated, "count": 1, "records": [{"ticker": ticker, "has_signal": True}]}
+    data = store._encoded(snap)
+    meta = {"version_id": 17, "object_path": f"snapshots/{ticker}.json", "sha256": store._digest(data),
+            "record_count": 1, "generated_utc": generated}
+    return snap, data, meta
+
+
+def _newer_local(path):
+    """A local file NEWER than the remote -- the situation that produced the 2026-08-31 incident."""
+    local = {"generated_utc": "2026-09-12T19:18:40.923790+00:00", "count": 1,
+             "records": [{"ticker": "NEW.L", "has_signal": True}]}
+    path.write_bytes(store._encoded(local))
+    return local
+
+
+def test_a_failed_fetch_is_remembered_so_the_next_call_backs_off(monkeypatch, tmp_path):
+    path = tmp_path / "snapshot.json"
+    _newer_local(path)
+    _snap, _data, meta = _remote()
+    attempts = []
+
+    def boom(selected, purpose="read"):
+        attempts.append(purpose)
+        raise store.SnapshotStoreError("HTTP 402 payment required")
+
+    monkeypatch.setattr(store, "current_metadata", lambda: meta)
+    monkeypatch.setattr(store, "download_snapshot", boom)
+
+    # The FIRST call has nothing recorded yet, so it tries, fails, and propagates.
+    with pytest.raises(store.SnapshotStoreError):
+        store.pull_current(path)
+
+    # Every call after that serves the local copy instead -- no network, and no exception either, which
+    # is strictly better for the caller than repeating a failure it can do nothing about.
+    for _ in range(4):
+        snapshot, _meta, changed = store.pull_current(path)
+        assert changed is False
+        assert snapshot["records"][0]["ticker"] == "NEW.L", "the local copy must be what is served"
+
+    assert len(attempts) == 1, (
+        f"the failing download was retried {len(attempts)} times; it must be attempted once and then "
+        "backed off -- this is the 186-requests-a-day defect")
+
+
+def test_the_failure_back_off_expires(monkeypatch, tmp_path):
+    path = tmp_path / "snapshot.json"
+    _newer_local(path)
+    _snap, _data, meta = _remote()
+    attempts = []
+
+    def boom(selected, purpose="read"):
+        attempts.append(1)
+        raise store.SnapshotStoreError("HTTP 402 payment required")
+
+    monkeypatch.setattr(store, "current_metadata", lambda: meta)
+    monkeypatch.setattr(store, "download_snapshot", boom)
+
+    with pytest.raises(store.SnapshotStoreError):
+        store.pull_current(path)
+    store.pull_current(path)                       # backed off: served locally, no attempt
+    assert len(attempts) == 1
+
+    # Wind the recorded failure back beyond the window.
+    sc = json.loads(store._sidecar_path(path).read_text(encoding="utf-8"))
+    sc["failed_epoch"] = time.time() - (store.FAILURE_BACKOFF_SECONDS + 60)
+    store._sidecar_path(path).write_text(json.dumps(sc), encoding="utf-8")
+
+    with pytest.raises(store.SnapshotStoreError):
+        store.pull_current(path)
+    assert len(attempts) == 2, "the back-off never expired; a transient outage would be permanent"
+
+
+def test_a_new_publication_is_fetched_immediately_despite_a_recent_failure(monkeypatch, tmp_path):
+    """THE SAFETY PROPERTY. The back-off is keyed on the remote's identity, not on a timer, so a genuinely
+    new snapshot is never withheld. Keyed on time alone this would be a staleness bug."""
+    path = tmp_path / "snapshot.json"
+    _newer_local(path)
+    _snap, _data, failing = _remote(ticker="OLD.L")
+
+    monkeypatch.setattr(store, "current_metadata", lambda: failing)
+    monkeypatch.setattr(store, "download_snapshot",
+                        lambda selected, purpose="read": (_ for _ in ()).throw(
+                            store.SnapshotStoreError("HTTP 402")))
+    with pytest.raises(store.SnapshotStoreError):
+        store.pull_current(path)
+
+    # A NEW object is published: different path, different digest, and newer than the local copy.
+    fresh, fresh_data, fresh_meta = _remote(generated="2026-09-13T06:00:00.000000+00:00", ticker="FRESH.L")
+    got = []
+    monkeypatch.setattr(store, "current_metadata", lambda: fresh_meta)
+    monkeypatch.setattr(store, "download_snapshot",
+                        lambda selected, purpose="read": got.append(1) or (fresh, fresh_meta, fresh_data))
+
+    snapshot, _meta, changed = store.pull_current(path)
+    assert got, "a NEW publication was suppressed by the back-off -- that is a staleness bug"
+    assert changed is True and snapshot == fresh
+
+
+def test_a_remote_judged_older_is_not_downloaded_again(monkeypatch, tmp_path):
+    """A rejection is a DETERMINATION, not a transient failure: re-fetching the same object cannot change
+    the answer. This is the download-and-discard loop that burned egress even when Storage was healthy."""
+    path = tmp_path / "snapshot.json"
+    local = _newer_local(path)
+    older, older_data, older_meta = _remote()          # remote is OLDER than the local file
+    downloads = []
+
+    monkeypatch.setattr(store, "storage_configured", lambda purpose="read": True)
+    monkeypatch.setattr(store, "current_metadata", lambda: older_meta)
+    monkeypatch.setattr(store, "download_snapshot",
+                        lambda selected, purpose="read": downloads.append(1) or (older, older_meta, older_data))
+
+    def _age_past_the_fast_path():
+        """Expire the 60-second sidecar cache so the next call must decide for itself.
+
+        WITHOUT THIS THE TEST IS A LIE. _restore_local now leaves a sidecar whose digest matches the
+        restored file, so every later call short-circuits on CHECK_SECONDS and never reaches
+        _skip_reason. Two mutations proved it: deleting the skip entirely, and dropping the rejected
+        metadata, both left this test passing. It was certifying a mechanism it never touched.
+        """
+        sc = json.loads(store._sidecar_path(path).read_text(encoding="utf-8"))
+        sc["checked_epoch"] = time.time() - (store.CHECK_SECONDS + 5)
+        store._sidecar_path(path).write_text(json.dumps(sc), encoding="utf-8")
+
+    first = store.load_snapshot(path)
+    assert first["generated_utc"] == local["generated_utc"], "the older remote must not win"
+    assert len(downloads) == 1
+
+    for _ in range(4):
+        _age_past_the_fast_path()
+        again = store.load_snapshot(path)
+        assert again["generated_utc"] == local["generated_utc"]
+    assert len(downloads) == 1, (
+        f"the rejected object was downloaded {len(downloads)} times; once judged older it must never be "
+        "fetched again until a NEW one is published")
+
+
+def test_restoring_the_local_copy_leaves_a_sidecar_matching_that_file(monkeypatch, tmp_path):
+    """The sidecar used to be DELETED here, which erased all memory and disabled the 60-second fast path.
+    It must now describe the RESTORED file, so the digest check passes."""
+    path = tmp_path / "snapshot.json"
+    local = _newer_local(path)
+    _older, _older_data, older_meta = _remote()
+
+    store._restore_local(path, local, rejected=older_meta)
+
+    sc = json.loads(store._sidecar_path(path).read_text(encoding="utf-8"))
+    assert store._matches_digest(path, sc["sha256"]), "the sidecar digest does not describe the file"
+    assert sc["rejected_sha256"] == older_meta["sha256"]
+    assert sc.get("object_path") != older_meta["object_path"], (
+        "recording the rejected object_path would let pull_current believe we hold that object")
+
+
 def test_pull_current_redownloads_when_deployment_replaced_file_but_sidecar_is_new(monkeypatch, tmp_path):
     path = tmp_path / "snapshot.json"
     path.write_bytes(store._encoded(_snapshot()))

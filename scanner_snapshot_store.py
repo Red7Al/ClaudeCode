@@ -29,6 +29,13 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_SNAPSHOT = ROOT / "hvf_web" / "snapshot.json"
 DEFAULT_BUCKET = "scanner-artifacts"
 CHECK_SECONDS = 60
+# How long to leave a FAILED remote fetch alone before trying it again (user 2026-09-13). Measured that
+# day: Supabase Storage had returned HTTP 402 on every request since 2026-08-16, and because a failure
+# left no trace in the sidecar, every snapshot-touching request retried it -- 186 in one 24-hour window,
+# all failing. The data changes once or twice a day, so waiting a quarter of an hour before asking again
+# costs nothing. This is the weaker of the two memories: the rejection memory below is keyed on identity
+# and needs no timer at all.
+FAILURE_BACKOFF_SECONDS = 900
 _schema_ready = False
 
 _SCHEMA = (
@@ -585,6 +592,45 @@ def _write_atomic(path: Path, data: bytes) -> None:
             pass
 
 
+def _skip_reason(sidecar: dict, meta: dict, now: float) -> str:
+    """Why this remote object should NOT be downloaded again, or "" to go ahead.
+
+    Both memories are keyed on the remote's IDENTITY -- its object_path and sha256 -- and never on
+    elapsed time alone. That is what makes them safe: the moment a genuinely new snapshot is published
+    the identity differs, neither memory matches, and it downloads immediately. A back-off keyed purely
+    on a timer WOULD be a staleness bug; this cannot be.
+    """
+    # A REJECTION is a determination, not a transient failure: we downloaded this exact object, found it
+    # older than what we already hold, and refused it. Re-fetching it cannot produce a different answer.
+    # Without this, a remote that is behind is re-downloaded and re-discarded on every request forever --
+    # which is what happened between 2026-08-16 and 2026-09-13, and is a plausible cause of the egress
+    # exhaustion that produced the 402 in the first place.
+    if (sidecar.get("rejected_sha256") and sidecar.get("rejected_sha256") == meta.get("sha256")
+            and sidecar.get("rejected_object_path") == meta.get("object_path")):
+        return f"already judged {meta.get('object_path')} older than the local copy"
+    # A FAILURE is transient, so it expires.
+    failed_at = float(sidecar.get("failed_epoch") or 0)
+    if (sidecar.get("failed_object_path") == meta.get("object_path")
+            and now - failed_at < FAILURE_BACKOFF_SECONDS):
+        return (f"fetch of {meta.get('object_path')} failed "
+                f"{int(now - failed_at)}s ago; backing off")
+    return ""
+
+
+def _remember_failure(sidecar_path: Path, sidecar: dict, meta: dict, now: float) -> None:
+    """Record that this object could not be fetched, so the next caller backs off instead of repeating it.
+
+    MERGES into the existing sidecar rather than replacing it, so a previously good sha256 survives and
+    the 60-second fast path keeps working. If there was no sidecar, the result carries no sha256 and the
+    fast path simply stays off -- the failure record can never cause a wrong file to be served.
+    """
+    try:
+        doc = {**(sidecar or {}), "failed_object_path": meta.get("object_path"), "failed_epoch": now}
+        _write_atomic(sidecar_path, json.dumps(doc, separators=(",", ":")).encode("utf-8"))
+    except Exception as exc:
+        log.warning("could not record the failed Scanner snapshot fetch: %s", exc)
+
+
 def pull_current(path: str | os.PathLike = DEFAULT_SNAPSHOT, force: bool = False,
                  purpose: str = "read") -> tuple[dict, dict, bool]:
     """Synchronise the verified current object to ``path``; return snapshot, metadata, changed."""
@@ -612,7 +658,22 @@ def pull_current(path: str | os.PathLike = DEFAULT_SNAPSHOT, force: bool = False
         _write_atomic(sidecar_path, json.dumps(sidecar, separators=(",", ":")).encode("utf-8"))
         return local, meta, False
 
-    snapshot, meta, data = download_snapshot(meta, purpose=purpose)
+    # Don't re-fetch something already judged and refused, or already failing. Only when we hold a usable
+    # local copy to fall back on -- with nothing local, trying anyway is strictly better than giving up.
+    if not force and isinstance(local, dict):
+        skip = _skip_reason(sidecar, meta, now)
+        if skip:
+            log.info("not downloading the Scanner snapshot: %s", skip)
+            validate_snapshot(local)
+            return local, sidecar, False
+
+    try:
+        snapshot, meta, data = download_snapshot(meta, purpose=purpose)
+    except Exception:
+        # Leave a trace, or the next request repeats this in a second's time. This is the whole defect:
+        # the guard protected the OUTCOME and never the COST.
+        _remember_failure(sidecar_path, sidecar, meta, now)
+        raise
     _write_atomic(local_path, data)
     sidecar = {**meta, "checked_epoch": now}
     _write_atomic(sidecar_path, json.dumps(sidecar, separators=(",", ":")).encode("utf-8"))
@@ -634,11 +695,37 @@ def _is_older(remote: dict | None, local: dict | None) -> bool:
     return bool(r and l and r < l)
 
 
-def _restore_local(local_path: Path, local: dict) -> None:
-    """pull_current has already overwritten the file by the time we can compare, so put ours back."""
+def _restore_local(local_path: Path, local: dict, rejected: dict | None = None) -> None:
+    """pull_current has already overwritten the file by the time we can compare, so put ours back.
+
+    The sidecar used to be DELETED here, because its digest described the rejected remote copy and a
+    stale digest would be worse than none. That was right about the digest and wrong about the file: it
+    also erased every trace of what had just happened, so the next request had no memory, took no fast
+    path, and downloaded and rejected the identical object again -- forever. Between 2026-08-16 and
+    2026-09-13 that ran on every snapshot-touching request.
+
+    So instead of deleting it, write a CORRECT one: the digest of the file we just restored, plus a note
+    of which remote object was refused. The digest makes the 60-second fast path work again (it never
+    could while this deleted the sidecar), and the note lets _skip_reason recognise the same object next
+    time. object_path is deliberately NOT recorded as the rejected one, so the "local already matches the
+    remote" branch in pull_current cannot be fooled into thinking we hold it.
+    """
     try:
-        _write_atomic(local_path, json.dumps(local, separators=(",", ":")).encode("utf-8"))
-        _sidecar_path(local_path).unlink(missing_ok=True)   # its digest describes the rejected copy
+        data = json.dumps(local, separators=(",", ":")).encode("utf-8")
+        _write_atomic(local_path, data)
+        now = time.time()
+        doc = {
+            "sha256": _digest(data),                       # describes the RESTORED file, not the reject
+            "generated_utc": (local or {}).get("generated_utc"),
+            "record_count": (local or {}).get("count"),
+            "checked_epoch": now,
+        }
+        if rejected:
+            doc["rejected_sha256"] = rejected.get("sha256")
+            doc["rejected_object_path"] = rejected.get("object_path")
+            doc["rejected_epoch"] = now
+        _write_atomic(_sidecar_path(local_path),
+                      json.dumps(doc, separators=(",", ":")).encode("utf-8"))
     except Exception as exc:
         log.error("could not restore the newer local Scanner snapshot: %s", exc)
 
@@ -649,7 +736,7 @@ def load_snapshot(path: str | os.PathLike = DEFAULT_SNAPSHOT) -> dict:
     local_first = _read_json(local_path) if local_path.is_file() else None
     if storage_configured("read"):
         try:
-            snapshot, _meta, changed = pull_current(local_path)
+            snapshot, remote_meta, changed = pull_current(local_path)
             # NEVER go backwards. The remote copy is authoritative about WHICH snapshot is published, not
             # about which is NEWER, and those came apart on 2026-08-31: Supabase publication had been
             # failing since 2026-08-16 while the IONOS fallback wrote fresher snapshots straight to the
@@ -665,7 +752,9 @@ def load_snapshot(path: str | os.PathLike = DEFAULT_SNAPSHOT) -> dict:
                     "REMOTE SNAPSHOT IS OLDER THAN THE LOCAL COPY (remote %s, local %s); keeping local. "
                     "Supabase publication is behind -- check the Scanner Snapshot Publish workflow.",
                     (snapshot or {}).get("generated_utc"), (local_first or {}).get("generated_utc"))
-                _restore_local(local_path, local_first)
+                # Pass the rejected metadata through so the refusal is REMEMBERED. Without it the same
+                # object is downloaded and discarded on every subsequent request (user 2026-09-13).
+                _restore_local(local_path, local_first, rejected=remote_meta)
                 return local_first
             if changed:
                 log.info("Scanner snapshot cache advanced from Supabase")
