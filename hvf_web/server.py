@@ -2313,12 +2313,14 @@ def api_pricebars(ticker):
     # Only pivots INSIDE the window, exactly as the PNG overlaid them — an out-of-range pivot would
     # otherwise be drawn clamped to an edge, which reads as a real pivot on a date it never happened.
     pivots = []
-    for dk, lk, kind in (("h1_date", "h1_level", "high"), ("h2_date", "h2_level", "high"),
-                         ("h3_date", "h3_level", "high"), ("l1_date", "l1_level", "low"),
-                         ("l2_date", "l2_level", "low"), ("l3_date", "l3_level", "low")):
+    # The LABEL matters as much as the level: the client joins H1-H2-H3 and L1-L2-L3 in order to draw the
+    # converging funnel, and "in order" is only meaningful if each pivot says which one it is.
+    for dk, lk, kind, label in (("h1_date", "h1_level", "high", "H1"), ("h2_date", "h2_level", "high", "H2"),
+                                ("h3_date", "h3_level", "high", "H3"), ("l1_date", "l1_level", "low", "L1"),
+                                ("l2_date", "l2_level", "low", "L2"), ("l3_date", "l3_level", "low", "L3")):
         d, lvl = card.get(dk), card.get(lk)
         if d and isinstance(lvl, (int, float)) and first and last and first <= str(d)[:10] <= last:
-            pivots.append({"date": str(d)[:10], "level": float(lvl), "kind": kind})
+            pivots.append({"date": str(d)[:10], "level": float(lvl), "kind": kind, "label": label})
     return jsonify({"ticker": ticker, "days": days, "bars": bars, "levels": levels,
                     "pivots": pivots, "direction": card.get("hvf_type") or ""})
 

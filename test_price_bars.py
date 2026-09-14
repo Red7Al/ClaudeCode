@@ -120,3 +120,16 @@ def test_the_price_path_never_pulls_numpy_back_in():
                          timeout=600)
     assert out.returncode == 0, out.stderr[-2000:]
     assert out.stdout.strip() == "", f"importing the server now pulls in {out.stdout.strip()}"
+
+
+def test_each_pivot_says_which_one_it_is(monkeypatch):
+    """The client joins H1-H2-H3 and L1-L2-L3 in order to draw the funnel, so an unlabelled pivot would
+    be plotted but could not be connected in the right sequence."""
+    _patch_db(monkeypatch, [("2026-01-01", 100.0), ("2026-06-01", 110.0)])
+    monkeypatch.setattr(server, "_record", lambda t: _record(
+        h1_date="2026-02-01", h1_level=108.0, h2_date="2026-03-01", h2_level=106.0,
+        h3_date="2026-04-01", h3_level=104.0, l1_date="2026-02-15", l1_level=92.0))
+    body = server.app.test_client().get("/api/pricebars/AAF.L?days=365").get_json()
+    assert [p["label"] for p in body["pivots"]] == ["H1", "H2", "H3", "L1"]
+    assert {p["label"]: p["kind"] for p in body["pivots"]} == {
+        "H1": "high", "H2": "high", "H3": "high", "L1": "low"}

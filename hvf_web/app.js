@@ -183,10 +183,20 @@ function priceChartSvg(d,dark){
   // Highs take the direction's colour and lows are always green, exactly as the PNG drew them.
   const hiCol=(d&&d.direction)==="BULLISH"?"#3fb950":"#f85149";
   const byDate={}; bars.forEach((b,i)=>{byDate[b[0]]=i;});
+  const at=p=>{const j=byDate[p.date]; return j===undefined?bars.findIndex(b=>b[0]>=p.date):j;};
+  // THE FUNNEL ITSELF, joined H1-H2-H3 and L1-L2-L3 in order. The dots alone showed WHERE the pivots are
+  // but not that they CONVERGE, which is the whole shape the method is named for -- it is the one thing
+  // the X post card drew that this chart did not, and the card cannot be rendered on this host at all.
+  ["high","low"].forEach(kind=>{
+    const pts=piv.filter(p=>p.kind===kind).map(p=>({i:at(p),p})).filter(o=>o.i>=0)
+                 .sort((a,b)=>a.p.label<b.p.label?-1:1);
+    if(pts.length<2)return;
+    s+=`<polyline fill="none" stroke="${kind==="high"?hiCol:"#3fb950"}" stroke-width="1" stroke-dasharray="3 3" opacity="0.7" points="${pts.map(o=>X(o.i).toFixed(1)+","+Y(o.p.level).toFixed(1)).join(" ")}"/>`;});
   piv.forEach(p=>{
-    let i=byDate[p.date];
-    if(i===undefined){i=bars.findIndex(b=>b[0]>=p.date); if(i<0)return;}
-    s+=`<circle cx="${X(i).toFixed(1)}" cy="${Y(p.level).toFixed(1)}" r="3.4" fill="${p.kind==="high"?hiCol:"#3fb950"}"/>`;});
+    const i=at(p); if(i<0)return;
+    const c=p.kind==="high"?hiCol:"#3fb950";
+    s+=`<circle cx="${X(i).toFixed(1)}" cy="${Y(p.level).toFixed(1)}" r="3.4" fill="${c}"/>`;
+    if(p.label)s+=`<text x="${X(i).toFixed(1)}" y="${(Y(p.level)+(p.kind==="high"?-7:13)).toFixed(1)}" fill="${c}" font-size="9" text-anchor="middle">${esc(p.label)}</text>`;});
   return s+"</svg>";
 }
 // Fetch and draw. Any failure SAYS SO -- same rule as detailImgFailed: a chart that cannot be drawn must

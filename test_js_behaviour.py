@@ -3804,3 +3804,56 @@ def test_the_chart_is_actually_reached_from_the_detail_panel():
     assert re.search(r"loadPriceChart\(r\.ticker\s*,\s*days\)", app_js), \
         "nothing calls loadPriceChart with the panel's ticker and window"
     assert 'getElementById("pw")' in app_js, "loadPriceChart does not target the container"
+
+
+def test_the_funnel_is_drawn_as_converging_lines_not_just_dots():
+    """The dots showed WHERE the pivots are but not that they CONVERGE, which is the shape the method is
+    named for. Highs are joined in label order and lows likewise, so a pivot that falls on a non-trading
+    date cannot reorder the funnel."""
+    src = _extract("priceChartSvg")
+    payload = ("{ticker:'X',days:365,direction:'BULLISH',"
+               "bars:[['2026-01-01',100],['2026-02-01',104],['2026-03-01',101],"
+               "['2026-04-01',103],['2026-05-01',102],['2026-06-01',102.5]],"
+               "pivots:[{date:'2026-01-01',level:110,kind:'high',label:'H1'},"
+               "{date:'2026-03-01',level:107,kind:'high',label:'H2'},"
+               "{date:'2026-05-01',level:104,kind:'high',label:'H3'},"
+               "{date:'2026-02-01',level:90,kind:'low',label:'L1'},"
+               "{date:'2026-04-01',level:94,kind:'low',label:'L2'},"
+               "{date:'2026-06-01',level:97,kind:'low',label:'L3'}]}")
+    out = run_js("", src, f"priceChartSvg({payload},true)")
+    polys = re.findall(r"<polyline[^>]*>", out)
+    assert len(polys) == 3, f"expected the price line plus a high and a low funnel line, got {len(polys)}"
+    assert out.count("<circle ") == 6
+    for lab in ("H1", "H2", "H3", "L1", "L2", "L3"):
+        assert f">{lab}</text>" in out, f"pivot {lab} is not labelled"
+    # The high funnel must descend and the low funnel rise -- that is what converging means. y grows
+    # downward in SVG, so descending prices give increasing y.
+    highs = [p for p in polys if "points=" in p and p is not polys[0]]
+    ys = [[float(pt.split(",")[1]) for pt in re.search(r'points="([^"]+)"', p).group(1).split()]
+          for p in highs]
+    assert ys[0] == sorted(ys[0]), "the high pivots must fall across H1->H3"
+    assert ys[1] == sorted(ys[1], reverse=True), "the low pivots must rise across L1->L3"
+
+
+def test_one_pivot_of_a_kind_draws_no_funnel_line():
+    src = _extract("priceChartSvg")
+    out = run_js("", src,
+                 "priceChartSvg({ticker:'X',days:365,bars:[['2026-01-01',100],['2026-02-01',101]],"
+                 "pivots:[{date:'2026-01-01',level:110,kind:'high',label:'H1'}]},true)")
+    assert len(re.findall(r"<polyline[^>]*>", out)) == 1, "a single pivot cannot form a funnel line"
+
+
+def test_the_funnel_follows_label_order_not_payload_order():
+    """The sort exists for this case. If the payload ever arrives out of order -- a reordered server loop,
+    a pivot on a non-trading date resolving to a later bar -- the funnel must still run H1->H2->H3, or the
+    picture shows a zig-zag that never happened."""
+    src = _extract("priceChartSvg")
+    payload = ("{ticker:'X',days:365,direction:'BULLISH',"
+               "bars:[['2026-01-01',100],['2026-03-01',101],['2026-05-01',102]],"
+               "pivots:[{date:'2026-05-01',level:104,kind:'high',label:'H3'},"
+               "{date:'2026-01-01',level:110,kind:'high',label:'H1'},"
+               "{date:'2026-03-01',level:107,kind:'high',label:'H2'}]}")
+    out = run_js("", src, f"priceChartSvg({payload},true)")
+    funnel = re.findall(r"<polyline[^>]*>", out)[1]
+    ys = [float(pt.split(",")[1]) for pt in re.search(r'points="([^"]+)"', funnel).group(1).split()]
+    assert ys == sorted(ys), f"funnel drawn in payload order, not H1->H3: {ys}"
