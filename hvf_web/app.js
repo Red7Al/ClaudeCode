@@ -128,6 +128,22 @@ function introCardFailed(img){
   if(cap)cap.innerHTML='<b style="color:var(--bear)">⚠ The example chart could not be loaded.</b> '+
     '<span class="muted">The method is described in full beside it; nothing else on this page depends on the picture.</span>';
 }
+// The instrument-detail images (price window, X post card) are rendered server-side by matplotlib, which
+// imports numpy -- and numpy is SIGSYS-killed on the IONOS host, so both endpoints 500 after ~120s
+// (ChangeRequests 2026-09-13, P-01). The <img> tags carried NO onerror and NO alt, so a dead renderer
+// rendered as blank space: the owner had to report it by eye ("it is not showing price history") because
+// the page looked like one that simply had no chart. Exactly the shape introCardFailed above was written
+// for -- the note there calls that the fourth silent failure of this kind on this site; this was the
+// fifth. The message names the failure and reassures, because no figure on the panel depends on the image.
+function detailImgFailed(img,label){
+  if(!img)return;
+  const msg=document.createElement("div");
+  msg.className="muted";
+  msg.style.cssText="padding:10px 0;font-size:12px";
+  msg.innerHTML='<b style="color:var(--bear)">⚠ '+label+' could not be rendered.</b> '+
+    'The server-side chart renderer is unavailable — every figure on this panel is unaffected.';
+  img.replaceWith(msg);
+}
 function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return null;return Math.round((Date.now()-t)/864e5);}
 
 function augment(r){
@@ -515,8 +531,8 @@ function showDetail(t){
       <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the squeeze is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric squeeze; a low Q means a loose, older, or lopsided one.</div></div>
     ${AUTH?`<div class="card"><h4>VolumeScore — breakout confirmation (0–12)</h4><div id="volscorebox" class="sqh-loading">⏳ Data loading…</div></div>`:''}
     <div class="card"><h4>Price — last ${days} days (filter-reactive)</h4>
-      <img id="pw" src="/api/pricewin/${r.ticker}?days=${days}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}"></div>
-    <div class="card"><h4>X post card</h4><img loading="lazy" src="/api/card/${r.ticker}"></div>
+      <img id="pw" alt="Price chart for ${disp(r.ticker)} — last ${days} days" onerror="detailImgFailed(this,'The price chart')" src="/api/pricewin/${r.ticker}?days=${days}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}"></div>
+    <div class="card"><h4>X post card</h4><img loading="lazy" alt="X post card for ${disp(r.ticker)}" onerror="detailImgFailed(this,'The X post card')" src="/api/card/${r.ticker}"></div>
     <div class="card"><h4>Levels</h4>
       <div class="kv"><span>Now</span><b>${f2(r.current_price)}</b></div>
       <div class="kv"><span>Entry</span><b>${f2(r.entry)}</b></div>

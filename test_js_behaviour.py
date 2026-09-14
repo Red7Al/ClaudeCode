@@ -3694,3 +3694,48 @@ def test_the_best_settings_basis_note_renders_for_both_models():
                 " : `${money(BEST_STD_MODEL.wallet)} wallet · ${(BEST_STD_MODEL.stake*100).toFixed(1)}% position`)")
         out = run_js(pre, money, expr)
         assert expect in out, f"basis note (own={own}) rendered {out!r}"
+
+
+# ── The instrument-detail images announce their own failure ───────────────────────────────────────────
+# Both images on the detail panel are rendered server-side by matplotlib, which imports numpy -- and numpy
+# is SIGSYS-killed on the IONOS host, so both endpoints 500 after ~120s (ChangeRequests 2026-09-13, P-01).
+# The <img> tags carried no onerror and no alt, so the dead renderer rendered as BLANK SPACE and only the
+# owner's eye caught it. These two tests are the guard: the first EXECUTES the handler rather than
+# matching its text, the second ties it to the actual tags -- because a wiring check that passes while the
+# handler is detached is the same silent failure in a new costume.
+
+def test_a_failed_detail_image_says_so_instead_of_rendering_blank():
+    src = _extract("detailImgFailed")
+    preamble = textwrap.dedent("""
+        let replaced = null;
+        global.document = {createElement: () => ({style: {cssText: ""}, className: "", innerHTML: ""})};
+        const img = {replaceWith: (el) => { replaced = el; }};
+    """)
+    out = run_js(
+        preamble, src,
+        "(detailImgFailed(img,'The price chart'),"
+        " {replaced: replaced !== null, html: replaced ? replaced.innerHTML : '',"
+        "  cls: replaced ? replaced.className : ''})")
+    assert out["replaced"] is True, "a broken image must be replaced by something visible, not hidden"
+    assert "could not be rendered" in out["html"], out["html"]
+    assert "price chart" in out["html"].lower(), "the message must name WHICH image failed"
+    assert out["cls"] == "muted"
+
+
+def test_a_missing_image_element_is_survivable():
+    """The handler must not throw if the element has gone -- an exception here would be swallowed by the
+    browser and put us straight back to a blank panel with no explanation."""
+    src = _extract("detailImgFailed")
+    out = run_js("global.document={createElement:()=>({style:{},className:'',innerHTML:''})};",
+                 src, "(detailImgFailed(null,'x'), 'survived')")
+    assert out == "survived"
+
+
+def test_both_instrument_detail_images_are_wired_to_the_handler():
+    app_js = (Path(__file__).parent / "hvf_web" / "app.js").read_text(encoding="utf-8")
+    for tag_id, label in (("/api/pricewin/", "price window"), ("/api/card/", "X post card")):
+        tag = next((t for t in re.findall(r"<img\b[^>]*>", app_js) if tag_id in t), None)
+        assert tag, f"the {label} <img> was not found at all"
+        assert "onerror=" in tag and "detailImgFailed(" in tag, \
+            f"the {label} <img> has no onerror handler, so a failed render is invisible: {tag}"
+        assert "alt=" in tag, f"the {label} <img> has no alt text: {tag}"
