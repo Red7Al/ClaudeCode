@@ -4915,6 +4915,185 @@ def _insight_direction_mix() -> dict:
     }
 
 
+_DRIVERS_CACHE = {"day": None, "data": None}
+
+
+def _drv_seg(rows):
+    """n, mean return and % positive for a set of resolved triggers. Break-even counts as neither,
+    matching the Insights cards, so these figures stay comparable with the rest of the site."""
+    if not rows:
+        return {"n": 0, "mean": None, "pos": None}
+    rets = [r[0] for r in rows]
+    decided = [x for x in rets if x != 0]
+    return {"n": len(rows),
+            "mean": round(sum(rets) / len(rets), 2),
+            "pos": round(100.0 * sum(1 for x in decided if x > 0) / len(decided), 1) if decided else None}
+
+
+def _drv_t(a, b):
+    """Welch's t of a against b, on mean return. Against the REST of the population, never a neighbouring
+    bucket: the reader's question is whether this slice beats everything else."""
+    if len(a) < 2 or len(b) < 2:
+        return 0.0
+    ma, mb = sum(a) / len(a), sum(b) / len(b)
+    va = sum((x - ma) ** 2 for x in a) / (len(a) - 1)
+    vb = sum((x - mb) ** 2 for x in b) / (len(b) - 1)
+    den = math.sqrt(va / len(a) + vb / len(b))
+    return round((ma - mb) / den, 1) if den else 0.0
+
+
+def _trade_drivers() -> dict:
+    """What actually separates a winning squeeze from a losing one, recomputed from squeeze_history.
+
+    RECOMPUTED, NEVER WRITTEN DOWN (owner request 2026-09-14). The findings could have been pasted in as
+    text, and that is exactly the failure test_insights already guards against on the Insights cards: an
+    analysis is a claim about the past, and the dangerous outcome is not that it stops being true, it is
+    that it KEEPS ITS CONFIDENT WORDING after the evidence has gone. Every number here is measured on
+    each build, and the verdicts below are derived from those numbers rather than asserted.
+
+    THE METHOD, and why each part of it is there:
+      * Population: every resolved trigger, the same definition the Insights cards use.
+      * Two measures always reported together, because in this population they move in OPPOSITE
+        directions -- mean return and % positive.
+      * EVERY factor is re-tested inside R:R terciles. Pattern quality looked predictive here until it
+        turned out to be R:R leaking through a +0.655 rank correlation, and stop distance is the same
+        illusion: both REVERSE once R:R is held roughly constant. A factor that does not survive
+        stratification is reported as an artefact, not as a finding.
+    """
+    day = _time.strftime("%Y-%m-%d")
+    if _DRIVERS_CACHE["day"] == day and _DRIVERS_CACHE["data"]:
+        return _DRIVERS_CACHE["data"]
+    from db_pool import get_db
+    db = get_db()
+    try:
+        raw = db.run(
+            "select return_pct::float, risk_reward::float, quality::float, hvf_type, timeframe, "
+            "       entry_level::float, stop_level::float, target_level::float, "
+            "       extract(year from triggered_date)::int "
+            "  from squeeze_history "
+            " where return_pct is not null and risk_reward is not null and triggered_date is not null") or []
+        span = db.run("select min(triggered_date)::text, max(triggered_date)::text from squeeze_history "
+                      "where return_pct is not null") or [(None, None)]
+    finally:
+        db.close()
+    if not raw:
+        return {}
+
+    rows = []
+    for ret, rr, q, side, tf, e, s_, t_, yr in raw:
+        bull = str(side or "").upper().startswith("BULL")
+        stop_pct = tgt_pct = None
+        try:
+            if e and s_:
+                stop_pct = abs(e - s_) / abs(e) * 100.0
+            if e and t_:
+                tgt_pct = abs(t_ - e) / abs(e) * 100.0
+        except (TypeError, ZeroDivisionError):
+            pass
+        rows.append((ret, rr, q, bull, tf, stop_pct, tgt_pct, yr))
+
+    def seg(sel):
+        return _drv_seg([(r[0],) for r in rows if sel(r)])
+
+    def t_vs_rest(sel):
+        a = [r[0] for r in rows if sel(r)]
+        b = [r[0] for r in rows if not sel(r)]
+        return _drv_t(a, b)
+
+    # R:R terciles -- the control. Computed from the data rather than fixed, so the boundaries follow
+    # the population instead of a number someone typed once.
+    by_rr = sorted(r[1] for r in rows)
+    lo_cut, hi_cut = by_rr[len(by_rr) // 3], by_rr[2 * len(by_rr) // 3]
+
+    strata = []
+    for name, lo, hi in (("Low", None, lo_cut), ("Mid", lo_cut, hi_cut), ("High", hi_cut, None)):
+        def inb(r, lo=lo, hi=hi):
+            return (lo is None or r[1] >= lo) and (hi is None or r[1] < hi)
+        strata.append({
+            "label": name,
+            "range": f"{lo:.2f}–{hi:.2f}" if lo is not None and hi is not None
+                     else (f"< {hi:.2f}" if lo is None else f"{lo:.2f}+"),
+            "bull": seg(lambda r, f=inb: f(r) and r[3]),
+            "bear": seg(lambda r, f=inb: f(r) and not r[3])})
+
+    years = []
+    for yr in sorted({r[7] for r in rows if r[7]}):
+        b = seg(lambda r, y=yr: r[7] == y and r[3])
+        s = seg(lambda r, y=yr: r[7] == y and not r[3])
+        if (b["n"] or 0) >= 100 and (s["n"] or 0) >= 100:
+            years.append({"year": yr, "bull": b, "bear": s})
+    # DERIVED, not asserted: the claim "bullish wins in every year" is only printed if it is true here.
+    bull_every_year = bool(years) and all(
+        (y["bull"]["mean"] or 0) > (y["bear"]["mean"] or 0) for y in years)
+
+    def reversal(name, getter, bands, note):
+        """A factor's best band overall, against the same band inside the LOW R:R tercile. When the sign
+        of the t flips between the two, the univariate effect was R:R and not the factor."""
+        def band_of(r):
+            v = getter(r)
+            if v is None:
+                return None
+            for i in range(len(bands) - 1):
+                if bands[i] <= v < bands[i + 1]:
+                    return f"{bands[i]:g}–{bands[i + 1]:g}"
+            return f"{bands[-1]:g}+" if v >= bands[-1] else None
+        low = [r for r in rows if r[1] < lo_cut]
+        out = []
+        for i in range(len(bands)):
+            lbl = (f"{bands[i]:g}–{bands[i+1]:g}" if i < len(bands) - 1 else f"{bands[-1]:g}+")
+            allr = [r[0] for r in rows if band_of(r) == lbl]
+            lowr = [r[0] for r in low if band_of(r) == lbl]
+            if len(allr) < 150:
+                continue
+            out.append({
+                "band": lbl,
+                "all": _drv_seg([(x,) for x in allr]),
+                "all_t": _drv_t(allr, [r[0] for r in rows if band_of(r) != lbl]),
+                "low": _drv_seg([(x,) for x in lowr]) if len(lowr) >= 150 else {"n": len(lowr), "mean": None, "pos": None},
+                "low_t": _drv_t(lowr, [r[0] for r in low if band_of(r) != lbl]) if len(lowr) >= 150 else None})
+        flipped = [b for b in out if b["low_t"] is not None and b["all_t"] * b["low_t"] < 0]
+        return {"name": name, "note": note, "bands": out, "reverses": bool(flipped),
+                "flipped": [b["band"] for b in flipped]}
+
+    data = {
+        "generated": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+        "n": len(rows), "from": span[0][0], "to": span[0][1],
+        "rr_cuts": {"low": round(lo_cut, 2), "high": round(hi_cut, 2)},
+        "direction": {
+            "bull": seg(lambda r: r[3]), "bear": seg(lambda r: not r[3]),
+            "t": t_vs_rest(lambda r: r[3]),
+            "strata": strata, "years": years, "bull_every_year": bull_every_year},
+        "timeframe": [{"label": tf, **seg(lambda r, x=tf: r[4] == x),
+                       "t": t_vs_rest(lambda r, x=tf: r[4] == x)}
+                      for tf in sorted({r[4] for r in rows if r[4]})
+                      if len([1 for r in rows if r[4] == tf]) >= 150],
+        "reversals": [
+            reversal("Pattern quality", lambda r: r[2], [0, 30, 40, 50, 60, 70],
+                     "Highest-quality patterns look best overall. Inside the low R:R tercile the ordering "
+                     "inverts: the weakest patterns return most."),
+            reversal("Stop distance %", lambda r: r[5], [0, 1, 2, 4, 7, 12],
+                     "The tightest stops look best overall. Holding R:R constant they are the worst — a "
+                     "near-zero stop buys a large ratio, not a good trade."),
+        ],
+        "target": reversal("Target distance %", lambda r: r[6], [0, 10, 20, 35, 60, 100],
+                           "Targets under 10% are the weakest band on mean return."),
+    }
+    _DRIVERS_CACHE.update(day=day, data=data)
+    return data
+
+
+@app.route("/api/trade-drivers")
+def api_trade_drivers():
+    """Aggregates only — never a per-trade row — so this carries no Transaction evidence."""
+    if not _wu.name_for_token(request.headers.get("X-Auth") or ""):
+        return jsonify({"error": "login required"}), 401
+    try:
+        return jsonify(_json_safe(_trade_drivers()))
+    except Exception as ex:
+        log.warning(f"trade drivers failed: {ex}")
+        return jsonify({"error": "unavailable"}), 500
+
+
 def _mcap_headline(best: dict, best_win: dict) -> str:
     """The market-cap card's headline, DERIVED from which band actually leads each measure.
 

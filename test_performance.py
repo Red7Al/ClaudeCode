@@ -865,6 +865,129 @@ def test_the_superseded_squeeze_analysis_surface_stays_removed():
         assert shared in code, f"{shared} is shared with live surfaces and must survive the removal"
 
 
+# ------------------------------------------------------------------------------------------------------
+# "What drives the outcome" — the Performance sub-tab (user 2026-09-14).
+#
+# The whole point of building it server-side was that the findings must NOT be written down. An analysis
+# is a claim about the past; the dangerous failure is not that it stops being true, it is that it keeps
+# its confident wording after the evidence has gone. test_insights enforces that on the Insights cards
+# and the market-cap headline; these do the same here.
+# ------------------------------------------------------------------------------------------------------
+
+def _fake_drivers_db(monkeypatch, rows, span=("2021-10-01", "2026-09-10")):
+    """Feed _trade_drivers a synthetic population. Column order mirrors its real query exactly."""
+    class _DB:
+        @staticmethod
+        def run(sql, **kw):
+            return [span] if "min(triggered_date)" in sql else rows
+
+        @staticmethod
+        def close():
+            pass
+
+    import db_pool
+    monkeypatch.setattr(db_pool, "get_db", lambda *a, **k: _DB())
+    monkeypatch.setattr(server, "_DRIVERS_CACHE", {"day": None, "data": None})
+
+
+def _drv_row(ret, rr=5.0, quality=50.0, bull=True, tf="daily-240", year=2025,
+             entry=100.0, stop=95.0, target=130.0):
+    return (ret, rr, quality, "BULLISH" if bull else "BEARISH", tf, entry, stop, target, year)
+
+
+def test_the_every_year_claim_is_derived_from_the_data_not_asserted():
+    """The page says bullish wins in EVERY year. That sentence must be a consequence of the numbers, not
+    a constant — the market-cap headline shipped as a hardcoded 'leads on both measures' for exactly this
+    reason, and was true only until the two measures disagreed.
+
+    Here bearish is made to beat bullish in one year, and the claim must switch itself off.
+    """
+    import pytest as _pytest
+    mp = _pytest.MonkeyPatch()
+    try:
+        rows = []
+        for year, bull_ret, bear_ret in ((2024, 5.0, 1.0), (2025, 5.0, 9.0)):   # 2025 bear WINS
+            rows += [_drv_row(bull_ret, bull=True, year=year) for _ in range(150)]
+            rows += [_drv_row(bear_ret, bull=False, year=year) for _ in range(150)]
+        _fake_drivers_db(mp, rows)
+        d = server._trade_drivers()
+        assert d["direction"]["bull_every_year"] is False, (
+            "the claim survived a year in which bearish outperformed -- it is asserted, not derived")
+
+        # And the converse, so the test cannot pass by the flag simply always being False.
+        mp.undo()
+        rows = []
+        for year in (2024, 2025):
+            rows += [_drv_row(5.0, bull=True, year=year) for _ in range(150)]
+            rows += [_drv_row(1.0, bull=False, year=year) for _ in range(150)]
+        _fake_drivers_db(mp, rows)
+        assert server._trade_drivers()["direction"]["bull_every_year"] is True
+    finally:
+        mp.undo()
+
+
+def test_a_factor_that_reverses_under_r_r_control_is_flagged_as_reversing():
+    """Pattern quality and stop distance both look predictive alone and invert once R:R is held constant.
+    The page must detect that from the data rather than be told which factors to distrust."""
+    import pytest as _pytest
+    mp = _pytest.MonkeyPatch()
+    try:
+        # Each R:R value carries BOTH a tight-stop and a wide-stop row, so the low tercile contains both
+        # bands and there is something to compare against inside it. (The first version of this fixture
+        # clustered the R:R values, which left the low tercile holding a single band and no contrast --
+        # it could not have detected a reversal however broken the code was.)
+        # The jitter is not decoration. Welch's t divides by the pooled spread, so a band whose rows all
+        # carry an IDENTICAL return has zero variance and t degenerates to 0.0 — the first version of
+        # this fixture did exactly that and reported no reversal however the effect was arranged.
+        rows = []
+        for i in range(300):
+            lo_rr, hi_rr = 1.0 + i * 0.005, 15.0 + i * 0.02
+            j = (i % 7) - 3.0                                                # spread, mean unchanged
+            rows.append(_drv_row(-4.0 + j, rr=lo_rr, entry=100.0, stop=99.5))   # tight, low R:R  → bad
+            rows.append(_drv_row(+3.0 + j, rr=lo_rr, entry=100.0, stop=92.0))   # wide,  low R:R  → good
+            rows.append(_drv_row(+20.0 + j, rr=hi_rr, entry=100.0, stop=99.5))  # tight, high R:R → great
+            rows.append(_drv_row(+4.0 + j, rr=hi_rr, entry=100.0, stop=92.0))   # wide,  high R:R
+        _fake_drivers_db(mp, rows)
+        d = server._trade_drivers()
+        stop = next(r for r in d["reversals"] if r["name"].startswith("Stop distance"))
+        assert stop["reverses"] is True, (
+            "a band whose t changes sign between the whole population and the low R:R tercile was not "
+            "flagged -- this is the quality/R:R leakage in its other disguise")
+    finally:
+        mp.undo()
+
+
+def test_the_drivers_tab_is_actually_reachable():
+    """A panel nothing opens is this repository's signature defect. Assert the pill, the panel and the
+    pfPanel wiring all exist -- /api/squeeze-analysis was deleted on 2026-09-13 precisely because its
+    caller had been removed and nobody noticed for eight weeks."""
+    here = Path(__file__).parent
+    html = (here / "hvf_web" / "index.html").read_text(encoding="utf-8")
+    js = (here / "hvf_web" / "app.js").read_text(encoding="utf-8")
+
+    assert 'data-pfpanel="drivers"' in html and "pfPanel('drivers')" in html
+    assert 'id="pf-panel-drivers"' in html
+    assert 'which!=="drivers"' in js, "pfPanel does not show/hide the drivers panel"
+    assert '"/api/trade-drivers"' in js, "the renderer never calls the endpoint"
+
+    # The renderer must be invoked BY the drivers branch. Asserting that `renderTradeDrivers()` merely
+    # appears somewhere was not enough: replacing its guard with `if(false)` left every other assertion
+    # here true and the mutation SURVIVED. The condition and the call have to be tied together.
+    assert re.search(r'which\s*===\s*"drivers"\s*\)\s*renderTradeDrivers\(\)', js), (
+        "renderTradeDrivers is not called from the drivers branch of pfPanel -- the tab would open empty")
+
+
+def test_the_client_does_not_hardcode_the_finding():
+    """The verdict sentence must be conditional on what the server measured. If the client simply states
+    that bullish wins every year, the page becomes a claim that cannot go stale -- which is the defect."""
+    js = (Path(__file__).parent / "hvf_web" / "app.js").read_text(encoding="utf-8")
+    block = js.split("function _paintTradeDrivers")[1].split("\nfunction ")[0]
+    assert "bull_every_year" in block, "the every-year claim is not driven by the server's verdict"
+    assert "no longer leads in every year" in block, (
+        "there is no wording for the case where the finding has stopped holding -- so it can only ever "
+        "print the good news")
+
+
 def _py_code_only(src: str) -> str:
     """Python source with comments removed, for assertions about what the code DOES.
 

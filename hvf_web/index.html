@@ -1479,6 +1479,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
          reading page with no controls: it must be checkable by someone who has never seen the site.
          FAR LEFT (user 2026-09-07): it explains how everything to its right is computed, so it reads
          first. `.pf-pills` is a flex row, so DOM order is visual order — moving the group moves the pill. -->
+    <div class="pf-pill-group"><span class="muted pf-pill-desc">Which attributes actually separate a winning squeeze from a losing one.</span><button class="pill" data-pfpanel="drivers" onclick="pfPanel('drivers')" title="Every candidate factor tested twice — alone, then again with risk-to-reward held constant. Shows which effects survive that control, which reverse under it, and which cannot be used at placement time at all.">🔬 What drives the outcome</button></div>
     <div class="pf-pill-group"><span class="muted pf-pill-desc">Exactly how the recommendations are computed, for external review.</span><button class="pill" data-pfpanel="method" onclick="pfPanel('method')" title="The population, the de-duplication, the grid searched, the wallet replay, how each card is selected and what every printed figure means.">📐 Methodology</button></div>
     <div class="pf-pill-group"><span class="muted pf-pill-desc">Which tested settings survived wallet, margin, trade-count, and drawdown constraints.</span><button class="pill active" data-pfpanel="settings" onclick="pfPanel('settings')" title="Rank realistic annual settings using wallet-constrained replay, profit, drawdown, robustness and trade count.">🥇 Best settings</button></div>
     <div class="pf-pill-group"><span class="muted pf-pill-desc">What your current filters would have produced over the selected period.</span><button class="pill" data-pfpanel="results" onclick="pfPanel('results')" title="Back test over the last 12 months for YOUR current configuration (your Trading (Squeeze) direction filter, Markets (User) and personal floors): every setup as its own row (entry/stop/target → TARGET/STOPPED/OPEN, return), the click-to-filter charts, and the best Quality/R:R buckets. Answers 'which setups worked'.">📊 Back Test</button></div>
@@ -1576,6 +1577,13 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        external review. Every number in it is taken from hvf_web/best_settings.js and asserted by
        test_methodology_page.py, so the page cannot drift away from the code it describes. -->
   <div id="pf-panel-method" class="hidden"></div>
+
+  <!-- What drives the outcome (user 2026-09-14). A READING PAGE like Methodology: no controls of its
+       own, so pfPanel hides the shared wallet/date chrome for it. Every figure is recomputed server-side
+       by /api/trade-drivers on each build rather than written in here as text — the same rule
+       test_insights enforces on the Insights cards, because an analysis that keeps its confident wording
+       after the evidence has moved is worse than one that disappears. -->
+  <div id="pf-panel-drivers" class="hidden"></div>
   <div id="pf-panel-results">
   <h2 class="sec" style="margin-top:0">Back Test</h2>
   <p class="muted" style="font-size:13px;margin-top:-8px">These are <b>back-test results over the last 12 months</b>, replayed against your <b>complete current configuration</b>: direction, enabled markets, saved market/sector scope, R:R, Quality, Volume Score, RVOL, VWAP, ATR, instrument value and wallet limits. Applying a Best Settings option updates this replay immediately. Each setup is measured from its trigger to <b style="color:var(--bull)">TARGET</b>, <b style="color:var(--bear)">STOPPED</b> or <b style="color:#d29922">OPEN</b> (marked to the latest price).</p>

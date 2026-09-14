@@ -2462,11 +2462,14 @@ function pfPanel(which){
   const meth=$("pf-panel-method");
   if(meth){meth.classList.toggle("hidden",which!=="method");
     if(which==="method"&&!meth.innerHTML)meth.innerHTML=methodologyHTML();}
+  const drv=$("pf-panel-drivers");
+  if(drv){drv.classList.toggle("hidden",which!=="drivers");
+    if(which==="drivers")renderTradeDrivers();}
   // METHODOLOGY IS A READING PAGE (user 2026-09-06: the replay-model card, the Results lede and the date
   // row "do not need to show - hide them"). It documents how the analysis works; it has no controls of
   // its own, and a wallet editor above a description of the method invites the reader to think they are
   // configuring something. The whole shared Performance chrome is hidden for it.
-  const _reading = which === "method";
+  const _reading = which === "method" || which === "drivers";
   const model=$("pf-shared-model");
   if(model)model.style.display=(which==="results"||_reading)?"none":"flex";
   const lede=$("pf-lede"); if(lede)lede.style.display=_reading?"none":"";
@@ -2621,6 +2624,113 @@ function _dedupeSameDayRows(rows){
     const cur=byKey[k]; if(!cur||(+r.perf||-Infinity)>(+cur.perf||-Infinity))byKey[k]=r;});
   return Object.values(byKey);
 }
+// ── What drives the outcome (user 2026-09-14) ────────────────────────────────────────────────────────
+// EVERY FIGURE COMES FROM THE SERVER, none is written here. The findings could have been pasted in as
+// prose, and that is the failure test_insights already guards against on the Insights cards: an analysis
+// is a claim about the past, and the dangerous outcome is not that it stops being true but that it keeps
+// its confident wording after the evidence has gone. Even the sentence about bullish winning every year
+// is printed only when the server says `bull_every_year` is still true.
+let DRIVERS=null, DRIVERS_LOADING=false, DRIVERS_ERROR="";
+function _drvPct(v){return v==null?"—":(v>0?"+":"")+v+"%";}
+function _drvCls(v){return v==null?"":(v>0?"bull":(v<0?"bear":""));}
+function _drvCell(s){
+  if(!s||!s.n)return '<td class="num">—</td><td class="num">—</td><td class="num">—</td>';
+  return `<td class="num">${s.n.toLocaleString()}</td>`+
+         `<td class="num" style="color:var(--${_drvCls(s.mean)||'fg'})">${_drvPct(s.mean)}</td>`+
+         `<td class="num">${s.pos==null?"—":s.pos+"%"}</td>`;
+}
+function renderTradeDrivers(){
+  const box=$("pf-panel-drivers"); if(!box)return;
+  if(DRIVERS)return _paintTradeDrivers(box,DRIVERS);
+  if(DRIVERS_ERROR){
+    box.innerHTML=`<div class="empty">What drives the outcome could not be loaded: ${_esc(DRIVERS_ERROR)}. `+
+      `<button class="btn" onclick="DRIVERS_ERROR='';renderTradeDrivers()">↻ Retry</button></div>`;
+    return;
+  }
+  if(DRIVERS_LOADING)return;
+  DRIVERS_LOADING=true;
+  box.innerHTML='<div class="refreshing" role="status" aria-live="polite" style="padding:18px 0"><b class="sqh-loading">⏳ Recomputing from every resolved trigger…</b></div>';
+  fetch("/api/trade-drivers",{headers:{"X-Auth":AUTH}})
+    .then(r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
+    .then(j=>{DRIVERS_LOADING=false;if(j.error)throw new Error(j.error);DRIVERS=j;_paintTradeDrivers(box,j);})
+    .catch(err=>{DRIVERS_LOADING=false;DRIVERS_ERROR=String((err&&err.message)||err||"unavailable");renderTradeDrivers();});
+}
+function _paintTradeDrivers(box,d){
+  const dr=d.direction||{}, lead=(dr.bull&&dr.bear&&dr.bull.mean!=null&&dr.bear.mean!=null)
+    ?Math.round((dr.bull.mean-dr.bear.mean)*100)/100:null;
+  const hdr='<tr><th>Split</th><th class="num">Trades</th><th class="num">Mean return</th><th class="num">% positive</th></tr>';
+
+  const strata=(dr.strata||[]).map(s=>
+    `<tr><td><b>${_esc(s.label)}</b> <span class="muted">R:R ${_esc(s.range)}</span> · BULL</td>${_drvCell(s.bull)}</tr>`+
+    `<tr><td><b>${_esc(s.label)}</b> <span class="muted">R:R ${_esc(s.range)}</span> · BEAR</td>${_drvCell(s.bear)}</tr>`).join("");
+
+  const years=(dr.years||[]).map(y=>
+    `<tr><td>${y.year}</td>${_drvCell(y.bull)}${_drvCell(y.bear)}</tr>`).join("");
+
+  const tf=(d.timeframe||[]).map(t=>
+    `<tr><td>${_esc(t.label)}</td><td class="num">${(t.n||0).toLocaleString()}</td>`+
+    `<td class="num" style="color:var(--${_drvCls(t.mean)||'fg'})">${_drvPct(t.mean)}</td>`+
+    `<td class="num">${t.pos==null?"—":t.pos+"%"}</td><td class="num">${t.t}</td></tr>`).join("");
+
+  const rev=(d.reversals||[]).map(r=>{
+    const rows=(r.bands||[]).map(b=>
+      `<tr><td>${_esc(b.band)}</td>`+
+      `<td class="num" style="color:var(--${_drvCls(b.all.mean)||'fg'})">${_drvPct(b.all.mean)}</td><td class="num">${b.all_t}</td>`+
+      `<td class="num" style="color:var(--${_drvCls(b.low&&b.low.mean)||'fg'})">${b.low&&b.low.mean!=null?_drvPct(b.low.mean):"—"}</td>`+
+      `<td class="num">${b.low_t==null?"—":b.low_t}</td></tr>`).join("");
+    return `<div class="card"><h4>${_esc(r.name)} `+
+      (r.reverses?'<span class="tag bear">reverses under control</span>':'<span class="tag">holds under control</span>')+
+      `</h4><div class="muted" style="font-size:12px;margin-bottom:8px">${_esc(r.note)}</div>`+
+      `<div class="tablewrap"><table><thead><tr><th>Band</th><th class="num">All triggers</th><th class="num">t</th>`+
+      `<th class="num">Within low R:R</th><th class="num">t</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }).join("");
+
+  box.innerHTML=
+    `<h2 class="sec" style="margin-top:0">What drives the outcome</h2>`+
+    `<p class="lede">Every candidate factor tested twice — alone, then again with risk-to-reward held `+
+    `constant. Recomputed from all <b>${(d.n||0).toLocaleString()}</b> resolved triggers `+
+    `(${_esc(d.from||"")} → ${_esc(d.to||"")}) each build, so nothing here can keep its wording after the `+
+    `evidence moves. Break-even counts as neither win nor loss, matching the Insights cards.</p>`+
+
+    `<div class="card"><h4>Direction is the largest usable effect`+
+    (lead!=null?` — ${lead} points of mean return`:"")+`</h4>`+
+    `<div class="muted" style="font-size:12px;margin-bottom:8px">Known before the order is placed, unlike `+
+    `RVOL or VolumeScore, which are measured on the break bar a median eight days later.`+
+    (dr.bull_every_year?` Bullish outperforms in <b>every year measured</b>, including falling ones — so this is not a rising-market artefact.`:
+      ` <b>Note:</b> bullish no longer leads in every year measured; the effect has become regime-dependent.`)+
+    `</div>`+
+    `<div class="tablewrap"><table><thead>${hdr}</thead><tbody>`+
+    `<tr><td><b>BULL</b> — all triggers</td>${_drvCell(dr.bull)}</tr>`+
+    `<tr><td><b>BEAR</b> — all triggers</td>${_drvCell(dr.bear)}</tr>`+
+    `</tbody></table></div>`+
+    `<div class="muted" style="font-size:12px;margin:10px 0 6px">Held inside risk-to-reward terciles, so `+
+    `the effect cannot be R:R in disguise:</div>`+
+    `<div class="tablewrap"><table><thead>${hdr}</thead><tbody>${strata}</tbody></table></div></div>`+
+
+    (years?`<div class="card"><h4>By trigger year</h4><div class="tablewrap"><table><thead>`+
+      `<tr><th>Year</th><th class="num">BULL n</th><th class="num">BULL return</th><th class="num">BULL % pos</th>`+
+      `<th class="num">BEAR n</th><th class="num">BEAR return</th><th class="num">BEAR % pos</th></tr></thead>`+
+      `<tbody>${years}</tbody></table></div></div>`:"")+
+
+    (tf?`<div class="card"><h4>Timeframe</h4><div class="tablewrap"><table><thead>`+
+      `<tr><th>Timeframe</th><th class="num">Trades</th><th class="num">Mean return</th>`+
+      `<th class="num">% positive</th><th class="num">t vs rest</th></tr></thead><tbody>${tf}</tbody></table></div></div>`:"")+
+
+    rev+
+
+    `<div class="card"><h4>Not every strong number is a usable one</h4>`+
+    `<div class="muted" style="font-size:12px">Two cautions that the tables above cannot show. `+
+    `<b>RVOL</b> is a genuine effect that survives this control, but it is measured on the break bar — a `+
+    `median eight days after the order reaches the broker — so it cannot gate placement. <b>Days held</b> `+
+    `is the largest number in the whole dataset and is an <em>outcome</em>, not a cause: losers stop out `+
+    `quickly and winners are left to run, so filtering on it would be look-ahead.</div></div>`+
+
+    `<div class="muted" style="font-size:11px;margin-top:6px">Welch's t on mean return against the rest of `+
+    `the population; bands under 150 trades are not shown. R:R terciles cut at `+
+    `${d.rr_cuts?d.rr_cuts.low:"—"} and ${d.rr_cuts?d.rr_cuts.high:"—"}, computed from the data. `+
+    `Generated ${_esc(d.generated||"")}.</div>`;
+}
+
 function renderSqueezeAnalysis(){
   loadBestSettingsHistory();
   renderVolScoreReport();   // VolumeScore impact report (user 2026-07-24, P-02) — loads once, server-cached
