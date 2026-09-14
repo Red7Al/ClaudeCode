@@ -144,6 +144,68 @@ function detailImgFailed(img,label){
     'The server-side chart renderer is unavailable — every figure on this panel is unaffected.';
   img.replaceWith(msg);
 }
+// The price chart, drawn HERE rather than fetched as a PNG (ChangeRequests 2026-09-13, P-01, option b).
+// /api/pricewin rendered it server-side with matplotlib, which imports numpy -- and numpy is SIGSYS-killed
+// on the IONOS host, so it returned 500 after ~120s on every call and no configuration fixes it. Drawing
+// from /api/pricebars keeps numpy off the request path entirely instead of working around it.
+//
+// A PURE FUNCTION returning SVG text, deliberately: it takes the payload and the theme and touches no
+// DOM, so test_js_behaviour can EXECUTE it and assert on what it actually draws. The colour language is
+// carried over unchanged from the PNG so the chart still reads as the same chart.
+function priceChartSvg(d,dark){
+  const W=900,H=420,L=62,R=68,T=26,B=26;
+  const bg=dark?"#0d1117":"#ffffff", fg=dark?"#c9d1d9":"#24292f", grid=dark?"#30363d":"#d0d7de";
+  const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const bars=(d&&d.bars)||[], tk=esc(d&&d.ticker), dys=(d&&d.days)||0;
+  const open=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="background:${bg};border-radius:6px" role="img" `+
+    `aria-label="${tk} closing price, last ${dys} days">`;
+  const title=`<text x="${W/2}" y="17" fill="${fg}" font-size="13" text-anchor="middle">${tk} — last ${dys}d</text>`;
+  if(!bars.length)return open+title+`<text x="${W/2}" y="${H/2}" fill="${fg}" font-size="13" text-anchor="middle">no price data</text></svg>`;
+  const lv=(d&&d.levels)||{}, piv=(d&&d.pivots)||[];
+  const vals=bars.map(b=>b[1]).concat(Object.keys(lv).map(k=>lv[k]),piv.map(p=>p.level)).filter(v=>typeof v==="number"&&isFinite(v));
+  let lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals);
+  if(!(hi>lo)){hi=lo+1;lo=lo-1;}
+  const pad=(hi-lo)*0.06; lo-=pad; hi+=pad;
+  const X=i=>L+(bars.length<2?(W-L-R)/2:i*(W-L-R)/(bars.length-1));
+  const Y=v=>T+(hi-v)*(H-T-B)/(hi-lo);
+  const fmt=v=>Math.abs(v)>=1000?v.toFixed(0):v.toFixed(2);
+  let s=open+title;
+  s+=`<rect x="${L}" y="${T}" width="${W-L-R}" height="${H-T-B}" fill="none" stroke="${grid}" stroke-width="1"/>`;
+  s+=`<text x="${L-6}" y="${Y(hi-pad)+4}" fill="${fg}" font-size="10" text-anchor="end">${fmt(hi-pad)}</text>`;
+  s+=`<text x="${L-6}" y="${Y(lo+pad)+4}" fill="${fg}" font-size="10" text-anchor="end">${fmt(lo+pad)}</text>`;
+  s+=`<text x="${L}" y="${H-8}" fill="${fg}" font-size="10">${esc(bars[0][0])}</text>`;
+  s+=`<text x="${W-R}" y="${H-8}" fill="${fg}" font-size="10" text-anchor="end">${esc(bars[bars.length-1][0])}</text>`;
+  s+=`<polyline fill="none" stroke="#58a6ff" stroke-width="1.5" points="${bars.map((b,i)=>X(i).toFixed(1)+","+Y(b[1]).toFixed(1)).join(" ")}"/>`;
+  [["entry","Entry","#e3b341"],["stop","Stop","#f85149"],["target","Target","#3fb950"]].forEach(([k,lab,c])=>{
+    const v=lv[k]; if(typeof v!=="number"||!isFinite(v))return;
+    s+=`<line x1="${L}" y1="${Y(v)}" x2="${W-R}" y2="${Y(v)}" stroke="${c}" stroke-width="1" stroke-dasharray="4 3" opacity="0.85"/>`;
+    s+=`<text x="${W-R+4}" y="${Y(v)+3}" fill="${c}" font-size="10">${lab}</text>`;});
+  // Highs take the direction's colour and lows are always green, exactly as the PNG drew them.
+  const hiCol=(d&&d.direction)==="BULLISH"?"#3fb950":"#f85149";
+  const byDate={}; bars.forEach((b,i)=>{byDate[b[0]]=i;});
+  piv.forEach(p=>{
+    let i=byDate[p.date];
+    if(i===undefined){i=bars.findIndex(b=>b[0]>=p.date); if(i<0)return;}
+    s+=`<circle cx="${X(i).toFixed(1)}" cy="${Y(p.level).toFixed(1)}" r="3.4" fill="${p.kind==="high"?hiCol:"#3fb950"}"/>`;});
+  return s+"</svg>";
+}
+// Fetch and draw. Any failure SAYS SO -- same rule as detailImgFailed: a chart that cannot be drawn must
+// never look like a panel that simply has no chart.
+async function loadPriceChart(ticker,days){
+  const box=document.getElementById("pw"); if(!box)return;
+  try{
+    const r=await fetch(`/api/pricebars/${encodeURIComponent(ticker)}?days=${days}`);
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    const j=await r.json();
+    box.classList.remove("sqh-loading");
+    box.innerHTML=priceChartSvg(j,!document.documentElement.classList.contains("light"));
+  }catch(e){
+    box.classList.remove("sqh-loading");
+    box.innerHTML='<div class="muted" style="padding:10px 0;font-size:12px">'+
+      '<b style="color:var(--bear)">⚠ The price chart could not be loaded.</b> '+
+      'Every figure on this panel is unaffected.</div>';
+  }
+}
 function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return null;return Math.round((Date.now()-t)/864e5);}
 
 function augment(r){
@@ -530,8 +592,8 @@ function showDetail(t){
     <div class="card"><h4>Quality (${r.quality??'?'}/100) — how it's scored</h4>
       <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the squeeze is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric squeeze; a low Q means a loose, older, or lopsided one.</div></div>
     ${AUTH?`<div class="card"><h4>VolumeScore — breakout confirmation (0–12)</h4><div id="volscorebox" class="sqh-loading">⏳ Data loading…</div></div>`:''}
-    <div class="card"><h4>Price — last ${days} days (filter-reactive)</h4>
-      <img id="pw" alt="Price chart for ${disp(r.ticker)} — last ${days} days" onerror="detailImgFailed(this,'The price chart')" src="/api/pricewin/${r.ticker}?days=${days}&theme=${document.documentElement.classList.contains('light')?'light':'dark'}"></div>
+    <div class="card"><h4>Price — last ${days} days</h4>
+      <div id="pw" class="sqh-loading">⏳ Data loading…</div></div>
     <div class="card"><h4>X post card</h4><img loading="lazy" alt="X post card for ${disp(r.ticker)}" onerror="detailImgFailed(this,'The X post card')" src="/api/card/${r.ticker}"></div>
     <div class="card"><h4>Levels</h4>
       <div class="kv"><span>Now</span><b>${f2(r.current_price)}</b></div>
@@ -546,6 +608,7 @@ function showDetail(t){
     <div class="card"><h4>Relevant X visuals</h4><div id="xvisuals" class="xvisual-grid sqh-loading">⏳ Data loading…</div></div>
     <div class="card"><h4>On X</h4><div id="xlinks" class="sqh-loading">⏳ Data loading…</div></div>
     <div class="card"><h4>X thread (all pages)</h4><div class="tweet sqh-loading" id="tweetbox">⏳ Data loading…</div></div>`;
+  loadPriceChart(r.ticker,days);
   fetch(`/api/thread/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("tweetbox"); if(!el||SEL!==r.ticker)return;
     el.classList.remove("sqh-loading");

@@ -3731,11 +3731,76 @@ def test_a_missing_image_element_is_survivable():
     assert out == "survived"
 
 
-def test_both_instrument_detail_images_are_wired_to_the_handler():
+def test_the_remaining_detail_image_is_wired_to_the_handler():
+    """Only the X post card is still a server-rendered <img>. The price chart became a client-drawn SVG
+    on 2026-09-14, so /api/pricewin must be GONE from the client rather than merely unused."""
     app_js = (Path(__file__).parent / "hvf_web" / "app.js").read_text(encoding="utf-8")
-    for tag_id, label in (("/api/pricewin/", "price window"), ("/api/card/", "X post card")):
-        tag = next((t for t in re.findall(r"<img\b[^>]*>", app_js) if tag_id in t), None)
-        assert tag, f"the {label} <img> was not found at all"
-        assert "onerror=" in tag and "detailImgFailed(" in tag, \
-            f"the {label} <img> has no onerror handler, so a failed render is invisible: {tag}"
-        assert "alt=" in tag, f"the {label} <img> has no alt text: {tag}"
+    tag = next((t for t in re.findall(r"<img\b[^>]*>", app_js) if "/api/card/" in t), None)
+    assert tag, "the X post card <img> was not found at all"
+    assert "onerror=" in tag and "detailImgFailed(" in tag, \
+        f"the X post card <img> has no onerror handler, so a failed render is invisible: {tag}"
+    assert "alt=" in tag, f"the X post card <img> has no alt text: {tag}"
+    assert not re.search(r"<img\b[^>]*/api/pricewin/", app_js), \
+        "the client still requests the deleted server-rendered price chart"
+
+
+# ── The price chart is drawn client-side ──────────────────────────────────────────────────────────────
+# /api/pricewin was deleted on 2026-09-14: it rendered with matplotlib, matplotlib imports numpy, and numpy
+# is SIGSYS-killed on the IONOS host, so it had been 500ing after ~120s for weeks. priceChartSvg is a PURE
+# function precisely so these can EXECUTE it and assert on what it draws, rather than pattern-match its text.
+
+def _price_payload():
+    return ("{ticker:'AAF.L',days:365,direction:'BULLISH',"
+            "bars:[['2026-01-01',100],['2026-01-02',110],['2026-01-03',90],['2026-01-04',120]],"
+            "levels:{entry:115,stop:85,target:130},"
+            "pivots:[{date:'2026-01-02',level:110,kind:'high'},{date:'2026-01-03',level:90,kind:'low'}]}")
+
+
+def test_the_price_chart_draws_the_series_the_levels_and_the_pivots():
+    src = _extract("priceChartSvg")
+    out = run_js("", src, f"priceChartSvg({_price_payload()},true)")
+    pts = re.search(r'<polyline[^>]*points="([^"]+)"', out)
+    assert pts, "no price line was drawn at all"
+    assert len(pts.group(1).split()) == 4, "the line must have one point per bar"
+    for label in ("Entry", "Stop", "Target"):
+        assert f">{label}</text>" in out, f"the {label} level is missing from the chart"
+    assert out.count("<line ") == 3, "expected exactly one dashed line per level"
+    assert out.count("<circle ") == 2, "both funnel pivots inside the window must be plotted"
+    assert "AAF.L" in out and "365" in out
+
+
+def test_the_price_chart_says_so_when_there_is_no_data():
+    """An empty series must say 'no price data' -- the same rule as the failed image: a chart that cannot
+    be drawn must never render as an empty box that looks like a chart with nothing interesting in it."""
+    src = _extract("priceChartSvg")
+    out = run_js("", src, "priceChartSvg({ticker:'X',days:365,bars:[]},true)")
+    assert "no price data" in out
+    assert "<polyline" not in out
+
+
+def test_a_flat_series_does_not_divide_by_zero():
+    src = _extract("priceChartSvg")
+    out = run_js("", src, "priceChartSvg({ticker:'X',days:5,bars:[['2026-01-01',7],['2026-01-02',7]]},true)")
+    assert "NaN" not in out and "Infinity" not in out, out[:400]
+
+
+def test_the_pivot_colour_follows_the_direction():
+    """Carried over from the PNG: a high pivot is green on a BULLISH setup and red on a BEARISH one. If
+    this inverts, the chart quietly tells the reader the opposite of what the setup is."""
+    src = _extract("priceChartSvg")
+    payload = ("{ticker:'X',days:365,direction:'%s',bars:[['2026-01-01',100],['2026-01-02',110]],"
+               "pivots:[{date:'2026-01-02',level:110,kind:'high'}]}")
+    bull = run_js("", src, f"priceChartSvg({payload % 'BULLISH'},true)")
+    bear = run_js("", src, f"priceChartSvg({payload % 'BEARISH'},true)")
+    assert '#3fb950' in re.search(r"<circle[^>]*>", bull).group(0)
+    assert '#f85149' in re.search(r"<circle[^>]*>", bear).group(0)
+
+
+def test_the_chart_is_actually_reached_from_the_detail_panel():
+    """The renderer being correct proves nothing if nothing calls it -- this repository's other recurring
+    defect. The container and the call must both exist, and the call must name the container's window."""
+    app_js = (Path(__file__).parent / "hvf_web" / "app.js").read_text(encoding="utf-8")
+    assert 'id="pw"' in app_js, "the chart container is gone"
+    assert re.search(r"loadPriceChart\(r\.ticker\s*,\s*days\)", app_js), \
+        "nothing calls loadPriceChart with the panel's ticker and window"
+    assert 'getElementById("pw")' in app_js, "loadPriceChart does not target the container"

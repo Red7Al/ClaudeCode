@@ -6,11 +6,16 @@
 # Description:
 # ----------------------------------------------------------------------------------------------------------------------
 # Flask server for the HVF website (user 2026-06-27). Serves the single-page UI (index.html), the data snapshot
-# (build_snapshot.py output) as JSON, and three PNG visuals per instrument:
+# (build_snapshot.py output) as JSON, two PNG visuals per instrument, and the price chart as DATA:
 #   /api/card/<ticker>            the production X post-card (native funnel window)         -> render_x_post_card
-#   /api/pricewin/<ticker>?days=N a DATE-WINDOW-REACTIVE price+funnel chart (filters live)  -> _render_price_window
 #   /api/hist3yr/<ticker>         the fixed 3-YEAR price history (always 3y, never filtered) -> render_3yr_history_card
-# The pricewin chart is a fresh, website-only renderer so the protected production card is never modified.
+#   /api/pricebars/<ticker>?days=N the detail price window as JSON, drawn by the CLIENT      -> _price_bars
+# /api/pricewin and its _render_price_window were DELETED 2026-09-14. They rendered the detail chart with
+# matplotlib, which imports numpy, and numpy is SIGSYS-killed on the IONOS host — so the endpoint returned
+# 500 after ~120s on every call and the chart had been dead on the live site for weeks. The browser draws
+# it from /api/pricebars now (ChangeRequests 2026-09-13, P-01, option b), which keeps numpy off the request
+# path rather than working around it. Deleted rather than left in place because nothing called it any more,
+# and an unreferenced route is this repository's other recurring defect — see /api/squeeze-analysis.
 # Live site: https://www.squeezescanner.cloud/ (IONOS — see IONOS_DEPLOYMENT.md). Running this module
 # directly starts a LOCAL DEVELOPMENT instance only; the laptop + ngrok public share was retired 2026-08-15.
 #
@@ -2250,91 +2255,72 @@ def api_broker(ticker):
     return jsonify({"ticker": ticker, **{k: int(v) if isinstance(v, bool) else v for k, v in res.items()}})
 
 
-def _render_price_window(rec: dict, days: int, theme: str) -> bytes:
-    """Website-only price+funnel chart for the last `days` sessions — re-rendered as the date-range
-    filter changes (does NOT touch the protected production card). Funnel pivots that fall inside the
-    window are overlaid; entry/stop/target drawn as horizontal lines."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import pandas as pd, yfinance as yf
-    from datetime import datetime, timezone, timedelta
+def _price_bars(ticker: str, days: int) -> list:
+    """Closing prices for the last `days` sessions as plain [iso_date, close] pairs.
+
+    DELIBERATELY DOES NOT GO THROUGH price_store, and that is the whole point of this function rather
+    than an oversight. price_store imports pandas at module level (price_store.py:30), pandas imports
+    numpy, and numpy is SIGSYS-killed on the IONOS host -- which is what killed the chart in the first
+    place (ChangeRequests 2026-09-13, P-01). Importing it here would reintroduce the defect through the
+    back door. db_pool is numpy-free (verified in a fresh process), and this is the same query and the
+    same price_history table price_store.get_bars reads, just without the DataFrame on top.
+    """
+    from datetime import date, timedelta
+    from db_pool import get_db
+    start = date.today() - timedelta(days=max(20, int(days)))
+    db = get_db()
     try:
-        from config import YAHOO_MAP
-    except Exception:
-        YAHOO_MAP = {}
-    dark = theme != "light"
-    bg, fg, grid = ("#0d1117", "#c9d1d9", "#30363d") if dark else ("#ffffff", "#24292f", "#d0d7de")
-    tk = rec.get("ticker", "")
-    card = rec.get("_card") or {}
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=max(20, days))
-    _yt = YAHOO_MAP.get(tk, tk)
-    # Supabase price_history is the golden source (user 2026-06-29); get_bars_or_fetch reads it first and
-    # only hits yfinance on a miss/stale bar (writing the result back). The pkl below stays as a last-ditch
-    # fallback for when both Supabase and yfinance are unreachable.
-    try:
-        import price_store
-        hist = price_store.get_bars_or_fetch(tk, _yt, start, end)
-    except Exception:
-        hist = None
-    import pandas as _pd
-    _pc_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "price_cache")
-    _pc_file = os.path.join(_pc_dir, f"win_{_yt}_{int(days)}".replace("/", "_").replace("^", "_").replace("=", "_") + ".pkl")
-    if hist is not None and not hist.empty:
+        rows = db.run("select bar_date, close from price_history "
+                      "where ticker=:t and bar_date>=:start and close is not null "
+                      "order by bar_date", t=ticker, start=str(start)) or []
+    finally:
         try:
-            os.makedirs(_pc_dir, exist_ok=True); hist.to_pickle(_pc_file)
+            db.close()
         except Exception:
             pass
-    elif os.path.exists(_pc_file):
+    out = []
+    for bar_date, close in rows:
         try:
-            hist = _pd.read_pickle(_pc_file)
-        except Exception:
-            hist = None
-    fig = plt.figure(figsize=(9, 4.2)); fig.patch.set_facecolor(bg)
-    ax = fig.add_axes([0.08, 0.12, 0.88, 0.80]); ax.set_facecolor(bg)
-    if hist is None or hist.empty:
-        ax.text(0.5, 0.5, "no price data", color=fg, ha="center");
-    else:
-        close = hist["Close"].squeeze().dropna()
-        ax.plot(close.index, close.values, color="#58a6ff", lw=1.5)
-        col = "#3fb950" if card.get("hvf_type") == "BULLISH" else "#f85149"
-        for lvl, lab, c in ((card.get("h3_level"), "Entry", "#e3b341"),
-                            (card.get("stop_level"), "Stop", "#f85149"),
-                            (card.get("target"), "Target", "#3fb950")):
-            if isinstance(lvl, (int, float)):
-                ax.axhline(lvl, color=c, lw=1.0, ls="--", alpha=0.8)
-                ax.text(close.index[-1], lvl, f" {lab}", color=c, fontsize=8, va="center")
-        # funnel pivots inside the window
-        for dk, lk, c in (("h1_date", "h1_level", col), ("h2_date", "h2_level", col), ("h3_date", "h3_level", col),
-                          ("l1_date", "l1_level", "#3fb950"), ("l2_date", "l2_level", "#3fb950"), ("l3_date", "l3_level", "#3fb950")):
-            d, l = card.get(dk), card.get(lk)
-            if d and isinstance(l, (int, float)):
-                try:
-                    dt = pd.Timestamp(d)
-                    if close.index[0] <= dt.tz_localize(close.index.tz) <= close.index[-1]:
-                        ax.scatter([dt], [l], color=c, s=22, zorder=5)
-                except Exception:
-                    pass
-    ax.tick_params(colors=fg, labelsize=8)
-    for s in ax.spines.values():
-        s.set_color(grid)
-    ax.grid(True, color=grid, alpha=0.4, lw=0.5)
-    ax.set_title(f"{tk} — last {days}d", color=fg, fontsize=10)
-    buf = io.BytesIO(); fig.savefig(buf, format="png", facecolor=bg, dpi=110); plt.close(fig)
-    return buf.getvalue()
+            out.append([str(bar_date), float(close)])
+        except (TypeError, ValueError):
+            continue          # a null or unparseable close is a missing point, not a broken chart
+    return out
 
 
-@app.route("/api/pricewin/<ticker>")
-def api_pricewin(ticker):
-    days = int(request.args.get("days", "180") or 180)
-    theme = request.args.get("theme", "dark")
+@app.route("/api/pricebars/<ticker>")
+def api_pricebars(ticker):
+    """The price window as DATA, for the client to draw (ChangeRequests 2026-09-13, P-01, option b).
+
+    Replaces the server-rendered /api/pricewin PNG. That endpoint returned 500 after ~120s on every call
+    because matplotlib cannot import numpy on this host, and no configuration fixes it -- so the chart is
+    drawn in the browser from these numbers instead, and the request path no longer touches numpy at all.
+    Same content as the PNG carried: the close series, the entry/stop/target levels, and whichever funnel
+    pivots fall inside the window.
+    """
+    days = int(request.args.get("days", "365") or 365)
     rec = _record(ticker)
     if not rec:
         return ("unknown ticker", 404)
-    with _RENDER_LOCK:
-        png = _render_price_window(rec, days, theme)
-    return _png_response(png)
+    card = rec.get("_card") or {}
+    bars = _price_bars(ticker, days)
+    first = bars[0][0] if bars else None
+    last = bars[-1][0] if bars else None
+    levels = {}
+    for key, name in (("h3_level", "entry"), ("stop_level", "stop"), ("target", "target")):
+        v = card.get(key)
+        if isinstance(v, (int, float)):
+            levels[name] = float(v)
+    # Only pivots INSIDE the window, exactly as the PNG overlaid them — an out-of-range pivot would
+    # otherwise be drawn clamped to an edge, which reads as a real pivot on a date it never happened.
+    pivots = []
+    for dk, lk, kind in (("h1_date", "h1_level", "high"), ("h2_date", "h2_level", "high"),
+                         ("h3_date", "h3_level", "high"), ("l1_date", "l1_level", "low"),
+                         ("l2_date", "l2_level", "low"), ("l3_date", "l3_level", "low")):
+        d, lvl = card.get(dk), card.get(lk)
+        if d and isinstance(lvl, (int, float)) and first and last and first <= str(d)[:10] <= last:
+            pivots.append({"date": str(d)[:10], "level": float(lvl), "kind": kind})
+    return jsonify({"ticker": ticker, "days": days, "bars": bars, "levels": levels,
+                    "pivots": pivots, "direction": card.get("hvf_type") or ""})
 
 
 def _refresh_loop():
