@@ -12,6 +12,8 @@ import subprocess
 import sys
 import textwrap
 
+import pytest
+
 from hvf_web import server
 
 
@@ -133,3 +135,26 @@ def test_each_pivot_says_which_one_it_is(monkeypatch):
     assert [p["label"] for p in body["pivots"]] == ["H1", "H2", "H3", "L1"]
     assert {p["label"]: p["kind"] for p in body["pivots"]} == {
         "H1": "high", "H2": "high", "H3": "high", "L1": "low"}
+
+
+def test_a_database_failure_is_an_error_not_an_empty_chart(monkeypatch):
+    """DELIBERATE: a DB failure must NOT be swallowed into an empty series.
+
+    It is tempting to wrap the query and return bars:[] so the endpoint "never fails". That would make
+    the client draw "no price data", which is a FALSE STATEMENT ABOUT THE INSTRUMENT -- it says the
+    history is missing when the truth is that we could not read it. A 500 is the honest answer: the
+    client's own catch then says "The price chart could not be loaded", which is what actually happened.
+    This is the same rule the whole item turns on -- a chart that cannot be drawn must never imply
+    something about the data that is not true.
+    """
+    class Boom:
+        def run(self, sql, **params):
+            raise RuntimeError("cannot read from timed out object")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("db_pool.get_db", lambda: Boom(), raising=False)
+    monkeypatch.setattr(server, "_record", lambda t: _record())
+    with pytest.raises(RuntimeError):
+        server._price_bars("AAF.L", 365)

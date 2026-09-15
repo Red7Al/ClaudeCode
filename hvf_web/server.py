@@ -8,8 +8,13 @@
 # Flask server for the HVF website (user 2026-06-27). Serves the single-page UI (index.html), the data snapshot
 # (build_snapshot.py output) as JSON, two PNG visuals per instrument, and the price chart as DATA:
 #   /api/card/<ticker>            the production X post-card (native funnel window)         -> render_x_post_card
-#   /api/hist3yr/<ticker>         the fixed 3-YEAR price history (always 3y, never filtered) -> render_3yr_history_card
 #   /api/pricebars/<ticker>?days=N the detail price window as JSON, drawn by the CLIENT      -> _price_bars
+# /api/hist3yr and /api/tweet were DELETED 2026-09-14 as orphans. Both were wired to the detail panel and
+# both had their cards removed by the owner in ONE commit, 8786202 on 2026-06-27 ("removed the 3-year
+# card"; the tweet card replaced by the full /api/thread) — the routes were simply left behind for two and
+# a half months. Their RENDERERS are untouched and still live: render_3yr_history_card is called by
+# publish_one_to_x.py and intraday_signals, and _generate_x_drafts by the whole X publication path, all of
+# which run in GitHub Actions where numpy works. test_route_orphans.py now fails if a route joins them.
 # /api/pricewin and its _render_price_window were DELETED 2026-09-14. They rendered the detail chart with
 # matplotlib, which imports numpy, and numpy is SIGSYS-killed on the IONOS host — so the endpoint returned
 # 500 after ~120s on every call and the chart had been dead on the live site for weeks. The browser draws
@@ -1635,20 +1640,6 @@ def api_card(ticker):
     return _png_response(png) if png else ("no card", 404)
 
 
-@app.route("/api/hist3yr/<ticker>")
-def api_hist3yr(ticker):
-    key = f"hist3yr:{ticker}"
-    if key not in _PNG_CACHE:
-        from intraday_signals import render_3yr_history_card
-        rec = _record(ticker)
-        card = dict(rec.get("_card") or {})
-        card["name"] = rec.get("name")
-        with _RENDER_LOCK:
-            _PNG_CACHE[key] = render_3yr_history_card(card) or b""
-    png = _PNG_CACHE[key]
-    return _png_response(png) if png else ("no 3yr chart", 404)
-
-
 @app.route("/api/links/<ticker>")
 def api_links(ticker):
     """On-demand X links for an instrument (user 2026-06-27): OUR latest publication (x_publications)
@@ -1695,28 +1686,6 @@ def api_links(ticker):
         log.warning(f"links lookup failed for {ticker}: {e}")
     return jsonify({"ticker": ticker, "ours": ours, "mentions": mentions,
                     "visuals": list(visual_sources.values())})
-
-
-@app.route("/api/tweet/<ticker>")
-def api_tweet(ticker):
-    """Build the exact X tweet text for ONE instrument on demand (one render = low memory; the build
-    deliberately doesn't render all ~150)."""
-    key = f"tweet:{ticker}"
-    if key not in _PNG_CACHE:
-        from intraday_signals import _generate_x_drafts
-        rec = _record(ticker)
-        card = dict(rec.get("_card") or {})
-        card["name"] = rec.get("name")
-        card["index"] = rec.get("market")
-        txt = ""
-        try:
-            drafts = _generate_x_drafts([card], post=False, collect=True)
-            if drafts:
-                txt = drafts[0].get("tweet") or ""
-        except Exception as e:
-            log.warning(f"tweet render failed for {ticker}: {e}")
-        _PNG_CACHE[key] = txt
-    return jsonify({"ticker": ticker, "tweet": _PNG_CACHE[key]})
 
 
 @app.route("/api/thread/<ticker>")
