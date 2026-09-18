@@ -135,11 +135,41 @@ def fetch_broker(ticker: str) -> dict | None:
 
 
 def universe() -> list:
-    """Every ticker in the published snapshot. Read through the server so there is ONE definition of what
-    the universe is; a second list here would drift the moment the scan changed."""
-    from hvf_web import server
-    recs = (server._load_snapshot() or {}).get("records") or []
-    return [r.get("ticker") for r in recs if r.get("ticker")]
+    """Every ticker to fetch, de-duplicated and order-stable.
+
+    run_hvf_report.UNIVERSE IS THE SOURCE, not the published snapshot, and that is a correction rather
+    than a preference. The first version of this read hvf_web/snapshot.json through the server and FAILED
+    ON ITS FIRST REAL RUN (Actions 35387748881, 2026-09-18): a bare runner has no snapshot.json because it
+    is gitignored, so the universe came back empty and the build correctly refused to store anything. That
+    is the identical defect already recorded against the winners precompute on 2026-09-14 -- written down,
+    and then walked into anyway. UNIVERSE is committed, so a bare checkout always has it.
+
+    It is a dict of market -> tickers and contains duplicates where an instrument sits in more than one
+    index: build_snapshot.py:198 records the raw sum as 1,856 against ~1,773 distinct, so de-duplicating
+    here is what makes this agree with the published universe rather than fetching 83 names twice.
+
+    The snapshot is still preferred WHEN IT EXISTS, because running in the same job as a snapshot build
+    means the scan just published is the truest list; it simply cannot be relied on.
+    """
+    try:
+        from hvf_web import server
+        recs = (server._load_snapshot() or {}).get("records") or []
+        tickers = [r.get("ticker") for r in recs if r.get("ticker")]
+        if tickers:
+            log.info("universe from the local snapshot: %d instruments", len(tickers))
+            return tickers
+    except Exception as ex:
+        log.info("no usable local snapshot (%s); using the configured universe", ex)
+
+    from run_hvf_report import UNIVERSE
+    seen, out = set(), []
+    for _market, tks in UNIVERSE.items():
+        for t in tks:
+            if t and t not in seen:
+                seen.add(t)
+                out.append(t)
+    log.info("universe from run_hvf_report.UNIVERSE: %d distinct instruments", len(out))
+    return out
 
 
 def build(limit: int = 0, dry_run: bool = False) -> int:

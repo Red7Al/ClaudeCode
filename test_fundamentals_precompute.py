@@ -142,3 +142,35 @@ def test_a_good_fetch_is_stored_under_both_keys(monkeypatch):
 def test_an_empty_universe_is_refused(monkeypatch):
     monkeypatch.setattr(rfp, "universe", lambda: [])
     assert rfp.build() == 2
+
+
+# ── where the universe comes from ─────────────────────────────────────────────────────────────────────
+
+def test_the_universe_survives_a_runner_with_no_snapshot(monkeypatch):
+    """THE DEFECT THIS SCRIPT'S FIRST REAL RUN HIT (Actions 35387748881, 2026-09-18). A bare runner has no
+    hvf_web/snapshot.json -- it is gitignored -- so a universe read only from the snapshot came back empty
+    and the build refused to store anything. The identical failure was already written down against the
+    winners precompute on 2026-09-14 and walked into anyway. run_hvf_report.UNIVERSE is committed, so a
+    bare checkout always has it."""
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"records": []})
+    out = rfp.universe()
+    assert len(out) > 1000, f"the configured universe should be the whole book, got {len(out)}"
+    assert len(out) == len(set(out)), "the configured universe must be de-duplicated"
+
+
+def test_the_snapshot_is_preferred_when_it_exists(monkeypatch):
+    """Running in the same job as a snapshot build, the scan just published is the truest list."""
+    monkeypatch.setattr(server, "_load_snapshot",
+                        lambda: {"records": [{"ticker": "AAA.L"}, {"ticker": "BBB.L"}]})
+    assert rfp.universe() == ["AAA.L", "BBB.L"]
+
+
+def test_an_instrument_in_two_indices_is_fetched_once(monkeypatch):
+    """UNIVERSE is market -> tickers and an instrument can sit in several indices; build_snapshot.py:198
+    records the raw sum as 1,856 against ~1,773 distinct. Without de-duplication those names are fetched
+    twice from Yahoo for one stored record."""
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"records": []})
+    import run_hvf_report
+    monkeypatch.setattr(run_hvf_report, "UNIVERSE",
+                        {"FTSE 100": ["AAA.L", "BBB.L"], "FTSE 250": ["BBB.L", "CCC.L"]})
+    assert rfp.universe() == ["AAA.L", "BBB.L", "CCC.L"]
