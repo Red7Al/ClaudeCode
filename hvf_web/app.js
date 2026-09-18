@@ -5529,7 +5529,12 @@ function paintOrderFilterAudit(){
     const o=live.get(r.ticker)||{};
     return {...r, name:o.name, direction:o.direction, size:o.size, deal_id:o.deal_id,
             _why:((r.breaches&&r.breaches.length?r.breaches:r.unknown||[])).join("; "), _why1:_whyHead(r)};});
-  if(!rows.length){panel.style.display="none";_breachViz("ig-breach-viz",[],"igb");return;}
+  // AN EMPTY RESULT IS AN ANSWER, SO SAY IT (owner 2026-09-18). This used to hide the whole panel when
+  // nothing breached, so the table never appeared and the "Every working order meets your settings."
+  // message below could not be reached -- while the sibling TX panel, paintPositionBreach, has no such
+  // early return and always renders its own "Every open position meets your criteria.". A panel that
+  // vanishes is indistinguishable from one that failed to load, which is the silent-failure shape this
+  // codebase keeps producing; the two panels now behave the same way.
   panel.style.display="";
   // BREACH and UNKNOWN are the only verdicts this endpoint can now return, and the requester has ruled on
   // both. Anything else would be a verdict added server-side after this was written: show it, so a new

@@ -2986,10 +2986,24 @@ def test_the_audit_is_actually_invoked():
     assert account.index("paintIgAccount()") < account.index("loadOrderFilterAudit()"),         "the audit paints from IGORD, which paintIgAccount is what fills"
 
 
-def test_a_clean_book_hides_the_panel():
+def test_a_clean_book_still_shows_the_panel_and_says_it_is_clean():
+    """REVERSED 2026-09-18 at the account owner's request, and the reversal is deliberate.
+
+    This asserted out["shown"] == "none": a clean book hid the whole panel. The owner reported the
+    consequence -- "'Orders not meeting criteria' has no table when 0 values returned - unlike 'TX not
+    meeting criteria' which says 'Every open position meets your criteria.' - let's have some consistency
+    to the approach."
+
+    The old assertion carried no rationale and the commit that added it (7db0d03, 2026-09-04) was about
+    the panel being a revision behind its own API, not about hiding it; it pinned the implementation as
+    it stood rather than a decision anyone had made. A panel that vanishes is also indistinguishable from
+    one that failed to load, which is the silent-failure shape this codebase keeps producing.
+    """
     out = _breach_panel('[{ticker:"AAF.L",verdict:"OK",breaches:[],unknown:[]}]', _ORDERS)
 
-    assert out["shown"] == "none"
+    assert out["shown"] != "none", "a clean book must still render the panel"
+    assert "Every working order meets your settings." in out["html"], \
+        "...and say so, the way the sibling TX panel does"
 
 
 # ── Auto-close is a PER-USER trading filter (user 2026-09-06) ──────────────────────────────────────────
@@ -3841,6 +3855,81 @@ def test_one_pivot_of_a_kind_draws_no_funnel_line():
                  "priceChartSvg({ticker:'X',days:365,bars:[['2026-01-01',100],['2026-02-01',101]],"
                  "pivots:[{date:'2026-01-01',level:110,kind:'high',label:'H1'}]},true)")
     assert len(re.findall(r"<polyline[^>]*>", out)) == 1, "a single pivot cannot form a funnel line"
+
+
+def test_a_wrapping_column_can_never_be_squeezed_to_one_character():
+    """Auto-closed transactions rendered "Why closed (volume tests)" ONE CHARACTER WIDE (owner 2026-09-18).
+
+    The cause is not the wrapping itself: that column declares white-space:normal deliberately, because the
+    text is long. It is that none of the short-label columns beside it claimed width:1%, so the table gave
+    them room proportional to their content and the greedy wrapping column got what was left, which was
+    almost nothing. skills_src/ah-web-formatting/SKILL.md states the rule -- "a short-label column next to
+    a greedy white-space:normal column also wants width:1%, so it sizes to its longest label and hands the
+    remaining width to the text column".
+
+    Asserted on the markup rather than on rendered layout, which cannot be measured here; the min-width is
+    the belt to that braces, and is what makes a one-character column impossible rather than merely
+    unlikely.
+    """
+    html = client_html()
+    m = re.search(r'<tbody id="ig-auto-rows"', html)
+    assert m, "the Auto-closed transactions table was not found"
+    thead = html[:m.start()]
+    thead = thead[thead.rindex("<thead>"):]
+    ths = re.findall(r"<th\b[^>]*>", thead)
+    assert len(ths) >= 10, f"expected the full Auto-closed header, found {len(ths)}"
+
+    wrapping = [t for t in ths if "white-space:normal" in t]
+    assert wrapping, "the long-text columns no longer declare white-space:normal"
+    for t in wrapping:
+        assert "min-width" in t, f"a wrapping column with no min-width can collapse to one character: {t}"
+
+    # EVERY short-label column, named rather than counted. A "at least N of them" threshold passes while
+    # any single column quietly loses its width, which is exactly the mutation that survived the first
+    # version of this test.
+    for col in ("closed_at", "opened_on", "direction", "size", "profit", "currency", "outcome", "ticker"):
+        tag = next((t for t in ths if f'data-iga="{col}"' in t), None)
+        assert tag, f"column {col} is missing from the Auto-closed header"
+        assert "width:1%" in tag, (
+            f"{col} must claim width:1% so the wrapping columns get the remaining width: {tag}")
+
+
+def test_every_wrapping_column_declares_its_own_width():
+    """The class behind the Auto-closed report, not just that one table.
+
+    A column with white-space:normal is GREEDY: it will take whatever width the table gives it and wrap
+    the rest, so if it declares nothing and its neighbours declare nothing, the table can hand it almost
+    no width and it renders one character per line. Every wrapping column must therefore say which it is
+    -- min-width (a text column that needs room) or width:1% (a deliberately narrow wrapping header, as
+    the Users table's "Password Complexity" is). Leaving it to the table is the bug.
+
+    Measured when this was written: 6 wrapping columns, all 6 compliant. A detector that cries wolf is one
+    nobody trusts, so it asserts the rule that actually holds rather than a blanket min-width.
+    """
+    html = client_html()
+    offenders = [t for t in re.findall(r"<th\b[^>]*white-space:normal[^>]*>", html)
+                 if "min-width" not in t and "width:1%" not in t]
+    assert not offenders, (
+        "a wrapping column that declares neither min-width nor width:1% can be squeezed to one "
+        "character: " + " | ".join(t[:90] for t in offenders))
+
+
+def test_the_orders_breach_panel_does_not_vanish_when_nothing_breaches():
+    """Owner 2026-09-18: "Orders not meeting criteria" showed NO TABLE on zero rows, while "TX not
+    meeting criteria" says "Every open position meets your criteria."
+
+    paintOrderFilterAudit used to return early and set the panel to display:none, so its own
+    "Every working order meets your settings." row could never be reached. Its sibling
+    paintPositionBreach has no such early return. A panel that vanishes is indistinguishable from one
+    that failed to load."""
+    src = _extract("paintOrderFilterAudit")
+    assert 'display="none"' not in src.replace(" ", ""), \
+        "the Orders breach panel hides itself again; an empty result must render its empty-state row"
+    # Match the RENDERED ROW, not the bare sentence: the explanatory comment above the fix quotes that
+    # sentence too, so a looser assertion is satisfied by the comment describing the rule rather than by
+    # the code obeying it -- which is exactly how a mutation of the real row survived the first version.
+    assert 'class="empty">Every working order meets your settings.' in src, \
+        "the empty-state row is gone"
 
 
 def test_the_funnel_follows_label_order_not_payload_order():
