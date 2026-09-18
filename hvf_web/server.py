@@ -2124,104 +2124,85 @@ def api_status():
     return jsonify(resp)
 
 
-_FUND_CACHE = {}   # ticker -> last SUCCESSFUL {currency, kpis}; survives Yahoo's transient quoteSummary 404s
+_FUND_STORE_KEY = "fundamentals_by_ticker"
+_BROKER_STORE_KEY = "broker_by_ticker"
+_PANEL_TTL = 3600
+_PANEL_CACHE = {_FUND_STORE_KEY: {"data": None, "ts": 0.0},
+                _BROKER_STORE_KEY: {"data": None, "ts": 0.0}}
+
+
+def _panel_records(store_key: str) -> dict:
+    """A precomputed per-ticker panel from web_json_store, cached in-process for an hour.
+
+    WHY THESE ARE PRECOMPUTED AND NOT FETCHED HERE (owner 2026-09-18, "get website back to having more
+    content"). /api/fundamentals and /api/broker used to call yfinance on the request thread. yfinance
+    imports pandas, pandas imports numpy, and numpy is SIGSYS-killed on this host -- its bundled OpenBLAS
+    calls mbind(2) and the seccomp filter kills the process instead of failing the call. Both endpoints
+    therefore answered HTTP 500 after ~120 SECONDS, measured live, and had been dead for weeks.
+
+    A try/except CANNOT rescue that: SIGSYS kills the process, it does not raise. So there is deliberately
+    NO live fallback here and nothing in this module may import yfinance -- a fallback would not degrade,
+    it would take the whole worker down. run_fundamentals_precompute.py fetches both panels in GitHub
+    Actions, where numpy works, exactly as the winners and performance payloads already do.
+
+    One document holds the whole universe (~0.9 MB measured), so it is read once per worker per hour
+    rather than per request.
+    """
+    slot = _PANEL_CACHE[store_key]
+    now = _time.time()
+    if slot["data"] is not None and now - slot["ts"] < _PANEL_TTL:
+        return slot["data"]
+    try:
+        import web_store
+        doc = web_store.load_json_store(store_key)
+    except Exception as ex:
+        log.warning(f"{store_key} unavailable ({ex}); serving whatever is already cached")
+        return slot["data"] or {}
+    recs = doc.get("records") if isinstance(doc, dict) else None
+    if not isinstance(recs, dict):
+        return slot["data"] or {}
+    slot.update(data=recs, ts=now)
+    return recs
+
+
+# Non-equity instruments (FX "=X", futures "=F", indices "^", crypto "-USD"/"-USDT") have no company
+# fundamentals, so they are answered without consulting the store at all (user 2026-07-27, P-10 L140).
+def _is_non_equity(ticker: str) -> bool:
+    t = (ticker or "").upper()
+    return t.startswith("^") or t.endswith(("=X", "=F", "-USD", "-USDT"))
 
 
 @app.route("/api/fundamentals/<ticker>")
 def api_fundamentals(ticker):
-    """Company KPIs straight from yfinance .info (user 2026-06-28): P/E, FCF, dividends, margins, growth,
-    leverage, etc. Live per-ticker; graceful (empty kpis) if Yahoo is unreachable. A good fetch is cached
-    so a later transient 404 (e.g. GLEN.L — a FTSE 100 name whose data DOES exist; user 2026-07-24, P-03
-    L138) serves the last-good KPIs marked stale rather than blanking the panel."""
-    out = {}
-    cur = None
-    # Non-equity instruments (FX pairs "=X", futures "=F", indices "^", crypto "-USD"/"-USDT") have no
-    # company fundamentals — skip the Yahoo call entirely so we don't spam its transient quoteSummary 404s
-    # (e.g. GBPCAD=X, which we neither download nor trade; user 2026-07-27, P-10 L140). Return empty KPIs.
-    _t = (ticker or "").upper()
-    if _t.endswith("=X") or _t.endswith("=F") or _t.startswith("^") or _t.endswith("-USD") or _t.endswith("-USDT"):
+    """Company KPIs (P/E, FCF, dividends, margins, growth, leverage) for one instrument.
+
+    Served from the nightly precompute; see _panel_records for why it is not fetched here.
+    """
+    if _is_non_equity(ticker):
         return jsonify({"ticker": ticker, "currency": None, "kpis": {}, "stale": False,
                         "note": "No company fundamentals for non-equity instruments (FX / index / future / crypto)."})
-    try:
-        import yfinance as yf
-        try:
-            from config import YAHOO_MAP
-        except Exception:
-            YAHOO_MAP = {}
-        info = yf.Ticker(YAHOO_MAP.get(ticker, ticker)).info or {}
-        cur = info.get("currency") or ("GBp" if ticker.endswith(".L") else "USD")
-
-        def n(k):
-            v = info.get(k)
-            return v if isinstance(v, (int, float)) else None
-        price = n("currentPrice") or n("regularMarketPrice")
-        drate = n("dividendRate")
-        # Use yfinance's own yield (it handles the .L pence/pounds units); only fall back to rate/price
-        # when it's missing. Normalise the percent-vs-fraction quirk (some versions give 2.9, some 0.029).
-        dyield = n("dividendYield")
-        if dyield is None and drate and price:
-            dyield = drate / price
-        if isinstance(dyield, (int, float)) and dyield > 1.5:
-            dyield = dyield / 100.0
-        out = {
-            "marketCap": n("marketCap"), "totalRevenue": n("totalRevenue"), "ebitda": n("ebitda"),
-            "trailingPE": n("trailingPE"), "forwardPE": n("forwardPE"),
-            "pegRatio": n("trailingPegRatio") or n("pegRatio"), "priceToBook": n("priceToBook"),
-            "evToEbitda": n("enterpriseToEbitda"), "priceToSales": n("priceToSalesTrailing12Months"),
-            "trailingEps": n("trailingEps"), "forwardEps": n("forwardEps"),
-            "dividendRate": drate, "dividendYield": dyield, "payoutRatio": n("payoutRatio"),
-            "freeCashflow": n("freeCashflow"), "operatingCashflow": n("operatingCashflow"),
-            "profitMargin": n("profitMargins"), "operatingMargin": n("operatingMargins"),
-            "grossMargin": n("grossMargins"), "roe": n("returnOnEquity"), "roa": n("returnOnAssets"),
-            "revenueGrowth": n("revenueGrowth"), "earningsGrowth": n("earningsGrowth"),
-            "debtToEquity": n("debtToEquity"), "currentRatio": n("currentRatio"),
-            "quickRatio": n("quickRatio"), "beta": n("beta"),
-            "fiftyTwoWeekHigh": n("fiftyTwoWeekHigh"), "fiftyTwoWeekLow": n("fiftyTwoWeekLow"),
-        }
-    except Exception as e:
-        log.warning(f"fundamentals lookup failed for {ticker}: {e}")
-    # Cache a good fetch; serve last-good (stale) when this one came back empty (P-03 L138).
-    if any(v is not None for v in out.values()):
-        _FUND_CACHE[ticker] = {"currency": cur, "kpis": out}
-        return jsonify({"ticker": ticker, "currency": cur, "kpis": out, "stale": False})
-    cached = _FUND_CACHE.get(ticker)
-    if cached:
-        return jsonify({"ticker": ticker, "currency": cached["currency"], "kpis": cached["kpis"], "stale": True})
-    return jsonify({"ticker": ticker, "currency": cur, "kpis": out, "stale": False})
+    rec = _panel_records(_FUND_STORE_KEY).get(ticker)
+    if rec:
+        return jsonify({"ticker": ticker, "currency": rec.get("currency"),
+                        "kpis": rec.get("kpis") or {}, "stale": False})
+    # SAY WHY IT IS EMPTY. A blank card that looks identical to "this company has no data" is the silent
+    # failure this whole item exists to end.
+    return jsonify({"ticker": ticker, "currency": None, "kpis": {}, "stale": False,
+                    "note": "Fundamentals have not been collected for this instrument yet."})
 
 
 @app.route("/api/broker/<ticker>")
 def api_broker(ticker):
-    """Change in broker coverage over the last 6 and 12 months (user 2026-06-27): net analyst
-    upgrades vs downgrades from yfinance upgrades_downgrades. Live per-ticker; graceful if Yahoo is
-    unreachable (available=False)."""
-    res = {"up6": 0, "down6": 0, "up12": 0, "down12": 0, "available": False}
-    try:
-        import yfinance as yf, pandas as pd
-        try:
-            from config import YAHOO_MAP
-        except Exception:
-            YAHOO_MAP = {}
-        ud = yf.Ticker(YAHOO_MAP.get(ticker, ticker)).upgrades_downgrades
-        if ud is not None and not ud.empty:
-            res["available"] = True
-            now = pd.Timestamp.now(tz="UTC")
-            for dt, row in ud.iterrows():
-                try:
-                    d = pd.Timestamp(dt)
-                    d = d.tz_localize("UTC") if d.tzinfo is None else d.tz_convert("UTC")
-                except Exception:
-                    continue
-                months = (now - d).days / 30.44
-                act = str(row.get("Action", "")).lower()
-                if 0 <= months <= 12:
-                    if act == "up":
-                        res["up12"] += 1; res["up6"] += (months <= 6)
-                    elif act == "down":
-                        res["down12"] += 1; res["down6"] += (months <= 6)
-    except Exception as e:
-        log.warning(f"broker history failed for {ticker}: {e}")
-    return jsonify({"ticker": ticker, **{k: int(v) if isinstance(v, bool) else v for k, v in res.items()}})
+    """Net analyst upgrades vs downgrades over the last 6 and 12 months, from the nightly precompute."""
+    if _is_non_equity(ticker):
+        return jsonify({"ticker": ticker, "up6": 0, "down6": 0, "up12": 0, "down12": 0, "available": False,
+                        "note": "No broker coverage for non-equity instruments (FX / index / future / crypto)."})
+    rec = _panel_records(_BROKER_STORE_KEY).get(ticker)
+    if rec:
+        return jsonify({"ticker": ticker, "up6": rec.get("up6", 0), "down6": rec.get("down6", 0),
+                        "up12": rec.get("up12", 0), "down12": rec.get("down12", 0),
+                        "available": bool(rec.get("available"))})
+    return jsonify({"ticker": ticker, "up6": 0, "down6": 0, "up12": 0, "down12": 0, "available": False})
 
 
 def _price_bars(ticker: str, days: int) -> list:

@@ -1,0 +1,56 @@
+name: Fundamentals Precompute (daily — 2026-09-18)
+
+# Fetches the Fundamentals and Broker-analysis panels for the whole universe and stores them, because the
+# web host CANNOT fetch them itself: /api/fundamentals and /api/broker used to call yfinance on the
+# request thread, yfinance imports pandas -> numpy, and numpy is SIGSYS-killed on IONOS (its bundled
+# OpenBLAS calls mbind(2) and the seccomp filter kills the process). Both endpoints answered HTTP 500
+# after ~120s, measured live 2026-09-18, and had been dead for weeks.
+#
+# A missed run makes the panels STALE, never blank: run_fundamentals_precompute refuses to store an empty
+# result over a good copy, and the server serves whatever was last stored.
+#
+# TIMING: ~2s per instrument measured, ~1,357 equity instruments, so roughly 45 minutes serial. The
+# timeout is set well above that rather than close to it -- a job killed at the boundary would store
+# nothing and the panels would silently stop refreshing.
+#
+# GitHub-native `schedule:` blocks are BANNED in this repository; cron-job.org fires workflow_dispatch and
+# setup_cronjobs.py::JOBS is the authoritative registry.
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Only the first N instruments (testing). 0 = the whole universe.'
+        type: string
+        required: false
+        default: ''
+      dry_run:
+        description: 'Fetch and report timings without storing anything.'
+        type: boolean
+        required: false
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  precompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PYTHONIOENCODING:     utf-8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Build and store the fundamentals + broker panels
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ inputs.limit }}"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          python run_fundamentals_precompute.py $ARGS

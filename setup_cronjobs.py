@@ -210,6 +210,14 @@ JOBS = [
     ("Trading State Audit",  "30 22 * * 1-5",    "trading-state-audit.yml"),
     ("Price History Audit",  "0 23 * * 1-6",     "trading-price-audit.yml"),  # golden-dataset audit: YF refetch + IG-as-truth correction of the trailing 7d (user 2026-07-13). Mon-Sat 23:00 UTC, after Data Quality Audit; self-throttles on the shared IG allowance.
     ("Supabase Database Backup", "30 23 * * *", "supabase-backup.yml"),  # daily read-only logical backup; artifact retained 90 days (user 2026-08-06, P-25)
+    # The Fundamentals and Broker panels for the whole universe (2026-09-18). They are precomputed for the
+    # same reason /api/performance is: the web host cannot build them. Both endpoints called yfinance on
+    # the request thread, yfinance imports pandas -> numpy, and numpy is SIGSYS-killed on IONOS, so both
+    # answered HTTP 500 after ~120s and had been dead for weeks. 21:15 UTC, after the 18:30 snapshot has
+    # finished (it runs ~70 minutes) so the universe it iterates is the one just published, and clear of
+    # the 22:15 Data Quality Audit and 23:00 Price History Audit. ~45 minutes measured at ~2s/instrument.
+    # A missed run leaves the panels STALE, never blank: the script refuses to store an empty result.
+    ("Fundamentals Precompute", "15 21 * * *", "trading-fundamentals-precompute.yml"),
     # ── Safety net + proactive self-checks ────────────────────────────────────────────────────────────────────────────
     ("Session Watchdog",     "*/10 0-21 * * 1-5","trading-watchdog.yml"),     # migrated off GitHub cron 2026-06-08
     ("Daily Diagnostics",    "30 7 * * 1-5",     "trading-diagnostics.yml"),  # proactive daily health check -> #alerts
