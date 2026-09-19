@@ -173,8 +173,13 @@ def capture(tickers, as_of=None, dry_run=False, db=None):
                               atr_expanding, volume_score, volume_score_max, wk52_low, wk52_high,
                               direction, status, recorded_at)
                            values (:t,:d,:bd,:rv,:rd,:av,:avs,:atr,:vs,:vsm,:lo,:hi,:dir,:st, now())
-                           on conflict (ticker, as_of) do update set
-                             bar_date=:bd, rvol=:rv, rvol_date=:rd, above_vwap=:av,
+                           -- Keyed on the BAR since 2026-09-19, matching instrument_metrics.record_daily.
+                           -- This said (ticker, as_of) and would have raised "no unique or exclusion
+                           -- constraint matching the ON CONFLICT specification" the moment the table was
+                           -- re-keyed -- silently, because the per-ticker except below counts the failure
+                           -- as "skipped" and the job still exits 0.
+                           on conflict (ticker, bar_date) do update set
+                             as_of=:d, rvol=:rv, rvol_date=:rd, above_vwap=:av,
                              above_vwap_setup=:avs, atr_expanding=:atr, volume_score=:vs,
                              volume_score_max=:vsm, wk52_low=:lo, wk52_high=:hi,
                              direction=:dir, status=:st, recorded_at=now()""",

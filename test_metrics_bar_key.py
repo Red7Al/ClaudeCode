@@ -13,6 +13,7 @@ never captured must be computed and STORED rather than reported as missing data 
 """
 
 import datetime as dt
+import pathlib
 
 import pytest
 
@@ -75,6 +76,38 @@ def test_the_backfill_upserts_on_the_bar_with_no_conditional_workaround(monkeypa
     assert "on conflict (ticker, bar_date)" in ins
     assert "where instrument_metrics_daily.bar_date" not in ins.lower(), \
         "the conditional-upsert workaround is still here"
+
+
+def test_every_writer_to_the_table_uses_the_current_key():
+    """THE GUARD THAT WAS MISSING, and it cost a real regression on 2026-09-19.
+
+    Re-keying the table DROPPED the (ticker, as_of) constraint, so any writer still naming it raises
+    "no unique or exclusion constraint matching the ON CONFLICT specification". closing_bar_capture.py
+    was exactly that -- and it is the ARMED Closing Window job that runs every ten minutes and feeds the
+    auto-closer. Worse, it catches the failure per ticker and counts it as "skipped", so the job would
+    have reported success while storing NOTHING.
+
+    It was missed by a grep for the table name because it writes to {instrument_metrics.TABLE}. This test
+    therefore searches for the WRITE, however the table is spelled, and checks the key each one names.
+    """
+    import re
+    root = pathlib.Path(__file__).parent
+    writers = []
+    for path in root.glob("*.py"):
+        if path.name.startswith("test_"):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(r"insert\s+into\s+\{?(?:instrument_metrics\.)?TABLE\}?"
+                             r"|insert\s+into\s+instrument_metrics_daily", text):
+            tail = text[m.start():m.start() + 1800]
+            conflict = re.search(r"on conflict \(([^)]*)\)", tail)
+            writers.append((path.name, conflict.group(1).strip() if conflict else None))
+
+    assert writers, "no writers found at all -- this detector has stopped detecting"
+    wrong = [(f, k) for f, k in writers if k != "ticker, bar_date"]
+    assert not wrong, (
+        "these writes to instrument_metrics_daily do not name the table's key (ticker, bar_date): "
+        + ", ".join(f"{f} -> {k!r}" for f, k in wrong))
 
 
 def test_the_schema_declares_the_bar_as_the_key():
