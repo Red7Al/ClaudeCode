@@ -54,7 +54,7 @@ def ensure_schema(db):
     db.run(f"""create table if not exists {TABLE} (
                   ticker            text not null,
                   as_of             date not null,
-                  bar_date          date,
+                  bar_date          date not null,
                   rvol              double precision,
                   rvol_date         date,
                   above_vwap        boolean,
@@ -69,7 +69,14 @@ def ensure_schema(db):
                   status            text,
                   source            text,
                   recorded_at       timestamptz default now(),
-                  primary key (ticker, as_of))""")
+                  -- KEYED ON THE BAR, NOT ON WHEN WE LOOKED (2026-09-19). These four measures describe a
+                  -- BAR; as_of is only when the row was computed. Keying on as_of meant one capture wrote
+                  -- rows describing many different bars -- measured on as_of 2026-09-18, ten of them,
+                  -- with only TWO describing the 18th -- so order_filter_audit, which looks a position's
+                  -- opening bar up exactly, found nothing for 1,770 of 1,772 instruments and reported
+                  -- "RVOL not recorded". It also left 24% of the table as repeat captures of a bar
+                  -- already described. as_of stays as information, not identity.
+                  primary key (ticker, bar_date))""")
     # `create table if not exists` does NOTHING when the table already exists, so a column added later
     # never appears and every read of it fails with "column does not exist" -- which is exactly what
     # happened when mcap was added on 2026-08-29. Adding them explicitly keeps this idempotent for both
@@ -147,6 +154,80 @@ def compute(ticker, bars, direction=None):
             "status": status}
 
 
+def bars_upto(ticker, end, db):
+    """price_history up to and including `end`, as the tuples volume_score expects. NUMPY-FREE.
+
+    _bars() above goes through price_store, which imports pandas at module level -- and pandas imports
+    numpy, which is SIGSYS-killed on the IONOS host. This reads the same table with the same window
+    directly, so record_for_bar can run inside a web request on that host. Same shape, same order, same
+    NaN-volume-to-zero rule as _bars, because the two must not disagree about what a bar is.
+    """
+    start = (end if isinstance(end, dt.date) else dt.date.fromisoformat(str(end)[:10])) \
+        - dt.timedelta(days=LOOKBACK_DAYS)
+    rows = db.run("select bar_date, high, low, close, volume from price_history "
+                  "where ticker = :t and bar_date >= :s and bar_date <= :e "
+                  "order by bar_date", t=ticker, s=str(start), e=str(end)[:10]) or []
+    out = []
+    for bar_date, high, low, close, volume in rows:
+        if high is None or low is None or close is None:
+            continue                      # an incomplete bar is not a bar
+        out.append((str(bar_date)[:10], float(high), float(low), float(close),
+                    float(volume) if volume is not None else 0.0))
+    return out
+
+
+def record_for_bar(ticker, bar_date, direction=None, db=None):
+    """Compute and STORE this instrument's metrics for ONE specific bar; return them, or None.
+
+    WHY THIS EXISTS (owner 2026-09-19: "RVOL not recorded ... this has been covered so many times").
+    record_daily captures each instrument's LATEST completed bar, and it runs at ~03:30 UTC, so one
+    capture writes rows describing many different bar_dates -- measured on as_of 2026-09-18, ten of them,
+    with only TWO describing the 18th itself. order_filter_audit.break_state looks up the position's
+    opening bar EXACTLY, so a position opened that day was judgeable for 2 of 1,772 instruments. The data
+    was never missing; the row for that particular bar had simply never been written.
+
+    Storing rather than returning a computed value is the owner's standing rule -- "it should not need to
+    be recomputed - it should be stored" -- so this writes the row it just worked out.
+
+    RETURNS None WHEN THE INSTRUMENT DID NOT TRADE THAT DAY. That is not a failure: there is no break bar,
+    so "not recorded" is the honest answer and the caller must keep treating it as unjudgeable rather than
+    as a pass.
+    """
+    from db_pool import get_db
+    want = str(bar_date)[:10]
+    own = db is None
+    db = db or get_db()
+    try:
+        ensure_schema(db)
+        m = compute(ticker, bars_upto(ticker, want, db), direction)
+        if m.get("status") == "no_price_history" or str(m.get("bar_date") or "")[:10] != want:
+            return None          # no bar on that date -- genuinely unjudgeable
+        # A PLAIN upsert on the bar. An earlier version of this needed a conditional
+        # "...do update ... where bar_date = :bd" to avoid clobbering a row that described a DIFFERENT
+        # bar under the same (ticker, as_of) key. Re-keying the table on (ticker, bar_date) removed the
+        # collision and with it the workaround -- the identity is now the thing being written.
+        db.run(f"""insert into {TABLE}
+                     (ticker, as_of, bar_date, rvol, rvol_date, above_vwap, above_vwap_setup,
+                      atr_expanding, volume_score, volume_score_max, wk52_low, wk52_high,
+                      direction, status, source, recorded_at)
+                   values (:t,:d,:bd,:rv,:rd,:av,:avs,:atr,:vs,:vsm,:lo,:hi,:dir,:st,'backfill', now())
+                   on conflict (ticker, bar_date) do update set
+                     as_of=:d, rvol=:rv, rvol_date=:rd, above_vwap=:av, above_vwap_setup=:avs,
+                     atr_expanding=:atr, volume_score=:vs, volume_score_max=:vsm, wk52_low=:lo,
+                     wk52_high=:hi, direction=:dir, status=:st, source='backfill', recorded_at=now()""",
+               t=ticker, d=want, bd=m.get("bar_date"), rv=m.get("rvol"), rd=m.get("rvol_date"),
+               av=m.get("above_vwap"), avs=m.get("above_vwap_setup"), atr=m.get("atr_expanding"),
+               vs=m.get("volume_score"), vsm=m.get("volume_score_max"), lo=m.get("wk52_low"),
+               hi=m.get("wk52_high"), dir=m.get("direction"), st=m.get("status"))
+        return m
+    except Exception as exc:
+        log.warning("metrics backfill failed for %s on %s: %s", ticker, want, exc)
+        return None
+    finally:
+        if own:
+            db.close()
+
+
 # Market cap is deliberately NOT captured here (user 2026-08-29: "we do not need mcap every day"). It
 # moves slowly and is only used for wide bands (<2bn / 2-10bn / 10-100bn / 100bn+), so daily resolution
 # would be storage for no gain on a 500 MB tier. The column remains for a future weekly writer.
@@ -160,7 +241,10 @@ def compute(ticker, bars, direction=None):
 def record_daily(snapshot, as_of=None, db=None, tickers=None):
     """Compute and UPSERT today's metrics for every instrument in the snapshot.
 
-    Idempotent on (ticker, as_of), so a re-run overwrites the same day rather than duplicating it.
+    Idempotent on (ticker, BAR_DATE), so re-capturing a bar updates that bar in place. It used to be keyed
+    on as_of, which meant a second capture on a day the bar had not advanced wrote a SECOND row describing
+    the same bar -- 24% of the table by 2026-09-19 -- while a bar captured under a later as_of could not
+    be found by anything looking the bar up.
     Returns a summary; never raises, because this must not be able to cost a good scan its publication.
     """
     from db_pool import get_db
@@ -194,8 +278,8 @@ def record_daily(snapshot, as_of=None, db=None, tickers=None):
                               atr_expanding, volume_score, volume_score_max, wk52_low, wk52_high,
                               direction, status, recorded_at)
                            values (:t,:d,:bd,:rv,:rd,:av,:avs,:atr,:vs,:vsm,:lo,:hi,:dir,:st, now())
-                           on conflict (ticker, as_of) do update set
-                             bar_date=:bd, rvol=:rv, rvol_date=:rd, above_vwap=:av,
+                           on conflict (ticker, bar_date) do update set
+                             as_of=:d, rvol=:rv, rvol_date=:rd, above_vwap=:av,
                              above_vwap_setup=:avs, atr_expanding=:atr, volume_score=:vs,
                              volume_score_max=:vsm, wk52_low=:lo, wk52_high=:hi,
                              direction=:dir, status=:st, recorded_at=now()""",

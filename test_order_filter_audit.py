@@ -204,24 +204,58 @@ def test_an_order_whose_instrument_left_the_snapshot_is_unknown_not_ok(monkeypat
 # on none, because it looks like evidence.
 
 class _BarDb:
+    """A database that answers the bar_date query HONESTLY.
+
+    The previous version returned a row whose bar_date differed from the one asked for, whatever the SQL
+    said. No real database can do that against "where bar_date = :d" -- so the staleness branch it was
+    exercising was unreachable in production, and the test passed by testing its own fake. It is replaced
+    by test_the_query_pins_the_bar, which asserts the thing that ACTUALLY prevents a wrong bar being used.
+    """
+
     def __init__(self, bar_date):
         self._bar = bar_date
+        self.sql = None
+
     def run(self, sql, **kw):
-        assert "bar_date" in sql, "the query must read bar_date, or the staleness cannot be detected"
-        return [[2.5, True, True, 9, kw["d"], "complete", self._bar]]
+        self.sql = sql
+        assert "bar_date" in sql, "the query must select on bar_date, or the wrong bar could be returned"
+        if str(self._bar) != str(kw.get("d")):
+            return []                      # this instrument has no row for that bar
+        return [[2.5, True, True, 9, kw["d"], "complete"]]
+
     def close(self):
         pass
 
 
-def test_metrics_from_the_wrong_bar_are_treated_as_unjudgeable():
-    state = ofa.break_state([("BP.L", "2026-09-05")], db=_BarDb("2026-09-04"))["BP.L"]
+def test_the_query_pins_the_bar_so_the_wrong_one_cannot_be_used(monkeypatch):
+    """REPLACES test_metrics_from_the_wrong_bar_are_treated_as_unjudgeable (2026-09-19).
 
-    assert state["rvol"] is None and state["volume_score"] is None, \
-        "yesterday's reading must not be presented as the break bar's"
-    assert state["above_vwap_setup"] is None and state["atr_expanding"] is None
-    assert state["status"].startswith("stale_bar:"), \
-        "the reason must be visible, not silently blank"
-    assert "2026-09-04" in state["status"], "say WHICH bar was found, so the gap can be diagnosed"
+    That test fed a fake returning a row whose bar_date differed from the one requested, and asserted the
+    code then discarded it as "stale_bar". No real database can return that against "where bar_date = :d"
+    -- the branch was unreachable in production and the test was exercising its own fake. Worse, it read
+    as protection: it looked like something guarded against judging a position on the wrong day's bar.
+
+    What actually guarantees it is the query itself, so that is what is asserted here. Yesterday's reading
+    being presented as the break bar's remains the thing that must never happen -- a position would be
+    closed on evidence from the wrong day, which is worse than closing on none.
+    """
+    db = _BarDb("2026-09-05")
+    monkeypatch.setattr(ofa.instrument_metrics, "record_for_bar",
+                        lambda ticker, bar_date, direction=None, db=None: None)
+    ofa.break_state([("BP.L", "2026-09-05")], db=db)
+
+    sql = " ".join(db.sql.split())
+    assert "bar_date = :d" in sql, f"the bar must be pinned in the query, not filtered afterwards: {sql}"
+    assert "as_of = :d" not in sql, "selecting on as_of returns the row WRITTEN that day, not that bar's"
+
+
+def test_a_bar_with_no_row_is_not_invented(monkeypatch):
+    """When nothing describes that bar and it cannot be backfilled, the instrument stays absent -- never
+    a pass, and never a fabricated reading."""
+    monkeypatch.setattr(ofa.instrument_metrics, "record_for_bar",
+                        lambda ticker, bar_date, direction=None, db=None: None)
+    state = ofa.break_state([("BP.L", "2026-09-05")], db=_BarDb("2026-09-04"))
+    assert "BP.L" not in state
 
 
 def test_metrics_from_the_right_bar_are_used():

@@ -3994,6 +3994,32 @@ def _renderer_map(js):
     return dict(re.findall(r"([a-z]+):(\w+)", m.group(1)))
 
 
+def test_refreshing_the_ig_account_re_evaluates_every_breach_panel():
+    """Owner 2026-09-18: a refresh is wanted on IG Account precisely so the impact of changed trading
+    filters can be seen on "TX not meeting criteria" and "Orders not meeting criteria".
+
+    loadAccount already re-read the ORDERS audit, but the TX audit and Auto-closed are lazily loaded once
+    and then cached -- showIgPanel only fetches them while their cache is still null -- so Refresh
+    re-evaluated one panel and left the others showing figures from before the refresh.
+    """
+    # loadAccount is a const arrow nested inside renderIgAccount, so extract the enclosing function.
+    src = _extract("renderIgAccount")
+    assert "loadOrderFilterAudit()" in src, "the orders audit is no longer re-read on refresh"
+    assert "IG_TXAUDIT=null" in src.replace(" ", ""), \
+        "refreshing must invalidate the TX breach audit or it answers from before the refresh"
+    assert "IG_AUTO=null" in src.replace(" ", ""), \
+        "refreshing must invalidate the auto-closed cache for the same reason"
+
+
+def test_saving_trading_filters_makes_the_breach_verdicts_stale():
+    """The verdicts are decided BY these filters, so a saved change must not leave the panels answering
+    against the old settings. Invalidated rather than re-fetched on purpose: these fields save on every
+    change, and the reader is on Settings, not IG Account."""
+    src = _extract("saveLimits").replace(" ", "")
+    assert "IG_AUDIT=null" in src and "IG_TXAUDIT=null" in src, \
+        "saving trading filters must invalidate both IG breach audits"
+
+
 def test_every_data_view_can_be_refreshed():
     """Owner 2026-09-18: "make sure all pages with data have a refresh button".
 

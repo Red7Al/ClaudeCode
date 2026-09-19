@@ -1901,7 +1901,15 @@ function saveLimits(){
   const _setMsg=(txt,ok)=>ok?st.ok(txt):st.fail(txt);
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
     .then(r=>{if(r.ok){_setMsg("Saved.",true);
-      MY_LIMITS={...MY_LIMITS,...lim};if(typeof renderPreorders==='function')renderPreorders();   // apply new floors to My Pre-orders now (user 2026-07-24, P-02)
+      MY_LIMITS={...MY_LIMITS,...lim};
+      // THE IG BREACH VERDICTS ARE DECIDED BY THESE FILTERS, so a saved change makes both panels stale --
+      // "TX not meeting criteria" and "Orders not meeting criteria" would otherwise keep answering
+      // against the settings as they were before the save (owner 2026-09-18). Invalidated rather than
+      // re-fetched: the reader is on Settings, not IG Account, and these fields save on every change, so
+      // firing two API calls per keystroke would be wasteful. renderIgAccount and showIgPanel re-read
+      // them from null the moment that tab is opened.
+      IG_AUDIT=null; IG_TXAUDIT=null;
+      if(typeof renderPreorders==='function')renderPreorders();   // apply new floors to My Pre-orders now (user 2026-07-24, P-02)
       if(typeof render==='function')render();   // Scanner table/charts also hard-filter on MY_LIMITS (P-01 2026-08-11) — must re-render on save, not just on the next filter change, or a just-saved floor (e.g. "Require ATR expanding") silently leaves stale rows on screen (user 2026-08-11, MARUTI.BO showing ATR ✗ after saving)
       if(typeof _renderPerformance==='function')_renderPerformance();   // Performance respects the personal Volume Score floor now too (user 2026-07-28)
       if(typeof applyWinnersDefaults==='function')applyWinnersDefaults();   // keep Performance's Replay Model in sync with User Configuration
@@ -2426,6 +2434,16 @@ function renderIgAccount(ev){
       // paintIgAccount, which is what populates IGORD -- the panel joins the audit to a real deal id and
       // can only offer an order IG is still holding.
       if(!noCreds)loadOrderFilterAudit();
+      // THE OTHER TWO PANELS ARE LAZILY LOADED ONCE AND THEN CACHED, so Refresh re-evaluated the Orders
+      // audit above and left "TX not meeting criteria" and "Auto-closed" showing figures from before the
+      // refresh -- showIgPanel only loads them while their cache is still null (owner 2026-09-18: a
+      // refresh is wanted precisely so the impact of changed trading filters can be seen). Invalidate
+      // them, and re-read immediately if the reader is actually looking at one; otherwise showIgPanel
+      // will fetch it when they open it.
+      if(!noCreds){
+        IG_TXAUDIT=null; if(IG_PANEL==="txbreach")loadPositionFilterAudit();
+        IG_AUTO=null;    if(IG_PANEL==="autoclosed")loadAutoClosed();
+      }
       // Load closed trades directly into the main transaction table (user 2026-08-04).
       if(!noCreds)loadIgClosed(true);
     })

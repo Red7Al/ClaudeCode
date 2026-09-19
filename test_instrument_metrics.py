@@ -308,7 +308,9 @@ def test_every_column_the_reader_names_exists_in_the_schema():
     from pathlib import Path
 
     ddl = Path(__file__).with_name("instrument_metrics.py").read_text(encoding="utf-8")
-    ddl = ddl[ddl.index("create table if not exists"):ddl.index("primary key (ticker, as_of)")]
+    # Sliced to the key line, which moved to (ticker, bar_date) on 2026-09-19 when the table was re-keyed
+    # on the BAR it describes rather than on the day we happened to look.
+    ddl = ddl[ddl.index("create table if not exists"):ddl.index("primary key (ticker, bar_date)")]
 
     for name in im.COLUMNS:
         assert name in ddl, f"latest() selects {name!r}, which the table does not define"

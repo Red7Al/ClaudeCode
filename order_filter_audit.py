@@ -27,6 +27,7 @@
 import logging
 
 import account_scope          # which working_orders rows belong to which trading account
+import instrument_metrics     # break-bar metrics: read here, and backfilled for a bar never captured
 
 log = logging.getLogger("order_filter_audit")
 
@@ -258,34 +259,41 @@ def break_state(pairs, db=None):
             # audit reported "unjudgeable" for bars that HAD been captured, just under a later as_of.
             # Measured on the live table: bar 2026-08-27 for THG.L exists under as_of 2026-08-29.
             #
-            # Ordered by as_of so that where a bar was captured more than once the latest capture wins.
-            rows = db.run("select rvol, above_vwap_setup, atr_expanding, volume_score, as_of, status, "
-                          "bar_date from instrument_metrics_daily where ticker = :t and bar_date = :d "
-                          "order by as_of desc limit 1",
+            # (ticker, bar_date) is the KEY since 2026-09-19, so this is a single-row lookup and the row
+            # it returns describes exactly the bar asked for.
+            #
+            # A staleness check used to sit here, re-testing the returned bar_date against `opened` and
+            # discarding a mismatch as "stale_bar". It was DEAD CODE: the WHERE clause already guarantees
+            # they are equal. It was genuinely live only while this query selected on as_of, which
+            # returned the row WRITTEN that day -- describing the previous bar -- and it survived the
+            # switch to bar_date as a leftover. Removed rather than left looking load-bearing.
+            rows = db.run("select rvol, above_vwap_setup, atr_expanding, volume_score, as_of, status "
+                          "from instrument_metrics_daily where ticker = :t and bar_date = :d",
                           t=ticker, d=str(opened)[:10]) or []
             if rows:
-                rv, avs, atr, vs, as_of, status, bar_date = rows[0]
-                # THE ROW'S as_of IS NOT THE BAR IT DESCRIBES (measured 2026-09-06).
-                #
-                # instrument_metrics.record_daily runs inside the daily scan, which fires in the Morning
-                # Chain at ~03:30 UTC -- before any market opens. The row it writes under as_of = today is
-                # therefore computed from YESTERDAY'S completed bar. Measured on the live table: of the
-                # rows written for as_of 2026-09-05, 1,761 carry bar_date 2026-09-04, and a tail of them
-                # are older still (one is 33 days behind).
-                #
-                # These four measures describe the BREAK bar, and for a position opened today the break
-                # IS today. Judging it on yesterday's reading would close a real position on the wrong
-                # day's evidence -- worse than closing on no evidence, because it looks like evidence.
-                #
-                # So the bar must match the day being judged. Anything else is UNJUDGEABLE, which the
-                # caller already treats as "leave the position alone" rather than as a pass or a fail.
-                if str(bar_date)[:10] != str(opened)[:10]:
-                    out[ticker] = {"rvol": None, "above_vwap_setup": None, "atr_expanding": None,
-                                   "volume_score": None, "as_of": str(as_of),
-                                   "status": f"stale_bar:{str(bar_date)[:10]}"}
-                    continue
+                rv, avs, atr, vs, as_of, status = rows[0]
                 out[ticker] = {"rvol": rv, "above_vwap_setup": avs, "atr_expanding": atr,
                                "volume_score": vs, "as_of": str(as_of), "status": status}
+                continue
+            # NO ROW DESCRIBES THAT BAR -- so work it out from price_history and STORE it, rather than
+            # reporting "RVOL not recorded" for data we hold (owner 2026-09-19, chosen fix (a)).
+            #
+            # The row is missing far more often than it sounds: record_daily captures each instrument's
+            # LATEST bar at ~03:30 UTC, so one capture writes rows describing many different bar_dates --
+            # measured on as_of 2026-09-18, ten of them, only TWO describing the 18th. A position opened
+            # that day therefore matched 2 of 1,772 instruments. Measured rescue for that date: 1,102
+            # instruments whose bar price_history already held.
+            #
+            # It is computed from the SAME volume_score functions record_daily uses, so a backfilled
+            # figure and a captured one cannot disagree, and it is STORED so the next read is a plain
+            # lookup. When the instrument did not trade that day this returns None and the position stays
+            # UNJUDGEABLE -- there is no break bar, so "not recorded" is then the honest answer.
+            m = instrument_metrics.record_for_bar(ticker, str(opened)[:10], db=db)
+            if m:
+                out[ticker] = {"rvol": m.get("rvol"), "above_vwap_setup": m.get("above_vwap_setup"),
+                               "atr_expanding": m.get("atr_expanding"),
+                               "volume_score": m.get("volume_score"),
+                               "as_of": str(opened)[:10], "status": m.get("status")}
     finally:
         if own:
             db.close()
