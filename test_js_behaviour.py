@@ -3926,7 +3926,8 @@ def test_a_save_in_flight_shows_an_hourglass_and_always_clears_it():
     /api/performance "warming" defect in another costume, so the test requires the hourglass to be REPLACED
     once the request settles.
     """
-    src = _extract("saveLimits")
+    # saveLimits now reports THROUGH saveStatus, so both are needed for it to run at all.
+    src = _extract("saveStatus") + "\n" + _extract("saveLimits")
     out = run_js_async(_save_limits_preamble("true"), src, textwrap.dedent("""
         (async () => {
             saveLimits();
@@ -3944,7 +3945,8 @@ def test_a_save_in_flight_shows_an_hourglass_and_always_clears_it():
 def test_a_failed_save_also_clears_the_hourglass():
     """The dangerous half. If only the success path cleared it, a failed save would spin forever and read
     as 'still saving' -- worse than saying nothing, because it claims work is happening."""
-    src = _extract("saveLimits")
+    # saveLimits now reports THROUGH saveStatus, so both are needed for it to run at all.
+    src = _extract("saveStatus") + "\n" + _extract("saveLimits")
     out = run_js_async(_save_limits_preamble("false"), src, textwrap.dedent("""
         (async () => {
             saveLimits();
@@ -3957,13 +3959,75 @@ def test_a_failed_save_also_clears_the_hourglass():
     assert "⏳" not in out[-1]
 
 
+# Save functions that legitimately do not call saveStatus, each with the reason. An allow-list with no
+# reasons is how a detector rots into a formality, so a new entry needs one.
+_SAVE_WITHOUT_STATUS = {
+    "saveDiscount": "builds a patch and delegates to saveUser, which reports; it sends nothing itself",
+}
+
+
+def test_every_form_reports_saving_the_same_way():
+    """Owner 2026-09-18: "make sure the saving message and hourglass is consistent across all forms".
+
+    Before this, a dozen save functions each repeated the same three lines with their own wording and not
+    one showed an in-flight state, so a form looked either broken or already finished -- never busy. This
+    is the guard that keeps them on one definition: every save* that performs a fetch must go through
+    saveStatus, which owns the hourglass and guarantees it is replaced.
+    """
+    js = client_js()
+    names = re.findall(r"\nfunction (save[A-Za-z]*)\(", js)
+    assert len(names) >= 10, f"expected the full set of save functions, found {names}"
+
+    offenders = []
+    for name in names:
+        body = _extract(name)
+        if "fetch(" not in body:
+            continue                      # nothing is sent, so there is nothing to report on
+        if "saveStatus(" not in body and name not in _SAVE_WITHOUT_STATUS:
+            offenders.append(name)
+    assert not offenders, (
+        "these forms report saving their own way instead of through saveStatus: " + ", ".join(offenders))
+
+    for name, reason in _SAVE_WITHOUT_STATUS.items():
+        assert reason and len(reason) > 20, f"{name} is allow-listed without a real reason"
+
+
+def test_save_status_shows_the_hourglass_and_both_endings_replace_it():
+    """EXECUTED, not pattern-matched. saveStatus is now the single point where the in-flight marker is
+    shown, so if it could ever leave one spinning, EVERY form on the site would inherit that."""
+    src = _extract("saveStatus")
+    preamble = textwrap.dedent("""
+        const msgs = [];
+        global.$ = () => ({style: {}, set textContent(v) { msgs.push(v); }});
+    """)
+    out = run_js(preamble, src,
+                 '(() => { const a = saveStatus("x"); a.ok(); '
+                 'const b = saveStatus("y"); b.fail(); return msgs; })()')
+    assert "⏳" in out[0], f"no hourglass when the save starts: {out}"
+    assert out[1] == "Saved.", out
+    assert "⏳" in out[2], out
+    assert out[3] == "Save failed.", out
+
+
+def test_save_status_reports_into_every_panel_it_is_given():
+    """My Trading Filters shows its result in whichever of four panels the reader is looking at."""
+    src = _extract("saveStatus")
+    preamble = textwrap.dedent("""
+        const seen = [];
+        global.$ = (id) => ({style: {}, set textContent(v) { seen.push(id + "=" + v); }});
+    """)
+    out = run_js(preamble, src, '(() => { saveStatus(["a","b","c"]).ok("Done."); return seen; })()')
+    assert out[-3:] == ["a=Done.", "b=Done.", "c=Done."], out
+
+
 def test_a_save_that_never_reaches_the_server_also_clears_the_hourglass():
     """A THIRD path, and it was genuinely untested: the two tests above both get a RESPONSE (ok / not ok)
     and land in the .then. A network failure rejects instead and lands in the .catch. Deleting that .catch
     left both other tests passing -- found by the mutation run, not by reading the code -- and a dropped
     connection would have spun forever while claiming a save was in progress.
     """
-    src = _extract("saveLimits")
+    # saveLimits now reports THROUGH saveStatus, so both are needed for it to run at all.
+    src = _extract("saveStatus") + "\n" + _extract("saveLimits")
     preamble = textwrap.dedent("""
         global.AUTH = "token";
         global.MY_LIMITS = {};

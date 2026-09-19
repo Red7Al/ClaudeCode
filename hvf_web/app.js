@@ -1419,10 +1419,11 @@ async function reqAction(name,action){
     .catch(()=>{$("users-msg").style.color="var(--bear)";$("users-msg").textContent="Action failed.";});
 }
 function saveUser(name,patch){
+  const st=saveStatus("users-msg");
   fetch("/api/users",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({name,...patch})})
     .then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(()=>{$("users-msg").style.color="var(--bull)";$("users-msg").textContent=`Updated ${name}.`;renderUsers();})
-    .catch(()=>{$("users-msg").style.color="var(--bear)";$("users-msg").textContent="Update failed.";});
+    .then(()=>{st.ok(`Updated ${name}.`);renderUsers();})
+    .catch(()=>st.fail("Update failed."));
 }
 // Documentation tab (user 2026-08-08, P-13): lists the guide .docx the current role may see and downloads
 // them. The server filters by role too; downloads go through fetch with the X-Auth header (a plain <a>
@@ -1637,13 +1638,32 @@ function renderTabVis(hidden){
   $("tabvis-list").classList.remove("sqh-loading");
   $("tabvis-list").innerHTML=html;
 }
+// ONE definition of what saving looks like, for every form on the site (owner 2026-09-18: "make sure the
+// saving message and hourglass is consistent across all forms"). Before this, a dozen save functions each
+// repeated the same three lines with their own wording, and NOT ONE of them said anything while the
+// request was in flight -- so a form looked either broken or already finished, never busy.
+//
+// It shows the hourglass the moment it is called and hands back ok()/fail(), so the in-flight marker can
+// never be left spinning: whichever way the request ends, one of them replaces it. That is the
+// /api/performance "warming" lesson -- a marker nothing clears is worse than no marker, because it
+// asserts that work is still happening.
+//
+// `ids` may be one element id or several: My Trading Filters shows its result in whichever of its four
+// panels the reader is looking at.
+function saveStatus(ids){
+  const targets=()=>[].concat(ids).map(id=>$(id)).filter(Boolean);
+  const put=(txt,good)=>targets().forEach(el=>{el.style.color=good?"var(--bull)":"var(--bear)";el.textContent=txt;});
+  put("⏳ Saving…",true);
+  return {ok:txt=>put(txt||"Saved.",true), fail:txt=>put(txt||"Save failed.",false)};
+}
 function saveTabVis(){
   const boxes=[...document.querySelectorAll(".tv")];
   const hidden=boxes.filter(c=>!c.checked).map(c=>c.dataset.t);
   const shown=boxes.filter(c=>c.checked&&DEFAULT_HIDDEN.has(c.dataset.t)).map(c=>c.dataset.t);   // opt-in for default-hidden tabs
+  const st=saveStatus("tabvis-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({hidden_tabs:hidden,shown_tabs:shown})})
-    .then(r=>{if(!r.ok)throw 0;HIDDEN_TABS=hidden;SHOWN_TABS=shown;applyTabVisibility();$("tabvis-msg").style.color="var(--bull)";$("tabvis-msg").textContent="Saved.";})
-    .catch(()=>{$("tabvis-msg").style.color="var(--bear)";$("tabvis-msg").textContent="Save failed.";});
+    .then(r=>{if(!r.ok)throw 0;HIDDEN_TABS=hidden;SHOWN_TABS=shown;applyTabVisibility();st.ok();})
+    .catch(()=>st.fail());
 }
 document.querySelectorAll("th[data-vk]").forEach(th=>th.onclick=()=>{const k=th.dataset.vk;verSortDir=(verSortK===k)?-verSortDir:-1;verSortK=k;paintVersion();_sortArrows("data-vk",verSortK,verSortDir);});
 document.querySelectorAll("th[data-bk]").forEach(th=>th.onclick=()=>{const k=th.dataset.bk;batchSortDir=(batchSortK===k)?-batchSortDir:-1;batchSortK=k;paintBatch();_sortArrows("data-bk",batchSortK,batchSortDir);});
@@ -1760,10 +1780,13 @@ function saveCreds(secId){
   if(!Object.keys(values).length){msg.style.color="var(--muted)";
     // The Slack "send" toggles save instantly on click — this button only saves changed webhook URLs.
     msg.textContent=secId==="Slack"?"Nothing to save — the ‘send’ checkboxes already save automatically when you tick them.":"No credential field was changed (enter a value to update it).";return;}
+  // AFTER the early return, deliberately: nothing was sent in that case, so an hourglass would claim a
+  // request that never happened.
+  const st=saveStatus("cred-msg-"+secId);
   fetch("/api/credentials",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({section:secId,values})})
     .then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{msg.style.color="var(--bull)";msg.textContent=`Saved ${(j.saved||[]).length} field(s).`;renderCredentials();if(secId==="IG"&&typeof _igStatus==="function")_igStatus(true);})
-    .catch(()=>{msg.style.color="var(--bear)";msg.textContent="Save failed.";});
+    .then(j=>{st.ok(`Saved ${(j.saved||[]).length} field(s).`);renderCredentials();if(secId==="IG"&&typeof _igStatus==="function")_igStatus(true);})
+    .catch(()=>st.fail());
 }
 function renderConfig(){
   renderCredentials();
@@ -1816,42 +1839,50 @@ function renderConfig(){
 }
 function saveFilterDefaults(){
   const f={};FILTER_IDS().forEach(k=>{const el=$(k);if(el&&el.value!=="")f[k]=el.value;});
+  const st=saveStatus("cfg-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({filters:f})})
-    .then(r=>{if(!r.ok)throw 0;USER_FILTERS=f;$("cfg-msg").style.color="var(--bull)";$("cfg-msg").textContent="Filter defaults saved.";renderConfig();})
-    .catch(()=>{$("cfg-msg").style.color="var(--bear)";$("cfg-msg").textContent="Save failed.";});
+    .then(r=>{if(!r.ok)throw 0;USER_FILTERS=f;st.ok("Filter defaults saved.");renderConfig();})
+    .catch(()=>st.fail());
 }
 function clearFilterDefaults(){
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({filters:{}})})
     .then(()=>{USER_FILTERS={};renderConfig();});
 }
 function saveBridge(){
+  const st=saveStatus("bridge-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({bridge:$("cfg-bridge").checked})})
-    .then(async r=>{const el=$("bridge-msg"),j=await r.json().catch(()=>({}));if(r.ok){el.style.color="var(--bull)";el.textContent="Bridge setting saved.";BRIDGE_ON=$("cfg-bridge").checked;paintBridgeBadge();}else{el.style.color="var(--bear)";el.textContent=j.error||"Bridge setting could not be saved.";$("cfg-bridge").checked=false;}})
-    .catch(()=>{$("bridge-msg").style.color="var(--bear)";$("bridge-msg").textContent="Bridge setting could not be saved.";$("cfg-bridge").checked=false;});
+    .then(async r=>{const j=await r.json().catch(()=>({}));
+      if(r.ok){st.ok("Bridge setting saved.");BRIDGE_ON=$("cfg-bridge").checked;paintBridgeBadge();}
+      // The server's own reason is kept when it gives one: the bridge is the only enabled execution
+      // source, so "why not" matters more here than a generic failure line.
+      else{st.fail(j.error||"Bridge setting could not be saved.");$("cfg-bridge").checked=false;}})
+    .catch(()=>{st.fail("Bridge setting could not be saved.");$("cfg-bridge").checked=false;});
 }
 function saveEngine(){
   const eng={};["wo_lifespan_days","x_max_per_day","superinvestor_lookback_days","min_senator_trades","spread_retry_attempts","spread_retry_wait_secs","bridge_min_quality","stop_amend_threshold"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});
+  const st=saveStatus("eng-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({engine:eng})})
-    .then(r=>{if(!r.ok)throw 0;$("eng-msg").style.color="var(--bull)";$("eng-msg").textContent="Engine settings saved.";})
-    .catch(()=>{$("eng-msg").style.color="var(--bear)";$("eng-msg").textContent="Save failed (admin only).";});
+    .then(r=>{if(!r.ok)throw 0;st.ok("Engine settings saved.");})
+    .catch(()=>st.fail("Save failed (admin only)."));
 }
 function saveXPub(){
   // X publishing card on Configuration (Admin): numeric publishing limits + morning Squeeze tweet markets
   // (user 2026-07-06; single editor since 2026-07-17 P-10).
   const eng={};["x_max_per_day","superinvestor_lookback_days","min_senator_trades"].forEach(k=>{const el=$("eng-"+k);if(!el)return;const v=parseFloat(el.value);if(v>=0)eng[k]=v;});
   const mk=[...document.querySelectorAll(".xhvf-mk:checked")].map(c=>c.dataset.v);
-  const msg=$("xpub-msg");
+  const st=saveStatus("xpub-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({engine:eng,x_hvf_markets:mk})})
     .then(r=>{if(!r.ok)throw 0;return r.json().catch(()=>({}));})
     .then(()=>{window.ENGINE_VALS={...(window.ENGINE_VALS||{}),...eng};
-               msg.style.color="var(--bull)";msg.textContent="X publishing settings saved.";})
-    .catch(()=>{msg.style.color="var(--bear)";msg.textContent="Save failed (admin only).";});
+               st.ok("X publishing settings saved.");})
+    .catch(()=>st.fail("Save failed (admin only)."));
 }
 function saveLeverage(){
   const lev={};["fx","equities","commodities","indices"].forEach(k=>{const v=parseFloat($("lev-"+k).value);if(v>0)lev[k]=v;});
+  const st=saveStatus("lev-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({leverage:lev})})
-    .then(r=>{if(!r.ok)throw 0;LEVERAGE={...LEVERAGE,...lev};render();$("lev-msg").style.color="var(--bull)";$("lev-msg").textContent="Leverage saved.";})
-    .catch(()=>{$("lev-msg").style.color="var(--bear)";$("lev-msg").textContent="Save failed.";});
+    .then(r=>{if(!r.ok)throw 0;LEVERAGE={...LEVERAGE,...lev};render();st.ok("Leverage saved.");})
+    .catch(()=>st.fail());
 }
 function saveLimits(){
   const num=(id,int)=>{const el=$("lim-"+id);if(!el)return undefined;const v=(int?parseInt:parseFloat)(el.value);return isFinite(v)&&v>=0?v:undefined;};
@@ -1864,15 +1895,10 @@ function saveLimits(){
   lim.adaptive_filters=0;   // compatibility only; the unused Adaptive Filters UI has been removed
   lim.let_winners_run=($("lim-let_winners_run")||{}).checked?1:0;   // "Let winners run" report opt-in, default OFF (user 2026-08-02)
   const _er=$("lim-email_recipients"); if(_er)lim.email_recipients=(_er.value||"").split(",").map(x=>x.trim()).filter(Boolean);
-  // Show the "Saved." message in whichever remaining panel's save button was clicked.
-  const _setMsg=(txt,ok)=>["lim-msg","lim-msg2","lim-msg3","lim-msg4"].forEach(id=>{const el=$(id);if(el){el.style.color=ok?"var(--bull)":"var(--bear)";el.textContent=txt;}});
-  // SAY THAT A SAVE IS IN FLIGHT (owner 2026-09-18: "it is not clear when data is being saved - can we
-  // have an hour glass?"). These fields save on change, so until now the only feedback was "Saved."
-  // AFTER the round trip -- change a value and the page said nothing at all in between. The hourglass is
-  // the same vocabulary the loading cards use. It is deliberately not a state that can stick: both the
-  // non-OK branch and the catch below replace it, so this cannot become the /api/performance "warming"
-  // defect, where a marker was shown and nothing ever cleared it.
-  _setMsg("⏳ Saving…", true);
+  // Report into whichever of the four remaining panels the reader is looking at. saveStatus shows the
+  // hourglass immediately and guarantees it is replaced however the request ends.
+  const st=saveStatus(["lim-msg","lim-msg2","lim-msg3","lim-msg4"]);
+  const _setMsg=(txt,ok)=>ok?st.ok(txt):st.fail(txt);
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
     .then(r=>{if(r.ok){_setMsg("Saved.",true);
       MY_LIMITS={...MY_LIMITS,...lim};if(typeof renderPreorders==='function')renderPreorders();   // apply new floors to My Pre-orders now (user 2026-07-24, P-02)
@@ -1889,8 +1915,13 @@ function saveLimits(){
 let SLACK_CHANNELS={};
 function _applySlackToggles(){document.querySelectorAll(".slack-ch").forEach(c=>{const ch=c.dataset.ch;c.checked=SLACK_CHANNELS[ch]!==false;});}
 function saveSlackChannel(ch,on){SLACK_CHANNELS[ch]=!!on;
+  // These ticks saved SILENTLY and reported nothing at all, success or failure -- a channel could be
+  // left believed-off while still posting. It now reports into the Slack card's own message line, the
+  // same way every other form does.
+  const st=saveStatus("cred-msg-Slack");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({slack_channel:{name:ch,on:!!on}})})
-    .then(r=>{if(!r.ok)throw 0;}).catch(()=>{});}
+    .then(r=>{if(!r.ok)throw 0;st.ok(`${ch} ${on?"will":"will not"} receive messages.`);})
+    .catch(()=>st.fail(`Could not change ${ch}.`));}
 function saveTradeFilters(){
   // DIRECTION only (user 2026-08-01) — market is governed by Markets (User) now. markets/locations kept
   // empty (= no restriction) for backend compatibility.
@@ -1899,15 +1930,17 @@ function saveTradeFilters(){
   // A fully-ticked group = no restriction (send empty so the engine stores ALL).
   const totals={directions:2};
   Object.keys(t).forEach(g=>{if(t[g].length===(totals[g]||0)||t[g].length===0)t[g]=[];});
+  const st=saveStatus("cfg-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({trade:t})})
-    .then(r=>{if(!r.ok)throw 0;TRADE_HIDE=t;render();renderPreorders&&renderPreorders();$("cfg-msg").style.color="var(--bull)";$("cfg-msg").textContent="Trade filters saved.";})
-    .catch(()=>{$("cfg-msg").style.color="var(--bear)";$("cfg-msg").textContent="Save failed.";});
+    .then(r=>{if(!r.ok)throw 0;TRADE_HIDE=t;render();renderPreorders&&renderPreorders();st.ok("Trade filters saved.");})
+    .catch(()=>st.fail());
 }
 function saveExec(){
   const ex={};document.querySelectorAll(".cfg-ex").forEach(c=>ex[c.dataset.s]=c.checked);
+  const st=saveStatus("cfg-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({exec:ex})})
-    .then(r=>{if(!r.ok)throw 0;$("cfg-msg").style.color="var(--bull)";$("cfg-msg").textContent="Execution switches saved.";})
-    .catch(()=>{$("cfg-msg").style.color="var(--bear)";$("cfg-msg").textContent="Save failed.";});
+    .then(r=>{if(!r.ok)throw 0;st.ok("Execution switches saved.");})
+    .catch(()=>st.fail());
 }
 // Generic column sort for the simple tables (user 2026-06-30: "allow click on title ... any table"):
 // nulls sink, numbers compare numerically, everything else as strings.
