@@ -3966,6 +3966,95 @@ _SAVE_WITHOUT_STATUS = {
 }
 
 
+# Data views with no refresh control, each with the reason. A refresh that only re-paints what is already
+# in memory is a LIE -- the reader believes fresh data was fetched when nothing was re-requested -- so a
+# view whose renderer does not re-fetch must NOT be given a button until it has something real to call.
+_NO_REFRESH_CONTROL = {
+    "scanner": "has no renderer in the R map; it paints from the in-memory snapshot loaded at boot, and "
+               "the header's own Refresh triggers a FULL SCAN REBUILD, which is a different action",
+    "preorders": "renderPreorders re-paints from the snapshot already in memory and fetches nothing, so "
+                 "a button would claim a round trip that never happens",
+    "mfm": "has no renderer in the R map at all; there is nothing to call",
+}
+
+
+def _view_segments(html):
+    starts = [(m.group(1), m.start()) for m in re.finditer(r'id="view-([a-z0-9]+)"', html)]
+    starts.sort(key=lambda t: t[1])
+    out = {}
+    for i, (name, pos) in enumerate(starts):
+        end = starts[i + 1][1] if i + 1 < len(starts) else len(html)
+        out[name] = html[pos:end]
+    return out
+
+
+def _renderer_map(js):
+    m = re.search(r"const R=\{(.*?)\};", js, re.S)
+    assert m, "the tab -> renderer map was not found in showTab"
+    return dict(re.findall(r"([a-z]+):(\w+)", m.group(1)))
+
+
+def test_every_data_view_can_be_refreshed():
+    """Owner 2026-09-18: "make sure all pages with data have a refresh button".
+
+    Enumerated rather than eyeballed: every view holding a table or chart strip, cross-referenced against
+    the authoritative tab -> renderer map in showTab. A view qualifies only if its renderer actually
+    re-FETCHES; the ones that merely re-paint are allow-listed WITH the reason, because a button there
+    would assert a round trip that never happens.
+    """
+    html, js = client_html(), client_js()
+    renderers = _renderer_map(js)
+    data_markers = ("<tbody", 'class="viz"', 'class="tablewrap"')
+
+    missing = []
+    for name, seg in _view_segments(html).items():
+        if not any(d in seg for d in data_markers):
+            continue
+        if name in _NO_REFRESH_CONTROL:
+            continue
+        fn = renderers.get(name)
+        if not fn or "fetch(" not in _extract(fn):
+            continue                       # nothing to re-request; not a refreshable view
+        if not re.search(r"<button[^>]*>[^<]*Refresh", seg):
+            missing.append(name)
+
+    assert not missing, (
+        "these data views have no refresh control: " + ", ".join(sorted(missing)) +
+        " — add one calling their renderer, or allow-list them with a reason")
+
+    for name, reason in _NO_REFRESH_CONTROL.items():
+        assert reason and len(reason) > 30, f"{name} is allow-listed without a real reason"
+
+
+# Views whose refresh control is deliberately NOT in the header row, with the reason.
+_REFRESH_BELOW_TITLE = {
+    "users": "it is a section toolbar sitting beside '+ Add user' and governing the SECOND of two "
+             "sections (pending requests comes first), so it belongs with the table it reloads",
+}
+
+
+def test_a_refresh_control_sits_above_its_title():
+    """Placement, not just presence: a refresh button found halfway down a page is not where anyone looks.
+
+    This caught a real mistake while the controls were being added -- two landed in whatever inner row
+    happened to contain a spacer, so instruments appeared beside a search box and performance 24,000
+    characters into its own view.
+
+    The rule is not universal and is not pretended to be: User Management deliberately puts its control in
+    a section toolbar, and that is allow-listed with the reason rather than "fixed" to satisfy the test.
+    """
+    html = client_html()
+    for name, seg in _view_segments(html).items():
+        btn = seg.find("↻ Refresh")
+        title = seg.find("<h1")
+        if btn == -1 or title == -1 or name in _REFRESH_BELOW_TITLE:
+            continue
+        assert btn < title, f"{name}: the refresh control sits below its title"
+
+    for name, reason in _REFRESH_BELOW_TITLE.items():
+        assert reason and len(reason) > 30, f"{name} is allow-listed without a real reason"
+
+
 def test_every_form_reports_saving_the_same_way():
     """Owner 2026-09-18: "make sure the saving message and hourglass is consistent across all forms".
 

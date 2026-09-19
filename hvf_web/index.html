@@ -805,7 +805,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-orderops" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="oof_status"><input type="hidden" id="oof_direction"><input type="hidden" id="oof_session"><input type="hidden" id="oof_ticker">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Trading</span><span class="grow"></span><button class="btn" onclick="renderOrderOps()" title="Re-read order operations from the server">↻ Refresh</button></div>
   <!-- Bridge on/off badge next to the title (user 2026-08-02, P-06) — makes it unmistakable whether the
        bridge is actually placing orders on IG. Painted by renderOrderOps() from the loaded config. -->
   <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 6px">
@@ -845,7 +845,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-xposts" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="xf_ticker"><input type="hidden" id="xf_market"><input type="hidden" id="xf_month"><input type="hidden" id="xf_mweek">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Publishing</span><span class="grow"></span><span class="datecard">📅 <span id="x-datebar"></span></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Publishing</span><span class="grow"></span><span class="datecard">📅 <span id="x-datebar"></span></span><button class="btn" onclick="renderXposts()" title="Re-read the published posts from the server">↻ Refresh</button></div>
   <h1>X Posts</h1>
   <p class="lede">Every tweet we've published, newest first. Click a chart to filter; click a row's link to open the tweet on X.</p>
   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
@@ -1004,7 +1004,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <div id="view-batch" class="hidden doc" style="max-width:1240px">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><span class="datecard">📅 <span id="batch-datebar"></span></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><span class="datecard">📅 <span id="batch-datebar"></span></span><button class="btn" onclick="renderBatch()" title="Re-read the batch activity log from the server">↻ Refresh</button></div>
   <h1>Batch Activity</h1>
   <p class="lede">Execution log of the scheduled cron-job.org runs and the manual "Refresh data" button. High-frequency jobs that run every 5 minutes (e.g. the US monitor) are deliberately excluded to keep this readable.</p>
   <input type="hidden" id="bcf_source"><input type="hidden" id="bcf_by"><input type="hidden" id="bcf_month"><input type="hidden" id="bcf_mweek">
@@ -1046,7 +1046,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <div id="view-version" class="hidden doc" style="max-width:1240px">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><span class="datecard">📅 <span id="ver-datebar"></span></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><span class="datecard">📅 <span id="ver-datebar"></span></span><button class="btn" onclick="renderVersion()" title="Re-read the version history from the server">↻ Refresh</button></div>
   <h1>Version History</h1>
   <p class="lede">A log of changes to the application — date, version and a summary.</p>
   <input type="hidden" id="vcf_category"><input type="hidden" id="vmf_month"><input type="hidden" id="vmf_mweek">
@@ -1066,7 +1066,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 
 <div id="view-syslogs" class="hidden doc" style="max-width:1240px">
   <input type="hidden" id="slf_level"><input type="hidden" id="slf_logger"><input type="hidden" id="slf_hour"><input type="hidden" id="slf_month"><input type="hidden" id="slf_mweek">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><span class="datecard">📅 <span id="sl-datebar"></span></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Admin</span><span class="grow"></span><span class="datecard">📅 <span id="sl-datebar"></span></span><button class="btn" onclick="renderSyslogs()" title="Re-read the system log from the server">↻ Refresh</button></div>
   <h1>System Logs</h1>
   <p class="lede">Live server health and the most recent log records from this web-server process. Click a chart to filter the log table.</p>
   <div class="fgrid" id="sl-health" style="margin-bottom:16px"></div>
@@ -1228,7 +1228,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 </div>
 
 <div id="view-activity" class="hidden doc" style="max-width:1240px">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Account</span><span class="grow"></span><span class="datecard">📅 <span id="act-datebar"></span></span></div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="eyebrow">Account</span><span class="grow"></span><span class="datecard">📅 <span id="act-datebar"></span></span><button class="btn" onclick="renderActivity()" title="Re-read My activity log from the server">↻ Refresh</button></div>
   <h1>My Activity</h1>
   <p class="lede">Your account's operational log — logins, password changes, pre-order actions, data refreshes and configuration changes. You only ever see your own entries.</p>
   <input type="hidden" id="acf_cat"><input type="hidden" id="acf_month"><input type="hidden" id="acf_mweek">
@@ -1505,6 +1505,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   <span class="eyebrow">Results</span>
   <!-- Processing badge (user 2026-08-02, P-06) — shown next to the title while /api/performance is still
        computing, so it's clear why the tab is briefly empty. -->
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="grow"></span><button class="btn" onclick="renderPerformance()" title="Re-read the performance figures from the server">↻ Refresh</button></div>
   <h1 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:4px">Performance <span id="pf-loading"></span></h1>
   <p class="lede" id="pf-lede">Performance separates <b>observed trade outcomes</b> from <b>constrained what-if models</b>. A return is direction-aware, so positive is always in your favour; open trades are marked to the latest price. The settings shown in each panel are the settings used for that panel, not a promise of future results.</p>
   <!-- Winners title + lede lifted ABOVE the shared date/location filter row (user 2026-07-27, P-07 L289) —
@@ -1709,6 +1710,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
      instrument detail as the Scanner via openDetailFrom(). "New UI Settings" layout: doc/gsec/table, same
      as Squeeze History below. -->
 <div id="view-instruments" class="hidden doc" style="width:100%;max-width:none;margin-inline:0">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="grow"></span><button class="btn" onclick="renderInstruments()" title="Re-read the instrument universe from the server">↻ Refresh</button></div>
   <h1>Instruments</h1>
   <p class="lede">The full universe we scan — search by name or ticker, filter by Location / Market / Sector / Status, and (once logged in) see Direction, Quality, R:R, RVOL, VWAP, ATR and VolumeScore. Click a name to open its full detail report.<span id="instr-loginhint" class="muted"> <a href="#" onclick="showLogin();return false">Log in</a> to see the trading signals and open a detail report.</span></p>
   <input type="hidden" id="inf_location"><input type="hidden" id="inf_market"><input type="hidden" id="inf_sector"><input type="hidden" id="inf_status"><input type="hidden" id="inf_direction">
