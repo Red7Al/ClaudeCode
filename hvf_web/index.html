@@ -1770,6 +1770,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        title (user 2026-08-02, P-06). Direction moved here to free a Quality chart into the strip below. -->
   <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 4px">
     <h1 style="margin:0">Squeeze History</h1>
+    <!-- HOW OLD THE DATA IS, at the top and LEFT of the Direction buttons (owner 2026-09-18: "the refresh
+         button should include the date of the data in the page"). It was already computed and already
+         rendered -- but down in the count row BELOW the filter sidebar, where the owner never saw it. This
+         is a MOVE, not a copy: two places showing the same fact is how they come to disagree. -->
+    <span id="sqh-freshness" class="muted" style="font-size:11px;flex:0 0 auto"></span>
     <div id="sqh-dir-mini" style="flex:0 0 auto"></div>
     <span style="flex:1"></span>
     <div id="sqh-years" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end"></div>
@@ -1809,7 +1814,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
   </aside>
   <div class="sidemain">
   <section class="gsec" style="border-left-color:var(--accent)">
-    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="sqh-count"></span><span id="sqh-freshness" class="muted" style="font-size:11px"></span><span class="grow"></span><input id="sqh-search" placeholder="Search name / ticker…" oninput="paintSqueezeHist()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
+    <div class="count" style="padding-left:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span id="sqh-count"></span><span class="grow"></span><input id="sqh-search" placeholder="Search name / ticker…" oninput="paintSqueezeHist()" style="width:auto;max-width:220px;padding:5px 9px;font-size:13px"></div>
     <!-- Every header sorts (user 2026-07-18, P-01) — data-sqh drives sqhSort(). -->
     <div class="tablewrap"><table>
       <thead><tr><th class="clk" data-sqh="name">Name</th><th class="clk" data-sqh="direction">Direct</th><th class="clk" data-sqh="market">Market</th><th class="clk" data-sqh="first_seen" title="First replay step this squeeze existed">Developing</th><th class="clk" data-sqh="ready_date" title="First step seen READY">Ready</th><th class="clk" data-sqh="triggered_date" title="First close beyond entry after the pivots">Triggered</th><th class="clk" data-sqh="outcome">Outcome</th><th class="clk" data-sqh="outcome_date">Closed</th><th class="clk" data-sqh="return_pct">Return</th><th class="clk" data-sqh="quality">Quality</th><th class="clk" data-sqh="rr">R:R</th><th class="clk" data-sqh="timeframe">TF</th><th class="clk" data-sqh="sector">Sector</th><th class="clk" data-sqh="ticker">Ticker</th></tr></thead>

@@ -1866,6 +1866,13 @@ function saveLimits(){
   const _er=$("lim-email_recipients"); if(_er)lim.email_recipients=(_er.value||"").split(",").map(x=>x.trim()).filter(Boolean);
   // Show the "Saved." message in whichever remaining panel's save button was clicked.
   const _setMsg=(txt,ok)=>["lim-msg","lim-msg2","lim-msg3","lim-msg4"].forEach(id=>{const el=$(id);if(el){el.style.color=ok?"var(--bull)":"var(--bear)";el.textContent=txt;}});
+  // SAY THAT A SAVE IS IN FLIGHT (owner 2026-09-18: "it is not clear when data is being saved - can we
+  // have an hour glass?"). These fields save on change, so until now the only feedback was "Saved."
+  // AFTER the round trip -- change a value and the page said nothing at all in between. The hourglass is
+  // the same vocabulary the loading cards use. It is deliberately not a state that can stick: both the
+  // non-OK branch and the catch below replace it, so this cannot become the /api/performance "warming"
+  // defect, where a marker was shown and nothing ever cleared it.
+  _setMsg("⏳ Saving…", true);
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
     .then(r=>{if(r.ok){_setMsg("Saved.",true);
       MY_LIMITS={...MY_LIMITS,...lim};if(typeof renderPreorders==='function')renderPreorders();   // apply new floors to My Pre-orders now (user 2026-07-24, P-02)

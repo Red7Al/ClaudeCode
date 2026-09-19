@@ -3894,6 +3894,130 @@ def test_a_wrapping_column_can_never_be_squeezed_to_one_character():
             f"{col} must claim width:1% so the wrapping columns get the remaining width: {tag}")
 
 
+def _save_limits_preamble(ok: str) -> str:
+    """Enough of the page for saveLimits to run: the lim-* inputs, the four message slots, and a fetch we
+    control so the IN-FLIGHT state can be observed before the round trip completes."""
+    return textwrap.dedent(f"""
+        global.AUTH = "token";
+        global.MY_LIMITS = {{}};
+        // saveLimits' success branch reads WIN. Without it Node raises a ReferenceError INSIDE the .then,
+        // the .catch swallows it, and the run ends on "Save failed." -- which looks exactly like a product
+        // bug and is purely a missing stub. Left named so the next reader does not re-diagnose it.
+        global.WIN = null;
+        const msgs = [];
+        global.$ = (id) => {{
+            if (id.indexOf("lim-msg") === 0) return {{style: {{}}, set textContent(v) {{ msgs.push(v); }}}};
+            if (id.indexOf("lim-") === 0) return {{value: "1", checked: true}};
+            return null;
+        }};
+        let release;
+        global.fetch = () => new Promise(r => {{ release = () => r({{ok: {ok}}}); }});
+    """)
+
+
+def test_a_save_in_flight_shows_an_hourglass_and_always_clears_it():
+    """Owner 2026-09-18: "it is not clear when data is being saved - can we have an hour glass?"
+
+    These fields save on change, so the only feedback was "Saved." AFTER the round trip -- nothing at all
+    in between. EXECUTED rather than pattern-matched: the fetch is held open so the in-flight message can
+    be read, then released.
+
+    The second half matters as much as the first. A marker that is shown and never cleared is the
+    /api/performance "warming" defect in another costume, so the test requires the hourglass to be REPLACED
+    once the request settles.
+    """
+    src = _extract("saveLimits")
+    out = run_js_async(_save_limits_preamble("true"), src, textwrap.dedent("""
+        (async () => {
+            saveLimits();
+            const during = msgs.slice();
+            release();
+            await new Promise(r => setTimeout(r, 0));
+            return {during: during, after: msgs.slice()};
+        })()
+    """))
+    assert out["during"], "nothing was shown while the save was in flight"
+    assert "⏳" in out["during"][0], f"expected an hourglass while saving, got {out['during'][0]!r}"
+    assert out["after"][-1] == "Saved.", f"the hourglass must be replaced when it lands, got {out['after']}"
+
+
+def test_a_failed_save_also_clears_the_hourglass():
+    """The dangerous half. If only the success path cleared it, a failed save would spin forever and read
+    as 'still saving' -- worse than saying nothing, because it claims work is happening."""
+    src = _extract("saveLimits")
+    out = run_js_async(_save_limits_preamble("false"), src, textwrap.dedent("""
+        (async () => {
+            saveLimits();
+            release();
+            await new Promise(r => setTimeout(r, 0));
+            return msgs.slice();
+        })()
+    """))
+    assert out[-1] == "Save failed.", f"a failed save must say so, not keep spinning: {out}"
+    assert "⏳" not in out[-1]
+
+
+def test_a_save_that_never_reaches_the_server_also_clears_the_hourglass():
+    """A THIRD path, and it was genuinely untested: the two tests above both get a RESPONSE (ok / not ok)
+    and land in the .then. A network failure rejects instead and lands in the .catch. Deleting that .catch
+    left both other tests passing -- found by the mutation run, not by reading the code -- and a dropped
+    connection would have spun forever while claiming a save was in progress.
+    """
+    src = _extract("saveLimits")
+    preamble = textwrap.dedent("""
+        global.AUTH = "token";
+        global.MY_LIMITS = {};
+        global.WIN = null;
+        const msgs = [];
+        global.$ = (id) => {
+            if (id.indexOf("lim-msg") === 0) return {style: {}, set textContent(v) { msgs.push(v); }};
+            if (id.indexOf("lim-") === 0) return {value: "1", checked: true};
+            return null;
+        };
+        let reject;
+        global.fetch = () => new Promise((_, rj) => { reject = () => rj(new Error("offline")); });
+    """)
+    out = run_js_async(preamble, src, textwrap.dedent("""
+        (async () => {
+            saveLimits();
+            reject();
+            await new Promise(r => setTimeout(r, 0));
+            return msgs.slice();
+        })()
+    """))
+    assert out[-1] == "Save failed.", f"a dropped connection must say so, not keep spinning: {out}"
+
+
+def test_the_squeeze_history_data_date_is_at_the_top():
+    """Owner 2026-09-18: the data's date and time should sit at the top, left of the Direction buttons.
+
+    The stamp was already computed and already rendered -- but in the count row BELOW the filter sidebar,
+    far enough down that it was never found. So this asserts POSITION, which is the whole request, and
+    that there is exactly ONE of it: two copies of the same fact is how they come to disagree.
+    """
+    html = client_html()
+    assert html.count('id="sqh-freshness"') == 1, "the data-date stamp must exist exactly once"
+    stamp = html.index('id="sqh-freshness"')
+    title = html.index("<h1 style=\"margin:0\">Squeeze History</h1>")
+    direction = html.index('id="sqh-dir-mini"')
+    # .sidefilt is also used by the Pre-orders tabs, which appear EARLIER in the document, so search for
+    # Squeeze History's own sidebar from its title rather than taking the first match in the page.
+    sidebar = html.index('<div class="sidefilt">', title)
+    count_row = html.index('id="sqh-count"')
+    assert title < stamp < direction, "the stamp must sit between the title and the Direction buttons"
+    assert stamp < sidebar, "the stamp must be above the filter sidebar, not buried under it"
+    assert stamp < count_row, "the stamp must be above the count row, where it used to hide"
+
+
+def test_the_squeeze_history_data_date_is_actually_filled():
+    """Position is worthless if nothing writes to it -- this repository's recurring defect. The renderer
+    must set it from the payload the endpoint genuinely returns (data_through / refreshed_at)."""
+    src = _extract("renderSqueezeHist")
+    assert 'sqh-freshness' in src, "nothing writes the data-date stamp"
+    assert "data_through" in src and "refreshed_at" in src, \
+        "the stamp must be filled from the endpoint's own freshness fields"
+
+
 def test_every_wrapping_column_declares_its_own_width():
     """The class behind the Auto-closed report, not just that one table.
 
