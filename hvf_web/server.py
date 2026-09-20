@@ -2865,6 +2865,40 @@ def _rvol_at(bars: list, td) -> float:
     return round(vol / avg, 2) if avg > 0 else None
 
 
+_PB_CACHE = {}          # (data version, lookback, cutoffs) -> {ticker: [bars]}
+_PB_ORDER = []          # insertion order, for eviction
+_PB_MAX_ENTRIES = 6     # see the sizing note in _perf_bars; ~tens of MB, on shared hosting
+_PB_VERSION = {"at": 0.0, "value": ""}
+_PB_VERSION_TTL = 60    # seconds; bounds the probe to once a minute, not once per call
+
+
+def _price_data_version(db) -> str:
+    """A cheap fingerprint of price_history that changes exactly when the table does.
+
+    Returns "" if it cannot be determined, which disables caching rather than risking a stale answer --
+    failing to an extra fetch is the safe direction.
+
+    WHY THIS PROBE. Measured on the live table 2026-09-20: max(bar_date) is 0.087s because
+    idx_price_history_bar_date serves it, and adding a count over the last 7 days costs 0.111s total
+    and one returned row. The obvious alternatives are unusable on a request path -- max(updated_at) is
+    14.15s (no index) and count(*) over the whole table is 4.01s. The 7-day count is what catches the
+    common case of MORE tickers landing for a bar that already exists, which a bare max(bar_date) would
+    miss; a correction to a bar older than a week is not detected, and that is an accepted limit,
+    recorded here rather than left to be discovered."""
+    now = _time.time()
+    if _PB_VERSION["value"] and now - _PB_VERSION["at"] < _PB_VERSION_TTL:
+        return _PB_VERSION["value"]
+    try:
+        row = (db.run("select mx, (select count(*) from price_history where bar_date >= mx - 7) "
+                      "from (select max(bar_date) mx from price_history) s") or [])
+        value = f"{row[0][0]}:{row[0][1]}" if row and row[0][0] is not None else ""
+    except Exception as exc:
+        log.warning(f"price-data version probe failed, bar cache disabled this call: {exc}")
+        return ""
+    _PB_VERSION.update(at=now, value=value)
+    return value
+
+
 def _perf_bars(db, cutoff: dict, lookback_days: int = 0) -> dict:
     """{ticker: [(bar_date, high, low, close, volume), ...]} for every ticker in `cutoff`
     ({ticker: from_date}), in ONE round trip. `lookback_days` widens each cutoff backwards (P-30 needs
@@ -2875,10 +2909,26 @@ def _perf_bars(db, cutoff: dict, lookback_days: int = 0) -> dict:
     268 sequential round-trips at ~66ms — ~18s of pure latency before the tab could paint, which is why
     a 348-row report felt slow (user 2026-07-17, P-17a): it was never the rendering. Joining against a
     VALUES list keeps each ticker's own cutoff (so we fetch exactly the same bars, not more) and costs
-    one round-trip: measured 14,768 bars in 0.85s, ~21x faster."""
-    items = [(tk, d0) for tk, d0 in cutoff.items() if d0]
+    one round-trip: measured 14,768 bars in 0.85s, ~21x faster.
+
+    CACHED ON THE DATA'S VERSION, NOT ON A CLOCK (2026-09-20). price_history is written twice a day --
+    the 05:00 price refresh and the 18:30 scan -- but this was re-fetching on every call, 9,016 calls
+    over the project's first 112 days for 1.38 BILLION rows, ~30 GB per 30 days against a free-tier
+    allowance of 5 GB a MONTH shared across the whole organisation. Nearly all of those fetched bars
+    that had not changed since the last fetch. Keying the cache on what the DATA says rather than on a
+    TTL collapses a day's ~80 bulk fetches to roughly two, and a TTL could never do that: it either
+    expires while the data is identical (the waste) or serves stale bars after a refresh (the bug)."""
+    items = sorted((tk, d0) for tk, d0 in cutoff.items() if d0)
     if not items:
         return {}
+    version = _price_data_version(db)
+    # Sorted items make the key stable, so the same request from the warm loop hits rather than misses.
+    # Output order does not depend on it -- the query carries its own ORDER BY.
+    key = (version, lookback_days, tuple((tk, str(d0)) for tk, d0 in items)) if version else None
+    if key is not None:
+        hit = _PB_CACHE.get(key)
+        if hit is not None:
+            return hit
     back = _dt.timedelta(days=lookback_days) if lookback_days else _dt.timedelta(0)
     vals = ",".join(f"(:t{i}, :d{i}::date)" for i in range(len(items)))
     params = {}
@@ -2892,6 +2942,16 @@ def _perf_bars(db, cutoff: dict, lookback_days: int = 0) -> dict:
     out = {}
     for tk, bd, hi, lo, cl, vol in rows:
         out.setdefault(tk, []).append((bd, hi, lo, cl, vol))
+    if key is not None:
+        # Bounded deliberately: this is shared hosting. Measured 2026-09-20 on live data, the largest
+        # live caller (VWAP/ATR, 90d over 1,773 tickers) holds ~10.3 MB, VolScore 160d ~3.1 MB and RVOL
+        # 40d ~0.8 MB, so the ceiling is tens of MB, not hundreds. Every caller treats the result as
+        # read-only (each does bars_by_tk.get(tk, []) and iterates), which is what makes sharing one
+        # dict between callers safe; a caller that starts mutating it must copy first.
+        _PB_CACHE[key] = out
+        _PB_ORDER.append(key)
+        while len(_PB_ORDER) > _PB_MAX_ENTRIES:
+            _PB_CACHE.pop(_PB_ORDER.pop(0), None)
     return out
 
 
