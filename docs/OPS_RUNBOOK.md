@@ -79,6 +79,34 @@ gh workflow run trading-scanner-snapshot.yml --ref main
 Supabase **Storage** has been returning 402 (a separate quota from the database). During the outage the
 workflow seeds and publishes via IONOS instead. Publishing also re-warms the winners payloads (§5).
 
+**The cause is now named by Supabase itself, not inferred (measured 2026-09-20).** An unauthenticated
+request to Storage returns the reason in the body, so this needs no key and no dashboard login:
+
+```bash
+curl -s https://<project>.supabase.co/storage/v1/bucket/scanner-artifacts
+# {"message":"Service for this project is restricted due to the following violations:
+#   exceed_egress_quota. The project owner must upgrade their plan or remove spend caps
+#   to restore service."}
+```
+
+Three things follow, and they are why "wait for it to clear" is not a plan:
+
+- **It is a latched restriction, not a rolling meter.** It has held since 2026-08-16 and did not reset
+  at the 1 September month boundary. It will not self-clear; it needs the account owner to upgrade the
+  plan or lift spend caps.
+- **It is Storage-only.** `/rest/v1/` and `/auth/v1/` answer a normal 401 for a missing key, and the
+  Postgres session pooler is unaffected — which is why every database query in this repo still works.
+  Do not read a working DB query as evidence that Storage is back.
+- **No code change lifts it.** The gzip fix (§`_compress`, 10.6x, 2026-08-17) landed one day after the
+  latch and cannot undo it. It should keep the restriction from recurring once service is restored —
+  at the observed read rate that is roughly 1% of the 5 GB monthly allowance — but that is an
+  *expectation*, not a measurement, and it stays unproven until Storage answers 200 again.
+
+Note the publish never even attempts the upload: `publish_snapshot` calls `ensure_private_bucket()`
+first, and a 402 is not "bucket missing", so it raises at that check. That is why the edge logs show
+bucket and object GETs but zero POSTs — the log shape is a symptom of the precondition, not a second
+fault to chase.
+
 ### What the outage actually costs you, learned the hard way on 2026-08-31
 
 The outage itself was recorded here from the start. Three consequences were not, and they are the ones
