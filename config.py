@@ -870,7 +870,31 @@ MAX_CALL_PUT_RATIO_BEAR   = 0.8 # Call/put ratio below this = bearish options si
 # price-chart slider reaches 1,095 days (3 years), and squeeze_history carries triggers back to 2021
 # whose outcome walks read these bars. Stored outcomes survive a prune -- squeeze_history keeps outcome,
 # outcome_date and return_pct -- but a pruned trigger can no longer be RE-derived from raw bars.
-PRICE_HISTORY_RETENTION_YEARS = 4.5
+# 4.05 SINCE 2026-09-20 (owner), and the .05 is doing real work -- see the floor derived below.
+#
+# THIS IS THE ONLY DEFINITION. price_store.RETENTION_YEARS now reads this value instead of declaring its
+# own. Until today there were two: this one at 4.5, which run_price_history_prune.py uses, and
+# price_store.RETENTION_YEARS at 5, which is the default argument of prune_older_than() -- and
+# price_audit.py calls prune_older_than() with NO argument on a NIGHTLY schedule, so the number that
+# actually governed the live table was the 5, not the 4.5 recorded here. Nothing was ever deleted only
+# because a 5-year cutoff predates the oldest bar (2022-02-17). Two constants for one fact, with the
+# scheduled job silently using the one nobody edits.
+#
+# WHY NOT 3.25, WHICH WAS ASKED FOR FIRST: it is below the floor the analysis needs, MEASURED 2026-09-20.
+# A 3.25-year cutoff is 2023-06-21, but the 3-year replay window opens 2023-09-21 and each of its oldest
+# trades needs bars from BEFORE it -- 160 days for VolumeScore (back to 2023-04-14, 68 days short) and
+# 365 days for the 52-week high/low (back to 2022-09-21, 273 days short). It would not have errored; it
+# would have computed the oldest trades from truncated windows. Wrong numbers that look right.
+#
+# THE FLOOR IS 3 YEARS + 365 DAYS = 4.0. 4.05 clears it by 19 days. At 4.05 the cutoff is 2022-09-02 and
+# the prune deletes 187,116 of 1,870,128 rows (10.0%), keeping 1,683,012. Lower this and you must shorten
+# the replay window or the lookbacks first, or the 3-year figures quietly degrade.
+#
+# Do not lower this casually. The HVF engine needs deep lookback to find H1/H2/H3 levels, the Scanner's
+# price-chart slider reaches 1,095 days (3 years), and squeeze_history carries triggers back to 2021
+# whose outcome walks read these bars. Stored outcomes survive a prune -- squeeze_history keeps outcome,
+# outcome_date and return_pct -- but a pruned trigger can no longer be RE-derived from raw bars.
+PRICE_HISTORY_RETENTION_YEARS = 4.05
 
 # Senator scoring
 MIN_SENATOR_TRADES = 5          # Minimum trades for a senator to qualify

@@ -60,7 +60,19 @@ _DDL = [
 # Raised to 5 years (user 2026-08-02): the squeeze-history replay wants the deepest window the price
 # data allows, so retention must not prune below what we backfill. The nightly audit prunes to this
 # same window, so a 5-year backfill is now durable instead of being cut back to 3y overnight.
-RETENTION_YEARS = 5
+#
+# READ FROM config SINCE 2026-09-20 -- this used to be its own literal 5, and that mattered more than a
+# duplicated constant usually does. prune_older_than() takes it as a DEFAULT ARGUMENT, and price_audit.py
+# calls prune_older_than() with no argument on a NIGHTLY schedule, so this value -- not the 4.5 recorded
+# in config and used by run_price_history_prune.py -- was the cutoff actually governing the live table.
+# The disagreement was invisible because a 5-year cutoff predates the oldest bar (2022-02-17), so the
+# nightly prune deleted nothing and neither number was ever tested. config is now the only definition;
+# the fallback exists solely so importing this module can never fail on a missing setting.
+try:
+    import config as _config
+    RETENTION_YEARS = float(getattr(_config, "PRICE_HISTORY_RETENTION_YEARS", 4.05))
+except Exception:                                    # config must never break this import
+    RETENTION_YEARS = 4.05
 
 _OHLCV = ("Open", "High", "Low", "Close", "Volume")
 _schema_ready = False
