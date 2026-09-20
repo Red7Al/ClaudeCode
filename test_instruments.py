@@ -5,21 +5,30 @@ import pytest
 from hvf_web import server
 
 
+def _wk52_db(monkeypatch, rows, calls=None):
+    """Fake the ONE aggregate round trip _snapshot_52wk now makes, and hand back the SQL it ran."""
+    seen = {}
+
+    class FakeDb:
+        def run(self, sql, **kw):
+            if calls is not None:
+                calls.append(1)
+            seen["sql"], seen["kw"] = sql, kw
+            return rows
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("db_pool.get_db", lambda: FakeDb(), raising=False)
+    return seen
+
+
 def test_snapshot_52wk_computes_trailing_low_and_high(monkeypatch):
     snap = {"generated_utc": "2026-08-07T05:30:00Z",
             "records": [{"ticker": "ABC"}, {"ticker": "XYZ"}]}
     monkeypatch.setitem(server._WK52_CACHE, "gen", None)
     monkeypatch.setitem(server._WK52_CACHE, "data", {})
-
-    class FakeDb:
-        def close(self):
-            pass
-
-    monkeypatch.setattr("db_pool.get_db", lambda: FakeDb(), raising=False)
-    monkeypatch.setattr(server, "_perf_bars", lambda db, cutoff, lookback_days=0: {
-        "ABC": [("2026-01-01", 12.0, 8.0, 10.0, 1000), ("2026-06-01", 20.0, 15.0, 18.0, 2000)],
-        "XYZ": [("2026-01-01", 5.0, 3.0, 4.0, 500)],
-    })
+    _wk52_db(monkeypatch, [("ABC", 8.0, 20.0), ("XYZ", 3.0, 5.0)])
 
     out = server._snapshot_52wk(snap)
 
@@ -27,23 +36,53 @@ def test_snapshot_52wk_computes_trailing_low_and_high(monkeypatch):
     assert out["XYZ"] == (3.0, 5.0)
 
 
+def test_snapshot_52wk_skips_a_ticker_whose_window_has_no_usable_bar(monkeypatch):
+    """The old code required BOTH `highs` and `lows` to be non-empty before writing a pair. min()/max()
+    return NULL for a window with nothing usable, and the ticker must still be ABSENT rather than
+    present with a half-known pair -- a blank column is honest, a fabricated bound is not."""
+    snap = {"generated_utc": "2026-08-07T05:30:00Z",
+            "records": [{"ticker": "ABC"}, {"ticker": "GAP"}]}
+    monkeypatch.setitem(server._WK52_CACHE, "gen", None)
+    monkeypatch.setitem(server._WK52_CACHE, "data", {})
+    _wk52_db(monkeypatch, [("ABC", 8.0, 20.0), ("GAP", None, None)])
+
+    out = server._snapshot_52wk(snap)
+
+    assert out["ABC"] == (8.0, 20.0)
+    assert "GAP" not in out
+
+
+def test_snapshot_52wk_aggregates_in_the_database_not_in_python(monkeypatch):
+    """THE EGRESS GUARD, and it is not cosmetic. This path used to pull every bar for every ticker over
+    the 52-week window (~461,000 rows for a full universe) and reduce each ticker's bars to two numbers
+    in Python. Supabase's free tier allows 5 GB of egress a MONTH across the whole organisation, and
+    price_history reads measured ~36 GB per 30 days on 2026-09-20 -- which is why Storage has been
+    latched off with exceed_egress_quota since 2026-08-16.
+
+    So the reduction MUST happen server-side. This asserts the query itself aggregates and is scoped,
+    which is what keeps the row count at one per ticker instead of one per bar."""
+    snap = {"generated_utc": "2026-08-07T05:30:00Z", "records": [{"ticker": "ABC"}]}
+    monkeypatch.setitem(server._WK52_CACHE, "gen", None)
+    monkeypatch.setitem(server._WK52_CACHE, "data", {})
+    seen = _wk52_db(monkeypatch, [("ABC", 8.0, 20.0)])
+
+    server._snapshot_52wk(snap)
+
+    sql = " ".join(seen["sql"].split()).lower()
+    assert "min(low)" in sql and "max(high)" in sql, \
+        f"52wk must aggregate in SQL, not by pulling bars: {sql}"
+    assert "group by ticker" in sql, f"aggregate must be per ticker: {sql}"
+    assert "bar_date >=" in sql, f"the window must be bounded in SQL, not after the fetch: {sql}"
+    assert "cut" in seen["kw"] and "tks" in seen["kw"], \
+        f"window and ticker list must be bound parameters: {seen['kw'].keys()}"
+
+
 def test_snapshot_52wk_is_cached_per_snapshot_generation(monkeypatch):
     snap = {"generated_utc": "2026-08-07T05:30:00Z", "records": [{"ticker": "ABC"}]}
     monkeypatch.setitem(server._WK52_CACHE, "gen", None)
     monkeypatch.setitem(server._WK52_CACHE, "data", {})
     calls = []
-
-    class FakeDb:
-        def close(self):
-            pass
-
-    monkeypatch.setattr("db_pool.get_db", lambda: FakeDb(), raising=False)
-
-    def _fake_bars(db, cutoff, lookback_days=0):
-        calls.append(1)
-        return {"ABC": [("2026-01-01", 12.0, 8.0, 10.0, 1000)]}
-
-    monkeypatch.setattr(server, "_perf_bars", _fake_bars)
+    _wk52_db(monkeypatch, [("ABC", 8.0, 20.0)], calls=calls)
 
     server._snapshot_52wk(snap)
     server._snapshot_52wk(snap)   # same generated_utc -> cache hit, no second DB round trip
@@ -529,18 +568,13 @@ def test_a_stale_row_is_ignored_and_recomputed(monkeypatch):
 
     class _Db:
         def run(self, *a, **k):
+            called.append(True)          # the recompute is now ONE aggregate round trip, not _perf_bars
             return []
 
         def close(self):
             pass
 
     monkeypatch.setattr("db_pool.get_db", lambda: _Db(), raising=False)
-
-    def _bars(*a, **k):
-        called.append(True)
-        return {}
-
-    monkeypatch.setattr(server, "_perf_bars", _bars)
     snap = {"generated_utc": "g2", "records": [{"ticker": "ABC"}]}
 
     server._snapshot_52wk(snap)
@@ -556,18 +590,14 @@ def test_instruments_missing_from_the_store_are_still_computed(monkeypatch):
 
     class _Db:
         def run(self, *a, **k):
+            # The ticker list is now a bound parameter on the aggregate query rather than a cutoff map.
+            asked.append(sorted(k.get("tks") or []))
             return []
 
         def close(self):
             pass
 
     monkeypatch.setattr("db_pool.get_db", lambda: _Db(), raising=False)
-
-    def _bars(db, cutoff, lookback_days=0):
-        asked.append(sorted(cutoff))
-        return {}
-
-    monkeypatch.setattr(server, "_perf_bars", _bars)
     snap = {"generated_utc": "g3", "records": [{"ticker": "ABC"}, {"ticker": "OTHER"}]}
 
     server._snapshot_52wk(snap)

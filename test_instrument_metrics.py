@@ -250,18 +250,22 @@ def test_the_52_week_range_agrees_with_the_instruments_tab(monkeypatch):
     monkeypatch.setitem(server._WK52_CACHE, "gen", None)
     monkeypatch.setitem(server._WK52_CACHE, "data", {})
 
+    # The live path slices by lookback itself; hand it the same window this module uses.
+    cutoff = (dt.date.fromisoformat(bars[-1][0]) - dt.timedelta(days=im.WK52_LOOKBACK_DAYS)).isoformat()
+
     class _Db:
         def run(self, *a, **k):
-            return []
+            # _snapshot_52wk now asks the database to aggregate, so stand in for min(low)/max(high)
+            # over exactly the same window rather than handing back raw bars.
+            window = [b for b in bars if b[0] >= cutoff]
+            if not window:
+                return []
+            return [("AAA", min(b[2] for b in window), max(b[1] for b in window))]
 
         def close(self):
             pass
 
     monkeypatch.setattr("db_pool.get_db", lambda: _Db(), raising=False)
-    # The live path slices by lookback itself; hand it the same window this module uses.
-    cutoff = (dt.date.fromisoformat(bars[-1][0]) - dt.timedelta(days=im.WK52_LOOKBACK_DAYS)).isoformat()
-    monkeypatch.setattr(server, "_perf_bars",
-                        lambda db, cutoff_map, lookback_days=0: {"AAA": [b for b in bars if b[0] >= cutoff]})
 
     live_low, live_high = server._snapshot_52wk(snap)["AAA"]
     mine = im.compute("AAA", bars, "BULL")

@@ -1530,16 +1530,33 @@ def _snapshot_52wk(snap: dict) -> dict:
         if tickers:
             from db_pool import get_db
             today = _dt.date.today()
+            cut = today - _dt.timedelta(days=_WK52_LOOKBACK_DAYS)
             db = get_db()
             try:
-                bars_by_tk = _perf_bars(db, {tk: today for tk in tickers}, lookback_days=_WK52_LOOKBACK_DAYS)
+                # AGGREGATE IN THE DATABASE, not here. This used to pull every bar for every ticker over
+                # the 52-week window via _perf_bars -- about 461,000 rows for a full universe -- and then
+                # reduce each ticker's bars to exactly two numbers. min()/max() do that server-side and
+                # return ONE row per ticker (~1,773), roughly 260x less data off the wire.
+                #
+                # WHY IT MATTERS (measured 2026-09-20): the free-tier egress allowance is 5 GB a MONTH and
+                # is shared across the whole organisation and every service. pg_stat_statements, never
+                # reset since the project was created, shows price_history reads at ~36 GB per 30 days --
+                # 7x the allowance -- and _perf_bars alone is ~30 GB of that. Supabase Storage has been
+                # latched off with exceed_egress_quota since 2026-08-16 because of it.
+                #
+                # IDENTICAL OUTPUT, not merely similar: SQL min()/max() skip NULLs, which is exactly what
+                # the `if b[1] is not None` filters did; requiring BOTH bounds non-NULL reproduces the old
+                # `if highs and lows` guard, so a ticker whose window holds no usable bar is still absent
+                # rather than present with a wrong pair.
+                rows = db.run(
+                    "select ticker, min(low), max(high) from price_history "
+                    "where ticker = any(:tks) and bar_date >= :cut group by ticker",
+                    tks=tickers, cut=str(cut)) or []
             finally:
                 db.close()
-            for tk, bars in bars_by_tk.items():
-                highs = [b[1] for b in bars if b[1] is not None]
-                lows = [b[2] for b in bars if b[2] is not None]
-                if highs and lows:
-                    out[tk] = (min(lows), max(highs))
+            for tk, lo, hi in rows:
+                if lo is not None and hi is not None:
+                    out[tk] = (float(lo), float(hi))
     except Exception as ex:
         log.warning(f"52wk high/low failed (columns blank): {ex}")
     _WK52_CACHE.update(gen=gen, data=out)
