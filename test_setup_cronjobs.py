@@ -92,11 +92,29 @@ def test_price_jobs_are_in_the_pricing_category():
     assert scheduled_jobs._category("Price History Audit") == "Pricing"
 
 
-def test_supabase_backup_runs_daily_at_2330_utc(monkeypatch):
+def test_supabase_backup_runs_weekly_not_daily(monkeypatch):
+    """WEEKLY SINCE 2026-09-20, and the daily cadence it replaced is why this test now guards the day.
+
+    pg_dump reads the whole price_history table out on every run, and reading data OUT of Supabase is
+    egress. MEASURED: 1,791,051 rows per dump at a COPY wire width of 160.74 B/row (counted off the
+    socket, converged over a 200,000-row sample) = 274.6 MB per dump. DAILY that is 8.04 GB per 30 days
+    against a free-tier allowance of 5 GB a MONTH shared across the whole organisation -- 161% of the
+    allowance for backups alone, and a direct contributor to Storage latching off with
+    exceed_egress_quota on 2026-08-16. Weekly is 1.18 GB, an 85% cut.
+
+    The account owner chose weekly over excluding price_history from the dump, so that disaster recovery
+    stays COMPLETE: every table is still backed up and only recency is lost, and price bars are the one
+    thing re-fetchable from Yahoo. Sunday (wday 0) 23:30 UTC, markets shut, so it captures a finished
+    week. Anything that puts this back on a daily cadence must move that 8.04 GB somewhere else first.
+    """
     schedules = _load_schedule_module(monkeypatch)
     jobs = {title: (cron, workflow) for title, cron, workflow in schedules.JOBS}
 
-    assert jobs["Supabase Database Backup"] == ("30 23 * * *", "supabase-backup.yml")
+    cron, workflow = jobs["Supabase Database Backup"]
+    assert (cron, workflow) == ("30 23 * * 0", "supabase-backup.yml")
+    assert cron.split()[-1] != "*", (
+        "the backup must not run daily: a full price_history dump is 274.6 MB, which is 8.04 GB per 30 "
+        "days against a 5 GB monthly allowance")
 
 
 def test_no_two_jobs_share_a_workflow_file(monkeypatch):

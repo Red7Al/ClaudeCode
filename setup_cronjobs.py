@@ -209,7 +209,19 @@ JOBS = [
     # failure must stop looking like a success.
     ("Trading State Audit",  "30 22 * * 1-5",    "trading-state-audit.yml"),
     ("Price History Audit",  "0 23 * * 1-6",     "trading-price-audit.yml"),  # golden-dataset audit: YF refetch + IG-as-truth correction of the trailing 7d (user 2026-07-13). Mon-Sat 23:00 UTC, after Data Quality Audit; self-throttles on the shared IG allowance.
-    ("Supabase Database Backup", "30 23 * * *", "supabase-backup.yml"),  # daily read-only logical backup; artifact retained 90 days (user 2026-08-06, P-25)
+    # WEEKLY, not daily, since 2026-09-20 -- the daily cadence cost more egress than the entire free tier.
+    # MEASURED: pg_dump reads the whole price_history table out every run, and reading data OUT of Supabase
+    # is egress. 80,597,307 rows over 45 dumps = 1,791,051 rows per dump (the table holds 1,870,128), and
+    # the COPY wire width measured off the socket is 160.74 B/row -- 274.6 MB per dump. Daily that is
+    # 8.04 GB per 30 days against a free-tier allowance of 5 GB a MONTH shared across the whole
+    # organisation: 161% of the allowance, for backups alone. Weekly is 1.18 GB, an 85% cut.
+    # WHY WEEKLY RATHER THAN EXCLUDING price_history: the account owner chose to keep disaster recovery
+    # COMPLETE. Excluding the table would save slightly more but would leave price history in no backup at
+    # all; weekly keeps every table and costs only recency, and price bars are the one thing that can be
+    # re-fetched from Yahoo. Sunday 23:30 UTC: markets shut, so it captures a finished week.
+    # This is why Supabase Storage latched off with exceed_egress_quota on 2026-08-16 -- see
+    # docs/OPS_RUNBOOK.md section 4 and egress_report.py.
+    ("Supabase Database Backup", "30 23 * * 0", "supabase-backup.yml"),  # weekly read-only logical backup; artifact retained 90 days (user 2026-08-06, P-25)
     # The Fundamentals and Broker panels for the whole universe (2026-09-18). They are precomputed for the
     # same reason /api/performance is: the web host cannot build them. Both endpoints called yfinance on
     # the request thread, yfinance imports pandas -> numpy, and numpy is SIGSYS-killed on IONOS, so both
