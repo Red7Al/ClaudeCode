@@ -10,7 +10,7 @@ description: >
 
 # AH Data Dictionary — the Supabase schema
 
-Generated from the live database on **2026-09-12**. Total public schema: **404 MB** of the 500 MB free tier.
+Generated from the live database on **2026-09-20**. Total public schema: **414 MB** of the 500 MB free tier.
 
 Re-generate with `python build_data_dictionary.py`. The column lists, sizes and row counts come from the database and cannot drift; the notes are curated and are the part worth reading.
 
@@ -23,7 +23,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 
 ## Tables, largest first
 
-### `price_history`  <span>(346 MB, ~1,860,105 rows)</span>
+### `price_history`  <span>(351 MB, ~1,870,126 rows)</span>
 
 **Holds** — Daily OHLCV bars for the whole universe. The largest object in the database by far.
 
@@ -112,7 +112,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `analyst_signal` | text | yes |
 | `analyst_recommendation` | text | yes |
 
-### `squeeze_history`  <span>(15 MB, ~36,005 rows)</span>
+### `squeeze_history`  <span>(15 MB, ~36,272 rows)</span>
 
 **Holds** — One row per detected squeeze setup, with entry/stop/target, quality, R:R, the pivot dates and -- once resolved -- outcome and return_pct. THE table behind Performance, Best Settings and the Insights page.
 
@@ -158,7 +158,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `recorded_at` | timestamp with time zone | no |
 | `refreshed_at` | timestamp with time zone | no |
 
-### `web_json_store`  <span>(3920 kB, ~12 rows)</span>
+### `web_json_store`  <span>(6800 kB, ~15 rows)</span>
 
 **Holds** — A key/value JSON store: precomputed winners payloads, Best Settings cards, the sector cache, the metric and coverage audits.
 
@@ -173,7 +173,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `updated_at` | timestamp with time zone | no |
 | `revision` | bigint | no |
 
-### `macro_snapshot`  <span>(3496 kB, ~11,956 rows)</span>
+### `macro_snapshot`  <span>(3496 kB, ~11,971 rows)</span>
 
 **Holds** — Macro indicators.
 
@@ -192,7 +192,35 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `macro_gate_pass` | boolean | yes |
 | `gate_reason` | text | yes |
 
-### `hvf_scan_log`  <span>(3024 kB, ~15,795 rows)</span>
+### `instrument_metrics_daily`  <span>(3360 kB, ~17,318 rows)</span>
+
+**Holds** — The stored break-bar measures (RVOL, above-VWAP, ATR expanding, VolumeScore) per ticker per day.
+
+**Written by** — instrument_metrics.record_daily, inside the daily scan.
+
+**Watch out** — as_of IS NOT THE BAR IT DESCRIBES. The scan runs ~03:30 UTC, before any market opens, so the row written under as_of = today is computed from YESTERDAY'S bar: measured 2026-09-06, 1,761 of the as_of 2026-09-05 rows carry bar_date 2026-09-04. Always compare bar_date against the day you are judging. It also stored NOTHING between 2026-08-29 and 2026-09-04 because its INSERT carried a placeholder with no argument.
+
+| column | type | null |
+|---|---|---|
+| `ticker` | text | no |
+| `as_of` | date | no |
+| `bar_date` | date | no |
+| `rvol` | double precision | yes |
+| `rvol_date` | date | yes |
+| `above_vwap` | boolean | yes |
+| `above_vwap_setup` | boolean | yes |
+| `atr_expanding` | boolean | yes |
+| `volume_score` | integer | yes |
+| `volume_score_max` | integer | yes |
+| `wk52_low` | double precision | yes |
+| `wk52_high` | double precision | yes |
+| `direction` | text | yes |
+| `status` | text | yes |
+| `source` | text | yes |
+| `recorded_at` | timestamp with time zone | yes |
+| `mcap` | double precision | yes |
+
+### `hvf_scan_log`  <span>(3240 kB, ~17,070 rows)</span>
 
 **Holds** — Per-scan log of what each run examined.
 
@@ -214,23 +242,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `target` | numeric | yes |
 | `recorded_at` | timestamp with time zone | yes |
 
-### `hvf_suppressed_log`  <span>(2608 kB, ~16,978 rows)</span>
-
-**Holds** — Setups the method found and then suppressed, with the reason.
-
-**Written by** — The daily scan.
-
-| column | type | null |
-|---|---|---|
-| `id` | bigint | no |
-| `suppressed_at` | timestamp with time zone | yes |
-| `ticker` | text | no |
-| `hvf_timeframe` | text | yes |
-| `hvf_type` | text | yes |
-| `risk_reward` | numeric | yes |
-| `violations` | text | yes |
-
-### `hvf_triggers`  <span>(2392 kB, ~1,325 rows)</span>
+### `hvf_triggers`  <span>(2736 kB, ~1,513 rows)</span>
 
 **Holds** — Live detections since 2026-06-30.
 
@@ -268,35 +280,23 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `source` | text | yes |
 | `raw` | jsonb | yes |
 
-### `instrument_metrics_daily`  <span>(2168 kB, ~13,841 rows)</span>
+### `hvf_suppressed_log`  <span>(2672 kB, ~17,408 rows)</span>
 
-**Holds** — The stored break-bar measures (RVOL, above-VWAP, ATR expanding, VolumeScore) per ticker per day.
+**Holds** — Setups the method found and then suppressed, with the reason.
 
-**Written by** — instrument_metrics.record_daily, inside the daily scan.
-
-**Watch out** — as_of IS NOT THE BAR IT DESCRIBES. The scan runs ~03:30 UTC, before any market opens, so the row written under as_of = today is computed from YESTERDAY'S bar: measured 2026-09-06, 1,761 of the as_of 2026-09-05 rows carry bar_date 2026-09-04. Always compare bar_date against the day you are judging. It also stored NOTHING between 2026-08-29 and 2026-09-04 because its INSERT carried a placeholder with no argument.
+**Written by** — The daily scan.
 
 | column | type | null |
 |---|---|---|
+| `id` | bigint | no |
+| `suppressed_at` | timestamp with time zone | yes |
 | `ticker` | text | no |
-| `as_of` | date | no |
-| `bar_date` | date | yes |
-| `rvol` | double precision | yes |
-| `rvol_date` | date | yes |
-| `above_vwap` | boolean | yes |
-| `above_vwap_setup` | boolean | yes |
-| `atr_expanding` | boolean | yes |
-| `volume_score` | integer | yes |
-| `volume_score_max` | integer | yes |
-| `wk52_low` | double precision | yes |
-| `wk52_high` | double precision | yes |
-| `direction` | text | yes |
-| `status` | text | yes |
-| `source` | text | yes |
-| `recorded_at` | timestamp with time zone | yes |
-| `mcap` | double precision | yes |
+| `hvf_timeframe` | text | yes |
+| `hvf_type` | text | yes |
+| `risk_reward` | numeric | yes |
+| `violations` | text | yes |
 
-### `notable_investors`  <span>(1824 kB, ~3,588 rows)</span>
+### `notable_investors`  <span>(1880 kB, ~3,717 rows)</span>
 
 **Holds** — Superinvestor holdings.
 
@@ -318,7 +318,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `direction` | text | yes |
 | `post_url` | text | yes |
 
-### `missed_trade_log`  <span>(1160 kB, ~2,093 rows)</span>
+### `missed_trade_log`  <span>(1160 kB, ~2,103 rows)</span>
 
 **Holds** — Setups that passed detection but were not taken, and why.
 
@@ -339,7 +339,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `first_seen` | timestamp with time zone | yes |
 | `last_seen` | timestamp with time zone | yes |
 
-### `data_quality_log`  <span>(896 kB, ~3,024 rows)</span>
+### `data_quality_log`  <span>(1048 kB, ~3,584 rows)</span>
 
 **Holds** — Yahoo-vs-IG price comparisons per ticker per audit.
 
@@ -358,7 +358,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `detail` | text | yes |
 | `created_at` | timestamp with time zone | yes |
 
-### `instrument_mcap_history`  <span>(392 kB, ~3,277 rows)</span>
+### `instrument_mcap_history`  <span>(720 kB, ~6,553 rows)</span>
 
 **Holds** — Market cap over time, one row per ticker per capture.
 
@@ -372,7 +372,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `currency` | text | yes |
 | `recorded_at` | timestamp with time zone | yes |
 
-### `working_orders`  <span>(336 kB, ~482 rows)</span>
+### `working_orders`  <span>(336 kB, ~484 rows)</span>
 
 **Holds** — The engine-managed pre-order lifecycle: WATCHING -> PENDING -> FILLED / CANCELLED / EXPIRED.
 
@@ -409,7 +409,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `lwr_owner_login` | text | yes |
 | `lwr_account_fingerprint` | text | yes |
 
-### `epic_lookup`  <span>(320 kB, ~1,941 rows)</span>
+### `epic_lookup`  <span>(328 kB, ~2,068 rows)</span>
 
 **Holds** — Ticker -> IG epic, with the IG instrument description.
 
@@ -426,7 +426,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `market_type` | text | yes |
 | `last_seen` | timestamp with time zone | yes |
 
-### `web_activity_log`  <span>(264 kB, ~1,108 rows)</span>
+### `web_activity_log`  <span>(288 kB, ~1,157 rows)</span>
 
 **Holds** — Per-user web activity.
 
@@ -454,7 +454,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `currency` | text | yes |
 | `updated_at` | timestamp with time zone | yes |
 
-### `web_batch_activity`  <span>(184 kB, ~663 rows)</span>
+### `web_batch_activity`  <span>(192 kB, ~768 rows)</span>
 
 **Holds** — Scheduled-job run records behind the Batch Activity tab.
 
@@ -554,7 +554,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `oi_signal` | text | yes |
 | `cot_score` | numeric | yes |
 
-### `x_draft_state`  <span>(112 kB, ~559 rows)</span>
+### `x_draft_state`  <span>(112 kB, ~586 rows)</span>
 
 **Holds** — Drafted X posts awaiting review.
 
@@ -566,7 +566,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `fingerprint` | text | yes |
 | `posted_at` | timestamp with time zone | yes |
 
-### `x_publications`  <span>(104 kB, ~151 rows)</span>
+### `x_publications`  <span>(104 kB, ~156 rows)</span>
 
 **Holds** — What has been posted to X.
 
@@ -598,7 +598,7 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `options_json` | jsonb | no |
 | `fingerprint` | text | no |
 
-### `scanner_refresh_progress`  <span>(88 kB, ~55 rows)</span>
+### `scanner_refresh_progress`  <span>(88 kB, ~64 rows)</span>
 
 **Holds** — Progress of an in-flight rescan, for the UI.
 
@@ -636,6 +636,38 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `last_attempt` | timestamp with time zone | no |
 | `locked_until` | timestamp with time zone | yes |
 
+### `price_audit_log`  <span>(64 kB, ~68 rows)</span>
+
+**Holds** — Price-history audit results.
+
+**Written by** — price_audit.
+
+| column | type | null |
+|---|---|---|
+| `id` | bigint | no |
+| `run_at` | timestamp with time zone | no |
+| `mode` | text | no |
+| `source` | text | no |
+| `tickers_checked` | integer | no |
+| `bars_written` | integer | no |
+| `discrepancies` | integer | no |
+| `max_drift_pct` | double precision | yes |
+| `duration_s` | double precision | yes |
+| `notes` | text | yes |
+
+### `app_config`  <span>(64 kB, ~21 rows)</span>
+
+**Holds** — Engine settings editable from Configuration (Admin).
+
+**Written by** — hvf_web/server.py.
+
+| column | type | null |
+|---|---|---|
+| `key` | text | no |
+| `value` | text | no |
+| `updated_by` | text | yes |
+| `updated_at` | timestamp with time zone | no |
+
 ### `scanner_snapshot_versions`  <span>(64 kB, ~17 rows)</span>
 
 **Holds** — Immutable published snapshot versions.
@@ -655,38 +687,6 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `schema_version` | integer | no |
 | `source` | text | no |
 | `published_at` | timestamp with time zone | no |
-
-### `senator_scores`  <span>(64 kB, ~5 rows)</span>
-
-**Holds** — Congressional trading signal scores.
-
-**Written by** — analyst_signals.
-
-| column | type | null |
-|---|---|---|
-| `id` | uuid | no |
-| `senator_name` | text | no |
-| `party` | text | yes |
-| `state` | text | yes |
-| `trade_count` | integer | no |
-| `win_rate` | numeric | no |
-| `avg_excess_return` | numeric | no |
-| `score` | numeric | no |
-| `qualified` | boolean | no |
-| `last_updated` | timestamp with time zone | yes |
-
-### `app_config`  <span>(64 kB, ~21 rows)</span>
-
-**Holds** — Engine settings editable from Configuration (Admin).
-
-**Written by** — hvf_web/server.py.
-
-| column | type | null |
-|---|---|---|
-| `key` | text | no |
-| `value` | text | no |
-| `updated_by` | text | yes |
-| `updated_at` | timestamp with time zone | no |
 
 ### `user_profiles`  <span>(64 kB, ~3 rows)</span>
 
@@ -709,6 +709,25 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `created_at` | timestamp with time zone | yes |
 | `login` | text | yes |
 
+### `senator_scores`  <span>(64 kB, ~5 rows)</span>
+
+**Holds** — Congressional trading signal scores.
+
+**Written by** — analyst_signals.
+
+| column | type | null |
+|---|---|---|
+| `id` | uuid | no |
+| `senator_name` | text | no |
+| `party` | text | yes |
+| `state` | text | yes |
+| `trade_count` | integer | no |
+| `win_rate` | numeric | no |
+| `avg_excess_return` | numeric | no |
+| `score` | numeric | no |
+| `qualified` | boolean | no |
+| `last_updated` | timestamp with time zone | yes |
+
 ### `social_mentions`  <span>(56 kB, ~0 rows)</span>
 
 **Holds** — Tracked social mentions.
@@ -728,18 +747,18 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `acted_on` | boolean | yes |
 | `recorded_at` | timestamp with time zone | yes |
 
-### `x_publications_archive`  <span>(48 kB, ~25 rows)</span>
+### `hvf_watch_state`  <span>(48 kB, ~1 rows)</span>
 
-**Holds** — Archived X publications.
+**Holds** — Per-market watch cursor.
 
-**Written by** — Archival job.
+**Written by** — The HVF watch jobs.
 
 | column | type | null |
 |---|---|---|
 | `id` | bigint | no |
-| `ticker` | text | no |
-| `tweet_id` | text | yes |
-| `published_at` | timestamp with time zone | yes |
+| `key` | text | no |
+| `fingerprint` | text | no |
+| `posted_at` | timestamp with time zone | yes |
 
 ### `web_ig_account_audit`  <span>(48 kB, ~1 rows)</span>
 
@@ -796,18 +815,18 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `risk_reward` | numeric | yes |
 | `created_at` | timestamp with time zone | yes |
 
-### `hvf_watch_state`  <span>(48 kB, ~1 rows)</span>
+### `x_publications_archive`  <span>(48 kB, ~25 rows)</span>
 
-**Holds** — Per-market watch cursor.
+**Holds** — Archived X publications.
 
-**Written by** — The HVF watch jobs.
+**Written by** — Archival job.
 
 | column | type | null |
 |---|---|---|
 | `id` | bigint | no |
-| `key` | text | no |
-| `fingerprint` | text | no |
-| `posted_at` | timestamp with time zone | yes |
+| `ticker` | text | no |
+| `tweet_id` | text | yes |
+| `published_at` | timestamp with time zone | yes |
 
 ### `scanner_snapshot_current`  <span>(40 kB, ~1 rows)</span>
 
@@ -835,25 +854,6 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `rate_to_gbp` | double precision | no |
 | `as_of` | timestamp with time zone | yes |
 
-### `price_audit_log`  <span>(32 kB, ~57 rows)</span>
-
-**Holds** — Price-history audit results.
-
-**Written by** — price_audit.
-
-| column | type | null |
-|---|---|---|
-| `id` | bigint | no |
-| `run_at` | timestamp with time zone | no |
-| `mode` | text | no |
-| `source` | text | no |
-| `tickers_checked` | integer | no |
-| `bars_written` | integer | no |
-| `discrepancies` | integer | no |
-| `max_drift_pct` | double precision | yes |
-| `duration_s` | double precision | yes |
-| `notes` | text | yes |
-
 ### `x_draft_state_archive`  <span>(32 kB, ~32 rows)</span>
 
 **Holds** — Archived X drafts.
@@ -865,6 +865,26 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `ticker` | text | no |
 | `fingerprint` | text | yes |
 | `posted_at` | timestamp with time zone | yes |
+
+### `auto_closed_positions`  <span>(32 kB, ~3 rows)</span>
+
+**UNDOCUMENTED.** No curated note exists for this table. A column list is not documentation: add an entry to NOTES in `build_data_dictionary.py` saying what it holds, what writes it and when.
+
+| column | type | null |
+|---|---|---|
+| `deal_id` | text | no |
+| `ticker` | text | yes |
+| `user_name` | text | yes |
+| `opened_on` | date | yes |
+| `closed_at` | timestamp with time zone | yes |
+| `direction` | text | yes |
+| `size` | double precision | yes |
+| `volume_breaches` | text | yes |
+| `durable_breaches` | text | yes |
+| `profit` | double precision | yes |
+| `currency` | text | yes |
+| `outcome` | text | yes |
+| `name` | text | yes |
 
 ### `app_secrets`  <span>(32 kB, ~12 rows)</span>
 
@@ -897,4 +917,11 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 | `source` | text | yes |
 | `created_at` | timestamp with time zone | yes |
 | `updated_at` | timestamp with time zone | yes |
+
+
+## Undocumented tables
+
+These exist in the database with no curated note. Each is a gap, not a table that happens to need no explanation:
+
+- `auto_closed_positions`
 
