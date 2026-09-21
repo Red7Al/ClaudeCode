@@ -1711,27 +1711,44 @@ def api_thread(ticker):
     6/7'): the lead short tweet + every numbered long-report part (1/n..n/n). One render = low mem."""
     key = f"thread:{ticker}"
     if key not in _PNG_CACHE:
-        rec = _record(ticker)
-        card = dict(rec.get("_card") or {})
-        card["name"] = rec.get("name"); card["index"] = rec.get("market")
-        parts = []
-        try:
-            from intraday_signals import _generate_x_drafts
-            # collect=True renders the card PNG via matplotlib (pyplot) — must share the render lock or it
-            # races /api/card and both come out blank (user 2026-06-29 "X post card is empty for ABF.L").
-            with _RENDER_LOCK:
-                drafts = _generate_x_drafts([card], post=False, collect=True)
-            if drafts and drafts[0].get("tweet"):
-                parts.append(drafts[0]["tweet"])
-        except Exception as e:
-            log.warning(f"thread lead failed for {ticker}: {e}")
-        try:
-            from quality_report import publish_long_report_for
-            parts += [p for p in (publish_long_report_for(card, post=False) or []) if p]
-        except Exception as e:
-            log.warning(f"thread report failed for {ticker}: {e}")
-        _PNG_CACHE[key] = parts
+        _PNG_CACHE[key] = _thread_stored(ticker)
     return jsonify({"ticker": ticker, "parts": _PNG_CACHE[key]})
+
+
+_THREAD_STORE_KEY = "thread_by_ticker"
+
+
+def _thread_stored(ticker: str) -> list:
+    """The precomputed X-thread parts for one instrument, or [] if none were stored.
+
+    THIS ENDPOINT USED TO BUILD THE TEXT ITSELF AND THAT IS WHY IT WAS DEAD. It called
+    _generate_x_drafts and publish_long_report_for, and both reach numpy — which is SIGSYS-killed on
+    this host, because the seccomp filter kills any process calling mbind(2) and the bundled OpenBLAS
+    does. It kills the PROCESS, so the try/except around each call could never fire: the request died
+    and the gateway returned HTTP 500 after ~120 seconds (measured 2026-09-18 and again 2026-09-20).
+
+    MAKING THAT CALL TREE numpy-FREE WAS TRIED AND REJECTED ON EVIDENCE. Five layers in — the text
+    helpers in intraday_signals, instrument_name's yfinance fallback, quality_report.fundamentals,
+    _kpi_block, then price_action — it still reached numpy, and each layer stripped had DEGRADED the
+    report: on AAF.L 8 parts fell to 5, then 4. The generator legitimately needs pandas for the
+    dividend series and price_action for the chart story.
+
+    So the text is built nightly by run_thread_precompute.py where numpy works and stored here, exactly
+    as fundamentals_by_ticker, broker_by_ticker, winners_rows_1y and performance_rows_12m already are.
+    A missed precompute leaves the card STALE, never wrong — the job refuses to store an empty result
+    over a good copy.
+    """
+    try:
+        import web_store
+        doc = web_store.load_json_store(_THREAD_STORE_KEY) or {}
+    except Exception as e:
+        log.warning(f"thread precompute unavailable for {ticker}: {e}")
+        return []
+    parts = ((doc.get("records") or {}).get(ticker)) or []
+    if not parts:
+        # Not an error: only instruments carrying a _card get a thread (422 of 1,773 on 2026-09-20).
+        log.info(f"no precomputed thread for {ticker}")
+    return parts
 
 
 def _rule_detail(rec: dict) -> list:

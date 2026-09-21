@@ -1,0 +1,97 @@
+name: Thread Precompute (daily — 2026-09-20)
+
+# Builds the X-thread text (lead tweet + numbered long-report parts) for every instrument that has a
+# card, and stores it as web_json_store key `thread_by_ticker`, because the web host CANNOT build it.
+# /api/thread called into quality_report and intraday_signals, both of which reach numpy, and numpy is
+# SIGSYS-killed on IONOS (its bundled OpenBLAS calls mbind(2) and the seccomp filter kills the process
+# rather than failing the call). The endpoint answered HTTP 500 after ~120s and the thread card on the
+# instrument detail panel rendered as nothing.
+#
+# WHY PRECOMPUTE RATHER THAN MAKE THE CALL TREE numpy-FREE: that was tried and abandoned on measurement.
+# Five layers in, the report still reached numpy, and every layer removed had DEGRADED the output --
+# on AAF.L the report fell from 8 parts to 5 to 4 as network paths were stripped. The generator
+# legitimately needs pandas (the dividend series) and price_action (the chart story). So the compute
+# stays where it works and only the RESULT travels, exactly as fundamentals_by_ticker,
+# broker_by_ticker, winners_rows_1y and performance_rows_12m already do.
+#
+# A missed run makes the card STALE, never blank: run_thread_precompute refuses to store an empty result
+# over a good copy, and the server serves whatever was last stored.
+#
+# TIMING: ~9s per instrument (measured on a 2-instrument sample, so indicative rather than exact)
+# against 422 carded instruments — counted in the 2026-09-20T19:18 scanner-snapshot artifact, not
+# estimated — so roughly 63 minutes serial. It runs as its OWN job rather than inside Scanner Snapshot
+# Publish, which already takes ~70 minutes; adding an hour to the critical publication path to fix a
+# panel card is the wrong trade. The timeout is set well above the estimate rather than close to it —
+# a job killed at the boundary stores nothing.
+#
+# GitHub-native `schedule:` blocks are BANNED in this repository; cron-job.org fires workflow_dispatch and
+# setup_cronjobs.py::JOBS is the authoritative registry.
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Only the first N instruments (testing). 0 = every carded instrument.'
+        type: string
+        required: false
+        default: ''
+      dry_run:
+        description: 'Build and report timings without storing anything.'
+        type: boolean
+        required: false
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  precompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PYTHONIOENCODING:     utf-8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      # The snapshot is the input, and ONLY instruments carrying a `_card` get a thread.
+      #
+      # NOT from /api/records: that endpoint STRIPS `_card`. Measured live 2026-09-20 — 1,773 records,
+      # 0 with a card — so seeding from the site would silently build zero threads and the "refuse to
+      # store an empty result" guard would be the only thing standing between that and a blank panel.
+      # NOT from the repository copy either: hvf_web/snapshot.json in git is a stale boot cache
+      # (2026-08-12, 1,421 records).
+      #
+      # The publish workflow uploads the freshly built snapshot as the `scanner-snapshot` artifact, and
+      # that copy DOES carry `_card`. Take the most recent successful run's.
+      - name: Fetch the built snapshot from the latest publish run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RUN=$(gh run list --workflow=trading-scanner-snapshot.yml --status=success \
+                  --limit 1 --json databaseId -q '.[0].databaseId')
+          test -n "$RUN" || { echo "no successful Scanner Snapshot Publish run to take a snapshot from" >&2; exit 1; }
+          echo "using scanner-snapshot from run $RUN"
+          gh run download "$RUN" -n scanner-snapshot -D /tmp/snap
+          cp /tmp/snap/snapshot.json hvf_web/snapshot.json
+          python - <<'PY'
+          import json
+          d = json.load(open('hvf_web/snapshot.json', encoding='utf-8'))
+          recs = d.get('records') or []
+          carded = sum(1 for r in recs if r.get('_card'))
+          print(f"seeded {len(recs)} records ({d.get('generated_utc')}), {carded} with a card")
+          if not carded:
+              raise SystemExit("snapshot carries no _card records; refusing to build an empty payload")
+          PY
+      - name: Build and store the thread text
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ inputs.limit }}"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          python run_thread_precompute.py $ARGS

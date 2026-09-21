@@ -1044,29 +1044,16 @@ def _x_rotation_index(rank: int) -> int:
     return (rank - 1) + _t.gmtime().tm_yday
 
 
-def _bold_italic(s: str) -> str:
-    """Map ASCII letters to Unicode Mathematical Bold Italic so the text shows as
-    bold-italic on X (plain tweets have no markdown). NOTE: these are supplementary-
-    plane glyphs — screen readers may skip them and X counts each as 2 chars."""
-    out = []
-    for c in s:
-        o = ord(c)
-        if 65 <= o <= 90:      out.append(chr(0x1D468 + o - 65))   # A–Z
-        elif 97 <= o <= 122:   out.append(chr(0x1D482 + o - 97))   # a–z
-        else:                  out.append(c)
-    return "".join(out)
-
-
-def _x_weighted_len(s: str) -> int:
-    """Approximate X's weighted character count: supplementary-plane code points
-    (emoji hooks, the bold-italic disclaimer) count as 2, everything else as 1 —
-    models the 280-char limit far better than len() for our content."""
-    return sum(2 if ord(c) > 0xFFFF else 1 for c in s)
-
-
-# Disclaimer in bold italic, preceded by a blank line (user 2026-06-13). Plain ASCII
-# is kept here for readability; rendered to Unicode bold-italic once at import.
-_NFA_DISCLAIMER = "\n\n" + _bold_italic("Not financial advice.")
+# MOVED TO x_text 2026-09-20, and re-exported here so every existing caller keeps working.
+# These are pure string helpers, but living in THIS module made them unreachable from the web host:
+# intraday_signals imports numpy/pandas/yfinance at module level (below), numpy is SIGSYS-killed on
+# IONOS, and quality_report imports these four lazily — so /api/thread returned HTTP 500 after ~120s
+# and the X-thread card rendered as nothing. x_text has no numpy-bearing imports, so the web tier can
+# use it. They are re-exported rather than re-implemented: one definition, so the text on the website
+# and the text posted to X cannot drift apart.
+from x_text import bold_italic as _bold_italic          # noqa: E402
+from x_text import x_weighted_len as _x_weighted_len    # noqa: E402
+from x_text import NFA_DISCLAIMER as _NFA_DISCLAIMER    # noqa: E402
 
 
 def _competitor_news(ticker: str, peer: str = None):
@@ -1332,15 +1319,13 @@ def _exchange_tag(ticker: str) -> str:
 
 
 def _x_market_tags(r: dict) -> str:
-    """Market + country hashtags (user 2026-06-13). UK names use their index
-    (#FTSE100/#FTSE250); US names use the REAL listing exchange (#NASDAQ/#NYSE), not the
-    S&P bucket. Country #UK/#USA."""
-    idx = r.get("index") or ""
-    if idx in ("FTSE 100", "FTSE 250"):
-        return ("#FTSE100" if idx == "FTSE 100" else "#FTSE250") + " #UK"
-    if (r.get("ticker") or "").endswith(".L"):
-        return "#FTSE #UK"
-    return f"{_exchange_tag(r.get('ticker') or '')} #USA"
+    """Market + country hashtags — the logic lives in x_text.market_tags (numpy-free) so the web host
+    can use it too. THIS caller passes _exchange_tag, which asks yfinance for the REAL listing exchange
+    (#NASDAQ vs #NYSE). The web host cannot do that (yfinance imports numpy, which is SIGSYS-killed
+    there) and falls back to the ticker suffix, so a US instrument's tag on the website may read #NYSE
+    where the posted tweet reads #NASDAQ. UK tickers never reach that branch."""
+    from x_text import market_tags
+    return market_tags(r, _exchange_tag)
 
 
 def upload_png_to_slack(png_bytes: bytes, filename: str, title: str,
