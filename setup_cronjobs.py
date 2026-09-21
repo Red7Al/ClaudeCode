@@ -222,6 +222,14 @@ JOBS = [
     # This is why Supabase Storage latched off with exceed_egress_quota on 2026-08-16 -- see
     # docs/OPS_RUNBOOK.md section 4 and egress_report.py.
     ("Supabase Database Backup", "30 23 * * 0", "supabase-backup.yml"),  # weekly read-only logical backup; artifact retained 90 days (user 2026-08-06, P-25)
+    # The X-thread text for every carded instrument, stored as web_json_store `thread_by_ticker`. The web
+    # host CANNOT build it: /api/thread called into quality_report and intraday_signals, both reach numpy,
+    # and numpy is SIGSYS-killed on IONOS -- the endpoint answered HTTP 500 after ~120s and the panel's
+    # thread card rendered as nothing. 20:30 UTC: after the 18:30 Scanner Snapshot Publish has finished
+    # (~70 min) so the `scanner-snapshot` artifact it reads exists and is today's, and clear of the 21:15
+    # Fundamentals Precompute. ~9s x 422 carded instruments is roughly an hour, hence its own job rather
+    # than another hour bolted onto the publish path.
+    ("Thread Precompute",    "30 20 * * *",      "trading-thread-precompute.yml"),
     # The Fundamentals and Broker panels for the whole universe (2026-09-18). They are precomputed for the
     # same reason /api/performance is: the web host cannot build them. Both endpoints called yfinance on
     # the request thread, yfinance imports pandas -> numpy, and numpy is SIGSYS-killed on IONOS, so both
