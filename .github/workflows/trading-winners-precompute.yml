@@ -45,13 +45,11 @@ jobs:
   precompute:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # actions:read is what `gh run download` needs to reach the publish run's scanner-snapshot artifact.
-    # Stated explicitly rather than inherited: this workflow is REUSABLE and is called by
-    # trading-morning-chain.yml, so its token permissions come from the caller unless they are pinned
-    # here, and a permission that silently narrows would put this job straight back to refusing.
+    # Pinned rather than inherited: this workflow is REUSABLE and is called by trading-morning-chain.yml,
+    # so its token permissions come from the caller unless stated here. The seeding step reads the LIVE
+    # SITE over HTTPS and needs no Actions scope, so contents:read is all it takes.
     permissions:
       contents: read
-      actions: read
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -76,28 +74,41 @@ jobs:
       # that all day. The job's own fallback was Supabase Storage, which has returned 402 since
       # 2026-08-16 (exceed_egress_quota) and is not coming back without an account change.
       #
-      # So take the snapshot from the publish run's artifact instead, which needs no Supabase Storage
-      # and is the same route trading-thread-precompute.yml uses. Failing loudly here is deliberate:
-      # without records this job can only refuse, so there is nothing to be gained by continuing.
-      - name: Fetch the built snapshot from the latest publish run
+      # SEED FROM THE LIVE SITE, NOT FROM THE PUBLISH ARTIFACT, and the difference is the whole point.
+      # A stored payload is served only if its dataset key equals the snapshot the SITE is serving; a
+      # mismatch makes _winners_stored reject it silently and the page builds live instead. The publish
+      # artifact is the PREVIOUS EVENING's scan, and the Morning Chain's own earlier steps rebuild the
+      # snapshot before this step runs -- measured 2026-09-21: artifact 2026-09-20T19:18:08 against a
+      # live site on 2026-09-21T04:54:01. Seeding from the artifact therefore turns a red job green
+      # while every payload it writes is discarded, which is worse than the honest failure it replaced.
+      #
+      # /api/records carries what this job needs and is keyed to the live scan by construction: measured
+      # 1,773 records, all with name, location and market (sector 1,569, its real coverage). It strips
+      # `_card`, which does not matter here -- that is why trading-thread-precompute.yml DOES take the
+      # artifact, because the thread text needs the card. Market cap is not read from the snapshot at
+      # all; _sqa_all_rows takes it from instrument_mcap via _mcap_map.
+      #
+      # Failing loudly is deliberate: without records this job can only refuse, so a quiet skip would
+      # just restore the silence this commit exists to end.
+      - name: Seed the snapshot from the live site
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IONOS_SITE: ${{ secrets.IONOS_SITE }}
         run: |
           set -euo pipefail
-          RUN=$(gh run list --workflow=trading-scanner-snapshot.yml --status=success \
-                  --limit 1 --json databaseId -q '.[0].databaseId')
-          test -n "$RUN" || { echo "no successful Scanner Snapshot Publish run to take a snapshot from" >&2; exit 1; }
-          echo "using scanner-snapshot from run $RUN"
-          gh run download "$RUN" -n scanner-snapshot -D /tmp/snap
-          mkdir -p hvf_web && cp /tmp/snap/snapshot.json hvf_web/snapshot.json
+          mkdir -p hvf_web
+          curl --fail --silent --show-error --retry 3 "${IONOS_SITE%/}/api/records" -o hvf_web/snapshot.json
           python - <<'PY'
           import json
           d = json.load(open('hvf_web/snapshot.json', encoding='utf-8'))
           recs = d.get('records') or []
           named = sum(1 for r in recs if (r.get('name') or '').strip())
-          print(f"seeded {len(recs)} records ({d.get('generated_utc')}), {named} with a name")
+          located = sum(1 for r in recs if (r.get('location') or '').strip())
+          print(f"seeded {len(recs)} records ({d.get('generated_utc')}), {named} named, {located} located")
           if not recs:
-              raise SystemExit("snapshot carries no records; the precompute would only refuse")
+              raise SystemExit("the live site returned no records; the precompute would only refuse")
+          if named < len(recs):
+              raise SystemExit(f"only {named} of {len(recs)} records carry a name; refusing to build "
+                               "rows that would show the ticker in place of the company")
           PY
       - name: Build and store the winners payloads
         run: |
