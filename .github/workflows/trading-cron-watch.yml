@@ -49,10 +49,21 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      # Reads run stats from the Actions API, and the cron-job.org key (for enabled/disabled state)
-      # comes from the encrypted Supabase secret store that db_pool bootstraps.
       GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
       RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      # BOTH OF THESE MUST COME FROM GITHUB SECRETS, NOT THE SUPABASE STORE, and the first run proved
+      # why. db_pool decrypts app_secrets into the environment locally, but on a RUNNER that decrypt
+      # fails -- "app_secrets: decrypt failed for CRONJOB_API_KEY" is in the 2026-09-21T14:32 log, one
+      # of a family of such warnings that appear in every runner log and are easy to scroll past.
+      #
+      # CRONJOB_API_KEY: without it the enabled/disabled filter silently gives up and judges every job,
+      # so that run reported 17 jobs failing or stale when 15 of them are disabled by design -- and it
+      # emailed exactly that. The filter working is the difference between an alert and noise.
+      # SLACK_ALERTS: without it notify logs "No webhook URL configured for channel: alerts" and only
+      # the email goes out. Email alone worked, but a channel that silently does nothing is the same
+      # class of problem this watcher exists to end.
+      CRONJOB_API_KEY:      ${{ secrets.CRONJOB_API_KEY }}
+      SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
       PYTHONIOENCODING:     utf-8
     steps:
       - uses: actions/checkout@v6
