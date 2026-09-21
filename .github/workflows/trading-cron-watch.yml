@@ -1,0 +1,73 @@
+name: Cron Watch (scheduled-job failures — 2026-09-21)
+
+# Tells somebody when a scheduled job fails, stops running, or recovers.
+#
+# WHY. Owner 2026-09-21: "the scheduled job for Morning Chain has failed - is this managed without my
+# input?" It was not. That job had failed on 15, 16, 17, 18 and 21 September and nothing reached anyone.
+# Measured the same day: only 5 of 61 workflows carry any failure or alert step.
+#
+# It reuses hvf_web/scheduled_jobs.py, which ALREADY pulls every registered job's run stats from the
+# Actions API for the admin tab — detection was never the gap, being TOLD was. One watcher over the
+# registry beats an `if: failure()` step in 56 workflows: nobody has to remember it on a new job, and it
+# also catches a job that stopped firing, which emits no failure event to hang a step on.
+#
+# RUNS HOURLY. Often enough that a failure is known the same morning, rare enough that a state change is
+# genuinely news. It alerts only on CHANGE — entering failure, leaving failure, or going stale — so a
+# known-broken job does not mail every hour until it is ignored.
+#
+# GitHub-native `schedule:` blocks are BANNED in this repository; cron-job.org fires workflow_dispatch and
+# setup_cronjobs.py::JOBS is the authoritative registry.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Report only — send nothing and save no state.'
+        type: boolean
+        required: false
+        default: false
+      alert_ok:
+        description: 'Also notify when every job is healthy (a heartbeat).'
+        type: boolean
+        required: false
+        default: false
+      stale_after_days:
+        description: 'Flag a job whose last run is older than this many days (default 3).'
+        type: string
+        required: false
+        default: ''
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      # Reads run stats from the Actions API, and the cron-job.org key (for enabled/disabled state)
+      # comes from the encrypted Supabase secret store that db_pool bootstraps.
+      GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
+      RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      PYTHONIOENCODING:     utf-8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      # EXIT CODE IS THE POINT, not decoration: the watcher returns non-zero while anything is failing or
+      # stale, so this job goes RED too. A watcher that reports a failure and then exits 0 is one more
+      # green tick hiding a problem — which is the exact bug it was written to end.
+      - name: Check every scheduled job
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ "${{ inputs.alert_ok }}" = "true" ]; then ARGS="$ARGS --alert-ok"; fi
+          if [ -n "${{ inputs.stale_after_days }}" ]; then ARGS="$ARGS --stale-after-days ${{ inputs.stale_after_days }}"; fi
+          python run_cron_watch.py $ARGS

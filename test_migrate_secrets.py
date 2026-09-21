@@ -28,10 +28,15 @@ _CI_ONLY_EXCLUSIONS = {
     "GITLEAKS_LICENSE",  # license key for the gitleaks Action itself, trading-secret-scan.yml
     # IONOS values are consumed only by the deployment/fallback workflow. They are infrastructure
     # connection details, not application credentials and must never be copied into app_secrets.
-    "IONOS_DIR", "IONOS_HOST", "IONOS_SSH_KEY", "IONOS_USER", "IONOS_PORT",
+    "IONOS_DIR", "IONOS_HOST", "IONOS_SSH_KEY", "IONOS_USER", "IONOS_PORT", "IONOS_SITE",
     # IONOS_PORT belongs with the four above and was simply missed: every other workflow writes it as
     # `secrets.IONOS_PORT || '22'`, which this file's regex does not match, so nothing referenced it in a
     # form the check could see until trading-scanner-report-email.yml used the plain form (2026-08-23).
+    # IONOS_SITE joined them on 2026-09-21 for the same reason: it is the PUBLIC site URL
+    # (https://www.squeezescanner.cloud), used by CI only to curl the running site, and it is not an
+    # application credential. trading-hvf-report and trading-scanner-snapshot both write it as
+    # `secrets.IONOS_SITE || 'https://...'`, invisible to the regex below, until
+    # trading-winners-precompute referenced it plainly and this check went red.
 }
 
 
@@ -42,7 +47,11 @@ def _secrets_referenced_in_workflows() -> set:
             continue
         with open(os.path.join(_WORKFLOWS_DIR, fn), encoding="utf-8") as f:
             text = f.read()
-        names.update(re.findall(r"\$\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}", text))
+        # Deliberately NOT anchored on the closing braces: `${{ secrets.X || 'default' }}` is a
+        # reference too, and the old pattern could not see one. IONOS_PORT (2026-08-23) and IONOS_SITE
+        # (2026-09-21) were both hidden that way until some workflow happened to use the plain form.
+        # Measured when this was widened: both patterns find the same 40 names, so nothing new appeared.
+        names.update(re.findall(r"secrets\.([A-Za-z0-9_]+)", text))
     return names
 
 

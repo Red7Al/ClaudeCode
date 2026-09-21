@@ -230,6 +230,12 @@ JOBS = [
     # Fundamentals Precompute. ~9s x 422 carded instruments is roughly an hour, hence its own job rather
     # than another hour bolted onto the publish path.
     ("Thread Precompute",    "30 20 * * *",      "trading-thread-precompute.yml"),
+    # Alerts when any scheduled job fails, stops firing, or recovers (owner 2026-09-21: "the scheduled
+    # job for Morning Chain has failed - is this managed without my input?" -- it was not; that job had
+    # failed on five separate days unnoticed, and only 5 of 61 workflows carry any failure step).
+    # HOURLY at :05, off the busy o'clock slots. It alerts only on CHANGE, so hourly does not mean
+    # hourly mail; a known-broken job is reported once, not every pass.
+    ("Cron Watch",           "5 * * * *",        "trading-cron-watch.yml"),
     # The Fundamentals and Broker panels for the whole universe (2026-09-18). They are precomputed for the
     # same reason /api/performance is: the web host cannot build them. Both endpoints called yfinance on
     # the request thread, yfinance imports pandas -> numpy, and numpy is SIGSYS-killed on IONOS, so both
