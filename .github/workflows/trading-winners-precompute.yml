@@ -45,6 +45,13 @@ jobs:
   precompute:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # actions:read is what `gh run download` needs to reach the publish run's scanner-snapshot artifact.
+    # Stated explicitly rather than inherited: this workflow is REUSABLE and is called by
+    # trading-morning-chain.yml, so its token permissions come from the caller unless they are pinned
+    # here, and a permission that silently narrows would put this job straight back to refusing.
+    permissions:
+      contents: read
+      actions: read
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -60,6 +67,38 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -r requirements.txt
+      # THE SNAPSHOT IS AN INPUT AND A BARE RUNNER HAS NONE. hvf_web/snapshot.json is gitignored
+      # (hvf_web/.gitignore:2), so a fresh checkout has no records, and run_winners_precompute then
+      # REFUSES to store rather than write rows carrying the ticker in place of the name and no
+      # location. That refusal is correct and is why this job has failed every scheduled run since
+      # 2026-09-15 -- before the guard existed, the 2026-09-14 run "succeeded" while storing 6,444
+      # annual and 17,477 three-year rows with ZERO real names and ZERO locations, and the site served
+      # that all day. The job's own fallback was Supabase Storage, which has returned 402 since
+      # 2026-08-16 (exceed_egress_quota) and is not coming back without an account change.
+      #
+      # So take the snapshot from the publish run's artifact instead, which needs no Supabase Storage
+      # and is the same route trading-thread-precompute.yml uses. Failing loudly here is deliberate:
+      # without records this job can only refuse, so there is nothing to be gained by continuing.
+      - name: Fetch the built snapshot from the latest publish run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RUN=$(gh run list --workflow=trading-scanner-snapshot.yml --status=success \
+                  --limit 1 --json databaseId -q '.[0].databaseId')
+          test -n "$RUN" || { echo "no successful Scanner Snapshot Publish run to take a snapshot from" >&2; exit 1; }
+          echo "using scanner-snapshot from run $RUN"
+          gh run download "$RUN" -n scanner-snapshot -D /tmp/snap
+          mkdir -p hvf_web && cp /tmp/snap/snapshot.json hvf_web/snapshot.json
+          python - <<'PY'
+          import json
+          d = json.load(open('hvf_web/snapshot.json', encoding='utf-8'))
+          recs = d.get('records') or []
+          named = sum(1 for r in recs if (r.get('name') or '').strip())
+          print(f"seeded {len(recs)} records ({d.get('generated_utc')}), {named} with a name")
+          if not recs:
+              raise SystemExit("snapshot carries no records; the precompute would only refuse")
+          PY
       - name: Build and store the winners payloads
         run: |
           ARGS=""
