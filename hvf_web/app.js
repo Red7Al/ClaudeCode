@@ -128,22 +128,14 @@ function introCardFailed(img){
   if(cap)cap.innerHTML='<b style="color:var(--bear)">⚠ The example chart could not be loaded.</b> '+
     '<span class="muted">The method is described in full beside it; nothing else on this page depends on the picture.</span>';
 }
-// The instrument-detail images (price window, X post card) are rendered server-side by matplotlib, which
-// imports numpy -- and numpy is SIGSYS-killed on the IONOS host, so both endpoints 500 after ~120s
-// (ChangeRequests 2026-09-13, P-01). The <img> tags carried NO onerror and NO alt, so a dead renderer
-// rendered as blank space: the owner had to report it by eye ("it is not showing price history") because
-// the page looked like one that simply had no chart. Exactly the shape introCardFailed above was written
-// for -- the note there calls that the fourth silent failure of this kind on this site; this was the
-// fifth. The message names the failure and reassures, because no figure on the panel depends on the image.
-function detailImgFailed(img,label){
-  if(!img)return;
-  const msg=document.createElement("div");
-  msg.className="muted";
-  msg.style.cssText="padding:10px 0;font-size:12px";
-  msg.innerHTML='<b style="color:var(--bear)">⚠ '+label+' could not be rendered.</b> '+
-    'The server-side chart renderer is unavailable — every figure on this panel is unaffected.';
-  img.replaceWith(msg);
-}
+// detailImgFailed WAS HERE AND IS GONE (2026-09-21). It announced a failed server-rendered <img> on the
+// instrument detail panel, which was the right fix while those images existed: both were matplotlib
+// renders, numpy is SIGSYS-killed on IONOS, and the tags carried no onerror or alt so a dead renderer
+// showed as blank space. Neither image exists now -- the price chart became a client-drawn SVG on
+// 2026-09-14 and the X post card followed on 2026-09-21 -- so the handler had no callers left. A
+// correct, tested function that nothing calls is this repository's signature defect, so it was deleted
+// rather than left for someone to wire back to an <img> that should not come back. Both panels announce
+// their own failures now; see loadPriceChart and renderPostCard below.
 // The price chart, drawn HERE rather than fetched as a PNG (ChangeRequests 2026-09-13, P-01, option b).
 // /api/pricewin rendered it server-side with matplotlib, which imports numpy -- and numpy is SIGSYS-killed
 // on the IONOS host, so it returned 500 after ~120s on every call and no configuration fixes it. Drawing
@@ -199,15 +191,43 @@ function priceChartSvg(d,dark){
     if(p.label)s+=`<text x="${X(i).toFixed(1)}" y="${(Y(p.level)+(p.kind==="high"?-7:13)).toFixed(1)}" fill="${c}" font-size="9" text-anchor="middle">${esc(p.label)}</text>`;});
   return s+"</svg>";
 }
+// THE X POST CARD, DRAWN HERE RATHER THAN FETCHED AS A PNG (2026-09-21).
+//
+// /api/card rendered it server-side with matplotlib and has been HTTP 500 after ~120s since the IONOS
+// host began SIGSYS-killing numpy (its bundled OpenBLAS calls mbind(2); see 20260913.txt P-01). The
+// account owner ruled out BOTH pre-rendering the image and dropping it from the panel, so the remaining
+// route is the one the price chart already took: build it in the browser from data the API returns.
+//
+// It needs nothing new from the server. The card has always been a tweet-text header above the funnel
+// chart, and both halves are already on this page: the header text is part 0 of /api/thread (precomputed
+// nightly by run_thread_precompute, so no numpy on the request path), and the chart is the very SVG
+// priceChartSvg already draws for #pw. Two sources arriving independently, so each stores what it has
+// and asks to render; whichever lands second completes the card.
+let CARD_BARS=null, CARD_LEAD=null, CARD_TICKER=null;
+function renderPostCard(){
+  const box=document.getElementById("xcard"); if(!box||CARD_TICKER!==SEL)return;
+  if(CARD_BARS===null&&CARD_LEAD===null)return;                 // nothing has arrived yet
+  box.classList.remove("sqh-loading");
+  // A card with no lead tweet is not a publishable setup -- say so rather than render a bare chart that
+  // looks like the card simply lost its text.
+  if(!CARD_LEAD){box.innerHTML='<div class="muted" style="font-size:12px">(no X post card — not a publishable setup)</div>';return;}
+  const head=esc(CARD_LEAD).replace(/\n/g,"<br>");
+  const chart=CARD_BARS?priceChartSvg(CARD_BARS,!document.documentElement.classList.contains("light")):"";
+  box.innerHTML='<div style="border:1px solid var(--line);border-radius:6px;overflow:hidden">'+
+    '<div style="padding:10px 12px;font-size:12px;line-height:1.45;border-bottom:1px solid var(--line)">'+head+'</div>'+
+    (chart?'<div style="padding:6px 8px">'+chart+'</div>':'')+'</div>';
+}
 // Fetch and draw. Any failure SAYS SO -- same rule as detailImgFailed: a chart that cannot be drawn must
 // never look like a panel that simply has no chart.
 async function loadPriceChart(ticker,days){
   const box=document.getElementById("pw"); if(!box)return;
+  CARD_TICKER=ticker; CARD_BARS=null; CARD_LEAD=null;
   try{
     const r=await fetch(`/api/pricebars/${encodeURIComponent(ticker)}?days=${days}`);
     if(!r.ok)throw new Error("HTTP "+r.status);
     const j=await r.json();
     box.classList.remove("sqh-loading");
+    CARD_BARS=j; renderPostCard();
     box.innerHTML=priceChartSvg(j,!document.documentElement.classList.contains("light"));
   }catch(e){
     box.classList.remove("sqh-loading");
@@ -604,7 +624,7 @@ function showDetail(t){
     ${AUTH?`<div class="card"><h4>VolumeScore — breakout confirmation (0–12)</h4><div id="volscorebox" class="sqh-loading">⏳ Data loading…</div></div>`:''}
     <div class="card"><h4>Price — last ${days} days</h4>
       <div id="pw" class="sqh-loading">⏳ Data loading…</div></div>
-    <div class="card"><h4>X post card</h4><img loading="lazy" alt="X post card for ${disp(r.ticker)}" onerror="detailImgFailed(this,'The X post card')" src="/api/card/${r.ticker}"></div>
+    <div class="card"><h4>X post card</h4><div id="xcard" class="sqh-loading">⏳ Data loading…</div></div>
     <div class="card"><h4>Levels</h4>
       <div class="kv"><span>Now</span><b>${f2(r.current_price)}</b></div>
       <div class="kv"><span>Entry</span><b>${f2(r.entry)}</b></div>
@@ -622,9 +642,16 @@ function showDetail(t){
   fetch(`/api/thread/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("tweetbox"); if(!el||SEL!==r.ticker)return;
     el.classList.remove("sqh-loading");
-    const parts=j.parts||[]; if(!parts.length){el.textContent="(no thread — not a publishable setup)";return;}
+    const parts=j.parts||[];
+    CARD_LEAD=parts[0]||"";  renderPostCard();   // part 0 is the lead tweet — the card's header panel
+    if(!parts.length){el.textContent="(no thread — not a publishable setup)";return;}
     el.innerHTML=parts.map((p,i)=>`<div style="padding:6px 0;border-top:${i?'1px solid var(--line)':'none'}">${(p||'').replace(/</g,'&lt;').replace(/(https?:\/\/\S+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>')}</div>`).join("");
-  }).catch(()=>{const el=document.getElementById("tweetbox");if(el){el.classList.remove("sqh-loading");el.textContent="Thread unavailable.";}});
+  }).catch(()=>{const el=document.getElementById("tweetbox");if(el){el.classList.remove("sqh-loading");el.textContent="Thread unavailable.";}
+    // The card's header comes from this same call, so a failure here must ANNOUNCE itself on the card
+    // too rather than leave it spinning on "Data loading" for ever.
+    const cb=document.getElementById("xcard");
+    if(cb&&CARD_TICKER===SEL){cb.classList.remove("sqh-loading");
+      cb.innerHTML='<div class="muted" style="font-size:12px"><b style="color:var(--bear)">⚠ The X post card could not be loaded.</b></div>';}});
   fetch(`/api/fundamentals/${r.ticker}`).then(x=>x.json()).then(j=>{
     const el=document.getElementById("fundbox"); if(!el||SEL!==r.ticker)return;
     el.classList.remove("sqh-loading");

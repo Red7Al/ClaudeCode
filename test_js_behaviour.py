@@ -3711,51 +3711,65 @@ def test_the_best_settings_basis_note_renders_for_both_models():
 
 
 # ── The instrument-detail images announce their own failure ───────────────────────────────────────────
-# Both images on the detail panel are rendered server-side by matplotlib, which imports numpy -- and numpy
-# is SIGSYS-killed on the IONOS host, so both endpoints 500 after ~120s (ChangeRequests 2026-09-13, P-01).
-# The <img> tags carried no onerror and no alt, so the dead renderer rendered as BLANK SPACE and only the
-# owner's eye caught it. These two tests are the guard: the first EXECUTES the handler rather than
-# matching its text, the second ties it to the actual tags -- because a wiring check that passes while the
-# handler is detached is the same silent failure in a new costume.
-
-def test_a_failed_detail_image_says_so_instead_of_rendering_blank():
-    src = _extract("detailImgFailed")
-    preamble = textwrap.dedent("""
-        let replaced = null;
-        global.document = {createElement: () => ({style: {cssText: ""}, className: "", innerHTML: ""})};
-        const img = {replaceWith: (el) => { replaced = el; }};
-    """)
-    out = run_js(
-        preamble, src,
-        "(detailImgFailed(img,'The price chart'),"
-        " {replaced: replaced !== null, html: replaced ? replaced.innerHTML : '',"
-        "  cls: replaced ? replaced.className : ''})")
-    assert out["replaced"] is True, "a broken image must be replaced by something visible, not hidden"
-    assert "could not be rendered" in out["html"], out["html"]
-    assert "price chart" in out["html"].lower(), "the message must name WHICH image failed"
-    assert out["cls"] == "muted"
+# ── No server-rendered image is left on the detail panel ──────────────────────────────────────────────
+# Both panel images used to be matplotlib renders, and numpy is SIGSYS-killed on IONOS, so both 500ed
+# after ~120s and -- carrying no onerror and no alt -- rendered as BLANK SPACE (ChangeRequests
+# 2026-09-13, P-01). The price chart became a client-drawn SVG on 2026-09-14 and the X post card followed
+# on 2026-09-21, so the handler that announced those failures (detailImgFailed) had no callers and was
+# deleted. These tests now guard the thing that replaced it: nothing on the panel fetches a
+# server-rendered image, and the card announces its own failure.
 
 
-def test_a_missing_image_element_is_survivable():
-    """The handler must not throw if the element has gone -- an exception here would be swallowed by the
-    browser and put us straight back to a blank panel with no explanation."""
-    src = _extract("detailImgFailed")
-    out = run_js("global.document={createElement:()=>({style:{},className:'',innerHTML:''})};",
-                 src, "(detailImgFailed(null,'x'), 'survived')")
-    assert out == "survived"
-
-
-def test_the_remaining_detail_image_is_wired_to_the_handler():
-    """Only the X post card is still a server-rendered <img>. The price chart became a client-drawn SVG
-    on 2026-09-14, so /api/pricewin must be GONE from the client rather than merely unused."""
+def test_the_detail_panel_fetches_no_server_rendered_image():
+    """The whole class of bug: an <img> pointed at a matplotlib endpoint that cannot run on this host."""
     app_js = (Path(__file__).parent / "hvf_web" / "app.js").read_text(encoding="utf-8")
-    tag = next((t for t in re.findall(r"<img\b[^>]*>", app_js) if "/api/card/" in t), None)
-    assert tag, "the X post card <img> was not found at all"
-    assert "onerror=" in tag and "detailImgFailed(" in tag, \
-        f"the X post card <img> has no onerror handler, so a failed render is invisible: {tag}"
-    assert "alt=" in tag, f"the X post card <img> has no alt text: {tag}"
-    assert not re.search(r"<img\b[^>]*/api/pricewin/", app_js), \
-        "the client still requests the deleted server-rendered price chart"
+    for dead in ("/api/card/", "/api/pricewin/"):
+        assert not re.search(r"<img[^>]*" + re.escape(dead), app_js),             f"the client still requests {dead} as an image; numpy is SIGSYS-killed on IONOS so it 500s"
+
+
+def test_the_x_post_card_is_assembled_from_data_the_page_already_has():
+    """It must take its header from the PRECOMPUTED thread and its chart from the existing SVG drawer --
+    not re-fetch, and not reach for a renderer that cannot run."""
+    src = _extract("renderPostCard")
+    assert "priceChartSvg(" in src, "the card must reuse the client-side chart drawer"
+    assert "CARD_LEAD" in src, "the card header must come from the precomputed thread's lead tweet"
+
+
+def test_a_card_with_no_lead_tweet_says_so_rather_than_showing_a_bare_chart():
+    """Not every instrument is publishable -- 422 of 1,773 carry a card. An unpublishable one must read
+    as deliberate, not as a card that lost its text."""
+    src = _extract("renderPostCard")
+    preamble = textwrap.dedent("""
+        let html = null;
+        global.SEL = "ABC";
+        global.CARD_TICKER = "ABC"; global.CARD_BARS = {bars: []}; global.CARD_LEAD = "";
+        global.priceChartSvg = () => "<svg/>";
+        global.esc = s => s;
+        global.document = {documentElement: {classList: {contains: () => false}},
+                           getElementById: () => ({classList: {remove: () => {}},
+                                                   set innerHTML(v) { html = v; }})};
+    """)
+    out = run_js(preamble, src, "(renderPostCard(), html)")
+    assert "no X post card" in out, out
+    assert "<svg" not in out, "a card with no lead tweet must not render the chart alone"
+
+
+def test_the_card_renders_the_lead_tweet_above_the_chart():
+    src = _extract("renderPostCard")
+    preamble = textwrap.dedent("""
+        let html = null;
+        global.SEL = "ABC";
+        global.CARD_TICKER = "ABC"; global.CARD_BARS = {bars: []};
+        global.CARD_LEAD = "Breakout: $ABC (ABC plc).";
+        global.priceChartSvg = () => "<svg id='chart'/>";
+        global.esc = s => s;
+        global.document = {documentElement: {classList: {contains: () => false}},
+                           getElementById: () => ({classList: {remove: () => {}},
+                                                   set innerHTML(v) { html = v; }})};
+    """)
+    out = run_js(preamble, src, "(renderPostCard(), html)")
+    assert "Breakout: $ABC (ABC plc)." in out, out
+    assert out.index("Breakout") < out.index("<svg"), "the tweet header must come ABOVE the chart"
 
 
 # ── The price chart is drawn client-side ──────────────────────────────────────────────────────────────
