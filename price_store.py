@@ -217,6 +217,26 @@ def set_double_checked(ticker, bar_dates, db=None):
     return len(dates)
 
 
+def retention_cutoff(db, years=None):
+    """The date before which bars may be deleted. THE ONLY definition of that boundary.
+
+    MUST NOT USE make_interval(years => ...). That function takes an INTEGER, so the moment retention
+    became fractional (4.05 on 2026-09-20) every call raised
+    `invalid input syntax for type integer: "4.05"` -- and price_audit.py calls prune_older_than inside
+    a bare `except Exception` that logs a warning, so the nightly prune would have failed EVERY NIGHT
+    while the job stayed green. Before the change it was a working no-op; after it, a silent error.
+    Proven against the live database 2026-09-21: years=5 gives 2021-09-21, years=4.05 raises.
+
+    `('4.05' || ' years')::interval` does accept a fraction, and Postgres rounds it to 4 years 1 month,
+    i.e. slightly MORE history than asked for -- which errs towards keeping data, the safe direction,
+    and stays above the 4.0-year floor the replay needs. run_price_history_prune.py computed its own
+    cutoff this way while this function used the other form, so the two disagreed by 13 days
+    (2022-08-21 against 2022-09-03) on the same constant. One definition now, used by both.
+    """
+    y = RETENTION_YEARS if years is None else years
+    return db.run("select (current_date - (:y || ' years')::interval)::date", y=str(y))[0][0]
+
+
 def prune_older_than(years=RETENTION_YEARS, db=None):
     """Delete bars older than `years` (user 2026-06-29: keep 3y, drop the rest). Returns rows deleted."""
     own = db is None
@@ -224,9 +244,9 @@ def prune_older_than(years=RETENTION_YEARS, db=None):
         db = get_db()
     try:
         ensure_schema(db)
-        before = db.run("select count(*) from price_history "
-                        "where bar_date < (current_date - make_interval(years => :y))", y=years)[0][0]
-        db.run("delete from price_history where bar_date < (current_date - make_interval(years => :y))", y=years)
+        cutoff = retention_cutoff(db, years)
+        before = db.run("select count(*) from price_history where bar_date < :c", c=cutoff)[0][0]
+        db.run("delete from price_history where bar_date < :c", c=cutoff)
     finally:
         if own:
             db.close()

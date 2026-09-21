@@ -65,3 +65,49 @@ def test_the_floor_is_derived_from_the_real_lookback_not_a_magic_number():
         f"{LONGEST_LOOKBACK_DAYS}; raise LONGEST_LOOKBACK_DAYS and re-check retention")
     assert LONGEST_LOOKBACK_DAYS >= server._VOLSCORE_LOOKBACK_DAYS, (
         "VolumeScore's lookback now exceeds the one the floor is derived from")
+
+
+def _code_only(fn):
+    """A function's source with docstrings and comments removed.
+
+    The first version of the guard below matched the DOCSTRING that explains what not to do, and so
+    failed against perfectly correct code. A guard that reads prose is not reading the code.
+    """
+    import inspect
+    import re
+    src = re.sub(r'"""(?:.|\n)*?"""', "", inspect.getsource(fn))
+    return "\n".join(line.split("#")[0] for line in src.split("\n"))
+
+
+def test_a_fractional_retention_does_not_break_the_nightly_prune():
+    """THE BUG THIS CHANGE ALMOST SHIPPED, and it would have failed SILENTLY.
+
+    make_interval(years => ...) takes an INTEGER. The moment retention became 4.05 the nightly prune
+    raised `invalid input syntax for type integer: "4.05"` -- proven against the live database on
+    2026-09-21, where years=5 returns 2021-09-21 and years=4.05 raises. price_audit.py calls
+    prune_older_than inside a bare `except Exception` that logs a warning, so it would have failed
+    every night behind a green job: retention simply would not have been enforced, and nobody would
+    have known. Before the change it was a working no-op; after it, a silent error.
+
+    Checked as source text rather than by pruning, because the only honest live test deletes data.
+    """
+    import price_store
+    src = _code_only(price_store.retention_cutoff) + _code_only(price_store.prune_older_than)
+    assert "make_interval(years" not in src, (
+        "make_interval(years => ...) cannot take a fractional year; build the cutoff with the "
+        "(:y || ' years')::interval form, which Postgres accepts")
+    assert "years')::interval" in src, (
+        "the cutoff must be built from an interval expression that accepts a fractional year")
+
+
+def test_both_prune_paths_share_one_cutoff_definition():
+    """The nightly prune and the manual script must delete exactly the SAME rows.
+
+    They computed the boundary separately until 2026-09-21 and disagreed by 13 days on the identical
+    constant once it went fractional -- 2022-08-21 from the script against 2022-09-03 from
+    price_store. "I pruned it" means nothing when two prunes mean two different things.
+    """
+    import run_price_history_prune as rp
+    assert "price_store.retention_cutoff" in _code_only(rp._cutoff), (
+        "run_price_history_prune must delegate to price_store.retention_cutoff rather than computing "
+        "its own boundary from the same constant")

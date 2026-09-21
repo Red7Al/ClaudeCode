@@ -46,10 +46,17 @@ BATCH = 25_000
 
 
 def _cutoff(db):
+    """Delegates to price_store.retention_cutoff -- the ONE definition of the boundary.
+
+    This used to compute its own, with the same SQL price_store did NOT use, so the two disagreed by
+    13 days on the identical constant (2022-08-21 here against 2022-09-03 there) once retention became
+    fractional. Two implementations of one fact is the defect this repository keeps producing; the
+    nightly prune and this script must delete exactly the same rows or "I pruned it" means nothing.
+    """
     import config
+    import price_store
     years = float(getattr(config, "PRICE_HISTORY_RETENTION_YEARS", 5))
-    row = db.run("select (current_date - (:y || ' years')::interval)::date", y=str(years))
-    return row[0][0], years
+    return price_store.retention_cutoff(db, years), years
 
 
 def main() -> int:
