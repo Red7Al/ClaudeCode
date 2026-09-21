@@ -4263,3 +4263,50 @@ def test_the_funnel_follows_label_order_not_payload_order():
     funnel = re.findall(r"<polyline[^>]*>", out)[1]
     ys = [float(pt.split(",")[1]) for pt in re.search(r'points="([^"]+)"', funnel).group(1).split()]
     assert ys == sorted(ys), f"funnel drawn in payload order, not H1->H3: {ys}"
+
+
+# ── "Funnel" is not a word the user should see ────────────────────────────────────────────────────────
+# Owner 2026-09-19: rename "FUNNEL" to "SQUEEZE" throughout the user-visible text. The instruction was
+# explicitly USER-FACING STRINGS ONLY -- element ids (instr-funnel-wrap), JS identifiers (INSTR_FUNNEL,
+# paintInstrFunnel), code comments, server docstrings and docs/SQUEEZE_METHOD.md all keep the word,
+# because renaming those obscures the record and changes nothing anyone reads on the site.
+#
+# Two of the three that needed changing were easy to miss by eye: the empty-table message lives in a
+# template literal in app.js, and "The funnel's quality score" was inside a title= TOOLTIP, which is
+# rendered to the user even though it never appears as page text.
+
+_FUNNEL_IDENTIFIERS = ("instr-funnel", "instr_funnel")
+
+
+def test_no_user_visible_text_says_funnel():
+    """Rendered text and tooltips only -- identifiers and comments are deliberately left alone."""
+    root = Path(__file__).parent / "hvf_web"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    app = (root / "app.js").read_text(encoding="utf-8")
+    offenders = []
+
+    # HTML text nodes, with comments stripped first so the recorded request is not flagged.
+    for chunk in re.findall(r">([^<>]+)<", re.sub(r"<!--.*?-->", "", html, flags=re.S)):
+        if "funnel" in chunk.lower():
+            offenders.append(("index.html text", " ".join(chunk.split())[:70]))
+
+    # Tooltips are visible too -- this is exactly how one survived the first sweep.
+    for attr in re.findall(r'title="([^"]+)"', html):
+        if "funnel" in attr.lower():
+            offenders.append(("index.html title", " ".join(attr.split())[:70]))
+
+    # app.js: any non-comment line mentioning the word, minus the element ids it legitimately uses.
+    for line in app.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("//") or "funnel" not in line.lower():
+            continue
+        cleaned = line
+        for ident in _FUNNEL_IDENTIFIERS:
+            cleaned = re.sub(ident, "", cleaned, flags=re.I)
+        # Identifiers proper are CamelCase/UPPER; user text is lower-case "funnel" inside a string.
+        cleaned = re.sub(r"INSTR_FUNNEL|paintInstrFunnel", "", cleaned)
+        if "funnel" in cleaned.lower():
+            offenders.append(("app.js", " ".join(stripped.split())[:70]))
+
+    assert not offenders, ("user-visible text still says 'funnel' (rename it to 'squeeze'): "
+                           + "; ".join(f"{where}: {text}" for where, text in offenders))

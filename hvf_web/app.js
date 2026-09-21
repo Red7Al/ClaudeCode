@@ -4494,7 +4494,7 @@ function paintInstrFunnel(){
     <td>${r.quality??"—"}</td><td>${r.rr??"—"}</td><td>${rvolCell(r.rvol)}</td><td>${volScoreCell(r.volume_score)}</td>
     <td><b style="color:${_stcol(r.outcome)}">${r.outcome||""}</b></td><td>${r.outcome_date||"—"}</td>
     <td>${ob(r.return_pct!=null?`<b style="color:${r.return_pct>0?'var(--bull)':r.return_pct<0?'var(--bear)':'var(--muted)'}">${r.return_pct>0?"+":""}${r.return_pct}%</b>`:"—")}</td></tr>`).join("")
-    ||`<tr><td colspan="12" class="empty">No funnel history for this selection.</td></tr>`;
+    ||`<tr><td colspan="12" class="empty">No squeeze history for this selection.</td></tr>`;
 }
 // ── Squeeze History (Admin) (user 2026-07-18) — squeeze lifecycle table ───────────────────────────────
 let SQH=null, sqhSortK="triggered_date", sqhSortDir=-1;   // default: Triggered date descending (user 2026-08-01); header click changes it
