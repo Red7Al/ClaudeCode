@@ -384,3 +384,125 @@ def test_the_break_bar_label_list_has_exactly_one_definition():
 
     assert ac.VOLUME_TESTS is order_filter_audit.BREAK_BAR_LABELS, \
         "VOLUME_TESTS must BE the audit's list, not a copy that matches it today"
+
+
+# ------------------------------------------------------------------------------------------------------
+# A REFUSED CLOSE MUST BE COUNTED AND MUST GO RED (2026-09-25)
+#
+# WHY THESE EXIST. MEASURED 2026-09-25 from the live DB: all 7 closes the auto-closer has ever attempted
+# were rejected by IG with the identical HTTP 400 validation.mutual-exclusive-value.request, and ZERO have
+# ever succeeded. The rejections were invisible -- `closed` counted only successes, `skipped` is set from
+# the candidate filter before any close is attempted, so a refused close incremented NOTHING and the pass
+# returned {'to_close': 1, 'closed': 0, 'skipped': 0} and exited 0. All 96 Closing Window runs on
+# 2026-09-24 reported success while the mechanism was totally broken. The tests above prove the module
+# does not close the WRONG thing; these prove it admits when it closed NOTHING.
+# ------------------------------------------------------------------------------------------------------
+
+def test_the_exit_code_is_zero_only_when_nothing_was_refused():
+    assert ac.exit_code({"closed": 1, "failed": 0}) == 0
+    assert ac.exit_code({"to_close": 0, "closed": 0, "failed": 0}) == 0, "a quiet pass is not a failure"
+
+
+def test_a_refused_close_exits_non_zero():
+    """THE DVN CASE. to_close 1, closed 0 -- the rule said close, IG refused, the position is still open."""
+    assert ac.exit_code({"to_close": 1, "closed": 0, "failed": 1}) == 1
+
+
+def test_a_pass_that_died_exits_non_zero():
+    assert ac.exit_code({"closed": 0, "failed": 0, "error": "boom"}) == 1
+
+
+def test_a_position_whose_intent_could_not_be_recorded_exits_non_zero():
+    """Recording the intent is what stops a position being closed with no audit trail, so failing to
+    record it is a failure of the mechanism, not a quiet skip."""
+    assert ac.exit_code({"closed": 0, "failed": 0, "not_recorded": 1}) == 1
+
+
+def test_the_safety_gates_are_not_failures():
+    """A position that closed itself before we got there, and a market IG will not deal, are the gates
+    working. Treating them as failures would make the step red every holiday and train it to be ignored --
+    the same noise defect fixed in the cron watcher the same day."""
+    assert ac.exit_code({"to_close": 2, "closed": 0, "failed": 0, "gone": 1, "not_tradeable": 1}) == 0
+
+
+def _drive_run(monkeypatch, close_returns, outcome_detail=""):
+    """Run the real run() with apply=True against a single candidate, mocking only the outside world.
+
+    Returns the summary. The point is to drive the BROKEN state -- a close that IG refuses -- because a
+    check only ever exercised against a healthy system has not been shown to detect anything (this
+    module's own words, auto_close_failed_opens.py:100-101).
+    """
+    import contextlib
+    import threading
+    import ig_shim
+    import market_hours
+    import db_pool
+    from hvf_web import web_users as _wu
+
+    deal = "DIAAAAR7H4R6QAQ"
+    epic = "SB.D.DVN.DAILY.IP"
+    recorded = []
+
+    monkeypatch.setattr(_wu, "get_settings", lambda u: {"limits": {ac.SETTING: "1"}})
+    monkeypatch.setattr(ig_shim, "session_for", lambda u: object())
+    monkeypatch.setattr(ig_shim, "_IG_LOCK", threading.RLock(), raising=False)
+    monkeypatch.setattr(ig_shim, "acting_session",
+                        lambda u=None: contextlib.nullcontext(), raising=False)
+    monkeypatch.setattr(ig_shim, "get_open_positions", lambda: [{
+        "market": {"epic": epic, "instrumentName": "Devon Energy"},
+        "position": {"dealId": deal, "direction": "BUY", "size": 0.04,
+                     "createdDateUTC": "2026-09-24T14:00:00", "level": 30.0, "currency": "USD"}}])
+    monkeypatch.setattr(ig_shim, "close_trade", lambda d, reason=None: close_returns)
+    monkeypatch.setattr(ig_shim, "last_close_outcome", lambda: outcome_detail, raising=False)
+    monkeypatch.setattr(market_hours, "is_tradeable_now", lambda e: True)
+
+    class _DB:
+        def run(self, sql, **kw):
+            return [["DVN", epic]] if "epic_lookup" in sql else []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(db_pool, "get_db", lambda *a, **k: _DB())
+    monkeypatch.setattr(ac, "ensure_schema", lambda db: None)
+    monkeypatch.setattr(ac, "record",
+                        lambda db, u, r, p, c, outcome: recorded.append(outcome))
+    # The candidate filter and its window gate are covered by the tests above; this drives what happens
+    # AFTER a candidate is chosen, so it is supplied directly.
+    monkeypatch.setattr(ac, "candidates", lambda user, on_date, positions, **k: (
+        [{"ticker": "DVN", "deal_id": deal, "epic": epic, "direction": "BUY", "size": 0.04,
+          "volume_breaches": ["VolumeScore 3.0 < 4.0"]}], []))
+
+    summary = ac.run(user="owner", on_date="2026-09-24", apply=True)
+    return summary, recorded
+
+
+def test_a_close_that_ig_refuses_is_counted_as_failed_not_as_nothing(monkeypatch):
+    """REPRODUCES 2026-09-24 EXACTLY. close_trade returns False on an HTTP error -- it logs and returns,
+    it does not raise -- so the old `if ok:` with no else left every counter at zero."""
+    summary, recorded = _drive_run(monkeypatch, close_returns=False,
+                                   outcome_detail={"closed": False, "reason": "IG HTTP 400"})
+    assert summary["to_close"] == 1
+    assert summary["closed"] == 0
+    assert summary["failed"] == 1, "a refused close must be counted somewhere"
+    assert summary["failures"] and "DVN" in summary["failures"][0]
+    assert ac.exit_code(summary) == 1, "the run must go red"
+    assert any("not_confirmed" in str(o) for o in recorded), "the outcome must reach the audit table"
+
+
+def test_a_close_that_succeeds_is_counted_and_exits_zero(monkeypatch):
+    """The other half: once the payload is fixed, a real close must report green and count as closed."""
+    summary, _ = _drive_run(monkeypatch, close_returns=True)
+    assert summary["closed"] == 1
+    assert summary["failed"] == 0
+    assert ac.exit_code(summary) == 0
+
+
+def test_every_candidate_lands_in_exactly_one_bucket(monkeypatch):
+    """THE INVARIANT. to_close must reconcile against what actually happened to each candidate, so no
+    future branch can silently drop one the way the rejection path did."""
+    for returns in (True, False):
+        summary, _ = _drive_run(monkeypatch, close_returns=returns)
+        accounted = (summary["closed"] + summary["failed"] + summary["gone"]
+                     + summary["not_tradeable"] + summary["not_recorded"])
+        assert accounted == summary["to_close"], f"unaccounted candidate with close_trade={returns}"

@@ -209,8 +209,16 @@ def run(user=None, on_date=None, apply=False, require_window=True, now=None, win
     if apply and not require_window:
         raise ValueError("require_window=False cannot be combined with apply=True: the closing-window "
                          "gate is the safety property, not a convenience")
+    # EVERY ATTEMPT LANDS IN EXACTLY ONE OF THESE COUNTERS, and that is the point. Until 2026-09-25 a
+    # close that IG REJECTED incremented nothing at all: `closed` counted only successes, `skipped` is set
+    # from the candidate filter before any close is attempted, and there was no third bucket. MEASURED that
+    # day, the 2026-09-24 pass over DVN returned {'to_close': 1, 'closed': 0, 'skipped': 0} and exited 0.
+    # All 7 closes the auto-closer has ever attempted were rejected 400 by IG and every one of the 96 runs
+    # that day reported success. `to_close` must reconcile against what happened to each candidate --
+    # test_auto_close_failed_opens.py asserts that invariant.
     summary = {"date": None, "opened_today": 0, "to_close": 0, "closed": 0, "skipped": 0,
-               "enabled": False, "applied": bool(apply), "rows": []}
+               "failed": 0, "gone": 0, "not_tradeable": 0, "not_recorded": 0,
+               "enabled": False, "applied": bool(apply), "rows": [], "failures": []}
     try:
         from hvf_web import server, web_users as _wu
         import ig_shim
@@ -284,6 +292,7 @@ def run(user=None, on_date=None, apply=False, require_window=True, now=None, win
                     deal = str(r.get("deal_id") or "")
                     if deal not in live:                     # re-read: never close on a stale view
                         record(db, user, r, None, None, "gone_before_close")
+                        summary["gone"] += 1
                         continue
                     # IG's own verdict on whether this market is dealable, asked immediately before the
                     # close. The derived timetable models neither public holidays nor half-days nor an IG
@@ -293,6 +302,7 @@ def run(user=None, on_date=None, apply=False, require_window=True, now=None, win
                     if not market_hours.is_tradeable_now(r.get("epic") or ""):
                         log.warning("IG will not deal %s right now; leaving it open", r.get("ticker"))
                         record(db, user, r, None, None, "not_tradeable_at_close")
+                        summary["not_tradeable"] += 1
                         continue
                     profit, currency = priced.get(deal, (None, None))
                     # Written BEFORE the close, updated after. If the broker call succeeds and the audit
@@ -304,6 +314,7 @@ def run(user=None, on_date=None, apply=False, require_window=True, now=None, win
                     except Exception as exc:
                         log.error("could not record the intent to close %s (%s); NOT closing it",
                                   r.get("ticker"), exc)
+                        summary["not_recorded"] += 1
                         continue
                     try:
                         # The same call the confirmed web close uses, with its own reason so this
@@ -313,6 +324,8 @@ def run(user=None, on_date=None, apply=False, require_window=True, now=None, win
                     except Exception as exc:
                         log.error("close failed for %s: %s", r.get("ticker"), exc)
                         record(db, user, r, profit, currency, f"failed: {exc}"[:200])
+                        summary["failed"] += 1
+                        summary["failures"].append(f"{r.get('ticker')} ({deal}): {exc}"[:300])
                         continue
                     try:
                         record(db, user, r, profit, currency,
@@ -324,11 +337,41 @@ def run(user=None, on_date=None, apply=False, require_window=True, now=None, win
                         summary["closed"] += 1
                         log.info("closed %s (%s): %s", r.get("ticker"), deal,
                                  "; ".join(r.get("volume_breaches") or []))
+                    else:
+                        # THE BRANCH THAT WAS MISSING. close_trade returns False on every rejection --
+                        # it never raises for an HTTP error, it logs and returns False -- so without this
+                        # `else` a rejected close incremented no counter and the pass looked like a
+                        # no-op. The rule said close, the broker refused, and the position is still open:
+                        # that is a failure of the mechanism and must read as one.
+                        summary["failed"] += 1
+                        summary["failures"].append(
+                            f"{r.get('ticker')} ({deal}): {detail or 'IG did not confirm the close'}"[:300])
+                        log.error("FAILED to close %s (%s): %s — the position is STILL OPEN",
+                                  r.get("ticker"), deal, detail or "IG did not confirm the close")
         finally:
             db.close()
     except Exception as exc:
         log.error("auto-close pass failed: %s", exc)
+        # Recorded, not just logged: the caller decides the exit code from the summary, and a pass that
+        # died half way through is not a pass that found nothing to do.
+        summary["error"] = str(exc)[:300]
     return summary
+
+
+def exit_code(summary: dict) -> int:
+    """0 only when nothing was asked of the broker that the broker refused.
+
+    A SEPARATE FUNCTION SO IT CAN BE TESTED. The old code had no exit logic at all -- `__main__` was a bare
+    print() -- so the process exited 0 whatever happened, and MEASURED on 2026-09-24 all 96 Closing Window
+    runs reported success while every close IG was asked for came back HTTP 400.
+
+    A refused close, a pass that died, and a position we could not even record the intent for are all
+    failures of the mechanism: the rule said close, and the position is still open. `gone` and
+    `not_tradeable` are NOT failures -- those are the safety gates working as designed, and a position that
+    closed itself or a market IG will not deal is not a broken auto-closer.
+    """
+    return 1 if (summary.get("failed") or summary.get("error")
+                 or summary.get("not_recorded")) else 0
 
 
 def _profit(pd, mk):
@@ -355,4 +398,14 @@ if __name__ == "__main__":
     ap.add_argument("--date", help="the opening date to check (default: today)")
     ap.add_argument("--apply", action="store_true", help="actually close; otherwise dry run")
     a = ap.parse_args()
-    print(run(user=a.user, on_date=a.date, apply=a.apply))
+    _summary = run(user=a.user, on_date=a.date, apply=a.apply)
+    print(_summary)
+    # EXIT NON-ZERO WHEN A CLOSE WAS REFUSED, so the run goes red. Until 2026-09-25 this was a bare
+    # print(): the process always exited 0, so all 96 of 2026-09-24's Closing Window runs reported success
+    # while every close IG was asked for came back 400. A step that cannot do the one thing it exists to do
+    # must not report green -- the same argument run_cron_watch.py makes for its own exit code.
+    #
+    # DELIBERATELY NO ALERT FROM HERE. This job runs every 10 minutes through each closing window, so a
+    # position that keeps failing would email on every pass -- the exact noise defect fixed the same day in
+    # the cron watcher. Going red is enough: the watcher sees the failed run and alerts ONCE, on change.
+    raise SystemExit(exit_code(_summary))
