@@ -308,26 +308,19 @@ def _cron_to_schedule(cron: str) -> dict:
     Supports single values, '*', comma lists, ranges (a-b) and steps (*/n).
     wdays use 0=Sunday..6=Saturday (same as cron). Verified against the live
     cron-job.org API 2026-06-07 (the old cronExpression payload returned HTTP 500).
+
+    The field expander moved to cron_spec.py on 2026-09-25 (unchanged in behaviour —
+    test_cron_spec.py asserts this function's output is identical for every expression
+    in JOBS). It was lifted out because the scheduled-job watcher needs the firing
+    INTERVAL of the same expression, and a second cron parser is how this repository's
+    recurring "one fact, several readings of it" defect starts. The [-1] "every"
+    sentinel stays here: it is this API's convention, not cron's.
     """
     minute, hour, mday, month, wday = cron.split()
+    from cron_spec import expand_field
 
     def parse(field: str, lo: int, hi: int) -> list:
-        if field == "*":
-            return [-1]
-        vals = set()
-        for part in field.split(","):
-            step = 1
-            base = part
-            if "/" in part:
-                base, s = part.split("/"); step = int(s)
-            if base == "*":
-                start, end = lo, hi
-            elif "-" in base:
-                a, b = base.split("-"); start, end = int(a), int(b)
-            else:
-                start = end = int(base)
-            vals.update(range(start, end + 1, step))
-        return sorted(vals)
+        return [-1] if field == "*" else expand_field(field, lo, hi)
 
     return {
         "timezone":  "UTC",

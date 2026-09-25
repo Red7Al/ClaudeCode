@@ -24,12 +24,28 @@ That needs memory, so the last seen status per job is kept in web_json_store und
 DELIBERATELY NOISY ONLY ON CHANGE. It alerts when a job ENTERS failure and when it LEAVES failure, not
 on every pass over a job that is still broken -- an alert that arrives every thirty minutes about a
 known failure is one people filter, and then the next real one is filtered too.
+
+AND THAT IS EXACTLY HOW IT WENT WRONG (fixed 2026-09-25, owner: "scheduled jobs are failing so often").
+Two defects, both of them in the staleness check rather than in anything it watched:
+
+  1. ONE FLAT THRESHOLD FOR EVERY SCHEDULE. Age was compared against 3 days regardless of how often the
+     job is meant to run. MEASURED: 19 of the 38 registered jobs normally go 3 days or more between runs,
+     so half the registry was eligible to be reported stale while perfectly healthy. Five weekly Sunday
+     jobs were reported every Thursday through Saturday. The threshold now comes from the job's own cron
+     interval -- see cron_spec.stale_after_days.
+  2. THE STALE BRANCH IGNORED THE RULE THE PARAGRAPH ABOVE SETS OUT. `newly_failing` and `recovered` were
+     change-gated; `stale` alerted on every pass. Combined with (1) and an hourly schedule, MEASURED over
+     the 31 hours to 2026-09-25T19:20Z: 31 runs, 31 failures, 31 emails, every one of them about five
+     healthy jobs. The real finding in the same report -- Trading State Audit genuinely failing -- was
+     buried underneath, which is precisely the outcome this docstring warned about.
 """
 
 import argparse
 import logging
 import os
 import time
+
+import cron_spec
 
 log = logging.getLogger("cron_watch")
 
@@ -95,22 +111,31 @@ def _enabled_titles():
         return None
 
 
-def _state() -> dict:
-    """Last seen status per job title. {} when unavailable -- a missing state must not stop the alert."""
+def _load_doc() -> dict:
     try:
         import web_store
-        doc = web_store.load_json_store(STATE_KEY) or {}
-        return doc.get("statuses") or {}
+        return web_store.load_json_store(STATE_KEY) or {}
     except Exception as exc:
         log.warning("could not read %s (%s); treating every job as newly seen", STATE_KEY, exc)
         return {}
 
 
-def _save_state(statuses: dict) -> bool:
+def _state() -> dict:
+    """Last seen status per job title. {} when unavailable -- a missing state must not stop the alert."""
+    return _load_doc().get("statuses") or {}
+
+
+def _stale_titles() -> set:
+    """Titles that were already reported stale last run, so we do not report them again every hour."""
+    return set(_load_doc().get("stale") or [])
+
+
+def _save_state(statuses: dict, stale: set = None) -> bool:
     try:
         import web_store
         return bool(web_store.save_json_store(
-            STATE_KEY, {"built_at": time.time(), "statuses": statuses}))
+            STATE_KEY, {"built_at": time.time(), "statuses": statuses,
+                        "stale": sorted(stale or ())}))
     except Exception as exc:
         log.error("could not save %s: %s", STATE_KEY, exc)
         return False
@@ -132,7 +157,7 @@ def _notify(subject: str, body: str) -> None:
         log.error("email alert failed: %s", exc)
 
 
-def check(dry_run: bool = False, alert_ok: bool = False, stale_after_days: float = 3.0) -> int:
+def check(dry_run: bool = False, alert_ok: bool = False, stale_after_days: float = None) -> int:
     """Compare every registered job's last run against what we saw last time.
 
     Returns the number of jobs CURRENTLY failing, so the watcher's own run goes red while anything is
@@ -147,7 +172,9 @@ def check(dry_run: bool = False, alert_ok: bool = False, stale_after_days: float
 
     enabled = _enabled_titles()
     previous, now = _state(), {}
+    was_stale = _stale_titles()
     newly_failing, recovered, still_failing, stale = [], [], [], []
+    stale_now, newly_stale = set(), []
     skipped = 0
 
     for j in jobs:
@@ -170,15 +197,30 @@ def check(dry_run: bool = False, alert_ok: bool = False, stale_after_days: float
         # reported its last execution as 2026-09-18, having skipped Friday, while its last GitHub
         # conclusion sat there looking like ordinary news. Age is therefore checked SEPARATELY from
         # status: a stale success is not a success.
+        #
+        # THE THRESHOLD COMES FROM THE JOB'S OWN SCHEDULE, not from one flat number. A flat 3 days was
+        # used until 2026-09-25, and MEASURED that day: 19 of the 38 registered jobs normally go 3 days
+        # or more between runs, so half the registry could be called stale while perfectly healthy. Five
+        # weekly Sunday jobs were, every Thursday to Saturday -- 31 consecutive red runs and 31 emails in
+        # the 31 hours before this was fixed. A weekly job is stale at 3 days by construction.
         age_days = _age_days(j.get("last_time"))
-        if age_days is not None and age_days > stale_after_days:
-            stale.append(f"{title} — last ran {age_days:.1f} days ago "
-                         f"({j.get('last_time')}), schedule '{j.get('cron') or '?'}'")
+        limit = (stale_after_days if stale_after_days is not None
+                 else cron_spec.stale_after_days(j.get("cron") or ""))
+        if age_days is not None and age_days > limit:
+            stale_now.add(title)
+            line = (f"{title} — last ran {age_days:.1f} days ago ({j.get('last_time')}), "
+                    f"schedule '{j.get('cron') or '?'}' allows {limit:.1f}")
+            stale.append(line)
+            # Change-gated for the same reason `still_failing` is: the docstring above promises this
+            # watcher is "deliberately noisy only on change", and the stale branch was the one place
+            # that broke that promise, alerting on every pass over a known-stale job.
+            if title not in was_stale:
+                newly_stale.append(line)
 
     log.info("%d jobs checked (%d skipped as disabled): %d newly failing, %d recovered, "
-             "%d still failing, %d stale",
+             "%d still failing, %d stale (%d newly)",
              len(jobs) - skipped, skipped, len(newly_failing), len(recovered),
-             len(still_failing), len(stale))
+             len(still_failing), len(stale), len(newly_stale))
     for line in newly_failing + recovered + still_failing + stale:
         log.info("  %s", line)
 
@@ -190,16 +232,18 @@ def check(dry_run: bool = False, alert_ok: bool = False, stale_after_days: float
         if recovered:
             _notify(f"✅ {len(recovered)} scheduled job(s) RECOVERED",
                     "Back to success after failing:\n\n" + "\n".join(recovered))
-        if stale:
-            _notify(f"⚠ {len(stale)} scheduled job(s) have STOPPED RUNNING",
-                    "These have not run recently enough for their schedule. A job that stops firing "
+        if newly_stale:
+            _notify(f"⚠ {len(newly_stale)} scheduled job(s) have STOPPED RUNNING",
+                    "These have not run recently enough for their own schedule. A job that stops firing "
                     "emits no failure at all, so nothing else notices — this is the shape that hid an "
-                    "expired GH_PAT for eight weeks:\n\n" + "\n".join(stale))
+                    "expired GH_PAT for eight weeks:\n\n" + "\n".join(newly_stale)
+                    + (f"\n\nStill stale from before:\n" + "\n".join(
+                        l for l in stale if l not in newly_stale) if len(stale) > len(newly_stale) else ""))
         if alert_ok and not (newly_failing or recovered or still_failing or stale):
             _notify("✅ All scheduled jobs healthy", f"{len(jobs)} jobs, none failing.")
         # Save AFTER alerting: if the alert raises, the next run must still see the transition rather
         # than having quietly recorded it as already reported.
-        _save_state(now)
+        _save_state(now, stale_now)
 
     return len(newly_failing) + len(still_failing) + len(stale)
 
@@ -209,8 +253,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true", help="report only; send nothing, save nothing")
     ap.add_argument("--alert-ok", action="store_true", help="also notify when everything is healthy")
-    ap.add_argument("--stale-after-days", type=float, default=3.0,
-                    help="flag a job whose last run is older than this (default 3)")
+    ap.add_argument("--stale-after-days", type=float, default=None,
+                    help="override the per-schedule staleness threshold with one flat value for every "
+                         "job (default: derive it from each job's own cron interval)")
     a = ap.parse_args()
     failing = check(dry_run=a.dry_run, alert_ok=a.alert_ok, stale_after_days=a.stale_after_days)
     if failing:
