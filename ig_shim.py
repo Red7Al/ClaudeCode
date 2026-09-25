@@ -1879,14 +1879,23 @@ def close_trade(deal_id: str, reason: str = "MANUAL") -> bool:
     size      = pos["position"]["size"]
     close_dir = "SELL" if direction == "BUY" else "BUY"
 
+    # DEAL ID *OR* EPIC+EXPIRY, NEVER BOTH. IG's DELETE /positions/otc identifies the position one way or
+    # the other and rejects a body carrying both with HTTP 400 validation.mutual-exclusive-value.request.
+    # This body sent dealId AND epic AND expiry together from the initial commit (29f33b1, 2026-06-01)
+    # until 2026-09-25, so it had NEVER worked. MEASURED from the live DB on the day it was found: all 7
+    # closes the auto-closer had ever attempted carried that identical 400 and none had ever succeeded --
+    # 8002.T, DVN, AKE.PA, ARM, INTC and HLMA.L twice, back to 2026-09-17 -- and trade_log held 42 closes
+    # with not one from AUTO_VOLUME_TEST_FAILED or WEB_USER_CONFIRMED. It is the measured form of the
+    # AGENTS.md note that "the auto-closer ran 300 green passes and closed nothing".
+    #
+    # The dealId is the precise identifier and is what every caller already has, so that is the half kept;
+    # epic is still read above for the log line, which is why it stays a local.
     body = {
         "dealId":      deal_id,
-        "epic":        epic,
         "direction":   close_dir,
         "size":        str(size),
         "orderType":   "MARKET",
         "timeInForce": "FILL_OR_KILL",
-        "expiry":      "DFB",
     }
 
     log.info(f"Closing position {deal_id} ({direction} {size} x {epic})")
