@@ -128,6 +128,19 @@ The engagement before this one ended over unverified claims, so this is not deco
 - Browser timings taken in a **background tab are worthless** — Chrome deprioritises the renderer there.
   Confirm `document.visibilityState === "visible"` before and after any measurement, and discard the rest.
 - When evidence contradicts the user's premise, stop and say so. Do not act and footnote it.
+- **Do not infer, assume, presume or guess** (owner, 2026-09-25). A correctly-labelled inference is still
+  the wrong answer when the thing was measurable — go and measure it, or say it is unknown.
+- **Never type an identifier you have not read from output** — a run ID, deal ID, table name, line number.
+  On 2026-09-25 a plausible-looking GitHub run ID was invented rather than looked up; it 404'd, which was
+  luck. A fabricated ID that happens to resolve is a wrong answer nobody can see is wrong.
+- **Check the apparatus before trusting the measurement.** Two failures on 2026-09-25: an exit code read
+  from `tail` instead of pytest (see "Running the tests"), and a "baseline" run whose `git stash push` had
+  silently aborted on an untracked pathspec, so it measured the new code. Assert the setup happened.
+- **Prove a new test fails against the old code before shipping it.** A test written after the fix
+  usually just describes what the code now does. Stash the fix, watch it go red, restore.
+- **A correction needs the same proof as the claim it corrects.** On 2026-09-25 a sound finding was
+  retracted twice because `volume_breaches` and `durable_breaches` were read as contradictory when they
+  are complementary. Reflexive self-correction is not rigour; it puts doubt on correct work.
 
 ## Constraints worth knowing before you change anything
 
