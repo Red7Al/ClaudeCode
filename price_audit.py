@@ -29,6 +29,7 @@
 
 import argparse
 import logging
+import os
 import time
 from datetime import datetime, timezone, timedelta
 
@@ -49,6 +50,31 @@ PER_TICKER_PAUSE_S = 0.0        # raise if yfinance starts throttling
 # double_checked; disagreeing bars are overwritten with the IG value (rescaled to the stored units) and
 # re-sourced 'IG'. Skip once the allowance runs low so a daily audit never exhausts it.
 IG_VERIFY_DAYS = 7
+
+# A SELF-IMPOSED DEADLINE, so an overrunning pass stops itself instead of being killed.
+#
+# WHY (measured 2026-09-26). The Morning Chain's price refresh is capped at 90 minutes
+# (trading-price-refresh.yml). On BOTH Saturdays in the fetched history -- 2026-09-19 and 2026-09-26 --
+# it hit that cap and GitHub killed it, which reports as "cancelled", and all five downstream jobs in the
+# chain were skipped: the HVF report (and with it instrument_metrics.record_daily, so the Scanner's
+# RVOL/VWAP/ATR columns went blank), the scanner email, the winners precompute, the best-settings audit
+# and HVF orders. ONE slow pass took out six jobs.
+#
+# It was not hung. Measured from its own progress lines, it reached 1475 of 1773 in 80 minutes -- 3.25
+# s/ticker against 0.65-1.0 on a weekday -- and needed roughly 16 more minutes. The cause is the IG
+# cross-check: at the identical point in the run, Friday 2026-09-25 had made 5 IG fixes in 17.3 minutes
+# and Saturday 2026-09-26 had made 4,938 in 79.6. Every weekday run in price_audit_log records "IG fixes
+# 5" or 6; the Saturday 23:00 run records 1,069. Something about a non-trading day makes the YF-vs-IG
+# comparison disagree on almost every ticker, and each disagreement is a write.
+#
+# THIS DOES NOT FIX THAT, and deliberately so: whether those Saturday "corrections" are right or wrong is
+# a data-integrity question that has not been answered, and the cross-check exists because real phantom
+# LSE prints once cost a missed HVF. What this does is stop a slow pass from destroying the rest of the
+# chain, and make the truncation auditable -- a killed run wrote thousands of bars and left NO row in
+# price_audit_log at all, because the insert only runs after the loop.
+#
+# 75 minutes leaves 15 inside the 90-minute cap for the prune, the audit-log write and the Slack summary.
+MAX_SECONDS = int(os.environ.get("PRICE_AUDIT_MAX_SECONDS") or 4500)
 IG_MIN_REMAINING = 300
 IG_SANITY_MAX_DRIFT_PCT = 50    # after unit-rescaling, a still-huge gap = epic/unit mismatch -> don't corrupt
 
@@ -187,7 +213,7 @@ def _ig_verify(ticker, db):
     return corrected, dc, remaining
 
 
-def run(mode, window_days, source, tickers=None, slack=False, use_ig=None):
+def run(mode, window_days, source, tickers=None, slack=False, use_ig=None, max_seconds=None):
     t0 = time.time()
     uni = _universe()
     if tickers:
@@ -200,12 +226,22 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None):
     total = len(uni)
     db = get_db()
     tot_written = tot_disc = checked = ig_corrected = ig_dc = pruned = 0
+    stopped_early = 0
     max_drift = 0.0
     ig_ok = use_ig
     try:
         price_store.ensure_schema(db)
         _ensure_audit_log(db)
+        budget = MAX_SECONDS if max_seconds is None else max_seconds
         for i, (tk, ysym) in enumerate(uni.items(), 1):
+            # Checked BEFORE the work, not after, so the budget bounds when the last ticker STARTS.
+            if budget and (time.time() - t0) > budget:
+                stopped_early = i - 1
+                log.error("TIME BUDGET of %ds reached after %d/%d instruments - stopping cleanly so the "
+                          "rest of the Morning Chain still runs. The remaining %d keep their existing "
+                          "bars; the next pass picks them up.", budget, stopped_early, total,
+                          total - stopped_early)
+                break
             w, d, md = audit_ticker(tk, ysym, window_days, source, db)
             checked += 1
             tot_written += w
@@ -232,6 +268,11 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None):
 
         dur = time.time() - t0
         notes = f"{checked} checked; IG fixes {ig_corrected}; double-checked {ig_dc}; pruned {pruned}"
+        if stopped_early:
+            # In the notes, not only the log: price_audit_log is what anyone asks later, and a
+            # truncated pass that looks identical to a complete one is the silent-failure shape
+            # this repository keeps producing.
+            notes += f"; TRUNCATED at {stopped_early}/{total} on the {int(time.time() - t0)}s budget"
         db.run("insert into price_audit_log (mode,source,tickers_checked,bars_written,discrepancies,"
                "max_drift_pct,duration_s,notes) values (:m,:s,:tc,:bw,:dc,:md,:du,:no)",
                m=mode, s=source, tc=checked, bw=tot_written + ig_corrected, dc=tot_disc + ig_corrected,
@@ -239,7 +280,8 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None):
     finally:
         db.close()
 
-    summary = (f"Price audit [{mode}] done: {checked} instruments, {tot_written} bars written, "
+    summary = ((f"Price audit [{mode}] TRUNCATED at {stopped_early}/{total}: " if stopped_early else
+                f"Price audit [{mode}] done: ") + f"{checked} instruments, {tot_written} bars written, "
                f"{tot_disc} YF + {ig_corrected} IG discrepancies corrected, {ig_dc} double-checked "
                f"(max drift {max_drift:.2f}%), pruned {pruned}, {dur:.0f}s")
     log.info(summary)
@@ -269,12 +311,16 @@ def main():
     ap.add_argument("--source", type=str, default="YF", help="source label to record (default YF)")
     ap.add_argument("--slack", action="store_true", help="post the run summary to Slack")
     ap.add_argument("--no-ig", action="store_true", help="skip the IG-as-truth cross-check (YF only)")
+    ap.add_argument("--max-seconds", type=int, default=None,
+                    help=f"stop cleanly after this many seconds (default {MAX_SECONDS}; 0 = no limit)")
     a = ap.parse_args()
     tickers = [t.strip() for t in a.tickers.split(",") if t.strip()] if a.tickers else None
     if a.backfill:
-        run("backfill", a.backfill, a.source, tickers, a.slack, use_ig=(False if a.no_ig else False))
+        run("backfill", a.backfill, a.source, tickers, a.slack, use_ig=(False if a.no_ig else False),
+            max_seconds=a.max_seconds)
     else:
-        run("daily", a.lookback, a.source, tickers, a.slack, use_ig=(False if a.no_ig else True))
+        run("daily", a.lookback, a.source, tickers, a.slack, use_ig=(False if a.no_ig else True),
+            max_seconds=a.max_seconds)
 
 
 if __name__ == "__main__":
