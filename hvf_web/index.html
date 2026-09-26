@@ -742,6 +742,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <th data-k="dist_entry" title="Absolute distance from the live price to the entry level (sorted closest-first)">Dist→Entry</th><th data-k="status">Status</th>
           <th data-k="trig_date">Triggered</th><th data-k="days_since" title="Days since the trigger date (the date shown in the Triggered column)">Days since</th>
           <th data-k="current_price" title="Latest price">Now</th>
+          <th data-k="target" title="The target price level this setup is expected to reach (the level, not the time — see To target for the expected span)">Target</th>
           <th data-k="tgt_months" title="Expected time to reach the target (the squeeze's formation span)">To target</th>
           <th data-k="market">Market</th><th data-k="x_posts" title="Number of X posts we've published for this instrument">X posts</th>
           <th data-k="chg_since_trig" title="Price change since it triggered (vs the entry level)">Since trig</th>
@@ -749,7 +750,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
           <th data-k="location">Location</th><th style="cursor:default" title="Broker leverage for this instrument type (Configuration → Leverage)">Lev</th>
           <th data-k="sector">Sector</th><th data-k="ticker">Ticker</th><th style="cursor:default" title="Whether this instrument is already in your My Pre-orders">In Pre-orders?</th>
         </tr></thead>
-        <tbody id="rows"><tr><td colspan="27" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
+        <tbody id="rows"><tr><td colspan="28" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
       </table>
     </div>
     </section>
@@ -894,6 +895,10 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <div id="cfg-defaults" class="sqh-loading" style="font-size:12px;margin:8px 0">⏳ Data loading…</div>
       <button class="btn" onclick="saveFilterDefaults()">Save current filters as my defaults</button>
       <button class="btn" onclick="clearFilterDefaults()">Clear my defaults</button>
+      <!-- Its OWN status line. Both buttons in this card used to report into #cfg-msg, which lives in
+           the Trading Filters panel below -- so the message landed where the reader was not looking,
+           and a failure here read as a failure of the trade-filters save (owner 2026-09-26). -->
+      <div id="cfg-defaults-msg" style="font-size:12px;margin-top:8px"></div>
     </div>
   </div>
 

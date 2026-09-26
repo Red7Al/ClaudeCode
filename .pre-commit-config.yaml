@@ -35,3 +35,28 @@ repos:
         entry: node --check
         language: system
         files: ^hvf_web/.*\.js$
+      # Save buttons must report their own outcome, in their own place (2026-09-26).
+      #
+      # WHY. The owner reported that a failed save showed as a failure on OTHER, unrelated save buttons.
+      # It was five defects of one shape: three handlers sharing #cfg-msg (one of them from a different
+      # panel entirely), #cfg-msg2 sitting in the page with zero references, #lim-msg2 targeted but
+      # deleted along with the card that owned it, and clearFilterDefaults reporting nothing at all.
+      #
+      # NONE OF IT WAS VISIBLE BY READING EITHER FILE. The wiring is string ids in app.js pointing at
+      # elements in index.html; only cross-checking the two finds a mismatch, and nothing did. saveStatus
+      # makes silence the default failure mode -- it drops missing targets with .filter(Boolean) -- so a
+      # dangling id is not an error, it is a save that quietly says nothing.
+      #
+      # Same three layers as the hook above: this gate makes it uncommittable, the test file covers anyone
+      # running the suite, and CI runs it on every push.
+      - id: save-status-wiring
+        name: Save buttons report independently (status-element wiring)
+        description: One save failing must never appear as another save failing
+        # THE VENV, EXPLICITLY. The bare `python` here is a system 3.14 with no pytest, so
+        # `python -m pytest` fails with "No module named pytest" -- which is exactly how this hook
+        # failed on its first real commit. CLAUDE.md records the same trap as trap 1 of running the
+        # tests; language: system means pre-commit does not build an environment of its own.
+        entry: ./.venv/Scripts/python.exe -m pytest test_save_status_wiring.py -q
+        language: system
+        files: ^(hvf_web/(app\.js|index\.html)|test_save_status_wiring\.py)$
+        pass_filenames: false

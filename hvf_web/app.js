@@ -579,12 +579,13 @@ function render(){
     <td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td><td>${ob(r.days_since??'')}</td>
     <td>${ob(f2(r.current_price))}</td>
+    <td>${ob(f2(r.target))}</td>
     <td>${ob(r.tgt_str||'')}</td>
     <td>${r.market||''}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td>
     <td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td><td>${AUTH&&isPreorder(r)?'<span style="color:var(--bull)" title="In your My Pre-orders">✓</span>':''}</td></tr>`).join("")
-    || `<tr><td colspan="27" class="empty">No setups match the filters.</td></tr>`;
+    || `<tr><td colspan="28" class="empty">No setups match the filters.</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
     tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
@@ -1866,14 +1867,18 @@ function renderConfig(){
 }
 function saveFilterDefaults(){
   const f={};FILTER_IDS().forEach(k=>{const el=$(k);if(el&&el.value!=="")f[k]=el.value;});
-  const st=saveStatus("cfg-msg");
+  const st=saveStatus("cfg-defaults-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({filters:f})})
     .then(r=>{if(!r.ok)throw 0;USER_FILTERS=f;st.ok("Filter defaults saved.");renderConfig();})
     .catch(()=>st.fail());
 }
 function clearFilterDefaults(){
+  // Reported NOTHING before 2026-09-26 -- no status element and no failure path, so a clear that the
+  // server rejected looked identical to one that worked. It reports into its own card, like the save.
+  const st=saveStatus("cfg-defaults-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({filters:{}})})
-    .then(()=>{USER_FILTERS={};renderConfig();});
+    .then(r=>{if(!r.ok)throw 0;USER_FILTERS={};st.ok("Defaults cleared.");renderConfig();})
+    .catch(()=>st.fail("Clear failed."));
 }
 function saveBridge(){
   const st=saveStatus("bridge-msg");
@@ -1922,9 +1927,12 @@ function saveLimits(){
   lim.adaptive_filters=0;   // compatibility only; the unused Adaptive Filters UI has been removed
   lim.let_winners_run=($("lim-let_winners_run")||{}).checked?1:0;   // "Let winners run" report opt-in, default OFF (user 2026-08-02)
   const _er=$("lim-email_recipients"); if(_er)lim.email_recipients=(_er.value||"").split(",").map(x=>x.trim()).filter(Boolean);
-  // Report into whichever of the four remaining panels the reader is looking at. saveStatus shows the
-  // hourglass immediately and guarantees it is replaced however the request ends.
-  const st=saveStatus(["lim-msg","lim-msg2","lim-msg3","lim-msg4"]);
+  // Report into whichever of the THREE panels carrying a saveLimits button the reader is looking at.
+  // saveStatus shows the hourglass immediately and guarantees it is replaced however the request ends.
+  // "lim-msg2" was in this list until 2026-09-26 and does not exist: it belonged to the Adaptive
+  // Filters card, which was deleted (see lim.adaptive_filters below). saveStatus drops missing targets
+  // with .filter(Boolean), so the dangling id was not an error -- it was silence, and nobody noticed.
+  const st=saveStatus(["lim-msg","lim-msg3","lim-msg4"]);
   const _setMsg=(txt,ok)=>ok?st.ok(txt):st.fail(txt);
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({limits:lim})})
     .then(r=>{if(r.ok){_setMsg("Saved.",true);
@@ -1972,7 +1980,7 @@ function saveTradeFilters(){
 }
 function saveExec(){
   const ex={};document.querySelectorAll(".cfg-ex").forEach(c=>ex[c.dataset.s]=c.checked);
-  const st=saveStatus("cfg-msg");
+  const st=saveStatus("cfg-msg2");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({exec:ex})})
     .then(r=>{if(!r.ok)throw 0;st.ok("Execution switches saved.");})
     .catch(()=>st.fail());
