@@ -1428,8 +1428,21 @@ _WK52_CACHE = {"gen": None, "data": {}}
 # instrument_metrics writes those same values once a day, from the same volume_score functions, with a
 # test asserting the stored figures match this live path. So the request thread can READ them.
 #
-# Only TODAY'S row is used. A stale row would quietly show yesterday's metrics as though current, which
-# is the wrong-moment failure this codebase keeps producing; if the daily job has not run, we recompute.
+# THE "TODAY ONLY" RULE WAS REVERSED ON 2026-09-26 and the original reasoning is kept here because it was
+# sound: "a stale row would quietly show yesterday's metrics as though current, which is the wrong-moment
+# failure this codebase keeps producing; if the daily job has not run, we recompute."
+#
+# What it missed is that the recompute is not free and not certain. MEASURED 2026-09-26: the writer runs
+# only as step 2 of the Morning Chain (`30 3 * * 1-6`), that morning the chain hung and was killed at its
+# 90-minute cap, all six downstream jobs were skipped, and so this map came back EMPTY for all 1,773
+# instruments while the table itself was 98-100% populated. The RVOL column then rendered blank, because
+# rvolScannerCell falls back to current_rvol and current_rvol was null.
+#
+# Owner, the same day: "we should not be waiting on jobs to be run to have data in columns - we have enough
+# data refreshes to avoid that." The concern about presenting stale figures as current is answered rather
+# than dismissed: _STORED_METRICS_MAX_AGE_DAYS bounds the age at 5 days, a row past it is still refused,
+# and every row carries its own as_of/bar_date -- which is what lets the Scanner's RVOL cell label the
+# value with a "now" superscript and its date instead of implying it is the trigger bar's.
 _STORED_METRICS_CACHE = {"gen": None, "data": {}}
 
 

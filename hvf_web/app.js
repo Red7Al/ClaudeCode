@@ -86,12 +86,41 @@ const rvolCell=v=>v==null?'<span class="muted">—</span>'
 // The fallback is MARKED, never silently substituted. Presenting today's RVOL as the trigger's is
 // precisely the clobber bug of 2026-08-17 that test_order_ops_enrichment_keeps_the_servers_values
 // exists to prevent -- a value from the wrong moment is worse than a dash, because a dash is honest.
+// ONE presentation for "this is today's reading, not the setup's own", shared by the Scanner's RVOL,
+// VWAP and ATR cells. Extracted 2026-09-26, when VWAP and ATR gained the fallback RVOL already had --
+// three inline copies of the same superscript is how two of them end up drifting apart.
+const _currentReadingCell=(html,what,date)=>{
+  const d=date?` on ${date}`:'';
+  return `<span title="Today's ${what}${d}, not the trigger bar's — this setup has not triggered yet" style="opacity:.75">`
+       + `${html}<span class="muted" style="font-size:9px;vertical-align:super">now</span></span>`;
+};
 const rvolScannerCell=r=>{
   if(r.rvol!=null)return rvolCell(r.rvol);
   if(r.current_rvol==null)return rvolCell(null);
-  const d=r.current_rvol_date?` on ${r.current_rvol_date}`:'';
-  return `<span title="Today's RVOL${d}, not the trigger bar's — this setup has not triggered yet" style="opacity:.75">`
-       + `${rvolCell(r.current_rvol)}<span class="muted" style="font-size:9px;vertical-align:super">now</span></span>`;
+  return _currentReadingCell(rvolCell(r.current_rvol),"RVOL",r.current_rvol_date);
+};
+// VWAP AND ATR FALL BACK THE SAME WAY (owner 2026-09-26: blank RVOL/VWAP/ATR/Vol columns).
+//
+// WHY THEY DID NOT. r.above_vwap and r.atr_expanding come from server _live_vwap_atr, which is scoped to
+// has_signal rows -- MEASURED 2026-09-26: 415 of 1,773. Every other row got null, and _tickCross(null)
+// renders an em dash, so most of the column read as no data. The server was ALREADY sending the stored
+// daily reading for all of them as current_above_vwap / current_atr_expanding (api_records), and these
+// two cells simply never looked at it -- while RVOL's cell beside them had exactly that fallback.
+// MEASURED in instrument_metrics_daily for as_of 2026-09-25: above_vwap non-null on 1,739 of 1,773 rows,
+// atr_expanding on 1,773 of 1,773.
+//
+// _nowCell is NOT reused here, though it looks like the same job: it keys on r.metrics_are_current, which
+// server.py sets only on the working-orders path (server.py:2725) and never in api_records, so it would
+// silently return the bare cell for every Scanner row.
+const vwapScannerCell=r=>{
+  if(r.above_vwap!=null)return _tickCross(r.above_vwap);
+  if(r.current_above_vwap==null)return _tickCross(null);
+  return _currentReadingCell(_tickCross(r.current_above_vwap),"VWAP position",r.current_metric_date);
+};
+const atrScannerCell=r=>{
+  if(r.atr_expanding!=null)return _tickCross(r.atr_expanding);
+  if(r.current_atr_expanding==null)return _tickCross(null);
+  return _currentReadingCell(_tickCross(r.current_atr_expanding),"ATR state",r.current_metric_date);
 };
 // A break-bar cell for an order whose setup has NOT triggered yet (user 2026-09-06). The server marks
 // those rows `metrics_are_current`, because the trigger-bar value does not exist and today's does. This
@@ -574,7 +603,7 @@ function render(){
     ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
     <td>${ob(_mcapFmt(r.mcap))}</td>
-    <td>${ob(rvolScannerCell(r))}</td><td>${_tickCross(r.above_vwap)}</td><td>${_tickCross(r.atr_expanding)}</td><td>${ob(volScoreCell(r.volume_score))}</td>
+    <td>${ob(rvolScannerCell(r))}</td><td>${ob(vwapScannerCell(r))}</td><td>${ob(atrScannerCell(r))}</td><td>${ob(volScoreCell(r.volume_score))}</td>
     <td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td><td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td>
     <td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td><td>${ob(r.days_since??'')}</td>
