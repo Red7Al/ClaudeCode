@@ -1433,25 +1433,63 @@ _WK52_CACHE = {"gen": None, "data": {}}
 _STORED_METRICS_CACHE = {"gen": None, "data": {}}
 
 
+# HOW OLD A STORED METRICS ROW MAY BE AND STILL BE USED.
+#
+# Until 2026-09-26 this function demanded `as_of == today` exactly, which threw away EVERY row on any
+# day the writer had not yet run. The writer is instrument_metrics.record_daily, called from
+# run_hvf_report.py; trading-hvf-report.yml has no registry entry of its own and runs only as step 2 of
+# the Morning Chain, scheduled `30 3 * * 1-6`.
+#
+# MEASURED 2026-09-26: the newest as_of was 2026-09-25 and date.today() was 2026-09-26, so this returned
+# {} for all 1,773 instruments, and every RVOL/VWAP/ATR read fell through to re-reading ~400 bars per
+# instrument on the request thread -- precisely the cost _live_instrument_metrics says this exists to
+# avoid. WHY THERE WAS NO ROW FOR TODAY: the Morning Chain's 03:30 run was killed at its 90-minute cap
+# (a hang, not slowness -- its normal span is 19-29 minutes) and all six downstream jobs were skipped,
+# the metrics writer among them. So ONE job hanging emptied four columns for the whole site, and any
+# single failure of that chain would do the same again.
+#
+# Owner, 2026-09-26: "we should not be waiting on jobs to be run to have data in columns - we have enough
+# data refreshes to avoid that." instrument_metrics.latest() already returns the most recent row per
+# ticker -- "what an order placed days ago can be judged against" -- and the `== today` test discarded
+# exactly the thing that reader exists to provide.
+#
+# FIVE DAYS, not unlimited. The writer runs Mon-Sat, so its longest legitimate gap is Saturday to Monday
+# -- 2 days -- and five leaves room for a bank holiday and one failed chain on top. A row older than that
+# means the writer has genuinely stopped, and stale numbers presented as current are worse than blanks.
+# The row carries its own as_of and bar_date, so callers can show how old it is rather than implying it
+# is live.
+_STORED_METRICS_MAX_AGE_DAYS = 5
+
+
 def _stored_metrics(snap: dict) -> dict:
     import datetime as _d
     gen = snap.get("generated_utc")
     if _STORED_METRICS_CACHE["gen"] == gen:
         return _STORED_METRICS_CACHE["data"]
-    out = {}
+    out, ages = {}, []
     try:
         import instrument_metrics
         tickers = [r.get("ticker") for r in snap.get("records", []) if r.get("ticker")]
         today = _d.date.today()
         for tk, row in (instrument_metrics.latest(tickers) or {}).items():
             as_of = row.get("as_of")
-            if as_of and str(as_of)[:10] == today.isoformat():
+            if not as_of:
+                continue
+            try:
+                age = (today - _d.date.fromisoformat(str(as_of)[:10])).days
+            except ValueError:
+                continue                      # unreadable date: do not judge it fresh
+            if 0 <= age <= _STORED_METRICS_MAX_AGE_DAYS:
                 out[tk] = row
+                ages.append(age)
     except Exception as ex:
         log.warning("stored instrument metrics unavailable, recomputing: %s", ex)
-        out = {}
+        out, ages = {}, []
     _STORED_METRICS_CACHE.update(gen=gen, data=out)
-    log.info("stored metrics available for %d instruments", len(out))
+    # The age is logged because "available for 0 instruments" and "available for 1773, all 4 days old"
+    # are very different states and the old log line could not tell them apart.
+    log.info("stored metrics available for %d instruments (age %s days)", len(out),
+             f"{min(ages)}-{max(ages)}" if ages else "n/a")
     return out
 
 
