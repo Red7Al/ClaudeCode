@@ -78,6 +78,34 @@ MAX_SECONDS = int(os.environ.get("PRICE_AUDIT_MAX_SECONDS") or 4500)
 IG_MIN_REMAINING = 300
 IG_SANITY_MAX_DRIFT_PCT = 50    # after unit-rescaling, a still-huge gap = epic/unit mismatch -> don't corrupt
 
+# A SEPARATE, WIDER TOLERANCE FOR THE IG COMPARISON, because it compares two DIFFERENT SOURCES.
+#
+# DISCREPANCY_TOL_PCT (0.1%) is right where it is used at line ~144: that compares a freshly fetched
+# Yahoo close against the stored Yahoo close, so any gap is a revision or a bad write and 0.1% is a fine
+# net. Reusing it for IG-vs-Yahoo was the mistake: IG quotes mid/bid where Yahoo reports the exchange
+# close, so the two disagree by a small amount on EVERY bar, always.
+#
+# MEASURED 2026-09-27 -- IG against Yahoo on the same bar_dates:
+#   * live IG pull for BP.L, HSBA.L and AAPL, 21 weekday bars: drifts 0.03% to 0.34% (AAPL also needs the
+#     x100 unit rescale, and does, correctly);
+#   * the bars IG had overwritten the previous day, re-fetched from Yahoo, 6 bars: median 0.437%,
+#     max 0.687%. 6 of 6 exceeded 0.1%. 0 of 6 exceeded 1.0%.
+# So at 0.1% the cross-check flags essentially EVERY bar it looks at, on any day.
+#
+# WHY THAT WENT UNNOTICED FOR SO LONG, and it is the interesting part: IG_MIN_REMAINING stops the
+# cross-check once the weekly IG allowance falls below 300, and on a weekday the allowance is already
+# spent -- it read 284 while this was being measured. So only ~5 tickers were ever checked, which is
+# exactly the "IG fixes 5" recorded on every weekday run in price_audit_log. An API quota, not the
+# tolerance, was what kept it quiet. When the weekly allowance resets the mis-tuning is exposed: the
+# Saturday 2026-09-26 pass made 4,938 fixes, ran 4.6x slower, was killed at the 90-minute cap and took
+# five downstream jobs with it, and stripped volume from 1,127 of 1,773 tickers.
+#
+# 1.0% sits above every structural drift measured (max 0.687%) and well below a real error: the phantom
+# LSE print this check exists for, RR.L's fake 1,420 against IG's 1,345.9, is 5.5%. The sample is small --
+# 27 bars across 9 tickers -- so this is a threshold chosen from measurement, not a proven optimum, and
+# the audit log's IG-fix count is the thing to watch after it ships.
+IG_DISCREPANCY_TOL_PCT = 1.0
+
 _AUDIT_LOG_DDL = """create table if not exists price_audit_log (
     id              bigserial primary key,
     run_at          timestamptz not null default now(),
@@ -199,7 +227,7 @@ def _ig_verify(ticker, db):
         drift = abs(ig_c - st_c) / st_c * 100
         if drift > IG_SANITY_MAX_DRIFT_PCT:
             continue                                        # unit/epic mismatch — never corrupt the row
-        (fix if drift > DISCREPANCY_TOL_PCT else agree).append(d)
+        (fix if drift > IG_DISCREPANCY_TOL_PCT else agree).append(d)
 
     corrected = 0
     if fix:

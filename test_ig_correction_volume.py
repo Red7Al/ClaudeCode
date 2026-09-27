@@ -127,3 +127,41 @@ def test_a_wild_disagreement_is_still_refused(monkeypatch):
     corrected, _dc, _rem = price_audit._ig_verify("AAA.L", db=None)
     assert corrected == 0, "a drift past the sanity ceiling must not be written"
     assert store.upserted is None
+
+
+# ── the tolerance must sit above the sources' inherent disagreement ────────────────────────────────────
+
+def test_a_structural_drift_is_not_treated_as_an_error(monkeypatch):
+    """THE ROOT CAUSE OF THE SATURDAY EXPLOSION. IG quotes mid/bid where Yahoo reports the exchange close,
+    so the two disagree slightly on EVERY bar. MEASURED 2026-09-27: 0.03-0.69% across 27 bars and 9
+    tickers, 100% of them over the old 0.1% tolerance and 0% over 1.0%. At 0.1% the cross-check rewrote
+    essentially every bar it looked at -- 4,938 in one pass -- which killed the job and stripped volume
+    from 1,127 tickers. 0.4% is a normal spread and must be left alone."""
+    store = _wire(monkeypatch,
+                  stored_closes=[100.0, 100.0, 100.0],
+                  ig_closes=[100.4, 99.6, 100.437],
+                  stored_volumes=[1_000, 2_000, 3_000])
+    corrected, dc, _rem = price_audit._ig_verify("AAA.L", db=None)
+    assert corrected == 0, "a normal IG-vs-Yahoo spread must not rewrite the bar"
+    assert store.upserted is None
+    assert dc == 3, "they agree within tolerance, so they are double-checked"
+
+
+def test_a_real_phantom_print_is_still_corrected(monkeypatch):
+    """The check must keep doing its job. RR.L's phantom 1,420 against IG's real 1,345.9 -- the incident
+    this cross-check exists for -- is a 5.5% gap, five times the tolerance."""
+    store = _wire(monkeypatch,
+                  stored_closes=[1345.9, 1345.9, 1420.0],
+                  ig_closes=[1345.9, 1345.9, 1345.9],
+                  stored_volumes=[1_000, 2_000, 3_000])
+    corrected, _dc, _rem = price_audit._ig_verify("RR.L", db=None)
+    assert corrected == 1, "a 5.5% phantom print must still be corrected"
+    assert float(store.upserted["Close"].iloc[0]) == pytest.approx(1345.9)
+    assert list(store.upserted["Volume"]) == [3_000], "and it keeps its volume"
+
+
+def test_the_ig_tolerance_is_wider_than_the_yahoo_self_check():
+    """They compare different things: Yahoo-vs-Yahoo catches revisions and 0.1% is right; IG-vs-Yahoo
+    crosses sources and needs room for the spread. Collapsing them back into one constant is the defect."""
+    assert price_audit.IG_DISCREPANCY_TOL_PCT > price_audit.DISCREPANCY_TOL_PCT
+    assert price_audit.IG_DISCREPANCY_TOL_PCT < price_audit.IG_SANITY_MAX_DRIFT_PCT
