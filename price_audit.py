@@ -204,7 +204,25 @@ def _ig_verify(ticker, db):
     corrected = 0
     if fix:
         fdf = igy.loc[fix].copy()
-        fdf["Volume"] = float("nan")
+        # IG IS TRUTH FOR PRICE; YAHOO REMAINS THE ONLY SOURCE OF VOLUME, SO THE STORED VOLUME IS KEPT.
+        #
+        # This line used to be `fdf["Volume"] = float("nan")`, and upsert_bars sets volume=excluded.volume
+        # unconditionally, so every price correction NULLED that bar volume. Not writing IG's own volume is
+        # right -- it is not comparable with Yahoo's, and for some instruments IG reports none at all -- but
+        # discarding the volume already stored was not the same decision, and it is the one that shipped.
+        #
+        # WHAT IT COST, MEASURED 2026-09-26. Of the 5,102 IG-source bars inside the trailing 30 days, 5,102
+        # had NULL volume and 0 had any; the 31,484 YF bars all had it. Today's pass alone stripped volume
+        # from 5,116 bars across 1,127 of 1,773 tickers -- 64% of the universe -- because the Saturday
+        # cross-check finds a discrepancy on nearly every ticker. RVOL and VolumeScore are computed FROM
+        # volume, which is the owner's standing complaint about those columns being blank. So a price
+        # correction was breaking the volume metrics on the same bar it corrected, and doing it worst on the
+        # day it fired most.
+        #
+        # The corrections are also transient: 4 of 5,126 IG bars ever written predate 2026-09-19, because
+        # each daily YF pass re-fetches the trailing window and overwrites them. So the volume was being
+        # destroyed for a price change that the next pass undid.
+        fdf["Volume"] = stored.loc[fix, "Volume"]
         for d in fix:
             log.info(f"{ticker} {d.date()}: stored {float(stored.loc[d, 'Close']):g} -> IG (truth) "
                      f"{float(igy.loc[d, 'Close']):g} - correcting")
