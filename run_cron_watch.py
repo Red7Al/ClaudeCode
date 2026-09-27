@@ -245,7 +245,21 @@ def check(dry_run: bool = False, alert_ok: bool = False, stale_after_days: float
         # than having quietly recorded it as already reported.
         _save_state(now, stale_now)
 
-    return len(newly_failing) + len(still_failing) + len(stale)
+    # RED ONLY WHEN THERE IS SOMETHING NEW TO SAY (owner 2026-09-27: "the hourly job at 5 or 6 mins past
+    # the hour is still failing").
+    #
+    # This used to return newly_failing + still_failing + stale, so the run stayed red for as long as any
+    # job was broken. MEASURED 2026-09-27: the two red jobs were Morning Chain (cancelled Sat 03:30) and
+    # Trading State Audit (failed Fri 22:30). Morning Chain runs `30 3 * * 1-6` and the audit
+    # `30 22 * * 1-5`, so NEITHER can run again until Monday -- the watcher was going to fail every hour
+    # for roughly 48 hours with nothing new wrong and no possible recovery in between. That is the alert
+    # people filter, and then the next real one is filtered too, which this module's own docstring warns
+    # about and which its alerting is already change-gated to avoid. The exit code was the one thing still
+    # state-based, and it contradicted the rest of the design.
+    #
+    # Standing failures have NOT gone quiet: each was alerted when it started, is logged every pass, and is
+    # on the admin Scheduled Jobs tab. What changes is that a known problem no longer cries every hour.
+    return len(newly_failing) + len(newly_stale)
 
 
 def main() -> int:
@@ -259,7 +273,7 @@ def main() -> int:
     a = ap.parse_args()
     failing = check(dry_run=a.dry_run, alert_ok=a.alert_ok, stale_after_days=a.stale_after_days)
     if failing:
-        log.error("%d job(s) failing or stale", failing)
+        log.error("%d job(s) NEWLY failing or stale", failing)
     return 1 if failing else 0
 
 

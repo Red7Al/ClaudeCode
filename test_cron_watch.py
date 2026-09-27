@@ -67,10 +67,16 @@ def test_a_newly_failing_job_raises_an_alert(monkeypatch):
 
 
 def test_a_job_that_is_still_failing_does_not_alert_again(monkeypatch):
-    """AN ALERT THAT REPEATS IS AN ALERT THAT GETS FILTERED, and then the next real one is filtered
-    too. It still counts towards the exit code, so the watcher's own run stays red."""
+    """AN ALERT THAT REPEATS IS AN ALERT THAT GETS FILTERED, and then the next real one is filtered too.
+
+    NOR DOES IT KEEP THE RUN RED (changed 2026-09-27, owner: "the hourly job at 5 or 6 mins past the hour
+    is still failing"). MEASURED that day: the two failing jobs were Morning Chain (`30 3 * * 1-6`,
+    cancelled on the Saturday) and Trading State Audit (`30 22 * * 1-5`, failed on the Friday). Neither
+    could run again until Monday, so an exit code based on standing state meant ~48 hours of hourly red
+    with nothing new wrong and no recovery possible in between. The failure was already alerted when it
+    started and is logged every pass; repeating it hourly is what teaches people to ignore the channel."""
     sent = _wire(monkeypatch, [_job("Morning Chain", "failure")], previous={"Morning Chain": "failure"})
-    assert w.check() == 1, "a still-failing job must keep the run red"
+    assert w.check() == 0, "a known failure must not redden every run for days"
     assert not sent, "a known failure must not re-alert on every pass"
 
 
@@ -174,7 +180,7 @@ def test_a_known_stale_job_does_not_re_alert_every_run(monkeypatch):
     jobs = [_job("Weekend Review", "success", age_days=55, cron="0 9 * * 6")]
     sent = _wire(monkeypatch, jobs, previous={"Weekend Review": "success"},
                  enabled={"Weekend Review"}, previously_stale={"Weekend Review"})
-    assert w.check() == 1, "a still-stale job must keep the run red"
+    assert w.check() == 0, "a known-stale job must not redden every run either"
     assert not sent, "a known-stale job must not re-alert on every pass"
 
 
@@ -184,7 +190,7 @@ def test_a_newly_stale_job_alerts_even_when_another_is_already_stale(monkeypatch
             _job("COT Report", "success", age_days=40, cron="0 10 * * 6")]
     sent = _wire(monkeypatch, jobs, previous={j["raw_title"]: "success" for j in jobs},
                  enabled={j["raw_title"] for j in jobs}, previously_stale={"Weekend Review"})
-    assert w.check() == 2, "both stale jobs count towards the exit code"
+    assert w.check() == 1, "only the NEWLY stale job reddens the run; the known one is already reported"
     assert len(sent) == 1 and "STOPPED RUNNING" in sent[0][0]
     assert "COT Report" in sent[0][1], "the newly stale job is the news"
     assert "Still stale from before" in sent[0][1] and "Weekend Review" in sent[0][1]
