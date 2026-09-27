@@ -179,7 +179,16 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--chip)} tr.sel{backgroun
 .bull{background:rgba(63,185,80,.15);color:var(--bull)} .bear{background:rgba(248,81,73,.15);color:var(--bear)}
 .muted{color:var(--muted);font-size:11px}
 .tablewrap{overflow:auto;flex:1}
-#detail{width:920px;flex:none;border-left:2px solid var(--accent);padding:16px 20px;overflow:auto;max-height:calc(100vh - var(--sticky-top,90px));position:sticky;top:var(--sticky-top,90px);box-shadow:-10px 0 28px rgba(0,0,0,.4);background:var(--bg)}   /* 800 -> 920 (+15%, user 2026-07-25 P-05 L193; earlier +5% P-50) */
+/* OVERLAYS the page, it does not take space from it (owner 2026-09-27: "when the detail page covers
+   much of the page do NOT shrink charts on the original page on the LHS").
+   It was position:sticky inside .layout's flex row with flex:none and width:920px, so opening it
+   removed 920px from `main` (flex:1;min-width:0) and every chart and table inside main reflowed to
+   the narrower width -- the charts visibly shrank, then grew back on close.
+   position:fixed takes it out of the flex flow entirely, so main keeps its full width and the panel
+   sits over the right-hand side. right/top/bottom replace the sticky offset and max-height; the
+   z-index is above the sticky page header's stacking context but nothing else on the page sets one
+   higher. */
+#detail{width:920px;flex:none;border-left:2px solid var(--accent);padding:16px 20px;overflow:auto;position:fixed;right:0;top:var(--sticky-top,90px);bottom:0;z-index:40;box-shadow:-10px 0 28px rgba(0,0,0,.4);background:var(--bg)}   /* 800 -> 920 (+15%, user 2026-07-25 P-05 L193; earlier +5% P-50) */
 #detail.hidden{display:none}
 .xvisual-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
 .xvisual-source{min-width:0;border-top:3px solid var(--accent);padding-top:8px}
