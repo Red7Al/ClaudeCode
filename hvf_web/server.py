@@ -105,6 +105,23 @@ def _json_safe(value):
                 return None
         except (TypeError, ValueError, OverflowError):
             return None
+    # DATES AND TIMES AS ISO-8601, NOT AS AN HTTP DATE.
+    #
+    # Flask's own provider serialises a datetime with http_date(), which emits
+    # "Fri, 25 Sep 2026 06:21:14 GMT" -- 29 characters, no 'T', month as a word. The client assumes
+    # ISO-8601 everywhere: hvf_web/app.js slices dates with .slice(0,10) or .slice(0,19) in 22 places.
+    #
+    # MEASURED 2026-09-27 against flask 3.1.3, which is what is installed: the auto-closed table renders
+    # `String(r.closed_at).slice(0,19).replace("T"," ")`, and on "Fri, 25 Sep 2026 06:21:14 GMT" that
+    # produces "Fri, 25 Sep 2026 06" -- cut mid-value, with the .replace doing nothing because there is no
+    # 'T'. That is the owner's report of the Closed (UTC) column truncating its values, and the same
+    # mismatch is latent in every other endpoint that returns a raw datetime.
+    #
+    # Fixed HERE rather than in the one column because _StrictJSONProvider.dumps runs this over every JSON
+    # response, so one definition makes the wire format match what the client already expects. A date
+    # (no time) is included: isoformat() gives "2026-09-25", which .slice(0,10) reads correctly.
+    if isinstance(value, (_dt.datetime, _dt.date)):
+        return value.isoformat()
     if isinstance(value, dict):
         return {k: _json_safe(v) for k, v in value.items()}
     if isinstance(value, list):
