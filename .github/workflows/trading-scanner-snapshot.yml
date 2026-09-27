@@ -208,6 +208,23 @@ jobs:
       #
       # Non-fatal: this is a cache warm-up. If it fails the site falls back to building the payloads live,
       # which is slow but correct, and the standalone Winners Precompute job retries in the morning.
+      # AND TELL SOMEBODY, because the run summary above was not enough.
+      #
+      # MEASURED 2026-09-27: the Supabase copy was last published 2026-08-16 with 1,421 records while the
+      # site served 1,773 -- SIX WEEKS stale -- and the only reason anyone found out is that the owner
+      # asked which store was primary. The warning written to the run summary is passive: it is a page you
+      # have to visit, which is the same 'nobody reads a green cron page' failure this repository already
+      # records against the GH_PAT that expired unnoticed for eight weeks.
+      #
+      # This does NOT redden the run, deliberately, for the reason given above: during a known quota
+      # outage the IONOS fallback keeping the site current is the system working as designed. It sends one
+      # alert when the backup goes stale and one when it recovers, change-gated in web_json_store so a long
+      # outage does not email daily.
+      - name: Alert if the Supabase snapshot copy has gone stale
+        if: always()
+        continue-on-error: true
+        run: python check_snapshot_publication.py
+
       - name: Warm the precomputed winners payloads
         if: ${{ steps.publish.outcome == 'success' || steps.ionos_fallback.outcome == 'success' }}
         continue-on-error: true
