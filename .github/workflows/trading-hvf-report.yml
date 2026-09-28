@@ -56,11 +56,23 @@ jobs:
     # investigation. That near-fixed 51m leaves only ~69m of headroom for the scan under a 120 cap,
     # and the 09-28 scan took 65m. The cap was the binding constraint, not a stall.
     #
-    # THE 51m PHASE IS FIXED IN THIS SAME COMMIT, so 180 is margin rather than the load-bearing part.
-    # squeeze_history.refresh_daily now writes its 4,287 rows in 9 batched statements instead of 4,287
-    # single-row UPDATEs, and logs its progress, so the phase should collapse to well under a minute.
-    # 180 is kept anyway: the SCAN phase still varies 26m-65m for reasons NOT yet measured, and that
-    # variance is what would put a 120 cap back in play on a slow morning.
+    # PART of the 51m phase is fixed in commit e360498: squeeze_history.refresh_daily now writes its
+    # 4,287 rows in 9 batched statements instead of 4,287 single-row UPDATEs, and logs its progress.
+    #
+    # THAT COMMIT'S MESSAGE OVERSTATES IT AND THIS COMMENT CORRECTS THE RECORD. The silent 51 minutes
+    # is not one function, it is three, and only one of them is now batched. Round trips per run:
+    #
+    #   squeeze_history.store()              416   per-row upsert   STILL PER-ROW
+    #   squeeze_history.refresh_daily      4,287   per-row UPDATE   FIXED -> 9 batched statements
+    #   instrument_metrics.record_daily    3,545   1,773 per-ticker get_bars SELECTs
+    #                                              + 1,772 per-ticker INSERTs   STILL PER-ROW
+    #                                    -------
+    #   old total                          8,248   over a measured 50m59s = ~371 ms per round trip
+    #   new total                          3,970
+    #
+    # So the expected phase is ~25m, not "under a minute". That figure is DERIVED (arithmetic on the
+    # measured per-round-trip average), not measured, and stays unproven until a post-fix run lands.
+    # 180 is kept for that reason and because the SCAN phase still varies 26m-65m, unmeasured.
     #
     # NOT yfinance throttling -- the killed run's log contains ZERO "Too Many Requests" (grep -c = 0);
     # that guess was checked and discarded. The scan variance is genuinely unexplained and is the next

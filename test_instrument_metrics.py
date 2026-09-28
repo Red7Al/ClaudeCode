@@ -102,9 +102,14 @@ class _FakeDb:
     the real one rejects is not a test double; it is a way of agreeing with yourself.
     """
 
-    def __init__(self):
+    def __init__(self, fail_inserts_over=None):
         self.rows = {}
         self.statements = 0
+        self.inserts = 0                  # INSERT statements issued, batched or not
+        self.selects = 0                  # SELECT statements issued -- the per-ticker read count
+        # Simulates a batch the real driver would reject (e.g. too many parameters), so the row-by-row
+        # fallback can be tested rather than assumed.
+        self.fail_inserts_over = fail_inserts_over
 
     def run(self, sql, **p):
         self.statements += 1
@@ -113,10 +118,22 @@ class _FakeDb:
         if absent:
             raise RuntimeError(
                 f"There's a placeholder '{absent[0]}' in the query, but no matching keyword argument.")
-        if sql.strip().lower().startswith("create table"):
+        low = sql.strip().lower()
+        if low.startswith("create table") or low.startswith("create ") or low.startswith("alter table"):
+            return []
+        if low.startswith("select"):
+            self.selects += 1
             return []
         if "insert into" in sql:
-            self.rows[(p["t"], p["d"])] = p          # primary key (ticker, as_of)
+            self.inserts += 1
+            # Batched now: parameters are suffixed per row (ticker0, as_of0, ticker1, ...).
+            n = sum(1 for k in p if k.startswith("ticker"))
+            if self.fail_inserts_over is not None and n > self.fail_inserts_over:
+                raise RuntimeError(f"batch of {n} rejected")
+            for i in range(n):
+                self.rows[(p[f"ticker{i}"], p[f"as_of{i}"])] = {
+                    k[:-len(str(i))] if k.endswith(str(i)) else k: v
+                    for k, v in p.items() if k.endswith(str(i))}
         return []
 
     def close(self):
@@ -129,7 +146,7 @@ def _snap(*tickers):
 
 def test_records_one_row_per_instrument_per_day(monkeypatch):
     db = _FakeDb()
-    monkeypatch.setattr(im, "_bars", lambda t, end, d: _bars())
+    monkeypatch.setattr(im, "_bars_bulk", lambda ts, end, d, **k: {t: _bars() for t in ts})
 
     out = im.record_daily(_snap("AAA", "BBB"), as_of=dt.date(2026, 8, 29), db=db)
 
@@ -140,7 +157,7 @@ def test_records_one_row_per_instrument_per_day(monkeypatch):
 def test_rerunning_the_same_day_overwrites_rather_than_duplicating(monkeypatch):
     """It rides on the daily report, which can be re-dispatched; a second run must not double the day."""
     db = _FakeDb()
-    monkeypatch.setattr(im, "_bars", lambda t, end, d: _bars())
+    monkeypatch.setattr(im, "_bars_bulk", lambda ts, end, d, **k: {t: _bars() for t in ts})
 
     im.record_daily(_snap("AAA"), as_of=dt.date(2026, 8, 29), db=db)
     im.record_daily(_snap("AAA"), as_of=dt.date(2026, 8, 29), db=db)
@@ -151,7 +168,7 @@ def test_rerunning_the_same_day_overwrites_rather_than_duplicating(monkeypatch):
 def test_an_instrument_with_no_price_history_is_skipped_not_stored_blank(monkeypatch):
     """A blank row would look like a measured 'no' rather than an absence of data."""
     db = _FakeDb()
-    monkeypatch.setattr(im, "_bars", lambda t, end, d: [])
+    monkeypatch.setattr(im, "_bars_bulk", lambda ts, end, d, **k: {})
 
     out = im.record_daily(_snap("AAA"), as_of=dt.date(2026, 8, 29), db=db)
 
@@ -162,12 +179,15 @@ def test_an_instrument_with_no_price_history_is_skipped_not_stored_blank(monkeyp
 def test_one_bad_instrument_does_not_lose_the_others(monkeypatch):
     db = _FakeDb()
 
-    def _boom(ticker, end, d):
-        if ticker == "BAD":
-            raise RuntimeError("price read failed")
-        return _bars()
+    monkeypatch.setattr(im, "_bars_bulk", lambda ts, end, d, **k: {t: _bars() for t in ts})
+    _real_compute = im.compute
 
-    monkeypatch.setattr(im, "_bars", _boom)
+    def _boom(ticker, bars, direction=None):
+        if ticker == "BAD":
+            raise RuntimeError("metric computation failed")
+        return _real_compute(ticker, bars, direction)
+
+    monkeypatch.setattr(im, "compute", _boom)
 
     out = im.record_daily(_snap("AAA", "BAD", "BBB"), as_of=dt.date(2026, 8, 29), db=db)
 
@@ -347,3 +367,136 @@ def test_the_weekly_backfill_appends_history_without_re_keying_the_current_table
     assert "primary key (ticker, as_of)" in src, "a same-day re-run must overwrite, not duplicate"
     assert "insert into instrument_mcap_history" in src, "the weekly job must actually write it"
     assert "ticker      text primary key" in src, "the current table must keep its one-row-per-ticker key"
+
+
+# ======================================================================================================
+# record_daily was 3,545 round trips a day.
+#
+# MEASURED 2026-09-28 on the live daily report: 1,773 per-ticker price_store.get_bars() SELECTs plus
+# 1,772 per-row INSERTs, inside a phase that logged nothing for ~51 minutes at ~371 ms a round trip.
+# On 2026-09-28 that phase ran into the workflow's 120-minute cap and Scanner report email, Winners
+# precompute, Best settings audit and HVF orders were all skipped.
+#
+# These pin the SHAPE -- one bulk read, batched writes -- and the two fallbacks that keep the old
+# promise that one bad instrument cannot lose the others.
+# ======================================================================================================
+
+
+def _many(n):
+    return _snap(*[f"T{i:03d}" for i in range(n)])
+
+
+def test_bars_are_read_in_bulk_not_once_per_instrument(monkeypatch):
+    db = _FakeDb()
+    calls = {"bulk": 0, "single": 0}
+
+    def _bulk(ts, end, d, **k):
+        calls["bulk"] += 1
+        return {t: _bars() for t in ts}
+
+    def _single(t, end, d):
+        calls["single"] += 1
+        return _bars()
+
+    monkeypatch.setattr(im, "_bars_bulk", _bulk)
+    monkeypatch.setattr(im, "_bars", _single)
+
+    im.record_daily(_many(50), as_of=dt.date(2026, 8, 29), db=db)
+
+    assert calls["bulk"] == 1, "the bars must be fetched once for everyone"
+    assert calls["single"] == 0, f"{calls['single']} per-ticker reads survived the bulk path"
+
+
+def test_the_bulk_read_is_one_query_per_chunk_not_one_per_ticker():
+    class _CountingDb:
+        def __init__(self):
+            self.n = 0
+
+        def run(self, sql, **p):
+            self.n += 1
+            assert "in (" in sql and "price_history" in sql
+            return []
+
+    db = _CountingDb()
+    im._bars_bulk([f"T{i}" for i in range(450)], dt.date(2026, 8, 29), db, chunk=200)
+
+    assert db.n == 3, f"450 tickers in chunks of 200 is 3 queries, got {db.n}"
+
+
+def test_the_bulk_read_returns_the_same_shape_the_per_ticker_read_did():
+    """compute() is shared with the live web path, so a different shape here would make the stored
+    metric and the displayed metric disagree about the same instrument."""
+    class _Db:
+        def run(self, sql, **p):
+            return [("AAA", dt.date(2026, 1, 2), 11.0, 9.0, 10.0, None),
+                    ("AAA", dt.date(2026, 1, 3), 12.0, 10.0, 11.0, 500)]
+
+    out = im._bars_bulk(["AAA"], dt.date(2026, 8, 29), _Db())
+
+    assert out["AAA"] == [("2026-01-02", 11.0, 9.0, 10.0, 0.0),      # NaN/None volume -> 0.0
+                          ("2026-01-03", 12.0, 10.0, 11.0, 500.0)]
+
+
+def test_fifty_instruments_are_written_in_one_statement(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(im, "_bars_bulk", lambda ts, end, d, **k: {t: _bars() for t in ts})
+
+    out = im.record_daily(_many(50), as_of=dt.date(2026, 8, 29), db=db)
+
+    assert out["stored"] == 50
+    assert db.inserts == 1, f"expected one batched INSERT, got {db.inserts}"
+    assert len(db.rows) == 50
+
+
+def test_writes_are_split_once_they_exceed_the_batch_size(monkeypatch):
+    monkeypatch.setattr(im, "_WRITE_BATCH", 20)
+    db = _FakeDb()
+    monkeypatch.setattr(im, "_bars_bulk", lambda ts, end, d, **k: {t: _bars() for t in ts})
+
+    im.record_daily(_many(50), as_of=dt.date(2026, 8, 29), db=db)
+
+    assert db.inserts == 3, f"50 rows at 20 a batch is 3 statements, got {db.inserts}"
+    assert len(db.rows) == 50
+
+
+def test_a_rejected_batch_falls_back_to_one_row_at_a_time(monkeypatch):
+    """One bad instrument must not lose the others -- the promise that per-row writes gave for free."""
+    db = _FakeDb(fail_inserts_over=1)
+    monkeypatch.setattr(im, "_bars_bulk", lambda ts, end, d, **k: {t: _bars() for t in ts})
+
+    out = im.record_daily(_snap("AAA", "BBB", "CCC"), as_of=dt.date(2026, 8, 29), db=db)
+
+    assert out["stored"] == 3, "the fallback must still store every good row"
+    assert set(db.rows) == {("AAA", "2026-08-29"), ("BBB", "2026-08-29"), ("CCC", "2026-08-29")}
+    assert db.inserts == 4, "one rejected batch then three single rows"
+
+
+def test_a_bulk_read_failure_degrades_to_per_ticker_rather_than_to_nothing(monkeypatch):
+    """A bulk problem must cost speed, not the whole day's metrics."""
+    db = _FakeDb()
+
+    def _boom(*a, **k):
+        raise RuntimeError("bulk read gone")
+
+    monkeypatch.setattr(im, "_bars_bulk", _boom)
+    monkeypatch.setattr(im, "_bars", lambda t, end, d: _bars())
+
+    out = im.record_daily(_snap("AAA", "BBB"), as_of=dt.date(2026, 8, 29), db=db)
+
+    assert out["stored"] == 2 and out["failed"] == 0
+    assert set(db.rows) == {("AAA", "2026-08-29"), ("BBB", "2026-08-29")}
+
+
+def test_the_same_instrument_twice_cannot_break_the_upsert(monkeypatch):
+    """ON CONFLICT DO UPDATE cannot touch one key twice in a statement; the writer must dedupe."""
+    rows = [{c: None for c in im._METRIC_COLS} for _ in range(2)]
+    for r in rows:
+        r["ticker"], r["bar_date"], r["as_of"] = "AAA", "2026-08-29", "2026-08-29"
+    rows[1]["rvol"] = 2.5
+    db = _FakeDb()
+
+    stored, failures = im._write_metrics(db, rows)
+
+    assert failures == []
+    assert db.inserts == 1 and stored == 1, "the duplicate key must collapse to one row"
+    assert db.rows[("AAA", "2026-08-29")]["rvol"] == 2.5, "last write wins, as the loop did"

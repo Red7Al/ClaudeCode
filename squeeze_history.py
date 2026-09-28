@@ -231,6 +231,11 @@ def replay_ticker(ticker: str, market: str, months: int = 15):
     return out
 
 
+# Rows per batched upsert in store(). 31 columns a row, so 100 keeps the statement well inside
+# any parameter limit while turning a 416-row daily write into 5 round trips.
+_STORE_BATCH = 100
+
+
 def store(db, rows: list, update_existing: bool = False) -> int:
     """Store funnels without duplicating an instance.
 
@@ -270,12 +275,41 @@ def store(db, rows: list, update_existing: bool = False) -> int:
     else:
         conflict += "do nothing returning id"
     sql = f"insert into squeeze_history ({','.join(cols)}) values ({ph}) {conflict}"
+    # BATCHED 2026-09-28. This was one INSERT per row -- 416 network round trips on a normal daily
+    # report -- inside the same silent phase that hit the workflow's 120-minute cap. The per-row path
+    # is kept as the FALLBACK so the old promise holds: one bad funnel must not lose the rest, and its
+    # ticker must still appear in the warning.
+    #
+    # The conflict key is (ticker, coalesce(timeframe,''), coalesce(h3_date,...), coalesce(l3_date,...)),
+    # and ON CONFLICT DO UPDATE cannot touch one key twice in a statement, so a batch is deduped on that
+    # exact key first. Last write wins, which is what the sequential loop did.
+    def _key(r):
+        return (r.get("ticker"), r.get("timeframe") or "",
+                r.get("h3_date") or "1900-01-01", r.get("l3_date") or "1900-01-01")
+
+    deduped = {}
     for r in rows:
+        deduped[_key(r)] = r
+    ordered = list(deduped.values())
+    for offset in range(0, len(ordered), _STORE_BATCH):
+        batch = ordered[offset:offset + _STORE_BATCH]
+        vals, params = [], {}
+        for i, r in enumerate(batch):
+            vals.append("(" + ",".join(f":{c}{i}" for c in cols) + ")")
+            for c in cols:
+                params[f"{c}{i}"] = r.get(c)
+        batched = (f"insert into squeeze_history ({','.join(cols)}) values "
+                   + ",".join(vals) + f" {conflict}")
         try:
-            if db.run(sql, **{c: r.get(c) for c in cols}):
-                changed += 1
-        except Exception as e:
-            log.warning(f"store failed {r.get('ticker')}: {e}")
+            changed += len(db.run(batched, **params) or ())
+        except Exception as batch_error:
+            log.warning(f"store batch of {len(batch)} failed ({batch_error}); retrying row by row")
+            for r in batch:
+                try:
+                    if db.run(sql, **{c: r.get(c) for c in cols}):
+                        changed += 1
+                except Exception as e:
+                    log.warning(f"store failed {r.get('ticker')}: {e}")
     return changed
 
 

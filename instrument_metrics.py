@@ -106,6 +106,89 @@ def _bars(ticker, end, db):
     return out
 
 
+def _bars_bulk(tickers, end, db, chunk=200):
+    """{ticker: [(iso_date, high, low, close, volume), ...]} for many tickers in a handful of queries.
+
+    WHY. record_daily called _bars() -- and therefore price_store.get_bars() -- ONCE PER TICKER: 1,773
+    SELECTs a day, each a separate network round trip to Supabase. Measured 2026-09-28 on the live daily
+    report, those reads plus the 1,772 per-row INSERTs below sat inside a phase that logged nothing for
+    ~51 minutes at ~371 ms a round trip.
+
+    Returns EXACTLY the shape _bars returns, including the NaN-volume -> 0.0 rule, because compute() is
+    shared with the live web path and a different shape here would make the stored metric and the live
+    metric disagree about the same instrument.
+    """
+    start = str(end - dt.timedelta(days=LOOKBACK_DAYS))
+    out = {}
+    items = sorted({t for t in tickers if t})
+    for offset in range(0, len(items), chunk):
+        batch = items[offset:offset + chunk]
+        params = {f"t{i}": t for i, t in enumerate(batch)}
+        slots = ",".join(f":t{i}" for i in range(len(batch)))
+        rows = db.run(
+            f"select ticker, bar_date, high, low, close, volume from price_history "
+            f"where ticker in ({slots}) and bar_date >= :start and bar_date <= :end "
+            f"order by ticker, bar_date",
+            start=start, end=str(end), **params) or []
+        for ticker, bar_date, high, low, close, volume in rows:
+            try:
+                vol = float(volume) if volume is not None and volume == volume else 0.0
+                out.setdefault(ticker, []).append(
+                    (str(bar_date)[:10], float(high), float(low), float(close), vol))
+            except (TypeError, ValueError):
+                continue                     # an unreadable bar is skipped, exactly as the frame path did
+    return out
+
+
+# Rows per batched upsert. 15 placeholders a row, so 300 stays well inside any parameter limit.
+_WRITE_BATCH = 300
+
+_METRIC_COLS = ("ticker", "as_of", "bar_date", "rvol", "rvol_date", "above_vwap", "above_vwap_setup",
+                "atr_expanding", "volume_score", "volume_score_max", "wk52_low", "wk52_high",
+                "direction", "status")
+
+
+def _write_metrics(db, rows) -> tuple:
+    """Upsert metric rows in batches. Returns (stored, failures) where failures is [(ticker, error)].
+
+    FALLS BACK TO ONE ROW AT A TIME when a batch fails, which is the only way to keep the old promise
+    that one bad instrument cannot lose the others while still paying one round trip for the good case.
+    """
+    stored, failures = 0, []
+    # ON CONFLICT DO UPDATE cannot touch the same key twice in one statement, so the conflict key must be
+    # unique within a batch. Last write wins, matching the sequential loop this replaces.
+    deduped = {}
+    for r in rows:
+        deduped[(r["ticker"], r["bar_date"])] = r
+    ordered = list(deduped.values())
+    sets = ", ".join(f"{c}=excluded.{c}" for c in _METRIC_COLS if c not in ("ticker", "bar_date"))
+    for offset in range(0, len(ordered), _WRITE_BATCH):
+        batch = ordered[offset:offset + _WRITE_BATCH]
+        vals, params = [], {}
+        for i, r in enumerate(batch):
+            vals.append("(" + ",".join(f":{c}{i}" for c in _METRIC_COLS) + ", now())")
+            for c in _METRIC_COLS:
+                params[f"{c}{i}"] = r[c]
+        sql = (f"insert into {TABLE} ({','.join(_METRIC_COLS)}, recorded_at) values "
+               + ",".join(vals)
+               + f" on conflict (ticker, bar_date) do update set {sets}, recorded_at=now()")
+        try:
+            db.run(sql, **params)
+            stored += len(batch)
+        except Exception as batch_error:
+            log.warning("metrics batch of %d failed (%s); retrying row by row", len(batch), batch_error)
+            for r in batch:
+                one = "(" + ",".join(f":{c}0" for c in _METRIC_COLS) + ", now())"
+                single = (f"insert into {TABLE} ({','.join(_METRIC_COLS)}, recorded_at) values {one}"
+                          f" on conflict (ticker, bar_date) do update set {sets}, recorded_at=now()")
+                try:
+                    db.run(single, **{f"{c}0": r[c] for c in _METRIC_COLS})
+                    stored += 1
+                except Exception as row_error:
+                    failures.append((r["ticker"], row_error))
+    return stored, failures
+
+
 def compute(ticker, bars, direction=None):
     """One instrument's metrics from its bars. Mirrors hvf_web/server.py::_live_instrument_metrics."""
     import volume_score as _vs
@@ -261,10 +344,21 @@ def record_daily(snapshot, as_of=None, db=None, tickers=None):
         if own:
             db = get_db()
         ensure_schema(db)
+        # ONE bulk read instead of one per ticker. If it fails for any reason the per-ticker path is
+        # still there, so a bulk problem degrades to the old speed rather than to no metrics at all.
+        bars_by = None
+        try:
+            bars_by = _bars_bulk(list(wanted), as_of, db)
+            log.info("instrument metrics: bars for %d of %d instruments in bulk",
+                     len(bars_by), len(wanted))
+        except Exception as bulk_error:
+            log.warning("bulk bar read failed (%s); falling back to per-ticker reads", bulk_error)
+        pending = []
         for ticker, direction in wanted.items():
             summary["attempted"] += 1
             try:
-                m = compute(ticker, _bars(ticker, as_of, db), direction)
+                bars = bars_by.get(ticker, []) if bars_by is not None else _bars(ticker, as_of, db)
+                m = compute(ticker, bars, direction)
                 if m.get("status") == "no_price_history":
                     summary["no_history"] += 1
                     continue
@@ -273,22 +367,14 @@ def record_daily(snapshot, as_of=None, db=None, tickers=None):
                 # argument, so EVERY insert raised "no matching keyword argument" and the table took
                 # 1,772 failures a day while the job reported success. Removed rather than supplied,
                 # because not capturing it is the decision on record.
-                db.run(f"""insert into {TABLE}
-                             (ticker, as_of, bar_date, rvol, rvol_date, above_vwap, above_vwap_setup,
-                              atr_expanding, volume_score, volume_score_max, wk52_low, wk52_high,
-                              direction, status, recorded_at)
-                           values (:t,:d,:bd,:rv,:rd,:av,:avs,:atr,:vs,:vsm,:lo,:hi,:dir,:st, now())
-                           on conflict (ticker, bar_date) do update set
-                             as_of=:d, rvol=:rv, rvol_date=:rd, above_vwap=:av,
-                             above_vwap_setup=:avs, atr_expanding=:atr, volume_score=:vs,
-                             volume_score_max=:vsm, wk52_low=:lo, wk52_high=:hi,
-                             direction=:dir, status=:st, recorded_at=now()""",
-                       t=ticker, d=str(as_of), bd=m.get("bar_date"), rv=m.get("rvol"),
-                       rd=m.get("rvol_date"), av=m.get("above_vwap"), avs=m.get("above_vwap_setup"),
-                       atr=m.get("atr_expanding"), vs=m.get("volume_score"),
-                       vsm=m.get("volume_score_max"), lo=m.get("wk52_low"), hi=m.get("wk52_high"),
-                       dir=m.get("direction"), st=m.get("status"))
-                summary["stored"] += 1
+                pending.append({
+                    "ticker": ticker, "as_of": str(as_of), "bar_date": m.get("bar_date"),
+                    "rvol": m.get("rvol"), "rvol_date": m.get("rvol_date"),
+                    "above_vwap": m.get("above_vwap"), "above_vwap_setup": m.get("above_vwap_setup"),
+                    "atr_expanding": m.get("atr_expanding"), "volume_score": m.get("volume_score"),
+                    "volume_score_max": m.get("volume_score_max"), "wk52_low": m.get("wk52_low"),
+                    "wk52_high": m.get("wk52_high"), "direction": m.get("direction"),
+                    "status": m.get("status")})
             except Exception as e:                       # one bad instrument must not lose the rest
                 summary["failed"] += 1
                 # The FIRST failure is surfaced at WARNING with its reason. It used to be debug-only, so
@@ -301,6 +387,15 @@ def record_daily(snapshot, as_of=None, db=None, tickers=None):
                     log.warning("metrics failed for %s: %s (further failures at debug)", ticker, e)
                 else:
                     log.debug("metrics failed for %s: %s", ticker, e)
+        written, write_failures = _write_metrics(db, pending)
+        summary["stored"] += written
+        for ticker, err in write_failures:
+            summary["failed"] += 1
+            if summary["failed"] == 1:
+                summary["first_error"] = f"{ticker}: {err}"
+                log.warning("metrics failed for %s: %s (further failures at debug)", ticker, err)
+            else:
+                log.debug("metrics failed for %s: %s", ticker, err)
     except Exception as e:
         log.warning("daily instrument metrics failed: %s", e)
     finally:

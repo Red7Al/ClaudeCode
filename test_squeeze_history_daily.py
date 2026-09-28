@@ -308,3 +308,68 @@ def test_the_phase_reports_progress_instead_of_going_silent(monkeypatch, caplog)
     assert "active lifecycle rows" in messages
     assert "bars fetched" in messages
     assert "lifecycle rows written" in messages
+
+
+# ======================================================================================================
+# store() was the third per-row writer in the same silent phase: 416 round trips on a normal daily
+# report (416 signals of 1,856 monitored instruments, measured 2026-09-28).
+# ======================================================================================================
+
+
+class _CountingStore:
+    def __init__(self, fail_over=None):
+        self.statements = []
+        self.fail_over = fail_over
+
+    def run(self, sql, **p):
+        n = sum(1 for k in p if k.startswith("ticker"))
+        self.statements.append((sql, n, dict(p)))
+        if self.fail_over is not None and n > self.fail_over:
+            raise RuntimeError(f"batch of {n} rejected")
+        return [(i,) for i in range(max(n, 1))]
+
+
+def _funnel(ticker, h3="2026-08-05", l3="2026-08-06"):
+    return {"ticker": ticker, "timeframe": "daily-90", "h3_date": h3, "l3_date": l3,
+            "hvf_type": "BULLISH", "entry_level": 100.0, "stop_level": 90.0, "target_level": 110.0}
+
+
+def test_store_writes_many_funnels_in_one_statement():
+    db = _CountingStore()
+
+    changed = squeeze_history.store(db, [_funnel(f"T{i}") for i in range(40)], update_existing=True)
+
+    assert len(db.statements) == 1, f"expected one batched INSERT, got {len(db.statements)}"
+    assert db.statements[0][1] == 40
+    assert changed == 40
+
+
+def test_store_splits_once_it_exceeds_the_batch_size(monkeypatch):
+    monkeypatch.setattr(squeeze_history, "_STORE_BATCH", 15)
+    db = _CountingStore()
+
+    squeeze_history.store(db, [_funnel(f"T{i}") for i in range(40)], update_existing=True)
+
+    assert len(db.statements) == 3, f"40 rows at 15 a batch is 3 statements, got {len(db.statements)}"
+
+
+def test_store_dedupes_the_conflict_key_within_a_batch():
+    """ON CONFLICT DO UPDATE cannot touch one key twice in a statement."""
+    db = _CountingStore()
+
+    squeeze_history.store(db, [_funnel("AAA"), _funnel("AAA")], update_existing=True)
+
+    # Both halves matter. The per-row loop this replaced also produced one `ticker` per statement, so
+    # without the statement count this assertion passes against the OLD code and proves nothing.
+    assert len(db.statements) == 1, f"expected one batched statement, got {len(db.statements)}"
+    assert db.statements[0][1] == 1, "the duplicate funnel instance must collapse to one row"
+
+
+def test_store_falls_back_to_one_row_at_a_time_when_a_batch_is_rejected():
+    """One bad funnel must not lose the rest -- the promise the per-row loop gave for free."""
+    db = _CountingStore(fail_over=1)
+
+    changed = squeeze_history.store(db, [_funnel("AAA"), _funnel("BBB")], update_existing=True)
+
+    assert changed == 2, "every good row must still be written by the fallback"
+    assert len(db.statements) == 3, "one rejected batch then two single rows"
