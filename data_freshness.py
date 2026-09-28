@@ -67,27 +67,45 @@ def _age_hours(when) -> float:
 # Each must be CHEAP -- an indexed max() or an already-loaded value -- because a page load waits on it.
 # ----------------------------------------------------------------------------------------------------------------------
 
+# ONE CONNECTION FOR THE WHOLE CHECK, not one per surface.
+#
+# THE BUG THIS FIXES, found in service within minutes of the first deploy on 2026-09-28: each measurement
+# called get_db()/close() for itself, so a single check opened FOUR connections. The live endpoint came
+# back with every database-backed surface unmeasurable --
+#   (EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15
+# -- which means the freshness check was consuming the very pool the website needs. A monitor that
+# degrades what it monitors is worse than no monitor. check() opens at most one connection, lazily (the
+# snapshot surface needs none), and always releases it.
+_SHARED = {"db": None}
+
+
+def _db():
+    if _SHARED["db"] is None:
+        from db_pool import get_db
+        _SHARED["db"] = get_db()
+    return _SHARED["db"]
+
+
+def _release():
+    db, _SHARED["db"] = _SHARED["db"], None
+    if db is not None:
+        try:
+            db.close()
+        except Exception as exc:
+            log.debug("freshness: releasing the shared connection failed: %s", exc)
+
+
 def _snapshot_generated():
     from hvf_web import server
     return (server._load_snapshot() or {}).get("generated_utc")
 
 
 def _squeeze_history_refreshed():
-    from db_pool import get_db
-    db = get_db()
-    try:
-        return (db.run("select max(refreshed_at) from squeeze_history") or [[None]])[0][0]
-    finally:
-        db.close()
+    return (_db().run("select max(refreshed_at) from squeeze_history") or [[None]])[0][0]
 
 
 def _instrument_metrics_recorded():
-    from db_pool import get_db
-    db = get_db()
-    try:
-        return (db.run("select max(as_of) from instrument_metrics_daily") or [[None]])[0][0]
-    finally:
-        db.close()
+    return (_db().run("select max(as_of) from instrument_metrics_daily") or [[None]])[0][0]
 
 
 def _market_data_worst():
@@ -108,15 +126,10 @@ def _market_data_worst():
     Read from instrument_metrics_daily (26k rows, indexed) rather than price_history (1.7M rows, where a
     group-by times out on this tier), and mapped to a market through the snapshot already in memory.
     """
-    from db_pool import get_db
     from hvf_web import server
     snap = server._load_snapshot() or {}
     market_of = {r.get("ticker"): r.get("market") for r in snap.get("records", []) if r.get("ticker")}
-    db = get_db()
-    try:
-        rows = db.run("select ticker, max(bar_date) from instrument_metrics_daily group by ticker") or []
-    finally:
-        db.close()
+    rows = _db().run("select ticker, max(bar_date) from instrument_metrics_daily group by ticker") or []
     newest = {}
     for ticker, bar_date in rows:
         market = market_of.get(ticker)
@@ -176,6 +189,13 @@ def check() -> dict:
     surface carries name/label/owner/age_hours/max_age_hours/stale/error.
     """
     out, stale, facing = [], [], []
+    try:
+        return _check(out, stale, facing)
+    finally:
+        _release()
+
+
+def _check(out, stale, facing) -> dict:
     for s in SURFACES:
         row = {"name": s["name"], "label": s["label"], "owner": s["owner"],
                "max_age_hours": s["max_age_hours"], "customer_facing": s["customer_facing"],
@@ -207,15 +227,25 @@ def banner(result: dict = None) -> str:
     bad = [s for s in result["surfaces"] if s["stale"] and s["customer_facing"]]
     if not bad:
         return ""
+    # TWO DIFFERENT SENTENCES, because they are two different facts and must not be merged (found in
+    # service 2026-09-28, when a saturated connection pool made the banner announce that current data was
+    # "not current"). MEASURED stale is a claim about the data. Unmeasurable is a claim about the CHECK.
+    # Saying the first when only the second is known is asserting something that was never measured.
+    measured = [s for s in bad if s["error"] is None and s["age_hours"] is not None]
+    unknown = [s for s in bad if s["error"] is not None or s["age_hours"] is None]
     parts = []
-    for s in sorted(bad, key=lambda r: r["name"]):
-        if s["error"] or s["age_hours"] is None:
-            parts.append(f"{s['label']} (age unknown)")
-        elif s["age_hours"] >= 48:
-            parts.append(f"{s['label']} is {int(s['age_hours'] // 24)} days old")
-        else:
-            parts.append(f"{s['label']} is {int(s['age_hours'])} hours old")
-    return "Some data on this page is not current: " + "; ".join(parts) + "."
+    if measured:
+        aged = []
+        for s in sorted(measured, key=lambda r: r["name"]):
+            if s["age_hours"] >= 48:
+                aged.append(f"{s['label']} is {int(s['age_hours'] // 24)} days old")
+            else:
+                aged.append(f"{s['label']} is {int(s['age_hours'])} hours old")
+        parts.append("Some data on this page is not current: " + "; ".join(aged) + ".")
+    if unknown:
+        names = ", ".join(s["label"] for s in sorted(unknown, key=lambda r: r["name"]))
+        parts.append(f"Could not check whether this is current: {names}.")
+    return " ".join(parts)
 
 
 if __name__ == "__main__":

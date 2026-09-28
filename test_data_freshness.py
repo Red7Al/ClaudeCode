@@ -94,13 +94,18 @@ def test_check_never_raises_even_when_every_surface_explodes(monkeypatch):
     assert out["customer_facing_stale"] == ["probe"]
 
 
-def test_an_unmeasurable_surface_says_age_unknown_rather_than_inventing_a_number(monkeypatch):
+def test_an_unmeasurable_surface_never_has_a_number_invented_for_it(monkeypatch):
+    """Wording changed 2026-09-28 from "(age unknown)" to a separate "Could not check" sentence; the
+    rule it protects is unchanged -- no age may be stated for a surface that was never measured."""
     def _boom():
         raise RuntimeError("nope")
 
     _one_surface(monkeypatch, _boom)
 
-    assert "age unknown" in fresh.banner()
+    msg = fresh.banner()
+
+    assert "Could not check" in msg
+    assert "hours old" not in msg and "days old" not in msg
 
 
 # ------------------------------------------------------------------------------------------------------
@@ -231,3 +236,33 @@ def test_a_measure_may_name_what_it_found_without_a_second_mechanism(monkeypatch
     _one_surface(monkeypatch, lambda: (dt.datetime.now(dt.timezone.utc), "oldest market: Nowhere"))
 
     assert fresh.check()["surfaces"][0]["note"] == "oldest market: Nowhere"
+
+
+def test_an_unmeasurable_surface_is_not_announced_as_stale_data(monkeypatch):
+    """FOUND IN SERVICE 2026-09-28: a saturated connection pool made the banner tell visitors that
+    perfectly current data was "not current". "The data is old" and "I could not check" are two
+    different facts, and claiming the first when only the second is known asserts what was never
+    measured."""
+    def _boom():
+        raise RuntimeError("pool exhausted")
+
+    _one_surface(monkeypatch, _boom)
+
+    msg = fresh.banner()
+
+    assert "Could not check" in msg
+    assert "not current" not in msg, f"claimed staleness it never measured: {msg!r}"
+
+
+def test_measured_staleness_and_an_unmeasurable_surface_are_reported_separately(monkeypatch):
+    monkeypatch.setattr(fresh, "SURFACES", (
+        {"name": "old", "label": "Old thing", "customer_facing": True, "owner": "t", "max_age_hours": 1,
+         "measure": lambda: dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=50)},
+        {"name": "broken", "label": "Broken thing", "customer_facing": True, "owner": "t",
+         "max_age_hours": 1, "measure": lambda: (_ for _ in ()).throw(RuntimeError("nope"))},
+    ))
+
+    msg = fresh.banner()
+
+    assert "Old thing is 2 days old" in msg
+    assert "Could not check whether this is current: Broken thing." in msg
