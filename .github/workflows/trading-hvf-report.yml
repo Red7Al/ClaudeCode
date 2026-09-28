@@ -37,7 +37,36 @@ jobs:
     # and then publishes and does the spaced per-market live-X posting on top. The old value dates
     # from 2026-06-17 when the comment's "200+ tickers" was accurate; the universe is now ~1,450.
     # Runs on 08-14 and 08-15 were killed at exactly 45m00s and delivered no morning report.
-    timeout-minutes: 120
+    #
+    # 2026-09-28: 120 was reached and the SAME failure happened again, one ceiling higher. This job
+    # ran 03:56:34 -> 05:56:51 = 120m00s exactly, which GitHub reports as "cancelled", NOT "failed",
+    # so nothing in the run reads as an error. It cascaded: Scanner report email, Winners precompute,
+    # Best settings audit and HVF orders were all skipped that morning.
+    #
+    # THE JOB IS TWO PHASES AND ONLY ONE OF THEM IS VISIBLE. Measured from the logs of the killed run
+    # and of the successful 2026-09-27 run (36316886381):
+    #
+    #                                   09-27 (ok)      09-28 (killed)
+    #   scan -> "wrote snapshot.json"      26m               65m
+    #   squeeze_history.refresh_daily      51m              >=55m (killed mid-phase)
+    #   total                              77m              120m cap
+    #
+    # refresh_daily emits NOT ONE LOG LINE for ~51 minutes, so the run looks hung when it is working
+    # and looks identical when it is genuinely stuck. It was misread as a hang during this very
+    # investigation. That near-fixed 51m leaves only ~69m of headroom for the scan under a 120 cap,
+    # and the 09-28 scan took 65m. The cap was the binding constraint, not a stall.
+    #
+    # THE 51m PHASE IS FIXED IN THIS SAME COMMIT, so 180 is margin rather than the load-bearing part.
+    # squeeze_history.refresh_daily now writes its 4,287 rows in 9 batched statements instead of 4,287
+    # single-row UPDATEs, and logs its progress, so the phase should collapse to well under a minute.
+    # 180 is kept anyway: the SCAN phase still varies 26m-65m for reasons NOT yet measured, and that
+    # variance is what would put a 120 cap back in play on a slow morning.
+    #
+    # NOT yfinance throttling -- the killed run's log contains ZERO "Too Many Requests" (grep -c = 0);
+    # that guess was checked and discarded. The scan variance is genuinely unexplained and is the next
+    # thing to measure. If this comment is being read because 180 was also reached, the answer is NOT
+    # 240 -- measure the scan phase.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

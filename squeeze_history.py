@@ -328,6 +328,118 @@ def _price_bars(db, tickers: list, start: str) -> dict:
     return by_ticker
 
 
+# Calendar days of bars to keep BEFORE the earliest date a row actually needs. _rvol_at averages the
+# RVOL_BARS (20) TRADING bars before the trigger, which is ~28 calendar days; 45 leaves margin for
+# holidays and thin listings. Too small silently returns rvol=None instead of a number, so this errs long.
+_BAR_BUFFER_DAYS = 45
+
+
+def _bar_cutoffs(active: list, flat_start: str) -> dict:
+    """{ticker: earliest bar date that ticker's active rows can actually need}.
+
+    WHY THIS EXISTS. refresh_daily asked for a FLAT 18*31 = 558-day window for every active ticker.
+    MEASURED against the live table 2026-09-28: 512,804 bars, 52.2 MB per run at the 101.72 B/row wire
+    width, 1.56 GB per 30 days on a daily job -- 31% of the whole 5 GB free-tier allowance, for one
+    function.
+
+    THE SAVING IS 26.4%, NOT "most". Measured old-vs-new over the live active set the same day:
+    512,804 -> 377,607 bars, 52.2 MB -> 38.4 MB, 1.56 -> 1.15 GB/30d. An earlier guess that nearly all
+    of the window was dead weight was WRONG and is recorded here so it is not repeated: many rows are
+    NEVER_TRIGGERED with old pivots and legitimately need their full history. The decisive win in this
+    change is the batched write, not this; keep both, but do not quote this one as the big number.
+
+    Each row needs bars from its last pivot onward (_trigger_date skips anything before `ready`) and
+    RVOL_BARS bars before its trigger (_rvol_at). So the earliest useful date is
+    min(ready, triggered_date) - _BAR_BUFFER_DAYS.
+
+    CLAMPED TO flat_start AND NEVER WIDER. A row with no pivot and no trigger date keeps the full flat
+    window, and no cutoff is ever earlier than flat_start, so the fetched set is always a SUBSET of what
+    the old code fetched. That is deliberate: it bounds the blast radius to "a needed bar was excluded",
+    which is exactly what the equality check against the old window tests for.
+    """
+    cutoffs = {}
+    for _id, ticker, _t, _e, _s, _tg, h3d, l3d, ready_date, triggered_date, _o in active:
+        if not ticker:
+            continue
+        pivots = [v for v in (ready_date, h3d, l3d) if v]
+        ready = max(pivots) if pivots else None
+        candidates = [str(v)[:10] for v in (ready, triggered_date) if v]
+        if not candidates:
+            cutoffs[ticker] = flat_start          # no anchor at all: keep the full window
+            continue
+        earliest = dt.date.fromisoformat(min(candidates)) - dt.timedelta(days=_BAR_BUFFER_DAYS)
+        want = max(earliest.isoformat(), flat_start)
+        prior = cutoffs.get(ticker)
+        # flat_start wins outright: it is the widest this may ever be.
+        if prior == flat_start:
+            continue
+        cutoffs[ticker] = want if prior is None else min(prior, want)
+    return cutoffs
+
+
+def _price_bars_by_cutoff(db, cutoffs: dict) -> dict:
+    """Same shape as _price_bars, but each ticker carries its OWN start date.
+
+    One round trip per batch against a VALUES join -- the identical idiom hvf_web/server.py::_perf_bars
+    used to collapse its per-ticker round trips, kept here so the two do not drift into different
+    answers about the same table.
+    """
+    by_ticker = defaultdict(list)
+    items = sorted((tk, d0) for tk, d0 in cutoffs.items() if tk and d0)
+    for offset in range(0, len(items), 100):
+        batch = items[offset:offset + 100]
+        vals = ",".join(f"(:t{i}, :d{i}::date)" for i in range(len(batch)))
+        params = {}
+        for i, (ticker, d0) in enumerate(batch):
+            params[f"t{i}"] = ticker
+            params[f"d{i}"] = str(d0)
+        raw = db.run(
+            f"select p.ticker,p.bar_date,p.high,p.low,p.close,p.volume from price_history p "
+            f"join (values {vals}) as f(ticker, d0) on p.ticker = f.ticker and p.bar_date >= f.d0 "
+            f"order by p.ticker,p.bar_date", **params) or []
+        for ticker, bar_date, high, low, close, volume in raw:
+            by_ticker[ticker].append((bar_date, high, low, close, volume))
+    return by_ticker
+
+
+# Rows per batched UPDATE. The statement carries 6 placeholders a row, so 500 keeps it well inside any
+# parameter limit while turning 4,287 round trips into 9.
+_UPDATE_BATCH = 500
+
+
+def _apply_refresh(db, updates: list) -> int:
+    """Write every recomputed lifecycle row in batches instead of one statement per row.
+
+    WHY. MEASURED 2026-09-28 on the live database: the loop issued 4,287 single-row UPDATEs, one network
+    round trip each, and the phase took ~51 minutes (~714 ms a row) with no log output at all. On
+    2026-09-28 the morning chain hit its 120-minute cap mid-phase and Scanner report email, Winners
+    precompute, Best settings audit and HVF orders were all skipped as a result.
+
+    `rvol` keeps its coalesce so a recomputed NULL never erases a stored value -- same rule as before.
+    """
+    written = 0
+    for offset in range(0, len(updates), _UPDATE_BATCH):
+        batch = updates[offset:offset + _UPDATE_BATCH]
+        vals = ",".join(
+            f"(:i{i}::bigint, :td{i}::date, :o{i}::text, :od{i}::date, :r{i}::numeric, :v{i}::numeric)"
+            for i in range(len(batch)))
+        params = {}
+        for i, (row_id, td, outcome, od, ret, rvol) in enumerate(batch):
+            params[f"i{i}"] = row_id
+            params[f"td{i}"] = td
+            params[f"o{i}"] = outcome
+            params[f"od{i}"] = od
+            params[f"r{i}"] = ret
+            params[f"v{i}"] = rvol
+        db.run(
+            f"update squeeze_history sh set triggered_date=v.td, outcome=v.outcome, outcome_date=v.od, "
+            f"return_pct=v.ret, rvol=coalesce(v.rvol, sh.rvol), refreshed_at=now() "
+            f"from (values {vals}) as v(id, td, outcome, od, ret, rvol) where sh.id = v.id", **params)
+        written += len(batch)
+        log.info("squeeze history: %d/%d lifecycle rows written", written, len(updates))
+    return written
+
+
 def refresh_daily(snapshot: dict) -> dict:
     """Incrementally refresh current funnels plus all unresolved lifecycle rows from price_history."""
     from db_pool import get_db
@@ -341,9 +453,17 @@ def refresh_daily(snapshot: dict) -> dict:
             "triggered_date,outcome from squeeze_history where outcome is null or outcome in ('OPEN','NEVER_TRIGGERED')") or []
         tickers = sorted({row[1] for row in active if row[1]})
         start = (dt.date.today() - dt.timedelta(days=18 * 31)).isoformat()
-        bars_by_ticker = _price_bars(db, tickers, start) if tickers else {}
+        # Logged because this phase used to emit NOTHING for ~51 minutes, so a run that was working and
+        # a run that was stuck looked identical -- it was misdiagnosed as a hang on 2026-09-28.
+        log.info("squeeze history: %d active lifecycle rows across %d tickers; fetching bars ...",
+                 len(active), len(tickers))
+        cutoffs = _bar_cutoffs(active, start)
+        bars_by_ticker = _price_bars_by_cutoff(db, cutoffs) if cutoffs else {}
+        log.info("squeeze history: bars fetched for %d tickers (%d bars); replaying outcomes ...",
+                 len(bars_by_ticker), sum(len(b) for b in bars_by_ticker.values()))
         refreshed = 0
         data_through = None
+        pending = []
         for row_id, ticker, hvf_type, entry, stop, target, h3d, l3d, ready_date, triggered_date, _outcome in active:
             bars = bars_by_ticker.get(ticker) or []
             if not bars or None in (entry, stop, target):
@@ -366,11 +486,11 @@ def refresh_daily(snapshot: dict) -> dict:
                 outcome, outcome_date, return_pct = _exit_outcome(
                     hvf_type == "BULLISH", float(entry), float(stop), float(target), bars[idx + 1:])
                 rvol = _rvol_at(bars, td)
-            db.run("update squeeze_history set triggered_date=:td,outcome=:outcome,outcome_date=:od,"
-                   "return_pct=:ret,rvol=coalesce(:rvol,rvol),refreshed_at=now() where id=:id",
-                   td=td, outcome=outcome, od=outcome_date,
-                   ret=(round(return_pct, 2) if return_pct is not None else None), rvol=rvol, id=row_id)
+            pending.append((row_id, td, outcome, outcome_date,
+                            (round(return_pct, 2) if return_pct is not None else None), rvol))
             refreshed += 1
+        _apply_refresh(db, pending)
+        log.info("squeeze history: %d rows refreshed, data through %s", refreshed, data_through)
         return {"current_funnels": len(current), "current_upserts": current_changed,
                 "active_refreshed": refreshed, "data_through": data_through}
     finally:
