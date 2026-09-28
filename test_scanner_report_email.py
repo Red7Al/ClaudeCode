@@ -316,3 +316,30 @@ def test_resend_from_overrides_once_a_domain_is_verified(monkeypatch):
     trade_email._send_via_resend("s", "t", "<p>h</p>", [], ["x@example.com"])
 
     assert captured["from"] == "alerts@squeezescanner.cloud"
+
+
+def test_build_rows_joins_market_cap(monkeypatch):
+    """build_rows must join mcap, because user_rows gates on it.
+
+    user_rows passes mcap=r.get("mcap") into trading_limits.check_limits, whose band check is
+    `if isinstance(mcap, (int, float))` (trading_limits.py) -- so a missing mcap skips the personal
+    instrument-value band ENTIRELY. build_rows never set it and the snapshot record carries mcap=None
+    for every instrument (measured 2026-09-28: 1,773/1,773), so the band was silently inert in the
+    email while the Scanner tab, which joins _mcap_map in api_records, applied it. Two surfaces
+    disagreeing about which instruments qualify.
+    """
+    import hvf_web.server as S
+    monkeypatch.setattr(S, "_snapshot_rvol", lambda snap: {})
+    monkeypatch.setattr(S, "_snapshot_volscore", lambda snap: {})
+    monkeypatch.setattr(S, "_live_vwap_atr", lambda snap: {})
+    monkeypatch.setattr(S, "_mcap_map", lambda: {"AAA": 1_234_000_000.0})
+
+    snap = {"records": [{"ticker": "AAA", "has_signal": True},
+                        {"ticker": "BBB", "has_signal": True}]}
+
+    rows = {r["ticker"]: r for r in rse.build_rows(snap)}
+
+    assert rows["AAA"]["mcap"] == 1_234_000_000.0
+    # Absent from the map is an honest "not recorded", not an error -- _mcap_map omits a ticker whose
+    # currency has no FX rate rather than passing a raw non-GBP figure through.
+    assert rows["BBB"]["mcap"] is None

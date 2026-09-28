@@ -60,10 +60,16 @@ def build_rows(snap: dict) -> list:
     _live_vwap_atr (2026-08-11) — computed for every has_signal row regardless of status, not just
     TRIGGERED, same as the Scanner tab; RVOL/VolumeScore remain TRIGGERED-only (inherently about the break
     bar, see _snapshot_rvol/_snapshot_volscore's own docstrings)."""
-    from hvf_web.server import _snapshot_rvol, _snapshot_volscore, _live_vwap_atr
+    from hvf_web.server import (_snapshot_rvol, _snapshot_volscore, _live_vwap_atr,
+                                _mcap_map)
     rvol = _snapshot_rvol(snap)
     vscore = _snapshot_volscore(snap)
     vwap_atr = _live_vwap_atr(snap)
+    # user_rows gates on mcap via trading_limits.check_limits, whose band check is
+    # `isinstance(mcap, (int, float))` -- so without this join every row arrived with
+    # mcap=None and the personal instrument-value band was skipped outright, while the
+    # Scanner tab (api_records joins the same map) applied it. One query, cached per TTL.
+    mcaps = _mcap_map() or {}
 
     rows = []
     for r in snap.get("records", []):
@@ -73,7 +79,8 @@ def build_rows(snap: dict) -> list:
                          rvol=rvol.get(r.get("ticker")),
                          volume_score=result.get("score"),
                          above_vwap=av,
-                         atr_expanding=ae))
+                         atr_expanding=ae,
+                         mcap=mcaps.get(r.get("ticker"))))
     return rows
 
 
