@@ -582,6 +582,14 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
        right there. Moving it took the date away from where the user reads it. Reverted same day.
        Leave it here. -->
   <span class="count" id="gen"></span>
+  <!-- STALE-DATA BANNER (owner 2026-09-28: "there needs to be a mechanism to eradicate stale data").
+       On 2026-09-28 the site served a snapshot 18.5 hours old with nothing on screen to say so, and the
+       owner found it before the system did. Driven by /api/freshness; hidden entirely when every
+       customer-facing surface is current, so it is silent in the normal case. It sits beside #gen
+       because that is where the user already reads "how current is this". -->
+  <span class="count" id="stale-banner" title="Click for detail"
+        style="display:none;cursor:pointer;background:var(--bear);color:#fff;padding:4px 10px;border-radius:4px"
+        onclick="showTab('operations')"></span>
   <button class="btn" id="nav-back" onclick="tabHistGo(-1)" title="Back" style="padding:6px 9px">◀</button>
   <button class="btn" id="nav-fwd" onclick="tabHistGo(1)" title="Forward" style="padding:6px 9px">▶</button>
   <span class="grow"></span>

@@ -2213,6 +2213,38 @@ def api_refresh():
                     "refresh_id": _REFRESHING.get("refresh_id")})
 
 
+_FRESHNESS_CACHE = {"at": 0.0, "data": None}
+_FRESHNESS_TTL = 300        # seconds; the surfaces move at most twice a day, a page load must not wait on them
+
+
+@app.route("/api/freshness")
+def api_freshness():
+    """Is what you are looking at current? PUBLIC, because stale data misleads a logged-out visitor too.
+
+    Read by every page load on purpose (data_freshness design rule 1): this project's recurring defect is
+    correct code that nothing ever calls, and a scheduled freshness checker would be one more thing to
+    notice had stopped. Cached for _FRESHNESS_TTL so the page never pays for the queries more than once
+    every five minutes.
+
+    NEVER 500s. A safeguard that can break the page it protects is not a safeguard -- on any failure it
+    reports the failure as staleness, which is the fail-closed direction.
+    """
+    now = _time.time()
+    if _FRESHNESS_CACHE["data"] and now - _FRESHNESS_CACHE["at"] < _FRESHNESS_TTL:
+        return jsonify(_FRESHNESS_CACHE["data"])
+    try:
+        import data_freshness
+        result = data_freshness.check()
+        result["banner"] = data_freshness.banner(result)
+    except Exception as exc:
+        log.warning(f"freshness check unavailable: {exc}")
+        return jsonify({"checked_utc": None, "stale": ["freshness_check"], "surfaces": [],
+                        "customer_facing_stale": ["freshness_check"],
+                        "banner": "Data freshness could not be checked, so what you see may not be current."}), 200
+    _FRESHNESS_CACHE.update(at=now, data=result)
+    return jsonify(result)
+
+
 @app.route("/api/build")
 def api_build():
     """Which build THIS worker process is running — the deploy's only way to prove the API took effect.

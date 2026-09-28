@@ -267,6 +267,27 @@ async function loadPriceChart(ticker,days){
 }
 function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return null;return Math.round((Date.now()-t)/864e5);}
 
+// STALE-DATA BANNER (owner 2026-09-28: "there needs to be a mechanism to eradicate stale data").
+// The site served an 18.5-hour-old snapshot that day with nothing on screen to say so. /api/freshness
+// measures the DATA rather than trusting the job that fed it, and this paints the one sentence it
+// returns. SILENT when everything is current: the element is hidden, not emptied to a reassuring tick,
+// because a permanent green badge is ignored within a week and then means nothing.
+//
+// A FAILED CHECK STILL SHOWS. If /api/freshness cannot be reached at all we say so rather than staying
+// quiet -- "I could not tell" and "it is fine" must never look the same. That confusion is the whole bug.
+function paintFreshness(){
+  const el=$("stale-banner"); if(!el)return;
+  fetch("/api/freshness").then(r=>r.json()).then(j=>{
+    const msg=(j&&j.banner)||"";
+    el.style.display=msg?"":"none";
+    el.textContent=msg?("⚠ "+msg):"";
+    el.title=msg?"Click for detail in Operations":"";
+  }).catch(()=>{
+    el.style.display="";
+    el.textContent="⚠ Data freshness could not be checked, so what you see may not be current.";
+  });
+}
+
 function augment(r){
   r.dist_entry=(r.entry!=null&&r.current_price)? +(((r.entry-r.current_price)/r.current_price)*100).toFixed(2):null;
   // Return since it triggered, vs the entry (trigger) level. DIRECTION-AWARE so it agrees with the
@@ -5587,6 +5608,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     DATA=j.records||[]; DATA_LOADED=true; DATA.forEach(augment);
     if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;   // canonical market list for the Refresh picker (P-15)
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
+    paintFreshness();
     // f_loc/f_tf went to Squeeze History with the filters (2026-08-16) and fillSel dereferences $(id)
     // unguarded. f_mkt/f_sec are still populated: they are hidden now, but applyConfigFromReport selects
     // options on them to carry the saved market/sector scope, which needs the options to exist.
