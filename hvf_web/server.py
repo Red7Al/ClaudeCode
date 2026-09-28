@@ -1523,6 +1523,67 @@ def _stored_metrics(snap: dict) -> dict:
     return out
 
 
+_TRIGDATE_CACHE = {"gen": None, "data": {}}
+
+
+def _snapshot_trigger_dates(snap: dict) -> dict:
+    """{ticker: 'YYYY-MM-DD'} — the date each current funnel ACTUALLY TRIGGERED.
+
+    THE BUG THIS FIXES (owner 2026-09-28: "why do I have triggered dates of February and July on my
+    Scanner - ive raised this before"). The Scanner never had a trigger date. hvf_web/app.js derived its
+    "Triggered" column as `(direction==="BULL" ? l3_date : h3_date)` -- the funnel's last PIVOT, i.e.
+    when the squeeze FORMED, not when price broke the entry. MEASURED on the live snapshot that day:
+    of 178 TRIGGERED rows, 56 (31%) displayed a date before August and the oldest read 2026-01-12,
+    against real trigger dates months later -- MGM showed 2026-02-02 against a true 2026-09-24. Every
+    one of the oldest was BEAR, because a short uses h3_date, the high pivot, which forms earliest.
+    "Days since" shared the same reference, so it was wrong by the same months, and the Scanner Report
+    sorts on it.
+
+    NOT A SECOND DEFINITION. squeeze_history.triggered_date is the one derived-from-price trigger date
+    the Performance report, the Back Test and /api/winners already use; this exposes it to the Scanner
+    rather than computing a rival. Joined on the FUNNEL INSTANCE identity -- (ticker, timeframe, h3_date,
+    l3_date) -- which is the same key hvf_recorder and squeeze_history.store use, so a row can only ever
+    take the trigger of its own funnel and not of an older one for the same ticker.
+
+    A funnel with no matching triggered row yields NOTHING, and the client leaves the column blank. That
+    is deliberate: blank reads as "not recorded", where a pivot date read as a measured trigger.
+    """
+    gen = snap.get("generated_utc")
+    if _TRIGDATE_CACHE["gen"] == gen and _TRIGDATE_CACHE["data"]:
+        return _TRIGDATE_CACHE["data"]
+    want = {}
+    for r in snap.get("records", []):
+        tk = r.get("ticker")
+        if not tk or r.get("status") != "TRIGGERED":
+            continue
+        want[(tk, str(r.get("timeframe") or ""),
+              str(r.get("h3_date") or "")[:10], str(r.get("l3_date") or "")[:10])] = tk
+    out = {}
+    if not want:
+        _TRIGDATE_CACHE.update(gen=gen, data=out)
+        return out
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            rows = db.run(
+                "select ticker, coalesce(timeframe,''), h3_date, l3_date, triggered_date "
+                "from squeeze_history where ticker = any(:tks) and triggered_date is not null",
+                tks=sorted({tk for (tk, _tf, _h, _l), _t in want.items()})) or []
+        finally:
+            db.close()
+    except Exception as exc:
+        log.warning(f"scanner trigger dates unavailable: {exc}")
+        return out                      # not cached: a transient outage must not pin an empty map
+    for tk, tf, h3, l3, td in rows:
+        key = (tk, str(tf or ""), str(h3 or "")[:10], str(l3 or "")[:10])
+        if key in want:
+            out[tk] = str(td)[:10]
+    log.info("scanner trigger dates resolved for %d of %d triggered funnels", len(out), len(want))
+    _TRIGDATE_CACHE.update(gen=gen, data=out)
+    return out
+
+
 # Market cap per ticker. One definition, cached: the weekly backfill is the only writer, so re-querying
 # it per request was work repeated against data that changes at most once a week. Extracted 2026-08-29
 # when the Scanner needed it too (user: "Needs to see MCAP (to left of rvol)") -- a second inline copy of
@@ -1663,6 +1724,7 @@ def api_records():
         live_metrics = _live_instrument_metrics(snap)
         recs = []
         mcaps = _mcap_map()
+        trigdates = _snapshot_trigger_dates(snap)
         for r in snap.get("records", []):
             result = vscore.get(r.get("ticker")) or {}
             w = wk52.get(r.get("ticker")) or (None, None)
@@ -1681,6 +1743,7 @@ def api_records():
                              current_atr_expanding=current.get("atr_expanding"),
                              current_metric_date=current.get("date"),
                              mcap=mcaps.get(r.get("ticker")),
+                             trig_date=trigdates.get(r.get("ticker")),
                              current_metric_status=current.get("status", "not_calculated"),
                              current_metric_reason=current.get("reason"),
                              wk52_low=w[0], wk52_high=w[1]))

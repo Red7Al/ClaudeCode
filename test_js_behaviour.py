@@ -4310,3 +4310,73 @@ def test_no_user_visible_text_says_funnel():
 
     assert not offenders, ("user-visible text still says 'funnel' (rename it to 'squeeze'): "
                            + "; ".join(f"{where}: {text}" for where, text in offenders))
+
+
+# ======================================================================================================
+# THE PIVOT IS NOT THE TRIGGER (owner 2026-09-28: "why do I have triggered dates of February and July
+# on my Scanner - ive raised this before but as with so many things they are not getting resolved").
+#
+# augment() set trig_date to the funnel's last PIVOT -- l3_date for a long, h3_date for a short -- which
+# is when the squeeze FORMED, not when price broke the entry. MEASURED on the live snapshot that day:
+# 56 of 178 TRIGGERED rows showed a date before August, oldest 2026-01-12, against real trigger dates
+# months later. These EXECUTE augment() rather than reading its source, because the previous version of
+# this rule was asserted on source text and the bug shipped green anyway.
+# ======================================================================================================
+
+_AUGMENT_PRE = """
+// Frozen "today" so days_since is deterministic; the real one uses the clock.
+const daysSince = d => d ? Math.round((Date.parse('2026-09-28') - Date.parse(d)) / 864e5) : null;
+const disp = t => t;
+const POS = {}, PUB = {};
+"""
+
+
+def _augment(row):
+    # ONE object, mutated in place and returned. Passing the literal twice -- `(augment({..}), {..})` --
+    # builds TWO objects and asserts against the untouched one, which passes whatever augment does.
+    return run_js(_AUGMENT_PRE, _extract("augment"),
+                  f"(()=>{{const r={json.dumps(row)}; augment(r); return r;}})()")
+
+
+def test_the_triggered_column_uses_the_servers_trigger_date_not_the_pivot():
+    """A BEAR funnel whose high pivot is February but which triggered in September must read September."""
+    out = _augment({"status": "TRIGGERED", "direction": "BEAR", "ticker": "MGM",
+                    "h3_date": "2026-02-02", "l3_date": "2026-05-18",
+                    "trig_date": "2026-09-24", "entry": 100, "current_price": 90})
+
+    assert out["trig_date"] == "2026-09-24", (
+        f"showed {out['trig_date']!r} -- the pivot is not the trigger")
+
+
+def test_days_since_counts_from_the_real_trigger_not_the_pivot():
+    out = _augment({"status": "TRIGGERED", "direction": "BEAR", "ticker": "MGM",
+                    "h3_date": "2026-02-02", "l3_date": "2026-05-18",
+                    "trig_date": "2026-09-24", "entry": 100, "current_price": 90})
+
+    assert out["days_since"] == 4, (
+        f"days_since={out['days_since']} -- counted from the pivot, inflating it by months")
+
+
+def test_a_triggered_row_with_no_recorded_trigger_shows_blank_not_a_pivot():
+    """Blank reads as 'not recorded'. A pivot date read as a measured trigger, which is worse."""
+    out = _augment({"status": "TRIGGERED", "direction": "BEAR", "ticker": "XYZ",
+                    "h3_date": "2026-02-02", "l3_date": "2026-05-18",
+                    "entry": 100, "current_price": 90})
+
+    assert out["trig_date"] is None, f"fell back to {out['trig_date']!r}"
+
+
+def test_added_still_records_when_the_setup_formed():
+    """`added` is legitimately the pivot -- when the funnel completed -- and must NOT follow trig_date."""
+    out = _augment({"status": "TRIGGERED", "direction": "BULL", "ticker": "AAA",
+                    "h3_date": "2026-02-02", "l3_date": "2026-05-18",
+                    "trig_date": "2026-09-24", "entry": 100, "current_price": 110})
+
+    assert out["added"] == "2026-05-18", "added must stay on the pivot (L3 for a long)"
+
+
+def test_a_row_that_never_triggered_carries_no_trigger_date():
+    out = _augment({"status": "READY", "direction": "BULL", "ticker": "BBB",
+                    "h3_date": "2026-02-02", "l3_date": "2026-05-18", "trig_date": "2026-09-24"})
+
+    assert out["trig_date"] is None, "only a TRIGGERED row has a trigger date"

@@ -274,12 +274,22 @@ function augment(r){
   // "loss" here while Performance correctly showed +7.7% — it was direction-agnostic). BULL: (cur-entry)/entry,
   // BEAR: (entry-cur)/entry. Only meaningful for TRIGGERED rows.
   r.chg_since_trig=(r.status==="TRIGGERED"&&r.entry&&r.current_price)? +((((r.direction==="BEAR"?(r.entry-r.current_price):(r.current_price-r.entry)))/r.entry)*100).toFixed(1):null;
-  // "Days since" and "Triggered" now share ONE date (the trigger pivot: L3 for a long, H3 for a short),
-  // so they're always in sync — Days since = today minus the date shown in the Triggered column.
-  const _trigref=(r.direction==="BULL"?r.l3_date:r.h3_date)||r.l3_date||r.h3_date;
-  r.days_since=daysSince(_trigref);
-  r.trig_date=(r.status==="TRIGGERED")?_trigref:null;
-  r.added=_trigref?String(_trigref).slice(0,10):null;   // when the setup completed (joined the dataset)
+  // THE PIVOT IS NOT THE TRIGGER (owner 2026-09-28: "why do I have triggered dates of February and
+  // July on my Scanner"). This used to set trig_date to the funnel's last PIVOT — L3 for a long, H3 for
+  // a short — which is when the squeeze FORMED, not when price broke the entry. MEASURED that day: 56
+  // of 178 TRIGGERED rows showed a date before August, oldest 2026-01-12, against true trigger dates
+  // months later (MGM showed 2026-02-02 against a real 2026-09-24). Days since inherited the same error
+  // and the Scanner Report sorts on it.
+  //
+  // trig_date now comes from the SERVER (squeeze_history.triggered_date, derived from price and joined
+  // on the funnel's own identity). BLANK when the server has no trigger for this funnel — "not
+  // recorded" is honest, where a pivot date read as a measured trigger.
+  const _pivot=(r.direction==="BULL"?r.l3_date:r.h3_date)||r.l3_date||r.h3_date;
+  r.trig_date=(r.status==="TRIGGERED"&&r.trig_date)?String(r.trig_date).slice(0,10):null;
+  // Days since stays in sync with what the Triggered column SHOWS: the real trigger for a triggered
+  // row, and for anything else the pivot, which is how long the setup has existed.
+  r.days_since=daysSince(r.trig_date||_pivot);
+  r.added=_pivot?String(_pivot).slice(0,10):null;   // when the setup completed (joined the dataset)
   // Expected time-to-target = the squeeze's H1->H3 formation span (same heuristic as the Slack report).
   if(r.h1_date&&r.h3_date){const _sp=Math.round((Date.parse(r.h3_date)-Date.parse(r.h1_date))/864e5);
     r.tgt_months=_sp>0? +(_sp/30.44).toFixed(1):null;
