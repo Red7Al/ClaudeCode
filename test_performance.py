@@ -1768,3 +1768,40 @@ def test_the_band_that_performs_is_selectable_as_a_card_scope():
     labels = [b[2] for b in config.MCAP_BANDS]
     assert "10–25bn" in labels, "the measured best-performing band must be its own scope"
     assert "10–100bn" not in labels, "the band that buried it must not come back"
+
+
+def test_warm_skips_the_replay_when_the_precomputed_store_is_valid(monkeypatch):
+    """The background warmer must not rebuild a payload the request path will replace.
+
+    MEASURED 2026-09-28/29: _perf_warm_loop called _build_perf_payload() every _PERF_WARM_INTERVAL
+    (600s) while _VSCORED_CACHE lives _SQA_TTL (900s), so a ~400,000-row _perf_bars fetch ran roughly
+    every 15 minutes in every resident worker regardless of traffic. A clean 3.10h pg_stat_statements
+    window attributed 5,184,231 rows -- 78.5% of all _perf_bars rows in that window -- to 13 such
+    calls made overnight with no visitors. api_performance reads _perf_stored() first and overwrites
+    _PERF_CACHE with it, so that work was discarded.
+    """
+    import hvf_web.server as S
+
+    calls = {"rebuild": 0}
+    monkeypatch.setattr(S, "_build_perf_payload",
+                        lambda: calls.__setitem__("rebuild", calls["rebuild"] + 1))
+    monkeypatch.setattr(S, "_perf_stored", lambda: {"rows": [{"ticker": "AAA"}], "generated": "x"})
+
+    assert S._warm_perf_once() == "stored"
+    assert calls["rebuild"] == 0, "a valid store must not trigger the 12-month replay"
+    assert S._PERF_CACHE["data"] == {"rows": [{"ticker": "AAA"}], "generated": "x"}
+
+
+def test_warm_still_rebuilds_when_the_store_is_unusable(monkeypatch):
+    """The gap the warmer still exists for: after the 18:30 scan moves generated_utc, until the next
+    precompute writes a matching copy, _perf_stored() returns None and a visitor would otherwise pay
+    the ~40s cold build."""
+    import hvf_web.server as S
+
+    calls = {"rebuild": 0}
+    monkeypatch.setattr(S, "_build_perf_payload",
+                        lambda: calls.__setitem__("rebuild", calls["rebuild"] + 1))
+    monkeypatch.setattr(S, "_perf_stored", lambda: None)
+
+    assert S._warm_perf_once() == "rebuilt"
+    assert calls["rebuild"] == 1

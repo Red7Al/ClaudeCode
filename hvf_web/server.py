@@ -6261,6 +6261,39 @@ def _warm_records_caches():
         log.warning(f"best-settings cards could not be warmed: {ex}")
 
 
+def _warm_perf_once():
+    """Warm _PERF_CACHE, preferring the precomputed store over rebuilding the 12-month replay.
+
+    WHY THIS CHECKS THE STORE FIRST (measured 2026-09-28/29). This loop called _build_perf_payload()
+    unconditionally every _PERF_WARM_INTERVAL (600s) while _VSCORED_CACHE lives _SQA_TTL (900s), so it
+    re-ran _volscore_scored(1) -- a ~400,000-row _perf_bars fetch -- roughly every 15 minutes forever,
+    in every resident worker, whether or not anyone was using the site. A clean 3.10h window differenced
+    from pg_stat_statements attributed 5,184,231 rows (78.5% of all _perf_bars rows in that window) to
+    13 such calls, overnight, with no visitor traffic to explain them.
+
+    The rebuild was also DISCARDED: api_performance reads _perf_stored() first and, when the precompute
+    is valid, overwrites _PERF_CACHE with that copy before ever looking at what this loop built. So the
+    expensive work warmed a cache the request path replaces. Underneath it is the same lesson _perf_bars
+    already records in its own docstring -- cache on the DATA's version, not on a clock -- applied one
+    level up: price_history changes twice a day (05:00 refresh, 18:30 scan), not every ten minutes.
+
+    The rebuild is still needed in the gap where the store is genuinely unusable -- after the 18:30 scan
+    moves generated_utc until the next precompute writes a matching copy, or past _WINNERS_STORE_MAX_AGE
+    -- which is exactly when a visitor would otherwise pay the ~40s cold build."""
+    import time as _t
+    t0 = _t.time()
+    stored = _perf_stored()
+    if stored is not None:
+        # Same adoption api_performance performs, so the rest of the module cannot tell the difference.
+        _PERF_CACHE.update(ts=_t.time(), data=stored, gzip=None)
+        log.info(f"performance cache warmed from the precomputed store in {_t.time() - t0:.1f}s "
+                 f"(no replay, no bar fetch)")
+        return "stored"
+    _build_perf_payload()          # builds _sqa_all_rows + VolumeScore + the payload, into _PERF_CACHE
+    log.info(f"performance caches warmed by rebuild in {_t.time() - t0:.1f}s")
+    return "rebuilt"
+
+
 def _perf_warm_loop():
     """Pre-compute the Performance AND Scanner caches OFF the request path (user 2026-08-03; the Scanner
     added 2026-09-03 after the requester reported the Scanner Report "still too slow"). The 12-month replay +
@@ -6273,9 +6306,7 @@ def _perf_warm_loop():
     while True:
         if _claim_perf_warm():
             try:
-                t0 = _t.time()
-                _build_perf_payload()      # builds _sqa_all_rows + VolumeScore + the payload, into _PERF_CACHE
-                log.info(f"performance caches warmed in {_t.time() - t0:.1f}s")
+                _warm_perf_once()
             except Exception as e:
                 log.warning(f"performance warm failed: {e}")
             finally:
