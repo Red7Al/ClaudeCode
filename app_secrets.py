@@ -14,7 +14,7 @@
 # breaks the caller; it just leaves os.environ as-is.
 #
 # The master key comes from APP_SECRET_KEY (comma-separated for MultiFernet rotation). If unset, it falls back
-# to the existing local key (hvf_web/data/.web_users.key via web_users._fernet), so this works locally today
+# to the existing local key (data/.web_users.key via web_users._fernet -- repo root, NOT hvf_web/data), so this works locally today
 # with no new key to manage; set APP_SECRET_KEY as a GitHub Secret for the Actions runtime.
 # ======================================================================================================================
 
@@ -29,13 +29,34 @@ _CACHE = {"ts": 0.0, "map": None}   # decrypted {key: value}
 _TTL = 300                          # seconds
 
 
+class NoDecryptionKey(RuntimeError):
+    """No usable master key is configured, so nothing in app_secrets can be read."""
+
+
 def _fernet():
     """MultiFernet from APP_SECRET_KEY (comma-separated, newest first for rotation); else the existing local
-    web_users Fernet key so Phase 1-2 works with no new key to provision."""
+    web_users Fernet key so Phase 1-2 works with no new key to provision.
+
+    RAISES NoDecryptionKey RATHER THAN MINTING ONE (2026-10-07). web_users._fernet() GENERATES a fresh key
+    when its file is absent (web_users.py, "key created -- back it up"), which is right for a first local
+    install and wrong everywhere else: a brand-new random key decrypts nothing, so every existing row fails
+    with InvalidToken. On a GitHub Actions runner the key file never exists -- it is a secret, so it is not
+    in the repo -- and APP_SECRET_KEY was never added as a GitHub Secret (seed-secrets.yml names adding it
+    as the one manual prerequisite). MEASURED on run 37618531630, 2026-10-07: all 12 rows logged
+    "decrypt failed", none succeeded, each with an empty exception message -- the InvalidToken signature.
+    Every scheduled job had been doing that on every run.
+
+    Asking for the key file's existence BEFORE importing web_users is the whole point: importing and
+    calling it is what creates the key, so the check has to come first or it cannot fail."""
     from cryptography.fernet import Fernet, MultiFernet
     keys = os.environ.get("APP_SECRET_KEY", "").strip()
     if keys:
         return MultiFernet([Fernet(k.strip().encode()) for k in keys.split(",") if k.strip()])
+    key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", ".web_users.key")
+    if not os.path.exists(key_file) or os.path.getsize(key_file) == 0:
+        raise NoDecryptionKey(
+            "no APP_SECRET_KEY and no local key file; set APP_SECRET_KEY to the contents of "
+            "data/.web_users.key (see .github/workflows/seed-secrets.yml) -- os.environ is left untouched")
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "hvf_web"))
     from web_users import _fernet as _wu_fernet

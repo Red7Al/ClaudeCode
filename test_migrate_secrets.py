@@ -116,3 +116,42 @@ def test_cronjob_api_key_and_slack_secrets_are_in_env_secrets():
         "SLACK_SIGNALS_CHANNEL_ID", "SLACK_TWITTER", "SLACK_TWITTER_CHANNEL_ID",
     }
     assert added_2026_08_08.issubset(set(m._ENV_SECRETS))
+
+
+def test_no_master_key_refuses_rather_than_minting_a_useless_one(monkeypatch):
+    """A missing master key must raise, not mint a fresh one that decrypts nothing.
+
+    web_users._fernet() GENERATES a key when its file is absent -- correct for a first local install,
+    wrong on a CI runner, where the key file is a secret and so is never in the checkout. app_secrets
+    fell through to it, so every Actions run built a brand-new random Fernet and then failed to decrypt
+    every existing row. MEASURED on run 37618531630 (2026-10-07): all 12 rows logged "decrypt failed"
+    with an empty exception message -- the InvalidToken signature -- and none succeeded. Locally, with
+    the real key file, the same 12 rows decrypt, so the ciphertext was never the problem.
+
+    APP_SECRET_KEY is not among the repository's GitHub Secrets; seed-secrets.yml names adding it as the
+    one manual prerequisite. Until it exists, the correct behaviour is one honest warning and leaving
+    os.environ untouched (the documented dual-read fail-open), not twelve InvalidToken warnings a run.
+    """
+    import app_secrets
+
+    monkeypatch.delenv("APP_SECRET_KEY", raising=False)
+    real_exists = os.path.exists
+    monkeypatch.setattr(
+        app_secrets.os.path, "exists",
+        lambda p: False if str(p).endswith(".web_users.key") else real_exists(p))
+
+    with pytest.raises(app_secrets.NoDecryptionKey):
+        app_secrets._fernet()
+
+
+def test_a_missing_key_leaves_os_environ_untouched(monkeypatch):
+    """The fail-open contract: no key means no change to os.environ, and one warning, not twelve."""
+    import app_secrets
+
+    monkeypatch.delenv("APP_SECRET_KEY", raising=False)
+    monkeypatch.setattr(app_secrets, "_fernet",
+                        lambda: (_ for _ in ()).throw(app_secrets.NoDecryptionKey("no key")))
+    app_secrets._CACHE.update(ts=0, map=None)
+
+    assert app_secrets._load_all() == {}
+    app_secrets._CACHE.update(ts=0, map=None)
