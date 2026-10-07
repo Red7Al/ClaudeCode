@@ -25,5 +25,6 @@ jobs:
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
           SLACK_WEEKLY:         ${{ secrets.SLACK_WEEKLY }}
           SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}

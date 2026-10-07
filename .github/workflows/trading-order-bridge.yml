@@ -114,6 +114,7 @@ jobs:
           IG_ACCOUNT_ID:        ${{ secrets.IG_ACCOUNT_ID }}
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
         run: python run_working_order_sweep.py --apply
 
       - run: python -m hvf_web.order_bridge
@@ -124,6 +125,7 @@ jobs:
           IG_ACCOUNT_ID:               ${{ secrets.IG_ACCOUNT_ID }}
           SUPABASE_USER:               ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:        ${{ secrets.SUPABASE_DB_PASSWORD }}
+          APP_SECRET_KEY:              ${{ secrets.APP_SECRET_KEY }}
           # Read-scoped Storage key: the bridge PULLS the published Scanner snapshot, never publishes.
           SUPABASE_SCANNER_WEB_KEY:    ${{ secrets.SUPABASE_SCANNER_WEB_KEY }}
           FRED_API_KEY:                ${{ secrets.FRED_API_KEY }}

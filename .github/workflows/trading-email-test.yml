@@ -16,6 +16,7 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
       YAHOO_USER:           ${{ secrets.YAHOO_USER }}
       YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
       RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}

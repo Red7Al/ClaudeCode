@@ -13,6 +13,7 @@ jobs:
     env:
       SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+      APP_SECRET_KEY:        ${{ secrets.APP_SECRET_KEY }}
       FRED_API_KEY:          ${{ secrets.FRED_API_KEY }}
       QUIVER_QUANT_API_KEY:  ${{ secrets.QUIVER_QUANT_API_KEY }}
       SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}

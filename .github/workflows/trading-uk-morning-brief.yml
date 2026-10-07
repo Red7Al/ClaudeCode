@@ -30,6 +30,7 @@ jobs:
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
           SLACK_DAILY:          ${{ secrets.SLACK_DAILY }}
           BRIEF_START_UTC:      ${{ github.event.inputs.brief_start_utc }}
           BRIEF_END_UTC:        ${{ github.event.inputs.brief_end_utc }}

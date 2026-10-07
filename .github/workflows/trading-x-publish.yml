@@ -77,6 +77,7 @@ jobs:
           X_ACCESS_SECRET:      ${{ secrets.X_ACCESS_SECRET }}
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
           SLACK_TWITTER:        ${{ secrets.SLACK_TWITTER }}   # X-draft + confirmation (user 2026-06-16)
           SLACK_BOT_TOKEN:          ${{ secrets.SLACK_BOT_TOKEN }}          # card image upload to the Slack draft
           SLACK_TWITTER_CHANNEL_ID: ${{ secrets.SLACK_TWITTER_CHANNEL_ID }}

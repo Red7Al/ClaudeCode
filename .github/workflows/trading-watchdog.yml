@@ -23,6 +23,7 @@ jobs:
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
           SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
           SLACK_SIGNALS:        ${{ secrets.SLACK_SIGNALS }}
           GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}

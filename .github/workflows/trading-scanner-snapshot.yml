@@ -22,6 +22,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   SUPABASE_USER:                    ${{ secrets.SUPABASE_USER }}
   SUPABASE_DB_PASSWORD:             ${{ secrets.SUPABASE_DB_PASSWORD }}
+  APP_SECRET_KEY:                   ${{ secrets.APP_SECRET_KEY }}
   SUPABASE_SCANNER_PUBLISH_KEY:     ${{ secrets.SUPABASE_SCANNER_PUBLISH_KEY }}
   # Temporary publication route while Supabase Storage is unavailable. These are the same SSH
   # connection values used by deploy_ionos.sh; the key must be stored as a multiline Actions secret.

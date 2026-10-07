@@ -49,6 +49,7 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
       GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
       RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
       # BOTH OF THESE MUST COME FROM GITHUB SECRETS, NOT THE SUPABASE STORE, and the first run proved
