@@ -153,6 +153,19 @@ def build(years_list=WINDOWS, dry_run=False) -> int:
                   "with a worse one. Run this after a snapshot build, or restore Supabase Storage.")
         return len(list(years_list)) + 1        # +1: the performance payload is refused too
 
+    # WRITE THE PER-TRIGGER FEATURES ONCE, HERE, so the web tier never reads bars for them (owner
+    # 2026-10-07: "_volscore does not need to come from supabase each hour"). use_store=False forces the
+    # bars to be read in THIS job -- the one place that should pay for them -- because reading the store
+    # would return what is already there and never score a trigger created today. The widest window is
+    # computed first so the narrower ones are satisfied from what it wrote.
+    try:
+        import volscore_store
+        widest = max(years_list)
+        written = volscore_store.store(server._volscore_scored(widest, use_store=False))
+        log.info("  volscore features: %d rows stored from the %d-year window", written, widest)
+    except Exception as ex:
+        log.error("  volscore feature store FAILED: %s (the site will recompute from bars)", ex)
+
     failures = 0
     for years in years_list:
         started = time.time()

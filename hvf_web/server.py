@@ -3813,7 +3813,7 @@ _VSMAP_CACHE = {}        # years -> {"ts": float, "data": dict}   (same per-wind
 _VSFEAT_CACHE = {}       # years -> {"ts": float, "data": dict}
 
 
-def _volscore_scored(years=1):
+def _volscore_scored(years=1, use_store=True):
     """Windowed _sqa rows annotated with trigger-time VolumeScore confirmations.
 
     The cache is deliberately keyed by ``years``.  A three-year Winners/Best Settings review must not
@@ -3836,8 +3836,26 @@ def _volscore_scored(years=1):
             if (r.get("trig_date") or "") >= cutoff and r.get("trig_date") and r.get("entry")]
     # One bar cutoff per ticker = its EARLIEST trigger minus the lookback, so a ticker with several trades
     # is fetched once and each trade finds its own break bar in the shared list.
+    # THE STORED SUMMARY FIRST (owner 2026-10-07: "_volscore does not need to come from supabase each hour
+    # - with a daily feed, nothing is changing that cannot be served by a small flat file"). One row per
+    # trigger instead of 160 days of bars per ticker. MEASURED before this: 400,000 rows for the 1-year
+    # window and 1,102,245 for the 3-year one, every time it was rebuilt.
+    stored = {}
+    if use_store:
+        try:
+            import volscore_store
+            stored = volscore_store.load(cutoff)
+        except Exception as exc:
+            log.warning(f"volscore store unavailable ({exc}); computing from bars")
+
+    # Bars are fetched ONLY for triggers the store does not already hold, so a new trigger today still
+    # gets scored and an established one costs nothing. Fetching for all of them whenever ANY was missing
+    # would have thrown the saving away on every day that produced a trigger.
     cut = {}
     for r in rows:
+        key = (r["ticker"], str(r["trig_date"])[:10])
+        if key in stored:
+            continue
         td = _dt.date.fromisoformat(str(r["trig_date"])[:10])
         cut[r["ticker"]] = min(cut.get(r["ticker"], td), td)
     bars_by = {}
@@ -3850,6 +3868,14 @@ def _volscore_scored(years=1):
             db.close()
     scored = []
     for r in rows:
+        hit = stored.get((r["ticker"], str(r["trig_date"])[:10]))
+        if hit is not None:
+            rr = dict(r)
+            rr["volume_score"] = hit.get("volume_score")
+            rr["above_vwap"] = hit.get("above_vwap")
+            rr["atr_expanding"] = hit.get("atr_expanding")
+            scored.append(rr)
+            continue
         bars = bars_by.get(r["ticker"], [])
         td = _dt.date.fromisoformat(str(r["trig_date"])[:10])
         # Snap to a real bar date if the recorded trigger fell on a non-trading day.
