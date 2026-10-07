@@ -18,7 +18,12 @@ import datetime as dt
 import audit_trading_state as ats
 
 NOW = dt.datetime(2026, 9, 12, 21, 0, tzinfo=dt.timezone.utc)
-FUTURE = dt.datetime(2026, 10, 5, tzinfo=dt.timezone.utc)
+# RELATIVE, not a fixed date (2026-10-07). This was dt.datetime(2026, 10, 5) -- a constant named FUTURE
+# that stopped being the future on 2026-10-06, at which point test_a_healthy_book_reports_nothing
+# began failing: a WATCHING row past its good_till IS dead, so the check was right and the fixture was
+# wrong. NOW above is safe because it is only ever passed explicitly as now=NOW; good_till is compared
+# against the real clock inside working_order_state.classify, so it has to be genuinely ahead of it.
+FUTURE = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=23)   # 23d: the original 09-12 -> 10-05 gap
 
 
 def _rec(ticker="SYY", deal_id="O-1", status="PENDING", good_till=FUTURE, placed="2026-09-03"):
