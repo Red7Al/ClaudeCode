@@ -206,8 +206,6 @@ def test_the_market_measure_takes_the_worst_market_not_the_best(monkeypatch):
     """THE MASKING BUG. A global max(bar_date) reports whichever market is furthest AHEAD, so every other
     market could stop updating and the check would still read healthy. Measured on the live database
     2026-09-28 the spread was three days: Commodities 09-27 against China 09-24."""
-    import types
-
     snapshot = {"records": [{"ticker": "BTC", "market": "Crypto"},
                             {"ticker": "600519.SS", "market": "SSE (Shanghai)"},
                             {"ticker": "VOD.L", "market": "FTSE 100"}]}
@@ -221,8 +219,13 @@ def test_the_market_measure_takes_the_worst_market_not_the_best(monkeypatch):
         def close(self):
             pass
 
-    fake_server = types.SimpleNamespace(_load_snapshot=lambda: snapshot)
-    monkeypatch.setitem(__import__("sys").modules, "hvf_web.server", fake_server)
+    # Patch the FUNCTION on the real module, not sys.modules. A sys.modules entry for "hvf_web.server"
+    # is ignored once the package already carries a real `server` attribute, which any earlier test that
+    # imports it leaves behind -- so this test was silently running against the REAL _load_snapshot and
+    # passing only because a local hvf_web/snapshot.json happened to exist. On a clean CI checkout there
+    # is none, records came back empty, and _market_data_worst raised "no market could be matched to a
+    # bar date". That is why CI was red from c1251dd (2026-09-28) onward while the suite passed locally.
+    monkeypatch.setattr("hvf_web.server._load_snapshot", lambda: snapshot)
     monkeypatch.setattr("db_pool.get_db", lambda: _Db())
 
     moment, note = fresh._market_data_worst()
