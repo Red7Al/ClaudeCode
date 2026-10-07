@@ -1713,28 +1713,37 @@ def api_records():
     # operator TRADES (enforced in ig_shim at order time), never what is shown (user 2026-07-06).
     markets = None
     if authed:
-        rvol = _snapshot_rvol(snap)                       # RVOL at the real break bar (P-30) — TRIGGERED only
-        vscore = _snapshot_volscore(snap)                 # VolumeScore 0–12 at the break bar (P-02 L49) — TRIGGERED only
+        # PREFER THE VALUES IN THE FILE (owner 2026-10-07). When the publish job wrote them (see
+        # snapshot_summary), these four maps are not built at all and this endpoint reads NO price bars.
+        # MEASURED before this: one three-year map call read 1,102,245 rows and the one-year map ~400,000,
+        # per cold worker, to recompute numbers that change twice a day. An older snapshot without the
+        # marker keeps the old behaviour, so nothing breaks while one is still in flight.
+        import snapshot_summary
+        stored = snapshot_summary.carries_summary(snap)
+        rvol = {} if stored else _snapshot_rvol(snap)      # RVOL at the real break bar (P-30) — TRIGGERED only
+        vscore = {} if stored else _snapshot_volscore(snap)  # VolumeScore 0–12 at the break bar (P-02 L49)
         # above_vwap/atr_expanding (user 2026-08-11): current-state reads, computed for EVERY has_signal
         # row (TRIGGERED/READY/DEVELOPING) from today's bar — NOT scoped to TRIGGERED like RVOL/VolumeScore
         # above, which are inherently about the break bar itself. See _live_vwap_atr's docstring: previously
         # this came from vscore's per-ticker "components" (TRIGGERED-only), which silently left READY/
         # DEVELOPING rows' VWAP/ATR ticks blank/unknown even though they ARE computable.
-        vwap_atr = _live_vwap_atr(snap)
+        vwap_atr = {} if stored else _live_vwap_atr(snap)
+        # NOT gated: _live_instrument_metrics already reads instrument_metrics_daily, so it costs 1,772
+        # rows and ZERO bars (measured 2026-09-28). It is the pattern this change copies, not a cost.
         live_metrics = _live_instrument_metrics(snap)
         recs = []
-        mcaps = _mcap_map()
+        mcaps = ({} if stored else _mcap_map()) or {}
         trigdates = _snapshot_trigger_dates(snap)
         for r in snap.get("records", []):
             result = vscore.get(r.get("ticker")) or {}
             w = wk52.get(r.get("ticker")) or (None, None)
-            av, ae = vwap_atr.get(r.get("ticker"), (None, None))
+            av, ae = vwap_atr.get(r.get("ticker"), (r.get("above_vwap"), r.get("atr_expanding")))
             current = live_metrics.get(r.get("ticker"), {})
             # mcap is deliberately absent from the logged-out branch: that path builds rows from
             # _PUBLIC_FIELDS alone, so it cannot leak by omission here.
             recs.append(dict({k: v for k, v in r.items() if k != "_card"},
-                             rvol=rvol.get(r.get("ticker")),
-                             volume_score=result.get("score"),
+                             rvol=rvol.get(r.get("ticker"), r.get("rvol")),
+                             volume_score=result.get("score", r.get("volume_score")),
                              above_vwap=av,
                              atr_expanding=ae,
                              current_rvol=current.get("rvol"),
@@ -1742,7 +1751,7 @@ def api_records():
                              current_above_vwap=current.get("above_vwap"),
                              current_atr_expanding=current.get("atr_expanding"),
                              current_metric_date=current.get("date"),
-                             mcap=mcaps.get(r.get("ticker")),
+                             mcap=mcaps.get(r.get("ticker"), r.get("mcap")),
                              trig_date=trigdates.get(r.get("ticker")),
                              current_metric_status=current.get("status", "not_calculated"),
                              current_metric_reason=current.get("reason"),

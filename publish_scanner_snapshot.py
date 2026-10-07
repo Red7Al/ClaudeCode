@@ -55,6 +55,16 @@ def main() -> int:
             snapshot = build(markets=markets, progress_cb=progress.update)
             if not isinstance(snapshot, dict):
                 raise store.SnapshotStoreError("snapshot build produced no candidate")
+            # The derived summary values, INTO THE FILE, before it is published (owner 2026-10-07: "the
+            # summary data should be available in IONOS flat data files - this as been suggested multiple
+            # times"). Costs one set of reads here instead of one per IONOS worker; see snapshot_summary.
+            progress.stage("summary")
+            try:
+                import snapshot_summary
+                snapshot_summary.enrich(snapshot)
+            except Exception as exc:
+                print(f"  snapshot summary enrichment failed ({exc}); publication continues")
+
             # History first, for the same reason as run_hvf_report: it depends on the completed scan,
             # not on the publication succeeding. Running it after publish_snapshot meant the Supabase
             # Storage 402 skipped it on every run from 2026-08-16 while the IONOS fallback kept the site
