@@ -155,3 +155,26 @@ def test_a_missing_key_leaves_os_environ_untouched(monkeypatch):
 
     assert app_secrets._load_all() == {}
     app_secrets._CACHE.update(ts=0, map=None)
+
+
+def test_the_web_users_env_key_counts_as_a_key(monkeypatch):
+    """WEB_USERS_FERNET_KEY must satisfy the key check, because IONOS has that and no key file.
+
+    web_users._fernet() reads WEB_USERS_FERNET_KEY BEFORE it looks for its file, and the IONOS package
+    deliberately excludes data/ (build_ionos_package.py), so the live web tier decrypts from the env var
+    alone -- migrate_runtime_state_to_supabase.py says so outright: "IONOS must receive
+    WEB_USERS_FERNET_KEY as an environment secret". The first version of this guard tested only for the
+    FILE, so it would have refused on the live host and broken a path that works. Caught before deploying,
+    and pinned here so it cannot come back.
+    """
+    import app_secrets
+    from cryptography.fernet import Fernet
+
+    monkeypatch.delenv("APP_SECRET_KEY", raising=False)
+    monkeypatch.setenv("WEB_USERS_FERNET_KEY", Fernet.generate_key().decode())
+    real_exists = os.path.exists
+    monkeypatch.setattr(
+        app_secrets.os.path, "exists",
+        lambda p: False if str(p).endswith(".web_users.key") else real_exists(p))
+
+    app_secrets._fernet()          # must not raise

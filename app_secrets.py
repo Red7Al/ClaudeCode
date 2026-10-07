@@ -52,11 +52,17 @@ def _fernet():
     keys = os.environ.get("APP_SECRET_KEY", "").strip()
     if keys:
         return MultiFernet([Fernet(k.strip().encode()) for k in keys.split(",") if k.strip()])
+    # WEB_USERS_FERNET_KEY counts as a real key: web_users._fernet() reads it BEFORE it looks for the file,
+    # and IONOS is given exactly that and no data/ directory (build_ionos_package.py excludes "data";
+    # migrate_runtime_state_to_supabase.py: "IONOS must receive WEB_USERS_FERNET_KEY as an environment
+    # secret"). Testing only for the file would refuse on the live web tier, where decryption works today.
     key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", ".web_users.key")
-    if not os.path.exists(key_file) or os.path.getsize(key_file) == 0:
+    have_file = os.path.exists(key_file) and os.path.getsize(key_file) > 0
+    if not os.environ.get("WEB_USERS_FERNET_KEY", "").strip() and not have_file:
         raise NoDecryptionKey(
-            "no APP_SECRET_KEY and no local key file; set APP_SECRET_KEY to the contents of "
-            "data/.web_users.key (see .github/workflows/seed-secrets.yml) -- os.environ is left untouched")
+            "no APP_SECRET_KEY, no WEB_USERS_FERNET_KEY and no local key file; set APP_SECRET_KEY to the "
+            "contents of data/.web_users.key (see .github/workflows/seed-secrets.yml) -- os.environ is "
+            "left untouched")
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "hvf_web"))
     from web_users import _fernet as _wu_fernet
