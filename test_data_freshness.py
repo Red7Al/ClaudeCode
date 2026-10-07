@@ -206,15 +206,19 @@ def test_the_market_measure_takes_the_worst_market_not_the_best(monkeypatch):
     """THE MASKING BUG. A global max(bar_date) reports whichever market is furthest AHEAD, so every other
     market could stop updating and the check would still read healthy. Measured on the live database
     2026-09-28 the spread was three days: Commodities 09-27 against China 09-24."""
+    # RELATIVE to today, never fixed dates. The measure now compares each market against its OWN
+    # allowance, which depends on how long ago the bar was, so fixed dates would make this pass or fail
+    # by the calendar -- the same trap that put test_audit_trading_state's FUTURE constant in the past.
+    today = dt.date.today()
     snapshot = {"records": [{"ticker": "BTC", "market": "Crypto"},
                             {"ticker": "600519.SS", "market": "SSE (Shanghai)"},
                             {"ticker": "VOD.L", "market": "FTSE 100"}]}
 
     class _Db:
         def run(self, sql, **p):
-            return [("BTC", dt.date(2026, 9, 27)),
-                    ("600519.SS", dt.date(2026, 9, 24)),
-                    ("VOD.L", dt.date(2026, 9, 25))]
+            return [("BTC", today - dt.timedelta(days=2)),              # current
+                    ("600519.SS", today - dt.timedelta(days=11)),       # OLDEST, but inside its 288h
+                    ("VOD.L", today - dt.timedelta(days=8))]            # over the 168h default
 
         def close(self):
             pass
@@ -228,10 +232,18 @@ def test_the_market_measure_takes_the_worst_market_not_the_best(monkeypatch):
     monkeypatch.setattr("hvf_web.server._load_snapshot", lambda: snapshot)
     monkeypatch.setattr("db_pool.get_db", lambda: _Db())
 
-    moment, note = fresh._market_data_worst()
+    moment, note, limit = fresh._market_data_worst()
 
-    assert moment == dt.date(2026, 9, 24), f"took {moment} -- masked by the market that is furthest ahead"
-    assert "SSE (Shanghai)" in note, "the worst market must be named, or nobody knows what to chase"
+    # THE ORIGINAL GUARANTEE, unchanged: a market in breach is never masked by a fresher one. Crypto is
+    # two days old and must not win.
+    assert "Crypto" not in note, "masked by the market that is furthest ahead"
+    # THE NEW GUARANTEE: Shanghai is the OLDEST at 11 days, and must still lose to London at 8, because
+    # 11 days is inside Shanghai's measured annual closure allowance and 8 days is outside London's.
+    # Picking purely by oldest date meant the market with the widest legitimate pause always won, so a
+    # genuinely late market behind it could never surface.
+    assert moment == today - dt.timedelta(days=8), f"took {moment}, expected the market past its own limit"
+    assert "FTSE 100" in note, "the market in breach must be named, or nobody knows what to chase"
+    assert limit == 168, "London carries the default allowance"
 
 
 def test_a_measure_may_name_what_it_found_without_a_second_mechanism(monkeypatch):
@@ -269,3 +281,34 @@ def test_measured_staleness_and_an_unmeasurable_surface_are_reported_separately(
 
     assert "Old thing is 2 days old" in msg
     assert "Could not check whether this is current: Broken thing." in msg
+
+
+def test_a_market_inside_its_own_allowance_is_not_reported_stale(monkeypatch):
+    """Shenzhen shuts for ~10 days every October and our bars then match the source exactly.
+
+    MEASURED 2026-10-07 from price_history -- SZSE publishes nothing from 1 October until the 8th-10th in
+    every year held (2022 the 10th, 2023 the 9th, 2024 the 8th, 2025 the 9th) -- and confirmed against the
+    source the same day: our latest SZSE bar was 2026-09-30 and so was the source's. At the old flat 168h
+    this surface would have told visitors the data was stale while it was as current as the market allowed.
+    """
+    today = dt.date.today()
+    snapshot = {"records": [{"ticker": "000001.SZ", "market": "SZSE (Shenzhen)"}]}
+
+    class _Db:
+        def run(self, sql, **p):
+            return [("000001.SZ", today - dt.timedelta(days=9))]       # 9 days: over 168h, inside 288h
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("hvf_web.server._load_snapshot", lambda: snapshot)
+    monkeypatch.setattr("db_pool.get_db", lambda: _Db())
+
+    moment, note, limit = fresh._market_data_worst()
+    assert limit == 288, "Shenzhen must carry its measured allowance, not the default"
+    assert "allowed 288h" in note, "a non-default allowance must be visible in the note"
+
+    row = [r for r in fresh.check()["surfaces"] if r["name"] == "market_data"][0]
+    assert row["max_age_hours"] == 288, "the reported limit must be the one actually applied"
+    assert row["stale"] is False, "9 days inside a measured 12-day allowance is not stale"
+    assert "market_data" not in fresh.check()["customer_facing_stale"]

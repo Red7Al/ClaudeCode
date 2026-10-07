@@ -108,6 +108,27 @@ def _instrument_metrics_recorded():
     return (_db().run("select max(as_of) from instrument_metrics_daily") or [[None]])[0][0]
 
 
+# Per-market staleness allowances, in hours. Default below; only exchanges MEASURED to pause longer are
+# listed. This is NOT a trading calendar -- it is one number per market, which is what the SURFACES note
+# for market_data asks for ("WIDEN THE NUMBER after measuring it; do not add a calendar").
+#
+# MEASURED 2026-10-07 from this database, SZSE bars present 1-12 October by year:
+#     2022 first bar on the 10th | 2023 the 9th | 2024 the 8th | 2025 the 9th
+# So from a 30 September close the legitimate gap reaches ~10 days. 288h (12 days) clears that with
+# margin. The original 168h was set from ONE day's observed spread (the worst market 4 days behind on
+# 2026-09-28) and was simply too narrow -- it would have announced this annual closure as an outage.
+# SSE (Shanghai) shares the mainland closure, so it carries the same allowance.
+_MARKET_MAX_AGE_HOURS = {
+    "SZSE (Shenzhen)": 288,
+    "SSE (Shanghai)": 288,
+}
+_MARKET_DEFAULT_MAX_AGE = 168
+
+
+def _market_allowance(market: str) -> int:
+    return _MARKET_MAX_AGE_HOURS.get(market, _MARKET_DEFAULT_MAX_AGE)
+
+
 def _market_data_worst():
     """The OLDEST of each market's newest bar, plus which market that is.
 
@@ -139,8 +160,18 @@ def _market_data_worst():
             newest[market] = bar_date
     if not newest:
         raise ValueError("no market could be matched to a bar date")
-    market, bar_date = min(newest.items(), key=lambda kv: kv[1])
-    return bar_date, f"oldest market: {market} at {bar_date}"
+    # MOST OVERDUE against its OWN allowance, not simply the oldest date. Taking the oldest meant the
+    # market with the widest legitimate pause always won, so an exchange genuinely days late behind it
+    # could never surface. Shanghai being 9 days into its annual closure must not mask London being 8.
+    def _overage(item):
+        return _age_hours(item[1]) - _market_allowance(item[0])
+
+    market, bar_date = max(newest.items(), key=_overage)
+    allowance = _market_allowance(market)
+    note = f"oldest market: {market} at {bar_date}"
+    if allowance != _MARKET_DEFAULT_MAX_AGE:
+        note += f" (allowed {allowance}h)"
+    return bar_date, note, allowance
 
 
 def _supabase_snapshot_copy():
@@ -161,11 +192,16 @@ SURFACES = (
      "measure": _snapshot_generated, "max_age_hours": 30, "customer_facing": True,
      "owner": "Morning Chain / Scanner Snapshot Publish"},
     {"name": "market_data", "label": "Market data",
-     # 168h (7 days). NOT derived from a trading calendar -- no calendar has been verified here. It is
-     # set wider than the largest gap MEASURED on 2026-09-28 (the worst market, China, was 4 days behind)
-     # with margin, so a genuine outage is caught while a normal market pause is not announced. If a
-     # market legitimately pauses longer than this, WIDEN THE NUMBER after measuring it; do not add a
-     # calendar. A limit that fires on ordinary days gets muted, and a muted alarm is worse than none.
+     # 168h (7 days) is the DEFAULT only. Still no trading calendar: see _MARKET_MAX_AGE_HOURS, which
+     # carries one number per exchange for the exchanges measured to pause longer, and the measure
+     # returns the applicable limit with its answer.
+     #
+     # 168h WAS TOO NARROW AND THIS IS THE CORRECTION (2026-10-07). It was set from ONE day's observed
+     # spread on 2026-09-28 -- the worst market 4 days behind -- and the note here told the next reader to
+     # widen it after measuring. Measured now: SZSE (Shenzhen) publishes no bars from 1 October until the
+     # 8th-10th in EVERY year held (2022 the 10th, 2023 the 9th, 2024 the 8th, 2025 the 9th), so from a
+     # 30 September close the legitimate gap reaches ~10 days. At 168h this surface would have announced
+     # that annual closure to visitors as stale data, on a day when our bars matched the source exactly.
      "measure": _market_data_worst, "max_age_hours": 168, "customer_facing": True,
      "owner": "Price Data Refresh"},
     {"name": "squeeze_history", "label": "Squeeze History",
@@ -202,12 +238,17 @@ def _check(out, stale, facing) -> dict:
                "age_hours": None, "stale": True, "error": None, "note": None}
         try:
             measured = s["measure"]()
-            # A measure may return either a moment, or (moment, note) when it has something worth naming
-            # -- e.g. WHICH market is furthest behind. One return shape, no second mechanism.
-            moment, note = measured if isinstance(measured, tuple) else (measured, None)
+            # A measure may return a moment, (moment, note) when it has something worth naming -- e.g.
+            # WHICH market is furthest behind -- or (moment, note, max_age_hours) when the limit belongs
+            # to the thing measured rather than to the surface. The market allowance is per EXCHANGE, and
+            # only the measure knows which exchange it picked, so the limit travels back with it instead
+            # of being duplicated in the registry.
+            moment, note, limit = (tuple(measured) + (None,) * 3)[:3] if isinstance(measured, tuple)                 else (measured, None, None)
             row["note"] = note
+            if limit is not None:
+                row["max_age_hours"] = limit
             row["age_hours"] = round(_age_hours(moment), 1)
-            row["stale"] = row["age_hours"] > s["max_age_hours"]
+            row["stale"] = row["age_hours"] > row["max_age_hours"]
         except Exception as exc:
             # FAIL CLOSED (design rule 2): unmeasurable is reported stale, with the reason, never as healthy.
             row["error"] = f"{type(exc).__name__}: {exc}"
