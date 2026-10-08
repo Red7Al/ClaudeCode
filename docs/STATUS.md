@@ -48,6 +48,12 @@ CI              2f12a41 green (Offline Python Regression Tests, 07:54 UTC)
 | **Supabase-down fallback.** Probe: real app, unreachable credentials, logged out, all 45 GET routes. `/api/pricebars` returned 500 → now 200 with levels and `unavailable: true`. A web process that fails to connect now skips the DB for 30 s, so `/api/freshness` went 40.3 s → 0.2 s and `/api/records` serves the local snapshot in 0.2 s. After: **0 HTTP 500s, 0 exceptions.** | `db_pool.DatabaseUnavailable`; `test_price_bars.py`, `test_db_pool.py` |
 | Docs reduced from 23 to 9 outside `skills_src/`; `SQUEEZE_METHOD.md` was wrong (stated 0.70 convergence and the removed AMP1 re-anchor) — replaced by `docs/METHOD.md`, now test-checked for the tightness ceiling too | `test_hvf_method.py::test_method_doc_states_the_live_tightness_ceiling` |
 
+**Deployed** as `bc5ce54`, live fingerprint `77c33a785809` (worker loaded 08:38:02). Verified live:
+`/api/pricebars/AAPL` returns real bars with `"unavailable":false`; watchdog run `37751392722` on `bc5ce54`
+logged "loaded 10 secret(s)" where run `37750316715` on the old code logged "No module named
+'cryptography'". During the reload, 08:38:01–08:38:25, some API calls got no HTTP response (curl 000);
+30 of 30 calls afterwards returned 200. Whether earlier deploys show the same blip is unmeasured.
+
 NOT measured: the **logged-in** experience during an outage — login validates tokens against the user
 store, which reads the local copy when Supabase fails (`web_users._load`), but nobody has exercised it.
 
@@ -70,7 +76,12 @@ store, which reads the local copy when Supabase fails (`web_users._load`), but n
    use. CI sat red nine days unnoticed. (`run_cron_watch._notify` does email.)
 7. **`trading-create-env.yml`** uses a `V_` prefix and does not pass `APP_SECRET_KEY`. Unanswered whether
    it should.
-8. **The owner's standing instruction** — store derived values on IONOS, do not re-derive per request
+8. **Session Watchdog alerts every run** — `No macro_snapshot recorded today` for AUS_OPEN/UK_OPEN, then
+   `Auto-trigger failed: 403 Resource not accessible by integration`. 11 of the 12 runs from 07:00 to
+   08:40 on 2026-10-08. Each run still ends green, and `alert()` posts only to Slack
+   (`run_session_watchdog.py:75-83`), so it does not email. Probable cause, unverified: the session
+   monitors are disabled while the watchdog still expects them.
+9. **The owner's standing instruction** — store derived values on IONOS, do not re-derive per request
    (archive `HANDOVER-20260928.md` §3.1). `ddd7c3b`/`44a940e` are a first part, gated by §1.
 
 ## 6. Waiting on an owner decision (design detail kept in `docs/archive/`)
