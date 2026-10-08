@@ -77,7 +77,7 @@ Each rule exists because skipping it produced a real defect in September 2026.
 ## Running the tests
 
 ```bash
-./.venv/Scripts/python.exe -m pytest -q -m "not live_state"     # 1,455 passed, 17 skipped -- clean worktree, CI env, 2026-10-08
+./.venv/Scripts/python.exe -m pytest -q -m "not live_state"     # 1,457 passed, 17 skipped -- clean worktree, CI env, 2026-10-08
 ```
 
 - **Use the venv.** Bare `python` is a system 3.14 with no pytest.

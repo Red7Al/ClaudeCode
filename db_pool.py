@@ -121,13 +121,98 @@ def _still_good(conn) -> bool:
         return False
 
 
+# ── The web tier gets a BOUNDED, SHARED pool (2026-10-08) ─────────────────────────────────────────
+#
+# The thread-local pool below gives every thread its own connection and keeps it open while idle for up
+# to _POOL_MAX_AGE. On the web tier every concurrent request is a thread, so one page view opened one
+# connection per API call and held them for minutes. MEASURED 2026-10-08: ten simultaneous logged-out
+# requests to the live site opened 9 connections from the IONOS host (Supavisor log, 13:46, from a
+# baseline of 0); bursts of 15/min at 06:29 and 12/min at 07:28 from that host preceded the scheduled
+# jobs failing with EMAXCONNSESSION -- the session pooler admits 15 clients in all.
+#
+# So outside GitHub Actions a process holds at most _WEB_MAX_CONN connections, shared across threads.
+# A lease is still exclusive -- one borrower at a time per connection, which is the property the
+# thread-local design existed to guarantee. A borrower waits up to _WEB_SLOT_WAIT for a free slot and then
+# gets DatabaseUnavailable, which every caller already handles by falling back. Idle connections are
+# closed after _WEB_IDLE_MAX so a quiet worker does not sit on slots. Batch jobs keep the thread-local
+# pool unchanged.
+_WEB_MAX_CONN = int(os.environ.get("DB_WEB_MAX_CONN", "4"))
+_WEB_SLOT_WAIT = float(os.environ.get("DB_WEB_SLOT_WAIT_SECS", "10"))
+_WEB_IDLE_MAX = float(os.environ.get("DB_WEB_IDLE_SECS", "60"))
+_web_slots = threading.BoundedSemaphore(_WEB_MAX_CONN)   # one permit per OPEN web connection
+_web_idle = []                                            # open connections nobody is borrowing
+_web_lock = threading.Lock()
+
+
+def _web_close(conn):
+    """Close a web-tier connection and give its slot back."""
+    try:
+        conn.close()
+    except Exception:
+        pass
+    _web_slots.release()
+
+
+def _web_reap():
+    """Close idle web connections that are too old or idle too long. Returns the ones still usable."""
+    now = time.time()
+    with _web_lock:
+        keep, drop = [], []
+        for c in _web_idle:
+            idle = now - getattr(c, "_pool_idle_since", now)
+            age = now - getattr(c, "_pool_born", now)
+            (keep if idle < _WEB_IDLE_MAX and age < _POOL_MAX_AGE else drop).append(c)
+        _web_idle[:] = keep
+    for c in drop:
+        _POOL_STATS["discarded"] += 1
+        _web_close(c)
+
+
+def _web_take_idle():
+    """An idle web connection that still answers, or None."""
+    while True:
+        with _web_lock:
+            conn = _web_idle.pop() if _web_idle else None
+        if conn is None:
+            return None
+        if _still_good(conn):
+            return conn
+        _POOL_STATS["discarded"] += 1
+        _web_close(conn)
+
+
+def _web_get(timeout: int, attempts: int):
+    _web_reap()
+    deadline = time.monotonic() + _WEB_SLOT_WAIT
+    # A returned connection keeps its slot, so a borrower blocked on the semaphore alone would never see
+    # it come free. Wait in short steps and look in the idle list between them.
+    while True:
+        conn = _web_take_idle()
+        if conn is not None:
+            _POOL_STATS["reused"] += 1
+            return _Leased(conn, pooled=True, web=True)
+        if _web_slots.acquire(timeout=0.05):
+            break
+        if time.monotonic() >= deadline:
+            raise DatabaseUnavailable(f"all {_WEB_MAX_CONN} web database connections busy for "
+                                      f"{_WEB_SLOT_WAIT:.0f}s")
+    try:
+        fresh = _connect(timeout, attempts)
+    except Exception:
+        _web_slots.release()
+        raise
+    fresh._pool_born = time.time()
+    _POOL_STATS["opened"] += 1
+    return _Leased(fresh, pooled=True, web=True)
+
+
 class _Leased:
     """A borrowed connection. close() returns it to the thread's slot instead of dropping it."""
 
-    __slots__ = ("_conn", "_pooled", "_closed")
+    __slots__ = ("_conn", "_pooled", "_closed", "_web")
 
-    def __init__(self, conn, pooled: bool):
-        self._conn, self._pooled, self._closed = conn, pooled, False
+    def __init__(self, conn, pooled: bool, web: bool = False):
+        self._conn, self._pooled, self._closed, self._web = conn, pooled, False, web
 
     def __getattr__(self, name):
         # Everything except close() goes straight through, so a lease behaves exactly like the real
@@ -139,6 +224,15 @@ class _Leased:
             return
         self._closed = True
         conn = self._conn
+        if self._web:
+            if _still_good(conn) and (time.time() - getattr(conn, "_pool_born", 0)) < _POOL_MAX_AGE:
+                conn._pool_idle_since = time.time()
+                with _web_lock:
+                    _web_idle.append(conn)
+            else:
+                _POOL_STATS["discarded"] += 1
+                _web_close(conn)
+            return
         if not self._pooled:
             try:
                 conn.close()
@@ -180,6 +274,8 @@ def get_db(timeout: int = 15, attempts: int = 3):
     thread's slot rather than dropping it. Callers are unchanged -- keep using
     `db = get_db(); try: ... finally: db.close()`.
     """
+    if _pool_enabled() and not _is_batch_job():
+        return _web_get(timeout, attempts)
     if _pool_enabled():
         # An outstanding lease means this thread is already using its connection. Give the caller a
         # separate, UNPOOLED session: sharing one backend between two open borrowers is the statement

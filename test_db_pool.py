@@ -41,6 +41,11 @@ def clean(monkeypatch):
     """Every test starts with an empty thread slot and its own connection factory."""
     monkeypatch.setattr(db_pool, "_pool_local", threading.local())
     monkeypatch.delenv("DB_POOL_DISABLED", raising=False)
+    # The lease tests below exercise the THREAD-LOCAL pool, which since 2026-10-08 serves batch jobs only;
+    # the web tier has its own bounded pool (tests at the end). Declare the mode rather than inherit it.
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setattr(db_pool, "_web_idle", [])
+    monkeypatch.setattr(db_pool, "_web_slots", threading.BoundedSemaphore(db_pool._WEB_MAX_CONN))
     yield
 
 
@@ -273,3 +278,67 @@ def test_a_batch_job_never_skips_the_database(monkeypatch):
         with pytest.raises(Exception, match="password"):
             db_pool._connect()
     assert len(calls) == 6                       # both calls really tried, 3 attempts each
+
+
+# ── The web tier's bounded, shared pool (2026-10-08) ─────────────────────────────────────────────
+# MEASURED that day: ten simultaneous requests to the live site opened 9 connections from the IONOS host,
+# and bursts from that host filled the 15-client session pooler just before scheduled jobs failed.
+
+def _web(monkeypatch, max_conn=4, wait=0.2):
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.setattr(db_pool, "_WEB_MAX_CONN", max_conn)
+    monkeypatch.setattr(db_pool, "_WEB_SLOT_WAIT", wait)
+    monkeypatch.setattr(db_pool, "_web_slots", threading.BoundedSemaphore(max_conn))
+    return _factory(monkeypatch, [])
+
+
+def test_the_web_tier_never_holds_more_than_its_cap(monkeypatch):
+    made = _web(monkeypatch, max_conn=4)
+    leases = [db_pool.get_db() for _ in range(4)]
+    with pytest.raises(db_pool.DatabaseUnavailable):
+        db_pool.get_db()                          # a fifth concurrent borrower is refused, not connected
+    assert len(made) == 4
+    for l in leases:
+        l.close()
+
+
+def test_a_returned_web_connection_is_reused_by_another_thread(monkeypatch):
+    made = _web(monkeypatch)
+    db_pool.get_db().close()
+    got = []
+    t = threading.Thread(target=lambda: got.append(db_pool.get_db()))
+    t.start(); t.join()
+    got[0].close()
+    assert len(made) == 1                         # thread-local pooling would have opened a second
+
+
+def test_a_waiting_borrower_gets_the_slot_when_one_is_returned(monkeypatch):
+    made = _web(monkeypatch, max_conn=1, wait=5)
+    first = db_pool.get_db()
+    got = []
+    t = threading.Thread(target=lambda: got.append(db_pool.get_db()))
+    t.start()
+    time.sleep(0.2)
+    first.close()
+    t.join(timeout=5)
+    assert got and len(made) == 1
+    got[0].close()
+
+
+def test_an_idle_web_connection_is_closed_and_its_slot_freed(monkeypatch):
+    made = _web(monkeypatch, max_conn=1)
+    db_pool.get_db().close()
+    made[0]._pool_idle_since -= db_pool._WEB_IDLE_MAX + 1
+    lease = db_pool.get_db()                      # reaps the idle one, then opens fresh in its freed slot
+    assert made[0].closed and len(made) == 2
+    lease.close()
+
+
+def test_a_failed_web_connect_gives_its_slot_back(monkeypatch):
+    _web(monkeypatch, max_conn=1)
+    def refuse(timeout=15, attempts=3):
+        raise OSError("refused")
+    monkeypatch.setattr(db_pool, "_connect", refuse)
+    for _ in range(3):                            # with a leaked slot the 2nd call would be DatabaseUnavailable
+        with pytest.raises(OSError, match="refused"):
+            db_pool.get_db()
