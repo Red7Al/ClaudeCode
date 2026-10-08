@@ -56,6 +56,12 @@ def built(monkeypatch):
 
     monkeypatch.setattr(server, "_winners_payload", fake)
     monkeypatch.setattr(server, "_build_perf_payload", fake_perf)
+    # The per-trigger volscore store (added 2026-10-07) reads bars and writes a table. It was never stubbed
+    # here, so these tests reached the live database whenever one was reachable -- invisible locally, and
+    # red in CI once a failed store began counting as a failed job (2026-10-08).
+    import volscore_store
+    monkeypatch.setattr(server, "_volscore_scored", lambda years, use_store=True: [])
+    monkeypatch.setattr(volscore_store, "store", lambda rows, db=None: 0)
     return calls
 
 
@@ -370,3 +376,14 @@ def test_the_snapshot_workflow_warms_the_payloads():
     assert "run_winners_precompute.py" in text, (
         "the snapshot publish must refresh the payloads it invalidates")
     assert "continue-on-error: true" in text, "a cache warm-up must not fail the snapshot publication"
+
+
+def test_a_failed_volscore_store_fails_the_job(fake_dataset, built, monkeypatch):
+    """Precompute run 37813598761, 2026-10-08: the store failed every write and the job still finished
+    green. The Scanner Report reads trigger-date values from that store, so a failure must be counted."""
+    import volscore_store
+
+    def boom(rows, db=None):
+        raise RuntimeError("ON CONFLICT DO UPDATE command cannot affect row a second time")
+    monkeypatch.setattr(volscore_store, "store", boom)
+    assert run_winners_precompute.build((1,), dry_run=True) >= 1

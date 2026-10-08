@@ -62,12 +62,17 @@ def store(rows, db=None) -> int:
         db = get_db()
     try:
         ensure_schema(db)
-        batch, written = [], 0
+        # ONE row per (ticker, trig_date). squeeze_history carries the same trigger under several lookback
+        # windows, so the scored rows repeat a key -- and Postgres refuses an upsert that touches one row
+        # twice ("ON CONFLICT DO UPDATE command cannot affect row a second time"). That failed every store
+        # on 2026-10-08 (precompute run 37813598761) while the job still reported success. First wins.
+        seen, written = {}, 0
         for r in rows or []:
             tk, td = r.get("ticker"), str(r.get("trig_date") or "")[:10]
-            if not tk or not td:
+            if not tk or not td or (tk, td) in seen:
                 continue
-            batch.append((tk, td, r.get("volume_score"), r.get("above_vwap"), r.get("atr_expanding")))
+            seen[(tk, td)] = (tk, td, r.get("volume_score"), r.get("above_vwap"), r.get("atr_expanding"))
+        batch = list(seen.values())
         # Batched, not a statement per row. 17,600 single-row upserts is the per-row defect this repository
         # has already paid for twice (squeeze_history.refresh_daily was 4,287 round trips, record_daily 3,545).
         for off in range(0, len(batch), 500):

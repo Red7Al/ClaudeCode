@@ -148,3 +148,21 @@ def test_use_store_false_forces_a_recompute(monkeypatch):
     assert calls["load"] == 0, "the writer must not consult the store it is about to fill"
     assert calls["perf_bars"] == 1, "the writer is the one place that should pay for the bars"
     S._VSCORED_CACHE.clear()
+
+
+def test_store_survives_a_trigger_repeated_across_lookback_windows():
+    """Precompute run 37813598761, 2026-10-08: every store failed with Postgres's "ON CONFLICT DO UPDATE
+    command cannot affect row a second time", because squeeze_history carries one trigger under several
+    lookback windows and the batch repeated the key. The fake refuses exactly what Postgres refuses."""
+    class _PgLike(_FakeDb):
+        def run(self, sql, **params):
+            if "insert into" in sql:
+                keys = [(params[k], params["d" + k[1:]]) for k in params if k.startswith("t")]
+                if len(keys) != len(set(keys)):
+                    raise RuntimeError("ON CONFLICT DO UPDATE command cannot affect row a second time")
+            return super().run(sql, **params)
+
+    db = _PgLike()
+    row = {"ticker": "ARM", "trig_date": "2026-09-18", "volume_score": 6, "above_vwap": True, "atr_expanding": True}
+    written = volscore_store.store([row, dict(row), {**row, "ticker": "ZS"}], db=db)
+    assert written == 2

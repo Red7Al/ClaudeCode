@@ -164,9 +164,15 @@ def build(years_list=WINDOWS, dry_run=False) -> int:
         written = volscore_store.store(server._volscore_scored(widest, use_store=False))
         log.info("  volscore features: %d rows stored from the %d-year window", written, widest)
     except Exception as ex:
+        # COUNTED, not just logged: run 37813598761 (2026-10-08) logged this and still finished green, so
+        # the store stayed empty with nothing to show for it. The Scanner Report now reads trigger-date
+        # values from this store, so an empty one hides rows -- the run must fail and email.
         log.error("  volscore feature store FAILED: %s (the site will recompute from bars)", ex)
+        store_failed = 1
+    else:
+        store_failed = 0
 
-    failures = 0
+    failures = store_failed
     for years in years_list:
         started = time.time()
         try:
