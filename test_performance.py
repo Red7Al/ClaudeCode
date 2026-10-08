@@ -642,8 +642,9 @@ def test_scanner_still_hard_filters_on_my_trading_filters():
     body = _extract_function(html, "pass")
 
     assert "tradeVisible(r)" in body, "per-user market/direction/location trade gate lost from pass()"
+    # require_above_vwap / require_atr_expanding left pass() on 2026-10-08 by owner decision: shown as
+    # columns, not hidden filters (test_scanner_report_shows_vwap_and_atr_instead_of_hiding_rows).
     for floor in ("min_risk_reward", "min_quality", "min_volume_score", "min_rvol",
-                  "require_above_vwap", "require_atr_expanding",
                   "min_instrument_value", "max_instrument_value"):
         assert floor in body, f"MY_LIMITS hard filter lost {floor} — P-01 regression"
 
@@ -1499,15 +1500,19 @@ def test_scanner_rerenders_after_every_my_limits_mutation():
     )
 
 
-def test_pass_still_hard_filters_on_my_limits_atr_and_vwap():
-    """Companion to the regression guard above: confirms pass() -- the Scanner's single filter
-    chokepoint -- still contains the ATR/VWAP floor checks this whole bug class depends on, so the
-    re-render fixes above are guarding something real and can't quietly become a no-op if pass()
-    itself is ever refactored."""
+def test_scanner_report_shows_vwap_and_atr_instead_of_hiding_rows():
+    """Owner 2026-10-08: yesterday's setups must stay in today's Scanner Report. above_vwap and
+    atr_expanding are recomputed from the latest bar, so as HIDDEN filters in pass() they dropped rows
+    whose squeeze had not changed (live snapshot that day: 16 rows with them, 95 without). They are
+    shown as columns instead; the stable floors (R:R, quality, VolumeScore, RVOL, instrument value) still
+    filter."""
     html = __import__("client_source").client_source()
     pass_fn = _extract_function(html, "pass")
-    assert "if(+MY_LIMITS.require_above_vwap&&r.above_vwap===false)return false;" in pass_fn
-    assert "if(+MY_LIMITS.require_atr_expanding&&r.atr_expanding===false)return false;" in pass_fn
+    assert "r.above_vwap===false)return false" not in pass_fn
+    assert "r.atr_expanding===false)return false" not in pass_fn
+    for floor in ("r.rr<rrMin", "r.quality<qMin", "r.volume_score<vsMin", "r.rvol<rvMin", "r.mcap<ivMin"):
+        assert floor in pass_fn, f"pass() lost the {floor} floor"
+    assert "vwapScannerCell(r)" in html and "atrScannerCell(r)" in html, "the columns must still be shown"
 
 
 def test_approved_ui_report_backlog_is_wired_to_live_render_paths():

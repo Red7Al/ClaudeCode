@@ -421,8 +421,10 @@ function pass(r,except){
    if(qMin!=null&&r.quality!=null&&r.quality<qMin)return false;
    if(vsMin!=null&&r.volume_score!=null&&r.volume_score<vsMin)return false;
    if(rvMin!=null&&rvMin>0&&r.rvol!=null&&r.rvol<rvMin)return false;
-   if(+MY_LIMITS.require_above_vwap&&r.above_vwap===false)return false;
-   if(+MY_LIMITS.require_atr_expanding&&r.atr_expanding===false)return false;
+   // Above-VWAP and ATR-expanding are SHOWN (their columns), not used to hide rows (owner 2026-10-08).
+   // Both are recomputed from the latest bar, so as hidden filters they dropped yesterday's setups from
+   // today's report while the squeeze was unchanged. Measured on the live snapshot that day: 16 rows with
+   // them hiding, 95 without. My Pre-orders still applies them.
    if(r.mcap!=null&&ivMin!=null&&ivMin>0&&r.mcap<ivMin)return false;
    if(r.mcap!=null&&ivMax!=null&&ivMax>0&&r.mcap>ivMax)return false;}
   return true;
