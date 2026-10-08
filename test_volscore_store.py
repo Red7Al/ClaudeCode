@@ -117,7 +117,11 @@ def test_only_the_triggers_the_store_lacks_cause_a_bar_fetch(monkeypatch):
     monkeypatch.setattr(S, "_sqa_all_rows", lambda: [_row("OLD", "2026-09-01"), _row("NEW", "2026-09-30")])
     monkeypatch.setattr(volscore_store, "load", lambda cutoff, db=None: {
         ("OLD", "2026-09-01"): {"volume_score": 6, "above_vwap": True, "atr_expanding": False}})
-    monkeypatch.setattr(S, "get_db", lambda: _FakeDb(), raising=False)
+    # "db_pool.get_db", NOT setattr(S, "get_db"). _volscore_scored does `from db_pool import get_db`
+    # INSIDE the function, so the name resolves against db_pool at call time; setting an attribute on the
+    # server module just creates an unused one and the REAL connection is opened. That is what reached
+    # Supabase from CI on run 37696686522 and failed with ENOIDENTIFIER on placeholder credentials.
+    monkeypatch.setattr("db_pool.get_db", lambda: _FakeDb())
     S._VSCORED_CACHE.clear()
 
     S._volscore_scored(1)
@@ -136,6 +140,7 @@ def test_use_store_false_forces_a_recompute(monkeypatch):
     monkeypatch.setattr(S, "_perf_bars",
                         lambda *a, **k: calls.__setitem__("perf_bars", calls["perf_bars"] + 1) or {})
     monkeypatch.setattr(S, "_sqa_all_rows", lambda: [_row("AAA", "2026-09-01")])
+    monkeypatch.setattr("db_pool.get_db", lambda: _FakeDb())   # or the real connection is opened
     S._VSCORED_CACHE.clear()
 
     S._volscore_scored(1, use_store=False)
