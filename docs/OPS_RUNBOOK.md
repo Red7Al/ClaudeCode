@@ -1,10 +1,10 @@
 # Ops runbook
 
 _How to operate this system, and the traps that have actually bitten. Every command here was run on
-2026-08-23; every number was measured rather than estimated. Candidate #4 from `PROJECT_ARTIFACTS.md`._
+2026-08-23; every number was measured rather than estimated._
 
-Companion docs: `IONOS_DEPLOYMENT.md` (deployment detail), `SQUEEZE_METHOD.md` (the method),
-`SECURITY_RECOMMENDATIONS.md`.
+Companion docs: `IONOS_DEPLOYMENT.md` (deployment detail), `docs/METHOD.md` (the method),
+`docs/STATUS.md` (current state). Start at `CLAUDE.md`.
 
 ---
 
@@ -244,7 +244,7 @@ The Scanner Report is restricted to one address by default and is **not yet sche
 - After a `server.py` change, check `/api/build` — see memory `ionos-resident-api-worker`.
 - Never "optimise" `_winLedger`'s sort: `localeCompare` → `<` is 11% faster and moved the reported
   wallet by £1,037, because the replay compounds and the order IS the answer.
-- Run the suite (`python -m pytest -q -m "not live_state"`, **466 tests** at 2026-08-25) before quoting
+- Run the suite (`python -m pytest -q -m "not live_state"`, count in `CLAUDE.md`) before quoting
   any number. Use the project venv — on this machine the bare `python` is a system 3.14 with no pytest,
   and `python -m pytest ... | tail` will report **exit 0 while actually failing**, because the exit code
   comes from `tail`. Check `$?` on the pytest process itself.

@@ -27,23 +27,28 @@ until it breaks out. A setup must satisfy all five rules (prior trend, lower hig
 30% convergence, and a fresh breakout pivot within 60 bars). Entry is the third pivot, the stop sits just
 beyond the opposite pivot, and the target is re-anchored to the prior trend's true exhaustion extreme.
 
-Full detail, kept in step with the code: **[`docs/SQUEEZE_METHOD.md`](docs/SQUEEZE_METHOD.md)**.
+Full detail, checked against the code by the test suite: **[`docs/METHOD.md`](docs/METHOD.md)**.
 
 ## Documentation
 
+Start at **[`CLAUDE.md`](CLAUDE.md)** — it is the entry point and says what to read for each task.
+
 | Document | What it covers |
 |---|---|
-| [`CLAUDE.md`](CLAUDE.md) | **Start here to work on the code** — tests, commits, deploys, and the traps that have actually bitten |
-| [`docs/OPS_RUNBOOK.md`](docs/OPS_RUNBOOK.md) | Running the system day to day; health checks, backfills, failures |
-| [`docs/SQUEEZE_METHOD.md`](docs/SQUEEZE_METHOD.md) | Detection rules, thresholds, scoring |
-| [`docs/DECISIONS_AND_WEIGHTING.md`](docs/DECISIONS_AND_WEIGHTING.md) | How a detected setup is ordered, gated and published |
+| [`CLAUDE.md`](CLAUDE.md) | Rules, traps, tests, commits, deploys — read first |
+| [`docs/STATUS.md`](docs/STATUS.md) | What is live, what is broken, what is owed — the only status document |
+| [`docs/METHOD.md`](docs/METHOD.md) | Detection rules, thresholds, ranking, orders |
+| [`docs/ORDER_TIMING_AND_RVOL.md`](docs/ORDER_TIMING_AND_RVOL.md) | Why break-bar measures cannot gate placement |
+| [`docs/OPS_RUNBOOK.md`](docs/OPS_RUNBOOK.md) | Health checks, deploys, failed jobs, backfills |
 | [`IONOS_DEPLOYMENT.md`](IONOS_DEPLOYMENT.md) | Hosting and deployment specifics |
-| [`AGENTS.md`](AGENTS.md) | Working rules for anyone (human or agent) changing this repository |
+| [`BACKLOG.md`](BACKLOG.md) | Deferred ideas; the live worklist is `ChangeRequests/` |
+
+`docs/archive/` holds superseded documents, kept for history.
 
 ## Quick start
 
 ```bash
-./.venv/Scripts/python.exe -m pytest -q -m "not live_state"   # the offline suite — 466 tests
+./.venv/Scripts/python.exe -m pytest -q -m "not live_state"   # the offline suite
 ASSUME_YES=1 ./deploy_ionos.sh                                # build, upload, verify
 curl -s https://www.squeezescanner.cloud/api/build            # which build the API is actually running
 ```
@@ -58,7 +63,7 @@ build — always check `/api/build`. Both are explained in `CLAUDE.md`.
 - `hvf_web/` — the Flask app (`server.py`), its client (`app.js`, `index.html`) and snapshot build
 - `ig_shim.py`, `hvf_web/order_bridge.py` — IG account access and order execution
 - `squeeze_history.py`, `scanner_snapshot_store.py` — historical replay and snapshot persistence
-- `.github/workflows/` — 55 workflows, triggered by cron-job.org via `workflow_dispatch`
+- `.github/workflows/` — 62 workflows (counted 2026-10-08), triggered by cron-job.org via `workflow_dispatch`
   (registry: `setup_cronjobs.py::JOBS`; GitHub-native `schedule:` is banned)
 - `ChangeRequests/` — the live worklist behind the admin Change Requests tab (deliberately not in git)
 - `skills_src/` — task-specific working procedures, packaged to `*.skill` by `build_skills.py`

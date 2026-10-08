@@ -1,4 +1,4 @@
-name: Query - Auto (writes output to repo)
+name: Query - Auto (writes output to repo) (2026-10-08)
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - run: pip install pg8000 python-dotenv
+      - run: pip install pg8000 python-dotenv cryptography
       - name: Run query and write output
         run: python run_query.py > query_output.txt 2>&1
         env:

@@ -158,3 +158,19 @@ def test_a_database_failure_is_an_error_not_an_empty_chart(monkeypatch):
     monkeypatch.setattr(server, "_record", lambda t: _record())
     with pytest.raises(RuntimeError):
         server._price_bars("AAF.L", 365)
+
+
+def test_a_database_outage_serves_the_levels_not_a_500(monkeypatch):
+    """Owner 2026-10-08: if Supabase refuses reads, the site must not show an error. Measured that day with
+    the real app and unreachable credentials: this route returned HTTP 500. Bars exist only in Supabase,
+    so the honest fallback is the record's levels with an empty series, flagged unavailable."""
+    def refuse(*a, **k):
+        raise Exception({"C": "XX000", "M": "(EMAXCONNSESSION) max clients reached in session mode"})
+    monkeypatch.setattr(server, "_price_bars", refuse)
+    monkeypatch.setattr(server, "_record", lambda t: _record(hvf_type="BULLISH", h3_level=115.0,
+                                                              stop_level=85.0, target=130.0))
+    r = server.app.test_client().get("/api/pricebars/AAF.L")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["bars"] == [] and body["unavailable"] is True
+    assert body["levels"] == {"entry": 115.0, "stop": 85.0, "target": 130.0}

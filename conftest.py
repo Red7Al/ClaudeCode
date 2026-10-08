@@ -38,3 +38,17 @@ def _clear_account_scope_cache():
     _reset()
     yield
     _reset()
+
+
+@pytest.fixture(autouse=True)
+def _reset_db_outage_breaker():
+    """db_pool stops trying for 30 s after a failed connect on the web tier (2026-10-08). One test's refused
+    connection must not become the next test's instant DatabaseUnavailable, so it starts and ends closed."""
+    try:
+        import db_pool
+    except Exception:
+        yield
+        return
+    db_pool._down_until = 0.0
+    yield
+    db_pool._down_until = 0.0

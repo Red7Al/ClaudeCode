@@ -2458,7 +2458,15 @@ def api_pricebars(ticker):
     if not rec:
         return ("unknown ticker", 404)
     card = rec.get("_card") or {}
-    bars = _price_bars(ticker, days)
+    # Bars live only in Supabase (the owner ruled out mirroring price_history to IONOS). If the database
+    # refuses, serve the record's levels with an empty series -- the client already draws "no price data"
+    # for that -- rather than a 500 (owner 2026-10-08: a Supabase outage must not surface as an error).
+    try:
+        bars = _price_bars(ticker, days)
+        unavailable = False
+    except Exception as e:
+        log.warning(f"pricebars {ticker}: price history unavailable, serving levels only: {e}")
+        bars, unavailable = [], True
     first = bars[0][0] if bars else None
     last = bars[-1][0] if bars else None
     levels = {}
@@ -2478,7 +2486,7 @@ def api_pricebars(ticker):
         if d and isinstance(lvl, (int, float)) and first and last and first <= str(d)[:10] <= last:
             pivots.append({"date": str(d)[:10], "level": float(lvl), "kind": kind, "label": label})
     return jsonify({"ticker": ticker, "days": days, "bars": bars, "levels": levels,
-                    "pivots": pivots, "direction": card.get("hvf_type") or ""})
+                    "pivots": pivots, "direction": card.get("hvf_type") or "", "unavailable": unavailable})
 
 
 def _refresh_loop():

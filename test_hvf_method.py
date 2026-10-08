@@ -377,12 +377,12 @@ def test_squeeze_method_doc_states_the_live_publication_floor():
 
     import config
 
-    doc = Path(__file__).with_name("docs").joinpath("SQUEEZE_METHOD.md").read_text(encoding="utf-8")
+    doc = Path(__file__).with_name("docs").joinpath("METHOD.md").read_text(encoding="utf-8")
     stated = re.search(r"`MIN_PUBLISH_QUALITY`,\s*currently\s*\*\*(\d+)\*\*", doc)
 
-    assert stated, "SQUEEZE_METHOD.md must state the publication floor in a checkable form"
+    assert stated, "METHOD.md must state the publication floor in a checkable form"
     assert int(stated.group(1)) == config.MIN_PUBLISH_QUALITY, (
-        f"docs/SQUEEZE_METHOD.md says the publication floor is {stated.group(1)}, "
+        f"docs/METHOD.md says the publication floor is {stated.group(1)}, "
         f"config.py says {config.MIN_PUBLISH_QUALITY} — the doc drifted")
 
 
@@ -392,10 +392,27 @@ def test_squeeze_method_doc_states_the_live_risk_reward_floor():
 
     import config
 
-    doc = Path(__file__).with_name("docs").joinpath("SQUEEZE_METHOD.md").read_text(encoding="utf-8")
+    doc = Path(__file__).with_name("docs").joinpath("METHOD.md").read_text(encoding="utf-8")
     stated = re.search(r"currently\s*\*\*([\d.]+)\*\*\)", doc)
 
-    assert stated, "SQUEEZE_METHOD.md must state MIN_RISK_REWARD in a checkable form"
+    assert stated, "METHOD.md must state MIN_RISK_REWARD in a checkable form"
     assert float(stated.group(1)) == float(config.MIN_RISK_REWARD), (
-        f"docs/SQUEEZE_METHOD.md says the R:R floor is {stated.group(1)}, "
+        f"docs/METHOD.md says the R:R floor is {stated.group(1)}, "
         f"config.py says {config.MIN_RISK_REWARD} — the doc drifted")
+
+
+def test_method_doc_states_the_live_tightness_ceiling():
+    # Added 2026-10-08: docs/SQUEEZE_METHOD.md went on stating "convergence < 0.70" for 3.5 months after the
+    # 2026-06-22 cut-over to a 0.35 tightness ceiling, while its two sibling checks above stayed green.
+    import re
+    from pathlib import Path
+
+    import hvf_clean
+
+    doc = Path(__file__).with_name("docs").joinpath("METHOD.md").read_text(encoding="utf-8")
+    stated = re.search(r"`HVF_TIGHTNESS_MAX`, currently \*\*([\d.]+)\*\*", doc)
+
+    assert stated, "METHOD.md must state HVF_TIGHTNESS_MAX in a checkable form"
+    assert float(stated.group(1)) == hvf_clean.HVF_TIGHTNESS_MAX, (
+        f"docs/METHOD.md says the tightness ceiling is {stated.group(1)}, "
+        f"hvf_clean.py says {hvf_clean.HVF_TIGHTNESS_MAX} — the doc drifted")

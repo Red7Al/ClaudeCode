@@ -29,6 +29,8 @@
 # ----------------------------------------------------------------------------------------------------------------------
 # 1.0.0   2026-06-10  Alex Hind   Initial build — resilient session-pooler connect (timeout + retry/backoff), extracted
 #                                 from the watchdog fix and shared across the whole codebase.
+# 1.1.0   2026-10-08  Claude      GitHub Actions jobs wait up to 120s for a free slot on EMAXCONNSESSION instead of
+#                                 failing after ~9s (8 emailed failures 2026-10-07/08). Web tier unchanged.
 # ======================================================================================================================
 
 import os
@@ -206,10 +208,73 @@ def get_db(timeout: int = 15, attempts: int = 3):
     return _connect(timeout, attempts)
 
 
+# ── Waiting out a full pool (2026-10-08) ──────────────────────────────────────────────────────────────
+#
+# The session pooler admits 15 clients. When it is full it refuses with EMAXCONNSESSION. Between
+# 2026-10-07 23:01 and 2026-10-08 07:30, eight scheduled jobs failed on exactly that error, each having
+# given up after the ~9 s the three attempts below allow -- and each failure emailed the owner. A full pool
+# is transient by nature: the slot frees when another client finishes.
+#
+# So a BATCH job (GitHub Actions, where GITHUB_ACTIONS=true) keeps waiting on that one error, up to
+# _POOL_FULL_PATIENCE seconds. 120 s fits inside every scheduled job's timeout-minutes (smallest is 5).
+#
+# The WEB tier deliberately does NOT wait: it runs on IONOS, where GITHUB_ACTIONS is unset, and a page
+# request that sat for two minutes would hit the gateway timeout instead of falling back to the IONOS copy.
+# Any other error -- bad credentials, DNS -- is not transient and keeps the original three attempts.
+_POOL_FULL_MARK = "EMAXCONNSESSION"
+
+
+def _is_batch_job() -> bool:
+    return os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true"
+
+
+def _pool_full_patience() -> float:
+    if not _is_batch_job():
+        return 0.0
+    return float(os.environ.get("DB_POOL_FULL_PATIENCE_SECS", "120"))
+
+
+# ── Failing fast on the web tier during an outage (2026-10-08) ─────────────────────────────────────
+#
+# Owner: "if supabase is not allowing data writes or reads - IONOS must be available and we should not
+# experience an error". Measured that day with the real app and unreachable credentials: every route that
+# touches the database spent ~10 s on doomed connect attempts before its fallback ran, and /api/freshness
+# (four surfaces) took 40 s. In a real outage that TIMES OUT rather than refusing, each attempt costs up to
+# `timeout` seconds, which walks a page into the gateway's ~120 s limit -- itself an error to the visitor.
+#
+# So once a web process has seen a connect fail, it stops trying for _WEB_DOWN_SECS and raises at once;
+# every caller already handles a DB error by falling back. Batch jobs never trip this: they would rather
+# wait (see _pool_full_patience) than skip work.
+_WEB_DOWN_SECS = float(os.environ.get("DB_WEB_DOWN_SECS", "30"))
+_down_until = 0.0
+
+
+class DatabaseUnavailable(ConnectionError):
+    """Raised immediately while the web tier is backing off after a failed connect."""
+
+
 def _connect(timeout: int = 15, attempts: int = 3):
     """One real connection, with the retry/backoff this module has always applied."""
+    global _down_until
+    web_tier = not _is_batch_job()
+    if web_tier and time.monotonic() < _down_until:
+        raise DatabaseUnavailable(f"Supabase unreachable; not retrying for "
+                                  f"{_down_until - time.monotonic():.0f}s more")
+    try:
+        conn = _connect_with_retry(timeout, attempts)
+    except Exception:
+        if web_tier:
+            _down_until = time.monotonic() + _WEB_DOWN_SECS
+        raise
+    _down_until = 0.0
+    return conn
+
+
+def _connect_with_retry(timeout: int, attempts: int):
     last = None
-    for i in range(attempts):
+    deadline = time.monotonic() + _pool_full_patience()
+    i = 0
+    while True:
         try:
             return pg8000.native.Connection(
                 host=SUPABASE_HOST, port=SESSION_POOLER_PORT, database="postgres",
@@ -219,10 +284,18 @@ def _connect(timeout: int = 15, attempts: int = 3):
             )
         except Exception as e:
             last = e
-            log.warning(f"DB connect attempt {i + 1}/{attempts} failed: {e}")
-            if i < attempts - 1:
-                time.sleep(3 * (i + 1))   # 3s, 6s — let a session-pool slot free up
-    raise last
+            i += 1
+            pool_full = _POOL_FULL_MARK in str(e)
+            if i < attempts:
+                wait = 3 * i                           # 3s, 6s — let a session-pool slot free up
+            elif pool_full and time.monotonic() < deadline:
+                wait = min(15.0, max(0.0, deadline - time.monotonic()))
+            else:
+                log.warning(f"DB connect attempt {i} failed, giving up: {e}")
+                raise last
+            log.warning(f"DB connect attempt {i} failed ({'pool full, waiting' if pool_full else 'retrying'}"
+                        f" {wait:.0f}s): {e}")
+            time.sleep(wait)
 
 
 # ── Encrypted secret-store bootstrap (task #53) ───────────────────────────────────────────────────────

@@ -170,3 +170,106 @@ def test_closing_twice_is_harmless(monkeypatch):
     third = db_pool.get_db()
     assert third._conn is not other._conn, "the same connection was leased twice"
     third.close(); other.close()
+
+
+# ── Waiting out a full pool (2026-10-08) ──────────────────────────────────────────────────────────────
+# Eight scheduled jobs failed 2026-10-07/08 on EMAXCONNSESSION after the ~9 s three attempts allow, each
+# emailing the owner. A batch job now waits for a slot; the web tier must still fail fast so it can fall
+# back to the IONOS copy instead of hanging a page request. The message below is the one pg8000 raised in
+# run 37743882711.
+
+_POOL_FULL = Exception({"C": "XX000", "S": "FATAL",
+                        "M": "(EMAXCONNSESSION) max clients reached in session mode - max clients are "
+                             "limited to pool_size: 15"})
+
+
+class _Clock:
+    def __init__(self):
+        self.now, self.slept = 0.0, []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, s):
+        self.slept.append(s)
+        self.now += s
+
+
+def _pooler(monkeypatch, fail_until, error=_POOL_FULL):
+    """Connection() raises `error` until the fake clock reaches fail_until seconds, then succeeds."""
+    clock, calls = _Clock(), []
+    monkeypatch.setattr(db_pool.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(db_pool.time, "sleep", clock.sleep)
+    monkeypatch.setenv("SUPABASE_USER", "u")
+    monkeypatch.setenv("SUPABASE_DB_PASSWORD", "p")
+
+    def connection(**kw):
+        calls.append(clock.now)
+        if clock.now < fail_until:
+            raise error
+        return FakeConn()
+    monkeypatch.setattr(db_pool.pg8000.native, "Connection", connection)
+    return clock, calls
+
+
+def test_an_actions_job_waits_for_a_pool_slot_instead_of_failing(monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    clock, calls = _pooler(monkeypatch, fail_until=60)
+    assert isinstance(db_pool._connect(), FakeConn)
+    assert clock.now >= 60 and len(calls) > 3
+
+
+def test_an_actions_job_gives_up_once_the_patience_is_spent(monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    clock, _ = _pooler(monkeypatch, fail_until=10_000)
+    with pytest.raises(Exception, match="EMAXCONNSESSION"):
+        db_pool._connect()
+    assert 120 <= clock.now <= 121            # never longer than the 120 s that fits every job timeout
+
+
+def test_the_web_tier_still_fails_fast_so_it_can_fall_back(monkeypatch):
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    clock, calls = _pooler(monkeypatch, fail_until=60)
+    with pytest.raises(Exception, match="EMAXCONNSESSION"):
+        db_pool._connect()
+    assert len(calls) == 3 and clock.now == 9  # the original 3s + 6s, unchanged
+
+
+def test_a_non_transient_error_is_not_waited_out(monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    clock, calls = _pooler(monkeypatch, fail_until=10_000, error=Exception("password authentication failed"))
+    with pytest.raises(Exception, match="password"):
+        db_pool._connect()
+    assert len(calls) == 3 and clock.now == 9
+
+
+# ── Failing fast on the web tier during an outage (2026-10-08) ──────────────────────────────────────
+
+def test_the_web_tier_stops_retrying_for_a_while_after_a_failed_connect(monkeypatch):
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    clock, calls = _pooler(monkeypatch, fail_until=10_000)
+    with pytest.raises(Exception, match="EMAXCONNSESSION"):
+        db_pool._connect()
+    tried = len(calls)
+    with pytest.raises(db_pool.DatabaseUnavailable):
+        db_pool._connect()                       # inside the window: no new connection attempts at all
+    assert len(calls) == tried
+
+
+def test_the_web_tier_tries_again_once_the_window_has_passed(monkeypatch):
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    clock, calls = _pooler(monkeypatch, fail_until=20)
+    with pytest.raises(Exception, match="EMAXCONNSESSION"):
+        db_pool._connect()                       # fails 0..9 s, window now runs to ~39 s
+    clock.now += db_pool._WEB_DOWN_SECS
+    assert isinstance(db_pool._connect(), FakeConn)
+    assert db_pool._down_until == 0.0            # a success closes the breaker
+
+
+def test_a_batch_job_never_skips_the_database(monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    clock, calls = _pooler(monkeypatch, fail_until=10_000, error=Exception("password authentication failed"))
+    for _ in range(2):
+        with pytest.raises(Exception, match="password"):
+            db_pool._connect()
+    assert len(calls) == 6                       # both calls really tried, 3 attempts each

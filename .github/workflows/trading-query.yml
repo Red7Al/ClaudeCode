@@ -1,4 +1,4 @@
-name: Query - Today's Trades
+name: Query - Today's Trades (2026-10-08)
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
-      - run: pip install pg8000 python-dotenv
+      - run: pip install pg8000 python-dotenv cryptography
       - run: python run_query.py
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
