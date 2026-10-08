@@ -136,9 +136,13 @@ def _still_good(conn) -> bool:
 # gets DatabaseUnavailable, which every caller already handles by falling back. Idle connections are
 # closed after _WEB_IDLE_MAX so a quiet worker does not sit on slots. Batch jobs keep the thread-local
 # pool unchanged.
-_WEB_MAX_CONN = int(os.environ.get("DB_WEB_MAX_CONN", "4"))
+#
+# 2 and 10 s, not 4 and 60 s: MEASURED after the first version shipped (14:10 UTC 2026-10-08), about 12
+# idle IONOS connections were closed in the same instant -- the host runs SEVERAL web processes, each with
+# its own cap, so the per-process number multiplies. Idle connections must not sit on slots for a minute.
+_WEB_MAX_CONN = int(os.environ.get("DB_WEB_MAX_CONN", "2"))
 _WEB_SLOT_WAIT = float(os.environ.get("DB_WEB_SLOT_WAIT_SECS", "10"))
-_WEB_IDLE_MAX = float(os.environ.get("DB_WEB_IDLE_SECS", "60"))
+_WEB_IDLE_MAX = float(os.environ.get("DB_WEB_IDLE_SECS", "10"))
 _web_slots = threading.BoundedSemaphore(_WEB_MAX_CONN)   # one permit per OPEN web connection
 _web_idle = []                                            # open connections nobody is borrowing
 _web_lock = threading.Lock()
