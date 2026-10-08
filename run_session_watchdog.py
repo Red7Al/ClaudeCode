@@ -99,6 +99,14 @@ SESSION_WORKFLOW = {
     "US_OPEN":  "trading-us-open.yml",
 }
 
+# The cron-job.org job title that fires each session (setup_cronjobs.py JOBS; titles read from the
+# cron-job.org API 2026-10-08).
+SESSION_CRON_TITLE = {
+    "AUS_OPEN": "AUS Open",
+    "UK_OPEN":  "UK Open",
+    "US_OPEN":  "US Open",
+}
+
 
 def trigger_workflow(workflow_file: str, session_name: str):
     """
@@ -237,8 +245,20 @@ def main():
         ("US_OPEN",  14, 30, 30),   # 14:30 UTC open → alert + auto-trigger if no data by 15:00
     ]
 
+    # Judge only sessions cron-job.org will actually fire (2026-10-08). AUS/UK/US Open have been DISABLED
+    # there since the session monitors were switched off (last runs 2026-08-06), yet this watchdog went on
+    # alerting "did not start" every 10 minutes and trying to re-dispatch them -- which only a 403 on the
+    # token stopped. Repairing a session that is off on purpose is not a repair. Reuses Cron Watch's reader
+    # so there is one interpreter of "enabled"; None (could not tell) judges everything, as there.
+    from run_cron_watch import _enabled_titles
+    enabled = _enabled_titles()
+
     problems = 0
     for session_name, open_hour, open_minute, grace in SESSIONS:
+        title = SESSION_CRON_TITLE.get(session_name)
+        if enabled is not None and title not in enabled:
+            log.info(f"{session_name}: cron-job.org job '{title}' is disabled -- not judged, not re-dispatched")
+            continue
         ok = check_session(conn, session_name, open_hour, open_minute, grace, today)
         if not ok:
             problems += 1

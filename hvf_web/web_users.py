@@ -205,6 +205,15 @@ def _ensure_seeded() -> dict:
                 if old is not None:
                     changed = True
         if changed:
+            # This runs on READ paths (token checks, login, every scheduled job that asks who owns what).
+            # When the Supabase read has just failed, _save correctly refuses to overwrite the authoritative
+            # store from a possibly stale copy -- but that refusal must not turn a read into a failure.
+            # Measured 2026-10-08: Closing Window run 37752518494 died on exactly this after a read timeout,
+            # because a GitHub runner has no local user file and so "seeded" Alex and Rich in memory.
+            # Serve the in-memory view; the seed is written on the next read that reaches Supabase.
+            if _remote_state_enabled() and _STATE_CACHE.get("remote_available") is False:
+                log.warning("web_users: Supabase unreachable -- serving users without persisting the seed")
+                return users
             _save(users)
             log.info(f"web_users seeded ({_USERS_FILE})")
         return users

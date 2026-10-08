@@ -9,6 +9,14 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# The watchdog re-dispatches a missed session workflow. The repo's default token is read-only
+# (default_workflow_permissions: read, measured 2026-10-08), so every re-dispatch got
+# "403 Resource not accessible by integration". It now only re-dispatches sessions whose
+# cron-job.org job is enabled, so granting this cannot restart a session that is off on purpose.
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   run:
     runs-on: ubuntu-latest

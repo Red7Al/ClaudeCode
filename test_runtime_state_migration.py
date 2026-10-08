@@ -231,3 +231,21 @@ def test_adaptive_filters_ui_is_removed_but_compatibility_field_is_preserved():
     assert "lim-rebalance_weeks" not in html
     assert "lim.adaptive_filters=0" in html
     assert 'cur["adaptive_filters"] = 0' in server
+
+
+def test_a_read_during_an_outage_does_not_fail_on_the_seed(monkeypatch, tmp_path):
+    """Closing Window run 37752518494, 2026-10-08: the Supabase read of web_users timed out on a GitHub
+    runner, which has no local user file, so _ensure_seeded "seeded" Alex and Rich in memory and _save
+    refused the write -- turning a READ into "auto-close pass failed" and a failure email. The refusal to
+    overwrite stays (test above); the read must still answer."""
+    local = tmp_path / "web_users.json"                       # absent, exactly as on a runner
+    monkeypatch.setattr(web_users, "_USERS_FILE", str(local))
+    monkeypatch.setattr(web_users, "_remote_state_enabled", lambda: True)
+    monkeypatch.setattr(web_store, "read_json_store_versioned", lambda key: (False, None, None))
+    monkeypatch.setattr(web_store, "save_json_store_versioned", lambda *a, **k: pytest.fail("stale state reached Supabase"))
+    _reset_user_cache()
+
+    users = web_users._ensure_seeded()
+
+    assert {"Alex", "Rich"} <= set(users)
+    assert not local.exists()                                 # nothing persisted while Supabase is out

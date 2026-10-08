@@ -46,6 +46,8 @@ CI              2f12a41 green (Offline Python Regression Tests, 07:54 UTC)
 | **Failure emails.** 8 of 9 failed runs since 10-06 were `EMAXCONNSESSION` (15-slot pool full); jobs gave up after ~9 s. Actions jobs now wait up to 120 s for a slot; web tier unchanged. | `db_pool._connect`; 4 tests in `test_db_pool.py`, 2 proven red on the old code |
 | **`cryptography` missing** in 6 workflows that pass `APP_SECRET_KEY` — the watchdog log showed `No module named 'cryptography'` | `trading-watchdog.yml` and 5 others |
 | **Supabase-down fallback.** Probe: real app, unreachable credentials, logged out, all 45 GET routes. `/api/pricebars` returned 500 → now 200 with levels and `unavailable: true`. A web process that fails to connect now skips the DB for 30 s, so `/api/freshness` went 40.3 s → 0.2 s and `/api/records` serves the local snapshot in 0.2 s. After: **0 HTTP 500s, 0 exceptions.** | `db_pool.DatabaseUnavailable`; `test_price_bars.py`, `test_db_pool.py` |
+| **Closing Window failed at 08:50** (run `37752518494`): the Supabase read of `web_users` timed out, the runner has no local user file, so `_ensure_seeded` tried to write and the stale-overwrite guard refused — a READ became a failure email. Reads now serve the in-memory users and skip the write. | `test_runtime_state_migration.py::test_a_read_during_an_outage_does_not_fail_on_the_seed`, red on the old code |
+| **Session Watchdog auto-restart.** It alerted "did not start" every 10 min for AUS/UK/US Open, which are DISABLED on cron-job.org by owner decision, and its re-dispatch 403'd (repo token read-only). It now skips disabled sessions, and has `actions: write` so a restart works for any session switched back on. **Owner 2026-10-08: the three stay disabled — do not raise again.** | `test_session_watchdog_enabled.py`, 2 of 3 red on the old code |
 | Docs reduced from 23 to 9 outside `skills_src/`; `SQUEEZE_METHOD.md` was wrong (stated 0.70 convergence and the removed AMP1 re-anchor) — replaced by `docs/METHOD.md`, now test-checked for the tightness ceiling too | `test_hvf_method.py::test_method_doc_states_the_live_tightness_ceiling` |
 
 **Deployed** as `bc5ce54`, live fingerprint `77c33a785809` (worker loaded 08:38:02). Verified live:
@@ -76,11 +78,9 @@ store, which reads the local copy when Supabase fails (`web_users._load`), but n
    use. CI sat red nine days unnoticed. (`run_cron_watch._notify` does email.)
 7. **`trading-create-env.yml`** uses a `V_` prefix and does not pass `APP_SECRET_KEY`. Unanswered whether
    it should.
-8. **Session Watchdog alerts every run** — `No macro_snapshot recorded today` for AUS_OPEN/UK_OPEN, then
-   `Auto-trigger failed: 403 Resource not accessible by integration`. 11 of the 12 runs from 07:00 to
-   08:40 on 2026-10-08. Each run still ends green, and `alert()` posts only to Slack
-   (`run_session_watchdog.py:75-83`), so it does not email. Probable cause, unverified: the session
-   monitors are disabled while the watchdog still expects them.
+8. **Slack-only alerts reach nobody.** Slack is no longer used; email is primary (owner, 2026-10-08).
+   Known Slack-only paths: CI's failure alert (`SLACK_ALERTS`) and `run_session_watchdog.alert`. Not yet
+   swept for the full list.
 9. **The owner's standing instruction** — store derived values on IONOS, do not re-derive per request
    (archive `HANDOVER-20260928.md` §3.1). `ddd7c3b`/`44a940e` are a first part, gated by §1.
 

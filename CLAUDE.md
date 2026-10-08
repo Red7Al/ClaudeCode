@@ -77,7 +77,7 @@ Each rule exists because skipping it produced a real defect in September 2026.
 ## Running the tests
 
 ```bash
-./.venv/Scripts/python.exe -m pytest -q -m "not live_state"     # 1,454 passed, 17 skipped -- clean worktree, CI env, 2026-10-08
+./.venv/Scripts/python.exe -m pytest -q -m "not live_state"     # 1,455 passed, 17 skipped -- clean worktree, CI env, 2026-10-08
 ```
 
 - **Use the venv.** Bare `python` is a system 3.14 with no pytest.
@@ -132,6 +132,11 @@ workflow file changes, put today's date in its `name:`.
 ## Constraints
 
 - **`WEB_BRIDGE` is the only enabled execution source.** Bridge changes are production trading changes.
+- **AUS Open, UK Open and US Open stay DISABLED on cron-job.org — owner decision, settled 2026-10-08.**
+  Last runs 2026-08-06. Do not re-enable them, do not "fix" anything that reports them missing, and do not
+  raise them again. Session Watchdog skips any session whose cron-job.org job is disabled.
+- **Alerts go by EMAIL. Slack is no longer used** (owner, 2026-10-08). An alert that only posts to a
+  `SLACK_*` webhook reaches nobody. `run_cron_watch._notify` emails.
 - **Supabase free tier**: 500 MB database, 5 GB/month egress, **15-client session pool**. A `DELETE`
   frees nothing. Storage has returned 402 since 2026-08-16 (egress quota); the snapshot publishes to
   IONOS instead.
