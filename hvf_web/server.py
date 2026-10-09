@@ -1526,6 +1526,105 @@ def _stored_metrics(snap: dict) -> dict:
 _TRIGDATE_CACHE = {"gen": None, "data": {}}
 
 
+_OPEN_SETUPS_CACHE = {"gen": None, "data": None, "at": 0.0}
+# NOT keyed on the snapshot alone: volscore_features is written by the precompute step that runs AFTER a
+# snapshot is published, so a cache built in that gap would hold an empty store until the next snapshot
+# (~12 h). It is re-read at most every _OPEN_SETUPS_TTL seconds.
+_OPEN_SETUPS_TTL = 900
+# Owner 2026-10-08, choosing between no limit / 180 / 90 / 60 days: "90 days". Settles his two earlier
+# statements -- "stays until target or stop" (today) and triggers ~5-6 months old having "no value"
+# (2026-09-18, twice). On the 2026-10-08 data this kept 28 of 50 rows.
+REPORT_MAX_TRIGGER_AGE_DAYS = 90
+
+
+def _open_trigger_setups(snap: dict):
+    """{ticker: [setup, ...] newest trigger first} for every squeeze that TRIGGERED and is still OPEN, or
+    None when the history cannot be read (the caller then leaves rows exactly as before).
+
+    THE OWNER'S RULE (2026-10-08): "a setup that triggered and passed my filters on its trigger date stays
+    on the report, days counting up, until it hits its target or stop". The snapshot holds only the funnel
+    today's scan detects, one per instrument, so a still-open setup vanished the day the scan moved on --
+    ARM's 18 Sep trigger (RVOL 1.8, OPEN) left the report on 5 Oct when the scan switched to a 29 Sep funnel.
+
+    ONLY A VERIFIED "OPEN". squeeze_history.refresh_daily replays outcomes over an 18-month bar window
+    (squeeze_history.py:489), so a setup triggered before it is never re-checked and stays "OPEN" for ever.
+    MEASURED 2026-10-08: 205 such rows last refreshed 2026-08-12 or earlier, among them 3968.HK (26 Sep
+    2024) whose high of 53.55 had passed its 52.34 target -- a finished trade. A row counts only if the
+    daily refresh confirmed it within 4 days (the Morning Chain runs Mon-Sat, so a weekend spans ~48 h).
+
+    ONE SOURCE PER FACT: trigger date, levels, R:R, quality and RVOL from squeeze_history (the table the
+    Performance report already uses; one trigger appears under several lookback windows, so one row is kept
+    per ticker + trigger date, the highest quality); VolumeScore, above-VWAP and ATR-expanding AT THE TRIGGER
+    from volscore_features, written by the nightly precompute.
+    """
+    import time as _time
+    gen = snap.get("generated_utc")
+    if (_OPEN_SETUPS_CACHE["gen"] == gen and _OPEN_SETUPS_CACHE["data"] is not None
+            and _time.time() - _OPEN_SETUPS_CACHE["at"] < _OPEN_SETUPS_TTL):
+        return _OPEN_SETUPS_CACHE["data"]
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            rows = db.run("""select distinct on (ticker, triggered_date)
+                                    ticker, triggered_date, hvf_type, timeframe, entry_level, stop_level,
+                                    target_level, risk_reward, quality, rvol, h1_date, h3_date, l3_date
+                               from squeeze_history
+                              where outcome = 'OPEN' and triggered_date is not null
+                                and refreshed_at >= now() - interval '4 days'
+                                and triggered_date >= current_date - cast(:max_age as integer)
+                              order by ticker, triggered_date, quality desc nulls last""",
+                        max_age=REPORT_MAX_TRIGGER_AGE_DAYS)
+        finally:
+            db.close()
+        oldest = min((r[1] for r in rows), default=None)
+        feats = {}
+        if oldest is not None:
+            import volscore_store
+            feats = volscore_store.load(str(oldest)[:10])
+    except Exception as e:
+        # REAL MONEY: never show an unvetted list. Measured 2026-10-08 with the database unreachable: the
+        # report showed all 215 triggered rows with none of the owner's trigger-date rules applied. The last
+        # verified copy (same process, earlier today) is served if there is one; otherwise None, and the
+        # caller hides triggered rows and says why.
+        if _OPEN_SETUPS_CACHE["data"] is not None:
+            log.warning(f"open trigger setups unreadable, serving the copy verified at "
+                        f"{_OPEN_SETUPS_CACHE['at']:.0f}: {e}")
+            return _OPEN_SETUPS_CACHE["data"]
+        log.warning(f"open trigger setups unreadable and no verified copy: {e}")
+        return None
+    out = {}
+    for tk, td, typ, tf, entry, stop, target, rr, q, rvol, h1d, h3d, l3d in rows:
+        d = str(td)[:10]
+        f = feats.get((tk, d)) or {}
+        out.setdefault(tk, []).append({
+            "trig_date": d, "direction": "BEAR" if str(typ or "").upper().startswith("BEAR") else "BULL",
+            "timeframe": tf, "entry": entry, "stop": stop, "target": target,
+            "rr": round(rr, 2) if isinstance(rr, (int, float)) else rr,
+            "quality": int(q) if isinstance(q, (int, float)) else q, "rvol": rvol,
+            "volume_score": f.get("volume_score"), "above_vwap": f.get("above_vwap"),
+            "atr_expanding": f.get("atr_expanding"),
+            "h1_date": str(h1d)[:10] if h1d else None, "h3_date": str(h3d)[:10] if h3d else None,
+            "l3_date": str(l3d)[:10] if l3d else None})
+    for v in out.values():
+        v.sort(key=lambda s: s["trig_date"], reverse=True)
+    _OPEN_SETUPS_CACHE.update(gen=gen, data=out, at=_time.time())
+    return out
+
+
+def _report_setup(name: str, ticker: str, setups: list, mcap, limits=None):
+    """The newest open setup that passes this login's limits ON ITS TRIGGER-DATE VALUES, or None.
+    require_data=True: a value that was never measured cannot pass a floor that is switched on."""
+    import trading_limits
+    for s in setups or []:
+        if not trading_limits.check_limits(name, ticker, quality=s["quality"], rr=s["rr"],
+                                           volume_score=s["volume_score"], rvol=s["rvol"],
+                                           above_vwap=s["above_vwap"], atr_expanding=s["atr_expanding"],
+                                           mcap=mcap, require_data=True, limits=limits):
+            return s
+    return None
+
+
 def _snapshot_trigger_dates(snap: dict) -> dict:
     """{ticker: 'YYYY-MM-DD'} — the date each current funnel ACTUALLY TRIGGERED.
 
@@ -1713,30 +1812,24 @@ def api_records():
     # operator TRADES (enforced in ig_shim at order time), never what is shown (user 2026-07-06).
     markets = None
     if authed:
-        rvol = _snapshot_rvol(snap)                       # RVOL at the real break bar (P-30) — TRIGGERED only
-        vscore = _snapshot_volscore(snap)                 # VolumeScore 0–12 at the break bar (P-02 L49) — TRIGGERED only
-        # above_vwap/atr_expanding (user 2026-08-11): current-state reads, computed for EVERY has_signal
-        # row (TRIGGERED/READY/DEVELOPING) from today's bar — NOT scoped to TRIGGERED like RVOL/VolumeScore
-        # above, which are inherently about the break bar itself. See _live_vwap_atr's docstring: previously
-        # this came from vscore's per-ticker "components" (TRIGGERED-only), which silently left READY/
-        # DEVELOPING rows' VWAP/ATR ticks blank/unknown even though they ARE computable.
-        vwap_atr = _live_vwap_atr(snap)
+        # TRIGGER-DATE values come from the stored history (owner 2026-10-08), so the three per-request
+        # bar replays that used to supply them -- _snapshot_rvol, _snapshot_volscore, _live_vwap_atr -- are
+        # no longer called here. Their output is replaced, not duplicated: one source per fact.
+        setups_map = _open_trigger_setups(snap)
+        viewer = _wu.name_for_token(request.headers.get("X-Auth") or "")
+        import trading_limits
+        viewer_limits = trading_limits.user_limits(viewer)
         live_metrics = _live_instrument_metrics(snap)
         recs = []
         mcaps = _mcap_map()
         trigdates = _snapshot_trigger_dates(snap)
         for r in snap.get("records", []):
-            result = vscore.get(r.get("ticker")) or {}
             w = wk52.get(r.get("ticker")) or (None, None)
-            av, ae = vwap_atr.get(r.get("ticker"), (None, None))
             current = live_metrics.get(r.get("ticker"), {})
             # mcap is deliberately absent from the logged-out branch: that path builds rows from
             # _PUBLIC_FIELDS alone, so it cannot leak by omission here.
             recs.append(dict({k: v for k, v in r.items() if k != "_card"},
-                             rvol=rvol.get(r.get("ticker")),
-                             volume_score=result.get("score"),
-                             above_vwap=av,
-                             atr_expanding=ae,
+                             rvol=None, volume_score=None, above_vwap=None, atr_expanding=None,
                              current_rvol=current.get("rvol"),
                              current_rvol_date=current.get("rvol_date"),
                              current_above_vwap=current.get("above_vwap"),
@@ -1747,6 +1840,23 @@ def api_records():
                              current_metric_status=current.get("status", "not_calculated"),
                              current_metric_reason=current.get("reason"),
                              wk52_low=w[0], wk52_high=w[1]))
+            if setups_map is None:
+                if recs[-1].get("status") == "TRIGGERED":
+                    recs[-1]["report_ok"] = False   # cannot be vetted -- hidden, never shown unfiltered
+            else:
+                row = recs[-1]
+                pick = _report_setup(viewer, row.get("ticker"), setups_map.get(row.get("ticker")),
+                                     row.get("mcap"), viewer_limits)
+                if pick:
+                    # The setup the owner acts on: newest open trigger that passed his limits on its
+                    # trigger date. Its levels and trigger-date measures replace the scan's view.
+                    row.update(has_signal=True, status="TRIGGERED", report_ok=True,
+                               **{k: pick[k] for k in ("direction", "timeframe", "entry", "stop", "target",
+                                                        "rr", "quality", "trig_date", "rvol", "volume_score",
+                                                        "above_vwap", "atr_expanding", "h1_date", "h3_date",
+                                                        "l3_date")})
+                elif row.get("status") == "TRIGGERED":
+                    row["report_ok"] = False      # triggered, but no open setup passed on its trigger date
         # Canonical market list (user 2026-07-31, P-15) — drives the Scanner "Refresh a choice of markets"
         # picker independent of which fields the client keeps on DATA.
         markets = sorted({r.get("market") for r in snap.get("records", []) if r.get("market")})
@@ -1760,7 +1870,8 @@ def api_records():
             row["wk52_low"], row["wk52_high"] = w
             recs.append(row)
     return jsonify({"generated_utc": snap.get("generated_utc"), "count": len(recs),
-                    "records": recs, "limited": not authed, "markets": markets})
+                    "records": recs, "limited": not authed, "markets": markets,
+                    "report_unavailable": bool(authed and setups_map is None)})
 
 
 def _png_response(png: bytes):
@@ -6287,6 +6398,7 @@ def _warm_records_caches():
     _snapshot_volscore(snap)
     _live_vwap_atr(snap)
     _live_instrument_metrics(snap)
+    _open_trigger_setups(snap)       # the Scanner Report's open triggered setups (owner 2026-10-08)
     # The logged-out Best Settings cards. One Supabase read, so it costs almost nothing to warm and it
     # takes the round-trip off the first anonymous visitor's request.
     try:

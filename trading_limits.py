@@ -123,11 +123,13 @@ def login_for_profile(profile) -> str:
 
 def check_limits(name: str, ticker: str, *, quality=None, rr=None, volume_score=None,
                   rvol=None, above_vwap=None, atr_expanding=None, mcap=None,
-                  require_data=False) -> str:
+                  require_data=False, limits=None) -> str:
     """Return a reason string if this login's personal floors exclude the setup; '' if it passes (or a
     given criterion has no data to check — fail-open per field, matching hvf_web/server.py's _limit_block).
     `name` may be None/empty (e.g. no owner resolved) -> code defaults apply, same as an unconfigured user."""
-    lim = user_limits(name)
+    # `limits`: the caller's already-read user_limits(name), so a loop over many setups reads the user
+    # store once instead of once per setup (the Scanner Report checks ~1,600 open setups per request).
+    lim = limits if limits is not None else user_limits(name)
     if isinstance(rr, (int, float)) and rr < lim["min_risk_reward"]:
         return f"{ticker}: R:R {rr} is below the personal floor of {lim['min_risk_reward']:g}"
     _maxrr = lim.get("max_risk_reward") or 0

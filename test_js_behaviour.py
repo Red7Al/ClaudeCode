@@ -1385,45 +1385,30 @@ def test_the_apply_button_says_so_rather_than_inviting_a_no_op():
 # ======================================================================================================
 
 def _rvol_cells():
-    """rvolCell through rvolScannerCell -- one slice; they are adjacent and the second calls the first."""
+    """rvolCell and its helpers -- one slice of app.js, executed as shipped."""
     js = client_js()
     i = js.index("const rvolCell=")
     return js[i:js.index("// VolumeScore cell", i)]
 
 
-def _scanner_rvol(row):
-    return run_js("", _rvol_cells(), f"rvolScannerCell({row})")
+def _rvol(value):
+    return run_js("", _rvol_cells(), f"rvolCell({value})")
 
 
-def test_a_triggered_row_shows_its_own_trigger_bar_rvol():
-    out = _scanner_rvol("{rvol:2.4,current_rvol:0.9}")
-
-    assert "2.4" in out and "0.9" not in out, "the trigger's own value must win"
-    assert "now" not in out, "a trigger-time value must not be marked as current"
-
-
-def test_a_row_without_a_trigger_rvol_falls_back_and_says_so():
-    out = _scanner_rvol("{rvol:null,current_rvol:1.6,current_rvol_date:'2026-08-28'}")
-
-    assert "1.6" in out, "the value exists in the payload and must be shown"
-    assert "now" in out, "the fallback must be marked, not passed off as the trigger's"
-    assert "2026-08-28" in out, "and dated, so the reader knows which bar it came from"
+def test_the_trigger_column_shows_the_trigger_bars_rvol_and_nothing_else():
+    """Owner 2026-10-08: RVOL at trigger and RVOL now are separate, titled columns. The trigger column is
+    rendered from r.rvol alone -- today's value must never stand in for it."""
+    js = client_js()
+    j = js.index("rvolCell(r.rvol)")
+    row = js[js.rindex("`<tr", 0, j):js.index("</tr>", j)]
+    assert "rvolCell(r.current_rvol)" in row, "the now column must render today's value"
+    assert row.index("rvolCell(r.rvol)") < row.index("rvolCell(r.current_rvol)")
+    assert "2.4" in _rvol("2.4") and "now" not in _rvol("2.4")
 
 
-def test_a_row_with_neither_still_shows_a_dash():
-    """FX has no reported volume, so a dash is the honest answer -- not a fabricated number."""
-    out = _scanner_rvol("{rvol:null,current_rvol:null}")
-
-    assert "—" in out and "now" not in out
-
-
-def test_the_fallback_is_never_silent():
-    """The whole risk: a value from the wrong moment presented as if it were the right one."""
-    marked = _scanner_rvol("{rvol:null,current_rvol:1.6}")
-    genuine = _scanner_rvol("{rvol:1.6,current_rvol:9.9}")
-
-    assert "now" in marked and "now" not in genuine
-    assert marked != genuine, "the two must be visually distinguishable"
+def test_a_missing_trigger_rvol_is_a_dash_not_a_borrowed_value():
+    """FX has no reported volume, and a setup never measured has none either: a dash is the honest answer."""
+    assert "—" in _rvol("null")
 
 
 # ======================================================================================================
@@ -1627,7 +1612,7 @@ def test_every_scanner_heading_has_a_cell_under_it():
     column added to one side alone; every per-column assertion still passes while the table is shifted."""
     header = _scanner_header()
     js = client_js()
-    j = js.index("rvolScannerCell(r)")
+    j = js.index("rvolCell(r.rvol)")
     row = js[js.rindex("`<tr", 0, j):js.index("</tr>", j)]
 
     # The row opens with _favCell(r.ticker), a helper that emits the ★ cell, so it is one <td> short of
@@ -1652,12 +1637,12 @@ def test_the_scanner_empty_row_spans_the_whole_table():
 
 def test_the_scanner_row_renders_mcap_in_the_same_position():
     js = client_js()
-    j = js.index("rvolScannerCell(r)")
+    j = js.index("rvolCell(r.rvol)")
     row = js[js.rindex("`<tr", 0, j):js.index("</tr>", j)]
     cells = re.findall(r"<td[^>]*>\$\{[^}]*", row)
 
     mcap_at = next(i for i, c in enumerate(cells) if "_mcapFmt(r.mcap)" in c)
-    rvol_at = next(i for i, c in enumerate(cells) if "rvolScannerCell(r)" in c)
+    rvol_at = next(i for i, c in enumerate(cells) if "rvolCell(r.rvol)" in c)
 
     assert mcap_at == rvol_at - 1, "the row must place MCap where the header says it is"
 
@@ -3497,20 +3482,21 @@ def test_the_basis_is_stated_on_screen_and_not_only_in_a_tooltip():
 # The marker goes on the HEADER rather than every row: it is true of all 1,773 rows, and repeating it in
 # each cell would be noise rather than information.
 
-def test_the_scanner_marks_vwap_and_atr_as_current():
+def test_the_scanner_marks_vwap_and_atr_now_columns_as_current():
+    """Owner 2026-10-08: VWAP and ATR each have an AT-TRIGGER column and a NOW column. The now columns must
+    say they are today's reading; the trigger columns must say they are the trigger bar's."""
     html = client_html()
     header = html[html.index('<th data-k="above_vwap"'):html.index('<th data-k="volume_score"')]
-    assert header.count('>now</span>') == 2, \
-        "both VWAP and ATR are today's reading and both headers must say so"
+    assert header.count('>now</span>') == 2, "VWAP now and ATR now must both be marked"
+    assert header.count('>trigger</span>') == 2, "VWAP and ATR at trigger must both be marked"
 
 
-def test_those_headers_no_longer_claim_to_be_trigger_bar_readings():
-    """The tooltips said "on the trigger bar" for a value taken from today's bar. A wrong explanation is
-    worse than none: it tells the reader the row is internally consistent when it is not."""
+def test_each_vwap_and_atr_tooltip_names_its_bar():
+    """A wrong explanation is worse than none: each tooltip must say which bar its value comes from."""
     html = client_html()
     header = html[html.index('<th data-k="above_vwap"'):html.index('<th data-k="volume_score"')]
-    assert "on the trigger bar" not in header, "the VWAP/ATR tooltips still misdescribe the value"
-    assert header.count("TODAY'S bar") == 2, "each must say which bar it is measured on"
+    assert header.count("TODAY'S bar") == 2, "the two now columns must say today's bar"
+    assert header.count("TRIGGER bar") == 2, "the two trigger columns must say the trigger bar"
 
 
 def test_rvol_and_volumescore_still_describe_themselves_as_trigger_bar():
@@ -4380,3 +4366,15 @@ def test_a_row_that_never_triggered_carries_no_trigger_date():
                     "h3_date": "2026-02-02", "l3_date": "2026-05-18", "trig_date": "2026-09-24"})
 
     assert out["trig_date"] is None, "only a TRIGGERED row has a trigger date"
+
+
+def test_days_since_counts_whole_calendar_days_not_rounded_time():
+    """2026-10-08: a 21 Sep trigger read 18 on the evening of 8 Oct because elapsed time was ROUNDED, so
+    every count rose by one at midday UTC. Executes the shipped function with the clock pinned."""
+    js = client_js()
+    i = js.index("function daysSince(d)")
+    fn = js[i:js.index("\n", i)]
+    for clock in ("2026-10-08T00:30:00Z", "2026-10-08T20:30:00Z", "2026-10-08T23:59:00Z"):
+        pin = (f"const _R=Date; Date=class extends _R{{constructor(...a){{super(...(a.length?a:['{clock}']))}}"
+               f" static now(){{return _R.parse('{clock}')}}}};")
+        assert run_js(pin, fn, "daysSince('2026-09-21')") == 17, f"at {clock}"

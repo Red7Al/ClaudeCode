@@ -1512,7 +1512,7 @@ def test_scanner_report_shows_vwap_and_atr_instead_of_hiding_rows():
     assert "r.atr_expanding===false)return false" not in pass_fn
     for floor in ("r.rr<rrMin", "r.quality<qMin", "r.volume_score<vsMin", "r.rvol<rvMin", "r.mcap<ivMin"):
         assert floor in pass_fn, f"pass() lost the {floor} floor"
-    assert "vwapScannerCell(r)" in html and "atrScannerCell(r)" in html, "the columns must still be shown"
+    assert "_tickCross(r.above_vwap)" in html and "_tickCross(r.atr_expanding)" in html, "the columns must still be shown"
 
 
 def test_approved_ui_report_backlog_is_wired_to_live_render_paths():

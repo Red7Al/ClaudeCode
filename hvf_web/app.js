@@ -83,45 +83,9 @@ const rvolCell=v=>v==null?'<span class="muted">—</span>'
 // so every READY and DEVELOPING row showed a dash while the value sat unused in the same payload.
 // Measured 2026-08-29: 124 of 261 signal rows blank, and 114 of those had a live value available.
 //
-// The fallback is MARKED, never silently substituted. Presenting today's RVOL as the trigger's is
-// precisely the clobber bug of 2026-08-17 that test_order_ops_enrichment_keeps_the_servers_values
-// exists to prevent -- a value from the wrong moment is worse than a dash, because a dash is honest.
-// ONE presentation for "this is today's reading, not the setup's own", shared by the Scanner's RVOL,
-// VWAP and ATR cells. Extracted 2026-09-26, when VWAP and ATR gained the fallback RVOL already had --
-// three inline copies of the same superscript is how two of them end up drifting apart.
-const _currentReadingCell=(html,what,date)=>{
-  const d=date?` on ${date}`:'';
-  return `<span title="Today's ${what}${d}, not the trigger bar's — this setup has not triggered yet" style="opacity:.75">`
-       + `${html}<span class="muted" style="font-size:9px;vertical-align:super">now</span></span>`;
-};
-const rvolScannerCell=r=>{
-  if(r.rvol!=null)return rvolCell(r.rvol);
-  if(r.current_rvol==null)return rvolCell(null);
-  return _currentReadingCell(rvolCell(r.current_rvol),"RVOL",r.current_rvol_date);
-};
-// VWAP AND ATR FALL BACK THE SAME WAY (owner 2026-09-26: blank RVOL/VWAP/ATR/Vol columns).
-//
-// WHY THEY DID NOT. r.above_vwap and r.atr_expanding come from server _live_vwap_atr, which is scoped to
-// has_signal rows -- MEASURED 2026-09-26: 415 of 1,773. Every other row got null, and _tickCross(null)
-// renders an em dash, so most of the column read as no data. The server was ALREADY sending the stored
-// daily reading for all of them as current_above_vwap / current_atr_expanding (api_records), and these
-// two cells simply never looked at it -- while RVOL's cell beside them had exactly that fallback.
-// MEASURED in instrument_metrics_daily for as_of 2026-09-25: above_vwap non-null on 1,739 of 1,773 rows,
-// atr_expanding on 1,773 of 1,773.
-//
-// _nowCell is NOT reused here, though it looks like the same job: it keys on r.metrics_are_current, which
-// server.py sets only on the working-orders path (server.py:2725) and never in api_records, so it would
-// silently return the bare cell for every Scanner row.
-const vwapScannerCell=r=>{
-  if(r.above_vwap!=null)return _tickCross(r.above_vwap);
-  if(r.current_above_vwap==null)return _tickCross(null);
-  return _currentReadingCell(_tickCross(r.current_above_vwap),"VWAP position",r.current_metric_date);
-};
-const atrScannerCell=r=>{
-  if(r.atr_expanding!=null)return _tickCross(r.atr_expanding);
-  if(r.current_atr_expanding==null)return _tickCross(null);
-  return _currentReadingCell(_tickCross(r.current_atr_expanding),"ATR state",r.current_metric_date);
-};
+// Both are now shown, each in its own titled column (owner 2026-10-08) -- never one standing in for the
+// other, which is the clobber bug of 2026-08-17 that test_order_ops_enrichment_keeps_the_servers_values
+// exists to prevent.
 // A break-bar cell for an order whose setup has NOT triggered yet (user 2026-09-06). The server marks
 // those rows `metrics_are_current`, because the trigger-bar value does not exist and today's does. This
 // wraps whatever the normal cell renders with the same superscript "now" the Scanner's RVOL column uses,
@@ -265,7 +229,10 @@ async function loadPriceChart(ticker,days){
       'Every figure on this panel is unaffected.</div>';
   }
 }
-function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return null;return Math.round((Date.now()-t)/864e5);}
+// WHOLE CALENDAR DAYS (2026-10-08). It rounded elapsed TIME, so every count jumped by one at midday UTC:
+// a 21 Sep trigger read 18 days on the evening of 8 Oct, when 17 had passed. Dates are YYYY-MM-DD,
+// which Date.parse reads as UTC midnight, so it is compared against today's UTC midnight.
+function daysSince(d){if(!d)return null;const t=Date.parse(d);if(isNaN(t))return null;const n=new Date();return Math.round((Date.UTC(n.getUTCFullYear(),n.getUTCMonth(),n.getUTCDate())-t)/864e5);}
 
 // STALE-DATA BANNER (owner 2026-09-28: "there needs to be a mechanism to eradicate stale data").
 // The site served an 18.5-hour-old snapshot that day with nothing on screen to say so. /api/freshness
@@ -407,6 +374,9 @@ function pass(r,except){
   // The numeric range filters (quality, R:R, dist-to-entry, days-since, RVOL, P/E, insider %) moved to
   // Squeeze History on 2026-08-16 along with their controls. Reading a removed element here would throw
   // on every row. The equivalents there are in SQH_RANGES, with the same null-passes rule.
+  // TRIGGERED but no open setup passed this login's limits ON ITS TRIGGER DATE (server.api_records,
+  // owner 2026-10-08). The server judged it with trading_limits.check_limits; nothing here re-decides.
+  if(r.report_ok===false)return false;
   // Personal "My Trading Filters" floors (user 2026-08-11: "the scanner report MUST also match the user
   // trading filter settings") — HARD filter (user's explicit choice, not just a visual flag): a setup you
   // couldn't pin or place yourself (My Pre-orders / place-order, per Configuration → My Trading Filters)
@@ -629,14 +599,14 @@ function render(){
     return (av<bv?-1:av>bv?1:0)*sortDir;});
   const _nT=rows.filter(r=>r.status==="TRIGGERED").length,_nR=rows.filter(r=>r.status==="READY").length,_nD=rows.filter(r=>r.status==="DEVELOPING").length;
   const _af=_activeScannerFilters();
-  $("count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} scanned (${_nT} TRIGGERED · ${_nR} READY · ${_nD} DEVELOPING). Click a row to open its detail; use Filters or the charts to narrow.</span>`+(_af.length?`<div style="font-size:12px;margin-top:3px">Narrowed by <b>${_af.map(_esc).join("</b> · <b>")}</b></div>`:"")+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
+  $("count").innerHTML=`${REPORT_UNAVAILABLE?'<b style="color:var(--bear)">Triggered setups hidden — trigger history unavailable, so they cannot be checked against your filters.</b> ':''}<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} scanned (${_nT} TRIGGERED · ${_nR} READY · ${_nD} DEVELOPING). Click a row to open its detail; use Filters or the charts to narrow.</span>`+(_af.length?`<div style="font-size:12px;margin-top:3px">Narrowed by <b>${_af.map(_esc).join("</b> · <b>")}</b></div>`:"")+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
   $("sctab-count").textContent=`(${rows.length})`;
   renderViz(rows);
   $("rows").innerHTML=rows.map(r=>`<tr data-t="${r.ticker}" class="${SEL===r.ticker?'sel':''}">
     ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
     <td>${ob(_mcapFmt(r.mcap))}</td>
-    <td>${ob(rvolScannerCell(r))}</td><td>${ob(vwapScannerCell(r))}</td><td>${ob(atrScannerCell(r))}</td><td>${ob(volScoreCell(r.volume_score))}</td>
+    <td>${ob(rvolCell(r.rvol))}</td><td>${ob(rvolCell(r.current_rvol))}</td><td>${ob(_tickCross(r.above_vwap))}</td><td>${ob(_tickCross(r.current_above_vwap))}</td><td>${ob(_tickCross(r.atr_expanding))}</td><td>${ob(_tickCross(r.current_atr_expanding))}</td><td>${ob(volScoreCell(r.volume_score))}</td>
     <td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td><td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td>
     <td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td><td>${ob(r.days_since??'')}</td>
@@ -647,7 +617,7 @@ function render(){
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td>
     <td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td><td>${AUTH&&isPreorder(r)?'<span style="color:var(--bull)" title="In your My Pre-orders">✓</span>':''}</td></tr>`).join("")
-    || `<tr><td colspan="28" class="empty">No setups match the filters.</td></tr>`;
+    || `<tr><td colspan="31" class="empty">${REPORT_UNAVAILABLE?"Triggered setups cannot be checked against your filters right now (trigger history unavailable) — none are shown rather than an unchecked list.":"No setups match the filters."}</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
     tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});
@@ -971,6 +941,8 @@ let _refStart=0, _refBase=null, _refId=null, _lastTens=-1;
 // set once the panel was gone, so the union at the Refresh handler was always union-with-empty.
 // REFRESH_MKT_LIST survives -- it is the canonical market list from /api/records and the Operations tab
 // still reads it through _refreshMktList().
+// True when the server could not read the trigger history: triggered rows are hidden, never shown unvetted.
+let REPORT_UNAVAILABLE=false;
 let REFRESH_MKT_LIST=null;   // canonical market list from /api/records (authed); falls back to uniq("market")
 function _refreshMktList(){return (REFRESH_MKT_LIST&&REFRESH_MKT_LIST.length)?REFRESH_MKT_LIST:uniq("market");}
 // Rebuild a CHOICE of LOCATIONS (user 2026-08-16: "rebuild snapshot would also be good to filter which
@@ -2279,7 +2251,7 @@ function refreshMarkets(ev){
   if(btn){btn.disabled=true;btn.textContent="⏳ Data loading…";}
   $("mk-count").innerHTML='<span class="sqh-loading">⏳ Data loading…</span>';
   fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{DATA=j.records||[];DATA_LOADED=true;if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;DATA.forEach(augment);renderMarkets();})
+    .then(j=>{DATA=j.records||[];DATA_LOADED=true;REPORT_UNAVAILABLE=!!j.report_unavailable;if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;DATA.forEach(augment);renderMarkets();})
     .catch(()=>{$("mk-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not refresh — try again.</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
@@ -5607,7 +5579,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     // the SAME /api/config response already being fetched for filters/trade/markets, so the very first
     // Scanner render is correctly filtered without needing a visit to Configuration first.
     if(cfg&&cfg.limits){MY_LIMITS=cfg.limits;Object.entries(cfg.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=Array.isArray(v)?v.join(", "):v;}});}
-    DATA=j.records||[]; DATA_LOADED=true; DATA.forEach(augment);
+    DATA=j.records||[]; DATA_LOADED=true; REPORT_UNAVAILABLE=!!j.report_unavailable; DATA.forEach(augment);
     if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;   // canonical market list for the Refresh picker (P-15)
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     paintFreshness();
