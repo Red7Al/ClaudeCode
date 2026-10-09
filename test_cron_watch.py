@@ -224,13 +224,14 @@ def test_an_unparseable_timestamp_is_not_treated_as_fresh(monkeypatch):
     assert w._age_days(None) is None
 
 
-# ── cron-job.org rate limiting (2026-10-09) ────────────────────────────────────────────────────────────
-# MEASURED 2026-10-09 15:05: one HTTP 429 from cron-job.org made the watcher judge every job, and the 12
-# jobs that are off by design (AUS/UK/US monitors, Weekend Review ...) were emailed as stale.
+# ── cron-job.org daily quota (2026-10-09) ──────────────────────────────────────────────────────────────
+# cron-job.org allows 100 API requests a day. From 2026-10-08 Session Watchdog read the job list on every
+# run (132 a weekday), the quota ran out, and MEASURED 2026-10-09 15:05 a 429 made Cron Watch alert the
+# 12 jobs that are off by design.
 
 class _Resp:
     def __init__(self, code, jobs=None):
-        self.status_code, self.headers, self._jobs = code, {"Retry-After": "0"}, jobs or []
+        self.status_code, self._jobs = code, jobs or []
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -241,36 +242,51 @@ class _Resp:
 
 
 def _api(monkeypatch, responses, saved=None):
+    import time
     import requests
-    calls = iter(responses)
+    import web_store
+    calls, store = list(responses), {}
+    if saved is not None:
+        store[w.ENABLED_KEY] = saved
     monkeypatch.setenv("CRONJOB_API_KEY", "test-key")
-    monkeypatch.setattr(requests, "get", lambda *a, **k: next(calls))
-    monkeypatch.setattr(w.time, "sleep", lambda s: None)
-    monkeypatch.setattr(w, "_load_doc", lambda: {"enabled": saved} if saved else {})
+    monkeypatch.setattr(requests, "get", lambda *a, **k: calls.pop(0))
+    monkeypatch.setattr(web_store, "load_json_store", lambda k: store.get(k))
+    monkeypatch.setattr(web_store, "save_json_store", lambda k, d: store.__setitem__(k, d) or True)
+    return calls, store, time.time()
 
 
-def test_a_rate_limit_is_retried(monkeypatch):
-    _api(monkeypatch, [_Resp(429), _Resp(200, [{"title": "Morning Chain", "enabled": True},
-                                               {"title": "AUS Monitor", "enabled": False}])])
+JOBS = [{"title": "Morning Chain", "enabled": True}, {"title": "AUS Monitor", "enabled": False}]
+
+
+def test_a_fresh_saved_list_costs_no_api_request(monkeypatch):
+    calls, _, now = _api(monkeypatch, [], saved={"at": __import__("time").time() - 3600, "titles": ["Morning Chain"]})
     assert w._enabled_titles() == {"Morning Chain"}
 
 
-def test_a_persistent_rate_limit_uses_the_saved_enabled_list(monkeypatch):
-    _api(monkeypatch, [_Resp(429)] * 3, saved=["Morning Chain"])
+def test_an_old_list_is_refreshed_once_and_saved(monkeypatch):
+    calls, store, now = _api(monkeypatch, [_Resp(200, JOBS)], saved={"at": 0, "titles": ["Old"]})
+    assert w._enabled_titles() == {"Morning Chain"}
+    assert store[w.ENABLED_KEY]["titles"] == ["Morning Chain"] and store[w.ENABLED_KEY]["at"] >= now
+    assert w._enabled_titles() == {"Morning Chain"} and calls == [], "the second call reads the saved list"
+
+
+def test_a_refused_read_uses_the_saved_list_however_old(monkeypatch):
+    _api(monkeypatch, [_Resp(429)], saved={"at": 0, "titles": ["Morning Chain"]})
     assert w._enabled_titles() == {"Morning Chain"}, "disabled jobs must not be judged on a 429"
 
 
-def test_with_nothing_saved_it_still_judges_everything(monkeypatch):
-    _api(monkeypatch, [_Resp(429)] * 3)
+def test_with_nothing_saved_a_refused_read_judges_everything(monkeypatch):
+    _api(monkeypatch, [_Resp(429)])
     assert w._enabled_titles() is None
 
 
-def test_the_enabled_list_is_saved_for_the_next_run(monkeypatch):
-    import web_store
-    saved = {}
-    monkeypatch.setattr(web_store, "save_json_store", lambda k, doc: saved.update(doc) or True)
-    monkeypatch.setattr(w, "_load_doc", lambda: {"enabled": ["Old"]})
-    w._save_state({}, set(), {"Morning Chain"})
-    assert saved["enabled"] == ["Morning Chain"]
-    w._save_state({}, set(), None)
-    assert saved["enabled"] == ["Old"], "a run that could not read the list keeps the last one"
+def test_a_weekday_of_watchdog_and_watch_runs_stays_far_under_the_quota(monkeypatch):
+    """132 watchdog + 24 Cron Watch calls over a day, 6-hour list: at most 4 API requests."""
+    import time
+    calls, store, _ = _api(monkeypatch, [_Resp(200, JOBS)] * 200)
+    clock = [1_000_000.0]
+    monkeypatch.setattr(w.time, "time", lambda: clock[0])
+    for minute in range(0, 24 * 60, 10):
+        clock[0] = 1_000_000.0 + minute * 60
+        w._enabled_titles()
+    assert 200 - len(calls) <= 4
