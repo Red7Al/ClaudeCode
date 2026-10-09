@@ -1,0 +1,58 @@
+name: Report Summary to IONOS (2026-10-09)
+
+# Builds the Scanner Report's summary file and installs it on IONOS, so the website reads a flat file
+# instead of the database (owner, repeatedly; 2026-10-09: "The read should be once or twice per day as the
+# summary files are created on IONOS"). Called by the Morning Chain after the winners precompute and by
+# Scanner Snapshot Publish after its precompute -- twice a day. No schedule: block (banned); it runs only as
+# part of those two, or by hand.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+  SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+  APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
+  IONOS_HOST:           ${{ secrets.IONOS_HOST }}
+  IONOS_USER:           ${{ secrets.IONOS_USER }}
+  IONOS_DIR:            ${{ secrets.IONOS_DIR }}
+  IONOS_PORT:           ${{ secrets.IONOS_PORT || '22' }}
+  IONOS_SITE:           ${{ secrets.IONOS_SITE || 'https://www.squeezescanner.cloud' }}
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+
+      - name: Fetch the snapshot the website is serving
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/ionos_key"; printf '%s\n' "$IONOS_SSH_KEY" > "$key"; chmod 600 "$key"
+          echo "IONOS_KEY_FILE=$key" >> "$GITHUB_ENV"
+          ssh -i "$key" -p "$IONOS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            "${IONOS_USER}@${IONOS_HOST}" "cat '${IONOS_DIR}/hvf_web/snapshot.json'" > hvf_web/snapshot.json
+          live=$(curl --fail --silent --show-error --retry 3 "${IONOS_SITE%/}/api/status" | python -c "import json,sys; print(json.load(sys.stdin).get('generated_utc',''))")
+          got=$(python -c "import json; print(json.load(open('hvf_web/snapshot.json', encoding='utf-8'))['generated_utc'])")
+          echo "host snapshot $got, site serving $live"
+          [ "$got" = "$live" ] || { echo "the host file is not the snapshot the site serves" >&2; exit 1; }
+
+      - name: Build and install the summary
+        run: python publish_report_summary.py
+
+      - name: Verify the installed summary belongs to the live snapshot
+        run: |
+          set -euo pipefail
+          live=$(curl --fail --silent --show-error --retry 3 "${IONOS_SITE%/}/api/status" | python -c "import json,sys; print(json.load(sys.stdin).get('generated_utc',''))")
+          installed=$(ssh -i "$IONOS_KEY_FILE" -p "$IONOS_PORT" -o BatchMode=yes "${IONOS_USER}@${IONOS_HOST}" \
+            "python3 -c \"import json; d=json.load(open('${IONOS_DIR}/hvf_web/report_summary.json', encoding='utf-8')); print(d['generated_utc'], len(d['sections']))\"")
+          echo "installed: $installed | site snapshot: $live" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "${installed%% *}" = "$live" ] || { echo "installed summary does not match the live snapshot" >&2; exit 1; }

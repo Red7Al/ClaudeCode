@@ -22,6 +22,7 @@
 # ======================================================================================================================
 
 import logging
+import os
 
 log = logging.getLogger("config_store")
 
@@ -43,12 +44,47 @@ EXEC_DESCRIPTIONS = {
 
 def _ensure(db):
     global _schema_ready
-    if not _schema_ready:
+    # HVF_WEB_TIER (set only by cgi-bin/app.py, the IONOS adapter, 2026-10-09): the website does not run
+    # schema DDL. MEASURED: ~20 create/alter-if-not-exists statements per web process start. The GitHub
+    # jobs own the schema and still run it; the tables exist (they are read on every page load).
+    if not _schema_ready and os.environ.get("HVF_WEB_TIER") != "1":
         db.run(_DDL)
-        _schema_ready = True
+    _schema_ready = True
+
+
+def _request_settings():
+    """All of app_config, read ONCE per web request (2026-10-09). MEASURED: one Scanner page load issued 20
+    single-key lookups. Memoised on flask.g, so it lives exactly one request -- a setting changed by an
+    admin (an exec kill switch included) applies on the very next request, never minutes later. Outside a
+    request (GitHub Actions jobs, the Order Bridge) this returns None and get_value reads as before."""
+    try:
+        from flask import g, has_request_context
+    except Exception:
+        return None
+    if not has_request_context():
+        return None
+    cached = getattr(g, "_app_config_all", None)
+    if cached is not None:
+        return cached
+    from db_pool import get_db
+    db = get_db()
+    try:
+        _ensure(db)
+        cached = {k: v for k, v in (db.run("select key, value from app_config") or [])}
+    finally:
+        db.close()
+    g._app_config_all = cached
+    return cached
 
 
 def get_value(key: str, default: str = "") -> str:
+    try:
+        settings = _request_settings()
+        if settings is not None:
+            return settings.get(key, default)
+    except Exception as e:
+        log.warning(f"config read failed for {key} (default '{default}'): {e}")
+        return default
     try:
         from db_pool import get_db
         db = get_db()
@@ -73,6 +109,12 @@ def set_value(key: str, value: str, updated_by: str = "") -> bool:
                    "on conflict (key) do update set value = excluded.value, "
                    "updated_by = excluded.updated_by, updated_at = now()",
                    k=key, v=value, u=updated_by)
+            try:                               # keep this request's memo (if any) in step with the write
+                from flask import g, has_request_context
+                if has_request_context() and getattr(g, "_app_config_all", None) is not None:
+                    g._app_config_all[key] = value
+            except Exception:
+                pass
             return True
         finally:
             db.close()

@@ -22,6 +22,7 @@
 
 import hashlib
 import json
+import os
 import logging
 import threading
 
@@ -68,10 +69,13 @@ def _db():
     from db_pool import get_db
     db = get_db()
     global _ready
-    if not _ready:
+    # HVF_WEB_TIER (set only by cgi-bin/app.py, the IONOS adapter, 2026-10-09): the website does not run
+    # schema DDL. MEASURED: ~20 create/alter-if-not-exists statements per web process start. The GitHub
+    # jobs own the schema and still run it; the tables exist (they are read on every page load).
+    if not _ready and os.environ.get("HVF_WEB_TIER") != "1":
         for stmt in _DDL:
             db.run(stmt)
-        _ready = True
+    _ready = True
     return db
 
 

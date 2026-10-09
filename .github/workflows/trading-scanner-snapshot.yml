@@ -1,4 +1,4 @@
-name: Scanner Snapshot Publish
+name: Scanner Snapshot Publish (2026-10-09)
 
 # Heavy Scanner compute runs on the Actions worker, never on the IONOS web process. Scheduling remains in
 # cron-job.org (GitHub-native cron is banned); the admin Refresh button dispatches this workflow as well.
@@ -263,3 +263,11 @@ jobs:
           t0=$(date +%s)
           code=$(curl -s -o /dev/null --max-time 300 -w '%{http_code}' https://www.squeezescanner.cloud/api/records)
           echo "scanner warm: HTTP $code in $(( $(date +%s) - t0 ))s" >> "$GITHUB_STEP_SUMMARY"
+
+  # The IONOS summary file the website reads instead of the database (2026-10-09). After the publish and
+  # the precompute in the job above.
+  report_summary:
+    needs: publish
+    if: always() && needs.publish.result == 'success'
+    uses: ./.github/workflows/trading-report-summary.yml
+    secrets: inherit

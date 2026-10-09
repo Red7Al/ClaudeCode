@@ -84,6 +84,56 @@ log = logging.getLogger("hvf_web.server")
 _HERE = os.path.dirname(os.path.abspath(__file__))
 SNAPSHOT = os.path.join(_HERE, "snapshot.json")
 
+# ── The Scanner Report's SUMMARY FILE on IONOS (owner 2026-10-09, requested many times) ────────────────
+# "The read should be once or twice per day as the summary files are created on IONOS." publish_report_
+# summary.py builds every derived map the report uses -- with these same helpers, in GitHub Actions --
+# after each snapshot publish, and installs it beside the snapshot. Each helper below returns its section
+# from the file when the file belongs to the snapshot being served; otherwise (no file, older or newer
+# snapshot) it falls back to the database exactly as before. MEASURED before: one cold process read
+# 75,868 rows (61 + 4 queries) for the Scanner page and the cache warmer.
+SUMMARY_FILE = os.path.join(_HERE, "report_summary.json")
+_SUMMARY_DISABLED = False          # the builder sets this so it reads the database, never an older file
+_SUMMARY_CACHE = {"mtime": None, "data": None}
+
+
+def _summary():
+    """The parsed summary file, re-read only when its mtime changes; None when absent or unreadable."""
+    try:
+        mtime = os.path.getmtime(SUMMARY_FILE)
+    except OSError:
+        return None
+    if _SUMMARY_CACHE["mtime"] != mtime:
+        try:
+            with open(SUMMARY_FILE, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError) as e:
+            log.warning(f"report summary unreadable, using the database: {e}")
+            return None
+        _SUMMARY_CACHE.update(mtime=mtime, data=data)
+    return _SUMMARY_CACHE["data"]
+
+
+def _summary_section(name: str, snap: dict = None):
+    """Section `name` when the summary belongs to this snapshot (snap=None: any summary built in the last
+    36 h, for maps that are not tied to one snapshot such as market cap); otherwise None."""
+    if _SUMMARY_DISABLED:
+        return None
+    s = _summary()
+    if not isinstance(s, dict):
+        return None
+    if snap is not None:
+        if not s.get("generated_utc") or s.get("generated_utc") != snap.get("generated_utc"):
+            return None
+    else:
+        try:
+            built = _dt.datetime.fromisoformat(str(s.get("built_at")))
+            if (_dt.datetime.now(_dt.timezone.utc) - built).total_seconds() > 36 * 3600:
+                return None
+        except (TypeError, ValueError):
+            return None
+    sec = (s.get("sections") or {}).get(name)
+    return sec
+
 app = Flask(__name__)
 _PNG_CACHE: dict = {}
 _X_HANDLE = "SqueezeSignals"   # our X account (config.py / publish_one_to_x X_HANDLE)
@@ -1193,6 +1243,9 @@ def _snapshot_rvol(snap: dict) -> dict:
     date, computed client-side in augment() — see the open "HVF site: exact triggered date" backlog item).
     Averaging volume around the pivot instead of the break would quietly measure the wrong day, so this
     replays _perf_trigger_date over price_history exactly as the Performance report does."""
+    _from_file = _summary_section("rvol", snap)
+    if _from_file is not None:
+        return _from_file
     gen = snap.get("generated_utc")
     if _RVOL_CACHE["gen"] == gen and _RVOL_CACHE["data"]:
         return _RVOL_CACHE["data"]
@@ -1237,6 +1290,9 @@ def _snapshot_volscore(snap: dict) -> dict:
     (score + per-component breakdown) is cached so /api/records reads the score and /api/volscore
     reads the breakdown without re-fetching bars. "Strong squeeze" is proxied from the funnel's
     Quality (>=60 = tight/fresh), the only squeeze-strength signal available server-side."""
+    _from_file = _summary_section("volscore", snap)
+    if _from_file is not None:
+        return _from_file
     gen = snap.get("generated_utc")
     if _VOLSCORE_CACHE["gen"] == gen and _VOLSCORE_CACHE["data"]:
         return _VOLSCORE_CACHE["data"]
@@ -1290,6 +1346,9 @@ _DELISTED_INSTRUMENTS = {
 
 def _live_instrument_metrics(snap: dict) -> dict:
     """Current RVOL/VWAP/ATR for every instrument, including rows with no squeeze setup."""
+    _from_file = _summary_section("live_instrument_metrics", snap)
+    if _from_file is not None:
+        return _from_file
     gen = snap.get("generated_utc")
     if (_LIVE_INSTRUMENT_METRICS_CACHE["gen"] == gen
             and _LIVE_INSTRUMENT_METRICS_CACHE["data"]):
@@ -1399,6 +1458,9 @@ def _live_vwap_atr(snap: dict) -> dict:
     has since gone flat should not still read as "above VWAP" from its trigger day). So this now fetches
     fresh bars for every has_signal ticker and reads the LATEST bar directly, instead of going via
     volume_score()'s trigger-bar-scored output. Cached per snapshot generation like every sibling here."""
+    _from_file = _summary_section("vwap_atr", snap)
+    if _from_file is not None:
+        return _from_file
     gen = snap.get("generated_utc")
     if _LIVE_VWAP_ATR_CACHE["gen"] == gen and _LIVE_VWAP_ATR_CACHE["data"]:
         return _LIVE_VWAP_ATR_CACHE["data"]
@@ -1493,6 +1555,9 @@ _STORED_METRICS_MAX_AGE_DAYS = 5
 
 def _stored_metrics(snap: dict) -> dict:
     import datetime as _d
+    _from_file = _summary_section("stored_metrics", snap)
+    if _from_file is not None:
+        return _from_file
     gen = snap.get("generated_utc")
     if _STORED_METRICS_CACHE["gen"] == gen:
         return _STORED_METRICS_CACHE["data"]
@@ -1558,6 +1623,9 @@ def _open_trigger_setups(snap: dict):
     from volscore_features, written by the nightly precompute.
     """
     import time as _time
+    _from_file = _summary_section("open_setups", snap)
+    if _from_file is not None:
+        return _from_file
     gen = snap.get("generated_utc")
     if (_OPEN_SETUPS_CACHE["gen"] == gen and _OPEN_SETUPS_CACHE["data"] is not None
             and _time.time() - _OPEN_SETUPS_CACHE["at"] < _OPEN_SETUPS_TTL):
@@ -1647,6 +1715,9 @@ def _snapshot_trigger_dates(snap: dict) -> dict:
     A funnel with no matching triggered row yields NOTHING, and the client leaves the column blank. That
     is deliberate: blank reads as "not recorded", where a pivot date read as a measured trigger.
     """
+    _from_file = _summary_section("trigdates", snap)
+    if _from_file is not None:
+        return _from_file
     gen = snap.get("generated_utc")
     if _TRIGDATE_CACHE["gen"] == gen and _TRIGDATE_CACHE["data"]:
         return _TRIGDATE_CACHE["data"]
@@ -1706,6 +1777,9 @@ def _mcap_map() -> dict:
     missing ticker as "market cap not recorded" -- an honest unknown -- whereas a raw value would be
     compared against a GBP floor as though it were pounds, which is the defect this removes.
     """
+    _from_file = _summary_section("mcap")
+    if _from_file is not None:
+        return _from_file
     now = _time.time()
     if _MCAP_CACHE["data"] and now - _MCAP_CACHE["ts"] < _MCAP_TTL:
         return _MCAP_CACHE["data"]
@@ -1741,6 +1815,9 @@ _WK52_LOOKBACK_DAYS = 365
 def _snapshot_52wk(snap: dict) -> dict:
     """{ticker: (low, high)} over the trailing 52 weeks of price_history. Public data (unlike RVOL/Quality/
     R:R/VolumeScore) — the Instruments tab shows it to logged-out visitors too."""
+    _from_file = _summary_section("wk52", snap)
+    if _from_file is not None:
+        return _from_file
     gen = snap.get("generated_utc")
     if _WK52_CACHE["gen"] == gen and _WK52_CACHE["data"]:
         return _WK52_CACHE["data"]
@@ -1898,6 +1975,15 @@ def api_report_check():
         # sandbox and db_pool's per-process cap multiplies by it; distinct pids across concurrent calls
         # count the processes. Behind the key, so /api/build stays the three public fields it is pinned to.
         return jsonify({"pid": os.getpid(), "module_loaded_at": _MODULE_LOADED_AT})
+    if request.args.get("summary"):
+        # Is the website serving the report from the IONOS summary file? (2026-10-09) The file is used
+        # only when it belongs to the snapshot being served.
+        snap = _load_snapshot()
+        s = _summary() or {}
+        return jsonify({"snapshot_generated_utc": snap.get("generated_utc"),
+                        "summary_generated_utc": s.get("generated_utc"), "summary_built_at": s.get("built_at"),
+                        "in_use": bool(s) and s.get("generated_utc") == snap.get("generated_utc"),
+                        "sections": sorted((s.get("sections") or {}).keys())})
     login = (request.args.get("login") or "").strip()
     token = _wu.token_for(login) if login else ""      # "" for an unknown login or a non-login record
     if not token:
@@ -2107,20 +2193,26 @@ def api_positions():
         # A user with no IG credentials of their own now correctly sees nothing, as the sibling routes do.
         if ig_shim.session_for(name) is None:
             return jsonify({"positions": {}})
-        epic2tk = {}
-        try:
-            from db_pool import get_db
-            db = get_db()
-            try:
-                for row in (db.run("select ticker, epic from epic_lookup") or []):
-                    if row[1]:
-                        epic2tk[str(row[1])] = row[0]
-            finally:
-                db.close()
-        except Exception:
-            pass
         with ig_shim._IG_LOCK, ig_shim.acting_session(name):   # the CALLER's account, not the global session
             _positions = ig_shim.get_open_positions() or []
+        # Look up ONLY the epics actually held (2026-10-09). It read the whole epic_lookup table -- ~2,000
+        # rows, MEASURED as 2,000 of the 2,351 rows every Scanner page load read -- to name a handful of
+        # positions. Same table, same answer, no staleness.
+        epic2tk = {}
+        held = sorted({str((p.get("market") or {}).get("epic")) for p in _positions
+                       if (p.get("market") or {}).get("epic")})
+        if held:
+            try:
+                from db_pool import get_db
+                db = get_db()
+                try:
+                    for row in (db.run("select ticker, epic from epic_lookup where epic = any(:e)", e=held) or []):
+                        if row[1]:
+                            epic2tk[str(row[1])] = row[0]
+                finally:
+                    db.close()
+            except Exception:
+                pass
         for pos in _positions:
             mk = pos.get("market", {}) or {}
             tk = epic2tk.get(str(mk.get("epic"))) or mk.get("instrumentName") or mk.get("epic")

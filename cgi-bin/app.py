@@ -20,6 +20,8 @@ sys.path.insert(0, str(VENV_SITE_PACKAGES))
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
+# The website, as opposed to a GitHub job: it skips schema DDL, which the jobs own (2026-10-09).
+os.environ.setdefault("HVF_WEB_TIER", "1")
 from hvf_web.server import app  # noqa: E402
 
 

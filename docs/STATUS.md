@@ -37,8 +37,8 @@ errors, ARM absent. Never ask him to check.
 3. **`squeeze_history.refresh_daily` re-checks only an 18-month window** (`squeeze_history.py:489`); 205
    older rows keep a stale `OPEN`. The report ignores them (refreshed within 4 days only); other readers
    of `outcome` have not been checked.
-4. **The emailed Scanner Report** (`run_scanner_report_email.py`) still uses the old logic. It is not
-   scheduled (not in `setup_cronjobs.py`; last run by hand 2026-08-23).
+4. **The emailed Scanner Report** (`run_scanner_report_email.py`) still uses the old logic, and it IS sent every morning (Morning Chain job 3; corrected 2026-10-09 -- an earlier "not scheduled" was wrong). Sent to the
+   owner at 06:01:58 on 2026-10-09. Align it with the web report after the summary-file work.
 5. **The 2026-10-07 03:31 refresh skipped 599 instruments** while reporting success. Cause unknown.
 6. **`trading-create-env.yml`** uses a `V_` prefix and does not pass `APP_SECRET_KEY`. Unanswered.
 

@@ -46,3 +46,14 @@ def test_the_process_query_answers_with_this_processes_pid(monkeypatch):
 
 def test_the_process_query_still_needs_the_key(monkeypatch):
     assert _client(monkeypatch).get("/api/report-check?process=1").status_code == 403
+
+
+def test_the_summary_query_says_whether_the_file_is_in_use(monkeypatch):
+    c = _client(monkeypatch)
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": "G"})
+    monkeypatch.setattr(server, "_summary", lambda: {"generated_utc": "G", "built_at": "B", "sections": {"wk52": {}}})
+    j = c.get("/api/report-check?summary=1", headers={"X-Report-Check-Key": "k" * 40}).get_json()
+    assert j["in_use"] is True and j["sections"] == ["wk52"]
+    monkeypatch.setattr(server, "_summary", lambda: {"generated_utc": "OLD", "sections": {}})
+    j = c.get("/api/report-check?summary=1", headers={"X-Report-Check-Key": "k" * 40}).get_json()
+    assert j["in_use"] is False

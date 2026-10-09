@@ -1,4 +1,4 @@
-name: Morning Chain (price → report → email → precompute → audit → orders)
+name: Morning Chain (price → report → email → precompute → summary → audit → orders, 2026-10-09)
 
 # ONE dispatch that runs the whole morning in order, replacing six separately-scheduled jobs.
 #
@@ -86,6 +86,15 @@ jobs:
     needs: [daily_report, scanner_email]
     if: always() && needs.daily_report.result == 'success'
     uses: ./.github/workflows/trading-winners-precompute.yml
+    secrets: inherit
+
+  # The IONOS summary file the website reads instead of the database (2026-10-09). After the precompute,
+  # which writes the trigger-date store this file carries.
+  report_summary:
+    name: 4b. Report summary to IONOS
+    needs: [daily_report, winners_precompute]
+    if: always() && needs.daily_report.result == 'success'
+    uses: ./.github/workflows/trading-report-summary.yml
     secrets: inherit
 
   best_settings:

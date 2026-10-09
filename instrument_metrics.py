@@ -30,6 +30,7 @@
 
 import datetime as dt
 import logging
+import os
 
 log = logging.getLogger("instrument_metrics")
 
@@ -50,7 +51,20 @@ COLUMNS = ("ticker", "as_of", "bar_date", "rvol", "rvol_date", "above_vwap", "ab
 WK52_LOOKBACK_DAYS = 365
 
 
+_SCHEMA_READY = False
+
+
 def ensure_schema(db):
+    # Once per process (it ran ~11 statements on EVERY call -- 3 call sites), and not at all on the website
+    # (HVF_WEB_TIER, set by cgi-bin/app.py): the GitHub jobs own the schema. 2026-10-09.
+    global _SCHEMA_READY
+    if _SCHEMA_READY or os.environ.get("HVF_WEB_TIER") == "1":
+        return
+    _ensure_schema_now(db)
+    _SCHEMA_READY = True
+
+
+def _ensure_schema_now(db):
     db.run(f"""create table if not exists {TABLE} (
                   ticker            text not null,
                   as_of             date not null,
