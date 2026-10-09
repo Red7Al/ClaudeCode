@@ -114,6 +114,11 @@ IONOS keeps the Flask module resident and nothing can restart it. **Commit befor
 fingerprint is derived from HEAD, so an uncommitted `server.py` change reports "API worker is current"
 while the old module runs. Confirm the changed behaviour itself, not the fingerprint line.
 
+**Verify what the owner sees yourself — never ask him to check.** `./.venv/Scripts/python.exe
+verify_live_report.py --login Alex` fetches his exact live payload (`/api/report-check`, key `REPORT_CHECK_KEY`)
+and serves the deployed page code locally on port 5062; open it in the browser and read the Scanner Report.
+It refuses to run if the live build differs from your checkout, and refuses every write.
+
 ## Scheduling
 
 `setup_cronjobs.py::JOBS` is the registry; cron-job.org fires `workflow_dispatch`. **GitHub-native
