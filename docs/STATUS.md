@@ -1,113 +1,79 @@
 # Status — the only status document
 
 **Update this file at the end of every session** instead of writing a new handover. Every figure carries
-the command that produced it or says it is unproven. Last updated **2026-10-08 ~09:30 UTC**.
+the command that produced it or says it is unproven. Last updated **2026-10-09 ~10:40 UTC**.
 
 Earlier handovers are in `docs/archive/HANDOVER-*.md`; everything still open from them is below.
 
 ---
 
-## 1. DECIDE BEFORE 18:30 UTC TODAY — the Scanner Report's row set will change
+## 1. Verify what the owner sees — yourself
 
-`ddd7c3b` + `44a940e` are deployed. At the next snapshot publish they move `above_vwap` and
-`atr_expanding` from computed-per-request to frozen-at-publish. Those two values gate visibility in
-`hvf_web/app.js:424-425`, where `false` HIDES a row, and the owner has both `require_` filters on.
+`./.venv/Scripts/python.exe verify_live_report.py --login Alex` serves his exact live Scanner Report
+locally (port 5062; Chrome refuses 5061). Last run 2026-10-09 on build `cf0ed3e60eef`, snapshot
+2026-10-09T05:59: **Scanner Report (28)**, 0 rows failing his filters on trigger values, 0 Days-since
+errors, ARM absent. Never ask him to check.
 
-- Not yet active: `/api/status` still reports `generated_utc 2026-10-08T05:11:49`, the snapshot measured
-  without the `summary_fields` marker at 07:33.
-- Next publish: **Scanner Snapshot Refresh, `30 18 * * *`** (`setup_cronjobs.py:197`).
-- MEASURED on the live payload 2026-10-08, 407 `has_signal` rows: `atr_expanding` false on 245,
-  `above_vwap` false on 96.
-- Back out: `git revert 44a940e ddd7c3b`, commit, deploy. Nothing else depends on them.
-
-## 2. The owner's open complaint — the Scanner Report is not trusted
-
-*"the scanner report from today is different to the report from yesterday - I'd expect to see yesterdays
-contents in todays report also - with a different #days as triggered."* He is right. With his limits, 407
-signal rows reduce to 16; 80 exclusions come from `atr_expanding`/`above_vwap` recomputed from the latest
-bar, so a row vanishes while the squeeze is unchanged. **The fix he wants, not built:** a persistent squeeze
-population with the day count incrementing, and the live measures shown as columns rather than hidden
-filters. The web report (`app.js:639`, under `<h1>Scanner Report</h1>` at `index.html:719`) and the emailed
-report (`run_scanner_report_email.py`) are **different surfaces** — do not reason about one from the other.
-
-## 3. Live state (measured 08:03 UTC)
-
-```
-/api/build      fingerprint 5d1035ad279c, module_loaded_at 2026-10-08T08:03:46Z
-/api/status     count 1773, generated_utc 2026-10-08T05:11:49
-/api/freshness  banner "", stale ["supabase_snapshot_copy"]
-CI              2f12a41 green (Offline Python Regression Tests, 07:54 UTC)
-```
-
-## 4. Done 2026-10-08 (this session)
+## 2. Done 2026-10-08/09
 
 | What | Evidence |
 |---|---|
-| **Failure emails.** 8 of 9 failed runs since 10-06 were `EMAXCONNSESSION` (15-slot pool full); jobs gave up after ~9 s. Actions jobs now wait up to 120 s for a slot; web tier unchanged. | `db_pool._connect`; 4 tests in `test_db_pool.py`, 2 proven red on the old code |
-| **`cryptography` missing** in 6 workflows that pass `APP_SECRET_KEY` — the watchdog log showed `No module named 'cryptography'` | `trading-watchdog.yml` and 5 others |
-| **Supabase-down fallback.** Probe: real app, unreachable credentials, logged out, all 45 GET routes. `/api/pricebars` returned 500 → now 200 with levels and `unavailable: true`. A web process that fails to connect now skips the DB for 30 s, so `/api/freshness` went 40.3 s → 0.2 s and `/api/records` serves the local snapshot in 0.2 s. After: **0 HTTP 500s, 0 exceptions.** | `db_pool.DatabaseUnavailable`; `test_price_bars.py`, `test_db_pool.py` |
-| **Closing Window failed at 08:50** (run `37752518494`): the Supabase read of `web_users` timed out, the runner has no local user file, so `_ensure_seeded` tried to write and the stale-overwrite guard refused — a READ became a failure email. Reads now serve the in-memory users and skip the write. | `test_runtime_state_migration.py::test_a_read_during_an_outage_does_not_fail_on_the_seed`, red on the old code |
-| **Session Watchdog auto-restart.** It alerted "did not start" every 10 min for AUS/UK/US Open, which are DISABLED on cron-job.org by owner decision, and its re-dispatch 403'd (repo token read-only). It now skips disabled sessions, and has `actions: write` so a restart works for any session switched back on. **Owner 2026-10-08: the three stay disabled — do not raise again.** | `test_session_watchdog_enabled.py`, 2 of 3 red on the old code |
-| Docs reduced from 23 to 9 outside `skills_src/`; `SQUEEZE_METHOD.md` was wrong (stated 0.70 convergence and the removed AMP1 re-anchor) — replaced by `docs/METHOD.md`, now test-checked for the tightness ceiling too | `test_hvf_method.py::test_method_doc_states_the_live_tightness_ceiling` |
+| **Failure emails.** 8 of 9 failures 10-06/08 were `EMAXCONNSESSION`; jobs gave up after ~9 s. Actions jobs now wait up to 120 s. | Live: five jobs rode out the 2026-10-08 14:30-14:31 burst ("pool full, waiting", all success). 235 runs since 14:25, 0 failures. |
+| **Cause of the bursts: the website**, not the jobs. Supavisor log: 15/min at 06:29 and 12/min at 07:28 from 217.160.134.11 (IONOS outbound IP, read on the host). 10 simultaneous site requests opened 9 connections. | Web tier capped at 2 shared connections per process, idle closed after 10 s (`db_pool._web_get`). |
+| **Scanner Report = open triggered setups judged on their trigger date, up to 90 days** (owner's rule and cap). RVOL/VWAP/ATR shown at trigger and now. Unvetted rows hidden in an outage. Days since in whole days. | `2b3a05b`. 50 rows recomputed from raw prices, 0 mismatches; 1,399 open setups, none past stop/target; 11 guards mutation-tested. |
+| **Summary freeze reverted** before it changed the report (`ddd7c3b`). Per-trigger VolumeScore store kept and fixed (it had never held a row: duplicate key). | `abac9a4`, `29faef5`; `volscore_features` 15,175 rows. |
+| **Supabase down → site still serves.** 0 HTTP 500s across 45 GET routes; logged-in records 200, triggered rows hidden with a stated reason. | `bc5ce54`, `2b3a05b` |
+| Closing Window seed-write failure; Session Watchdog skips disabled sessions; `cryptography` in 6 workflows | `e7048ee`, `bc5ce54` |
+| Docs 23 → 9; `docs/METHOD.md` test-checked against the code | `bc5ce54` |
+| Live verification access: `/api/report-check` (key `REPORT_CHECK_KEY`) + `verify_live_report.py` | `fb89f39`, `7e88d4c` |
 
-**Deployed** as `bc5ce54`, live fingerprint `77c33a785809` (worker loaded 08:38:02). Verified live:
-`/api/pricebars/AAPL` returns real bars with `"unavailable":false`; watchdog run `37751392722` on `bc5ce54`
-logged "loaded 10 secret(s)" where run `37750316715` on the old code logged "No module named
-'cryptography'". During the reload, 08:38:01–08:38:25, some API calls got no HTTP response (curl 000);
-30 of 30 calls afterwards returned 200. Whether earlier deploys show the same blip is unmeasured.
+## 3. Open, measured, not fixed
 
-NOT measured: the **logged-in** experience during an outage — login validates tokens against the user
-store, which reads the local copy when Supabase fails (`web_users._load`), but nobody has exercised it.
+1. **Website pool use, now measured.** 2 web processes (40 concurrent `/api/report-check?process=1` calls:
+   pid 6 x26, pid 19 x14; the second started under load). A 10-request burst opened 4 connections, peak 4
+   open (Supavisor log, 2026-10-09 10:33) -- was 9-11. If the host adds processes, each brings 2 more.
+2. **Egress.** Run `./.venv/Scripts/python.exe egress_report.py`; ~20 GB/30d was DERIVED, not measured,
+   against 5 GB free. The owner declined Supabase Pro. Storage has returned 402 since 2026-08-16 as a result.
+3. **`squeeze_history.refresh_daily` re-checks only an 18-month window** (`squeeze_history.py:489`); 205
+   older rows keep a stale `OPEN`. The report ignores them (refreshed within 4 days only); other readers
+   of `outcome` have not been checked.
+4. **The emailed Scanner Report** (`run_scanner_report_email.py`) still uses the old logic. It is not
+   scheduled (not in `setup_cronjobs.py`; last run by hand 2026-08-23).
+5. **The 2026-10-07 03:31 refresh skipped 599 instruments** while reporting success. Cause unknown.
+6. **`trading-create-env.yml`** uses a `V_` prefix and does not pass `APP_SECRET_KEY`. Unanswered.
 
-## 5. Open, measured, not fixed
+Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub emails every failed run.
 
-1. **Who fills the 15-slot pool is unknown.** At 06:30 only 2 Actions jobs ran, yet the pool was full, so
-   concurrent jobs alone do not explain it. Pooled backends all report `application_name = Supavisor`, so
-   the holder cannot be read back afterwards — it must be sampled while it happens. Jobs now ride out a
-   burst of up to 120 s; a longer one still fails.
-2. **Egress.** Baseline reset 2026-10-07T19:44:28Z. Run `./.venv/Scripts/python.exe egress_report.py`
-   after a full day. DERIVED, not measured: ~20 GB/30d against a 5 GB free allowance. The owner declined
-   Supabase Pro.
-3. **Supabase Storage returns 402** since 2026-08-16 (`exceed_egress_quota`, latched). The snapshot
-   publishes to IONOS instead. Unlatches only if egress is fixed or the plan changes.
-4. **The 2026-10-07 03:31 refresh skipped 599 instruments** while reporting success; a 14:02 re-run stored
-   them. Cause unknown; the job's status does not detect it.
-5. **`INXG.L`** is a DEVELOPING row whose latest bar is 2026-10-05; eight other instruments lack the 10-06
-   bar (none carries a signal).
-6. **No working failure notification for CI** — its only alert posts to `SLACK_ALERTS`, and Slack is not in
-   use. CI sat red nine days unnoticed. (`run_cron_watch._notify` does email.)
-7. **`trading-create-env.yml`** uses a `V_` prefix and does not pass `APP_SECRET_KEY`. Unanswered whether
-   it should.
-8. **Slack-only alerts reach nobody.** Slack is no longer used; email is primary (owner, 2026-10-08).
-   Known Slack-only paths: CI's failure alert (`SLACK_ALERTS`) and `run_session_watchdog.alert`. Not yet
-   swept for the full list.
-9. **The owner's standing instruction** — store derived values on IONOS, do not re-derive per request
-   (archive `HANDOVER-20260928.md` §3.1). `ddd7c3b`/`44a940e` are a first part, gated by §1.
+## 4. Owner rules settled this session — do not reopen
 
-## 6. Waiting on an owner decision (design detail kept in `docs/archive/`)
+- Judge RVOL, VolumeScore, VWAP and ATR **at the trigger date**; a setup stays until target or stop,
+  **up to 90 days**.
+- **My Pre-orders is not part of the delivery**; he acts only from the trigger date.
+- **AUS/UK/US Open stay disabled.** Alerts are email; Slack is not used.
+- No unverified figure is ever shown — not even with "disregard".
+
+## 5. Waiting on an owner decision (detail in `docs/archive/`)
 
 | Decision | Detail | Recommendation |
 |---|---|---|
-| Revert or keep the summary freeze | §1 | decide before 18:30 UTC |
-| Let Winners Run: observe, live, or off | `archive/LET_WINNERS_RUN_DECISION.md` | observe first; unmanaged-window watchdog before any live use |
-| Account isolation | `archive/ACCOUNT_ISOLATION_ARCHITECTURE.md` | finding 6 (revocation silently does nothing) is a five-line fix that should not wait |
-| Commodities trade but are hidden from his view; any login can flip the bridge | `BACKLOG.md` — Trading safety, Security | both need a rule from him, then a small fix |
-| Security recommendations (headers, sessions) | `archive/SECURITY_RECOMMENDATIONS.md` | headers in `.htaccess` first |
+| Let Winners Run: observe, live, or off | `archive/LET_WINNERS_RUN_DECISION.md` | observe first |
+| Account isolation | `archive/ACCOUNT_ISOLATION_ARCHITECTURE.md` | finding 6 (revocation does nothing) is a five-line fix |
+| Commodities trade but are hidden; any login can flip the bridge | `BACKLOG.md` Trading safety, Security | a rule from him, then a small fix |
+| Security headers / sessions | `archive/SECURITY_RECOMMENDATIONS.md` | headers in `.htaccess` first |
 
-## 7. Complaints on record — read before speaking
+## 6. Complaints on record — read before speaking
 
-Six, all upheld, in `ChangeRequests/20260918.txt`: unverified claims; decisions offloaded as repeated
-multiple-choice questions; a standing instruction left unbuilt while self-found faults were worked; a
-financially misleading answer about token billing; and *"you do not check your work and I have had
-enough"*. The common thread: not reading my own output and code before speaking.
+Seven, all upheld, in `ChangeRequests/20260918.txt`. The seventh (2026-10-09): an unverified recompute was
+shown and then dismissed with "disregard". The common thread: not reading my own output and code first.
 
-## 8. Traps that cost time
+## 7. Traps that cost time
 
-1. The local suite is not CI — use a clean worktree with the placeholder env (see `CLAUDE.md`).
+1. The local suite is not CI — clean worktree, placeholder env (see `CLAUDE.md`).
 2. `monkeypatch.setattr(module, "get_db", …)` does nothing against a function-local import.
-3. `git stash push -- <untracked file>` stashes nothing; check `git stash list` after.
-4. Workflow names carry their creation date; GitHub failure emails put it in the subject. It is not the
-   failure date.
-5. `.claude/worktrees/` shadows greps with stale copies — exclude `.claude` from every sweep.
-6. `/api/records` auth is an `X-Auth` header from `localStorage.sq_auth`, not a cookie.
-7. Windows console is cp1252 — print ASCII in any probe or you crash on the first `�`.
+3. `git stash push` can fail silently (untracked files, "not uptodate"); check `git stash list` every time.
+4. pg8000 parameters in date arithmetic need a cast: `current_date - :n` fails ("date >= integer").
+5. `volume_score` bars are `(bar_date, high, low, close, volume)` — read the contract before calling.
+6. Chrome refuses port 5061. IONOS keeps the old module after a deploy: wait for `/api/build`.
+7. Workflow names carry their creation date; GitHub failure emails put it in the subject.
+8. `.claude/worktrees/` shadows greps — exclude `.claude` from every sweep.
+9. Windows console is cp1252 — print ASCII in any probe.
