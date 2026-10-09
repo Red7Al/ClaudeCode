@@ -222,3 +222,55 @@ def test_an_unparseable_timestamp_is_not_treated_as_fresh(monkeypatch):
     assert w._age_days("not a date") is None
     assert w._age_days("") is None
     assert w._age_days(None) is None
+
+
+# ── cron-job.org rate limiting (2026-10-09) ────────────────────────────────────────────────────────────
+# MEASURED 2026-10-09 15:05: one HTTP 429 from cron-job.org made the watcher judge every job, and the 12
+# jobs that are off by design (AUS/UK/US monitors, Weekend Review ...) were emailed as stale.
+
+class _Resp:
+    def __init__(self, code, jobs=None):
+        self.status_code, self.headers, self._jobs = code, {"Retry-After": "0"}, jobs or []
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"{self.status_code} Client Error: Too Many Requests")
+
+    def json(self):
+        return {"jobs": self._jobs}
+
+
+def _api(monkeypatch, responses, saved=None):
+    import requests
+    calls = iter(responses)
+    monkeypatch.setenv("CRONJOB_API_KEY", "test-key")
+    monkeypatch.setattr(requests, "get", lambda *a, **k: next(calls))
+    monkeypatch.setattr(w.time, "sleep", lambda s: None)
+    monkeypatch.setattr(w, "_load_doc", lambda: {"enabled": saved} if saved else {})
+
+
+def test_a_rate_limit_is_retried(monkeypatch):
+    _api(monkeypatch, [_Resp(429), _Resp(200, [{"title": "Morning Chain", "enabled": True},
+                                               {"title": "AUS Monitor", "enabled": False}])])
+    assert w._enabled_titles() == {"Morning Chain"}
+
+
+def test_a_persistent_rate_limit_uses_the_saved_enabled_list(monkeypatch):
+    _api(monkeypatch, [_Resp(429)] * 3, saved=["Morning Chain"])
+    assert w._enabled_titles() == {"Morning Chain"}, "disabled jobs must not be judged on a 429"
+
+
+def test_with_nothing_saved_it_still_judges_everything(monkeypatch):
+    _api(monkeypatch, [_Resp(429)] * 3)
+    assert w._enabled_titles() is None
+
+
+def test_the_enabled_list_is_saved_for_the_next_run(monkeypatch):
+    import web_store
+    saved = {}
+    monkeypatch.setattr(web_store, "save_json_store", lambda k, doc: saved.update(doc) or True)
+    monkeypatch.setattr(w, "_load_doc", lambda: {"enabled": ["Old"]})
+    w._save_state({}, set(), {"Morning Chain"})
+    assert saved["enabled"] == ["Morning Chain"]
+    w._save_state({}, set(), None)
+    assert saved["enabled"] == ["Old"], "a run that could not read the list keeps the last one"

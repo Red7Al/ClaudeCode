@@ -102,11 +102,28 @@ def _enabled_titles():
         if not key:
             log.warning("no CRONJOB_API_KEY; cannot tell enabled jobs from disabled ones")
             return None
-        r = requests.get("https://api.cron-job.org/jobs",
-                         headers={"Authorization": f"Bearer {key}"}, timeout=20)
+        # cron-job.org rate-limits its API (HTTP 429). MEASURED 2026-10-09 15:05: one 429 made this judge
+        # every job, so the 12 jobs that are OFF BY DESIGN were alerted as stale. So: retry briefly, then
+        # fall back to the enabled list saved by the last run that could read it.
+        for attempt in range(3):
+            r = requests.get("https://api.cron-job.org/jobs",
+                             headers={"Authorization": f"Bearer {key}"}, timeout=20)
+            if r.status_code != 429 or attempt == 2:
+                break
+            try:
+                wait = min(float(r.headers.get("Retry-After") or 10), 30.0)
+            except ValueError:
+                wait = 10.0
+            log.info("cron-job.org rate limit (429); retrying in %.0f s", wait)
+            time.sleep(wait)
         r.raise_for_status()
         return {j.get("title") for j in (r.json().get("jobs") or []) if j.get("enabled")}
     except Exception as exc:
+        saved = _load_doc().get("enabled")
+        if saved:
+            log.warning("could not read cron-job.org enabled state (%s); using the %d enabled jobs saved "
+                        "by the last run that could", exc, len(saved))
+            return set(saved)
         log.warning("could not read cron-job.org enabled state (%s); judging every job", exc)
         return None
 
@@ -130,12 +147,13 @@ def _stale_titles() -> set:
     return set(_load_doc().get("stale") or [])
 
 
-def _save_state(statuses: dict, stale: set = None) -> bool:
+def _save_state(statuses: dict, stale: set = None, enabled: set = None) -> bool:
     try:
         import web_store
-        return bool(web_store.save_json_store(
-            STATE_KEY, {"built_at": time.time(), "statuses": statuses,
-                        "stale": sorted(stale or ())}))
+        doc = {"built_at": time.time(), "statuses": statuses, "stale": sorted(stale or ())}
+        # The enabled list, for a run that cannot reach cron-job.org (see _enabled_titles).
+        doc["enabled"] = sorted(enabled) if enabled is not None else (_load_doc().get("enabled") or [])
+        return bool(web_store.save_json_store(STATE_KEY, doc))
     except Exception as exc:
         log.error("could not save %s: %s", STATE_KEY, exc)
         return False
@@ -243,7 +261,7 @@ def check(dry_run: bool = False, alert_ok: bool = False, stale_after_days: float
             _notify("✅ All scheduled jobs healthy", f"{len(jobs)} jobs, none failing.")
         # Save AFTER alerting: if the alert raises, the next run must still see the transition rather
         # than having quietly recorded it as already reported.
-        _save_state(now, stale_now)
+        _save_state(now, stale_now, enabled)
 
     # RED ONLY WHEN THERE IS SOMETHING NEW TO SAY (owner 2026-09-27: "the hourly job at 5 or 6 mins past
     # the hour is still failing").
