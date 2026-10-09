@@ -36,3 +36,13 @@ def test_it_returns_exactly_what_that_logins_page_receives(monkeypatch):
     assert j["records"]["records"] == [{"ticker": "ZS"}] and j["config"]["limits"] == {"min_rvol": 1.7}
     assert j["records"]["seen"] == "tok-alex" == j["config"]["seen"], "built with the login's own session"
     assert "tok-alex" not in [j.get("login")], "the token itself is never returned"
+
+
+def test_the_process_query_answers_with_this_processes_pid(monkeypatch):
+    import os
+    j = _client(monkeypatch).get("/api/report-check?process=1", headers={"X-Report-Check-Key": "k" * 40}).get_json()
+    assert j["pid"] == os.getpid() and "module_loaded_at" in j
+
+
+def test_the_process_query_still_needs_the_key(monkeypatch):
+    assert _client(monkeypatch).get("/api/report-check?process=1").status_code == 403

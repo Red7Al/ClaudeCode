@@ -1893,6 +1893,11 @@ def api_report_check():
         return ("not found", 404)
     if not hmac.compare_digest(request.headers.get("X-Report-Check-Key", ""), key):
         return jsonify({"error": "forbidden"}), 403
+    if request.args.get("process"):
+        # Which web process answered (2026-10-09). The host's process count is invisible from the SSH
+        # sandbox and db_pool's per-process cap multiplies by it; distinct pids across concurrent calls
+        # count the processes. Behind the key, so /api/build stays the three public fields it is pinned to.
+        return jsonify({"pid": os.getpid(), "module_loaded_at": _MODULE_LOADED_AT})
     login = (request.args.get("login") or "").strip()
     token = _wu.token_for(login) if login else ""      # "" for an unknown login or a non-login record
     if not token:
