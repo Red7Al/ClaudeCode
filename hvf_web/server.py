@@ -1874,6 +1874,37 @@ def api_records():
                     "report_unavailable": bool(authed and setups_map is None)})
 
 
+@app.route("/api/report-check")
+def api_report_check():
+    """READ-ONLY live verification of what a login's Scanner Report receives (owner 2026-10-09: give the
+    agent a way to open the live report itself instead of asking him to look).
+
+    Returns the EXACT /api/records and /api/config payloads that login's page gets, produced by calling
+    those two handlers server-side with the login's own session token -- the token never leaves the server,
+    and there is no second copy of the report logic to drift. The caller runs the shipped app.js pass() over
+    it to count the rows the page shows. Places, changes and deletes nothing.
+
+    Guarded by REPORT_CHECK_KEY (Supabase app_secrets, cold copy in .env), compared in constant time. Absent
+    key on the server -> 404, so the route does not exist until it is deliberately provisioned.
+    """
+    import hmac
+    key = os.environ.get("REPORT_CHECK_KEY", "")
+    if not key:
+        return ("not found", 404)
+    if not hmac.compare_digest(request.headers.get("X-Report-Check-Key", ""), key):
+        return jsonify({"error": "forbidden"}), 403
+    login = (request.args.get("login") or "").strip()
+    token = _wu.token_for(login) if login else ""      # "" for an unknown login or a non-login record
+    if not token:
+        return jsonify({"error": "unknown login"}), 404
+    out = {"login": login}
+    for path, view in (("/api/records", api_records), ("/api/config", api_config)):
+        with app.test_request_context(path, headers={"X-Auth": token}):
+            resp = app.make_response(view())
+            out[path.rsplit("/", 1)[1]] = resp.get_json()
+    return jsonify(out)
+
+
 def _png_response(png: bytes):
     # no-store so the browser never serves a stale image — UK cards rendered broken (16KB) while the
     # host disk was full and browsers cached that; without this they keep showing the empty one
