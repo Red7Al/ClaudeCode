@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Open a login's LIVE Scanner Report as they would see it -- read-only (owner 2026-10-09).
 
-    ./.venv/Scripts/python.exe verify_live_report.py [--login Alex] [--port 5061]
+    ./.venv/Scripts/python.exe verify_live_report.py [--login Alex] [--port 5062]
 
 1. Refuses to run unless the live site's /api/build fingerprint equals this checkout's HEAD fingerprint
    (build_ionos_package.py derives it from HEAD), so the page served locally IS the deployed page code.
@@ -32,7 +32,9 @@ def _get(path, headers=None):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--login", default="Alex")
-    ap.add_argument("--port", type=int, default=5061)
+    # NOT 5061: Chrome refuses it as an unsafe port (SIP-TLS) and shows an error page -- found 2026-10-09,
+    # confirmed by the same run loading on 5062.
+    ap.add_argument("--port", type=int, default=5062)
     a = ap.parse_args()
     root = os.path.dirname(os.path.abspath(__file__))
     os.chdir(root)
