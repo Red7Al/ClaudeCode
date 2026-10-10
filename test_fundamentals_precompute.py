@@ -117,6 +117,7 @@ def test_an_empty_fetch_is_refused_rather_than_overwriting_a_good_copy(monkeypat
     monkeypatch.setattr(rfp, "fetch_broker", lambda t: None)
     written = []
     import web_store
+    monkeypatch.setattr(web_store, "load_json_store", lambda k: None)
     monkeypatch.setattr(web_store, "save_json_store", lambda k, d: written.append(k) or True)
 
     assert rfp.build() == 2, "both payloads should be reported as failed"
@@ -130,6 +131,7 @@ def test_a_good_fetch_is_stored_under_both_keys(monkeypatch):
                                                        "available": 1})
     saved = {}
     import web_store
+    monkeypatch.setattr(web_store, "load_json_store", lambda k: None)     # no earlier copy to merge with
     monkeypatch.setattr(web_store, "save_json_store", lambda k, d: saved.__setitem__(k, d) or True)
 
     assert rfp.build() == 0
@@ -174,3 +176,42 @@ def test_an_instrument_in_two_indices_is_fetched_once(monkeypatch):
     monkeypatch.setattr(run_hvf_report, "UNIVERSE",
                         {"FTSE 100": ["AAA.L", "BBB.L"], "FTSE 250": ["BBB.L", "CCC.L"]})
     assert rfp.universe() == ["AAA.L", "BBB.L", "CCC.L"]
+
+
+# ── keep the last good record, refresh the oldest first (2026-10-10) ──────────────────────────────────
+# MEASURED 2026-10-09 21:15: Yahoo rate-limited the run after 861 instruments and every refused one lost
+# the P/E it already had, because each run REPLACED the store. Owner: "P/E changes are infrequent".
+
+def _prev_store(monkeypatch, funds, fetched_at, brokers=None):
+    import web_store
+    docs = {rfp.FUND_STORE_KEY: {"records": funds, "fetched_at": fetched_at},
+            rfp.BROKER_STORE_KEY: {"records": brokers or {}}}
+    saved = {}
+    monkeypatch.setattr(web_store, "load_json_store", lambda k: docs.get(k))
+    monkeypatch.setattr(web_store, "save_json_store", lambda k, d: saved.__setitem__(k, d) or True)
+    return saved
+
+
+def test_an_instrument_yahoo_refuses_keeps_its_last_good_record(monkeypatch):
+    saved = _prev_store(monkeypatch, {"AAF.L": {"kpis": {"trailingPE": 20.7}}, "BP.L": {"kpis": {"trailingPE": 9.0}}},
+                        {"AAF.L": 100.0, "BP.L": 100.0})
+    monkeypatch.setattr(rfp, "universe", lambda: ["AAF.L", "BP.L"])
+    monkeypatch.setattr(rfp, "fetch_fundamentals",
+                        lambda t: {"currency": "GBp", "kpis": {"trailingPE": 21.0}} if t == "AAF.L" else None)
+    monkeypatch.setattr(rfp, "fetch_broker", lambda t: None)
+    rfp.build()
+    recs = saved[rfp.FUND_STORE_KEY]["records"]
+    assert recs["AAF.L"]["kpis"]["trailingPE"] == 21.0, "a fresh fetch replaces the old record"
+    assert recs["BP.L"]["kpis"]["trailingPE"] == 9.0, "a refused instrument keeps its last good record"
+    fa = saved[rfp.FUND_STORE_KEY]["fetched_at"]
+    assert fa["BP.L"] == 100.0 and fa["AAF.L"] > 100.0
+
+
+def test_the_longest_unrefreshed_instruments_are_fetched_first(monkeypatch):
+    _prev_store(monkeypatch, {}, {"AAF.L": 300.0, "BP.L": 100.0})
+    monkeypatch.setattr(rfp, "universe", lambda: ["AAF.L", "BP.L", "NEW.L"])
+    order = []
+    monkeypatch.setattr(rfp, "fetch_fundamentals", lambda t: order.append(t) or {"currency": "GBp", "kpis": {"beta": 1}})
+    monkeypatch.setattr(rfp, "fetch_broker", lambda t: None)
+    rfp.build()
+    assert order == ["NEW.L", "BP.L", "AAF.L"], "never fetched first, then oldest -- a cut-short run is finished next time"

@@ -186,13 +186,23 @@ def build(limit: int = 0, dry_run: bool = False) -> int:
         log.error("no instruments in the snapshot; refusing to store an empty universe")
         return 2
 
-    log.info("Fetching fundamentals + broker for %d equity instruments", len(tickers))
+    # KEEP THE LAST GOOD RECORD, REFRESH THE OLDEST FIRST (2026-10-10). Each night used to REPLACE the store
+    # with only that night's successes. Yahoo rate-limits the run (MEASURED 2026-10-09 21:15: 861 fetched,
+    # then "Too Many Requests" for the rest), so every instrument it refused LOST the P/E it already had --
+    # the opposite of the last-known-values rule set on 2026-07-25 (P-03 L138). P/E changes slowly (owner
+    # 2026-10-10: "P/E changes are infrequent"), so a record stays until a newer fetch replaces it, and the
+    # longest-unrefreshed instruments go first: a run cut short by Yahoo is finished by the next ones.
+    prev = {key: (web_store.load_json_store(key) or {}) for key in (FUND_STORE_KEY, BROKER_STORE_KEY)}
+    fetched_at = dict(prev[FUND_STORE_KEY].get("fetched_at") or {})
+    tickers.sort(key=lambda t: fetched_at.get(t, 0.0))          # stable: never-fetched first, then oldest
+    log.info("Fetching fundamentals + broker for %d equity instruments (oldest first)", len(tickers))
     funds, brokers, t0 = {}, {}, time.time()
     for i, tk in enumerate(tickers, 1):
         try:
             f = fetch_fundamentals(tk)
             if f:
                 funds[tk] = f
+                fetched_at[tk] = time.time()
         except Exception as ex:
             log.warning("  fundamentals failed for %s: %s", tk, ex)
         try:
@@ -218,9 +228,12 @@ def build(limit: int = 0, dry_run: bool = False) -> int:
         if dry_run:
             log.info("  %s: %d records (dry run, not stored)", name, len(data))
             continue
-        doc = {"built_at": time.time(), "count": len(data), "records": data}
+        merged = {**(prev[key].get("records") or {}), **data}      # this run's fetches over the last good
+        doc = {"built_at": time.time(), "count": len(merged), "records": merged}
+        if key == FUND_STORE_KEY:
+            doc["fetched_at"] = {t: ts for t, ts in fetched_at.items() if t in merged}
         if web_store.save_json_store(key, doc):
-            log.info("  %s: %d records -> %s", name, len(data), key)
+            log.info("  %s: %d fetched now, %d stored in all -> %s", name, len(data), len(merged), key)
         else:
             log.error("  %s: built %d records but the store write FAILED", name, len(data))
             failed += 1
