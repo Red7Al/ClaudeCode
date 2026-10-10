@@ -2039,7 +2039,11 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
     <button class="pill" data-igpanel="autoclosed" onclick="showIgPanel('autoclosed')" title="Positions the system closed on their opening day because the volume tests measured on that bar failed.">Auto-closed transactions</button>
     <button class="pill" data-igpanel="txbreach" onclick="showIgPanel('txbreach')" title="Open positions that no longer meet your criteria, judged at the bar each one opened on.">TX not meeting criteria</button>
     <button class="pill" data-igpanel="ordbreach" onclick="showIgPanel('ordbreach')" title="Working orders that no longer meet your criteria, judged on the setup each was placed from.">Orders not meeting criteria</button>
+    <button class="pill" data-igpanel="timeline" onclick="showIgPanel('timeline')" title="Each open position as a bar from the day it opened to today: green in profit, red at a loss.">Open over time</button>
 </div>
+  <!-- Open over time (owner 2026-10-10): one bar per open instrument, opened -> today, coloured by its
+       current P&L, with the P&L beside the name. Drawn from the same IG_POS the Open transactions table uses. -->
+  <div id="igpanel-timeline" class="hidden"><div id="ig-timeline"></div></div>
   <div id="igpanel-open">
   <!-- OPEN POSITIONS get their OWN chart strip directly above their table (user 2026-08-01): Location /
        Market / Sector / Direction, computed from the positions (enriched from the snapshot). -->

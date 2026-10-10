@@ -1658,7 +1658,8 @@ def test_every_ig_sub_tab_has_a_panel_and_every_panel_has_a_tab():
     panels = set(re.findall(r'id="igpanel-([a-z]+)"', html))
 
     assert pills == panels, f"pills {sorted(pills)} do not match panels {sorted(panels)}"
-    assert len(pills) == 5, f"expected five sub-tabs, found {sorted(pills)}"
+    # Sixth, "Open over time", added 2026-10-10 (owner).
+    assert len(pills) == 6, f"expected six sub-tabs, found {sorted(pills)}"
 
     switch = js[js.index("function showIgPanel"):js.index("function loadAutoClosed")]
     for name in pills:

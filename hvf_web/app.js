@@ -2346,6 +2346,7 @@ const _igSrc=s=>({WEB_BRIDGE:"Squeeze (bridge)",WEB_MANUAL:"Manual (web)"}[s]||s
 // of renderIgAccount so typing filters in place instead of re-hitting the IG API on every keystroke —
 // IG has a rate-limited allowance, so re-fetching per character is not an option.
 function paintIgAccount(){
+  if(IG_PANEL==="timeline")paintIgTimeline();   // the Open over time panel follows every refresh
   const q=(($("ig-search")||{}).value||"").trim().toLowerCase();
   const hit=r=>!q||(((r.name||'')+' '+(r.ticker||r.epic||'')).toLowerCase().includes(q));
   const _snap={}, _snapByName={};
@@ -5726,11 +5727,74 @@ function showIgPanel(which){
   IG_PANEL = which;
   document.querySelectorAll("#ig-pills .pill").forEach(b=>b.classList.toggle("active", b.dataset.igpanel===which));
   [["open","igpanel-open"],["autoclosed","igpanel-autoclosed"],["orders","igpanel-orders"],
-   ["txbreach","igpanel-txbreach"],["ordbreach","igpanel-ordbreach"]].forEach(([k,id])=>{
+   ["txbreach","igpanel-txbreach"],["ordbreach","igpanel-ordbreach"],["timeline","igpanel-timeline"]].forEach(([k,id])=>{
     const el=$(id); if(el)el.classList.toggle("hidden", k!==which);
   });
   if(which==="autoclosed"&&IG_AUTO===null)loadAutoClosed();
   if(which==="txbreach"&&IG_TXAUDIT===null)loadPositionFilterAudit();
+  if(which==="timeline")paintIgTimeline();
+}
+
+// ------------------------------------------------------------------------------------------------------
+// OPEN OVER TIME (owner 2026-10-10: "a graph to show what is open over time and the current pnl amount
+// next to the instrument name - color code the open period: red for loss and green for profit").
+// One row per instrument and direction (several positions are combined: earliest open date, P&L summed in
+// its own currency), a bar from the day it opened to today. The sign is in the label and the tooltip, so
+// profit/loss never rests on colour alone; the Open transactions table is the table view of the same data.
+// ------------------------------------------------------------------------------------------------------
+function igTimelineRows(pos){
+  const g={};
+  (pos||[]).forEach(p=>{
+    const k=(p.ticker||p.epic||p.name)+"|"+(p.direction||"");
+    const a=g[k]||(g[k]={name:p.name||p.ticker||p.epic||"?",direction:p.direction||"",currency:_igCurrency(p.currency),
+                         opened:null,profit:null,n:0});
+    const o=String(p.opened||"").slice(0,10);
+    if(/^\d{4}-\d{2}-\d{2}$/.test(o)&&(!a.opened||o<a.opened))a.opened=o;
+    if(p.profit!=null&&Number.isFinite(+p.profit))a.profit=(a.profit||0)+(+p.profit);
+    a.n++;
+  });
+  return Object.values(g).filter(r=>r.opened)
+    .sort((a,b)=>a.opened<b.opened?-1:a.opened>b.opened?1:String(a.name).localeCompare(String(b.name)));
+}
+function paintIgTimeline(){
+  const el=$("ig-timeline"); if(!el)return;
+  const rows=igTimelineRows(IG_POS);
+  if(!rows.length){el.innerHTML=`<p class="muted">No open positions.</p>`;return;}
+  const DAY=86400000, today=new Date(new Date().toISOString().slice(0,10)+"T00:00:00Z").getTime();
+  const t0=Math.min(...rows.map(r=>Date.parse(r.opened+"T00:00:00Z"))), t1=today+DAY;
+  const W=1100, LW=360, R=12, T=26, RH=24, BH=12, H=T+rows.length*RH+8;
+  const x=t=>LW+(t-t0)/(t1-t0)*(W-LW-R);
+  const money=v=>v==null?"—":`${v>=0?"+":"−"}${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const col=v=>v==null?"var(--muted)":v>=0?"var(--bull)":"var(--bear)";
+  const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  let ticks="";
+  for(let d=new Date(t0);d.getTime()<=t1;d.setUTCMonth(d.getUTCMonth()+1,1)){
+    const m=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1); if(m<t0)continue;
+    const xx=x(m).toFixed(1);
+    ticks+=`<line x1="${xx}" x2="${xx}" y1="${T-6}" y2="${H-8}" stroke="var(--line)" stroke-width="1"/>`
+         +`<text x="${xx}" y="${T-10}" font-size="10" fill="var(--muted)" text-anchor="middle">${MON[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}</text>`;
+  }
+  const xt=x(today).toFixed(1);
+  ticks+=`<line x1="${xt}" x2="${xt}" y1="${T-6}" y2="${H-8}" stroke="var(--fg)" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/>`
+       +`<text x="${xt}" y="${T-10}" font-size="10" fill="var(--fg)" text-anchor="end">today</text>`;
+  const bars=rows.map((r,i)=>{
+    const y=T+i*RH, o=Date.parse(r.opened+"T00:00:00Z"), days=Math.round((today-o)/DAY);
+    const bx=x(o), bw=Math.max(4,x(t1)-bx);
+    const name=String(r.name).length>34?String(r.name).slice(0,33)+"…":String(r.name);
+    const tip=`${r.name} · ${r.direction} · opened ${r.opened} · ${days} day${days===1?"":"s"} open · P&L ${money(r.profit)} ${r.currency}`
+             +(r.n>1?` (${r.n} positions)`:"");
+    return `<g><title>${_esc(tip)}</title>`
+      +`<rect x="0" y="${y}" width="${W}" height="${RH}" fill="transparent"/>`
+      +`<text x="6" y="${y+RH/2+4}" font-size="12" fill="var(--fg)">${_esc(name)}</text>`
+      +`<text x="${LW-10}" y="${y+RH/2+4}" font-size="12" font-weight="700" fill="var(--fg)" text-anchor="end">${money(r.profit)} <tspan font-weight="400" fill="var(--muted)">${_esc(r.currency)}</tspan></text>`
+      +`<rect x="${bx.toFixed(1)}" y="${(y+(RH-BH)/2).toFixed(1)}" width="${bw.toFixed(1)}" height="${BH}" rx="4" fill="${col(r.profit)}"/>`
+      +`</g>`;
+  }).join("");
+  const key=(c,t)=>`<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:10px;border-radius:3px;background:${c};display:inline-block"></span>${t}</span>`;
+  el.innerHTML=`<div class="muted" style="font-size:12px;margin:0 0 8px;display:flex;gap:16px;flex-wrap:wrap">`
+    +`${key("var(--bull)","In profit")}${key("var(--bear)","At a loss")}${key("var(--muted)","No current price")}`
+    +`<span>${rows.length} open instrument${rows.length===1?"":"s"} · bar = opened → today · P&L in each position's own currency</span></div>`
+    +`<div class="tablewrap" style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:760px;height:auto" role="img" aria-label="Open positions over time">${ticks}${bars}</svg></div>`;
 }
 
 // ------------------------------------------------------------------------------------------------------
