@@ -305,7 +305,7 @@ def fundamentals(ticker: str) -> dict:
     f["insider_pct"] = insider_pct_of(info)
     # Insider stake as a £/$ VALUE (user 2026-06-14: a % alone misleads on a big-cap —
     # 0.1% of a giant market cap is still a large sum).
-    f["insider_value"] = (ins * f["mcap"]) if (f.get("insider_pct") and f.get("mcap")) else None
+    f["insider_value"] = (f["insider_pct"] / 100 * f["mcap"]) if (f.get("insider_pct") and f.get("mcap")) else None
 
     # Largest single holder (user 2026-06-19): a big concentrated stake (e.g. Berkshire
     # owning >20%) is materially relevant and must be made clear. Surface the top

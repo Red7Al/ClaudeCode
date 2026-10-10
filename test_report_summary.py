@@ -145,3 +145,20 @@ def test_report_extras_come_from_stored_data_through_the_scans_rules(monkeypatch
     snap = {"records": [{"ticker": "ZS", "current_price": 216.8}, {"ticker": "AAF.L", "current_price": None}]}
     out = pub.report_extras(snap, {"ZS": [{}], "AAF.L": [{}], "NONE": []})
     assert out == {"AAF.L": {"current_price": 309.6, "pe": 20.7, "insider_pct": 79.668}}
+
+
+def test_fundamentals_still_computes_the_insider_value(monkeypatch):
+    """Regression (code review 2026-10-10): moving the insider rule into insider_pct_of left
+    `insider_value = ins * mcap` reading a variable that no longer existed -- NameError for every equity
+    with both values, which build_snapshot swallowed (losing insider/broker/sector)."""
+    import quality_report as qr
+
+    class _T:
+        info = {"heldPercentInsiders": 0.05, "marketCap": 2_000_000_000, "currency": "USD"}
+        recommendations = None
+
+        def __getattr__(self, name):
+            return None
+    monkeypatch.setattr("yfinance.Ticker", lambda tk: _T())
+    f = qr.fundamentals("AAPL")
+    assert f["insider_pct"] == 5.0 and f["insider_value"] == 100_000_000
