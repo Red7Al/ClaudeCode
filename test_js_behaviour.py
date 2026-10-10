@@ -1432,8 +1432,6 @@ def test_a_missing_trigger_rvol_is_a_dash_not_a_borrowed_value():
 # Functions that are knowingly unreferenced, each with the reason and who has to decide. An allow-list
 # with no reasons is how a detector rots into a formality, so a new entry needs one.
 _KNOWN_ORPHANS = {
-    "placeOnIG": "the only client caller of /api/place-order; whether manual IG placement should exist "
-                 "is the account owner's decision, not one to settle by deleting a trading path",
     "saveFeatures": "unreachable AND its checkbox is absent from the markup; guarded so it cannot throw, "
                     "left in place because the feature may be mid-build",
 }

@@ -2252,6 +2252,7 @@ def place_working_order(
     proximity_pct:  float = None,   # None -> per-user placement band (config_store wo_proximity_pct, default WO_PROXIMITY_PCT)
     let_run:        bool = False,   # omit the take-profit so a winner is not capped at target (see below)
     lwr_owner_login: str = None,    # immutable web-login binding for a future owner-scoped LWR manager
+    watch:          bool = True,    # False: never defer as WATCHING -- "Create an order" goes to IG now
 ) -> Optional[dict]:
     """
     Place (or amend) a PENDING entry order on IG at the HVF level.
@@ -2485,7 +2486,9 @@ def place_working_order(
     lwr_account_fingerprint = _lwr_account_fingerprint(
         getattr(session, "_account_id", None) or IG_ACCOUNT_ID) if lwr_owner_login else None
     # the WATCHING row to PENDING once price enters the band.
-    if dist_pct > proximity_pct:
+    # watch=False (the Scanner's "Create an order", owner 2026-10-10: "NOT use the pre-order system, this
+    # renamed button is to create an order in IG"): no WATCHING deferral, the order is placed on IG now.
+    if watch and dist_pct > proximity_pct:
         watch_id  = f"WATCH-{ticker}-{int(time.time())}"
         good_till = datetime.now(timezone.utc) + timedelta(days=good_till_days)
         _log_working_order_to_db(
@@ -3301,7 +3304,9 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         # profile["name"] is the account owner this run trades as: 'Owner' for the bridge and session
         # jobs, the acting login for a manual place. The decision is made HERE, where the profile is
         # known, rather than inside place_working_order, which only ever receives a user_id.
-        let_run=_lwr_cfg(profile.get("name"))[0], lwr_owner_login=profile.get("name"))
+        let_run=_lwr_cfg(profile.get("name"))[0], lwr_owner_login=profile.get("name"),
+        # "Create an order" places on IG now; only the automated paths defer far-from-entry setups.
+        watch=(session_name != "WEB_MANUAL"))
 
     if result and not result.get("updated") and not result.get("watching"):
         try:

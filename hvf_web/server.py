@@ -2902,15 +2902,44 @@ def _sig_from_snapshot(tk, user=None):
             "above_vwap": _av, "atr_expanding": _ae}
 
 
+def _order_sig(tk, user):
+    """(engine sig, from_report) for the setup this login's Scanner row SHOWS -- "Create an order"
+    (owner 2026-10-10: "Using the metrics on the screen for open, close etc - add a new IG order").
+
+    A Scanner Report row shows the newest open setup that passed the login's limits on its trigger date
+    (_report_setup, exactly as api_records picks it), which may be an older setup than today's scan
+    carries; otherwise the row shows the scan's own setup. Pre-order level edits (pinned_overrides) are NOT
+    applied: Pre-orders are no longer used, and the order must match the screen."""
+    rec = _record(tk)
+    if not rec:
+        return None, False
+    snap = _load_snapshot()
+    setups = _open_trigger_setups(snap)
+    pick = None
+    if setups:
+        import trading_limits
+        pick = _report_setup(user, tk, setups.get(tk), _mcap_map().get(tk), trading_limits.user_limits(user))
+    if not pick:
+        return _sig_from_snapshot(tk), False
+    bull = pick["direction"] == "BULL"
+    return {"ticker": tk, "direction": "BUY" if bull else "SELL", "hvf_type": "BULLISH" if bull else "BEARISH",
+            "hvf_signal": "TRIGGERED", "hvf_h3_level": pick["entry"], "hvf_stop_level": pick["stop"],
+            "hvf_target": pick["target"], "hvf_quality": pick["quality"], "hvf_risk_reward": pick["rr"],
+            "hvf_timeframe": pick["timeframe"], "index": rec.get("market"), "location": rec.get("location"),
+            # judged at the trigger date, as the report was (owner 2026-10-08)
+            "above_vwap": pick["above_vwap"], "atr_expanding": pick["atr_expanding"],
+            "rvol": pick["rvol"], "volume_score": pick["volume_score"], "mcap": _mcap_map().get(tk)}, True
+
+
 @app.route("/api/place-order", methods=["POST"])
 def api_place_order():
-    """Manually place a pre-order as a live IG working order NOW (user 2026-07-03), instead of waiting
-    for the 2-hour bridge. MONEY PATH: subscription must allow pre-orders; the order uses the user's
+    """"Create an order" (owner 2026-10-10; was "place a pre-order", user 2026-07-03): a live IG working
+    order NOW at the levels the Scanner row shows, instead of waiting for the 2-hour bridge. MONEY PATH: subscription must allow pre-orders; the order uses the user's
     OWN IG account (owner = env creds; a non-owner must have supplied their own IG credentials — else
     blocked so no one trades on another account). Goes through the same guarded place_hvf_order_from_sig."""
     import config_store as _cs
     if not _cs.PREORDERS_TO_IG_ENABLED:
-        return jsonify({"ok": False, "error": "Pre-orders to IG are disabled for all users."}), 403
+        return jsonify({"ok": False, "error": "Creating orders from the website is switched off for all users."}), 403
     name = _wu.name_for_token(request.headers.get("X-Auth") or "")
     if not name:
         return jsonify({"error": "login required"}), 401
@@ -2924,14 +2953,29 @@ def api_place_order():
         return jsonify({"ok": False, "error": f"IG session error: {e}"}), 500
     body = request.get_json(silent=True) or {}
     tk = (body.get("ticker") or "").strip()
-    if not _user_trade_allows(name, _record(tk)):
-        return jsonify({"ok": False, "error": "that market/direction is excluded in your Trading (Squeeze) filters"}), 403
-    _lb = _limit_block(name, tk)
-    if _lb:
-        return jsonify({"ok": False, "error": _lb, "placed": False}), 200
-    sig = _sig_from_snapshot(tk, user=name)
+    sig, from_report = _order_sig(tk, name)
     if not sig:
         return jsonify({"ok": False, "error": "no signal for that instrument"}), 400
+    rec = dict(_record(tk) or {}, direction="BULL" if sig["direction"] == "BUY" else "BEAR")
+    if not _user_trade_allows(name, rec):
+        return jsonify({"ok": False, "error": "that market/direction is excluded in your Trading (Squeeze) filters"}), 403
+    # The Scanner Report's setup already passed this login's limits ON ITS TRIGGER DATE (_report_setup);
+    # _limit_block judges the scan's own record, which for an older open setup is a different setup.
+    if not from_report:
+        _lb = _limit_block(name, tk)
+        if _lb:
+            return jsonify({"ok": False, "error": _lb, "placed": False}), 200
+    # "Using the metrics on the screen" (owner 2026-10-10): the order must be EXACTLY the levels the page
+    # showed. If the server's view has moved on (a new snapshot, a page left open), refuse rather than
+    # place different levels from the ones the owner confirmed.
+    shown = body.get("levels") or {}
+    for key, field in (("entry", "hvf_h3_level"), ("stop", "hvf_stop_level"), ("target", "hvf_target")):
+        want, have = shown.get(key), sig.get(field)
+        if not (isinstance(want, (int, float)) and isinstance(have, (int, float))
+                and abs(want - have) <= 1e-9 * max(1.0, abs(have))):
+            return jsonify({"ok": False, "placed": False,
+                            "error": f"the {key} on your screen ({want}) is not the current {key} ({have}) -- "
+                                     "reload the Scanner and try again"}), 409
     # Capture the log lines emitted DURING placement so a "not placed" (place_hvf_order_from_sig returns
     # None for many reasons — quality below floor, tight stop, direction conflict, trade filters, no epic
     # — each only log.info'd) reports the actual reason instead of a useless "unknown" (user 2026-07-10).
@@ -2971,9 +3015,7 @@ def api_place_order():
             _profile["wo_lifespan_days"] = int(_wol)
         # Per-user Pre-order proximity band (user 2026-08-03, P-75) — apply the acting user's own % at
         # placement; falls back to the shared default when unset.
-        _prox = _ulim.get("preorder_threshold_pct")
-        if isinstance(_prox, (int, float)) and _prox > 0:
-            _profile["preorder_threshold_pct"] = float(_prox)
+        # No Pre-order threshold: "Create an order" never uses the Pre-orders system (owner 2026-10-10).
         with ig_shim.acting_session(name):
             wo = ig_shim.place_hvf_order_from_sig(sig, _profile, "WEB_MANUAL", 1.0)
     except Exception as e:

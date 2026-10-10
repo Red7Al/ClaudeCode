@@ -34,7 +34,9 @@ _schema_ready = False
 # The momentum trade-execution sources the Config tab offers (the *_MONITOR sessions). The squeeze
 # bridge (WEB_BRIDGE) is gated separately in Trading (Squeeze) — user 2026-07-03: not in Momentum.
 EXEC_SOURCES = ["AUS_MONITOR", "UK_MONITOR", "US_MONITOR"]
-PREORDERS_TO_IG_ENABLED = False
+# Manual IG orders from the website (WEB_MANUAL). Off 2026-08-20 (owner: "Disable Pre-orders to my IG for every
+# user"); ON again 2026-10-10 for the Scanner's "Create an order" button -- owner chose "Re-enable, report levels".
+PREORDERS_TO_IG_ENABLED = True
 EXEC_DESCRIPTIONS = {
     "AUS_MONITOR": "Automatic trading in the Australian session (AUS equity market + overnight FX/commodities)",
     "UK_MONITOR":  "Automatic trading in the UK session (FTSE 100/250 equities)",

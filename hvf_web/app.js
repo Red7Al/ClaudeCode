@@ -650,7 +650,7 @@ function showDetail(t){
   $("detail").classList.remove("hidden");
   $("detail").innerHTML=`
     <button class="btn" onclick="closeDetail()" style="float:right">✕ Close (back to list)</button>
-    ${AUTH&&r.has_signal?`<button class="btn" onclick="pushToPreorder('${r.ticker}')" style="float:right;margin-right:8px">${(PINNED.has(r.ticker)||PINNED.has(disp(r.ticker)))?'✓ In Pre-orders':'➕ Push to Pre-orders'}</button>`:''}
+    ${AUTH&&r.has_signal?`<button class="btn" onclick="createOrder('${r.ticker}')" style="float:right;margin-right:8px">Create an order</button>`:''}
     <h2>${disp(r.ticker)} <span class="muted" style="font-size:13px">${r.name||''}</span> <span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></h2>
     <div class="sub">${locName(r.location)} · ${r.market||''} · ${r.sector||''} · ${r.status||''} · Q${r.quality??'?'} · R:R ${r.rr!=null?r.rr.toFixed(2):'?'} · ${(r.timeframe||'').replace('daily-','D')}</div>
     ${IS_ADMIN?`<div class="card"><h4>Squeeze Rules 1–5 — justification</h4><div id="rulesbox" class="sqh-loading">⏳ Data loading…</div></div>`:''}
@@ -5497,29 +5497,24 @@ async function deletePreorders(){
     .catch(()=>alert("Delete failed — try logging in again."));
 }
 // Push a Scanner instrument into My Pre-orders (pin), or unpin it (user 2026-07-03).
-function pushToPreorder(tk){
-  const on=!(PINNED.has(tk)||PINNED.has(disp(tk)));
-  let levels=null;
-  if(on){const r=DATA.find(x=>x.ticker===tk)||{};
-    const inp=prompt("Entry, Stop, Target — edit any value before it goes to Pre-orders (changes are recorded in My Activity):",
-                     `${r.entry??''}, ${r.stop??''}, ${r.target??''}`);
-    if(inp===null)return;
-    const parts=inp.split(",").map(x=>parseFloat(x));
-    if(parts.length===3&&parts.every(v=>isFinite(v)&&v>0))levels={entry:parts[0],stop:parts[1],target:parts[2]};
-  }
-  fetch("/api/preorder-pin",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({ticker:tk,on,levels})})
-    .then(r=>{if(!r.ok)return r.json().then(j=>{throw j.error||"failed";});return r.json();})
-    .then(j=>{PINNED=new Set(j.pinned||[]);OVERRIDES=j.overrides||{};render();renderPreorders&&renderPreorders();if(SEL===tk)showDetail(tk);})
-    .catch(e=>alert("Could not update pre-orders: "+e));
-}
-// Place a pre-order as a live IG working order now (money path) — confirm first.
-async function placeOnIG(tk){
-  if(!await appConfirm(`Places it now using your own IG account. This is a real order.`,{title:`Place a LIVE IG working order for ${disp(tk)}?`,ok:"Place order"}))return;
-  fetch("/api/place-order",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({ticker:tk})})
-    .then(r=>r.json().then(j=>({ok:r.ok,j})))
+// "Create an order" (owner 2026-10-10: "Using the metrics on the screen for open, close etc - add a new IG
+// order"). Replaces "Push to Pre-orders" -- the Pre-orders back end is no longer used. Shows the row's own
+// levels, asks, then places a LIVE IG working order at exactly those levels; the server refuses if its
+// current view of the setup differs from what this page showed.
+async function createOrder(tk){
+  const r=DATA.find(x=>x.ticker===tk)||{};
+  if(r.entry==null||r.stop==null||r.target==null){alert(`${disp(tk)}: no entry/stop/target on screen to order from.`);return;}
+  const dir=r.direction==="BULL"?"BUY":"SELL";
+  const rows=[["Direction",dir],["Entry",f2(r.entry)],["Stop",f2(r.stop)],["Target",f2(r.target)],
+              ["R:R",r.rr!=null?(+r.rr).toFixed(1):"—"],["Triggered",r.trig_date?r.trig_date.slice(0,10):"not yet"]];
+  if(!await appConfirm(`Places a live IG working order on your own IG account at these levels. This is a real order.`,
+                       {title:`Create a LIVE IG order for ${disp(tk)}?`,ok:"Create order",rows}))return;
+  fetch("/api/place-order",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},
+        body:JSON.stringify({ticker:tk,levels:{entry:r.entry,stop:r.stop,target:r.target}})})
+    .then(x=>x.json().then(j=>({ok:x.ok,j})))
     .then(({ok,j})=>{if(!ok||!j.ok){alert("Not placed: "+(j.error||j.status||"unknown"));return;}
       alert(`${disp(tk)} order placed (${j.status||'ok'}). It will appear in Order (Operations).`);
-      IGWO.add(tk);renderPreorders();})
+      IGWO.add(tk);render();})
     .catch(()=>alert("Placement failed — try again."));
 }
 
