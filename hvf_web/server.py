@@ -1927,6 +1927,11 @@ def api_records():
                 row = recs[-1]
                 pick = _report_setup(viewer, row.get("ticker"), setups_map.get(row.get("ticker")),
                                      row.get("mcap"), viewer_limits)
+                # The viewer's own market switches and direction/location filters, as the page applies them
+                # (tradeVisible), so the server's report count matches the screen (owner 2026-10-10: 42 here
+                # vs 29 shown -- all 13 in markets he had switched off).
+                if pick and not _user_trade_allows(viewer, dict(row, direction=pick["direction"])):
+                    pick = None
                 if pick:
                     # The setup the owner acts on: newest open trigger that passed his limits on its
                     # trigger date. Its levels and trigger-date measures replace the scan's view.

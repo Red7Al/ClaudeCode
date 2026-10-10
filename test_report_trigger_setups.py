@@ -294,3 +294,20 @@ def test_without_a_summary_file_the_cells_stay_blank(monkeypatch):
     monkeypatch.setattr(server, "_summary_section", lambda name, snap=None: None)
     r = _records(monkeypatch, {"ARM": [ARM_18_SEP]})
     assert r.get("current_price") is None and r.get("pe") is None
+
+
+# ── the viewer's market switches apply on the server too (owner 2026-10-10) ───────────────────────────
+# MEASURED on the live page: 42 report rows from the server, 29 on screen -- all 13 hidden by markets the
+# owner had switched off. The server now applies the same gate, so its count is the screen's.
+
+def test_a_switched_off_market_is_not_on_the_report(monkeypatch):
+    monkeypatch.setattr(server, "_user_trade_allows", lambda name, rec: rec.get("ticker") != "ARM")
+    r = _records(monkeypatch, {"ARM": [ARM_18_SEP]})
+    assert r["report_ok"] is False
+
+
+def test_the_gate_is_asked_with_the_reported_setups_direction(monkeypatch):
+    seen = []
+    monkeypatch.setattr(server, "_user_trade_allows", lambda name, rec: seen.append(rec["direction"]) or True)
+    _records(monkeypatch, {"ARM": [{**ARM_18_SEP, "direction": "BEAR"}]})
+    assert seen == ["BEAR"]
