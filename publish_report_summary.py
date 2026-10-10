@@ -45,9 +45,46 @@ def build(snap: dict) -> dict:
     }
     if sections["open_setups"] is None:
         raise RuntimeError("open trigger setups could not be read -- refusing to publish a summary without them")
+    sections["report_extras"] = report_extras(snap, sections["open_setups"])
     return {"generated_utc": snap.get("generated_utc"),
             "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "sections": sections}
+
+
+def report_extras(snap: dict, open_setups: dict) -> dict:
+    """Now, P/E and Insider % for open setups the current scan does not carry (2026-10-10).
+
+    Owner 2026-10-09: "Missing data in scanner for Now, Dist-Entry and other e.g. P/E". MEASURED: 32 of
+    the 41 Scanner Report rows were open setups from the stored history (kept up to 90 days since
+    2026-10-08) whose instrument has no setup in today's scan, so the scan never fetched their price or
+    fundamentals. From STORED data only -- a live yfinance fetch of ~331 instruments got this machine
+    rate-limited by Yahoo (MEASURED 2026-10-10):
+      Now          latest close in price_history. The scan's Now is its own download at scan time, so
+                   this can trail it by up to a trading day (MEASURED: TSCO.L 500.4 stored vs 503.8 scan).
+      P/E, Ins %   the daily fundamentals store, through the scan's own rules (pe_of, insider_pct_of).
+    Broker is not filled: it needs the per-instrument analyst fetch the scan does live."""
+    from hvf_web.build_snapshot import pe_of
+    from quality_report import insider_pct_of
+    import web_store
+    priced = {r.get("ticker") for r in snap.get("records") or [] if r.get("current_price") is not None}
+    need = sorted(t for t, v in (open_setups or {}).items() if v and t not in priced)
+    out = {t: {} for t in need}
+    if not need:
+        return out
+    from db_pool import get_db
+    db = get_db()
+    try:
+        for tk, close in db.run("select distinct on (ticker) ticker, close from price_history "
+                                "where ticker = any(:t) and close is not null "
+                                "order by ticker, bar_date desc", t=need) or []:
+            out[tk]["current_price"] = float(close)
+    finally:
+        db.close()
+    funds = (web_store.load_json_store("fundamentals_by_ticker") or {}).get("records") or {}
+    for tk in need:
+        kpis = (funds.get(tk) or {}).get("kpis") or {}
+        out[tk].update(pe=pe_of(kpis), insider_pct=insider_pct_of(kpis))
+    return out
 
 
 def _upload(local_path: str, generated_utc: str) -> None:

@@ -257,3 +257,40 @@ def test_the_page_tells_the_user_when_triggered_rows_are_hidden():
     html = __import__("client_source").client_source()
     assert "REPORT_UNAVAILABLE=!!j.report_unavailable" in html
     assert "Triggered setups hidden" in html
+
+
+# ── Now / P/E / Insider % / Broker / To target for setups the scan does not carry (2026-10-10) ─────────
+# Owner 2026-10-09: "Missing data in scanner for Now, Dist-Entry and other e.g. P/E". MEASURED: 32 of 41
+# report rows were open setups from the stored history with no setup in today's scan, so those cells
+# were blank. publish_report_summary.py builds them in Actions; the route fills only what is blank.
+
+def test_blank_cells_are_filled_from_the_summary_file(monkeypatch):
+    monkeypatch.setattr(server, "_summary_section", lambda name, snap=None: (
+        {"ARM": {"current_price": 301.5, "pe": 88.2, "insider_pct": 1.4, "broker": {"buys": 9}}}
+        if name == "report_extras" else None))
+    r = _records(monkeypatch, {"ARM": [{**ARM_18_SEP, "h1_date": "2026-04-01"}]})
+    assert (r["current_price"], r["pe"], r["insider_pct"], r["broker"]) == (301.5, 88.2, 1.4, {"buys": 9})
+    assert r["months_to_go"] is not None and r["months_to_go"] > 5
+
+
+def test_the_scans_own_values_are_never_overridden(monkeypatch):
+    monkeypatch.setattr(server, "_summary_section", lambda name, snap=None: (
+        {"ARM": {"current_price": 1.0, "pe": 1.0}} if name == "report_extras" else None))
+    snap_price = {"current_price": 300.0, "pe": 70.0}
+    orig = server._load_snapshot
+    r = None
+    def _snap():
+        return {"generated_utc": "2026-10-08T05:11:49", "records": [
+            {"ticker": "ARM", "name": "Arm", "has_signal": True, "status": "TRIGGERED", "direction": "BULL",
+             "entry": 290.21, "stop": 278.64, "target": 518.02, "rr": 19.69, "quality": 45,
+             "timeframe": "daily-240", **snap_price}]}
+    _records(monkeypatch, {"ARM": [ARM_18_SEP]})                 # wires everything else
+    monkeypatch.setattr(server, "_load_snapshot", _snap)
+    r = server.app.test_client().get("/api/records", headers={"X-Auth": "tok"}).get_json()["records"][0]
+    assert (r["current_price"], r["pe"]) == (300.0, 70.0)
+
+
+def test_without_a_summary_file_the_cells_stay_blank(monkeypatch):
+    monkeypatch.setattr(server, "_summary_section", lambda name, snap=None: None)
+    r = _records(monkeypatch, {"ARM": [ARM_18_SEP]})
+    assert r.get("current_price") is None and r.get("pe") is None

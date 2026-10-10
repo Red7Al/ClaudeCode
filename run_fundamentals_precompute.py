@@ -97,6 +97,9 @@ def fetch_fundamentals(ticker: str) -> dict | None:
         "currentRatio": _num(info, "currentRatio"), "quickRatio": _num(info, "quickRatio"),
         "beta": _num(info, "beta"), "fiftyTwoWeekHigh": _num(info, "fiftyTwoWeekHigh"),
         "fiftyTwoWeekLow": _num(info, "fiftyTwoWeekLow"),
+        # For the Scanner Report's Insider % on setups today's scan does not carry (2026-10-10). Not shown
+        # in the Fundamentals panel, which lists a fixed set of keys.
+        "heldPercentInsiders": _num(info, "heldPercentInsiders"),
     }
     if not any(v is not None for v in kpis.values()):
         return None          # an all-null card is not worth storing over a good older copy

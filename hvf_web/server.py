@@ -1900,6 +1900,9 @@ def api_records():
         recs = []
         mcaps = _mcap_map()
         trigdates = _snapshot_trigger_dates(snap)
+        # Now / P/E / Insider % / Broker for open setups today's scan does not carry -- built in Actions by
+        # publish_report_summary.py (2026-10-10). No file for this snapshot: those cells stay blank.
+        extras = _summary_section("report_extras", snap) or {}
         for r in snap.get("records", []):
             w = wk52.get(r.get("ticker")) or (None, None)
             current = live_metrics.get(r.get("ticker"), {})
@@ -1932,6 +1935,12 @@ def api_records():
                                                         "rr", "quality", "trig_date", "rvol", "volume_score",
                                                         "above_vwap", "atr_expanding", "h1_date", "h3_date",
                                                         "l3_date")})
+                    for k, v in (extras.get(row.get("ticker")) or {}).items():
+                        if row.get(k) is None and v is not None:
+                            row[k] = v
+                    if row.get("months_to_go") is None and pick.get("h1_date"):
+                        from hvf_web.build_snapshot import _months_to_go
+                        row["months_to_go"] = _months_to_go({"h1_date": pick["h1_date"]})
                 elif row.get("status") == "TRIGGERED":
                     row["report_ok"] = False      # triggered, but no open setup passed on its trigger date
         # Canonical market list (user 2026-07-31, P-15) — drives the Scanner "Refresh a choice of markets"

@@ -74,7 +74,8 @@ def test_every_section_the_builder_writes_is_read_by_a_helper():
     src = inspect.getsource(server)
     built = set(__import__("re").findall(r'"(\w+)": server\._', inspect.getsource(pub.build)))
     read = set(__import__("re").findall(r'_summary_section\("(\w+)"', src))
-    assert built == read and len(built) == 9, (built, read)
+    built |= set(__import__("re").findall(r'sections\["(\w+)"\] = ', inspect.getsource(pub.build)))
+    assert built == read and len(built) == 10, (built, read)
 
 
 def test_a_deploy_never_ships_a_local_summary_over_the_hosts():
@@ -123,3 +124,24 @@ def test_no_positions_means_no_lookup(monkeypatch):
     monkeypatch.setattr(ig_shim, "get_open_positions", lambda: [])
     monkeypatch.setattr("db_pool.get_db", lambda: pytest.fail("the database was read with nothing held"))
     assert server.app.test_client().get("/api/positions", headers={"X-Auth": "t"}).get_json() == {"positions": {}}
+
+
+def test_report_extras_come_from_stored_data_through_the_scans_rules(monkeypatch):
+    """Only setups the scan has no price for; Now = latest stored close; P/E and Insider % through
+    pe_of / insider_pct_of on the stored fundamentals. No live yfinance (it rate-limits, MEASURED)."""
+    import publish_report_summary as pub
+    import web_store
+
+    class _Db:
+        def run(self, sql, **k):
+            assert "distinct on (ticker)" in sql and k["t"] == ["AAF.L"]
+            return [("AAF.L", 309.6)]
+
+        def close(self):
+            pass
+    monkeypatch.setattr("db_pool.get_db", lambda: _Db())
+    monkeypatch.setattr(web_store, "load_json_store", lambda k: {"records": {"AAF.L": {"kpis": {
+        "trailingPE": 20.728573, "forwardPE": 11.1, "heldPercentInsiders": 0.79668}}}})
+    snap = {"records": [{"ticker": "ZS", "current_price": 216.8}, {"ticker": "AAF.L", "current_price": None}]}
+    out = pub.report_extras(snap, {"ZS": [{}], "AAF.L": [{}], "NONE": []})
+    assert out == {"AAF.L": {"current_price": 309.6, "pe": 20.7, "insider_pct": 79.668}}

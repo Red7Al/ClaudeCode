@@ -155,6 +155,13 @@ def _derive_rules(r: dict) -> list:
     return rules
 
 
+def pe_of(info: dict):
+    """The Scanner's P/E: trailing, else forward, 1 dp, positive only. Also read by publish_report_summary.py
+    from the stored fundamentals (same yfinance keys), so the two can never disagree (2026-10-10)."""
+    pe = (info or {}).get("trailingPE") or (info or {}).get("forwardPE")
+    return round(pe, 1) if isinstance(pe, (int, float)) and pe > 0 else None
+
+
 def _months_to_go(r: dict):
     """Funnel age in months — the H1 pivot date to now (how long the coil has been forming). The old
     funnel_span_weeks field the engine never set, so this was empty across the board (user 2026-06-27)."""
@@ -291,7 +298,7 @@ def build(markets=None, scan_results=None, progress_cb=None):
                 info = yf.Ticker(YAHOO_MAP.get(tk, tk)).info or {}
             except Exception:
                 info = {}
-            pe = info.get("trailingPE") or info.get("forwardPE")
+            pe = pe_of(info)
             broker = None
             if f.get("analyst_rated"):
                 broker = {"buys": f.get("analyst_buys"), "holds": f.get("analyst_holds"),
@@ -303,7 +310,7 @@ def build(markets=None, scan_results=None, progress_cb=None):
                 "sector": f.get("sector") or _sector_of(tk),   # live fundamentals, else the cache (P-21b)
                 "status": r.get("hvf_signal"),
                 "quality": r.get("pattern_quality"),
-                "pe": round(pe, 1) if isinstance(pe, (int, float)) and pe > 0 else None,
+                "pe": pe,
                 "timeframe": r.get("hvf_timeframe"),
                 "months_to_go": _months_to_go(r),
                 "rr": r.get("risk_reward"),

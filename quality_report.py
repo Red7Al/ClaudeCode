@@ -227,6 +227,13 @@ def _load_source_overrides() -> dict:
     return _OVERRIDES_CACHE
 
 
+def insider_pct_of(info: dict):
+    """Insider ownership % from yfinance's heldPercentInsiders (a fraction); None when absent or 0. Also
+    read by publish_report_summary.py from the stored fundamentals (2026-10-10) -- one rule."""
+    ins = (info or {}).get("heldPercentInsiders")
+    return ins * 100 if isinstance(ins, (int, float)) and ins > 0 else None
+
+
 def fundamentals(ticker: str) -> dict:
     """Sector-aware fundamentals. Missing or sector-inappropriate factors come back None."""
     import yfinance as yf
@@ -295,8 +302,7 @@ def fundamentals(ticker: str) -> dict:
         f["analyst_buys"] = f["analyst_holds"] = f["analyst_sells"] = f["analyst_rated"] = f["analyst_trend"] = None
     f["mcap"] = info.get("marketCap")
     f["industry"] = info.get("industry")
-    ins = info.get("heldPercentInsiders")
-    f["insider_pct"] = ins * 100 if isinstance(ins, (int, float)) and ins > 0 else None
+    f["insider_pct"] = insider_pct_of(info)
     # Insider stake as a £/$ VALUE (user 2026-06-14: a % alone misleads on a big-cap —
     # 0.1% of a giant market cap is still a large sum).
     f["insider_value"] = (ins * f["mcap"]) if (f.get("insider_pct") and f.get("mcap")) else None
