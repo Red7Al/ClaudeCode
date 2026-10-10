@@ -45,7 +45,11 @@ def build(snap: dict) -> dict:
     }
     if sections["open_setups"] is None:
         raise RuntimeError("open trigger setups could not be read -- refusing to publish a summary without them")
-    sections["report_extras"] = report_extras(snap, sections["open_setups"])
+    try:
+        sections["report_extras"] = report_extras(snap, sections["open_setups"])
+    except Exception as exc:       # optional: a failure here must not cost the whole file (code review)
+        print(f"report_extras failed, published without it: {exc}")
+        sections["report_extras"] = {}
     return {"generated_utc": snap.get("generated_utc"),
             "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "sections": sections}
@@ -74,8 +78,11 @@ def report_extras(snap: dict, open_setups: dict) -> dict:
     from db_pool import get_db
     db = get_db()
     try:
+        # Only a close from the last 7 days counts as Now: an instrument whose prices stopped updating
+        # must show no Now rather than an old close presented as current (code review 2026-10-10).
         for tk, close in db.run("select distinct on (ticker) ticker, close from price_history "
                                 "where ticker = any(:t) and close is not null "
+                                "and bar_date >= current_date - 7 "
                                 "order by ticker, bar_date desc", t=need) or []:
             out[tk]["current_price"] = float(close)
     finally:

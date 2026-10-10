@@ -117,7 +117,7 @@ def test_an_empty_fetch_is_refused_rather_than_overwriting_a_good_copy(monkeypat
     monkeypatch.setattr(rfp, "fetch_broker", lambda t: None)
     written = []
     import web_store
-    monkeypatch.setattr(web_store, "load_json_store", lambda k: None)
+    monkeypatch.setattr(web_store, "read_json_store", lambda k: (True, None))
     monkeypatch.setattr(web_store, "save_json_store", lambda k, d: written.append(k) or True)
 
     assert rfp.build() == 2, "both payloads should be reported as failed"
@@ -131,7 +131,7 @@ def test_a_good_fetch_is_stored_under_both_keys(monkeypatch):
                                                        "available": 1})
     saved = {}
     import web_store
-    monkeypatch.setattr(web_store, "load_json_store", lambda k: None)     # no earlier copy to merge with
+    monkeypatch.setattr(web_store, "read_json_store", lambda k: (True, None))     # no earlier copy to merge with
     monkeypatch.setattr(web_store, "save_json_store", lambda k, d: saved.__setitem__(k, d) or True)
 
     assert rfp.build() == 0
@@ -187,7 +187,7 @@ def _prev_store(monkeypatch, funds, fetched_at, brokers=None):
     docs = {rfp.FUND_STORE_KEY: {"records": funds, "fetched_at": fetched_at},
             rfp.BROKER_STORE_KEY: {"records": brokers or {}}}
     saved = {}
-    monkeypatch.setattr(web_store, "load_json_store", lambda k: docs.get(k))
+    monkeypatch.setattr(web_store, "read_json_store", lambda k: (True, docs.get(k)))
     monkeypatch.setattr(web_store, "save_json_store", lambda k, d: saved.__setitem__(k, d) or True)
     return saved
 
@@ -215,3 +215,33 @@ def test_the_longest_unrefreshed_instruments_are_fetched_first(monkeypatch):
     monkeypatch.setattr(rfp, "fetch_broker", lambda t: None)
     rfp.build()
     assert order == ["NEW.L", "BP.L", "AAF.L"], "never fetched first, then oldest -- a cut-short run is finished next time"
+
+
+def test_a_store_read_outage_saves_nothing(monkeypatch):
+    """Code review 2026-10-10: an outage read as 'empty' would save only this run's partial fetches and
+    lose every other record."""
+    import web_store
+    saved = []
+    monkeypatch.setattr(web_store, "read_json_store", lambda k: (False, None))
+    monkeypatch.setattr(web_store, "save_json_store", lambda k, d: saved.append(k) or True)
+    monkeypatch.setattr(rfp, "universe", lambda: ["AAF.L"])
+    monkeypatch.setattr(rfp, "fetch_fundamentals", lambda t: {"currency": "GBp", "kpis": {"beta": 1}})
+    monkeypatch.setattr(rfp, "fetch_broker", lambda t: None)
+    assert rfp.build() == 2 and saved == []
+
+
+def test_an_instrument_yahoo_never_answers_does_not_stay_first(monkeypatch):
+    """Ordered by last ATTEMPT: a no-data instrument tried last night goes behind ones not tried since."""
+    import web_store
+    docs = {rfp.FUND_STORE_KEY: {"records": {}, "fetched_at": {"BP.L": 100.0}, "tried_at": {"NODATA.SZ": 500.0, "BP.L": 100.0}},
+            rfp.BROKER_STORE_KEY: {"records": {}}}
+    saved = {}
+    monkeypatch.setattr(web_store, "read_json_store", lambda k: (True, docs.get(k)))
+    monkeypatch.setattr(web_store, "save_json_store", lambda k, d: saved.__setitem__(k, d) or True)
+    monkeypatch.setattr(rfp, "universe", lambda: ["NODATA.SZ", "BP.L"])
+    order = []
+    monkeypatch.setattr(rfp, "fetch_fundamentals", lambda t: order.append(t) or ({"currency": "GBp", "kpis": {"beta": 1}} if t == "BP.L" else None))
+    monkeypatch.setattr(rfp, "fetch_broker", lambda t: None)
+    rfp.build()
+    assert order == ["BP.L", "NODATA.SZ"]
+    assert saved[rfp.FUND_STORE_KEY]["tried_at"]["NODATA.SZ"] > 500.0, "a failed attempt still counts as tried"

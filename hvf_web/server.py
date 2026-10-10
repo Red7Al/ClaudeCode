@@ -2915,6 +2915,10 @@ def _order_sig(tk, user):
         return None, False
     snap = _load_snapshot()
     setups = _open_trigger_setups(snap)
+    if setups is None and rec.get("status") == "TRIGGERED":
+        # The report hides every TRIGGERED row as unvetted when the trigger history cannot be read
+        # (api_records); an order must not place one either (code review 2026-10-10).
+        return None, False
     pick = None
     if setups:
         import trading_limits

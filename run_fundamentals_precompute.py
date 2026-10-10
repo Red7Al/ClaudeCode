@@ -192,12 +192,24 @@ def build(limit: int = 0, dry_run: bool = False) -> int:
     # the opposite of the last-known-values rule set on 2026-07-25 (P-03 L138). P/E changes slowly (owner
     # 2026-10-10: "P/E changes are infrequent"), so a record stays until a newer fetch replaces it, and the
     # longest-unrefreshed instruments go first: a run cut short by Yahoo is finished by the next ones.
-    prev = {key: (web_store.load_json_store(key) or {}) for key in (FUND_STORE_KEY, BROKER_STORE_KEY)}
+    # A READ OUTAGE IS NOT AN EMPTY STORE (code review 2026-10-10): merging over "nothing" would save only
+    # this run's partial fetches and lose every other record -- the regression this exists to stop.
+    prev = {}
+    for key in (FUND_STORE_KEY, BROKER_STORE_KEY):
+        available, doc = web_store.read_json_store(key)
+        if not available:
+            log.error("could not read %s; refusing to run rather than overwrite it with a partial set", key)
+            return 2
+        prev[key] = doc or {}
     fetched_at = dict(prev[FUND_STORE_KEY].get("fetched_at") or {})
-    tickers.sort(key=lambda t: fetched_at.get(t, 0.0))          # stable: never-fetched first, then oldest
+    # Order by the last ATTEMPT, success or not, so instruments Yahoo has no data for do not sit at the head
+    # of every run spending the budget before the rate limit (code review 2026-10-10).
+    tried_at = dict(prev[FUND_STORE_KEY].get("tried_at") or {})
+    tickers.sort(key=lambda t: tried_at.get(t, fetched_at.get(t, 0.0)))   # never tried first, then oldest
     log.info("Fetching fundamentals + broker for %d equity instruments (oldest first)", len(tickers))
     funds, brokers, t0 = {}, {}, time.time()
     for i, tk in enumerate(tickers, 1):
+        tried_at[tk] = time.time()
         try:
             f = fetch_fundamentals(tk)
             if f:
@@ -232,6 +244,7 @@ def build(limit: int = 0, dry_run: bool = False) -> int:
         doc = {"built_at": time.time(), "count": len(merged), "records": merged}
         if key == FUND_STORE_KEY:
             doc["fetched_at"] = {t: ts for t, ts in fetched_at.items() if t in merged}
+            doc["tried_at"] = tried_at
         if web_store.save_json_store(key, doc):
             log.info("  %s: %d fetched now, %d stored in all -> %s", name, len(data), len(merged), key)
         else:

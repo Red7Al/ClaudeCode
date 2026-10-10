@@ -162,3 +162,21 @@ def test_fundamentals_still_computes_the_insider_value(monkeypatch):
     monkeypatch.setattr("yfinance.Ticker", lambda tk: _T())
     f = qr.fundamentals("AAPL")
     assert f["insider_pct"] == 5.0 and f["insider_value"] == 100_000_000
+
+
+def test_a_failing_extras_step_does_not_cost_the_whole_summary(monkeypatch):
+    import publish_report_summary as pub
+    from hvf_web import server as srv
+    for name in ("_open_trigger_setups", "_stored_metrics", "_live_instrument_metrics", "_snapshot_52wk",
+                 "_snapshot_trigger_dates", "_snapshot_rvol", "_snapshot_volscore", "_live_vwap_atr"):
+        monkeypatch.setattr(srv, name, lambda snap: {})
+    monkeypatch.setattr(srv, "_mcap_map", lambda: {})
+    monkeypatch.setattr(pub, "report_extras", lambda snap, s: 1 / 0)
+    out = pub.build({"generated_utc": "G", "records": []})
+    assert out["sections"]["report_extras"] == {} and "open_setups" in out["sections"]
+
+
+def test_only_a_recent_close_counts_as_now():
+    import inspect
+    import publish_report_summary as pub
+    assert "bar_date >= current_date - 7" in inspect.getsource(pub.report_extras)

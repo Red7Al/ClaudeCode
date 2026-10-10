@@ -5505,15 +5505,16 @@ async function createOrder(tk){
   const r=DATA.find(x=>x.ticker===tk)||{};
   if(r.entry==null||r.stop==null||r.target==null){alert(`${disp(tk)}: no entry/stop/target on screen to order from.`);return;}
   const dir=r.direction==="BULL"?"BUY":"SELL";
-  const rows=[["Direction",dir],["Entry",f2(r.entry)],["Stop",f2(r.stop)],["Target",f2(r.target)],
+  const ex=v=>String(+v);   // the exact value sent -- f2's 2 dp misstates FX and sub-1 prices (code review)
+  const rows=[["Direction",dir],["Entry",ex(r.entry)],["Stop",ex(r.stop)],["Target",ex(r.target)],
               ["R:R",r.rr!=null?(+r.rr).toFixed(1):"—"],["Triggered",r.trig_date?r.trig_date.slice(0,10):"not yet"]];
-  if(!await appConfirm(`Places a live IG working order on your own IG account at these levels. This is a real order.`,
+  if(!await appConfirm(`Places a live IG working order on your own IG account at these levels. This is a real order. IG may widen the stop to its minimum distance; you can edit the order in IG.`,
                        {title:`Create a LIVE IG order for ${disp(tk)}?`,ok:"Create order",rows}))return;
   fetch("/api/place-order",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},
         body:JSON.stringify({ticker:tk,levels:{entry:r.entry,stop:r.stop,target:r.target}})})
     .then(x=>x.json().then(j=>({ok:x.ok,j})))
     .then(({ok,j})=>{if(!ok||!j.ok){alert("Not placed: "+(j.error||j.status||"unknown"));return;}
-      alert(`${disp(tk)} order placed (${j.status||'ok'}). It will appear in Order (Operations).`);
+      alert(`${disp(tk)} order sent to IG (${j.status||'ok'}). Manage or edit it in IG.`);
       IGWO.add(tk);render();})
     .catch(()=>alert("Placement failed — try again."));
 }

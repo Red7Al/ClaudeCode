@@ -138,3 +138,20 @@ def test_the_watching_branch_obeys_the_switch():
 def test_the_route_does_not_pass_the_preorder_threshold(wired):
     import inspect
     assert "preorder_threshold_pct" not in inspect.getsource(server.api_place_order)
+
+
+def test_no_order_when_the_trigger_history_cannot_be_read(wired, monkeypatch):
+    """Code review 2026-10-10: the report hides TRIGGERED rows as unvetted when the history is unreadable;
+    an order must not place one from the scan instead."""
+    monkeypatch.setattr(server, "_open_trigger_setups", lambda s: None)
+    r = _post({"entry": 290.21, "stop": 278.64, "target": 518.02})
+    assert r.status_code == 400 and wired == []
+
+
+def test_the_confirm_dialog_shows_the_exact_levels_sent():
+    """f2() rounds to 2 dp, which misstates FX and sub-1 prices; the dialog shows the values sent."""
+    js = open("hvf_web/app.js", encoding="utf-8").read()
+    start = js.index("async function createOrder(")
+    fn = js[start:js.index("\n}\n", start)]
+    assert "f2(r.entry)" not in fn and 'ex(r.entry)' in fn and "String(+v)" in fn
+    assert "Order (Operations)" not in fn, "that tab is hidden; the message must not send the owner there"
