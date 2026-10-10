@@ -110,6 +110,8 @@ const num=v=>v===""||v==null?null:parseFloat(v);
 // carried their own UNCOLOURED copy instead of calling it, which is how they drifted apart. Kept here
 // with the other shared cell formatters so it is found before a fifth copy gets written.
 // null/undefined is UNKNOWN and must never render as a cross -- a missing metric is not a failed one.
+// Trigger value then today's in ONE cell (owner 2026-10-09: "RVOL Then->Now"), replacing two columns each.
+const _thenNow=(then,now)=>`<span style="white-space:nowrap">${then} <span class="muted">→</span> ${now}</span>`;
 const _tickCross=v=>v==null?'<span class="muted">—</span>':v?'<span style="color:var(--bull);font-weight:700">✓</span>':'<span style="color:var(--bear);font-weight:700">✗</span>';
 // The Introduction example image failed to load. SAY SO. The previous handler was
 // onerror="this.style.display='none'", which made a broken picture and a page that never had one look
@@ -606,7 +608,7 @@ function render(){
     ${_favCell(r.ticker)}<td>${nm40(r.name)}</td>
     <td>${r.direction?`<span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span>`:''}</td>
     <td>${ob(_mcapFmt(r.mcap))}</td>
-    <td>${ob(rvolCell(r.rvol))}</td><td>${ob(rvolCell(r.current_rvol))}</td><td>${ob(_tickCross(r.above_vwap))}</td><td>${ob(_tickCross(r.current_above_vwap))}</td><td>${ob(_tickCross(r.atr_expanding))}</td><td>${ob(_tickCross(r.current_atr_expanding))}</td><td>${ob(volScoreCell(r.volume_score))}</td>
+    <td>${ob(_thenNow(rvolCell(r.rvol),rvolCell(r.current_rvol)))}</td><td>${ob(_thenNow(_tickCross(r.above_vwap),_tickCross(r.current_above_vwap)))}</td><td>${ob(_thenNow(_tickCross(r.atr_expanding),_tickCross(r.current_atr_expanding)))}</td><td>${ob(volScoreCell(r.volume_score))}</td>
     <td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td><td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td>
     <td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${ob(r.status||'')}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td><td>${ob(r.days_since??'')}</td>
@@ -617,7 +619,7 @@ function render(){
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td>
     <td>${r.sector||''}</td><td><b>${disp(r.ticker)}</b></td><td>${AUTH&&isPreorder(r)?'<span style="color:var(--bull)" title="In your My Pre-orders">✓</span>':''}</td></tr>`).join("")
-    || `<tr><td colspan="31" class="empty">${REPORT_UNAVAILABLE?"Triggered setups cannot be checked against your filters right now (trigger history unavailable) — none are shown rather than an unchecked list.":"No setups match the filters."}</td></tr>`;
+    || `<tr><td colspan="28" class="empty">${REPORT_UNAVAILABLE?"Triggered setups cannot be checked against your filters right now (trigger history unavailable) — none are shown rather than an unchecked list.":"No setups match the filters."}</td></tr>`;
   document.querySelectorAll("#rows tr[data-t]").forEach(tr=>tr.onclick=()=>{
     if(LIMITED){showTab("scanner");$("loginpanel").classList.remove("hidden");$("view-scanner").classList.add("hidden");return;}
     tr.dataset.t===SEL?closeDetail():showDetail(tr.dataset.t);});

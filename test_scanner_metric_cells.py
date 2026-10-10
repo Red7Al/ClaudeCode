@@ -1,7 +1,8 @@
 """The Scanner Report's RVOL, VWAP and ATR columns -- AT TRIGGER and NOW -- EXECUTED rather than read.
 
 Owner 2026-10-08: each measure is shown twice, at the trigger bar (what his filters judge, fixed once the
-setup triggers) and on the latest bar (information only), in separate titled columns. Before that one cell
+setup triggers) and on the latest bar (information only). Owner 2026-10-09: six columns were "very busy" --
+"RVOL Then->Now" -- so each measure is now ONE column showing trigger -> now, sorted by the trigger value. Before that one cell
 showed the trigger value and fell back to today's reading with a "now" mark when it was missing; the
 dedicated now column replaces that fallback, so a trigger column can never show a borrowed value.
 
@@ -31,7 +32,7 @@ def _helper(name):
     return APP[start:end]
 
 
-SRC = _helper("rvolCell") + "\n" + _helper("_tickCross")
+SRC = _helper("rvolCell") + "\n" + _helper("_tickCross") + "\n" + _helper("_thenNow")
 
 
 def _render(expr):
@@ -53,18 +54,28 @@ TRIGGER_THEN_NOW = [("rvolCell(r.rvol)", "rvolCell(r.current_rvol)"),
                     ("_tickCross(r.atr_expanding)", "_tickCross(r.current_atr_expanding)")]
 
 
-def test_each_measure_has_a_trigger_cell_then_a_now_cell():
+def test_each_measure_is_one_cell_showing_trigger_then_now():
     row = _scanner_row()
-    pos = [row.index(c) for pair in TRIGGER_THEN_NOW for c in pair]
-    assert pos == sorted(pos), "cells must run RVOL trigger, RVOL now, VWAP trigger, VWAP now, ATR trigger, ATR now"
+    for trig, now in TRIGGER_THEN_NOW:
+        assert f"_thenNow({trig},{now})" in row, f"{trig} -> {now} must be one cell, trigger first"
+    pos = [row.index(f"_thenNow({t},") for t, _ in TRIGGER_THEN_NOW]
+    assert pos == sorted(pos), "cells must run RVOL, VWAP, ATR"
 
 
-def test_the_headings_say_trigger_and_now_in_the_same_order():
+def test_the_headings_are_one_then_now_column_each_sorted_by_the_trigger_value():
     i = HTML.index('<th data-k="rvol"')
-    keys = re.findall(r'<th data-k="([^"]+)"[^>]*>[^<]*<span[^>]*>(trigger|now)</span>', HTML[i:i + 3000])[:6]
-    assert keys == [("rvol", "trigger"), ("current_rvol", "now"), ("above_vwap", "trigger"),
-                    ("current_above_vwap", "now"), ("atr_expanding", "trigger"),
-                    ("current_atr_expanding", "now")]
+    heads = re.findall(r'<th data-k="([^"]+)"[^>]*>(\w+) <span[^>]*>([^<]+)</span>', HTML[i:i + 3000])[:3]
+    assert heads == [("rvol", "RVOL", "then→now"), ("above_vwap", "VWAP", "then→now"),
+                     ("atr_expanding", "ATR", "then→now")], heads
+    for gone in ("current_rvol", "current_above_vwap", "current_atr_expanding"):
+        assert f'data-k="{gone}"' not in HTML, f"the separate {gone} column is gone"
+
+
+def test_the_cell_renders_trigger_arrow_now():
+    html = _render("_thenNow(rvolCell(1.84),rvolCell(0.9))")
+    assert html.index("1.8×") < html.index("→") < html.index("0.9×")
+    html = _render("_thenNow(_tickCross(true),_tickCross(null))")
+    assert html.index("✓") < html.index("→") < html.index("—"), "never measured today is a dash, not blank"
 
 
 def test_no_trigger_cell_falls_back_to_todays_value():

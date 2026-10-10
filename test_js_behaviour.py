@@ -3483,12 +3483,11 @@ def test_the_basis_is_stated_on_screen_and_not_only_in_a_tooltip():
 # each cell would be noise rather than information.
 
 def test_the_scanner_marks_vwap_and_atr_now_columns_as_current():
-    """Owner 2026-10-08: VWAP and ATR each have an AT-TRIGGER column and a NOW column. The now columns must
-    say they are today's reading; the trigger columns must say they are the trigger bar's."""
+    """Owner 2026-10-08: VWAP and ATR are shown at the trigger AND now. Owner 2026-10-09 ("RVOL Then->Now"):
+    one column each, trigger -> now, so each heading must say then->now."""
     html = client_html()
     header = html[html.index('<th data-k="above_vwap"'):html.index('<th data-k="volume_score"')]
-    assert header.count('>now</span>') == 2, "VWAP now and ATR now must both be marked"
-    assert header.count('>trigger</span>') == 2, "VWAP and ATR at trigger must both be marked"
+    assert header.count('>then→now</span>') == 2, "VWAP and ATR must both be marked then->now"
 
 
 def test_each_vwap_and_atr_tooltip_names_its_bar():
@@ -3506,7 +3505,7 @@ def test_rvol_and_volumescore_still_describe_themselves_as_trigger_bar():
     for key in ("rvol", "volume_score"):
         th = html[html.index(f'<th data-k="{key}"'):]
         th = th[:th.index(">")]
-        assert "trigger bar" in th or "break bar" in th, \
+        assert "trigger bar" in th.lower() or "break bar" in th.lower(), \
             f"{key} is a break-bar measure and its tooltip must still say so"
         assert ">now</span>" not in th, f"{key} is not always current; only untriggered rows are marked"
 
