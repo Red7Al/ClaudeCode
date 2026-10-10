@@ -211,11 +211,11 @@ def test_scanner_actionable_not_history_note_is_prominent_and_documented():
     assert "not a history" in guide_html and "actionable" in guide_html
 
 
-def test_scanner_defaults_to_absolute_distance_from_entry_ascending_and_refresh_errors_are_visible():
+def test_scanner_defaults_to_days_since_ascending_and_refresh_errors_are_visible():
+    """Owner 2026-10-10: "on scanner report - order by days since ASCENDING" (was |Dist->Entry| ascending)."""
     html = __import__("client_source").client_source()
 
-    assert 'sortK="dist_entry", sortDir=1' in html
-    assert "ABS(Dist→Entry) ascending (closest first)" in html
+    assert 'sortK="days_since", sortDir=1' in html
     assert "sorted closest-first" in html
     assert "!x.ok||!j.started" in html
     assert "j.base_generated||null" in html

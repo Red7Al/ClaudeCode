@@ -1,4 +1,4 @@
-let DATA=[], SEL=null, sortK="dist_entry", sortDir=1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: ABS(Dist→Entry) ascending (closest first)
+let DATA=[], SEL=null, sortK="days_since", sortDir=1, POS={}, PUB={}, IGWO=new Set(), signalOnly=true;   // default: Days since ascending -- newest trigger first (owner 2026-10-10: "order by days since ASCENDING")
 // Has the snapshot fetch come back yet? DATA starts empty, so without this a tab rendering before the
 // fetch resolves shows an empty table that looks exactly like "nothing matched" -- the user could not
 // tell a slow load from a genuinely empty result (user 2026-08-18: "when preorders loads to screen
@@ -597,8 +597,9 @@ function renderViz(rows){
 function render(){
   const _sv=r=>sortK==="_fav"?(FAVS.has(disp(r.ticker))?1:0):sortK==="dist_entry"?(r.dist_entry==null?1e9:Math.abs(r.dist_entry)):r[sortK];   // ★ sortable; Dist→Entry sorts by |distance| (user 2026-07-11)
   const rows=DATA.filter(pass).sort((a,b)=>{
-    const x=_sv(a),y=_sv(b);const av=x==null?-1e9:x,bv=y==null?-1e9:y;
-    return (av<bv?-1:av>bv?1:0)*sortDir;});
+    // Blank values sort LAST in either direction (2026-10-10): as -1e9 they led every ascending sort.
+    const x=_sv(a),y=_sv(b);if(x==null||y==null)return x==null&&y==null?0:x==null?1:-1;
+    return (x<y?-1:x>y?1:0)*sortDir;});
   const _nT=rows.filter(r=>r.status==="TRIGGERED").length,_nR=rows.filter(r=>r.status==="READY").length,_nD=rows.filter(r=>r.status==="DEVELOPING").length;
   const _af=_activeScannerFilters();
   $("count").innerHTML=`${REPORT_UNAVAILABLE?'<b style="color:var(--bear)">Triggered setups hidden — trigger history unavailable, so they cannot be checked against your filters.</b> ':''}<b style="font-size:15px;color:var(--fg)">${rows.length}</b> instruments visible <span class="muted">of ${DATA.length} scanned (${_nT} TRIGGERED · ${_nR} READY · ${_nD} DEVELOPING). Click a row to open its detail; use Filters or the charts to narrow.</span>`+(_af.length?`<div style="font-size:12px;margin-top:3px">Narrowed by <b>${_af.map(_esc).join("</b> · <b>")}</b></div>`:"")+(LIMITED?` <b style="color:#d29922">· <a href="#" onclick="showLogin();return false" style="color:#d29922;text-decoration:underline">log in to unlock the full data</a></b>`:"");
