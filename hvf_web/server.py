@@ -6543,7 +6543,8 @@ def api_ig_closed():
             fallback = []
             for tk, dr, sz, op, cp, pl, plp, oa, ca, reason in rows:
                 fallback.append({
-                    "date": ca.isoformat() if ca else "", "instrument": tk, "direction": dr,
+                    "date": ca.isoformat() if ca else "", "opened": oa.isoformat() if oa else "",
+                    "instrument": tk, "direction": dr,
                     "size": float(sz) if sz is not None else None,
                     "open_level": float(op) if op is not None else None,
                     "close_level": float(cp) if cp is not None else None,

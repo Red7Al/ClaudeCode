@@ -5721,6 +5721,7 @@ async function cancelBreachingOrders(btn){
 // writer, it acts only on the day a position opened, and it is off unless the account owner switches it
 // on. See docs and the module header for why same-day is the whole safety property.
 // ------------------------------------------------------------------------------------------------------
+let igtlDefaulted = false;
 let IG_PANEL = "open", IG_AUTO = null, igaSortK = "closed_at", igaSortDir = -1;
 
 function showIgPanel(which){
@@ -5732,6 +5733,10 @@ function showIgPanel(which){
   });
   if(which==="autoclosed"&&IG_AUTO===null)loadAutoClosed();
   if(which==="txbreach"&&IG_TXAUDIT===null)loadPositionFilterAudit();
+  // First open defaults From to 30 days ago (owner 2026-10-11, closed history added). MEASURED on the
+  // account that day: 605 rows over the year IG returns, 29 in the last 30 days. Clear shows them all.
+  if(which==="timeline"&&!igtlDefaulted&&$("igtl-from")&&!$("igtl-from").value){
+    igtlDefaulted=true;$("igtl-from").value=new Date(Date.now()-30*86400000).toISOString().slice(0,10);}
   if(which==="timeline")paintIgTimeline();
 }
 
@@ -5742,15 +5747,26 @@ function showIgPanel(which){
 // its own currency), a bar from the day it opened to today. The sign is in the label and the tooltip, so
 // profit/loss never rests on colour alone; the Open transactions table is the table view of the same data.
 // ------------------------------------------------------------------------------------------------------
-function igTimelineRows(pos){
+function igTimelineRows(pos,closed){
+  const day=v=>{const d=String(v||"").slice(0,10);return /^\d{4}-\d{2}-\d{2}$/.test(d)?d:null;};
   const g={};
+  // Open: one row per instrument and direction (earliest open, P&L summed in its own currency).
   (pos||[]).forEach(p=>{
-    const k=(p.ticker||p.epic||p.name)+"|"+(p.direction||"");
+    const k="O|"+(p.ticker||p.epic||p.name)+"|"+(p.direction||"");
     const a=g[k]||(g[k]={name:p.name||p.ticker||p.epic||"?",direction:p.direction||"",currency:_igCurrency(p.currency),
-                         opened:null,profit:null,n:0});
-    const o=String(p.opened||"").slice(0,10);
-    if(/^\d{4}-\d{2}-\d{2}$/.test(o)&&(!a.opened||o<a.opened))a.opened=o;
+                         opened:null,closed:null,profit:null,n:0});
+    const o=day(p.opened); if(o&&(!a.opened||o<a.opened))a.opened=o;
     if(p.profit!=null&&Number.isFinite(+p.profit))a.profit=(a.profit||0)+(+p.profit);
+    a.n++;
+  });
+  // Closed (IG history, owner 2026-10-11): one row per instrument, direction, open day and close day --
+  // partial closes of one deal combine; realised P&L summed. Opened is IG's openDateUtc.
+  (closed||[]).forEach(c=>{
+    const o=day(c.opened), cl=day(c.date); if(!cl)return;
+    const k="C|"+(c.instrument||"")+"|"+(c.direction||"")+"|"+(o||cl)+"|"+cl+"|"+_igCurrency(c.currency);
+    const a=g[k]||(g[k]={name:c.instrument||"?",direction:c.direction||"",currency:_igCurrency(c.currency),
+                         opened:o||cl,closed:cl,profit:null,n:0});
+    if(c.pnl!=null&&Number.isFinite(+c.pnl))a.profit=(a.profit||0)+(+c.pnl);
     a.n++;
   });
   return Object.values(g).filter(r=>r.opened)
@@ -5758,12 +5774,16 @@ function igTimelineRows(pos){
 }
 function paintIgTimeline(){
   const el=$("ig-timeline"); if(!el)return;
-  const rows=igTimelineRows(IG_POS);
-  if(!rows.length){el.innerHTML=`<p class="muted">No open positions.</p>`;return;}
-  const DAY=86400000, today=new Date(new Date().toISOString().slice(0,10)+"T00:00:00Z").getTime();
-  const t0=Math.min(...rows.map(r=>Date.parse(r.opened+"T00:00:00Z"))), t1=today+DAY;
-  const W=1100, LW=360, R=12, T=26, RH=24, BH=12, H=T+rows.length*RH+8;
-  const x=t=>LW+(t-t0)/(t1-t0)*(W-LW-R);
+  const from=(($("igtl-from")||{}).value)||null, to=(($("igtl-to")||{}).value)||null;
+  const todayS=new Date().toISOString().slice(0,10);
+  // A row shows when its open period OVERLAPS the chosen dates (an open position runs to today).
+  const rows=igTimelineRows(IG_POS,IGCLOSED).filter(r=>(!to||r.opened<=to)&&(!from||(r.closed||todayS)>=from));
+  const loading=(IGCLOSED===null)?`<p class="muted" style="font-size:12px">Closed trades are still loading from IG history.</p>`:"";
+  if(!rows.length){el.innerHTML=loading+`<p class="muted">No positions in this period.</p>`;return;}
+  const DAY=86400000, P=d=>Date.parse(d+"T00:00:00Z"), today=P(todayS);
+  const t0=from?P(from):Math.min(...rows.map(r=>P(r.opened))), t1=(to?P(to):today)+DAY;
+  const W=1100, LW=380, R=12, T=26, RH=24, BH=12, H=T+rows.length*RH+8;
+  const x=t=>LW+(Math.max(t0,Math.min(t1,t))-t0)/(t1-t0)*(W-LW-R);
   const money=v=>v==null?"—":`${v>=0?"+":"−"}${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const col=v=>v==null?"var(--muted)":v>=0?"var(--bull)":"var(--bear)";
   const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -5774,27 +5794,26 @@ function paintIgTimeline(){
     ticks+=`<line x1="${xx}" x2="${xx}" y1="${T-6}" y2="${H-8}" stroke="var(--line)" stroke-width="1"/>`
          +`<text x="${xx}" y="${T-10}" font-size="10" fill="var(--muted)" text-anchor="middle">${MON[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}</text>`;
   }
-  const xt=x(today).toFixed(1);
-  ticks+=`<line x1="${xt}" x2="${xt}" y1="${T-6}" y2="${H-8}" stroke="var(--fg)" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/>`
-       +`<text x="${xt}" y="${T-10}" font-size="10" fill="var(--fg)" text-anchor="end">today</text>`;
+  if(today>=t0&&today<t1){const xt=x(today).toFixed(1);
+    ticks+=`<line x1="${xt}" x2="${xt}" y1="${T-6}" y2="${H-8}" stroke="var(--fg)" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/>`
+         +`<text x="${xt}" y="${T-10}" font-size="10" fill="var(--fg)" text-anchor="end">today</text>`;}
   const bars=rows.map((r,i)=>{
-    const y=T+i*RH, o=Date.parse(r.opened+"T00:00:00Z"), days=Math.round((today-o)/DAY);
-    const bx=x(o), bw=Math.max(4,x(t1)-bx);
-    const name=String(r.name).length>34?String(r.name).slice(0,33)+"…":String(r.name);
-    const tip=`${r.name} · ${r.direction} · opened ${r.opened} · ${days} day${days===1?"":"s"} open · P&L ${money(r.profit)} ${r.currency}`
-             +(r.n>1?` (${r.n} positions)`:"");
+    const y=T+i*RH, o=P(r.opened), endS=r.closed||todayS, e=P(endS)+DAY, days=Math.round((P(endS)-o)/DAY);
+    const bx=x(o), bw=Math.max(4,x(e)-bx);
+    const name=String(r.name).length>30?String(r.name).slice(0,29)+"…":String(r.name);
+    const tip=`${r.name} · ${r.direction} · opened ${r.opened} · `
+             +(r.closed?`closed ${r.closed} · ${days} day${days===1?"":"s"} · realised P&L`:`${days} day${days===1?"":"s"} open · P&L`)
+             +` ${money(r.profit)} ${r.currency}`+(r.n>1?` (${r.n} ${r.closed?"deals":"positions"})`:"");
     return `<g><title>${_esc(tip)}</title>`
       +`<rect x="0" y="${y}" width="${W}" height="${RH}" fill="transparent"/>`
-      +`<text x="6" y="${y+RH/2+4}" font-size="12" fill="var(--fg)">${_esc(name)}</text>`
+      +`<text x="6" y="${y+RH/2+4}" font-size="12" fill="${r.closed?"var(--muted)":"var(--fg)"}">${_esc(name)}${r.closed?" (closed)":""}</text>`
       +`<text x="${LW-10}" y="${y+RH/2+4}" font-size="12" font-weight="700" fill="var(--fg)" text-anchor="end">${money(r.profit)} <tspan font-weight="400" fill="var(--muted)">${_esc(r.currency)}</tspan></text>`
-      +`<rect x="${bx.toFixed(1)}" y="${(y+(RH-BH)/2).toFixed(1)}" width="${bw.toFixed(1)}" height="${BH}" rx="4" fill="${col(r.profit)}"/>`
+      +`<rect x="${bx.toFixed(1)}" y="${(y+(RH-BH)/2).toFixed(1)}" width="${bw.toFixed(1)}" height="${BH}" rx="4" fill="${col(r.profit)}"${r.closed?' opacity=".45"':""}/>`
       +`</g>`;
   }).join("");
-  const key=(c,t)=>`<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:10px;border-radius:3px;background:${c};display:inline-block"></span>${t}</span>`;
-  el.innerHTML=`<div class="muted" style="font-size:12px;margin:0 0 8px;display:flex;gap:16px;flex-wrap:wrap">`
-    +`${key("var(--bull)","In profit")}${key("var(--bear)","At a loss")}${key("var(--muted)","No current price")}`
-    +`<span>${rows.length} open instrument${rows.length===1?"":"s"} · bar = opened → today · P&L in each position's own currency</span></div>`
-    +`<div class="tablewrap" style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:760px;height:auto" role="img" aria-label="Open positions over time">${ticks}${bars}</svg></div>`;
+  const nOpen=rows.filter(r=>!r.closed).length;
+  el.innerHTML=loading+`<div class="muted" style="font-size:12px;margin:0 0 6px">${nOpen} open · ${rows.length-nOpen} closed · bar = opened → today (open) or → close date (closed) · P&L in each position's own currency</div>`
+    +`<div class="tablewrap" style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:760px;height:auto" role="img" aria-label="Open and closed positions over time">${ticks}${bars}</svg></div>`;
 }
 
 // ------------------------------------------------------------------------------------------------------

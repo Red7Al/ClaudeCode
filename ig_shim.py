@@ -1198,7 +1198,7 @@ def get_closed_trades(from_iso: str) -> list:
 
     Built from the TESTED get_transactions() closed-deal rows (reliable instrument / P&L / open+close
     levels / dates), enriched best-effort with a close REASON from ONE /history/activity fetch. Each row:
-      {date, instrument, direction, size, open_level, close_level, pnl, currency, reason}
+      {date, opened, instrument, direction, size, open_level, close_level, pnl, currency, reason}
     reason: STOP_HIT | TARGET_HIT | MANUAL | SYSTEM | UNKNOWN (same mapping as get_close_reason). The
     reason is matched to a trade by (instrument-name, close-day); an unmatched trade still shows with
     reason UNKNOWN, so the list never depends on the activity parse. Best-effort; [] on failure."""
@@ -1243,6 +1243,8 @@ def get_closed_trades(from_iso: str) -> list:
         day = str(t.get("date") or "")[:10]
         out.append({
             "date": str(t.get("date") or "")[:19],
+            # When it OPENED (IG openDateUtc), for the IG Account "Open over time" bars (owner 2026-10-11).
+            "opened": str(t.get("open_date") or "")[:19],
             "instrument": t.get("instrument"),
             "direction": direction,
             "size": t.get("size"),
