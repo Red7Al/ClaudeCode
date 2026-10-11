@@ -2051,9 +2051,16 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:10px;border-radius:3px;background:var(--muted);display:inline-block"></span>No current price</span>
       <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:10px;border-radius:3px;background:var(--bull);opacity:.45;display:inline-block"></span>Closed (paler, ends on its close date)</span>
       <span style="flex:1"></span>
-      <label style="font-size:12px">From <input type="date" id="igtl-from" onchange="paintIgTimeline()" style="width:auto"></label>
-      <label style="font-size:12px">To <input type="date" id="igtl-to" onchange="paintIgTimeline()" style="width:auto"></label>
-      <button class="btn" style="padding:2px 8px;font-size:12px" onclick="$('igtl-from').value='';$('igtl-to').value='';paintIgTimeline()">Clear</button>
+      <!-- Named periods, not From/To (owner 2026-10-11: "Last 7 days", "Last month", "This month" etc). -->
+      <!-- Sort by the P&L figure (owner 2026-10-11: "allow sort by figure e.g. -0.98"). -->
+      <select id="igtl-sort" onchange="paintIgTimeline()" style="padding:4px 6px;font-size:12px;width:auto;flex:none" title="Order of the rows">
+        <option value="opened" selected>Sort: date opened</option><option value="pnl_desc">Sort: P&amp;L high → low</option>
+        <option value="pnl_asc">Sort: P&amp;L low → high</option></select>
+      <select id="igtl-period" onchange="paintIgTimeline()" style="padding:4px 6px;font-size:12px;width:auto;flex:none" title="Period shown">
+        <option value="7d">Last 7 days</option><option value="30d" selected>Last 30 days</option>
+        <option value="tm">This month</option><option value="lm">Last month</option>
+        <option value="3m">Last 3 months</option><option value="6m">Last 6 months</option>
+        <option value="12m">Last 12 months</option></select>
     </div>
     <div id="ig-timeline"></div>
   </div>

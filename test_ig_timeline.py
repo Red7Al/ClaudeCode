@@ -1,8 +1,9 @@
 """IG Account -> "Open over time" (owner 2026-10-10/11): EXECUTED in Node, not read as source.
 
 "a graph to show what is open over time and the current pnl amount next to the instrument name - color
-code the open period: red for loss and green for profit"; then "should show history of those closed also -
-with date filter to the right of screen on same row as legend". Fields as the routes return them:
+code the open period: red for loss and green for profit"; "should show history of those closed also -
+with date filter to the right of screen on same row as legend"; "date filter should be "Last 7 days",
+"Last month", "This month" etc"; "Also allow sort by figure e.g. -0.98". Fields as the routes return them:
 /api/ig-account positions (name, direction, currency, opened, profit) and /api/ig-closed trades
 (ig_shim.get_closed_trades: date, opened, instrument, direction, pnl, currency)."""
 import io
@@ -14,21 +15,27 @@ import subprocess
 import pytest
 
 NODE = shutil.which("node")
-APP = io.open("hvf_web/app.js", encoding="utf-8").read()
+APP = io.open("hvf_web/app.js", encoding="utf-8").read().replace("\r\n", "\n")
 HTML = io.open("hvf_web/index.html", encoding="utf-8").read()
 node_only = pytest.mark.skipif(NODE is None, reason="node is not installed")
+NOW = "2026-10-11T12:00:00"     # the clock is pinned, so the periods do not depend on the day the suite runs
+
+
+def _fn(name):
+    a = APP.index(f"function {name}(")
+    return APP[a:APP.index("\n}\n", a) + 3]
 
 
 def _src():
-    a = APP.index("function igTimelineRows(")
-    b = APP.index("\n}\n", APP.index("function paintIgTimeline(")) + 3
-    helpers = [l for l in APP.split("\n") if l.startswith(("const _esc=", "const _igCurrency="))]
-    return "\n".join(helpers) + "\n" + APP[a:b]
+    helpers = [l for l in APP.split("\n") if l.startswith(("const _esc=", "const _igCurrency=", "const _ymdLocal="))]
+    return "\n".join(helpers) + "\n" + _fn("igtlRange") + _fn("igTimelineRows") + _fn("paintIgTimeline")
 
 
-def _run(expr, pos, closed=None, frm="", to=""):
-    script = (_src() + "\nconst _el={innerHTML:''};"
-              f"const _in={{'igtl-from':{{value:{json.dumps(frm)}}},'igtl-to':{{value:{json.dumps(to)}}}}};"
+def _run(expr, pos, closed=None, period="12m", sort="opened"):
+    clock = ("const _RD=Date;Date=class extends _RD{constructor(...a){super(...(a.length?a:[%s]))}"
+             "static now(){return _RD.parse(%s)}};\n") % (json.dumps(NOW), json.dumps(NOW))
+    inputs = {"igtl-period": {"value": period}, "igtl-sort": {"value": sort}}
+    script = (clock + _src() + "\nconst _el={innerHTML:''};const _in=" + json.dumps(inputs) + ";"
               "const $=id=>id==='ig-timeline'?_el:(_in[id]||null);\n"
               f"let IG_POS={json.dumps(pos)}; let IGCLOSED={json.dumps(closed)};\n"
               f"console.log(JSON.stringify({expr}));")
@@ -37,8 +44,16 @@ def _run(expr, pos, closed=None, frm="", to=""):
     return json.loads(p.stdout)
 
 
+def _paint(*a, **k):
+    return _run("(paintIgTimeline(), _el.innerHTML)", *a, **k)
+
+
 def _fills(html):
     return re.findall(r'height="12" rx="4" fill="([^"]+)"(?: opacity="([^"]+)")?', html)
+
+
+def _order(html):
+    return re.findall(r'font-size="12" fill="var\(--(?:fg|muted)\)">([^<]+)</text>', html)
 
 
 POS = [{"ticker": "ZS", "name": "Zscaler", "direction": "BUY", "currency": "USD", "opened": "2026-09-15T14:02:11", "profit": 412.5},
@@ -61,7 +76,7 @@ def test_one_row_per_instrument_earliest_open_pnl_summed_oldest_first():
 
 @node_only
 def test_profit_is_green_loss_is_red_no_price_is_grey_and_the_pnl_sits_by_the_name():
-    html = _run("(paintIgTimeline(), _el.innerHTML)", POS, [])
+    html = _paint(POS, [])
     assert [f for f, _ in _fills(html)] == ["var(--bear)", "var(--bull)", "var(--muted)"]
     assert "+400.00" in html and "−88.00" in html, "signed P&L next to each name -- never colour alone"
     assert html.index("Airtel Africa") < html.index("−88.00") < html.index("Zscaler") < html.index("+400.00")
@@ -74,22 +89,37 @@ def test_closed_trades_show_opened_to_closed_with_realised_pnl_and_paler():
     rio = [r for r in rows if r["name"] == "Rio Tinto"]
     assert len(rio) == 1 and rio[0]["opened"] == "2026-09-01" and rio[0]["closed"] == "2026-10-08"
     assert rio[0]["profit"] == 150.0 and rio[0]["n"] == 2, "partial closes of one deal combine"
-    html = _run("(paintIgTimeline(), _el.innerHTML)", POS, CLOSED)
+    html = _paint(POS, CLOSED)
     assert ("var(--bear)", ".45") in _fills(html) and ("var(--bull)", ".45") in _fills(html)
     assert "Rio Tinto (closed)" in html and "closed 2026-10-08" in html and "realised P&amp;L +150.00" in html
 
 
 @node_only
-def test_the_date_filter_keeps_rows_whose_open_period_overlaps():
-    html = _run("(paintIgTimeline(), _el.innerHTML)", POS, CLOSED, frm="2026-09-01", to="2026-09-30")
+def test_named_periods_are_the_right_dates():
+    r = _run("['7d','30d','tm','lm','3m','12m'].map(v=>igtlRange(v))", [])
+    assert r == [{"from": "2026-10-04", "to": None}, {"from": "2026-09-11", "to": None},
+                 {"from": "2026-10-01", "to": None}, {"from": "2026-09-01", "to": "2026-09-30"},
+                 {"from": "2026-07-11", "to": None}, {"from": "2025-10-11", "to": None}]
+
+
+@node_only
+def test_last_month_keeps_rows_whose_open_period_overlaps_september():
+    html = _paint(POS, CLOSED, period="lm")
     assert "Old Co" not in html, "closed in July -- outside the period"
     assert "Rio Tinto" in html and "Airtel Africa" in html and "Zscaler" in html
     assert ">BP<" not in html, "opened 1 Oct -- after the period"
 
 
 @node_only
+def test_sort_by_the_pnl_figure_no_figure_last():
+    assert _order(_paint(POS, CLOSED, sort="pnl_desc")) == ["Zscaler", "Rio Tinto (closed)", "Old Co (closed)", "Airtel Africa", "BP"]
+    assert _order(_paint(POS, CLOSED, sort="pnl_asc")) == ["Airtel Africa", "Old Co (closed)", "Rio Tinto (closed)", "Zscaler", "BP"]
+    assert _order(_paint(POS, CLOSED)) == ["Old Co (closed)", "Airtel Africa", "Rio Tinto (closed)", "Zscaler", "BP"]
+
+
+@node_only
 def test_no_positions_says_so():
-    assert "No positions in this period" in _run("(paintIgTimeline(), _el.innerHTML)", [], [])
+    assert "No positions in this period" in _paint([], [])
 
 
 def test_the_tab_sits_right_of_the_other_ig_buttons():
@@ -97,12 +127,13 @@ def test_the_tab_sits_right_of_the_other_ig_buttons():
     assert re.findall(r'data-igpanel="(\w+)"', pills)[-1] == "timeline"
 
 
-def test_legend_and_date_filter_share_one_row_filter_on_the_right():
+def test_legend_sort_and_period_share_one_row_controls_on_the_right():
     panel = HTML[HTML.index('<div id="igpanel-timeline"'):HTML.index('<div id="ig-timeline"')]
-    row = panel[panel.index("<div style=\"display:flex"):]
-    for label in ("In profit", "At a loss", "No current price"):
+    row = panel[panel.index('<div style="display:flex'):]
+    for label in ("In profit", "At a loss", "No current price", "Last 7 days", "Last month", "This month"):
         assert label in row
-    assert row.index("No current price") < row.index("flex:1") < row.index('id="igtl-from"') < row.index('id="igtl-to"')
+    assert row.index("No current price") < row.index("flex:1") < row.index('id="igtl-sort"') < row.index('id="igtl-period"')
+    assert 'value="30d" selected' in row and 'value="opened" selected' in row
 
 
 def test_closed_trades_carry_igs_open_date(monkeypatch):
@@ -113,9 +144,3 @@ def test_closed_trades_carry_igs_open_date(monkeypatch):
     monkeypatch.setattr(ig_shim.session, "get", lambda *a, **k: {})
     (t,) = ig_shim.get_closed_trades("2026-07-01T00:00:00")
     assert t["opened"] == "2026-09-01T13:31:32" and t["date"] == "2026-10-08T16:56:13"
-
-
-def test_first_open_defaults_to_the_last_30_days_once():
-    """605 rows over IG's year on 2026-10-11, 29 in 30 days. Set once, so Clear then shows everything."""
-    fn = APP[APP.index("function showIgPanel("):APP.index("\n}\n", APP.index("function showIgPanel("))].replace("\r\n", "\n")
-    assert '!igtlDefaulted' in fn and 'igtlDefaulted=true' in fn and "30*86400000" in fn

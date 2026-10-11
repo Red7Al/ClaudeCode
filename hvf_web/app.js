@@ -5721,7 +5721,6 @@ async function cancelBreachingOrders(btn){
 // writer, it acts only on the day a position opened, and it is off unless the account owner switches it
 // on. See docs and the module header for why same-day is the whole safety property.
 // ------------------------------------------------------------------------------------------------------
-let igtlDefaulted = false;
 let IG_PANEL = "open", IG_AUTO = null, igaSortK = "closed_at", igaSortDir = -1;
 
 function showIgPanel(which){
@@ -5733,10 +5732,6 @@ function showIgPanel(which){
   });
   if(which==="autoclosed"&&IG_AUTO===null)loadAutoClosed();
   if(which==="txbreach"&&IG_TXAUDIT===null)loadPositionFilterAudit();
-  // First open defaults From to 30 days ago (owner 2026-10-11, closed history added). MEASURED on the
-  // account that day: 605 rows over the year IG returns, 29 in the last 30 days. Clear shows them all.
-  if(which==="timeline"&&!igtlDefaulted&&$("igtl-from")&&!$("igtl-from").value){
-    igtlDefaulted=true;$("igtl-from").value=new Date(Date.now()-30*86400000).toISOString().slice(0,10);}
   if(which==="timeline")paintIgTimeline();
 }
 
@@ -5772,12 +5767,29 @@ function igTimelineRows(pos,closed){
   return Object.values(g).filter(r=>r.opened)
     .sort((a,b)=>a.opened<b.opened?-1:a.opened>b.opened?1:String(a.name).localeCompare(String(b.name)));
 }
+// The named period as {from, to} (local dates, inclusive; to=null means today). Default Last 30 days:
+// MEASURED on the account 2026-10-11, 605 rows over the year IG returns, 29 in 30 days, 6 in 7.
+function igtlRange(v,now){
+  const d=now?new Date(now):new Date(), ymd=_ymdLocal, back=n=>{const x=new Date(d);x.setDate(x.getDate()-n);return ymd(x);};
+  const months=n=>{const x=new Date(d);x.setMonth(x.getMonth()-n);return ymd(x);};
+  if(v==="7d")return {from:back(7),to:null};
+  if(v==="tm")return {from:ymd(new Date(d.getFullYear(),d.getMonth(),1)),to:null};
+  if(v==="lm")return {from:ymd(new Date(d.getFullYear(),d.getMonth()-1,1)),to:ymd(new Date(d.getFullYear(),d.getMonth(),0))};
+  if(v==="3m")return {from:months(3),to:null};
+  if(v==="6m")return {from:months(6),to:null};
+  if(v==="12m")return {from:months(12),to:null};
+  return {from:back(30),to:null};
+}
 function paintIgTimeline(){
   const el=$("ig-timeline"); if(!el)return;
-  const from=(($("igtl-from")||{}).value)||null, to=(($("igtl-to")||{}).value)||null;
-  const todayS=new Date().toISOString().slice(0,10);
+  const {from,to}=igtlRange((($("igtl-period")||{}).value)||"30d");
+  const todayS=_ymdLocal(new Date());
   // A row shows when its open period OVERLAPS the chosen dates (an open position runs to today).
   const rows=igTimelineRows(IG_POS,IGCLOSED).filter(r=>(!to||r.opened<=to)&&(!from||(r.closed||todayS)>=from));
+  // By the P&L figure when chosen; a row with no figure goes last either way. Stable, so ties keep date order.
+  const srt=(($("igtl-sort")||{}).value)||"opened";
+  if(srt!=="opened"){const dir=srt==="pnl_asc"?1:-1;
+    rows.sort((a,b)=>a.profit==null||b.profit==null?(a.profit==null)-(b.profit==null):(a.profit-b.profit)*dir);}
   const loading=(IGCLOSED===null)?`<p class="muted" style="font-size:12px">Closed trades are still loading from IG history.</p>`:"";
   if(!rows.length){el.innerHTML=loading+`<p class="muted">No positions in this period.</p>`;return;}
   const DAY=86400000, P=d=>Date.parse(d+"T00:00:00Z"), today=P(todayS);
