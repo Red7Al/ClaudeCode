@@ -47,6 +47,24 @@ BROKER_STORE_KEY = "broker_by_ticker"
 _NON_EQUITY_SUFFIXES = ("=X", "=F", "-USD", "-USDT")
 
 
+# Consecutive Yahoo rate-limit refusals after which the run stops: every later request is refused too
+# (MEASURED 2026-10-10 21:15 -- the first at instrument ~800, then 1,782 refusal lines to the end).
+RATE_LIMIT_STOP = 5
+
+
+def _rate_limited(ex: Exception) -> bool:
+    """Yahoo refused for volume, not because it has no data. yfinance raises YFRateLimitError whose text is
+    'Too Many Requests. Rate limited. Try after a while.' -- matched on the text as well, so a yfinance
+    version that wraps it differently is still recognised."""
+    try:
+        from yfinance.exceptions import YFRateLimitError
+        if isinstance(ex, YFRateLimitError):
+            return True
+    except Exception:
+        pass
+    return "Too Many Requests" in str(ex)
+
+
 def is_equity(ticker: str) -> bool:
     t = (ticker or "").upper()
     return bool(t) and not (t.startswith("^") or t.endswith(_NON_EQUITY_SUFFIXES))
@@ -205,29 +223,53 @@ def build(limit: int = 0, dry_run: bool = False) -> int:
     # Order by the last ATTEMPT, success or not, so instruments Yahoo has no data for do not sit at the head
     # of every run spending the budget before the rate limit (code review 2026-10-10).
     tried_at = dict(prev[FUND_STORE_KEY].get("tried_at") or {})
-    tickers.sort(key=lambda t: tried_at.get(t, fetched_at.get(t, 0.0)))   # never tried first, then oldest
-    log.info("Fetching fundamentals + broker for %d equity instruments (oldest first)", len(tickers))
+    # Instruments Yahoo ANSWERED with no data (2026-10-11), kept apart from rate-limit refusals.
+    nodata_at = dict(prev[FUND_STORE_KEY].get("nodata_at") or {})
+    have = set((prev[FUND_STORE_KEY].get("records") or {}))
+    # MISSING FIRST (2026-10-11). Every instrument used to be stamped "tried" before its fetch, so the ~900
+    # Yahoo REFUSED for volume on 2026-10-10 were stamped later than the ~800 it answered and went to the BACK
+    # of the next run: measured on the store that day, 797 of the next run's first 800 already had a record
+    # while 848 had none. Now a refusal is not an attempt, and an instrument with no record that Yahoo has not
+    # said it has no data for goes first; then everything else, longest since its last real answer first.
+    tickers.sort(key=lambda t: (t in have or t in nodata_at, tried_at.get(t, fetched_at.get(t, 0.0))))
+    log.info("Fetching fundamentals + broker for %d equity instruments (missing first, then oldest)", len(tickers))
     funds, brokers, t0 = {}, {}, time.time()
+    refused_in_a_row = stopped_at = 0
     for i, tk in enumerate(tickers, 1):
-        tried_at[tk] = time.time()
+        refused = False
         try:
             f = fetch_fundamentals(tk)
+            tried_at[tk] = time.time()
             if f:
                 funds[tk] = f
                 fetched_at[tk] = time.time()
+                nodata_at.pop(tk, None)
+            else:
+                nodata_at[tk] = time.time()
         except Exception as ex:
+            refused = _rate_limited(ex)
+            if not refused:
+                tried_at[tk] = time.time()
             log.warning("  fundamentals failed for %s: %s", tk, ex)
         try:
             b = fetch_broker(tk)
             if b:
                 brokers[tk] = b
         except Exception as ex:
+            refused = refused or _rate_limited(ex)
             log.warning("  broker failed for %s: %s", tk, ex)
+        refused_in_a_row = refused_in_a_row + 1 if refused else 0
+        if refused_in_a_row >= RATE_LIMIT_STOP:
+            stopped_at = i
+            log.warning("  Yahoo refused %d in a row (rate limit) at %d/%d; stopping -- the next run starts with "
+                        "the %d not reached", refused_in_a_row, i, len(tickers), len(tickers) - i + refused_in_a_row)
+            break
         if i % 100 == 0:
             log.info("  %d/%d (%.0fs elapsed)", i, len(tickers), time.time() - t0)
 
     took = time.time() - t0
-    log.info("fetched %d fundamentals and %d broker records in %.0fs", len(funds), len(brokers), took)
+    log.info("fetched %d fundamentals and %d broker records in %.0fs%s", len(funds), len(brokers), took,
+             f" (stopped by the rate limit at {stopped_at}/{len(tickers)})" if stopped_at else "")
 
     # REFUSE TO STORE AN EMPTY RESULT over a good older copy -- the same rule the winners precompute
     # applies. A Yahoo outage must make the panel stale, never blank.
@@ -245,6 +287,7 @@ def build(limit: int = 0, dry_run: bool = False) -> int:
         if key == FUND_STORE_KEY:
             doc["fetched_at"] = {t: ts for t, ts in fetched_at.items() if t in merged}
             doc["tried_at"] = tried_at
+            doc["nodata_at"] = nodata_at
         if web_store.save_json_store(key, doc):
             log.info("  %s: %d fetched now, %d stored in all -> %s", name, len(data), len(merged), key)
         else:

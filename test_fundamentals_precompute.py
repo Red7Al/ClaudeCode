@@ -245,3 +245,74 @@ def test_an_instrument_yahoo_never_answers_does_not_stay_first(monkeypatch):
     rfp.build()
     assert order == ["BP.L", "NODATA.SZ"]
     assert saved[rfp.FUND_STORE_KEY]["tried_at"]["NODATA.SZ"] > 500.0, "a failed attempt still counts as tried"
+
+
+# ── a rate-limit refusal is not an attempt; missing records go first (2026-10-11) ─────────────────────
+# MEASURED on the store 2026-10-11: after the 2026-10-10 run, 797 of the next run's first 800 already had a
+# record and 848 had none -- every instrument was stamped "tried" before its fetch, so the ones Yahoo
+# refused for volume (later in the run) went to the back.
+
+class _RateLimited(Exception):
+    def __str__(self):
+        return "Too Many Requests. Rate limited. Try after a while."
+
+
+def _store(monkeypatch, fund_doc):
+    import web_store
+    docs = {rfp.FUND_STORE_KEY: fund_doc, rfp.BROKER_STORE_KEY: {"records": {}}}
+    saved = {}
+    monkeypatch.setattr(web_store, "read_json_store", lambda k: (True, docs.get(k)))
+    monkeypatch.setattr(web_store, "save_json_store", lambda k, d: saved.__setitem__(k, d) or True)
+    return saved
+
+
+def test_instruments_with_no_record_go_first_even_if_stamped_later(monkeypatch):
+    # HAS.L answered at 100; MISS.L was refused at 900 under the old rule and still has no record.
+    _store(monkeypatch, {"records": {"HAS.L": {"kpis": {"beta": 1}}}, "fetched_at": {"HAS.L": 100.0},
+                         "tried_at": {"HAS.L": 100.0, "MISS.L": 900.0}})
+    monkeypatch.setattr(rfp, "universe", lambda: ["HAS.L", "MISS.L"])
+    order = []
+    monkeypatch.setattr(rfp, "fetch_fundamentals", lambda t: order.append(t) or {"currency": "GBp", "kpis": {"beta": 1}})
+    monkeypatch.setattr(rfp, "fetch_broker", lambda t: None)
+    rfp.build()
+    assert order == ["MISS.L", "HAS.L"]
+
+
+def test_a_rate_limit_refusal_is_not_stamped_as_tried_and_the_run_stops(monkeypatch):
+    saved = _store(monkeypatch, {"records": {}, "fetched_at": {}, "tried_at": {}})
+    tks = ["OK.L"] + [f"R{i}.L" for i in range(10)]
+    monkeypatch.setattr(rfp, "universe", lambda: tks)
+    calls = []
+
+    def _fund(t):
+        calls.append(t)
+        if t == "OK.L":
+            return {"currency": "GBp", "kpis": {"beta": 1}}
+        raise _RateLimited()
+    monkeypatch.setattr(rfp, "fetch_fundamentals", _fund)
+    monkeypatch.setattr(rfp, "fetch_broker", lambda t: None)
+    assert rfp.build() == 1, "fundamentals stored; broker produced nothing"
+    assert len(calls) == 1 + rfp.RATE_LIMIT_STOP, "stops after RATE_LIMIT_STOP refusals in a row"
+    tried = saved[rfp.FUND_STORE_KEY]["tried_at"]
+    assert "OK.L" in tried and not any(t.startswith("R") for t in tried), "a refusal is not an attempt"
+
+
+def test_yahoo_saying_no_data_is_remembered_so_it_does_not_lead_every_run(monkeypatch):
+    saved = _store(monkeypatch, {"records": {}, "fetched_at": {}, "tried_at": {}})
+    monkeypatch.setattr(rfp, "universe", lambda: ["NODATA.SZ", "GOOD.L"])
+    monkeypatch.setattr(rfp, "fetch_fundamentals", lambda t: None if t == "NODATA.SZ" else {"currency": "GBp", "kpis": {"beta": 1}})
+    monkeypatch.setattr(rfp, "fetch_broker", lambda t: None)
+    rfp.build()
+    doc = saved[rfp.FUND_STORE_KEY]
+    assert "NODATA.SZ" in doc["nodata_at"] and "GOOD.L" not in doc["nodata_at"]
+    # next run: a NEW instrument with no record goes ahead of the known no-data one
+    _store(monkeypatch, doc)
+    monkeypatch.setattr(rfp, "universe", lambda: ["NODATA.SZ", "GOOD.L", "NEW.L"])
+    order = []
+    monkeypatch.setattr(rfp, "fetch_fundamentals", lambda t: order.append(t) or None)
+    rfp.build()
+    assert order[0] == "NEW.L"
+
+
+def test_the_rate_limit_is_recognised():
+    assert rfp._rate_limited(_RateLimited()) and not rfp._rate_limited(ValueError("HTTP Error 404: Not Found"))
