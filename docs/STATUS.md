@@ -1,7 +1,7 @@
 # Status — the only status document
 
 **Update this file at the end of every session** instead of writing a new handover. Every figure carries
-the command that produced it or says it is unproven. Last updated **2026-10-09 ~10:40 UTC**.
+the command that produced it or says it is unproven. Last updated **2026-10-11 ~20:00 UTC**.
 
 Earlier handovers are in `docs/archive/HANDOVER-*.md`; everything still open from them is below.
 
@@ -10,9 +10,14 @@ Earlier handovers are in `docs/archive/HANDOVER-*.md`; everything still open fro
 ## 1. Verify what the owner sees — yourself
 
 `./.venv/Scripts/python.exe verify_live_report.py --login Alex` serves his exact live Scanner Report
-locally (port 5062; Chrome refuses 5061). Last run 2026-10-09 on build `cf0ed3e60eef`, snapshot
-2026-10-09T05:59: **Scanner Report (28)**, 0 rows failing his filters on trigger values, 0 Days-since
-errors, ARM absent. Never ask him to check.
+locally (port 5062; Chrome refuses 5061). Last run 2026-10-11 on build `e254bae4d9b9`, snapshot
+2026-10-10T19:58: **Scanner Report (29)**, tickers and order identical to `scanner_report_rows.js` over
+his live payload. Never ask him to check.
+
+`/api/report-check` answers for **his login only** (`_REPORT_CHECK_LOGIN`, 2026-10-11; any other login ->
+403, proven live). Never widen it to other logins' data -- ninth complaint. The IG Account tab in the
+viewer reads his IG account from THIS machine's IG session: each full load pulls 365 days of history,
+and 8 loads in 2 minutes made IG refuse with 403 for ~20 minutes (2026-10-11 17:34 UTC). Load it once.
 
 ## 2. Done 2026-10-08/09
 
@@ -27,6 +32,17 @@ errors, ARM absent. Never ask him to check.
 | Docs 23 → 9; `docs/METHOD.md` test-checked against the code | `bc5ce54` |
 | Live verification access: `/api/report-check` (key `REPORT_CHECK_KEY`) + `verify_live_report.py` | `fb89f39`, `7e88d4c` |
 
+## 2a. Done 2026-10-10/11
+
+| What | Evidence |
+|---|---|
+| **Scanner Report count = screen**: server applies the viewer's market switches (42 -> 29, all 13 in his switched-off markets). Default order Days since ascending, blanks last. | `ff91938`, `6ab7998`; live payload 29 rows |
+| **IG Account "Open over time"** tab: open + closed positions as bars, P&L by the name, named periods, sort by P&L figure; shows the closed-trades note when IG refuses history. | `a76c66f`..`ec88ee8`; verified on deployed page code with his IG data: 1 open + 5,853 closed; 30d = 1 open / 28 closed. CR P-06 Completed |
+| **`/api/report-check` limited to the owner's login** (ninth complaint). | `f02423a`; live: other login 403, Alex 200 |
+| **IG refusals log IG's errorCode** (was a bare "403 Forbidden"). | `bb1ac19` |
+| **Emailed Scanner Report = the screen**: server handlers + the page's own `pass()` via `scanner_report_rows.js`; `build_rows`/`user_rows` removed. | `93ff71f`; old 18 rows vs screen 29 vs new 29 (same order); live run 38165775061: "Scanner report emailed (29 setups)" |
+| **Fundamentals precompute**: a rate-limit refusal is not an attempt, missing records first, stop after 5 refusals. | `bd2380b`; store measured: next run's first 800 = 800 missing (was 3). Confirm the next 21:15 UTC run's "stored in all" rises above 861 |
+
 ## 3. Open, measured, not fixed
 
 1. **Website pool use, now measured.** 2 web processes (40 concurrent `/api/report-check?process=1` calls:
@@ -37,8 +53,9 @@ errors, ARM absent. Never ask him to check.
 3. **`squeeze_history.refresh_daily` re-checks only an 18-month window** (`squeeze_history.py:489`); 205
    older rows keep a stale `OPEN`. The report ignores them (refreshed within 4 days only); other readers
    of `outcome` have not been checked.
-4. **The emailed Scanner Report** (`run_scanner_report_email.py`) still uses the old logic, and it IS sent every morning (Morning Chain job 3; corrected 2026-10-09 -- an earlier "not scheduled" was wrong). Sent to the
-   owner at 06:01:58 on 2026-10-09. Align it with the web report after the summary-file work.
+4. **The emailed report now logs "secret decrypt failed" for his IG settings** on GitHub (the runner's
+   `APP_SECRET_KEY` cannot decrypt them; `api_config` tries). Rows unaffected (29 = screen). Offered to the
+   owner, not done.
 5. **The 2026-10-07 03:31 refresh skipped 599 instruments** while reporting success. Cause unknown.
 6. **`trading-create-env.yml`** uses a `V_` prefix and does not pass `APP_SECRET_KEY`. Unanswered.
 
@@ -63,8 +80,10 @@ Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub em
 
 ## 6. Complaints on record — read before speaking
 
-Seven, all upheld, in `ChangeRequests/20260918.txt`. The seventh (2026-10-09): an unverified recompute was
-shown and then dismissed with "disregard". The common thread: not reading my own output and code first.
+Nine, all upheld, in `ChangeRequests/20260918.txt`. The ninth (2026-10-11): the agent designed a route that
+would have exposed ANY login's IG positions and history to the check key, and got approval on a feature name
+that hid it. Before proposing any tool, state whose data it reads and who can reach it. The common thread:
+not reading my own output and code first.
 
 ## 7. Traps that cost time
 
