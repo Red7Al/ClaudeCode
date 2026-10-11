@@ -5790,7 +5790,10 @@ function paintIgTimeline(){
   const srt=(($("igtl-sort")||{}).value)||"opened";
   if(srt!=="opened"){const dir=srt==="pnl_asc"?1:-1;
     rows.sort((a,b)=>a.profit==null||b.profit==null?(a.profit==null)-(b.profit==null):(a.profit-b.profit)*dir);}
-  const loading=(IGCLOSED===null)?`<p class="muted" style="font-size:12px">Closed trades are still loading from IG history.</p>`:"";
+  // The route's own note too (owner 2026-10-11): when IG refuses the history it falls back to the application
+  // ledger, and without the note the chart just shows "0 closed" with no reason.
+  const loading=(IGCLOSED===null)?`<p class="muted" style="font-size:12px">Closed trades are still loading from IG history.</p>`
+               :(_igClosedNote?`<p class="muted" style="font-size:12px">${_esc(_igClosedNote)}</p>`:"");
   if(!rows.length){el.innerHTML=loading+`<p class="muted">No positions in this period.</p>`;return;}
   const DAY=86400000, P=d=>Date.parse(d+"T00:00:00Z"), today=P(todayS);
   const t0=from?P(from):Math.min(...rows.map(r=>P(r.opened))), t1=(to?P(to):today)+DAY;

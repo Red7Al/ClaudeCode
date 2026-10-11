@@ -31,13 +31,13 @@ def _src():
     return "\n".join(helpers) + "\n" + _fn("igtlRange") + _fn("igTimelineRows") + _fn("paintIgTimeline")
 
 
-def _run(expr, pos, closed=None, period="12m", sort="opened"):
+def _run(expr, pos, closed=None, period="12m", sort="opened", note=""):
     clock = ("const _RD=Date;Date=class extends _RD{constructor(...a){super(...(a.length?a:[%s]))}"
              "static now(){return _RD.parse(%s)}};\n") % (json.dumps(NOW), json.dumps(NOW))
     inputs = {"igtl-period": {"value": period}, "igtl-sort": {"value": sort}}
     script = (clock + _src() + "\nconst _el={innerHTML:''};const _in=" + json.dumps(inputs) + ";"
               "const $=id=>id==='ig-timeline'?_el:(_in[id]||null);\n"
-              f"let IG_POS={json.dumps(pos)}; let IGCLOSED={json.dumps(closed)};\n"
+              f"let IG_POS={json.dumps(pos)}; let IGCLOSED={json.dumps(closed)}; let _igClosedNote={json.dumps(note)};\n"
               f"console.log(JSON.stringify({expr}));")
     p = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert p.returncode == 0, p.stderr
@@ -115,6 +115,15 @@ def test_sort_by_the_pnl_figure_no_figure_last():
     assert _order(_paint(POS, CLOSED, sort="pnl_desc")) == ["Zscaler", "Rio Tinto (closed)", "Old Co (closed)", "Airtel Africa", "BP"]
     assert _order(_paint(POS, CLOSED, sort="pnl_asc")) == ["Airtel Africa", "Old Co (closed)", "Rio Tinto (closed)", "Zscaler", "BP"]
     assert _order(_paint(POS, CLOSED)) == ["Old Co (closed)", "Airtel Africa", "Rio Tinto (closed)", "Zscaler", "BP"]
+
+
+@node_only
+def test_the_routes_note_shows_so_a_fallback_never_reads_as_no_trades():
+    # Measured 2026-10-11: IG answered 403 on the history, /api/ig-closed fell back to the ledger (last trade
+    # 2026-08-06) with a note, and the tab showed "0 closed" for the last 30 days with no reason given.
+    note = "IG returned no closed trades; showing the application ledger fallback."
+    assert note in _paint(POS, CLOSED, period="30d", note=note)
+    assert note not in _paint(POS, CLOSED, period="30d")
 
 
 @node_only
