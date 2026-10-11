@@ -1,4 +1,4 @@
-name: Scanner Report Email (daily — 2026-08-23)
+name: Scanner Report Email (daily — 2026-10-11)
 
 # Emails each enabled web user their own Scanner Report. Triggered by cron-job.org via workflow_dispatch —
 # NEVER add a schedule: block (GitHub-native cron is banned, user directive 2026-06-07).
@@ -56,6 +56,11 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -r requirements.txt
+      # The emailed rows are chosen by the page's own JavaScript (scanner_report_rows.js runs pass() from
+      # hvf_web/app.js), so the email sends what the Scanner Report shows (2026-10-11).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       # The report reads the SAME snapshot the Scanner tab serves, and a runner has none: the Supabase
       # Storage pull is still returning 402, and a clean checkout has no local copy. Seed it from the

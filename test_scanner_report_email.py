@@ -10,83 +10,13 @@ def _row(**kw):
     return base
 
 
-def test_user_rows_excludes_rows_without_a_signal():
-    rows = [_row(ticker="A", has_signal=True), _row(ticker="B", has_signal=False)]
-
-    out = rse.user_rows(rows, {})
-
-    assert [r["ticker"] for r in out] == ["A"]
-
-
-def test_user_rows_applies_saved_quality_rr_rvol_floors():
-    rows = [_row(ticker="LOW", quality=40, rr=2.0, rvol=0.5),
-            _row(ticker="HIGH", quality=80, rr=4.0, rvol=2.5)]
-
-    out = rse.user_rows(rows, {"f_qmin": 50, "f_rrmin": 3, "f_rvmin": 1})
-
-    assert [r["ticker"] for r in out] == ["HIGH"]
-
-
-def test_user_rows_treats_missing_floor_values_as_no_restriction():
-    rows = [_row(ticker="A", quality=None, rr=None, rvol=None)]
-
-    out = rse.user_rows(rows, {"f_qmin": "", "f_rrmin": None})
-
-    assert [r["ticker"] for r in out] == ["A"]
-
-
-def test_user_rows_excludes_unscored_rows_when_a_floor_is_set():
-    rows = [_row(ticker="UNSCORED", quality=None)]
-
-    out = rse.user_rows(rows, {"f_qmin": 50})
-
-    assert out == []
-
-
-def test_user_rows_hard_filters_by_my_trading_filters(monkeypatch):
-    """User instruction (2026-08-11): "The scanner report MUST also match the user trading filter
-    settings" -> Hard filter. A row passing the display-only 'Scanner Report filter defaults' must still
-    be excluded if it fails the user's saved My Trading Filters (trading_limits.check_limits)."""
-    import trading_limits
-    monkeypatch.setattr(trading_limits, "user_limits",
-                         lambda name: {**trading_limits.limit_defaults(), "require_above_vwap": 1})
-    rows = [_row(ticker="BELOW_VWAP", above_vwap=False), _row(ticker="ABOVE_VWAP", above_vwap=True)]
-
-    out = rse.user_rows(rows, {}, "Alex")
-
-    assert [r["ticker"] for r in out] == ["ABOVE_VWAP"]
-
-
-def test_user_rows_unknown_vwap_atr_fails_open_like_the_order_placement_gate(monkeypatch):
-    """Consistent with trading_limits.check_limits everywhere else it's used: a row with no VWAP/ATR data
-    (e.g. a READY/DEVELOPING setup _live_vwap_atr couldn't fetch bars for) is NOT excluded just because
-    it's unproven — matches the fail-open behaviour of the automated order-placement path."""
-    import trading_limits
-    monkeypatch.setattr(trading_limits, "user_limits",
-                         lambda name: {**trading_limits.limit_defaults(), "require_above_vwap": 1,
-                                       "require_atr_expanding": 1})
-    rows = [_row(ticker="UNKNOWN", above_vwap=None, atr_expanding=None)]
-
-    out = rse.user_rows(rows, {}, "Alex")
-
-    assert [r["ticker"] for r in out] == ["UNKNOWN"]
-
-
-def test_user_rows_no_username_falls_back_to_code_defaults(monkeypatch):
-    """user_rows() must stay usable without a real login (e.g. ad-hoc testing) — trading_limits.user_limits
-    already returns code defaults for an empty/None name, so this should behave the same as before this
-    fix for any row that already passed the Scanner Report filter defaults."""
-    out = rse.user_rows([_row(ticker="ABC")], {})
-    assert [r["ticker"] for r in out] == ["ABC"]
-
-
 def test_email_body_lists_setups_and_reflects_saved_filters_note():
     subject, text, html = rse.email_body("Silver", [_row(ticker="ABC")], "2026-08-07T05:30:00Z")
 
     assert "2026-08-07" in subject
     assert "1 setup" in subject
     assert "ABC" in text and "ABC" in html
-    assert "Scanner Report filter defaults" in text
+    assert "rows your Scanner Report shows" in text
     assert "Silver" in text
     # Every <td style="...."> must close cleanly right before the '>' — regression check for a
     # string-concat bug where extra CSS (";color:...;font-weight:600") landed AFTER the closing quote
@@ -100,8 +30,8 @@ def test_email_body_handles_no_matching_setups():
     subject, text, html = rse.email_body("Guest", [], "2026-08-07T05:30:00Z")
 
     assert "0 setups" in subject
-    assert "No setups matched" in text
-    assert "No setups matched" in html
+    assert "No setups are in your Scanner Report today" in text
+    assert "No setups are in your Scanner Report today" in html
 
 
 def test_email_body_caps_table_and_notes_the_remainder():
@@ -121,9 +51,7 @@ def test_main_sends_one_email_per_enabled_user_with_an_email(monkeypatch):
             "records": [{"ticker": "ABC", "market": "US", "direction": "BULL",
                         "has_signal": True, "quality": 70, "rr": 4.0, "status": "TRIGGERED"}]}
     monkeypatch.setattr(server, "_load_snapshot", lambda: snap)
-    monkeypatch.setattr(server, "_snapshot_rvol", lambda s: {"ABC": 2.0})
-    monkeypatch.setattr(server, "_snapshot_volscore", lambda s: {})
-    monkeypatch.setattr(server, "_live_vwap_atr", lambda s: {})   # no DB in this test — see its own docstring
+    monkeypatch.setattr(rse, "screen_rows", lambda name: (snap["records"], False))
     monkeypatch.setattr(wu, "list_users", lambda: [
         {"name": "Silver", "email": "silver@example.com", "enabled": True},
         {"name": "NoEmail", "email": "", "enabled": True},
@@ -192,9 +120,8 @@ def test_a_restricted_run_delivers_only_to_the_named_address(monkeypatch):
     # main() also appends to the shared batch log. Block it, or the suite keeps writing there too.
     import web_store
     monkeypatch.setattr(web_store, "append_batch", lambda *a, **k: None)
-    monkeypatch.setattr(_sre, "build_rows", lambda snap: [])
-    monkeypatch.setattr(_sre, "user_rows", lambda rows, filters, name: [])
-    monkeypatch.setattr(_sre, "email_body", lambda name, rows, gen: ("s", "t", "<p>h</p>"))
+    monkeypatch.setattr(_sre, "screen_rows", lambda name: ([], False))
+    monkeypatch.setattr(_sre, "email_body", lambda name, rows, gen, unavailable=False: ("s", "t", "<p>h</p>"))
 
     import trade_email
     monkeypatch.setattr(trade_email, "send_simple_email",
@@ -318,28 +245,83 @@ def test_resend_from_overrides_once_a_domain_is_verified(monkeypatch):
     assert captured["from"] == "alerts@squeezescanner.cloud"
 
 
-def test_build_rows_joins_market_cap(monkeypatch):
-    """build_rows must join mcap, because user_rows gates on it.
+# ------------------------------------------------------------------------------------------------------
+# The email sends the rows the login's Scanner Report shows (owner 2026-10-09, P-01 "SCANNER REPORT EMAIL
+# STILL USES THE OLD RULE"). Measured 2026-10-11 on the live snapshot of 2026-10-10 19:58 for the owner:
+# old rule 18 rows, the rendered live page 29, the new email 29 -- same tickers, same order.
+# ------------------------------------------------------------------------------------------------------
+import shutil
 
-    user_rows passes mcap=r.get("mcap") into trading_limits.check_limits, whose band check is
-    `if isinstance(mcap, (int, float))` (trading_limits.py) -- so a missing mcap skips the personal
-    instrument-value band ENTIRELY. build_rows never set it and the snapshot record carries mcap=None
-    for every instrument (measured 2026-09-28: 1,773/1,773), so the band was silently inert in the
-    email while the Scanner tab, which joins _mcap_map in api_records, applied it. Two surfaces
-    disagreeing about which instruments qualify.
-    """
-    import hvf_web.server as S
-    monkeypatch.setattr(S, "_snapshot_rvol", lambda snap: {})
-    monkeypatch.setattr(S, "_snapshot_volscore", lambda snap: {})
-    monkeypatch.setattr(S, "_live_vwap_atr", lambda snap: {})
-    monkeypatch.setattr(S, "_mcap_map", lambda: {"AAA": 1_234_000_000.0})
+import pytest
 
-    snap = {"records": [{"ticker": "AAA", "has_signal": True},
-                        {"ticker": "BBB", "has_signal": True}]}
+_node_only = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 
-    rows = {r["ticker"]: r for r in rse.build_rows(snap)}
 
-    assert rows["AAA"]["mcap"] == 1_234_000_000.0
-    # Absent from the map is an honest "not recorded", not an error -- _mcap_map omits a ticker whose
-    # currency has no FX rate rather than passing a raw non-GBP figure through.
-    assert rows["BBB"]["mcap"] is None
+def _rec(ticker, **kw):
+    base = {"ticker": ticker, "name": ticker, "has_signal": True, "status": "TRIGGERED", "report_ok": True,
+            "direction": "BULL", "market": "US", "location": "US", "quality": 60, "rr": 3.0, "mcap": 5e9}
+    base.update(kw)
+    return base
+
+
+@_node_only
+def test_screen_rows_runs_the_pages_own_filter_over_the_logins_payloads(monkeypatch):
+    from hvf_web import server, web_users as wu
+    seen = []
+    monkeypatch.setattr(wu, "token_for", lambda n: "tok-" + n)
+    recs = {"records": [
+        _rec("OLD", trig_date="2026-09-01"),
+        _rec("NEW", trig_date="2026-10-09"),
+        _rec("NOTDATE"),                                          # no trigger date: blank days-since sorts last
+        _rec("OFFMKT", market="NSE", trig_date="2026-10-09"),     # market switched off by this login
+        _rec("FAILED", report_ok=False, trig_date="2026-10-09"),  # failed his limits on its trigger date
+        _rec("LOWQ", quality=10, trig_date="2026-10-09"),         # below his min_quality
+        _rec("FORMING", status="DEVELOPING", report_ok=None),     # not TRIGGERED: the default Status view hides it
+        _rec("NOSIG", has_signal=False, trig_date="2026-10-09")], # Squeeze only
+        "report_unavailable": False}
+    cfg = {"limits": {"min_quality": 50}, "markets_off": ["NSE"], "markets_disabled": [], "trade": {}, "filters": {}}
+    monkeypatch.setattr(server, "api_records",
+                        lambda: seen.append(server.request.headers.get("X-Auth")) or server.jsonify(recs))
+    monkeypatch.setattr(server, "api_config", lambda: server.jsonify(cfg))
+    rows, unavailable = rse.screen_rows("Alex")
+    assert [r["ticker"] for r in rows] == ["NEW", "OLD", "NOTDATE"]
+    assert seen == ["tok-Alex"] and unavailable is False
+
+
+@_node_only
+def test_screen_rows_honours_a_saved_status_choice(monkeypatch):
+    from hvf_web import server, web_users as wu
+    monkeypatch.setattr(wu, "token_for", lambda n: "tok")
+    recs = {"records": [_rec("T", trig_date="2026-10-09"), _rec("D", status="DEVELOPING", report_ok=None)]}
+    cfg = {"limits": {}, "markets_off": [], "markets_disabled": [], "trade": {}, "filters": {"mf_status": "DEVELOPING"}}
+    monkeypatch.setattr(server, "api_records", lambda: server.jsonify(recs))
+    monkeypatch.setattr(server, "api_config", lambda: server.jsonify(cfg))
+    assert [r["ticker"] for r in rse.screen_rows("Alex")[0]] == ["D"]
+
+
+def test_email_keeps_the_screens_order_and_says_when_triggered_rows_are_hidden():
+    rows = [_row(ticker="FIRST", quality=10), _row(ticker="SECOND", quality=90)]
+    subject, text, html = rse.email_body("Alex", rows, "2026-10-11T05:30:00Z", True)
+    assert text.index("FIRST") < text.index("SECOND") and html.index("FIRST") < html.index("SECOND")
+    assert "Triggered setups are hidden today" in text and "Triggered setups are hidden today" in html
+    assert "hidden today" not in rse.email_body("Alex", rows, "2026-10-11T05:30:00Z")[1]
+
+
+def test_a_login_whose_rows_cannot_be_built_is_a_failed_send_not_a_crash(monkeypatch):
+    from hvf_web import server, web_users as wu
+    import trade_email, web_store
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"records": [{"ticker": "X"}], "generated_utc": "G"})
+    monkeypatch.setattr(wu, "list_users", lambda: [{"name": "A", "email": "a@example.com", "enabled": True},
+                                                   {"name": "B", "email": "b@example.com", "enabled": True}])
+    monkeypatch.setattr(wu, "log_event", lambda *a, **k: None)
+    monkeypatch.setattr(web_store, "append_batch", lambda *a, **k: None)
+    monkeypatch.delenv("SCANNER_EMAIL_ONLY", raising=False)
+
+    def _rows(name):
+        if name == "A":
+            raise RuntimeError("boom")
+        return [], False
+    monkeypatch.setattr(rse, "screen_rows", _rows)
+    sent = []
+    monkeypatch.setattr(trade_email, "send_simple_email", lambda s, t, html=None, recipients=None: sent.append(recipients) or True)
+    assert rse.main() == 1 and sent == [["b@example.com"]]

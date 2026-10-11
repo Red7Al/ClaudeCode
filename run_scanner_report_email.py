@@ -6,26 +6,18 @@
 # Description:
 # ----------------------------------------------------------------------------------------------------------------------
 # Emails each enabled web-user account holder their own Scanner Report (ChangeRequest P-07, 2026-08-07: "Email the
-# scanner report each day to the account holder"). Sends today's Squeeze-only setups (has_signal == True) from the
-# SAME snapshot the Scanner tab reads, enriched with RVOL/VolumeScore/above_vwap/atr_expanding exactly like
-# /api/records, filtered by BOTH each user's saved Quality / R:R / RVOL display floors (Configuration -> Preferences
-# -> "Scanner Report filter defaults") AND — since 2026-08-11 — their personal "My Trading Filters" (R:R, Quality,
-# VolumeScore, RVOL, require-above-VWAP, require-ATR-expanding, instrument value), the SAME hard filter the Scanner
-# tab itself now applies. User instruction (2026-08-11): "The scanner report MUST also match the user trading filter
-# settings" -> "Hard filter (Recommended)": a setup failing your own floors is excluded from the email entirely, not
-# just flagged. Best-effort per user: one bad email address or send failure never blocks the rest.
+# scanner report each day to the account holder").
 #
-# WHERE THIS RUNS — corrected 2026-08-17. This header used to state that the job "CANNOT be wired into the
-# cron-job.org -> GitHub Actions pipeline" because hvf_web/snapshot.json and data/web_users.json were local,
-# gitignored files that existed only on the operator's laptop. Both halves of that have since stopped being true:
-# the snapshot is served from Supabase Storage via scanner_snapshot_store (_load_snapshot pulls it), and web_users
-# is Supabase-primary (`web_json_store:web_users`, see hvf_web/web_users.py) with the JSON file kept only as a local
-# fallback. A runner with the Supabase keys can reach both, so the old blocker no longer applies.
+# WHAT IT SENDS -- since 2026-10-11 (P-01 "SCANNER REPORT EMAIL STILL USES THE OLD RULE"): EXACTLY the rows that
+# login's Scanner Report shows on opening the page, in the same order. screen_rows() builds the login's own
+# /api/records and /api/config payloads with the server's handlers (trigger-date rule, 90-day cap, market switches)
+# and runs the page's own filter code over them (scanner_report_rows.js lifts pass()/tradeVisible()/augment() out of
+# hvf_web/app.js). There is no second copy of the filter here to drift: before this, the email judged VWAP/ATR on
+# the latest bar with no trigger-date rule and could differ from the screen.
 #
-# It is nevertheless still NOT SCHEDULED — nothing in setup_cronjobs.JOBS or .github/workflows references it, so it
-# only runs when invoked by hand. Wiring it up needs a workflow plus a cron-job.org entry; that has not been done and
-# should not be assumed. Also note the site no longer runs on the laptop at all: it is hosted at squeezescanner.cloud
-# on IONOS, one CGI process per request.
+# WHERE THIS RUNS: every morning as job 3 of the Morning Chain (trading-scanner-report-email.yml, a reusable
+# workflow), measured 2026-10-09: "Trade email sent via Resend". Best-effort per user: one bad address or send
+# failure never blocks the rest.
 #
 # Version History:
 # ----------------------------------------------------------------------------------------------------------------------
@@ -34,10 +26,14 @@
 #                               separate "Scanner Report filter defaults"; above_vwap/atr_expanding now come from
 #                               _live_vwap_atr (every has_signal row, any status) instead of the TRIGGERED-only
 #                               volume_score components, matching the same-day Scanner tab fix.
+# 2.0.0   2026-10-11  Claude   Send the rows the login's Scanner Report shows, computed by the page's own code
+#                               (screen_rows + scanner_report_rows.js); build_rows/user_rows removed.
 # ======================================================================================================================
 
+import json
 import logging
 import os
+import subprocess
 import sys
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -53,92 +49,43 @@ def _fmt1(v):
         return "—"
 
 
-def build_rows(snap: dict) -> list:
-    """Every snapshot record enriched with rvol/volume_score/above_vwap/atr_expanding — the SAME enrichment
-    hvf_web.server.api_records() applies for /api/records, reusing its helpers so the emailed report can
-    never quietly drift from what the Scanner tab itself shows. above_vwap/atr_expanding come from
-    _live_vwap_atr (2026-08-11) — computed for every has_signal row regardless of status, not just
-    TRIGGERED, same as the Scanner tab; RVOL/VolumeScore remain TRIGGERED-only (inherently about the break
-    bar, see _snapshot_rvol/_snapshot_volscore's own docstrings)."""
-    from hvf_web.server import (_snapshot_rvol, _snapshot_volscore, _live_vwap_atr,
-                                _mcap_map)
-    rvol = _snapshot_rvol(snap)
-    vscore = _snapshot_volscore(snap)
-    vwap_atr = _live_vwap_atr(snap)
-    # user_rows gates on mcap via trading_limits.check_limits, whose band check is
-    # `isinstance(mcap, (int, float))` -- so without this join every row arrived with
-    # mcap=None and the personal instrument-value band was skipped outright, while the
-    # Scanner tab (api_records joins the same map) applied it. One query, cached per TTL.
-    mcaps = _mcap_map() or {}
+def screen_rows(name: str):
+    """(rows, report_unavailable) -- the rows `name`'s Scanner Report shows on opening the page, in its order.
 
-    rows = []
-    for r in snap.get("records", []):
-        result = vscore.get(r.get("ticker")) or {}
-        av, ae = vwap_atr.get(r.get("ticker"), (None, None))
-        rows.append(dict({k: v for k, v in r.items() if k != "_card"},
-                         rvol=rvol.get(r.get("ticker")),
-                         volume_score=result.get("score"),
-                         above_vwap=av,
-                         atr_expanding=ae,
-                         mcap=mcaps.get(r.get("ticker"))))
-    return rows
+    The payloads come from the server's own handlers called with that login's session, exactly as the page
+    fetches them; the row selection is the page's own JavaScript (scanner_report_rows.js). Nothing here
+    decides which rows qualify."""
+    from hvf_web import server, web_users as wu
+    token = wu.token_for(name)
+    if not token:
+        raise RuntimeError(f"no session for login {name!r}")
+    payload = {}
+    for path, view in (("/api/records", server.api_records), ("/api/config", server.api_config)):
+        with server.app.test_request_context(path, headers={"X-Auth": token}):
+            payload[path.rsplit("/", 1)[1]] = server.app.make_response(view()).get_json()
+    here = os.path.dirname(os.path.abspath(__file__))
+    p = subprocess.run(["node", os.path.join(here, "scanner_report_rows.js")], input=json.dumps(payload),
+                       capture_output=True, text=True, encoding="utf-8", timeout=120)
+    if p.returncode != 0:
+        raise RuntimeError(f"scanner_report_rows.js failed: {p.stderr.strip()[:300]}")
+    return json.loads(p.stdout), bool((payload.get("records") or {}).get("report_unavailable"))
 
 
-def user_rows(rows: list, filters: dict, username: str = None) -> list:
-    """Squeeze-only rows (has_signal, matching the Scanner's own default "Show Squeeze Only" view) passing
-    BOTH: (1) the user's saved Quality / R:R / RVOL display floors — the 3 numeric fields the Preferences
-    card persists as 'Scanner Report filter defaults' — and (2) since 2026-08-11, their personal "My
-    Trading Filters" (trading_limits.check_limits — R:R, Quality, VolumeScore, RVOL, above-VWAP,
-    ATR-expanding, instrument value), the SAME hard filter the Scanner tab itself applies. `username` is
-    optional so build_rows()/user_rows() stay testable/usable without a real login (falls back to code
-    defaults via trading_limits.user_limits(None) — see its own docstring). Anything finer than these two
-    filter sets (search, market/sector picks, PE/insider ranges, ...) stays a login-only refinement, kept
-    out of the email so this stays small, testable and unambiguous."""
-    filters = filters or {}
-    qmin, rrmin, rvmin = filters.get("f_qmin"), filters.get("f_rrmin"), filters.get("f_rvmin")
-
-    def _floor_ok(value, floor):
-        if floor in (None, ""):
-            return True
-        try:
-            floor = float(floor)
-        except (TypeError, ValueError):
-            return True
-        return value is not None and float(value) >= floor
-
-    import trading_limits
-
-    out = []
-    for r in rows:
-        if not r.get("has_signal"):
-            continue
-        if not _floor_ok(r.get("quality"), qmin):
-            continue
-        if not _floor_ok(r.get("rr"), rrmin):
-            continue
-        if not _floor_ok(r.get("rvol"), rvmin):
-            continue
-        reason = trading_limits.check_limits(
-            username, r.get("ticker"), quality=r.get("quality"), rr=r.get("rr"),
-            volume_score=r.get("volume_score"), rvol=r.get("rvol"),
-            above_vwap=r.get("above_vwap"), atr_expanding=r.get("atr_expanding"), mcap=r.get("mcap"))
-        if reason:
-            continue
-        out.append(r)
-    return out
-
-
-def email_body(name: str, rows: list, generated_utc: str):
-    """(subject, text, html) for one user's report. rows should already be filtered via user_rows()."""
+def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bool = False):
+    """(subject, text, html) for one user's report. rows come from screen_rows(), already in the page's order."""
     date_str = (generated_utc or "")[:10] or ""
     total = len(rows)
-    ordered = sorted(rows, key=lambda r: (r.get("quality") if r.get("quality") is not None else -1),
-                     reverse=True)[:MAX_ROWS]
+    ordered = list(rows)[:MAX_ROWS]
+    warn = ("Triggered setups are hidden today: the trigger history was unavailable, so they could not be checked "
+            "against your filters." if report_unavailable else "")
+    warn_html = f'<p style="color:#b42318;font-weight:600">{warn}</p>' if warn else ""
     subject = f"Squeeze Scanner - Scanner Report{f' for {date_str}' if date_str else ''} ({total} setup{'' if total == 1 else 's'})"
 
     lines = [f"Hello {name},", "", f"Your Squeeze Scanner report{f' for {date_str}' if date_str else ''}:", ""]
+    if warn:
+        lines += [warn, ""]
     if not ordered:
-        lines.append("No setups matched your saved filters and My Trading Filters floors today.")
+        lines.append("No setups are in your Scanner Report today.")
     else:
         lines.append(f"{'Ticker':<10}{'Dir':<6}{'Market':<12}{'Quality':<9}{'R:R':<7}{'RVOL':<7}Status")
         for r in ordered:
@@ -146,11 +93,10 @@ def email_body(name: str, rows: list, generated_utc: str):
                          f"{str(r.get('market') or ''):<12}{_fmt1(r.get('quality')):<9}"
                          f"{_fmt1(r.get('rr')):<7}{_fmt1(r.get('rvol')):<7}{r.get('status') or ''}")
         if total > len(ordered):
-            lines.append(f"\n… and {total - len(ordered)} more (showing the top {len(ordered)} by Quality).")
+            lines.append(f"\n… and {total - len(ordered)} more (showing the first {len(ordered)}, newest trigger first).")
     lines += ["", "Log in to Squeeze Scanner for the full interactive report and every column.",
-             "This reflects your saved 'Scanner Report filter defaults' (Configuration -> Preferences) AND your "
-             "'My Trading Filters' (Configuration -> My Trading Filters) applied to today's Squeeze-only setups; "
-             "change either there to change what this email includes."]
+             "These are the rows your Scanner Report shows when you open it, in the same order (newest trigger "
+             "first); your My Trading Filters and market switches decide them."]
     text = "\n".join(lines)
 
     def _row_html(r):
@@ -174,18 +120,19 @@ def email_body(name: str, rows: list, generated_utc: str):
                  + "".join(_row_html(r) for r in ordered) + "</table>")
         if total > len(ordered):
             table += (f'<p style="margin:6px 0 0;font-size:12px;color:#777">… and {total - len(ordered)} more '
-                     f'(showing the top {len(ordered)} by Quality).</p>')
+                     f'(showing the first {len(ordered)}, newest trigger first).</p>')
     else:
-        table = '<p>No setups matched your saved filters and My Trading Filters floors today.</p>'
+        table = '<p>No setups are in your Scanner Report today.</p>'
 
     html = (f'<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px">'
            f'<h2 style="margin:0 0 4px">Squeeze Scanner — Scanner Report</h2>'
            f'<p style="margin:0 0 12px;color:#555">Hello {name}, here is your report'
            f'{f" for {date_str}" if date_str else ""}.</p>'
+           f'{warn_html}'
            f'{table}'
            f'<p style="margin:12px 0 0;font-size:12px;color:#777">Log in to Squeeze Scanner for the full interactive '
-           f'report. This reflects your saved Scanner Report filter defaults (Configuration &rarr; Preferences) AND '
-           f'your My Trading Filters (Configuration &rarr; My Trading Filters).</p></div>')
+           f'report. These are the rows your Scanner Report shows when you open it, in the same order; your My '
+           f'Trading Filters and market switches decide them.</p></div>')
     return subject, text, html
 
 
@@ -218,7 +165,6 @@ def main():
         log.warning("no snapshot available (hvf_web/snapshot.json empty/missing) - scanner report email skipped")
         return
 
-    rows = build_rows(snap)
     sent = skipped = failed = 0
     for u in wu.list_users():
         name, email = u["name"], (u.get("email") or "").strip()
@@ -228,11 +174,11 @@ def main():
         if only and email.lower() not in only:
             skipped += 1
             continue
-        filters = wu.get_settings(name).get("filters", {})
-        urows = user_rows(rows, filters, name)
-        subject, text, html = email_body(name, urows, snap.get("generated_utc"))
         ok = False
+        urows = []
         try:
+            urows, unavailable = screen_rows(name)
+            subject, text, html = email_body(name, urows, snap.get("generated_utc"), unavailable)
             from trade_email import send_simple_email
             ok = send_simple_email(subject, text, html=html, recipients=[email])
         except Exception as e:
