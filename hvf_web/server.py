@@ -1965,6 +1965,11 @@ def api_records():
                     "report_unavailable": bool(authed and setups_map is None)})
 
 
+# The ONLY login /api/report-check will answer for -- the owner's own (owner 2026-10-11, ninth complaint: the
+# route returned ANY login's Scanner Report and settings to whoever held the key). Every other login is refused.
+_REPORT_CHECK_LOGIN = "Alex"
+
+
 @app.route("/api/report-check")
 def api_report_check():
     """READ-ONLY live verification of what a login's Scanner Report receives (owner 2026-10-09: give the
@@ -1999,6 +2004,8 @@ def api_report_check():
                         "in_use": bool(s) and s.get("generated_utc") == snap.get("generated_utc"),
                         "sections": sorted((s.get("sections") or {}).keys())})
     login = (request.args.get("login") or "").strip()
+    if login != _REPORT_CHECK_LOGIN:
+        return jsonify({"error": "this check is limited to the owner's own login"}), 403
     token = _wu.token_for(login) if login else ""      # "" for an unknown login or a non-login record
     if not token:
         return jsonify({"error": "unknown login"}), 404

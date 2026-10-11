@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Open a login's LIVE Scanner Report as they would see it -- read-only (owner 2026-10-09).
+"""Open the owner's LIVE Scanner Report as he sees it -- read-only (owner 2026-10-09). The server answers
+for the owner's own login only (hvf_web.server._REPORT_CHECK_LOGIN, 2026-10-11).
 
     ./.venv/Scripts/python.exe verify_live_report.py [--login Alex] [--port 5062]
 
