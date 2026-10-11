@@ -346,6 +346,14 @@ class IGSession:
             params=params,
             timeout=15
         )
+        if resp.status_code >= 400:
+            # IG's own reason (owner 2026-10-11): the history calls were refused with a bare "403 Client Error:
+            # Forbidden", so whether it was an allowance limit or something else could not be proved.
+            try:
+                code = (resp.json() or {}).get("errorCode")
+            except Exception:
+                code = None
+            log.warning(f"IG GET {path} refused: HTTP {resp.status_code} errorCode={code}")
         resp.raise_for_status()
         return resp.json()
 
