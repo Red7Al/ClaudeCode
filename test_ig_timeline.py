@@ -172,3 +172,24 @@ def test_the_small_figure_box_sits_on_the_controls_row():
     row = panel[panel.index('<div style="display:flex'):]
     assert row.index("flex:1") < row.index('id="igtl-small"') < row.index('id="igtl-sort"')
 
+
+
+def _totals(html):
+    return re.findall(r'<g class="igtl-total"><text[^>]*>([^<]+)</text><text[^>]*>([^<]+) <tspan[^>]*>([^<]+)</tspan>', html)
+
+
+@node_only
+def test_a_total_sits_under_the_figures_one_per_currency():
+    # Owner 2026-10-12: "at bottom of figures on "open over time" add a total". GBP and USD are never added.
+    html = _paint(POS, CLOSED)
+    assert _totals(html) == [("Total (GBP)", "+22.00", "GBP"), ("Total (USD)", "+400.00", "USD")]
+    assert html.index("Old Co") < html.index("igtl-total"), "the total is the last thing in the chart"
+
+
+@node_only
+def test_the_total_counts_only_the_rows_shown():
+    gbp = [p for p in POS if p["currency"] == "GBP"]
+    bp = [p for p in POS if p["name"] == "BP"]
+    assert _totals(_paint(bp, [], period="30d")) == [], "BP has no figure -- nothing to total"
+    assert _totals(_paint(gbp, CLOSED, period="30d")) == [("Total", "+62.00", "GBP")], "one currency: plain 'Total'"
+    assert _totals(_paint(gbp, CLOSED, small="100")) == [("Total", "+150.00", "GBP")], "hidden small figures are left out"

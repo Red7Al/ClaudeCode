@@ -5802,7 +5802,12 @@ function paintIgTimeline(){
   if(!rows.length){el.innerHTML=loading+`<p class="muted">No positions in this period${nSmall?` (${nSmall} hidden as within ±${small})`:""}.</p>`;return;}
   const DAY=86400000, P=d=>Date.parse(d+"T00:00:00Z"), today=P(todayS);
   const t0=from?P(from):Math.min(...rows.map(r=>P(r.opened))), t1=(to?P(to):today)+DAY;
-  const W=1100, LW=380, R=12, T=26, RH=24, BH=12, H=T+rows.length*RH+8;
+  // Total of the figures shown (owner 2026-10-12: "at bottom of figures on "open over time" add a total"):
+  // the rows left after the period and small-figure filters, one line per currency -- never GBP plus USD.
+  const tot={};
+  rows.forEach(r=>{if(r.profit!=null)tot[r.currency]=(tot[r.currency]||0)+r.profit;});
+  const curs=Object.keys(tot).sort();
+  const W=1100, LW=380, R=12, T=26, RH=24, BH=12, TY=T+rows.length*RH+6, H=TY+(curs.length?curs.length*RH+4:0)+8;
   const x=t=>LW+(Math.max(t0,Math.min(t1,t))-t0)/(t1-t0)*(W-LW-R);
   const money=v=>v==null?"—":`${v>=0?"+":"−"}${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const col=v=>v==null?"var(--muted)":v>=0?"var(--bull)":"var(--bear)";
@@ -5811,11 +5816,11 @@ function paintIgTimeline(){
   for(let d=new Date(t0);d.getTime()<=t1;d.setUTCMonth(d.getUTCMonth()+1,1)){
     const m=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1); if(m<t0)continue;
     const xx=x(m).toFixed(1);
-    ticks+=`<line x1="${xx}" x2="${xx}" y1="${T-6}" y2="${H-8}" stroke="var(--line)" stroke-width="1"/>`
+    ticks+=`<line x1="${xx}" x2="${xx}" y1="${T-6}" y2="${TY}" stroke="var(--line)" stroke-width="1"/>`
          +`<text x="${xx}" y="${T-10}" font-size="10" fill="var(--muted)" text-anchor="middle">${MON[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}</text>`;
   }
   if(today>=t0&&today<t1){const xt=x(today).toFixed(1);
-    ticks+=`<line x1="${xt}" x2="${xt}" y1="${T-6}" y2="${H-8}" stroke="var(--fg)" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/>`
+    ticks+=`<line x1="${xt}" x2="${xt}" y1="${T-6}" y2="${TY}" stroke="var(--fg)" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/>`
          +`<text x="${xt}" y="${T-10}" font-size="10" fill="var(--fg)" text-anchor="end">today</text>`;}
   const bars=rows.map((r,i)=>{
     const y=T+i*RH, o=P(r.opened), endS=r.closed||todayS, e=P(endS)+DAY, days=Math.round((P(endS)-o)/DAY);
@@ -5831,9 +5836,13 @@ function paintIgTimeline(){
       +`<rect x="${bx.toFixed(1)}" y="${(y+(RH-BH)/2).toFixed(1)}" width="${bw.toFixed(1)}" height="${BH}" rx="4" fill="${col(r.profit)}"${r.closed?' opacity=".45"':""}/>`
       +`</g>`;
   }).join("");
+  const totals=curs.length?`<line x1="0" x2="${LW}" y1="${TY}" y2="${TY}" stroke="var(--fg)" stroke-width="1"/>`
+    +curs.map((c,i)=>{const y=TY+4+i*RH;
+      return `<g class="igtl-total"><text x="6" y="${y+RH/2+4}" font-size="12" font-weight="700" fill="var(--fg)">Total${curs.length>1?` (${_esc(c)})`:""}</text>`
+        +`<text x="${LW-10}" y="${y+RH/2+4}" font-size="12" font-weight="700" fill="var(--fg)" text-anchor="end">${money(tot[c])} <tspan font-weight="400" fill="var(--muted)">${_esc(c)}</tspan></text></g>`;}).join(""):"";
   const nOpen=rows.filter(r=>!r.closed).length;
   el.innerHTML=loading+`<div class="muted" style="font-size:12px;margin:0 0 6px">${nOpen} open · ${rows.length-nOpen} closed${nSmall?` · ${nSmall} hidden as within ±${small}`:""} · bar = opened → today (open) or → close date (closed) · P&L in each position's own currency</div>`
-    +`<div class="tablewrap" style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:760px;height:auto" role="img" aria-label="Open and closed positions over time">${ticks}${bars}</svg></div>`;
+    +`<div class="tablewrap" style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:760px;height:auto" role="img" aria-label="Open and closed positions over time">${ticks}${bars}${totals}</svg></div>`;
 }
 
 // ------------------------------------------------------------------------------------------------------
