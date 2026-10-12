@@ -72,10 +72,16 @@ def screen_rows(name: str):
 
 
 def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bool = False):
-    """(subject, text, html) for one user's report. rows come from screen_rows(), already in the page's order."""
+    """(subject, text, html) for one user's report. rows come from screen_rows() -- the screen's rows.
+
+    Sorted by trigger date, newest first, with a Triggered column (owner 2026-10-12: "need trigger date
+    column and sort by this descending"). Stable, so rows triggered the same day keep the screen's order;
+    a row with no trigger date goes last."""
     date_str = (generated_utc or "")[:10] or ""
     total = len(rows)
-    ordered = list(rows)[:MAX_ROWS]
+    trig = lambda r: str(r.get("trig_date") or "")[:10]
+    ordered = (sorted([r for r in rows if trig(r)], key=trig, reverse=True)
+               + [r for r in rows if not trig(r)])[:MAX_ROWS]
     warn = ("Triggered setups are hidden today: the trigger history was unavailable, so they could not be checked "
             "against your filters." if report_unavailable else "")
     warn_html = f'<p style="color:#b42318;font-weight:600">{warn}</p>' if warn else ""
@@ -87,16 +93,16 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
     if not ordered:
         lines.append("No setups are in your Scanner Report today.")
     else:
-        lines.append(f"{'Ticker':<10}{'Dir':<6}{'Market':<12}{'Quality':<9}{'R:R':<7}{'RVOL':<7}Status")
+        lines.append(f"{'Ticker':<14}{'Triggered':<12}{'Dir':<6}{'Market':<12}{'Quality':<9}{'R:R':<7}{'RVOL':<7}Status")
         for r in ordered:
-            lines.append(f"{str(r.get('ticker') or ''):<10}{str(r.get('direction') or ''):<6}"
+            lines.append(f"{str(r.get('ticker') or ''):<14}{trig(r) or '-':<12}{str(r.get('direction') or ''):<6}"
                          f"{str(r.get('market') or ''):<12}{_fmt1(r.get('quality')):<9}"
                          f"{_fmt1(r.get('rr')):<7}{_fmt1(r.get('rvol')):<7}{r.get('status') or ''}")
         if total > len(ordered):
-            lines.append(f"\n… and {total - len(ordered)} more (showing the first {len(ordered)}, newest trigger first).")
+            lines.append(f"\n… and {total - len(ordered)} more (showing the {len(ordered)} most recently triggered).")
     lines += ["", "Log in to Squeeze Scanner for the full interactive report and every column.",
-             "These are the rows your Scanner Report shows when you open it, in the same order (newest trigger "
-             "first); your My Trading Filters and market switches decide them."]
+             "These are the rows your Scanner Report shows when you open it, sorted by trigger date, newest first; "
+             "your My Trading Filters and market switches decide them."]
     text = "\n".join(lines)
 
     def _row_html(r):
@@ -104,6 +110,7 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
         base = "padding:4px 8px;border-bottom:1px solid #eee"   # each td's shared style; extras appended BEFORE the closing quote (a plain string-concat bug here silently produced invalid style="..."... markup, caught by review 2026-08-07)
         td = lambda extra="": f'<td style="{base}{extra}">'
         return (f'<tr>{td()}{r.get("ticker","")}</td>'
+                f'{td(";white-space:nowrap")}{trig(r) or "—"}</td>'
                 f'{td(f";color:{col};font-weight:600")}{r.get("direction","")}</td>'
                 f'{td()}{r.get("market","")}</td>'
                 f'{td(";text-align:right")}{_fmt1(r.get("quality"))}</td>'
@@ -114,13 +121,14 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
     if ordered:
         table = ('<table style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px">'
                  '<tr style="background:#f6f8fa"><th style="padding:4px 8px;text-align:left">Ticker</th>'
+                 '<th style="padding:4px 8px;text-align:left">Triggered &darr;</th>'
                  '<th style="padding:4px 8px;text-align:left">Dir</th><th style="padding:4px 8px;text-align:left">Market</th>'
                  '<th style="padding:4px 8px;text-align:right">Quality</th><th style="padding:4px 8px;text-align:right">R:R</th>'
                  '<th style="padding:4px 8px;text-align:right">RVOL</th><th style="padding:4px 8px;text-align:left">Status</th></tr>'
                  + "".join(_row_html(r) for r in ordered) + "</table>")
         if total > len(ordered):
             table += (f'<p style="margin:6px 0 0;font-size:12px;color:#777">… and {total - len(ordered)} more '
-                     f'(showing the first {len(ordered)}, newest trigger first).</p>')
+                     f'(showing the {len(ordered)} most recently triggered).</p>')
     else:
         table = '<p>No setups are in your Scanner Report today.</p>'
 
@@ -131,8 +139,8 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
            f'{warn_html}'
            f'{table}'
            f'<p style="margin:12px 0 0;font-size:12px;color:#777">Log in to Squeeze Scanner for the full interactive '
-           f'report. These are the rows your Scanner Report shows when you open it, in the same order; your My '
-           f'Trading Filters and market switches decide them.</p></div>')
+           f'report. These are the rows your Scanner Report shows when you open it, sorted by trigger date, newest '
+           f'first; your My Trading Filters and market switches decide them.</p></div>')
     return subject, text, html
 
 

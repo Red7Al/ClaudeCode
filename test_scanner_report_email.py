@@ -299,6 +299,20 @@ def test_screen_rows_honours_a_saved_status_choice(monkeypatch):
     assert [r["ticker"] for r in rse.screen_rows("Alex")[0]] == ["D"]
 
 
+def test_email_has_a_triggered_column_sorted_newest_first(monkeypatch):
+    """Owner 2026-10-12: "need trigger date column and sort by this descending". Same-day rows keep the
+    screen's order (stable); a row with no trigger date goes last."""
+    rows = [_row(ticker="AUG", trig_date="2026-08-20"), _row(ticker="NONE"),
+            _row(ticker="OCT_A", trig_date="2026-10-08"), _row(ticker="OCT_B", trig_date="2026-10-08T00:00:00"),
+            _row(ticker="SEP", trig_date="2026-09-15")]
+    subject, text, html = rse.email_body("Alex", rows, "2026-10-12T05:30:00Z")
+    for body in (text, html):
+        idx = [body.index(t) for t in ("OCT_A", "OCT_B", "SEP", "AUG", "NONE")]
+        assert idx == sorted(idx), body
+    assert "Triggered" in text and "Triggered &darr;</th>" in html
+    assert "2026-10-08" in html and "2026-10-08T00" not in html, "the date, not the timestamp"
+
+
 def test_email_keeps_the_screens_order_and_says_when_triggered_rows_are_hidden():
     rows = [_row(ticker="FIRST", quality=10), _row(ticker="SECOND", quality=90)]
     subject, text, html = rse.email_body("Alex", rows, "2026-10-11T05:30:00Z", True)
