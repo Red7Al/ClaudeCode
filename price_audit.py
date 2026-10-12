@@ -78,6 +78,21 @@ MAX_SECONDS = int(os.environ.get("PRICE_AUDIT_MAX_SECONDS") or 4500)
 IG_MIN_REMAINING = 300
 IG_SANITY_MAX_DRIFT_PCT = 50    # after unit-rescaling, a still-huge gap = epic/unit mismatch -> don't corrupt
 
+# THE PREVIOUS DAY'S BAR, CHECKED AND RETRIED (owner approved 2026-10-12).
+#
+# MEASURED: for every trading day 2026-09-29..10-08 about 600 instruments (FTSE 250 247, FTSE 100 ~100,
+# Euronext 100) had their day-D bar first written by the run AFTER the next morning's. Same 30-day window on
+# 2026-10-08: the 03:31 UTC morning run got 20.9 bars per UK instrument, the 23:05 evening run 21.9 -- Yahoo
+# left out the newest day in the morning, and the run still reported success. The morning scan accepts a
+# stored series up to 5 days old (price_store.get_bars_or_fetch, stale_days=5), so it ran a day behind.
+#
+# NOT PROVEN is why Yahoo omits it. So the daily run now measures it: after the main pass it counts, per
+# market, the instruments whose newest bar is older than the previous weekday, re-asks Yahoo once for each
+# with a different request (Ticker.history(period="5d") instead of download(start, end)), and records both
+# counts in price_audit_log. A holiday (Golden Week) shows up as "still missing" in that market, as it should.
+# Bounded by RETRY_MAX_SECONDS so the 90-minute job cap (75-minute budget + this) is never reached.
+RETRY_MAX_SECONDS = 420
+
 # A SEPARATE, WIDER TOLERANCE FOR THE IG COMPARISON, because it compares two DIFFERENT SOURCES.
 #
 # DISCREPANCY_TOL_PCT (0.1%) is right where it is used at line ~144: that compares a freshly fetched
@@ -138,11 +153,65 @@ def _universe():
     return out
 
 
-def audit_ticker(ticker, yahoo_symbol, window_days, source, db):
-    """Re-fetch the trailing `window_days`, compare to stored, UPSERT. Returns
-    (bars_written, discrepancies, max_drift_pct)."""
+def _today():
+    return datetime.now(timezone.utc).date()
+
+
+def _prev_weekday(d):
+    d -= timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
+def _markets():
+    """{ticker: market} from the scan universe."""
+    from run_hvf_report import UNIVERSE
+    return {tk: m for m, tks in UNIVERSE.items() for tk in tks}
+
+
+def _by_market(tickers, markets):
+    counts = {}
+    for tk in tickers:
+        m = markets.get(tk, "Other")
+        counts[m] = counts.get(m, 0) + 1
+    return ", ".join(f"{m} {n}" for m, n in sorted(counts.items(), key=lambda x: (-x[1], x[0])))
+
+
+def _retry_prev_bar(missing, prev_wd, today, source, db, max_seconds=RETRY_MAX_SECONDS):
+    """Re-ask Yahoo once, with a different request, for instruments whose first fetch lacked `prev_wd`.
+    Stores completed bars only (dates before `today`, so a partial intraday bar is never written). Returns
+    (recovered tickers, tickers not tried because the time cap was reached)."""
     import yfinance as yf
-    end = datetime.now(timezone.utc).date()
+    t0 = time.time()
+    recovered, untried = [], []
+    for tk, ysym in missing.items():
+        if time.time() - t0 > max_seconds:
+            untried.append(tk)
+            continue
+        try:
+            h = yf.Ticker(ysym).history(period="5d", auto_adjust=True)
+        except Exception as e:
+            log.warning(f"{tk}: previous-day retry failed: {e}")
+            continue
+        if h is None or h.empty:
+            continue
+        days = [pd.Timestamp(i).date() for i in h.index]
+        h = h[[d < today for d in days]]
+        if h.empty:
+            continue
+        price_store.upsert_bars(tk, h, source, db=db)
+        if max(pd.Timestamp(i).date() for i in h.index) >= prev_wd:
+            recovered.append(tk)
+    return recovered, untried
+
+
+def audit_ticker(ticker, yahoo_symbol, window_days, source, db, last_bar=None):
+    """Re-fetch the trailing `window_days`, compare to stored, UPSERT. Returns
+    (bars_written, discrepancies, max_drift_pct). When `last_bar` is a dict, the date of the newest bar
+    Yahoo returned is recorded in it under `ticker`."""
+    import yfinance as yf
+    end = _today()
     start = end - timedelta(days=window_days)
     try:
         dl = yf.download(yahoo_symbol, start=start.strftime("%Y-%m-%d"),
@@ -156,6 +225,8 @@ def audit_ticker(ticker, yahoo_symbol, window_days, source, db):
     if getattr(dl.columns, "nlevels", 1) > 1:
         dl = dl.copy()
         dl.columns = dl.columns.get_level_values(0)
+    if last_bar is not None:
+        last_bar[ticker] = max(pd.Timestamp(i).date() for i in dl.index)
 
     # Compare against what is stored for the same window BEFORE overwriting.
     discrepancies, max_drift = 0, 0.0
@@ -275,6 +346,8 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None, max_s
     stopped_early = 0
     max_drift = 0.0
     ig_ok = use_ig
+    last_bar = {} if mode == "daily" else None
+    prev_note = ""
     try:
         price_store.ensure_schema(db)
         _ensure_audit_log(db)
@@ -288,7 +361,7 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None, max_s
                           "bars; the next pass picks them up.", budget, stopped_early, total,
                           total - stopped_early)
                 break
-            w, d, md = audit_ticker(tk, ysym, window_days, source, db)
+            w, d, md = audit_ticker(tk, ysym, window_days, source, db, last_bar=last_bar)
             checked += 1
             tot_written += w
             tot_disc += d
@@ -307,6 +380,23 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None, max_s
             if PER_TICKER_PAUSE_S:
                 time.sleep(PER_TICKER_PAUSE_S)
 
+        if last_bar:                                    # the previous day's bar -- see RETRY_MAX_SECONDS
+            today = _today()
+            prev_wd = _prev_weekday(today)
+            missing = {tk: uni[tk] for tk, lb in last_bar.items() if lb < prev_wd}
+            markets = _markets()
+            prev_note = (f"prev-day bar {prev_wd}: missing after first fetch {len(missing)}/{len(last_bar)}"
+                         + (f" ({_by_market(missing, markets)})" if missing else ""))
+            if missing:
+                got, untried = _retry_prev_bar(missing, prev_wd, today, source, db)
+                still = [tk for tk in missing if tk not in got and tk not in untried]
+                prev_note += (f"; retry recovered {len(got)}"
+                              + (f" ({_by_market(got, markets)})" if got else "")
+                              + f", still missing {len(still)}"
+                              + (f" ({_by_market(still, markets)})" if still else "")
+                              + (f", not retried (time cap) {len(untried)}" if untried else ""))
+            log.info(prev_note)
+
         try:                                            # keep only RETENTION_YEARS (user 2026-06-29)
             pruned = price_store.prune_older_than()
         except Exception as e:
@@ -314,6 +404,8 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None, max_s
 
         dur = time.time() - t0
         notes = f"{checked} checked; IG fixes {ig_corrected}; double-checked {ig_dc}; pruned {pruned}"
+        if prev_note:
+            notes += "; " + prev_note
         if stopped_early:
             # In the notes, not only the log: price_audit_log is what anyone asks later, and a
             # truncated pass that looks identical to a complete one is the silent-failure shape

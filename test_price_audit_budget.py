@@ -58,7 +58,7 @@ def _wire(monkeypatch, n_tickers, seconds_per_ticker=0.0):
     monkeypatch.setattr(price_audit.price_store, "ensure_schema", lambda d: None)
     monkeypatch.setattr(price_audit.price_store, "prune_older_than", lambda: 0)
 
-    def _tick(tk, ysym, window_days, source, d):
+    def _tick(tk, ysym, window_days, source, d, last_bar=None):
         clock["t"] += seconds_per_ticker           # the only thing that advances the fake clock
         return 1, 0, None
 
