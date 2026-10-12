@@ -2053,6 +2053,9 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
       <span style="flex:1"></span>
       <!-- Named periods, not From/To (owner 2026-10-11: "Last 7 days", "Last month", "This month" etc). -->
       <!-- Sort by the P&L figure (owner 2026-10-11: "allow sort by figure e.g. -0.98"). -->
+      <!-- Hide small figures (owner 2026-10-12: "Allow filter of small figures ... e.g. +/- 1.25"). Empty = show all. -->
+      <label style="font-size:12px;white-space:nowrap" title="Leave out rows whose P&amp;L is within plus or minus this figure">Hide P&amp;L within ±
+        <input type="number" id="igtl-small" min="0" step="0.01" placeholder="0" oninput="paintIgTimeline()" style="padding:4px 6px;font-size:12px;width:72px"></label>
       <select id="igtl-sort" onchange="paintIgTimeline()" style="padding:4px 6px;font-size:12px;width:auto;flex:none" title="Order of the rows">
         <option value="opened" selected>Sort: date opened</option><option value="pnl_desc">Sort: P&amp;L high → low</option>
         <option value="pnl_asc">Sort: P&amp;L low → high</option></select>

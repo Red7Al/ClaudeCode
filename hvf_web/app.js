@@ -5785,7 +5785,12 @@ function paintIgTimeline(){
   const {from,to}=igtlRange((($("igtl-period")||{}).value)||"30d");
   const todayS=_ymdLocal(new Date());
   // A row shows when its open period OVERLAPS the chosen dates (an open position runs to today).
-  const rows=igTimelineRows(IG_POS,IGCLOSED).filter(r=>(!to||r.opened<=to)&&(!from||(r.closed||todayS)>=from));
+  const inPeriod=igTimelineRows(IG_POS,IGCLOSED).filter(r=>(!to||r.opened<=to)&&(!from||(r.closed||todayS)>=from));
+  // Hide small figures (owner 2026-10-12: "Allow filter of small figures ... e.g. +/- 1.25"): a row whose
+  // P&L is within +/- the value, the value itself included, is left out. A row with no figure stays.
+  const small=Math.abs(parseFloat((($("igtl-small")||{}).value)||""))||0;
+  const rows=small>0?inPeriod.filter(r=>r.profit==null||Math.abs(r.profit)>small):inPeriod;
+  const nSmall=inPeriod.length-rows.length;
   // By the P&L figure when chosen; a row with no figure goes last either way. Stable, so ties keep date order.
   const srt=(($("igtl-sort")||{}).value)||"opened";
   if(srt!=="opened"){const dir=srt==="pnl_asc"?1:-1;
@@ -5794,7 +5799,7 @@ function paintIgTimeline(){
   // ledger, and without the note the chart just shows "0 closed" with no reason.
   const loading=(IGCLOSED===null)?`<p class="muted" style="font-size:12px">Closed trades are still loading from IG history.</p>`
                :(_igClosedNote?`<p class="muted" style="font-size:12px">${_esc(_igClosedNote)}</p>`:"");
-  if(!rows.length){el.innerHTML=loading+`<p class="muted">No positions in this period.</p>`;return;}
+  if(!rows.length){el.innerHTML=loading+`<p class="muted">No positions in this period${nSmall?` (${nSmall} hidden as within ±${small})`:""}.</p>`;return;}
   const DAY=86400000, P=d=>Date.parse(d+"T00:00:00Z"), today=P(todayS);
   const t0=from?P(from):Math.min(...rows.map(r=>P(r.opened))), t1=(to?P(to):today)+DAY;
   const W=1100, LW=380, R=12, T=26, RH=24, BH=12, H=T+rows.length*RH+8;
@@ -5827,7 +5832,7 @@ function paintIgTimeline(){
       +`</g>`;
   }).join("");
   const nOpen=rows.filter(r=>!r.closed).length;
-  el.innerHTML=loading+`<div class="muted" style="font-size:12px;margin:0 0 6px">${nOpen} open · ${rows.length-nOpen} closed · bar = opened → today (open) or → close date (closed) · P&L in each position's own currency</div>`
+  el.innerHTML=loading+`<div class="muted" style="font-size:12px;margin:0 0 6px">${nOpen} open · ${rows.length-nOpen} closed${nSmall?` · ${nSmall} hidden as within ±${small}`:""} · bar = opened → today (open) or → close date (closed) · P&L in each position's own currency</div>`
     +`<div class="tablewrap" style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:760px;height:auto" role="img" aria-label="Open and closed positions over time">${ticks}${bars}</svg></div>`;
 }
 

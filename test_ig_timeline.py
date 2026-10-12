@@ -31,10 +31,10 @@ def _src():
     return "\n".join(helpers) + "\n" + _fn("igtlRange") + _fn("igTimelineRows") + _fn("paintIgTimeline")
 
 
-def _run(expr, pos, closed=None, period="12m", sort="opened", note=""):
+def _run(expr, pos, closed=None, period="12m", sort="opened", note="", small=""):
     clock = ("const _RD=Date;Date=class extends _RD{constructor(...a){super(...(a.length?a:[%s]))}"
              "static now(){return _RD.parse(%s)}};\n") % (json.dumps(NOW), json.dumps(NOW))
-    inputs = {"igtl-period": {"value": period}, "igtl-sort": {"value": sort}}
+    inputs = {"igtl-period": {"value": period}, "igtl-sort": {"value": sort}, "igtl-small": {"value": small}}
     script = (clock + _src() + "\nconst _el={innerHTML:''};const _in=" + json.dumps(inputs) + ";"
               "const $=id=>id==='ig-timeline'?_el:(_in[id]||null);\n"
               f"let IG_POS={json.dumps(pos)}; let IGCLOSED={json.dumps(closed)}; let _igClosedNote={json.dumps(note)};\n"
@@ -153,3 +153,22 @@ def test_closed_trades_carry_igs_open_date(monkeypatch):
     monkeypatch.setattr(ig_shim.session, "get", lambda *a, **k: {})
     (t,) = ig_shim.get_closed_trades("2026-07-01T00:00:00")
     assert t["opened"] == "2026-09-01T13:31:32" and t["date"] == "2026-10-08T16:56:13"
+
+
+@node_only
+def test_small_figures_within_plus_or_minus_the_value_are_hidden():
+    # Owner 2026-10-12: "Allow filter of small figures in "Open over time" e.g. +/- 1.25".
+    pos = [{"ticker": t, "name": t, "direction": "BUY", "currency": "GBP", "opened": "2026-10-01T08:00:00", "profit": p}
+           for t, p in (("EDGEUP", 1.25), ("EDGEDN", -1.25), ("SMALL", -0.98), ("JUSTOVER", 1.26), ("BIGLOSS", -40.0), ("NOPRICE", None))]
+    html = _paint(pos, [], small="1.25")
+    names = _order(html)
+    assert sorted(names) == ["BIGLOSS", "JUSTOVER", "NOPRICE"], names
+    assert "3 hidden as within ±1.25" in html
+    assert sorted(_order(_paint(pos, []))) == sorted(t for t, *_ in [(p["ticker"],) for p in pos]), "empty = show all"
+
+
+def test_the_small_figure_box_sits_on_the_controls_row():
+    panel = HTML[HTML.index('<div id="igpanel-timeline"'):HTML.index('<div id="ig-timeline"')]
+    row = panel[panel.index('<div style="display:flex'):]
+    assert row.index("flex:1") < row.index('id="igtl-small"') < row.index('id="igtl-sort"')
+
