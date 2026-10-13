@@ -95,10 +95,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
-          # The summary job runs on its own or called by the Morning Chain / Scanner Snapshot Publish; a
-          # called workflow's run carries the CALLER's file, so all three are its legitimate producers.
+          # ONLY the summary Scanner Snapshot Publish built -- the same run that made the scanner-snapshot
+          # artifact above. MEASURED 2026-10-13: the bridge trades on the EVENING snapshot all day (18:00 loaded
+          # 10-12 19:05), while the Morning Chain saves a newer summary at ~05:55 for the MORNING snapshot; the
+          # newest-of-any summary would never match and the bridge would read the database 06:00-18:00.
           ID=$(bash .github/scripts/fetch_trusted_artifact.sh report-summary report_summary.json hvf_web \
-                 .github/workflows/trading-report-summary.yml .github/workflows/trading-morning-chain.yml \
                  .github/workflows/trading-scanner-snapshot.yml) || {
             echo "no trusted report-summary artifact - the bridge reads the database"; exit 0; }
           echo "report-summary artifact $ID"

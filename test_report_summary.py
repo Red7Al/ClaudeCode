@@ -199,6 +199,10 @@ def test_the_order_bridge_gets_the_summary_the_summary_job_saves():
     assert names.index("Fetch the latest Scanner snapshot") < fetch < run_at
     f = steps[fetch]
     assert "fetch_trusted_artifact.sh report-summary report_summary.json hvf_web" in f["run"]
+    # Only Scanner Snapshot Publish's summary: the bridge's snapshot is that run's (the evening scan); the
+    # Morning Chain's newer summary is for the morning snapshot and would never match (2026-10-13).
+    producers = [w.rstrip(")") for w in f["run"].split() if w.startswith(".github/workflows/")]
+    assert producers == [".github/workflows/trading-scanner-snapshot.yml"], producers
     assert f.get("continue-on-error") is True
     assert "IONOS" not in str(f), "the bridge must not be given the IONOS key"
 
