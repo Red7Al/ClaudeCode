@@ -339,3 +339,12 @@ def test_a_login_whose_rows_cannot_be_built_is_a_failed_send_not_a_crash(monkeyp
     sent = []
     monkeypatch.setattr(trade_email, "send_simple_email", lambda s, t, html=None, recipients=None: sent.append(recipients) or True)
     assert rse.main() == 1 and sent == [["b@example.com"]]
+
+
+def test_email_has_no_status_column_every_row_is_triggered():
+    """Owner 2026-10-13: "status can be be removed from table ... as they are all triggered" (measured that
+    day: 22 of 22 report rows TRIGGERED). Header and cells must stay aligned: 7 columns each."""
+    rows = [_row(ticker="AAA", trig_date="2026-10-08", status="TRIGGERED")]
+    subject, text, html = rse.email_body("Alex", rows, "2026-10-13T05:30:00Z")
+    assert "Status" not in text and ">Status<" not in html and "TRIGGERED" not in text and "TRIGGERED" not in html
+    assert html.count("<th ") == 7 and html.count("<td ") == 7

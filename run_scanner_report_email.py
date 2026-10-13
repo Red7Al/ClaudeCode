@@ -93,11 +93,11 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
     if not ordered:
         lines.append("No setups are in your Scanner Report today.")
     else:
-        lines.append(f"{'Ticker':<14}{'Triggered':<12}{'Dir':<6}{'Market':<12}{'Quality':<9}{'R:R':<7}{'RVOL':<7}Status")
+        lines.append(f"{'Ticker':<14}{'Triggered':<12}{'Dir':<6}{'Market':<12}{'Quality':<9}{'R:R':<7}RVOL")  # no Status column: every row is TRIGGERED (owner 2026-10-13)
         for r in ordered:
             lines.append(f"{str(r.get('ticker') or ''):<14}{trig(r) or '-':<12}{str(r.get('direction') or ''):<6}"
                          f"{str(r.get('market') or ''):<12}{_fmt1(r.get('quality')):<9}"
-                         f"{_fmt1(r.get('rr')):<7}{_fmt1(r.get('rvol')):<7}{r.get('status') or ''}")
+                         f"{_fmt1(r.get('rr')):<7}{_fmt1(r.get('rvol'))}")
         if total > len(ordered):
             lines.append(f"\n… and {total - len(ordered)} more (showing the {len(ordered)} most recently triggered).")
     lines += ["", "Log in to Squeeze Scanner for the full interactive report and every column.",
@@ -115,8 +115,7 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
                 f'{td()}{r.get("market","")}</td>'
                 f'{td(";text-align:right")}{_fmt1(r.get("quality"))}</td>'
                 f'{td(";text-align:right")}{_fmt1(r.get("rr"))}</td>'
-                f'{td(";text-align:right")}{_fmt1(r.get("rvol"))}</td>'
-                f'{td()}{r.get("status","")}</td></tr>')
+                f'{td(";text-align:right")}{_fmt1(r.get("rvol"))}</td></tr>')
 
     if ordered:
         table = ('<table style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px">'
@@ -124,7 +123,7 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
                  '<th style="padding:4px 8px;text-align:left">Triggered &darr;</th>'
                  '<th style="padding:4px 8px;text-align:left">Dir</th><th style="padding:4px 8px;text-align:left">Market</th>'
                  '<th style="padding:4px 8px;text-align:right">Quality</th><th style="padding:4px 8px;text-align:right">R:R</th>'
-                 '<th style="padding:4px 8px;text-align:right">RVOL</th><th style="padding:4px 8px;text-align:left">Status</th></tr>'
+                 '<th style="padding:4px 8px;text-align:right">RVOL</th></tr>'
                  + "".join(_row_html(r) for r in ordered) + "</table>")
         if total > len(ordered):
             table += (f'<p style="margin:6px 0 0;font-size:12px;color:#777">… and {total - len(ordered)} more '
