@@ -62,9 +62,10 @@ and 8 loads in 2 minutes made IG refuse with 403 for ~20 minutes (2026-10-11 17:
 3. **`squeeze_history.refresh_daily` re-checks only an 18-month window** (`squeeze_history.py:489`); 205
    older rows keep a stale `OPEN`. The report ignores them (refreshed within 4 days only); other readers
    of `outcome` have not been checked.
-4. **The emailed report now logs "secret decrypt failed" for his IG settings** on GitHub (the runner's
-   `APP_SECRET_KEY` cannot decrypt them; `api_config` tries). Rows unaffected (29 = screen). Offered to the
-   owner, not done.
+4. **"secret decrypt failed" in the email run -- fixed 2026-10-13, confirm on the 10-14 send.** Cause CORRECTED:
+   the runner has no `WEB_USERS_FERNET_KEY` (not `APP_SECRET_KEY`, as first written), so `_fernet()` makes a
+   random key. `/api/config` decrypted his IG credentials only for has_ig_creds/bridge, which the email never
+   reads; `screen_rows` now skips that check. Real rows old vs new identical (22).
 5. **Morning refresh misses the previous day's bar for ~600 UK/Euronext instruments** (every day 09-29..10-08,
    measured by `recorded_at`); the 10-07 "599" was this. Did not occur 10-13. Cause unproven; the new
    per-market counts in `price_audit_log.notes` measure it daily -- read several mornings before deciding.

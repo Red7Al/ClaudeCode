@@ -348,3 +348,21 @@ def test_email_has_no_status_column_every_row_is_triggered():
     subject, text, html = rse.email_body("Alex", rows, "2026-10-13T05:30:00Z")
     assert "Status" not in text and ">Status<" not in html and "TRIGGERED" not in text and "TRIGGERED" not in html
     assert html.count("<th ") == 7 and html.count("<td ") == 7
+
+
+@_node_only
+def test_screen_rows_never_reads_the_logins_ig_credentials(monkeypatch):
+    """2026-10-13: every send logged "secret decrypt failed for Alex/ig_*" -- /api/config decrypted the login's
+    IG credentials for has_ig_creds/bridge, which the email never uses. The job must not touch them at all."""
+    from hvf_web import server, web_users as wu
+    asked = []
+    monkeypatch.setattr(wu, "token_for", lambda n: "tok")
+    monkeypatch.setattr(wu, "get_secret", lambda n, k: asked.append((n, k)) or "")
+    monkeypatch.setattr(server, "api_records", lambda: server.jsonify({"records": [], "report_unavailable": False}))
+    cfg = {"limits": {}, "markets_off": [], "markets_disabled": [], "trade": {}, "filters": {}}
+    monkeypatch.setattr(server, "api_config",
+                        lambda: server.jsonify(dict(cfg, has_ig_creds=server._user_has_ig_creds("Alex"))))
+    real = server._user_has_ig_creds
+    rse.screen_rows("Alex")
+    assert asked == [], f"IG credentials read: {asked}"
+    assert server._user_has_ig_creds is real, "the real check is restored for anything else in the process"

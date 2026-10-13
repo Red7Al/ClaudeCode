@@ -60,9 +60,18 @@ def screen_rows(name: str):
     if not token:
         raise RuntimeError(f"no session for login {name!r}")
     payload = {}
-    for path, view in (("/api/records", server.api_records), ("/api/config", server.api_config)):
-        with server.app.test_request_context(path, headers={"X-Auth": token}):
-            payload[path.rsplit("/", 1)[1]] = server.app.make_response(view()).get_json()
+    # /api/config decrypts the login's IG credentials only to answer has_ig_creds / bridge, which the row code
+    # (scanner_report_rows.js) never reads. On the GitHub runner there is no key for them, so every send logged
+    # "secret decrypt failed" four times (2026-10-13). This job has no business touching IG credentials: the
+    # check is skipped for these calls and restored after.
+    real_check = server._user_has_ig_creds
+    server._user_has_ig_creds = lambda _name: False
+    try:
+        for path, view in (("/api/records", server.api_records), ("/api/config", server.api_config)):
+            with server.app.test_request_context(path, headers={"X-Auth": token}):
+                payload[path.rsplit("/", 1)[1]] = server.app.make_response(view()).get_json()
+    finally:
+        server._user_has_ig_creds = real_check
     here = os.path.dirname(os.path.abspath(__file__))
     p = subprocess.run(["node", os.path.join(here, "scanner_report_rows.js")], input=json.dumps(payload),
                        capture_output=True, text=True, encoding="utf-8", timeout=120)
