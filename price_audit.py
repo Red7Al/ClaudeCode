@@ -178,8 +178,9 @@ def _by_market(tickers, markets):
     return ", ".join(f"{m} {n}" for m, n in sorted(counts.items(), key=lambda x: (-x[1], x[0])))
 
 
-def _retry_prev_bar(missing, prev_wd, today, source, db, max_seconds=RETRY_MAX_SECONDS):
-    """Re-ask Yahoo once, with a different request, for instruments whose first fetch lacked `prev_wd`.
+def _retry_prev_bar(missing, expected, today, source, db, max_seconds=RETRY_MAX_SECONDS):
+    """Re-ask Yahoo once, with a different request, for instruments whose first fetch lacked the bar
+    `expected[ticker]` (the weekday before that ticker's fetch day).
     Stores completed bars only (dates before `today`, so a partial intraday bar is never written). Returns
     (recovered tickers, tickers not tried because the time cap was reached)."""
     import yfinance as yf
@@ -201,15 +202,15 @@ def _retry_prev_bar(missing, prev_wd, today, source, db, max_seconds=RETRY_MAX_S
         if h.empty:
             continue
         price_store.upsert_bars(tk, h, source, db=db)
-        if max(pd.Timestamp(i).date() for i in h.index) >= prev_wd:
+        if max(pd.Timestamp(i).date() for i in h.index) >= expected[tk]:
             recovered.append(tk)
     return recovered, untried
 
 
 def audit_ticker(ticker, yahoo_symbol, window_days, source, db, last_bar=None):
     """Re-fetch the trailing `window_days`, compare to stored, UPSERT. Returns
-    (bars_written, discrepancies, max_drift_pct). When `last_bar` is a dict, the date of the newest bar
-    Yahoo returned is recorded in it under `ticker`."""
+    (bars_written, discrepancies, max_drift_pct). When `last_bar` is a dict, (newest bar Yahoo returned,
+    the weekday before this fetch's end date) is recorded in it under `ticker`."""
     import yfinance as yf
     end = _today()
     start = end - timedelta(days=window_days)
@@ -226,7 +227,10 @@ def audit_ticker(ticker, yahoo_symbol, window_days, source, db, last_bar=None):
         dl = dl.copy()
         dl.columns = dl.columns.get_level_values(0)
     if last_bar is not None:
-        last_bar[ticker] = max(pd.Timestamp(i).date() for i in dl.index)
+        # The expected bar follows THIS fetch's own end date. MEASURED 2026-10-13: the evening run starts
+        # ~23:00 UTC and crosses midnight; judged against the date at the end of the run, 1,702 of 1,750
+        # read as "missing" a bar that download(end=<fetch day>) excludes by design.
+        last_bar[ticker] = (max(pd.Timestamp(i).date() for i in dl.index), _prev_weekday(end))
 
     # Compare against what is stored for the same window BEFORE overwriting.
     discrepancies, max_drift = 0, 0.0
@@ -382,13 +386,15 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None, max_s
 
         if last_bar:                                    # the previous day's bar -- see RETRY_MAX_SECONDS
             today = _today()
-            prev_wd = _prev_weekday(today)
-            missing = {tk: uni[tk] for tk, lb in last_bar.items() if lb < prev_wd}
+            expected = {tk: exp for tk, (lb, exp) in last_bar.items()}
+            missing = {tk: uni[tk] for tk, (lb, exp) in last_bar.items() if lb < exp}
             markets = _markets()
-            prev_note = (f"prev-day bar {prev_wd}: missing after first fetch {len(missing)}/{len(last_bar)}"
+            days = sorted(set(expected.values()))
+            prev_note = (f"prev-day bar {'/'.join(str(d) for d in days)}: missing after first fetch "
+                         f"{len(missing)}/{len(last_bar)}"
                          + (f" ({_by_market(missing, markets)})" if missing else ""))
             if missing:
-                got, untried = _retry_prev_bar(missing, prev_wd, today, source, db)
+                got, untried = _retry_prev_bar(missing, expected, today, source, db)
                 still = [tk for tk in missing if tk not in got and tk not in untried]
                 prev_note += (f"; retry recovered {len(got)}"
                               + (f" ({_by_market(got, markets)})" if got else "")

@@ -93,3 +93,25 @@ def test_the_backfill_does_not_run_the_check(monkeypatch):
 def test_previous_weekday_skips_the_weekend():
     assert price_audit._prev_weekday(TODAY) == PREV
     assert price_audit._prev_weekday(date(2026, 10, 13)) == TODAY
+
+
+def test_a_run_that_crosses_midnight_judges_each_fetch_by_its_own_day(monkeypatch):
+    # MEASURED 2026-10-13: the evening run started ~23:00 UTC on Monday 10-12 and ended after midnight. The
+    # check used the date at the END (prev weekday 10-12), but every fetch before midnight asked Yahoo for
+    # end=10-12 (exclusive) -- so 1,702 of 1,750 read as missing a bar the request excludes by design.
+    clock = {"d": date(2026, 10, 12)}
+    first = [date(2026, 10, 8), PREV]                 # what download(end=2026-10-12) returns: up to Friday
+    download = {"FOUR.L": _frame(first), "NVDA": _frame(first)}
+    db, upserts = _wire(monkeypatch, download, {})
+    monkeypatch.setattr(price_audit, "_today", lambda: clock["d"])
+    real = price_audit.audit_ticker
+
+    def _tick(*a, **k):
+        out = real(*a, **k)
+        clock["d"] = date(2026, 10, 13)               # midnight passes after the first instrument
+        return out
+    monkeypatch.setattr(price_audit, "audit_ticker", _tick)
+    price_audit.run("daily", 30, "YF", use_ig=False)
+    notes = db.inserts[-1]["no"]
+    assert "missing after first fetch 1/2 (NASDAQ 100 1)" in notes, notes
+    assert "prev-day bar 2026-10-09/2026-10-12" in notes, notes
