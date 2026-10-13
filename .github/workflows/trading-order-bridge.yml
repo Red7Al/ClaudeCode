@@ -1,4 +1,4 @@
-name: Order Bridge (snapshot -> IG working orders, 2026-08-15)
+name: Order Bridge (snapshot -> IG working orders, 2026-10-13)
 
 # Database -> IG working-order bridge (hvf_web/order_bridge.py) for the FULL scanned universe.
 #
@@ -63,17 +63,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Pick the newest unexpired one INSIDE jq. Piping to `head -1` under `set -o pipefail` makes
-          # head close the pipe, gh take SIGPIPE, and the step fail with "no artifact" while two sat
-          # there unexpired -- which is exactly what happened on the first run of this step.
-          ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=scanner-snapshot&per_page=20" \
-                 --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .id // empty')
-          if [ -z "${ID:-}" ]; then
-            echo "::error::no unexpired scanner-snapshot artifact. Run Scanner Snapshot Publish."
+          # Only an artifact this repository's own Scanner Snapshot Publish built on main, and only
+          # snapshot.json out of it (security review 2026-10-13 -- see the script's header).
+          ID=$(bash .github/scripts/fetch_trusted_artifact.sh scanner-snapshot snapshot.json hvf_web \
+                 .github/workflows/trading-scanner-snapshot.yml) || {
+            echo "::error::no trusted scanner-snapshot artifact. Run Scanner Snapshot Publish."
             exit 1
-          fi
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ID/zip" > /tmp/snap.zip
-          unzip -o -q /tmp/snap.zip -d hvf_web/
+          }
+          echo "scanner-snapshot artifact $ID"
           python - <<'PY'
           import datetime as dt, json, sys
           with open("hvf_web/snapshot.json", encoding="utf-8") as fh:
@@ -88,6 +85,24 @@ jobs:
           if age > 36:
               sys.exit(f"snapshot is {age:.1f}h old (limit 36h) - refusing to place orders on stale prices")
           PY
+
+      # The report summary for this snapshot (2026-10-13). _live_vwap_atr reads it instead of price_history
+      # when its generated_utc matches the snapshot's; otherwise it falls back to the database exactly as
+      # before. Best effort: a missing artifact never stops the bridge.
+      - name: Fetch the report summary
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          # The summary job runs on its own or called by the Morning Chain / Scanner Snapshot Publish; a
+          # called workflow's run carries the CALLER's file, so all three are its legitimate producers.
+          ID=$(bash .github/scripts/fetch_trusted_artifact.sh report-summary report_summary.json hvf_web \
+                 .github/workflows/trading-report-summary.yml .github/workflows/trading-morning-chain.yml \
+                 .github/workflows/trading-scanner-snapshot.yml) || {
+            echo "no trusted report-summary artifact - the bridge reads the database"; exit 0; }
+          echo "report-summary artifact $ID"
+          python -c "import json; s=json.load(open('hvf_web/report_summary.json', encoding='utf-8')); n=json.load(open('hvf_web/snapshot.json', encoding='utf-8')); print('summary', s.get('generated_utc'), '| snapshot', n.get('generated_utc'), '| in use:', s.get('generated_utc') == n.get('generated_utc'))"
 
       # Clear dead working orders BEFORE the bridge builds its skip-list from them (2026-09-11).
       #

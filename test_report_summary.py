@@ -180,3 +180,44 @@ def test_only_a_recent_close_counts_as_now():
     import inspect
     import publish_report_summary as pub
     assert "bar_date >= current_date - 7" in inspect.getsource(pub.report_extras)
+
+
+def test_the_order_bridge_gets_the_summary_the_summary_job_saves():
+    """2026-10-13, owner: "385 calls is too many and this must be reduced with use of summary flat files".
+    The Order Bridge (every 2 h on weekdays) ran _live_vwap_atr on a runner with no summary file, so every run
+    read price_history. The summary job now saves the file as an artifact; the bridge fetches it BEFORE the
+    bridge step, by the same name, with the automatic token (no IONOS key handed to it)."""
+    import yaml
+    summ = yaml.safe_load(open(".github/workflows/trading-report-summary.yml", encoding="utf-8"))
+    up = [s for s in summ["jobs"]["summary"]["steps"] if "upload-artifact" in str(s.get("uses", ""))]
+    assert up and up[0]["with"]["name"] == "report-summary" and up[0]["with"]["path"] == "hvf_web/report_summary.json"
+    bridge = yaml.safe_load(open(".github/workflows/trading-order-bridge.yml", encoding="utf-8"))
+    steps = list(bridge["jobs"].values())[0]["steps"]
+    names = [s.get("name") or "" for s in steps]
+    fetch = names.index("Fetch the report summary")
+    run_at = next(i for i, s in enumerate(steps) if "order_bridge" in str(s.get("run", "")))
+    assert names.index("Fetch the latest Scanner snapshot") < fetch < run_at
+    f = steps[fetch]
+    assert "fetch_trusted_artifact.sh report-summary report_summary.json hvf_web" in f["run"]
+    assert f.get("continue-on-error") is True
+    assert "IONOS" not in str(f), "the bridge must not be given the IONOS key"
+
+
+def test_the_order_bridge_installs_only_trusted_artifacts_and_only_their_json():
+    """Security review 2026-10-13: the repository is public and trading-secret-scan.yml runs on pull_request, so
+    a fork's PR can upload an artifact under any name. The bridge took the newest by name and unzipped the
+    WHOLE archive into hvf_web/ -- a planted order_bridge.py would have run with the IG secrets. Every fetch
+    now goes through one script that checks provenance and extracts only the named file."""
+    import yaml
+    wf = open(".github/workflows/trading-order-bridge.yml", encoding="utf-8").read()
+    assert "unzip" not in wf and "actions/artifacts" not in wf, "no direct artifact download left in the bridge"
+    steps = list(yaml.safe_load(wf)["jobs"].values())[0]["steps"]
+    snap = next(s for s in steps if s.get("name") == "Fetch the latest Scanner snapshot")["run"]
+    assert ("fetch_trusted_artifact.sh scanner-snapshot snapshot.json hvf_web" in snap
+            and ".github/workflows/trading-scanner-snapshot.yml" in snap)
+    sh = open(".github/scripts/fetch_trusted_artifact.sh", encoding="utf-8").read()
+    for check in ('.workflow_run.head_branch == "main"',
+                  ".workflow_run.head_repository_id == .workflow_run.repository_id",
+                  '"$event" != "workflow_dispatch"', '"$allowed" != *" $path "*',
+                  'unzip -q -o "$scratch/a.zip" "$file" -d "$scratch/x"'):
+        assert check in sh, check

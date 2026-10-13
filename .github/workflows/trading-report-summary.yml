@@ -1,4 +1,4 @@
-name: Report Summary to IONOS (2026-10-09)
+name: Report Summary to IONOS (2026-10-13)
 
 # Builds the Scanner Report's summary file and installs it on IONOS, so the website reads a flat file
 # instead of the database (owner, repeatedly; 2026-10-09: "The read should be once or twice per day as the
@@ -47,6 +47,17 @@ jobs:
 
       - name: Build and install the summary
         run: python publish_report_summary.py
+
+      # The same file for the GitHub jobs (2026-10-13, owner: "385 calls is too many and this must be reduced
+      # with use of summary flat files"). Jobs on a runner had no summary, so every call they made to the web
+      # tier's helpers read price_history from the database. They download this artifact with the automatic
+      # GITHUB_TOKEN -- no IONOS key is handed to them.
+      - name: Save the summary for the GitHub jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-summary
+          path: hvf_web/report_summary.json
+          retention-days: 3
 
       - name: Verify the installed summary belongs to the live snapshot
         run: |
