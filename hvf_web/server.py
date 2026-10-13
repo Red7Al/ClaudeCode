@@ -6519,15 +6519,28 @@ def api_ig_closed():
             days = 120
         frm = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
         with ig_shim._IG_LOCK, ig_shim.acting_session(name):
-            trades = ig_shim.get_closed_trades(frm) or []
+            tx = ig_shim.get_transactions(frm) or []
+            trades = ig_shim.get_closed_trades(frm, transactions=tx) or []
+            acct = ig_shim.get_account_info() if trades else {}
         if trades:
+            # The balance on any day in the window, for "Open over time" % (owner 2026-10-13: "against full
+            # value at begining of reporting period"): balance now minus every transaction since that day --
+            # trades, charges, deposits. MEASURED on the owner's account 2026-10-13: all 6,260 transactions
+            # since it opened sum to 588.90, exactly the balance IG reports. The login's own account only.
+            daily = {}
+            for t in tx:
+                d = str(t.get("date") or "")[:10]
+                if d:
+                    daily[d] = round(daily.get(d, 0.0) + float(t.get("pnl") or 0.0), 2)
+            balance = ({"now": acct["balance"], "currency": acct.get("currency") or "", "from": frm[:10],
+                        "daily": daily} if (acct or {}).get("balance") is not None else None)
             # Closed trades render into the SAME table as open positions (user 2026-08-04, no duplicate
             # table below), so they need the MCap column filled from the same map or every closed row
             # shows a dash in a column its neighbours populate.
             _mc = _mcap_map()
             for _t in trades:
                 _t["mcap"] = _json_safe(_mc.get(_t.get("ticker")))
-            return jsonify({"trades": trades, "days": days})
+            return jsonify({"trades": trades, "days": days, "balance": balance})
         # IG can return an empty history during a transient/rate-limited read. Keep the account view
         # useful and explicit by showing the application's closed-trade ledger rather than claiming
         # that no closed trades exist.

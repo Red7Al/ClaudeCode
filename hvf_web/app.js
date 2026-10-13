@@ -2468,12 +2468,12 @@ function paintIgAccount(){
   $("ig-ord-rows").innerHTML=ord.map(o=>`<tr><td>${nm40(o.name)}</td><td>${o.market||'<span class="muted">—</span>'}</td><td>${_mcapFmt(o.mcap)}</td><td>${_nowCell(o,rvolCell(o.rvol))}</td><td>${_nowCell(o,_tickCross(o.above_vwap))}</td><td>${_nowCell(o,_tickCross(o.atr_expanding))}</td><td>${_nowCell(o,volScoreCell(o.volume_score))}</td><td>${o.rr!=null?(+o.rr).toFixed(1):'<span class="muted">—</span>'}</td><td>${o.quality!=null?`<b style="color:${qcol(o.quality)}">${o.quality}</b>`:'<span class="muted">—</span>'}</td><td>${_igDtag(o.direction)}</td><td>${_igSz(o.size)}</td><td>${o.level??''}</td><td>${o.type||''}</td><td>${_igSrc(o.source)}</td><td>${o.good_till||''}</td><td><b>${o.ticker||o.epic||''}</b></td></tr>`).join("")||`<tr><td colspan="16" class="empty">${q?'No working orders match that search.':'No working orders.'}</td></tr>`;
 }
 // Closed trades are loaded into the main transactions table (user 2026-08-04); no duplicate table below.
-let IGCLOSED=null, _igClosedNote="", _igNoCreds=false;
+let IGCLOSED=null, _igClosedNote="", _igNoCreds=false, IGBAL=null;
 function loadIgClosed(force){
   if(IGCLOSED!==null&&!force){paintIgAccount();return;}
   IGCLOSED=null;_igClosedNote="Closed trades are still loading from IG history.";paintIgAccount();
   fetch("/api/ig-closed",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{trades:[]})
-    .then(j=>{IGCLOSED=j.trades||[];_igClosedNote=j.note||"";igOpenMonthInitialised=false;paintIgAccount();})
+    .then(j=>{IGCLOSED=j.trades||[];_igClosedNote=j.note||"";IGBAL=j.balance||null;igOpenMonthInitialised=false;paintIgAccount();})
     .catch(()=>{IGCLOSED=[];_igClosedNote="Could not load closed trades.";paintIgAccount();});
 }
 function _igReason(r){
@@ -5780,6 +5780,13 @@ function igtlRange(v,now){
   if(v==="12m")return {from:months(12),to:null};
   return {from:back(30),to:null};
 }
+// The account balance at the start of `from` (YYYY-MM-DD): balance now minus every transaction dated
+// `from` or later. null when unknown -- no balance, no start date, or a start before the history returned.
+function igtlStartBalance(b,from){
+  if(!b||b.now==null||!from||!b.from||from<b.from)return null;
+  let v=+b.now; Object.entries(b.daily||{}).forEach(([d,n])=>{if(d>=from)v-=(+n||0);});
+  return {value:Math.round(v*100)/100,date:from,currency:b.currency};
+}
 function paintIgTimeline(){
   const el=$("ig-timeline"); if(!el)return;
   const {from,to}=igtlRange((($("igtl-period")||{}).value)||"30d");
@@ -5807,6 +5814,11 @@ function paintIgTimeline(){
   const tot={};
   rows.forEach(r=>{if(r.profit!=null)tot[r.currency]=(tot[r.currency]||0)+r.profit;});
   const curs=Object.keys(tot).sort();
+  // % gain/loss against the account balance at the start of the period (owner 2026-10-13: "against full
+  // value at begining of reporting period"): balance now minus every transaction from the start date on
+  // (/api/ig-closed "balance"). Only in the account's own currency, and only when the start date is inside
+  // the history IG returned -- otherwise a transaction before it would be missing from the sum.
+  const bal=igtlStartBalance(IGBAL,from);
   const W=1100, LW=380, R=12, T=26, RH=24, BH=12, TY=T+rows.length*RH+6, H=TY+(curs.length?curs.length*RH+4:0)+8;
   const x=t=>LW+(Math.max(t0,Math.min(t1,t))-t0)/(t1-t0)*(W-LW-R);
   const money=v=>v==null?"—":`${v>=0?"+":"−"}${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -5839,7 +5851,11 @@ function paintIgTimeline(){
   const totals=curs.length?`<line x1="0" x2="${LW}" y1="${TY}" y2="${TY}" stroke="var(--fg)" stroke-width="1"/>`
     +curs.map((c,i)=>{const y=TY+4+i*RH;
       return `<g class="igtl-total"><text x="6" y="${y+RH/2+4}" font-size="12" font-weight="700" fill="var(--fg)">Total${curs.length>1?` (${_esc(c)})`:""}</text>`
-        +`<text x="${LW-10}" y="${y+RH/2+4}" font-size="12" font-weight="700" fill="var(--fg)" text-anchor="end">${money(tot[c])} <tspan font-weight="400" fill="var(--muted)">${_esc(c)}</tspan></text></g>`;}).join(""):"";
+        +`<text x="${LW-10}" y="${y+RH/2+4}" font-size="12" font-weight="700" fill="var(--fg)" text-anchor="end">${money(tot[c])} <tspan font-weight="400" fill="var(--muted)">${_esc(c)}</tspan></text>`
+        +(bal&&_igCurrency(bal.currency)===c?`<text class="igtl-pct" x="${LW+6}" y="${y+RH/2+4}" font-size="12" font-weight="700" fill="${bal.value>0?col(tot[c]):"var(--muted)"}">`
+          +(bal.value>0?`${tot[c]>=0?"+":"−"}${Math.abs(tot[c]/bal.value*100).toFixed(2)}%`:"no %")
+          +`<tspan font-weight="400" fill="var(--muted)"> ${bal.value>0?"of":"—"} account balance ${money(bal.value).replace("+","")} ${_esc(c)} on ${bal.date}</tspan></text>`:"")
+        +`</g>`;}).join(""):"";
   const nOpen=rows.filter(r=>!r.closed).length;
   el.innerHTML=loading+`<div class="muted" style="font-size:12px;margin:0 0 6px">${nOpen} open · ${rows.length-nOpen} closed${nSmall?` · ${nSmall} hidden as within ±${small}`:""} · bar = opened → today (open) or → close date (closed) · P&L in each position's own currency</div>`
     +`<div class="tablewrap" style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:760px;height:auto" role="img" aria-label="Open and closed positions over time">${ticks}${bars}${totals}</svg></div>`;

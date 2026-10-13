@@ -28,16 +28,16 @@ def _fn(name):
 
 def _src():
     helpers = [l for l in APP.split("\n") if l.startswith(("const _esc=", "const _igCurrency=", "const _ymdLocal="))]
-    return "\n".join(helpers) + "\n" + _fn("igtlRange") + _fn("igTimelineRows") + _fn("paintIgTimeline")
+    return "\n".join(helpers) + "\n" + _fn("igtlRange") + _fn("igtlStartBalance") + _fn("igTimelineRows") + _fn("paintIgTimeline")
 
 
-def _run(expr, pos, closed=None, period="12m", sort="opened", note="", small=""):
+def _run(expr, pos, closed=None, period="12m", sort="opened", note="", small="", bal=None):
     clock = ("const _RD=Date;Date=class extends _RD{constructor(...a){super(...(a.length?a:[%s]))}"
              "static now(){return _RD.parse(%s)}};\n") % (json.dumps(NOW), json.dumps(NOW))
     inputs = {"igtl-period": {"value": period}, "igtl-sort": {"value": sort}, "igtl-small": {"value": small}}
     script = (clock + _src() + "\nconst _el={innerHTML:''};const _in=" + json.dumps(inputs) + ";"
               "const $=id=>id==='ig-timeline'?_el:(_in[id]||null);\n"
-              f"let IG_POS={json.dumps(pos)}; let IGCLOSED={json.dumps(closed)}; let _igClosedNote={json.dumps(note)};\n"
+              f"let IG_POS={json.dumps(pos)}; let IGCLOSED={json.dumps(closed)}; let _igClosedNote={json.dumps(note)}; let IGBAL={json.dumps(bal)};\n"
               f"console.log(JSON.stringify({expr}));")
     p = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert p.returncode == 0, p.stderr
@@ -193,3 +193,69 @@ def test_the_total_counts_only_the_rows_shown():
     assert _totals(_paint(bp, [], period="30d")) == [], "BP has no figure -- nothing to total"
     assert _totals(_paint(gbp, CLOSED, period="30d")) == [("Total", "+62.00", "GBP")], "one currency: plain 'Total'"
     assert _totals(_paint(gbp, CLOSED, small="100")) == [("Total", "+150.00", "GBP")], "hidden small figures are left out"
+
+
+def _pcts(html):
+    return re.findall(r'<text class="igtl-pct"[^>]*>([^<]+)<tspan[^>]*>([^<]+)</tspan>', html)
+
+
+# Shaped as /api/ig-closed "balance": balance now, the history's first day, and each day's net of ALL
+# transactions (trades, charges, deposits). Clock pinned at 2026-10-11; "Last 30 days" starts 2026-09-11.
+BAL = {"now": 588.90, "currency": "GBP", "from": "2025-10-11",
+       "daily": {"2026-09-10": 500.0, "2026-09-11": -10.0, "2026-10-08": 150.0, "2026-10-09": -6.0}}
+
+
+@node_only
+def test_the_total_carries_its_percentage_of_the_balance_at_the_start_of_the_period():
+    # Owner 2026-10-13: "along with total (add %age gain\loss)", "against full value at begining of reporting
+    # period". Balance at the start of 2026-09-11 = 588.90 - (-10 + 150 - 6) = 454.90; GBP total +62.00.
+    gbp = [p for p in POS if p["currency"] == "GBP"]
+    html = _paint(gbp, CLOSED, period="30d", bal=BAL)
+    assert _totals(html) == [("Total", "+62.00", "GBP")]
+    assert _pcts(html) == [("+13.63%", " of account balance 454.90 GBP on 2026-09-11")]
+
+
+@node_only
+def test_no_percentage_when_the_start_balance_is_unknown_or_zero():
+    gbp = [p for p in POS if p["currency"] == "GBP"]
+    assert _pcts(_paint(gbp, CLOSED, period="30d")) == [], "no balance from the route -- no %"
+    assert _pcts(_paint(gbp, CLOSED, period="30d", bal=dict(BAL, **{"from": "2026-09-20"}))) == [], \
+        "a start before the history returned would miss transactions"
+    zero = dict(BAL, now=134.0)                 # 134 - 134 = 0 at the start: no money in the account yet
+    assert _pcts(_paint(gbp, CLOSED, period="30d", bal=zero)) == [("no %", " — account balance 0.00 GBP on 2026-09-11")]
+    usd = [p for p in POS if p["currency"] == "USD"]
+    assert _pcts(_paint(usd, [], period="30d", bal=BAL)) == [], "not in the account's own currency"
+
+
+def test_the_closed_route_sends_the_balance_history_and_asks_ig_for_transactions_once(monkeypatch):
+    import contextlib
+    import ig_shim
+    from hvf_web import server
+    calls = []
+    tx = [{"kind": "TRADE", "date": "2026-10-08T16:56:13", "open_date": "2026-09-01T13:31:32", "instrument": "Rio Tinto",
+           "open_level": 50.0, "close_level": 55.0, "pnl": 120.0, "size": 1, "currency": "GBP"},
+          {"kind": "CHARGE", "date": "2026-10-08T22:00:00", "open_date": "2026-10-08T22:00:00", "instrument": "Funding",
+           "open_level": None, "close_level": None, "pnl": -0.4, "size": None, "currency": "GBP"}]
+    monkeypatch.setattr(server._wu, "name_for_token", lambda t: "Alex")
+    monkeypatch.setattr(ig_shim, "session_for", lambda n: object())
+    monkeypatch.setattr(ig_shim, "acting_session", lambda n: contextlib.nullcontext())
+    monkeypatch.setattr(ig_shim, "get_transactions", lambda frm, *a, **k: calls.append(frm) or tx)
+    monkeypatch.setattr(ig_shim.session, "get", lambda *a, **k: {})
+    monkeypatch.setattr(ig_shim, "get_account_info",
+                        lambda: {"account_id": "X", "account_name": "n", "balance": 588.9, "currency": "GBP"})
+    monkeypatch.setattr(server, "_mcap_map", lambda: {})
+    j = server.app.test_client().get("/api/ig-closed", headers={"X-Auth": "t"}).get_json()
+    assert len(calls) == 1, "IG history is fetched once per load"
+    b = j["balance"]
+    assert b["now"] == 588.9 and b["currency"] == "GBP" and b["daily"] == {"2026-10-08": 119.6}
+    assert b["from"] == calls[0][:10]
+
+
+def test_account_info_carries_the_balance(monkeypatch):
+    import ig_shim
+    monkeypatch.setattr(ig_shim.session, "get", lambda *a, **k: {"accounts": [
+        {"accountId": "A1", "accountName": "Spread bet", "preferred": True, "currency": "GBP",
+         "balance": {"balance": 588.9, "available": 588.9, "profitLoss": 0.0, "deposit": 0.0}}]})
+    monkeypatch.setattr(ig_shim.session, "_account_id", "A1", raising=False)
+    ai = ig_shim.get_account_info()
+    assert ai["balance"] == 588.9 and ai["currency"] == "GBP" and ai["account_id"] == "A1"

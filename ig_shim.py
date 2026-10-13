@@ -799,8 +799,12 @@ def get_account_info() -> dict:
         if match is None:
             match = next((a for a in accts if a.get("preferred")), accts[0] if accts else None)
         if match:
+            bal = (match.get("balance") or {}).get("balance")
             return {"account_id":   str(match.get("accountId") or ""),
-                    "account_name": match.get("accountName") or ""}
+                    "account_name": match.get("accountName") or "",
+                    # The cash balance now, for "Open over time" % against the balance at the period start.
+                    "balance":      float(bal) if bal is not None else None,
+                    "currency":     match.get("currency") or ""}
     except Exception:
         pass
     return {}
@@ -1200,7 +1204,7 @@ def get_position_by_deal(deal_id: str) -> Optional[dict]:
     return None
 
 
-def get_closed_trades(from_iso: str) -> list:
+def get_closed_trades(from_iso: str, transactions: list = None) -> list:
     """Recently CLOSED trades for the acting account, each with the REASON it closed (user 2026-08-03,
     P-10/P-12 — "see closed trades e.g. China Mengniu, and understand WHY it closed").
 
@@ -1210,7 +1214,9 @@ def get_closed_trades(from_iso: str) -> list:
     reason: STOP_HIT | TARGET_HIT | MANUAL | SYSTEM | UNKNOWN (same mapping as get_close_reason). The
     reason is matched to a trade by (instrument-name, close-day); an unmatched trade still shows with
     reason UNKNOWN, so the list never depends on the activity parse. Best-effort; [] on failure."""
-    trades = [t for t in (get_transactions(from_iso) or []) if t.get("kind") == "TRADE"]
+    # `transactions`: get_transactions(from_iso) already fetched by the caller, so IG is not asked twice.
+    trades = [t for t in ((get_transactions(from_iso) if transactions is None else transactions) or [])
+              if t.get("kind") == "TRADE"]
     if not trades:
         return []
     # Build a (name-upper, YYYY-MM-DD) -> reason map from a single detailed activity fetch.
