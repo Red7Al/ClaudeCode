@@ -59,9 +59,11 @@ and 8 loads in 2 minutes made IG refuse with 403 for ~20 minutes (2026-10-11 17:
    open (Supavisor log, 2026-10-09 10:33) -- was 9-11. If the host adds processes, each brings 2 more.
 2. **Egress.** Run `./.venv/Scripts/python.exe egress_report.py`; ~20 GB/30d was DERIVED, not measured,
    against 5 GB free. The owner declined Supabase Pro. Storage has returned 402 since 2026-08-16 as a result.
-3. **`squeeze_history.refresh_daily` re-checks only an 18-month window** (`squeeze_history.py:489`); 205
-   older rows keep a stale `OPEN`. The report ignores them (refreshed within 4 days only); other readers
-   of `outcome` have not been checked.
+3. **`squeeze_history.refresh_daily` re-checks only an 18-month window.** Corrected one-off 2026-10-13 over
+   stored bars: 26 of 205 resolved (11 TARGET, 15 STOPPED), 157 still OPEN, 22 older than bar retention
+   untouched; originals in `backups/squeeze_history_stale_open_2026-10-13.json`. Readers: Best Settings
+   (3y, 99 rows; win rate 25.69 -> 25.70%), Squeeze History tab, `_trade_drivers`. Rows still OPEN past
+   the window will freeze again -- re-run the one-off rather than widen the window (~0.4 GB/month).
 4. **"secret decrypt failed" in the email run -- fixed 2026-10-13, confirm on the 10-14 send.** Cause CORRECTED:
    the runner has no `WEB_USERS_FERNET_KEY` (not `APP_SECRET_KEY`, as first written), so `_fernet()` makes a
    random key. `/api/config` decrypted his IG credentials only for has_ig_creds/bridge, which the email never
