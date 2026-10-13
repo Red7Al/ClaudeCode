@@ -2031,6 +2031,15 @@ def get_prices_df(epic: str, resolution: str = "DAY", count: int = 120):
         return df, remaining
     except Exception as e:
         log.warning(f"IG price fetch failed for {epic}: {e}")
+        # IG's refusal for a spent allowance carries no remaining count, so callers that stop below a
+        # reserve never stopped. MEASURED 2026-10-13: every Morning Chain price refresh since 2026-10-09
+        # was refused this way on every one of ~1,700 instruments, ran ~3.2 s each instead of ~1 s, and hit
+        # its time budget on 4 of 5 days. 0 is what IG is saying.
+        try:
+            if "exceeded-account-historical-data-allowance" in str((e.response.json() or {}).get("errorCode") or ""):
+                return pd.DataFrame(), 0
+        except Exception:
+            pass
         return pd.DataFrame(), None
 
 
