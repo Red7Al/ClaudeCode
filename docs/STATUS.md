@@ -1,7 +1,7 @@
 # Status — the only status document
 
 **Update this file at the end of every session** instead of writing a new handover. Every figure carries
-the command that produced it or says it is unproven. Last updated **2026-10-11 ~20:00 UTC**.
+the command that produced it or says it is unproven. Last updated **2026-10-13 ~07:40 UTC**.
 
 Earlier handovers are in `docs/archive/HANDOVER-*.md`; everything still open from them is below.
 
@@ -41,7 +41,16 @@ and 8 loads in 2 minutes made IG refuse with 403 for ~20 minutes (2026-10-11 17:
 | **`/api/report-check` limited to the owner's login** (ninth complaint). | `f02423a`; live: other login 403, Alex 200 |
 | **IG refusals log IG's errorCode** (was a bare "403 Forbidden"). | `bb1ac19` |
 | **Emailed Scanner Report = the screen**: server handlers + the page's own `pass()` via `scanner_report_rows.js`; `build_rows`/`user_rows` removed. | `93ff71f`; old 18 rows vs screen 29 vs new 29 (same order); live run 38165775061: "Scanner report emailed (29 setups)" |
-| **Fundamentals precompute**: a rate-limit refusal is not an attempt, missing records first, stop after 5 refusals. | `bd2380b`; store measured: next run's first 800 = 800 missing (was 3). Confirm the next 21:15 UTC run's "stored in all" rises above 861 |
+| **Fundamentals precompute**: a rate-limit refusal is not an attempt, missing records first, stop after 5 refusals. | `bd2380b`; run 38309501875 (10-12 21:15): "1705 stored in all" (was 861), no rate-limit refusal. CR Completed |
+
+## 2b. Done 2026-10-12/13
+
+| What | Evidence |
+|---|---|
+| **Email: Triggered column, newest first**; **Status column removed** (22/22 rows TRIGGERED). | `f20f740`, `ff4a8e8`; 10-13 rows rendered unsent: 7 columns. Confirm on the 10-14 send (CR In Progress) |
+| **"Open over time": hide P&L within +/-X; Total per currency; % of the account balance at the period start.** Start balance = IG balance now minus every IG transaction since that day (all 6,260 sum to 588.90 = the balance). Cash balance only. | `88d49ac`, `67486b1`, `4d9e3d8`; live page, his data: 30d +58.78 = +10.97% of 535.73 (09-13); this month +4.21% of 565.41; 12m "no %" (balance 0 before 2026-01-24). CRs Completed |
+| **Price refresh: previous-day bar counted per market, retried once** (`Ticker.history(period="5d")`, completed days only), counts in `price_audit_log.notes`; judged per fetch's own day (`450c780`, the evening run crosses midnight). | `2af38b6`, `450c780`. 10-13 03:31: missing 116/1407 (Nikkei 112 = Japan holiday) -- the ~600 UK/Euronext gap did not occur that day |
+| **Refresh truncation cause: IG allowance refusal never stopped the cross-check.** Since 10-09 IG answers 403 `exceeded-account-historical-data-allowance` (1,103x on 10-13) with no remaining count; ~3.2 s/instrument vs ~1 s; TRUNCATED 4 of 5 days. Now reads as 0 remaining. | `5cbae62`. Confirm on the 10-13 23:00 and 10-14 03:30 runs: ~1 s/instrument, not truncated |
 
 ## 3. Open, measured, not fixed
 
@@ -56,7 +65,9 @@ and 8 loads in 2 minutes made IG refuse with 403 for ~20 minutes (2026-10-11 17:
 4. **The emailed report now logs "secret decrypt failed" for his IG settings** on GitHub (the runner's
    `APP_SECRET_KEY` cannot decrypt them; `api_config` tries). Rows unaffected (29 = screen). Offered to the
    owner, not done.
-5. **The 2026-10-07 03:31 refresh skipped 599 instruments** while reporting success. Cause unknown.
+5. **Morning refresh misses the previous day's bar for ~600 UK/Euronext instruments** (every day 09-29..10-08,
+   measured by `recorded_at`); the 10-07 "599" was this. Did not occur 10-13. Cause unproven; the new
+   per-market counts in `price_audit_log.notes` measure it daily -- read several mornings before deciding.
 6. **`trading-create-env.yml`** uses a `V_` prefix and does not pass `APP_SECRET_KEY`. Unanswered.
 
 Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub emails every failed run.
@@ -96,3 +107,8 @@ not reading my own output and code first.
 7. Workflow names carry their creation date; GitHub failure emails put it in the subject.
 8. `.claude/worktrees/` shadows greps — exclude `.claude` from every sweep.
 9. Windows console is cp1252 — print ASCII in any probe.
+10. `ChangeRequests/20260918.txt` mixes LF and CRLF lines: edit with `splitlines(keepends=True)`, never
+    `split("
+")` -- that merged lines and put a status on the wrong item (2026-10-12).
+11. The verifier's red "not current" banner is computed from the LOCAL snapshot; the live `/api/freshness`
+    banner was empty both times (2026-10-12/13). Check the live route before reporting it.
