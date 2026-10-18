@@ -54,31 +54,44 @@ def _reset_db_outage_breaker():
     db_pool._down_until = 0.0
 
 
-@pytest.fixture(autouse=True)
-def _no_test_reaches_ig(monkeypatch):
-    """NO TEST MAY CONTACT IG. ig_shim loads the owner's live credentials from .env (load_dotenv(override=True)),
-    so on his machine an unstubbed IG call is a REAL login to his trading account. MEASURED 2026-10-18: a change
-    made test_ig_allowance_stop.py log in for real, and two local suite runs each sent one refused login to the
-    account -- while the owner feared repeated refused logins had suspended it.
+# Hosts no test may reach, and what reaching them would mean. See _no_test_reaches_the_outside_world.
+_BLOCKED_HOSTS = {"ig.com": "contact IG", "resend.com": "send email"}
 
-    Every requests call goes through Session.request, which is refused here for any ig.com host. The code under
-    test catches broad exceptions (the audits must survive IG failures), so the refusal alone could be swallowed
-    and the test pass: every attempt is also RECORDED and the test FAILS at teardown."""
-    try:
-        import requests
-        from urllib.parse import urlparse
-    except Exception:
-        yield
-        return
+
+@pytest.fixture(autouse=True)
+def _no_test_reaches_the_outside_world(monkeypatch):
+    """NO TEST MAY CONTACT IG OR SEND EMAIL.
+
+    IG: ig_shim loads the owner's live credentials from .env (load_dotenv(override=True)), so on his machine an
+    unstubbed IG call is a REAL login to his trading account. MEASURED 2026-10-18: a change made
+    test_ig_allowance_stop.py log in for real, and two local suite runs each sent one refused login to the
+    account -- while the owner feared repeated refused logins had suspended it.
+    Email: an unstubbed alert would reach his inbox wherever a sender is configured. MEASURED 2026-10-18:
+    refused-login tests called send_simple_email 3 times; nothing went out only because neither RESEND_API_KEY
+    nor the Yahoo credentials were set in the test process -- luck, not design.
+
+    Every requests call goes through Session.request (refused here for each _BLOCKED_HOSTS domain) and SMTP is
+    refused outright. The code under test catches broad exceptions (the audits must survive IG failures;
+    send_simple_email never raises), so a refusal alone could be swallowed and the test pass: every attempt is
+    also RECORDED and the test FAILS at teardown."""
+    import smtplib
+    from urllib.parse import urlparse
+    import requests
     real, attempts = requests.sessions.Session.request, []
 
     def guarded(self, method, url, *a, **k):
         host = (urlparse(str(url)).hostname or "").lower()
-        if host == "ig.com" or host.endswith(".ig.com"):
-            attempts.append(f"{method} {url}")
-            raise ConnectionError(f"tests may not contact IG: {method} {url}")
+        for domain, meaning in _BLOCKED_HOSTS.items():
+            if host == domain or host.endswith("." + domain):
+                attempts.append(f"{meaning}: {method} {url}")
+                raise ConnectionError(f"tests may not {meaning}: {method} {url}")
         return real(self, method, url, *a, **k)
+
+    def smtp_connect(self, host="localhost", port=0, *a, **k):    # SMTP and SMTP_SSL both connect here
+        attempts.append(f"send email: SMTP {host}:{port}")
+        raise ConnectionError(f"tests may not send email (SMTP {host}:{port})")
     monkeypatch.setattr(requests.sessions.Session, "request", guarded)
+    monkeypatch.setattr(smtplib.SMTP, "connect", smtp_connect)    # the classes stay classes
     yield
     if attempts:
-        pytest.fail(f"this test tried to contact IG {len(attempts)} time(s): {attempts[:3]}", pytrace=False)
+        pytest.fail(f"this test reached the outside world {len(attempts)} time(s): {attempts[:3]}", pytrace=False)

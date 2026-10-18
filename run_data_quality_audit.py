@@ -746,18 +746,18 @@ def main():
 
     log.info(f"Auditing {len(batch)} tickers (30 daily candles each vs IG)...")
     rows, remaining = [], None
-    # ONE login attempt for the batch, not one per ticker (owner 2026-10-18; ig_shim.try_login). An ig_shim that
+    # ONE login attempt for the batch, not one per ticker (owner 2026-10-18; ig_shim.login_for_job). An ig_shim that
     # cannot be imported skips only the IG comparison; the identity and absurd-outcome sweeps still run.
-    ig_skipped = 0
+    ig_skipped, ig_login_note = 0, None
     if batch:
         try:
-            from ig_shim import try_login
-            refused = not try_login()
+            from ig_shim import login_for_job
+            ig_login_note = login_for_job("Data Quality Audit")
         except Exception as e:
-            log.error(f"IG unavailable ({type(e).__name__}: {e})")
-            refused = True
-        if refused:
-            log.error(f"IG login refused - the {len(batch)}-ticker IG comparison is skipped tonight")
+            log.error(f"ig_shim unavailable ({type(e).__name__}: {e})")
+            ig_login_note = f"IG LOGIN ERROR ({type(e).__name__})"
+        if ig_login_note:
+            log.error(f"{ig_login_note} - the {len(batch)}-ticker IG comparison is skipped this run")
             ig_skipped, batch = len(batch), []
     for ticker in batch:
         try:
@@ -805,7 +805,7 @@ def main():
     try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)
         from web_store import append_batch
         append_batch("cron-job.org", f"Data quality audit — {len(rows)} ticker(s)"
-                     + (f"; IG LOGIN REFUSED - {ig_skipped} IG comparisons skipped" if ig_skipped else ""),
+                     + (f"; {ig_login_note} - {ig_skipped} IG comparisons skipped" if ig_skipped else ""),
                      by="cron")
     except Exception:
         pass

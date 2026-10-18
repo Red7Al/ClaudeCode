@@ -397,18 +397,112 @@ class IGSession:
 session = IGSession()
 
 
-def try_login() -> bool:
-    """ONE login attempt on the shared session; True if IG accepted it. For jobs that loop over many instruments:
-    call once before the loop and skip IG for the run on False (owner 2026-10-18: "please do not have 1140 login
-    errors in such close proximity to each other" -- the 10-17 23:01 price audit logged in afresh per
-    instrument, 1,140 times, all refused 401). Deliberately NOT a latch: the order bridge uses this session and
-    must still be able to log in on its next call after a transient failure."""
-    try:
-        session.ensure_authenticated()
+LOGIN_RETRIES = 2          # extra attempts, ONLY when the login never reached IG (owner 2026-10-18)
+LOGIN_RETRY_WAIT_S = 30
+
+
+def _wait(seconds):
+    time.sleep(seconds)
+
+
+def _never_reached_ig(e) -> bool:
+    """True only when the login request provably never reached IG: the connection was not made (refused, DNS,
+    connect timeout). A read timeout or a connection dropped mid-answer may mean IG received -- and refused -- the
+    login, so those are never retried: a retried refusal is exactly the repeated failed login to avoid."""
+    if isinstance(e, requests.ConnectTimeout):
         return True
-    except Exception as e:
-        log.error(f"IG login refused ({type(e).__name__}: {e})")
-        return False
+    if isinstance(e, requests.ConnectionError):
+        from urllib3.exceptions import NewConnectionError
+        inner = e.args[0] if e.args else None
+        return isinstance(inner, NewConnectionError) or isinstance(getattr(inner, "reason", None), NewConnectionError)
+    return False
+
+
+def _try_login() -> tuple:
+    """Log in on the shared session for a job that loops over many instruments. Returns (outcome, detail, reached),
+    reached = logins that REACHED IG (a connection never made is not counted; a dropped answer is):
+      "ok"          -- logged in;
+      "refused"     -- IG answered 4xx (detail carries IG's errorCode); never retried;
+      "unreachable" -- no usable answer: connection not made, IG 5xx, timeout, dropped answer;
+                       retried only when the connection was never made;
+      "error"       -- a code or configuration fault, incl. an HTTP error with no status attached; never retried.
+    Retried (LOGIN_RETRIES times, LOGIN_RETRY_WAIT_S apart) only for a connection that was never made. NOT for an
+    IG 5xx: IG received that login and may have counted it as failed, so a refused account is sent at most ONE
+    login per call (owner 2026-10-18: "please do not have 1140 login errors in such close proximity to each
+    other" -- the 10-17 23:01 price audit logged in afresh per instrument, 1,140 times, all refused 401).
+    Private: callers use login_for_job. Deliberately NOT a latch on the session: the order bridge uses it and
+    must still be able to log in on its next call."""
+    reached = 0
+    for attempt in range(1, 2 + LOGIN_RETRIES):
+        try:
+            session.ensure_authenticated()
+            return "ok", "", reached + 1
+        except requests.HTTPError as e:
+            status = getattr(e.response, "status_code", None)
+            if status is None:
+                log.error(f"IG login failed (HTTPError with no status: {e}) - no further attempt")
+                return "error", f"HTTPError with no status: {e}", reached
+            reached += 1
+            code = None
+            try:
+                code = (e.response.json() or {}).get("errorCode")
+            except Exception:
+                pass
+            detail = f"HTTP {status}, errorCode {code}"
+            if status < 500:
+                log.error(f"IG login refused ({detail}) - no further attempt")
+                return "refused", detail, reached
+            outcome = "unreachable"                       # IG 5xx: IG received it, so it is never resent
+            break
+        except requests.RequestException as e:
+            detail, outcome = type(e).__name__, "unreachable"
+            if not _never_reached_ig(e):
+                reached += 1                              # it may have reached IG: counted, never resent
+                break
+        except Exception as e:
+            log.error(f"IG login failed ({type(e).__name__}: {e}) - no further attempt")
+            return "error", f"{type(e).__name__}: {e}", reached
+        if attempt > LOGIN_RETRIES:
+            break
+        log.warning(f"IG login attempt {attempt} failed ({detail}) - retrying in {LOGIN_RETRY_WAIT_S}s")
+        _wait(LOGIN_RETRY_WAIT_S)
+    log.error(f"IG unreachable after {attempt} attempt(s) ({detail})")
+    return outcome, detail, reached
+
+
+def _refusal_reason(detail: str) -> str:
+    """IG's errorCode for the email subject; the HTTP status when IG sent none ("HTTP 401, errorCode None")."""
+    status, _, code = detail.partition(", errorCode ")
+    return code if code and code != "None" else status
+
+
+_LOGIN_NOTES = {"refused": "IG LOGIN REFUSED", "unreachable": "IG UNREACHABLE", "error": "IG LOGIN ERROR"}
+
+
+def login_for_job(job: str):
+    """The ONE place a job that loops over instruments logs in. Returns None if logged in, else the note the job
+    records, e.g. "IG LOGIN REFUSED (HTTP 401, errorCode error.security.invalid-details)". Never raises.
+    EMAILS (Slack is unused, owner 2026-10-08) on a refusal, and on a code/configuration fault, which would
+    otherwise switch the IG check off silently every night. The subject names the job and IG's reason; the
+    workflow that ran goes in the body."""
+    outcome, detail, reached = _try_login()
+    if outcome == "ok":
+        return None
+    note = f"{_LOGIN_NOTES[outcome]} ({detail})"
+    if outcome in ("refused", "error"):
+        what = "IG refused the login" if outcome == "refused" else "The IG login failed with a code/config fault"
+        try:
+            from trade_email import send_simple_email
+            send_simple_email(
+                subject=(f"IG refused the login ({_refusal_reason(detail)}) - {job}" if outcome == "refused"
+                         else f"IG login fault - {job}"),
+                text=(f"{what} for {job}: {detail}.\n"
+                      f"Logins that reached IG this run: {reached}. A refusal is never retried.\n"
+                      "This run skips its IG check.\n"
+                      f"Workflow: {os.environ.get('GITHUB_WORKFLOW') or 'not run from GitHub Actions'}"))
+        except Exception as e:
+            log.error(f"IG login email failed: {e}")
+    return note
 
 
 # ----------------------------------------------------------------------------------------------------------------------

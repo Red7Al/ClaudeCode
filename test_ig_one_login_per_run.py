@@ -14,12 +14,15 @@ class _Refused:
     def json(self):
         return {"errorCode": "error.security.invalid-details"}
 
-    def raise_for_status(self):
-        raise ig_shim.requests.HTTPError("401 Client Error: Unauthorized for url: https://api.ig.com/gateway/deal/session")
+    def raise_for_status(self):          # as requests does: the response is attached to the error
+        raise ig_shim.requests.HTTPError("401 Client Error: Unauthorized for url: https://api.ig.com/gateway/deal/session",
+                                         response=self)
 
 
 def _refuse_logins(monkeypatch):
     posts = []
+    import trade_email
+    monkeypatch.setattr(trade_email, "send_simple_email", lambda **k: True)    # the refusal email; never sent
     monkeypatch.setattr(ig_shim, "session", ig_shim.IGSession(api_key="k", username="u", password="p"))
     monkeypatch.setattr(ig_shim.requests, "post", lambda url, **k: posts.append(url) or _Refused())
     monkeypatch.setattr(ig_shim, "get_epic", lambda t: "KA.D.X.DAILY.IP")
