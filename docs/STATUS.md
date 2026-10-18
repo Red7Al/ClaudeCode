@@ -72,6 +72,13 @@ and 8 loads in 2 minutes made IG refuse with 403 for ~20 minutes (2026-10-11 17:
    measured by `recorded_at`); the 10-07 "599" was this. Did not occur 10-13. Cause unproven; the new
    per-market counts in `price_audit_log.notes` measure it daily -- read several mornings before deciding.
 6. **`trading-create-env.yml`** uses a `V_` prefix and does not pass `APP_SECRET_KEY`. Unanswered.
+7. **NO INDEPENDENT PRICE CHECK HAS RUN SINCE 2026-10-09.** IG refuses price history (403
+   `exceeded-account-historical-data-allowance`); every `price_audit_log` run since logs "IG fixes 0;
+   double-checked 0" (runs 111-116 read 2026-10-18). Reported to the owner 10-13 only as a refresh-speed
+   fault -- his complaint 2026-10-18. The Yahoo re-check compares Yahoo with Yahoo, closes only, so a bad
+   Yahoo high/low passes it: 10 FTSE 100 highs on 2026-10-15 (TSCO.L 622.5 vs 535.6 real) closed TSCO.L's
+   8 Oct trigger as TARGET. Since `77a3112` the store checks wicks against Yahoo's hourly bars. When IG
+   verification resumes is unknown.
 
 Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub emails every failed run.
 
@@ -94,7 +101,9 @@ Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub em
 
 ## 6. Complaints on record — read before speaking
 
-Nine, all upheld, in `ChangeRequests/20260918.txt`. The ninth (2026-10-11): the agent designed a route that
+Ten, all upheld, in `ChangeRequests/20260918.txt`. The tenth (2026-10-18) carries the FIRST FORMAL WARNING
+-- "don't make assumptions - this will lead to immediate termination": a loop count reported as rows written,
+and an unmeasured 6% constant committed into the price guard. The ninth (2026-10-11): the agent designed a route that
 would have exposed ANY login's IG positions and history to the check key, and got approval on a feature name
 that hid it. Before proposing any tool, state whose data it reads and who can reach it. The common thread:
 not reading my own output and code first.
@@ -111,7 +120,7 @@ not reading my own output and code first.
 8. `.claude/worktrees/` shadows greps — exclude `.claude` from every sweep.
 9. Windows console is cp1252 — print ASCII in any probe.
 10. `ChangeRequests/20260918.txt` mixes LF and CRLF lines: edit with `splitlines(keepends=True)`, never
-    `split("
+    `split("
 ")` -- that merged lines and put a status on the wrong item (2026-10-12).
 11. The verifier's red "not current" banner is computed from the LOCAL snapshot; the live `/api/freshness`
     banner was empty both times (2026-10-12/13). Check the live route before reporting it.
