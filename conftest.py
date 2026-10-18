@@ -52,3 +52,33 @@ def _reset_db_outage_breaker():
     db_pool._down_until = 0.0
     yield
     db_pool._down_until = 0.0
+
+
+@pytest.fixture(autouse=True)
+def _no_test_reaches_ig(monkeypatch):
+    """NO TEST MAY CONTACT IG. ig_shim loads the owner's live credentials from .env (load_dotenv(override=True)),
+    so on his machine an unstubbed IG call is a REAL login to his trading account. MEASURED 2026-10-18: a change
+    made test_ig_allowance_stop.py log in for real, and two local suite runs each sent one refused login to the
+    account -- while the owner feared repeated refused logins had suspended it.
+
+    Every requests call goes through Session.request, which is refused here for any ig.com host. The code under
+    test catches broad exceptions (the audits must survive IG failures), so the refusal alone could be swallowed
+    and the test pass: every attempt is also RECORDED and the test FAILS at teardown."""
+    try:
+        import requests
+        from urllib.parse import urlparse
+    except Exception:
+        yield
+        return
+    real, attempts = requests.sessions.Session.request, []
+
+    def guarded(self, method, url, *a, **k):
+        host = (urlparse(str(url)).hostname or "").lower()
+        if host == "ig.com" or host.endswith(".ig.com"):
+            attempts.append(f"{method} {url}")
+            raise ConnectionError(f"tests may not contact IG: {method} {url}")
+        return real(self, method, url, *a, **k)
+    monkeypatch.setattr(requests.sessions.Session, "request", guarded)
+    yield
+    if attempts:
+        pytest.fail(f"this test tried to contact IG {len(attempts)} time(s): {attempts[:3]}", pytrace=False)

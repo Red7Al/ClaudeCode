@@ -57,6 +57,7 @@ def test_the_refresh_stops_asking_ig_after_the_first_refusal(monkeypatch):
     calls = []
     db = _Db()
     monkeypatch.setattr(ig_shim.session, "get", lambda *a, **k: calls.append(a) or _raise(_refusal())())
+    monkeypatch.setattr(ig_shim.session, "ensure_authenticated", lambda: None)   # login accepted; never real IG
     monkeypatch.setattr(ig_shim, "get_epic", lambda tk: "KA.D.X.DAILY.IP")
     monkeypatch.setattr(price_audit, "_universe", lambda: {f"T{i}.L": f"T{i}.L" for i in range(5)})
     monkeypatch.setattr(price_audit, "get_db", lambda *a, **k: db)

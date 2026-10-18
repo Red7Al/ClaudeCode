@@ -397,6 +397,20 @@ class IGSession:
 session = IGSession()
 
 
+def try_login() -> bool:
+    """ONE login attempt on the shared session; True if IG accepted it. For jobs that loop over many instruments:
+    call once before the loop and skip IG for the run on False (owner 2026-10-18: "please do not have 1140 login
+    errors in such close proximity to each other" -- the 10-17 23:01 price audit logged in afresh per
+    instrument, 1,140 times, all refused 401). Deliberately NOT a latch: the order bridge uses this session and
+    must still be able to log in on its next call after a transient failure."""
+    try:
+        session.ensure_authenticated()
+        return True
+    except Exception as e:
+        log.error(f"IG login refused ({type(e).__name__}: {e})")
+        return False
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Per-user IG credentials (user 2026-07-03 — "each user must use their own IG credentials — imperative")
 # ----------------------------------------------------------------------------------------------------------------------

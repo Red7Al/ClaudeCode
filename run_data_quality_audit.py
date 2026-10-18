@@ -746,6 +746,19 @@ def main():
 
     log.info(f"Auditing {len(batch)} tickers (30 daily candles each vs IG)...")
     rows, remaining = [], None
+    # ONE login attempt for the batch, not one per ticker (owner 2026-10-18; ig_shim.try_login). An ig_shim that
+    # cannot be imported skips only the IG comparison; the identity and absurd-outcome sweeps still run.
+    ig_skipped = 0
+    if batch:
+        try:
+            from ig_shim import try_login
+            refused = not try_login()
+        except Exception as e:
+            log.error(f"IG unavailable ({type(e).__name__}: {e})")
+            refused = True
+        if refused:
+            log.error(f"IG login refused - the {len(batch)}-ticker IG comparison is skipped tonight")
+            ig_skipped, batch = len(batch), []
     for ticker in batch:
         try:
             r = _audit_ticker(ticker)
@@ -791,7 +804,9 @@ def main():
     log.info(f"Audit complete: {len(rows)} tickers, allowance remaining {remaining}")
     try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)
         from web_store import append_batch
-        append_batch("cron-job.org", f"Data quality audit — {len(rows)} ticker(s)", by="cron")
+        append_batch("cron-job.org", f"Data quality audit — {len(rows)} ticker(s)"
+                     + (f"; IG LOGIN REFUSED - {ig_skipped} IG comparisons skipped" if ig_skipped else ""),
+                     by="cron")
     except Exception:
         pass
 

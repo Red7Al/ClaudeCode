@@ -345,11 +345,22 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None, max_s
              f"source {source}, IG-truth {'on' if use_ig else 'off'}")
 
     total = len(uni)
+    # ONE login attempt for the whole run (owner 2026-10-18; ig_shim.try_login), made BEFORE a database
+    # connection is held and only when IG is to be used on at least one instrument. An ig_shim that cannot be
+    # imported counts as refused: the Yahoo audit must still run, as it did when _ig_verify swallowed it.
+    ig_login_refused = False
+    if use_ig and total:
+        try:
+            from ig_shim import try_login
+            ig_login_refused = not try_login()
+        except Exception as e:
+            log.error(f"IG unavailable ({type(e).__name__}: {e}) - no IG cross-check this run")
+            ig_login_refused = True
+    ig_ok = use_ig and not ig_login_refused
     db = get_db()
     tot_written = tot_disc = checked = ig_corrected = ig_dc = pruned = 0
     stopped_early = 0
     max_drift = 0.0
-    ig_ok = use_ig
     last_bar = {} if mode == "daily" else None
     prev_note = ""
     try:
@@ -410,6 +421,8 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None, max_s
 
         dur = time.time() - t0
         notes = f"{checked} checked; IG fixes {ig_corrected}; double-checked {ig_dc}; pruned {pruned}"
+        if ig_login_refused:
+            notes += "; IG LOGIN REFUSED - no IG cross-check this run"
         if prev_note:
             notes += "; " + prev_note
         if stopped_early:
@@ -427,7 +440,8 @@ def run(mode, window_days, source, tickers=None, slack=False, use_ig=None, max_s
     summary = ((f"Price audit [{mode}] TRUNCATED at {stopped_early}/{total}: " if stopped_early else
                 f"Price audit [{mode}] done: ") + f"{checked} instruments, {tot_written} bars written, "
                f"{tot_disc} YF + {ig_corrected} IG discrepancies corrected, {ig_dc} double-checked "
-               f"(max drift {max_drift:.2f}%), pruned {pruned}, {dur:.0f}s")
+               f"(max drift {max_drift:.2f}%), pruned {pruned}, {dur:.0f}s"
+               + ("; IG LOGIN REFUSED - no IG cross-check" if ig_login_refused else ""))
     log.info(summary)
     if slack:
         try:
