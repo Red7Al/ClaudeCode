@@ -71,3 +71,16 @@ def test_ig_bars_are_not_second_guessed(monkeypatch):
     df = pd.DataFrame({"Open": [1.0], "High": [2.0], "Low": [1.0], "Close": [1.0], "Volume": [1]}, index=pd.to_datetime([D]))
     assert price_store.upsert_bars("X", df, "IG", db=_DB()) == 1
 
+
+
+def test_markets_without_a_proven_hourly_referee_are_left_as_yahoo_gives_them():
+    """2026-10-18: the backfill changed 42 Japanese / Australian lows on hourly bars proven unreliable there.
+    Fixture: NWS.AX 2026-07-10 from price_history (open/high/close/volume) with the low Yahoo gave
+    (price_corrections.original 41.0325...), and the hourly low it was moved to (44.0200...)."""
+    d = date(2026, 7, 10)
+    row = (d, 44.5350423660742, 45.023997667441, 41.0325084180364, 45.0040397644043, 111946)
+    asked = []
+    rows, fixes = price_store._verify_wicks(
+        "NWS.AX", "NWS.AX", [row],
+        intraday=lambda s, ds: asked.append(ds) or {d: (45.023997667441, 44.0200004577637, 45.0040397644043)})
+    assert rows == [row] and fixes == [] and asked == []

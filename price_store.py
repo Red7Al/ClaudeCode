@@ -80,6 +80,12 @@ _DDL = [
 WICK_CHECK_PCT = 6.0
 # Hourly bars disagreeing by less than this are rounding / adjustment noise, not a bad print.
 WICK_AGREE_PCT = 1.0
+# ONLY where Yahoo's hourly bars are a proven referee. MEASURED 2026-10-18 over every bar of the last 30 days:
+# every proven bad print was London (10 FTSE 100 highs 10-15, RPI.L / BPT.L / ONT.L lows), and London hourly
+# coverage is complete (9 bars a day). Australia's hourly bars disagree with its daily bars in BOTH directions
+# (XRO.AX hourly high 61.57 vs daily 58.96), and Japan was not proven; the first backfill under a universal
+# check changed 42 Japanese / Australian lows by up to 7% on that unproven evidence and was reverted.
+WICK_CHECK_SUFFIXES = (".L",)
 
 # How much history to keep (user 2026-06-29: record 3 years; delete anything older).
 # Raised to 5 years (user 2026-08-02): the squeeze-history replay wants the deepest window the price
@@ -172,6 +178,8 @@ def _verify_wicks(ticker, yahoo_symbol, rows, intraday=None):
     not the last hourly close (TSCO.L 10-15: 534.6 vs 533.4), and a dividend adjustment only LOWERS a daily
     bar, so it can never read as a high the hourly bars do not reach. A wick the hourly bars confirm, or that
     cannot be checked, is stored as given and logged."""
+    if not str(ticker).endswith(WICK_CHECK_SUFFIXES):
+        return rows, []
     suspect = {bd for bd, o, h, l, c, _v in rows if o is not None and h is not None and l is not None and (
         h > max(o, c) * (1 + WICK_CHECK_PCT / 100) or l < min(o, c) * (1 - WICK_CHECK_PCT / 100))}
     if not suspect:
