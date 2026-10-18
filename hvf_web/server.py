@@ -1378,9 +1378,13 @@ def _live_instrument_metrics(snap: dict) -> dict:
                     db, {ticker: today for ticker in want},
                     lookback_days=_LIVE_VWAP_ATR_LOOKBACK_DAYS)
                 try:
+                    # One LIMIT 1 probe per ticker on the primary key, not `distinct on ... order by ticker,
+                    # bar_date desc`. MEASURED 2026-10-18 over all 1,767 tickers: identical rows, 34.5 s ->
+                    # 1.1 s, and 2.5 s without idx_price_history_ticker_date (the distinct on form went 12x
+                    # slower without it), which is dropped to make room for more instruments.
                     source_by_tk = {ticker: source for ticker, source in (db.run(
-                        "select distinct on (ticker) ticker, source from price_history "
-                        "where ticker = any(:tickers) order by ticker, bar_date desc",
+                        "select t.tk, ph.source from unnest(cast(:tickers as text[])) as t(tk) cross join lateral "
+                        "(select source from price_history p where p.ticker = t.tk order by bar_date desc limit 1) ph",
                         tickers=want) or [])}
                 except Exception:
                     # Source labelling adds provenance only; it must not turn a

@@ -471,8 +471,12 @@ MIGRATIONS = [
         "ALTER TABLE price_history ADD COLUMN IF NOT EXISTS double_checked boolean NOT NULL DEFAULT false"
     ),
     (
-        "price_history: index on ticker + date desc",
-        "CREATE INDEX IF NOT EXISTS idx_price_history_ticker_date ON price_history(ticker, bar_date DESC)"
+        # Owner 2026-10-18 ("yes"): room for more instruments on the 500 MB free tier. This (ticker, bar_date
+        # DESC) index duplicated the primary key (62 MB). MEASURED with it dropped inside rolled-back
+        # transactions: every live read shape unchanged within a few ms, except server.py's `distinct on`
+        # source lookup (12x slower), rewritten to a per-ticker LIMIT 1 first (identical rows, 1,767 tickers).
+        "price_history: drop duplicate index on ticker + date desc",
+        "DROP INDEX CONCURRENTLY IF EXISTS idx_price_history_ticker_date"   # no table lock: waits for readers, blocks none
     ),
     (
         "price_history: index on bar_date",

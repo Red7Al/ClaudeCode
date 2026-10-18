@@ -51,8 +51,11 @@ _DDL = [
     )""",
     # double_checked may be missing on a table created before 2026-06-29 — add it idempotently.
     "alter table price_history add column if not exists double_checked boolean not null default false",
-    # (ticker, bar_date desc) — fast "latest N bars for one instrument" + range scans for the charts.
-    "create index if not exists idx_price_history_ticker_date on price_history (ticker, bar_date desc)",
+    # No (ticker, bar_date desc) index: the primary key serves the same reads scanned backwards. Removed
+    # 2026-10-18 (62 MB of a 500 MB database, owner: more instruments without the paid plan). MEASURED with the
+    # index dropped inside a rolled-back transaction: every live read shape within a few ms of before except
+    # server.py's `distinct on` source lookup (12x slower), which was rewritten first. This line used to
+    # re-create it on every run, so dropping it alone would have been undone overnight.
     # (bar_date) — the daily audit scans every instrument for a given day.
     "create index if not exists idx_price_history_bar_date on price_history (bar_date)",
     # Every daily high/low _verify_wicks replaced, with the value Yahoo's daily bar carried (owner 2026-10-18:
