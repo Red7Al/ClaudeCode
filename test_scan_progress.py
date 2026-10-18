@@ -88,6 +88,6 @@ def test_the_old_total_was_unreachable():
     old_total = sum(len(t) for t in UNIVERSE.values())
     actually_scanned = _distinct()
 
-    assert old_total == 1856
-    assert actually_scanned == 1773
+    assert old_total == 2082        # +226 Nikkei / ASX / Hang Seng names, owner 2026-10-18 (was 1,856)
+    assert actually_scanned == 1999  # was 1,773
     assert actually_scanned < old_total, "the reconstruction must be unreachable, or this proves nothing"

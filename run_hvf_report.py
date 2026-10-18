@@ -417,6 +417,9 @@ HONGKONG = [
     "9961.HK", "2359.HK", "1801.HK", "6160.HK", "2196.HK", "9926.HK", "0241.HK", "3692.HK",
     "9922.HK", "0013.HK", "0992.HK", "0384.HK", "0270.HK", "1038.HK", "6823.HK", "2688.HK",
     "1128.HK", "0880.HK", "2007.HK", "2202.HK", "0817.HK", "1918.HK",
+    # Hang Seng Index constituents not yet listed (owner 2026-10-18: 2,000 instruments). Source: en.wikipedia.org/wiki/Hang_Seng_Index, SEHK codes; Yahoo quoteType EQUITY with live prices; 6 ETFs on that page excluded (15).
+    "0285.HK", "0300.HK", "0316.HK", "0823.HK", "0881.HK", "1209.HK", "1378.HK", "1929.HK",
+    "2057.HK", "2388.HK", "2618.HK", "2899.HK", "6690.HK", "9888.HK", "9992.HK",
 ]
 
 
@@ -436,6 +439,22 @@ JAPAN = [
     "8725.T", "8830.T", "9021.T", "9434.T", "9843.T", "4661.T", "4543.T", "4578.T",
     "6146.T", "6723.T", "3659.T", "2413.T", "4307.T", "4684.T", "6702.T", "6504.T",
     "5802.T", "5019.T", "5020.T", "1605.T", "8697.T", "4188.T", "4005.T", "3407.T",
+    # Remaining Nikkei 225 constituents (owner 2026-10-18: 2,000 instruments). Source: en.wikipedia.org/wiki/Nikkei_225, TYO codes; each Yahoo-verified with live prices (116).
+    "1332.T", "1721.T", "1801.T", "1802.T", "1803.T", "1808.T", "1812.T", "1925.T",
+    "1928.T", "1963.T", "2002.T", "2269.T", "2282.T", "2432.T", "2501.T", "2768.T",
+    "2801.T", "2871.T", "3086.T", "3092.T", "3099.T", "3289.T", "3401.T", "3402.T",
+    "3405.T", "3436.T", "3697.T", "3861.T", "4004.T", "4021.T", "4042.T", "4043.T",
+    "4061.T", "4151.T", "4183.T", "4208.T", "4324.T", "4385.T", "4506.T", "4507.T",
+    "4689.T", "4704.T", "4751.T", "4755.T", "4902.T", "5101.T", "5201.T", "5214.T",
+    "5233.T", "5301.T", "5332.T", "5333.T", "5406.T", "5411.T", "5631.T", "5706.T",
+    "5711.T", "5714.T", "5801.T", "5803.T", "5831.T", "6103.T", "6113.T", "6302.T",
+    "6305.T", "6361.T", "6471.T", "6472.T", "6473.T", "6479.T", "6506.T", "6526.T",
+    "6532.T", "6645.T", "6701.T", "6724.T", "6753.T", "6770.T", "6841.T", "6976.T",
+    "7004.T", "7186.T", "7202.T", "7211.T", "7261.T", "7272.T", "7453.T", "7731.T",
+    "7735.T", "7752.T", "7911.T", "7912.T", "7951.T", "8233.T", "8252.T", "8253.T",
+    "8304.T", "8308.T", "8309.T", "8331.T", "8354.T", "8601.T", "8795.T", "8804.T",
+    "9001.T", "9005.T", "9007.T", "9008.T", "9009.T", "9064.T", "9147.T", "9502.T",
+    "9503.T", "9531.T", "9532.T", "9602.T",
 ]
 
 AUSTRALIA = [
@@ -454,6 +473,19 @@ AUSTRALIA = [
     "PME.AX", "WOR.AX", "SOL.AX", "BEN.AX", "BOQ.AX", "HUB.AX", "NWL.AX", "AMP.AX",
     "CGF.AX", "ASB.AX", "CDA.AX", "QUB.AX", "AZJ.AX", "CHC.AX", "BWP.AX", "EDV.AX",
     "MTS.AX", "BAP.AX", "ARB.AX", "NCK.AX", "LOV.AX",
+    # Remaining S&P/ASX 200 constituents (owner 2026-10-18: 2,000 instruments). Source: en.wikipedia.org/wiki/S&P/ASX_200 table; each Yahoo-verified with live prices; ASK IFL NSR XYX had none (95).
+    "360.AX", "4DX.AX", "AAI.AX", "AFI.AX", "AIA.AX", "ALK.AX", "ALX.AX", "ANN.AX",
+    "APE.AX", "ARG.AX", "AUB.AX", "BFL.AX", "BGA.AX", "BGL.AX", "BPT.AX", "CEN.AX",
+    "CIA.AX", "CIP.AX", "CLW.AX", "CNU.AX", "CQR.AX", "CSC.AX", "CYL.AX", "DBI.AX",
+    "DNL.AX", "DOW.AX", "DRO.AX", "DRR.AX", "DYL.AX", "EBO.AX", "EMR.AX", "EOS.AX",
+    "EVT.AX", "FBU.AX", "FPH.AX", "FRW.AX", "GDG.AX", "GGP.AX", "GMD.AX", "GNE.AX",
+    "GQG.AX", "HDN.AX", "IFT.AX", "IMD.AX", "L1G.AX", "LNW.AX", "LSF.AX", "MCY.AX",
+    "MEZ.AX", "MFF.AX", "MFG.AX", "MND.AX", "MSB.AX", "MXT.AX", "NEM.AX", "NHF.AX",
+    "NIC.AX", "NWH.AX", "NWS.AX", "NXG.AX", "OBM.AX", "ORA.AX", "PDI.AX", "PNI.AX",
+    "PPT.AX", "PRN.AX", "PXA.AX", "RDX.AX", "REG.AX", "REH.AX", "RGN.AX", "RMS.AX",
+    "RSG.AX", "RWC.AX", "RYM.AX", "SDF.AX", "SGH.AX", "SIG.AX", "SMR.AX", "SNZ.AX",
+    "SPK.AX", "SUL.AX", "TLX.AX", "TPG.AX", "TUA.AX", "VAU.AX", "VEA.AX", "VGN.AX",
+    "VNT.AX", "WAF.AX", "WAM.AX", "WGX.AX", "WLE.AX", "ZIM.AX", "ZIP.AX",
 ]
 
 INDIA = [
