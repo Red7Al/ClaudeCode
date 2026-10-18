@@ -80,7 +80,119 @@ def screen_rows(name: str):
     return json.loads(p.stdout), bool((payload.get("records") or {}).get("report_unavailable"))
 
 
-def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bool = False):
+# ── Rows that left the report since the last send (owner 2026-10-18) ──────────────────────────────────────────
+# "Anything like items dropping out of any reports needs a full justification sent out - via email." TSCO.L's
+# 8 Oct trigger left his report on 15 Oct with no word, closed by a bad Yahoo print. Each send now stores the
+# rows it delivered; the next one names every row that is gone and why, from the server's OWN checks -- the
+# same functions that decided to drop it -- and says "not determined" rather than leave a row out.
+SENT_STORE_KEY = "scanner_report_sent"
+
+
+def _key(r):
+    return (r.get("ticker"), str(r.get("trig_date") or "")[:10])
+
+
+def _history_row(ticker, trig_date):
+    """(outcome, refreshed_at) of the stored trigger, or None when squeeze_history has no such row."""
+    from db_pool import get_db
+    db = get_db()
+    try:
+        rows = db.run("select outcome, refreshed_at from squeeze_history where ticker=:t and triggered_date=:d "
+                      "order by refreshed_at desc nulls last limit 1", t=ticker, d=trig_date)
+    finally:
+        db.close()
+    return tuple(rows[0]) if rows else None
+
+
+def removed_since_last(name: str, prev_rows: list, now_rows: list, snap: dict, today=None) -> list:
+    """[{ticker, name, trig_date, direction, reason}] for every row of the previous send absent from this one.
+    Checks run in the order the server applies them, so the first that fails is the reason."""
+    import datetime as dt
+    from hvf_web import server
+    import trading_limits
+    today = today or dt.date.today()
+    now_keys = {_key(r) for r in now_rows}
+    now_by_tk = {r.get("ticker"): r for r in now_rows}
+    recs = {r.get("ticker"): r for r in snap.get("records") or []}
+    setups_map, limits, mcaps = None, None, None
+    out = []
+    for p in prev_rows:
+        tk, td = _key(p)
+        if (tk, td) in now_keys:
+            continue
+        row = {"ticker": tk, "name": p.get("name"), "trig_date": td, "direction": p.get("direction")}
+        out.append(row)
+        try:
+            if tk in now_by_tk:
+                row["reason"] = (f"Replaced by its trigger of {_key(now_by_tk[tk])[1] or 'unknown date'}: the report "
+                                 "shows one setup per instrument.")
+                continue
+            if td and (today - dt.date.fromisoformat(td)).days > server.REPORT_MAX_TRIGGER_AGE_DAYS:
+                row["reason"] = (f"Triggered {td}, more than {server.REPORT_MAX_TRIGGER_AGE_DAYS} days ago "
+                                 "(your 90-day rule).")
+                continue
+            rec = recs.get(tk)
+            if rec is None:
+                row["reason"] = "Not in today's scan."
+                continue
+            if setups_map is None:
+                setups_map = server._open_trigger_setups(snap)
+                limits = trading_limits.user_limits(name)
+                mcaps = server._mcap_map()
+            if setups_map is None:
+                row["reason"] = "The trigger history could not be read today, so triggered rows were withheld."
+                continue
+            s = next((x for x in setups_map.get(tk) or [] if x.get("trig_date") == td), None)
+            if s is None:
+                h = _history_row(tk, td)
+                if h is None:
+                    row["reason"] = "No longer in the trigger history."
+                elif h[0] == "OPEN":
+                    row["reason"] = (f"Still OPEN, but its status was last re-checked {str(h[1])[:16]} UTC (over 4 "
+                                     "days ago), so it is withheld until the daily refresh confirms it.")
+                else:
+                    row["reason"] = f"The trigger history now records it as {h[0]}."
+                continue
+            why = trading_limits.check_limits(name, tk, quality=s["quality"], rr=s["rr"],
+                                              volume_score=s["volume_score"], rvol=s["rvol"],
+                                              above_vwap=s["above_vwap"], atr_expanding=s["atr_expanding"],
+                                              mcap=mcaps.get(tk), require_data=True, limits=limits)
+            if why:
+                row["reason"] = f"No longer passes your My Trading Filters: {why.split(': ', 1)[-1]}."
+                continue
+            if not server._user_trade_allows(name, dict(rec, direction=s["direction"])):
+                row["reason"] = "Excluded by your market switches or direction / location filters."
+                continue
+            pick = server._report_setup(name, tk, setups_map.get(tk), mcaps.get(tk), limits)
+            if pick is not None and pick.get("trig_date") != td:
+                row["reason"] = (f"The report now shows its trigger of {pick.get('trig_date')} instead "
+                                 "(an open setup is shown before a finished one).")
+                continue
+            row["reason"] = ("Reason not determined: every server-side check passes, so the page's own filters "
+                             "(a saved Scanner filter or Status choice) hid it.")
+        except Exception as e:
+            row["reason"] = f"Reason not determined: the check failed ({type(e).__name__}: {e})."
+    return out
+
+
+def _load_sent(name):
+    from web_store import load_json_store
+    return ((load_json_store(SENT_STORE_KEY) or {}).get(name)) or None
+
+
+def _save_sent(name, rows, generated_utc):
+    import datetime as dt
+    from web_store import load_json_store, save_json_store
+    store = load_json_store(SENT_STORE_KEY) or {}
+    store[name] = {"sent_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                   "snapshot": generated_utc,
+                   "rows": [{"ticker": r.get("ticker"), "trig_date": _key(r)[1], "name": r.get("name"),
+                             "direction": r.get("direction")} for r in rows]}
+    return save_json_store(SENT_STORE_KEY, store)
+
+
+def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bool = False,
+               removed: list = None, last_sent: str = None):
     """(subject, text, html) for one user's report. rows come from screen_rows() -- the screen's rows.
 
     Sorted by trigger date, newest first, with a Triggered column (owner 2026-10-12: "need trigger date
@@ -118,6 +230,7 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
                          f"{_fmt1(r.get('rr')):<7}{_fmt1(r.get('rvol'))}")
         if total > len(ordered):
             lines.append(f"\n… and {total - len(ordered)} more (showing the {len(ordered)} most recently triggered).")
+    lines += [""] + _removed_text(removed, last_sent)
     lines += ["", "Log in to Squeeze Scanner for the full interactive report and every column.",
              "These are the rows your Scanner Report shows when you open it, sorted by trigger date, newest first; "
              "your My Trading Filters and market switches decide them."]
@@ -157,10 +270,40 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
            f'{f" for {date_str}" if date_str else ""}.</p>'
            f'{warn_html}'
            f'{table}'
+           f'{_removed_html(removed, last_sent)}'
            f'<p style="margin:12px 0 0;font-size:12px;color:#777">Log in to Squeeze Scanner for the full interactive '
            f'report. These are the rows your Scanner Report shows when you open it, sorted by trigger date, newest '
            f'first; your My Trading Filters and market switches decide them.</p></div>')
     return subject, text, html
+
+
+def _removed_title(removed, last_sent):
+    since = f" (sent {str(last_sent)[:16].replace('T', ' ')} UTC)" if last_sent else ""
+    if removed is None:
+        return ("Removed since your last report: none recorded yet. From the next report, every row that leaves is "
+                "listed here with its reason.")
+    if not removed:
+        return f"Removed since your last report{since}: nothing."
+    return f"Removed since your last report{since}: {len(removed)}"
+
+
+def _removed_text(removed, last_sent):
+    out = [_removed_title(removed, last_sent)]
+    for r in removed or []:
+        out.append(f"  - {r.get('ticker')} (triggered {r.get('trig_date') or '-'}): {r.get('reason')}")
+    return out
+
+
+def _removed_html(removed, last_sent):
+    import html as _h
+    title = _h.escape(_removed_title(removed, last_sent))
+    if not removed:
+        return f'<p style="margin:12px 0 0;font-size:13px">{title}</p>'
+    items = "".join(f'<li><b>{_h.escape(str(r.get("ticker") or ""))}</b> (triggered '
+                    f'{_h.escape(r.get("trig_date") or "-")}): {_h.escape(str(r.get("reason") or ""))}</li>'
+                    for r in removed)
+    return (f'<p style="margin:12px 0 4px;font-size:13px;font-weight:600">{title}</p>'
+            f'<ul style="margin:0;padding-left:18px;font-size:13px">{items}</ul>')
 
 
 def _only_recipients() -> set:
@@ -205,9 +348,28 @@ def main():
         urows = []
         try:
             urows, unavailable = screen_rows(name)
-            subject, text, html = email_body(name, urows, snap.get("generated_utc"), unavailable)
+            removed, last_sent = None, None
+            try:
+                prev = _load_sent(name)
+                if prev:
+                    last_sent = prev.get("sent_utc")
+                    removed = removed_since_last(name, prev.get("rows") or [], urows, snap)
+            except Exception as e:
+                # Never send a report that silently omits removals: say the comparison could not run.
+                log.error(f"removed-rows check failed for {name}: {type(e).__name__}: {e!r}")
+                removed = [{"ticker": "-", "trig_date": "", "reason": f"The comparison with your last report "
+                            f"could not be made ({type(e).__name__}); removals are unknown for this report."}]
+            subject, text, html = email_body(name, urows, snap.get("generated_utc"), unavailable,
+                                             removed=removed, last_sent=last_sent)
             from trade_email import send_simple_email
             ok = send_simple_email(subject, text, html=html, recipients=[email])
+            if ok and not unavailable:
+                # Recorded only after a delivered send of a vetted report: the next email compares against
+                # what he actually received.
+                try:
+                    _save_sent(name, urows, snap.get("generated_utc"))
+                except Exception as e:
+                    log.error(f"could not record the rows sent to {name}: {type(e).__name__}: {e!r}")
         except Exception as e:
             log.error(f"scanner report email failed for {name}: {type(e).__name__}: {e!r}")
         if ok:

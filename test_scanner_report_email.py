@@ -1,6 +1,18 @@
 """Tests for run_scanner_report_email.py (ChangeRequest P-07, 2026-08-07: daily Scanner Report email)."""
 
+import pytest
+
 import run_scanner_report_email as rse
+
+
+@pytest.fixture(autouse=True)
+def _no_live_sent_store(monkeypatch):
+    """main() reads and writes the rows each login was sent (web_json_store). No test may reach the live store
+    -- this file has written to production before (13 activity-log rows, 2026-09-04/05)."""
+    saved = []
+    monkeypatch.setattr(rse, "_load_sent", lambda name: None)
+    monkeypatch.setattr(rse, "_save_sent", lambda name, rows, gen: saved.append((name, len(rows))) or True)
+    return saved
 
 
 def _row(**kw):
@@ -121,7 +133,7 @@ def test_a_restricted_run_delivers_only_to_the_named_address(monkeypatch):
     import web_store
     monkeypatch.setattr(web_store, "append_batch", lambda *a, **k: None)
     monkeypatch.setattr(_sre, "screen_rows", lambda name: ([], False))
-    monkeypatch.setattr(_sre, "email_body", lambda name, rows, gen, unavailable=False: ("s", "t", "<p>h</p>"))
+    monkeypatch.setattr(_sre, "email_body", lambda name, rows, gen, unavailable=False, **k: ("s", "t", "<p>h</p>"))
 
     import trade_email
     monkeypatch.setattr(trade_email, "send_simple_email",
