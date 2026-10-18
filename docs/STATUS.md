@@ -63,8 +63,9 @@ and 8 loads in 2 minutes made IG refuse with 403 for ~20 minutes (2026-10-11 17:
 | **Duplicate index dropped** (62 MB), source lookup rewritten (34.5 s -> 1.1 s, identical rows). | `8f88d33`; DB 450 -> 388 MB. |
 | **Universe 1,773 -> 1,999** (+116 Nikkei, +95 ASX 200, +15 Hang Seng; published lists, Yahoo-verified). 4-year history backfilled. | `15e3346`; 221,974 bars for 226 tickers; DB 403 MB. First full scan: Morning Chain 10-19 -- check names/sectors and the report count. |
 
-Owed: the dropped-row justification email (owner 2026-10-18: "Anything like items dropping out of any reports
-needs a full justification sent out - via email"). `instrument_metrics_daily` is never pruned (~5 MB/month);
+Dropped-row email (owner 2026-10-18: "Anything like items dropping out of any reports needs a full justification
+sent out - via email") BUILT `8364b33`: the 10-19 send records its rows; the 10-20 send is the first comparison
+-- confirm its "Removed since your last report" section then. `instrument_metrics_daily` is never pruned (~5 MB/month);
 2,250 instruments waits on a rule for it. API worker on IONOS still serves `51f3e3b17114` after the `7d86cb1`
 deploy (static current); harmless -- the web tier never writes prices.
 
