@@ -89,6 +89,15 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
     date_str = (generated_utc or "")[:10] or ""
     total = len(rows)
     trig = lambda r: str(r.get("trig_date") or "")[:10]
+    # A finished trade stays on the report showing its outcome (owner 2026-10-18: "it should stay on the
+    # report and show it has reached target - not drop off the report").
+    def outcome(r):
+        oc = r.get("outcome")
+        if oc not in ("TARGET", "STOPPED"):
+            return "Open"
+        ret = r.get("outcome_return")
+        return (f"{oc.title()} {str(r.get('outcome_date') or '')[:10]}"
+                + (f" ({ret:+.1f}%)" if isinstance(ret, (int, float)) else ""))
     ordered = (sorted([r for r in rows if trig(r)], key=trig, reverse=True)
                + [r for r in rows if not trig(r)])[:MAX_ROWS]
     warn = ("Triggered setups are hidden today: the trigger history was unavailable, so they could not be checked "
@@ -102,9 +111,9 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
     if not ordered:
         lines.append("No setups are in your Scanner Report today.")
     else:
-        lines.append(f"{'Ticker':<14}{'Triggered':<12}{'Dir':<6}{'Market':<12}{'Quality':<9}{'R:R':<7}RVOL")  # no Status column: every row is TRIGGERED (owner 2026-10-13)
+        lines.append(f"{'Ticker':<14}{'Triggered':<12}{'Outcome':<27}{'Dir':<6}{'Market':<12}{'Quality':<9}{'R:R':<7}RVOL")  # no Status column: every row is TRIGGERED (owner 2026-10-13)
         for r in ordered:
-            lines.append(f"{str(r.get('ticker') or ''):<14}{trig(r) or '-':<12}{str(r.get('direction') or ''):<6}"
+            lines.append(f"{str(r.get('ticker') or ''):<14}{trig(r) or '-':<12}{outcome(r):<27}{str(r.get('direction') or ''):<6}"
                          f"{str(r.get('market') or ''):<12}{_fmt1(r.get('quality')):<9}"
                          f"{_fmt1(r.get('rr')):<7}{_fmt1(r.get('rvol'))}")
         if total > len(ordered):
@@ -120,6 +129,7 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
         td = lambda extra="": f'<td style="{base}{extra}">'
         return (f'<tr>{td()}{r.get("ticker","")}</td>'
                 f'{td(";white-space:nowrap")}{trig(r) or "—"}</td>'
+                f'{td(";white-space:nowrap" + (";color:#1a7f37;font-weight:600" if r.get("outcome") == "TARGET" else ";color:#b42318;font-weight:600" if r.get("outcome") == "STOPPED" else ""))}{outcome(r)}</td>'
                 f'{td(f";color:{col};font-weight:600")}{r.get("direction","")}</td>'
                 f'{td()}{r.get("market","")}</td>'
                 f'{td(";text-align:right")}{_fmt1(r.get("quality"))}</td>'
@@ -130,6 +140,7 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
         table = ('<table style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px">'
                  '<tr style="background:#f6f8fa"><th style="padding:4px 8px;text-align:left">Ticker</th>'
                  '<th style="padding:4px 8px;text-align:left">Triggered &darr;</th>'
+                 '<th style="padding:4px 8px;text-align:left">Outcome</th>'
                  '<th style="padding:4px 8px;text-align:left">Dir</th><th style="padding:4px 8px;text-align:left">Market</th>'
                  '<th style="padding:4px 8px;text-align:right">Quality</th><th style="padding:4px 8px;text-align:right">R:R</th>'
                  '<th style="padding:4px 8px;text-align:right">RVOL</th></tr>'

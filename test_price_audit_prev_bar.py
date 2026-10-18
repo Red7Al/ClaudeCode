@@ -55,7 +55,7 @@ def _wire(monkeypatch, download, history):
     monkeypatch.setattr(price_audit.price_store, "prune_older_than", lambda: 0)
     monkeypatch.setattr(price_audit.price_store, "get_bars", lambda *a, **k: None)
     monkeypatch.setattr(price_audit.price_store, "upsert_bars",
-                        lambda tk, df, src, db=None: upserts.append((tk, [pd.Timestamp(i).date() for i in df.index])) or len(df))
+                        lambda tk, df, src, db=None, yahoo_symbol=None: upserts.append((tk, [pd.Timestamp(i).date() for i in df.index])) or len(df))
     return db, upserts
 
 

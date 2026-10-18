@@ -347,7 +347,16 @@ def test_email_has_no_status_column_every_row_is_triggered():
     rows = [_row(ticker="AAA", trig_date="2026-10-08", status="TRIGGERED")]
     subject, text, html = rse.email_body("Alex", rows, "2026-10-13T05:30:00Z")
     assert "Status" not in text and ">Status<" not in html and "TRIGGERED" not in text and "TRIGGERED" not in html
-    assert html.count("<th ") == 7 and html.count("<td ") == 7
+    assert html.count("<th ") == 8 and html.count("<td ") == 8     # + Outcome (owner 2026-10-18)
+
+
+def test_a_finished_trade_shows_its_outcome_in_the_email():
+    """Owner 2026-10-18: "it should stay on the report and show it has reached target"."""
+    rows = [_row(ticker="TSCO.L", trig_date="2026-10-08", outcome="TARGET", outcome_date="2026-10-15",
+                 outcome_return=12.54), _row(ticker="AAA", trig_date="2026-10-07")]
+    subject, text, html = rse.email_body("Alex", rows, "2026-10-18T05:30:00Z")
+    assert "Target 2026-10-15 (+12.5%)" in text and "Target 2026-10-15 (+12.5%)" in html
+    assert ">Outcome<" in html and "Open" in text
 
 
 @_node_only

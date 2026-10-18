@@ -1603,8 +1603,14 @@ REPORT_MAX_TRIGGER_AGE_DAYS = 90
 
 
 def _open_trigger_setups(snap: dict):
-    """{ticker: [setup, ...] newest trigger first} for every squeeze that TRIGGERED and is still OPEN, or
-    None when the history cannot be read (the caller then leaves rows exactly as before).
+    """{ticker: [setup, ...] newest trigger first} for every squeeze that TRIGGERED in the last
+    REPORT_MAX_TRIGGER_AGE_DAYS -- still OPEN, or finished at TARGET / STOPPED -- or None when the history
+    cannot be read (the caller then leaves rows exactly as before). Each setup carries its `outcome`.
+
+    FINISHED TRADES STAY (owner 2026-10-18: "it should stay on the report and show it has reached target -
+    not drop off the report"). Until then a setup left the report the day it hit target or stop, so a
+    trigger the owner had acted on vanished without a word -- TSCO.L's 8 Oct trigger, closed by a bad Yahoo
+    print on 15 Oct. An order is only ever placed on an OPEN one (_order_sig).
 
     THE OWNER'S RULE (2026-10-08): "a setup that triggered and passed my filters on its trigger date stays
     on the report, days counting up, until it hits its target or stop". The snapshot holds only the funnel
@@ -1636,10 +1642,14 @@ def _open_trigger_setups(snap: dict):
         try:
             rows = db.run("""select distinct on (ticker, triggered_date)
                                     ticker, triggered_date, hvf_type, timeframe, entry_level, stop_level,
-                                    target_level, risk_reward, quality, rvol, h1_date, h3_date, l3_date
+                                    target_level, risk_reward, quality, rvol, h1_date, h3_date, l3_date,
+                                    outcome, outcome_date, return_pct
                                from squeeze_history
-                              where outcome = 'OPEN' and triggered_date is not null
-                                and refreshed_at >= now() - interval '4 days'
+                              where triggered_date is not null
+                                and (outcome in ('TARGET', 'STOPPED')
+                                     -- a stale OPEN may be a finished trade; a finished one is final and is
+                                     -- never re-checked (1,326 of 1,524 in the last 90 days, 2026-10-18)
+                                     or (outcome = 'OPEN' and refreshed_at >= now() - interval '4 days'))
                                 and triggered_date >= current_date - cast(:max_age as integer)
                               order by ticker, triggered_date, quality desc nulls last""",
                         max_age=REPORT_MAX_TRIGGER_AGE_DAYS)
@@ -1662,7 +1672,7 @@ def _open_trigger_setups(snap: dict):
         log.warning(f"open trigger setups unreadable and no verified copy: {e}")
         return None
     out = {}
-    for tk, td, typ, tf, entry, stop, target, rr, q, rvol, h1d, h3d, l3d in rows:
+    for tk, td, typ, tf, entry, stop, target, rr, q, rvol, h1d, h3d, l3d, oc, od, ret in rows:
         d = str(td)[:10]
         f = feats.get((tk, d)) or {}
         out.setdefault(tk, []).append({
@@ -1673,7 +1683,9 @@ def _open_trigger_setups(snap: dict):
             "volume_score": f.get("volume_score"), "above_vwap": f.get("above_vwap"),
             "atr_expanding": f.get("atr_expanding"),
             "h1_date": str(h1d)[:10] if h1d else None, "h3_date": str(h3d)[:10] if h3d else None,
-            "l3_date": str(l3d)[:10] if l3d else None})
+            "l3_date": str(l3d)[:10] if l3d else None,
+            "outcome": oc, "outcome_date": str(od)[:10] if od else None,
+            "outcome_return": round(ret, 2) if isinstance(ret, (int, float)) and oc != "OPEN" else None})
     for v in out.values():
         v.sort(key=lambda s: s["trig_date"], reverse=True)
     _OPEN_SETUPS_CACHE.update(gen=gen, data=out, at=_time.time())
@@ -1681,10 +1693,15 @@ def _open_trigger_setups(snap: dict):
 
 
 def _report_setup(name: str, ticker: str, setups: list, mcap, limits=None):
-    """The newest open setup that passes this login's limits ON ITS TRIGGER-DATE VALUES, or None.
+    """The newest setup that passes this login's limits ON ITS TRIGGER-DATE VALUES, or None -- an OPEN one
+    first, so a still-live trade is never hidden behind a newer finished one; otherwise the newest finished
+    one, which stays on the report showing its outcome (owner 2026-10-18). A setup from a summary file
+    written before outcomes were recorded has no `outcome` and is OPEN, as that query selected only OPEN.
     require_data=True: a value that was never measured cannot pass a floor that is switched on."""
     import trading_limits
-    for s in setups or []:
+    setups = setups or []
+    is_open = lambda s: s.get("outcome", "OPEN") == "OPEN"
+    for s in [s for s in setups if is_open(s)] + [s for s in setups if not is_open(s)]:
         if not trading_limits.check_limits(name, ticker, quality=s["quality"], rr=s["rr"],
                                            volume_score=s["volume_score"], rvol=s["rvol"],
                                            above_vwap=s["above_vwap"], atr_expanding=s["atr_expanding"],
@@ -1939,7 +1956,9 @@ def api_records():
                                **{k: pick[k] for k in ("direction", "timeframe", "entry", "stop", "target",
                                                         "rr", "quality", "trig_date", "rvol", "volume_score",
                                                         "above_vwap", "atr_expanding", "h1_date", "h3_date",
-                                                        "l3_date")})
+                                                        "l3_date")},
+                               outcome=pick.get("outcome", "OPEN"), outcome_date=pick.get("outcome_date"),
+                               outcome_return=pick.get("outcome_return"))
                     for k, v in (extras.get(row.get("ticker")) or {}).items():
                         if row.get(k) is None and v is not None:
                             row[k] = v
@@ -2937,6 +2956,10 @@ def _order_sig(tk, user):
         pick = _report_setup(user, tk, setups.get(tk), _mcap_map().get(tk), trading_limits.user_limits(user))
     if not pick:
         return _sig_from_snapshot(tk), False
+    if pick.get("outcome", "OPEN") != "OPEN":
+        # The row shows a FINISHED trade (owner 2026-10-18: it stays on the report showing its outcome).
+        # Nothing is ordered on it, and not the scan's setup either -- that is not what the screen shows.
+        return None, False
     bull = pick["direction"] == "BULL"
     return {"ticker": tk, "direction": "BUY" if bull else "SELL", "hvf_type": "BULLISH" if bull else "BEARISH",
             "hvf_signal": "TRIGGERED", "hvf_h3_level": pick["entry"], "hvf_stop_level": pick["stop"],

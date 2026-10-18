@@ -12,7 +12,8 @@
 #
 # Public API:
 #   ensure_schema(db=None)                       create table + indexes (idempotent)
-#   upsert_bars(ticker, df, source, db=None)     bulk UPSERT a yfinance-shaped OHLCV frame; returns rows written
+#   upsert_bars(ticker, df, source, db=None)     bulk UPSERT a yfinance-shaped OHLCV frame (Yahoo wicks verified
+#                                                against hourly bars, corrections kept); returns rows written
 #   get_bars(ticker, start, end, db=None)        read OHLCV as a yfinance-shaped DataFrame (or None)
 #   get_bars_or_fetch(ticker, yahoo_symbol, ...) Supabase first; on miss/stale, fetch YF + write-through
 #   latest_bar_date(ticker, db=None)             most recent stored bar_date (or None)
@@ -54,7 +55,28 @@ _DDL = [
     "create index if not exists idx_price_history_ticker_date on price_history (ticker, bar_date desc)",
     # (bar_date) — the daily audit scans every instrument for a given day.
     "create index if not exists idx_price_history_bar_date on price_history (bar_date)",
+    # Every daily high/low _verify_wicks replaced, with the value Yahoo's daily bar carried (owner 2026-10-18:
+    # originals are kept, never silently overwritten).
+    """create table if not exists price_corrections (
+        id           bigserial        primary key,
+        ticker       text             not null,
+        bar_date     date             not null,
+        field        text             not null,
+        original     double precision,
+        corrected    double precision,
+        evidence     text,
+        recorded_at  timestamptz      not null default now()
+    )""",
 ]
+
+# A daily wick reaching this far beyond the bar's open/close body is checked against Yahoo's own hourly bars
+# before it is stored. MEASURED 2026-10-15: Yahoo's daily bars for 10 FTSE 100 stocks carried highs 15-18%
+# above the body (TSCO.L 622.5, close 534.6) that its 5-minute and hourly bars for the same day do not
+# contain (max 535.6). The bad high closed TSCO.L's 8 Oct trigger as TARGET and dropped it from the owner's
+# report (owner 2026-10-18: "If there is a trigger it must stay in the history of triggers").
+WICK_CHECK_PCT = 6.0
+# Hourly bars disagreeing by less than this are rounding / adjustment noise, not a bad print.
+WICK_AGREE_PCT = 1.0
 
 # How much history to keep (user 2026-06-29: record 3 years; delete anything older).
 # Raised to 5 years (user 2026-08-02): the squeeze-history replay wants the deepest window the price
@@ -122,18 +144,80 @@ def _df_to_rows(df):
     return rows
 
 
-def upsert_bars(ticker, df, source, db=None, chunk=400):
+def _intraday_extremes(yahoo_symbol, dates):
+    """{bar_date: (high, low, last close)} from Yahoo's hourly bars, for the days asked. Hourly covers ~730
+    days; an older or unanswered day is simply absent."""
+    import yfinance as yf
+    lo_d, hi_d = min(dates), max(dates)
+    if lo_d < date.today() - timedelta(days=720):
+        return {}
+    h = yf.Ticker(yahoo_symbol).history(start=lo_d.strftime("%Y-%m-%d"),
+                                        end=(hi_d + timedelta(days=1)).strftime("%Y-%m-%d"),
+                                        interval="1h", auto_adjust=True)
+    out = {}
+    if h is None or h.empty:
+        return out
+    for d, g in h.groupby([pd.Timestamp(i).date() for i in h.index]):
+        if d in dates and not g["Close"].dropna().empty:
+            out[d] = (float(g["High"].max()), float(g["Low"].min()), float(g["Close"].dropna().iloc[-1]))
+    return out
+
+
+def _verify_wicks(ticker, yahoo_symbol, rows, intraday=None):
+    """(rows, corrections). A daily high/low more than WICK_CHECK_PCT beyond the body that Yahoo's own hourly
+    bars contradict is replaced by the hourly extreme. Not rescaled: the daily close is the closing auction,
+    not the last hourly close (TSCO.L 10-15: 534.6 vs 533.4), and a dividend adjustment only LOWERS a daily
+    bar, so it can never read as a high the hourly bars do not reach. A wick the hourly bars confirm, or that
+    cannot be checked, is stored as given and logged."""
+    suspect = {bd for bd, o, h, l, c, _v in rows if o is not None and h is not None and l is not None and (
+        h > max(o, c) * (1 + WICK_CHECK_PCT / 100) or l < min(o, c) * (1 - WICK_CHECK_PCT / 100))}
+    if not suspect:
+        return rows, []
+    try:
+        ext = (intraday or _intraday_extremes)(yahoo_symbol or ticker, suspect)
+    except Exception as e:
+        ext = {}
+        log.warning(f"{ticker}: wick check could not read hourly bars: {e}")
+    out, fixes = [], []
+    for bd, o, h, l, c, v in rows:
+        if bd in suspect:
+            if bd not in ext:
+                log.warning(f"{ticker} {bd}: wick H {h:g} L {l:g} vs body {o:g}/{c:g} UNVERIFIED (no hourly bars)")
+            else:
+                ih, il, _ic = ext[bd]
+                if h > ih * (1 + WICK_AGREE_PCT / 100):
+                    fixes.append((bd, "high", h, max(ih, o, c)))
+                    h = max(ih, o, c)
+                if l < il * (1 - WICK_AGREE_PCT / 100):
+                    fixes.append((bd, "low", l, min(il, o, c)))
+                    l = min(il, o, c)
+        out.append((bd, o, h, l, c, v))
+    for bd, f, was, now in fixes:
+        log.warning(f"{ticker} {bd}: daily {f} {was:g} contradicted by Yahoo's hourly bars -> {now:g}")
+    return out, fixes
+
+
+def upsert_bars(ticker, df, source, db=None, chunk=400, yahoo_symbol=None):
     """Bulk-UPSERT a yfinance OHLCV frame for one ticker. ON CONFLICT updates the bar + source +
-    updated_at (so an audit correction overwrites a stale value). Returns the number of rows written."""
+    updated_at (so an audit correction overwrites a stale value). Returns the number of rows written.
+    Yahoo bars pass _verify_wicks first; IG bars (the cross-check's truth) do not."""
     rows = _df_to_rows(df)
     if not rows:
         return 0
+    fixes = []
+    if source != "IG":
+        rows, fixes = _verify_wicks(ticker, yahoo_symbol, rows)
     own = db is None
     if own:
         db = get_db()
     written = 0
     try:
         ensure_schema(db)
+        for bd, f, was, now in fixes:
+            # once per bar and field: the nightly refresh re-fetches the same bad bar for several days
+            db.run("insert into price_corrections (ticker,bar_date,field,original,corrected,evidence) "
+                   "select :t,:d,:f,:o,:n,'Yahoo hourly bars' where not exists (select 1 from price_corrections "
+                   "where ticker=:t and bar_date=:d and field=:f)", t=ticker, d=bd, f=f, o=was, n=now)
         for i in range(0, len(rows), chunk):
             batch = rows[i:i + chunk]
             values, params = [], {"t": ticker, "s": source}
@@ -278,7 +362,7 @@ def get_bars_or_fetch(ticker, yahoo_symbol, start, end, source="YF", stale_days=
                          end=end_d.strftime("%Y-%m-%d"), progress=False, auto_adjust=True)
         if dl is not None and not dl.empty:
             try:
-                upsert_bars(ticker, dl, source)
+                upsert_bars(ticker, dl, source, yahoo_symbol=yahoo_symbol)
             except Exception as e:
                 log.warning(f"price_store write-through failed for {ticker}: {e}")
             if getattr(dl.columns, "nlevels", 1) > 1:

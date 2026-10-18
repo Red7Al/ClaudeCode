@@ -205,8 +205,8 @@ def test_a_user_with_no_saved_limits_is_judged_on_the_code_defaults(monkeypatch)
 
 def test_setups_come_back_newest_trigger_first(monkeypatch):
     """_report_setup takes the FIRST passing setup, so the order is the rule: newest trigger first."""
-    rows = [("ARM", "2026-09-18", "BULLISH", "daily-240", 1, 0.9, 2, 5.77, 52, 1.8, None, None, None),
-            ("ARM", "2026-09-29", "BULLISH", "daily-240", 1, 0.9, 2, 19.69, 45, 1.08, None, None, None)]
+    rows = [("ARM", "2026-09-18", "BULLISH", "daily-240", 1, 0.9, 2, 5.77, 52, 1.8, None, None, None, "OPEN", None, 1.0),
+            ("ARM", "2026-09-29", "BULLISH", "daily-240", 1, 0.9, 2, 19.69, 45, 1.08, None, None, None, "OPEN", None, 1.0)]
 
     class _Db:
         def run(self, sql, **k):
@@ -311,3 +311,55 @@ def test_the_gate_is_asked_with_the_reported_setups_direction(monkeypatch):
     monkeypatch.setattr(server, "_user_trade_allows", lambda name, rec: seen.append(rec["direction"]) or True)
     _records(monkeypatch, {"ARM": [{**ARM_18_SEP, "direction": "BEAR"}]})
     assert seen == ["BEAR"]
+
+
+# -- Finished trades stay on the report (owner 2026-10-18) -------------------------------------------------
+# "it should stay on the report and show it has reached target - not drop off the report". Fixtures: the
+# squeeze_history rows for TSCO.L's 8 Oct trigger (88543) and GSK.L's 12 Aug trigger (54570), as stored.
+TSCO_TARGET = ("TSCO.L", "2026-10-08", "BULLISH", "daily-240", 480.700012, 469.06, 540.996282, 5.18, 50.0, 2.24,
+               None, None, None, "TARGET", "2026-10-15", 12.54)
+
+
+def _setups_from(rows, monkeypatch):
+    seen = []
+
+    class _Db:
+        def run(self, sql, **k):
+            seen.append(sql)
+            return rows
+
+        def close(self):
+            pass
+
+    import db_pool, volscore_store
+    server._OPEN_SETUPS_CACHE.update(gen=None, data=None, at=0.0)
+    monkeypatch.setattr(db_pool, "get_db", lambda: _Db())
+    monkeypatch.setattr(volscore_store, "load", lambda cutoff, db=None: {})
+    m = server._open_trigger_setups({"generated_utc": "outcome"})
+    server._OPEN_SETUPS_CACHE.update(gen=None, data=None, at=0.0)
+    return m, seen[0]
+
+
+def test_a_finished_trade_is_read_with_its_outcome_and_needs_no_recent_refresh(monkeypatch):
+    m, sql = _setups_from([TSCO_TARGET], monkeypatch)
+    s = m["TSCO.L"][0]
+    assert (s["outcome"], s["outcome_date"], s["outcome_return"]) == ("TARGET", "2026-10-15", 12.54)
+    assert "'TARGET', 'STOPPED'" in sql and "outcome = 'OPEN' and refreshed_at" in sql
+
+
+def test_an_open_setup_is_shown_before_a_newer_finished_one():
+    done = dict(ARM_18_SEP, trig_date="2026-10-01", outcome="TARGET", outcome_date="2026-10-02")
+    live = dict(ARM_18_SEP, outcome="OPEN")
+    assert server._report_setup("Alex", "ARM", [done, live], ARM_MCAP, LIMITS) is live
+    assert server._report_setup("Alex", "ARM", [done], ARM_MCAP, LIMITS) is done
+
+
+def test_no_order_is_created_on_a_finished_trade(monkeypatch):
+    done = dict(ARM_18_SEP, outcome="TARGET", outcome_date="2026-10-02")
+    monkeypatch.setattr(server, "_record", lambda tk: {"ticker": "ARM", "status": "TRIGGERED", "market": "NASDAQ 100"})
+    monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": "x"})
+    monkeypatch.setattr(server, "_open_trigger_setups", lambda s: {"ARM": [done]})
+    monkeypatch.setattr(server, "_mcap_map", lambda: {"ARM": ARM_MCAP})
+    import trading_limits
+    monkeypatch.setattr(trading_limits, "user_limits", lambda u: LIMITS)
+    assert server._order_sig("ARM", "Alex") == (None, False)

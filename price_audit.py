@@ -201,7 +201,7 @@ def _retry_prev_bar(missing, expected, today, source, db, max_seconds=RETRY_MAX_
         h = h[[d < today for d in days]]
         if h.empty:
             continue
-        price_store.upsert_bars(tk, h, source, db=db)
+        price_store.upsert_bars(tk, h, source, db=db, yahoo_symbol=ysym)
         if max(pd.Timestamp(i).date() for i in h.index) >= expected[tk]:
             recovered.append(tk)
     return recovered, untried
@@ -249,7 +249,7 @@ def audit_ticker(ticker, yahoo_symbol, window_days, source, db, last_bar=None):
                     max_drift = max(max_drift, drift)
                     log.info(f"{ticker} {ts.date()}: stored {old:g} -> source {float(c):g} ({drift:.2f}% drift) - correcting")
 
-    written = price_store.upsert_bars(ticker, dl, source, db=db)
+    written = price_store.upsert_bars(ticker, dl, source, db=db, yahoo_symbol=yahoo_symbol)
     return written, discrepancies, (max_drift or None)
 
 
