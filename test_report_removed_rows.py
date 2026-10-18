@@ -71,7 +71,8 @@ def test_history_unreadable(wired):
 
 
 def test_open_but_not_rechecked_is_named_as_withheld(wired):
-    wired({"ARM": []}, history=("OPEN", dt.datetime(2026, 10, 12, 4, 39)))
+    # squeeze_history.refreshed_at is timestamptz (id 80179 reads back tz-aware UTC)
+    wired({"ARM": []}, history=("OPEN", dt.datetime(2026, 10, 12, 4, 39, tzinfo=dt.timezone.utc)))
     assert "last re-checked 2026-10-12 04:39 UTC" in _why()[0]
 
 
@@ -88,7 +89,7 @@ def test_fails_a_filter_and_quotes_which(wired):
 
 def test_market_switched_off(wired):
     wired({"ARM": [ARM_18_SEP]}, allows=False)
-    assert _why() == ["Excluded by your market switches or direction / location filters."]
+    assert _why() == ["Excluded by your market switches or direction / location filters (BULL, NASDAQ 100)."]
 
 
 def test_every_server_check_passes_is_said_not_hidden(wired):
@@ -131,3 +132,117 @@ def test_main_compares_with_the_last_send_and_records_this_one(monkeypatch, _no_
     assert rse.main() == 0
     assert "ARM (triggered 2026-09-18): Replaced by its trigger of 2026-10-09" in bodies[0]
     assert _no_live_sent_store == [("Alex", 1)]
+
+
+# ── The REAL store functions (code review 2026-10-18: every earlier test replaced them with fakes) ─────────────
+_REAL_LOAD, _REAL_SAVE = rse._load_sent, rse._save_sent
+
+
+class _Store:
+    """web_json_store in memory: (available, payload, revision) reads and revision-checked writes."""
+
+    def __init__(self, payload=None):
+        self.payload, self.rev, self.up, self.writes = payload, (1 if payload else 0), True, 0
+
+    def read(self, key):
+        return (True, self.payload, self.rev) if self.up else (False, None, None)
+
+    def save(self, key, payload, expected_revision=None):
+        if not self.up or expected_revision != self.rev:
+            return None
+        self.payload, self.rev, self.writes = payload, self.rev + 1, self.writes + 1
+        return self.rev
+
+
+@pytest.fixture
+def store(monkeypatch):
+    import web_store
+    st = _Store({"Sam": {"sent_utc": "2026-10-17T05:53:10+00:00", "rows": PREV}})
+    monkeypatch.setattr(web_store, "read_json_store_versioned", st.read)
+    monkeypatch.setattr(web_store, "save_json_store_versioned", st.save)
+    return st
+
+
+def test_an_unreadable_store_is_never_overwritten_with_one_login(store):
+    store.up = False
+    with pytest.raises(RuntimeError):
+        _REAL_SAVE("Alex", [{"ticker": "ARM", "trig_date": "2026-10-09"}], "g")
+    store.up = True
+    assert store.writes == 0 and list(store.payload) == ["Sam"]
+
+
+def test_saving_one_login_keeps_every_other(store):
+    assert _REAL_SAVE("Alex", [{"ticker": "ARM", "trig_date": "2026-10-09"}], "g") is True
+    assert set(store.payload) == {"Sam", "Alex"} and store.payload["Sam"]["rows"] == PREV
+
+
+def test_a_concurrent_writer_is_retried_not_overwritten(store, monkeypatch):
+    import web_store
+    real_read = store.read
+    first = []
+
+    def racing_read(key):
+        out = real_read(key)
+        if not first:                       # another job writes between this read and our save
+            first.append(1)
+            store.payload = dict(store.payload, Casey={"rows": []}); store.rev += 1
+        return out
+    monkeypatch.setattr(web_store, "read_json_store_versioned", racing_read)
+    assert _REAL_SAVE("Alex", [], "g") is True
+    assert set(store.payload) == {"Sam", "Casey", "Alex"}
+
+
+def test_a_failed_write_raises_instead_of_returning_false(store, monkeypatch):
+    import web_store
+    monkeypatch.setattr(web_store, "save_json_store_versioned", lambda *a, **k: None)
+    with pytest.raises(RuntimeError):
+        _REAL_SAVE("Alex", [], "g")
+
+
+def test_an_outage_is_not_read_as_never_sent(store):
+    assert _REAL_LOAD("Sam")["rows"] == PREV and _REAL_LOAD("Alex") is None
+    store.up = False
+    with pytest.raises(RuntimeError):
+        _REAL_LOAD("Sam")
+
+
+def test_open_and_recently_rechecked_is_not_called_stale(wired):
+    recent = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)
+    wired({"ARM": []}, history=("OPEN", recent))
+    why = _why()[0]
+    assert why.startswith("Reason not determined") and "over 4 days" not in why
+
+
+def test_never_rechecked_does_not_print_none(wired):
+    wired({"ARM": []}, history=("OPEN", None))
+    assert "re-checked never UTC" in _why()[0]
+
+
+def test_direction_is_judged_on_the_setup_the_server_picks(wired, monkeypatch):
+    """Server order: _report_setup picks, THEN the pick's direction is gated. A previous BULL trigger replaced
+    by an open BEAR pick that the direction filter blocks is 'excluded', not 'now shows its BEAR trigger'."""
+    bear = dict(ARM_18_SEP, trig_date="2026-10-09", direction="BEAR", outcome="OPEN")
+    wired({"ARM": [bear, dict(ARM_18_SEP, outcome="TARGET")]})
+    monkeypatch.setattr(server, "_user_trade_allows", lambda n, r: r["direction"] != "BEAR")
+    assert _why()[0] == "Excluded by your market switches or direction / location filters (BEAR, NASDAQ 100)."
+
+
+def test_a_row_with_no_trigger_date_is_not_sent_to_the_database(wired):
+    wired({"ARM": [ARM_18_SEP]})
+    assert _why(prev=[dict(PREV[0], trig_date=None)]) == [
+        "Reason not determined: the previous report recorded no trigger date for it."]
+
+
+def test_a_setup_read_failure_does_not_poison_later_rows(wired, monkeypatch):
+    wired({"ARM": [ARM_18_SEP]}, allows=False)
+    calls = []
+
+    def flaky(n):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("pool full")
+        return LIMITS
+    monkeypatch.setattr(trading_limits, "user_limits", flaky)
+    why = _why(prev=[PREV[0], dict(PREV[0])])
+    assert why[0].startswith("Reason not determined: the check failed (RuntimeError: pool full)")
+    assert why[1] == "Excluded by your market switches or direction / location filters (BULL, NASDAQ 100)."

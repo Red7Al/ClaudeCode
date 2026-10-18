@@ -114,7 +114,7 @@ def removed_since_last(name: str, prev_rows: list, now_rows: list, snap: dict, t
     now_keys = {_key(r) for r in now_rows}
     now_by_tk = {r.get("ticker"): r for r in now_rows}
     recs = {r.get("ticker"): r for r in snap.get("records") or []}
-    setups_map, limits, mcaps = None, None, None
+    ctx = None          # (setups_map, limits, mcaps), read together or not at all
     out = []
     for p in prev_rows:
         tk, td = _key(p)
@@ -127,7 +127,10 @@ def removed_since_last(name: str, prev_rows: list, now_rows: list, snap: dict, t
                 row["reason"] = (f"Replaced by its trigger of {_key(now_by_tk[tk])[1] or 'unknown date'}: the report "
                                  "shows one setup per instrument.")
                 continue
-            if td and (today - dt.date.fromisoformat(td)).days > server.REPORT_MAX_TRIGGER_AGE_DAYS:
+            if not td:
+                row["reason"] = "Reason not determined: the previous report recorded no trigger date for it."
+                continue
+            if (today - dt.date.fromisoformat(td)).days > server.REPORT_MAX_TRIGGER_AGE_DAYS:
                 row["reason"] = (f"Triggered {td}, more than {server.REPORT_MAX_TRIGGER_AGE_DAYS} days ago "
                                  "(your 90-day rule).")
                 continue
@@ -135,10 +138,9 @@ def removed_since_last(name: str, prev_rows: list, now_rows: list, snap: dict, t
             if rec is None:
                 row["reason"] = "Not in today's scan."
                 continue
-            if setups_map is None:
-                setups_map = server._open_trigger_setups(snap)
-                limits = trading_limits.user_limits(name)
-                mcaps = server._mcap_map()
+            if ctx is None:
+                ctx = (server._open_trigger_setups(snap), trading_limits.user_limits(name), server._mcap_map())
+            setups_map, limits, mcaps = ctx
             if setups_map is None:
                 row["reason"] = "The trigger history could not be read today, so triggered rows were withheld."
                 continue
@@ -147,26 +149,33 @@ def removed_since_last(name: str, prev_rows: list, now_rows: list, snap: dict, t
                 h = _history_row(tk, td)
                 if h is None:
                     row["reason"] = "No longer in the trigger history."
-                elif h[0] == "OPEN":
-                    row["reason"] = (f"Still OPEN, but its status was last re-checked {str(h[1])[:16]} UTC (over 4 "
-                                     "days ago), so it is withheld until the daily refresh confirms it.")
+                elif h[0] == "OPEN" and (h[1] is None or
+                                         dt.datetime.now(dt.timezone.utc) - h[1] > dt.timedelta(days=4)):
+                    row["reason"] = (f"Still OPEN, but its status was last re-checked "
+                                     f"{str(h[1])[:16] if h[1] else 'never'} UTC (over 4 days ago), so it is withheld "
+                                     "until the daily refresh confirms it.")
                 else:
-                    row["reason"] = f"The trigger history now records it as {h[0]}."
+                    row["reason"] = (f"Reason not determined: the trigger history records it as {h[0]} (re-checked "
+                                     f"{str(h[1])[:16]} UTC), but today's report data did not include it.")
                 continue
-            why = trading_limits.check_limits(name, tk, quality=s["quality"], rr=s["rr"],
-                                              volume_score=s["volume_score"], rvol=s["rvol"],
-                                              above_vwap=s["above_vwap"], atr_expanding=s["atr_expanding"],
-                                              mcap=mcaps.get(tk), require_data=True, limits=limits)
-            if why:
-                row["reason"] = f"No longer passes your My Trading Filters: {why.split(': ', 1)[-1]}."
-                continue
-            if not server._user_trade_allows(name, dict(rec, direction=s["direction"])):
-                row["reason"] = "Excluded by your market switches or direction / location filters."
-                continue
+            # The server's own order (api_records): pick the setup first, then gate the PICK's direction.
             pick = server._report_setup(name, tk, setups_map.get(tk), mcaps.get(tk), limits)
-            if pick is not None and pick.get("trig_date") != td:
-                row["reason"] = (f"The report now shows its trigger of {pick.get('trig_date')} instead "
-                                 "(an open setup is shown before a finished one).")
+            if pick is None:
+                why = trading_limits.check_limits(name, tk, quality=s["quality"], rr=s["rr"],
+                                                  volume_score=s["volume_score"], rvol=s["rvol"],
+                                                  above_vwap=s["above_vwap"], atr_expanding=s["atr_expanding"],
+                                                  mcap=mcaps.get(tk), require_data=True, limits=limits)
+                row["reason"] = (f"No longer passes your My Trading Filters: {why.split(': ', 1)[-1]}." if why else
+                                 "Reason not determined: no setup for it passes your filters, yet this one does.")
+                continue
+            if not server._user_trade_allows(name, dict(rec, direction=pick["direction"])):
+                row["reason"] = (f"Excluded by your market switches or direction / location filters "
+                                 f"({pick['direction']}, {rec.get('market') or 'unknown market'}).")
+                continue
+            if pick.get("trig_date") != td:
+                row["reason"] = (f"Reason not determined: the server now selects its trigger of "
+                                 f"{pick.get('trig_date')} instead, but that row is not on the report either -- the "
+                                 "page's own filters (a saved Scanner filter or Status choice) hid it.")
                 continue
             row["reason"] = ("Reason not determined: every server-side check passes, so the page's own filters "
                              "(a saved Scanner filter or Status choice) hid it.")
@@ -176,19 +185,34 @@ def removed_since_last(name: str, prev_rows: list, now_rows: list, snap: dict, t
 
 
 def _load_sent(name):
-    from web_store import load_json_store
-    return ((load_json_store(SENT_STORE_KEY) or {}).get(name)) or None
+    """The rows last sent to `name`, or None when nothing was ever recorded. RAISES when the store cannot be
+    read: an outage must not read as "never sent" (the email would then say no removal was recorded)."""
+    from web_store import read_json_store_versioned
+    available, store, _rev = read_json_store_versioned(SENT_STORE_KEY)
+    if not available:
+        raise RuntimeError("the store of rows sent could not be read")
+    return ((store or {}).get(name)) or None
 
 
-def _save_sent(name, rows, generated_utc):
+def _save_sent(name, rows, generated_utc, attempts=3):
+    """Record the rows sent to `name`. Read-modify-write under the store's revision, so a concurrent writer is
+    retried, never overwritten, and an unreadable store is never replaced by one holding only this login.
+    RAISES when the write cannot be made."""
     import datetime as dt
-    from web_store import load_json_store, save_json_store
-    store = load_json_store(SENT_STORE_KEY) or {}
-    store[name] = {"sent_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-                   "snapshot": generated_utc,
-                   "rows": [{"ticker": r.get("ticker"), "trig_date": _key(r)[1], "name": r.get("name"),
-                             "direction": r.get("direction")} for r in rows]}
-    return save_json_store(SENT_STORE_KEY, store)
+    from web_store import read_json_store_versioned, save_json_store_versioned
+    entry = {"sent_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+             "snapshot": generated_utc,
+             "rows": [{"ticker": r.get("ticker"), "trig_date": _key(r)[1], "name": r.get("name"),
+                       "direction": r.get("direction")} for r in rows]}
+    for _ in range(attempts):
+        available, store, rev = read_json_store_versioned(SENT_STORE_KEY)
+        if not available:
+            raise RuntimeError("the store of rows sent could not be read; nothing was written")
+        store = dict(store or {})
+        store[name] = entry
+        if save_json_store_versioned(SENT_STORE_KEY, store, expected_revision=rev) is not None:
+            return True
+    raise RuntimeError(f"the rows sent to {name} could not be recorded after {attempts} attempts")
 
 
 def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bool = False,
