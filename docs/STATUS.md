@@ -52,6 +52,22 @@ and 8 loads in 2 minutes made IG refuse with 403 for ~20 minutes (2026-10-11 17:
 | **Price refresh: previous-day bar counted per market, retried once** (`Ticker.history(period="5d")`, completed days only), counts in `price_audit_log.notes`; judged per fetch's own day (`450c780`, the evening run crosses midnight). | `2af38b6`, `450c780`. 10-13 03:31: missing 116/1407 (Nikkei 112 = Japan holiday) -- the ~600 UK/Euronext gap did not occur that day |
 | **Refresh truncation cause: IG allowance refusal never stopped the cross-check.** Since 10-09 IG answers 403 `exceeded-account-historical-data-allowance` (1,103x on 10-13) with no remaining count; ~3.2 s/instrument vs ~1 s; TRUNCATED 4 of 5 days. Now reads as 0 remaining. | `5cbae62`. Confirm on the 10-13 23:00 and 10-14 03:30 runs: ~1 s/instrument, not truncated |
 
+## 2c. Done 2026-10-18
+
+| What | Evidence |
+|---|---|
+| **TSCO.L 8 Oct trigger dropped by a bad Yahoo print.** 10 FTSE 100 highs on 10-15 (TSCO 622.5 vs 535.6 hourly) corrected; originals in `price_corrections`. | Read back 10/10. Live report: TSCO.L Open since 10-08. |
+| **Finished trades stay on the report** with TARGET/STOPPED + date; email Outcome column; no order on a finished trade. | `77a3112`. Live: 67 rows (34 OPEN, 31 STOPPED, 2 TARGET); email re-sent 15:17 UTC. |
+| **255 squeeze_history outcomes re-resolved** -- only where stored bars AND Yahoo hourly agree, no gaps/bad bars. 96 disagreeing rows left as they were. Backup `backups/report_outcomes_2026-10-18.json`. | Read back 255/255. |
+| **Wick guard, London only** (`7d86cb1`): Yahoo hourly is a proven referee only there. 42 JP/AU bars the first version changed restored. | Read back 42/42. 6% threshold: catches every proven bad print in 30 days (measured), not proven beyond. |
+| **Duplicate index dropped** (62 MB), source lookup rewritten (34.5 s -> 1.1 s, identical rows). | `8f88d33`; DB 450 -> 388 MB. |
+| **Universe 1,773 -> 1,999** (+116 Nikkei, +95 ASX 200, +15 Hang Seng; published lists, Yahoo-verified). 4-year history backfilled. | `15e3346`; 221,974 bars for 226 tickers; DB 403 MB. First full scan: Morning Chain 10-19 -- check names/sectors and the report count. |
+
+Owed: the dropped-row justification email (owner 2026-10-18: "Anything like items dropping out of any reports
+needs a full justification sent out - via email"). `instrument_metrics_daily` is never pruned (~5 MB/month);
+2,250 instruments waits on a rule for it. API worker on IONOS still serves `51f3e3b17114` after the `7d86cb1`
+deploy (static current); harmless -- the web tier never writes prices.
+
 ## 3. Open, measured, not fixed
 
 1. **Website pool use, now measured.** 2 web processes (40 concurrent `/api/report-check?process=1` calls:
