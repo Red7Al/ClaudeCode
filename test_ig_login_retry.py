@@ -86,11 +86,6 @@ def test_a_refusal_carries_igs_own_reason(ig):
     assert ig_shim._try_login() == ("refused", f"HTTP 401, errorCode {INVALID}", 1)
 
 
-def test_a_refusal_without_an_errorcode_names_the_status():
-    assert ig_shim._refusal_reason("HTTP 401, errorCode None") == "HTTP 401"
-    assert ig_shim._refusal_reason(f"HTTP 401, errorCode {INVALID}") == INVALID
-
-
 @pytest.mark.parametrize("answers, reached", [((_no_connection, _no_connection, _no_connection), 0),
                                               ((requests.ReadTimeout,), 1), ((503,), 1), ((KeyError,), 0),
                                               ((_no_connection, 200), 1)])
@@ -107,7 +102,7 @@ def test_never_more_than_three_attempts(ig):
 
 
 @pytest.mark.parametrize("answers, subject", [
-    ((401,), "IG refused the login (error.security.invalid-details) - Data Quality Audit"),
+    ((401,), "IG refused the login (error.security.invalid-details) - IG logins paused"),     # emailed once, by the pause (test_ig_login_pause)
     ((KeyError,), "IG login fault - Data Quality Audit"),       # a code fault would otherwise be silent nightly
     ((requests.ReadTimeout,), None),
     ((200,), None),
@@ -120,16 +115,14 @@ def test_a_refusal_or_a_fault_is_emailed_a_network_glitch_is_not(ig, answers, su
     assert (note is None) == (answers == (200,))
 
 
-def test_the_refusal_email_names_igs_reason_and_the_true_attempt_count(ig, monkeypatch):
+def test_the_refusal_email_names_igs_reason_and_the_workflow(ig, monkeypatch):
     posts, waits, emails, script = ig
     monkeypatch.setenv("GITHUB_WORKFLOW", "Price History Audit (2026-10-18)")
     script(_no_connection, 401)                         # 1st never reached IG; 2nd refused
     note = ig_shim.login_for_job("price audit")
     assert len(posts) == 2 and INVALID in note
-    text = emails[0]["text"]
-    assert INVALID in text and "Logins that reached IG this run: 1" in text     # the 1st never reached IG
-    assert "Workflow: Price History Audit (2026-10-18)" in text
-    assert emails[0]["subject"] == f"IG refused the login ({INVALID}) - price audit"   # not the workflow name
+    assert [e["subject"] for e in emails] == [f"IG refused the login ({INVALID}) - IG logins paused"]
+    assert "Job: Price History Audit (2026-10-18)" in emails[0]["text"]
 
 
 def test_price_audit_refused_logs_in_once_and_says_refused(ig, monkeypatch):
@@ -177,4 +170,4 @@ def test_data_quality_refused_logs_in_once_emails_and_records_it(ig, monkeypatch
     script(401)
     with pytest.raises(StopIteration):
         dqa.main()
-    assert len(posts) == 1 and [e["subject"] for e in emails] == [f"IG refused the login ({INVALID}) - Data Quality Audit"]
+    assert len(posts) == 1 and [e["subject"] for e in emails] == [f"IG refused the login ({INVALID}) - IG logins paused"]

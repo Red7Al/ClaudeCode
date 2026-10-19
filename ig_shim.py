@@ -261,6 +261,142 @@ def get_db() -> pg8000.native.Connection:
 
 
 # ======================================================================================================================
+# Login pause (owner 2026-10-19). MEASURED 2026-10-19: IG refused this account's login from 05:00 to 18:25 and the
+# jobs kept trying -- the Order Bridge 36 times, Closing Window 3 per run every 10 minutes. After IG refuses a login
+# (4xx on POST /session) every job stops logging in; one test login is allowed per LOGIN_PROBE_INTERVAL_S, by
+# whichever job runs first. The first accepted login lifts the pause. One email when it starts, one when it ends.
+# Held in app_config so all jobs share it, and in memory so a database outage cannot reopen it within a process.
+# ======================================================================================================================
+
+LOGIN_PROBE_INTERVAL_S = 115 * 60      # every 2 hours, the Order Bridge's cadence, with 5 minutes' slack
+_LOCAL_BLOCKS: dict = {}                # account id -> pause record, this process
+
+
+def _now() -> float:
+    """The clock the pause runs on (tests set it)."""
+    return time.time()
+
+
+class _PausedResponse:
+    """Stands in for IG's refusal while logins are paused, so a handler reading e.response sees what IG last said."""
+
+    def __init__(self, block, message):
+        self.status_code = int(block.get("status") or 401)
+        self.text = message
+        self.headers = {}
+        self._reason = block.get("reason")
+
+    def json(self):
+        return {"errorCode": self._reason}
+
+
+class IGLoginBlocked(requests.HTTPError):
+    """No login was sent: IG logins are paused after a refusal. Raised as the HTTPError IG's own refusal raised, with
+    the same status, so every existing handler (open, close, amend, stop updates) behaves exactly as it did when IG
+    refused -- without contacting IG."""
+
+    def __init__(self, block):
+        message = (f"IG logins paused since {block.get('since')} ({block.get('reason')}); "
+                   f"next test login after {_probe_due(block)}")
+        super().__init__(message, response=_PausedResponse(block, message))
+
+
+def _block_key(acct) -> str:
+    return f"ig_login_pause:{acct}"
+
+
+def _block_store_get(acct):
+    """The shared pause record ("" when none). conftest keeps these keys in memory for every test."""
+    import config_store
+    return config_store.get_value(_block_key(acct), "")
+
+
+def _block_store_set(acct, value: str) -> bool:
+    import config_store
+    return config_store.set_value(_block_key(acct), value, updated_by="ig_shim")
+
+
+def _event_time(rec) -> float:
+    return float(rec.get("last_try") or rec.get("lifted_at") or 0)
+
+
+def _read_block(acct):
+    """The pause record for this account, or None. The LATEST event wins, this process's or the shared one: a pause
+    lifted by another job (a {"lifted_at"} record) ends this process's too; an unreadable store falls back to this
+    process's own record."""
+    shared = None
+    try:
+        raw = _block_store_get(acct)
+        shared = json.loads(raw) if raw else None
+    except Exception as e:
+        log.warning(f"IG login pause: shared record unreadable ({e}) - using this process's")
+    cands = [r for r in (shared, _LOCAL_BLOCKS.get(acct)) if r]
+    latest = max(cands, key=_event_time) if cands else None
+    return latest if latest and latest.get("last_try") else None
+
+
+def _write_block(acct, block) -> None:
+    """Record a pause, or (block=None) its lifting, as a timestamped {"lifted_at"} record -- see _read_block."""
+    rec = block or {"lifted_at": _now()}
+    _LOCAL_BLOCKS[acct] = rec
+    try:
+        if not _block_store_set(acct, json.dumps(rec)):
+            log.error("IG login pause: shared record NOT written - other jobs will not see it")
+    except Exception as e:
+        log.error(f"IG login pause: shared record NOT written ({e})")
+
+
+def _probe_due(block) -> str:
+    t = float(block.get("last_try") or 0) + LOGIN_PROBE_INTERVAL_S
+    return datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _pause_email(subject: str, text: str) -> None:
+    try:
+        from trade_email import send_simple_email
+        send_simple_email(subject=subject, text=text)
+    except Exception as e:
+        log.error(f"IG login pause email failed: {e}")
+
+
+def _block_after_refusal(acct, block, resp) -> None:
+    """IG refused the login: start the pause (email) or, on a refused test login, push the next one out (no email)."""
+    try:
+        code = (resp.json() or {}).get("errorCode")
+    except Exception:
+        code = None
+    reason = code or f"HTTP {resp.status_code}"
+    now = _now()
+    job = os.environ.get("GITHUB_WORKFLOW") or "not run from GitHub Actions"
+    since = (block or {}).get("since") or datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    new = {"since": since, "last_try": now, "reason": reason, "status": resp.status_code, "job": (block or {}).get("job") or job}
+    _write_block(acct, new)
+    log.error(f"IG refused the login (HTTP {resp.status_code}, errorCode {code}) - IG logins paused; "
+              f"next test login after {_probe_due(new)}")
+    if not block:
+        _pause_email(
+            f"IG refused the login ({reason}) - IG logins paused",
+            f"IG refused the login: HTTP {resp.status_code}, errorCode {code}.\n"
+            f"Job: {job}.\n\n"
+            "Every job has stopped logging in to IG: no orders are placed or closed until IG accepts a login.\n"
+            f"One test login is made every {LOGIN_PROBE_INTERVAL_S // 60} minutes; the next after "
+            f"{_probe_due(new)}.\n"
+            "When IG accepts it, the jobs resume by themselves and you get a second email.\n"
+            "If the account is locked or the password or API key changed, contact IG.")
+
+
+def _lift_block(acct, block) -> None:
+    _write_block(acct, None)
+    log.info(f"IG accepted the login - pause since {block.get('since')} lifted")
+    _pause_email(
+        "IG accepting logins again - jobs resumed",
+        f"IG accepted a login at {datetime.fromtimestamp(_now(), timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}.\n"
+        f"IG logins had been paused since {block.get('since')} ({block.get('reason')}).\n"
+        f"Job: {os.environ.get('GITHUB_WORKFLOW') or 'not run from GitHub Actions'}.\n"
+        "Every job logs in again from now.")
+
+
+# ======================================================================================================================
 # IG Session Management
 # Handles authentication, token storage, and auto-refresh before 6hr expiry.
 # ======================================================================================================================
@@ -306,8 +442,15 @@ class IGSession:
     # ------------------------------------------------------------------------------------------------------------------
 
     def authenticate(self):
-        """Authenticate with IG and store session tokens."""
-        log.info(f"Authenticating with IG API...{f' (login={self._login})' if self._login else ''}")
+        """Authenticate with IG and store session tokens. While IG is refusing this account's login, every job is
+        held to one test login per LOGIN_PROBE_INTERVAL_S (see "Login pause" above); any other call raises IGLoginBlocked
+        without contacting IG."""
+        acct = self._account_id
+        block = _read_block(acct)
+        if block and _now() - float(block.get("last_try") or 0) < LOGIN_PROBE_INTERVAL_S:
+            raise IGLoginBlocked(block)
+        log.info(f"Authenticating with IG API...{f' (login={self._login})' if self._login else ''}"
+                 f"{' -- test login while paused' if block else ''}")
         resp = requests.post(
             f"{IG_BASE_URL}/session",
             headers=self._headers("2"),
@@ -318,11 +461,15 @@ class IGSession:
             },
             timeout=15
         )
+        if 400 <= resp.status_code < 500:
+            _block_after_refusal(acct, block, resp)
         resp.raise_for_status()
         self._token              = resp.headers["X-SECURITY-TOKEN"]
         self._cst                = resp.headers["CST"]
         self._authenticated_at   = time.time()
         log.info("IG authentication successful")
+        if block:
+            _lift_block(acct, block)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -437,6 +584,9 @@ def _try_login() -> tuple:
         try:
             session.ensure_authenticated()
             return "ok", "", reached + 1
+        except IGLoginBlocked as e:                       # paused after a refusal: nothing was sent to IG
+            log.error(f"IG login not attempted: {e}")
+            return "blocked", str(e), reached
         except requests.HTTPError as e:
             status = getattr(e.response, "status_code", None)
             if status is None:
@@ -470,34 +620,27 @@ def _try_login() -> tuple:
     return outcome, detail, reached
 
 
-def _refusal_reason(detail: str) -> str:
-    """IG's errorCode for the email subject; the HTTP status when IG sent none ("HTTP 401, errorCode None")."""
-    status, _, code = detail.partition(", errorCode ")
-    return code if code and code != "None" else status
-
-
-_LOGIN_NOTES = {"refused": "IG LOGIN REFUSED", "unreachable": "IG UNREACHABLE", "error": "IG LOGIN ERROR"}
+_LOGIN_NOTES = {"refused": "IG LOGIN REFUSED", "unreachable": "IG UNREACHABLE", "error": "IG LOGIN ERROR",
+                "blocked": "IG LOGINS PAUSED"}
 
 
 def login_for_job(job: str):
     """The ONE place a job that loops over instruments logs in. Returns None if logged in, else the note the job
     records, e.g. "IG LOGIN REFUSED (HTTP 401, errorCode error.security.invalid-details)". Never raises.
-    EMAILS (Slack is unused, owner 2026-10-08) on a refusal, and on a code/configuration fault, which would
-    otherwise switch the IG check off silently every night. The subject names the job and IG's reason; the
-    workflow that ran goes in the body."""
+    EMAILS (Slack is unused, owner 2026-10-08) a code/configuration fault, which would otherwise switch the IG check
+    off silently every night. A refusal is emailed once by IGSession.authenticate, which pauses IG logins for every
+    job (owner 2026-10-19), so it is not emailed again here."""
     outcome, detail, reached = _try_login()
     if outcome == "ok":
         return None
     note = f"{_LOGIN_NOTES[outcome]} ({detail})"
-    if outcome in ("refused", "error"):
-        what = "IG refused the login" if outcome == "refused" else "The IG login failed with a code/config fault"
+    if outcome == "error":
         try:
             from trade_email import send_simple_email
             send_simple_email(
-                subject=(f"IG refused the login ({_refusal_reason(detail)}) - {job}" if outcome == "refused"
-                         else f"IG login fault - {job}"),
-                text=(f"{what} for {job}: {detail}.\n"
-                      f"Logins that reached IG this run: {reached}. A refusal is never retried.\n"
+                subject=f"IG login fault - {job}",
+                text=(f"The IG login failed with a code/config fault for {job}: {detail}.\n"
+                      f"Logins that reached IG this run: {reached}.\n"
                       "This run skips its IG check.\n"
                       f"Workflow: {os.environ.get('GITHUB_WORKFLOW') or 'not run from GitHub Actions'}"))
         except Exception as e:

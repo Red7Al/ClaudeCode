@@ -95,3 +95,38 @@ def _no_test_reaches_the_outside_world(monkeypatch):
     yield
     if attempts:
         pytest.fail(f"this test reached the outside world {len(attempts)} time(s): {attempts[:3]}", pytrace=False)
+
+
+
+@pytest.fixture(autouse=True)
+def _ig_login_pause_in_memory(monkeypatch):
+    """ig_shim keeps its IG-login pause (owner 2026-10-19) in app_config under "ig_login_pause:<account>". No test
+    may read or write those live rows: each test gets an empty in-memory store for those keys (every other key
+    reaches config_store as before) and an empty process record. config_store is patched rather than ig_shim so
+    this fixture never imports ig_shim, whose import loads .env."""
+    import sys
+    try:
+        import config_store
+    except Exception:
+        yield
+        return
+    store, real_get, real_set = {}, config_store.get_value, config_store.set_value
+
+    def get_value(key, default=""):
+        return store.get(key, default) if key.startswith("ig_login_pause:") else real_get(key, default)
+
+    def set_value(key, value, updated_by=""):
+        if key.startswith("ig_login_pause:"):
+            store[key] = value
+            return True
+        return real_set(key, value, updated_by)
+    monkeypatch.setattr(config_store, "get_value", get_value)
+    monkeypatch.setattr(config_store, "set_value", set_value)
+
+    def _forget():                 # some tests put a stand-in module at sys.modules["ig_shim"]
+        blocks = getattr(sys.modules.get("ig_shim"), "_LOCAL_BLOCKS", None)
+        if isinstance(blocks, dict):
+            blocks.clear()
+    _forget()
+    yield store
+    _forget()
