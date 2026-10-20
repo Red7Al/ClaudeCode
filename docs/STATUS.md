@@ -1,7 +1,7 @@
 # Status — the only status document
 
 **Update this file at the end of every session** instead of writing a new handover. Every figure carries
-the command that produced it or says it is unproven. Last updated **2026-10-13 ~07:40 UTC**.
+the command that produced it or says it is unproven. Last updated **2026-10-20 ~08:00 UTC**.
 
 Earlier handovers are in `docs/archive/HANDOVER-*.md`; everything still open from them is below.
 
@@ -64,10 +64,24 @@ and 8 loads in 2 minutes made IG refuse with 403 for ~20 minutes (2026-10-11 17:
 | **Universe 1,773 -> 1,999** (+116 Nikkei, +95 ASX 200, +15 Hang Seng; published lists, Yahoo-verified). 4-year history backfilled. | `15e3346`; 221,974 bars for 226 tickers; DB 403 MB. First full scan: Morning Chain 10-19 -- check names/sectors and the report count. |
 
 Dropped-row email (owner 2026-10-18: "Anything like items dropping out of any reports needs a full justification
-sent out - via email") BUILT `8364b33`: the 10-19 send records its rows; the 10-20 send is the first comparison
--- confirm its "Removed since your last report" section then. `instrument_metrics_daily` is never pruned (~5 MB/month);
+sent out - via email") BUILT `8364b33`; see 2d for its first comparison (10-20). `instrument_metrics_daily` is never pruned (~5 MB/month);
 2,250 instruments waits on a rule for it. API worker on IONOS still serves `51f3e3b17114` after the `7d86cb1`
 deploy (static current); harmless -- the web tier never writes prices.
+
+## 2d. Done 2026-10-18/20 -- IG logins
+
+| What | Evidence |
+|---|---|
+| **Audits log in once per run**, not once per instrument. The 10-17 23:01 price audit sent 1,140 refused logins. | `8aa295a`. Live 10-19: DQA 22:15 and Price History Audit 23:01, 1 login each, 0 refused. |
+| **Login retry only when the connection was never made**: up to 3 attempts, 30 s apart. A 4xx, a 5xx, a read timeout or a dropped answer is never resent. | `9665715` |
+| **IG login pause.** After IG refuses a login (4xx on POST /session), no job logs in. One test login is made per 115 min; the first accepted one lifts the pause. One email at the start, one at the end. Held in `app_config` key `ig_login_pause:<account>` and in memory. While paused it raises IG's own 401 without contacting IG. | `88a19b2`. Cause: IG refused every login from between 10-16 20:50 (last Closing Window success) and 10-17 23:01 (first refused audit) until 10-19 18:25 (owner had IG restore the account). 10-19: Order Bridge 36 refused logins, Closing Window 77 failed runs x 3. A replay of 10-19's timings gives 7. **Not yet exercised live** -- confirm on the next refusal. |
+| **Removed-rows email**: a failed comparison is stated ("unknown"), not counted as 1 removed, and the baseline is kept. | `a167e48` |
+| **Test leaks closed** (conftest): IG, Resend and SMTP blocked in every test; the IG pause key and `scanner_report_sent` are in memory. | Live `scanner_report_sent` revision 4 before and after a test run. |
+
+Open from this: the live `scanner_report_sent` store holds two fake test entries, "B" and "Silver", written
+2026-10-18 17:05. **Removal awaits the owner's yes.** The 10-20 05:22 email was the first comparison; its
+"Removed since" section was not read (the body is not logged) -- unverified. The order bridge and the Closing Window
+still fail a run (red) while logins are paused; Cron Watch emails once.
 
 ## 3. Open, measured, not fixed
 
