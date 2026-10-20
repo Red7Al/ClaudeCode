@@ -196,7 +196,7 @@ def _load_sent(name):
 
 def _save_sent(name, rows, generated_utc, removed=None, compared_with=None, attempts=3):
     """Record the rows sent to `name`, and the "Removed since" rows that email named with the send they were
-    compared against: the body is not logged (the repository's run logs are public), so this is the only record
+    compared against: the body is not logged, so this is the only record
     of what a send said was removed. Read-modify-write under the store's revision, so a concurrent writer is
     retried, never overwritten, and an unreadable store is never replaced by one holding only this login.
     RAISES when the write cannot be made."""

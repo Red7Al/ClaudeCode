@@ -292,7 +292,7 @@ def test_a_failed_comparison_keeps_the_baseline_so_the_next_report_lists_the_rem
     assert store.payload["Alex"]["rows"][0]["trig_date"] == "2026-10-09"   # and only now does the baseline move
 
 
-# ── What a send said was removed is kept (2026-10-20): the body is not logged, the run logs are public ─────────
+# ── What a send said was removed is kept (2026-10-20): the body is not logged ─────────────────────────────────
 def test_the_removed_rows_a_send_named_are_recorded_with_the_send_compared_against(monkeypatch, store):
     monkeypatch.setattr(rse, "_load_sent", _REAL_LOAD)
     monkeypatch.setattr(rse, "_save_sent", _REAL_SAVE)
