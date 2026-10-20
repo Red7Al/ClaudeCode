@@ -1,7 +1,7 @@
 # Status — the only status document
 
 **Update this file at the end of every session** instead of writing a new handover. Every figure carries
-the command that produced it or says it is unproven. Last updated **2026-10-20 ~08:00 UTC**.
+the command that produced it or says it is unproven. Last updated **2026-10-20 (pushed 548b6cc)**.
 
 Earlier handovers are in `docs/archive/HANDOVER-*.md`; everything still open from them is below.
 
@@ -82,9 +82,9 @@ Open from this: the live `scanner_report_sent` store holds two fake test entries
 2026-10-18 17:05. **Removal awaits the owner's yes.** The 10-20 05:22 email was the first comparison; its
 "Removed since" section was not read (the body is not logged) -- unverifiable: the store now holds only the
 10-20 send (66 rows), and the Resend key is a GitHub secret only (not in `app_secrets` or `.env`). Since
-`fd127c6` (2026-10-20, **committed, NOT pushed** -- the push was refused by the session's permission check) each
+`fd127c6` (2026-10-20, **pushed 2026-10-20** after the CI suite in a clean worktree: 1651 passed, 17 skipped, exit 0) each
 send stores its removed rows + reasons and `compared_with` in `scanner_report_sent`; the body stays out of the run log
-(anonymous API read of a job log: 403, measured 10-20; a signed-in stranger: untested). Once pushed, read the next send's entry.
+(anonymous API read of a job log: 403, measured 10-20; a signed-in stranger: untested). Read the first send's entry: Morning Chain 2026-10-21 03:30 UTC.
 Secret-decrypt warning: VERIFIED gone (10-13 run 4 warnings; 10-14, 10-20 none) -- CR Completed. Triggered
 column / Status removed: the 10-20 send ran `88a19b2`, which contains both; delivered body unread. The order bridge and the Closing Window
 still fail a run (red) while logins are paused; Cron Watch emails once.
