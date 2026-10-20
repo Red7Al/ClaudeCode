@@ -11,7 +11,7 @@ def _no_live_sent_store(monkeypatch):
     -- this file has written to production before (13 activity-log rows, 2026-09-04/05)."""
     saved = []
     monkeypatch.setattr(rse, "_load_sent", lambda name: None)
-    monkeypatch.setattr(rse, "_save_sent", lambda name, rows, gen: saved.append((name, len(rows))) or True)
+    monkeypatch.setattr(rse, "_save_sent", lambda name, rows, gen, **k: saved.append((name, len(rows))) or True)
     return saved
 
 

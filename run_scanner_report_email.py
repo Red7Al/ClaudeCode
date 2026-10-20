@@ -194,8 +194,10 @@ def _load_sent(name):
     return ((store or {}).get(name)) or None
 
 
-def _save_sent(name, rows, generated_utc, attempts=3):
-    """Record the rows sent to `name`. Read-modify-write under the store's revision, so a concurrent writer is
+def _save_sent(name, rows, generated_utc, removed=None, compared_with=None, attempts=3):
+    """Record the rows sent to `name`, and the "Removed since" rows that email named with the send they were
+    compared against: the body is not logged (the repository's run logs are public), so this is the only record
+    of what a send said was removed. Read-modify-write under the store's revision, so a concurrent writer is
     retried, never overwritten, and an unreadable store is never replaced by one holding only this login.
     RAISES when the write cannot be made."""
     import datetime as dt
@@ -203,7 +205,10 @@ def _save_sent(name, rows, generated_utc, attempts=3):
     entry = {"sent_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
              "snapshot": generated_utc,
              "rows": [{"ticker": r.get("ticker"), "trig_date": _key(r)[1], "name": r.get("name"),
-                       "direction": r.get("direction")} for r in rows]}
+                       "direction": r.get("direction")} for r in rows],
+             "compared_with": compared_with,
+             "removed": None if removed is None else [{"ticker": r.get("ticker"), "trig_date": r.get("trig_date"),
+                                                        "reason": r.get("reason")} for r in removed]}
     for _ in range(attempts):
         available, store, rev = read_json_store_versioned(SENT_STORE_KEY)
         if not available:
@@ -396,7 +401,7 @@ def main():
                 # what he actually received. NOT after a failed comparison: the last compared report stays the
                 # baseline, so the rows removed in the meantime are listed next time instead of being lost.
                 try:
-                    _save_sent(name, urows, snap.get("generated_utc"))
+                    _save_sent(name, urows, snap.get("generated_utc"), removed=removed, compared_with=last_sent)
                 except Exception as e:
                     log.error(f"could not record the rows sent to {name}: {type(e).__name__}: {e!r}")
         except Exception as e:

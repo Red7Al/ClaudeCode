@@ -23,7 +23,7 @@ def _no_live_sent_store(monkeypatch):
     """No test may read or write the live store of rows sent."""
     saved = []
     monkeypatch.setattr(rse, "_load_sent", lambda name: None)
-    monkeypatch.setattr(rse, "_save_sent", lambda name, rows, gen: saved.append((name, len(rows))) or True)
+    monkeypatch.setattr(rse, "_save_sent", lambda name, rows, gen, **k: saved.append((name, len(rows))) or True)
     monkeypatch.setattr(rse, "_history_row", lambda t, d: (_ for _ in ()).throw(AssertionError("live DB")))
     return saved
 
@@ -290,3 +290,27 @@ def test_a_failed_comparison_keeps_the_baseline_so_the_next_report_lists_the_rem
     rse.main()                                                       # day 2: compared against day 0's report
     assert "ARM (triggered 2026-09-18): gone" in bodies[1][0]
     assert store.payload["Alex"]["rows"][0]["trig_date"] == "2026-10-09"   # and only now does the baseline move
+
+
+# ── What a send said was removed is kept (2026-10-20): the body is not logged, the run logs are public ─────────
+def test_the_removed_rows_a_send_named_are_recorded_with_the_send_compared_against(monkeypatch, store):
+    monkeypatch.setattr(rse, "_load_sent", _REAL_LOAD)
+    monkeypatch.setattr(rse, "_save_sent", _REAL_SAVE)
+    store.payload = {"Alex": {"sent_utc": "2026-10-17T05:53:10+00:00", "rows": PREV}}
+    bodies = _one_user(monkeypatch)
+    monkeypatch.setattr(rse, "removed_since_last",
+                        lambda n, p, now, snap, today=None: [dict(p[0], reason="Not in today's scan.")])
+    rse.main()
+    entry = store.payload["Alex"]
+    assert "ARM (triggered 2026-09-18): Not in today's scan." in bodies[0][0]
+    assert entry["compared_with"] == "2026-10-17T05:53:10+00:00"
+    assert entry["removed"] == [{"ticker": "ARM", "trig_date": "2026-09-18", "reason": "Not in today's scan."}]
+
+
+def test_a_first_send_records_no_comparison(monkeypatch, store):
+    monkeypatch.setattr(rse, "_load_sent", _REAL_LOAD)
+    monkeypatch.setattr(rse, "_save_sent", _REAL_SAVE)
+    store.payload = {}
+    _one_user(monkeypatch)
+    rse.main()
+    assert store.payload["Alex"]["removed"] is None and store.payload["Alex"]["compared_with"] is None
