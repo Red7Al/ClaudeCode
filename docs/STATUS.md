@@ -80,7 +80,13 @@ deploy (static current); harmless -- the web tier never writes prices.
 
 Open from this: the live `scanner_report_sent` store holds two fake test entries, "B" and "Silver", written
 2026-10-18 17:05. **Removal awaits the owner's yes.** The 10-20 05:22 email was the first comparison; its
-"Removed since" section was not read (the body is not logged) -- unverified. The order bridge and the Closing Window
+"Removed since" section was not read (the body is not logged) -- unverifiable: the store now holds only the
+10-20 send (66 rows), and the Resend key is a GitHub secret only (not in `app_secrets` or `.env`). Since
+`fd127c6` (2026-10-20, **committed, NOT pushed** -- the push was refused by the session's permission check) each
+send stores its removed rows + reasons and `compared_with` in `scanner_report_sent`; the repo is PUBLIC, so the
+body must never go to the run log. Once pushed, read the next send's entry.
+Secret-decrypt warning: VERIFIED gone (10-13 run 4 warnings; 10-14, 10-20 none) -- CR Completed. Triggered
+column / Status removed: the 10-20 send ran `88a19b2`, which contains both; delivered body unread. The order bridge and the Closing Window
 still fail a run (red) while logins are paused; Cron Watch emails once.
 
 ## 3. Open, measured, not fixed
