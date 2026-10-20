@@ -246,3 +246,47 @@ def test_a_setup_read_failure_does_not_poison_later_rows(wired, monkeypatch):
     why = _why(prev=[PREV[0], dict(PREV[0])])
     assert why[0].startswith("Reason not determined: the check failed (RuntimeError: pool full)")
     assert why[1] == "Excluded by your market switches or direction / location filters (BULL, NASDAQ 100)."
+
+
+# ── A failed comparison (2026-10-20): it is stated, never counted as a row, and never moves the baseline ──────
+def _one_user(monkeypatch):
+    from hvf_web import web_users as wu
+    import web_store, trade_email
+    monkeypatch.setattr(wu, "list_users", lambda: [{"name": "Alex", "email": "eahind@yahoo.co.uk", "enabled": True}])
+    monkeypatch.setattr(wu, "log_event", lambda *a, **k: None)
+    monkeypatch.setattr(web_store, "append_batch", lambda *a, **k: None)
+    monkeypatch.setattr(server, "_load_snapshot", lambda: SNAP)
+    monkeypatch.setattr(rse, "screen_rows", lambda n: ([{"ticker": "ARM", "trig_date": "2026-10-09"}], False))
+    bodies = []
+    monkeypatch.setattr(trade_email, "send_simple_email",
+                        lambda s, t, html=None, recipients=None: bodies.append((t, html)) or True)
+    return bodies
+
+
+def test_a_failed_comparison_is_stated_not_counted_as_a_removed_row(monkeypatch, _no_live_sent_store):
+    bodies = _one_user(monkeypatch)
+    monkeypatch.setattr(rse, "_load_sent", lambda n: {"sent_utc": "2026-10-17T05:53:10+00:00", "rows": PREV})
+    monkeypatch.setattr(rse, "removed_since_last", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("pool full")))
+    rse.main()
+    text, html = bodies[0]
+    assert ("Removed since your last report (sent 2026-10-17 05:53 UTC): unknown - the comparison could not be "
+            "made (RuntimeError). Any row removed is listed in your next report.") in text
+    assert ": 1\n" not in text and "  - -" not in text and "<li>" not in html
+
+
+def test_a_failed_comparison_keeps_the_baseline_so_the_next_report_lists_the_removal(monkeypatch, store):
+    monkeypatch.setattr(rse, "_load_sent", _REAL_LOAD)
+    monkeypatch.setattr(rse, "_save_sent", _REAL_SAVE)
+    store.payload = {"Alex": {"sent_utc": "2026-10-17T05:53:10+00:00", "rows": PREV}}
+    bodies = _one_user(monkeypatch)
+    monkeypatch.setattr(rse, "removed_since_last", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("pool full")))
+    rse.main()                                                       # day 1: the comparison fails
+    assert store.payload["Alex"]["rows"] == PREV                     # baseline unchanged
+    monkeypatch.setattr(rse, "removed_since_last",
+                        lambda n, p, now, snap, today=None: [{"ticker": r["ticker"], "trig_date": r["trig_date"],
+                                                              "reason": "gone"} for r in p
+                                                             if (r["ticker"], r["trig_date"]) not in
+                                                             {(x["ticker"], x["trig_date"]) for x in now}])
+    rse.main()                                                       # day 2: compared against day 0's report
+    assert "ARM (triggered 2026-09-18): gone" in bodies[1][0]
+    assert store.payload["Alex"]["rows"][0]["trig_date"] == "2026-10-09"   # and only now does the baseline move

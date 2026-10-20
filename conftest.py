@@ -130,3 +130,32 @@ def _ig_login_pause_in_memory(monkeypatch):
     _forget()
     yield store
     _forget()
+
+
+@pytest.fixture(autouse=True)
+def _scanner_report_sent_store_in_memory(monkeypatch):
+    """No test may read or write the live record of Scanner Report rows sent ("scanner_report_sent").
+    MEASURED 2026-10-20: tests calling run_scanner_report_email.main() wrote fake logins "B" and "Silver" into the
+    live store on 2026-10-18 17:05. Each test gets an empty in-memory store for that key; every other key reaches
+    web_store as before. A test that needs its own store (test_report_removed_rows.store) patches over this."""
+    try:
+        import web_store
+    except Exception:
+        yield
+        return
+    key, mem = "scanner_report_sent", {"payload": None, "rev": 0}
+    real_read, real_save = web_store.read_json_store_versioned, web_store.save_json_store_versioned
+
+    def read(store_key):
+        return (True, mem["payload"], mem["rev"]) if store_key == key else real_read(store_key)
+
+    def save(store_key, payload, expected_revision=None):
+        if store_key != key:
+            return real_save(store_key, payload, expected_revision=expected_revision)
+        if expected_revision != mem["rev"]:
+            return None
+        mem["payload"], mem["rev"] = payload, mem["rev"] + 1
+        return mem["rev"]
+    monkeypatch.setattr(web_store, "read_json_store_versioned", read)
+    monkeypatch.setattr(web_store, "save_json_store_versioned", save)
+    yield mem

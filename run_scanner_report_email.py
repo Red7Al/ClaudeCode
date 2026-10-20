@@ -216,7 +216,7 @@ def _save_sent(name, rows, generated_utc, attempts=3):
 
 
 def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bool = False,
-               removed: list = None, last_sent: str = None):
+               removed: list = None, last_sent: str = None, removed_error: str = None):
     """(subject, text, html) for one user's report. rows come from screen_rows() -- the screen's rows.
 
     Sorted by trigger date, newest first, with a Triggered column (owner 2026-10-12: "need trigger date
@@ -254,7 +254,7 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
                          f"{_fmt1(r.get('rr')):<7}{_fmt1(r.get('rvol'))}")
         if total > len(ordered):
             lines.append(f"\n… and {total - len(ordered)} more (showing the {len(ordered)} most recently triggered).")
-    lines += [""] + _removed_text(removed, last_sent)
+    lines += [""] + _removed_text(removed, last_sent, removed_error)
     lines += ["", "Log in to Squeeze Scanner for the full interactive report and every column.",
              "These are the rows your Scanner Report shows when you open it, sorted by trigger date, newest first; "
              "your My Trading Filters and market switches decide them."]
@@ -294,15 +294,20 @@ def email_body(name: str, rows: list, generated_utc: str, report_unavailable: bo
            f'{f" for {date_str}" if date_str else ""}.</p>'
            f'{warn_html}'
            f'{table}'
-           f'{_removed_html(removed, last_sent)}'
+           f'{_removed_html(removed, last_sent, removed_error)}'
            f'<p style="margin:12px 0 0;font-size:12px;color:#777">Log in to Squeeze Scanner for the full interactive '
            f'report. These are the rows your Scanner Report shows when you open it, sorted by trigger date, newest '
            f'first; your My Trading Filters and market switches decide them.</p></div>')
     return subject, text, html
 
 
-def _removed_title(removed, last_sent):
+def _removed_title(removed, last_sent, error=None):
     since = f" (sent {str(last_sent)[:16].replace('T', ' ')} UTC)" if last_sent else ""
+    if error:
+        # A failed comparison is a state, not a removed row (2026-10-20: a "-" placeholder row was counted as
+        # "1 removed"). main() keeps the last compared report as the baseline, so nothing is lost.
+        return (f"Removed since your last report{since}: unknown - the comparison could not be made ({error}). "
+                "Any row removed is listed in your next report.")
     if removed is None:
         return ("Removed since your last report: none recorded yet. From the next report, every row that leaves is "
                 "listed here with its reason.")
@@ -311,16 +316,16 @@ def _removed_title(removed, last_sent):
     return f"Removed since your last report{since}: {len(removed)}"
 
 
-def _removed_text(removed, last_sent):
-    out = [_removed_title(removed, last_sent)]
+def _removed_text(removed, last_sent, error=None):
+    out = [_removed_title(removed, last_sent, error)]
     for r in removed or []:
         out.append(f"  - {r.get('ticker')} (triggered {r.get('trig_date') or '-'}): {r.get('reason')}")
     return out
 
 
-def _removed_html(removed, last_sent):
+def _removed_html(removed, last_sent, error=None):
     import html as _h
-    title = _h.escape(_removed_title(removed, last_sent))
+    title = _h.escape(_removed_title(removed, last_sent, error))
     if not removed:
         return f'<p style="margin:12px 0 0;font-size:13px">{title}</p>'
     items = "".join(f'<li><b>{_h.escape(str(r.get("ticker") or ""))}</b> (triggered '
@@ -372,7 +377,7 @@ def main():
         urows = []
         try:
             urows, unavailable = screen_rows(name)
-            removed, last_sent = None, None
+            removed, last_sent, compare_error = None, None, None
             try:
                 prev = _load_sent(name)
                 if prev:
@@ -381,15 +386,15 @@ def main():
             except Exception as e:
                 # Never send a report that silently omits removals: say the comparison could not run.
                 log.error(f"removed-rows check failed for {name}: {type(e).__name__}: {e!r}")
-                removed = [{"ticker": "-", "trig_date": "", "reason": f"The comparison with your last report "
-                            f"could not be made ({type(e).__name__}); removals are unknown for this report."}]
+                removed, compare_error = None, type(e).__name__
             subject, text, html = email_body(name, urows, snap.get("generated_utc"), unavailable,
-                                             removed=removed, last_sent=last_sent)
+                                             removed=removed, last_sent=last_sent, removed_error=compare_error)
             from trade_email import send_simple_email
             ok = send_simple_email(subject, text, html=html, recipients=[email])
-            if ok and not unavailable:
+            if ok and not unavailable and not compare_error:
                 # Recorded only after a delivered send of a vetted report: the next email compares against
-                # what he actually received.
+                # what he actually received. NOT after a failed comparison: the last compared report stays the
+                # baseline, so the rows removed in the meantime are listed next time instead of being lost.
                 try:
                     _save_sent(name, urows, snap.get("generated_utc"))
                 except Exception as e:
