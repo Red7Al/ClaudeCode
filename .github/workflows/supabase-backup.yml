@@ -1,4 +1,4 @@
-name: Supabase database backup (2026-10-21)
+name: Supabase database backup (2026-10-21b)
 
 # Self-managed logical backup of the Supabase Postgres DB (user 2026-08-02, P-25). Supabase's own scheduled
 # backups are a paid feature; this is the free alternative — a read-only pg_dump to a compressed
@@ -61,7 +61,8 @@ jobs:
             --schema=public --no-owner --no-privileges -Fc \
             -f "supabase-$STAMP.dump"
           ls -lh "supabase-$STAMP.dump"
-      # The dump must restore: pg_restore --list reads its whole table of contents. Then it lands under a
+      # The dump must restore: pg_restore --list reads its whole table of contents. The 17 binary by path: the
+      # runner's default pg_restore is older and refuses the 1.16 format ("unsupported version", run 39591920222). Then it lands under a
       # temporary name, its size is checked on the host, and it is renamed; the oldest beyond 7 are removed.
       - name: Check the dump and install it on IONOS
         env:
@@ -72,8 +73,8 @@ jobs:
         run: |
           set -euo pipefail
           f="supabase-$stamp.dump"
-          entries=$(pg_restore --list "$f" | grep -vc '^;')
-          tables=$(pg_restore --list "$f" | grep -c ' TABLE DATA ')
+          entries=$(/usr/lib/postgresql/17/bin/pg_restore --list "$f" | grep -vc '^;')
+          tables=$(/usr/lib/postgresql/17/bin/pg_restore --list "$f" | grep -c ' TABLE DATA ')
           echo "$f: $(stat -c %s "$f") bytes, $entries entries, $tables tables with data"
           [ "$tables" -gt 0 ] || { echo "dump holds no table data" >&2; exit 1; }
           key="$RUNNER_TEMP/ionos_key"; printf '%s\n' "$IONOS_SSH_KEY" > "$key"; chmod 600 "$key"
