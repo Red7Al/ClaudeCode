@@ -34,6 +34,10 @@ env/
 *.db
 data/
 LOGS/
+# Query output is operational data, never committed (owner 2026-10-21: git is for code). Until then
+# trading-query-auto.yml pushed run_query.py's output into this PUBLIC repository.
+query_output.txt
+query_trigger.txt
 
 # Generated artifacts (not source)
 # x_drafts/ = locally-rendered tweet/report card PNG previews

@@ -170,6 +170,9 @@ workflow file changes, put today's date in its `name:`.
   workflow may save scanner output, summaries, price data, database backups or secrets as a GitHub
   artifact: an artifact's listing is public (measured, HTTP 200 anonymously) and, per GitHub's
   documentation, any signed-in GitHub user can download it. Files live on IONOS; jobs fetch them over SSH.
+  **Git is for code, never operational files** (owner, 2026-10-21: "stopping use of git for operational
+  files is very important"): no workflow commits or pushes to the repository, and no output, report, query
+  result or data file is tracked (`test_git_is_for_code.py`).
 - **numpy is fatal on the IONOS host** (SIGSYS, uncatchable, shows as HTTP 500 after ~120 s). Compute in
   Actions, store it, have the web tier read it — see `skills_src/ah-data-sources`.
 - **Never "optimise" `_winLedger`'s sort** — the replay compounds; `localeCompare` → `<` moved the wallet
