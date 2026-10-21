@@ -126,8 +126,9 @@ that bit — the live site silently lost two weeks of data and 352 instruments.
    If `generated_utc` is older than today's scan, Supabase is behind and the IONOS copy is the only one.
 
 2. **During the outage the newest snapshot exists in ONE place — the web host.** Supabase is not a
-   restore point. The GitHub Actions artifact `scanner-snapshot` on the publish run is the other copy,
-   retained 7 days; that is what the 30 August snapshot was recovered from.
+   restore point. The other copy is the evening snapshot each publish run keeps on IONOS outside the web
+   root, `/home/www/data/evening/snapshot.json` (until 2026-10-21 the `scanner-snapshot` GitHub artifact,
+   which is what the 30 August snapshot was recovered from; never again -- the repository is public).
 
 3. **The web tier is remote-FIRST.** `scanner_snapshot_store.load_snapshot` used to overwrite the local
    file with whatever Supabase called current, with no recency check — so a worker restart replaced the
@@ -144,8 +145,7 @@ cache is not broken — its key moved. Restore the snapshot and the speed return
 `umask 077` leaves it `-rw-------` where it must be `-rw-r--r--`):
 
 ```bash
-gh run download <run-id> -n scanner-snapshot -D /tmp/restore
-ssh "$IONOS_USER@$IONOS_HOST" "umask 077; cat > '$IONOS_DIR/hvf_web/.snapshot.tmp'" < /tmp/restore/snapshot.json
+ssh "$IONOS_USER@$IONOS_HOST" "umask 077; cp /home/www/data/evening/snapshot.json '$IONOS_DIR/hvf_web/.snapshot.tmp'"
 ssh "$IONOS_USER@$IONOS_HOST" "set -eu; cd '$IONOS_DIR/hvf_web';   python3 -c \"import json;d=json.load(open('.snapshot.tmp'));print(d['generated_utc'],d['count'])\";   mv -f .snapshot.tmp snapshot.json; rm -f snapshot.json.supabase.json; chmod 644 snapshot.json"
 ```
 

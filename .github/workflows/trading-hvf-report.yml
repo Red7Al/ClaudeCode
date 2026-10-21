@@ -1,4 +1,4 @@
-name: HVF Daily Report (2026-06-17)
+name: HVF Daily Report (2026-10-21)
 
 on:
   # Callable so trading-morning-chain.yml can run it in sequence (2026-09-05). The chain
@@ -136,17 +136,9 @@ jobs:
           X_ACCESS_SECRET:       ${{ secrets.X_ACCESS_SECRET }}
 
       # run_hvf_report preserves the completed candidate and writes .ionos-fallback-required when the
-      # known Supabase Storage HTTP 402 occurs. Keep the candidate for recovery and install it directly on
-      # IONOS before declaring the report run healthy.
-      - name: Upload HVF snapshot artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: hvf-daily-scanner-snapshot
-          path: hvf_web/snapshot.json
-          if-no-files-found: warn
-          retention-days: 7
-
+      # known Supabase Storage HTTP 402 occurs; install it directly on IONOS before declaring the report run
+      # healthy. (Until 2026-10-21 it was also uploaded as the `hvf-daily-scanner-snapshot` GitHub artifact;
+      # the repository is PUBLIC and is for code, not reports -- owner 2026-10-21.)
       - name: Publish HVF snapshot to IONOS fallback
         id: ionos_fallback
         if: hashFiles('hvf_web/.ionos-fallback-required') != '' && hashFiles('hvf_web/snapshot.json') != ''

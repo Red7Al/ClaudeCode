@@ -1,4 +1,4 @@
-name: Thread Precompute (daily — 2026-09-20)
+name: Thread Precompute (daily — 2026-10-21)
 
 # Builds the X-thread text (lead tweet + numbered long-report parts) for every instrument that has a
 # card, and stores it as web_json_store key `thread_by_ticker`, because the web host CANNOT build it.
@@ -68,19 +68,18 @@ jobs:
       # NOT from the repository copy either: hvf_web/snapshot.json in git is a stale boot cache
       # (2026-08-12, 1,421 records).
       #
-      # The publish workflow uploads the freshly built snapshot as the `scanner-snapshot` artifact, and
-      # that copy DOES carry `_card`. Take the most recent successful run's.
-      - name: Fetch the built snapshot from the latest publish run
+      # Scanner Snapshot Publish keeps the snapshot it built, which DOES carry `_card`, on IONOS outside
+      # the web root; fetch it over SSH. Until 2026-10-21 this was the `scanner-snapshot` GitHub artifact --
+      # the repository is PUBLIC and is for code, not reports (owner 2026-10-21).
+      - name: Fetch the built snapshot Scanner Snapshot Publish kept on IONOS
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IONOS_HOST:    ${{ secrets.IONOS_HOST }}
+          IONOS_USER:    ${{ secrets.IONOS_USER }}
+          IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
         run: |
           set -euo pipefail
-          RUN=$(gh run list --workflow=trading-scanner-snapshot.yml --status=success \
-                  --limit 1 --json databaseId -q '.[0].databaseId')
-          test -n "$RUN" || { echo "no successful Scanner Snapshot Publish run to take a snapshot from" >&2; exit 1; }
-          echo "using scanner-snapshot from run $RUN"
-          gh run download "$RUN" -n scanner-snapshot -D /tmp/snap
-          cp /tmp/snap/snapshot.json hvf_web/snapshot.json
+          bash .github/scripts/fetch_ionos_evening.sh snapshot.json hvf_web
           python - <<'PY'
           import json
           d = json.load(open('hvf_web/snapshot.json', encoding='utf-8'))

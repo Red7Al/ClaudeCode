@@ -182,46 +182,59 @@ def test_only_a_recent_close_counts_as_now():
     assert "bar_date >= current_date - 7" in inspect.getsource(pub.report_extras)
 
 
-def test_the_order_bridge_gets_the_summary_the_summary_job_saves():
-    """2026-10-13, owner: "385 calls is too many and this must be reduced with use of summary flat files".
-    The Order Bridge (every 2 h on weekdays) ran _live_vwap_atr on a runner with no summary file, so every run
-    read price_history. The summary job now saves the file as an artifact; the bridge fetches it BEFORE the
-    bridge step, by the same name, with the automatic token (no IONOS key handed to it)."""
-    import yaml
-    summ = yaml.safe_load(open(".github/workflows/trading-report-summary.yml", encoding="utf-8"))
-    up = [s for s in summ["jobs"]["summary"]["steps"] if "upload-artifact" in str(s.get("uses", ""))]
-    assert up and up[0]["with"]["name"] == "report-summary" and up[0]["with"]["path"] == "hvf_web/report_summary.json"
-    bridge = yaml.safe_load(open(".github/workflows/trading-order-bridge.yml", encoding="utf-8"))
-    steps = list(bridge["jobs"].values())[0]["steps"]
-    names = [s.get("name") or "" for s in steps]
-    fetch = names.index("Fetch the report summary")
-    run_at = next(i for i, s in enumerate(steps) if "order_bridge" in str(s.get("run", "")))
-    assert names.index("Fetch the latest Scanner snapshot") < fetch < run_at
-    f = steps[fetch]
-    assert "fetch_trusted_artifact.sh report-summary report_summary.json hvf_web" in f["run"]
-    # Only Scanner Snapshot Publish's summary: the bridge's snapshot is that run's (the evening scan); the
-    # Morning Chain's newer summary is for the morning snapshot and would never match (2026-10-13).
-    producers = [w.rstrip(")") for w in f["run"].split() if w.startswith(".github/workflows/")]
-    assert producers == [".github/workflows/trading-scanner-snapshot.yml"], producers
-    assert f.get("continue-on-error") is True
-    assert "IONOS" not in str(f), "the bridge must not be given the IONOS key"
-
-
-def test_the_order_bridge_installs_only_trusted_artifacts_and_only_their_json():
-    """Security review 2026-10-13: the repository is public and trading-secret-scan.yml runs on pull_request, so
-    a fork's PR can upload an artifact under any name. The bridge took the newest by name and unzipped the
-    WHOLE archive into hvf_web/ -- a planted order_bridge.py would have run with the IG secrets. Every fetch
-    now goes through one script that checks provenance and extracts only the named file."""
+def test_the_order_bridge_gets_the_evening_snapshot_and_summary_from_ionos():
+    """2026-10-13, owner: "385 calls is too many and this must be reduced with use of summary flat files" -- the
+    bridge reads the summary built with ITS snapshot, the evening one (the Morning Chain's would never match).
+    2026-10-21, owner: the repository is PUBLIC and is for code, not reports -- both files come from IONOS
+    over SSH, from the folder Scanner Snapshot Publish and its summary job write, never from an artifact."""
     import yaml
     wf = open(".github/workflows/trading-order-bridge.yml", encoding="utf-8").read()
-    assert "unzip" not in wf and "actions/artifacts" not in wf, "no direct artifact download left in the bridge"
     steps = list(yaml.safe_load(wf)["jobs"].values())[0]["steps"]
-    snap = next(s for s in steps if s.get("name") == "Fetch the latest Scanner snapshot")["run"]
-    assert ("fetch_trusted_artifact.sh scanner-snapshot snapshot.json hvf_web" in snap
-            and ".github/workflows/trading-scanner-snapshot.yml" in snap)
-    sh = open(".github/scripts/fetch_trusted_artifact.sh", encoding="utf-8").read()
-    for check in ('.workflow_run.head_branch == "main"',
-                  ".workflow_run.head_repository_id == .workflow_run.repository_id",
-                  '"$event" != "workflow_dispatch"', '"$allowed" != *" $path "*',
-                  'unzip -q -o "$scratch/a.zip" "$file" -d "$scratch/x"'):
-        assert check in sh, check
+    code = str([(s.get("uses"), s.get("run")) for s in steps])
+    assert "artifact" not in code and "gh run download" not in code
+    names = [s.get("name") or "" for s in steps]
+    snap, summ = names.index("Fetch the latest Scanner snapshot"), names.index("Fetch the report summary")
+    run_at = next(i for i, s in enumerate(steps) if "order_bridge" in str(s.get("run", "")))
+    assert snap < summ < run_at
+    assert "fetch_ionos_evening.sh snapshot.json hvf_web" in steps[snap]["run"]
+    assert "age > 36" in steps[snap]["run"], "the stale-snapshot refusal stays"
+    assert "fetch_ionos_evening.sh report_summary.json hvf_web" in steps[summ]["run"]
+    assert steps[summ].get("continue-on-error") is True and steps[snap].get("continue-on-error") is not True
+    # The files the bridge reads are the ones the evening jobs write.
+    pub = open(".github/workflows/trading-scanner-snapshot.yml", encoding="utf-8").read()
+    rs = yaml.safe_load(open(".github/workflows/trading-report-summary.yml", encoding="utf-8"))
+    assert "dir=/home/www/data/evening" in pub and "$dir/snapshot.json" in pub
+    keep = next(s for s in rs["jobs"]["summary"]["steps"] if s.get("name") == "Keep the evening summary on IONOS")
+    assert "dir=/home/www/data/evening" in keep["run"] and "$dir/report_summary.json" in keep["run"]
+    sh = open(".github/scripts/fetch_ionos_evening.sh", encoding="utf-8").read()
+    assert 'src="/home/www/data/evening/$file"' in sh
+
+
+def test_the_thread_precompute_gets_the_evening_snapshot_from_ionos():
+    import yaml
+    wf = open(".github/workflows/trading-thread-precompute.yml", encoding="utf-8").read()
+    steps = list(yaml.safe_load(wf)["jobs"].values())[0]["steps"]
+    code = str([(s.get("uses"), s.get("run")) for s in steps])
+    assert "gh run download" not in code and "scanner-snapshot" not in code
+    fetch = next(s for s in steps if "fetch_ionos_evening.sh" in str(s.get("run", "")))
+    assert "fetch_ionos_evening.sh snapshot.json hvf_web" in fetch["run"]
+
+
+def test_no_workflow_saves_a_github_artifact():
+    """Owner 2026-10-21: "the github repository is for code not reports". The repository is PUBLIC; an
+    artifact's listing is public (measured) and any signed-in GitHub user can download it (GitHub docs)."""
+    import glob
+    hits = [p for p in glob.glob(".github/workflows/*.yml")
+            if "actions/upload-artifact" in open(p, encoding="utf-8").read()]
+    assert hits == [], hits
+
+
+def test_fetch_ionos_evening_takes_only_a_plain_json_name(tmp_path):
+    import shutil, subprocess
+    bash = shutil.which("bash")
+    if not bash:
+        import pytest; pytest.skip("no bash")
+    for bad in ("../x.json", "a/b.json", "x.py", "snapshot.json;rm"):
+        r = subprocess.run([bash, ".github/scripts/fetch_ionos_evening.sh", bad, str(tmp_path)],
+                           capture_output=True, text=True, env={"PATH": __import__("os").environ["PATH"]})
+        assert r.returncode == 2 and "refusing" in r.stderr, (bad, r.returncode, r.stderr)

@@ -18,7 +18,7 @@ broker_by_ticker, winners_rows_1y and performance_rows_12m already work.
 Runs in GitHub Actions as its OWN nightly job (trading-thread-precompute.yml), not inside Scanner
 Snapshot Publish: at ~9s per instrument across 422 carded instruments it takes roughly an hour, and the
 publish workflow already runs ~70 minutes. Adding an hour to the critical publication path to refresh a
-panel card is the wrong trade. It takes its input from the publish run's `scanner-snapshot` artifact,
+panel card is the wrong trade. It takes its input from the snapshot that publish run keeps on IONOS,
 so the text always describes a real published scan.
 """
 

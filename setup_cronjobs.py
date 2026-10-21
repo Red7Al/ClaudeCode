@@ -226,7 +226,7 @@ JOBS = [
     # host CANNOT build it: /api/thread called into quality_report and intraday_signals, both reach numpy,
     # and numpy is SIGSYS-killed on IONOS -- the endpoint answered HTTP 500 after ~120s and the panel's
     # thread card rendered as nothing. 20:30 UTC: after the 18:30 Scanner Snapshot Publish has finished
-    # (~70 min) so the `scanner-snapshot` artifact it reads exists and is today's, and clear of the 21:15
+    # (~70 min) so the evening snapshot it reads on IONOS exists and is today's, and clear of the 21:15
     # Fundamentals Precompute. ~9s x 422 carded instruments is roughly an hour, hence its own job rather
     # than another hour bolted onto the publish path.
     ("Thread Precompute",    "30 20 * * *",      "trading-thread-precompute.yml"),

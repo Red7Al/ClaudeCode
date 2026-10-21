@@ -1,4 +1,4 @@
-name: Order Bridge (snapshot -> IG working orders, 2026-10-13)
+name: Order Bridge (snapshot -> IG working orders, 2026-10-21)
 
 # Database -> IG working-order bridge (hvf_web/order_bridge.py) for the FULL scanned universe.
 #
@@ -30,11 +30,9 @@ concurrency:
   group: order-bridge
   cancel-in-progress: false
 
-# actions: read is what lets this job fetch the Scanner snapshot artifact below. Everything else stays
-# at the default read, and nothing here needs write.
+# Nothing here needs write, and since 2026-10-21 nothing reads an artifact either.
 permissions:
   contents: read
-  actions: read
 
 jobs:
   bridge:
@@ -48,29 +46,27 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
 
-      # ── Get a snapshot without Supabase Storage (2026-08-17) ──────────────────────────────────────
-      # The bridge reads the Scanner snapshot to know which pre-orders are ready. order_bridge tries
-      # Supabase Storage first and falls back to hvf_web/snapshot.json, but that file is gitignored, so
-      # on a clean runner there was no fallback: when Storage began returning HTTP 402 (free-tier egress
-      # exhausted) the bridge went blind and placed nothing from 12 to 17 August. It failed safe -- the
-      # "no records" guard refused to read an empty snapshot as "nothing to do" -- but it failed.
+      # ── The evening snapshot, from IONOS (2026-10-21) ─────────────────────────────────────────────
+      # The bridge reads the Scanner snapshot to know which pre-orders are ready. Supabase Storage has
+      # returned 402 since 2026-08-16, and hvf_web/snapshot.json is gitignored, so a clean runner has no
+      # fallback: from 12 to 17 August the bridge went blind and placed nothing (it failed safe).
       #
-      # Scanner Snapshot Publish now uploads the built snapshot as an artifact even when publication
-      # fails, so the freshest good scan is always retrievable. Fetch it here with the automatic
-      # GITHUB_TOKEN: no new secret, no new host, and it works whatever Storage is doing.
+      # It came from a GitHub artifact from 2026-08-17 to 2026-10-21. The repository is PUBLIC and is for
+      # code, not reports (owner 2026-10-21), so Scanner Snapshot Publish keeps the snapshot it built on
+      # IONOS outside the web root (/home/www/data/evening) and the bridge fetches it over SSH. It is the
+      # EVENING snapshot on purpose: the bridge trades on it all day.
       - name: Fetch the latest Scanner snapshot
         env:
-          GH_TOKEN: ${{ github.token }}
+          IONOS_HOST:    ${{ secrets.IONOS_HOST }}
+          IONOS_USER:    ${{ secrets.IONOS_USER }}
+          IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
         run: |
           set -euo pipefail
-          # Only an artifact this repository's own Scanner Snapshot Publish built on main, and only
-          # snapshot.json out of it (security review 2026-10-13 -- see the script's header).
-          ID=$(bash .github/scripts/fetch_trusted_artifact.sh scanner-snapshot snapshot.json hvf_web \
-                 .github/workflows/trading-scanner-snapshot.yml) || {
-            echo "::error::no trusted scanner-snapshot artifact. Run Scanner Snapshot Publish."
+          bash .github/scripts/fetch_ionos_evening.sh snapshot.json hvf_web || {
+            echo "::error::no evening snapshot on IONOS. Run Scanner Snapshot Publish."
             exit 1
           }
-          echo "scanner-snapshot artifact $ID"
           python - <<'PY'
           import datetime as dt, json, sys
           with open("hvf_web/snapshot.json", encoding="utf-8") as fh:
@@ -88,21 +84,20 @@ jobs:
 
       # The report summary for this snapshot (2026-10-13). _live_vwap_atr reads it instead of price_history
       # when its generated_utc matches the snapshot's; otherwise it falls back to the database exactly as
-      # before. Best effort: a missing artifact never stops the bridge.
+      # before. Best effort: a missing file never stops the bridge. ONLY the evening summary, the one built
+      # with the evening snapshot: the Morning Chain's newer summary is for the morning snapshot and would
+      # never match (measured 2026-10-13). From IONOS since 2026-10-21, as the snapshot above.
       - name: Fetch the report summary
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ github.token }}
+          IONOS_HOST:    ${{ secrets.IONOS_HOST }}
+          IONOS_USER:    ${{ secrets.IONOS_USER }}
+          IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
         run: |
           set -uo pipefail
-          # ONLY the summary Scanner Snapshot Publish built -- the same run that made the scanner-snapshot
-          # artifact above. MEASURED 2026-10-13: the bridge trades on the EVENING snapshot all day (18:00 loaded
-          # 10-12 19:05), while the Morning Chain saves a newer summary at ~05:55 for the MORNING snapshot; the
-          # newest-of-any summary would never match and the bridge would read the database 06:00-18:00.
-          ID=$(bash .github/scripts/fetch_trusted_artifact.sh report-summary report_summary.json hvf_web \
-                 .github/workflows/trading-scanner-snapshot.yml) || {
-            echo "no trusted report-summary artifact - the bridge reads the database"; exit 0; }
-          echo "report-summary artifact $ID"
+          bash .github/scripts/fetch_ionos_evening.sh report_summary.json hvf_web || {
+            echo "no evening summary on IONOS - the bridge reads the database"; exit 0; }
           python -c "import json; s=json.load(open('hvf_web/report_summary.json', encoding='utf-8')); n=json.load(open('hvf_web/snapshot.json', encoding='utf-8')); print('summary', s.get('generated_utc'), '| snapshot', n.get('generated_utc'), '| in use:', s.get('generated_utc') == n.get('generated_utc'))"
 
       # Clear dead working orders BEFORE the bridge builds its skip-list from them (2026-09-11).

@@ -1,4 +1,4 @@
-name: Instrument Dossier (2026-06-15)
+name: Instrument Dossier (2026-10-21)
 
 # One ticker in -> the full publication pack (HVF analysis, X tweet + post-card,
 # Slack X-draft block, investment-case email), rendered via the production code
@@ -40,11 +40,19 @@ jobs:
           SLACK_BOT_TOKEN:          ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_TWITTER_CHANNEL_ID: ${{ secrets.SLACK_TWITTER_CHANNEL_ID }}
           SLACK_ALERTS:             ${{ secrets.SLACK_ALERTS }}
-      # The generated artifacts (summary/tweet/card/email) are uploaded so they can be
-      # downloaded from the run; the tweet + card are also already in #arw-claude-twitter.
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: dossier
-          path: dossier/
-          if-no-files-found: ignore
+      # The generated pack (summary/tweet/card/email) is kept on IONOS outside the web root,
+      # /home/www/data/dossier/<run id>/ -- never a GitHub artifact (owner 2026-10-21: the repository is
+      # PUBLIC and is for code, not reports).
+      - name: Keep the dossier on IONOS
+        if: always() && hashFiles('dossier/**') != ''
+        env:
+          IONOS_HOST:    ${{ secrets.IONOS_HOST }}
+          IONOS_USER:    ${{ secrets.IONOS_USER }}
+          IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/ionos_key"; printf '%s\n' "$IONOS_SSH_KEY" > "$key"; chmod 600 "$key"
+          dir=/home/www/data/dossier/${{ github.run_id }}
+          tar -C dossier -cf - . | ssh -i "$key" -p "$IONOS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            "${IONOS_USER}@${IONOS_HOST}" "umask 077; mkdir -p $dir && tar -C $dir -xf - && ls -l $dir"
