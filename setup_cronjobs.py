@@ -221,7 +221,7 @@ JOBS = [
     # re-fetched from Yahoo. Sunday 23:30 UTC: markets shut, so it captures a finished week.
     # This is why Supabase Storage latched off with exceed_egress_quota on 2026-08-16 -- see
     # docs/OPS_RUNBOOK.md section 4 and egress_report.py.
-    ("Supabase Database Backup", "30 23 * * 0", "supabase-backup.yml"),  # weekly read-only logical backup; artifact retained 90 days (user 2026-08-06, P-25)
+    ("Supabase Database Backup", "30 23 * * 0", "supabase-backup.yml"),  # weekly read-only logical backup to IONOS outside the web root, newest 7 kept -- never a GitHub artifact (owner 2026-10-21)
     # The X-thread text for every carded instrument, stored as web_json_store `thread_by_ticker`. The web
     # host CANNOT build it: /api/thread called into quality_report and intraday_signals, both reach numpy,
     # and numpy is SIGSYS-killed on IONOS -- the endpoint answered HTTP 500 after ~120s and the panel's
