@@ -1,10 +1,12 @@
-name: Price Bars File (2026-10-21)
+name: Price Bars File (2026-10-21b)
 
 # The price bars file: price_history read from the database ONCE, then only the rows stamped since the last
 # build (owner 2026-10-21: "read files, not the database" -- rule in CLAUDE.md). Every later step reads this
-# file instead of the database. The previous build is this workflow's own artifact; with none, it seeds from
-# the whole table (~1.93M rows, once). The file is verified against price_history before it is saved: a file
+# file instead of the database. The file is verified against price_history before it is installed: a file
 # that does not match is never published.
+#
+# Kept on IONOS OUTSIDE the web root (/home/www/data/price_bars; the site is /home/www/squeezescanner), never
+# as a GitHub artifact -- the repository is public and is for code, not data (owner 2026-10-21).
 #
 # Called by the Morning Chain after the price refresh, alongside the report -- nothing waits on it yet, so a
 # failure here shows the chain red (Cron Watch emails) without delaying the 7am email. No schedule: block
@@ -18,15 +20,17 @@ env:
   SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
   SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
   APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
+  IONOS_HOST:           ${{ secrets.IONOS_HOST }}
+  IONOS_USER:           ${{ secrets.IONOS_USER }}
+  IONOS_PORT:           ${{ secrets.IONOS_PORT || '22' }}
+  BARS_DIR:             /home/www/data/price_bars
 
 jobs:
   bars:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # actions: read lets the job fetch its own previous artifact; nothing here writes to the repository.
     permissions:
       contents: read
-      actions: read
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -35,23 +39,21 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
 
-      # Only an artifact a trusted run of THIS workflow (by hand, or inside the Morning Chain) built on main --
-      # see .github/scripts/fetch_trusted_artifact.sh. Both files come from the same newest trusted artifact;
-      # bars_file.read refuses a data file whose row count disagrees with its metadata.
-      - name: Fetch the previous bars file
+      - name: Fetch the previous bars file from IONOS
         env:
-          GH_TOKEN: ${{ github.token }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
         run: |
-          set -uo pipefail
-          mkdir -p prev
-          for f in price_bars.meta.json price_bars.csv.gz; do
-            if ! ID=$(bash .github/scripts/fetch_trusted_artifact.sh price-bars "$f" prev \
-                        .github/workflows/trading-bars-file.yml .github/workflows/trading-morning-chain.yml); then
-              echo "no previous price-bars artifact -- this build seeds from the whole table"
-              rm -rf prev; exit 0
-            fi
-            echo "$f from artifact $ID"
-          done
+          set -euo pipefail
+          key="$RUNNER_TEMP/ionos_key"; printf '%s\n' "$IONOS_SSH_KEY" > "$key"; chmod 600 "$key"
+          echo "SSH_KEY_FILE=$key" >> "$GITHUB_ENV"
+          ssh="ssh -i $key -p $IONOS_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new ${IONOS_USER}@${IONOS_HOST}"
+          if $ssh "test -s '$BARS_DIR/price_bars.meta.json' && test -s '$BARS_DIR/price_bars.csv.gz'"; then
+            mkdir -p prev
+            $ssh "tar -C '$BARS_DIR' -cf - price_bars.meta.json price_bars.csv.gz" | tar -C prev -xf -
+            echo "previous bars file: $(python -c "import json; m=json.load(open('prev/price_bars.meta.json')); print(m['rows'], 'rows, built', m['build_started'])")"
+          else
+            echo "no previous bars file on IONOS -- this build seeds from the whole table"
+          fi
 
       - name: Build the bars file
         run: |
@@ -62,13 +64,18 @@ jobs:
       - name: Verify the bars file against price_history
         run: python bars_file.py verify --dir bars
 
-      - name: Save the bars file
-        uses: actions/upload-artifact@v4
-        with:
-          name: price-bars
-          path: |
-            bars/price_bars.csv.gz
-            bars/price_bars.meta.json
-          retention-days: 14
-          # Already gzip: compressing again only costs time.
-          compression-level: 0
+      # Both files land under temporary names, the data file's size is checked on the host, then each is
+      # renamed. A reader that falls between the two renames gets a row count that disagrees with the
+      # metadata, and bars_file.read refuses it rather than using a mismatched pair.
+      - name: Install the bars file on IONOS
+        run: |
+          set -euo pipefail
+          ssh="ssh -i $SSH_KEY_FILE -p $IONOS_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new ${IONOS_USER}@${IONOS_HOST}"
+          $ssh "umask 077; mkdir -p '$BARS_DIR'"
+          $ssh "umask 077; cat > '$BARS_DIR/price_bars.csv.gz.new'" < bars/price_bars.csv.gz
+          $ssh "umask 077; cat > '$BARS_DIR/price_bars.meta.json.new'" < bars/price_bars.meta.json
+          want=$(stat -c %s bars/price_bars.csv.gz)
+          $ssh "set -eu; test \$(stat -c %s '$BARS_DIR/price_bars.csv.gz.new') = $want; \
+                mv -f '$BARS_DIR/price_bars.csv.gz.new' '$BARS_DIR/price_bars.csv.gz'; \
+                mv -f '$BARS_DIR/price_bars.meta.json.new' '$BARS_DIR/price_bars.meta.json'; \
+                ls -l '$BARS_DIR'"

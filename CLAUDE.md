@@ -166,6 +166,10 @@ workflow file changes, put today's date in its `name:`.
   correct or they are useless** (owner, 2026-10-21): every section of every build is compared with the
   database, and a file that fails, or whose price data has changed since it was built, is not used. Egress was 4.84x the free
   limit when this was decided; progress is in `docs/STATUS.md`.
+- **Scanner output and data never go to GitHub — owner, 2026-10-21.** The repository is PUBLIC. No
+  workflow may save scanner output, summaries, price data, database backups or secrets as a GitHub
+  artifact: an artifact's listing is public (measured, HTTP 200 anonymously) and, per GitHub's
+  documentation, any signed-in GitHub user can download it. Files live on IONOS; jobs fetch them over SSH.
 - **numpy is fatal on the IONOS host** (SIGSYS, uncatchable, shows as HTTP 500 after ~120 s). Compute in
   Actions, store it, have the web tier read it — see `skills_src/ah-data-sources`.
 - **Never "optimise" `_winLedger`'s sort** — the replay compounds; `localeCompare` → `<` moved the wallet

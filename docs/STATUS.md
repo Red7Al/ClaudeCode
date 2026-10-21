@@ -83,6 +83,17 @@ Secret-decrypt warning: VERIFIED gone (10-13 run 4 warnings; 10-14, 10-20 none) 
 column / Status removed: the 10-20 send ran `88a19b2`, which contains both; delivered body unread. The order bridge and the Closing Window
 still fail a run (red) while logins are paused; Cron Watch emails once.
 
+## 2f. URGENT 2026-10-21 -- data in a PUBLIC repository's artifacts (owner: "the scanners output should not be in github")
+
+| What | Evidence |
+|---|---|
+| Repository `Red7Al/ClaudeCode` is **PUBLIC**. Artifact listing readable anonymously (HTTP 200); anonymous download 401. GitHub's documentation: any signed-in user can download a public repo's artifacts -- NOT tested as a stranger. Whether anyone has downloaded them: unknown (GitHub shows no artifact download log). | `gh repo view`; `curl` 10-21 |
+| Unexpired artifacts: **50 full database backups `supabase-backup-*`, 3,873 MB** -- unencrypted `pg_dump --schema=public` (`supabase-backup.yml`, retention 90 d, newest expires 2027-01-16); `scanner-snapshot` 9; `report-summary` 9; `hvf-daily-scanner-snapshot` 6. | `gh api .../actions/artifacts --paginate` |
+| `trading-create-env.yml` writes every secret in plain text into artifact `env-file` (1-day retention). Last run 2026-06-03; none unexpired now. | workflow source; `gh run list` |
+| The Order Bridge READS the `scanner-snapshot` artifact and the jobs read `report-summary` -- deleting them before replacing that route stops the bridge placing orders. | `trading-order-bridge.yml:61-106` |
+| The bars file (`fd05542`, unpushed) saved an artifact too -- held, to be moved to IONOS before any push. | |
+| Awaiting the owner's yes: delete the 50 backups; disable `trading-create-env.yml`; encrypt future backups; move bridge/jobs to IONOS over SSH, then stop and delete the scanner artifacts. | |
+
 ## 2e. IN PROGRESS 2026-10-21 -- read files, not the database (owner architectural decision; rule in `CLAUDE.md`)
 
 | What | Evidence |
@@ -95,6 +106,7 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
 | **Summary data risks (owner asked 10-21).** (a) The summary is keyed on the snapshot's `generated_utc`, NOT the price data: after the 10-20 19:19 build, the 23:00 audit changed 29 bars (`price_corrections` to 23:05), and the site served pre-correction values until 05:09. Effect on report figures unmeasured. (b) Only VWAP/ATR was ever proven equal to the database (399/399, 10-13); the other nine sections never compared, no test. Guard that holds: a summary for another snapshot is never used (`server.py:116`, install check `publish_report_summary.py:115`). Fix in this build: key every file on the price-data version too, and a standing all-section file-vs-database comparison. | `price_history.updated_at` 10-20 19:20..10-21 03:00; grep of `test_report_summary.py` |
 | **Summary PROVEN equal to the database, all 10 sections** (10-21 05:10 build, checked 11:20): 10,573 keys, 0 differences, 0 prices changed since the build. Report level: the owner's `/api/records` from the file vs from the database (separate processes), 1,999 records -- 133 field differences in 45 records, ALL Now/P/E/Insider % that only the file carries (`server.py:1925`; database path leaves them blank by design); 0 unexplained. Tool `verify_report_summary.py`; 7 tests, 2 red with the defect count disabled. To do: run it on every build before install (cost = one more build's reads, measured tonight) and key files on the price-data version. | `verify_report_summary.py` output, 10-21 |
 | **Bars file = the whole table.** Daily readers need up to ~560 days (`squeeze_history` 18 months); the replay pads +420 days. Rows: 400d 547,702; 560d 761,976; 1,000d 1,350,646; all 1,925,858 (since 2022-09-21). Whole table: no window to get wrong; one-off seed ~0.2 GB (DERIVED), then ~40k rows/refresh. Size unmeasured (estimate 25-30 MB gz); IONOS site 270 MB, quota unknown -> GitHub artifact first. Deletions leave no stamp: the file applies `price_store.retention_cutoff` on every build. | counts 10-21; `du` on IONOS |
+| **Bars file BUILT `fd05542`, not yet run live.** `bars_file.py` (seed / update / verify) + `trading-bars-file.yml` (fetch own previous artifact, build, verify, save artifact `price-bars`). Nothing reads it yet. Next: dispatch once to seed (~0.2 GB), dispatch again to prove an update reads only stamped rows, then add it to the Morning Chain alongside the report. | 11 tests, 4 mutations each red |
 | Plan: one bars read right after the price refresh into a file; every later step reads it; version-guarded fallback; file-vs-database output identical before any step moves; egress before/after to the owner before shipping. | Per-step "before" figures: sampler over the 10-21 18:30 chain |
 
 ## 3. Open, measured, not fixed
