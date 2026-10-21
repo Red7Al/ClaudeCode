@@ -1,4 +1,4 @@
-name: Morning Chain (price → report → email → precompute → summary → audit → orders, 2026-10-09)
+name: Morning Chain (price → report → email → precompute → summary → audit → orders, 2026-10-21)
 
 # ONE dispatch that runs the whole morning in order, replacing six separately-scheduled jobs.
 #
@@ -73,6 +73,15 @@ jobs:
     secrets: inherit
 
   # THE DEADLINE STEP. Third, so nothing internal can push it later.
+  # The price bars file on IONOS (owner 2026-10-21: read files, not the database): the rows the refresh just
+  # stamped, verified against price_history. Alongside the report; nothing waits on it yet, so a failure shows
+  # the chain red without delaying the 7am email.
+  bars_file:
+    name: 1b. Price bars file
+    needs: price_refresh
+    uses: ./.github/workflows/trading-bars-file.yml
+    secrets: inherit
+
   scanner_email:
     name: 3. Scanner report email
     needs: daily_report
