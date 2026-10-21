@@ -1,8 +1,13 @@
-name: Supabase database backup (2026-08-02)
+name: Supabase database backup (2026-10-21)
 
 # Self-managed logical backup of the Supabase Postgres DB (user 2026-08-02, P-25). Supabase's own scheduled
 # backups are a paid feature; this is the free alternative — a read-only pg_dump to a compressed
-# custom-format file, uploaded as a GitHub Actions artifact (retained 90 days, the free-tier max).
+# custom-format file, installed on IONOS OUTSIDE the web root (/home/www/data/backups, owner-only
+# permissions; the site is /home/www/squeezescanner), newest 7 kept.
+#
+# NEVER a GitHub artifact (owner 2026-10-21: "the github repository is for code not reports"). The repository
+# is PUBLIC: this job used to upload every dump as an artifact, and on 2026-10-21 50 of them (3,873 MB, every
+# table) were listed publicly (measured) and, per GitHub's documentation, downloadable by any signed-in user.
 #
 # Server is Postgres 17.6, so the client is pinned to 17 (pg_dump must be >= the server major version).
 # The connection uses the SESSION pooler (port 5432) — the same endpoint db_pool uses; the transaction
@@ -56,13 +61,26 @@ jobs:
             --schema=public --no-owner --no-privileges -Fc \
             -f "supabase-$STAMP.dump"
           ls -lh "supabase-$STAMP.dump"
-      - name: Upload backup artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: supabase-backup-${{ env.stamp }}
-          path: supabase-*.dump
-          retention-days: 90
-          if-no-files-found: error
+      # The dump must restore: pg_restore --list reads its whole table of contents. Then it lands under a
+      # temporary name, its size is checked on the host, and it is renamed; the oldest beyond 7 are removed.
+      - name: Check the dump and install it on IONOS
+        env:
+          IONOS_HOST:    ${{ secrets.IONOS_HOST }}
+          IONOS_USER:    ${{ secrets.IONOS_USER }}
+          IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          f="supabase-$stamp.dump"
+          entries=$(pg_restore --list "$f" | grep -vc '^;')
+          tables=$(pg_restore --list "$f" | grep -c ' TABLE DATA ')
+          echo "$f: $(stat -c %s "$f") bytes, $entries entries, $tables tables with data"
+          [ "$tables" -gt 0 ] || { echo "dump holds no table data" >&2; exit 1; }
+          key="$RUNNER_TEMP/ionos_key"; printf '%s\n' "$IONOS_SSH_KEY" > "$key"; chmod 600 "$key"
+          ssh="ssh -i $key -p $IONOS_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new ${IONOS_USER}@${IONOS_HOST}"
+          dir=/home/www/data/backups
+          $ssh "umask 077; mkdir -p $dir; cat > $dir/$f.new" < "$f"
+          $ssh "set -eu; test \$(stat -c %s $dir/$f.new) = $(stat -c %s "$f"); mv -f $dir/$f.new $dir/$f; ls -1t $dir/supabase-*.dump | tail -n +8 | xargs -r rm -f; ls -l $dir"
       - name: Record in Batch Activity (user 2026-08-11, P-12 — any batch activity under 6x/day should log)
         run: |
           python - <<'PY'

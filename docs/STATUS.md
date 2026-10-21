@@ -92,7 +92,7 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
 | `trading-create-env.yml` writes every secret in plain text into artifact `env-file` (1-day retention). Last run 2026-06-03; none unexpired now. | workflow source; `gh run list` |
 | The Order Bridge READS the `scanner-snapshot` artifact and the jobs read `report-summary` -- deleting them before replacing that route stops the bridge placing orders. | `trading-order-bridge.yml:61-106` |
 | The bars file (`fd05542`, unpushed) saved an artifact too -- held, to be moved to IONOS before any push. | |
-| Awaiting the owner's yes: delete the 50 backups; disable `trading-create-env.yml`; encrypt future backups; move bridge/jobs to IONOS over SSH, then stop and delete the scanner artifacts. | |
+| **Owner said yes 2026-10-21** to: (1) backups to IONOS outside the web root (`/home/www/data/backups`, newest 7), then delete the 50 artifacts; (2) delete `trading-create-env.yml` -- DONE in this commit; (3) bridge and jobs fetch snapshot/summary from IONOS over SSH, then stop the scanner uploads and delete those artifacts. Copying the existing dump from this machine to IONOS was refused by the session's permission check, so (1) runs the changed workflow to make a fresh backup there instead; the local copy was deleted. | |
 
 ## 2e. IN PROGRESS 2026-10-21 -- read files, not the database (owner architectural decision; rule in `CLAUDE.md`)
 
@@ -128,7 +128,7 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
 5. **Morning refresh misses the previous day's bar for ~600 UK/Euronext instruments** (every day 09-29..10-08,
    measured by `recorded_at`); the 10-07 "599" was this. Did not occur 10-13. Cause unproven; the new
    per-market counts in `price_audit_log.notes` measure it daily -- read several mornings before deciding.
-6. **`trading-create-env.yml`** uses a `V_` prefix and does not pass `APP_SECRET_KEY`. Unanswered.
+6. ~~`trading-create-env.yml`~~ deleted 2026-10-21 (it wrote every secret in plain text to a public artifact).
 7. **NO INDEPENDENT PRICE CHECK HAS RUN SINCE 2026-10-09.** IG refuses price history (403
    `exceeded-account-historical-data-allowance`); every `price_audit_log` run since logs "IG fixes 0;
    double-checked 0" (runs 111-116 read 2026-10-18). Reported to the owner 10-13 only as a refresh-speed
