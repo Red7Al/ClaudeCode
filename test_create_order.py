@@ -214,3 +214,39 @@ def test_create_order_says_so_when_the_server_never_answers():
 def test_create_order_alerts_when_the_panel_moved_on():
     out = _run_create_order('Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true,status:"PENDING"})})', sel="AAPL")
     assert len(out["alerts"]) == 1 and "Order placed on IG" in out["alerts"][0]
+
+
+def test_create_order_shows_the_size_ig_was_sent():
+    """Owner 2026-10-21: "Create an order does not show the volume e.g. 0.01"."""
+    out = _run_create_order('Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true,placed:true,size:0.04})})')
+    assert "size 0.04" in out["after"]["status"]
+
+
+def test_a_size_refusal_states_the_markets_own_minimum_and_the_money():
+    """MEASURED 2026-10-21 (MSCI): IG minimum 0.04 needs 483.85 of margin, 167.40 available. The page showed
+    notify's "occurrence #2 today, alert suppressed (deduped)" instead, and the wording said 0.01 for every market."""
+    import ig_shim
+    ig_shim.LAST_SIZE_SKIP["SE.D.MXBUS.DAILY.IP"] = ("ACCOUNT_TOO_SMALL", 483.85, 167.40, 0.04)
+    try:
+        msg = ig_shim.describe_size_skip("MSCI", "SE.D.MXBUS.DAILY.IP")
+    finally:
+        ig_shim.LAST_SIZE_SKIP.pop("SE.D.MXBUS.DAILY.IP", None)
+    assert "size 0.04" in msg and "£483.85" in msg and "£167.40" in msg and "0.01" not in msg
+
+
+def test_the_endpoint_reports_the_size_reason_not_the_last_log_line(wired, monkeypatch):
+    import ig_shim, logging
+    def refuse(sig, profile, session, mult):
+        ig_shim.LAST_ORDER_SKIP["ARM"] = "ARM: account too small for IG's minimum deal. Its smallest allowed size 0.04"
+        logging.getLogger().info("Missed trade ARM BUY ACCOUNT_TOO_SMALL - occurrence #2 today, alert suppressed (deduped)")
+        return None
+    monkeypatch.setattr(ig_shim, "place_hvf_order_from_sig", refuse)
+    r = _post({"entry": 280.5, "stop": 266.1, "target": 360.2})
+    assert r.get_json()["error"].startswith("ARM: account too small"), r.get_json()
+    assert "ARM" not in ig_shim.LAST_ORDER_SKIP, "used once, never served to a later request"
+
+
+def test_the_endpoint_returns_the_size_placed(wired, monkeypatch):
+    import ig_shim
+    monkeypatch.setattr(ig_shim, "place_hvf_order_from_sig", lambda sig, prof, src, mult: {"size": 0.04})
+    assert _post({"entry": 280.5, "stop": 266.1, "target": 360.2}).get_json()["size"] == 0.04

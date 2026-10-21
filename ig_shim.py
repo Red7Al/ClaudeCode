@@ -794,6 +794,8 @@ def acting_session(login: str = None):
 # summarised with its funding gap, not paged every cycle. ERROR = an exception (genuine missed trade).
 # Keyed by epic; (reason, needed_margin_gbp, available_gbp). Cleared when a real size is produced.
 LAST_SIZE_SKIP: dict = {}
+# ticker -> describe_size_skip's reason for the last order place_hvf_order_from_sig refused on size.
+LAST_ORDER_SKIP: dict = {}
 
 
 def calculate_position_size(epic: str, stop_distance: float,
@@ -899,8 +901,10 @@ def calculate_position_size(epic: str, stop_distance: float,
                     f"AND minimum margin cost ({min_size_margin_cost:.2f}) exceeds "
                     f"available funds ({available:.2f}) — skipping trade"
                 )
+                # The 4th field is IG's own minimum for THIS market (owner 2026-10-21: the refusal must show
+                # the volume -- MSCI's is 0.04, not the 0.01 the message used to state for every market).
                 LAST_SIZE_SKIP[epic] = ("ACCOUNT_TOO_SMALL",
-                                        round(min_size_margin_cost, 2), round(available, 2))
+                                        round(min_size_margin_cost, 2), round(available, 2), min_size)
                 return 0.0, stop_distance
 
         log.info(f"{epic}: size={size} (risk={risk_size:.3f} margin={margin_size:.3f}) "
@@ -930,8 +934,10 @@ def describe_size_skip(ticker: str, epic: str) -> str:
                     f"placed on ANY instrument until it recovers. Fix: close a position or add funds.")
         _n = f"£{needed:.2f}" if isinstance(needed, (int, float)) else "the IG minimum"
         _h = f"£{have:.2f}"   if isinstance(have, (int, float)) else "the free balance"
-        return (f"{ticker}: account too small for IG's minimum deal. Its smallest allowed position "
-                f"(0.01) needs ~{_n} of FREE MARGIN (a deposit to hold the trade, not the trade's "
+        _min = skip[3] if len(skip) > 3 and skip[3] is not None else None
+        _sz = f"size {_min:g}" if isinstance(_min, (int, float)) else "position"
+        return (f"{ticker}: account too small for IG's minimum deal. Its smallest allowed {_sz} "
+                f"needs ~{_n} of FREE MARGIN (a deposit to hold the trade, not the trade's "
                 f"value), but only {_h} is free. This is IG's minimum bet size, not our 2% risk rule, "
                 f"and recurs every scan until the balance covers it. Fix: fund above {_n} (+ a "
                 f"buffer), or remove {ticker} from the trade universe (publishing is unaffected).")
@@ -3560,6 +3566,9 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         # Plain-English, context-aware reason from the single source (user 2026-06-26). A structural
         # ACCOUNT_TOO_SMALL / margin-deficit skip is summarised daily; a generic zero-size pages.
         _reason = describe_size_skip(ticker, epic)
+        # For "Create an order": the page shows THIS reason, not whichever log line came last (owner
+        # 2026-10-21 -- it showed notify's "occurrence #2 today, alert suppressed (deduped)" and no volume).
+        LAST_ORDER_SKIP[ticker] = _reason
         try:
             from notify import alert_missed_trade
             alert_missed_trade(ticker, direction, _reason, str(sig.get("primaries_fired") or ""))
@@ -3613,6 +3622,8 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
                              deal_ref=result.get("deal_id", ""), recipients=_rcpts)
         except Exception as e:
             log.warning(f"Working-order email failed for {ticker}: {e}")
+    if result is not None and "size" not in result:
+        result["size"] = size   # the volume sent to IG, for the "Create an order" status (owner 2026-10-21)
     return result
 
 

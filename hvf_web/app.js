@@ -5541,7 +5541,7 @@ async function createOrder(tk){
     .then(x=>x.json().then(j=>({ok:x.ok,j})))
     .then(({ok,j})=>{done();
       if(!ok||!j.ok){status("✗","var(--bear)",`<b>Not placed</b> (${when()}): ${(j.error||j.status||"unknown").replace(/</g,"&lt;")}`);return;}
-      status("✓","var(--bull)",`<b>Order placed on IG</b> (${when()}) — status ${j.status||"ok"}. Manage or edit it in IG.`);
+      status("✓","var(--bull)",`<b>Order placed on IG</b> (${when()}) — ${j.size!=null?`size ${+j.size}, `:""}status ${j.status||"ok"}. Manage or edit it in IG.`);
       IGWO.add(tk);render();})
     .catch(()=>{done();status("✗","var(--bear)",`<b>Placement failed</b> (${when()}) — no answer from the server. Check IG before trying again.`);});
 }

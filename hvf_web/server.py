@@ -3068,6 +3068,7 @@ def api_place_order():
         # Per-user Pre-order proximity band (user 2026-08-03, P-75) — apply the acting user's own % at
         # placement; falls back to the shared default when unset.
         # No Pre-order threshold: "Create an order" never uses the Pre-orders system (owner 2026-10-10).
+        ig_shim.LAST_ORDER_SKIP.pop(tk, None)
         with ig_shim.acting_session(name):
             wo = ig_shim.place_hvf_order_from_sig(sig, _profile, "WEB_MANUAL", 1.0)
     except Exception as e:
@@ -3077,12 +3078,14 @@ def api_place_order():
     _wu.log_event(name, f"Manually placed order: {tk}" + (f" ({wo.get('status')})" if wo else " (not placed)"))
     _append_batch("Manual (web)", f"Placed {tk} order", by=name)
     if not wo:
-        reason = (_cap[-1].split(": ", 1)[-1] if _cap else
+        # A size refusal carries its own plain-English reason with the volume and the money (owner 2026-10-21);
+        # otherwise the last log line about this ticker.
+        reason = ig_shim.LAST_ORDER_SKIP.pop(tk, None) or (_cap[-1].split(": ", 1)[-1] if _cap else
                   "IG did not accept the order — likely the pattern Quality is below the floor, the stop "
                   "is too tight, the direction conflicts, or a circuit breaker (daily loss / max positions "
                   "/ spread) blocked it. See System Logs for detail.")
         return jsonify({"ok": False, "error": reason, "placed": False}), 200
-    return jsonify({"ok": True, "status": wo.get("status"), "placed": True})
+    return jsonify({"ok": True, "status": wo.get("status"), "placed": True, "size": wo.get("size")})
 
 
 @app.route("/api/x-posts")
@@ -3460,18 +3463,26 @@ def _perf_bars(db, cutoff: dict, lookback_days: int = 0) -> dict:
         if hit is not None:
             return hit
     back = _dt.timedelta(days=lookback_days) if lookback_days else _dt.timedelta(0)
-    vals = ",".join(f"(:t{i}, :d{i}::date)" for i in range(len(items)))
-    params = {}
-    for i, (tk, d0) in enumerate(items):
-        params[f"t{i}"] = tk
-        params[f"d{i}"] = str(d0 - back)
-    rows = db.run(
-        f"select p.ticker, p.bar_date, p.high, p.low, p.close, p.volume from price_history p "
-        f"join (values {vals}) as f(ticker, d0) on p.ticker = f.ticker and p.bar_date >= f.d0 "
-        f"order by p.ticker, p.bar_date", **params) or []
-    out = {}
-    for tk, bd, hi, lo, cl, vol in rows:
-        out.setdefault(tk, []).append((bd, hi, lo, cl, vol))
+
+    def from_database():
+        vals = ",".join(f"(:t{i}, :d{i}::date)" for i in range(len(items)))
+        params = {}
+        for i, (tk, d0) in enumerate(items):
+            params[f"t{i}"] = tk
+            params[f"d{i}"] = str(d0 - back)
+        rows = db.run(
+            f"select p.ticker, p.bar_date, p.high, p.low, p.close, p.volume from price_history p "
+            f"join (values {vals}) as f(ticker, d0) on p.ticker = f.ticker and p.bar_date >= f.d0 "
+            f"order by p.ticker, p.bar_date", **params) or []
+        got = {}
+        for tk, bd, hi, lo, cl, vol in rows:
+            got.setdefault(tk, []).append((bd, hi, lo, cl, vol))
+        return got
+
+    # The price bars file when a GitHub job has fetched a current one (owner 2026-10-21: read files, not the
+    # database); the database otherwise. price_bars is the one reader and decides which, per PRICE_BARS.
+    import price_bars
+    out = price_bars.serve(db, items, back, from_database)
     if key is not None:
         # Bounded deliberately: this is shared hosting. Measured 2026-09-20 on live data, the largest
         # live caller (VWAP/ATR, 90d over 1,773 tickers) holds ~10.3 MB, VolScore 160d ~3.1 MB and RVOL
