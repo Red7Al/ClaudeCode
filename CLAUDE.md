@@ -42,6 +42,10 @@ speaking.** Every one had a single cheap command that would have prevented it.
   `gh`, `.ionos.env`, the cron-job.org API before handing anything back. The owner deploys nothing.
 - **Commit anything successfully tested.** Do not leave verified work waiting to be offered.
 - **If a change moves a number he reads, measure old vs new and tell him BEFORE shipping.**
+- **Record his decisions in the repository the moment he makes them — unprompted** (owner, 2026-10-21).
+  An architectural or standing rule goes into `CLAUDE.md`; what was decided and its state into
+  `docs/STATUS.md`; the work into a `ChangeRequests/` line. Then commit, push and deploy in the same turn.
+  Agent memory is per-machine and is never the only record of an owner decision.
 - **His outstanding instructions are the queue.** Faults you find yourself are parked unless they block
   them.
 
