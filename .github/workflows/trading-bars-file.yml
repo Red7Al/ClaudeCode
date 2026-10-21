@@ -1,0 +1,74 @@
+name: Price Bars File (2026-10-21)
+
+# The price bars file: price_history read from the database ONCE, then only the rows stamped since the last
+# build (owner 2026-10-21: "read files, not the database" -- rule in CLAUDE.md). Every later step reads this
+# file instead of the database. The previous build is this workflow's own artifact; with none, it seeds from
+# the whole table (~1.93M rows, once). The file is verified against price_history before it is saved: a file
+# that does not match is never published.
+#
+# Called by the Morning Chain after the price refresh, alongside the report -- nothing waits on it yet, so a
+# failure here shows the chain red (Cron Watch emails) without delaying the 7am email. No schedule: block
+# (banned); it runs only as part of the chain, or by hand.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
+  SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+  APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
+
+jobs:
+  bars:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # actions: read lets the job fetch its own previous artifact; nothing here writes to the repository.
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+
+      # Only an artifact a trusted run of THIS workflow (by hand, or inside the Morning Chain) built on main --
+      # see .github/scripts/fetch_trusted_artifact.sh. Both files come from the same newest trusted artifact;
+      # bars_file.read refuses a data file whose row count disagrees with its metadata.
+      - name: Fetch the previous bars file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          mkdir -p prev
+          for f in price_bars.meta.json price_bars.csv.gz; do
+            if ! ID=$(bash .github/scripts/fetch_trusted_artifact.sh price-bars "$f" prev \
+                        .github/workflows/trading-bars-file.yml .github/workflows/trading-morning-chain.yml); then
+              echo "no previous price-bars artifact -- this build seeds from the whole table"
+              rm -rf prev; exit 0
+            fi
+            echo "$f from artifact $ID"
+          done
+
+      - name: Build the bars file
+        run: |
+          set -euo pipefail
+          if [ -d prev ]; then python bars_file.py build --out bars --prev prev
+          else python bars_file.py build --out bars; fi
+
+      - name: Verify the bars file against price_history
+        run: python bars_file.py verify --dir bars
+
+      - name: Save the bars file
+        uses: actions/upload-artifact@v4
+        with:
+          name: price-bars
+          path: |
+            bars/price_bars.csv.gz
+            bars/price_bars.meta.json
+          retention-days: 14
+          # Already gzip: compressing again only costs time.
+          compression-level: 0
