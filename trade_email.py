@@ -680,6 +680,18 @@ def send_trade_email(ticker: str, direction: str, sig: dict, trade: dict,
         ref = deal_ref or trade.get("deal_id", "") or trade.get("deal_ref", "")
         ref_suffix = f" [{ref}]" if ref else ""
         subject = f"{event}: {ticker} {direction} @ {trade.get('level', '?')}{ref_suffix}"
+        # THE WEBSITE ("Create an order") sends the levels only (2026-10-21). The investment case imports
+        # price_action and signals, and the charts matplotlib/pandas/yfinance -- all numpy, which is fatal on
+        # the IONOS host. Building them there would hang the request AFTER IG had accepted the order, so the
+        # page would report a failure for an order that went in.
+        if os.environ.get("HVF_WEB_TIER") == "1":
+            lines = [f"{event}: {ticker} {direction}",
+                     f"Entry {trade.get('level', '?')}  Stop {trade.get('stop_level', '?')}  "
+                     f"Target {trade.get('limit_level', '?')}  Size {size if size is not None else '?'}",
+                     f"Order type {trade.get('otype', '?')}  Good till {trade.get('good_till', '?')}",
+                     f"Session {session_name}" + (f"  IG ref {ref}" if ref else ""),
+                     "Placed from the website; the full investment case is in the instrument's detail page."]
+            return send_simple_email(subject, "\n".join(lines), recipients=rcpts)
         text, html = _investment_case(ticker, direction, size, session_name, sig, trade,
                                       event=event, deal_ref=ref)
         charts = build_charts(ticker, sig, trade)

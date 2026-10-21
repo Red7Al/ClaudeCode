@@ -24,6 +24,7 @@
 #                                 lookup into one company_name(). Fixes MSTR showing the Morningstar AU ETF in the dossier.
 # ======================================================================================================================
 
+import os
 import re
 
 _NAME_CACHE: dict = {}   # ticker -> resolved name, per process
@@ -130,6 +131,20 @@ _FX_CCY = {"USD", "GBP", "EUR", "AUD", "NZD", "CAD", "CHF", "JPY", "CNY", "INR",
            "HKD", "NOK", "SEK", "MXN", "ZAR", "TRY", "PLN", "SGD"}
 
 
+def scan_name(ticker: str) -> str:
+    """The name the scan stored for `ticker` in the snapshot the website serves -- company_name() as the
+    GitHub job computed it (Yahoo-first). For the WEBSITE (HVF_WEB_TIER, set by cgi-bin/app.py), which must
+    never import yfinance: it imports numpy, and numpy is fatal on the IONOS host. On 2026-10-21 "Create an
+    order" hung inside that import (stack dump on the host) and reported "no answer from server". A stored
+    name equal to the ticker is company_name's own fallback, i.e. no name, so it returns ''."""
+    try:
+        from hvf_web import server as _srv
+        name = str((_srv._record(ticker) or {}).get("name") or "").strip()
+    except Exception:
+        return ""
+    return "" if name.upper() == ticker.upper() else name
+
+
 def company_name(ticker: str) -> str:
     """The full company/instrument name for a ticker — THE single source of truth. Curated names
     (indices) and the FX-pair rule first, then yfinance (authoritative), then the IG epic_lookup
@@ -144,11 +159,14 @@ def company_name(ticker: str) -> str:
     if ticker in _NAME_CACHE:
         return _NAME_CACHE[ticker]
     name = ""
-    try:
-        info = _yf_info(ticker)
-        name = _clean_yf(info.get("longName") or info.get("shortName") or "")
-    except Exception:
-        name = ""
+    if os.environ.get("HVF_WEB_TIER") == "1":
+        name = scan_name(ticker)
+    else:
+        try:
+            info = _yf_info(ticker)
+            name = _clean_yf(info.get("longName") or info.get("shortName") or "")
+        except Exception:
+            name = ""
     if not name:
         name = _from_epic_lookup(ticker)
     _NAME_CACHE[ticker] = name

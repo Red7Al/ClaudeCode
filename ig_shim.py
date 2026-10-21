@@ -1202,6 +1202,15 @@ def _yahoo_name(ticker: str) -> str:
     which case callers skip name validation (fail-open to today's behaviour)."""
     if ticker in _YNAME_CACHE:
         return _YNAME_CACHE[ticker]
+    # THE WEBSITE MUST NOT IMPORT yfinance (2026-10-21). It imports numpy, which is fatal on the IONOS host:
+    # "Create an order" hung inside this import (stack dump on the host, measured) and the page reported
+    # "Placement failed - no answer from server". The scan stored the same fact in the snapshot; with no name
+    # the identity check fails open, exactly as when Yahoo is unreachable.
+    if os.environ.get("HVF_WEB_TIER") == "1":
+        from instrument_name import scan_name
+        name = scan_name(ticker)
+        _YNAME_CACHE[ticker] = name
+        return name
     name = ""
     try:
         import yfinance as _yf
