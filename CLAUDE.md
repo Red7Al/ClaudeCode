@@ -162,7 +162,9 @@ workflow file changes, put today's date in its `name:`.
   pause, sent-email record, user settings). A file is used only when its price-data version matches the
   database's; otherwise fall back to the database. A step moves only when its output from the file is
   identical, row for row, to its output from the database. New code that reads `price_history` or any
-  refresh-derived table outside the file builder needs the owner's approval. Egress was 4.84x the free
+  refresh-derived table outside the file builder needs the owner's approval. **The files must be proven
+  correct or they are useless** (owner, 2026-10-21): every section of every build is compared with the
+  database, and a file that fails, or whose price data has changed since it was built, is not used. Egress was 4.84x the free
   limit when this was decided; progress is in `docs/STATUS.md`.
 - **numpy is fatal on the IONOS host** (SIGSYS, uncatchable, shows as HTTP 500 after ~120 s). Compute in
   Actions, store it, have the web tier read it — see `skills_src/ah-data-sources`.
