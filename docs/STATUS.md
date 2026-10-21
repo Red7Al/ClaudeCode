@@ -78,13 +78,7 @@ deploy (static current); harmless -- the web tier never writes prices.
 | **Removed-rows email**: a failed comparison is stated ("unknown"), not counted as 1 removed, and the baseline is kept. | `a167e48` |
 | **Test leaks closed** (conftest): IG, Resend and SMTP blocked in every test; the IG pause key and `scanner_report_sent` are in memory. | Live `scanner_report_sent` revision 4 before and after a test run. |
 
-Open from this: the live `scanner_report_sent` store holds two fake test entries, "B" and "Silver", written
-2026-10-18 17:05. **Removal awaits the owner's yes.** The 10-20 05:22 email was the first comparison; its
-"Removed since" section was not read (the body is not logged) -- unverifiable: the store now holds only the
-10-20 send (66 rows), and the Resend key is a GitHub secret only (not in `app_secrets` or `.env`). Since
-`fd127c6` (2026-10-20, **pushed 2026-10-20** after the CI suite in a clean worktree: 1651 passed, 17 skipped, exit 0) each
-send stores its removed rows + reasons and `compared_with` in `scanner_report_sent`; the body stays out of the run log
-(anonymous API read of a job log: 403, measured 10-20; a signed-in stranger: untested). Read the first send's entry: Morning Chain 2026-10-21 03:30 UTC.
+Removed-rows record VERIFIED live 2026-10-21: the 05:07 send stored 69 rows, `compared_with` 2026-10-20T05:22:03, removed 1 (OTIS, triggered 2026-07-22 -- 91 days, past the 90-day rule). Fake test entries "B" and "Silver" removed with the owner's yes 2026-10-21 (revision 5 -> 6, Alex entry byte-identical; neither is a login -- logins: Alex, Carl, Rich, Red7dp, KathrynH). The body itself stays out of the run log (anonymous API read of a job log: 403, measured 10-20; a signed-in stranger: untested).
 Secret-decrypt warning: VERIFIED gone (10-13 run 4 warnings; 10-14, 10-20 none) -- CR Completed. Triggered
 column / Status removed: the 10-20 send ran `88a19b2`, which contains both; delivered body unread. The order bridge and the Closing Window
 still fail a run (red) while logins are paused; Cron Watch emails once.
