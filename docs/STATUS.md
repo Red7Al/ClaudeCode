@@ -88,6 +88,7 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
 | Fact | Proof |
 |---|---|
 | Instrument detail **Yahoo Finance** button (`3c0be60`) and **Create an order** hourglass + status line (`fc51a90`) are in the live `app.js`. | `curl /app.js` |
+| **Create an order: every number editable** (owner 2026-10-21: "all numbers need to be editable", "R:R can be left read only"). Supersedes the 2026-10-10 rule that the order is exactly the screen's levels: the server still proves the page shows the current setup, then applies the typed entry/stop/target (in order for the direction, R:R recomputed for the personal floor) and the typed size (never below IG's minimum). Size is shown before confirming via `/api/order-size` (`5020858`). | `test_create_order.py` |
 | `/api/yahoo_symbols` live since the worker reloaded (18:54:58Z): HTTP 200, 28 symbols, SPX500 -> ^GSPC, XAUUSD -> GC=F. Yahoo CR Completed. Create-an-order CR stays In Progress until a real order shows the status line. | `curl` 18:55Z |
 | All GitHub artifacts deleted (0 left, anonymous listing 0): 24 scanner files and 538 gitleaks reports; Secret Scan no longer uploads one (run 39646686915: 0 artifacts). Order Bridge run 39646008498 read both evening files from IONOS (summary in use: True). | `gh api .../artifacts`; run logs |
 
