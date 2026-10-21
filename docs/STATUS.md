@@ -83,6 +83,14 @@ Secret-decrypt warning: VERIFIED gone (10-13 run 4 warnings; 10-14, 10-20 none) 
 column / Status removed: the 10-20 send ran `88a19b2`, which contains both; delivered body unread. The order bridge and the Closing Window
 still fail a run (red) while logins are paused; Cron Watch emails once.
 
+## 2g. 2026-10-21 owner UI requests -- deployed, one step waits on the API worker
+
+| Fact | Proof |
+|---|---|
+| Instrument detail **Yahoo Finance** button (`3c0be60`) and **Create an order** hourglass + status line (`fc51a90`) are in the live `app.js`. | `curl /app.js` |
+| `/api/yahoo_symbols` answers **404** until the resident API worker recycles (it ran build 42edd0614856, loaded 18:19:10Z). Until then the 21 IG-style tickers (SPX500, XAUUSD, USDJPY, BTCUSD...) link to their own name on Yahoo, not ^GSPC / GC=F etc.; every other ticker is right. Re-check `curl -s -o /dev/null -w '%{http_code}' https://www.squeezescanner.cloud/api/yahoo_symbols` -> 200, then mark both CR lines Completed. | `curl` 10-21 |
+| All GitHub artifacts deleted (0 left, anonymous listing 0): 24 scanner files and 538 gitleaks reports; Secret Scan no longer uploads one (run 39646686915: 0 artifacts). Order Bridge run 39646008498 read both evening files from IONOS (summary in use: True). | `gh api .../artifacts`; run logs |
+
 ## 2f. URGENT 2026-10-21 -- data in a PUBLIC repository's artifacts (owner: "the scanners output should not be in github")
 
 | What | Evidence |
