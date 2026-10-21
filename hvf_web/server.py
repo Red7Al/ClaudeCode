@@ -1899,6 +1899,15 @@ def api_volscore(ticker):
     return jsonify({"ticker": ticker, "volscore": res})
 
 
+@app.route("/api/yahoo_symbols")
+def api_yahoo_symbols():
+    """The Yahoo Finance symbol of every ticker whose own name is not one (SPX500 -> ^GSPC, USDJPY -> USDJPY=X),
+    for the instrument detail's Yahoo Finance button (owner 2026-10-21). config.YAHOO_MAP is the map every price
+    fetch uses; the page must not keep a second copy. Every other ticker is its own Yahoo symbol."""
+    from config import YAHOO_MAP
+    return jsonify({t: y for t, y in YAHOO_MAP.items() if t != y})
+
+
 @app.route("/api/records")
 def api_records():
     snap = _load_snapshot()

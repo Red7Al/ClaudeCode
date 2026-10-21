@@ -636,6 +636,13 @@ function render(){
 // the origin tab and closeDetail() returns to it.
 let DETAIL_FROM=null;
 function openDetailFrom(tab,t){DETAIL_FROM=tab;showTab("scanner");showDetail(t);}
+
+// The instrument's Yahoo Finance page (owner 2026-10-21). Most tickers ARE Yahoo symbols; the IG-style ones
+// (SPX500, XAUUSD, USDJPY, BTCUSD...) map through config.YAHOO_MAP, served once by /api/yahoo_symbols. If
+// that call fails the ticker itself is used.
+let YSYM={};
+fetch("/api/yahoo_symbols").then(x=>x.ok?x.json():{}).then(j=>{YSYM=j||{};}).catch(()=>{});
+const yahooUrl=t=>`https://finance.yahoo.com/quote/${encodeURIComponent(YSYM[t]||t)}`;
 function closeDetail(){
   SEL=null;$("detail").classList.add("hidden");
   const back=DETAIL_FROM; DETAIL_FROM=null;
@@ -654,6 +661,7 @@ function showDetail(t){
   $("detail").classList.remove("hidden");
   $("detail").innerHTML=`
     <button class="btn" onclick="closeDetail()" style="float:right">✕ Close (back to list)</button>
+    <a class="btn" id="yahoolink" href="${yahooUrl(r.ticker)}" target="_blank" rel="noopener" style="float:right;margin-right:8px;text-decoration:none">Yahoo Finance ↗</a>
     ${AUTH&&r.has_signal?`<button class="btn" onclick="createOrder('${r.ticker}')" style="float:right;margin-right:8px">Create an order</button>`:''}
     <h2>${disp(r.ticker)} <span class="muted" style="font-size:13px">${r.name||''}</span> <span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></h2>
     <div class="sub">${locName(r.location)} · ${r.market||''} · ${r.sector||''} · ${r.status||''} · Q${r.quality??'?'} · R:R ${r.rr!=null?r.rr.toFixed(2):'?'} · ${(r.timeframe||'').replace('daily-','D')}</div>
