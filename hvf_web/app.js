@@ -662,9 +662,10 @@ function showDetail(t){
   $("detail").innerHTML=`
     <button class="btn" onclick="closeDetail()" style="float:right">✕ Close (back to list)</button>
     <a class="btn" id="yahoolink" href="${yahooUrl(r.ticker)}" target="_blank" rel="noopener" style="float:right;margin-right:8px;text-decoration:none">Yahoo Finance ↗</a>
-    ${AUTH&&r.has_signal?`<button class="btn" onclick="createOrder('${r.ticker}')" style="float:right;margin-right:8px">Create an order</button>`:''}
+    ${AUTH&&r.has_signal?`<button class="btn" id="createorderbtn" onclick="createOrder('${r.ticker}')" style="float:right;margin-right:8px">Create an order</button>`:''}
     <h2>${disp(r.ticker)} <span class="muted" style="font-size:13px">${r.name||''}</span> <span class="tag ${r.direction==='BULL'?'bull':'bear'}">${r.direction}</span></h2>
     <div class="sub">${locName(r.location)} · ${r.market||''} · ${r.sector||''} · ${r.status||''} · Q${r.quality??'?'} · R:R ${r.rr!=null?r.rr.toFixed(2):'?'} · ${(r.timeframe||'').replace('daily-','D')}</div>
+    <div id="orderstatus" style="display:none;margin:8px 0;padding:8px 10px;border-radius:6px;border:1px solid var(--line)"></div>
     ${IS_ADMIN?`<div class="card"><h4>Squeeze Rules 1–5 — justification</h4><div id="rulesbox" class="sqh-loading">⏳ Data loading…</div></div>`:''}
     <div class="card"><h4>Quality (${r.quality??'?'}/100) — how it's scored</h4>
       <div class="muted" style="font-size:12px">Q combines three things: <b>tightness</b> (how compressed the squeeze is vs its first amplitude — up to 50 pts, tighter = higher), <b>freshness</b> (how recently the 3rd high formed — up to 30 pts, more recent = higher), and <b>symmetry</b> (how evenly the swings are spaced — up to 20 pts). 100 = a very tight, fresh, symmetric squeeze; a low Q means a loose, older, or lopsided one.</div></div>
@@ -5523,13 +5524,26 @@ async function createOrder(tk){
               ["R:R",r.rr!=null?(+r.rr).toFixed(1):"—"],["Triggered",r.trig_date?r.trig_date.slice(0,10):"not yet"]];
   if(!await appConfirm(`Places a live IG working order on your own IG account at these levels. This is a real order. IG may widen the stop to its minimum distance; you can edit the order in IG.`,
                        {title:`Create a LIVE IG order for ${disp(tk)}?`,ok:"Create order",rows}))return;
+  // An hourglass while IG is working, then the outcome stays on the panel (owner 2026-10-21: "an hourglass
+  // would help to know processing is underway" / "a return status would help user know if it has gone in").
+  // The button stays disabled until IG answers, so a second click cannot send a second order. If the panel
+  // was closed or moved to another instrument meanwhile, the outcome falls back to an alert.
+  const btn=$("createorderbtn"), when=()=>new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  const status=(icon,colour,text)=>{const el=$("orderstatus");
+    if(!el||SEL!==tk){if(icon!=="⏳")alert(`${disp(tk)}: ${text}`);return;}
+    el.style.display="";el.style.borderColor=colour;el.innerHTML=`<b style="color:${colour}">${icon}</b> ${text}`;};
+  const done=()=>{document.body.style.cursor="";if(btn){btn.disabled=false;btn.textContent="Create an order";}};
+  if(btn){btn.disabled=true;btn.textContent="⏳ Placing order…";}
+  document.body.style.cursor="wait";
+  status("⏳","var(--line)",`Sending the ${dir} order to IG… (started ${when()})`);
   fetch("/api/place-order",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},
         body:JSON.stringify({ticker:tk,levels:{entry:r.entry,stop:r.stop,target:r.target}})})
     .then(x=>x.json().then(j=>({ok:x.ok,j})))
-    .then(({ok,j})=>{if(!ok||!j.ok){alert("Not placed: "+(j.error||j.status||"unknown"));return;}
-      alert(`${disp(tk)} order sent to IG (${j.status||'ok'}). Manage or edit it in IG.`);
+    .then(({ok,j})=>{done();
+      if(!ok||!j.ok){status("✗","var(--bear)",`<b>Not placed</b> (${when()}): ${(j.error||j.status||"unknown").replace(/</g,"&lt;")}`);return;}
+      status("✓","var(--bull)",`<b>Order placed on IG</b> (${when()}) — status ${j.status||"ok"}. Manage or edit it in IG.`);
       IGWO.add(tk);render();})
-    .catch(()=>alert("Placement failed — try again."));
+    .catch(()=>{done();status("✗","var(--bear)",`<b>Placement failed</b> (${when()}) — no answer from the server. Check IG before trying again.`);});
 }
 
 // Resolve role first (user 2026-07-03) so tab visibility is correct on first paint.

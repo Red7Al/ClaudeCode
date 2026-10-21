@@ -8,6 +8,8 @@ reaches IG -- the placer is replaced and every call to it is recorded.
 """
 import contextlib
 
+import json
+
 import pytest
 
 import config_store
@@ -155,3 +157,60 @@ def test_the_confirm_dialog_shows_the_exact_levels_sent():
     fn = js[start:js.index("\n}\n", start)]
     assert "f2(r.entry)" not in fn and 'ex(r.entry)' in fn and "String(+v)" in fn
     assert "Order (Operations)" not in fn, "that tab is hidden; the message must not send the owner there"
+
+
+def _run_create_order(response, sel="NVDA"):
+    """Run the page's createOrder in Node with IG's answer stubbed, recording what the user sees while it
+    waits and after it answers."""
+    from test_js_behaviour import NODE, run_js_async
+    if NODE is None:
+        pytest.skip("node is not installed")
+    js = open("hvf_web/app.js", encoding="utf-8").read()
+    start = js.index("async function createOrder(")
+    fn = js[start:js.index("\n}\n", start) + 3]
+    preamble = """
+      const els={createorderbtn:{disabled:false,textContent:"Create an order"},orderstatus:{style:{},innerHTML:""}};
+      const $=id=>els[id]; const seen=[]; const alerts=[];
+      globalThis.document={body:{style:{cursor:""}}};
+      globalThis.alert=m=>alerts.push(m);
+      let SEL=%s; const AUTH="tok"; const IGWO=new Set(); const render=()=>{};
+      const disp=t=>t; const appConfirm=async()=>true;
+      const DATA=[{ticker:"NVDA",direction:"BULL",entry:190.5,stop:180,target:230,rr:3.9}];
+      globalThis.fetch=()=>{seen.push({button:els.createorderbtn.textContent,disabled:els.createorderbtn.disabled,
+                                        cursor:document.body.style.cursor,status:els.orderstatus.innerHTML});
+                            return %s;};
+    """ % (json.dumps(sel), response)
+    call = ("createOrder('NVDA').then(()=>new Promise(r=>setTimeout(r,0))).then(()=>({seen,alerts,"
+            "after:{button:els.createorderbtn.textContent,disabled:els.createorderbtn.disabled,"
+            "cursor:document.body.style.cursor,status:els.orderstatus.innerHTML},igwo:[...IGWO]}))")
+    return run_js_async(preamble, fn, call)
+
+
+def test_create_order_shows_an_hourglass_then_the_status_ig_returned():
+    """Owner 2026-10-21: "an hourglass would help to know processing is underway" and "a return status would
+    help user know if it has gone in"."""
+    out = _run_create_order('Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true,status:"PENDING",placed:true})})')
+    during = out["seen"][0]
+    assert during["disabled"] is True and "⏳" in during["button"] and during["cursor"] == "wait"
+    assert "⏳" in during["status"] and "Sending the BUY order to IG" in during["status"]
+    after = out["after"]
+    assert after["disabled"] is False and after["button"] == "Create an order" and after["cursor"] == ""
+    assert "Order placed on IG" in after["status"] and "PENDING" in after["status"] and "✓" in after["status"]
+    assert out["igwo"] == ["NVDA"] and out["alerts"] == []
+
+
+def test_create_order_shows_why_it_was_not_placed():
+    out = _run_create_order('Promise.resolve({ok:true,json:()=>Promise.resolve({ok:false,placed:false,error:"stop is too tight <5 pts"})})')
+    assert "Not placed" in out["after"]["status"] and "stop is too tight &lt;5 pts" in out["after"]["status"]
+    assert out["after"]["disabled"] is False and out["igwo"] == []
+
+
+def test_create_order_says_so_when_the_server_never_answers():
+    out = _run_create_order("Promise.reject(new Error('network'))")
+    assert "Placement failed" in out["after"]["status"] and "Check IG" in out["after"]["status"]
+    assert out["after"]["cursor"] == "" and out["after"]["disabled"] is False
+
+
+def test_create_order_alerts_when_the_panel_moved_on():
+    out = _run_create_order('Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true,status:"PENDING"})})', sel="AAPL")
+    assert len(out["alerts"]) == 1 and "Order placed on IG" in out["alerts"][0]
