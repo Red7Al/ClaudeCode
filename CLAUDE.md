@@ -151,6 +151,15 @@ workflow file changes, put today's date in its `name:`.
 - **A green Scanner Snapshot Publish run does not mean Supabase was published** — the step is
   `continue-on-error`. Ask `scanner_snapshot_store.current_metadata()`. Restore procedure:
   `docs/OPS_RUNBOOK.md` §4.
+- **Read files, not the database — owner architectural decision, 2026-10-21.** Price data changes only at
+  the twice-daily refresh (03:30 Morning Chain, 18:30 scan), so it is read from the database ONCE per refresh
+  into a file, and every later step, job and the website reads that file. Only two things read the
+  database: the step that builds the file, and live trading state (working orders, positions, IG login
+  pause, sent-email record, user settings). A file is used only when its price-data version matches the
+  database's; otherwise fall back to the database. A step moves only when its output from the file is
+  identical, row for row, to its output from the database. New code that reads `price_history` or any
+  refresh-derived table outside the file builder needs the owner's approval. Egress was 4.84x the free
+  limit when this was decided; progress is in `docs/STATUS.md`.
 - **numpy is fatal on the IONOS host** (SIGSYS, uncatchable, shows as HTTP 500 after ~120 s). Compute in
   Actions, store it, have the web tier read it — see `skills_src/ah-data-sources`.
 - **Never "optimise" `_winLedger`'s sort** — the replay compounds; `localeCompare` → `<` moved the wallet

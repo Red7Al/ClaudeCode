@@ -83,6 +83,16 @@ Secret-decrypt warning: VERIFIED gone (10-13 run 4 warnings; 10-14, 10-20 none) 
 column / Status removed: the 10-20 send ran `88a19b2`, which contains both; delivered body unread. The order bridge and the Closing Window
 still fail a run (red) while logins are paused; Cron Watch emails once.
 
+## 2e. IN PROGRESS 2026-10-21 -- read files, not the database (owner architectural decision; rule in `CLAUDE.md`)
+
+| What | Evidence |
+|---|---|
+| Egress **24.20 GB/30d = 4.84x** the free 5 GB (was 3.45x on 10-18). `server._perf_bars` 59.7%: 227 calls, 13.3M rows. | `egress_report.py`, 62.8 h since the 10-18 17:53 baseline |
+| The website already reads the summary: IONOS snapshot and summary both `generated_utc` 2026-10-21T05:05:26. | ssh read of `hvf_web/` on IONOS, 10-21 |
+| Daytime: **0** bar reads 08:44-09:52 UTC while Closing Window ran 7x and the site was live. | per-queryid diff of `pg_stat_statements` |
+| Cause: in each chain, steps 2 (scan), 3 (email), 4 (winners), 5 (Best Settings) each read the same bars from the database; the summary (4b) is built near the end, so nothing earlier can use it. The Supabase snapshot store is stuck at 2026-08-16 (Storage 402), so a GitHub job has today's snapshot only if its workflow copies it from IONOS. | `trading-morning-chain.yml`; `scanner_snapshot_store.current_metadata()` |
+| Plan: one bars read right after the price refresh into a file; every later step reads it; version-guarded fallback; file-vs-database output identical before any step moves; egress before/after to the owner before shipping. | Per-step "before" figures: sampler over the 10-21 18:30 chain |
+
 ## 3. Open, measured, not fixed
 
 1. **Website pool use, now measured.** 2 web processes (40 concurrent `/api/report-check?process=1` calls:
