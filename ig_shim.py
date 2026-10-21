@@ -796,6 +796,9 @@ def acting_session(login: str = None):
 LAST_SIZE_SKIP: dict = {}
 # ticker -> describe_size_skip's reason for the last order place_hvf_order_from_sig refused on size.
 LAST_ORDER_SKIP: dict = {}
+# epic -> IG's minimum deal size, from the last calculate_position_size for it ("Create an order" checks a
+# typed volume against it before anything is sent to IG).
+LAST_MIN_SIZE: dict = {}
 
 
 def calculate_position_size(epic: str, stop_distance: float,
@@ -829,6 +832,7 @@ def calculate_position_size(epic: str, stop_distance: float,
         price    = float(snap.get("offer", 0) or snap.get("bid", 0) or 1)
         margin_factor = float(inst.get("marginFactor", 20)) / 100.0
         min_size = float((rules.get("minDealSize") or {}).get("value", 0.04))
+        LAST_MIN_SIZE[epic] = min_size
         min_stop = float((rules.get("minNormalStopOrLimitDistance") or {}).get("value", 0))
 
         # Enforce minimum stop distance
@@ -3382,8 +3386,58 @@ def reconcile_working_orders() -> dict:
     return summary
 
 
+def size_working_order(ticker: str, direction: str, entry, stop, target, profile: dict,
+                       stress_mult: float = 1.0) -> dict:
+    """The size an HVF working order for `ticker` would be placed at, and the levels in IG's units:
+    {"size", "epic", "entry", "stop", "target"} (+ "no_distance" when entry == stop). size 0.0 when it cannot be
+    sized; LAST_SIZE_SKIP[epic] then says why (describe_size_skip). Reads IG (the epic, a price, the balance)
+    and places nothing. THE ONE sizing path: place_hvf_order_from_sig places at this size, and "Create an
+    order" shows it before you confirm (owner 2026-10-21: "volume (size) of order is still not available")."""
+    entry, stop, target = float(entry), float(stop), float(target)
+
+    size = 0.0
+    epic = None   # defined before the try so the size<=0 reason lookup is NameError-safe
+    try:
+        epic = get_epic(ticker)
+        if not epic:
+            raise ValueError("no IG epic")
+        # Align signal units → IG units BEFORE sizing: FX HVF levels come from
+        # Yahoo (EURUSD 1.1539) while IG quotes points (11538.6). Sizing from the
+        # unscaled distance would compute risk in the wrong units entirely.
+        snap    = get_snapshot(epic)
+        bid     = float(snap.get("bid", 0) or 0)
+        offer   = float(snap.get("offer", 0) or 0)
+        current = offer if direction == "BUY" else bid
+        scale   = detect_ig_scale(current, entry) if current else 1.0
+        if scale != 1.0:
+            log.warning(f"{ticker}: HVF levels scaled ×{scale:g} into IG units for sizing/orders")
+            entry, stop, target = entry * scale, stop * scale, target * scale
+
+        stop_distance = abs(entry - stop)
+        if stop_distance <= 0:
+            return {"size": 0.0, "epic": epic, "entry": entry, "stop": stop, "target": target,
+                    "no_distance": True}
+
+        bal         = get_account_balance()
+        available   = bal["available"]
+        risk_amount = available * float(profile.get("risk_per_trade", 0.02)) * stress_mult
+        size, adj_stop_distance = calculate_position_size(
+            epic, stop_distance, risk_amount, available_funds=available)
+        # IG minimum stop distance may widen the stop — keep it anchored to ENTRY.
+        # Guard: never accept a widening that dwarfs the entry price (that means
+        # a unit mismatch slipped through, not a real minimum-distance rule).
+        if adj_stop_distance > stop_distance and (adj_stop_distance / max(entry, 1e-9)) < 0.5:
+            stop = entry - adj_stop_distance if direction == "BUY" else entry + adj_stop_distance
+            log.info(f"{ticker}: working-order stop widened to IG minimum "
+                     f"(distance {adj_stop_distance}) → stop level {stop}")
+    except Exception as e:
+        log.warning(f"Working-order size calc failed for {ticker}: {e}")
+    return {"size": size, "epic": epic, "entry": entry, "stop": stop, "target": target,
+            "min_size": LAST_MIN_SIZE.get(epic)}
+
+
 def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
-                             stress_mult: float = 1.0) -> Optional[dict]:
+                             stress_mult: float = 1.0, size_override=None) -> Optional[dict]:
     """
     Route a scanned HVF signal to a pending working order (the entry/stop/target
     come from the pattern itself). Sizes from |entry − stop| — the actual risk
@@ -3523,44 +3577,29 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
                  f"falling back to market-order path")
         return None
 
-    entry, stop, target = float(entry), float(stop), float(target)
-
-    size = 0.0
-    epic = None   # defined before the try so the size<=0 reason lookup is NameError-safe
-    try:
-        epic = get_epic(ticker)
-        if not epic:
-            raise ValueError("no IG epic")
-        # Align signal units → IG units BEFORE sizing: FX HVF levels come from
-        # Yahoo (EURUSD 1.1539) while IG quotes points (11538.6). Sizing from the
-        # unscaled distance would compute risk in the wrong units entirely.
-        snap    = get_snapshot(epic)
-        bid     = float(snap.get("bid", 0) or 0)
-        offer   = float(snap.get("offer", 0) or 0)
-        current = offer if direction == "BUY" else bid
-        scale   = detect_ig_scale(current, entry) if current else 1.0
-        if scale != 1.0:
-            log.warning(f"{ticker}: HVF levels scaled ×{scale:g} into IG units for sizing/orders")
-            entry, stop, target = entry * scale, stop * scale, target * scale
-
-        stop_distance = abs(entry - stop)
-        if stop_distance <= 0:
+    sized = size_working_order(ticker, direction, entry, stop, target, profile, stress_mult)
+    if sized.get("no_distance"):
+        return None
+    size, epic = sized["size"], sized["epic"]
+    entry, stop, target = sized["entry"], sized["stop"], sized["target"]
+    # "Create an order" with the volume the user typed (owner 2026-10-21: "I want the option to override the
+    # volume"). It replaces the calculated size; it is never below IG's minimum for this market, and IG itself
+    # refuses one the account cannot cover. Only the web page passes it -- the bridge and sessions never do.
+    if size_override is not None and epic:
+        _min = sized.get("min_size")
+        try:
+            _ov = float(size_override)
+        except (TypeError, ValueError):
+            _ov = float("nan")
+        if not (_ov > 0 and _ov != float("inf")):
+            LAST_ORDER_SKIP[ticker] = f"{ticker}: the size {size_override!r} is not a positive number -- nothing sent to IG."
             return None
-
-        bal         = get_account_balance()
-        available   = bal["available"]
-        risk_amount = available * float(profile.get("risk_per_trade", 0.02)) * stress_mult
-        size, adj_stop_distance = calculate_position_size(
-            epic, stop_distance, risk_amount, available_funds=available)
-        # IG minimum stop distance may widen the stop — keep it anchored to ENTRY.
-        # Guard: never accept a widening that dwarfs the entry price (that means
-        # a unit mismatch slipped through, not a real minimum-distance rule).
-        if adj_stop_distance > stop_distance and (adj_stop_distance / max(entry, 1e-9)) < 0.5:
-            stop = entry - adj_stop_distance if direction == "BUY" else entry + adj_stop_distance
-            log.info(f"{ticker}: working-order stop widened to IG minimum "
-                     f"(distance {adj_stop_distance}) → stop level {stop}")
-    except Exception as e:
-        log.warning(f"Working-order size calc failed for {ticker}: {e}")
+        if _min and _ov < _min:
+            LAST_ORDER_SKIP[ticker] = (f"{ticker}: size {_ov:g} is below IG's minimum for this market ({_min:g}) "
+                                       f"-- nothing sent to IG.")
+            return None
+        log.info(f"{ticker}: size {_ov:g} entered by the user (calculated {size:g}, IG minimum {_min})")
+        size = _ov
 
     if size <= 0:
         # Plain-English, context-aware reason from the single source (user 2026-06-26). A structural

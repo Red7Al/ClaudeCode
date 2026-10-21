@@ -13,7 +13,9 @@ const $=id=>document.getElementById(id);
 // scroll bar (user 2026-08-15: "Apply this configuration should give a form that does NOT need a scroll
 // bar"). Values are still written with textContent, so nothing here can inject markup. The box is capped
 // to the viewport with only the grid allowed to scroll, so the buttons can never be pushed out of reach.
-function appConfirm(msg,{title="Please confirm",ok="Confirm",cancel="Cancel",rows=null}={}){
+// fields: [{key, label, value, hint}] adds editable boxes; OK then resolves with {key: text} instead of true.
+// live(values) -> {row label: new value} re-reads the read-only rows on every keystroke.
+function appConfirm(msg,{title="Please confirm",ok="Confirm",cancel="Cancel",rows=null,fields=null,live=null}={}){
   return new Promise(res=>{
     const ov=document.createElement("div");
     ov.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px";
@@ -24,28 +26,41 @@ function appConfirm(msg,{title="Please confirm",ok="Confirm",cancel="Cancel",row
     box.innerHTML=`<div style="padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700;flex:0 0 auto">${title}</div>`
       +`<div data-msg style="padding:14px 18px ${rows?'8px':'16px'};font-size:13.5px;line-height:1.5;color:var(--fg);flex:0 0 auto"></div>`
       +(rows?`<div data-rows style="padding:0 18px 14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px;font-size:12.5px;overflow:auto;min-height:0"></div>`:``)
+      +(fields?`<div data-fields style="padding:0 18px 14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 22px;font-size:13px;flex:0 0 auto"></div>`:``)
       +`<div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;flex:0 0 auto">`
       +`<button class="btn" data-x>${cancel}</button>`
       +`<button class="btn" data-ok style="border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)">${ok}</button></div>`;
     box.querySelector("[data-msg]").textContent=msg;   // textContent so the message can't inject markup
+    const inps={};
+    (fields||[]).forEach(f=>{
+      const lab=document.createElement("label"); lab.style.cssText="display:flex;align-items:center;gap:8px;flex-wrap:wrap";
+      const b=document.createElement("b"); b.style.minWidth="52px"; b.textContent=f.label;
+      const i=document.createElement("input"); i.inputMode="decimal"; i.style.cssText="width:110px;padding:4px 6px"; i.value=f.value??"";
+      const h=document.createElement("span"); h.className="muted"; h.style.fontSize="11.5px"; h.textContent=f.hint||"";
+      lab.append(b,i,h); box.querySelector("[data-fields]").appendChild(lab); inps[f.key]=i;});
+    const inp=Object.values(inps)[0]||null;
+    const vals=()=>Object.fromEntries(Object.entries(inps).map(([k,i])=>[k,i.value.trim()]));
+    if(live)Object.values(inps).forEach(i=>i.oninput=()=>{const upd=live(vals());
+      box.querySelectorAll("[data-row]").forEach(el=>{if(el.dataset.row in upd)el.textContent=String(upd[el.dataset.row]);});});
     if(rows){
       const grid=box.querySelector("[data-rows]");
       rows.forEach(([label,value])=>{
         const line=document.createElement("div");
         line.style.cssText="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:4px 0;border-bottom:1px solid var(--line)";
         const l=document.createElement("span"); l.className="muted"; l.textContent=label;
-        const v=document.createElement("b"); v.style.cssText="text-align:right;white-space:nowrap"; v.textContent=String(value);
+        const v=document.createElement("b"); v.style.cssText="text-align:right;white-space:nowrap"; v.textContent=String(value); v.dataset.row=label;
         line.append(l,v); grid.appendChild(line);
       });
     }
     const done=v=>{ov.remove();document.removeEventListener("keydown",onKey);res(v);};
-    const onKey=e=>{if(e.key==="Escape")done(false);else if(e.key==="Enter")done(true);};
+    const yes=()=>done(inp?vals():true);
+    const onKey=e=>{if(e.key==="Escape")done(false);else if(e.key==="Enter")yes();};
     box.querySelector("[data-x]").onclick=()=>done(false);
-    box.querySelector("[data-ok]").onclick=()=>done(true);
+    box.querySelector("[data-ok]").onclick=yes;
     ov.onclick=e=>{if(e.target===ov)done(false);};
     document.addEventListener("keydown",onKey);
     ov.appendChild(box);document.body.appendChild(ov);
-    box.querySelector("[data-ok]").focus();
+    (inp||box.querySelector("[data-ok]")).focus();
   });
 }
 // Trimmed 2026-08-16 when the filters moved to Squeeze History. f_mkt/f_sec stay because they still
@@ -5522,8 +5537,7 @@ async function createOrder(tk){
   const ex=v=>String(+v);   // the exact value sent -- f2's 2 dp misstates FX and sub-1 prices (code review)
   const rows=[["Direction",dir],["Entry",ex(r.entry)],["Stop",ex(r.stop)],["Target",ex(r.target)],
               ["R:R",r.rr!=null?(+r.rr).toFixed(1):"—"],["Triggered",r.trig_date?r.trig_date.slice(0,10):"not yet"]];
-  if(!await appConfirm(`Places a live IG working order on your own IG account at these levels. This is a real order. IG may widen the stop to its minimum distance; you can edit the order in IG.`,
-                       {title:`Create a LIVE IG order for ${disp(tk)}?`,ok:"Create order",rows}))return;
+  const levels={entry:r.entry,stop:r.stop,target:r.target};
   // An hourglass while IG is working, then the outcome stays on the panel (owner 2026-10-21: "an hourglass
   // would help to know processing is underway" / "a return status would help user know if it has gone in").
   // The button stays disabled until IG answers, so a second click cannot send a second order. If the panel
@@ -5532,15 +5546,45 @@ async function createOrder(tk){
   const status=(icon,colour,text)=>{const el=$("orderstatus");
     if(!el||SEL!==tk){if(icon!=="⏳")alert(`${disp(tk)}: ${text}`);return;}
     el.style.display="";el.style.borderColor=colour;el.innerHTML=`<b style="color:${colour}">${icon}</b> ${text}`;};
+  const busy=t=>{if(btn){btn.disabled=true;btn.textContent=t;}document.body.style.cursor="wait";};
   const done=()=>{document.body.style.cursor="";if(btn){btn.disabled=false;btn.textContent="Create an order";}};
-  if(btn){btn.disabled=true;btn.textContent="⏳ Placing order…";}
-  document.body.style.cursor="wait";
-  status("⏳","var(--line)",`Sending the ${dir} order to IG… (started ${when()})`);
+  const esc=v=>String(v).replace(/</g,"&lt;");
+  // The volume BEFORE you confirm (owner 2026-10-21: "I want the option to override the volume"). The server
+  // sizes it exactly as it would place it (your risk per trade, IG's minimum, the margin you have); whatever is
+  // in the Size box when you press Create order is the size sent to IG. The server refuses one below IG's minimum.
+  busy("⏳ Working out the size…");
+  status("⏳","var(--line)",`Working out the size with IG… (started ${when()})`);
+  let sz;
+  try{const x=await fetch("/api/order-size",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},
+                                              body:JSON.stringify({ticker:tk,levels})});
+      sz=await x.json(); if(!x.ok||!sz.ok)throw sz;}
+  catch(e){done();status("✗","var(--bear)",`<b>Not placed</b> (${when()}): ${esc((e&&e.error)||"no answer from the server while working out the size")}`);return;}
+  done();
+  const min=sz.min_size, calc=+sz.size||0;
+  const note=calc>0?`Size ${calc} is calculated from your risk per trade at the screen's levels${min!=null?`; IG's minimum is ${min}`:""}.`
+                   :`${sz.reason||"The calculated size is 0."} The Size box holds IG's minimum; IG refuses it if the account cannot cover the margin.`;
+  // Every number is editable (owner 2026-10-21: "all numbers need to be editable"); what is in the boxes when
+  // you press Create order is what is sent. The server checks they are in order for the direction.
+  const want=await appConfirm(`Places a live IG working order on your own IG account. This is a real order. Change any number before you confirm. IG may widen the stop to its minimum distance; you can edit the order in IG. ${note}`,
+                              {title:`Create a LIVE IG order for ${disp(tk)}?`,ok:"Create order",
+                               rows:rows.filter(([l])=>!["Entry","Stop","Target"].includes(l)),
+                               fields:[{key:"entry",label:"Entry",value:ex(r.entry)},{key:"stop",label:"Stop",value:ex(r.stop)},
+                                       {key:"target",label:"Target",value:ex(r.target)},
+                                       {key:"size",label:"Size",value:String(calc>0?calc:(min??"")),hint:min!=null?`IG minimum ${min}`:""}],
+                               live:v=>{const e=+v.entry,st=+v.stop,tg=+v.target;   // R:R stays read-only and follows the levels
+                                        return {"R:R":e>0&&st>0&&tg>0&&e!==st?(Math.abs(tg-e)/Math.abs(e-st)).toFixed(1):"—"};}});
+  if(want===false){if(SEL===tk&&$("orderstatus"))$("orderstatus").style.display="none";return;}
+  const num=k=>Number(want[k]), size=num("size"), edit={entry:num("entry"),stop:num("stop"),target:num("target")};
+  const bad=Object.entries({...edit,size}).find(([,v])=>!(v>0));
+  if(bad){status("✗","var(--bear)",`<b>Not placed</b> (${when()}): the ${bad[0]} "${esc(want[bad[0]])}" is not a positive number. Nothing was sent to IG.`);return;}
+  if(min!=null&&size<min){status("✗","var(--bear)",`<b>Not placed</b> (${when()}): size ${size} is below IG's minimum ${min}. Nothing was sent to IG.`);return;}
+  busy("⏳ Placing order…");
+  status("⏳","var(--line)",`Sending the ${dir} order to IG: size ${size}, entry ${edit.entry}, stop ${edit.stop}, target ${edit.target}… (started ${when()})`);
   fetch("/api/place-order",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},
-        body:JSON.stringify({ticker:tk,levels:{entry:r.entry,stop:r.stop,target:r.target}})})
+        body:JSON.stringify({ticker:tk,levels,edit,size})})
     .then(x=>x.json().then(j=>({ok:x.ok,j})))
     .then(({ok,j})=>{done();
-      if(!ok||!j.ok){status("✗","var(--bear)",`<b>Not placed</b> (${when()}): ${(j.error||j.status||"unknown").replace(/</g,"&lt;")}`);return;}
+      if(!ok||!j.ok){status("✗","var(--bear)",`<b>Not placed</b> (${when()}): ${esc(j.error||j.status||"unknown")}`);return;}
       status("✓","var(--bull)",`<b>Order placed on IG</b> (${when()}) — ${j.size!=null?`size ${+j.size}, `:""}status ${j.status||"ok"}. Manage or edit it in IG.`);
       IGWO.add(tk);render();})
     .catch(()=>{done();status("✗","var(--bear)",`<b>Placement failed</b> (${when()}) — no answer from the server. Check IG before trying again.`);});

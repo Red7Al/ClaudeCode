@@ -55,7 +55,7 @@ def wired(monkeypatch):
     monkeypatch.setattr(ig_shim, "session_for", lambda n=None: object())
     monkeypatch.setattr(ig_shim, "acting_session", lambda n=None: contextlib.nullcontext())
     monkeypatch.setattr(ig_shim, "place_hvf_order_from_sig",
-                        lambda sig, prof, src, mult: placed.append((sig, src)) or {"status": "WORKING"})
+                        lambda sig, prof, src, mult, **kw: placed.append((sig, src)) or {"status": "WORKING"})
     monkeypatch.setattr(run_session, "get_user_profile", lambda: {})
     return placed
 
@@ -99,7 +99,7 @@ def test_creating_orders_is_switched_on():
 # place_working_order defers any order further than the pre-order proximity band from entry as WATCHING
 # (no IG order) for a later job to promote. The button must not; the automated bridge keeps it.
 
-def _through_to_placement(monkeypatch, session):
+def _through_to_placement(monkeypatch, session, **kw):
     import ig_shim
     import config_store as cs
     import order_metrics
@@ -111,14 +111,15 @@ def _through_to_placement(monkeypatch, session):
     monkeypatch.setattr(ig_shim, "get_epic", lambda tk: "UA.D.ARM.DAILY.IP")
     monkeypatch.setattr(ig_shim, "get_snapshot", lambda epic: {"bid": 250.0, "offer": 250.2})
     monkeypatch.setattr(ig_shim, "get_account_balance", lambda: {"available": 10_000.0})
-    monkeypatch.setattr(ig_shim, "calculate_position_size", lambda *a, **kw: (1.0, 14.4))
+    monkeypatch.setattr(ig_shim, "calculate_position_size",   # records IG's minimum as the real one does
+                        lambda *a, **k: (ig_shim.LAST_MIN_SIZE.__setitem__("UA.D.ARM.DAILY.IP", 0.04) or 1.0, 14.4))
     monkeypatch.setattr(ig_shim, "_lwr_cfg", lambda name: (False,))
     seen = {}
     monkeypatch.setattr(ig_shim, "place_working_order", lambda **kw: seen.update(kw) or {"updated": True})
     sig = {"ticker": "ARM", "direction": "BUY", "hvf_type": "BULLISH", "hvf_signal": "TRIGGERED",
            "hvf_h3_level": 280.5, "hvf_stop_level": 266.1, "hvf_target": 360.2, "hvf_quality": 90,
            "hvf_risk_reward": 5.77, "hvf_timeframe": "daily-240", "index": "NASDAQ 100", "location": "US"}
-    ig_shim.place_hvf_order_from_sig(sig, {"name": "Alex", "user_id": "u1"}, session, 1.0)
+    ig_shim.place_hvf_order_from_sig(sig, {"name": "Alex", "user_id": "u1"}, session, 1.0, **kw)
     return seen
 
 
@@ -159,7 +160,7 @@ def test_the_confirm_dialog_shows_the_exact_levels_sent():
     assert "Order (Operations)" not in fn, "that tab is hidden; the message must not send the owner there"
 
 
-def _run_create_order(response, sel="NVDA"):
+def _run_create_order(response, sel="NVDA", typed="null", size_answer=None):
     """Run the page's createOrder in Node with IG's answer stubbed, recording what the user sees while it
     waits and after it answers."""
     from test_js_behaviour import NODE, run_js_async
@@ -174,15 +175,24 @@ def _run_create_order(response, sel="NVDA"):
       globalThis.document={body:{style:{cursor:""}}};
       globalThis.alert=m=>alerts.push(m);
       let SEL=%s; const AUTH="tok"; const IGWO=new Set(); const render=()=>{};
-      const disp=t=>t; const appConfirm=async()=>true;
+      const disp=t=>t; const sent=[]; const typed=%s;
+      // The confirm box: the user accepts the boxes as filled, or types the values in `typed`.
+      const appConfirm=async(msg,o)=>{globalThis.box=o; const v=Object.fromEntries(o.fields.map(f=>[f.key,f.value]));
+                                      return typed?{...v,...typed}:v;};
       const DATA=[{ticker:"NVDA",direction:"BULL",entry:190.5,stop:180,target:230,rr:3.9}];
-      globalThis.fetch=()=>{seen.push({button:els.createorderbtn.textContent,disabled:els.createorderbtn.disabled,
+      globalThis.fetch=(url,opt)=>{sent.push({url,body:JSON.parse(opt.body)});
+                            if(url==="/api/order-size")return %s;
+                            seen.push({button:els.createorderbtn.textContent,disabled:els.createorderbtn.disabled,
                                         cursor:document.body.style.cursor,status:els.orderstatus.innerHTML});
                             return %s;};
-    """ % (json.dumps(sel), response)
+    """ % (json.dumps(sel), typed,
+           size_answer or 'Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true,size:0.5,min_size:0.04,reason:null})})',
+           response)
     call = ("createOrder('NVDA').then(()=>new Promise(r=>setTimeout(r,0))).then(()=>({seen,alerts,"
             "after:{button:els.createorderbtn.textContent,disabled:els.createorderbtn.disabled,"
-            "cursor:document.body.style.cursor,status:els.orderstatus.innerHTML},igwo:[...IGWO]}))")
+            "cursor:document.body.style.cursor,status:els.orderstatus.innerHTML},igwo:[...IGWO],sent,"
+            "box:globalThis.box?{fields:globalThis.box.fields,rows:globalThis.box.rows,"
+            "rr:globalThis.box.live({entry:'100',stop:'90',target:'130'})}:null}))")
     return run_js_async(preamble, fn, call)
 
 
@@ -192,7 +202,7 @@ def test_create_order_shows_an_hourglass_then_the_status_ig_returned():
     out = _run_create_order('Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true,status:"PENDING",placed:true})})')
     during = out["seen"][0]
     assert during["disabled"] is True and "⏳" in during["button"] and during["cursor"] == "wait"
-    assert "⏳" in during["status"] and "Sending the BUY order to IG" in during["status"]
+    assert "⏳" in during["status"] and "Sending the BUY order to IG: size 0.5" in during["status"]
     after = out["after"]
     assert after["disabled"] is False and after["button"] == "Create an order" and after["cursor"] == ""
     assert "Order placed on IG" in after["status"] and "PENDING" in after["status"] and "✓" in after["status"]
@@ -236,7 +246,7 @@ def test_a_size_refusal_states_the_markets_own_minimum_and_the_money():
 
 def test_the_endpoint_reports_the_size_reason_not_the_last_log_line(wired, monkeypatch):
     import ig_shim, logging
-    def refuse(sig, profile, session, mult):
+    def refuse(sig, profile, session, mult, **kw):
         ig_shim.LAST_ORDER_SKIP["ARM"] = "ARM: account too small for IG's minimum deal. Its smallest allowed size 0.04"
         logging.getLogger().info("Missed trade ARM BUY ACCOUNT_TOO_SMALL - occurrence #2 today, alert suppressed (deduped)")
         return None
@@ -248,5 +258,76 @@ def test_the_endpoint_reports_the_size_reason_not_the_last_log_line(wired, monke
 
 def test_the_endpoint_returns_the_size_placed(wired, monkeypatch):
     import ig_shim
-    monkeypatch.setattr(ig_shim, "place_hvf_order_from_sig", lambda sig, prof, src, mult: {"size": 0.04})
+    monkeypatch.setattr(ig_shim, "place_hvf_order_from_sig", lambda sig, prof, src, mult, **kw: {"size": 0.04})
     assert _post({"entry": 280.5, "stop": 266.1, "target": 360.2}).get_json()["size"] == 0.04
+
+
+def test_every_number_in_the_confirm_box_is_editable_and_what_is_typed_is_sent():
+    """Owner 2026-10-21: "I want the option to override the volume" / "all numbers need to be editable" /
+    "R:R can be left read only"."""
+    out = _run_create_order('Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true,placed:true,size:0.1})})',
+                            typed='{entry:"191",stop:"181.5",target:"240",size:"0.1"}')
+    box = out["box"]
+    assert [f["key"] for f in box["fields"]] == ["entry", "stop", "target", "size"]
+    assert [f["value"] for f in box["fields"]] == ["190.5", "180", "230", "0.5"], "filled from the screen and the server's size"
+    assert "R:R" in [r[0] for r in box["rows"]] and "Entry" not in [r[0] for r in box["rows"]]
+    assert box["rr"] == {"R:R": "3.0"}, "R:R is read-only and follows the typed levels"
+    size_req, place_req = out["sent"]
+    assert size_req["url"] == "/api/order-size" and place_req["url"] == "/api/place-order"
+    assert place_req["body"]["edit"] == {"entry": 191, "stop": 181.5, "target": 240} and place_req["body"]["size"] == 0.1
+    assert place_req["body"]["levels"] == {"entry": 190.5, "stop": 180, "target": 230}, "the screen, for the stale-page check"
+    assert "size 0.1" in out["after"]["status"]
+
+
+def test_a_typed_size_below_igs_minimum_is_never_sent():
+    out = _run_create_order('Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true})})', typed='{size:"0.01"}')
+    assert [x["url"] for x in out["sent"]] == ["/api/order-size"]
+    assert "below IG's minimum 0.04" in out["after"]["status"]
+
+
+def test_the_size_box_holds_igs_minimum_when_the_account_cannot_cover_it():
+    out = _run_create_order('Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true})})',
+                            size_answer='Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true,size:0,min_size:0.04,reason:"MSCI: account too small"})})')
+    assert out["box"]["fields"][3]["value"] == "0.04"
+
+
+def test_the_server_applies_typed_levels_and_rejudges_rr(wired):
+    r = server.app.test_client().post("/api/place-order", headers={"X-Auth": "tok"},
+                                      json={"ticker": "ARM", "levels": {"entry": 280.5, "stop": 266.1, "target": 360.2},
+                                            "edit": {"entry": 281.0, "stop": 270.0, "target": 340.0}, "size": 0.2})
+    assert r.get_json()["ok"] is True
+    (sig, src), = wired
+    assert (sig["hvf_h3_level"], sig["hvf_stop_level"], sig["hvf_target"]) == (281.0, 270.0, 340.0)
+    assert sig["hvf_risk_reward"] == round(59 / 11, 2)
+
+
+def test_the_server_refuses_typed_levels_out_of_order(wired):
+    r = server.app.test_client().post("/api/place-order", headers={"X-Auth": "tok"},
+                                      json={"ticker": "ARM", "levels": {"entry": 280.5, "stop": 266.1, "target": 360.2},
+                                            "edit": {"entry": 281.0, "stop": 290.0, "target": 340.0}})
+    assert r.status_code == 400 and "stop < entry < target" in r.get_json()["error"] and wired == []
+
+
+def test_the_typed_size_is_the_size_placed(monkeypatch):
+    assert _through_to_placement(monkeypatch, "WEB_MANUAL", size_override=0.07)["size"] == 0.07
+
+
+def test_a_size_below_the_markets_minimum_is_refused_before_ig(monkeypatch):
+    import ig_shim
+    assert _through_to_placement(monkeypatch, "WEB_MANUAL", size_override=0.01) == {}
+    assert "below IG's minimum for this market (0.04)" in ig_shim.LAST_ORDER_SKIP.pop("ARM")
+
+
+def test_the_size_endpoint_sizes_the_order_on_screen_and_places_nothing(wired, monkeypatch):
+    import ig_shim
+    asked = []
+    monkeypatch.setattr(ig_shim, "size_working_order", lambda *a, **k: asked.append(a) or {
+        "size": 0.0, "epic": "E", "min_size": 0.04})
+    monkeypatch.setattr(ig_shim, "describe_size_skip", lambda tk, epic: f"{tk}: account too small")
+    r = server.app.test_client().post("/api/order-size", headers={"X-Auth": "tok"},
+                                      json={"ticker": "ARM", "levels": {"entry": 280.5, "stop": 266.1, "target": 360.2}})
+    assert r.get_json() == {"ok": True, "size": 0.0, "min_size": 0.04, "reason": "ARM: account too small"}
+    assert asked[0][:5] == ("ARM", "BUY", 280.5, 266.1, 360.2) and wired == []
+    stale = server.app.test_client().post("/api/order-size", headers={"X-Auth": "tok"},
+                                          json={"ticker": "ARM", "levels": {"entry": 1, "stop": 0.5, "target": 9}})
+    assert stale.status_code == 409, "the same stale-page check as placing"
