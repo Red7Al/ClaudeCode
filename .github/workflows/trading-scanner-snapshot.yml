@@ -1,4 +1,4 @@
-name: Scanner Snapshot Publish (2026-10-09)
+name: Scanner Snapshot Publish (2026-10-21)
 
 # Heavy Scanner compute runs on the Actions worker, never on the IONOS web process. Scheduling remains in
 # cron-job.org (GitHub-native cron is banned); the admin Refresh button dispatches this workflow as well.
@@ -108,6 +108,24 @@ jobs:
           path: hvf_web/snapshot.json
           if-no-files-found: warn
           retention-days: 7
+
+      # The same file, kept on IONOS OUTSIDE the web root for the Order Bridge and the Thread Precompute
+      # (owner 2026-10-21: the repository is PUBLIC and is for code, not reports). They trade on THIS evening
+      # snapshot all day, so it goes to its own folder: the site's copy is replaced by the morning one at
+      # ~05:05. Written beside the artifact until the readers move to it; then the artifact goes.
+      - name: Keep the evening snapshot on IONOS
+        if: always() && hashFiles('hvf_web/snapshot.json') != ''
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/ionos_evening_key"; printf '%s\n' "$IONOS_SSH_KEY" > "$key"; chmod 600 "$key"
+          ssh="ssh -i $key -p $IONOS_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new ${IONOS_USER}@${IONOS_HOST}"
+          dir=/home/www/data/evening
+          $ssh "umask 077; mkdir -p $dir; cat > $dir/snapshot.json.new" < hvf_web/snapshot.json
+          want=$(python -c "import json; print(json.load(open('hvf_web/snapshot.json', encoding='utf-8'))['generated_utc'])")
+          $ssh "set -eu; python3 -c \"import json,sys; d=json.load(open('$dir/snapshot.json.new', encoding='utf-8')); sys.exit(0 if d.get('generated_utc') == '$want' else 3)\"; mv -f $dir/snapshot.json.new $dir/snapshot.json"
+          echo "evening snapshot $want kept on IONOS"
 
       # Supabase Storage currently returns HTTP 402 after the scan has completed.  During that outage,
       # publish the same verified local candidate directly to IONOS, where the CGI web tier already has a
@@ -270,4 +288,6 @@ jobs:
     needs: publish
     if: always() && needs.publish.result == 'success'
     uses: ./.github/workflows/trading-report-summary.yml
+    with:
+      evening: true
     secrets: inherit

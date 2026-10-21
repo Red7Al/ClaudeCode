@@ -1,4 +1,4 @@
-name: Report Summary to IONOS (2026-10-13)
+name: Report Summary to IONOS (2026-10-21)
 
 # Builds the Scanner Report's summary file and installs it on IONOS, so the website reads a flat file
 # instead of the database (owner, repeatedly; 2026-10-09: "The read should be once or twice per day as the
@@ -7,6 +7,13 @@ name: Report Summary to IONOS (2026-10-13)
 # part of those two, or by hand.
 on:
   workflow_call:
+    inputs:
+      # Scanner Snapshot Publish passes true: its summary is also kept beside the evening snapshot on IONOS,
+      # for the Order Bridge, which trades on the evening snapshot all day.
+      evening:
+        type: boolean
+        required: false
+        default: false
   workflow_dispatch:
 
 env:
@@ -58,6 +65,20 @@ jobs:
           name: report-summary
           path: hvf_web/report_summary.json
           retention-days: 3
+
+      # Owner 2026-10-21: the repository is PUBLIC and is for code, not reports. The evening summary is kept
+      # on IONOS OUTSIDE the web root beside the evening snapshot (trading-scanner-snapshot.yml), for the
+      # Order Bridge. Written beside the artifact until the bridge moves to it; then the artifact goes.
+      - name: Keep the evening summary on IONOS
+        if: inputs.evening
+        run: |
+          set -euo pipefail
+          ssh="ssh -i $IONOS_KEY_FILE -p $IONOS_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new ${IONOS_USER}@${IONOS_HOST}"
+          dir=/home/www/data/evening
+          want=$(python -c "import json; print(json.load(open('hvf_web/report_summary.json', encoding='utf-8'))['generated_utc'])")
+          $ssh "umask 077; mkdir -p $dir; cat > $dir/report_summary.json.new" < hvf_web/report_summary.json
+          $ssh "set -eu; python3 -c \"import json,sys; d=json.load(open('$dir/report_summary.json.new', encoding='utf-8')); sys.exit(0 if d.get('generated_utc') == '$want' else 3)\"; mv -f $dir/report_summary.json.new $dir/report_summary.json"
+          echo "evening summary $want kept on IONOS"
 
       - name: Verify the installed summary belongs to the live snapshot
         run: |
