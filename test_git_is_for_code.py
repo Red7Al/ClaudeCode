@@ -16,3 +16,11 @@ def test_no_query_output_is_tracked():
     tracked = subprocess.run(["git", "ls-files", "query_output.txt", "query_trigger.txt"],
                              capture_output=True, text=True, check=True).stdout.split()
     assert tracked == [], tracked
+
+
+def test_the_secret_scan_saves_no_report_artifact():
+    """gitleaks-action uploads its report as an artifact by default (538 of them on 2026-10-21)."""
+    import yaml
+    wf = yaml.safe_load(open(".github/workflows/trading-secret-scan.yml", encoding="utf-8"))
+    step = next(s for s in wf["jobs"]["gitleaks"]["steps"] if "gitleaks-action" in str(s.get("uses")))
+    assert step["env"]["GITLEAKS_ENABLE_UPLOAD_ARTIFACT"] is False
