@@ -1,4 +1,4 @@
-name: Best Settings Full-grid Audit
+name: Best Settings Full-grid Audit (2026-10-21)
 
 # cron-job.org dispatches this at 07:50 UTC Mon-Sat -- AFTER the HVF Daily Report has published
 # the day's snapshot (it starts 05:30 and takes 82-109 minutes). It used to run at 05:45, 15
@@ -33,4 +33,14 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
       - run: python run_schema.py
+      # The price bars file, SHADOW (owner 2026-10-21: read files, not the database) -- the database still
+      # answers; the file's answer is compared in the log. A failed fetch exports nothing (database as before).
+      - name: Fetch the price bars file (shadow)
+        continue-on-error: true
+        env:
+          IONOS_HOST:    ${{ secrets.IONOS_HOST }}
+          IONOS_USER:    ${{ secrets.IONOS_USER }}
+          IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: bash .github/scripts/fetch_price_bars.sh shadow
       - run: python run_best_settings_audit.py

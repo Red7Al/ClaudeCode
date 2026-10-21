@@ -1,4 +1,4 @@
-name: Scanner Snapshot Publish (2026-10-21b)
+name: Scanner Snapshot Publish (2026-10-21c)
 
 # Heavy Scanner compute runs on the Actions worker, never on the IONOS web process. Scheduling remains in
 # cron-job.org (GitHub-native cron is banned); the admin Refresh button dispatches this workflow as well.
@@ -229,6 +229,18 @@ jobs:
         if: always()
         continue-on-error: true
         run: python check_snapshot_publication.py
+
+      # The price bars file for the steps below (owner 2026-10-21: read files, not the database). MEASURED
+      # 2026-10-21 19:32-19:36: these steps read ~1.57M bar rows from price_history per run, ~1.11M of them in
+      # the Best Settings step. SHADOW: the database still answers and the file's answer is compared with it
+      # in the log ("PRICE-BARS SHADOW"); "on" only after the comparisons show no difference. A failed fetch
+      # exports nothing, so the steps read the database exactly as before.
+      - name: Fetch the price bars file (shadow)
+        if: ${{ steps.publish.outcome == 'success' || steps.ionos_fallback.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: bash .github/scripts/fetch_price_bars.sh shadow
 
       - name: Warm the precomputed winners payloads
         if: ${{ steps.publish.outcome == 'success' || steps.ionos_fallback.outcome == 'success' }}

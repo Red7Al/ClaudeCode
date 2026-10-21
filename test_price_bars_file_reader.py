@@ -124,3 +124,38 @@ def test_a_damaged_file_falls_back_to_the_database(bars_dir, monkeypatch):
     db = FakeDb(ROWS)
     server._perf_bars(db, CUT, lookback_days=3)
     assert db.bar_queries == 1
+
+
+def test_the_evening_publish_and_the_morning_best_settings_fetch_the_file_in_shadow():
+    """MEASURED 2026-10-21 19:32-19:36: the publish run's winners + Best Settings steps read ~1.57M bar rows."""
+    import yaml
+    pub = yaml.safe_load(open(".github/workflows/trading-scanner-snapshot.yml", encoding="utf-8"))
+    steps = pub["jobs"]["publish"]["steps"]
+    names = [s.get("name") or "" for s in steps]
+    fetch = names.index("Fetch the price bars file (shadow)")
+    assert fetch < names.index("Warm the precomputed winners payloads") < names.index("Precompute the public Best Settings cards")
+    assert steps[fetch]["run"] == "bash .github/scripts/fetch_price_bars.sh shadow"
+    assert steps[fetch]["continue-on-error"] is True
+    bs = yaml.safe_load(open(".github/workflows/trading-best-settings-audit.yml", encoding="utf-8"))
+    steps = bs["jobs"]["audit"]["steps"]
+    runs = [str(s.get("run", "")) for s in steps]
+    assert runs.index("bash .github/scripts/fetch_price_bars.sh shadow") < runs.index("python run_best_settings_audit.py")
+
+
+def test_the_fetch_script_refuses_any_mode_but_shadow_or_on(tmp_path):
+    import os, shutil, subprocess
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("no bash")
+    r = subprocess.run([bash, ".github/scripts/fetch_price_bars.sh", "off"], capture_output=True, text=True,
+                       env={"PATH": os.environ["PATH"], "RUNNER_TEMP": str(tmp_path)})
+    assert r.returncode == 2 and "shadow or on" in r.stderr
+
+
+def test_shadow_prints_one_summary_line(bars_dir, monkeypatch, capsys):
+    monkeypatch.setenv("PRICE_BARS", "shadow")
+    price_bars._SHADOW.update(calls=0, rows=0, different=0)
+    monkeypatch.setattr(price_bars.atexit, "register", lambda f: None)
+    server._perf_bars(FakeDb(ROWS), CUT, lookback_days=3)
+    price_bars._shadow_summary()
+    assert "PRICE-BARS SHADOW SUMMARY: 1 calls, 3 rows from the database, 0 different -- IDENTICAL" in capsys.readouterr().err

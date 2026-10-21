@@ -21,12 +21,14 @@ has finished, and its own verify step compares every ticker's sums with the data
 A request reaching below the file's retention cutoff goes to the database: the database may still hold a day the
 prune has not reached yet, and the file never does.
 """
+import atexit
 import csv
 import datetime as dt
 import gzip
 import json
 import logging
 import os
+import sys
 
 log = logging.getLogger(__name__)
 
@@ -124,6 +126,25 @@ def _differences(db_out, file_out, limit=5):
     return diffs
 
 
+_SHADOW = {"calls": 0, "rows": 0, "different": 0}
+
+
+def _shadow_summary():
+    s = _SHADOW
+    print(f"PRICE-BARS SHADOW SUMMARY: {s['calls']} calls, {s['rows']:,} rows from the database, "
+          f"{s['different']} different -- {'IDENTICAL' if not s['different'] else 'NOT IDENTICAL'}", file=sys.stderr)
+
+
+def _record_shadow(rows, different):
+    """Count every shadow comparison and print one summary line when the process ends -- the jobs do not all
+    log INFO, and the proof must be in the job log whatever they configure."""
+    if not _SHADOW["calls"]:
+        atexit.register(_shadow_summary)
+    _SHADOW["calls"] += 1
+    _SHADOW["rows"] += rows
+    _SHADOW["different"] += int(different)
+
+
 def serve(db, items, back, from_database):
     """The bars for `items` [(ticker, from_date)] widened back by `back` (a timedelta), as
     {ticker: [(bar_date, high, low, close, volume), ...]}. `from_database` is the caller's own query."""
@@ -139,6 +160,7 @@ def serve(db, items, back, from_database):
     db_out = from_database()
     diffs = _differences(db_out, file_out)
     rows = sum(len(v) for v in db_out.values())
+    _record_shadow(rows, bool(diffs))
     if diffs:
         log.warning("PRICE-BARS SHADOW DIFFERENT: %d tickers, %s rows from the database; %s",
                     len(items), f"{rows:,}", "; ".join(diffs))
