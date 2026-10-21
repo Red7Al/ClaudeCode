@@ -482,6 +482,35 @@ MIGRATIONS = [
         "price_history: index on bar_date",
         "CREATE INDEX IF NOT EXISTS idx_price_history_bar_date ON price_history(bar_date)"
     ),
+    # Every change to a bar stamps updated_at, whoever makes it (owner 2026-10-21: read files, not the
+    # database). The bars file reads only rows stamped since it was built, so a write that does not stamp is a
+    # change the file never sees. price_store.py stamps its own writes; a hand-written SQL fix did not --
+    # MEASURED 2026-10-21 in a rolled-back transaction: `update price_history set high = high` left
+    # updated_at unchanged. Plain `=` assignment, not `:=`, which pg8000 would read as a parameter.
+    (
+        "price_history: function that stamps updated_at",
+        """CREATE OR REPLACE FUNCTION price_history_stamp_updated_at() RETURNS trigger
+           LANGUAGE plpgsql AS $$
+           BEGIN
+               NEW.updated_at = now();
+               RETURN NEW;
+           END $$"""
+    ),
+    (
+        # Created only when absent: CREATE OR REPLACE TRIGGER would take a SHARE ROW EXCLUSIVE lock on
+        # price_history on every run of this script, including while the price refresh is writing.
+        "price_history: trigger that stamps updated_at on every update",
+        """DO $$
+           BEGIN
+               IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                              WHERE tgname = 'price_history_stamp_updated_at'
+                                AND tgrelid = 'price_history'::regclass) THEN
+                   CREATE TRIGGER price_history_stamp_updated_at
+                       BEFORE UPDATE ON price_history
+                       FOR EACH ROW EXECUTE FUNCTION price_history_stamp_updated_at();
+               END IF;
+           END $$"""
+    ),
     (
         "create price_audit_log",
         """CREATE TABLE IF NOT EXISTS price_audit_log (
