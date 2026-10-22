@@ -132,19 +132,33 @@ def _bars_bulk(tickers, end, db, chunk=200):
     shared with the live web path and a different shape here would make the stored metric and the live
     metric disagree about the same instrument.
     """
-    start = str(end - dt.timedelta(days=LOOKBACK_DAYS))
-    out = {}
+    start = end - dt.timedelta(days=LOOKBACK_DAYS)
     items = sorted({t for t in tickers if t})
-    for offset in range(0, len(items), chunk):
-        batch = items[offset:offset + chunk]
-        params = {f"t{i}": t for i, t in enumerate(batch)}
-        slots = ",".join(f":t{i}" for i in range(len(batch)))
-        rows = db.run(
-            f"select ticker, bar_date, high, low, close, volume from price_history "
-            f"where ticker in ({slots}) and bar_date >= :start and bar_date <= :end "
-            f"order by ticker, bar_date",
-            start=start, end=str(end), **params) or []
-        for ticker, bar_date, high, low, close, volume in rows:
+
+    def from_database():
+        got = {}
+        for offset in range(0, len(items), chunk):
+            batch = items[offset:offset + chunk]
+            params = {f"t{i}": t for i, t in enumerate(batch)}
+            slots = ",".join(f":t{i}" for i in range(len(batch)))
+            rows = db.run(
+                f"select ticker, bar_date, high, low, close, volume from price_history "
+                f"where ticker in ({slots}) and bar_date >= :start "
+                f"order by ticker, bar_date",
+                start=str(start), **params) or []
+            for ticker, bar_date, high, low, close, volume in rows:
+                got.setdefault(ticker, []).append((bar_date, high, low, close, volume))
+        return got
+
+    # price_bars first (owner 2026-10-21: read files, not the database) -- the one reader of the price bars file;
+    # the query above is its fallback and its shadow reference. The upper bound is applied below, to both.
+    import price_bars
+    raw = price_bars.serve(db, [(t, start) for t in items], dt.timedelta(0), from_database)
+    out = {}
+    for ticker, bars in raw.items():
+        for bar_date, high, low, close, volume in bars:
+            if str(bar_date)[:10] > str(end)[:10]:
+                continue
             try:
                 vol = float(volume) if volume is not None and volume == volume else 0.0
                 out.setdefault(ticker, []).append(

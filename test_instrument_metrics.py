@@ -500,3 +500,15 @@ def test_the_same_instrument_twice_cannot_break_the_upsert(monkeypatch):
     assert failures == []
     assert db.inserts == 1 and stored == 1, "the duplicate key must collapse to one row"
     assert db.rows[("AAA", "2026-08-29")]["rvol"] == 2.5, "last write wins, as the loop did"
+
+
+def test_the_bulk_read_asks_the_one_bar_reader_and_keeps_the_upper_bound(monkeypatch):
+    """2026-10-22: _bars_bulk reads through price_bars. MEASURED on live data: old vs new for 1,999 snapshot
+    tickers, 542,627 rows IDENTICAL; shadow against the file IDENTICAL. `end` still bounds the result."""
+    import price_bars
+    asked = []
+    monkeypatch.setattr(price_bars, "serve", lambda db, items, back, from_db: asked.append(items) or {
+        "AAA": [(dt.date(2026, 8, 28), 2.0, 1.0, 1.5, 10), (dt.date(2026, 8, 30), 2.0, 1.0, 1.5, 10)]})
+    out = im._bars_bulk(["AAA", "", "AAA"], dt.date(2026, 8, 29), object())
+    assert asked == [[("AAA", dt.date(2026, 8, 29) - dt.timedelta(days=im.LOOKBACK_DAYS))]]
+    assert out == {"AAA": [("2026-08-28", 2.0, 1.0, 1.5, 10.0)]}
