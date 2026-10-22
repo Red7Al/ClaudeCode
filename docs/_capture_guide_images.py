@@ -30,6 +30,9 @@ CHROME = next(p for p in (r"C:\Program Files\Google\Chrome\Application\chrome.ex
                           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
                           shutil.which("google-chrome") or "", shutil.which("chromium") or "") if p and os.path.exists(p))
 
+_PROBE = ("(()=>{const d=document.createElement('div');d.id='guide-warn-probe';"
+          "d.style.cssText='max-width:820px;margin:20px';document.querySelector('#view-config').prepend(d);})();")
+
 # (file, steps before the shot, CSS selector to crop to). A step is the stub's state (a dict) or JavaScript run
 # in the page, in order.
 SHOTS = [
@@ -38,7 +41,8 @@ SHOTS = [
      '#view-config .confpanel[data-panel="IG"]'),
     ("ig-credentials-saved.png", [{'ig_set': True}, "openIgSettings()"],
      '#view-config .confpanel[data-panel="IG"]'),
-    ("ig-no-credentials-warning.png", [{'ig_set': False}, "showTab('config');renderIgCredWarn('guide-warn-probe')"],
+    # The warning renders into an element on the IG pages; the shot gives it one of its own.
+    ("ig-no-credentials-warning.png", [{'ig_set': False}, "showTab('config');" + _PROBE + "renderIgCredWarn('guide-warn-probe')"],
      "#guide-warn-probe"),
     ("tab-visibility.png", [{'ig_set': False}, "showTab('config');confShow('tabvis')"],
      '#view-config .confpanel[data-panel="tabvis"]'),
@@ -76,9 +80,6 @@ async def shoot(page, name, steps, selector):
             await page.js(f"fetch('/stub/state',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
                           f"body:{json.dumps(json.dumps(st))}}}).then(r=>r.ok)")
             continue
-        if "guide-warn-probe" in st:   # the warning renders into an element on the IG pages; give it one
-            await page.js("(()=>{const d=document.createElement('div');d.id='guide-warn-probe';"
-                          "d.style.cssText='max-width:820px;margin:20px';document.querySelector('#view-config').prepend(d);})()")
         await page.js(st)
         await asyncio.sleep(2.5)
     rect = await page.js(f"""(()=>{{const e=[...document.querySelectorAll({json.dumps(selector)})]

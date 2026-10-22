@@ -4,6 +4,7 @@ credentials, no scanner data. Local only (127.0.0.1); it never reads the databas
 
     ./.venv/Scripts/python.exe docs/_guide_stub_server.py [port]
 """
+import json
 import os
 import sys
 
@@ -47,7 +48,7 @@ def credentials():
     return jsonify({"sections": [{
         "id": "IG", "scope": "ig", "admin_only": False, "editable": True,
         "note": "Your own IG account — each user trades their own account.",
-        "fields": [{"key": k, "label": label, "set": s, "masked": "••••" + "WXYZ"[:4] if s else ""}
+        "fields": [{"key": k, "label": label, "set": s, "masked": "••••WXYZ" if s else ""}
                    for k, label in IG_FIELDS]}]})
 
 
@@ -60,7 +61,6 @@ def ig_status():
 
 @app.route("/api/guides")
 def guides():
-    import json
     with open(os.path.join(HERE, "guides", "_manifest.json"), encoding="utf-8") as fh:
         return jsonify({"guides": json.load(fh)})
 

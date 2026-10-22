@@ -4066,6 +4066,7 @@ def _sqa_band(v, edges, fmt="{}–{}"):
 
 _SQA_ROWS = {"ts": 0.0, "rows": None}
 _SQA_RAW = {"version": None, "raw": None}
+_NOW_CLOSE = {"key": None, "last": {}}   # _sqa_all_rows' latest-close fallback, keyed on the price-data version
 
 
 def _squeeze_history_raw(db, maxrr):
@@ -4094,6 +4095,34 @@ def _squeeze_history_raw(db, maxrr):
         "and risk_reward >= 3 and risk_reward <= :maxrr", maxrr=maxrr) or []
     _SQA_RAW.update(version=key, raw=raw)
     return raw
+
+
+def _latest_closes(tickers: list) -> dict:
+    """{ticker: latest stored close} for `tickers` (sorted). Asked of price_history again only when it has
+    changed -- the same version _perf_bars keys on: the latest close moves at a price refresh, not every
+    _SQA_TTL (the warm loop's rebuild)."""
+    from db_pool import get_db
+    db = get_db()
+    try:
+        version = _price_data_version(db)
+        key = (version, tuple(tickers)) if version else None
+        if key is not None and _NOW_CLOSE["key"] == key:
+            return _NOW_CLOSE["last"]
+        # LATERAL per-ticker index probe (user 2026-08-03 P1 FIX): a `distinct on (ticker) ...
+        # where ticker in (<1388 params>)` degenerated into a full sort of the 1.74M-row
+        # price_history — ~50s — which hung /api/performance ("processing the 12-month replay…"
+        # forever) after the 5-year backfill. unnest+LATERAL(LIMIT 1) does one index scan per
+        # ticker on idx_price_history_ticker_date instead: ~2.4s for the same 1388 tickers.
+        last = {tk: (float(cl) if cl is not None else None)
+                for tk, cl in (db.run(
+                    "select t.tk, ph.close from unnest(:tks::text[]) as t(tk) "
+                    "cross join lateral (select close from price_history p "
+                    "where p.ticker = t.tk order by bar_date desc limit 1) ph",
+                    tks=tickers) or [])}
+    finally:
+        db.close()
+    _NOW_CLOSE.update(key=key, last=last)
+    return last
 
 
 def _sqa_all_rows():
@@ -4189,22 +4218,7 @@ def _sqa_all_rows():
     missing = sorted({r["ticker"] for r in rows if r.get("current_price") is None})
     if missing:
         try:
-            from db_pool import get_db
-            db = get_db()
-            try:
-                # LATERAL per-ticker index probe (user 2026-08-03 P1 FIX): a `distinct on (ticker) ...
-                # where ticker in (<1388 params>)` degenerated into a full sort of the 1.74M-row
-                # price_history — ~50s — which hung /api/performance ("processing the 12-month replay…"
-                # forever) after the 5-year backfill. unnest+LATERAL(LIMIT 1) does one index scan per
-                # ticker on idx_price_history_ticker_date instead: ~2.4s for the same 1388 tickers.
-                last = {tk: (float(cl) if cl is not None else None)
-                        for tk, cl in (db.run(
-                            "select t.tk, ph.close from unnest(:tks::text[]) as t(tk) "
-                            "cross join lateral (select close from price_history p "
-                            "where p.ticker = t.tk order by bar_date desc limit 1) ph",
-                            tks=missing) or [])}
-            finally:
-                db.close()
+            last = _latest_closes(missing)
             for r in rows:
                 if r.get("current_price") is None and last.get(r["ticker"]) is not None:
                     r["current_price"] = last[r["ticker"]]

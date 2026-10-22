@@ -17,11 +17,15 @@ const OUT_DIR = path.join(__dirname, "guides");
 // Screenshots of the real screens with placeholder data (docs/_capture_guide_images.py, owner 2026-10-22).
 const IMG_DIR = path.join(__dirname, "guide_images");
 
-// A PNG's own pixel size, from its IHDR header -- both renderings keep the shot's proportions.
+// A PNG's own pixel size, from its IHDR header -- both renderings keep the shot's proportions. Read once for both.
+const PNGS = new Map();
 function pngImage(file) {
-  const buf = fs.readFileSync(path.join(IMG_DIR, file));
-  if (buf.toString("ascii", 1, 4) !== "PNG") throw new Error(file + " is not a PNG");
-  return { buf, w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+  if (!PNGS.has(file)) {
+    const buf = fs.readFileSync(path.join(IMG_DIR, file));
+    if (buf.toString("ascii", 1, 4) !== "PNG") throw new Error(file + " is not a PNG");
+    PNGS.set(file, { buf, w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) });
+  }
+  return PNGS.get(file);
 }
 
 // ── block helpers ───────────────────────────────────────────────────────────
