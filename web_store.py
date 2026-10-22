@@ -153,17 +153,19 @@ def save_json_store_versioned(store_key: str, payload, expected_revision=None):
             finally:
                 db.close()
         if revision is not None:
-            _write_precomputed_file(store_key, encoded)
+            _write_precomputed_file(store_key, encoded, revision)
         return revision
     except Exception as e:
         log.warning(f"save_json_store failed for {store_key}: {e}")
         return None
 
 
-def _write_precomputed_file(store_key: str, encoded: str) -> None:
-    """With PRECOMPUTED_OUT set (a GitHub job), also write the stored document to <dir>/<key>.json, for
-    .github/scripts/keep_precomputed_on_ionos.sh to copy to IONOS, where the website reads it instead of
-    fetching it from Supabase (owner 2026-10-22). Never fails the save: the database copy is already stored."""
+def _write_precomputed_file(store_key: str, encoded: str, revision: int) -> None:
+    """With PRECOMPUTED_OUT set (a GitHub job), also write the stored document to <dir>/<key>.json as
+    {"store_key", "revision", "doc"}, for .github/scripts/keep_precomputed_on_ionos.sh to copy to IONOS, where
+    the website reads it instead of fetching it from Supabase (owner 2026-10-22). The revision is the one this
+    save produced, so the site can prove the file IS the stored document (read_json_store_revision) with a
+    one-row probe. Never fails the save: the database copy is already stored."""
     out = os.environ.get("PRECOMPUTED_OUT")
     if not out:
         return
@@ -171,10 +173,22 @@ def _write_precomputed_file(store_key: str, encoded: str) -> None:
         os.makedirs(out, exist_ok=True)
         tmp = os.path.join(out, store_key + ".json.tmp")
         with open(tmp, "w", encoding="utf-8") as fh:
-            fh.write(encoded)
+            fh.write('{"store_key":' + json.dumps(store_key) + ',"revision":' + str(int(revision))
+                     + ',"doc":' + encoded + '}')
         os.replace(tmp, os.path.join(out, store_key + ".json"))
     except Exception as e:
         log.warning(f"precomputed file for {store_key} not written: {e}")
+
+
+def read_json_store_revision(store_key: str):
+    """The stored document's revision (one row, one integer) -- None when there is no such document.
+    Raises when the database cannot be read, so a caller can tell an outage from absence."""
+    db = _db()
+    try:
+        rows = db.run("select revision from web_json_store where store_key=:k", k=store_key) or []
+    finally:
+        db.close()
+    return int(rows[0][0]) if rows else None
 
 
 def save_json_store(store_key: str, payload) -> bool:

@@ -19,6 +19,19 @@ import run_thread_precompute as rtp
 from hvf_web import server
 
 
+@pytest.fixture(autouse=True)
+def _no_live_store(monkeypatch, tmp_path):
+    """The thread is read through server._stored_doc, which asks the store's revision first; every test here
+    answers that itself (never the live database) and starts with empty caches and no IONOS file."""
+    monkeypatch.setattr("web_store.read_json_store_revision", lambda key: 1, raising=False)
+    monkeypatch.setattr(server, "_PRECOMPUTED_DIR", str(tmp_path))
+    for c in (server._REVISION_CACHE, server._STORED_DOC_CACHE, server._PRECOMPUTED_CACHE):
+        c.clear()
+    yield
+    for c in (server._REVISION_CACHE, server._STORED_DOC_CACHE, server._PRECOMPUTED_CACHE):
+        c.clear()
+
+
 def test_the_endpoint_reads_the_store_and_never_builds(monkeypatch):
     """The whole point: serving must be a store read."""
     monkeypatch.setattr("web_store.load_json_store",

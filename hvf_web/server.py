@@ -2156,8 +2156,7 @@ def _thread_stored(ticker: str) -> list:
     over a good copy.
     """
     try:
-        import web_store
-        doc = web_store.load_json_store(_THREAD_STORE_KEY) or {}
+        doc = _stored_doc(_THREAD_STORE_KEY) or {}
     except Exception as e:
         log.warning(f"thread precompute unavailable for {ticker}: {e}")
         return []
@@ -2642,8 +2641,7 @@ def _panel_records(store_key: str) -> dict:
     if slot["data"] is not None and now - slot["ts"] < _PANEL_TTL:
         return slot["data"]
     try:
-        import web_store
-        doc = web_store.load_json_store(store_key)
+        doc = _stored_doc(store_key)
     except Exception as ex:
         log.warning(f"{store_key} unavailable ({ex}); serving whatever is already cached")
         return slot["data"] or {}
@@ -3709,12 +3707,13 @@ _PRECOMPUTED_CACHE: dict = {}
 
 
 def _precomputed_file(store_key: str):
-    """The document a job wrote for `store_key`, from its file -- None when there is no readable file."""
+    """(revision, document) a job wrote for `store_key`, from its file -- (None, None) when there is no
+    readable file. A file written before revisions were recorded is (None, document)."""
     path = os.path.join(_PRECOMPUTED_DIR, store_key + ".json")
     try:
         st = os.stat(path)
     except OSError:
-        return None
+        return None, None
     stamp = (st.st_mtime_ns, st.st_size)
     hit = _PRECOMPUTED_CACHE.get(store_key)
     if hit and hit[0] == stamp:
@@ -3724,7 +3723,11 @@ def _precomputed_file(store_key: str):
             doc = json.load(fh)
     except Exception as ex:
         log.warning(f"precomputed file {store_key} unreadable ({ex}); reading the database")
-        return None
+        return None, None
+    if isinstance(doc, dict) and doc.get("store_key") == store_key and "doc" in doc:
+        doc = (doc.get("revision"), doc["doc"])
+    else:
+        doc = (None, doc)
     _PRECOMPUTED_CACHE[store_key] = (stamp, doc)
     return doc
 
@@ -3740,7 +3743,7 @@ def _current_precomputed(store_key: str):
                     and (doc.get("dataset") or "") == (_load_snapshot().get("generated_utc") or ""))
         except Exception:
             return False
-    doc = _precomputed_file(store_key)
+    doc = _precomputed_file(store_key)[1]
     if not current(doc):
         try:
             import web_store
@@ -3749,6 +3752,43 @@ def _current_precomputed(store_key: str):
             log.warning(f"precomputed {store_key} unavailable ({ex}); building live")
             return None
     return doc["payload"] if current(doc) else None
+
+
+_REVISION_TTL = 120          # seconds a revision probe is trusted before it is asked again
+_REVISION_CACHE: dict = {}   # store_key -> (asked_at, revision)
+_STORED_DOC_CACHE: dict = {}  # store_key -> (revision, document) last fetched from the database
+
+
+def _stored_doc(store_key: str):
+    """A stored document that carries no scan date (thread text, fundamentals): the IONOS file when its
+    revision is the database's, else the database's document, fetched ONCE per revision and held in memory.
+    The proof is a one-row revision probe, asked at most every _REVISION_TTL seconds, instead of the whole
+    document per request (thread_by_ticker, 0.86 MB, was fetched on EVERY instrument detail view; MEASURED
+    2026-10-22). If the database cannot be read the file is served as it is (owner 2026-10-08: the site keeps
+    serving from IONOS when Supabase refuses); with neither, None."""
+    import web_store
+    now = _time.time()
+    hit = _REVISION_CACHE.get(store_key)
+    file_rev, file_doc = _precomputed_file(store_key)
+    if hit and now - hit[0] < _REVISION_TTL:
+        rev = hit[1]
+    else:
+        try:
+            rev = web_store.read_json_store_revision(store_key)
+        except Exception as ex:
+            log.warning(f"{store_key} revision unavailable ({ex}); serving the IONOS file")
+            return file_doc if file_doc is not None else (_STORED_DOC_CACHE.get(store_key) or (None, None))[1]
+        _REVISION_CACHE[store_key] = (now, rev)
+    if rev is None:
+        return None
+    if file_doc is not None and file_rev == rev:
+        return file_doc
+    held = _STORED_DOC_CACHE.get(store_key)
+    if held and held[0] == rev:
+        return held[1]
+    doc = web_store.load_json_store(store_key)
+    _STORED_DOC_CACHE[store_key] = (rev, doc)
+    return doc
 
 
 def _perf_stored():
