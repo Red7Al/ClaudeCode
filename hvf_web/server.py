@@ -3697,6 +3697,60 @@ def _kick_perf_warm():
 _PERF_STORE_KEY = "performance_rows_12m"
 
 
+# Precomputed payloads as FILES on IONOS (owner 2026-10-22: "the best settings can be in summary files - can't
+# they?"). MEASURED 2026-10-22: winners_rows_3y is 7.27 MB, performance_rows_12m 3.29 MB and winners_rows_1y
+# 2.67 MB as JSON text, and the endpoints fetched the whole document from Supabase on EVERY request -- ~13 MB
+# of egress each time someone opened Best Settings / Performance. The jobs that store them in web_json_store
+# also write them as files (web_store.save_json_store_versioned, PRECOMPUTED_OUT) and copy them into data/
+# (.github/scripts/keep_precomputed_on_ionos.sh) -- which deploy never overwrites, the site answers 403 for, and
+# the web process reads as group www-data (/home/www/data is 0700, owner only). Held in memory until it changes.
+_PRECOMPUTED_DIR = os.environ.get("PRECOMPUTED_DIR") or os.path.join(_DATA_DIR, "precomputed")
+_PRECOMPUTED_CACHE: dict = {}
+
+
+def _precomputed_file(store_key: str):
+    """The document a job wrote for `store_key`, from its file -- None when there is no readable file."""
+    path = os.path.join(_PRECOMPUTED_DIR, store_key + ".json")
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    stamp = (st.st_mtime_ns, st.st_size)
+    hit = _PRECOMPUTED_CACHE.get(store_key)
+    if hit and hit[0] == stamp:
+        return hit[1]
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except Exception as ex:
+        log.warning(f"precomputed file {store_key} unreadable ({ex}); reading the database")
+        return None
+    _PRECOMPUTED_CACHE[store_key] = (stamp, doc)
+    return doc
+
+
+def _current_precomputed(store_key: str):
+    """The stored payload for `store_key` if it was built from the dataset now in play and within
+    _WINNERS_STORE_MAX_AGE -- from the file when that copy is current, else from web_json_store. Else None.
+    A missed, failed or stale precompute makes the page slow, never wrong."""
+    def current(doc):
+        try:
+            return (isinstance(doc, dict) and isinstance(doc.get("payload"), dict)
+                    and _time.time() - float(doc.get("built_at") or 0) <= _WINNERS_STORE_MAX_AGE
+                    and (doc.get("dataset") or "") == (_load_snapshot().get("generated_utc") or ""))
+        except Exception:
+            return False
+    doc = _precomputed_file(store_key)
+    if not current(doc):
+        try:
+            import web_store
+            doc = web_store.load_json_store(store_key)
+        except Exception as ex:
+            log.warning(f"precomputed {store_key} unavailable ({ex}); building live")
+            return None
+    return doc["payload"] if current(doc) else None
+
+
 def _perf_stored():
     """A precomputed /api/performance payload, but only if it was built from the dataset now in play.
 
@@ -3716,22 +3770,7 @@ def _perf_stored():
     Deliberately mirrors _winners_stored, including reusing its max age rather than declaring a second
     definition of "too old". A missed, failed or stale precompute makes the page slow, never wrong.
     """
-    try:
-        import web_store
-        doc = web_store.load_json_store(_PERF_STORE_KEY)
-    except Exception as ex:
-        log.warning(f"performance precompute unavailable ({ex}); building live")
-        return None
-    if not isinstance(doc, dict) or not isinstance(doc.get("payload"), dict):
-        return None
-    try:
-        if _time.time() - float(doc.get("built_at") or 0) > _WINNERS_STORE_MAX_AGE:
-            return None
-        if (doc.get("dataset") or "") != (_load_snapshot().get("generated_utc") or ""):
-            return None       # built from a different scan; the live build is the correct answer
-    except Exception:
-        return None
-    return doc["payload"]
+    return _current_precomputed(_PERF_STORE_KEY)
 
 
 @app.route("/api/performance")
@@ -5377,22 +5416,7 @@ def api_winners():
 
 def _winners_stored(years: int):
     """A precomputed payload, but only if it was built from the dataset now in play. Else None."""
-    try:
-        import web_store
-        doc = web_store.load_json_store(_winners_store_key(years))
-    except Exception as ex:
-        log.warning(f"winners precompute unavailable ({ex}); building live")
-        return None
-    if not isinstance(doc, dict) or not isinstance(doc.get("payload"), dict):
-        return None
-    try:
-        if _time.time() - float(doc.get("built_at") or 0) > _WINNERS_STORE_MAX_AGE:
-            return None
-        if (doc.get("dataset") or "") != (_load_snapshot().get("generated_utc") or ""):
-            return None       # built from a different scan; the live build is the correct answer
-    except Exception:
-        return None
-    return doc["payload"]
+    return _current_precomputed(_winners_store_key(years))
 
 
 # ----------------------------------------------------------------------------------------------------

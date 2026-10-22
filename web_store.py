@@ -149,12 +149,32 @@ def save_json_store_versioned(store_key: str, payload, expected_revision=None):
                                        revision=revision+1, updated_at=now()
                                       where store_key=:k and revision=:r returning revision""",
                                   k=store_key, p=encoded, r=int(expected_revision)) or []
-                return int(rows[0][0]) if rows else None
+                revision = int(rows[0][0]) if rows else None
             finally:
                 db.close()
+        if revision is not None:
+            _write_precomputed_file(store_key, encoded)
+        return revision
     except Exception as e:
         log.warning(f"save_json_store failed for {store_key}: {e}")
         return None
+
+
+def _write_precomputed_file(store_key: str, encoded: str) -> None:
+    """With PRECOMPUTED_OUT set (a GitHub job), also write the stored document to <dir>/<key>.json, for
+    .github/scripts/keep_precomputed_on_ionos.sh to copy to IONOS, where the website reads it instead of
+    fetching it from Supabase (owner 2026-10-22). Never fails the save: the database copy is already stored."""
+    out = os.environ.get("PRECOMPUTED_OUT")
+    if not out:
+        return
+    try:
+        os.makedirs(out, exist_ok=True)
+        tmp = os.path.join(out, store_key + ".json.tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(encoded)
+        os.replace(tmp, os.path.join(out, store_key + ".json"))
+    except Exception as e:
+        log.warning(f"precomputed file for {store_key} not written: {e}")
 
 
 def save_json_store(store_key: str, payload) -> bool:
