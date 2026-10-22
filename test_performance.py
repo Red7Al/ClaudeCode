@@ -1041,7 +1041,8 @@ def test_the_analysis_population_enforces_the_documented_rr_cap():
     server_src = (Path(__file__).parent / "hvf_web" / "server.py").read_text(encoding="utf-8")
     assert "from config import MAX_RISK_REWARD as _MAX_RR" in server_src
     assert "and risk_reward >= 3 and risk_reward <= :maxrr" in server_src
-    assert "maxrr=_MAX_RR" in server_src
+    # The query moved into _squeeze_history_raw (2026-10-22); the cap still reaches it.
+    assert "_squeeze_history_raw(db, _MAX_RR)" in server_src and "maxrr=maxrr" in server_src
 
     # ...and NOT behind a fallback. `except: _MAX_RR = 10.0` sat next to that import until 2026-09-13,
     # so an import hiccup reverted this population to the old cap while still reporting a result.

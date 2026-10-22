@@ -4065,6 +4065,35 @@ def _sqa_band(v, edges, fmt="{}–{}"):
 
 
 _SQA_ROWS = {"ts": 0.0, "rows": None}
+_SQA_RAW = {"version": None, "raw": None}
+
+
+def _squeeze_history_raw(db, maxrr):
+    """The bridge-eligible squeeze_history rows, read from the database only when the table has been written
+    since the last read. MEASURED 2026-10-22: ~27,400 rows a read, asked every _SQA_TTL (15 min) by the warm
+    loop whether or not anything changed -- and the table changes only when a job writes it.
+
+    The proof of "unchanged" is Postgres's own write counter for the table (inserts + updates + deletes,
+    pg_stat_user_tables): one row back. squeeze_history carries no updated_at that every writer stamps
+    (recompute_squeeze_outcomes updates outcomes without one), and the counter needs no writer's
+    cooperation. MEASURED 2026-10-22: a committed write shows in the counter within 10 s, so an answer is at
+    most _SQA_TTL + 10 s old -- as before. If the counter cannot be read, the rows are read as before."""
+    try:
+        ver = (db.run("select n_tup_ins + n_tup_upd + n_tup_del from pg_stat_user_tables "
+                      "where schemaname = 'public' and relname = 'squeeze_history'") or [[None]])[0][0]
+    except Exception as ex:
+        log.warning(f"squeeze_history write counter unavailable ({ex}); reading the rows")
+        ver = None
+    key = None if ver is None else (int(ver), maxrr)
+    if key is not None and _SQA_RAW["version"] == key:
+        return _SQA_RAW["raw"]
+    raw = db.run(
+        "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
+        "outcome, return_pct, triggered_date, outcome_date, entry_level, stop_level, target_level "
+        "from squeeze_history where ready_date is not null "
+        "and risk_reward >= 3 and risk_reward <= :maxrr", maxrr=maxrr) or []
+    _SQA_RAW.update(version=key, raw=raw)
+    return raw
 
 
 def _sqa_all_rows():
@@ -4100,11 +4129,7 @@ def _sqa_all_rows():
     from config import MAX_RISK_REWARD as _MAX_RR
     _min_stop = _min_stop_distance()
     try:
-        raw = db.run(
-            "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
-            "outcome, return_pct, triggered_date, outcome_date, entry_level, stop_level, target_level "
-            "from squeeze_history where ready_date is not null "
-            "and risk_reward >= 3 and risk_reward <= :maxrr", maxrr=_MAX_RR) or []
+        raw = _squeeze_history_raw(db, _MAX_RR)
     finally:
         db.close()
     # Market-cap map (user 2026-08-01, P-07/P-08) — one query; attached to every row so the Back Test /
