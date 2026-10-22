@@ -4630,24 +4630,18 @@ def _window_bars(rows, slot_key):
         return slot["by_tk"]
     by_tk = {}
     if cuts:
-        items = sorted(cuts.items())
-        vals = ",".join(f"(:t{i}, :d{i}::date)" for i in range(len(items)))
-        params = {}
-        for i, (tk, td) in enumerate(items):
-            params[f"t{i}"], params[f"d{i}"] = tk, td
+        # _perf_bars, not a copy of its query: one bar reader, its version-keyed cache and the price bars file.
         from db_pool import get_db
         db = get_db()
         try:
-            raw = db.run(
-                f"select p.ticker, p.bar_date, p.high, p.low, p.close from price_history p "
-                f"join (values {vals}) as f(ticker, d0) on p.ticker = f.ticker and p.bar_date >= f.d0 "
-                f"order by p.ticker, p.bar_date", **params) or []
+            raw = _perf_bars(db, {tk: _dt.date.fromisoformat(td) for tk, td in cuts.items()})
         finally:
             db.close()
-        for tk, bd, hi, lo, cl in raw:
-            if hi is None or lo is None or cl is None:
-                continue
-            by_tk.setdefault(tk, []).append((str(bd), float(hi), float(lo), float(cl)))
+        for tk, bars in raw.items():
+            for bd, hi, lo, cl, _vol in bars:
+                if hi is None or lo is None or cl is None:
+                    continue
+                by_tk.setdefault(tk, []).append((str(bd), float(hi), float(lo), float(cl)))
     slot.update(ts=now, by_tk=by_tk, cuts=cuts)
     return by_tk
 

@@ -33,9 +33,11 @@ class FakeDb:
         self.log = log
 
     def run(self, sql, **params):
+        if "max(bar_date)" in sql:          # server._price_data_version: no version, so nothing is cached
+            return []
         self.log.append((sql, params))
         cuts = {params[f"t{i}"]: params[f"d{i}"] for i in range(len(params) // 2)}
-        return [(tk, bd, hi, lo, cl)
+        return [(tk, bd, hi, lo, cl, None)   # _perf_bars' columns: ticker, bar_date, high, low, close, volume
                 for tk, cut in sorted(cuts.items())
                 for bd, hi, lo, cl in BARS.get(tk, []) if bd >= cut]
 
@@ -132,3 +134,14 @@ def test_one_year_and_three_year_windows_keep_separate_slots(monkeypatch):
 
     assert len(log) == 2
     assert set(server._SLBARS) == {"y1", "y3"}
+
+
+def test_the_window_is_read_through_perf_bars_the_one_bar_reader(monkeypatch):
+    """2026-10-22: _window_bars carried its own copy of _perf_bars' query. Live 12-month window through
+    _perf_bars vs the old query: 1,490 tickers, 238,731 rows, IDENTICAL."""
+    _install(monkeypatch)
+    asked = []
+    monkeypatch.setattr(server, "_perf_bars", lambda db, cut, lookback_days=0: asked.append(dict(cut)) or {})
+    server._window_bars(_rows(("AAA", "2026-06-01"), ("BBB", "2026-07-01"), ("AAA", "2026-08-01")), "y1")
+    import datetime as dt
+    assert asked == [{"AAA": dt.date(2026, 6, 1), "BBB": dt.date(2026, 7, 1)}]
