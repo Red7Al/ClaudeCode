@@ -175,3 +175,21 @@ def test_shadow_prints_one_summary_line(bars_dir, monkeypatch, capsys):
     server._perf_bars(FakeDb(ROWS), CUT, lookback_days=3)
     price_bars._shadow_summary()
     assert "PRICE-BARS SHADOW SUMMARY: 1 calls, 3 rows from the database, 0 different -- IDENTICAL" in capsys.readouterr().err
+
+
+def test_squeeze_history_asks_the_one_reader_with_each_tickers_own_start(monkeypatch):
+    import squeeze_history
+    asked = []
+    monkeypatch.setattr(price_bars, "serve", lambda db, items, back, from_db: asked.append((items, back)) or {})
+    squeeze_history._price_bars_by_cutoff(object(), {"BP.L": "2026-10-15", "NVDA": dt.date(2026, 10, 1), "": "x"})
+    assert asked == [([("BP.L", D(2026, 10, 15)), ("NVDA", D(2026, 10, 1))], dt.timedelta(0))]
+
+
+def test_squeeze_history_database_answer_is_the_files_answer(bars_dir, monkeypatch):
+    import squeeze_history
+    monkeypatch.setenv("PRICE_BARS", "off")
+    want = squeeze_history._price_bars_by_cutoff(FakeDb(ROWS), {"BP.L": "2026-10-16", "NVDA": "2026-10-16"})
+    monkeypatch.setenv("PRICE_BARS", "on")
+    db = FakeDb(ROWS)
+    got = squeeze_history._price_bars_by_cutoff(db, {"BP.L": "2026-10-16", "NVDA": "2026-10-16"})
+    assert db.bar_queries == 0 and dict(got) == dict(want) and got

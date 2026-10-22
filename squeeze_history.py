@@ -346,22 +346,6 @@ def _snapshot_rows(snapshot: dict) -> list:
     return rows
 
 
-def _price_bars(db, tickers: list, start: str) -> dict:
-    """Fetch active-history bars in bounded batches to avoid one enormous IN expression."""
-    by_ticker = defaultdict(list)
-    for offset in range(0, len(tickers), 100):
-        batch = tickers[offset:offset + 100]
-        params = {f"t{i}": ticker for i, ticker in enumerate(batch)}
-        slots = ",".join(f":t{i}" for i in range(len(batch)))
-        raw = db.run(
-            f"select ticker,bar_date,high,low,close,volume from price_history "
-            f"where bar_date >= :start and ticker in ({slots}) order by ticker,bar_date",
-            start=start, **params) or []
-        for ticker, bar_date, high, low, close, volume in raw:
-            by_ticker[ticker].append((bar_date, high, low, close, volume))
-    return by_ticker
-
-
 # Calendar days of bars to keep BEFORE the earliest date a row actually needs. _rvol_at averages the
 # RVOL_BARS (20) TRADING bars before the trigger, which is ~28 calendar days; 45 leaves margin for
 # holidays and thin listings. Too small silently returns rvol=None instead of a number, so this errs long.
@@ -412,14 +396,21 @@ def _bar_cutoffs(active: list, flat_start: str) -> dict:
 
 
 def _price_bars_by_cutoff(db, cutoffs: dict) -> dict:
-    """Same shape as _price_bars, but each ticker carries its OWN start date.
+    """{ticker: [(bar_date, high, low, close, volume), ...]} from each ticker's OWN start date.
 
-    One round trip per batch against a VALUES join -- the identical idiom hvf_web/server.py::_perf_bars
-    used to collapse its per-ticker round trips, kept here so the two do not drift into different
-    answers about the same table.
+    Asks price_bars first (owner 2026-10-21: read files, not the database) -- the one reader of the price
+    bars file, as server._perf_bars does; the database query below is its fallback and its shadow reference.
     """
-    by_ticker = defaultdict(list)
+    import price_bars
     items = sorted((tk, d0) for tk, d0 in cutoffs.items() if tk and d0)
+    return price_bars.serve(db, [(tk, dt.date.fromisoformat(str(d0)[:10])) for tk, d0 in items],
+                            dt.timedelta(0), lambda: _bars_from_database(db, items))
+
+
+def _bars_from_database(db, items: list) -> dict:
+    """One round trip per batch against a VALUES join -- the identical idiom hvf_web/server.py::_perf_bars
+    uses, kept here so the two do not drift into different answers about the same table."""
+    by_ticker = defaultdict(list)
     for offset in range(0, len(items), 100):
         batch = items[offset:offset + 100]
         vals = ",".join(f"(:t{i}, :d{i}::date)" for i in range(len(batch)))
