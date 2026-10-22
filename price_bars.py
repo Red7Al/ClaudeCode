@@ -11,15 +11,17 @@ shadow  the database answers; the file's answer is computed beside it and every 
 on      the file answers -- when it is CURRENT. Otherwise the database answers, as before.
 
 CURRENT means the file holds exactly what price_history holds: the same row count and the same newest updated_at
-at or above the file's retention cutoff, asked of the database once per process (one row back). Every write to
+over the WHOLE table, asked of the database once per process (one row back). Every write to
 price_history stamps updated_at (price_store's writes; the trigger since e93dca0 for any other UPDATE), so a write
-after the build moves the newest stamp. Deletes happen only below the retention cutoff, which both sides exclude.
+after the build moves the newest stamp; an insert or a delete moves the count.
 LIMIT, recorded rather than left to be found: a transaction that began before the build and committed after it
 carries a stamp older than the build's newest, so the probe cannot see it. bars_file runs after the price refresh
 has finished, and its own verify step compares every ticker's sums with the database after the build.
 
-A request reaching below the file's retention cutoff goes to the database: the database may still hold a day the
-prune has not reached yet, and the file never does.
+The count is over the whole table, not only the rows from the file's retention cutoff on: equal counts prove the
+database holds nothing older than the file, so a request reaching back past the cutoff is answered from the file too.
+MEASURED 2026-10-22: 0 rows below the cutoff (2022-09-21); Best Settings asks back to 2021 and, with a cutoff-only
+probe, never reached the file.
 """
 import atexit
 import csv
@@ -80,8 +82,7 @@ def _ready(db) -> bool:
             return False
     if _STATE["current"] is None:
         try:
-            n, newest = (db.run("select count(*), max(updated_at) from price_history where bar_date >= :c",
-                                c=_STATE["meta"]["retention_cutoff"]) or [(None, None)])[0]
+            n, newest = (db.run("select count(*), max(updated_at) from price_history") or [(None, None)])[0]
             db_newest = newest.isoformat(timespec="microseconds") if newest is not None else ""
             # The file writes its stamps the same way (bars_file._row_out); compare as instants, not as text.
             same = (n == _STATE["count"] and newest is not None and _STATE["newest"]
@@ -97,16 +98,12 @@ def _ready(db) -> bool:
 
 
 def _from_file(items, back):
-    """The rows the database query would return for `items` [(ticker, from_date)], or None when a request
-    reaches below the file's retention cutoff."""
-    cutoff = dt.date.fromisoformat(_STATE["meta"]["retention_cutoff"])
+    """The rows the database query would return for `items` [(ticker, from_date)]."""
     out = {}
     for tk, d0 in items:
         start = d0 - back
         if isinstance(start, dt.datetime):
             start = start.date()
-        if start < cutoff:
-            return None
         rows = [r for r in _STATE["by"].get(tk, ()) if r[0] >= start]
         if rows:
             out[tk] = rows
@@ -152,9 +149,6 @@ def serve(db, items, back, from_database):
     if m == "off" or not _ready(db):
         return from_database()
     file_out = _from_file(items, back)
-    if file_out is None:
-        log.info("price bars: request reaches below the file's retention cutoff -- reading the database")
-        return from_database()
     if m == "on":
         return file_out
     db_out = from_database()

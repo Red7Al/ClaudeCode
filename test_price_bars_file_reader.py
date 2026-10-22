@@ -84,11 +84,27 @@ def test_an_added_row_with_an_old_stamp_still_makes_it_stale(bars_dir, monkeypat
     assert db.bar_queries == 1
 
 
-def test_below_the_retention_cutoff_the_database_answers(bars_dir, monkeypatch):
+def test_a_request_older_than_the_cutoff_is_answered_by_the_file_when_the_counts_match(bars_dir, monkeypatch):
+    """MEASURED 2026-10-22: the database holds 0 rows below the cutoff, and Best Settings asks back to 2021 --
+    a cutoff-only probe sent every such request to the database, so the shadow never compared anything."""
     monkeypatch.setenv("PRICE_BARS", "on")
     db = FakeDb(ROWS)
-    server._perf_bars(db, {"BP.L": D(2022, 10, 1)}, lookback_days=30)
-    assert db.bar_queries == 1
+    got = server._perf_bars(db, {"BP.L": D(2022, 10, 1)}, lookback_days=30)
+    monkeypatch.setenv("PRICE_BARS", "off")
+    server._PB_CACHE.clear(); server._PB_ORDER.clear()
+    assert db.bar_queries == 0 and got == server._perf_bars(FakeDb(ROWS), {"BP.L": D(2022, 10, 1)}, lookback_days=30)
+
+
+def test_the_probe_counts_the_whole_table(bars_dir, monkeypatch):
+    """A row older than the file (not yet pruned) is outside the file; the whole-table count must see it."""
+    monkeypatch.setenv("PRICE_BARS", "on")
+    seen = []
+    db = FakeDb(ROWS)
+    real = db.run
+    db.run = lambda sql, **kw: seen.append(sql) or real(sql, **kw)
+    server._perf_bars(db, CUT, lookback_days=3)
+    probe = [q for q in seen if "max(updated_at)" in q]
+    assert probe == ["select count(*), max(updated_at) from price_history"]
 
 
 def test_shadow_answers_from_the_database_and_logs_identical(bars_dir, monkeypatch, caplog):
