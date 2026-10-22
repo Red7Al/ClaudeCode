@@ -629,11 +629,12 @@ function render(){
     <td>${ob(_mcapFmt(r.mcap))}</td>
     <td>${ob(_thenNow(rvolCell(r.rvol),rvolCell(r.current_rvol)))}</td><td>${ob(_thenNow(_tickCross(r.above_vwap),_tickCross(r.current_above_vwap)))}</td><td>${ob(_thenNow(_tickCross(r.atr_expanding),_tickCross(r.current_atr_expanding)))}</td><td>${ob(volScoreCell(r.volume_score))}</td>
     <td>${ob(r.rr!=null?r.rr.toFixed(1):'')}</td><td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:'')}</td>
-    <td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td><td>${ob(r.status||'')}${(r.outcome==="TARGET"||r.outcome==="STOPPED")?` <span class="tag ${r.outcome==='TARGET'?'bull':'bear'}" title="Reached ${r.outcome==='TARGET'?'its target':'its stop'} on ${_esc(r.outcome_date||'')}">${r.outcome} ${_esc((r.outcome_date||'').slice(5))}</span>`:''}</td>
+    <td>${ob(r.dist_entry!=null?(r.dist_entry>0?'+':'')+r.dist_entry+'%':'')}</td>
     <td>${ob(r.trig_date?r.trig_date.slice(0,10):'')}</td><td>${ob(r.days_since??'')}</td>
     <td>${ob(f2(r.current_price))}</td>
     <td>${ob(f2(r.target))}</td>
     <td>${ob(r.tgt_str||'')}</td>
+    <td>${ob(r.status||'')}${(r.outcome==="TARGET"||r.outcome==="STOPPED")?` <span class="tag ${r.outcome==='TARGET'?'bull':'bear'}" title="Reached ${r.outcome==='TARGET'?'its target':'its stop'} on ${_esc(r.outcome_date||'')}">${r.outcome} ${_esc((r.outcome_date||'').slice(5))}</span>`:''}</td>
     <td>${r.market||''}</td><td>${ob(r.x_posts?`<b>${r.x_posts}</b>`:'')}</td>
     <td>${ob(r.chg_since_trig!=null?`<b style="color:${trigCol(r)}">${r.chg_since_trig>0?'+':''}${r.chg_since_trig}%</b>`:'')}</td>
     <td>${ob(r.pe??'')}</td><td>${ob(r.insider_pct!=null?r.insider_pct.toFixed(1)+'%':'')}</td><td>${ob((r.timeframe||'').replace('daily-','D'))}</td><td>${ob(locName(r.location))}</td><td>${ob(levOf(r)?levOf(r)+'x':'')}</td>
