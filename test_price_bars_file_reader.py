@@ -149,7 +149,9 @@ def test_the_evening_publish_and_the_morning_best_settings_fetch_the_file_in_sha
     steps = pub["jobs"]["publish"]["steps"]
     names = [s.get("name") or "" for s in steps]
     fetch = names.index("Fetch the price bars file (shadow)")
+    assert fetch < names.index("Build, publish and read-verify immutable Scanner snapshot"), "refresh_daily runs in the build"
     assert fetch < names.index("Warm the precomputed winners payloads") < names.index("Precompute the public Best Settings cards")
+    assert "if" not in steps[fetch]
     assert steps[fetch]["run"] == "bash .github/scripts/fetch_price_bars.sh shadow"
     assert steps[fetch]["continue-on-error"] is True
     bs = yaml.safe_load(open(".github/workflows/trading-best-settings-audit.yml", encoding="utf-8"))
@@ -193,3 +195,17 @@ def test_squeeze_history_database_answer_is_the_files_answer(bars_dir, monkeypat
     db = FakeDb(ROWS)
     got = squeeze_history._price_bars_by_cutoff(db, {"BP.L": "2026-10-16", "NVDA": "2026-10-16"})
     assert db.bar_queries == 0 and dict(got) == dict(want) and got
+
+
+def test_the_morning_report_fetches_todays_file_without_needing_the_bars_job():
+    """refresh_daily runs inside the HVF report. The chain builds the file in a PARALLEL job; making the report
+    need it would skip every later job if the bars file failed -- so the fetch waits for today's file instead."""
+    import yaml
+    rep = yaml.safe_load(open(".github/workflows/trading-hvf-report.yml", encoding="utf-8"))
+    steps = rep["jobs"]["run"]["steps"]
+    names = [s.get("name") or "" for s in steps]
+    fetch = names.index("Fetch the price bars file (shadow)")
+    assert fetch < names.index("Run HVF daily report")
+    assert steps[fetch]["run"] == "bash .github/scripts/fetch_price_bars.sh shadow 600" and steps[fetch]["continue-on-error"]
+    chain = yaml.safe_load(open(".github/workflows/trading-morning-chain.yml", encoding="utf-8"))
+    assert chain["jobs"]["daily_report"]["needs"] == "price_refresh"

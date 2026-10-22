@@ -1,4 +1,4 @@
-name: HVF Daily Report (2026-10-21)
+name: HVF Daily Report (2026-10-22)
 
 on:
   # Callable so trading-morning-chain.yml can run it in sequence (2026-09-05). The chain
@@ -111,6 +111,15 @@ jobs:
           SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
           APP_SECRET_KEY:        ${{ secrets.APP_SECRET_KEY }}
+      # The price bars file for squeeze_history.refresh_daily, SHADOW (owner 2026-10-21: read files, not the
+      # database) -- the database still answers and the file is compared in the log. Waits up to 10 minutes
+      # for today's file (the chain builds it in parallel); a failed fetch exports nothing.
+      - name: Fetch the price bars file (shadow)
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: bash .github/scripts/fetch_price_bars.sh shadow 600
       - name: Run HVF daily report
         id: report
         run: python run_hvf_report.py
