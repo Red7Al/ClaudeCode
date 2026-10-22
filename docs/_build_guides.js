@@ -9,11 +9,20 @@ const path = require("path");
 const {
   Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
   LevelFormat, BorderStyle, PageNumber, Footer, Table, TableRow, TableCell,
-  WidthType, ShadingType,
+  WidthType, ShadingType, ImageRun,
 } = require("docx");
 
 const ACCENT = "2E5BBA";
 const OUT_DIR = path.join(__dirname, "guides");
+// Screenshots of the real screens with placeholder data (docs/_capture_guide_images.py, owner 2026-10-22).
+const IMG_DIR = path.join(__dirname, "guide_images");
+
+// A PNG's own pixel size, from its IHDR header -- both renderings keep the shot's proportions.
+function pngImage(file) {
+  const buf = fs.readFileSync(path.join(IMG_DIR, file));
+  if (buf.toString("ascii", 1, 4) !== "PNG") throw new Error(file + " is not a PNG");
+  return { buf, w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+}
 
 // ── block helpers ───────────────────────────────────────────────────────────
 function p(text)   { return new Paragraph({ spacing: { after: 140 }, children: [new TextRun({ text, size: 22 })] }); }
@@ -28,6 +37,18 @@ function note(t) {
     children: [new TextRun({ text: "Note  ", bold: true, size: 20, color: ACCENT }), new TextRun({ text: t, size: 20 })],
   });
 }
+// A screenshot, at most 6 inches wide (the page's text width is 6.5), with its caption beneath.
+function figure(file, caption) {
+  const im = pngImage(file), scale = Math.min(1, 576 / im.w);
+  return [
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120, after: 60 }, children: [
+      new ImageRun({ type: "png", data: im.buf,
+                     transformation: { width: Math.round(im.w * scale), height: Math.round(im.h * scale) } })] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 },
+      children: [new TextRun({ text: caption, italics: true, size: 18, color: "666666" })] }),
+  ];
+}
+
 function twoCol(rows, lHdr, rHdr, lw = 2900, rw = 6460) {
   const bd = { style: BorderStyle.SINGLE, size: 1, color: "DDDDDD" };
   const borders = { top: bd, bottom: bd, left: bd, right: bd };
@@ -53,6 +74,7 @@ function render(block) {
     case "s": return step(a);
     case "note": return note(a);
     case "table": return twoCol(a, b, c, d);
+    case "img": return figure(a, b);
     default: throw new Error("unknown block " + kind);
   }
 }
@@ -90,7 +112,7 @@ function buildDoc(title, subtitle, blocks) {
           children: [new TextRun({ text: subtitle, size: 24, color: "555555" })] }),
         new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 700 },
           children: [new TextRun({ text: "The Squeeze — trading signal platform", size: 20, color: "888888" })] }),
-        ...blocks.map(render),
+        ...blocks.flatMap(render),
         new Paragraph({ spacing: { before: 260 }, border: { top: { style: BorderStyle.SINGLE, size: 6, color: "CCCCCC", space: 8 } },
           children: [new TextRun({ text: "Not financial advice. This guide explains how to use the platform; it is not a recommendation to buy or sell anything.", italics: true, size: 18, color: "888888" })] }),
       ],
@@ -113,10 +135,14 @@ function tableHtml(rows, lHdr, rHdr) {
 function blocksToHtml(blocks) {
   // Clear-documentation layout: each top-level "h1" becomes a NUMBERED section (01, 02, …) with the
   // heading, and its content sits in the section body — matching the guardian-one risk-management style.
-  let out = "", listType = null, buf = [], secOpen = false, secN = 0;
+  // stepsDone: steps already numbered in this section, so a list broken by a screenshot carries on (3, 4 ...)
+  // instead of starting again at 1.
+  let out = "", listType = null, buf = [], secOpen = false, secN = 0, stepsDone = 0;
   const flushList = () => {
     if (!buf.length) return;
-    out += `<${listType}>` + buf.map((x) => `<li>${esc(x)}</li>`).join("") + `</${listType}>`;
+    const start = listType === "ol" && stepsDone ? ` start="${stepsDone + 1}"` : "";
+    out += `<${listType}${start}>` + buf.map((x) => `<li>${esc(x)}</li>`).join("") + `</${listType}>`;
+    if (listType === "ol") stepsDone += buf.length;
     buf = []; listType = null;
   };
   const closeSec = () => { if (secOpen) { out += `</div></section>`; secOpen = false; } };
@@ -129,7 +155,7 @@ function blocksToHtml(blocks) {
     }
     flushList();
     if (kind === "h1") {
-      closeSec(); secN += 1;
+      closeSec(); secN += 1; stepsDone = 0;
       out += `<section class="guide-sec"><div class="guide-sec-head"><span class="num">`
         + String(secN).padStart(2, "0") + `</span><h2>${esc(bl[1])}</h2></div><div class="guide-sec-body">`;
       secOpen = true;
@@ -137,6 +163,11 @@ function blocksToHtml(blocks) {
     else if (kind === "p") out += `<p>${esc(bl[1])}</p>`;
     else if (kind === "note") out += `<div class="guide-note">${esc(bl[1])}</div>`;
     else if (kind === "table") out += tableHtml(bl[1], bl[2], bl[3]);
+    else if (kind === "img") {   // embedded, so the guide stays one self-contained fragment (CSP: img-src data:)
+      const im = pngImage(bl[1]);
+      out += `<figure class="guide-fig"><img src="data:image/png;base64,${im.buf.toString("base64")}" `
+        + `width="${im.w}" height="${im.h}" alt="${esc(bl[2])}" loading="lazy"><figcaption>${esc(bl[2])}</figcaption></figure>`;
+    }
   }
   flushList(); closeSec();
   return out;

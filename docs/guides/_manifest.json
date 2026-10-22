@@ -27,7 +27,7 @@
     "slug": "user-guide-adding-ig-credentials",
     "title": "Adding IG credentials",
     "category": "User Guide",
-    "subtitle": "Connecting your IG account so the platform can read positions and stage orders",
+    "subtitle": "Connecting your IG account so the platform can read positions and place orders",
     "access": "login",
     "file": "user-guide-adding-ig-credentials.html"
   },
