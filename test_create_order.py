@@ -247,13 +247,13 @@ def test_a_size_refusal_states_the_markets_own_minimum_and_the_money():
 def test_the_endpoint_reports_the_size_reason_not_the_last_log_line(wired, monkeypatch):
     import ig_shim, logging
     def refuse(sig, profile, session, mult, **kw):
-        ig_shim.LAST_ORDER_SKIP["ARM"] = "ARM: account too small for IG's minimum deal. Its smallest allowed size 0.04"
+        ig_shim.LAST_ORDER_SKIP[ig_shim._order_skip_key("ARM")] = "ARM: account too small for IG's minimum deal. Its smallest allowed size 0.04"
         logging.getLogger().info("Missed trade ARM BUY ACCOUNT_TOO_SMALL - occurrence #2 today, alert suppressed (deduped)")
         return None
     monkeypatch.setattr(ig_shim, "place_hvf_order_from_sig", refuse)
     r = _post({"entry": 280.5, "stop": 266.1, "target": 360.2})
     assert r.get_json()["error"].startswith("ARM: account too small"), r.get_json()
-    assert "ARM" not in ig_shim.LAST_ORDER_SKIP, "used once, never served to a later request"
+    assert ig_shim._order_skip_key("ARM") not in ig_shim.LAST_ORDER_SKIP, "used once, never served to a later request"
 
 
 def test_the_endpoint_returns_the_size_placed(wired, monkeypatch):
@@ -315,15 +315,14 @@ def test_the_typed_size_is_the_size_placed(monkeypatch):
 def test_a_size_below_the_markets_minimum_is_refused_before_ig(monkeypatch):
     import ig_shim
     assert _through_to_placement(monkeypatch, "WEB_MANUAL", size_override=0.01) == {}
-    assert "below IG's minimum for this market (0.04)" in ig_shim.LAST_ORDER_SKIP.pop("ARM")
+    assert "below IG's minimum for this market (0.04)" in ig_shim.order_skip_reason("ARM")
 
 
 def test_the_size_endpoint_sizes_the_order_on_screen_and_places_nothing(wired, monkeypatch):
     import ig_shim
     asked = []
     monkeypatch.setattr(ig_shim, "size_working_order", lambda *a, **k: asked.append(a) or {
-        "size": 0.0, "epic": "E", "min_size": 0.04})
-    monkeypatch.setattr(ig_shim, "describe_size_skip", lambda tk, epic: f"{tk}: account too small")
+        "size": 0.0, "epic": "E", "min_size": 0.04, "reason": "ARM: account too small"})
     r = server.app.test_client().post("/api/order-size", headers={"X-Auth": "tok"},
                                       json={"ticker": "ARM", "levels": {"entry": 280.5, "stop": 266.1, "target": 360.2}})
     assert r.get_json() == {"ok": True, "size": 0.0, "min_size": 0.04, "reason": "ARM: account too small"}
@@ -331,3 +330,32 @@ def test_the_size_endpoint_sizes_the_order_on_screen_and_places_nothing(wired, m
     stale = server.app.test_client().post("/api/order-size", headers={"X-Auth": "tok"},
                                           json={"ticker": "ARM", "levels": {"entry": 1, "stop": 0.5, "target": 9}})
     assert stale.status_code == 409, "the same stale-page check as placing"
+
+
+# ── security review 2026-10-22: one account's refusal (its free margin) never reaches another ───────────
+
+def test_an_earlier_accounts_refusal_is_not_this_accounts_reason(monkeypatch):
+    """Account A was refused on this market (free margin 167.40); account B's sizing then fails before IG's
+    minimum is checked. B must get the generic reason, not A's money."""
+    import ig_shim
+    ig_shim.LAST_SIZE_SKIP["UA.D.ARM.DAILY.IP"] = ("ACCOUNT_TOO_SMALL", 483.85, 167.40, 0.04)
+    monkeypatch.setattr(ig_shim, "get_epic", lambda tk: "UA.D.ARM.DAILY.IP")
+    monkeypatch.setattr(ig_shim, "get_snapshot", lambda epic: (_ for _ in ()).throw(RuntimeError("IG 500")))
+    try:
+        out = ig_shim.size_working_order("ARM", "BUY", 280.5, 266.1, 360.2, {}, 1.0)
+    finally:
+        ig_shim.LAST_SIZE_SKIP.pop("UA.D.ARM.DAILY.IP", None)
+    assert out["size"] == 0.0 and "167.40" not in out["reason"] and "calculated size is 0" in out["reason"]
+
+
+def test_another_requests_refusal_is_invisible_to_this_one():
+    import threading
+    import ig_shim
+    def other():
+        ig_shim.LAST_ORDER_SKIP[ig_shim._order_skip_key("ARM")] = "ARM: only 167.40 is free"
+    t = threading.Thread(target=other)
+    t.start(); t.join()
+    try:
+        assert ig_shim.order_skip_reason("ARM") is None
+    finally:
+        ig_shim.LAST_ORDER_SKIP.clear()

@@ -794,8 +794,20 @@ def acting_session(login: str = None):
 # summarised with its funding gap, not paged every cycle. ERROR = an exception (genuine missed trade).
 # Keyed by epic; (reason, needed_margin_gbp, available_gbp). Cleared when a real size is produced.
 LAST_SIZE_SKIP: dict = {}
-# ticker -> describe_size_skip's reason for the last order place_hvf_order_from_sig refused on size.
+# (request thread, ticker) -> the reason place_hvf_order_from_sig refused that thread's order on size. Keyed
+# by thread so one user's request can never read another's refusal, which names that account's free margin
+# (security review 2026-10-22). order_skip_reason() reads and clears it.
 LAST_ORDER_SKIP: dict = {}
+
+
+def _order_skip_key(ticker):
+    return (_threading.get_ident(), ticker)
+
+
+def order_skip_reason(ticker, clear_only=False):
+    """The reason THIS thread's last order for `ticker` was refused on size (and forget it); None if none."""
+    reason = LAST_ORDER_SKIP.pop(_order_skip_key(ticker), None)
+    return None if clear_only else reason
 # epic -> IG's minimum deal size, from the last calculate_position_size for it ("Create an order" checks a
 # typed volume against it before anything is sent to IG).
 LAST_MIN_SIZE: dict = {}
@@ -3401,6 +3413,9 @@ def size_working_order(ticker: str, direction: str, entry, stop, target, profile
         epic = get_epic(ticker)
         if not epic:
             raise ValueError("no IG epic")
+        # LAST_SIZE_SKIP is per market and shared by every account in the process; an earlier account's
+        # entry (its free margin) must not describe THIS account's refusal (security review 2026-10-22).
+        LAST_SIZE_SKIP.pop(epic, None)
         # Align signal units → IG units BEFORE sizing: FX HVF levels come from
         # Yahoo (EURUSD 1.1539) while IG quotes points (11538.6). Sizing from the
         # unscaled distance would compute risk in the wrong units entirely.
@@ -3433,7 +3448,8 @@ def size_working_order(ticker: str, direction: str, entry, stop, target, profile
     except Exception as e:
         log.warning(f"Working-order size calc failed for {ticker}: {e}")
     return {"size": size, "epic": epic, "entry": entry, "stop": stop, "target": target,
-            "min_size": LAST_MIN_SIZE.get(epic)}
+            "min_size": LAST_MIN_SIZE.get(epic),
+            "reason": describe_size_skip(ticker, epic) if size <= 0 else None}
 
 
 def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
@@ -3592,10 +3608,10 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         except (TypeError, ValueError):
             _ov = float("nan")
         if not (_ov > 0 and _ov != float("inf")):
-            LAST_ORDER_SKIP[ticker] = f"{ticker}: the size {size_override!r} is not a positive number -- nothing sent to IG."
+            LAST_ORDER_SKIP[_order_skip_key(ticker)] = f"{ticker}: the size {size_override!r} is not a positive number -- nothing sent to IG."
             return None
         if _min and _ov < _min:
-            LAST_ORDER_SKIP[ticker] = (f"{ticker}: size {_ov:g} is below IG's minimum for this market ({_min:g}) "
+            LAST_ORDER_SKIP[_order_skip_key(ticker)] = (f"{ticker}: size {_ov:g} is below IG's minimum for this market ({_min:g}) "
                                        f"-- nothing sent to IG.")
             return None
         log.info(f"{ticker}: size {_ov:g} entered by the user (calculated {size:g}, IG minimum {_min})")
@@ -3604,10 +3620,10 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
     if size <= 0:
         # Plain-English, context-aware reason from the single source (user 2026-06-26). A structural
         # ACCOUNT_TOO_SMALL / margin-deficit skip is summarised daily; a generic zero-size pages.
-        _reason = describe_size_skip(ticker, epic)
+        _reason = sized.get("reason") or describe_size_skip(ticker, epic)
         # For "Create an order": the page shows THIS reason, not whichever log line came last (owner
         # 2026-10-21 -- it showed notify's "occurrence #2 today, alert suppressed (deduped)" and no volume).
-        LAST_ORDER_SKIP[ticker] = _reason
+        LAST_ORDER_SKIP[_order_skip_key(ticker)] = _reason
         try:
             from notify import alert_missed_trade
             alert_missed_trade(ticker, direction, _reason, str(sig.get("primaries_fired") or ""))

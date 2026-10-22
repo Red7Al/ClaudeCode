@@ -3090,8 +3090,9 @@ def api_order_size():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e) or "IG did not answer"}), 500
     size = sized.get("size") or 0.0
+    # The reason was written inside acting_session from this account's own figures (size_working_order).
     return jsonify({"ok": True, "size": size, "min_size": sized.get("min_size"),
-                    "reason": None if size > 0 else ig_shim.describe_size_skip(tk, sized.get("epic"))})
+                    "reason": None if size > 0 else sized.get("reason")})
 
 
 @app.route("/api/place-order", methods=["POST"])
@@ -3125,7 +3126,7 @@ def api_place_order():
     try:
         import ig_shim
         _profile = _order_profile(name)
-        ig_shim.LAST_ORDER_SKIP.pop(tk, None)
+        ig_shim.order_skip_reason(tk, clear_only=True)
         with ig_shim.acting_session(name):
             wo = ig_shim.place_hvf_order_from_sig(sig, _profile, "WEB_MANUAL", 1.0,
                                                   size_override=body.get("size"))
@@ -3138,7 +3139,7 @@ def api_place_order():
     if not wo:
         # A size refusal carries its own plain-English reason with the volume and the money (owner 2026-10-21);
         # otherwise the last log line about this ticker.
-        reason = ig_shim.LAST_ORDER_SKIP.pop(tk, None) or (_cap[-1].split(": ", 1)[-1] if _cap else
+        reason = ig_shim.order_skip_reason(tk) or (_cap[-1].split(": ", 1)[-1] if _cap else
                   "IG did not accept the order — likely the pattern Quality is below the floor, the stop "
                   "is too tight, the direction conflicts, or a circuit breaker (daily loss / max positions "
                   "/ spread) blocked it. See System Logs for detail.")
